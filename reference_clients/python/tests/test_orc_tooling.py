@@ -2219,6 +2219,53 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(blocked["error"], "directive_not_claimed")
         self.assertEqual(status["statusCounts"]["queued"], 1)
 
+    def test_orc_runtime_jsonl_completion_rejects_non_terminal_status(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                queued = enqueue_runtime_directive(
+                    orc="grashnuk",
+                    task_id="task_source",
+                    directive="Review task_source.",
+                    runtime_dir=tmpdir,
+                )
+                claim_next_runtime_directive(orc="grashnuk", worker_id="worker-a", runtime_dir=tmpdir)
+
+                with self.assertRaises(ValueError):
+                    complete_runtime_directive(
+                        directive_id=queued["directiveId"],
+                        status="queued",
+                        result={"summary": "bad status"},
+                        worker_id="worker-a",
+                        runtime_dir=tmpdir,
+                    )
+
+                status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+
+        self.assertEqual(status["statusCounts"]["claimed"], 1)
+
+    def test_orc_runtime_jsonl_claimed_only_completion_aliases_to_completed(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                queued = enqueue_runtime_directive(
+                    orc="grashnuk",
+                    task_id="task_source",
+                    directive="Review task_source.",
+                    runtime_dir=tmpdir,
+                )
+                claim_next_runtime_directive(orc="grashnuk", worker_id="worker-a", runtime_dir=tmpdir)
+                completed = complete_runtime_directive(
+                    directive_id=queued["directiveId"],
+                    status="claimed_only",
+                    result={"summary": "claim-only finalized"},
+                    worker_id="worker-a",
+                    runtime_dir=tmpdir,
+                )
+                status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+
+        self.assertEqual(completed["completed"], True)
+        self.assertEqual(completed["directive"]["status"], "completed")
+        self.assertEqual(status["statusCounts"]["completed"], 1)
+
     def test_orc_runtime_jsonl_enqueue_is_idempotent_for_active_task(self):
         with patch.dict(os.environ, {}, clear=True):
             with tempfile.TemporaryDirectory() as tmpdir:

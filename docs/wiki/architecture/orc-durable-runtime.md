@@ -138,6 +138,10 @@ Completion is ownership-checked: a directive must be in `claimed` status, and
 the `workerId` supplied to `orc-runtime complete` must match the worker that
 claimed it. Terminal rows remain idempotent, but queued rows and rows claimed by
 another worker are not completed by ID alone.
+Both backends accept only terminal completion statuses: `completed`, `failed`,
+or `cancelled`. The legacy `claimed_only` CLI status is normalized to
+`completed` for compatibility with the prototype `run-once` flow; it is not
+persisted as a fourth runtime state.
 
 Enqueue is also idempotent for active source work. When `taskId` is present,
 the runtime will not queue a second `queued` or `claimed` directive for the same

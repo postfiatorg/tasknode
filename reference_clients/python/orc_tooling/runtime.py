@@ -72,6 +72,15 @@ def _runtime_claim_ttl_seconds(value: int | float | str | None = None) -> int:
     return max(0, min(parsed, 7 * 24 * 60 * 60))
 
 
+def _normalize_completion_status(status: str = "completed") -> str:
+    clean_status = _safe_text(status, 80).lower() or "completed"
+    if clean_status == "claimed_only":
+        return "completed"
+    if clean_status not in POSTGRES_TERMINAL_DIRECTIVE_STATUSES:
+        raise ValueError(f"unsupported terminal directive status: {clean_status}")
+    return clean_status
+
+
 def _run_psql(database_url: str, sql: str) -> str:
     result = subprocess.run(
         ["psql", "-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", database_url, "-c", sql],
@@ -542,11 +551,7 @@ def _postgres_complete_runtime_directive(
     worker_id: str = "",
 ) -> dict[str, Any]:
     ensure_orc_runtime_directives_schema(database_url=database_url)
-    clean_status = _safe_text(status, 80).lower() or "completed"
-    if clean_status == "claimed_only":
-        clean_status = "completed"
-    if clean_status not in POSTGRES_TERMINAL_DIRECTIVE_STATUSES:
-        raise ValueError(f"unsupported terminal directive status for Postgres runtime: {clean_status}")
+    clean_status = _normalize_completion_status(status)
     clean_result = redact_secrets(result or {})
     clean_worker = _safe_text(worker_id, 180)
     sql = f"""
@@ -829,7 +834,7 @@ def complete_runtime_directive(
     database_url: str | None = None,
 ) -> dict[str, Any]:
     clean_directive_id = _safe_text(directive_id, 180)
-    clean_status = _safe_text(status, 80) or "completed"
+    clean_status = _normalize_completion_status(status)
     if not clean_directive_id:
         raise ValueError("directive_id is required")
     db_url = _configured_database_url(database_url)
