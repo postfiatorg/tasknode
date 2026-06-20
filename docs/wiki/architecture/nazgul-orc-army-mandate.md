@@ -43,6 +43,12 @@ in priority order:
 
 ## Injection mechanics (Nazgûl → Orc)
 
+The tmux path is the visible/manual compatibility path. Durable runtime
+dispatch is now available through `nazgul dispatch-runtime` and `orc-runtime`;
+it writes directives to Postgres when a database URL is configured and falls
+back to JSONL for local/no-DB operation. Until the supervised Orc worker exists,
+tmux injection or an explicit `orc-runtime` claim remains the execution bridge.
+
 ```
 tmux send-keys -t <pane> -l '<directive>'; sleep 1; tmux send-keys -t <pane> Enter
 ```
@@ -66,7 +72,11 @@ tmux send-keys -t <pane> -l '<directive>'; sleep 1; tmux send-keys -t <pane> Ent
 - `TaskNodeAgentClient` — signed Task Node actions; seed from env only,
   `submit=False` default, double-submit guard.
 - `orc-runtime` (Phase 5) — durable directive mailbox replacing tmux
-  injection; see `orc-durable-runtime.md`.
+  injection. It uses the `orc_runtime_directives` Postgres queue
+  (`server/db/migrations/068_orc_runtime_directives.sql`) when a DB URL is
+  configured, with `SELECT ... FOR UPDATE SKIP LOCKED` claims, scoped stale
+  claim recovery, ownership-checked completion, and a JSONL fallback for local
+  operation. `run-once` is still claim-only; see `orc-durable-runtime.md`.
 
 **Nazgûl-monitoring** (`orc_tooling/nazgul.py` → `nazgul` CLI):
 
@@ -141,16 +151,20 @@ next priority, and escalates only the reserved actions above.
 - **Phase 0–4 — tooling merge.** `orcctl` + `nazgul` CLI + monitoring/review/
   priority/reward-monitor tooling merged to main (PRs #81–#87). **Done.**
 - **Phase 5 — durable runtime.** JSONL directive mailbox + `orc-runtime` CLI +
-  `dispatch-runtime` (PR #88). **Prototype merged.** Next: Postgres queue tables
-  (`SELECT … FOR UPDATE SKIP LOCKED`) and a supervised Orc worker process that
-  claims directives and invokes `orcctl` capabilities.
+  `dispatch-runtime` (PR #88), plus the Postgres queue table
+  `orc_runtime_directives` (migration `068_orc_runtime_directives.sql`),
+  `SELECT ... FOR UPDATE SKIP LOCKED` claiming, stale-claim recovery, idempotent
+  active-source enqueue, ownership-checked completion, and claim-only
+  `run-once`. **Queue/claim primitive done.** Next: a supervised Orc worker
+  process that claims directives, invokes `orcctl` capabilities end-to-end, and
+  records completion/journal results.
 - **Phase 6 — orc-accounting in the Hive Mind.** `orc_agents` + orc activity in
   the Board Manager source packet (migration `062_orc_agents_and_activity.sql`,
   PR #83), plus the linked `orc_work_journal` assignment/outcome ledger
   (migration `066_orc_work_journal.sql`) and review-outcome rollups for routing
-  context (migration `067_orc_review_rollups.sql`). **In progress.** The Board
-  Manager must reason about orc operators the same way it reasons about human
-  contributors.
+  context (migration `067_orc_review_rollups.sql`). **Accounting primitives
+  merged; ongoing work is operational coverage.** The Board Manager must reason
+  about orc operators the same way it reasons about human contributors.
 
 ## Non-goals
 
