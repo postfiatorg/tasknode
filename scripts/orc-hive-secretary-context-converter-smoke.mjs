@@ -50,6 +50,21 @@ assert.equal(batch.summary.byReviewStatus.unverifiable, 1);
 
 const batchPayload = JSON.parse(await readFile(path.join(batchOut, "hive_secretary_batch_payload.json"), "utf8"));
 assert.equal(batchPayload.updates.length, 5);
+assert.deepEqual(batchPayload.source.sourceTaskIds, [
+  "task_doc_acceptance_workflow",
+  "task_hive_chat_delivery_gap",
+  "task_self_attested_parser_claim",
+  "task_unverifiable_cluster_submission",
+  "task_reward_projection_mismatch",
+]);
+assert.deepEqual(batchPayload.source.sourceReviewIds, [
+  "swrev_secretary_001",
+  "swrev_secretary_002",
+  "swrev_secretary_003",
+  "swrev_secretary_004",
+  "swrev_secretary_005",
+]);
+assert.equal(batchPayload.source.routingPacketFiles.length, 4);
 assert.equal(batchPayload.summary.byActionOwner.product_engineering_triage, 1);
 assert.equal(batchPayload.summary.byActionOwner.nazgul_alex_review, 1);
 assert.equal(batchPayload.summary.byActionOwner.protocol_owner_review, 1);
