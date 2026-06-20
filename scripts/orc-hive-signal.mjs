@@ -577,7 +577,7 @@ function printResult(result, { json = false } = {}) {
   }
   console.log(
     result.executed
-      ? `Verified Orc Hive signal to ${result.accountId} (${result.chatMessageId || "message queued"})`
+      ? `Verified Orc Hive signal to ${result.accountId} (${result.chatMessageId})`
       : `Dry-run Orc Hive signal to ${result.accountId} (${result.conversationId})`
   );
 }
