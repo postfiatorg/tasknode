@@ -21,11 +21,14 @@ import { decodeTextDataUrl, normalizeChatAttachments } from "./chat-attachment-u
 import { executeHiveImmediateResponse } from "./hive-immediate-response.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { agentOriginForWalletSession, metadataWithMachineAgentOrigin } from "./agent-origin.js";
+import {
+  checkAgentRateLimitBucket,
+  resetAgentRateLimitBucketsForTests,
+} from "./repositories/agent-rate-limits.js";
 import { recordAgentHiveChatWorkJournal } from "./repositories/orc-work-journal.js";
 
 const maxHiveAttachmentTextLength = 12_000;
 const maxHiveAttachmentExcerptLength = 800;
-const agentHiveChatBuckets = new Map();
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -41,32 +44,24 @@ function agentHiveChatRateLimitConfig() {
   };
 }
 
-function checkAgentHiveChatRateLimit(agentOrigin = null, now = Date.now()) {
+async function checkAgentHiveChatRateLimit(agentOrigin = null, now = Date.now()) {
   if (!agentOrigin?.agent) return { ok: true };
   const key = safeText(
-    agentOrigin.walletAddress || agentOrigin.accountId || agentOrigin.agentHandle || "unknown_agent",
+    agentOrigin.accountId || agentOrigin.walletAddress || agentOrigin.agentHandle || "unknown_agent",
     180
   );
   const config = agentHiveChatRateLimitConfig();
-  const existing = agentHiveChatBuckets.get(key);
-  if (!existing || existing.resetAt <= now) {
-    agentHiveChatBuckets.set(key, { count: 1, resetAt: now + config.windowMs });
-    return { ok: true, remaining: config.max - 1, resetAt: now + config.windowMs };
-  }
-  if (existing.count >= config.max) {
-    return {
-      ok: false,
-      retryAfterSeconds: Math.max(1, Math.ceil((existing.resetAt - now) / 1000)),
-      limit: config.max,
-      windowMs: config.windowMs,
-    };
-  }
-  existing.count += 1;
-  return { ok: true, remaining: config.max - existing.count, resetAt: existing.resetAt };
+  return checkAgentRateLimitBucket({
+    action: "hive_chat",
+    agentKey: key,
+    limit: config.max,
+    windowMs: config.windowMs,
+    now,
+  });
 }
 
 export function resetAgentHiveChatRateLimitForTests() {
-  agentHiveChatBuckets.clear();
+  resetAgentRateLimitBucketsForTests();
 }
 
 function safeAttachments(items = []) {
@@ -428,7 +423,7 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       return true;
     }
     const agentOrigin = agentOriginForWalletSession(session, payload);
-    const rateLimit = checkAgentHiveChatRateLimit(agentOrigin);
+    const rateLimit = await checkAgentHiveChatRateLimit(agentOrigin);
     if (!rateLimit.ok) {
       json(res, 429, {
         ok: false,

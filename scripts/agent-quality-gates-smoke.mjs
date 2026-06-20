@@ -95,7 +95,7 @@ const boardRoutedTask = agentSelfDealingDecision({
 assert.equal(boardRoutedTask.ok, true);
 
 resetAgentQualityGateRateLimitsForTests();
-const first = checkAgentActionRateLimit({ agentOrigin, action: "task_request" });
+const first = await checkAgentActionRateLimit({ agentOrigin, action: "task_request" });
 assert.equal(first.ok, true);
 const second = await enforceAgentActionRateLimit({
   agentOrigin,
