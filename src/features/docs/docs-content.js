@@ -43,6 +43,7 @@ import networkTaskGenerationWorker from "../../../docs/wiki/architecture/network
 import networkTaskProfileWorker from "../../../docs/wiki/architecture/network-task-profile-worker.md?raw";
 import orcArmyOverview from "../../../docs/wiki/architecture/orc-army-overview.md?raw";
 import orcOperatorRuntime from "../../../docs/wiki/architecture/orc-operator-runtime.md?raw";
+import sybilReviewDetection from "../../../docs/wiki/architecture/sybil-review-detection.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import pftlArchiveWalletSync from "../../../docs/wiki/architecture/pftl-archive-wallet-sync.md?raw";
 import pftlCacheReducer from "../../../docs/wiki/architecture/pftl-cache-reducer.md?raw";
@@ -605,6 +606,8 @@ export const SYSTEM_STATUS_DOC_LINKS = {
   orc_runtime_directives: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
   orc_review_queue: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
   orc_task_review_queue: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
+  sybil_review_flags: { slug: "sybil-review-detection", label: "Docs: Sybil Review Detection" },
+  sybil_detection: { slug: "sybil-review-detection", label: "Docs: Sybil Review Detection" },
 };
 
 export const DOC_GROUPS = [
@@ -714,6 +717,12 @@ export const DOC_GROUPS = [
         title: "Orc Army And On-Chain Agent Overview",
         summary: "Full Orc, Nazgul, on-chain agent, runtime queue, Board Manager, and observability architecture map.",
         markdown: orcArmyOverview,
+      },
+      {
+        slug: "sybil-review-detection",
+        title: "Sybil Review Detection",
+        summary: "Recommend-only Sybil review flags for Network Task velocity, partial rewards, text-only evidence, and identity risk.",
+        markdown: sybilReviewDetection,
       },
     ],
   },
