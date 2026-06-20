@@ -1,0 +1,60 @@
+{
+  "ok": true,
+  "schema": "pf.orc.contributor_quality_routing_report.v1",
+  "summary": {
+    "totalRecords": 17,
+    "contributors": 5,
+    "flaggedForRoutingReview": 2,
+    "noActionRecommended": 3,
+    "violationCounts": {
+      "repeated_unverifiable_submissions": 1,
+      "consecutive_unverifiable_submissions": 1,
+      "low_verified_to_total_ratio": 1,
+      "recent_refusals": 1
+    }
+  },
+  "flagged": [
+    {
+      "handle": "lowquality",
+      "contributorKey": "rLowQuality333333333333333333333",
+      "recommendation": "routing_review_recommended",
+      "metrics": {
+        "total": 5,
+        "verified": 1,
+        "unverifiable": 4,
+        "selfAttested": 0,
+        "refused": 0,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0.2,
+        "refusalCountWindow": 0,
+        "maxConsecutiveUnverifiable": 4
+      },
+      "rules": [
+        "repeated_unverifiable_submissions",
+        "consecutive_unverifiable_submissions",
+        "low_verified_to_total_ratio"
+      ]
+    },
+    {
+      "handle": "refusedoperator",
+      "contributorKey": "rRefusedOperator4444444444444444",
+      "recommendation": "routing_review_recommended",
+      "metrics": {
+        "total": 3,
+        "verified": 1,
+        "unverifiable": 0,
+        "selfAttested": 0,
+        "refused": 2,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0.3333,
+        "refusalCountWindow": 2,
+        "maxConsecutiveUnverifiable": 0
+      },
+      "rules": [
+        "recent_refusals"
+      ]
+    }
+  ]
+}

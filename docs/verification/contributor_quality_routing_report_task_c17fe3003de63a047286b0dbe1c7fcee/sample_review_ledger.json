@@ -1,0 +1,189 @@
+{
+  "schema": "pf.orc.submitted_work_review_ledger.v1",
+  "updatedAt": "2026-06-20T02:52:00.000Z",
+  "records": [
+    {
+      "id": "swrev_quality_high_001",
+      "taskId": "task_high_quality_001",
+      "recipientHandle": "highquality",
+      "recipientAccountId": "acct_high_quality",
+      "walletAddress": "rHighQuality111111111111111111111",
+      "reviewStatus": "verified",
+      "score": 94,
+      "timestamp": "2026-06-12T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_high_002",
+      "taskId": "task_high_quality_002",
+      "recipientHandle": "highquality",
+      "recipientAccountId": "acct_high_quality",
+      "walletAddress": "rHighQuality111111111111111111111",
+      "reviewStatus": "verified",
+      "score": 92,
+      "timestamp": "2026-06-14T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_high_003",
+      "taskId": "task_high_quality_003",
+      "recipientHandle": "highquality",
+      "recipientAccountId": "acct_high_quality",
+      "walletAddress": "rHighQuality111111111111111111111",
+      "reviewStatus": "verified",
+      "score": 95,
+      "timestamp": "2026-06-16T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_high_004",
+      "taskId": "task_high_quality_004",
+      "recipientHandle": "highquality",
+      "recipientAccountId": "acct_high_quality",
+      "walletAddress": "rHighQuality111111111111111111111",
+      "reviewStatus": "verified",
+      "score": 91,
+      "timestamp": "2026-06-18T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_mixed_001",
+      "taskId": "task_mixed_001",
+      "recipientHandle": "mixedoperator",
+      "recipientAccountId": "acct_mixed_operator",
+      "walletAddress": "rMixedOperator2222222222222222222",
+      "reviewStatus": "verified",
+      "score": 84,
+      "timestamp": "2026-06-13T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_mixed_002",
+      "taskId": "task_mixed_002",
+      "recipientHandle": "mixedoperator",
+      "recipientAccountId": "acct_mixed_operator",
+      "walletAddress": "rMixedOperator2222222222222222222",
+      "reviewStatus": "self_attested",
+      "score": 58,
+      "timestamp": "2026-06-15T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_mixed_003",
+      "taskId": "task_mixed_003",
+      "recipientHandle": "mixedoperator",
+      "recipientAccountId": "acct_mixed_operator",
+      "walletAddress": "rMixedOperator2222222222222222222",
+      "reviewStatus": "unverified",
+      "score": 45,
+      "timestamp": "2026-06-17T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_mixed_004",
+      "taskId": "task_mixed_004",
+      "recipientHandle": "mixedoperator",
+      "recipientAccountId": "acct_mixed_operator",
+      "walletAddress": "rMixedOperator2222222222222222222",
+      "reviewStatus": "verified",
+      "score": 80,
+      "timestamp": "2026-06-19T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_low_001",
+      "taskId": "task_low_quality_001",
+      "recipientHandle": "lowquality",
+      "recipientAccountId": "acct_low_quality",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "reviewStatus": "verified",
+      "score": 72,
+      "timestamp": "2026-06-11T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_low_002",
+      "taskId": "task_low_quality_002",
+      "recipientHandle": "lowquality",
+      "recipientAccountId": "acct_low_quality",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "reviewStatus": "unverified",
+      "score": 34,
+      "reviewFlags": [
+        "thin_evidence"
+      ],
+      "timestamp": "2026-06-14T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_low_003",
+      "taskId": "task_low_quality_003",
+      "recipientHandle": "lowquality",
+      "recipientAccountId": "acct_low_quality",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "reviewStatus": "unverified",
+      "score": 28,
+      "reviewFlags": [
+        "thin_evidence"
+      ],
+      "timestamp": "2026-06-15T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_low_004",
+      "taskId": "task_low_quality_004",
+      "recipientHandle": "lowquality",
+      "recipientAccountId": "acct_low_quality",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "reviewStatus": "unverified",
+      "score": 20,
+      "reviewFlags": [
+        "thin_evidence",
+        "repeat_title_family"
+      ],
+      "timestamp": "2026-06-16T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_low_005",
+      "taskId": "task_low_quality_005",
+      "recipientHandle": "lowquality",
+      "recipientAccountId": "acct_low_quality",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "reviewStatus": "unverified",
+      "score": 22,
+      "reviewFlags": [
+        "thin_evidence"
+      ],
+      "timestamp": "2026-06-17T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_refused_001",
+      "taskId": "task_refused_001",
+      "recipientHandle": "refusedoperator",
+      "recipientAccountId": "acct_refused_operator",
+      "walletAddress": "rRefusedOperator4444444444444444",
+      "reviewStatus": "verified",
+      "score": 75,
+      "timestamp": "2026-06-13T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_refused_002",
+      "taskId": "task_refused_002",
+      "recipientHandle": "refusedoperator",
+      "recipientAccountId": "acct_refused_operator",
+      "walletAddress": "rRefusedOperator4444444444444444",
+      "reviewStatus": "refused",
+      "score": 0,
+      "timestamp": "2026-06-18T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_refused_003",
+      "taskId": "task_refused_003",
+      "recipientHandle": "refusedoperator",
+      "recipientAccountId": "acct_refused_operator",
+      "walletAddress": "rRefusedOperator4444444444444444",
+      "reviewStatus": "refused",
+      "score": 0,
+      "timestamp": "2026-06-19T12:00:00.000Z"
+    },
+    {
+      "id": "swrev_quality_new_001",
+      "taskId": "task_new_contributor_001",
+      "recipientHandle": "newcontributor",
+      "recipientAccountId": "acct_new_contributor",
+      "walletAddress": "rNewContributor55555555555555555",
+      "reviewStatus": "self_attested",
+      "score": 55,
+      "timestamp": "2026-06-19T18:00:00.000Z"
+    }
+  ]
+}
