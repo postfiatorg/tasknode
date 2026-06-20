@@ -54,6 +54,7 @@ function fixtureDeps({ rows = [taskRow()], deliveryRows, existingSignalRows = []
     queries: [],
     ensured: [],
     appended: [],
+    journals: [],
   };
   return {
     calls,
@@ -81,6 +82,10 @@ function fixtureDeps({ rows = [taskRow()], deliveryRows, existingSignalRows = []
     appendAssistantMessageImpl: async (input) => {
       calls.appended.push(input);
       return { assistant: { id: input.assistantMessageId } };
+    },
+    recordAgentWorkJournalImpl: async (input) => {
+      calls.journals.push(input);
+      return { ok: true, id: `orcwj_${calls.journals.length}`, idempotencyKey: input.idempotencyKey };
     },
   };
 }
@@ -122,6 +127,7 @@ function fixtureDeps({ rows = [taskRow()], deliveryRows, existingSignalRows = []
   assert.deepEqual(result.metadata.extraMetadataKeys, ["reviewState"]);
   assert.equal(deps.calls.ensured.length, 0, "dry-run must not create the Hive conversation");
   assert.equal(deps.calls.appended.length, 0, "dry-run must not append a chat message");
+  assert.equal(deps.calls.journals.length, 0, "dry-run must not record work journal activity");
 }
 
 {
@@ -161,6 +167,20 @@ function fixtureDeps({ rows = [taskRow()], deliveryRows, existingSignalRows = []
   assert.equal(appended.assistantMetadata.taskId, taskId);
   assert.equal(appended.assistantMetadata.taskTitle, "Review Orc Signal Smoke");
   assert.deepEqual(appended.assistantMetadata.extra, { reviewState: "done" });
+  assert.equal(deps.calls.journals.length, 1);
+  const journal = deps.calls.journals[0];
+  assert.equal(journal.taskAction, "hive_signal");
+  assert.equal(journal.outcomeStatus, "sent");
+  assert.equal(journal.accountId, accountId);
+  assert.equal(journal.sourceTaskId, taskId);
+  assert.equal(journal.conversationId, defaultConversationId);
+  assert.equal(journal.chatMessageId, result.chatMessageId);
+  assert.equal(journal.agentOrigin.agentHandle, "grashnuk");
+  assert.equal(journal.agentOrigin.walletAddress, "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW");
+  assert.equal(journal.metadata.kind, "orc_hive_signal");
+  assert.equal(journal.metadata.idempotent, false);
+  assert.match(journal.idempotencyKey, /^orc_hive_signal:raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW:msg_orcsignal_/);
+  assert.equal(result.orcWorkJournal.ok, true);
 }
 
 {
@@ -181,6 +201,9 @@ function fixtureDeps({ rows = [taskRow()], deliveryRows, existingSignalRows = []
   assert.equal(result.visibleInHiveChat, true);
   assert.equal(deps.calls.ensured.length, 1, "conversation is still resolved before idempotency check");
   assert.equal(deps.calls.appended.length, 0, "duplicate signal must not append another chat message");
+  assert.equal(deps.calls.journals.length, 1, "idempotent verified delivery must still record agent activity");
+  assert.equal(deps.calls.journals[0].metadata.idempotent, true);
+  assert.equal(deps.calls.journals[0].chatMessageId, "msg_existing_orc_signal");
 }
 
 {
@@ -196,6 +219,7 @@ function fixtureDeps({ rows = [taskRow()], deliveryRows, existingSignalRows = []
   assert.equal(result.conversationId, conversationId);
   assert.equal(deps.calls.ensured.length, 0, "explicit conversation must not be auto-created");
   assert.equal(deps.calls.appended[0].conversationId, conversationId);
+  assert.equal(deps.calls.journals[0].conversationId, conversationId);
 }
 
 {

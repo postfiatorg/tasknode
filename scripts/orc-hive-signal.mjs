@@ -6,6 +6,7 @@ import {
   hiveConversationIdForAccount,
 } from "../server/repositories/chat-conversations.js";
 import { appendAssistantMessage } from "../server/repositories/chat-assistant-messages.js";
+import { recordAgentWorkJournal } from "../server/repositories/orc-work-journal.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
@@ -240,6 +241,56 @@ function publicDeliverySummary(row = {}) {
   };
 }
 
+function agentOriginForSignal({ metadata = {}, accountId = "" } = {}) {
+  const origin = jsonObject(metadata.agentOrigin);
+  if (origin.agent !== true && origin.actorType !== "machine_agent") return null;
+  return {
+    ...origin,
+    agent: true,
+    actorType: "machine_agent",
+    accountId: safeId(origin.accountId || accountId),
+  };
+}
+
+async function recordOrcHiveSignalWorkJournal({
+  metadata = {},
+  target = {},
+  taskId = "",
+  message = "",
+  conversationId = "",
+  chatMessageId = "",
+  idempotent = false,
+  deps = {},
+} = {}) {
+  const agentOrigin = agentOriginForSignal({ metadata, accountId: target.accountId });
+  if (!agentOrigin?.agent) return { ok: false, skipped: true, reason: "agent_origin_missing" };
+  const recordAgentWorkJournalImpl = deps.recordAgentWorkJournalImpl || recordAgentWorkJournal;
+  return recordAgentWorkJournalImpl({
+    agentOrigin,
+    taskAction: "hive_signal",
+    status: "recorded",
+    outcomeStatus: "sent",
+    accountId: target.accountId,
+    sourceTaskId: taskId,
+    conversationId,
+    chatMessageId,
+    messageCharacterCount: String(message || "").length,
+    metadata: {
+      kind: "orc_hive_signal",
+      source: SCRIPT_SOURCE,
+      idempotent,
+      reason: safeText(metadata.reason, 500),
+      taskTitle: safeText(metadata.taskTitle, 240),
+      taskStatus: safeText(metadata.taskStatus, 80),
+      taskKind: safeText(metadata.taskKind, 80),
+    },
+    idempotencyKey: `orc_hive_signal:${safeText(
+      agentOrigin.walletAddress || agentOrigin.agentHandle || target.accountId,
+      120
+    )}:${safeId(chatMessageId || taskId)}`,
+  }).catch((error) => ({ ok: false, error: error?.message || "orc_work_journal_failed" }));
+}
+
 export async function verifyOrcHiveSignalDelivery({
   accountId = "",
   conversationId = "",
@@ -434,6 +485,16 @@ export async function sendOrcHiveSignal({
       reviewerHandle,
       queryImpl: deps.queryImpl || query,
     });
+    const orcWorkJournal = await recordOrcHiveSignalWorkJournal({
+      metadata,
+      target,
+      taskId: normalizedTaskId,
+      message: normalizedMessage,
+      conversationId: finalConversationId,
+      chatMessageId: existingSignal.chatMessageId,
+      idempotent: true,
+      deps,
+    });
     return {
       ...baseResult,
       dryRun: false,
@@ -445,6 +506,7 @@ export async function sendOrcHiveSignal({
       deliveryVerified: true,
       visibleInHiveChat: true,
       delivery,
+      orcWorkJournal,
     };
   }
 
@@ -470,6 +532,16 @@ export async function sendOrcHiveSignal({
     reviewerHandle,
     queryImpl: deps.queryImpl || query,
   });
+  const orcWorkJournal = await recordOrcHiveSignalWorkJournal({
+    metadata,
+    target,
+    taskId: normalizedTaskId,
+    message: normalizedMessage,
+    conversationId: finalConversationId,
+    chatMessageId,
+    idempotent: false,
+    deps,
+  });
 
   return {
     ...baseResult,
@@ -480,6 +552,7 @@ export async function sendOrcHiveSignal({
     deliveryVerified: true,
     visibleInHiveChat: true,
     delivery,
+    orcWorkJournal,
   };
 }
 

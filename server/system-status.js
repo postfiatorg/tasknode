@@ -314,7 +314,7 @@ export async function readAgentActivity({
     tables.get("orc_work_journal") === true
       ? queryImpl(
         `WITH agents AS (
-           SELECT id, handle, agent_id
+           SELECT id, handle, agent_id, account_id, wallet_address
            FROM orc_agents
            ORDER BY
              COALESCE(active, true) DESC,
@@ -343,6 +343,8 @@ export async function readAgentActivity({
            JOIN orc_work_journal journal
              ON lower(journal.operator_handle) = lower(agents.handle)
              OR lower(journal.operator_handle) = lower(agents.agent_id)
+             OR lower(journal.operator_handle) = lower(agents.account_id)
+             OR lower(journal.operator_handle) = lower(agents.wallet_address)
          )
          SELECT *
          FROM matched
