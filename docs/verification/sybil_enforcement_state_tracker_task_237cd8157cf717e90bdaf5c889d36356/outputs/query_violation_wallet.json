@@ -1,0 +1,87 @@
+{
+  "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+  "accountId": "",
+  "handle": "",
+  "contributorKey": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+  "risk": {
+    "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+    "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+    "present": true,
+    "riskScore": 62.2,
+    "riskBand": "high_review_priority",
+    "role": "known_source_wallet",
+    "compositeScore": 62.2,
+    "reviewPriorityScore": 62.2,
+    "reasons": [
+      "known risk-source wallet from input artifact"
+    ],
+    "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+  },
+  "suppression": {
+    "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+    "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+    "present": true,
+    "status": "suppression_recommended",
+    "rawStatus": "routing_suppression_recommended",
+    "reason": "manual_review_seed_wallet;sybil_risk_threshold:reviewPriorityScore=62.2>=60",
+    "scope": "network_task_routing_review",
+    "mode": "recommend_only_no_enforcement",
+    "effectiveAt": "",
+    "expiresAt": "2026-07-04T04:00:00.000Z",
+    "operationalUseAllowed": false,
+    "requiresHumanApproval": true,
+    "supportingTaskIds": [
+      "task_78bc0498dfcc292ed909b1da6743a1ba",
+      "task_c4682ae05cbc47f9669a58d5121cf38d"
+    ]
+  },
+  "verification": {
+    "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+    "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+    "present": true,
+    "status": "violated",
+    "lastVerifiedAt": "2026-06-20T06:10:00.000Z",
+    "finding": "Suppressed contributor received an active proposed network allocation during the active suppression window.",
+    "allocationCounts": {
+      "totalMatched": 2,
+      "preSuppression": 0,
+      "inSuppressionWindow": 2,
+      "postSuppression": 2,
+      "postExpiry": 0,
+      "activePostSuppression": 1,
+      "blockedPostSuppression": 1
+    },
+    "activePostSuppressionAllocations": [
+      {
+        "allocationId": "sample_alloc_r99_active",
+        "taskId": "task_sample_post_suppression_active",
+        "title": "Sample post-suppression active allocation",
+        "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "accountId": "",
+        "handle": "",
+        "status": "proposed",
+        "allocatedAt": "2026-06-20T05:45:00.000Z",
+        "routingDecision": "proposed",
+        "source": "sample_board_state"
+      }
+    ],
+    "blockedPostSuppressionAllocations": [
+      {
+        "allocationId": "sample_alloc_r99_blocked",
+        "taskId": "task_sample_post_suppression_blocked",
+        "title": "Sample post-suppression blocked allocation",
+        "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "accountId": "",
+        "handle": "",
+        "status": "suppressed",
+        "allocatedAt": "2026-06-20T05:50:00.000Z",
+        "routingDecision": "suppressed",
+        "source": "sample_board_state"
+      }
+    ]
+  },
+  "detectedGaps": [
+    "post_suppression_active_allocation_detected"
+  ],
+  "recommendedNextAction": "Escalate to Nazgul/Sauron for human routing investigation; do not auto-enforce."
+}

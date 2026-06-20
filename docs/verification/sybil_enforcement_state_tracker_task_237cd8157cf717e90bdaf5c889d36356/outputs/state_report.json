@@ -1,0 +1,192 @@
+{
+  "schema": "pf.orc.sybil_enforcement_state_report.v1",
+  "generatedAt": "2026-06-20T06:20:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "recommend_only_state_tracking",
+  "readOnly": true,
+  "sourceState": {
+    "schema": "pf.orc.sybil_enforcement_state.v1",
+    "generatedAt": "2026-06-20T06:20:00.000Z",
+    "walletCount": 16
+  },
+  "coverage": {
+    "walletCount": 16,
+    "riskRows": 13,
+    "suppressionEntries": 11,
+    "verifierContributors": 6,
+    "riskBandsCovered": [
+      "high_review_priority",
+      "low",
+      "unknown",
+      "watch"
+    ]
+  },
+  "summary": {
+    "walletCount": 16,
+    "riskBandCounts": {
+      "low": 3,
+      "high_review_priority": 9,
+      "watch": 1,
+      "unknown": 3
+    },
+    "suppressionStatusCounts": {
+      "not_suppressed": 5,
+      "suppression_recommended": 11
+    },
+    "verificationStatusCounts": {
+      "missing_verification": 10,
+      "violated": 1,
+      "not_tested": 2,
+      "enforced": 2,
+      "expired": 1
+    },
+    "detectedGapCounts": {
+      "suppression_entry_missing_verification": 7,
+      "post_suppression_active_allocation_detected": 1,
+      "missing_risk_matrix_row": 3,
+      "suppression_not_tested_by_allocation_sample": 1
+    },
+    "walletsWithDetectedGaps": 10,
+    "violatedWallets": [
+      "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB"
+    ],
+    "noActionWallets": [
+      "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+      "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+      "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+    ]
+  },
+  "gapWallets": [
+    {
+      "walletAddress": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "riskBand": "high_review_priority",
+      "riskScore": 81.3,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "riskBand": "high_review_priority",
+      "riskScore": 62.2,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "violated",
+      "detectedGaps": [
+        "post_suppression_active_allocation_detected"
+      ],
+      "recommendedNextAction": "Escalate to Nazgul/Sauron for human routing investigation; do not auto-enforce."
+    },
+    {
+      "walletAddress": "rClusterWallet6666666666666666666",
+      "riskBand": "unknown",
+      "riskScore": 0,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "not_tested",
+      "detectedGaps": [
+        "missing_risk_matrix_row",
+        "suppression_not_tested_by_allocation_sample"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "riskBand": "high_review_priority",
+      "riskScore": 81.4,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "riskBand": "high_review_priority",
+      "riskScore": 62.2,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rLowRiskSuppressed777777777777777777",
+      "riskBand": "unknown",
+      "riskScore": 0,
+      "suppressionStatus": "not_suppressed",
+      "verificationStatus": "expired",
+      "detectedGaps": [
+        "missing_risk_matrix_row"
+      ],
+      "recommendedNextAction": "Review detected gap manually before any operational use."
+    },
+    {
+      "walletAddress": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "riskBand": "high_review_priority",
+      "riskScore": 66,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rSelfAttested5555555555555555555",
+      "riskBand": "unknown",
+      "riskScore": 0,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "missing_risk_matrix_row",
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "riskBand": "high_review_priority",
+      "riskScore": 69.3,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "riskBand": "high_review_priority",
+      "riskScore": 66,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    }
+  ],
+  "noActionWallets": [
+    "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+    "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+    "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+    "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+    "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+    "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+  ],
+  "enforcementBoundary": {
+    "wouldMutateLiveRouting": false,
+    "wouldMoveFunds": false,
+    "wouldBanAccounts": false,
+    "wouldClawBackRewards": false,
+    "wouldDeploy": false,
+    "requiresHumanApprovalForAnyOperationalUse": true
+  }
+}

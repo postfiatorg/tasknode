@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "action": "add",
+  "outPath": "docs/verification/sybil_enforcement_state_tracker_task_237cd8157cf717e90bdaf5c889d36356/outputs/state_after_add.json",
+  "walletAddress": "rManualWatchState8888888888888888888",
+  "summary": {
+    "walletCount": 17,
+    "riskBandCounts": {
+      "low": 3,
+      "high_review_priority": 9,
+      "watch": 2,
+      "unknown": 3
+    },
+    "suppressionStatusCounts": {
+      "not_suppressed": 6,
+      "suppression_recommended": 11
+    },
+    "verificationStatusCounts": {
+      "missing_verification": 10,
+      "violated": 1,
+      "not_tested": 3,
+      "enforced": 2,
+      "expired": 1
+    },
+    "detectedGapCounts": {
+      "suppression_entry_missing_verification": 7,
+      "post_suppression_active_allocation_detected": 1,
+      "missing_risk_matrix_row": 3,
+      "suppression_not_tested_by_allocation_sample": 1,
+      "manual_follow_up_needed": 1
+    },
+    "walletsWithDetectedGaps": 11,
+    "violatedWallets": [
+      "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB"
+    ],
+    "noActionWallets": [
+      "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+      "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+      "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+    ]
+  }
+}

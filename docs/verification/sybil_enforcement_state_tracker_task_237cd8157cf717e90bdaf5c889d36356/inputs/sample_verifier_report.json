@@ -1,0 +1,235 @@
+{
+  "schema": "pf.orc.routing_suppression_enforcement_verification.v1",
+  "generatedAt": "2026-06-20T06:10:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "verification_only_no_enforcement",
+  "readOnly": true,
+  "wouldMutateLiveRouting": false,
+  "wouldMoveFunds": false,
+  "wouldBanAccounts": false,
+  "wouldDeploy": false,
+  "note": "Sample verifier output for the enforcement state tracker. It is read-only and does not execute enforcement.",
+  "summary": {
+    "suppressedContributors": 6,
+    "allocationRecords": 9,
+    "enforced": 2,
+    "violated": 1,
+    "expired": 1,
+    "notTested": 2,
+    "nonSuppressedAllocationRecords": 3,
+    "violationContributorHandles": [""]
+  },
+  "contributors": [
+    {
+      "contributorKey": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "accountId": "",
+      "handle": "",
+      "suppressionEffectiveAt": "2026-06-20T05:30:00.000Z",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "expiredAtVerification": false,
+      "suppressionReason": "manual_review_seed_wallet;sybil_risk_threshold:reviewPriorityScore=62.2>=60",
+      "sourceRecommendation": "routing_review_recommended",
+      "status": "violated",
+      "finding": "Suppressed contributor received an active proposed network allocation during the active suppression window.",
+      "qualityMetrics": {},
+      "thresholdFailureRules": [],
+      "allocationCounts": {
+        "totalMatched": 2,
+        "preSuppression": 0,
+        "inSuppressionWindow": 2,
+        "postSuppression": 2,
+        "postExpiry": 0,
+        "activePostSuppression": 1,
+        "blockedPostSuppression": 1
+      },
+      "activePostSuppressionAllocations": [
+        {
+          "allocationId": "sample_alloc_r99_active",
+          "taskId": "task_sample_post_suppression_active",
+          "title": "Sample post-suppression active allocation",
+          "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "accountId": "",
+          "handle": "",
+          "status": "proposed",
+          "allocatedAt": "2026-06-20T05:45:00.000Z",
+          "routingDecision": "proposed",
+          "source": "sample_board_state"
+        }
+      ],
+      "blockedPostSuppressionAllocations": [
+        {
+          "allocationId": "sample_alloc_r99_blocked",
+          "taskId": "task_sample_post_suppression_blocked",
+          "title": "Sample post-suppression blocked allocation",
+          "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "accountId": "",
+          "handle": "",
+          "status": "suppressed",
+          "allocatedAt": "2026-06-20T05:50:00.000Z",
+          "routingDecision": "suppressed",
+          "source": "sample_board_state"
+        }
+      ],
+      "recommendedAction": "Escalate to human operator for routing investigation; do not auto-enforce."
+    },
+    {
+      "contributorKey": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "walletAddress": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "accountId": "",
+      "handle": "",
+      "suppressionEffectiveAt": "2026-06-20T05:30:00.000Z",
+      "expiresAt": "2026-07-04T05:30:00.000Z",
+      "expiredAtVerification": false,
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=66>=60",
+      "sourceRecommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source",
+      "status": "enforced",
+      "finding": "No active allocations were found during the active suppression window.",
+      "qualityMetrics": {},
+      "thresholdFailureRules": [],
+      "allocationCounts": {
+        "totalMatched": 1,
+        "preSuppression": 0,
+        "inSuppressionWindow": 1,
+        "postSuppression": 1,
+        "postExpiry": 0,
+        "activePostSuppression": 0,
+        "blockedPostSuppression": 1
+      },
+      "activePostSuppressionAllocations": [],
+      "blockedPostSuppressionAllocations": [
+        {
+          "allocationId": "sample_alloc_rd6_blocked",
+          "taskId": "task_sample_blocked_rd6",
+          "title": "Sample blocked allocation",
+          "walletAddress": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "accountId": "",
+          "handle": "",
+          "status": "suppressed",
+          "allocatedAt": "2026-06-20T05:35:00.000Z",
+          "routingDecision": "suppressed",
+          "source": "sample_board_state"
+        }
+      ],
+      "recommendedAction": "No follow-up needed unless live data changes."
+    },
+    {
+      "contributorKey": "rClusterWallet6666666666666666666",
+      "walletAddress": "rClusterWallet6666666666666666666",
+      "accountId": "acct_cluster_wallet",
+      "handle": "clusterwallet",
+      "suppressionEffectiveAt": "2026-06-20T05:30:00.000Z",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "expiredAtVerification": false,
+      "suppressionReason": "quality_threshold_failures:repeated_unverifiable_submissions,consecutive_unverifiable_submissions,low_verified_to_total_ratio",
+      "sourceRecommendation": "routing_review_recommended",
+      "status": "not_tested",
+      "finding": "No matching allocation records were present for this suppressed contributor.",
+      "qualityMetrics": {
+        "total": 6,
+        "verified": 1,
+        "unverifiable": 5,
+        "verifiedRatio": 0.1667
+      },
+      "thresholdFailureRules": [
+        "repeated_unverifiable_submissions",
+        "consecutive_unverifiable_submissions",
+        "low_verified_to_total_ratio"
+      ],
+      "allocationCounts": {
+        "totalMatched": 0,
+        "preSuppression": 0,
+        "inSuppressionWindow": 0,
+        "postSuppression": 0,
+        "postExpiry": 0,
+        "activePostSuppression": 0,
+        "blockedPostSuppression": 0
+      },
+      "activePostSuppressionAllocations": [],
+      "blockedPostSuppressionAllocations": [],
+      "recommendedAction": "Add live board allocation data before making an enforcement claim."
+    },
+    {
+      "contributorKey": "rLowRiskSuppressed777777777777777777",
+      "walletAddress": "rLowRiskSuppressed777777777777777777",
+      "accountId": "acct_low_risk_suppressed",
+      "handle": "lowsuppressed",
+      "suppressionEffectiveAt": "2026-06-01T00:00:00.000Z",
+      "expiresAt": "2026-06-10T00:00:00.000Z",
+      "expiredAtVerification": true,
+      "suppressionReason": "historical_fixture_low_risk_boundary",
+      "sourceRecommendation": "review whether this suppression entry remains justified",
+      "status": "expired",
+      "finding": "Suppression entry expired before this verification run; post-expiry allocations are not counted as violations.",
+      "qualityMetrics": {},
+      "thresholdFailureRules": [],
+      "allocationCounts": {
+        "totalMatched": 1,
+        "preSuppression": 0,
+        "inSuppressionWindow": 0,
+        "postSuppression": 0,
+        "postExpiry": 1,
+        "activePostSuppression": 0,
+        "blockedPostSuppression": 0
+      },
+      "activePostSuppressionAllocations": [],
+      "blockedPostSuppressionAllocations": [],
+      "recommendedAction": "Refresh the suppression decision before making any current routing claim."
+    },
+    {
+      "contributorKey": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "walletAddress": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "accountId": "",
+      "handle": "",
+      "suppressionEffectiveAt": "2026-06-20T05:30:00.000Z",
+      "expiresAt": "2026-07-04T05:30:00.000Z",
+      "expiredAtVerification": false,
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=81.4>=60",
+      "sourceRecommendation": "review raw transactions and operator identity before any enforcement decision",
+      "status": "enforced",
+      "finding": "No active allocations were found during the active suppression window.",
+      "qualityMetrics": {},
+      "thresholdFailureRules": [],
+      "allocationCounts": {
+        "totalMatched": 1,
+        "preSuppression": 1,
+        "inSuppressionWindow": 0,
+        "postSuppression": 0,
+        "postExpiry": 0,
+        "activePostSuppression": 0,
+        "blockedPostSuppression": 0
+      },
+      "activePostSuppressionAllocations": [],
+      "blockedPostSuppressionAllocations": [],
+      "recommendedAction": "No follow-up needed unless live data changes."
+    },
+    {
+      "contributorKey": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "walletAddress": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "accountId": "",
+      "handle": "",
+      "suppressionEffectiveAt": "2026-06-20T05:30:00.000Z",
+      "expiresAt": "2026-07-04T05:30:00.000Z",
+      "expiredAtVerification": false,
+      "suppressionReason": "watch_wallet_sample",
+      "sourceRecommendation": "monitor in future streams or sample raw evidence if the cluster expands",
+      "status": "not_tested",
+      "finding": "Watch wallet included to exercise non-high-risk suppression-review boundary.",
+      "qualityMetrics": {},
+      "thresholdFailureRules": [],
+      "allocationCounts": {
+        "totalMatched": 0,
+        "preSuppression": 0,
+        "inSuppressionWindow": 0,
+        "postSuppression": 0,
+        "postExpiry": 0,
+        "activePostSuppression": 0,
+        "blockedPostSuppression": 0
+      },
+      "activePostSuppressionAllocations": [],
+      "blockedPostSuppressionAllocations": [],
+      "recommendedAction": "Monitor only unless new evidence appears."
+    }
+  ],
+  "nonSuppressedAllocations": []
+}
