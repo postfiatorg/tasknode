@@ -993,7 +993,8 @@ class OrcToolingTests(unittest.TestCase):
     def test_prioritize_directory_rewarded_tasks_scores_leaderboard_rows(self):
         client = FakeDirectoryClient()
 
-        summary = prioritize_directory_rewarded_tasks(client=client, use_openrouter=False, candidate_limit=20)
+        with patch("orc_tooling.priority.get_review_state", return_value={"disposition": "not_reviewed"}):
+            summary = prioritize_directory_rewarded_tasks(client=client, use_openrouter=False, candidate_limit=20)
 
         self.assertEqual(summary["source"], "directory_rewarded_tasks")
         self.assertEqual(summary["directoryTotals"]["pftDistributed"], 40000)
@@ -1002,6 +1003,46 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(summary["priorities"][0]["taskId"], "task_gmoney_network")
         self.assertIn("Verify reward leakage", summary["priorities"][0]["taskProposalDescription"])
         self.assertEqual(client.last_request[1], "/api/directory/rewarded-tasks")
+
+    def test_prioritize_directory_rewarded_tasks_skips_reviewed_rows(self):
+        client = FakeDirectoryClient()
+        calls = []
+
+        def fake_get_review_state(task_id, *, database_url=None):
+            calls.append((task_id, database_url))
+            if task_id == "task_gmoney_network":
+                return {"disposition": "reviewed_integrity_follow_up"}
+            return {"disposition": "not_reviewed"}
+
+        with patch("orc_tooling.priority.get_review_state", side_effect=fake_get_review_state):
+            summary = prioritize_directory_rewarded_tasks(
+                client=client,
+                use_openrouter=False,
+                candidate_limit=20,
+                database_url="postgres://unit",
+            )
+
+        self.assertEqual(summary["source"], "directory_rewarded_tasks")
+        self.assertEqual(summary["count"], 1)
+        self.assertEqual(summary["priorities"][0]["taskId"], "task_zoz_network")
+        self.assertEqual(
+            calls,
+            [
+                ("task_gmoney_network", "postgres://unit"),
+                ("task_zoz_network", "postgres://unit"),
+            ],
+        )
+
+    def test_prioritize_network_work_passes_database_url_to_directory_source(self):
+        with patch("orc_tooling.priority.prioritize_directory_rewarded_tasks", return_value={"ok": True, "source": "directory_rewarded_tasks"}) as mocked:
+            summary = prioritize_network_work(
+                source="directory-rewarded-tasks",
+                use_openrouter=False,
+                database_url="postgres://unit",
+            )
+
+        self.assertEqual(summary["source"], "directory_rewarded_tasks")
+        self.assertEqual(mocked.call_args.kwargs["database_url"], "postgres://unit")
 
     def test_prioritize_network_work_defaults_to_review_queue_source(self):
         with patch("orc_tooling.priority.prioritize_review_queue", return_value={"ok": True, "source": "review_queue"}):
