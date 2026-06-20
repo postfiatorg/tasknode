@@ -58,7 +58,7 @@ export async function checkAgentActionRateLimit({ agentOrigin = null, action = "
   if (!agentOrigin?.agent) return { ok: true, skipped: true };
   const normalizedAction = safeText(action || "agent_action", 80) || "agent_action";
   const config = rateLimitConfig(normalizedAction);
-  const agentKey = safeText(agentOrigin.accountId || agentOrigin.walletAddress || agentOrigin.agentHandle, 180);
+  const agentKey = safeText(agentOrigin.walletAddress || agentOrigin.accountId || agentOrigin.agentHandle, 180);
   return checkAgentRateLimitBucket({
     action: normalizedAction,
     agentKey,

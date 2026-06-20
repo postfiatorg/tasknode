@@ -120,6 +120,22 @@ try {
   assert.equal(spoofed.body.user.metadata.senderType, undefined);
   assert.equal(spoofed.body.user.metadata.agentOrigin, undefined);
 
+  const otherWalletSameAccount = await callHiveChat({
+    payload: {
+      message: "Second verified wallet on same account should use a separate bucket.",
+      conversationId: "account_acct_agent_hive_hive",
+      agentHandle: "burzghash",
+      walletAddress: "rSpoofedPayloadWalletTwo",
+    },
+    session: { accountId: "acct_agent_hive", displayName: "Grashnuk", primaryProvider: "wallet" },
+    linkedWallet: { status: "linked", address: "rh8jpDYBeYyVKPzxaAFzMfxSSdRaCaenSt" },
+  });
+  assert.equal(otherWalletSameAccount.status, 200);
+  assert.equal(
+    otherWalletSameAccount.body.entry.metadata.agentOrigin.walletAddress,
+    "rh8jpDYBeYyVKPzxaAFzMfxSSdRaCaenSt"
+  );
+
   const limited = await callHiveChat({
     payload: {
       message: "Second agent message should be limited.",
@@ -134,7 +150,7 @@ try {
   assert.equal(limited.body.error, "agent_hive_chat_rate_limited");
   assert.equal(Number.isFinite(limited.body.retryAfterSeconds), true);
 
-  assert.equal(fetchCount, 2);
+  assert.equal(fetchCount, 3);
   console.log("agent hive chat smoke ok");
 } finally {
   globalThis.fetch = originalFetch;
