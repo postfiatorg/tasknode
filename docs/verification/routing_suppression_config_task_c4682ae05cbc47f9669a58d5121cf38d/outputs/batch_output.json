@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "schema": "pf.orc.contributor_routing_suppression_config.v1",
+  "outDir": "docs/verification/routing_suppression_config_task_c4682ae05cbc47f9669a58d5121cf38d/outputs",
+  "files": [
+    "suppression_config.json",
+    "dry_run_output.json",
+    "reconciliation_output.json",
+    "discord_summary.md"
+  ],
+  "summary": {
+    "contributorsEvaluated": 7,
+    "flaggedForRoutingReview": 5,
+    "suppressionEntryCount": 5,
+    "expiresAt": "2026-07-04T04:00:00.000Z",
+    "violationCounts": {
+      "repeated_unverifiable_submissions": 3,
+      "consecutive_unverifiable_submissions": 2,
+      "low_verified_to_total_ratio": 3,
+      "recent_refusals": 1,
+      "self_attested_only_pattern": 1
+    }
+  },
+  "reconciliation": {
+    "existing": 3,
+    "next": 5,
+    "added": 3,
+    "removed": 1,
+    "unchanged": 1,
+    "changed": 1
+  },
+  "mode": "recommend_only_no_enforcement"
+}

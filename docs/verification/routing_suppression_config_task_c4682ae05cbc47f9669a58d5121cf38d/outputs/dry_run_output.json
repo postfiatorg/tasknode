@@ -1,0 +1,102 @@
+{
+  "schema": "pf.orc.contributor_routing_suppression_dry_run.v1",
+  "generatedAt": "2026-06-20T04:00:00.000Z",
+  "mode": "recommend_only_no_enforcement",
+  "wouldWrite": true,
+  "targetPath": "docs/verification/routing_suppression_config_task_c4682ae05cbc47f9669a58d5121cf38d/outputs/suppression_config.json",
+  "wouldMutateLiveRouting": false,
+  "proposedSuppressionCount": 5,
+  "proposedSuppressions": [
+    {
+      "key": "rclusterwallet6666666666666666666",
+      "label": "@clusterwallet",
+      "walletAddress": "rClusterWallet6666666666666666666",
+      "accountId": "acct_cluster_wallet",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "thresholdFailureRules": [
+        "repeated_unverifiable_submissions",
+        "consecutive_unverifiable_submissions",
+        "low_verified_to_total_ratio"
+      ],
+      "supportingTaskIds": [
+        "task_cluster_wallet_001",
+        "task_cluster_wallet_002",
+        "task_cluster_wallet_003",
+        "task_cluster_wallet_004",
+        "task_cluster_wallet_005",
+        "task_cluster_wallet_006"
+      ]
+    },
+    {
+      "key": "rlowquality333333333333333333333",
+      "label": "@lowquality",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "accountId": "acct_low_quality",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "thresholdFailureRules": [
+        "repeated_unverifiable_submissions",
+        "consecutive_unverifiable_submissions",
+        "low_verified_to_total_ratio"
+      ],
+      "supportingTaskIds": [
+        "task_low_quality_001",
+        "task_low_quality_002",
+        "task_low_quality_003",
+        "task_low_quality_004",
+        "task_low_quality_005"
+      ]
+    },
+    {
+      "key": "rrefusedoperator4444444444444444",
+      "label": "@refusedoperator",
+      "walletAddress": "rRefusedOperator4444444444444444",
+      "accountId": "acct_refused_operator",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "thresholdFailureRules": [
+        "recent_refusals"
+      ],
+      "supportingTaskIds": [
+        "task_refused_001",
+        "task_refused_002",
+        "task_refused_003"
+      ]
+    },
+    {
+      "key": "rselfattested7777777777777777777",
+      "label": "@selfattested",
+      "walletAddress": "rSelfAttested7777777777777777777",
+      "accountId": "acct_self_attested",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "thresholdFailureRules": [
+        "self_attested_only_pattern"
+      ],
+      "supportingTaskIds": [
+        "task_self_attested_001",
+        "task_self_attested_002",
+        "task_self_attested_003",
+        "task_self_attested_004"
+      ]
+    },
+    {
+      "key": "rthinreview555555555555555555555",
+      "label": "@thinreviewer",
+      "walletAddress": "rThinReview555555555555555555555",
+      "accountId": "acct_thin_review",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "thresholdFailureRules": [
+        "repeated_unverifiable_submissions",
+        "low_verified_to_total_ratio"
+      ],
+      "supportingTaskIds": [
+        "task_thin_review_001",
+        "task_thin_review_002",
+        "task_thin_review_003",
+        "task_thin_review_004"
+      ]
+    }
+  ],
+  "warnings": [
+    "Dry-run output only. Do not feed directly into live routing without human approval.",
+    "No bans, clawbacks, fund movement, signing, deployment, or task-routing mutation occurred."
+  ]
+}
