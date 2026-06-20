@@ -1,0 +1,88 @@
+{
+  "schema": "pf.orc.contributor_routing_suppression_config.v1",
+  "generatedAt": "2026-06-20T09:00:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "recommend_only_no_enforcement",
+  "dryRunOnly": true,
+  "operationalUseAllowed": false,
+  "entries": [
+    {
+      "walletAddress": "rHighEnforced1111111111111111111",
+      "contributorKey": "rHighEnforced1111111111111111111",
+      "status": "routing_suppression_recommended",
+      "generatedAt": "2026-06-20T06:00:00.000Z",
+      "expiresAt": "2026-07-04T06:00:00.000Z",
+      "suppressionReason": "high risk score; human review required",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false,
+      "supportingTaskIds": ["task_78bc0498dfcc292ed909b1da6743a1ba"]
+    },
+    {
+      "walletAddress": "rHighViolation2222222222222222222",
+      "contributorKey": "rHighViolation2222222222222222222",
+      "status": "routing_suppression_recommended",
+      "generatedAt": "2026-06-20T07:00:00.000Z",
+      "expiresAt": "2026-07-04T07:00:00.000Z",
+      "suppressionReason": "post-suppression allocation risk",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false,
+      "supportingTaskIds": ["task_78bc0498dfcc292ed909b1da6743a1ba"]
+    },
+    {
+      "walletAddress": "rWatchNotTested4444444444444444",
+      "contributorKey": "rWatchNotTested4444444444444444",
+      "status": "routing_suppression_recommended",
+      "generatedAt": "2026-06-20T08:00:00.000Z",
+      "expiresAt": "2026-07-04T08:00:00.000Z",
+      "suppressionReason": "watch risk requires verification",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false,
+      "supportingTaskIds": ["task_78bc0498dfcc292ed909b1da6743a1ba"]
+    },
+    {
+      "walletAddress": "rWatchCleared5555555555555555555",
+      "contributorKey": "rWatchCleared5555555555555555555",
+      "status": "routing_suppression_recommended",
+      "generatedAt": "2026-06-18T10:00:00.000Z",
+      "expiresAt": "2026-07-02T10:00:00.000Z",
+      "suppressionReason": "temporary watch suppression pending verification",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false,
+      "supportingTaskIds": ["task_78bc0498dfcc292ed909b1da6743a1ba"]
+    },
+    {
+      "walletAddress": "rHighMissingVerification9999999999",
+      "contributorKey": "rHighMissingVerification9999999999",
+      "status": "routing_suppression_recommended",
+      "generatedAt": "2026-06-20T09:00:00.000Z",
+      "expiresAt": "2026-07-04T09:00:00.000Z",
+      "suppressionReason": "high risk score but verifier state absent",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false,
+      "supportingTaskIds": ["task_78bc0498dfcc292ed909b1da6743a1ba"]
+    },
+    {
+      "walletAddress": "rLowExpired8888888888888888888",
+      "contributorKey": "rLowExpired8888888888888888888",
+      "status": "expired",
+      "generatedAt": "2026-06-16T12:00:00.000Z",
+      "updatedAt": "2026-06-18T12:00:00.000Z",
+      "expiresAt": "2026-06-18T12:00:00.000Z",
+      "suppressionReason": "expired low-risk temporary suppression",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false,
+      "supportingTaskIds": ["task_78bc0498dfcc292ed909b1da6743a1ba"]
+    },
+    {
+      "walletAddress": "rLowUnexpectedSuppression10101010",
+      "contributorKey": "rLowUnexpectedSuppression10101010",
+      "status": "routing_suppression_recommended",
+      "generatedAt": "2026-06-20T10:00:00.000Z",
+      "expiresAt": "2026-07-04T10:00:00.000Z",
+      "suppressionReason": "low risk row retained for review-boundary test",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false,
+      "supportingTaskIds": ["task_78bc0498dfcc292ed909b1da6743a1ba"]
+    }
+  ]
+}

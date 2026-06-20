@@ -1,0 +1,901 @@
+{
+  "schema": "pf.orc.sybil_enforcement_provenance_audit.v1",
+  "generatedAt": "2026-06-20T10:50:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "read_only_recommend_only_provenance_audit",
+  "readOnly": true,
+  "operationalUseAllowed": false,
+  "sourceFieldMap": {
+    "riskMatrix": {
+      "flagging": [
+        "riskMatrix[].wallet",
+        "riskMatrix[].riskBand",
+        "riskMatrix[].reviewPriorityScore",
+        "riskMatrix[].firstSeen",
+        "riskMatrix[].reasons",
+        "riskMatrix[].recommendation"
+      ]
+    },
+    "suppressionConfig": {
+      "suppression": [
+        "entries[].walletAddress",
+        "entries[].status",
+        "entries[].generatedAt",
+        "entries[].expiresAt",
+        "entries[].suppressionReason",
+        "entries[].requiresHumanApproval",
+        "entries[].operationalUseAllowed"
+      ],
+      "clearance": [
+        "entries[].status = cleared|suppression_cleared|expired",
+        "entries[].updatedAt",
+        "entries[].expiresAt"
+      ]
+    },
+    "enforcementState": {
+      "enforcement": [
+        "records[].verification.status",
+        "records[].verification.lastVerifiedAt",
+        "records[].verification.finding",
+        "records[].verification.activePostSuppressionAllocations"
+      ],
+      "gaps": [
+        "records[].detectedGaps[]",
+        "records[].recommendedNextAction"
+      ]
+    }
+  },
+  "sources": {
+    "riskMatrix": {
+      "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+      "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+      "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+      "generatedAt": "2026-06-20T00:00:00.000Z"
+    },
+    "suppressionConfig": {
+      "taskId": "task_e2473aa56887d24f354d008c553ffc57",
+      "cid": "QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL",
+      "schema": "pf.orc.contributor_routing_suppression_config.v1",
+      "generatedAt": "2026-06-20T09:00:00.000Z"
+    },
+    "enforcementState": {
+      "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+      "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+      "schema": "pf.orc.sybil_enforcement_state.v1",
+      "generatedAt": "2026-06-20T11:00:00.000Z"
+    }
+  },
+  "coverage": {
+    "riskRows": 10,
+    "suppressionEntries": 7,
+    "enforcementRecords": 8,
+    "walletCount": 10
+  },
+  "metrics": {
+    "schema": "pf.orc.sybil_enforcement_provenance_metrics.v1",
+    "summary": {
+      "walletCount": 10,
+      "eventCount": 27,
+      "riskLevelCounts": {
+        "high_review_priority": 4,
+        "low": 3,
+        "watch": 3
+      },
+      "suppressionStatusCounts": {
+        "suppression_recommended": 6,
+        "not_suppressed": 3,
+        "expired": 1
+      },
+      "verificationStatusCounts": {
+        "enforced": 1,
+        "missing_verification": 3,
+        "violated": 1,
+        "monitoring": 2,
+        "not_tested": 2,
+        "cleared": 1
+      },
+      "eventTypeCounts": {
+        "flagging": 10,
+        "suppression": 6,
+        "enforcement_verification": 6,
+        "gap_detected": 3,
+        "clearance": 2
+      },
+      "clearanceWallets": 2,
+      "violationWallets": 1,
+      "walletsNeedingHumanReview": 6,
+      "averageVelocityHours": {
+        "flagToSuppression": 8,
+        "suppressionToVerification": 5.75,
+        "flagToClearance": 61
+      }
+    }
+  },
+  "timelines": [
+    {
+      "wallet": "rHighEnforced1111111111111111111",
+      "riskBand": "high_review_priority",
+      "riskScore": 91,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "enforced",
+      "eventCount": 3,
+      "firstEventAt": "2026-06-20T00:00:00.000Z",
+      "lastEventAt": "2026-06-20T12:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": 6,
+        "suppressionToVerificationHours": 6,
+        "flagToClearanceHours": null
+      },
+      "recommendedNextAction": "No action beyond continued monitoring.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-20T00:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "high_review_priority",
+          "severity": "high_review_priority",
+          "summary": "Risk matrix flagged rHighEnforced1111111111111111111 as high_review_priority with score 91.",
+          "fields": {
+            "wallet": "rHighEnforced1111111111111111111",
+            "riskBand": "high_review_priority",
+            "riskScore": 91,
+            "reasons": [
+              "funds multiple risk-source wallets",
+              "high linkage centrality"
+            ],
+            "recommendation": "review raw transactions and operator identity before any enforcement decision"
+          }
+        },
+        {
+          "type": "suppression",
+          "at": "2026-06-20T06:00:00.000Z",
+          "source": {
+            "taskId": "task_e2473aa56887d24f354d008c553ffc57",
+            "cid": "QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL",
+            "schema": "pf.orc.contributor_routing_suppression_config.v1",
+            "generatedAt": "2026-06-20T09:00:00.000Z"
+          },
+          "status": "suppression_recommended",
+          "severity": "suppression_recommended",
+          "summary": "Suppression state recorded for rHighEnforced1111111111111111111: suppression_recommended.",
+          "fields": {
+            "wallet": "rHighEnforced1111111111111111111",
+            "status": "suppression_recommended",
+            "reason": "high risk score; human review required",
+            "expiresAt": "2026-07-04T06:00:00.000Z",
+            "requiresHumanApproval": true,
+            "operationalUseAllowed": false,
+            "supportingTaskIds": [
+              "task_78bc0498dfcc292ed909b1da6743a1ba"
+            ]
+          }
+        },
+        {
+          "type": "enforcement_verification",
+          "at": "2026-06-20T12:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "enforced",
+          "severity": "enforced",
+          "summary": "Enforcement verification for rHighEnforced1111111111111111111: enforced.",
+          "fields": {
+            "wallet": "rHighEnforced1111111111111111111",
+            "status": "enforced",
+            "finding": "No active post-suppression allocations in mock sample.",
+            "activePostSuppressionAllocations": [],
+            "allocationCounts": {
+              "before": 2,
+              "after": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "wallet": "rHighMissingSuppression333333333333",
+      "riskBand": "high_review_priority",
+      "riskScore": 79,
+      "suppressionStatus": "not_suppressed",
+      "verificationStatus": "missing_verification",
+      "eventCount": 1,
+      "firstEventAt": "2026-06-20T02:00:00.000Z",
+      "lastEventAt": "2026-06-20T02:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": null,
+        "suppressionToVerificationHours": null,
+        "flagToClearanceHours": null
+      },
+      "recommendedNextAction": "Prepare recommend-only suppression review packet; do not operationalize without approval.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-20T02:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "high_review_priority",
+          "severity": "high_review_priority",
+          "summary": "Risk matrix flagged rHighMissingSuppression333333333333 as high_review_priority with score 79.",
+          "fields": {
+            "wallet": "rHighMissingSuppression333333333333",
+            "riskBand": "high_review_priority",
+            "riskScore": 79,
+            "reasons": [
+              "risk score above suppression threshold",
+              "dense cluster membership"
+            ],
+            "recommendation": "prepare recommend-only suppression review packet"
+          }
+        }
+      ]
+    },
+    {
+      "wallet": "rHighMissingVerification9999999999",
+      "riskBand": "high_review_priority",
+      "riskScore": 74,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "eventCount": 2,
+      "firstEventAt": "2026-06-20T03:00:00.000Z",
+      "lastEventAt": "2026-06-20T09:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": 6,
+        "suppressionToVerificationHours": null,
+        "flagToClearanceHours": null
+      },
+      "recommendedNextAction": "Refresh allocation verification before making any enforcement claim.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-20T03:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "high_review_priority",
+          "severity": "high_review_priority",
+          "summary": "Risk matrix flagged rHighMissingVerification9999999999 as high_review_priority with score 74.",
+          "fields": {
+            "wallet": "rHighMissingVerification9999999999",
+            "riskBand": "high_review_priority",
+            "riskScore": 74,
+            "reasons": [
+              "threshold-qualified",
+              "suppression verification absent"
+            ],
+            "recommendation": "refresh allocation verification"
+          }
+        },
+        {
+          "type": "suppression",
+          "at": "2026-06-20T09:00:00.000Z",
+          "source": {
+            "taskId": "task_e2473aa56887d24f354d008c553ffc57",
+            "cid": "QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL",
+            "schema": "pf.orc.contributor_routing_suppression_config.v1",
+            "generatedAt": "2026-06-20T09:00:00.000Z"
+          },
+          "status": "suppression_recommended",
+          "severity": "suppression_recommended",
+          "summary": "Suppression state recorded for rHighMissingVerification9999999999: suppression_recommended.",
+          "fields": {
+            "wallet": "rHighMissingVerification9999999999",
+            "status": "suppression_recommended",
+            "reason": "high risk score but verifier state absent",
+            "expiresAt": "2026-07-04T09:00:00.000Z",
+            "requiresHumanApproval": true,
+            "operationalUseAllowed": false,
+            "supportingTaskIds": [
+              "task_78bc0498dfcc292ed909b1da6743a1ba"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "wallet": "rHighViolation2222222222222222222",
+      "riskBand": "high_review_priority",
+      "riskScore": 88,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "violated",
+      "eventCount": 4,
+      "firstEventAt": "2026-06-20T01:00:00.000Z",
+      "lastEventAt": "2026-06-20T13:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": 6,
+        "suppressionToVerificationHours": 6,
+        "flagToClearanceHours": null
+      },
+      "recommendedNextAction": "Escalate suspected post-suppression allocation to Nazgul/Sauron for human review; do not auto-enforce.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-20T01:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "high_review_priority",
+          "severity": "high_review_priority",
+          "summary": "Risk matrix flagged rHighViolation2222222222222222222 as high_review_priority with score 88.",
+          "fields": {
+            "wallet": "rHighViolation2222222222222222222",
+            "riskBand": "high_review_priority",
+            "riskScore": 88,
+            "reasons": [
+              "post-suppression routing candidate",
+              "adjacent to prior high-risk wallet"
+            ],
+            "recommendation": "review active allocations before any enforcement decision"
+          }
+        },
+        {
+          "type": "suppression",
+          "at": "2026-06-20T07:00:00.000Z",
+          "source": {
+            "taskId": "task_e2473aa56887d24f354d008c553ffc57",
+            "cid": "QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL",
+            "schema": "pf.orc.contributor_routing_suppression_config.v1",
+            "generatedAt": "2026-06-20T09:00:00.000Z"
+          },
+          "status": "suppression_recommended",
+          "severity": "suppression_recommended",
+          "summary": "Suppression state recorded for rHighViolation2222222222222222222: suppression_recommended.",
+          "fields": {
+            "wallet": "rHighViolation2222222222222222222",
+            "status": "suppression_recommended",
+            "reason": "post-suppression allocation risk",
+            "expiresAt": "2026-07-04T07:00:00.000Z",
+            "requiresHumanApproval": true,
+            "operationalUseAllowed": false,
+            "supportingTaskIds": [
+              "task_78bc0498dfcc292ed909b1da6743a1ba"
+            ]
+          }
+        },
+        {
+          "type": "gap_detected",
+          "at": "2026-06-20T11:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "post_suppression_active_allocation_detected",
+          "severity": "medium",
+          "summary": "Detected gap for rHighViolation2222222222222222222: post_suppression_active_allocation_detected.",
+          "fields": {
+            "wallet": "rHighViolation2222222222222222222",
+            "gap": "post_suppression_active_allocation_detected",
+            "recommendedNextAction": "Escalate to Nazgul/Sauron for human routing investigation; do not auto-enforce."
+          }
+        },
+        {
+          "type": "enforcement_verification",
+          "at": "2026-06-20T13:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "violated",
+          "severity": "high",
+          "summary": "Enforcement verification for rHighViolation2222222222222222222: violated.",
+          "fields": {
+            "wallet": "rHighViolation2222222222222222222",
+            "status": "violated",
+            "finding": "Mock active allocation observed after suppression recommendation.",
+            "activePostSuppressionAllocations": [
+              "alloc_mock_violation_001"
+            ],
+            "allocationCounts": {
+              "before": 1,
+              "after": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "wallet": "rLowExpired8888888888888888888",
+      "riskBand": "low",
+      "riskScore": 24,
+      "suppressionStatus": "expired",
+      "verificationStatus": "missing_verification",
+      "eventCount": 2,
+      "firstEventAt": "2026-06-16T10:00:00.000Z",
+      "lastEventAt": "2026-06-18T12:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": null,
+        "suppressionToVerificationHours": null,
+        "flagToClearanceHours": 50
+      },
+      "recommendedNextAction": "Refresh allocation verification before making any enforcement claim.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-16T10:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "low",
+          "severity": "low",
+          "summary": "Risk matrix flagged rLowExpired8888888888888888888 as low with score 24.",
+          "fields": {
+            "wallet": "rLowExpired8888888888888888888",
+            "riskBand": "low",
+            "riskScore": 24,
+            "reasons": [
+              "old low-risk suppression expired"
+            ],
+            "recommendation": "clear expired suppression"
+          }
+        },
+        {
+          "type": "clearance",
+          "at": "2026-06-18T12:00:00.000Z",
+          "source": {
+            "taskId": "task_e2473aa56887d24f354d008c553ffc57",
+            "cid": "QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL",
+            "schema": "pf.orc.contributor_routing_suppression_config.v1",
+            "generatedAt": "2026-06-20T09:00:00.000Z"
+          },
+          "status": "expired",
+          "severity": "expired",
+          "summary": "Suppression clearance state recorded for rLowExpired8888888888888888888: expired.",
+          "fields": {
+            "wallet": "rLowExpired8888888888888888888",
+            "status": "expired",
+            "reason": "expired low-risk temporary suppression",
+            "expiresAt": "2026-06-18T12:00:00.000Z",
+            "requiresHumanApproval": true,
+            "operationalUseAllowed": false,
+            "supportingTaskIds": [
+              "task_78bc0498dfcc292ed909b1da6743a1ba"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "wallet": "rLowMonitor7777777777777777777",
+      "riskBand": "low",
+      "riskScore": 28,
+      "suppressionStatus": "not_suppressed",
+      "verificationStatus": "monitoring",
+      "eventCount": 2,
+      "firstEventAt": "2026-06-20T07:00:00.000Z",
+      "lastEventAt": "2026-06-20T17:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": null,
+        "suppressionToVerificationHours": null,
+        "flagToClearanceHours": null
+      },
+      "recommendedNextAction": "No action beyond continued monitoring.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-20T07:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "low",
+          "severity": "low",
+          "summary": "Risk matrix flagged rLowMonitor7777777777777777777 as low with score 28.",
+          "fields": {
+            "wallet": "rLowMonitor7777777777777777777",
+            "riskBand": "low",
+            "riskScore": 28,
+            "reasons": [
+              "below threshold"
+            ],
+            "recommendation": "monitor only"
+          }
+        },
+        {
+          "type": "enforcement_verification",
+          "at": "2026-06-20T17:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "monitoring",
+          "severity": "monitoring",
+          "summary": "Enforcement verification for rLowMonitor7777777777777777777: monitoring.",
+          "fields": {
+            "wallet": "rLowMonitor7777777777777777777",
+            "status": "monitoring",
+            "finding": "Low-risk wallet remains in monitoring.",
+            "activePostSuppressionAllocations": [],
+            "allocationCounts": {}
+          }
+        }
+      ]
+    },
+    {
+      "wallet": "rLowUnexpectedSuppression10101010",
+      "riskBand": "low",
+      "riskScore": 21,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "not_tested",
+      "eventCount": 4,
+      "firstEventAt": "2026-06-20T08:00:00.000Z",
+      "lastEventAt": "2026-06-20T15:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": 2,
+        "suppressionToVerificationHours": 5,
+        "flagToClearanceHours": null
+      },
+      "recommendedNextAction": "Review detected provenance gaps before operational use; do not auto-enforce.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-20T08:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "low",
+          "severity": "low",
+          "summary": "Risk matrix flagged rLowUnexpectedSuppression10101010 as low with score 21.",
+          "fields": {
+            "wallet": "rLowUnexpectedSuppression10101010",
+            "riskBand": "low",
+            "riskScore": 21,
+            "reasons": [
+              "low risk but suppression row exists"
+            ],
+            "recommendation": "review whether suppression remains justified"
+          }
+        },
+        {
+          "type": "suppression",
+          "at": "2026-06-20T10:00:00.000Z",
+          "source": {
+            "taskId": "task_e2473aa56887d24f354d008c553ffc57",
+            "cid": "QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL",
+            "schema": "pf.orc.contributor_routing_suppression_config.v1",
+            "generatedAt": "2026-06-20T09:00:00.000Z"
+          },
+          "status": "suppression_recommended",
+          "severity": "suppression_recommended",
+          "summary": "Suppression state recorded for rLowUnexpectedSuppression10101010: suppression_recommended.",
+          "fields": {
+            "wallet": "rLowUnexpectedSuppression10101010",
+            "status": "suppression_recommended",
+            "reason": "low risk row retained for review-boundary test",
+            "expiresAt": "2026-07-04T10:00:00.000Z",
+            "requiresHumanApproval": true,
+            "operationalUseAllowed": false,
+            "supportingTaskIds": [
+              "task_78bc0498dfcc292ed909b1da6743a1ba"
+            ]
+          }
+        },
+        {
+          "type": "gap_detected",
+          "at": "2026-06-20T11:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "low_risk_has_suppression_entry_review_boundary",
+          "severity": "medium",
+          "summary": "Detected gap for rLowUnexpectedSuppression10101010: low_risk_has_suppression_entry_review_boundary.",
+          "fields": {
+            "wallet": "rLowUnexpectedSuppression10101010",
+            "gap": "low_risk_has_suppression_entry_review_boundary",
+            "recommendedNextAction": "Review whether suppression remains justified for this risk level."
+          }
+        },
+        {
+          "type": "enforcement_verification",
+          "at": "2026-06-20T15:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "not_tested",
+          "severity": "not_tested",
+          "summary": "Enforcement verification for rLowUnexpectedSuppression10101010: not_tested.",
+          "fields": {
+            "wallet": "rLowUnexpectedSuppression10101010",
+            "status": "not_tested",
+            "finding": "Low-risk wallet still has a suppression recommendation.",
+            "activePostSuppressionAllocations": [],
+            "allocationCounts": {}
+          }
+        }
+      ]
+    },
+    {
+      "wallet": "rWatchCleared5555555555555555555",
+      "riskBand": "watch",
+      "riskScore": 48,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "cleared",
+      "eventCount": 3,
+      "firstEventAt": "2026-06-17T10:00:00.000Z",
+      "lastEventAt": "2026-06-20T10:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": 24,
+        "suppressionToVerificationHours": null,
+        "flagToClearanceHours": 72
+      },
+      "recommendedNextAction": "Clearance path recorded; continue monitoring.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-17T10:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "watch",
+          "severity": "watch",
+          "summary": "Risk matrix flagged rWatchCleared5555555555555555555 as watch with score 48.",
+          "fields": {
+            "wallet": "rWatchCleared5555555555555555555",
+            "riskBand": "watch",
+            "riskScore": 48,
+            "reasons": [
+              "watch score later cleared by verification"
+            ],
+            "recommendation": "record clearance and monitor"
+          }
+        },
+        {
+          "type": "suppression",
+          "at": "2026-06-18T10:00:00.000Z",
+          "source": {
+            "taskId": "task_e2473aa56887d24f354d008c553ffc57",
+            "cid": "QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL",
+            "schema": "pf.orc.contributor_routing_suppression_config.v1",
+            "generatedAt": "2026-06-20T09:00:00.000Z"
+          },
+          "status": "suppression_recommended",
+          "severity": "suppression_recommended",
+          "summary": "Suppression state recorded for rWatchCleared5555555555555555555: suppression_recommended.",
+          "fields": {
+            "wallet": "rWatchCleared5555555555555555555",
+            "status": "suppression_recommended",
+            "reason": "temporary watch suppression pending verification",
+            "expiresAt": "2026-07-02T10:00:00.000Z",
+            "requiresHumanApproval": true,
+            "operationalUseAllowed": false,
+            "supportingTaskIds": [
+              "task_78bc0498dfcc292ed909b1da6743a1ba"
+            ]
+          }
+        },
+        {
+          "type": "clearance",
+          "at": "2026-06-20T10:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "cleared",
+          "severity": "cleared",
+          "summary": "Enforcement verification for rWatchCleared5555555555555555555: cleared.",
+          "fields": {
+            "wallet": "rWatchCleared5555555555555555555",
+            "status": "cleared",
+            "finding": "Mock review cleared this wallet after no matching allocations.",
+            "activePostSuppressionAllocations": [],
+            "allocationCounts": {
+              "before": 1,
+              "after": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "wallet": "rWatchMonitor666666666666666666",
+      "riskBand": "watch",
+      "riskScore": 42,
+      "suppressionStatus": "not_suppressed",
+      "verificationStatus": "monitoring",
+      "eventCount": 2,
+      "firstEventAt": "2026-06-20T06:00:00.000Z",
+      "lastEventAt": "2026-06-20T16:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": null,
+        "suppressionToVerificationHours": null,
+        "flagToClearanceHours": null
+      },
+      "recommendedNextAction": "No action beyond continued monitoring.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-20T06:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "watch",
+          "severity": "watch",
+          "summary": "Risk matrix flagged rWatchMonitor666666666666666666 as watch with score 42.",
+          "fields": {
+            "wallet": "rWatchMonitor666666666666666666",
+            "riskBand": "watch",
+            "riskScore": 42,
+            "reasons": [
+              "watch only"
+            ],
+            "recommendation": "monitor only"
+          }
+        },
+        {
+          "type": "enforcement_verification",
+          "at": "2026-06-20T16:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "monitoring",
+          "severity": "monitoring",
+          "summary": "Enforcement verification for rWatchMonitor666666666666666666: monitoring.",
+          "fields": {
+            "wallet": "rWatchMonitor666666666666666666",
+            "status": "monitoring",
+            "finding": "Watch-only wallet remains in monitoring.",
+            "activePostSuppressionAllocations": [],
+            "allocationCounts": {}
+          }
+        }
+      ]
+    },
+    {
+      "wallet": "rWatchNotTested4444444444444444",
+      "riskBand": "watch",
+      "riskScore": 52,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "not_tested",
+      "eventCount": 4,
+      "firstEventAt": "2026-06-20T04:00:00.000Z",
+      "lastEventAt": "2026-06-20T14:00:00.000Z",
+      "velocityHours": {
+        "flagToSuppressionHours": 4,
+        "suppressionToVerificationHours": 6,
+        "flagToClearanceHours": null
+      },
+      "recommendedNextAction": "Review detected provenance gaps before operational use; do not auto-enforce.",
+      "events": [
+        {
+          "type": "flagging",
+          "at": "2026-06-20T04:00:00.000Z",
+          "source": {
+            "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+            "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+            "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+            "generatedAt": "2026-06-20T00:00:00.000Z"
+          },
+          "status": "watch",
+          "severity": "watch",
+          "summary": "Risk matrix flagged rWatchNotTested4444444444444444 as watch with score 52.",
+          "fields": {
+            "wallet": "rWatchNotTested4444444444444444",
+            "riskBand": "watch",
+            "riskScore": 52,
+            "reasons": [
+              "watch score with suppression candidate"
+            ],
+            "recommendation": "monitor and verify before escalation"
+          }
+        },
+        {
+          "type": "suppression",
+          "at": "2026-06-20T08:00:00.000Z",
+          "source": {
+            "taskId": "task_e2473aa56887d24f354d008c553ffc57",
+            "cid": "QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL",
+            "schema": "pf.orc.contributor_routing_suppression_config.v1",
+            "generatedAt": "2026-06-20T09:00:00.000Z"
+          },
+          "status": "suppression_recommended",
+          "severity": "suppression_recommended",
+          "summary": "Suppression state recorded for rWatchNotTested4444444444444444: suppression_recommended.",
+          "fields": {
+            "wallet": "rWatchNotTested4444444444444444",
+            "status": "suppression_recommended",
+            "reason": "watch risk requires verification",
+            "expiresAt": "2026-07-04T08:00:00.000Z",
+            "requiresHumanApproval": true,
+            "operationalUseAllowed": false,
+            "supportingTaskIds": [
+              "task_78bc0498dfcc292ed909b1da6743a1ba"
+            ]
+          }
+        },
+        {
+          "type": "gap_detected",
+          "at": "2026-06-20T11:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "suppression_not_tested_by_allocation_sample",
+          "severity": "medium",
+          "summary": "Detected gap for rWatchNotTested4444444444444444: suppression_not_tested_by_allocation_sample.",
+          "fields": {
+            "wallet": "rWatchNotTested4444444444444444",
+            "gap": "suppression_not_tested_by_allocation_sample",
+            "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+          }
+        },
+        {
+          "type": "enforcement_verification",
+          "at": "2026-06-20T14:00:00.000Z",
+          "source": {
+            "taskId": "task_237cd8157cf717e90bdaf5c889d36356",
+            "cid": "QmfPtUP4hDUejirB1FRmaW1faNmxrKpwBnCDsRekiRZhCR",
+            "schema": "pf.orc.sybil_enforcement_state.v1",
+            "generatedAt": "2026-06-20T11:00:00.000Z"
+          },
+          "status": "not_tested",
+          "severity": "not_tested",
+          "summary": "Enforcement verification for rWatchNotTested4444444444444444: not_tested.",
+          "fields": {
+            "wallet": "rWatchNotTested4444444444444444",
+            "status": "not_tested",
+            "finding": "Mock allocation sample did not include this wallet.",
+            "activePostSuppressionAllocations": [],
+            "allocationCounts": {}
+          }
+        }
+      ]
+    }
+  ],
+  "enforcementBoundary": {
+    "wouldMutateLiveRouting": false,
+    "wouldMoveFunds": false,
+    "wouldBanAccounts": false,
+    "wouldClawBackRewards": false,
+    "wouldDeploy": false,
+    "requiresHumanApprovalForAnyOperationalUse": true
+  }
+}
