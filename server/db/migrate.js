@@ -77,6 +77,7 @@ const migrations = [
   "067_orc_review_rollups.sql",
   "068_orc_runtime_directives.sql",
   "069_board_manager_run_usage.sql",
+  "070_agent_rate_limit_buckets.sql",
 ];
 
 let migrated = false;

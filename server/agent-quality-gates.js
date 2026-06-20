@@ -1,8 +1,10 @@
 import { agentOriginForWalletSession } from "./agent-origin.js";
 import { query } from "./db/pool.js";
+import {
+  checkAgentRateLimitBucket,
+  resetAgentRateLimitBucketsForTests,
+} from "./repositories/agent-rate-limits.js";
 import { recordAgentWorkJournal } from "./repositories/orc-work-journal.js";
-
-const buckets = new Map();
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -40,7 +42,7 @@ function rateLimitConfig(action = "") {
 }
 
 export function resetAgentQualityGateRateLimitsForTests() {
-  buckets.clear();
+  resetAgentRateLimitBucketsForTests();
 }
 
 export function agentOriginForTaskSession(session = null, payload = {}, walletAddress = "") {
@@ -55,29 +57,18 @@ export function agentOriginForTaskSession(session = null, payload = {}, walletAd
   };
 }
 
-export function checkAgentActionRateLimit({ agentOrigin = null, action = "", now = Date.now() } = {}) {
+export async function checkAgentActionRateLimit({ agentOrigin = null, action = "", now = Date.now() } = {}) {
   if (!agentOrigin?.agent) return { ok: true, skipped: true };
   const normalizedAction = safeText(action || "agent_action", 80) || "agent_action";
   const config = rateLimitConfig(normalizedAction);
-  const agentKey = safeText(agentOrigin.walletAddress || agentOrigin.accountId || agentOrigin.agentHandle, 180);
-  const key = `${normalizedAction}:${agentKey}`;
-  const existing = buckets.get(key);
-  if (!existing || existing.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + config.windowMs });
-    return { ok: true, remaining: config.max - 1, resetAt: now + config.windowMs, limit: config.max };
-  }
-  if (existing.count >= config.max) {
-    return {
-      ok: false,
-      error: "agent_action_rate_limited",
-      retryAfterSeconds: Math.max(1, Math.ceil((existing.resetAt - now) / 1000)),
-      limit: config.max,
-      windowMs: config.windowMs,
-      resetAt: existing.resetAt,
-    };
-  }
-  existing.count += 1;
-  return { ok: true, remaining: config.max - existing.count, resetAt: existing.resetAt, limit: config.max };
+  const agentKey = safeText(agentOrigin.accountId || agentOrigin.walletAddress || agentOrigin.agentHandle, 180);
+  return checkAgentRateLimitBucket({
+    action: normalizedAction,
+    agentKey,
+    limit: config.max,
+    windowMs: config.windowMs,
+    now,
+  });
 }
 
 export async function recordAgentActionJournal({
@@ -123,7 +114,7 @@ export async function enforceAgentActionRateLimit({
   requestId = "",
   metadata = {},
 } = {}) {
-  const rateLimit = checkAgentActionRateLimit({ agentOrigin, action });
+  const rateLimit = await checkAgentActionRateLimit({ agentOrigin, action });
   if (rateLimit.ok) return { ok: true, rateLimit };
   const orcWorkJournal = await recordAgentActionJournal({
     agentOrigin,
