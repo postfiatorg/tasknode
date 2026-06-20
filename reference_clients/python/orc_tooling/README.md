@@ -85,8 +85,11 @@ networkStatus=at_capacity blocks Network routing only; Personal task requests ar
 Follow-up linkage is persisted in review-state `metadata_json`. When
 `request-followup` creates a Personal follow-up request, it records
 `followup_request_id`, request CIDs/tx, `followup_task_id` when already known,
-follow-up status, and user-signal status on the source review state. `orcctl
-status` surfaces stale closeable follow-ups: actionable review states whose
+follow-up status, and user-signal status on the source review state. It also
+appends an idempotent `request_followup` row to `orc_work_journal`; repeat
+commands that find an active follow-up backfill that same journal row instead
+of requesting another task. `orcctl status` surfaces stale closeable follow-ups:
+actionable review states whose
 linked follow-up task has reached a terminal closeable status. By default status
 only proposes `close-followup` commands; `orcctl status --close-stale` performs
 those closures through the same evidence-gated path. `close-followup` requires

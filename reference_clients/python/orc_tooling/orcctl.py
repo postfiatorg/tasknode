@@ -909,6 +909,55 @@ def _active_followup_from_review(review_record: dict[str, Any]) -> dict[str, Any
     }
 
 
+def _append_followup_request_work_journal(
+    review_record: dict[str, Any],
+    *,
+    task_id: str,
+    linkage: dict[str, Any],
+    idempotent: bool = False,
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    metadata = _review_metadata(review_record)
+    followup_request_id = _safe_text(linkage.get("followup_request_id"), 180)
+    followup_task_id = _safe_text(linkage.get("followup_task_id"), 180)
+    request_cid = _safe_text(linkage.get("followup_request_cid"), 180)
+    bundle_cid = _safe_text(linkage.get("followup_bundle_cid"), 180)
+    request_tx = _safe_text(linkage.get("followup_request_tx"), 180)
+    request_status = _safe_text(linkage.get("followup_status"), 120)
+    submitted = bool(linkage.get("followup_request_submitted"))
+    return append_orc_work_journal(
+        {
+            "interactionId": _safe_text(metadata.get("operator_interaction_id"), 180)
+            or _safe_text(metadata.get("interactionId"), 180)
+            or followup_request_id,
+            "sourceTaskId": task_id,
+            "reviewDisposition": _review_text(review_record, "disposition", "reviewDisposition", 120),
+            "followupRequestId": followup_request_id,
+            "followupTaskId": followup_task_id,
+            "taskAction": "request_followup",
+            "eventCid": request_cid or bundle_cid,
+            "txHash": request_tx,
+            "operatorHandle": _review_text(review_record, "reviewer_handle", "reviewerHandle", 160)
+            or DEFAULT_ORC_AGENT,
+            "status": "submitted" if submitted else "previewed",
+            "outcomeStatus": request_status,
+            "terminal": False,
+            "metadata": {
+                "source": "orcctl.request_followup",
+                "followupRequestId": followup_request_id,
+                "followupTaskId": followup_task_id,
+                "submitted": submitted,
+                "bundleCid": bundle_cid,
+                "requestCid": request_cid,
+                "requestTx": request_tx,
+                "requestStatus": request_status,
+                "idempotent": bool(idempotent),
+            },
+        },
+        database_url=database_url,
+    )
+
+
 def request_followup_task(
     task_id: str,
     *,
@@ -923,6 +972,22 @@ def request_followup_task(
         raise ValueError(f"review state {disposition or 'not_reviewed'} does not require follow-up")
     existing_followup = _active_followup_from_review(review_record)
     if existing_followup:
+        metadata = _review_metadata(review_record)
+        existing_followup["workJournal"] = _append_followup_request_work_journal(
+            review_record,
+            task_id=task_id,
+            linkage={
+                "followup_request_id": existing_followup.get("requestId"),
+                "followup_request_submitted": existing_followup.get("submitted"),
+                "followup_status": existing_followup.get("requestStatus"),
+                "followup_bundle_cid": metadata.get("followup_bundle_cid"),
+                "followup_request_cid": metadata.get("followup_request_cid"),
+                "followup_request_tx": existing_followup.get("txHash"),
+                "followup_task_id": existing_followup.get("followupTaskId"),
+            },
+            idempotent=True,
+            database_url=database_url,
+        )
         return redact_secrets(existing_followup)
     request_text = build_followup_request_text(review_record, extra=extra)
     result = request_personal_task(request_text, submit=submit, client=client, requested_task_kind="personal")
@@ -955,6 +1020,12 @@ def request_followup_task(
         "metadata": linkage,
         "updated": bool(updated),
     }
+    result["workJournal"] = _append_followup_request_work_journal(
+        review_record,
+        task_id=task_id,
+        linkage=linkage,
+        database_url=database_url,
+    )
     return result
 
 

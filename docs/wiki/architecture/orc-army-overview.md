@@ -155,6 +155,7 @@ development only.
    append-only history row in `orc_task_reviews`.
 4. If follow-up is required, `orcctl request-followup` requests a Personal task
    and stores request/task linkage in `orc_task_review_states.metadata_json`.
+   It also appends an idempotent `request_followup` row to `orc_work_journal`.
 5. The Orc completes the follow-up task through normal signed task lifecycle
    actions and submits verifiable evidence.
 6. `orcctl close-followup` closes the source review only when terminal
