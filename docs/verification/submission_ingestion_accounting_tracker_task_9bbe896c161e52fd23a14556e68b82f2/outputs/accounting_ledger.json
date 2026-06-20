@@ -1,0 +1,2053 @@
+{
+  "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+  "createdAt": "2026-06-20T07:30:00.000Z",
+  "updatedAt": "2026-06-20T07:30:00.000Z",
+  "records": [
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_5f0467b8e1f035cd",
+      "submissionId": "sub_ingest_001",
+      "taskId": "task_mock_001",
+      "title": "Document Task Acceptance Workflow",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "gmoney",
+        "accountId": "acct_gmoney",
+        "walletAddress": "rKTbxKmockGmoneyWallet001"
+      },
+      "evidence": {
+        "cid": "QmMockAcceptanceWorkflow001",
+        "txHash": "AAAABBBBCCCC0001",
+        "summary": "Concrete acceptance-flow notes grounded in observed proposed and accepted task states.",
+        "artifacts": [
+          "docs/task_acceptance_workflow.md"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "operator_workflow",
+        "score": 82,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Fold the missing verification-step affordance into the task detail UX backlog.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 10500,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_fd5b5365e1322d33",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_follow_up"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_001",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_follow_up",
+            "score": 82
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_fd5b5365e1322d33",
+            "rewardPft": 10500,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_9dddf277981d1699",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_9dddf277981d1699"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_3db9ae5d84f06aa6",
+            "channel": "submission_ingestion_follow_up"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_9dddf277981d1699",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "gmoney",
+          "recipientAccountId": "acct_gmoney",
+          "recipientWalletAddress": "rKTbxKmockGmoneyWallet001"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_001",
+          "body": "Your rewarded task task_mock_001 was reviewed and routed for follow-up: Fold the missing verification-step affordance into the task detail UX backlog."
+        },
+        "source": {
+          "taskId": "task_mock_001",
+          "submissionId": "sub_ingest_001",
+          "evidenceCid": "QmMockAcceptanceWorkflow001",
+          "evidenceTxHash": "AAAABBBBCCCC0001"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_3db9ae5d84f06aa6",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_follow_up"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_001",
+          "submissionId": "sub_ingest_001",
+          "evidenceCid": "QmMockAcceptanceWorkflow001",
+          "evidenceTxHash": "AAAABBBBCCCC0001"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "gmoney",
+            "accountId": "acct_gmoney",
+            "walletAddress": "rKTbxKmockGmoneyWallet001"
+          },
+          "taskTitle": "Document Task Acceptance Workflow",
+          "rewardPft": 10500
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_follow_up",
+          "category": "operator_workflow",
+          "score": 82,
+          "integritySignals": []
+        },
+        "action": {
+          "required": true,
+          "owner": "product_engineering_triage",
+          "recommendedAction": "Fold the missing verification-step affordance into the task detail UX backlog.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_001",
+          "body": "Submission sub_ingest_001 for task task_mock_001 reached accounted_for.\nContributor: gmoney.\nReview disposition: reviewed_follow_up.\nRecommended action: Fold the missing verification-step affordance into the task detail UX backlog.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_follow_up",
+            "operator_workflow"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    },
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_0e5c0463c66539b9",
+      "submissionId": "sub_ingest_002",
+      "taskId": "task_mock_002",
+      "title": "Trace Distribution V3 Reward Routing Consistency",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "zoz",
+        "accountId": "acct_zoz",
+        "walletAddress": "rsS2Y6mockZozWallet002"
+      },
+      "evidence": {
+        "cid": "QmMockRewardRouting002",
+        "txHash": "AAAABBBBCCCC0002",
+        "summary": "Reward accounting discrepancy analysis with duplicate-payment mitigation notes.",
+        "artifacts": [
+          "reports/reward_routing_consistency.json"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "reward_accounting",
+        "score": 88,
+        "actionOwner": "core_protocol_backlog",
+        "recommendedAction": "Confirm duplicate-payment mitigation and reconcile affected historical rewards.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 18000,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_c7c8b843e69d4ee2",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_follow_up"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_002",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_follow_up",
+            "score": 88
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_c7c8b843e69d4ee2",
+            "rewardPft": 18000,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_25eae44ceea6890b",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_25eae44ceea6890b"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_d25216d42092aa48",
+            "channel": "submission_ingestion_follow_up"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_25eae44ceea6890b",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "zoz",
+          "recipientAccountId": "acct_zoz",
+          "recipientWalletAddress": "rsS2Y6mockZozWallet002"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_002",
+          "body": "Your rewarded task task_mock_002 was reviewed and routed for follow-up: Confirm duplicate-payment mitigation and reconcile affected historical rewards."
+        },
+        "source": {
+          "taskId": "task_mock_002",
+          "submissionId": "sub_ingest_002",
+          "evidenceCid": "QmMockRewardRouting002",
+          "evidenceTxHash": "AAAABBBBCCCC0002"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_d25216d42092aa48",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_follow_up"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_002",
+          "submissionId": "sub_ingest_002",
+          "evidenceCid": "QmMockRewardRouting002",
+          "evidenceTxHash": "AAAABBBBCCCC0002"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "zoz",
+            "accountId": "acct_zoz",
+            "walletAddress": "rsS2Y6mockZozWallet002"
+          },
+          "taskTitle": "Trace Distribution V3 Reward Routing Consistency",
+          "rewardPft": 18000
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_follow_up",
+          "category": "reward_accounting",
+          "score": 88,
+          "integritySignals": []
+        },
+        "action": {
+          "required": true,
+          "owner": "core_protocol_backlog",
+          "recommendedAction": "Confirm duplicate-payment mitigation and reconcile affected historical rewards.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_002",
+          "body": "Submission sub_ingest_002 for task task_mock_002 reached accounted_for.\nContributor: zoz.\nReview disposition: reviewed_follow_up.\nRecommended action: Confirm duplicate-payment mitigation and reconcile affected historical rewards.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_follow_up",
+            "reward_accounting"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    },
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_82d0807f20cca128",
+      "submissionId": "sub_ingest_003",
+      "taskId": "task_mock_003",
+      "title": "Hive Chat Evidence Submission Friction",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "goodalexander",
+        "accountId": "acct_goodalexander",
+        "walletAddress": "rPo8GkmockGoodAlexander003"
+      },
+      "evidence": {
+        "cid": "QmMockEvidenceFriction003",
+        "txHash": "AAAABBBBCCCC0003",
+        "summary": "Specific product friction notes for finding where to submit evidence from Hive context.",
+        "artifacts": [
+          "notes/hive_evidence_friction.md"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "product_ux",
+        "score": 76,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Route to product UX backlog and connect Hive task cards to task submission actions.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 9000,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_090bd5affe873be0",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_follow_up"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_003",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_follow_up",
+            "score": 76
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_090bd5affe873be0",
+            "rewardPft": 9000,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_a7cd564a6b2396dd",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_a7cd564a6b2396dd"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_8c56498e24987d1c",
+            "channel": "submission_ingestion_follow_up"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_a7cd564a6b2396dd",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "goodalexander",
+          "recipientAccountId": "acct_goodalexander",
+          "recipientWalletAddress": "rPo8GkmockGoodAlexander003"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_003",
+          "body": "Your rewarded task task_mock_003 was reviewed and routed for follow-up: Route to product UX backlog and connect Hive task cards to task submission actions."
+        },
+        "source": {
+          "taskId": "task_mock_003",
+          "submissionId": "sub_ingest_003",
+          "evidenceCid": "QmMockEvidenceFriction003",
+          "evidenceTxHash": "AAAABBBBCCCC0003"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_8c56498e24987d1c",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_follow_up"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_003",
+          "submissionId": "sub_ingest_003",
+          "evidenceCid": "QmMockEvidenceFriction003",
+          "evidenceTxHash": "AAAABBBBCCCC0003"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "goodalexander",
+            "accountId": "acct_goodalexander",
+            "walletAddress": "rPo8GkmockGoodAlexander003"
+          },
+          "taskTitle": "Hive Chat Evidence Submission Friction",
+          "rewardPft": 9000
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_follow_up",
+          "category": "product_ux",
+          "score": 76,
+          "integritySignals": []
+        },
+        "action": {
+          "required": true,
+          "owner": "product_engineering_triage",
+          "recommendedAction": "Route to product UX backlog and connect Hive task cards to task submission actions.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_003",
+          "body": "Submission sub_ingest_003 for task task_mock_003 reached accounted_for.\nContributor: goodalexander.\nReview disposition: reviewed_follow_up.\nRecommended action: Route to product UX backlog and connect Hive task cards to task submission actions.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_follow_up",
+            "product_ux"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    },
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_89dca78d9209c082",
+      "submissionId": "sub_ingest_004",
+      "taskId": "task_mock_004",
+      "title": "Task Completion to Reward Routing Friction",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "boscovich",
+        "accountId": "acct_boscovich",
+        "walletAddress": "rDT8rfmockBoscovich004"
+      },
+      "evidence": {
+        "cid": "QmMockRewardFriction004",
+        "txHash": "AAAABBBBCCCC0004",
+        "summary": "Observed gap between completion, review request, and reward visibility.",
+        "artifacts": [
+          "notes/task_reward_routing_friction.md"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "operator_workflow",
+        "score": 74,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Clarify post-submission states and add visible reward-review progress.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 8500,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_1f74ea7182a540b2",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_follow_up"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_004",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_follow_up",
+            "score": 74
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_1f74ea7182a540b2",
+            "rewardPft": 8500,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_0978773d946dc4ec",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_0978773d946dc4ec"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_d47b94f0483f33c2",
+            "channel": "submission_ingestion_follow_up"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_0978773d946dc4ec",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "boscovich",
+          "recipientAccountId": "acct_boscovich",
+          "recipientWalletAddress": "rDT8rfmockBoscovich004"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_004",
+          "body": "Your rewarded task task_mock_004 was reviewed and routed for follow-up: Clarify post-submission states and add visible reward-review progress."
+        },
+        "source": {
+          "taskId": "task_mock_004",
+          "submissionId": "sub_ingest_004",
+          "evidenceCid": "QmMockRewardFriction004",
+          "evidenceTxHash": "AAAABBBBCCCC0004"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_d47b94f0483f33c2",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_follow_up"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_004",
+          "submissionId": "sub_ingest_004",
+          "evidenceCid": "QmMockRewardFriction004",
+          "evidenceTxHash": "AAAABBBBCCCC0004"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "boscovich",
+            "accountId": "acct_boscovich",
+            "walletAddress": "rDT8rfmockBoscovich004"
+          },
+          "taskTitle": "Task Completion to Reward Routing Friction",
+          "rewardPft": 8500
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_follow_up",
+          "category": "operator_workflow",
+          "score": 74,
+          "integritySignals": []
+        },
+        "action": {
+          "required": true,
+          "owner": "product_engineering_triage",
+          "recommendedAction": "Clarify post-submission states and add visible reward-review progress.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_004",
+          "body": "Submission sub_ingest_004 for task task_mock_004 reached accounted_for.\nContributor: boscovich.\nReview disposition: reviewed_follow_up.\nRecommended action: Clarify post-submission states and add visible reward-review progress.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_follow_up",
+            "operator_workflow"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    },
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_7f068bf7feca6308",
+      "submissionId": "sub_ingest_005",
+      "taskId": "task_mock_005",
+      "title": "Proposed Task Acceptance Edge Cases",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "donravle",
+        "accountId": "acct_donravle",
+        "walletAddress": "raL2kvmockDonravle005"
+      },
+      "evidence": {
+        "cid": "QmMockAcceptanceEdges005",
+        "txHash": "AAAABBBBCCCC0005",
+        "summary": "Documented acceptance/refusal edge cases and stale offer confusion.",
+        "artifacts": [
+          "notes/proposed_task_acceptance_edges.md"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_no_action",
+        "category": "docs",
+        "score": 68,
+        "actionOwner": "none",
+        "recommendedAction": "No action required; covered by existing task lifecycle docs.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 7000,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_9a5ea6d5a056a2fe",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_no_action"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_005",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_no_action",
+            "score": 68
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_9a5ea6d5a056a2fe",
+            "rewardPft": 7000,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_5dc9d6eccc79ebf1",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_5dc9d6eccc79ebf1"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_850132489fffe6cc",
+            "channel": "submission_ingestion_accounting"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_5dc9d6eccc79ebf1",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "donravle",
+          "recipientAccountId": "acct_donravle",
+          "recipientWalletAddress": "raL2kvmockDonravle005"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_005",
+          "body": "Your rewarded task task_mock_005 was reviewed and accounted for. No follow-up is currently required."
+        },
+        "source": {
+          "taskId": "task_mock_005",
+          "submissionId": "sub_ingest_005",
+          "evidenceCid": "QmMockAcceptanceEdges005",
+          "evidenceTxHash": "AAAABBBBCCCC0005"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_850132489fffe6cc",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_accounting"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_005",
+          "submissionId": "sub_ingest_005",
+          "evidenceCid": "QmMockAcceptanceEdges005",
+          "evidenceTxHash": "AAAABBBBCCCC0005"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "donravle",
+            "accountId": "acct_donravle",
+            "walletAddress": "raL2kvmockDonravle005"
+          },
+          "taskTitle": "Proposed Task Acceptance Edge Cases",
+          "rewardPft": 7000
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_no_action",
+          "category": "docs",
+          "score": 68,
+          "integritySignals": []
+        },
+        "action": {
+          "required": false,
+          "owner": "none",
+          "recommendedAction": "No action required.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_005",
+          "body": "Submission sub_ingest_005 for task task_mock_005 reached accounted_for.\nContributor: donravle.\nReview disposition: reviewed_no_action.\nNo follow-up is required.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_no_action",
+            "docs"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    },
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_864427a2f683c43d",
+      "submissionId": "sub_ingest_006",
+      "taskId": "task_mock_006",
+      "title": "Dashboard to Submission Workflow Friction",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "yuuki",
+        "accountId": "acct_yuuki",
+        "walletAddress": "rfCbJWmockYuuki006"
+      },
+      "evidence": {
+        "cid": "QmMockDashboardSubmission006",
+        "txHash": "AAAABBBBCCCC0006",
+        "summary": "Dashboard navigation notes showing where task evidence submission gets lost.",
+        "artifacts": [
+          "notes/dashboard_submission_friction.md"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "product_ux",
+        "score": 78,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Add direct submission entry point from dashboard task rows.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 9000,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_d50d4c4b57f56c61",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_follow_up"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_006",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_follow_up",
+            "score": 78
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_d50d4c4b57f56c61",
+            "rewardPft": 9000,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_24854252f42b3e12",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_24854252f42b3e12"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_c78a7d46bf78516c",
+            "channel": "submission_ingestion_follow_up"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_24854252f42b3e12",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "yuuki",
+          "recipientAccountId": "acct_yuuki",
+          "recipientWalletAddress": "rfCbJWmockYuuki006"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_006",
+          "body": "Your rewarded task task_mock_006 was reviewed and routed for follow-up: Add direct submission entry point from dashboard task rows."
+        },
+        "source": {
+          "taskId": "task_mock_006",
+          "submissionId": "sub_ingest_006",
+          "evidenceCid": "QmMockDashboardSubmission006",
+          "evidenceTxHash": "AAAABBBBCCCC0006"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_c78a7d46bf78516c",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_follow_up"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_006",
+          "submissionId": "sub_ingest_006",
+          "evidenceCid": "QmMockDashboardSubmission006",
+          "evidenceTxHash": "AAAABBBBCCCC0006"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "yuuki",
+            "accountId": "acct_yuuki",
+            "walletAddress": "rfCbJWmockYuuki006"
+          },
+          "taskTitle": "Dashboard to Submission Workflow Friction",
+          "rewardPft": 9000
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_follow_up",
+          "category": "product_ux",
+          "score": 78,
+          "integritySignals": []
+        },
+        "action": {
+          "required": true,
+          "owner": "product_engineering_triage",
+          "recommendedAction": "Add direct submission entry point from dashboard task rows.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_006",
+          "body": "Submission sub_ingest_006 for task task_mock_006 reached accounted_for.\nContributor: yuuki.\nReview disposition: reviewed_follow_up.\nRecommended action: Add direct submission entry point from dashboard task rows.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_follow_up",
+            "product_ux"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    },
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_303b67473badc32b",
+      "submissionId": "sub_ingest_007",
+      "taskId": "task_mock_007",
+      "title": "Reward Routing Workflow UX Gaps",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "node-d46cae0c",
+        "accountId": "acct_node_d46cae0c",
+        "walletAddress": "r322EAmockNode007"
+      },
+      "evidence": {
+        "cid": "QmMockRewardUx007",
+        "txHash": "AAAABBBBCCCC0007",
+        "summary": "Reward state visibility gap with screenshots and user-facing state labels.",
+        "artifacts": [
+          "notes/reward_routing_ux_gaps.md"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "product_ux",
+        "score": 81,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Expose reward-review worker state and payment pointer after reward issuance.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 11000,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_a126a7de4329adab",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_follow_up"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_007",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_follow_up",
+            "score": 81
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_a126a7de4329adab",
+            "rewardPft": 11000,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_20f70d3087402ba2",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_20f70d3087402ba2"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_ea8d78e499d5855f",
+            "channel": "submission_ingestion_follow_up"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_20f70d3087402ba2",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "node-d46cae0c",
+          "recipientAccountId": "acct_node_d46cae0c",
+          "recipientWalletAddress": "r322EAmockNode007"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_007",
+          "body": "Your rewarded task task_mock_007 was reviewed and routed for follow-up: Expose reward-review worker state and payment pointer after reward issuance."
+        },
+        "source": {
+          "taskId": "task_mock_007",
+          "submissionId": "sub_ingest_007",
+          "evidenceCid": "QmMockRewardUx007",
+          "evidenceTxHash": "AAAABBBBCCCC0007"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_ea8d78e499d5855f",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_follow_up"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_007",
+          "submissionId": "sub_ingest_007",
+          "evidenceCid": "QmMockRewardUx007",
+          "evidenceTxHash": "AAAABBBBCCCC0007"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "node-d46cae0c",
+            "accountId": "acct_node_d46cae0c",
+            "walletAddress": "r322EAmockNode007"
+          },
+          "taskTitle": "Reward Routing Workflow UX Gaps",
+          "rewardPft": 11000
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_follow_up",
+          "category": "product_ux",
+          "score": 81,
+          "integritySignals": []
+        },
+        "action": {
+          "required": true,
+          "owner": "product_engineering_triage",
+          "recommendedAction": "Expose reward-review worker state and payment pointer after reward issuance.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_007",
+          "body": "Submission sub_ingest_007 for task task_mock_007 reached accounted_for.\nContributor: node-d46cae0c.\nReview disposition: reviewed_follow_up.\nRecommended action: Expose reward-review worker state and payment pointer after reward issuance.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_follow_up",
+            "product_ux"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    },
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_4ae69fc6e4b26886",
+      "submissionId": "sub_ingest_008",
+      "taskId": "task_mock_008",
+      "title": "Evidence Submission Workflow UX Gaps",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "gmoney",
+        "accountId": "acct_gmoney",
+        "walletAddress": "rKTbxKmockGmoneyWallet001"
+      },
+      "evidence": {
+        "cid": "QmMockEvidenceUx008",
+        "txHash": "AAAABBBBCCCC0008",
+        "summary": "Evidence submission UX notes with repeated friction examples.",
+        "artifacts": [
+          "notes/evidence_submission_ux_gaps.md"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_no_action",
+        "category": "product_ux",
+        "score": 64,
+        "actionOwner": "none",
+        "recommendedAction": "No separate action; duplicate of existing evidence UX routing ticket.",
+        "integritySignals": [
+          "duplicate_theme"
+        ],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 10000,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_8497fcfb81cf9ae4",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_no_action"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_008",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_no_action",
+            "score": 64
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_8497fcfb81cf9ae4",
+            "rewardPft": 10000,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_1d5f9ee93cee9cba",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_1d5f9ee93cee9cba"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_61340e81da62d336",
+            "channel": "submission_ingestion_accounting"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_1d5f9ee93cee9cba",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "gmoney",
+          "recipientAccountId": "acct_gmoney",
+          "recipientWalletAddress": "rKTbxKmockGmoneyWallet001"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_008",
+          "body": "Your rewarded task task_mock_008 was reviewed and accounted for. No follow-up is currently required."
+        },
+        "source": {
+          "taskId": "task_mock_008",
+          "submissionId": "sub_ingest_008",
+          "evidenceCid": "QmMockEvidenceUx008",
+          "evidenceTxHash": "AAAABBBBCCCC0008"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_61340e81da62d336",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_accounting"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_008",
+          "submissionId": "sub_ingest_008",
+          "evidenceCid": "QmMockEvidenceUx008",
+          "evidenceTxHash": "AAAABBBBCCCC0008"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "gmoney",
+            "accountId": "acct_gmoney",
+            "walletAddress": "rKTbxKmockGmoneyWallet001"
+          },
+          "taskTitle": "Evidence Submission Workflow UX Gaps",
+          "rewardPft": 10000
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_no_action",
+          "category": "product_ux",
+          "score": 64,
+          "integritySignals": [
+            "duplicate_theme"
+          ]
+        },
+        "action": {
+          "required": false,
+          "owner": "none",
+          "recommendedAction": "No action required.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_008",
+          "body": "Submission sub_ingest_008 for task task_mock_008 reached accounted_for.\nContributor: gmoney.\nReview disposition: reviewed_no_action.\nNo follow-up is required.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_no_action",
+            "product_ux"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    },
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_1ca3b2c57d2664ba",
+      "submissionId": "sub_ingest_009",
+      "taskId": "task_mock_009",
+      "title": "Compare Task Acceptance and Submission Screens",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "zoz",
+        "accountId": "acct_zoz",
+        "walletAddress": "rsS2Y6mockZozWallet002"
+      },
+      "evidence": {
+        "cid": "QmMockCompareScreens009",
+        "txHash": "AAAABBBBCCCC0009",
+        "summary": "Screen-by-screen comparison with concrete copy and affordance inconsistencies.",
+        "artifacts": [
+          "notes/acceptance_submission_screen_compare.md"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "product_ux",
+        "score": 79,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Unify state labels and primary actions across accept and submit screens.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 12000,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_638b2891672244bf",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_follow_up"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_009",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_follow_up",
+            "score": 79
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_638b2891672244bf",
+            "rewardPft": 12000,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_440379ee76c7ddfd",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_440379ee76c7ddfd"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_cc67b0cf4dd42be4",
+            "channel": "submission_ingestion_follow_up"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_440379ee76c7ddfd",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "zoz",
+          "recipientAccountId": "acct_zoz",
+          "recipientWalletAddress": "rsS2Y6mockZozWallet002"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_009",
+          "body": "Your rewarded task task_mock_009 was reviewed and routed for follow-up: Unify state labels and primary actions across accept and submit screens."
+        },
+        "source": {
+          "taskId": "task_mock_009",
+          "submissionId": "sub_ingest_009",
+          "evidenceCid": "QmMockCompareScreens009",
+          "evidenceTxHash": "AAAABBBBCCCC0009"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_cc67b0cf4dd42be4",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_follow_up"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_009",
+          "submissionId": "sub_ingest_009",
+          "evidenceCid": "QmMockCompareScreens009",
+          "evidenceTxHash": "AAAABBBBCCCC0009"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "zoz",
+            "accountId": "acct_zoz",
+            "walletAddress": "rsS2Y6mockZozWallet002"
+          },
+          "taskTitle": "Compare Task Acceptance and Submission Screens",
+          "rewardPft": 12000
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_follow_up",
+          "category": "product_ux",
+          "score": 79,
+          "integritySignals": []
+        },
+        "action": {
+          "required": true,
+          "owner": "product_engineering_triage",
+          "recommendedAction": "Unify state labels and primary actions across accept and submit screens.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_009",
+          "body": "Submission sub_ingest_009 for task task_mock_009 reached accounted_for.\nContributor: zoz.\nReview disposition: reviewed_follow_up.\nRecommended action: Unify state labels and primary actions across accept and submit screens.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_follow_up",
+            "product_ux"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    },
+    {
+      "schema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+      "recordId": "ingest_c08a481be69aa2af",
+      "submissionId": "sub_ingest_010",
+      "taskId": "task_mock_010",
+      "title": "Hive Chat to Task Creation Friction",
+      "project": "task_node_core_product",
+      "state": "accounted_for",
+      "previousState": "",
+      "createdAt": "2026-06-20T07:30:00.000Z",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "contributor": {
+        "handle": "goodalexander",
+        "accountId": "acct_goodalexander",
+        "walletAddress": "rPo8GkmockGoodAlexander003"
+      },
+      "evidence": {
+        "cid": "QmMockHiveTaskCreation010",
+        "txHash": "AAAABBBBCCCC0010",
+        "summary": "Hive chat task creation friction with reproduction notes and desired product flow.",
+        "artifacts": [
+          "notes/hive_chat_task_creation_friction.md"
+        ]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "hive_product",
+        "score": 84,
+        "actionOwner": "hive_product_backlog",
+        "recommendedAction": "Add a structured task request affordance from Hive chat without conflating it with normal chat replies.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      },
+      "accounting": {
+        "rewardPft": 18000,
+        "accountedAt": "2026-06-20T07:30:00.000Z",
+        "ledgerRecordKey": "acct_1d5afa440229211d",
+        "accountedBy": "grashnuk",
+        "outcome": "reviewed_follow_up"
+      },
+      "stateHistory": [
+        {
+          "state": "pending",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "submission_ingested"
+        },
+        {
+          "state": "in_review",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_packet_attached"
+        },
+        {
+          "state": "reviewed",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "review_outcome_normalized"
+        },
+        {
+          "state": "accounted_for",
+          "at": "2026-06-20T07:30:00.000Z",
+          "reason": "feedback_and_secretary_payloads_prepared"
+        }
+      ],
+      "stages": {
+        "ingest": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "sourceSubmissionId": "sub_ingest_010",
+            "evidenceReferencePresent": true
+          }
+        },
+        "review": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "reviewer": "grashnuk",
+            "status": "verified",
+            "disposition": "reviewed_follow_up",
+            "score": 84
+          }
+        },
+        "ledger": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "ledgerRecordKey": "acct_1d5afa440229211d",
+            "rewardPft": 18000,
+            "state": "accounted_for"
+          }
+        },
+        "feedback": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "payloadId": "feedback_89c3daf602997984",
+            "channel": "hive_followup"
+          }
+        },
+        "delivery": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "deliveryMode": "mock",
+            "deliveredLive": false,
+            "payloadId": "feedback_89c3daf602997984"
+          }
+        },
+        "secretary_update": {
+          "status": "completed",
+          "startedAt": "2026-06-20T07:30:00.000Z",
+          "completedAt": "2026-06-20T07:30:00.000Z",
+          "details": {
+            "updateId": "hivesecretary_be7479da61e9e5e3",
+            "channel": "submission_ingestion_follow_up"
+          }
+        }
+      },
+      "feedbackPayload": {
+        "schema": "pf.orc.review_feedback_delivery_payload.v1",
+        "payloadId": "feedback_89c3daf602997984",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "deliveryMode": "mock",
+        "target": {
+          "channel": "hive_followup",
+          "recipientHandle": "goodalexander",
+          "recipientAccountId": "acct_goodalexander",
+          "recipientWalletAddress": "rPo8GkmockGoodAlexander003"
+        },
+        "message": {
+          "subject": "Review accounting for task_mock_010",
+          "body": "Your rewarded task task_mock_010 was reviewed and routed for follow-up: Add a structured task request affordance from Hive chat without conflating it with normal chat replies."
+        },
+        "source": {
+          "taskId": "task_mock_010",
+          "submissionId": "sub_ingest_010",
+          "evidenceCid": "QmMockHiveTaskCreation010",
+          "evidenceTxHash": "AAAABBBBCCCC0010"
+        },
+        "safety": {
+          "signed": false,
+          "deliveredLive": false,
+          "enforcementAllowed": false
+        }
+      },
+      "secretaryUpdatePayload": {
+        "schema": "pf.hive_secretary.context_update.v1",
+        "updateId": "hivesecretary_be7479da61e9e5e3",
+        "generatedAt": "2026-06-20T07:30:00.000Z",
+        "generatedBy": "grashnuk",
+        "target": {
+          "service": "hive_secretary",
+          "operation": "append_context_update",
+          "channel": "submission_ingestion_follow_up"
+        },
+        "source": {
+          "trackerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+          "taskId": "task_mock_010",
+          "submissionId": "sub_ingest_010",
+          "evidenceCid": "QmMockHiveTaskCreation010",
+          "evidenceTxHash": "AAAABBBBCCCC0010"
+        },
+        "subject": {
+          "contributor": {
+            "handle": "goodalexander",
+            "accountId": "acct_goodalexander",
+            "walletAddress": "rPo8GkmockGoodAlexander003"
+          },
+          "taskTitle": "Hive Chat to Task Creation Friction",
+          "rewardPft": 18000
+        },
+        "review": {
+          "status": "verified",
+          "disposition": "reviewed_follow_up",
+          "category": "hive_product",
+          "score": 84,
+          "integritySignals": []
+        },
+        "action": {
+          "required": true,
+          "owner": "hive_product_backlog",
+          "recommendedAction": "Add a structured task request affordance from Hive chat without conflating it with normal chat replies.",
+          "enforcementAllowed": false
+        },
+        "contextUpdate": {
+          "title": "Submission accounted: task_mock_010",
+          "body": "Submission sub_ingest_010 for task task_mock_010 reached accounted_for.\nContributor: goodalexander.\nReview disposition: reviewed_follow_up.\nRecommended action: Add a structured task request affordance from Hive chat without conflating it with normal chat replies.",
+          "tags": [
+            "orc_submission_ingestion",
+            "reviewed_follow_up",
+            "hive_product"
+          ],
+          "visibility": "operator_internal",
+          "status": "ready_for_hive_secretary"
+        }
+      }
+    }
+  ],
+  "runs": [
+    {
+      "runId": "ingestion_run_cc9e93bf316637e3",
+      "command": "run",
+      "generatedAt": "2026-06-20T07:30:00.000Z",
+      "generatedBy": "grashnuk",
+      "sourceSubmissionCount": 10,
+      "processedCount": 10,
+      "skippedTerminalCount": 0,
+      "failedCount": 0
+    }
+  ]
+}

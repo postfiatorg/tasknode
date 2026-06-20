@@ -1,0 +1,307 @@
+{
+  "schema": "pf.orc.submission_ingestion_dashboard.v1",
+  "generatedAt": "2026-06-20T07:30:00.000Z",
+  "generatedBy": "grashnuk",
+  "ledgerSchema": "pf.orc.submission_ingestion_accounting_ledger.v1",
+  "run": {
+    "runId": "ingestion_run_cc9e93bf316637e3",
+    "command": "run",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "generatedBy": "grashnuk",
+    "sourceSubmissionCount": 10,
+    "processedCount": 10,
+    "skippedTerminalCount": 0,
+    "failedCount": 0
+  },
+  "summary": {
+    "totalRecords": 10,
+    "supportedStates": [
+      "pending",
+      "in_review",
+      "reviewed",
+      "accounted_for",
+      "failed"
+    ],
+    "byState": {
+      "accounted_for": 10
+    },
+    "processedThisRun": 10,
+    "skippedTerminalThisRun": 0,
+    "failedThisRun": 0,
+    "feedbackPayloadsReady": 10,
+    "secretaryUpdatesReady": 10,
+    "accountedRewardPft": 113000,
+    "stageCounts": {
+      "ingest": {
+        "completed": 10
+      },
+      "review": {
+        "completed": 10
+      },
+      "ledger": {
+        "completed": 10
+      },
+      "feedback": {
+        "completed": 10
+      },
+      "delivery": {
+        "completed": 10
+      },
+      "secretary_update": {
+        "completed": 10
+      }
+    }
+  },
+  "records": [
+    {
+      "recordId": "ingest_5f0467b8e1f035cd",
+      "submissionId": "sub_ingest_001",
+      "taskId": "task_mock_001",
+      "title": "Document Task Acceptance Workflow",
+      "contributor": {
+        "handle": "gmoney",
+        "accountId": "acct_gmoney",
+        "walletAddress": "rKTbxKmockGmoneyWallet001"
+      },
+      "state": "accounted_for",
+      "rewardPft": 10500,
+      "reviewDisposition": "reviewed_follow_up",
+      "actionOwner": "product_engineering_triage",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    },
+    {
+      "recordId": "ingest_0e5c0463c66539b9",
+      "submissionId": "sub_ingest_002",
+      "taskId": "task_mock_002",
+      "title": "Trace Distribution V3 Reward Routing Consistency",
+      "contributor": {
+        "handle": "zoz",
+        "accountId": "acct_zoz",
+        "walletAddress": "rsS2Y6mockZozWallet002"
+      },
+      "state": "accounted_for",
+      "rewardPft": 18000,
+      "reviewDisposition": "reviewed_follow_up",
+      "actionOwner": "core_protocol_backlog",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    },
+    {
+      "recordId": "ingest_82d0807f20cca128",
+      "submissionId": "sub_ingest_003",
+      "taskId": "task_mock_003",
+      "title": "Hive Chat Evidence Submission Friction",
+      "contributor": {
+        "handle": "goodalexander",
+        "accountId": "acct_goodalexander",
+        "walletAddress": "rPo8GkmockGoodAlexander003"
+      },
+      "state": "accounted_for",
+      "rewardPft": 9000,
+      "reviewDisposition": "reviewed_follow_up",
+      "actionOwner": "product_engineering_triage",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    },
+    {
+      "recordId": "ingest_89dca78d9209c082",
+      "submissionId": "sub_ingest_004",
+      "taskId": "task_mock_004",
+      "title": "Task Completion to Reward Routing Friction",
+      "contributor": {
+        "handle": "boscovich",
+        "accountId": "acct_boscovich",
+        "walletAddress": "rDT8rfmockBoscovich004"
+      },
+      "state": "accounted_for",
+      "rewardPft": 8500,
+      "reviewDisposition": "reviewed_follow_up",
+      "actionOwner": "product_engineering_triage",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    },
+    {
+      "recordId": "ingest_7f068bf7feca6308",
+      "submissionId": "sub_ingest_005",
+      "taskId": "task_mock_005",
+      "title": "Proposed Task Acceptance Edge Cases",
+      "contributor": {
+        "handle": "donravle",
+        "accountId": "acct_donravle",
+        "walletAddress": "raL2kvmockDonravle005"
+      },
+      "state": "accounted_for",
+      "rewardPft": 7000,
+      "reviewDisposition": "reviewed_no_action",
+      "actionOwner": "none",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    },
+    {
+      "recordId": "ingest_864427a2f683c43d",
+      "submissionId": "sub_ingest_006",
+      "taskId": "task_mock_006",
+      "title": "Dashboard to Submission Workflow Friction",
+      "contributor": {
+        "handle": "yuuki",
+        "accountId": "acct_yuuki",
+        "walletAddress": "rfCbJWmockYuuki006"
+      },
+      "state": "accounted_for",
+      "rewardPft": 9000,
+      "reviewDisposition": "reviewed_follow_up",
+      "actionOwner": "product_engineering_triage",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    },
+    {
+      "recordId": "ingest_303b67473badc32b",
+      "submissionId": "sub_ingest_007",
+      "taskId": "task_mock_007",
+      "title": "Reward Routing Workflow UX Gaps",
+      "contributor": {
+        "handle": "node-d46cae0c",
+        "accountId": "acct_node_d46cae0c",
+        "walletAddress": "r322EAmockNode007"
+      },
+      "state": "accounted_for",
+      "rewardPft": 11000,
+      "reviewDisposition": "reviewed_follow_up",
+      "actionOwner": "product_engineering_triage",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    },
+    {
+      "recordId": "ingest_4ae69fc6e4b26886",
+      "submissionId": "sub_ingest_008",
+      "taskId": "task_mock_008",
+      "title": "Evidence Submission Workflow UX Gaps",
+      "contributor": {
+        "handle": "gmoney",
+        "accountId": "acct_gmoney",
+        "walletAddress": "rKTbxKmockGmoneyWallet001"
+      },
+      "state": "accounted_for",
+      "rewardPft": 10000,
+      "reviewDisposition": "reviewed_no_action",
+      "actionOwner": "none",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    },
+    {
+      "recordId": "ingest_1ca3b2c57d2664ba",
+      "submissionId": "sub_ingest_009",
+      "taskId": "task_mock_009",
+      "title": "Compare Task Acceptance and Submission Screens",
+      "contributor": {
+        "handle": "zoz",
+        "accountId": "acct_zoz",
+        "walletAddress": "rsS2Y6mockZozWallet002"
+      },
+      "state": "accounted_for",
+      "rewardPft": 12000,
+      "reviewDisposition": "reviewed_follow_up",
+      "actionOwner": "product_engineering_triage",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    },
+    {
+      "recordId": "ingest_c08a481be69aa2af",
+      "submissionId": "sub_ingest_010",
+      "taskId": "task_mock_010",
+      "title": "Hive Chat to Task Creation Friction",
+      "contributor": {
+        "handle": "goodalexander",
+        "accountId": "acct_goodalexander",
+        "walletAddress": "rPo8GkmockGoodAlexander003"
+      },
+      "state": "accounted_for",
+      "rewardPft": 18000,
+      "reviewDisposition": "reviewed_follow_up",
+      "actionOwner": "hive_product_backlog",
+      "lastRunId": "ingestion_run_cc9e93bf316637e3",
+      "updatedAt": "2026-06-20T07:30:00.000Z",
+      "stageStatus": {
+        "ingest": "completed",
+        "review": "completed",
+        "ledger": "completed",
+        "feedback": "completed",
+        "delivery": "completed",
+        "secretary_update": "completed"
+      }
+    }
+  ]
+}

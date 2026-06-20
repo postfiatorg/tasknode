@@ -1,0 +1,272 @@
+[
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_9dddf277981d1699",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "gmoney",
+      "recipientAccountId": "acct_gmoney",
+      "recipientWalletAddress": "rKTbxKmockGmoneyWallet001"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_001",
+      "body": "Your rewarded task task_mock_001 was reviewed and routed for follow-up: Fold the missing verification-step affordance into the task detail UX backlog."
+    },
+    "source": {
+      "taskId": "task_mock_001",
+      "submissionId": "sub_ingest_001",
+      "evidenceCid": "QmMockAcceptanceWorkflow001",
+      "evidenceTxHash": "AAAABBBBCCCC0001"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  },
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_25eae44ceea6890b",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "zoz",
+      "recipientAccountId": "acct_zoz",
+      "recipientWalletAddress": "rsS2Y6mockZozWallet002"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_002",
+      "body": "Your rewarded task task_mock_002 was reviewed and routed for follow-up: Confirm duplicate-payment mitigation and reconcile affected historical rewards."
+    },
+    "source": {
+      "taskId": "task_mock_002",
+      "submissionId": "sub_ingest_002",
+      "evidenceCid": "QmMockRewardRouting002",
+      "evidenceTxHash": "AAAABBBBCCCC0002"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  },
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_a7cd564a6b2396dd",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "goodalexander",
+      "recipientAccountId": "acct_goodalexander",
+      "recipientWalletAddress": "rPo8GkmockGoodAlexander003"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_003",
+      "body": "Your rewarded task task_mock_003 was reviewed and routed for follow-up: Route to product UX backlog and connect Hive task cards to task submission actions."
+    },
+    "source": {
+      "taskId": "task_mock_003",
+      "submissionId": "sub_ingest_003",
+      "evidenceCid": "QmMockEvidenceFriction003",
+      "evidenceTxHash": "AAAABBBBCCCC0003"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  },
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_0978773d946dc4ec",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "boscovich",
+      "recipientAccountId": "acct_boscovich",
+      "recipientWalletAddress": "rDT8rfmockBoscovich004"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_004",
+      "body": "Your rewarded task task_mock_004 was reviewed and routed for follow-up: Clarify post-submission states and add visible reward-review progress."
+    },
+    "source": {
+      "taskId": "task_mock_004",
+      "submissionId": "sub_ingest_004",
+      "evidenceCid": "QmMockRewardFriction004",
+      "evidenceTxHash": "AAAABBBBCCCC0004"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  },
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_5dc9d6eccc79ebf1",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "donravle",
+      "recipientAccountId": "acct_donravle",
+      "recipientWalletAddress": "raL2kvmockDonravle005"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_005",
+      "body": "Your rewarded task task_mock_005 was reviewed and accounted for. No follow-up is currently required."
+    },
+    "source": {
+      "taskId": "task_mock_005",
+      "submissionId": "sub_ingest_005",
+      "evidenceCid": "QmMockAcceptanceEdges005",
+      "evidenceTxHash": "AAAABBBBCCCC0005"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  },
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_24854252f42b3e12",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "yuuki",
+      "recipientAccountId": "acct_yuuki",
+      "recipientWalletAddress": "rfCbJWmockYuuki006"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_006",
+      "body": "Your rewarded task task_mock_006 was reviewed and routed for follow-up: Add direct submission entry point from dashboard task rows."
+    },
+    "source": {
+      "taskId": "task_mock_006",
+      "submissionId": "sub_ingest_006",
+      "evidenceCid": "QmMockDashboardSubmission006",
+      "evidenceTxHash": "AAAABBBBCCCC0006"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  },
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_20f70d3087402ba2",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "node-d46cae0c",
+      "recipientAccountId": "acct_node_d46cae0c",
+      "recipientWalletAddress": "r322EAmockNode007"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_007",
+      "body": "Your rewarded task task_mock_007 was reviewed and routed for follow-up: Expose reward-review worker state and payment pointer after reward issuance."
+    },
+    "source": {
+      "taskId": "task_mock_007",
+      "submissionId": "sub_ingest_007",
+      "evidenceCid": "QmMockRewardUx007",
+      "evidenceTxHash": "AAAABBBBCCCC0007"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  },
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_1d5f9ee93cee9cba",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "gmoney",
+      "recipientAccountId": "acct_gmoney",
+      "recipientWalletAddress": "rKTbxKmockGmoneyWallet001"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_008",
+      "body": "Your rewarded task task_mock_008 was reviewed and accounted for. No follow-up is currently required."
+    },
+    "source": {
+      "taskId": "task_mock_008",
+      "submissionId": "sub_ingest_008",
+      "evidenceCid": "QmMockEvidenceUx008",
+      "evidenceTxHash": "AAAABBBBCCCC0008"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  },
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_440379ee76c7ddfd",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "zoz",
+      "recipientAccountId": "acct_zoz",
+      "recipientWalletAddress": "rsS2Y6mockZozWallet002"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_009",
+      "body": "Your rewarded task task_mock_009 was reviewed and routed for follow-up: Unify state labels and primary actions across accept and submit screens."
+    },
+    "source": {
+      "taskId": "task_mock_009",
+      "submissionId": "sub_ingest_009",
+      "evidenceCid": "QmMockCompareScreens009",
+      "evidenceTxHash": "AAAABBBBCCCC0009"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  },
+  {
+    "schema": "pf.orc.review_feedback_delivery_payload.v1",
+    "payloadId": "feedback_89c3daf602997984",
+    "generatedAt": "2026-06-20T07:30:00.000Z",
+    "deliveryMode": "mock",
+    "target": {
+      "channel": "hive_followup",
+      "recipientHandle": "goodalexander",
+      "recipientAccountId": "acct_goodalexander",
+      "recipientWalletAddress": "rPo8GkmockGoodAlexander003"
+    },
+    "message": {
+      "subject": "Review accounting for task_mock_010",
+      "body": "Your rewarded task task_mock_010 was reviewed and routed for follow-up: Add a structured task request affordance from Hive chat without conflating it with normal chat replies."
+    },
+    "source": {
+      "taskId": "task_mock_010",
+      "submissionId": "sub_ingest_010",
+      "evidenceCid": "QmMockHiveTaskCreation010",
+      "evidenceTxHash": "AAAABBBBCCCC0010"
+    },
+    "safety": {
+      "signed": false,
+      "deliveredLive": false,
+      "enforcementAllowed": false
+    }
+  }
+]
