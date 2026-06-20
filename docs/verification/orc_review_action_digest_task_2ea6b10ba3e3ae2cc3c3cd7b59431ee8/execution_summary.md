@@ -98,4 +98,8 @@ Highest-priority items:
 
 ## Public artifact note
 
-The task asked for a public commit, PR, or repository URL. The source and generated JSON artifacts are included in this evidence bundle. I did not push or open a PR in this cycle because the active operator policy requires explicit push authorization; no deploy or remote mutation was performed.
+Public PR: https://github.com/postfiatorg/tasknodeofficial/pull/128
+
+Branch: `codex/orc-review-action-digest`.
+
+No deploy was performed.
