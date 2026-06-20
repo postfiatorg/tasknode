@@ -87,6 +87,11 @@ uv run nazgul escalate grashnuk "Signer approval required."
 
 The Codex pane remains the execution surface. Nazgul never injects its own pane,
 and long directives should be written to files with a short pointer directive.
+Once `redirect` or `dispatch` verifies the tmux paste and submits Enter, that
+injection is treated as successful even if the later
+`orc_operator_interactions` audit write fails. The JSON result keeps `ok=true`
+for the command and carries `operatorInteraction.ok=false` with the recording
+error so operators do not retry and double-inject the same directive.
 
 ### Mode B: Orc Self-Cycle
 
@@ -144,6 +149,10 @@ not wedge the queue permanently. Completion requires the directive to be claimed
 by the same worker ID, so another worker cannot close a claimed directive by ID
 alone. Without a database URL it falls back to the local JSONL mailbox for
 development only.
+After `dispatch-runtime` queues a directive, the queued row is likewise the
+source of truth. A later operator-interaction recording failure is reported
+inside `operatorInteraction` without changing `dispatched=true`; retrying would
+otherwise risk duplicating work if idempotency metadata changes.
 
 ## Work And Review Flow
 

@@ -187,6 +187,12 @@ linked row to `orc_work_journal`; `nazgul status` surfaces recent linked work
 beside the shared review queue. If that trailing work-journal insert fails
 after the operator interaction was recorded, `nazgul` returns the journal error
 inside `workJournal` instead of failing the dispatch/redirect/escalation result.
+For `redirect`, `dispatch`, and `dispatch-runtime`, the tmux injection or
+runtime queue operation is also authoritative once it succeeds: if the later
+`orc_operator_interactions` write fails, the command still reports the dispatch
+result and includes `operatorInteraction.ok=false` with the recording error.
+Do not retry those commands blindly just to repair the audit row; that can
+duplicate the already-submitted directive.
 
 Phase 5 adds a durable runtime prototype that avoids tmux injection:
 
