@@ -1248,10 +1248,15 @@ class OrcToolingTests(unittest.TestCase):
             "metadata_json": {"user_signal_status": "sent"},
         }
         captured = []
+        journal_rows = []
 
         def fake_upsert(record, **kwargs):
             captured.append(record)
             return {"ok": True, "task_id": record["taskId"], "metadata_json": record["metadata"]}
+
+        def fake_journal(record, **kwargs):
+            journal_rows.append(record)
+            return {"ok": True, "inserted": True, "source_task_id": record["sourceTaskId"]}
 
         with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
             patch("orc_tooling.orcctl.request_personal_task", return_value={
@@ -1264,7 +1269,8 @@ class OrcToolingTests(unittest.TestCase):
                 "eventCid": "QmRequestEvent",
                 "txHash": "TXREQUEST",
             }), \
-            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert):
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=fake_journal):
             result = request_followup_task("task_source", submit=True)
 
         metadata = captured[0]["metadata"]
@@ -1275,6 +1281,16 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(metadata["followup_request_tx"], "TXREQUEST")
         self.assertEqual(metadata["user_signal_status"], "sent")
         self.assertIn("task_followup", captured[0]["sourceTaskIds"])
+        self.assertEqual(result["workJournal"]["inserted"], True)
+        self.assertEqual(journal_rows[0]["sourceTaskId"], "task_source")
+        self.assertEqual(journal_rows[0]["followupRequestId"], "req_followup")
+        self.assertEqual(journal_rows[0]["followupTaskId"], "task_followup")
+        self.assertEqual(journal_rows[0]["taskAction"], "request_followup")
+        self.assertEqual(journal_rows[0]["eventCid"], "QmRequestEvent")
+        self.assertEqual(journal_rows[0]["txHash"], "TXREQUEST")
+        self.assertEqual(journal_rows[0]["status"], "submitted")
+        self.assertEqual(journal_rows[0]["outcomeStatus"], "generated")
+        self.assertEqual(journal_rows[0]["metadata"]["idempotent"], False)
 
     def test_request_followup_is_idempotent_when_active_followup_exists(self):
         existing = {
@@ -1293,12 +1309,19 @@ class OrcToolingTests(unittest.TestCase):
                 "followup_status": "generated",
                 "followup_task_id": "task_followup",
                 "followup_request_tx": "TXREQUEST",
+                "followup_request_cid": "QmRequestEvent",
             },
         }
+        journal_rows = []
+
+        def fake_journal(record, **kwargs):
+            journal_rows.append(record)
+            return {"ok": True, "inserted": False, "idempotency_key": "duplicate"}
 
         with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
             patch("orc_tooling.orcctl.request_personal_task") as request_mock, \
-            patch("orc_tooling.orcctl.upsert_review_state") as upsert_mock:
+            patch("orc_tooling.orcctl.upsert_review_state") as upsert_mock, \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=fake_journal):
             result = request_followup_task("task_source", submit=True)
 
         self.assertEqual(result["idempotent"], True)
@@ -1306,6 +1329,10 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["requestId"], "req_existing")
         self.assertEqual(result["followupTaskId"], "task_followup")
         self.assertEqual(result["txHash"], "TXREQUEST")
+        self.assertEqual(result["workJournal"]["inserted"], False)
+        self.assertEqual(journal_rows[0]["followupRequestId"], "req_existing")
+        self.assertEqual(journal_rows[0]["taskAction"], "request_followup")
+        self.assertEqual(journal_rows[0]["metadata"]["idempotent"], True)
         request_mock.assert_not_called()
         upsert_mock.assert_not_called()
 
@@ -1328,10 +1355,15 @@ class OrcToolingTests(unittest.TestCase):
             },
         }
         captured = []
+        journal_rows = []
 
         def fake_upsert(record, **kwargs):
             captured.append(record)
             return {"ok": True, "task_id": record["taskId"], "metadata_json": record["metadata"]}
+
+        def fake_journal(record, **kwargs):
+            journal_rows.append(record)
+            return {"ok": True, "inserted": True, "source_task_id": record["sourceTaskId"]}
 
         with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
             patch("orc_tooling.orcctl.request_personal_task", return_value={
@@ -1344,12 +1376,15 @@ class OrcToolingTests(unittest.TestCase):
                 "eventCid": "QmRequestEvent",
                 "txHash": "TXREQUEST",
             }) as request_mock, \
-            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert):
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=fake_journal):
             result = request_followup_task("task_source", submit=True)
 
         self.assertEqual(result["reviewState"]["followupRequestId"], "req_submitted")
         self.assertEqual(captured[0]["metadata"]["followup_request_submitted"], True)
         self.assertEqual(captured[0]["metadata"]["followup_task_id"], "task_followup")
+        self.assertEqual(result["workJournal"]["inserted"], True)
+        self.assertEqual(journal_rows[0]["followupRequestId"], "req_submitted")
         request_mock.assert_called_once()
 
     def test_status_surfaces_terminal_followup_as_stale_closeable(self):
