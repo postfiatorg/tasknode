@@ -909,6 +909,19 @@ def _active_followup_from_review(review_record: dict[str, Any]) -> dict[str, Any
     }
 
 
+def _safe_append_orc_work_journal(record: dict[str, Any], *, database_url: str | None = None) -> dict[str, Any]:
+    try:
+        return append_orc_work_journal(record, database_url=database_url)
+    except Exception as exc:
+        return redact_secrets({
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "taskAction": _safe_text(record.get("taskAction") or record.get("task_action"), 120),
+            "sourceTaskId": _safe_text(record.get("sourceTaskId") or record.get("source_task_id"), 180),
+            "secretPrinted": False,
+        })
+
+
 def _append_followup_request_work_journal(
     review_record: dict[str, Any],
     *,
@@ -925,7 +938,7 @@ def _append_followup_request_work_journal(
     request_tx = _safe_text(linkage.get("followup_request_tx"), 180)
     request_status = _safe_text(linkage.get("followup_status"), 120)
     submitted = bool(linkage.get("followup_request_submitted"))
-    return append_orc_work_journal(
+    return _safe_append_orc_work_journal(
         {
             "interactionId": _safe_text(metadata.get("operator_interaction_id"), 180)
             or _safe_text(metadata.get("interactionId"), 180)
@@ -1083,7 +1096,7 @@ def signal_user(
         reviewer_wallet=reviewer_wallet,
     )
     updated = upsert_review_state(record, database_url=database_url)
-    work_journal = append_orc_work_journal(
+    work_journal = _safe_append_orc_work_journal(
         {
             "interactionId": signal_metadata["user_signal_conversation_id"],
             "sourceTaskId": task_id,
@@ -1200,7 +1213,7 @@ def close_followup(
         source_tx_hashes=[reward_tx],
     )
     updated = upsert_review_state(record, database_url=database_url)
-    updated["workJournal"] = append_orc_work_journal(
+    updated["workJournal"] = _safe_append_orc_work_journal(
         {
             "interactionId": _safe_text(_review_metadata(existing).get("operator_interaction_id"), 180)
             or _safe_text(_review_metadata(existing).get("interactionId"), 180),
@@ -1257,7 +1270,7 @@ def _append_task_action_work_journal(
 ) -> dict[str, Any]:
     task_action = f"task_{_safe_text(action, 80)}"
     try:
-        return append_orc_work_journal(
+        return _safe_append_orc_work_journal(
             {
                 "sourceTaskId": task_id,
                 "taskAction": task_action,

@@ -1423,6 +1423,42 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(journal_rows[0]["followupRequestId"], "req_submitted")
         request_mock.assert_called_once()
 
+    def test_request_followup_keeps_success_when_work_journal_fails(self):
+        existing = {
+            "task_id": "task_source",
+            "disposition": "reviewed_follow_up",
+            "action_required": True,
+            "confidence": "high",
+            "categories": ["reward_accounting"],
+            "summary": "Contributor found reward projection drift.",
+            "recommended_action": "Verify affected reward rows and add a regression smoke.",
+            "reviewer_handle": "grashnuk",
+            "reviewer_wallet": "rReviewer",
+            "source_task_ids": ["task_source"],
+            "metadata_json": {},
+        }
+
+        with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
+            patch("orc_tooling.orcctl.request_personal_task", return_value={
+                "ok": True,
+                "requestId": "req_followup",
+                "submitted": True,
+                "generatedTaskId": "task_followup",
+                "requestStatus": "generated",
+                "bundleCid": "QmBundle",
+                "eventCid": "QmRequestEvent",
+                "txHash": "TXREQUEST",
+            }), \
+            patch("orc_tooling.orcctl.upsert_review_state", return_value={"ok": True}), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=RuntimeError("db unavailable")):
+            result = request_followup_task("task_source", submit=True)
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["reviewState"]["followupRequestId"], "req_followup")
+        self.assertEqual(result["workJournal"]["ok"], False)
+        self.assertEqual(result["workJournal"]["taskAction"], "request_followup")
+        self.assertIn("db unavailable", result["workJournal"]["error"])
+
     def test_status_surfaces_terminal_followup_as_stale_closeable(self):
         stale = {
             "ok": True,
@@ -1510,6 +1546,33 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(ledger_rows[0]["txHash"], "TXREWARD")
         self.assertEqual(ledger_rows[0]["outcomeStatus"], "rewarded")
         self.assertTrue(ledger_rows[0]["terminal"])
+
+    def test_close_followup_keeps_terminal_state_when_work_journal_fails(self):
+        existing = {
+            "task_id": "task_source",
+            "disposition": "reviewed_follow_up",
+            "action_required": True,
+            "confidence": "medium",
+            "categories": ["reward_accounting"],
+            "summary": "Follow-up requested.",
+            "recommended_action": "Verify reward rows and add a smoke.",
+            "source_task_ids": ["task_source"],
+            "metadata_json": {"followup_request_id": "req_followup"},
+        }
+
+        with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
+            patch("orc_tooling.orcctl.upsert_review_state", return_value={"ok": True}), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=RuntimeError("db unavailable")):
+            result = close_followup(
+                "task_source",
+                followup_task_id="task_followup",
+                client=FakeCloseClient(status="Rewarded"),
+            )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["workJournal"]["ok"], False)
+        self.assertEqual(result["workJournal"]["taskAction"], "close_followup")
+        self.assertIn("db unavailable", result["workJournal"]["error"])
 
     def test_stale_followup_query_filters_to_closeable_terminal_statuses(self):
         calls = []
@@ -2649,6 +2712,36 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(captured[0]["metadata"]["user_signal_status"], "sent")
         self.assertEqual(captured[0]["metadata"]["user_signal_idempotent"], True)
         self.assertEqual(journal_rows[0]["metadata"]["idempotent"], True)
+
+    def test_signal_user_keeps_success_when_work_journal_fails(self):
+        existing = {
+            "task_id": "task_source",
+            "disposition": "reviewed_follow_up_completed",
+            "action_required": False,
+            "confidence": "medium",
+            "summary": "Closed.",
+            "recommended_action": "No current action remains.",
+            "metadata_json": {"user_signal_status": "not_sent"},
+        }
+
+        with patch("orc_tooling.orcctl.run_hive_signal", return_value={
+            "ok": True,
+            "executed": True,
+            "visibleInHiveChat": True,
+            "chatMessageId": "msg_signal",
+            "conversationId": "account_acct_hive",
+            "secretPrinted": False,
+        }), \
+            patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
+            patch("orc_tooling.orcctl.upsert_review_state", return_value={"ok": True}), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=RuntimeError("db unavailable")):
+            result = signal_user("task_source", message="Direct note.", execute=True)
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["reviewState"]["userSignalMessageId"], "msg_signal")
+        self.assertEqual(result["workJournal"]["ok"], False)
+        self.assertEqual(result["workJournal"]["taskAction"], "signal_user")
+        self.assertIn("db unavailable", result["workJournal"]["error"])
 
     def test_nazgul_status_summarizes_orc_pane_and_journal(self):
         def fake_runner(command, **kwargs):

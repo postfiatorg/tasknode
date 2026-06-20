@@ -164,6 +164,9 @@ development only.
    follow-up evidence exists, or when explicit no-code-needed proof is recorded.
 7. `orc_work_journal` links assignment, follow-up, evidence CIDs/tx hashes,
    user signal status, and terminal outcome for later audit.
+   Post-action journal writes are best-effort after the underlying action or
+   review-state update succeeds; journal failures are returned in `workJournal`
+   instead of turning completed work into a retry trap.
 
 Important invariant:
 
