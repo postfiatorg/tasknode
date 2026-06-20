@@ -1798,6 +1798,14 @@ class OrcToolingTests(unittest.TestCase):
                 first_status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
                 claimed = claim_next_runtime_directive(orc="grashnuk", worker_id="worker-a", runtime_dir=tmpdir)
                 second_claim = claim_next_runtime_directive(orc="grashnuk", worker_id="worker-b", runtime_dir=tmpdir)
+                wrong_worker = complete_runtime_directive(
+                    directive_id=queued["directiveId"],
+                    status="completed",
+                    result={"summary": "wrong worker"},
+                    worker_id="worker-b",
+                    runtime_dir=tmpdir,
+                )
+                still_claimed = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
                 completed = complete_runtime_directive(
                     directive_id=queued["directiveId"],
                     status="completed",
@@ -1813,9 +1821,35 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(claimed["claimed"], True)
         self.assertEqual(claimed["directive"]["workerId"], "worker-a")
         self.assertEqual(second_claim["claimed"], False)
+        self.assertEqual(wrong_worker["ok"], False)
+        self.assertEqual(wrong_worker["error"], "directive_worker_mismatch")
+        self.assertEqual(still_claimed["statusCounts"]["claimed"], 1)
         self.assertEqual(completed["completed"], True)
         self.assertEqual(final_status["statusCounts"]["completed"], 1)
         self.assertEqual(final_status["directives"][0]["metadata"]["privateKey"], "[REDACTED]")
+
+    def test_orc_runtime_jsonl_completion_requires_claimed_directive(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                queued = enqueue_runtime_directive(
+                    orc="grashnuk",
+                    task_id="task_source",
+                    directive="Review task_source.",
+                    runtime_dir=tmpdir,
+                )
+                blocked = complete_runtime_directive(
+                    directive_id=queued["directiveId"],
+                    status="completed",
+                    result={"summary": "unclaimed"},
+                    worker_id="worker-a",
+                    runtime_dir=tmpdir,
+                )
+                status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+
+        self.assertEqual(blocked["ok"], False)
+        self.assertEqual(blocked["completed"], False)
+        self.assertEqual(blocked["error"], "directive_not_claimed")
+        self.assertEqual(status["statusCounts"]["queued"], 1)
 
     def test_orc_runtime_run_once_claims_only_without_real_executor(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -1975,7 +2009,46 @@ class OrcToolingTests(unittest.TestCase):
         complete_sql = "\n".join(calls)
         self.assertEqual(result["completed"], False)
         self.assertEqual(result["alreadyTerminal"], True)
-        self.assertIn("s.status NOT IN ('completed', 'failed', 'cancelled')", complete_sql)
+        self.assertIn("s.status IN ('completed', 'failed', 'cancelled')", complete_sql)
+
+    def test_orc_runtime_postgres_complete_requires_claimed_owner(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            if "WITH selected AS" in sql:
+                return {
+                    "ok": False,
+                    "completed": False,
+                    "error": "directive_worker_mismatch",
+                    "backend": "postgres",
+                    "directive": {
+                        "directiveId": "orcdirective_claimed",
+                        "status": "claimed",
+                        "workerId": "worker-a",
+                        "secretPrinted": False,
+                    },
+                    "secretPrinted": False,
+                }
+            return {"ok": True, "secretPrinted": False}
+
+        with patch("orc_tooling.runtime._run_json", side_effect=fake_run_json):
+            result = complete_runtime_directive(
+                directive_id="orcdirective_claimed",
+                status="completed",
+                result={"summary": "wrong worker"},
+                worker_id="worker-b",
+                database_url="postgres://unit",
+            )
+
+        complete_sql = "\n".join(calls)
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["error"], "directive_worker_mismatch")
+        self.assertIn("eligible AS", complete_sql)
+        self.assertIn("s.status = 'claimed'", complete_sql)
+        self.assertIn("s.worker_id = 'worker-b'", complete_sql)
+        self.assertIn("directive_worker_mismatch", complete_sql)
+        self.assertIn("directive_not_claimed", complete_sql)
 
     @unittest.skipUnless(
         os.environ.get("TASKNODE_ORC_RUNTIME_POSTGRES_TEST_URL"),
