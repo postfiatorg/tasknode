@@ -221,7 +221,9 @@ controls, not trust in one pane:
   interactions, Hive signals, and closures are recorded in shared tables.
   `orcctl signal-user` records `user_signal_status=sent` and the Hive
   `chatMessageId` in `orc_task_review_states.metadata_json` only after the
-  direct Hive signal is verified visible in Hive Chat.
+  direct Hive signal is verified visible in Hive Chat, then appends a
+  `signal_user` row to `orc_work_journal` for the status page and operator
+  audit trail.
 - **Reserved actions:** bans, Sybil labels on live accounts, deploys, economic
   policy, reward changes, public-chain flags, and secrets remain outside Orc
   authority.

@@ -1012,6 +1012,30 @@ def signal_user(
         reviewer_wallet=reviewer_wallet,
     )
     updated = upsert_review_state(record, database_url=database_url)
+    work_journal = append_orc_work_journal(
+        {
+            "interactionId": signal_metadata["user_signal_conversation_id"],
+            "sourceTaskId": task_id,
+            "reviewDisposition": record["disposition"],
+            "taskAction": "signal_user",
+            "eventCid": chat_message_id,
+            "operatorHandle": reviewer_handle
+            or _review_text(existing, "reviewer_handle", "reviewerHandle", 160)
+            or DEFAULT_ORC_AGENT,
+            "status": "sent",
+            "outcomeStatus": "visible",
+            "terminal": False,
+            "metadata": {
+                "source": "orcctl.signal_user",
+                "chatMessageId": chat_message_id,
+                "conversationId": signal_metadata["user_signal_conversation_id"],
+                "reason": signal_metadata["user_signal_reason"],
+                "idempotent": signal_metadata["user_signal_idempotent"],
+                "visibleInHiveChat": True,
+            },
+        },
+        database_url=database_url,
+    )
     result["reviewState"] = {
         "taskId": task_id,
         "updated": bool(updated),
@@ -1020,6 +1044,7 @@ def signal_user(
         "conversationId": signal_metadata["user_signal_conversation_id"],
         "metadata": signal_metadata,
     }
+    result["workJournal"] = work_journal
     return result
 
 

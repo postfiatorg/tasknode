@@ -2399,10 +2399,15 @@ class OrcToolingTests(unittest.TestCase):
             "metadata_json": {"user_signal_status": "not_sent"},
         }
         captured = []
+        journal_rows = []
 
         def fake_upsert(record, **kwargs):
             captured.append(record)
             return {"ok": True, "task_id": record["taskId"], "metadata_json": record["metadata"]}
+
+        def fake_journal(record, **kwargs):
+            journal_rows.append(record)
+            return {"ok": True, "inserted": True, "source_task_id": record["sourceTaskId"]}
 
         with patch("orc_tooling.orcctl.run_hive_signal", return_value={
             "ok": True,
@@ -2414,7 +2419,8 @@ class OrcToolingTests(unittest.TestCase):
             "secretPrinted": False,
         }), \
             patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
-            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert):
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=fake_journal):
             result = signal_user(
                 "task_source",
                 message="Direct note.",
@@ -2435,6 +2441,14 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(metadata["user_signal_reason"], "review_closed")
         self.assertEqual(metadata["user_signal_idempotent"], False)
         self.assertEqual(metadata["user_signal_metadata"], {"reviewState": "reviewed_follow_up_completed"})
+        self.assertEqual(result["workJournal"]["inserted"], True)
+        self.assertEqual(journal_rows[0]["sourceTaskId"], "task_source")
+        self.assertEqual(journal_rows[0]["taskAction"], "signal_user")
+        self.assertEqual(journal_rows[0]["eventCid"], "msg_signal")
+        self.assertEqual(journal_rows[0]["operatorHandle"], "grashnuk")
+        self.assertEqual(journal_rows[0]["status"], "sent")
+        self.assertEqual(journal_rows[0]["outcomeStatus"], "visible")
+        self.assertEqual(journal_rows[0]["metadata"]["chatMessageId"], "msg_signal")
 
     def test_signal_user_dry_run_does_not_update_review_state(self):
         with patch("orc_tooling.orcctl.run_hive_signal", return_value={
@@ -2445,13 +2459,15 @@ class OrcToolingTests(unittest.TestCase):
             "secretPrinted": False,
         }), \
             patch("orc_tooling.orcctl.get_review_state") as get_mock, \
-            patch("orc_tooling.orcctl.upsert_review_state") as upsert_mock:
+            patch("orc_tooling.orcctl.upsert_review_state") as upsert_mock, \
+            patch("orc_tooling.orcctl.append_orc_work_journal") as journal_mock:
             result = signal_user("task_source", message="Direct note.", execute=False)
 
         self.assertEqual(result["dryRun"], True)
         self.assertNotIn("reviewState", result)
         get_mock.assert_not_called()
         upsert_mock.assert_not_called()
+        journal_mock.assert_not_called()
 
     def test_signal_user_idempotent_delivery_updates_review_state(self):
         existing = {
@@ -2464,10 +2480,15 @@ class OrcToolingTests(unittest.TestCase):
             "metadata_json": {"user_signal_status": "not_sent"},
         }
         captured = []
+        journal_rows = []
 
         def fake_upsert(record, **kwargs):
             captured.append(record)
             return {"ok": True, "task_id": record["taskId"], "metadata_json": record["metadata"]}
+
+        def fake_journal(record, **kwargs):
+            journal_rows.append(record)
+            return {"ok": True, "inserted": False, "idempotency_key": "duplicate"}
 
         with patch("orc_tooling.orcctl.run_hive_signal", return_value={
             "ok": True,
@@ -2480,13 +2501,16 @@ class OrcToolingTests(unittest.TestCase):
             "secretPrinted": False,
         }), \
             patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
-            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert):
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=fake_journal):
             result = signal_user("task_source", message="Direct note.", execute=True)
 
         self.assertEqual(result["reason"], "existing_orc_hive_signal")
         self.assertEqual(result["reviewState"]["userSignalMessageId"], "msg_existing")
+        self.assertEqual(result["workJournal"]["inserted"], False)
         self.assertEqual(captured[0]["metadata"]["user_signal_status"], "sent")
         self.assertEqual(captured[0]["metadata"]["user_signal_idempotent"], True)
+        self.assertEqual(journal_rows[0]["metadata"]["idempotent"], True)
 
     def test_nazgul_status_summarizes_orc_pane_and_journal(self):
         def fake_runner(command, **kwargs):
