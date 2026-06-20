@@ -108,7 +108,14 @@ def run_hive_signal(
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError:
-        payload = {"ok": True, "rawOutput": stdout}
+        return {
+            "ok": False,
+            "error": "orc_hive_signal_invalid_json",
+            "returnCode": result.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "secretPrinted": False,
+        }
     if isinstance(payload, dict):
         payload.setdefault("secretPrinted", False)
         payload.setdefault("command", " ".join(command))

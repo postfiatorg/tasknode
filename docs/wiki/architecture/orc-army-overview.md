@@ -241,7 +241,9 @@ controls, not trust in one pane:
   `chatMessageId` in `orc_task_review_states.metadata_json` only after the
   direct Hive signal is verified visible in Hive Chat, then appends a
   `signal_user` row to `orc_work_journal` for the status page and operator
-  audit trail.
+  audit trail. The Python signal wrapper also fails closed on malformed stdout
+  from the Node delivery script, so a process exit alone cannot be treated as a
+  sent user message.
 - **Reserved actions:** bans, Sybil labels on live accounts, deploys, economic
   policy, reward changes, public-chain flags, and secrets remain outside Orc
   authority.
