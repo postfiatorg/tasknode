@@ -21,7 +21,7 @@ const agentSession = {
 };
 const agentPayload = {
   agentHandle: "grashnuk",
-  walletAddress: "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW",
+  walletAddress: "rSpoofedPayloadWallet",
 };
 const agentOrigin = agentOriginForTaskSession(
   agentSession,

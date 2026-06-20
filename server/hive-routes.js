@@ -422,7 +422,8 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       json(res, result.ok ? 200 : result.status || 400, result);
       return true;
     }
-    const agentOrigin = agentOriginForWalletSession(session, payload);
+    const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
+    const agentOrigin = agentOriginForWalletSession(session, payload, linkedWallet?.address || "");
     const rateLimit = await checkAgentHiveChatRateLimit(agentOrigin);
     if (!rateLimit.ok) {
       json(res, 429, {

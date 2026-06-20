@@ -39,10 +39,19 @@ globalThis.fetch = async (url, options = {}) => {
 };
 
 try {
+  const { agentOriginForWalletSession } = await import("../server/agent-origin.js");
   const { chatSend } = await import("../server/product-contracts.js");
   const { appendUsageCredit, getChatMessages } = await import("../server/repositories/chat-billing.js");
 
   const accountId = "acct_agent_chat_origin_smoke";
+  const boundOrigin = agentOriginForWalletSession(
+    { accountId, primaryProvider: "wallet" },
+    { agentHandle: "grashnuk", walletAddress: "rSpoofedPayloadWallet" },
+    "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW"
+  );
+  assert.equal(boundOrigin.walletAddress, "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW");
+  assert.equal(boundOrigin.agentHandle, "grashnuk");
+
   await appendUsageCredit({
     accountId,
     amountUsd: 5,
