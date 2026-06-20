@@ -348,17 +348,31 @@ export async function sendOrcHiveFollowup({
       result: actionResult,
     };
   }
+  const deliveredChatMessageId = safeId(actionResult.chatMessageId);
+  const deliveredConversationId = safeId(actionResult.conversationId || target.conversationId);
+  if (!deliveredChatMessageId || !deliveredConversationId) {
+    return {
+      ...baseResult,
+      ok: false,
+      dryRun: false,
+      executed: false,
+      skipped: false,
+      error: "orc_hive_followup_delivery_contract_incomplete",
+      result: actionResult,
+    };
+  }
 
   return {
     ...baseResult,
+    conversationId: deliveredConversationId,
     dryRun: false,
     executed: true,
     boardManagerMessageId: actionResult.messageId || "",
-    chatMessageId: actionResult.chatMessageId || "",
+    chatMessageId: deliveredChatMessageId,
     followupId: actionResult.followupId || "",
     result: {
       accountId: actionResult.accountId || target.accountId,
-      conversationId: actionResult.conversationId || target.conversationId,
+      conversationId: deliveredConversationId,
       projectId: actionResult.projectId || "",
       messagePreview: actionResult.messagePreview || messagePreview(normalizedMessage),
     },
@@ -386,7 +400,7 @@ function printResult(result, { json = false } = {}) {
   }
   console.log(
     result.executed
-      ? `Verified Orc Hive follow-up to ${result.accountId} (${result.chatMessageId || "message queued"})`
+      ? `Verified Orc Hive follow-up to ${result.accountId} (${result.chatMessageId})`
       : `Dry-run Orc Hive follow-up to ${result.accountId} (${result.conversationId})`
   );
 }
