@@ -85,6 +85,9 @@ function collectLocalSeeds({ seedFile = "" } = {}) {
     });
   }
   readSeedFile(seedFile).forEach((seed) => values.push({ source: "seed_file", seed }));
+  if (!values.length) {
+    values.push({ source: "generated_fixture_seed", seed: Wallet.generate().seed });
+  }
   return values;
 }
 
