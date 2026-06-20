@@ -755,6 +755,101 @@ function publicSubmissionSummaries(metadata = {}) {
     .slice(0, 6);
 }
 
+function publicEvidenceArtifactRefs(payload = {}, event = {}) {
+  const evidence = safeObject(payload.evidence || payload.submission || payload.response);
+  const items = [
+    ...safeArray(payload.evidence_items),
+    ...safeArray(payload.evidenceItems),
+    ...safeArray(evidence.evidence_items),
+    ...safeArray(evidence.evidenceItems),
+    ...safeArray(payload.artifacts),
+    ...safeArray(evidence.artifacts),
+  ];
+  const refs = [];
+  for (const item of items.slice(0, 8)) {
+    const artifact = safeObject(item);
+    const file = safeObject(artifact.file);
+    const ref = {
+      type: publicSummaryText(artifact.artifact_type || artifact.artifactType || artifact.type || artifact.method || "artifact", 80),
+      label: publicSummaryText(artifact.label || artifact.title || file.name || artifact.fileName || artifact.filename || "", 180),
+      url: publicSummaryText(artifact.url || artifact.href || artifact.link || "", 600),
+      cid: publicSummaryText(artifact.cid || artifact.ipfsCid || artifact.ipfs_cid || "", 240),
+      txHash: publicSummaryText(artifact.txHash || artifact.tx_hash || "", 240),
+    };
+    if (ref.type || ref.label || ref.url || ref.cid || ref.txHash) refs.push(ref);
+  }
+  const eventCid = publicSummaryText(event.cid, 240);
+  const eventTxHash = publicSummaryText(event.txHash, 240);
+  if (eventCid || eventTxHash) {
+    refs.push({
+      type: "pftl_event",
+      label: "Published evidence pointer",
+      url: "",
+      cid: eventCid,
+      txHash: eventTxHash,
+    });
+  }
+  const seen = new Set();
+  return refs.filter((ref) => {
+    const key = [ref.type, ref.label, ref.url, ref.cid, ref.txHash].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 8);
+}
+
+function publicEvidenceExcerpt(payload = {}, schema = "") {
+  const evidence = safeObject(payload.evidence || payload.submission || payload.response);
+  const candidates = [
+    payload.public_summary,
+    payload.publicSummary,
+    payload.evidence_summary,
+    payload.evidenceSummary,
+    payload.summary,
+    payload.description,
+    payload.notes,
+    evidence.public_summary,
+    evidence.publicSummary,
+    evidence.summary,
+    evidence.description,
+    evidence.notes,
+  ];
+  if (safeText(schema, 160) === "pf.task.verification_response.v1") {
+    candidates.push(payload.response_summary, payload.responseSummary, payload.response, evidence.response_summary, evidence.responseSummary);
+  }
+  return publicSummaryText(candidates.find((candidate) => publicSummaryText(candidate, 900)) || "", 900);
+}
+
+function publicEvidenceRows(timeline = []) {
+  return safeArray(timeline)
+    .filter((event) => ["pf.task.submission.v1", "pf.task.verification_response.v1"].includes(safeText(event.schema, 160)))
+    .map((event) => {
+      const payload = safeObject(event.rawPayload);
+      const schema = safeText(event.schema, 160);
+      const artifactRefs = publicEvidenceArtifactRefs(payload, event);
+      return {
+        type: schema === "pf.task.verification_response.v1" ? "Verification response" : "Submission",
+        schema,
+        excerpt: publicEvidenceExcerpt(payload, schema),
+        artifactRefs,
+        time: toIso(event.observedAt),
+        cid: publicSummaryText(event.cid, 240),
+        txHash: publicSummaryText(event.txHash, 240),
+        privateContentHidden: Boolean(
+          payload.encrypted ||
+          payload.encrypted_payload ||
+          payload.encryptedPayload ||
+          payload.ciphertext ||
+          payload.private ||
+          payload.raw ||
+          payload.file
+        ),
+      };
+    })
+    .filter((item) => item.excerpt || item.artifactRefs.length || item.cid || item.txHash)
+    .slice(0, 8);
+}
+
 function publicTimelineRows(rows = []) {
   return safeArray(rows)
     .map((row, index) => publicReducerEvent(row, index))
@@ -1051,6 +1146,18 @@ export const publicHiveTaskDetailFields = [
   "task.project.type",
   "review.submissions[].type",
   "review.submissions[].summary",
+  "review.evidence[].type",
+  "review.evidence[].schema",
+  "review.evidence[].excerpt",
+  "review.evidence[].artifactRefs[].type",
+  "review.evidence[].artifactRefs[].label",
+  "review.evidence[].artifactRefs[].url",
+  "review.evidence[].artifactRefs[].cid",
+  "review.evidence[].artifactRefs[].txHash",
+  "review.evidence[].time",
+  "review.evidence[].cid",
+  "review.evidence[].txHash",
+  "review.evidence[].privateContentHidden",
   "review.verification.request",
   "review.verification.response",
   "review.outcome.decision",
@@ -1215,6 +1322,7 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
   enrichTaskWithWalletIdentity(task, await publicWalletIdentityForWallet(task.assignee, task.assigneeAccountId));
   const metadata = safeObject(row.metadata_json);
   const submissions = publicSubmissionSummaries(metadata);
+  const evidence = publicEvidenceRows(timeline);
   const verification = publicVerificationSummary(timeline) || { request: "", response: "" };
   const outcome = publicRewardOutcome(taskRewardOutcome({
     offeredPft: row.reward_offer_pft,
@@ -1233,6 +1341,7 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
     task,
     review: {
       submissions,
+      evidence,
       verification,
       outcome,
     },

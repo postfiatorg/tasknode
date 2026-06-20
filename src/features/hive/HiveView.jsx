@@ -994,10 +994,12 @@ function mergeHiveTaskDetail(initialTask = {}, detailBody = null) {
 function hasReviewContent(review = null) {
   if (!review) return false;
   const submissions = Array.isArray(review.submissions) ? review.submissions : [];
+  const evidence = Array.isArray(review.evidence) ? review.evidence : [];
   const verification = review.verification || {};
   const outcome = review.outcome || {};
   return Boolean(
     submissions.length ||
+    evidence.length ||
     verification.request ||
     verification.response ||
     outcome.decision ||
@@ -1065,6 +1067,7 @@ function HiveTaskPopout({ initialTask, onClose }) {
     : {};
   const review = task.review || null;
   const submissions = Array.isArray(review?.submissions) ? review.submissions : [];
+  const evidence = Array.isArray(review?.evidence) ? review.evidence : [];
   const evaluationPackets = Array.isArray(task.evaluationPackets) ? task.evaluationPackets : [];
   const verification = review?.verification || {};
   const outcome = review?.outcome || {};
@@ -1186,6 +1189,26 @@ function HiveTaskPopout({ initialTask, onClose }) {
                   <div className="htp-review-row" key={`${submission.type || "submission"}-${index}`}>
                     <span className="htp-review-tag">{submission.type || "Submission"}</span>
                     <p>{submission.summary}</p>
+                  </div>
+                ))}
+                {evidence.map((item, index) => (
+                  <div className="htp-review-row" key={`${item.schema || item.type || "evidence"}-${item.cid || item.txHash || index}`}>
+                    <span className="htp-review-tag">{item.type || "Evidence"}</span>
+                    {item.excerpt && <p>{item.excerpt}</p>}
+                    {item.privateContentHidden && <p className="htp-review-note">Private or encrypted content hidden.</p>}
+                    {Array.isArray(item.artifactRefs) && item.artifactRefs.length > 0 && (
+                      <div className="htp-review-artifacts">
+                        {item.artifactRefs.slice(0, 5).map((artifact, artifactIndex) => (
+                          <code key={`${artifact.type || "artifact"}-${artifact.cid || artifact.txHash || artifact.url || artifactIndex}`}>
+                            {artifact.type || "artifact"}
+                            {artifact.label ? ` · ${artifact.label}` : ""}
+                            {artifact.url ? ` · ${shortPublicReference(artifact.url)}` : ""}
+                            {artifact.cid ? ` · cid ${shortPublicReference(artifact.cid)}` : ""}
+                            {artifact.txHash ? ` · tx ${shortPublicReference(artifact.txHash)}` : ""}
+                          </code>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
                 {(verification.request || verification.response) && (
