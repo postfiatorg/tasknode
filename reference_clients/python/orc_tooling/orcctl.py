@@ -154,6 +154,28 @@ def append_run_journal(
     return row
 
 
+def _safe_append_run_journal(**kwargs: Any) -> dict[str, Any]:
+    try:
+        return append_run_journal(**kwargs)
+    except Exception as exc:
+        return redact_secrets({
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "command": _safe_text(kwargs.get("command"), 120),
+            "phase": _safe_text(kwargs.get("phase"), 120),
+            "status": _safe_text(kwargs.get("status"), 120),
+            "runId": _safe_text(kwargs.get("run_id") or kwargs.get("runId"), 180),
+            "taskId": _safe_text(kwargs.get("task_id") or kwargs.get("taskId"), 180),
+            "secretPrinted": False,
+        })
+
+
+def _attach_run_journal_error(payload: dict[str, Any], journal: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(journal, dict) and journal.get("ok") is False:
+        payload["runJournal"] = journal
+    return payload
+
+
 def _jsonb_literal(value: dict[str, Any] | None) -> str:
     return sql_literal(json.dumps(value if value is not None else {}, sort_keys=True)) + "::jsonb"
 
@@ -1318,7 +1340,7 @@ def task_accept(
     database_url: str | None = None,
 ) -> dict[str, Any]:
     current_run_id = run_id or f"orcrun_{uuid4()}"
-    append_run_journal(
+    _safe_append_run_journal(
         command="task.accept",
         phase="accept",
         status="started",
@@ -1331,7 +1353,7 @@ def task_accept(
         active_client.login()
         result = active_client.accept_task(task_id, reason=reason or "Accepted by Orc operator tooling.", submit=True)
         summary = _signed_flow_summary(result, task_id=task_id, action="accept")
-        append_run_journal(
+        run_journal = _safe_append_run_journal(
             command="task.accept",
             phase="accept",
             status="completed",
@@ -1351,9 +1373,9 @@ def task_accept(
             run_id=current_run_id,
             database_url=database_url,
         )
-        return summary
+        return _attach_run_journal_error(summary, run_journal)
     except Exception as exc:
-        append_run_journal(
+        _safe_append_run_journal(
             command="task.accept",
             phase="accept",
             status="failed",
@@ -1378,7 +1400,7 @@ def task_submit(
     if not _safe_text(evidence_text, 1_000_000):
         raise ValueError("evidence text is required")
     current_run_id = run_id or f"orcrun_{uuid4()}"
-    append_run_journal(
+    _safe_append_run_journal(
         command="task.submit",
         phase="submit",
         status="started",
@@ -1391,7 +1413,7 @@ def task_submit(
         active_client.login()
         result = active_client.submit_evidence(task_id, evidence_text=evidence_text, notes=notes, submit=True)
         summary = _signed_flow_summary(result, task_id=task_id, action="submit")
-        append_run_journal(
+        run_journal = _safe_append_run_journal(
             command="task.submit",
             phase="submit",
             status="completed",
@@ -1411,9 +1433,9 @@ def task_submit(
             run_id=current_run_id,
             database_url=database_url,
         )
-        return summary
+        return _attach_run_journal_error(summary, run_journal)
     except Exception as exc:
-        append_run_journal(
+        _safe_append_run_journal(
             command="task.submit",
             phase="submit",
             status="failed",
@@ -1438,7 +1460,7 @@ def task_respond(
     if not _safe_text(response_text, 1_000_000):
         raise ValueError("verification response text is required")
     current_run_id = run_id or f"orcrun_{uuid4()}"
-    append_run_journal(
+    _safe_append_run_journal(
         command="task.respond",
         phase="respond",
         status="started",
@@ -1451,7 +1473,7 @@ def task_respond(
         active_client.login()
         result = active_client.respond_verification(task_id, response_text=response_text, notes=notes, submit=True)
         summary = _signed_flow_summary(result, task_id=task_id, action="respond")
-        append_run_journal(
+        run_journal = _safe_append_run_journal(
             command="task.respond",
             phase="respond",
             status="completed",
@@ -1471,9 +1493,9 @@ def task_respond(
             run_id=current_run_id,
             database_url=database_url,
         )
-        return summary
+        return _attach_run_journal_error(summary, run_journal)
     except Exception as exc:
-        append_run_journal(
+        _safe_append_run_journal(
             command="task.respond",
             phase="respond",
             status="failed",
@@ -1976,7 +1998,7 @@ def self_cycle(
 ) -> dict[str, Any]:
     run_id = f"orcrun_{uuid4()}"
     active_client = client or build_client(agent=agent)
-    append_run_journal(
+    _safe_append_run_journal(
         command="self-cycle",
         phase="start",
         status="started",
@@ -2028,7 +2050,7 @@ def self_cycle(
                 "actions": actions,
                 "secretPrinted": False,
             }
-            append_run_journal(
+            run_journal = _safe_append_run_journal(
                 command="self-cycle",
                 phase="finish",
                 status="completed",
@@ -2038,6 +2060,7 @@ def self_cycle(
                 metadata={"outcome": outcome},
                 journal_path=journal_path,
             )
+            _attach_run_journal_error(payload, run_journal)
             return redact_secrets(payload)
 
         for source_index in range(2 if source == "auto" else 1):
@@ -2071,7 +2094,7 @@ def self_cycle(
                 "actions": [],
                 "secretPrinted": False,
             }
-            append_run_journal(
+            run_journal = _safe_append_run_journal(
                 command="self-cycle",
                 phase="finish",
                 status="idle",
@@ -2079,6 +2102,7 @@ def self_cycle(
                 metadata={"outcome": "idle_no_work"},
                 journal_path=journal_path,
             )
+            _attach_run_journal_error(payload, run_journal)
             return redact_secrets(payload)
 
         triage = _safe_dict(selected.get("triage"))
@@ -2130,7 +2154,7 @@ def self_cycle(
             **result,
             "secretPrinted": False,
         }
-        append_run_journal(
+        run_journal = _safe_append_run_journal(
             command="self-cycle",
             phase="finish",
             status="completed",
@@ -2139,9 +2163,10 @@ def self_cycle(
             metadata={"outcome": payload.get("outcome"), "decision": decision},
             journal_path=journal_path,
         )
+        _attach_run_journal_error(payload, run_journal)
         return redact_secrets(payload)
     except Exception as exc:
-        append_run_journal(
+        _safe_append_run_journal(
             command="self-cycle",
             phase="finish",
             status="failed",
@@ -2196,7 +2221,7 @@ def run_personal_task(
     run_id = f"orcrun_{uuid4()}"
     active_client = client or build_client()
     active_client.login()
-    append_run_journal(
+    _safe_append_run_journal(
         command="run-personal-task",
         phase="start",
         status="started",
@@ -2243,7 +2268,7 @@ def run_personal_task(
             database_url=database_url,
         ))
         detail = task_observe(task_id, client=active_client)
-    append_run_journal(
+    run_journal = _safe_append_run_journal(
         command="run-personal-task",
         phase="finish",
         status="completed",
@@ -2252,7 +2277,7 @@ def run_personal_task(
         metadata={"resultCount": len(results), "finalStatus": _safe_dict(detail.get("task")).get("status")},
         journal_path=journal_path,
     )
-    return redact_secrets({
+    payload = {
         "ok": True,
         "runId": run_id,
         "taskId": task_id,
@@ -2260,7 +2285,9 @@ def run_personal_task(
         "finalStatus": _safe_dict(detail.get("task")).get("status"),
         "rewardOutcome": detail.get("rewardOutcome"),
         "secretPrinted": False,
-    })
+    }
+    _attach_run_journal_error(payload, run_journal)
+    return redact_secrets(payload)
 
 
 def _read_text_arg(*, text: str = "", path: str = "") -> str:
