@@ -5,6 +5,8 @@
 > orcs (Codex CLI in tmux) execute against it. Referenced by the Nazgûl
 > scheduler tick.
 
+For the Help-facing operator overview, see [Orc Operator Runtime](#docs/orc-operator-runtime).
+
 ## Mission
 
 An **army of orcs** works the Task Node ecosystem continuously. Four objectives,

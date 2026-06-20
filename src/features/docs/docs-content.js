@@ -41,6 +41,8 @@ import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import networkTaskRecovery from "../../../docs/wiki/architecture/network-task-recovery.md?raw";
 import networkTaskGenerationWorker from "../../../docs/wiki/architecture/network-task-generation-worker.md?raw";
 import networkTaskProfileWorker from "../../../docs/wiki/architecture/network-task-profile-worker.md?raw";
+import orcArmyOverview from "../../../docs/wiki/architecture/orc-army-overview.md?raw";
+import orcOperatorRuntime from "../../../docs/wiki/architecture/orc-operator-runtime.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import pftlArchiveWalletSync from "../../../docs/wiki/architecture/pftl-archive-wallet-sync.md?raw";
 import pftlCacheReducer from "../../../docs/wiki/architecture/pftl-cache-reducer.md?raw";
@@ -597,6 +599,12 @@ export const SYSTEM_STATUS_DOC_LINKS = {
     label: "Docs: Profile",
   },
   daily_airdrop_worker: { slug: "daily-airdrop", label: "Docs: Daily Airdrop" },
+  agent_activity: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
+  orc_agents: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
+  orc_activity: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
+  orc_runtime_directives: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
+  orc_review_queue: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
+  orc_task_review_queue: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
 };
 
 export const DOC_GROUPS = [
@@ -694,6 +702,18 @@ export const DOC_GROUPS = [
         title: "Hive & Board Operations",
         summary: "Board Manager, secretary packets, active projects, routing, and network-task recovery.",
         markdown: hiveOperationsDoc,
+      },
+      {
+        slug: "orc-operator-runtime",
+        title: "Orc Operator Runtime",
+        summary: "Codex Orc operators, Nazgul oversight, shared review state, triage labels, evidence rules, and guardrails.",
+        markdown: orcOperatorRuntime,
+      },
+      {
+        slug: "orc-army-overview",
+        title: "Orc Army And On-Chain Agent Overview",
+        summary: "Full Orc, Nazgul, on-chain agent, runtime queue, Board Manager, and observability architecture map.",
+        markdown: orcArmyOverview,
       },
     ],
   },

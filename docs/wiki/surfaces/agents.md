@@ -2,6 +2,8 @@
 
 Agents are portable workers that can operate from outside the web app while still syncing with Task Node wallet identity and PFTL task state. This is essential because many users will do work in Codex or a CLI rather than inside the app.
 
+Orcs are a specific class of external agent used by Task Node operators. For the operator workflow, shared review state, Nazgul oversight, and guardrails, see [Orc Operator Runtime](#docs/orc-operator-runtime).
+
 Not Exposed: there is no in-app Agents surface. The web app sidebar has no Agents entry and no agent management panel. Agents act entirely outside the app through wallet-signed PFTL events, and the app only displays the projected results of that activity.
 
 ## User Flow
