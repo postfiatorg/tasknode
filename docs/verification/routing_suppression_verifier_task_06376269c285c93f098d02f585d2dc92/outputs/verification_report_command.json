@@ -1,0 +1,402 @@
+{
+  "schema": "pf.orc.routing_suppression_enforcement_verification.v1",
+  "generatedAt": "2026-06-20T04:50:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "verification_only_no_enforcement",
+  "readOnly": true,
+  "wouldMutateLiveRouting": false,
+  "wouldMoveFunds": false,
+  "wouldBanAccounts": false,
+  "wouldDeploy": false,
+  "note": "Verification report only. It detects routing-suppression status and possible violations; it does not execute enforcement.",
+  "sourceConfig": {
+    "schema": "pf.orc.contributor_routing_suppression_config.v1",
+    "generatedAt": "2026-06-20T04:00:00.000Z",
+    "generatedBy": "grashnuk",
+    "mode": "recommend_only_no_enforcement",
+    "dryRunOnly": true,
+    "operationalUseAllowed": false,
+    "entryCount": 5
+  },
+  "sourceAllocations": {
+    "schema": "pf.orc.routing_suppression_allocation_sample.v1",
+    "generatedAt": "2026-06-20T04:30:00.000Z",
+    "allocationCount": 6
+  },
+  "rules": {
+    "suppressionEffectiveAt": "entry.suppressionEffectiveAt || config.generatedAt || entry.sourceReportGeneratedAt",
+    "activeAllocationStatuses": [
+      "accepted",
+      "assigned",
+      "awaiting_review",
+      "proposed",
+      "rewarded",
+      "submitted",
+      "verification_requested"
+    ],
+    "blockedAllocationStatuses": [
+      "blocked",
+      "rejected_by_routing_gate",
+      "suppressed"
+    ],
+    "violatedDefinition": "Any active allocation with allocatedAt >= suppressionEffectiveAt.",
+    "enforcedDefinition": "Matching allocation evidence exists and no active post-suppression allocation exists.",
+    "notTestedDefinition": "No matching allocation evidence exists for the suppressed contributor."
+  },
+  "summary": {
+    "suppressedContributors": 5,
+    "allocationRecords": 6,
+    "enforced": 3,
+    "violated": 1,
+    "notTested": 1,
+    "nonSuppressedAllocationRecords": 1,
+    "violationContributorHandles": [
+      "clusterwallet"
+    ]
+  },
+  "contributors": [
+    {
+      "contributorKey": "rClusterWallet6666666666666666666",
+      "walletAddress": "rClusterWallet6666666666666666666",
+      "accountId": "acct_cluster_wallet",
+      "handle": "clusterwallet",
+      "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "suppressionReason": "quality_threshold_failures:repeated_unverifiable_submissions,consecutive_unverifiable_submissions,low_verified_to_total_ratio",
+      "sourceRecommendation": "routing_review_recommended",
+      "status": "violated",
+      "finding": "Suppressed contributor received at least one active allocation at or after the suppression effective timestamp.",
+      "qualityMetrics": {
+        "total": 6,
+        "verified": 1,
+        "unverifiable": 5,
+        "selfAttested": 0,
+        "refused": 0,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0.1667,
+        "refusalCountWindow": 0,
+        "maxConsecutiveUnverifiable": 3
+      },
+      "thresholdFailureRules": [
+        "repeated_unverifiable_submissions",
+        "consecutive_unverifiable_submissions",
+        "low_verified_to_total_ratio"
+      ],
+      "allocationCounts": {
+        "totalMatched": 1,
+        "preSuppression": 0,
+        "postSuppression": 1,
+        "activePostSuppression": 1,
+        "blockedPostSuppression": 0
+      },
+      "activePostSuppressionAllocations": [
+        {
+          "allocationId": "netalloc_clusterwallet_violation",
+          "taskId": "task_cluster_wallet_new_001",
+          "title": "Post-suppression allocation violation",
+          "walletAddress": "rClusterWallet6666666666666666666",
+          "accountId": "acct_cluster_wallet",
+          "handle": "clusterwallet",
+          "status": "proposed",
+          "allocatedAt": "2026-06-20T04:20:00.000Z",
+          "routingDecision": "allocated",
+          "source": "mock_board_state"
+        }
+      ],
+      "blockedPostSuppressionAllocations": [],
+      "preSuppressionAllocations": [],
+      "allMatchedAllocations": [
+        {
+          "allocationId": "netalloc_clusterwallet_violation",
+          "taskId": "task_cluster_wallet_new_001",
+          "title": "Post-suppression allocation violation",
+          "walletAddress": "rClusterWallet6666666666666666666",
+          "accountId": "acct_cluster_wallet",
+          "handle": "clusterwallet",
+          "status": "proposed",
+          "allocatedAt": "2026-06-20T04:20:00.000Z",
+          "routingDecision": "allocated",
+          "source": "mock_board_state"
+        }
+      ],
+      "recommendedAction": "Escalate to human operator for routing investigation; do not auto-enforce."
+    },
+    {
+      "contributorKey": "rLowQuality333333333333333333333",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "accountId": "acct_low_quality",
+      "handle": "lowquality",
+      "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "suppressionReason": "quality_threshold_failures:repeated_unverifiable_submissions,consecutive_unverifiable_submissions,low_verified_to_total_ratio",
+      "sourceRecommendation": "routing_review_recommended",
+      "status": "enforced",
+      "finding": "No active post-suppression allocations were found for this suppressed contributor.",
+      "qualityMetrics": {
+        "total": 5,
+        "verified": 1,
+        "unverifiable": 4,
+        "selfAttested": 0,
+        "refused": 0,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0.2,
+        "refusalCountWindow": 0,
+        "maxConsecutiveUnverifiable": 4
+      },
+      "thresholdFailureRules": [
+        "repeated_unverifiable_submissions",
+        "consecutive_unverifiable_submissions",
+        "low_verified_to_total_ratio"
+      ],
+      "allocationCounts": {
+        "totalMatched": 2,
+        "preSuppression": 1,
+        "postSuppression": 1,
+        "activePostSuppression": 0,
+        "blockedPostSuppression": 1
+      },
+      "activePostSuppressionAllocations": [],
+      "blockedPostSuppressionAllocations": [
+        {
+          "allocationId": "netalloc_low_quality_blocked",
+          "taskId": "task_low_quality_blocked_001",
+          "title": "Post-suppression allocation attempt blocked",
+          "walletAddress": "rLowQuality333333333333333333333",
+          "accountId": "acct_low_quality",
+          "handle": "lowquality",
+          "status": "blocked",
+          "allocatedAt": "2026-06-20T04:35:00.000Z",
+          "routingDecision": "suppressed",
+          "source": "mock_board_state"
+        }
+      ],
+      "preSuppressionAllocations": [
+        {
+          "allocationId": "netalloc_low_quality_pre_suppression",
+          "taskId": "task_low_quality_pre_001",
+          "title": "Pre-suppression historical allocation",
+          "walletAddress": "rLowQuality333333333333333333333",
+          "accountId": "acct_low_quality",
+          "handle": "lowquality",
+          "status": "rewarded",
+          "allocatedAt": "2026-06-19T18:00:00.000Z",
+          "routingDecision": "allocated_before_suppression",
+          "source": "mock_board_state"
+        }
+      ],
+      "allMatchedAllocations": [
+        {
+          "allocationId": "netalloc_low_quality_pre_suppression",
+          "taskId": "task_low_quality_pre_001",
+          "title": "Pre-suppression historical allocation",
+          "walletAddress": "rLowQuality333333333333333333333",
+          "accountId": "acct_low_quality",
+          "handle": "lowquality",
+          "status": "rewarded",
+          "allocatedAt": "2026-06-19T18:00:00.000Z",
+          "routingDecision": "allocated_before_suppression",
+          "source": "mock_board_state"
+        },
+        {
+          "allocationId": "netalloc_low_quality_blocked",
+          "taskId": "task_low_quality_blocked_001",
+          "title": "Post-suppression allocation attempt blocked",
+          "walletAddress": "rLowQuality333333333333333333333",
+          "accountId": "acct_low_quality",
+          "handle": "lowquality",
+          "status": "blocked",
+          "allocatedAt": "2026-06-20T04:35:00.000Z",
+          "routingDecision": "suppressed",
+          "source": "mock_board_state"
+        }
+      ],
+      "recommendedAction": "No follow-up needed unless live data changes."
+    },
+    {
+      "contributorKey": "rRefusedOperator4444444444444444",
+      "walletAddress": "rRefusedOperator4444444444444444",
+      "accountId": "acct_refused_operator",
+      "handle": "refusedoperator",
+      "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "suppressionReason": "quality_threshold_failures:recent_refusals",
+      "sourceRecommendation": "routing_review_recommended",
+      "status": "enforced",
+      "finding": "No active post-suppression allocations were found for this suppressed contributor.",
+      "qualityMetrics": {
+        "total": 3,
+        "verified": 1,
+        "unverifiable": 0,
+        "selfAttested": 0,
+        "refused": 2,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0.3333,
+        "refusalCountWindow": 2,
+        "maxConsecutiveUnverifiable": 0
+      },
+      "thresholdFailureRules": [
+        "recent_refusals"
+      ],
+      "allocationCounts": {
+        "totalMatched": 1,
+        "preSuppression": 1,
+        "postSuppression": 0,
+        "activePostSuppression": 0,
+        "blockedPostSuppression": 0
+      },
+      "activePostSuppressionAllocations": [],
+      "blockedPostSuppressionAllocations": [],
+      "preSuppressionAllocations": [
+        {
+          "allocationId": "netalloc_refusedoperator_pre_suppression",
+          "taskId": "task_refused_pre_001",
+          "title": "Only historical allocation before suppression",
+          "walletAddress": "rRefusedOperator4444444444444444",
+          "accountId": "acct_refused_operator",
+          "handle": "refusedoperator",
+          "status": "accepted",
+          "allocatedAt": "2026-06-19T23:55:00.000Z",
+          "routingDecision": "allocated_before_suppression",
+          "source": "mock_board_state"
+        }
+      ],
+      "allMatchedAllocations": [
+        {
+          "allocationId": "netalloc_refusedoperator_pre_suppression",
+          "taskId": "task_refused_pre_001",
+          "title": "Only historical allocation before suppression",
+          "walletAddress": "rRefusedOperator4444444444444444",
+          "accountId": "acct_refused_operator",
+          "handle": "refusedoperator",
+          "status": "accepted",
+          "allocatedAt": "2026-06-19T23:55:00.000Z",
+          "routingDecision": "allocated_before_suppression",
+          "source": "mock_board_state"
+        }
+      ],
+      "recommendedAction": "No follow-up needed unless live data changes."
+    },
+    {
+      "contributorKey": "rSelfAttested7777777777777777777",
+      "walletAddress": "rSelfAttested7777777777777777777",
+      "accountId": "acct_self_attested",
+      "handle": "selfattested",
+      "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "suppressionReason": "quality_threshold_failures:self_attested_only_pattern",
+      "sourceRecommendation": "routing_review_recommended",
+      "status": "not_tested",
+      "finding": "No matching allocation records were present for this suppressed contributor.",
+      "qualityMetrics": {
+        "total": 4,
+        "verified": 0,
+        "unverifiable": 0,
+        "selfAttested": 4,
+        "refused": 0,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0,
+        "refusalCountWindow": 0,
+        "maxConsecutiveUnverifiable": 0
+      },
+      "thresholdFailureRules": [
+        "self_attested_only_pattern"
+      ],
+      "allocationCounts": {
+        "totalMatched": 0,
+        "preSuppression": 0,
+        "postSuppression": 0,
+        "activePostSuppression": 0,
+        "blockedPostSuppression": 0
+      },
+      "activePostSuppressionAllocations": [],
+      "blockedPostSuppressionAllocations": [],
+      "preSuppressionAllocations": [],
+      "allMatchedAllocations": [],
+      "recommendedAction": "Add live board allocation data before making an enforcement claim."
+    },
+    {
+      "contributorKey": "rThinReview555555555555555555555",
+      "walletAddress": "rThinReview555555555555555555555",
+      "accountId": "acct_thin_review",
+      "handle": "thinreviewer",
+      "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
+      "expiresAt": "2026-07-04T04:00:00.000Z",
+      "suppressionReason": "quality_threshold_failures:repeated_unverifiable_submissions,low_verified_to_total_ratio",
+      "sourceRecommendation": "routing_review_recommended",
+      "status": "enforced",
+      "finding": "No active post-suppression allocations were found for this suppressed contributor.",
+      "qualityMetrics": {
+        "total": 4,
+        "verified": 0,
+        "unverifiable": 3,
+        "selfAttested": 1,
+        "refused": 0,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0,
+        "refusalCountWindow": 0,
+        "maxConsecutiveUnverifiable": 3
+      },
+      "thresholdFailureRules": [
+        "repeated_unverifiable_submissions",
+        "low_verified_to_total_ratio"
+      ],
+      "allocationCounts": {
+        "totalMatched": 1,
+        "preSuppression": 0,
+        "postSuppression": 1,
+        "activePostSuppression": 0,
+        "blockedPostSuppression": 1
+      },
+      "activePostSuppressionAllocations": [],
+      "blockedPostSuppressionAllocations": [
+        {
+          "allocationId": "netalloc_thinreviewer_suppressed",
+          "taskId": "task_thin_review_suppressed_001",
+          "title": "Post-suppression allocation attempt suppressed",
+          "walletAddress": "rThinReview555555555555555555555",
+          "accountId": "acct_thin_review",
+          "handle": "thinreviewer",
+          "status": "suppressed",
+          "allocatedAt": "2026-06-20T04:40:00.000Z",
+          "routingDecision": "suppressed",
+          "source": "mock_board_state"
+        }
+      ],
+      "preSuppressionAllocations": [],
+      "allMatchedAllocations": [
+        {
+          "allocationId": "netalloc_thinreviewer_suppressed",
+          "taskId": "task_thin_review_suppressed_001",
+          "title": "Post-suppression allocation attempt suppressed",
+          "walletAddress": "rThinReview555555555555555555555",
+          "accountId": "acct_thin_review",
+          "handle": "thinreviewer",
+          "status": "suppressed",
+          "allocatedAt": "2026-06-20T04:40:00.000Z",
+          "routingDecision": "suppressed",
+          "source": "mock_board_state"
+        }
+      ],
+      "recommendedAction": "No follow-up needed unless live data changes."
+    }
+  ],
+  "nonSuppressedAllocations": [
+    {
+      "allocationId": "netalloc_normal_operator",
+      "taskId": "task_normal_operator_001",
+      "title": "Normal unsuppressed contributor allocation",
+      "walletAddress": "rNormalOperator999999999999999999",
+      "accountId": "acct_normal_operator",
+      "handle": "normaloperator",
+      "status": "proposed",
+      "allocatedAt": "2026-06-20T04:45:00.000Z",
+      "routingDecision": "allocated",
+      "source": "mock_board_state"
+    }
+  ]
+}
