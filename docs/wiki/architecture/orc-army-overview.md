@@ -166,9 +166,10 @@ development only.
    still point back to the visible Hive message.
 7. `orc_work_journal` links assignment, follow-up, evidence CIDs/tx hashes,
    user signal status, and terminal outcome for later audit.
-   Post-action journal writes are best-effort after the underlying action or
-   review-state update succeeds; journal failures are returned in `workJournal`
-   instead of turning completed work into a retry trap.
+   Post-action and post-dispatch journal writes are best-effort after the
+   underlying action, operator interaction, or review-state update succeeds;
+   journal failures are returned in `workJournal` instead of turning completed
+   work into a retry trap.
 
 Important invariant:
 

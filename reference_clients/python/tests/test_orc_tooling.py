@@ -2869,6 +2869,52 @@ class OrcToolingTests(unittest.TestCase):
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS orc_work_journal" in sql for sql in calls))
         self.assertTrue(any("INSERT INTO orc_work_journal" in sql for sql in calls))
 
+    def test_record_operator_interaction_keeps_success_when_work_journal_fails(self):
+        calls = []
+
+        def fake_runner(command, **kwargs):
+            sql = command[-1]
+            calls.append(sql)
+            if "INSERT INTO orc_operator_interactions" in sql:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({
+                        "ok": True,
+                        "id": "orcint_unit",
+                        "orc_handle": "orc-alpha",
+                        "interaction_type": "dispatch",
+                        "status": "submitted",
+                        "secretPrinted": False,
+                    }),
+                    stderr="",
+                )
+            if "INSERT INTO orc_work_journal" in sql:
+                return SimpleNamespace(returncode=1, stdout="", stderr="work journal unavailable")
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"ok": True}), stderr="")
+
+        result = record_operator_interaction(
+            orc="orc-alpha",
+            interaction_type="dispatch",
+            directive="Review task_source.",
+            status="submitted",
+            metadata={
+                "sourceTaskId": "task_source",
+                "reviewDisposition": "not_reviewed",
+                "taskAction": "dispatch",
+            },
+            database_url="postgres://unit",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["id"], "orcint_unit")
+        self.assertEqual(result["workJournal"]["ok"], False)
+        self.assertEqual(result["workJournal"]["taskAction"], "dispatch")
+        self.assertEqual(result["workJournal"]["sourceTaskId"], "task_source")
+        self.assertIn("work journal unavailable", result["workJournal"]["error"])
+        self.assertTrue(any("INSERT INTO orc_operator_interactions" in sql for sql in calls))
+        self.assertTrue(any("INSERT INTO orc_work_journal" in sql for sql in calls))
+
     def test_redirect_orc_appends_work_journal_when_directive_names_source_task(self):
         calls = []
 

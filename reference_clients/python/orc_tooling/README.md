@@ -184,7 +184,9 @@ chip, then send Enter. `nazgul dispatch` pulls the next non-blocked
 message in the JSON output. When `redirect`, `dispatch`, `dispatch-runtime`, or
 `escalate` can identify a source `task_...`, they also append an idempotent
 linked row to `orc_work_journal`; `nazgul status` surfaces recent linked work
-beside the shared review queue.
+beside the shared review queue. If that trailing work-journal insert fails
+after the operator interaction was recorded, `nazgul` returns the journal error
+inside `workJournal` instead of failing the dispatch/redirect/escalation result.
 
 Phase 5 adds a durable runtime prototype that avoids tmux injection:
 
