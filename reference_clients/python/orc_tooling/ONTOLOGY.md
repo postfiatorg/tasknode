@@ -172,9 +172,12 @@ for local fallback only.
 Follow-up linkage lives in `orc_task_review_states.metadata_json`, not new
 canonical columns. `request-followup` writes `followup_request_id`, request
 CIDs/tx, `followup_task_id` when known, `followup_status`, and
-`user_signal_status`. Stale closeable follow-ups are actionable review states
-whose linked Personal follow-up task has reached `rewarded`, `refused`, or
-`cancelled`. `close-followup` then marks the source review
+`user_signal_status`. Active submitted/generated follow-up linkage is treated as
+idempotent: repeat `request-followup` calls return the existing request/task
+instead of creating duplicate Personal tasks. Preview-only linkage can still be
+replaced by a later submitted request. Stale closeable follow-ups are actionable
+review states whose linked Personal follow-up task has reached `rewarded`,
+`refused`, or `cancelled`. `close-followup` then marks the source review
 `reviewed_follow_up_completed` and records terminal status, reward tx/cid, user
 signal message id, and close time. A source review can also close with explicit
 `no_code_needed` proof, but it never closes at request time.
