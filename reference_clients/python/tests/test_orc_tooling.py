@@ -2704,6 +2704,23 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["stdout"], '["ok", true]')
         self.assertEqual(result["secretPrinted"], False)
 
+    def test_run_hive_followup_rejects_non_boolean_ok(self):
+        def fake_runner(command, **kwargs):
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"ok": "false", "dryRun": True}), stderr="")
+
+        result = run_hive_followup(
+            task_id="task_test",
+            message="Follow-up note.",
+            tasknode_repo="/repo/tasknodeofficial",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["error"], "orc_hive_followup_invalid_ok_type")
+        self.assertEqual(result["returnCode"], 0)
+        self.assertEqual(result["secretPrinted"], False)
+        self.assertNotIn("command", result)
+
     def test_build_hive_signal_command_uses_direct_signal_script(self):
         command = build_hive_signal_command(
             task_id="task_test",
@@ -2774,6 +2791,23 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["returnCode"], 0)
         self.assertEqual(result["stdout"], '"sent"')
         self.assertEqual(result["secretPrinted"], False)
+
+    def test_run_hive_signal_rejects_non_boolean_ok(self):
+        def fake_runner(command, **kwargs):
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"ok": "false", "chatMessageId": "msg_signal"}), stderr="")
+
+        result = run_hive_signal(
+            task_id="task_test",
+            message="Direct note.",
+            tasknode_repo="/repo/tasknodeofficial",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["error"], "orc_hive_signal_invalid_ok_type")
+        self.assertEqual(result["returnCode"], 0)
+        self.assertEqual(result["secretPrinted"], False)
+        self.assertNotIn("command", result)
 
     def test_signal_user_updates_review_state_after_verified_delivery(self):
         existing = {

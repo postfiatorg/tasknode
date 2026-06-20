@@ -425,9 +425,10 @@ by default, so they do not open a new Board Manager follow-up waiting on the
 user.
 
 The Python wrapper fails closed unless the Node script returns a valid JSON
-object. A zero-exit process with malformed stdout or non-object JSON returns
-`ok=false` and the CLI exits non-zero, so an Orc cannot claim a
-Board-Manager-routed message was sent without a parsed delivery contract.
+object with a boolean `ok`. A zero-exit process with malformed stdout,
+non-object JSON, or stringly `ok` returns `ok=false` and the CLI exits non-zero,
+so an Orc cannot claim a Board-Manager-routed message was sent without a parsed
+delivery contract.
 
 ## Send Direct Orc Hive Signals
 
@@ -452,6 +453,7 @@ returns the existing verified chat row instead of appending a duplicate Orc
 message.
 
 The Python wrapper fails closed unless the Node script returns a valid JSON
-object. A zero-exit process with malformed stdout or non-object JSON returns
-`ok=false` and the CLI exits non-zero, so an Orc cannot claim a direct message
-was sent without a parsed delivery contract.
+object with a boolean `ok`. A zero-exit process with malformed stdout,
+non-object JSON, or stringly `ok` returns `ok=false` and the CLI exits non-zero,
+so an Orc cannot claim a direct message was sent without a parsed delivery
+contract.
