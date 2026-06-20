@@ -2178,6 +2178,12 @@ button.hive-project-next-task:focus-visible {
   margin: 0;
 }
 
+.htp-review-row .htp-review-note {
+  color: var(--hive-muted);
+  font-size: 11.5px;
+  margin-top: 6px;
+}
+
 .htp-review-row.is-verify p {
   margin-top: 5px;
 }

@@ -213,6 +213,16 @@ const networkDetail = await getPublicHiveTaskDetail({
               schema: "pf.task.submission.v1",
               task_id: "task_hive_clickable_network",
               evidence_count: 1,
+              public_summary: "Submitted a public GitHub proof and a compact execution note.",
+              description: "raw submission description should stay private",
+              notes: "raw submission notes should stay private",
+              encrypted_payload: "private-ciphertext-redacted",
+              evidence_items: [{
+                artifact_type: "github_pr",
+                label: "postfiatorg/tasknodeofficial#1",
+                url: "https://github.com/postfiatorg/tasknodeofficial/pull/1",
+                cid: "bafybeihiveclickableartifact",
+              }],
             },
           },
           {
@@ -238,7 +248,12 @@ const networkDetail = await getPublicHiveTaskDetail({
             payload_json: {
               schema: "pf.task.verification_response.v1",
               task_id: "task_hive_clickable_network",
-              response: "The HiveTaskPopout opened read-only.",
+              response: "Raw verification response should not become an evidence excerpt.",
+              response_summary: "The HiveTaskPopout opened read-only.",
+              evidence_items: [{
+                artifact_type: "text",
+                label: "verification excerpt",
+              }],
             },
           },
           {
@@ -271,6 +286,20 @@ assert.equal(eventQueryCount, 1);
 assert.equal(packetQueryCount, 1);
 assert.equal(networkDetail.task.taskId, "task_hive_clickable_network");
 assert.equal(networkDetail.review.submissions[0].summary, "Submitted a concise proof that the read-only Hive pop-out opens.");
+assert.equal(networkDetail.review.evidence.length, 2);
+assert.equal(networkDetail.review.evidence[0].type, "Submission");
+assert.equal(networkDetail.review.evidence[0].excerpt, "Submitted a public GitHub proof and a compact execution note.");
+assert.equal(networkDetail.review.evidence[0].artifactRefs[0].url, "https://github.com/postfiatorg/tasknodeofficial/pull/1");
+assert.equal(networkDetail.review.evidence[0].artifactRefs[0].cid, "bafybeihiveclickableartifact");
+assert.equal(networkDetail.review.evidence[0].artifactRefs.at(-1).txHash, "ABC123SUBMIT");
+assert.equal(networkDetail.review.evidence[0].privateContentHidden, true);
+assert.equal(JSON.stringify(networkDetail.review.evidence).includes("private-ciphertext-redacted"), false);
+assert.equal(JSON.stringify(networkDetail.review.evidence).includes("raw submission description should stay private"), false);
+assert.equal(JSON.stringify(networkDetail.review.evidence).includes("raw submission notes should stay private"), false);
+assert.equal(networkDetail.review.evidence[1].type, "Verification response");
+assert.equal(networkDetail.review.evidence[1].excerpt, "The HiveTaskPopout opened read-only.");
+assert.equal(JSON.stringify(networkDetail.review.evidence).includes("Raw verification response should not become an evidence excerpt."), false);
+assert.equal(networkDetail.review.evidence[1].artifactRefs.at(-1).cid, "bafybeihiveclickableverifyresponse");
 assert.equal(networkDetail.review.verification.request, "Confirm the exact component opened.");
 assert.equal(networkDetail.review.verification.response, "Verification response submitted.");
 assert.equal(networkDetail.review.outcome.reason, "The proof satisfied the public Hive pop-out check.");
