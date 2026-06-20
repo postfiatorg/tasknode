@@ -1,0 +1,16 @@
+Usage:
+  node scripts/orc-contributor-quality-routing-report.mjs batch --ledger <file> --out <dir> [threshold options]
+  node scripts/orc-contributor-quality-routing-report.mjs generate --ledger <file> [threshold options]
+
+Threshold options:
+  --min-total-for-ratio <n>              Default: 3
+  --min-verified-ratio <0-1>            Default: 0.3
+  --max-unverifiable <n>                Default: 2
+  --max-refusals <n>                    Default: 1
+  --refusal-window-days <n>             Default: 7
+  --max-consecutive-unverifiable <n>    Default: 2
+  --generated-by <handle>               Default: grashnuk
+  --generated-at <iso timestamp>        Default: current time
+
+The script reads records compatible with pf.orc.submitted_work_review_ledger.v1 and produces a
+recommend-only routing-review report. It does not mutate routing state.
