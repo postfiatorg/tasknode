@@ -1,0 +1,64 @@
+{
+  "schema": "pf.orc.review_action_digest.v1",
+  "counts": {
+    "totalReviewRecords": 5,
+    "actionRequiredRecords": 4,
+    "noActionRecords": 1,
+    "actionOwners": 4
+  },
+  "highestPriorityItems": [
+    {
+      "taskId": "task_unverifiable_cluster_submission",
+      "actionOwner": "nazgul_alex_review",
+      "category": "integrity_review",
+      "priority": 94,
+      "clawbackFlag": "blacklist_if_proven_no_clawback",
+      "archivalDirective": "hold_for_human_integrity_review",
+      "disposition": "reviewed_negative_follow_up",
+      "integritySignals": [
+        "thin_evidence",
+        "automation_pattern",
+        "repeat_title_family"
+      ],
+      "recommendedAction": "Escalate suspected-only for human integrity review; do not execute bans or money actions from this payload."
+    },
+    {
+      "taskId": "task_reward_projection_mismatch",
+      "actionOwner": "protocol_owner_review",
+      "category": "reward_accounting",
+      "priority": 88,
+      "disposition": "reviewed_follow_up",
+      "integritySignals": [
+        "reward_projection_mismatch"
+      ],
+      "recommendedAction": "Confirm whether the projection mismatch is display-only or ledger-affecting before closing the review."
+    },
+    {
+      "taskId": "task_hive_chat_delivery_gap",
+      "actionOwner": "product_engineering_triage",
+      "category": "hive_chat",
+      "priority": 78,
+      "disposition": "reviewed_follow_up",
+      "integritySignals": [],
+      "recommendedAction": "Add visible contributor follow-up delivery status and failure reasons to the product backlog."
+    },
+    {
+      "taskId": "task_self_attested_parser_claim",
+      "actionOwner": "orc_ops",
+      "category": "evidence_quality",
+      "priority": 64,
+      "disposition": "reviewed_follow_up",
+      "integritySignals": [
+        "self_attested",
+        "missing_public_artifact"
+      ],
+      "recommendedAction": "Ask for public artifact links or use the evidence packet generator before counting the work as complete."
+    }
+  ],
+  "routingPacketFiles": [
+    "routing_packets/nazgul_alex_review.json",
+    "routing_packets/orc_ops.json",
+    "routing_packets/product_engineering_triage.json",
+    "routing_packets/protocol_owner_review.json"
+  ]
+}

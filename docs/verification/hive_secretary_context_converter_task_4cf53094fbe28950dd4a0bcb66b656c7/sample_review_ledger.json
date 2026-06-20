@@ -1,0 +1,122 @@
+{
+  "schema": "pf.orc.submitted_work_review_ledger.v1",
+  "records": [
+    {
+      "id": "swrev_secretary_001",
+      "taskId": "task_doc_acceptance_workflow",
+      "taskTitle": "Document Task Acceptance Workflow",
+      "recipientHandle": "gmoney",
+      "recipientAccountId": "acct_gmoney_demo",
+      "walletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+      "reviewStatus": "verified",
+      "disposition": "reviewed_no_action",
+      "category": "documentation",
+      "score": 86,
+      "confidence": "high",
+      "actionRequired": false,
+      "recommendedAction": "No core action required; keep as completed operator documentation.",
+      "source": {
+        "cid": "QmSecretaryNoAction",
+        "txHash": "SECRETARY_NO_ACTION_TX"
+      }
+    },
+    {
+      "id": "swrev_secretary_002",
+      "taskId": "task_hive_chat_delivery_gap",
+      "taskTitle": "Hive Chat Delivery Gap",
+      "recipientHandle": "zoz",
+      "recipientAccountId": "acct_zoz_demo",
+      "walletAddress": "rsS2Y6pQmdXUuHpgemrGMvxu5cVdLjjaXRZ",
+      "reviewStatus": "verified",
+      "disposition": "reviewed_follow_up",
+      "category": "hive_chat",
+      "score": 91,
+      "confidence": "high",
+      "actionRequired": true,
+      "actionOwner": "product_engineering_triage",
+      "priority": 78,
+      "recommendedAction": "Add visible contributor follow-up delivery status and failure reasons to the product backlog.",
+      "source": {
+        "cid": "QmSecretaryHiveChatGap",
+        "txHash": "SECRETARY_HIVE_CHAT_TX"
+      }
+    },
+    {
+      "id": "swrev_secretary_003",
+      "taskId": "task_self_attested_parser_claim",
+      "taskTitle": "Parser Claim Without Inspectable Artifact",
+      "recipientHandle": "yuuki",
+      "recipientAccountId": "acct_yuuki_demo",
+      "walletAddress": "rfCbJWtYBZ6ntX7UuYfQK8Ut3T9K51z96h",
+      "reviewStatus": "self_attested",
+      "disposition": "reviewed_follow_up",
+      "category": "evidence_quality",
+      "score": 48,
+      "confidence": "medium",
+      "actionRequired": true,
+      "actionOwner": "orc_ops",
+      "priority": 64,
+      "reviewFlags": [
+        "self_attested",
+        "missing_public_artifact"
+      ],
+      "recommendedAction": "Ask for public artifact links or use the evidence packet generator before counting the work as complete.",
+      "source": {
+        "cid": "QmSecretarySelfAttested",
+        "txHash": "SECRETARY_SELF_ATTESTED_TX"
+      }
+    },
+    {
+      "id": "swrev_secretary_004",
+      "taskId": "task_unverifiable_cluster_submission",
+      "taskTitle": "Unverifiable Cluster Submission",
+      "recipientHandle": "unknown_cluster",
+      "recipientAccountId": "acct_cluster_demo",
+      "walletAddress": "rClusterDemoWallet11111111111111111",
+      "reviewStatus": "unverifiable",
+      "disposition": "reviewed_negative_follow_up",
+      "category": "integrity_review",
+      "score": 22,
+      "confidence": "low",
+      "actionRequired": true,
+      "actionOwner": "nazgul_alex_review",
+      "priority": 94,
+      "clawbackFlag": "blacklist_if_proven_no_clawback",
+      "archivalDirective": "hold_for_human_integrity_review",
+      "integritySignals": [
+        "thin_evidence",
+        "automation_pattern",
+        "repeat_title_family"
+      ],
+      "recommendedAction": "Escalate suspected-only for human integrity review; do not execute bans or money actions from this payload.",
+      "source": {
+        "cid": "QmSecretaryUnverifiableCluster",
+        "txHash": "SECRETARY_UNVERIFIABLE_TX"
+      }
+    },
+    {
+      "id": "swrev_secretary_005",
+      "taskId": "task_reward_projection_mismatch",
+      "taskTitle": "Reward Projection Mismatch",
+      "recipientHandle": "donravle",
+      "recipientAccountId": "acct_donravle_demo",
+      "walletAddress": "raL2kvFQfXWrmT7n4UxvpKwrgBQQWFGwzd",
+      "reviewStatus": "verified",
+      "disposition": "reviewed_follow_up",
+      "category": "reward_accounting",
+      "score": 88,
+      "confidence": "high",
+      "actionRequired": true,
+      "actionOwner": "protocol_owner_review",
+      "priority": 88,
+      "integritySignals": [
+        "reward_projection_mismatch"
+      ],
+      "recommendedAction": "Confirm whether the projection mismatch is display-only or ledger-affecting before closing the review.",
+      "source": {
+        "cid": "QmSecretaryRewardProjection",
+        "txHash": "SECRETARY_REWARD_TX"
+      }
+    }
+  ]
+}

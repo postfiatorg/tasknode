@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "schema": "pf.hive_secretary.context_update.v1",
+  "mode": "single",
+  "outDir": "docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/outputs/single",
+  "summary": {
+    "totalUpdates": 1,
+    "actionRequired": 1,
+    "noAction": 0,
+    "byDisposition": {
+      "reviewed_negative_follow_up": 1
+    },
+    "byActionOwner": {
+      "nazgul_alex_review": 1
+    },
+    "byReviewStatus": {
+      "unverifiable": 1
+    }
+  },
+  "files": [
+    "hive_secretary_single_update.json",
+    "discord_summary.md"
+  ]
+}

@@ -1,0 +1,11 @@
+Usage:
+  node scripts/orc-hive-secretary-context-converter.mjs batch --ledger <review_ledger.json> --digest <action_digest.json> --out <dir> [--generated-by grashnuk] [--generated-at ISO]
+  node scripts/orc-hive-secretary-context-converter.mjs single --ledger <review_ledger.json> --digest <action_digest.json> --review-id <id> --out <dir> [--generated-by grashnuk] [--generated-at ISO]
+
+Converts Orc review-ledger records plus Orc review action digest rows into Hive Secretary context-update payloads.
+
+Outputs:
+  batch:  hive_secretary_batch_payload.json, hive_secretary_context_updates.json, discord_summary.md
+  single: hive_secretary_single_update.json, discord_summary.md
+
+This script prepares payloads only. It does not submit to Hive Secretary, sign transactions, move funds, or apply enforcement.
