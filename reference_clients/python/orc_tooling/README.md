@@ -367,6 +367,13 @@ lifecycle changes. Local projection rows win over public Directory packets on
 conflict; public packets only fill missing queue items or newer public event
 pointers.
 
+Follow-up requests are idempotent for active generated work. If a review already
+has a submitted/generated follow-up request, a follow-up transaction hash, or a
+linked follow-up task id in `metadata_json`, `orcctl request-followup` returns
+that active linkage instead of creating a second Personal task. Preview-only
+metadata remains replaceable so an Orc can upgrade a dry-run preview to a real
+submitted request later.
+
 ## Send Hive Chat Follow-Ups
 
 Preview an audited Board Manager message to the owner of a task:

@@ -854,6 +854,61 @@ def _extract_followup_task_id(result: dict[str, Any]) -> str:
     )
 
 
+def _metadata_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return _safe_text(value, 40).lower() in {"1", "true", "yes", "submitted"}
+
+
+def _active_followup_from_review(review_record: dict[str, Any]) -> dict[str, Any]:
+    metadata = _review_metadata(review_record)
+    if _safe_text(metadata.get("followup_closed_at") or metadata.get("followupClosedAt"), 120):
+        return {}
+    request_id = _safe_text(
+        metadata.get("followup_request_id")
+        or metadata.get("followupRequestId"),
+        180,
+    )
+    followup_task_id = _safe_text(
+        metadata.get("followup_task_id")
+        or metadata.get("followupTaskId"),
+        180,
+    )
+    request_tx = _safe_text(
+        metadata.get("followup_request_tx")
+        or metadata.get("followupRequestTx"),
+        180,
+    )
+    status = _safe_text(
+        metadata.get("followup_status")
+        or metadata.get("followupStatus"),
+        120,
+    ).lower()
+    submitted = _metadata_truthy(metadata.get("followup_request_submitted")) or _metadata_truthy(
+        metadata.get("followupRequestSubmitted")
+    )
+    if not (followup_task_id or request_tx or submitted or (request_id and status not in {"", "previewed", "preview"})):
+        return {}
+    return {
+        "ok": True,
+        "idempotent": True,
+        "reason": "active_followup_exists",
+        "requestId": request_id,
+        "followupTaskId": followup_task_id,
+        "requestStatus": status,
+        "submitted": submitted,
+        "txHash": request_tx,
+        "reviewState": {
+            "taskId": _review_text(review_record, "task_id", "taskId", 180),
+            "followupRequestId": request_id,
+            "followupTaskId": followup_task_id,
+            "metadata": metadata,
+            "updated": False,
+        },
+        "secretPrinted": False,
+    }
+
+
 def request_followup_task(
     task_id: str,
     *,
@@ -866,6 +921,9 @@ def request_followup_task(
     disposition = _safe_text(review_record.get("disposition"), 120)
     if disposition not in ACTION_REQUIRED_DISPOSITIONS:
         raise ValueError(f"review state {disposition or 'not_reviewed'} does not require follow-up")
+    existing_followup = _active_followup_from_review(review_record)
+    if existing_followup:
+        return redact_secrets(existing_followup)
     request_text = build_followup_request_text(review_record, extra=extra)
     result = request_personal_task(request_text, submit=submit, client=client, requested_task_kind="personal")
     request_id = _safe_text(result.get("requestId"), 180)

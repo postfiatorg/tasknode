@@ -1275,6 +1275,82 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(metadata["user_signal_status"], "sent")
         self.assertIn("task_followup", captured[0]["sourceTaskIds"])
 
+    def test_request_followup_is_idempotent_when_active_followup_exists(self):
+        existing = {
+            "task_id": "task_source",
+            "disposition": "reviewed_follow_up",
+            "action_required": True,
+            "confidence": "high",
+            "categories": ["reward_accounting"],
+            "summary": "Contributor found reward projection drift.",
+            "recommended_action": "Verify affected reward rows and add a regression smoke.",
+            "reviewer_handle": "grashnuk",
+            "reviewer_wallet": "rReviewer",
+            "metadata_json": {
+                "followup_request_id": "req_existing",
+                "followup_request_submitted": True,
+                "followup_status": "generated",
+                "followup_task_id": "task_followup",
+                "followup_request_tx": "TXREQUEST",
+            },
+        }
+
+        with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
+            patch("orc_tooling.orcctl.request_personal_task") as request_mock, \
+            patch("orc_tooling.orcctl.upsert_review_state") as upsert_mock:
+            result = request_followup_task("task_source", submit=True)
+
+        self.assertEqual(result["idempotent"], True)
+        self.assertEqual(result["reason"], "active_followup_exists")
+        self.assertEqual(result["requestId"], "req_existing")
+        self.assertEqual(result["followupTaskId"], "task_followup")
+        self.assertEqual(result["txHash"], "TXREQUEST")
+        request_mock.assert_not_called()
+        upsert_mock.assert_not_called()
+
+    def test_request_followup_allows_preview_to_upgrade_to_submit(self):
+        existing = {
+            "task_id": "task_source",
+            "disposition": "reviewed_follow_up",
+            "action_required": True,
+            "confidence": "high",
+            "categories": ["reward_accounting"],
+            "summary": "Contributor found reward projection drift.",
+            "recommended_action": "Verify affected reward rows and add a regression smoke.",
+            "reviewer_handle": "grashnuk",
+            "reviewer_wallet": "rReviewer",
+            "source_task_ids": ["task_source"],
+            "metadata_json": {
+                "followup_request_id": "req_preview",
+                "followup_request_submitted": False,
+                "followup_status": "previewed",
+            },
+        }
+        captured = []
+
+        def fake_upsert(record, **kwargs):
+            captured.append(record)
+            return {"ok": True, "task_id": record["taskId"], "metadata_json": record["metadata"]}
+
+        with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
+            patch("orc_tooling.orcctl.request_personal_task", return_value={
+                "ok": True,
+                "requestId": "req_submitted",
+                "submitted": True,
+                "generatedTaskId": "task_followup",
+                "requestStatus": "generated",
+                "bundleCid": "QmBundle",
+                "eventCid": "QmRequestEvent",
+                "txHash": "TXREQUEST",
+            }) as request_mock, \
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert):
+            result = request_followup_task("task_source", submit=True)
+
+        self.assertEqual(result["reviewState"]["followupRequestId"], "req_submitted")
+        self.assertEqual(captured[0]["metadata"]["followup_request_submitted"], True)
+        self.assertEqual(captured[0]["metadata"]["followup_task_id"], "task_followup")
+        request_mock.assert_called_once()
+
     def test_status_surfaces_terminal_followup_as_stale_closeable(self):
         stale = {
             "ok": True,
