@@ -601,9 +601,10 @@ async function loadProviderRowsForAccounts(query, accountIds) {
           FROM user_observability_events
           WHERE account_id = $1
           ORDER BY occurred_at DESC, id DESC
-          LIMIT 1000
+          LIMIT 10000
         ) recent
         WHERE provider <> ''
+        ORDER BY provider
       `,
       [accountId]
     );
