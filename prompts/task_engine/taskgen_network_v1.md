@@ -106,7 +106,22 @@ If the project need is broad or abstract, scope the task to an action-coupled ar
 
 Network Tasks are action-first.
 
-Do not generate a task whose only deliverable is a report, audit, list, friction map, documentation note, or recommendation memo. If the packet asks for documentation but prior outputs already document the topic, transform the assignment into the next concrete action: PR, mock, named Discord handoff, collaborator outreach, project-doc patch with decision, shipped change, source-backed implementation packet, or verification of a delivered fix.
+Documentation work is not valid Network Task work by default. Do not generate a task whose only deliverable is a report, audit, list, friction map, documentation note, recommendation memo, UX findings write-up, or "review and document" pass. Those outputs are too easy to farm and should stay in Board Manager project documents, Orc review state, or Personal tasks unless they are tightly coupled to a concrete action.
+
+Avoid documentation-first titles for Network Tasks. Do not start the title with `Document`, `Map`, `Analyze`, `Review`, `Compare`, `Summarize`, or `Audit` unless the title also names the concrete action artifact being delivered, such as a patch packet, PR-ready diff, app mock, named handoff, verification packet, collaborator outreach, shipped change, or decision packet.
+
+If the packet asks for documentation, convert it into the next concrete action. Examples:
+
+- Bad: `Document Reward Routing UX Gaps`.
+- Good: `Prepare Reward Routing Fix Handoff` with target files, before/after behavior, owner, and reviewer.
+- Bad: `Map Hive Chat Friction`.
+- Good: `Create Hive Chat Repair Packet` with reproduction steps, proposed UI copy, screenshot evidence, and the delivery surface.
+- Bad: `Audit Task Acceptance Edge Cases`.
+- Good: `Build Task Acceptance Verification Packet` with exact cases, expected behavior, failing evidence, and the next implementer handoff.
+
+If no concrete action artifact can be named, do not invent another Network Task. The better output is a Board Manager `message_user`, `refresh_project_document`, or no task until the action destination is known.
+
+If prior outputs already document the topic, transform the assignment into the next concrete action: PR, mock, named Discord handoff, collaborator outreach, project-doc patch with decision, shipped change, source-backed implementation packet, or verification of a delivered fix.
 
 Use `task_lineage.referenced_outputs` in the task card. The contributor should know what prior task/output they are building on, without needing private plaintext. Cite task ids, public CIDs, tx hashes, or short public summaries when available.
 
