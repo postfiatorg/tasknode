@@ -69,6 +69,41 @@ assert.throws(
   }),
   /taskgen_plain_speech_violation:/,
 );
+assert.doesNotThrow(() => validateTaskgenOutput({
+  ...taskgenBase,
+  title: "Document Personal Planning Notes",
+  description: "Write a personal planning note that helps you decide what to do next.",
+  task_kind: "personal",
+  steps: ["Collect the source notes.", "Write the personal memo."],
+  submission_requirement: { type: "text", criteria: "Submit the memo." },
+}));
+assert.throws(
+  () => validateTaskgenOutput({
+    ...taskgenBase,
+    title: "Document Reward Routing UX Gaps",
+    description: "Write a concise report that maps reward routing friction and recommends fixes.",
+    task_kind: "network",
+    steps: ["Review the dashboard.", "List the confusing states.", "Submit the findings report."],
+    submission_requirement: { type: "text", criteria: "Submit the friction report and recommendations." },
+  }, { task_class: "network" }),
+  /network_task_documentation_only_violation:/,
+);
+const actionCoupledNetworkTask = validateTaskgenOutput({
+  ...taskgenBase,
+  title: "Prepare Reward Routing Fix Handoff",
+  description: "Create a PR-ready patch packet for the reward routing screen. Include the target files, before/after behavior, and the named reviewer handoff so the next operator can apply it.",
+  task_kind: "network",
+  steps: [
+    "Identify the exact reward routing screen and source file.",
+    "Draft the patch packet with before/after behavior.",
+    "Package the named handoff for the reviewer.",
+  ],
+  submission_requirement: {
+    type: "mixed",
+    criteria: "Submit the PR-ready patch packet plus the reviewer handoff and any screenshot evidence.",
+  },
+}, { task_class: "network" });
+assert.equal(actionCoupledNetworkTask.task_kind, "network");
 assert.deepEqual(taskgenPromptForInput({ request: { requestText: "Build a personal task" } }), {
   path: "task_engine/taskgen_personal_v1.md",
   version: "taskgen_personal_v1",

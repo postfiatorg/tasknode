@@ -378,6 +378,7 @@ assert.match(boardManagerPrompt, /capability_gating_task/);
 assert.match(boardManagerPrompt, /evidence_evaluation_packet/);
 assert.match(taskgenPrompt, /Document-To-Action Network Tasks/);
 assert.match(taskgenPrompt, /Do not generate a task whose only deliverable is a report/i);
+assert.match(taskgenPrompt, /runtime rejects documentation-only Network Task cards/i);
 assert.match(taskgenPrompt, /task_lineage\.referenced_outputs/);
 
 const responseFormat = boardManagerResponseFormat();

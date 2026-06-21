@@ -343,6 +343,42 @@ const opaqueTaskSpeechPatterns = Object.freeze([
   ["verdict", /\bverdict\b/i],
 ]);
 
+const networkDocumentationOnlyPatterns = Object.freeze([
+  ["audit note", /\baudit\s+(?:note|summary|report)\b/i],
+  ["documentation note", /\bdocumentation\s+(?:note|task|pass|report|summary)\b/i],
+  ["documentation work", /\b(?:document|documentation|write\s+up|write|draft|prepare|create|submit|produce)\s+(?:a\s+|an\s+|the\s+)?(?:report|memo|note|summary|friction\s+(?:list|map)|findings?|recommendations?|analysis|audit)\b/i],
+  ["friction map", /\bfriction\s+(?:list|map|report|findings?)\b/i],
+  ["gap list", /\b(?:gap|gaps)\s+(?:list|map|report|summary|note)\b/i],
+  ["report title", /^(?:document|map|audit|review|analy[sz]e|compare|summari[sz]e|create|draft|prepare|submit)\b.{0,90}\b(?:report|memo|note|summary|findings?|gaps?|friction|recommendations?|audit|review)\b/i],
+  ["recommendation memo", /\brecommendation\s+(?:memo|report|note|summary)\b/i],
+]);
+
+const networkActionArtifactPatterns = Object.freeze([
+  /\b(?:app\s+)?mock(?:up)?s?\b/i,
+  /\bbefore\/after\b/i,
+  /\bbranch\s+diff\b/i,
+  /\bcode\s+(?:change|diff|patch|path)\b/i,
+  /\bcollaborator\s+outreach\b/i,
+  /\bcommit(?:\s+url|\s+hash)?\b/i,
+  /\bdecision\s+packet\b/i,
+  /\bdelivery\s+packet\b/i,
+  /\bdiscord\s+handoff\b/i,
+  /\bevidence\s+packet\b/i,
+  /\bfix\s+(?:handoff|packet|patch|pr|verification)\b/i,
+  /\bgithub_(?:commit|pull_request)\b/i,
+  /\bimplementation\s+packet\b/i,
+  /\bnamed\s+handoff\b/i,
+  /\bpatch(?:\s+file|\s+packet|\s+proposal|\s+url)?\b/i,
+  /\bpr(?:-ready|\s+url|\s+link)?\b/i,
+  /\bpull\s+request\b/i,
+  /\breproducible\s+test\b/i,
+  /\bshipping?\b/i,
+  /\bsource\s+patch\b/i,
+  /\btest\s+(?:output|result|evidence)\b/i,
+  /\bverification\s+packet\b/i,
+  /\bwireframe\b/i,
+]);
+
 function taskCardSpeechText(output = {}) {
   const requirement = safeObject(output.submission_requirement);
   return [
@@ -357,6 +393,18 @@ function assertPlainTaskCardSpeech(output = {}) {
   const text = taskCardSpeechText(output);
   for (const [label, pattern] of opaqueTaskSpeechPatterns) {
     if (pattern.test(text)) throw new Error(`taskgen_plain_speech_violation:${label}`);
+  }
+}
+
+function assertNetworkTaskActionArtifact(output = {}) {
+  const normalizedKind = safeText(output.task_kind, 80).toLowerCase();
+  if (normalizedKind !== "network" && normalizedKind !== "alpha") return;
+  const text = taskCardSpeechText(output);
+  const matchedDocumentationSignal = networkDocumentationOnlyPatterns.find(([, pattern]) => pattern.test(text));
+  if (!matchedDocumentationSignal) return;
+  const hasActionArtifact = networkActionArtifactPatterns.some((pattern) => pattern.test(text));
+  if (!hasActionArtifact) {
+    throw new Error(`network_task_documentation_only_violation:${matchedDocumentationSignal[0]}`);
   }
 }
 
@@ -404,6 +452,7 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
     },
   };
   assertPlainTaskCardSpeech(normalized);
+  assertNetworkTaskActionArtifact(normalized);
   return normalized;
 }
 
@@ -553,10 +602,13 @@ async function generateTaskWithOpenAi(taskInput) {
   const startedAt = Date.now();
   const baseInstruction = `Generate a minimal Task Node task from this input packet. Return JSON matching schema pf.taskgen.output.v1.\n\n${stableJson(taskInput)}`;
   let lastError = null;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const lastMessage = String(lastError?.message || "");
     const repairInstruction = attempt === 1
       ? ""
-      : "\n\nThe previous draft used opaque internal compliance language. Rewrite the task card in plain product language with a concrete object, action, artifact, and evidence. Do not use conformance, compliance, gates, verdict, priority stack, P0 standards, gap note, or exact-edits language.";
+      : lastMessage.startsWith("network_task_documentation_only_violation:")
+        ? "\n\nThe previous draft was documentation-only. Rewrite it as an action-first Network Task. It must produce a concrete PR, patch packet, app mock, named handoff, collaborator outreach, shipped change, reproducible test, verification packet, or decision packet. Do not ask only for a report, memo, audit, friction map, gap list, or recommendation."
+        : "\n\nThe previous draft used opaque internal compliance language. Rewrite the task card in plain product language with a concrete object, action, artifact, and evidence. Do not use conformance, compliance, gates, verdict, priority stack, P0 standards, gap note, or exact-edits language.";
     const response = await fetch(`${(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
       method: "POST",
       headers: {
@@ -598,7 +650,11 @@ async function generateTaskWithOpenAi(taskInput) {
       };
     } catch (error) {
       lastError = error;
-      if (!String(error?.message || "").startsWith("taskgen_plain_speech_violation:") || attempt >= 2) throw error;
+      const message = String(error?.message || "");
+      const repairable =
+        message.startsWith("taskgen_plain_speech_violation:") ||
+        message.startsWith("network_task_documentation_only_violation:");
+      if (!repairable || attempt >= 3) throw error;
     }
   }
   throw lastError || new Error("taskgen_failed");

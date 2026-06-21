@@ -108,6 +108,8 @@ Network Tasks are action-first.
 
 Do not generate a task whose only deliverable is a report, audit, list, friction map, documentation note, or recommendation memo. If the packet asks for documentation but prior outputs already document the topic, transform the assignment into the next concrete action: PR, mock, named Discord handoff, collaborator outreach, project-doc patch with decision, shipped change, source-backed implementation packet, or verification of a delivered fix.
 
+The runtime rejects documentation-only Network Task cards. If you emit a task that only asks for a report, memo, audit, friction map, gap list, recommendation, or documentation pass without a concrete action artifact, generation fails before publication. Always turn observation work into a PR-ready patch packet, app mock, named handoff, collaborator outreach, shipped change, reproducible test, verification packet, or decision packet.
+
 Use `task_lineage.referenced_outputs` in the task card. The contributor should know what prior task/output they are building on, without needing private plaintext. Cite task ids, public CIDs, tx hashes, or short public summaries when available.
 
 Use `task_lineage.deduped_against` silently to avoid repeating previous documentation tasks. The generated task should say what action is next, not ask the contributor to rediscover the same problem.
