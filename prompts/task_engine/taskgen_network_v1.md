@@ -62,7 +62,7 @@ Interpret the packets this way:
 - `network_task.project_need_summary` is the closest thing to the requested work, but it may be compressed Board Manager language. Translate it into a contributor-facing assignment.
 - `network_task.routing_reason` explains why this contributor was selected. Use it only to calibrate scope and fit; do not make it the task.
 - `network_task.project_document` is the current project operating picture. Use it to name the real surface, blocker, next action, and expected artifact.
-- `policy` and `network_task.reward_band_pft` set hard task class, evidence, reward, and deadline constraints.
+- `policy` and `network_task.reward_band_pft` set hard task class, badge, evidence, reward, and deadline constraints.
 - Contributor `context`, `memory`, and `chat` adapt the task to the person; they do not override the project need.
 
 Do not explain these packet mechanics in the generated task unless the assignment is specifically about documenting or debugging the packet chain. Normal Network Tasks should read like clear work, not internal architecture notes.
@@ -91,6 +91,8 @@ Generate exactly one `network` or `alpha` task matching the packet task class. D
 Respect `network_task.project_need_summary`, `network_task.routing_reason`, `network_task.project_title`, `network_task.project_summary`, and `network_task.project_document` when present.
 
 If `network_task.task_work_type` is present, treat it as Board Manager's advisory work-type label. `capability_gating_task` means the assignment should gather proof of a capability before substantive private-repo/channel work is routed; it does not itself prove the capability or authorize private access.
+
+If `network_task.required_badge_id`, `network_task.operating_badge_id`, `network_task.badge_work_type`, or `policy.badge_eligibility_decision` is present, treat that badge policy as authoritative scope. Do not broaden the task beyond the allowed work type. If `badge_reward_cap_pft` is present, never emit a reward above that cap even when the reward band is larger.
 
 For `code_task`, identify whether the source packet is asking for private-repo work or public artifact work. If the project requires private Task Node repository access and the packet does not include a verified durable capability profile for that exact repo/scope, do not write a task that asks the contributor to change private code. Write a capability-gating assignment or a public-artifact assignment instead: prove repo/PR access, produce a PR-ready patch packet outside the private repo, or deliver a mock/handoff the operator can act on.
 
@@ -136,6 +138,8 @@ Research is allowed only when it ends in a contributor-specific action artifact 
 
 External action claims must be easy to review. For PRs, commits, mocks, Discord handoffs, collaborator outreach, or published artifacts, ask for a URL, screenshot, file, or concise evidence packet that lets the reviewer classify each claim as verified, self-attested, or unverified. If the only available proof will be self-attestation, scope the task as a handoff/evidence packet rather than treating the external action as complete.
 
+Every Network Task must require Discord announcement evidence. The verification requirements must tell the contributor to submit either a Discord message id/link from an approved Post Fiat channel or a screenshot showing the announcement in that channel. The announcement should identify this task and the public work artifact without leaking secrets, private repo contents, private channel names, or credentials. Sensitive work may use an approved private operator channel, but the submitted evidence still needs a message id/link or screenshot.
+
 ## Evidence And Scope
 
 Prefer a 2 to 4 hour workflow with a durable artifact. Use smaller scope only for narrow cleanup, verification, or diagnostic tasks.
@@ -157,7 +161,7 @@ Evidence criteria must say exactly what is acceptable. A reviewer should be able
 
 Every task must include `reward_offer.amount_estimate_pft`.
 
-Set the reward from the explicit range in `network_task.reward_band_pft` or `policy`. Network and Alpha Task reward ranges are authoritative and may be much larger than personal task rewards. Stay inside the explicit allowed range. If no range exists, choose conservatively from scope, difficulty, durability, and evidence strength.
+Set the reward from the explicit range in `network_task.reward_band_pft` or `policy`. Network and Alpha Task reward ranges are authoritative and may be much larger than personal task rewards. Stay inside the explicit allowed range and never exceed `network_task.badge_reward_cap_pft` or `policy.badge_reward_cap_pft` when present. If no range exists, choose conservatively from scope, difficulty, durability, and evidence strength.
 
 Use deadline values from the packet when available. If `policy.deadline.accept_by` is supplied, copy it exactly. `deadline.accept_by` must be an ISO-8601 UTC timestamp string. Never emit relative strings such as `24h`, `soon`, or `tomorrow`. If no accept-by is supplied, use an ISO-8601 UTC timestamp about 24 hours after generation. `deadline.deadline_at` must be the supplied ISO-8601 task deadline or `null`.
 
@@ -172,6 +176,7 @@ Return only one JSON object. Do not add fields.
 - `steps`: 2 to 5 concrete steps as short checkable strings. Each step should gather source material, identify the blocker, cut scope, compare options, create the artifact, validate it, or prepare evidence.
 - `submission_requirement.type`: one of `text`, `url`, `github_commit`, `screenshot`, `file`, or `mixed`.
 - `submission_requirement.criteria`: 1 to 3 concise sentences describing acceptable evidence.
+- `submission_requirement.criteria` must include the Discord announcement proof rule for Network Tasks: accepted proof is a Discord message id/link or screenshot showing the task announcement in an approved Post Fiat channel.
 - `verification_policy.followup_required`: usually `true`.
 - `verification_policy.mode`: usually `standard_followup`.
 - `verification_policy.verification_type`: match the evidence type unless a different supported follow-up type is necessary.

@@ -1,0 +1,60 @@
+{
+  "ok": true,
+  "operation": "report",
+  "schema": "pf.orc.submitted_work_review_ledger.v1",
+  "totalRecords": 4,
+  "averageScore": 77.25,
+  "byStatus": {
+    "verified": 2,
+    "unverified": 1,
+    "self_attested": 1
+  },
+  "byReviewer": {
+    "grashnuk": 3,
+    "tasknodeorc": 1
+  },
+  "flagCounts": {
+    "missing_public_artifact": 1,
+    "pipeline_adjacent": 1,
+    "money_sensitive": 1,
+    "do_not_operationalize": 1,
+    "ledger_smoke_test": 1
+  },
+  "archiveActions": {
+    "archive_hot": 2,
+    "needs_followup": 1,
+    "hold": 1
+  },
+  "tasksWithFlags": [
+    {
+      "taskId": "task_8df92c053af509e72dbec3e475766f7a",
+      "reviewer": "grashnuk",
+      "reviewStatus": "unverified",
+      "reviewFlags": [
+        "missing_public_artifact",
+        "pipeline_adjacent"
+      ],
+      "archiveAction": "needs_followup"
+    },
+    {
+      "taskId": "task_d77a9dc367ff181ff9463f58d01362c9",
+      "reviewer": "tasknodeorc",
+      "reviewStatus": "self_attested",
+      "reviewFlags": [
+        "money_sensitive",
+        "do_not_operationalize"
+      ],
+      "archiveAction": "hold"
+    },
+    {
+      "taskId": "task_01ba5f1d70d620780c333693c99a0cab",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "reviewFlags": [
+        "ledger_smoke_test"
+      ],
+      "archiveAction": "archive_hot"
+    }
+  ],
+  "generatedAt": "2026-06-20T01:36:54.623Z"
+}

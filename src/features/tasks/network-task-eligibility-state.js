@@ -38,6 +38,11 @@ const PLAIN_STATUS = {
     tone: "action",
     explanation: "Your Network Diagnostic Report has not been generated yet; it is queued automatically after your second positively rewarded task, or immediately when you open Memory.",
   },
+  badge_required: {
+    label: "Capacity blocked",
+    tone: "blocked",
+    explanation: "Network Task routing needs a verified operating badge. Open Profile to qualify for KOL, Core Contributor, QA Worker, Expert, or Project Leader.",
+  },
   profile_pending: {
     label: "Needs more task history",
     tone: "pending",
@@ -125,6 +130,38 @@ export function capacityBlockerView(blocker = {}) {
   };
 }
 
+const BADGE_LABELS = {
+  kol: "KOL",
+  core_contributor: "Core Contributor",
+  expert: "Expert",
+  project_leader: "Project Leader",
+  qa_worker: "QA Worker",
+};
+
+export function badgeEligibilityView(badgeEligibility = {}) {
+  const badgeIds = (Array.isArray(badgeEligibility?.verifiedBadgeIds) ? badgeEligibility.verifiedBadgeIds : [])
+    .map(cleanText)
+    .filter(Boolean);
+  const defaultBadge = cleanText(badgeEligibility?.defaultBadge) || badgeIds[0] || "";
+  const defaultLabel = BADGE_LABELS[defaultBadge] || defaultBadge;
+  return {
+    present: Boolean(badgeEligibility && typeof badgeEligibility === "object"),
+    status: cleanText(badgeEligibility?.status || (badgeIds.length ? "available" : "unknown")),
+    badgeIds,
+    defaultBadge,
+    defaultLabel,
+    hasNonAnonOperatingBadge: badgeEligibility?.hasNonAnonOperatingBadge === true || badgeIds.length > 0,
+    allowedWorkTypes: (Array.isArray(badgeEligibility?.allowedWorkTypes) ? badgeEligibility.allowedWorkTypes : [])
+      .map(cleanText)
+      .filter(Boolean),
+    summary: cleanText(badgeEligibility?.summary),
+    error: cleanText(badgeEligibility?.error),
+    laneLabel: defaultLabel
+      ? defaultLabel
+      : "",
+  };
+}
+
 export function networkTaskEligibilityView(networkTasks = null) {
   if (!networkTasks || typeof networkTasks !== "object") {
     return {
@@ -140,6 +177,7 @@ export function networkTaskEligibilityView(networkTasks = null) {
       nextAction: "",
       gates: [],
       blockers: [],
+      badge: badgeEligibilityView(null),
       expandedByDefault: false,
       error: "",
     };
@@ -150,10 +188,10 @@ export function networkTaskEligibilityView(networkTasks = null) {
   const failingGate = gates.find((gate) => gate.failing) || null;
   const blockers = (Array.isArray(networkTasks?.capacity?.blockers) ? networkTasks.capacity.blockers : [])
     .map(capacityBlockerView);
+  const badge = badgeEligibilityView(networkTasks.badgeEligibility);
   const eligible = plain.status === "available_for_routing";
   const unavailable = plain.tone === "unavailable";
   const walletAddress = cleanText(networkTasks.walletAddress);
-
   return {
     ready: true,
     loading: false,
@@ -169,6 +207,7 @@ export function networkTaskEligibilityView(networkTasks = null) {
     nextAction: failingGate?.action || cleanText(networkTasks.nextAction),
     gates,
     blockers,
+    badge,
     expandedByDefault: !eligible && !unavailable,
     error: cleanText(networkTasks.error),
   };

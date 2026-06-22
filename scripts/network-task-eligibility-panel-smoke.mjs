@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  badgeEligibilityView,
   capacityBlockerView,
   eligibilityGateView,
   firstFailingGate,
@@ -17,6 +18,7 @@ const expectedLabels = {
   available_for_routing: "Eligible",
   at_capacity: "Capacity blocked",
   profile_required: "Needs more task history",
+  badge_required: "Capacity blocked",
   profile_pending: "Needs more task history",
   profile_failed: "Needs more task history",
   wallet_sync_pending: "Wallet sync in progress",
@@ -29,6 +31,7 @@ for (const [status, label] of Object.entries(expectedLabels)) {
 }
 assert.equal(plainEligibilityStatus("available_for_routing").tone, "ok");
 assert.equal(plainEligibilityStatus("at_capacity").tone, "blocked");
+assert.equal(plainEligibilityStatus("badge_required").tone, "blocked");
 assert.equal(plainEligibilityStatus("unavailable").tone, "unavailable");
 // Unknown statuses fall back to an honest unavailable label, never a guess.
 assert.equal(plainEligibilityStatus("operator_hold_someday").label, "Eligibility unavailable");
@@ -97,6 +100,26 @@ assert.equal(eligibilityGateView({ status: "waiting" }).waiting, true);
 assert.equal(eligibilityGateView({ status: "waiting" }).failing, false);
 assert.equal(eligibilityGateView({ status: "pending" }).failing, true);
 
+const missingBadge = badgeEligibilityView({
+  status: "missing",
+  verifiedBadgeIds: [],
+  defaultBadge: "",
+  allowedWorkTypes: [],
+  summary: "No verified Network Task operating badge was found.",
+});
+assert.equal(missingBadge.laneLabel, "");
+assert.equal(missingBadge.hasNonAnonOperatingBadge, false);
+
+const coreBadge = badgeEligibilityView({
+  status: "available",
+  verifiedBadgeIds: ["core_contributor"],
+  defaultBadge: "core_contributor",
+  allowedWorkTypes: ["code_task"],
+  summary: "Verified Network Task lanes: Core Contributor.",
+});
+assert.equal(coreBadge.laneLabel, "Core Contributor");
+assert.equal(coreBadge.hasNonAnonOperatingBadge, true);
+
 // 5. Full view-model: not eligible expands by default and surfaces the
 // failing gate's server action copy as the next action.
 const blockedView = networkTaskEligibilityView({
@@ -119,10 +142,18 @@ const eligibleView = networkTaskEligibilityView({
   nextAction: "No manual request is needed.",
   gates: gates.map((gate) => ({ ...gate, status: gate.id === "board_routing" ? "waiting" : "complete", action: "" })),
   capacity: { available: true, blockers: [] },
+  badgeEligibility: {
+    status: "available",
+    verifiedBadgeIds: ["core_contributor"],
+    defaultBadge: "core_contributor",
+    summary: "Verified Network Task lanes: Core Contributor.",
+  },
 });
 assert.equal(eligibleView.eligible, true);
 assert.equal(eligibleView.expandedByDefault, false);
 assert.equal(eligibleView.plainLabel, "Eligible");
+assert.equal(eligibleView.badge.laneLabel, "Core Contributor");
+assert.match(eligibleView.explanation, /no suitable task right now/);
 
 // 7. Capacity-blocked view carries blocker rows.
 const capacityView = networkTaskEligibilityView({

@@ -18,6 +18,8 @@ process.env.TELEGRAM_AUTH_BOT_USERNAME = "TaskNodeFixtureBot";
 process.env.TELEGRAM_AUTH_WIDGET_DOMAIN = "localhost";
 process.env.DISCORD_CLIENT_ID = "discord-fixture-client";
 process.env.DISCORD_CLIENT_SECRET = "discord-fixture-secret";
+process.env.GITHUB_CLIENT_ID = "github-fixture-client";
+process.env.GITHUB_CLIENT_SECRET = "github-fixture-secret";
 process.env.X_CLIENT_ID = "x-fixture-client:1:ci";
 process.env.X_CLIENT_SECRET = "x-fixture-secret";
 
@@ -132,18 +134,74 @@ function installXFetchMock() {
       });
     }
     if (target.startsWith("https://api.x.com/2/users/me?")) {
+      const targetUrl = new URL(target);
+      assert.ok(
+        String(targetUrl.searchParams.get("user.fields") || "").split(",").includes("public_metrics"),
+        "X user lookup should request public_metrics for KOL follower proof"
+      );
       return new Response(JSON.stringify({
         data: {
           id: "1357924680",
           username: "x_fixture",
           name: "X Fixture",
           profile_image_url: "https://x.example/avatar.jpg",
+          public_metrics: {
+            followers_count: 134000,
+            following_count: 77,
+            listed_count: 10,
+            tweet_count: 1234,
+          },
           verified: false,
         },
       }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
+    }
+    return originalFetch(url, options);
+  };
+  return () => {
+    global.fetch = originalFetch;
+  };
+}
+
+function installGithubFetchMock() {
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options = {}) => {
+    const target = String(url);
+    if (target === "https://github.com/login/oauth/access_token") {
+      const body = JSON.parse(String(options.body || "{}"));
+      assert.equal(body.client_id, process.env.GITHUB_CLIENT_ID);
+      assert.equal(body.client_secret, process.env.GITHUB_CLIENT_SECRET);
+      assert.equal(body.code, "github-oauth-code");
+      assert.equal(body.redirect_uri, `${origin}/api/auth/callback/github`);
+      assertOk(body.state, "GitHub token exchange should include OAuth state");
+      return new Response(JSON.stringify({ access_token: "github-fixture-token" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (target === "https://api.github.com/user") {
+      return new Response(JSON.stringify({
+        id: 11223344,
+        login: "DRavlic",
+        name: "Domagoj Ravlic",
+        html_url: "https://github.com/DRavlic",
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (target === "https://api.github.com/user/emails") {
+      return new Response(JSON.stringify([
+        { email: "fixture-github@example.com", verified: true, primary: true },
+      ]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (target.startsWith("https://api.github.com/user/repos?")) {
+      assert.fail("Core Contributor proof must not request private repository inventory.");
     }
     return originalFetch(url, options);
   };
@@ -162,6 +220,7 @@ record("providers.ready", {
 assertOk(providers.find((provider) => provider.id === "email")?.enabled, "email provider should be enabled");
 assertOk(providers.find((provider) => provider.id === "telegram")?.enabled, "telegram provider should be enabled");
 assertOk(providers.find((provider) => provider.id === "discord")?.enabled, "discord provider should be enabled");
+assertOk(providers.find((provider) => provider.id === "github")?.enabled, "github provider should be enabled");
 assertOk(providers.find((provider) => provider.id === "x")?.enabled, "x provider should be enabled");
 
 const emailStart = await authEmailStart({ email: "Fixture.User@example.com" }, "POST", {
@@ -355,6 +414,38 @@ try {
   restoreFetch();
 }
 
+const restoreGithubFetch = installGithubFetchMock();
+let githubLinkedSession = null;
+try {
+  const githubStart = authStart("github", {
+    origin,
+    redirectPath: "/settings",
+    session: telegramLinked.body.session,
+    proof: "core_contributor",
+  });
+  const githubState = stateFromStart(githubStart);
+  const githubAuthorizeUrl = new URL(githubStart.body.redirectUrl);
+  assert.equal(githubStart.body.mode, "account_link");
+  const githubScope = String(githubAuthorizeUrl.searchParams.get("scope") || "");
+  assert.equal(githubScope, "user:email");
+  assert.equal(githubScope.split(" ").includes("repo"), false);
+  assert.equal(githubScope.split(" ").includes("read:org"), false);
+  const githubLinked = await authCallback("github", { code: "github-oauth-code", state: githubState }, {
+    origin,
+    oauthState: githubState,
+  });
+  assert.equal(githubLinked.status, 302);
+  assert.equal(githubLinked.body.session.accountId, emailSession.accountId);
+  assertOk(linkedProviderIds(githubLinked.body.session).includes("github"), "email account should link github");
+  githubLinkedSession = githubLinked.body.session;
+  record("github.linked_to_email_account", {
+    accountId: githubLinked.body.session.accountId,
+    linkedProviders: linkedProviderIds(githubLinked.body.session),
+  });
+} finally {
+  restoreGithubFetch();
+}
+
 const restoreXFetch = installXFetchMock();
 let xLinkedSession = null;
 try {
@@ -423,9 +514,17 @@ record("oauth.stale_state_rejected", {
 
 const identityBefore = getAccountIdentityProfile({ accountId: emailSession.accountId });
 const xAliasBefore = identityBefore.aliases.find((alias) => alias.provider === "x");
+const githubAliasBefore = identityBefore.aliases.find((alias) => alias.provider === "github");
 assert.equal(identityBefore.handleRequired, true);
 assertOk(xAliasBefore, "linked X should be present as a private alias");
+assertOk(githubAliasBefore, "linked GitHub should be present as a private alias");
 assert.equal(xAliasBefore.visibility, "private");
+assert.equal(xAliasBefore.metrics?.followersCount, 134000);
+assert.equal(githubAliasBefore.metrics?.coreContributorAccess?.sanctioned, true);
+assert.equal(githubAliasBefore.metrics?.coreContributorAccess?.scopeRecorded, true);
+assert.equal(githubAliasBefore.metrics?.coreContributorAccess?.matchedHandle, "dravlic");
+assert.equal(githubAliasBefore.metrics?.coreContributorAccess?.proofMethod, "github_handle_allowlist");
+assert.equal(githubAliasBefore.metrics?.coreContributorAccess?.oauthScope, "user:email");
 const handleAvailability = checkHiveHandleAvailability({
   accountId: emailSession.accountId,
   handle: "x_fixture",
@@ -438,6 +537,7 @@ const handleSaved = setAccountHiveHandle({
 });
 assert.equal(handleSaved.ok, true);
 assert.equal(handleSaved.identityProfile.hiveHandle, "x_fixture");
+assert.equal(handleSaved.identityProfile.projectLeaderAccess?.eligible, false);
 const aliasPublished = setAccountAliasVisibility({
   accountId: emailSession.accountId,
   provider: "x",
@@ -449,10 +549,30 @@ assert.equal(aliasPublished.ok, true);
 assert.equal(aliasPublished.identityProfile.publicAliases[0]?.handle, "x_fixture");
 assert.equal(getSession(emailVerified.sessionId)?.identityProfile?.hiveHandle, "x_fixture");
 assert.equal(getSession(xLinkedSession?.id)?.identityProfile?.publicAliases[0]?.handle, "x_fixture");
+assert.equal(getSession(githubLinkedSession?.id)?.identityProfile?.aliases?.find((alias) => alias.provider === "github")?.metrics?.coreContributorAccess?.sanctioned, true);
+const projectLeaderHandleSaved = setAccountHiveHandle({
+  accountId: emailSession.accountId,
+  handle: "goodalexander",
+  displayName: "Fixture Project Leader",
+});
+assert.equal(projectLeaderHandleSaved.ok, true);
+assert.equal(projectLeaderHandleSaved.identityProfile.hiveHandle, "goodalexander");
+assert.equal(projectLeaderHandleSaved.identityProfile.projectLeaderAccess?.eligible, true);
+assert.equal(projectLeaderHandleSaved.identityProfile.projectLeaderAccess?.matchedHandle, "goodalexander");
+assert.ok(
+  projectLeaderHandleSaved.identityProfile.projectLeaderAccess?.authority?.includes("define_open_source_projects"),
+  "Project Leader badge should authorize open-source project definition"
+);
+assert.equal(getSession(emailVerified.sessionId)?.identityProfile?.projectLeaderAccess?.eligible, true);
 record("identity.namespace_saved", {
   accountId: emailSession.accountId,
   handle: handleSaved.identityProfile.hiveHandle,
   publicAliases: aliasPublished.identityProfile.publicAliases.length,
+});
+record("identity.project_leader_badge", {
+  accountId: emailSession.accountId,
+  handle: projectLeaderHandleSaved.identityProfile.hiveHandle,
+  eligible: projectLeaderHandleSaved.identityProfile.projectLeaderAccess?.eligible,
 });
 
 assert.equal(Boolean(getSession(emailVerified.sessionId)), true);

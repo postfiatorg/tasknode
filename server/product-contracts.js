@@ -50,6 +50,7 @@ import {
   getChatMessages,
   usageSummary,
 } from "./repositories/chat-billing.js";
+import { refreshIdentityApprovalsAfterSignal } from "./repositories/identity-approvals.js";
 import {
   recordChatFailureObservability,
   recordUserObservabilityEvent,
@@ -2239,10 +2240,22 @@ export async function usageTopUpSync(payload, method, session = null) {
       },
     });
   }
+  const hasUsdcTopUpCredit = (result.creditedEntries || [])
+    .some((entry) => String(entry?.metadata?.asset || "").toUpperCase() === "USDC");
+  const networkBadgeRefresh = hasUsdcTopUpCredit
+    ? await refreshIdentityApprovalsAfterSignal({
+      accountId,
+      signal: "billing_usdc_top_up",
+      verifiedByAccountId: accountId,
+      metadata: {
+        creditedLedgerEntryIds: (result.creditedEntries || []).map((entry) => entry?.id).filter(Boolean),
+      },
+    })
+    : null;
 
   return {
     status: 200,
-    body: result,
+    body: networkBadgeRefresh ? { ...result, networkBadgeRefresh } : result,
   };
 }
 

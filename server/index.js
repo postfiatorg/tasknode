@@ -57,6 +57,7 @@ import { handleMemoryRoute } from "./memory-routes.js";
 import { handleDirectoryRoute } from "./directory-routes.js";
 import { handleHiveRoute } from "./hive-routes.js";
 import { handleCapabilityProfileRoute } from "./capability-profile-routes.js";
+import { handleNetworkBadgeAdminRoute } from "./network-badge-admin-routes.js";
 import { handleSystemStatusRoute } from "./system-status.js";
 import { handleTelegramBotRoute } from "./telegram-bot.js";
 import { walletSendPrepare, walletSendSubmit } from "./wallet-send.js";
@@ -546,6 +547,7 @@ async function routeApi(req, url, res) {
     const result = authStart(parts[3], {
       origin: requestOrigin(req),
       redirectPath: url.searchParams.get("redirect") || "/",
+      proof: url.searchParams.get("proof") || "",
       session,
     });
     json(res, result.status, result.body, responseHeadersForAuthResult(req, result));
@@ -580,6 +582,7 @@ async function routeApi(req, url, res) {
     const result = authStart(parts[2], {
       origin: requestOrigin(req),
       redirectPath: url.searchParams.get("redirect") || "/",
+      proof: url.searchParams.get("proof") || "",
       session,
     });
     json(res, result.status, result.body, responseHeadersForAuthResult(req, result));
@@ -729,6 +732,7 @@ async function routeApi(req, url, res) {
   if (await handleDirectoryRoute({ json, req, res, session, url })) return true;
 
   if (await handleCapabilityProfileRoute({ json, readJson, req, res, url })) return true;
+  if (await handleNetworkBadgeAdminRoute({ json, readJson, req, res, url })) return true;
 
   if (await handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 

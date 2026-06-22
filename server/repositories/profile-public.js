@@ -3,6 +3,7 @@ import { databaseEnabled, isUniqueViolation, query } from "../db/pool.js";
 import { getAccountWalletCloud } from "../account-wallet-cloud.js";
 import { getAccountIdentityProfile } from "../runtime-store.js";
 import { listMachineOperatorDisclosures } from "./capability-profiles.js";
+import { publicNetworkBadgesForAccount } from "./network-badges.js";
 import { countProfileNfts, getPublicProfileHeroNft, listProfileNfts } from "./profile-nfts.js";
 import {
   canonicalRewardedTaskProjectionSql,
@@ -438,6 +439,7 @@ export function publicProfileFromParts({
   nfts = [],
   nftTotal = null,
   operatorDisclosure = null,
+  networkBadges = [],
 } = {}) {
   const packet = input || {};
   const metrics = packet.reward_totals || {};
@@ -481,6 +483,25 @@ export function publicProfileFromParts({
         provider: safeText(badge.provider, 40),
         label: safeText(badge.label, 80),
       })),
+      networkBadges: arrayFromValue(networkBadges).slice(0, 12).map((badge) => {
+        const item = objectFromValue(badge);
+        return {
+          badgeId: safeText(item.badgeId || item.badge_id, 80),
+          label: safeText(item.label, 120),
+          symbolKey: safeText(item.symbolKey || item.symbol_key, 80),
+          status: safeText(item.status || "verified", 80),
+          selectedDefault: item.selectedDefault === true || item.selected_default === true,
+          verifiedAt: safeText(item.verifiedAt || item.verified_at, 80),
+          expiresAt: safeText(item.expiresAt || item.expires_at, 80),
+          maxPayoutPft: roundPft(item.maxPayoutPft || item.max_payout_pft),
+          allowedWorkTypes: arrayFromValue(item.allowedWorkTypes || item.allowed_work_types)
+            .slice(0, 8)
+            .map((workType) => safeText(workType, 120))
+            .filter(Boolean),
+          rewardCaps: objectFromValue(item.rewardCaps || item.reward_caps),
+          publicDescription: safeText(item.publicDescription || item.public_description, 300),
+        };
+      }).filter((badge) => badge.badgeId && badge.label),
       primaryWallet: safeText(packet.identity?.primary_wallet, 160),
       activeWallet: safeText(packet.identity?.active_wallet, 160),
       displayWallet: safeText(packet.identity?.primary_wallet || packet.identity?.active_wallet, 160),
@@ -590,7 +611,7 @@ export async function getCompletedPublicProfileSnapshotByFingerprint({
 export async function getPublicProfile({ accountId } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("profile_public_account_required");
-  const [input, snapshot, nfts, nftTotal, heroNft] = await Promise.all([
+  const [input, snapshot, nfts, nftTotal, heroNft, networkBadgeState] = await Promise.all([
     buildPublicProfileSnapshotInput({ accountId: normalizedAccount }),
     getLatestPublicProfileSnapshot({ accountId: normalizedAccount }),
     listProfileNfts({
@@ -600,6 +621,7 @@ export async function getPublicProfile({ accountId } = {}) {
     }),
     countProfileNfts({ accountId: normalizedAccount, publicOnly: true }),
     getPublicProfileHeroNft({ accountId: normalizedAccount }),
+    publicNetworkBadgesForAccount({ accountId: normalizedAccount }).catch(() => ({ badges: [] })),
   ]);
   const operatorDisclosures = await listMachineOperatorDisclosures({ accountIds: [normalizedAccount] }).catch(() => ({}));
   return publicProfileFromParts({
@@ -610,6 +632,7 @@ export async function getPublicProfile({ accountId } = {}) {
     snapshot,
     nfts,
     operatorDisclosure: operatorDisclosures[normalizedAccount] || null,
+    networkBadges: networkBadgeState.badges || [],
   });
 }
 

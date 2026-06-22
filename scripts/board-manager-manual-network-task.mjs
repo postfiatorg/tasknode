@@ -41,6 +41,11 @@ function usage() {
     "  --need <text>              Project need summary for the generated task.",
     "  --reason <text>            Routing reason.",
     "  --task-class <class>       network or alpha. Default: network.",
+    "  --task-work-type <type>    Audit work type used for generation.",
+    "  --required-badge <id>      Required verified badge id for the lane.",
+    "  --operating-badge <id>     Badge the candidate operates under. Defaults to required badge.",
+    "  --badge-work-type <type>   Badge lane work type. Defaults to task work type.",
+    "  --badge-reward-cap <pft>   Badge payout cap for this lane.",
     "  --reward-min <pft>         Default: 20000.",
     "  --reward-max <pft>         Default: 50000.",
     "  --accept-window-hours <n>  Default: 24.",
@@ -66,13 +71,20 @@ try {
   const wallet = argValue("--wallet");
   const need = argValue("--need");
   const reason = argValue("--reason", "Operator routed a project-linked Network Task.");
-  if (!projectId || !accountId || !wallet || !need) {
+  const taskWorkType = argValue("--task-work-type");
+  const requiredBadgeId = argValue("--required-badge");
+  const operatingBadgeId = argValue("--operating-badge", requiredBadgeId);
+  const badgeWorkType = argValue("--badge-work-type", taskWorkType);
+  const badgeRewardCapPft = numberArg("--badge-reward-cap", 0);
+  if (!projectId || !accountId || !wallet || !need || !taskWorkType || !requiredBadgeId || !badgeWorkType || !badgeRewardCapPft) {
     console.error("board_manager_manual_network_task_missing_required_args");
     console.log(usage());
     process.exit(1);
   }
 
   const execute = hasArg("--execute");
+  const rewardMinPft = Math.min(numberArg("--reward-min", Math.min(20000, badgeRewardCapPft || 20000)), badgeRewardCapPft);
+  const rewardMaxPft = Math.min(numberArg("--reward-max", badgeRewardCapPft || 50000), badgeRewardCapPft);
   const trigger = argValue("--trigger", "manual_operator_network_task");
   const sourcePacket = await buildBoardManagerSourcePacket({ trigger, scope: "global_hive" });
   const decision = {
@@ -85,14 +97,30 @@ try {
       summary: need,
       next_steps: ["Queue a project-linked Network Task through the standard task engine."],
       network_task: {
+        task_work_type: taskWorkType,
+        required_badge_id: requiredBadgeId,
+        operating_badge_id: operatingBadgeId,
+        badge_work_type: badgeWorkType,
+        badge_reason: argValue("--badge-reason", "Manual operator supplied badge routing metadata."),
+        badge_reward_cap_pft: badgeRewardCapPft,
+        badge_evidence_requirements: [argValue("--badge-evidence", "Submit badge-appropriate proof plus Discord announcement evidence.")],
+        discord_evidence_required: true,
         task_class: argValue("--task-class", "network"),
         candidate_account_id: accountId,
         candidate_wallet_address: wallet,
         project_need_summary: need,
         routing_reason: reason,
         cadence_reason: argValue("--cadence-reason", "Manual operator routing after Hive Context request."),
-        reward_min_pft: numberArg("--reward-min", 20000),
-        reward_max_pft: numberArg("--reward-max", 50000),
+        action_output: argValue("--action-output", "Badge-appropriate artifact submitted through the task evidence flow."),
+        delivery_surface: argValue("--delivery-surface", "task_submission"),
+        recipient_or_reviewer: argValue("--recipient-or-reviewer", "Task reviewer"),
+        escalation_stage: argValue("--escalation-stage", "manual_operator_routing"),
+        lineage_task_ids: [],
+        referenced_outputs: [],
+        deduped_against: [],
+        why_not_duplicate: argValue("--why-not-duplicate", "Manual operator selected this as the current next action."),
+        reward_min_pft: rewardMinPft,
+        reward_max_pft: Math.max(rewardMinPft, rewardMaxPft),
         accept_window_hours: numberArg("--accept-window-hours", 24),
         allow_over_capacity: hasArg("--allow-over-capacity"),
       },

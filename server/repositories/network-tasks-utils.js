@@ -59,12 +59,12 @@ export function numeric(value, fallback = 0) {
 }
 
 export function networkTaskRewardPolicy() {
-  const minPft = Math.max(0, numeric(process.env.TASKNODE_NETWORK_TASK_REWARD_MIN_PFT, 10000));
-  const maxPft = Math.max(minPft || 10000, numeric(process.env.TASKNODE_NETWORK_TASK_REWARD_MAX_PFT, 50000));
-  return { minPft: minPft || 10000, maxPft: maxPft || 50000 };
+  const minPft = Math.max(0, numeric(process.env.TASKNODE_NETWORK_TASK_REWARD_MIN_PFT, 100));
+  const maxPft = Math.max(minPft || 100, numeric(process.env.TASKNODE_NETWORK_TASK_REWARD_MAX_PFT, 50000));
+  return { minPft: minPft || 100, maxPft: maxPft || 50000 };
 }
 
-export function normalizeNetworkTaskRewardBand({ min = 10000, max = 50000 } = {}) {
+export function normalizeNetworkTaskRewardBand({ min = 100, max = 50000 } = {}) {
   const policy = networkTaskRewardPolicy();
   const normalizedMin = Math.min(policy.maxPft, Math.max(policy.minPft, numeric(min, policy.minPft)));
   const normalizedMax = Math.min(policy.maxPft, Math.max(normalizedMin, numeric(max, policy.maxPft)));
@@ -83,7 +83,7 @@ export function taskClass(value = "") {
   return taskClasses.has(normalized) ? normalized : "network";
 }
 
-export function rewardBand({ min = 10000, max = 50000 } = {}) {
+export function rewardBand({ min = 100, max = 50000 } = {}) {
   return normalizeNetworkTaskRewardBand({ min, max });
 }
 

@@ -18,6 +18,8 @@ import authWalletBoundary from "../../../docs/wiki/architecture/auth-wallet-boun
 import bootup from "../../../docs/wiki/architecture/bootup.md?raw";
 import boardManagerArchitecture from "../../../docs/wiki/architecture/board-manager.md?raw";
 import boardManagerSecretaryPacket from "../../../docs/wiki/architecture/board-manager-secretary-packet.md?raw";
+import badgeAwareRoutingCapacityPlan from "../../../docs/wiki/architecture/badge-aware-routing-capacity-plan.md?raw";
+import badgeBasedNetworkTaskRouting from "../../../docs/wiki/architecture/badge-based-network-task-routing.md?raw";
 import contextHistoryRestore from "../../../docs/wiki/architecture/context-history-restore.md?raw";
 import codexComputerControlQa from "../../../docs/wiki/architecture/codex-computer-control-qa.md?raw";
 import currentSystem from "../../../docs/wiki/architecture/current-system.md?raw";
@@ -530,6 +532,8 @@ const hiveOperationsDoc = combinedDoc(
   "One canonical architecture page for the Hive coordination loop: Board Manager decisions, secretary packets, network context reports, active projects, and recovery when Hive-routed work stalls.",
   [
     ["Board Manager", boardManagerArchitecture],
+    ["Badge-Based Network Task Routing", badgeBasedNetworkTaskRouting],
+    ["Badge-Aware Routing Capacity Plan", badgeAwareRoutingCapacityPlan],
     ["Board Manager Secretary Packet", boardManagerSecretaryPacket],
     ["Hive Secretary Report", hiveSecretaryWorker],
     ["Hive Active Projects", hiveActiveProjectsHelper],
@@ -889,6 +893,8 @@ const LEGACY_DOC_PAGES = [
   ["auth-wallet-boundary", "Auth And Wallet Boundary", "identity-wallets", "Identity & Wallets"],
   ["board-manager-architecture", "Board Manager", "hive-operations", "Hive & Board Operations"],
   ["board-manager-secretary-packet", "Board Manager Secretary Packet", "hive-operations", "Hive & Board Operations"],
+  ["badge-aware-routing-capacity-plan", "Badge-Aware Routing Capacity Plan", "hive-operations", "Hive & Board Operations"],
+  ["badge-based-network-task-routing", "Badge-Based Network Task Routing", "hive-operations", "Hive & Board Operations"],
   ["hive-secretary-worker", "Hive Secretary Worker", "hive-operations", "Hive & Board Operations"],
   ["hive-active-projects-helper", "Hive Active Projects Helper", "hive-operations", "Hive & Board Operations"],
   ["network-task-recovery", "Network Task Recovery", "hive-operations", "Hive & Board Operations"],

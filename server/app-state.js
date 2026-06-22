@@ -22,6 +22,7 @@ import {
 import {
   getHiveConversation,
   getChatMessages,
+  hasUsageCreditForSource,
   listChatConversations,
   usageSummary,
 } from "./repositories/chat-billing.js";
@@ -31,6 +32,7 @@ import {
 } from "./repositories/context.js";
 import { listTaskState } from "./repositories/tasks.js";
 import { scheduleLinkedWalletTaskProjectionRefresh } from "./task-projection-refresh.js";
+import { expertAccessFromTaskState } from "./expert-badge.js";
 
 const signedOutUsageSummary = Object.freeze({
   currentSpendUsd: 0,
@@ -71,6 +73,27 @@ function sessionState(session, providers, runtimeReadiness, linkedWallet, identi
     hiveHandle: identityProfile?.hiveHandle || session.hiveHandle || "",
     publicDisplayName: identityProfile?.publicDisplayName || session.publicDisplayName || "",
     identityProfile,
+  };
+}
+
+async function qaWorkerAccessForAccount(accountId = "") {
+  const normalizedAccountId = String(accountId || "").trim();
+  if (!normalizedAccountId) {
+    return {
+      checkedAt: new Date().toISOString(),
+      usdcTopUp: false,
+      proofMethod: "billing_ledger_usdc_top_up",
+    };
+  }
+  const usdcTopUp = await hasUsageCreditForSource({
+    accountId: normalizedAccountId,
+    source: "ethereum_deposit",
+    metadata: { asset: "USDC" },
+  }).catch(() => false);
+  return {
+    checkedAt: new Date().toISOString(),
+    usdcTopUp: Boolean(usdcTopUp),
+    proofMethod: "billing_ledger_usdc_top_up",
   };
 }
 
@@ -130,7 +153,14 @@ export async function appState(session = null, { refreshTaskProjection = false }
     accountId,
     walletAddress: walletLinked ? linkedWallet.address : "",
   });
-  const identityProfile = accountId ? getAccountIdentityProfile({ accountId }) : null;
+  const baseIdentityProfile = accountId ? getAccountIdentityProfile({ accountId }) : null;
+  const identityProfile = baseIdentityProfile
+    ? {
+        ...baseIdentityProfile,
+        expertAccess: expertAccessFromTaskState({ accountId, taskState: tasks }),
+        qaWorkerAccess: await qaWorkerAccessForAccount(accountId),
+      }
+    : null;
 
   return {
     generatedAt: new Date().toISOString(),

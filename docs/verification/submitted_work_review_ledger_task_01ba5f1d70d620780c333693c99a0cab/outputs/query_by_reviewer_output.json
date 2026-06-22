@@ -1,0 +1,84 @@
+{
+  "ok": true,
+  "operation": "query",
+  "filters": {
+    "taskId": "",
+    "reviewer": "grashnuk"
+  },
+  "count": 3,
+  "records": [
+    {
+      "id": "swrev_sample_verified",
+      "taskId": "task_c47ab945b126e0ec2c773e794eabc389",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 92,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "timestamp": "2026-06-20T00:01:00.000Z",
+      "source": {
+        "cid": "QmPCEeyatJpdDndUcNn3nWxrcXZYYZRJ3vLAepZu9hJte6",
+        "txHash": "1524DFA97D1AFCA8B10B60CF3A652F2ED74CBF76E246185DF250537CAEF85694"
+      },
+      "parserOutput": {
+        "taskGrade": "A",
+        "rewardRecommendation": "full_reward",
+        "flagIndicators": [],
+        "archivalInstructions": "archive_hot",
+        "reviewerNotes": "Triage routing implementation packet is internally consistent and implementation-ready."
+      }
+    },
+    {
+      "id": "swrev_sample_unverified",
+      "taskId": "task_8df92c053af509e72dbec3e475766f7a",
+      "reviewer": "grashnuk",
+      "reviewStatus": "unverified",
+      "score": 61,
+      "reviewFlags": [
+        "missing_public_artifact",
+        "pipeline_adjacent"
+      ],
+      "archiveAction": "needs_followup",
+      "timestamp": "2026-06-20T00:02:00.000Z",
+      "source": {
+        "cid": "QmZqirR2L7zPNfvUHQqVoC9UNrLsHhEAkYChbfaTQ33yLi",
+        "txHash": "C6D14F8FD7274BE47EE5E480D965643225D45CE35F6E5EB9CFCD87B5B17248CA"
+      },
+      "parserOutput": {
+        "taskGrade": "C",
+        "rewardRecommendation": "partial_reward_until_artifacts_verified",
+        "flagIndicators": [
+          "missing_public_artifact",
+          "pipeline_adjacent"
+        ],
+        "archivalInstructions": "needs_followup",
+        "reviewerNotes": "Useful review formatter direction, but do not operationalize parser output until script and tests are resolvable."
+      }
+    },
+    {
+      "id": "swrev_a1ad67024c43b6d98e47",
+      "taskId": "task_01ba5f1d70d620780c333693c99a0cab",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 88,
+      "reviewFlags": [
+        "ledger_smoke_test"
+      ],
+      "archiveAction": "archive_hot",
+      "timestamp": "2026-06-20T01:36:39.274Z",
+      "source": {
+        "cid": "QmQc4QKRr3j5KpNZNUp8fLvnpyVt8VzkKdYm2ggWV4EpTu",
+        "txHash": "4B2451DBC848F3CD56ECC7907BE065879F7C2EAAFEACAF93AD7ED50848860E93"
+      },
+      "parserOutput": {
+        "taskGrade": "A-",
+        "rewardRecommendation": "full_reward_candidate",
+        "flagIndicators": [
+          "ledger_smoke_test"
+        ],
+        "archivalInstructions": "archive_hot",
+        "reviewerNotes": "Smoke-added review ledger record proving add/query/list/report operations."
+      }
+    }
+  ]
+}

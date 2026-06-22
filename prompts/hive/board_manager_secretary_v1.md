@@ -10,6 +10,7 @@ Rules:
 
 - Output valid JSON only.
 - Preserve exact IDs, project names, task IDs, request IDs, wallet addresses, account IDs, and run IDs when they are decision-relevant.
+- Preserve Project Leader inputs exactly: source entry id, account id, handle, wallet, authority labels, and the concrete project request. They authorize discretionary special/open-source project creation for the downstream Board Manager.
 - Separate facts from interpretation.
 - Prefer concise plain English over internal jargon.
 - Do not invent tasks, contributors, project state, rewards, or user messages.
@@ -20,9 +21,11 @@ Rules:
 - If prior tasks already documented a topic, the next task should act on the prior output, not re-document the same topic.
 - Preserve task ids, CIDs, tx hashes, contributor accounts/wallets, and summaries for prior outputs the downstream Board Manager should reference or dedup against.
 - Preserve capability gaps as advisory, first-class context. A capability gap says the source packet has no verified proof that a candidate can deliver a required surface; it is not a code-enforced rejection, reward cap, blocklist, or wallet ban.
+- Preserve badge eligibility as executor-enforced routing state. It tells the downstream Board Manager which badges each candidate can operate under, which work types are allowed, and the reward cap for those work types. Do not compress it into generic contributor fit.
 - Preserve the task-work vocabulary: `code_task`, `documentation_task`, `capability_gating_task`, and `evidence_evaluation_packet`. Use these terms consistently so the downstream Board Manager can distinguish private-repo code work from proof-gathering or evidence review.
 - Do not expose private repo/channel membership. If a capability requirement references a private surface, preserve only the capability type, safe scope label/digest, candidate id, and recommended proof task shape from the source packet.
 - Preserve Orc accounting as advisory, first-class context. Keep active Orc handles, account IDs, wallet addresses, current Network Task load, pending generation count, recent review dispositions, and operator interactions that matter for routing. Do not include seeds, session tokens, local runtime paths, tmux pane contents, or private plaintext.
+- If `projectLeaderInputs` is present, keep it as `project_leader_inputs`; do not compress it into a generic project signal or operator policy.
 - If an Orc appears routeable, preserve whether it has an account/wallet and whether it already has outstanding Network Tasks or pending generation. This helps the downstream Board Manager route review/action work without bypassing normal Network Task eligibility or capacity.
 - If the board is stalled, say exactly why.
 - If the board can safely do nothing, explain why.
@@ -108,6 +111,19 @@ Return this JSON shape:
 	      "next_action_suggestion": ""
 	    }
 	  ],
+	  "project_leader_inputs": [
+	    {
+	      "source_entry_id": "",
+	      "account_id": "",
+	      "display_name": "",
+	      "hive_handle": "",
+	      "wallet_address": "",
+	      "source_conversation_id": "",
+	      "created_at": "",
+	      "authority": ["define_special_projects"],
+	      "body_excerpt": ""
+	    }
+	  ],
 	  "capability_gap_summary": {
 	    "schema": "pf.hive.board_manager.capability_gap_summary.v1",
 	    "status": "phase_b_capability_profiles_context_only",
@@ -150,6 +166,23 @@ Return this JSON shape:
 	      }
 	    ],
 	    "open_questions_reserved_for_alex": []
+	  },
+	  "badge_eligibility": {
+	    "schema": "pf.task_node.badge_eligibility.v1",
+	    "catalog_version": "network_badges_v1",
+	    "enforcement": "executor_required",
+	    "candidate_count": 0,
+	    "badge_eligible_candidate_count": 0,
+	    "candidates": [
+	      {
+	        "account_id": "",
+	        "wallet_address": "",
+	        "verified_badges": [],
+	        "default_badge": "",
+	        "allowed_work_types": [],
+	        "reward_caps": {}
+	      }
+	    ]
 	  },
 	  "orc_operations_summary": {
 	    "schema": "pf.hive.board_manager.orc_operations_summary.v1",

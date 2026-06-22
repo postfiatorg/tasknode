@@ -84,6 +84,36 @@ const rawSourcePacket = {
       walletAddress: "rHiveValidatedWallet",
     },
   ],
+  badgeEligibility: {
+    schema: "pf.task_node.badge_eligibility.v1",
+    catalogVersion: "network_badges_v1",
+    enforcement: "executor_required",
+    candidateCount: 1,
+    badgeEligibleCandidateCount: 1,
+    candidates: [
+      {
+        accountId: "acct_1",
+        walletAddress: "rHiveValidatedWallet",
+        verifiedBadges: ["qa_worker"],
+        defaultBadge: "qa_worker",
+        allowedWorkTypes: ["qa_report"],
+        rewardCaps: { qa_report: 5000 },
+      },
+    ],
+  },
+  projectLeaderInputs: [
+    {
+      sourceEntryId: "hivectx_1",
+      accountId: "acct_1",
+      displayName: "goodalexander",
+      hiveHandle: "goodalexander",
+      walletAddress: "rHiveValidatedWallet",
+      sourceConversationId: "conv_hive_1",
+      createdAt: "2026-05-24T00:30:00.000Z",
+      authority: ["define_special_projects", "define_open_source_projects"],
+      bodyExcerpt: "Task Node needs motion.",
+    },
+  ],
   orcOperations: {
     schema: "pf.hive.board_manager.orc_operations.v1",
     enforcement: "none_context_only",
@@ -320,6 +350,18 @@ const result = await fetchBoardManagerSecretaryPacket({
                   network_task_summary: "One refused Network Task exists.",
                   candidate_summary: "One eligible contributor exists.",
                   recent_run_summary: "No recent run already handled this source state.",
+                  project_leader_inputs: [
+                    {
+                      source_entry_id: "hivectx_1",
+                      account_id: "acct_1",
+                      display_name: "goodalexander",
+                      hive_handle: "goodalexander",
+                      wallet_address: "rHiveValidatedWallet",
+                      source_conversation_id: "conv_hive_1",
+                      authority: ["define_special_projects", "define_open_source_projects"],
+                      body_excerpt: "Task Node needs motion.",
+                    },
+                  ],
                   capability_gap_summary: {
                     status: "phase_a_instrumentation_only_no_enforcement",
                     enforcement: "none_context_only",
@@ -342,6 +384,23 @@ const result = await fetchBoardManagerSecretaryPacket({
                       },
                     ],
                     open_questions_reserved_for_alex: ["who can mark a capability verified"],
+                  },
+                  badge_eligibility: {
+                    schema: "pf.task_node.badge_eligibility.v1",
+                    catalog_version: "network_badges_v1",
+                    enforcement: "executor_required",
+                    candidate_count: 1,
+                    badge_eligible_candidate_count: 1,
+                    candidates: [
+                      {
+                        account_id: "acct_1",
+                        wallet_address: "rHiveValidatedWallet",
+                        verified_badges: ["qa_worker"],
+                        default_badge: "qa_worker",
+                        allowed_work_types: ["qa_report"],
+                        reward_caps: { qa_report: 5000 },
+                      },
+                    ],
                   },
                   facts_to_preserve: ["task_refused", "task_node"],
                   redaction_count: 0,
@@ -371,13 +430,18 @@ assert.match(capturedBody.messages[0].content, /do not summarize the board as gl
 assert.match(capturedBody.messages[1].content, /BOARD MANAGER SOURCE PACKET JSON/);
 assert.match(capturedBody.messages[1].content, /capabilityInstrumentation/);
 assert.match(capturedBody.messages[1].content, /capability_gating_task/);
+assert.match(capturedBody.messages[1].content, /projectLeaderInputs/);
 
 assert.equal(result.provider, "deepseek");
 assert.equal(result.model, "deepseek-v4-pro");
 assert.equal(result.packet.motion_state, "needs_attention");
 assert.equal(result.packet.recommended_context_request.target_id, "task_node");
+assert.equal(result.packet.project_leader_inputs[0].hive_handle, "goodalexander");
+assert.equal(result.packet.project_leader_inputs[0].authority[1], "define_open_source_projects");
 assert.equal(result.packet.capability_gap_summary.gaps[0].recommended_task_work_type, "capability_gating_task");
 assert.equal(result.packet.capability_gap_summary.enforcement, "none_context_only");
+assert.equal(result.packet.badge_eligibility.enforcement, "executor_required");
+assert.equal(result.packet.badge_eligibility.candidates[0].verified_badges[0], "qa_worker");
 assert.equal(result.usage.inputTokens, 1000);
 
 function deepSeekResponse({ content, id = "deepseek_secretary_response", inputTokens = 10, outputTokens = 5 } = {}) {
@@ -435,6 +499,18 @@ const repairedPacketJson = {
       next_action_suggestion: "Convert the prior document into a PR-ready handoff.",
     },
   ],
+  project_leader_inputs: [
+    {
+      source_entry_id: "hivectx_1",
+      account_id: "acct_1",
+      display_name: "goodalexander",
+      hive_handle: "goodalexander",
+      wallet_address: "rHiveValidatedWallet",
+      source_conversation_id: "conv_hive_1",
+      authority: ["define_special_projects", "define_open_source_projects"],
+      body_excerpt: "Task Node needs motion.",
+    },
+  ],
   capability_gap_summary: {
     status: "phase_a_instrumentation_only_no_enforcement",
     enforcement: "none_context_only",
@@ -482,6 +558,7 @@ assert.equal(repairCalls.length, 2);
 assert.match(repairCalls[1].messages.at(-1).content, /previous assistant message was not valid JSON/i);
 assert.equal(repairedResult.packet.motion_state, "needs_attention");
 assert.equal(repairedResult.packet.operator_standing_policy[0].source_id, "hivectx_stop_docs");
+assert.equal(repairedResult.packet.project_leader_inputs[0].source_entry_id, "hivectx_1");
 assert.equal(repairedResult.usage.inputTokens, 50);
 assert.equal(repairedResult.usage.outputTokens, 20);
 assert.equal(repairedResult.usage.repairAttempted, true);
@@ -526,12 +603,15 @@ assert.equal(fallbackResult.packet.operator_standing_policy[0].source_id, "hivec
 assert.equal(fallbackResult.packet.generation_quality_policy.requires_concrete_action_output, true);
 assert.equal(fallbackResult.packet.prior_output_corpus_summary.recent_outputs[0].task_id, "task_doc_1");
 assert.equal(fallbackResult.packet.deduplication_watchlist[0].prior_task_ids[0], "task_doc_1");
+assert.equal(fallbackResult.packet.project_leader_inputs[0].hive_handle, "goodalexander");
 assert.equal(fallbackResult.packet.capability_gap_summary.gaps[0].recommended_task_work_type, "capability_gating_task");
+assert.equal(fallbackResult.packet.badge_eligibility.candidates[0].reward_caps.qa_report, 5000);
 assert.equal(fallbackResult.packet.orc_operations_summary.active_agent_count, 1);
 assert.equal(fallbackResult.packet.orc_operations_summary.agents[0].handle, "grashnuk");
 assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("capability_gap:task_node:repo_pr_access:acct_1")));
 assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("orc_agent:grashnuk")));
 assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("source_packet_digest")));
+assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("project_leader_input:hivectx_1:goodalexander")));
 assert.equal(fallbackResult.usage.repairAttempted, true);
 assert.equal(fallbackResult.usage.repairFailed, true);
 assert.doesNotThrow(() => JSON.parse(fallbackResult.outputText));
@@ -575,6 +655,8 @@ assert.ok(decisionPacket.actionTargetRegistry.contributorCandidates.some((candid
 )));
 assert.equal(decisionPacket.capabilityGapSummary.gaps[0].capability_type, "repo_pr_access");
 assert.equal(decisionPacket.capabilityGapSummary.gaps[0].recommended_task_work_type, "capability_gating_task");
+assert.equal(decisionPacket.badgeEligibility.candidates[0].default_badge, "qa_worker");
+assert.equal(decisionPacket.projectLeaderInputs[0].hive_handle, "goodalexander");
 assert.equal(decisionPacket.orcOperationsSummary.active_agent_count, 1);
 assert.ok(decisionPacket.sourcePacketDigest.length >= 40);
 assert.ok(JSON.stringify(decisionPacket).length < JSON.stringify(rawSourcePacket).length + result.packetText.length + 8000);

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { projectLeaderAccessForHandle } from "./project-leader-badge.js";
 
 const hiveHandleMinLength = 3;
 const hiveHandleMaxLength = 30;
@@ -153,6 +154,52 @@ export function providerAliasDefaults(provider = {}) {
   };
 }
 
+function safeProviderMetrics(provider = {}) {
+  const metadata = provider?.metadata && typeof provider.metadata === "object" && !Array.isArray(provider.metadata)
+    ? provider.metadata
+    : {};
+  const publicMetrics = metadata.publicMetrics && typeof metadata.publicMetrics === "object" && !Array.isArray(metadata.publicMetrics)
+    ? metadata.publicMetrics
+    : {};
+  if (provider.id === "github") {
+    const coreContributorAccess = metadata.coreContributorAccess && typeof metadata.coreContributorAccess === "object" && !Array.isArray(metadata.coreContributorAccess)
+      ? metadata.coreContributorAccess
+      : {};
+    const sanctionedHandles = Array.isArray(coreContributorAccess.sanctionedHandles)
+      ? coreContributorAccess.sanctionedHandles.map((handle) => String(handle || "").trim()).filter(Boolean)
+      : [];
+    return {
+      coreContributorAccess: {
+        checkedAt: String(coreContributorAccess.checkedAt || "").trim() || null,
+        username: String(coreContributorAccess.username || provider.username || "").trim(),
+        sanctioned: coreContributorAccess.sanctioned === true,
+        matchedHandle: String(coreContributorAccess.matchedHandle || "").trim(),
+        sanctionedHandles,
+        accessCount: coreContributorAccess.sanctioned === true ? 1 : 0,
+        writeAccess: coreContributorAccess.sanctioned === true,
+        scopeRecorded: coreContributorAccess.sanctioned === true,
+        proofMethod: String(coreContributorAccess.proofMethod || "").trim() || null,
+        oauthScope: String(coreContributorAccess.oauthScope || "").trim() || null,
+      },
+    };
+  }
+
+  if (provider.id !== "x") return {};
+
+  const followersCount = Number(publicMetrics.followersCount ?? publicMetrics.followers_count);
+  const followingCount = Number(publicMetrics.followingCount ?? publicMetrics.following_count);
+  const listedCount = Number(publicMetrics.listedCount ?? publicMetrics.listed_count);
+  const tweetCount = Number(publicMetrics.tweetCount ?? publicMetrics.tweet_count);
+
+  return {
+    ...(Number.isFinite(followersCount) ? { followersCount } : {}),
+    ...(Number.isFinite(followingCount) ? { followingCount } : {}),
+    ...(Number.isFinite(listedCount) ? { listedCount } : {}),
+    ...(Number.isFinite(tweetCount) ? { tweetCount } : {}),
+    metricsCheckedAt: String(metadata.metricsCheckedAt || "").trim() || null,
+  };
+}
+
 export function accountIdentityProfile(account = null, { accounts = {}, includeSuggestions = true } = {}) {
   if (!account?.id) return null;
   const handle = normalizeHiveHandle(account.hiveHandle || "");
@@ -169,6 +216,7 @@ export function accountIdentityProfile(account = null, { accounts = {}, includeS
       username: provider.username || "",
       displayName: provider.displayName || "",
       profileUrl: provider.profileUrl || "",
+      metrics: safeProviderMetrics(provider),
       linkedAt: provider.linkedAt || null,
       verified: provider.status === "verified" || provider.emailVerified === true || provider.kind === "oauth",
       visibility: provider.aliasVisibility === "public" ? "public" : "private",
@@ -205,6 +253,7 @@ export function accountIdentityProfile(account = null, { accounts = {}, includeS
     publicTrustBadges: publicAliases
       .filter((alias) => alias.verified)
       .map((alias) => ({ provider: alias.provider, label: `${alias.label} verified` })),
+    projectLeaderAccess: projectLeaderAccessForHandle(handle),
     suggestions: includeSuggestions && !handle ? suggestHiveHandles({ accounts, accountId: account.id }) : [],
   };
 }

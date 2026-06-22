@@ -72,13 +72,29 @@ function payload(overrides = {}) {
       sort_order: 0,
     },
     network_task: {
+      task_work_type: "",
+      required_badge_id: "",
+      operating_badge_id: "",
+      badge_work_type: "",
+      badge_reason: "",
+      badge_reward_cap_pft: 0,
+      badge_evidence_requirements: [],
+      discord_evidence_required: true,
       task_class: "",
       candidate_account_id: "",
       candidate_wallet_address: "",
       project_need_summary: "",
       routing_reason: "",
       cadence_reason: "",
-      reward_min_pft: 10000,
+      action_output: "",
+      delivery_surface: "",
+      recipient_or_reviewer: "",
+      escalation_stage: "",
+      lineage_task_ids: [],
+      referenced_outputs: [],
+      deduped_against: [],
+      why_not_duplicate: "",
+      reward_min_pft: 100,
       reward_max_pft: 50000,
       accept_window_hours: 24,
       allow_over_capacity: false,
@@ -119,6 +135,7 @@ async function main() {
   const smokeProfileId = "nettaskprofile_board_manager_smoke";
 
   await query("DELETE FROM network_projects WHERE id = $1", [projectId]);
+  await query("DELETE FROM account_network_badges WHERE account_id = $1", [smokeAccountId]);
   await query("DELETE FROM pftl_sync_wallets WHERE account_id = $1", [smokeAccountId]);
   await query("DELETE FROM board_manager_user_messages WHERE account_id = $1", [smokeAccountId]);
   await query("DELETE FROM board_manager_user_messages WHERE account_id = $1", [fallbackAccountId]);
@@ -169,6 +186,15 @@ async function main() {
       createdAt: new Date().toISOString(),
     }],
   });
+  sourcePacket.projectLeaderInputs = [{
+    sourceEntryId: smokeHiveEntryId,
+    accountId: smokeAccountId,
+    displayName: "Smoke Operator",
+    hiveHandle: "goodalexander",
+    walletAddress: wallet,
+    sourceConversationId: smokeConversationId,
+    authority: ["define_special_projects", "define_open_source_projects"],
+  }];
   const compressedActionSourcePacket = buildBoardManagerSecretaryDecisionPacket({
     sourcePacket,
     secretaryPacket: {
@@ -204,6 +230,35 @@ async function main() {
         updated_at = now()
     `,
     [wallet, smokeAccountId]
+  );
+  await query(
+    `
+      INSERT INTO account_network_badges (
+        id,
+        account_id,
+        badge_id,
+        status,
+        selected_default,
+        verified_by_operator,
+        evidence_json,
+        validated_metrics_json
+      )
+      VALUES ($1, $2, 'core_contributor', 'verified', true, 'board_manager_action_hooks_smoke', $3::jsonb, $4::jsonb)
+      ON CONFLICT (account_id, badge_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        selected_default = EXCLUDED.selected_default,
+        verified_by_operator = EXCLUDED.verified_by_operator,
+        evidence_json = EXCLUDED.evidence_json,
+        validated_metrics_json = EXCLUDED.validated_metrics_json,
+        revoked_at = NULL,
+        updated_at = now()
+    `,
+    [
+      `acctbadge_${smokeAccountId}_core`,
+      smokeAccountId,
+      JSON.stringify({ proofMethod: "smoke_core_contributor_fixture" }),
+      JSON.stringify({ proofMethod: "smoke_core_contributor_fixture" }),
+    ]
   );
   await query(
     `
@@ -270,10 +325,13 @@ async function main() {
       }),
     },
   });
-  const createdProject = await query("SELECT task_count, contributor_count, pft_routed FROM network_projects WHERE id = $1", [projectId]);
+  const createdProject = await query("SELECT task_count, contributor_count, pft_routed, source_inputs_json, metadata_json FROM network_projects WHERE id = $1", [projectId]);
   assert.equal(Number(createdProject.rows[0]?.task_count || 0), 0);
   assert.equal(Number(createdProject.rows[0]?.contributor_count || 0), 0);
   assert.equal(Number(createdProject.rows[0]?.pft_routed || 0), 0);
+  assert.equal(createdProject.rows[0]?.metadata_json?.project_leader_authority?.present, true);
+  assert.equal(createdProject.rows[0]?.metadata_json?.project_leader_authority?.handles?.[0], "goodalexander");
+  assert.equal(createdProject.rows[0]?.source_inputs_json?.project_leader_inputs?.[0]?.sourceEntryId, smokeHiveEntryId);
 
   const networkTaskDecision = {
     action: "initiate_network_task",
@@ -285,14 +343,30 @@ async function main() {
       summary: "Queue a smoke Network Task generation job.",
       next_steps: ["Create a queued allocation.", "Create a queued generation job."],
       network_task: {
+        task_work_type: "code_task",
+        required_badge_id: "core_contributor",
+        operating_badge_id: "core_contributor",
+        badge_work_type: "code_task",
+        badge_reason: "Smoke user has a Core Contributor fixture badge.",
+        badge_reward_cap_pft: 30000,
+        badge_evidence_requirements: ["Submit a PR or commit URL plus Discord announcement proof."],
+        discord_evidence_required: true,
         task_class: "network",
         candidate_account_id: smokeAccountId,
         candidate_wallet_address: wallet,
-        project_need_summary: "Verify the Board Manager can initiate a project-linked Network Task without writing the final task offer.",
-        routing_reason: "The smoke operator has a Network Diagnostic Report and an active wallet.",
+        project_need_summary: "Verify the Board Manager can initiate a badge-capped Core Contributor Network Task without writing the final task offer.",
+        routing_reason: "The smoke operator has a Network Diagnostic Report, an active wallet, and a Core Contributor badge.",
         cadence_reason: "Action hook smoke only.",
-        reward_min_pft: 10000,
-        reward_max_pft: 50000,
+        action_output: "Core Contributor smoke artifact.",
+        delivery_surface: "public_artifact",
+        recipient_or_reviewer: "Board Manager smoke verifier",
+        escalation_stage: "badge_gate_smoke",
+        lineage_task_ids: [],
+        referenced_outputs: [],
+        deduped_against: [],
+        why_not_duplicate: "This is a one-off action-hook smoke.",
+        reward_min_pft: 100,
+        reward_max_pft: 100,
         accept_window_hours: 24,
         allow_over_capacity: true,
       },

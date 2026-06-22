@@ -10,6 +10,12 @@ import {
 import { countProfileNfts, failStaleGeneratingProfileNfts, listProfileNfts, setSelectedProfileNft } from "./repositories/profile-nfts.js";
 import { getPublicProfile } from "./repositories/profile-public.js";
 import {
+  getIdentityApprovalState,
+  refreshIdentityApprovalsAfterSignal,
+  refreshIdentityApprovalsFromProjection,
+  setDefaultNetworkBadge,
+} from "./repositories/identity-approvals.js";
+import {
   getRecommendedConnectionsState,
   recommendedConnectionProfileIsDiscoverable,
   recordRecommendedConnectionEvent,
@@ -18,6 +24,7 @@ import {
 } from "./repositories/recommended-connections.js";
 import {
   checkHiveHandleAvailability,
+  getLinkedWallet,
   getAccountProfileVisibility,
   getAccountIdentityProfile,
   setAccountAliasVisibility,
@@ -26,6 +33,7 @@ import {
   suggestHiveHandles,
 } from "./runtime-store.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
+import { evaluateExpertBadge } from "./expert-badge.js";
 
 const recommendedConnectionsPrompt = loadPrompt("profile/recommended_connections_v1.md");
 
@@ -66,10 +74,14 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
   if (
     ![
       "/api/profile/daily-airdrop",
+      "/api/profile/expert/evaluate",
       "/api/profile/handle",
       "/api/profile/handle/availability",
       "/api/profile/identity",
       "/api/profile/identity/alias",
+      "/api/profile/network-badges",
+      "/api/profile/network-badges/default",
+      "/api/profile/network-badges/refresh",
       "/api/profile/visibility",
       "/api/profile/member",
       "/api/profile/public",
@@ -108,6 +120,177 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       ok: true,
       identityProfile: getAccountIdentityProfile({ accountId: session.accountId }),
     });
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/network-badges") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_network_badges_method_not_allowed",
+        message: "Network badge state requires GET.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_network_badges_login_required",
+        message: "Sign in before viewing Network badge state.",
+      });
+      return true;
+    }
+    const state = await getIdentityApprovalState({ accountId: session.accountId });
+    json(res, 200, {
+      ok: true,
+      state,
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/network-badges/refresh") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_network_badges_refresh_method_not_allowed",
+        message: "Network badge refresh requires POST.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_network_badges_refresh_login_required",
+        message: "Sign in before refreshing Network badge state.",
+      });
+      return true;
+    }
+    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const result = await refreshIdentityApprovalsFromProjection({
+      accountId: session.accountId,
+      walletAddress: linkedWallet?.address || "",
+      verifiedByAccountId: session.accountId,
+      verifiedByOperator: "profile_network_badge_refresh",
+    }).catch((error) => ({
+      ok: false,
+      status: error?.status || 500,
+      error: error?.message || "profile_network_badges_refresh_failed",
+      message: error?.message || "Network badge state could not be refreshed.",
+    }));
+    await recordProfileObservabilityEvent({
+      eventType: "user.profile.network_badges_refreshed",
+      accountId: session.accountId,
+      walletAddress: linkedWallet?.address || "",
+      resultStatus: result.ok ? "refreshed" : "failed",
+      reasonCode: result.ok ? "" : result.error || "profile_network_badges_refresh_failed",
+      sourceRoute: "server/profile-routes.js::/api/profile/network-badges/refresh",
+      metadata: {
+        badgeIds: Array.isArray(result.materialized?.badgeIds) ? result.materialized.badgeIds : [],
+      },
+    });
+    json(res, result.ok ? 200 : result.status || 500, result);
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/network-badges/default") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_network_badges_default_method_not_allowed",
+        message: "Default Network badge selection requires POST.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_network_badges_default_login_required",
+        message: "Sign in before selecting a default Network badge.",
+      });
+      return true;
+    }
+    const payload = await readJson(req, 8192);
+    const result = await setDefaultNetworkBadge({
+      accountId: session.accountId,
+      badgeId: payload.badgeId || payload.badge_id,
+    }).catch((error) => ({
+      ok: false,
+      status: error?.status || 500,
+      error: error?.message || "profile_network_badges_default_failed",
+      message: error?.message || "Default Network badge could not be saved.",
+    }));
+    await recordProfileObservabilityEvent({
+      eventType: "user.profile.network_badge_default_selected",
+      accountId: session.accountId,
+      resultStatus: result.ok ? "selected" : "failed",
+      reasonCode: result.ok ? "" : result.error || "profile_network_badges_default_failed",
+      sourceRoute: "server/profile-routes.js::/api/profile/network-badges/default",
+      metadata: {
+        badgeId: safeEventText(payload.badgeId || payload.badge_id, 80),
+      },
+    });
+    json(res, result.ok ? 200 : result.status || 500, result);
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/expert/evaluate") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_expert_evaluate_method_not_allowed",
+        message: "Expert badge evaluation requires POST.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_expert_evaluate_login_required",
+        message: "Sign in before applying for an Expert badge.",
+      });
+      return true;
+    }
+    const payload = await readJson(req, 8192);
+    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const result = await evaluateExpertBadge({
+      accountId: session.accountId,
+      walletAddress: linkedWallet?.address || "",
+      topic: payload.topic,
+    }).catch((error) => ({
+      ok: false,
+      status: error?.status || 500,
+      error: error?.message || "profile_expert_evaluate_failed",
+      message: error?.message || "Expert badge evaluation failed.",
+    }));
+    if (result.ok) {
+      result.networkBadgeRefresh = await refreshIdentityApprovalsAfterSignal({
+        accountId: session.accountId,
+        walletAddress: linkedWallet?.address || "",
+        signal: "expert_evaluate",
+        verifiedByAccountId: session.accountId,
+        metadata: {
+          topic: safeEventText(payload.topic, 160),
+          status: safeEventText(result.expertAccess?.status || "", 80),
+          score: Number(result.expertAccess?.score || 0),
+        },
+      });
+    }
+    await recordProfileObservabilityEvent({
+      eventType: "user.profile.expert_badge_evaluated",
+      accountId: session.accountId,
+      resultStatus: result.ok ? "evaluated" : "failed",
+      reasonCode: result.ok ? "" : result.error || "profile_expert_evaluate_failed",
+      sourceRoute: "server/profile-routes.js::/api/profile/expert/evaluate",
+      metadata: {
+        topic: safeEventText(payload.topic, 160),
+        status: safeEventText(result.expertAccess?.status || "", 80),
+      },
+      metrics: {
+        score: Number(result.expertAccess?.score || 0),
+        personalTaskCount: Number(result.expertAccess?.personalTaskCount || 0),
+      },
+    });
+    json(res, result.ok ? 200 : result.status || 400, result);
     return true;
   }
 
