@@ -87,6 +87,7 @@
     "orc-evidence-packet-generator-smoke": "node scripts/orc-evidence-packet-generator-smoke.mjs",
     "orc-hive-secretary-context-converter-smoke": "node scripts/orc-hive-secretary-context-converter-smoke.mjs",
     "orc-review-action-digest-smoke": "node scripts/orc-review-action-digest-smoke.mjs",
+    "orc-review-evidence-formatter-smoke": "node scripts/orc-review-evidence-formatter-smoke.mjs",
     "orc-submission-ingestion-tracker": "node scripts/orc-submission-ingestion-tracker.mjs",
     "orc-submission-ingestion-tracker-smoke": "node scripts/orc-submission-ingestion-tracker-smoke.mjs",
     "orc-evidence-artifact-resolver": "node scripts/orc-evidence-artifact-resolver.mjs",

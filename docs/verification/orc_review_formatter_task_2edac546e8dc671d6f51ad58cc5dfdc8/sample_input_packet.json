@@ -1,0 +1,155 @@
+{
+  "packetType": "task_node.orc_review_evidence_packet.v1",
+  "referenceTaskId": "task_2edac546e8dc671d6f51ad58cc5dfdc8",
+  "referenceTaskObservation": {
+    "source": "read-only prod check, 2026-06-19",
+    "status": "refused",
+    "note": "The reference task has one offer event and no submitted evidence events, so this fixture uses the same accepted Task Node review packet shape with sample evidence."
+  },
+  "task": {
+    "taskId": "task_orc_review_formatter_demo",
+    "requestId": "req_orc_review_formatter_demo",
+    "title": "Create Orc Review Formatter Submission Artifacts",
+    "state": "rewarded",
+    "kind": "Network task",
+    "pft": 35000,
+    "assignee": "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx",
+    "assigneeAccountId": "acct_operator_demo",
+    "assigneeHandle": "goodalexander",
+    "project": {
+      "id": "task_node_core_product",
+      "name": "Task Node Core Product",
+      "type": "Protocol Applications"
+    },
+    "summary": "Build the review-formatting layer between a submitted Network Task evidence packet and a later Orc review result. Produce a runnable script, sample input, generated prompt, parsed JSON, and Discord-ready summary.",
+    "description": "Task Node needs the working step between submitted network-task evidence and an Orc review result. This fixture models the public packet fields consumed by the formatter: task metadata, public status packet, submission evidence refs, reward refs, evaluation packet, and timeline.",
+    "statusPacket": {
+      "schema": "pf.task_node.network_task_status_packet.v1",
+      "allocationState": "published",
+      "taskState": "rewarded",
+      "rewardMovement": "paid_positive",
+      "repairRequired": false,
+      "repairReason": ""
+    }
+  },
+  "sourcePointers": {
+    "requestBundleCid": "QmDemoRequestBundleFormatter",
+    "offerCid": "QmDemoOfferFormatter",
+    "offerTxHash": "OFFERDEMO0001",
+    "submissionCid": "QmDemoSubmissionFormatter",
+    "submissionTxHash": "SUBMITDEMO0001",
+    "verificationRequestCid": "QmDemoVerificationRequestFormatter",
+    "verificationRequestTxHash": "VERIFYASKDEMO0001",
+    "verificationResponseCid": "QmDemoVerificationResponseFormatter",
+    "verificationResponseTxHash": "VERIFYRESPDEMO0001",
+    "rewardDecisionCid": "QmDemoRewardDecisionFormatter",
+    "rewardDecisionTxHash": "REWARDDECISIONDEMO0001",
+    "rewardCid": "QmDemoRewardFormatter",
+    "rewardTxHash": "REWARDDEMO0001",
+    "lastEventCid": "QmDemoRewardFormatter",
+    "lastEventTxHash": "REWARDDEMO0001"
+  },
+  "review": {
+    "submissions": [
+      {
+        "eventType": "pf.task.submission.v1",
+        "sourceCid": "QmDemoSubmissionFormatter",
+        "sourceTxHash": "SUBMITDEMO0001",
+        "occurredAt": "2026-06-19T15:00:00.000Z",
+        "summary": "Submitted the formatter script and generated proof artifacts.",
+        "artifacts": [
+          {
+            "artifactType": "script",
+            "value": "scripts/orc-review-evidence-formatter.mjs",
+            "notes": "Runnable Node script that converts a Task Node evidence packet into an Orc prompt and parses the Orc response into the five-field JSON contract."
+          },
+          {
+            "artifactType": "artifact_bundle",
+            "value": "docs/verification/orc_review_formatter_task_2edac546e8dc671d6f51ad58cc5dfdc8/",
+            "notes": "Contains sample input packet, generated prompt, sample Orc response, parsed JSON output, and Discord-ready summary."
+          }
+        ]
+      }
+    ],
+    "verification": {
+      "request": "Show the script file, a sample evidence packet, the generated Orc review prompt, the resulting JSON output, and a short Discord-ready summary.",
+      "response": "The formatter was run locally against this sample packet and sample Orc response. It produced generated_review_prompt.md, review_output.json, and discord_summary.md."
+    },
+    "outcome": {
+      "decision": "rewarded",
+      "rewardPft": 35000,
+      "reason": "The sample demonstrates the requested evidence packet to prompt to parsed JSON flow end to end."
+    }
+  },
+  "evaluationPackets": [
+    {
+      "id": "evalpkt_orc_review_formatter_demo",
+      "packetStatus": "ready",
+      "evaluatorId": "orc_review_formatter_demo",
+      "summary": "Evidence includes a runnable formatter script, sample input, generated prompt, parsed output JSON, and Discord-ready summary.",
+      "recommendation": "Archive the artifacts and keep the review as a formatting-layer demonstration.",
+      "sourceDigest": "sha256:demo-orc-review-formatter",
+      "updatedAt": "2026-06-19T15:10:00.000Z"
+    }
+  ],
+  "timeline": [
+    {
+      "action": "pf.task.offer.v1",
+      "label": "Task offered",
+      "time": "2026-06-19T14:30:00.000Z",
+      "txHash": "OFFERDEMO0001",
+      "cid": "QmDemoOfferFormatter"
+    },
+    {
+      "action": "pf.task.submission.v1",
+      "label": "Evidence submitted",
+      "time": "2026-06-19T15:00:00.000Z",
+      "txHash": "SUBMITDEMO0001",
+      "cid": "QmDemoSubmissionFormatter"
+    },
+    {
+      "action": "pf.task.update.v1",
+      "label": "Verification requested",
+      "time": "2026-06-19T15:04:00.000Z",
+      "txHash": "VERIFYASKDEMO0001",
+      "cid": "QmDemoVerificationRequestFormatter"
+    },
+    {
+      "action": "pf.task.verification_response.v1",
+      "label": "Verification response submitted",
+      "time": "2026-06-19T15:08:00.000Z",
+      "txHash": "VERIFYRESPDEMO0001",
+      "cid": "QmDemoVerificationResponseFormatter"
+    },
+    {
+      "action": "pf.reward.v1",
+      "label": "Reward decision",
+      "time": "2026-06-19T15:10:00.000Z",
+      "txHash": "REWARDDEMO0001",
+      "cid": "QmDemoRewardFormatter"
+    }
+  ],
+  "publicFields": [
+    "task.taskId",
+    "task.requestId",
+    "task.title",
+    "task.state",
+    "task.assignee",
+    "task.assigneeAccountId",
+    "task.assigneeHandle",
+    "task.pft",
+    "task.statusPacket",
+    "task.summary",
+    "task.description",
+    "review.submissions[].sourceCid",
+    "review.submissions[].sourceTxHash",
+    "review.verification.request",
+    "review.verification.response",
+    "review.outcome.decision",
+    "review.outcome.rewardPft",
+    "review.outcome.reason",
+    "evaluationPackets[]",
+    "timeline[].txHash",
+    "timeline[].cid"
+  ]
+}
