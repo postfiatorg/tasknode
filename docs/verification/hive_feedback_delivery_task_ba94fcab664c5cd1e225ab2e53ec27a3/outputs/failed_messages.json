@@ -1,0 +1,48 @@
+[
+  {
+    "index": 3,
+    "recipientAccountId": "acct_oauth_donravle_mock",
+    "recipientWalletAddress": "",
+    "resolution": "account_id",
+    "target": {
+      "accountId": "acct_oauth_donravle_mock",
+      "walletAddress": "raL2kvMockDonravleWalletFGwzd",
+      "handle": "donravle",
+      "conversationId": "account_acct_oauth_donravle_mock_hive"
+    },
+    "sourceTaskId": "task_mock_context_sync",
+    "sourceReviewId": "swrev_delivery_003",
+    "status": "failed",
+    "errorCode": "mock_endpoint_rejected",
+    "error": "Mock endpoint rejected delivery because contributor has paused automated follow-ups."
+  },
+  {
+    "index": 4,
+    "recipientAccountId": "acct_oauth_missing_conversation",
+    "recipientWalletAddress": "",
+    "resolution": "account_id",
+    "target": {
+      "accountId": "acct_oauth_missing_conversation",
+      "walletAddress": "rDT8rfMockBoscovichWalletQCBi",
+      "handle": "boscovich",
+      "conversationId": ""
+    },
+    "sourceTaskId": "task_mock_wallet_visibility",
+    "sourceReviewId": "swrev_delivery_004",
+    "status": "failed",
+    "errorCode": "conversation_missing",
+    "error": "Target exists but has no Hive conversation id"
+  },
+  {
+    "index": 5,
+    "recipientAccountId": "acct_oauth_unmapped_mock",
+    "recipientWalletAddress": "",
+    "resolution": "unresolved",
+    "target": {},
+    "sourceTaskId": "task_mock_unmapped",
+    "sourceReviewId": "swrev_delivery_005",
+    "status": "failed",
+    "errorCode": "target_not_found",
+    "error": "No target conversation found for account acct_oauth_unmapped_mock wallet (none)"
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "schema": "pf.orc.hive_feedback_delivery.v1",
+  "mode": "mock",
+  "outputDir": "docs/verification/hive_feedback_delivery_task_ba94fcab664c5cd1e225ab2e53ec27a3/outputs",
+  "reportPath": "docs/verification/hive_feedback_delivery_task_ba94fcab664c5cd1e225ab2e53ec27a3/outputs/delivery_report.json",
+  "totalAttempts": 5,
+  "sent": 2,
+  "failed": 3,
+  "byError": {
+    "mock_endpoint_rejected": 1,
+    "conversation_missing": 1,
+    "target_not_found": 1
+  },
+  "conversationTargets": [
+    {
+      "sourceTaskId": "task_mock_reward_visibility",
+      "handle": "gmoney",
+      "conversationId": "account_acct_oauth_31a2b120878c91e24add9ceb_hive",
+      "status": "sent"
+    },
+    {
+      "sourceTaskId": "task_mock_parser",
+      "handle": "zoz",
+      "conversationId": "account_acct_oauth_8b6a2004c07fe8d96493d95f_hive",
+      "status": "sent"
+    },
+    {
+      "sourceTaskId": "task_mock_context_sync",
+      "handle": "donravle",
+      "conversationId": "account_acct_oauth_donravle_mock_hive",
+      "status": "failed"
+    }
+  ]
+}

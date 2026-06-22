@@ -1,0 +1,96 @@
+{
+  "schema": "pf.orc.mock_task_submission_batch.v1",
+  "createdAt": "2026-06-20T02:05:00.000Z",
+  "submissions": [
+    {
+      "taskId": "task_mock_verified_reward_visibility",
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "recipientHandle": "gmoney",
+      "title": "Document Reward Visibility Gaps Across Hive Screens",
+      "evidenceScenario": "verified",
+      "sourceCid": "QmMockRewardVisibilitySubmission",
+      "sourceTxHash": "MOCK_TX_REWARD_VISIBILITY",
+      "artifacts": [
+        {
+          "type": "report",
+          "url": "https://example.invalid/reward-visibility-report.md"
+        },
+        {
+          "type": "screenshot",
+          "url": "https://example.invalid/tasks-active-reward-breakdown.png"
+        }
+      ],
+      "reviewNote": "Report contains concrete reward-visibility findings with inspectable screenshot evidence."
+    },
+    {
+      "taskId": "task_mock_unverifiable_parser",
+      "recipientAccountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+      "recipientHandle": "zoz",
+      "title": "Build Orc Review Prompt and JSON Parser",
+      "evidenceScenario": "unverifiable",
+      "pipelineAdjacent": true,
+      "sourceCid": "QmMockParserSubmission",
+      "sourceTxHash": "MOCK_TX_PARSER",
+      "artifacts": [
+        {
+          "type": "summary",
+          "text": "Parser behavior described, but no runnable source link or captured input/output pair was attached."
+        }
+      ],
+      "reviewNote": "Pipeline-adjacent parser claim needs inspectable source and generated output before reuse."
+    },
+    {
+      "taskId": "task_mock_self_attested_contagion",
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "recipientHandle": "grashnuk",
+      "title": "Build XRPL Contagion Risk Monitoring Script",
+      "evidenceScenario": "self_attested",
+      "moneySensitive": true,
+      "sourceCid": "QmMockContagionRiskSubmission",
+      "sourceTxHash": "MOCK_TX_CONTAGION",
+      "artifacts": [
+        {
+          "type": "summary",
+          "text": "Monitoring logic summarized inline without a public repository or reproducible output bundle."
+        }
+      ],
+      "reviewNote": "Money-sensitive output must remain recommend-only until public artifacts are independently inspected."
+    },
+    {
+      "taskId": "task_mock_verified_ledger",
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "recipientHandle": "grashnuk",
+      "title": "Build Submitted Work Review Ledger Tool",
+      "evidenceScenario": "verified",
+      "sourceCid": "QmMockLedgerSubmission",
+      "sourceTxHash": "MOCK_TX_LEDGER",
+      "artifacts": [
+        {
+          "type": "source",
+          "url": "scripts/orc-submitted-work-review-ledger.mjs"
+        },
+        {
+          "type": "command_output",
+          "url": "docs/verification/submitted_work_review_ledger_task_01ba5f1d70d620780c333693c99a0cab/outputs/report_output.json"
+        }
+      ],
+      "reviewNote": "Runnable source and captured output demonstrate the ledger path."
+    },
+    {
+      "taskId": "task_mock_unverified_docker_overlay",
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "recipientHandle": "gmoney",
+      "title": "Build Dynamic UNL Participation Docker Overlay",
+      "evidenceScenario": "unverified",
+      "sourceCid": "QmMockDockerOverlaySubmission",
+      "sourceTxHash": "MOCK_TX_DOCKER",
+      "artifacts": [
+        {
+          "type": "summary",
+          "text": "Output describes Docker overlay behavior but omits the compose file and startup log."
+        }
+      ],
+      "reviewNote": "Needs the docker-compose artifact and startup log before another agent can reuse it."
+    }
+  ]
+}

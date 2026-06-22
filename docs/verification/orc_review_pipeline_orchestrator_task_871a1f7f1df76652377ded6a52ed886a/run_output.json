@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "schema": "pf.orc.review_pipeline_orchestrator.v1",
+  "outputDir": "docs/verification/orc_review_pipeline_orchestrator_task_871a1f7f1df76652377ded6a52ed886a/outputs",
+  "reportPath": "docs/verification/orc_review_pipeline_orchestrator_task_871a1f7f1df76652377ded6a52ed886a/outputs/pipeline_report.json",
+  "ledgerPath": "docs/verification/orc_review_pipeline_orchestrator_task_871a1f7f1df76652377ded6a52ed886a/outputs/pipeline_ledger.json",
+  "processedSubmissions": 5,
+  "hivePayloads": 5,
+  "discordMessages": 5,
+  "byStatus": {
+    "verified": 2,
+    "unverified": 2,
+    "self_attested": 1
+  }
+}

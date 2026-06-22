@@ -1,0 +1,158 @@
+{
+  "ok": true,
+  "schema": "pf.orc.contributor_feedback_messages.v1",
+  "sourceLedgerSchema": "pf.orc.submitted_work_review_ledger.v1",
+  "generatedBy": "grashnuk",
+  "summary": {
+    "ok": true,
+    "schema": "pf.orc.contributor_feedback_messages.v1",
+    "generatedAt": "2026-06-20T01:54:34.432Z",
+    "unnotifiedRecords": 5,
+    "hivePayloads": 5,
+    "discordMessages": 5,
+    "byStatus": {
+      "verified": 2,
+      "unverified": 2,
+      "self_attested": 1
+    },
+    "flags": {
+      "missing_public_artifact": 1,
+      "pipeline_adjacent": 1,
+      "money_sensitive": 1,
+      "do_not_operationalize": 1,
+      "self_attested_evidence": 1,
+      "needs_artifact_verification": 1
+    },
+    "taskIds": [
+      "task_b800bcfe9c3c6e226e87b94a797bd9e1",
+      "task_8df92c053af509e72dbec3e475766f7a",
+      "task_d77a9dc367ff181ff9463f58d01362c9",
+      "task_01ba5f1d70d620780c333693c99a0cab",
+      "task_f6c88dafb196b7d01e51833a31f32b33"
+    ]
+  },
+  "hiveChatPayloads": [
+    {
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "messageBody": "@gmoney - I am following up on reviewed Network Task task_b800bcfe9c3c6e226e87b94a797bd9e1.\nReview status: verified.\nScore: 90/100.\nFlags: none.\nNext action: No contributor action required; product team should use the report as backlog evidence.",
+      "metadata": {
+        "schema": "pf.orc.contributor_feedback_messages.v1",
+        "deliverySurface": "hive_chat",
+        "generatedBy": "grashnuk",
+        "sourceReviewId": "swrev_feedback_001",
+        "sourceTaskId": "task_b800bcfe9c3c6e226e87b94a797bd9e1",
+        "reviewStatus": "verified",
+        "score": 90,
+        "reviewFlags": [],
+        "archiveAction": "archive_hot",
+        "requiresContributorAction": false
+      }
+    },
+    {
+      "recipientAccountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+      "messageBody": "@zoz - I am following up on reviewed Network Task task_8df92c053af509e72dbec3e475766f7a.\nReview status: unverifiable.\nScore: 58/100.\nFlags: missing_public_artifact, pipeline_adjacent.\nNext action: Provide a source link or uploaded bundle plus one captured parser input/output pair.",
+      "metadata": {
+        "schema": "pf.orc.contributor_feedback_messages.v1",
+        "deliverySurface": "hive_chat",
+        "generatedBy": "grashnuk",
+        "sourceReviewId": "swrev_feedback_002",
+        "sourceTaskId": "task_8df92c053af509e72dbec3e475766f7a",
+        "reviewStatus": "unverified",
+        "score": 58,
+        "reviewFlags": [
+          "missing_public_artifact",
+          "pipeline_adjacent"
+        ],
+        "archiveAction": "needs_followup",
+        "requiresContributorAction": true
+      }
+    },
+    {
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "messageBody": "@grashnuk - I am following up on reviewed Network Task task_d77a9dc367ff181ff9463f58d01362c9.\nReview status: self-attested.\nScore: 72/100.\nFlags: money_sensitive, do_not_operationalize.\nNext action: Publish inspectable artifacts and keep the script read-only; do not execute enforcement or money movement.",
+      "metadata": {
+        "schema": "pf.orc.contributor_feedback_messages.v1",
+        "deliverySurface": "hive_chat",
+        "generatedBy": "grashnuk",
+        "sourceReviewId": "swrev_feedback_003",
+        "sourceTaskId": "task_d77a9dc367ff181ff9463f58d01362c9",
+        "reviewStatus": "self_attested",
+        "score": 72,
+        "reviewFlags": [
+          "money_sensitive",
+          "do_not_operationalize"
+        ],
+        "archiveAction": "hold",
+        "requiresContributorAction": true
+      }
+    },
+    {
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "messageBody": "@grashnuk - I am following up on reviewed Network Task task_01ba5f1d70d620780c333693c99a0cab.\nReview status: verified.\nScore: 85/100.\nFlags: self_attested_evidence.\nNext action: No immediate action required; include independently resolvable commit or PR links in future code-task evidence.",
+      "metadata": {
+        "schema": "pf.orc.contributor_feedback_messages.v1",
+        "deliverySurface": "hive_chat",
+        "generatedBy": "grashnuk",
+        "sourceReviewId": "swrev_feedback_004",
+        "sourceTaskId": "task_01ba5f1d70d620780c333693c99a0cab",
+        "reviewStatus": "verified",
+        "score": 85,
+        "reviewFlags": [
+          "self_attested_evidence"
+        ],
+        "archiveAction": "archive_hot",
+        "requiresContributorAction": false
+      }
+    },
+    {
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "messageBody": "@gmoney - I am following up on reviewed Network Task task_f6c88dafb196b7d01e51833a31f32b33.\nReview status: unverifiable.\nScore: 64/100.\nFlags: needs_artifact_verification.\nNext action: Provide the docker-compose file, validator config, and startup log in a public branch or uploaded bundle.",
+      "metadata": {
+        "schema": "pf.orc.contributor_feedback_messages.v1",
+        "deliverySurface": "hive_chat",
+        "generatedBy": "grashnuk",
+        "sourceReviewId": "swrev_feedback_005",
+        "sourceTaskId": "task_f6c88dafb196b7d01e51833a31f32b33",
+        "reviewStatus": "unverified",
+        "score": 64,
+        "reviewFlags": [
+          "needs_artifact_verification"
+        ],
+        "archiveAction": "needs_followup",
+        "requiresContributorAction": true
+      }
+    }
+  ],
+  "discordMessages": [
+    {
+      "taskId": "task_b800bcfe9c3c6e226e87b94a797bd9e1",
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "recipientHandle": "@gmoney",
+      "message": "**task_b800bcfe9c3c6e226e87b94a797bd9e1** - contributor follow-up\nRecipient: @gmoney (acct_oauth_31a2b120878c91e24add9ceb)\nReview status: verified\nScore: 90/100\nFlags: none\nArchive action: archive_hot\nReviewer note: Genuine reward-visibility product feedback with screenshot-supported observations.\nRecommended next action: No contributor action required; product team should use the report as backlog evidence.\nGenerated by: @grashnuk"
+    },
+    {
+      "taskId": "task_8df92c053af509e72dbec3e475766f7a",
+      "recipientAccountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+      "recipientHandle": "@zoz",
+      "message": "**task_8df92c053af509e72dbec3e475766f7a** - contributor follow-up\nRecipient: @zoz (acct_oauth_8b6a2004c07fe8d96493d95f)\nReview status: unverifiable\nScore: 58/100\nFlags: missing_public_artifact, pipeline_adjacent\nArchive action: needs_followup\nReviewer note: Parser work is useful but should not be operationalized until source and output artifacts are directly inspectable.\nRecommended next action: Provide a source link or uploaded bundle plus one captured parser input/output pair.\nGenerated by: @grashnuk"
+    },
+    {
+      "taskId": "task_d77a9dc367ff181ff9463f58d01362c9",
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "recipientHandle": "@grashnuk",
+      "message": "**task_d77a9dc367ff181ff9463f58d01362c9** - contributor follow-up\nRecipient: @grashnuk (acct_wallet_1a528118923ae8830d46f56e)\nReview status: self-attested\nScore: 72/100\nFlags: money_sensitive, do_not_operationalize\nArchive action: hold\nReviewer note: Evidence is internally consistent but should remain recommend-only until independent artifact inspection completes.\nRecommended next action: Publish inspectable artifacts and keep the script read-only; do not execute enforcement or money movement.\nGenerated by: @grashnuk"
+    },
+    {
+      "taskId": "task_01ba5f1d70d620780c333693c99a0cab",
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "recipientHandle": "@grashnuk",
+      "message": "**task_01ba5f1d70d620780c333693c99a0cab** - contributor follow-up\nRecipient: @grashnuk (acct_wallet_1a528118923ae8830d46f56e)\nReview status: verified\nScore: 85/100\nFlags: self_attested_evidence\nArchive action: archive_hot\nReviewer note: Ledger tool met requirements; future work should include public commits when possible.\nRecommended next action: No immediate action required; include independently resolvable commit or PR links in future code-task evidence.\nGenerated by: @grashnuk"
+    },
+    {
+      "taskId": "task_f6c88dafb196b7d01e51833a31f32b33",
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "recipientHandle": "@gmoney",
+      "message": "**task_f6c88dafb196b7d01e51833a31f32b33** - contributor follow-up\nRecipient: @gmoney (acct_oauth_31a2b120878c91e24add9ceb)\nReview status: unverifiable\nScore: 64/100\nFlags: needs_artifact_verification\nArchive action: needs_followup\nReviewer note: Docker overlay output looks aligned, but the artifact path should be independently inspectable before reuse.\nRecommended next action: Provide the docker-compose file, validator config, and startup log in a public branch or uploaded bundle.\nGenerated by: @grashnuk"
+    }
+  ]
+}

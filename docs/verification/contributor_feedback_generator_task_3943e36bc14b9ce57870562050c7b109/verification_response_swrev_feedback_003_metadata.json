@@ -1,0 +1,15 @@
+{
+  "schema": "pf.orc.contributor_feedback_messages.v1",
+  "deliverySurface": "hive_chat",
+  "generatedBy": "grashnuk",
+  "sourceReviewId": "swrev_feedback_003",
+  "sourceTaskId": "task_d77a9dc367ff181ff9463f58d01362c9",
+  "reviewStatus": "self_attested",
+  "score": 72,
+  "reviewFlags": [
+    "money_sensitive",
+    "do_not_operationalize"
+  ],
+  "archiveAction": "hold",
+  "requiresContributorAction": true
+}

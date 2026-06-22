@@ -1,0 +1,317 @@
+{
+  "ok": true,
+  "schema": "pf.orc.review_pipeline_orchestrator.v1",
+  "generatedAt": "2026-06-20T02:06:23.447Z",
+  "generatedBy": "grashnuk",
+  "input": {
+    "path": "docs/verification/orc_review_pipeline_orchestrator_task_871a1f7f1df76652377ded6a52ed886a/mock_submissions.json",
+    "schema": "pf.orc.mock_task_submission_batch.v1",
+    "submissions": 5
+  },
+  "tools": {
+    "reviewParser": "mock_orc_review_parser_v1 compatible with task_8df review fields",
+    "submittedWorkReviewLedger": "pf.orc.submitted_work_review_ledger.v1",
+    "feedbackMessageGenerator": "pf.orc.contributor_feedback_messages.v1"
+  },
+  "outputs": {
+    "ledgerPath": "docs/verification/orc_review_pipeline_orchestrator_task_871a1f7f1df76652377ded6a52ed886a/outputs/pipeline_ledger.json",
+    "hivePayloadsPath": "docs/verification/orc_review_pipeline_orchestrator_task_871a1f7f1df76652377ded6a52ed886a/outputs/feedback_messages/hive_payloads.json",
+    "discordMessagesPath": "docs/verification/orc_review_pipeline_orchestrator_task_871a1f7f1df76652377ded6a52ed886a/outputs/feedback_messages/discord_messages.md",
+    "feedbackSummaryPath": "docs/verification/orc_review_pipeline_orchestrator_task_871a1f7f1df76652377ded6a52ed886a/outputs/feedback_messages/summary.json"
+  },
+  "summary": {
+    "processedSubmissions": 5,
+    "ledgerRecords": 5,
+    "byStatus": {
+      "verified": 2,
+      "unverified": 2,
+      "self_attested": 1
+    },
+    "flags": {
+      "missing_public_artifact": 2,
+      "pipeline_adjacent": 1,
+      "self_attested_evidence": 1,
+      "money_sensitive": 1,
+      "do_not_operationalize": 1
+    },
+    "hivePayloads": 5,
+    "discordMessages": 5
+  },
+  "pipeline": [
+    {
+      "index": 1,
+      "submission": {
+        "taskId": "task_mock_verified_reward_visibility",
+        "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+        "recipientHandle": "gmoney",
+        "evidenceScenario": "verified",
+        "artifactCount": 2
+      },
+      "reviewParserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 1,
+        "taskGrade": "pass",
+        "rewardRecommendation": "eligible",
+        "flagIndicators": [],
+        "archivalInstructions": "archive_hot",
+        "reviewerNotes": "Report contains concrete reward-visibility findings with inspectable screenshot evidence."
+      },
+      "ledgerEntry": {
+        "recorded": true,
+        "id": "swrev_pipeline_a0ef2eb71eab9a1adf61",
+        "reviewStatus": "verified",
+        "score": 88,
+        "archiveAction": "archive_hot",
+        "reviewFlags": []
+      },
+      "contributorMessage": {
+        "hivePayloadGenerated": true,
+        "hivePayloadMetadata": {
+          "schema": "pf.orc.contributor_feedback_messages.v1",
+          "deliverySurface": "hive_chat",
+          "generatedBy": "grashnuk",
+          "sourceReviewId": "swrev_pipeline_a0ef2eb71eab9a1adf61",
+          "sourceTaskId": "task_mock_verified_reward_visibility",
+          "reviewStatus": "verified",
+          "score": 88,
+          "reviewFlags": [],
+          "archiveAction": "archive_hot",
+          "requiresContributorAction": false
+        },
+        "discordMessageGenerated": true
+      }
+    },
+    {
+      "index": 2,
+      "submission": {
+        "taskId": "task_mock_unverifiable_parser",
+        "recipientAccountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+        "recipientHandle": "zoz",
+        "evidenceScenario": "unverifiable",
+        "artifactCount": 1
+      },
+      "reviewParserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 2,
+        "taskGrade": "hold",
+        "rewardRecommendation": "needs evidence",
+        "flagIndicators": [
+          "missing_public_artifact",
+          "pipeline_adjacent"
+        ],
+        "archivalInstructions": "needs_followup",
+        "reviewerNotes": "Pipeline-adjacent parser claim needs inspectable source and generated output before reuse."
+      },
+      "ledgerEntry": {
+        "recorded": true,
+        "id": "swrev_pipeline_8c4155dc4bc6ce7f7d79",
+        "reviewStatus": "unverified",
+        "score": 58,
+        "archiveAction": "needs_followup",
+        "reviewFlags": [
+          "missing_public_artifact",
+          "pipeline_adjacent"
+        ]
+      },
+      "contributorMessage": {
+        "hivePayloadGenerated": true,
+        "hivePayloadMetadata": {
+          "schema": "pf.orc.contributor_feedback_messages.v1",
+          "deliverySurface": "hive_chat",
+          "generatedBy": "grashnuk",
+          "sourceReviewId": "swrev_pipeline_8c4155dc4bc6ce7f7d79",
+          "sourceTaskId": "task_mock_unverifiable_parser",
+          "reviewStatus": "unverified",
+          "score": 58,
+          "reviewFlags": [
+            "missing_public_artifact",
+            "pipeline_adjacent"
+          ],
+          "archiveAction": "needs_followup",
+          "requiresContributorAction": true
+        },
+        "discordMessageGenerated": true
+      }
+    },
+    {
+      "index": 3,
+      "submission": {
+        "taskId": "task_mock_self_attested_contagion",
+        "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+        "recipientHandle": "grashnuk",
+        "evidenceScenario": "self_attested",
+        "artifactCount": 1
+      },
+      "reviewParserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 3,
+        "taskGrade": "partial",
+        "rewardRecommendation": "manual review",
+        "flagIndicators": [
+          "self_attested_evidence",
+          "money_sensitive",
+          "do_not_operationalize"
+        ],
+        "archivalInstructions": "hold",
+        "reviewerNotes": "Money-sensitive output must remain recommend-only until public artifacts are independently inspected."
+      },
+      "ledgerEntry": {
+        "recorded": true,
+        "id": "swrev_pipeline_ae6f9fd8ec94322a5335",
+        "reviewStatus": "self_attested",
+        "score": 70,
+        "archiveAction": "hold",
+        "reviewFlags": [
+          "self_attested_evidence",
+          "money_sensitive",
+          "do_not_operationalize"
+        ]
+      },
+      "contributorMessage": {
+        "hivePayloadGenerated": true,
+        "hivePayloadMetadata": {
+          "schema": "pf.orc.contributor_feedback_messages.v1",
+          "deliverySurface": "hive_chat",
+          "generatedBy": "grashnuk",
+          "sourceReviewId": "swrev_pipeline_ae6f9fd8ec94322a5335",
+          "sourceTaskId": "task_mock_self_attested_contagion",
+          "reviewStatus": "self_attested",
+          "score": 70,
+          "reviewFlags": [
+            "self_attested_evidence",
+            "money_sensitive",
+            "do_not_operationalize"
+          ],
+          "archiveAction": "hold",
+          "requiresContributorAction": true
+        },
+        "discordMessageGenerated": true
+      }
+    },
+    {
+      "index": 4,
+      "submission": {
+        "taskId": "task_mock_verified_ledger",
+        "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+        "recipientHandle": "grashnuk",
+        "evidenceScenario": "verified",
+        "artifactCount": 2
+      },
+      "reviewParserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 4,
+        "taskGrade": "pass",
+        "rewardRecommendation": "eligible",
+        "flagIndicators": [],
+        "archivalInstructions": "archive_hot",
+        "reviewerNotes": "Runnable source and captured output demonstrate the ledger path."
+      },
+      "ledgerEntry": {
+        "recorded": true,
+        "id": "swrev_pipeline_28f1a8ade78b7c933e41",
+        "reviewStatus": "verified",
+        "score": 88,
+        "archiveAction": "archive_hot",
+        "reviewFlags": []
+      },
+      "contributorMessage": {
+        "hivePayloadGenerated": true,
+        "hivePayloadMetadata": {
+          "schema": "pf.orc.contributor_feedback_messages.v1",
+          "deliverySurface": "hive_chat",
+          "generatedBy": "grashnuk",
+          "sourceReviewId": "swrev_pipeline_28f1a8ade78b7c933e41",
+          "sourceTaskId": "task_mock_verified_ledger",
+          "reviewStatus": "verified",
+          "score": 88,
+          "reviewFlags": [],
+          "archiveAction": "archive_hot",
+          "requiresContributorAction": false
+        },
+        "discordMessageGenerated": true
+      }
+    },
+    {
+      "index": 5,
+      "submission": {
+        "taskId": "task_mock_unverified_docker_overlay",
+        "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+        "recipientHandle": "gmoney",
+        "evidenceScenario": "unverified",
+        "artifactCount": 1
+      },
+      "reviewParserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 5,
+        "taskGrade": "hold",
+        "rewardRecommendation": "needs evidence",
+        "flagIndicators": [
+          "missing_public_artifact"
+        ],
+        "archivalInstructions": "needs_followup",
+        "reviewerNotes": "Needs the docker-compose artifact and startup log before another agent can reuse it."
+      },
+      "ledgerEntry": {
+        "recorded": true,
+        "id": "swrev_pipeline_28d3e570d4e34573ffd1",
+        "reviewStatus": "unverified",
+        "score": 60,
+        "archiveAction": "needs_followup",
+        "reviewFlags": [
+          "missing_public_artifact"
+        ]
+      },
+      "contributorMessage": {
+        "hivePayloadGenerated": true,
+        "hivePayloadMetadata": {
+          "schema": "pf.orc.contributor_feedback_messages.v1",
+          "deliverySurface": "hive_chat",
+          "generatedBy": "grashnuk",
+          "sourceReviewId": "swrev_pipeline_28d3e570d4e34573ffd1",
+          "sourceTaskId": "task_mock_unverified_docker_overlay",
+          "reviewStatus": "unverified",
+          "score": 60,
+          "reviewFlags": [
+            "missing_public_artifact"
+          ],
+          "archiveAction": "needs_followup",
+          "requiresContributorAction": true
+        },
+        "discordMessageGenerated": true
+      }
+    }
+  ],
+  "generatorBatchStdout": {
+    "ok": true,
+    "schema": "pf.orc.contributor_feedback_messages.v1",
+    "generatedAt": "2026-06-20T02:06:23.438Z",
+    "unnotifiedRecords": 5,
+    "hivePayloads": 5,
+    "discordMessages": 5,
+    "byStatus": {
+      "verified": 2,
+      "unverified": 2,
+      "self_attested": 1
+    },
+    "flags": {
+      "missing_public_artifact": 2,
+      "pipeline_adjacent": 1,
+      "self_attested_evidence": 1,
+      "money_sensitive": 1,
+      "do_not_operationalize": 1
+    },
+    "taskIds": [
+      "task_mock_verified_reward_visibility",
+      "task_mock_unverifiable_parser",
+      "task_mock_self_attested_contagion",
+      "task_mock_verified_ledger",
+      "task_mock_unverified_docker_overlay"
+    ],
+    "outputDir": "docs/verification/orc_review_pipeline_orchestrator_task_871a1f7f1df76652377ded6a52ed886a/outputs/feedback_messages"
+  }
+}

@@ -1,0 +1,10 @@
+Usage:
+  node scripts/orc-review-pipeline-orchestrator.mjs run --input <mock-submissions.json> --out <dir> [--generated-by <handle>]
+
+Runs a local Orc review pipeline:
+  1. Parse mock network-task submissions into review verdicts.
+  2. Record verdicts in a submitted-work review ledger.
+  3. Generate Hive Chat JSON payloads and Discord-ready contributor messages.
+  4. Write a JSON pipeline report.
+
+This script is read-only with respect to Task Node. It does not send messages, apply enforcement, sign payments, or mutate live task state.

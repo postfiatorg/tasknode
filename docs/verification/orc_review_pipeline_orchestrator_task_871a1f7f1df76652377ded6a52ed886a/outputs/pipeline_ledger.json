@@ -1,0 +1,159 @@
+{
+  "schema": "pf.orc.submitted_work_review_ledger.v1",
+  "updatedAt": "2026-06-20T02:06:23.410Z",
+  "records": [
+    {
+      "id": "swrev_pipeline_a0ef2eb71eab9a1adf61",
+      "taskId": "task_mock_verified_reward_visibility",
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "recipientHandle": "gmoney",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 88,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "timestamp": "2026-06-20T02:05:00.000Z",
+      "source": {
+        "cid": "QmMockRewardVisibilitySubmission",
+        "txHash": "MOCK_TX_REWARD_VISIBILITY"
+      },
+      "parserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 1,
+        "taskGrade": "pass",
+        "rewardRecommendation": "eligible",
+        "flagIndicators": [],
+        "archivalInstructions": "archive_hot",
+        "reviewerNotes": "Report contains concrete reward-visibility findings with inspectable screenshot evidence."
+      },
+      "recommendedAction": "No contributor action required; the submission is ready to archive as verified."
+    },
+    {
+      "id": "swrev_pipeline_8c4155dc4bc6ce7f7d79",
+      "taskId": "task_mock_unverifiable_parser",
+      "recipientAccountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+      "recipientHandle": "zoz",
+      "reviewer": "grashnuk",
+      "reviewStatus": "unverified",
+      "score": 58,
+      "reviewFlags": [
+        "missing_public_artifact",
+        "pipeline_adjacent"
+      ],
+      "archiveAction": "needs_followup",
+      "timestamp": "2026-06-20T02:05:01.000Z",
+      "source": {
+        "cid": "QmMockParserSubmission",
+        "txHash": "MOCK_TX_PARSER"
+      },
+      "parserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 2,
+        "taskGrade": "hold",
+        "rewardRecommendation": "needs evidence",
+        "flagIndicators": [
+          "missing_public_artifact",
+          "pipeline_adjacent"
+        ],
+        "archivalInstructions": "needs_followup",
+        "reviewerNotes": "Pipeline-adjacent parser claim needs inspectable source and generated output before reuse."
+      },
+      "recommendedAction": "Add the missing public artifact or a command/output pair that proves the claimed work."
+    },
+    {
+      "id": "swrev_pipeline_ae6f9fd8ec94322a5335",
+      "taskId": "task_mock_self_attested_contagion",
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "recipientHandle": "grashnuk",
+      "reviewer": "grashnuk",
+      "reviewStatus": "self_attested",
+      "score": 70,
+      "reviewFlags": [
+        "self_attested_evidence",
+        "money_sensitive",
+        "do_not_operationalize"
+      ],
+      "archiveAction": "hold",
+      "timestamp": "2026-06-20T02:05:02.000Z",
+      "source": {
+        "cid": "QmMockContagionRiskSubmission",
+        "txHash": "MOCK_TX_CONTAGION"
+      },
+      "parserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 3,
+        "taskGrade": "partial",
+        "rewardRecommendation": "manual review",
+        "flagIndicators": [
+          "self_attested_evidence",
+          "money_sensitive",
+          "do_not_operationalize"
+        ],
+        "archivalInstructions": "hold",
+        "reviewerNotes": "Money-sensitive output must remain recommend-only until public artifacts are independently inspected."
+      },
+      "recommendedAction": "Publish independently inspectable artifacts before this work is operationalized."
+    },
+    {
+      "id": "swrev_pipeline_28f1a8ade78b7c933e41",
+      "taskId": "task_mock_verified_ledger",
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "recipientHandle": "grashnuk",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 88,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "timestamp": "2026-06-20T02:05:03.000Z",
+      "source": {
+        "cid": "QmMockLedgerSubmission",
+        "txHash": "MOCK_TX_LEDGER"
+      },
+      "parserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 4,
+        "taskGrade": "pass",
+        "rewardRecommendation": "eligible",
+        "flagIndicators": [],
+        "archivalInstructions": "archive_hot",
+        "reviewerNotes": "Runnable source and captured output demonstrate the ledger path."
+      },
+      "recommendedAction": "No contributor action required; the submission is ready to archive as verified."
+    },
+    {
+      "id": "swrev_pipeline_28d3e570d4e34573ffd1",
+      "taskId": "task_mock_unverified_docker_overlay",
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "recipientHandle": "gmoney",
+      "reviewer": "grashnuk",
+      "reviewStatus": "unverified",
+      "score": 60,
+      "reviewFlags": [
+        "missing_public_artifact"
+      ],
+      "archiveAction": "needs_followup",
+      "timestamp": "2026-06-20T02:05:04.000Z",
+      "source": {
+        "cid": "QmMockDockerOverlaySubmission",
+        "txHash": "MOCK_TX_DOCKER"
+      },
+      "parserOutput": {
+        "schema": "pf.orc.review_parser_output.v1",
+        "parserVersion": "mock_orc_review_parser_v1",
+        "submissionIndex": 5,
+        "taskGrade": "hold",
+        "rewardRecommendation": "needs evidence",
+        "flagIndicators": [
+          "missing_public_artifact"
+        ],
+        "archivalInstructions": "needs_followup",
+        "reviewerNotes": "Needs the docker-compose artifact and startup log before another agent can reuse it."
+      },
+      "recommendedAction": "Add the missing public artifact or a command/output pair that proves the claimed work."
+    }
+  ]
+}

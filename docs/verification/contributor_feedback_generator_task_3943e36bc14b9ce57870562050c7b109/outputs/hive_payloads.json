@@ -1,0 +1,92 @@
+[
+  {
+    "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+    "messageBody": "@gmoney - I am following up on reviewed Network Task task_b800bcfe9c3c6e226e87b94a797bd9e1.\nReview status: verified.\nScore: 90/100.\nFlags: none.\nNext action: No contributor action required; product team should use the report as backlog evidence.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_feedback_001",
+      "sourceTaskId": "task_b800bcfe9c3c6e226e87b94a797bd9e1",
+      "reviewStatus": "verified",
+      "score": 90,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "requiresContributorAction": false
+    }
+  },
+  {
+    "recipientAccountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+    "messageBody": "@zoz - I am following up on reviewed Network Task task_8df92c053af509e72dbec3e475766f7a.\nReview status: unverifiable.\nScore: 58/100.\nFlags: missing_public_artifact, pipeline_adjacent.\nNext action: Provide a source link or uploaded bundle plus one captured parser input/output pair.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_feedback_002",
+      "sourceTaskId": "task_8df92c053af509e72dbec3e475766f7a",
+      "reviewStatus": "unverified",
+      "score": 58,
+      "reviewFlags": [
+        "missing_public_artifact",
+        "pipeline_adjacent"
+      ],
+      "archiveAction": "needs_followup",
+      "requiresContributorAction": true
+    }
+  },
+  {
+    "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+    "messageBody": "@grashnuk - I am following up on reviewed Network Task task_d77a9dc367ff181ff9463f58d01362c9.\nReview status: self-attested.\nScore: 72/100.\nFlags: money_sensitive, do_not_operationalize.\nNext action: Publish inspectable artifacts and keep the script read-only; do not execute enforcement or money movement.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_feedback_003",
+      "sourceTaskId": "task_d77a9dc367ff181ff9463f58d01362c9",
+      "reviewStatus": "self_attested",
+      "score": 72,
+      "reviewFlags": [
+        "money_sensitive",
+        "do_not_operationalize"
+      ],
+      "archiveAction": "hold",
+      "requiresContributorAction": true
+    }
+  },
+  {
+    "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+    "messageBody": "@grashnuk - I am following up on reviewed Network Task task_01ba5f1d70d620780c333693c99a0cab.\nReview status: verified.\nScore: 85/100.\nFlags: self_attested_evidence.\nNext action: No immediate action required; include independently resolvable commit or PR links in future code-task evidence.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_feedback_004",
+      "sourceTaskId": "task_01ba5f1d70d620780c333693c99a0cab",
+      "reviewStatus": "verified",
+      "score": 85,
+      "reviewFlags": [
+        "self_attested_evidence"
+      ],
+      "archiveAction": "archive_hot",
+      "requiresContributorAction": false
+    }
+  },
+  {
+    "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+    "messageBody": "@gmoney - I am following up on reviewed Network Task task_f6c88dafb196b7d01e51833a31f32b33.\nReview status: unverifiable.\nScore: 64/100.\nFlags: needs_artifact_verification.\nNext action: Provide the docker-compose file, validator config, and startup log in a public branch or uploaded bundle.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_feedback_005",
+      "sourceTaskId": "task_f6c88dafb196b7d01e51833a31f32b33",
+      "reviewStatus": "unverified",
+      "score": 64,
+      "reviewFlags": [
+        "needs_artifact_verification"
+      ],
+      "archiveAction": "needs_followup",
+      "requiresContributorAction": true
+    }
+  }
+]

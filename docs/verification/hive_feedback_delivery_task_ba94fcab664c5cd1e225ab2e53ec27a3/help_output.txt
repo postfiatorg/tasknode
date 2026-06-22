@@ -1,0 +1,9 @@
+Usage:
+  node scripts/orc-hive-feedback-delivery.mjs deliver --messages <hive_payloads.json> --targets <targets.json> --out <dir> [--mode mock] [--generated-by <handle>]
+
+Reads contributor feedback Hive Chat payloads, resolves target conversations from account IDs or wallet addresses, and records delivery outcomes.
+
+Modes:
+  mock  Uses the local mock endpoint defined by targets.json. This is the default and does not call live Hive Chat.
+
+The script does not sign transactions, move funds, apply enforcement, or send live Hive messages in mock mode.
