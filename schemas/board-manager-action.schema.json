@@ -346,6 +346,13 @@
           "additionalProperties": false,
           "required": [
             "task_work_type",
+            "required_badge_id",
+            "operating_badge_id",
+            "badge_work_type",
+            "badge_reason",
+            "badge_reward_cap_pft",
+            "badge_evidence_requirements",
+            "discord_evidence_required",
             "task_class",
             "candidate_account_id",
             "candidate_wallet_address",
@@ -368,7 +375,39 @@
           "properties": {
             "task_work_type": {
               "type": "string",
-              "enum": ["", "code_task", "documentation_task", "capability_gating_task", "evidence_evaluation_packet"]
+              "maxLength": 120
+            },
+            "required_badge_id": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "operating_badge_id": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "badge_work_type": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "badge_reason": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "badge_reward_cap_pft": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "badge_evidence_requirements": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "maxLength": 500
+              }
+            },
+            "discord_evidence_required": {
+              "type": "boolean"
             },
             "task_class": {
               "type": "string",
@@ -478,12 +517,12 @@
             },
             "reward_min_pft": {
               "type": "number",
-              "minimum": 10000,
+              "minimum": 0,
               "maximum": 50000
             },
             "reward_max_pft": {
               "type": "number",
-              "minimum": 10000,
+              "minimum": 0,
               "maximum": 50000
             },
             "accept_window_hours": {

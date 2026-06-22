@@ -4,10 +4,15 @@ import { taskReviewWorkerInternalsForTests } from "../server/task-review-worker.
 
 const {
   buildRewardOutcomePayload,
+  discordAnnouncementEvidenceStatus,
+  parseDiscordMessageLink,
+  resolveDiscordAnnouncementEvidenceStatus,
+  evidencePayloadHasScreenshot,
   existingRewardReviewEvent,
   existingVerificationRequestEvent,
   isRewardReviewPayload,
   isVerificationRequestPayload,
+  normalizeRewardScore,
   taskReviewPublisherPermission,
   timelineEventPublishedRef,
   workerClaimStaleSeconds,
@@ -57,6 +62,141 @@ assert.equal(isVerificationRequestPayload({ schema: "pf.task.reward_decision.v1"
 assert.equal(isRewardReviewPayload({ schema: "pf.task.reward_decision.v1" }), false);
 assert.equal(isRewardReviewPayload({ schema: "pf.reward.v1" }), true);
 assert.equal(isRewardReviewPayload({ schema: "pf.task.update.v1" }), false);
+
+const badgeCappedScore = normalizeRewardScore(
+  {
+    decision: "reward",
+    reward_pft: "50000",
+    completion: 100,
+    evidence_quality: 100,
+    reason: "Strong evidence.",
+    user_feedback: "Strong evidence.",
+  },
+  50000,
+  { badgeRewardCapPft: 5000 }
+);
+assert.equal(badgeCappedScore.reward_pft, "5000.00");
+assert.equal(badgeCappedScore.badge_reward_cap_pft, "5000.00");
+assert.equal(badgeCappedScore.badge_cap_applied, true);
+
+assert.equal(
+  discordAnnouncementEvidenceStatus({
+    verificationResponse: {
+      response: {
+        text: "Announced in Discord: https://discord.com/channels/123456789012345678/223456789012345678/323456789012345678",
+      },
+    },
+  }).evidence_type,
+  "discord_message_link"
+);
+assert.deepEqual(
+  parseDiscordMessageLink("https://discord.com/channels/123456789012345678/223456789012345678/323456789012345678"),
+  {
+    guildId: "123456789012345678",
+    channelId: "223456789012345678",
+    messageId: "323456789012345678",
+    url: "https://discord.com/channels/123456789012345678/223456789012345678/323456789012345678",
+  }
+);
+assert.equal(
+  (await resolveDiscordAnnouncementEvidenceStatus({
+    verificationResponse: {
+      response_text: "https://discord.com/channels/123456789012345678/223456789012345678/323456789012345678",
+    },
+  }, {
+    env: {
+      TASKNODE_DISCORD_ALLOWED_CHANNEL_IDS: "223456789012345678",
+      TASKNODE_DISCORD_ALLOWED_GUILD_IDS: "123456789012345678",
+    },
+  })).discord_validation.status,
+  "syntactic"
+);
+assert.equal(
+  (await resolveDiscordAnnouncementEvidenceStatus({
+    verificationResponse: {
+      response_text: "https://discord.com/channels/123456789012345678/999999999999999999/323456789012345678",
+    },
+  }, {
+    env: {
+      TASKNODE_DISCORD_ALLOWED_CHANNEL_IDS: "223456789012345678",
+    },
+  })).ok,
+  false
+);
+assert.equal(
+  (await resolveDiscordAnnouncementEvidenceStatus({
+    verificationResponse: {
+      response_text: "https://discord.com/channels/123456789012345678/223456789012345678/323456789012345678",
+    },
+  }, {
+    env: {
+      TASKNODE_DISCORD_BOT_TOKEN: "bot-token",
+      TASKNODE_DISCORD_ALLOWED_CHANNEL_IDS: "223456789012345678",
+    },
+    fetchImpl: async (url, options) => {
+      assert.equal(url, "https://discord.com/api/v10/channels/223456789012345678/messages/323456789012345678");
+      assert.equal(options.headers.authorization, "Bot bot-token");
+      return { ok: true, status: 200 };
+    },
+  })).discord_validation.status,
+  "verified"
+);
+assert.equal(
+  (await resolveDiscordAnnouncementEvidenceStatus({
+    verificationResponse: {
+      response_text: "https://discord.com/channels/123456789012345678/223456789012345678/323456789012345678",
+    },
+  }, {
+    env: {
+      TASKNODE_DISCORD_BOT_TOKEN: "bot-token",
+    },
+    fetchImpl: async () => ({ ok: false, status: 404 }),
+  })).ok,
+  false
+);
+assert.equal(
+  discordAnnouncementEvidenceStatus({
+    verificationResponse: {
+      response_text: "Discord message id: 323456789012345678",
+    },
+  }).evidence_type,
+  "discord_message_id"
+);
+assert.equal(
+  discordAnnouncementEvidenceStatus({
+    verificationResponse: {
+      evidence_items: [
+        {
+          artifact_type: "screenshot",
+          file: { name: "discord-announcement.png", mime_type: "image/png" },
+          notes: "Screenshot from Discord announcement channel.",
+        },
+      ],
+    },
+  }).evidence_type,
+  "discord_announcement_screenshot"
+);
+assert.equal(
+  discordAnnouncementEvidenceStatus({
+    verificationResponse: {
+      evidence_items: [
+        {
+          artifact_type: "screenshot",
+          file: { name: "proof.png", mime_type: "image/png" },
+          notes: "Screenshot of the output.",
+        },
+      ],
+    },
+  }).ok,
+  false
+);
+assert.equal(
+  discordAnnouncementEvidenceStatus({
+    verificationResponse: { response_text: "Completed the work, see notes." },
+  }).ok,
+  false
+);
+assert.equal(evidencePayloadHasScreenshot({ file: { name: "proof.webp", mime_type: "image/webp" } }), true);
 
 const detail = {
   forensics: {

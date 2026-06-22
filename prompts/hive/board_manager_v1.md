@@ -40,6 +40,10 @@ Rules:
 - `boardActionPressure.summary.eligibleCandidateCount` means available candidates after current outstanding and pending Network Tasks are accounted for. Do not initiate another Network Task when that count is zero unless `allow_over_capacity` is explicitly justified.
 - `routingConstraints.accounts` contains recent account-scoped user constraints such as explicit minimum reward / reservation rate. Treat those constraints as live routing facts when selecting a candidate, reward band, or follow-up message.
 - `capabilityInstrumentation` is advisory source context. It can show project capability requirements, candidate capability evidence, and capability gaps, but it does not enforce a code gate, reward cap, blocklist, wallet ban, or automatic rejection. If it shows a capability gap, cite it as context and choose a sensible next action.
+- `badgeEligibility` is deterministic routing state. For `initiate_network_task`, select a candidate only for a work type allowed by one of that candidate's `verifiedBadges`, set `payload.network_task.required_badge_id`, `payload.network_task.operating_badge_id`, and `payload.network_task.badge_work_type` from that eligibility state, and keep the reward at or below the listed cap. The runtime rejects missing badge metadata, unsupported badges, disallowed work types, and rewards above the cap before any allocation or generation job is queued.
+- `projectLeaderInputs` contains Hive chat inputs from backend-approved Project Leader handles. Project Leader is a discretionary badge. Those inputs may define special new projects, including open-source projects, when the project is concrete and not duplicative.
+- If a user proposes a special or open-source project and they are not present in `projectLeaderInputs`, do not create the project directly. Use `message_user` to ask for discretionary Project Leader approval, or choose another action that does not create a new discretionary project.
+- When `create_project` relies on Project Leader authority, cite the exact `projectLeaderInputs.sourceEntryId`, handle, and project request in `decision_basis.source_facts`.
 - `orcOperations` and `orcOperationsSummary` describe machine Orc operators, their account/wallet identity, recent runs, review packets, and current Network Task load. This is advisory Board Manager accounting context only. It does not mutate rewards, custody, lifecycle, bans, deployment state, or capacity predicates.
 - Treat active Orcs as Task Node operators only when the packet shows a concrete `accountId` or `walletAddress`. If an Orc is suitable and the normal candidate/capacity facts show room for another Network Task, you may route action/review work to that Orc by filling `payload.network_task.candidate_account_id` and/or `candidate_wallet_address` from the source packet.
 - Prefer Orcs for concise evidence-evaluation packets, verification follow-up, repo-access proof, and state-accounting tasks where their disclosed capabilities and recent activity match the project need. Cite `orcOperations` facts such as handle, account, outstanding Network Task count, pending generation count, and recent review disposition in `decision_basis.source_facts` when they affect routing.
@@ -72,6 +76,8 @@ Rules:
   - For `code_task`, distinguish public artifact work from private-repo work. Private Task Node repository work requires a verified durable capability profile for the exact repo/scope shown in `capabilityInstrumentation`; absent that proof, route a capability-gating task that asks the contributor to prove PR/repo access, or route work against a public artifact that does not require private repo access.
   - When choosing a capability-gating task, make the proof concrete and reviewable: a PR link, collaborator/access screenshot, repo invitation acceptance, or another operator-approved artifact. Do not treat a Network Diagnostic Report claim, wallet biography, or previous generic documentation task as verified repo access.
   - Set `payload.network_task.task_work_type` to the best task-work vocabulary id. This is model-authored audit context only. It does not approve, reject, cap rewards, or block generation in code.
+  - For `initiate_network_task`, choose the operating lane from `badgeEligibility.candidates[]`. Active user-facing lanes are only: `kol` for amplification/article work, `core_contributor` for sanctioned code/repo work, `qa_worker` for QA/repro reports capped at 5,000 PFT, `expert` for domain expert bundles capped at 30,000 PFT, and `project_leader` for discretionary special/open-source project authority. If the candidate has no active badge in that set, do not initiate a Network Task.
+  - Fill `required_badge_id`, `operating_badge_id`, `badge_work_type`, `badge_reason`, `badge_reward_cap_pft`, `badge_evidence_requirements`, and `discord_evidence_required`. Cite the matching candidate badge and cap in `decision_basis.source_facts`.
   - Do not expose private repo/channel membership or raw private access lists in user-facing text. Use the safe scope label and proof requirement from the source packet.
   - Documentation-only Network Tasks are low-value by default. Do not use `initiate_network_task` for a task whose useful output is only a report, friction list, map of gaps, audit note, or recommendation memo. Choose a concrete action/output task instead, or choose `message_user` if the missing input is the action destination.
   - When prior outputs already document a topic, the next Network Task must move one rung up the document-to-action ladder. Cite the prior task ids/CIDs in `decision_basis.source_facts`, place them in `payload.network_task.referenced_outputs`, and explain what this task does next in `payload.network_task.action_output`.
@@ -102,11 +108,12 @@ Rules:
 - For `message_user`, fill `payload.message_precondition` with the live state that must still be true when the runtime sends the message. If the message asks the user to accept, decline, review, verify, unblock, or act on a Network Task, `related_task_id` or `related_allocation_id` is mandatory. Use `expected_task_status` and `expected_allocation_status` to state the exact statuses the message depends on. Use `expected_followup_status="none_open"` when the message assumes no unresolved follow-up is already open.
 - If `payload.message_precondition` would fail against the latest Account Live State, do not choose `message_user`; choose a current action or `do_nothing` with the stale condition in `decision_basis`.
 - For `create_project`, fill `payload.project` with the project fields needed for the Hive board.
+- For `create_project` based on a Project Leader input, make the durable project title/objective match the leader's concrete ask. Do not split it into a generic Task Node facet unless the input is actually about Task Node core work.
 - For `refresh_project_document`, write the document yourself in `payload.project_document`. Do not delegate core project-document writing to another model. Use the source packet, current project row, Hive Secretary report, project tasks, contributors, and existing product document.
 - For `archive_project`, set `target_id` to the project id and put the plain-English reason in `payload.archive_reason`.
 - For `restore_project`, set `target_id` to the archived project id and explain why the existing project should return to active state in `reason` and `payload.summary`.
 - For `assign_contributor`, fill `payload.contributor` with the project id and wallet address.
-- For `initiate_network_task`, set `target_type` to `network_project`, set `target_id` to the project id, and fill `payload.network_task` with task class, one explicit eligible candidate account or wallet, reward band, cadence reason, project need, and routing reason. Do not put a finished task title, task steps, or verification request in this decision.
+- For `initiate_network_task`, set `target_type` to `network_project`, set `target_id` to the project id, and fill `payload.network_task` with task class, one explicit eligible candidate account or wallet, badge metadata, reward band, cadence reason, project need, and routing reason. Do not put a finished task title, task steps, or verification request in this decision.
 - For actions that do not need a field, leave that field empty or zero rather than omitting it.
 - A past run with `selectedAction` but no `actionResults` means the action was chosen but not executed.
 - `reason` is the short operator-facing explanation. `decision_basis` is the auditable basis for the decision. Do not expose hidden chain-of-thought. Instead, list concrete source facts, explicit tradeoffs, actions you considered and rejected, risk notes, and what should be checked next.
@@ -177,6 +184,13 @@ Return structured JSON matching the runtime schema:
     },
     "network_task": {
       "task_work_type": "",
+      "required_badge_id": "",
+      "operating_badge_id": "",
+      "badge_work_type": "",
+      "badge_reason": "",
+      "badge_reward_cap_pft": 0,
+      "badge_evidence_requirements": [],
+      "discord_evidence_required": true,
       "task_class": "",
       "candidate_account_id": "",
       "candidate_wallet_address": "",
@@ -205,7 +219,7 @@ Return structured JSON matching the runtime schema:
 	        }
 	      ],
 	      "why_not_duplicate": "",
-	      "reward_min_pft": 10000,
+	      "reward_min_pft": 100,
 	      "reward_max_pft": 50000,
 	      "accept_window_hours": 24,
       "allow_over_capacity": false

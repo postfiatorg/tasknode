@@ -60,6 +60,7 @@ locations instead:
 | Docker, Fly deploys, secrets, process groups, production pause/restart | [Deployment](#docs/deployment) |
 | User-specific support, wallet-scoped eligibility, rewards, memory, profile, Hive, Telegram, and usage logging | [User Observability Logging](#docs/user-observability-logging) |
 | Hive Chat first-run onboarding, wallet validation, Network Tasks, and onboarding friction | [Hive](#docs/hive) |
+| Badge-based Network Task eligibility, profile badge rendering, capacity gating, and Board Manager routing enforcement | [Hive & Board Operations](#docs/hive-operations) |
 | PFTasks to Task Node Official account, wallet, context, task, NFT, and URL cutover | [Task Node Production Cutover Package](#docs/task-node-production-cutover-package), [PFTasks Cutover](#docs/pftasks-cutover) |
 | PFTasks production transaction shutdown before cutover | [PFTasks Transaction Shutdown Cutover Plan](#docs/pftasks-transaction-shutdown-cutover-plan) |
 | Postgres schema target and context history restore | [Database](#docs/database), [PFTL](#docs/pftl) |

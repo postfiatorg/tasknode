@@ -558,7 +558,9 @@ function linkedProvider({
   profileUrl,
   email,
   emailVerified = false,
+  metadata = {},
 }) {
+  const safeMetadata = metadata && typeof metadata === "object" && !Array.isArray(metadata) ? { ...metadata } : {};
   return providerAliasDefaults({
     id: provider,
     label: providerLabel(provider),
@@ -570,6 +572,7 @@ function linkedProvider({
     profileUrl: profileUrl || null,
     email: email || null,
     emailVerified: Boolean(emailVerified),
+    ...(Object.keys(safeMetadata).length ? { metadata: safeMetadata } : {}),
   });
 }
 
@@ -818,6 +821,84 @@ export function getAccountIdentityProfile({ accountId = "" } = {}) {
   return accountIdentityProfile(state.accounts[String(accountId || "").trim()] || null);
 }
 
+function safeExpertText(value = "", max = 1000) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function safeExpertNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function safeExpertStringArray(values = [], maxItems = 20, maxLength = 240) {
+  return (Array.isArray(values) ? values : [])
+    .map((value) => safeExpertText(value, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function normalizeExpertReview(review = {}) {
+  const source = review && typeof review === "object" && !Array.isArray(review) ? review : {};
+  if (!Object.keys(source).length) return {};
+  return {
+    status: safeExpertText(source.status, 80),
+    topic: safeExpertText(source.topic, 160),
+    score: Math.min(100, Math.max(0, Math.round(safeExpertNumber(source.score, 0)))),
+    thresholdScore: Math.min(100, Math.max(0, Math.round(safeExpertNumber(source.thresholdScore, 80)))),
+    personalTaskCount: Math.max(0, Math.round(safeExpertNumber(source.personalTaskCount, 0))),
+    requiredPersonalTaskCount: Math.max(0, Math.round(safeExpertNumber(source.requiredPersonalTaskCount, 20))),
+    reviewedTaskIds: safeExpertStringArray(source.reviewedTaskIds, 40, 180),
+    reviewedAt: safeExpertText(source.reviewedAt, 80) || null,
+    recommendedExpertLabel: safeExpertText(source.recommendedExpertLabel, 160),
+    summary: safeExpertText(source.summary, 700),
+    strengths: safeExpertStringArray(source.strengths, 8, 240),
+    weaknesses: safeExpertStringArray(source.weaknesses, 8, 240),
+    disqualifyingConcerns: safeExpertStringArray(source.disqualifyingConcerns, 8, 240),
+    evidenceTaskIds: safeExpertStringArray(source.evidenceTaskIds, 40, 180),
+    provider: safeExpertText(source.provider, 80),
+    model: safeExpertText(source.model, 120),
+    responseId: safeExpertText(source.responseId, 200),
+    promptDigest: safeExpertText(source.promptDigest, 80),
+    promptVersion: safeExpertText(source.promptVersion, 120),
+    usage: source.usage && typeof source.usage === "object" && !Array.isArray(source.usage)
+      ? {
+          inputTokens: safeExpertNumber(source.usage.inputTokens, 0),
+          outputTokens: safeExpertNumber(source.usage.outputTokens, 0),
+          totalTokens: safeExpertNumber(source.usage.totalTokens, 0),
+          reasoningTokens: safeExpertNumber(source.usage.reasoningTokens, 0),
+          costUsd: safeExpertNumber(source.usage.costUsd, 0),
+          latencyMs: safeExpertNumber(source.usage.latencyMs, 0),
+        }
+      : {},
+  };
+}
+
+export function getAccountExpertReview({ accountId = "" } = {}) {
+  const account = state.accounts[String(accountId || "").trim()] || null;
+  return normalizeExpertReview(account?.expertReview || {});
+}
+
+export function setAccountExpertReview({ accountId = "", review = {} } = {}) {
+  const normalizedAccountId = String(accountId || "").trim();
+  const account = state.accounts[normalizedAccountId];
+  if (!account) {
+    return {
+      ok: false,
+      status: 404,
+      error: "account_not_found",
+    };
+  }
+  account.expertReview = normalizeExpertReview(review);
+  account.updatedAt = new Date().toISOString();
+  state.accounts[normalizedAccountId] = account;
+  syncAccountSessions(account);
+  saveState();
+  return {
+    ok: true,
+    expertReview: normalizeExpertReview(account.expertReview),
+  };
+}
+
 export function listAccountIdentityProfiles() {
   return Object.values(state.accounts || {})
     .map((account) => accountIdentityProfile(account, {
@@ -996,6 +1077,7 @@ export function getOrCreateProviderAccount({
   displayName = "",
   profileUrl = "",
   emailInfo = null,
+  metadata = {},
 }) {
   const normalizedProvider = String(provider || "").trim().toLowerCase();
   const normalizedProviderUserId = String(providerUserId || "").trim();
@@ -1014,6 +1096,7 @@ export function getOrCreateProviderAccount({
     profileUrl,
     email,
     emailVerified,
+    metadata,
   });
 
   let accountId = state.accountIdentities[key];
@@ -1082,6 +1165,7 @@ export function linkProviderToAccount({
   displayName = "",
   profileUrl = "",
   emailInfo = null,
+  metadata = {},
 }) {
   const targetAccountId = String(accountId || "").trim();
   const normalizedProvider = String(provider || "").trim().toLowerCase();
@@ -1122,6 +1206,7 @@ export function linkProviderToAccount({
       profileUrl,
       email,
       emailVerified,
+      metadata,
     })
   );
   account.status = account.status || "active";

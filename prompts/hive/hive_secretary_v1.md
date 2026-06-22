@@ -42,6 +42,7 @@ Rules:
 - Prefer short, clear sentences.
 - Keep the report compact enough to scan.
 - Reference input IDs only in `input_refs`.
+- If a source input is marked Project Leader, preserve that authority in the reason when it proposes a concrete special or open-source project.
 - If there is only one input, write a narrow report instead of pretending there is broad consensus.
 - Do not mention chat titles.
 - Do not expose private implementation detail unless the input itself discusses it.

@@ -186,7 +186,7 @@ function boardManagerSecretaryRepairMessages({ sourcePacket = {}, invalidText = 
         `Parser error: ${safeText(parseError, 500)}`,
         "Repair the same Board Manager Secretary packet now.",
         "Return exactly one JSON object matching the packet contract. Do not add prose, markdown, comments, or trailing text.",
-        "Preserve operator_standing_policy, generation_quality_policy, prior_output_corpus_summary, deduplication_watchlist, capability_gap_summary, orc_operations_summary, and facts_to_preserve.",
+        "Preserve operator_standing_policy, generation_quality_policy, project_leader_inputs, prior_output_corpus_summary, deduplication_watchlist, capability_gap_summary, badge_eligibility, orc_operations_summary, and facts_to_preserve.",
       ].join("\n"),
     },
   ];
@@ -224,6 +224,7 @@ function fallbackFactsToPreserve({
   operatorStandingPolicy = [],
   priorOutputCorpusSummary = {},
   deduplicationWatchlist = [],
+  projectLeaderInputs = [],
   capabilityGapSummary = {},
   orcOperationsSummary = {},
 } = {}) {
@@ -233,6 +234,15 @@ function fallbackFactsToPreserve({
     .filter(Boolean);
   const dedupTaskIds = safeArray(deduplicationWatchlist)
     .flatMap((item) => safeArray(item.prior_task_ids || item.priorTaskIds))
+    .filter(Boolean);
+  const projectLeaderFacts = safeArray(projectLeaderInputs)
+    .map((input) => {
+      const item = safeObject(input);
+      const entryId = safeText(item.source_entry_id || item.sourceEntryId, 180);
+      const handle = safeText(item.hive_handle || item.hiveHandle || item.handle, 120);
+      if (!entryId && !handle) return "";
+      return `project_leader_input:${entryId || "entry"}:${handle || "handle"}`;
+    })
     .filter(Boolean);
   const capabilityGapFacts = safeArray(capabilityGapSummary.gaps)
     .map((gap) => {
@@ -273,6 +283,7 @@ function fallbackFactsToPreserve({
   return [
     safeText(sourcePacket.sourcePacketDigest, 120) ? `source_packet_digest:${safeText(sourcePacket.sourcePacketDigest, 120)}` : "",
     ...safeArray(operatorStandingPolicy).map((item) => `operator_policy:${item.source_id || item.sourceId || "source"}`),
+    ...projectLeaderFacts,
     ...recentOutputIds.map((taskId) => `prior_output:${safeText(taskId, 180)}`),
     ...dedupTaskIds.map((taskId) => `dedup_against:${safeText(taskId, 180)}`),
     ...capabilityGapFacts,
@@ -303,12 +314,14 @@ function boardManagerSecretaryFallbackPacket({ sourcePacket = {}, parseError = "
       sourcePacket.networkTaskOutputCorpus?.deduplicationWatchlist ||
       sourcePacket.network_task_output_corpus?.deduplicationWatchlist
   );
+  const projectLeaderInputs = normalizeProjectLeaderInputs(sourcePacket.projectLeaderInputs || sourcePacket.project_leader_inputs);
   const capabilityGapSummary = normalizeCapabilityGapSummary(
     sourcePacket.capabilityGapSummary ||
       sourcePacket.capability_gap_summary ||
       sourcePacket.capabilityInstrumentation ||
       sourcePacket.capability_instrumentation
   );
+  const badgeEligibility = normalizeBadgeEligibility(sourcePacket.badgeEligibility || sourcePacket.badge_eligibility);
   const orcOperationsSummary = normalizeOrcOperationsSummary(
     sourcePacket.orcOperations || sourcePacket.orc_operations || sourcePacket.orcOperationsSummary || sourcePacket.orc_operations_summary
   );
@@ -339,13 +352,16 @@ function boardManagerSecretaryFallbackPacket({ sourcePacket = {}, parseError = "
     generation_quality_policy: generationQualityPolicy,
     prior_output_corpus_summary: priorOutputCorpusSummary,
     deduplication_watchlist: deduplicationWatchlist,
+    project_leader_inputs: projectLeaderInputs,
     capability_gap_summary: capabilityGapSummary,
+    badge_eligibility: badgeEligibility,
     orc_operations_summary: orcOperationsSummary,
     facts_to_preserve: fallbackFactsToPreserve({
       sourcePacket,
       operatorStandingPolicy,
       priorOutputCorpusSummary,
       deduplicationWatchlist,
+      projectLeaderInputs,
       capabilityGapSummary,
       orcOperationsSummary,
     }),
@@ -530,6 +546,41 @@ function normalizeCapabilityGapSummary(value = {}) {
   };
 }
 
+function normalizeBadgeEligibility(value = {}) {
+  const input = safeObject(value);
+  const candidates = safeArray(input.candidates)
+    .slice(0, 24)
+    .map((item) => {
+      const candidate = safeObject(item);
+      return {
+        account_id: safeText(candidate.account_id || candidate.accountId, 180),
+        wallet_address: safeText(candidate.wallet_address || candidate.walletAddress, 120),
+        verified_badges: safeArray(candidate.verified_badges || candidate.verifiedBadges)
+          .slice(0, 12)
+          .map((badge) => safeText(badge, 80))
+          .filter(Boolean),
+        default_badge: safeText(candidate.default_badge || candidate.defaultBadge, 80),
+        allowed_work_types: safeArray(candidate.allowed_work_types || candidate.allowedWorkTypes)
+          .slice(0, 24)
+          .map((workType) => safeText(workType, 120))
+          .filter(Boolean),
+        reward_caps: safeObject(candidate.reward_caps || candidate.rewardCaps),
+      };
+    })
+    .filter((item) => item.account_id || item.wallet_address);
+  return {
+    schema: safeText(input.schema || "pf.task_node.badge_eligibility.v1", 120),
+    catalog_version: safeText(input.catalog_version || input.catalogVersion || "network_badges_v1", 120),
+    enforcement: safeText(input.enforcement || "executor_required", 120) || "executor_required",
+    candidate_count: Math.max(0, Math.round(Number(input.candidate_count ?? input.candidateCount ?? candidates.length) || 0)),
+    badge_eligible_candidate_count: Math.max(
+      0,
+      Math.round(Number(input.badge_eligible_candidate_count ?? input.badgeEligibleCandidateCount ?? candidates.filter((candidate) => candidate.verified_badges.length > 0).length) || 0)
+    ),
+    candidates,
+  };
+}
+
 function normalizeOrcOperationsSummary(value = {}) {
   const input = safeObject(value);
   const summary = safeObject(input.summary || input);
@@ -680,6 +731,23 @@ function normalizeOrcOperationsSummary(value = {}) {
   };
 }
 
+function normalizeProjectLeaderInputs(value = []) {
+  return safeArray(value).slice(0, 16).map((input) => {
+    const item = safeObject(input);
+    return {
+      source_entry_id: safeText(item.source_entry_id || item.sourceEntryId, 180),
+      account_id: safeText(item.account_id || item.accountId, 180),
+      display_name: safeText(item.display_name || item.displayName, 120),
+      hive_handle: safeText(item.hive_handle || item.hiveHandle || item.handle, 120),
+      wallet_address: safeText(item.wallet_address || item.walletAddress, 120),
+      source_conversation_id: safeText(item.source_conversation_id || item.sourceConversationId, 180),
+      created_at: safeText(item.created_at || item.createdAt, 80),
+      authority: safeArray(item.authority).slice(0, 8).map((authority) => safeText(authority, 120)).filter(Boolean),
+      body_excerpt: safeText(item.body_excerpt || item.bodyExcerpt, 800),
+    };
+  }).filter((item) => item.source_entry_id || item.account_id || item.hive_handle);
+}
+
 export function normalizeBoardManagerSecretaryPacket(output = {}) {
   const input = safeObject(output);
   const motionState = safeText(input.motion_state || input.motionState, 80).toLowerCase();
@@ -734,7 +802,9 @@ export function normalizeBoardManagerSecretaryPacket(output = {}) {
       input.prior_output_corpus_summary || input.priorOutputCorpusSummary
     ),
     deduplication_watchlist: normalizeDeduplicationWatchlist(input.deduplication_watchlist || input.deduplicationWatchlist),
+    project_leader_inputs: normalizeProjectLeaderInputs(input.project_leader_inputs || input.projectLeaderInputs),
     capability_gap_summary: normalizeCapabilityGapSummary(input.capability_gap_summary || input.capabilityGapSummary),
+    badge_eligibility: normalizeBadgeEligibility(input.badge_eligibility || input.badgeEligibility),
     orc_operations_summary: normalizeOrcOperationsSummary(input.orc_operations_summary || input.orcOperationsSummary),
     facts_to_preserve: safeArray(input.facts_to_preserve || input.factsToPreserve)
       .slice(0, 24)
@@ -1304,12 +1374,22 @@ export function buildBoardManagerSecretaryDecisionPacket({
         sourcePacket.networkTaskOutputCorpus?.deduplicationWatchlist ||
         normalizedSecretaryJson.deduplication_watchlist
     ),
+    projectLeaderInputs: normalizeProjectLeaderInputs(
+      sourcePacket.projectLeaderInputs ||
+        sourcePacket.project_leader_inputs ||
+        normalizedSecretaryJson.project_leader_inputs
+    ),
     capabilityInstrumentation: safeObject(sourcePacket.capabilityInstrumentation || sourcePacket.capability_instrumentation),
     capabilityGapSummary: normalizeCapabilityGapSummary(
       sourcePacket.capabilityGapSummary ||
         sourcePacket.capability_gap_summary ||
         sourcePacket.capabilityInstrumentation ||
         normalizedSecretaryJson.capability_gap_summary
+    ),
+    badgeEligibility: normalizeBadgeEligibility(
+      sourcePacket.badgeEligibility ||
+        sourcePacket.badge_eligibility ||
+        normalizedSecretaryJson.badge_eligibility
     ),
     orcOperations: safeObject(sourcePacket.orcOperations || sourcePacket.orc_operations),
     orcOperationsSummary: normalizeOrcOperationsSummary(

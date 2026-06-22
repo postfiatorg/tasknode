@@ -128,6 +128,22 @@ function reportInput(sourcePacket = {}) {
   };
 }
 
+function projectLeaderInputsFromSourcePacket(sourcePacket = {}) {
+  return safeArray(sourcePacket.projectLeaderInputs || sourcePacket.project_leader_inputs)
+    .slice(0, 16)
+    .map((input) => safeObject(input))
+    .map((input) => ({
+      sourceEntryId: safeText(input.sourceEntryId || input.source_entry_id, 180),
+      accountId: safeText(input.accountId || input.account_id, 180),
+      displayName: safeText(input.displayName || input.display_name, 120),
+      hiveHandle: safeText(input.hiveHandle || input.hive_handle || input.handle, 120),
+      walletAddress: safeText(input.walletAddress || input.wallet_address, 120),
+      sourceConversationId: safeText(input.sourceConversationId || input.source_conversation_id, 180),
+      authority: safeArray(input.authority).slice(0, 8).map((item) => safeText(item, 120)).filter(Boolean),
+    }))
+    .filter((input) => input.sourceEntryId || input.accountId || input.hiveHandle);
+}
+
 function displayNameForAccount(sourcePacket = {}, accountId = "") {
   for (const account of sourcePacket?.actionTargetRegistry?.accounts || []) {
     if (account.accountId === accountId) return safeText(account.displayName, 120);
@@ -1007,6 +1023,7 @@ async function executeCreateProject({ runId, decision, sourcePacket }) {
     };
   }
   const hiveSecretary = reportInput(sourcePacket);
+  const projectLeaderInputs = projectLeaderInputsFromSourcePacket(sourcePacket);
   const result = await query(
     `
       INSERT INTO network_projects (
@@ -1076,20 +1093,37 @@ async function executeCreateProject({ runId, decision, sourcePacket }) {
       hiveSecretary.report_id,
       hiveSecretary.source_packet_digest,
       jsonValue({
-        inputs: ["board_manager_action", "hive_secretary_report"],
+        inputs: [
+          "board_manager_action",
+          "hive_secretary_report",
+          ...(projectLeaderInputs.length ? ["project_leader_hive_input"] : []),
+        ],
         board_manager: {
           run_id: runId,
           source_packet_digest: sourcePacket.sourcePacketDigest,
         },
         hive_secretary: hiveSecretary,
+        project_leader_inputs: projectLeaderInputs,
       }),
       jsonValue({
         board_manager_reason: decision.reason,
         board_manager_created_at: new Date().toISOString(),
+        project_leader_authority: {
+          present: projectLeaderInputs.length > 0,
+          badge_id: projectLeaderInputs.length ? "project_leader" : "",
+          requirement: projectLeaderInputs.length ? "Discretionary" : "",
+          source_entry_ids: projectLeaderInputs.map((input) => input.sourceEntryId).filter(Boolean),
+          handles: projectLeaderInputs.map((input) => input.hiveHandle).filter(Boolean),
+        },
       }),
     ]
   );
-  return { executed: true, projectId: result.rows[0]?.id || id, status: result.rows[0]?.status || "active" };
+  return {
+    executed: true,
+    projectId: result.rows[0]?.id || id,
+    status: result.rows[0]?.status || "active",
+    projectLeaderInputCount: projectLeaderInputs.length,
+  };
 }
 
 async function executeArchiveProject({ runId, decision, sourcePacket }) {

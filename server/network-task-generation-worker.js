@@ -50,6 +50,8 @@ function compactList(items = [], maxItems = 4, maxChars = 280) {
 
 export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward = { min: 10000, max: 50000 } } = {}) {
   const sourceObject = safeObject(source);
+  const networkTask = safeObject(sourceObject.networkTask || sourceObject.network_task);
+  const policy = safeObject(sourceObject.policy);
   return {
     schema: "pf.hive.network_task_request.v1",
     allocation_id: job.allocation_id,
@@ -73,9 +75,19 @@ export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward =
       min: reward.min,
       max: reward.max,
     },
-    project_need_summary: sourceObject.networkTask?.projectNeedSummary || "",
-    routing_reason: sourceObject.networkTask?.allocationReasonSummary || "",
-    task_work_type: sourceObject.networkTask?.taskWorkType || sourceObject.networkTask?.task_work_type || "",
+    project_need_summary: networkTask.projectNeedSummary || networkTask.project_need_summary || "",
+    routing_reason: networkTask.allocationReasonSummary || networkTask.allocation_reason_summary || "",
+    task_work_type: networkTask.taskWorkType || networkTask.task_work_type || "",
+    required_badge_id: networkTask.requiredBadgeId || networkTask.required_badge_id || policy.required_badge_id || "",
+    operating_badge_id: networkTask.operatingBadgeId || networkTask.operating_badge_id || policy.operating_badge_id || "",
+    badge_work_type: networkTask.badgeWorkType || networkTask.badge_work_type || networkTask.taskWorkType || "",
+    badge_reward_cap_pft: Number(networkTask.badgeRewardCapPft || networkTask.badge_reward_cap_pft || policy.badgeRewardCapPft || policy.badge_reward_cap_pft || 0) || 0,
+    badge_eligibility_decision: safeObject(policy.badgeEligibilityDecision || policy.badge_eligibility_decision),
+    badge_evidence_requirements: safeArray(networkTask.badgeEvidenceRequirements || networkTask.badge_evidence_requirements).slice(0, 8),
+    discord_evidence_required:
+      typeof (networkTask.discordEvidenceRequired ?? networkTask.discord_evidence_required ?? policy.discordEvidenceRequired) === "boolean"
+        ? (networkTask.discordEvidenceRequired ?? networkTask.discord_evidence_required ?? policy.discordEvidenceRequired)
+        : true,
     operator_standing_policy: safeArray(sourceObject.operatorStandingPolicy || sourceObject.operator_standing_policy).slice(0, 12),
     generation_quality_policy: safeObject(sourceObject.generationQualityPolicy || sourceObject.generation_quality_policy),
     prior_output_corpus: safeObject(sourceObject.priorOutputCorpus || sourceObject.prior_output_corpus),
@@ -85,10 +97,10 @@ export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward =
       deduped_against: safeArray(sourceObject.taskLineage?.dedupedAgainst || sourceObject.taskLineage?.deduped_against || sourceObject.networkTask?.dedupedAgainst || sourceObject.networkTask?.deduped_against).slice(0, 12),
       why_not_duplicate: safeText(sourceObject.taskLineage?.whyNotDuplicate || sourceObject.taskLineage?.why_not_duplicate || sourceObject.networkTask?.whyNotDuplicate || sourceObject.networkTask?.why_not_duplicate, 1200),
     },
-    action_output: sourceObject.networkTask?.actionOutput || sourceObject.networkTask?.action_output || "",
-    delivery_surface: sourceObject.networkTask?.deliverySurface || sourceObject.networkTask?.delivery_surface || "",
-    recipient_or_reviewer: sourceObject.networkTask?.recipientOrReviewer || sourceObject.networkTask?.recipient_or_reviewer || "",
-    escalation_stage: sourceObject.networkTask?.escalationStage || sourceObject.networkTask?.escalation_stage || "",
+    action_output: networkTask.actionOutput || networkTask.action_output || "",
+    delivery_surface: networkTask.deliverySurface || networkTask.delivery_surface || "",
+    recipient_or_reviewer: networkTask.recipientOrReviewer || networkTask.recipient_or_reviewer || "",
+    escalation_stage: networkTask.escalationStage || networkTask.escalation_stage || "",
   };
 }
 
@@ -150,9 +162,16 @@ export async function createTaskRequestForNetworkJob(job = {}) {
     task_policy_version: "task-policy-network-v1",
     reward_policy_version: "network-reward-policy-v1",
     generation_policy_version: "taskgen-policy-network-v1",
+    badge_policy_version: "network-badges-v1",
     task_class: job.task_class,
     reward_offer_min_pft: reward.min,
     reward_offer_max_pft: reward.max,
+    required_badge_id: requestBundle.network_task.required_badge_id,
+    operating_badge_id: requestBundle.network_task.operating_badge_id,
+    badge_work_type: requestBundle.network_task.badge_work_type,
+    badge_reward_cap_pft: requestBundle.network_task.badge_reward_cap_pft,
+    badge_eligibility_decision: requestBundle.network_task.badge_eligibility_decision,
+    discord_evidence_required: requestBundle.network_task.discord_evidence_required,
     supported_evidence_types: ["text", "url", "github_commit", "screenshot", "file", "mixed"],
   };
   const plaintext = stableJson(requestBundle);

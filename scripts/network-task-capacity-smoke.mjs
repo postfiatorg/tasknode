@@ -43,6 +43,7 @@ async function cleanup() {
   await query("DELETE FROM network_projects WHERE id = $1", [projectId]);
   await query("DELETE FROM task_projections WHERE account_id = ANY($1::text[])", [accountIds]);
   await query("DELETE FROM network_task_profiles WHERE account_id = ANY($1::text[])", [accountIds]);
+  await query("DELETE FROM account_network_badges WHERE account_id = ANY($1::text[])", [accountIds]);
   await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = ANY($1::text[])", [walletAddresses]);
   await query("DELETE FROM user_observability_events WHERE account_id = ANY($1::text[])", [accountIds]);
 }
@@ -62,6 +63,35 @@ async function seedCandidate({ accountId, walletAddress }) {
       VALUES ($1, $2, 'completed', 'Network capacity smoke routing profile.', now())
     `,
     [`netprofile_${accountId}`, accountId]
+  );
+  await query(
+    `
+      INSERT INTO account_network_badges (
+        id,
+        account_id,
+        badge_id,
+        status,
+        selected_default,
+        verified_by_operator,
+        evidence_json,
+        validated_metrics_json
+      )
+      VALUES ($1, $2, 'core_contributor', 'verified', true, 'network_task_capacity_smoke', $3::jsonb, $4::jsonb)
+      ON CONFLICT (account_id, badge_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        selected_default = EXCLUDED.selected_default,
+        verified_by_operator = EXCLUDED.verified_by_operator,
+        evidence_json = EXCLUDED.evidence_json,
+        validated_metrics_json = EXCLUDED.validated_metrics_json,
+        revoked_at = NULL,
+        updated_at = now()
+    `,
+    [
+      `acctbadge_${accountId}_core`,
+      accountId,
+      JSON.stringify({ proofMethod: "smoke_core_contributor_fixture" }),
+      JSON.stringify({ proofMethod: "smoke_core_contributor_fixture" }),
+    ]
   );
 }
 
@@ -107,11 +137,21 @@ function boardDecision({ accountId, walletAddress, taskClass = "network", need =
     payload: {
       summary: need,
       network_task: {
+        task_work_type: "code_task",
+        required_badge_id: "core_contributor",
+        operating_badge_id: "core_contributor",
+        badge_work_type: "code_task",
+        badge_reason: "Capacity smoke uses the Core Contributor lane.",
+        badge_reward_cap_pft: 30000,
+        badge_evidence_requirements: ["PR or commit URL."],
+        discord_evidence_required: true,
         candidate_account_id: accountId,
         candidate_wallet_address: walletAddress,
         task_class: taskClass,
         project_need_summary: need,
         allocation_reason_summary: need,
+        reward_min_pft: 100,
+        reward_max_pft: 100,
       },
     },
   };

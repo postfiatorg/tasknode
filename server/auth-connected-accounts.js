@@ -8,6 +8,7 @@ import {
   recordAuthEvent,
 } from "./runtime-store.js";
 import { appendUsageCredit } from "./repositories/chat-billing.js";
+import { refreshIdentityApprovalsAfterSignal } from "./repositories/identity-approvals.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import {
   hostnameFromOrigin,
@@ -228,6 +229,55 @@ async function fetchGithubEmails(accessToken) {
   return body;
 }
 
+const defaultCoreContributorGithubHandles = [
+  "0xpostfiat",
+  "dravlic",
+  "goodalexander",
+  "iridiummaster",
+  "pleometric",
+  "postfiat-agent",
+];
+
+function configuredCoreContributorGithubHandles() {
+  const configured = String(process.env.TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES || "")
+    .split(",")
+    .map((handle) => handle.trim().toLowerCase())
+    .filter(Boolean);
+  const handles = configured.length ? configured : defaultCoreContributorGithubHandles;
+  return [...new Set(handles.map((handle) => String(handle || "").trim().toLowerCase()).filter(Boolean))];
+}
+
+function githubProofIntent(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "core_contributor" || normalized === "core-contributor"
+    ? "core_contributor"
+    : "";
+}
+
+function githubAuthScope() {
+  return "user:email";
+}
+
+function githubCoreContributorAccess(username = "") {
+  const checkedAt = new Date().toISOString();
+  const normalizedUsername = String(username || "").trim().toLowerCase();
+  const sanctionedHandles = configuredCoreContributorGithubHandles();
+  const sanctioned = Boolean(normalizedUsername && sanctionedHandles.includes(normalizedUsername));
+  return {
+    checkedAt,
+    username: String(username || "").trim(),
+    sanctioned,
+    matchedHandle: sanctioned ? normalizedUsername : "",
+    sanctionedHandles,
+    accessCount: sanctioned ? 1 : 0,
+    writeAccess: sanctioned,
+    scopeRecorded: sanctioned,
+    repositories: [],
+    proofMethod: "github_handle_allowlist",
+    oauthScope: "user:email",
+  };
+}
+
 async function fetchDiscordToken({ code, redirectUri }) {
   const credentials = Buffer.from(
     `${process.env.DISCORD_CLIENT_ID}:${process.env.DISCORD_CLIENT_SECRET}`
@@ -354,7 +404,7 @@ async function fetchXUser(accessToken) {
   let lastBody = null;
   for (const endpoint of xEndpointList("X_USER_URL", "https://api.x.com/2/users/me", "https://api.twitter.com/2/users/me")) {
     const url = new URL(endpoint);
-    url.searchParams.set("user.fields", "profile_image_url,verified,verified_type");
+    url.searchParams.set("user.fields", "profile_image_url,public_metrics,verified,verified_type");
     const { response, body } = await fetchJsonWithTimeout(url.toString(), {
       headers: {
         accept: "application/json",
@@ -545,7 +595,7 @@ async function completeProviderAuth({
   metadata = {},
 } = {}) {
   const linkedResult = stateRow.linkAccountId
-    ? linkProviderToAccount({ accountId: stateRow.linkAccountId, provider: providerId, providerUserId, username, displayName, profileUrl, emailInfo })
+    ? linkProviderToAccount({ accountId: stateRow.linkAccountId, provider: providerId, providerUserId, username, displayName, profileUrl, emailInfo, metadata })
     : null;
   if (linkedResult && !linkedResult.ok) {
     const conflict = linkedResult.error === "provider_identity_conflict" || linkedResult.error === "provider_email_conflict";
@@ -565,7 +615,7 @@ async function completeProviderAuth({
       actionRequired: conflict ? "Sign in with the existing linked account or contact support before attempting an account merge." : `Start ${label} linking again from Settings.`,
     });
   }
-  const account = linkedResult?.account || getOrCreateProviderAccount({ provider: providerId, providerUserId, username, displayName, profileUrl, emailInfo });
+  const account = linkedResult?.account || getOrCreateProviderAccount({ provider: providerId, providerUserId, username, displayName, profileUrl, emailInfo, metadata });
   if (!account?.id) {
     return actionResponse({
       status: 500,
@@ -604,6 +654,17 @@ async function completeProviderAuth({
     emailInfo,
     metadata,
   });
+  const networkBadgeRefresh = await refreshIdentityApprovalsAfterSignal({
+    accountId: account.id,
+    signal: `${providerId}_oauth_${stateRow.linkAccountId ? "linked" : "verified"}`,
+    verifiedByAccountId: account.id,
+    metadata: {
+      providerId,
+      username,
+      linked: Boolean(stateRow.linkAccountId),
+      metadataKeys: Object.keys(metadata || {}).sort(),
+    },
+  });
   return {
     status: 302,
     sessionId: created.sessionId,
@@ -614,6 +675,7 @@ async function completeProviderAuth({
       action: oauthAction(providerId, "callback"),
       message: stateRow.linkAccountId ? `${label} linked.` : `Signed in with ${label}.`,
       session: created.session,
+      networkBadgeRefresh,
       initialCredit: initialCredit
         ? { amountUsd: Number(initialCredit.amountUsd || 0), alreadyRecorded: Boolean(initialCredit.idempotentReplay) }
         : null,
@@ -706,12 +768,20 @@ function startGithubAuth(requestMeta = {}) {
   if (!redirectUri) {
     return actionResponse({ status: 409, error: "auth_redirect_origin_missing", action: "github_auth_start", message: "GitHub login needs a public Task Node origin.", actionRequired: "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin." });
   }
-  const stateRow = createOAuthState({ provider: "github", redirectPath: safeRedirectPath(requestMeta.redirectPath), redirectUri, linkAccountId: requestMeta.session?.accountId || "", expiresInSeconds: 600 });
+  const proofIntent = githubProofIntent(requestMeta.proof);
+  const stateRow = createOAuthState({
+    provider: "github",
+    redirectPath: safeRedirectPath(requestMeta.redirectPath),
+    redirectUri,
+    linkAccountId: requestMeta.session?.accountId || "",
+    expiresInSeconds: 600,
+    metadata: proofIntent ? { proofIntent } : {},
+  });
   const linkingAccount = Boolean(requestMeta.session?.accountId);
   const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
   authorizeUrl.searchParams.set("client_id", process.env.GITHUB_CLIENT_ID);
   authorizeUrl.searchParams.set("redirect_uri", redirectUri);
-  authorizeUrl.searchParams.set("scope", "user:email");
+  authorizeUrl.searchParams.set("scope", githubAuthScope(requestMeta));
   authorizeUrl.searchParams.set("state", stateRow.id);
   authorizeUrl.searchParams.set("allow_signup", "true");
   return oauthStartResponse({ providerId: "github", stateRow, linkingAccount, redirectUrl: authorizeUrl.toString(), redirectUri });
@@ -831,7 +901,20 @@ async function completeGithubCallback(query = {}, requestMeta = {}) {
   try {
     const accessToken = await fetchGithubToken({ code, state: String(query.state || ""), redirectUri: stateRow.redirectUri });
     const [profile, emails] = await Promise.all([fetchGithubUser(accessToken), fetchGithubEmails(accessToken)]);
-    return completeProviderAuth({ providerId: "github", label: "GitHub", stateRow, providerUserId: String(profile.id), username: profile.login || "", displayName: profile.name || profile.login || "GitHub", profileUrl: profile.html_url || "", emailInfo: selectGithubEmail(emails) });
+    const coreContributorAccess = stateRow.metadata?.proofIntent === "core_contributor"
+      ? githubCoreContributorAccess(profile.login || "")
+      : null;
+    return completeProviderAuth({
+      providerId: "github",
+      label: "GitHub",
+      stateRow,
+      providerUserId: String(profile.id),
+      username: profile.login || "",
+      displayName: profile.name || profile.login || "GitHub",
+      profileUrl: profile.html_url || "",
+      emailInfo: selectGithubEmail(emails),
+      metadata: coreContributorAccess ? { proofIntent: "core_contributor", coreContributorAccess } : {},
+    });
   } catch (error) {
     recordAuthEvent({ eventType: "github_oauth_failed", provider: "github", decision: error?.message || "github_callback_failed" });
     return actionResponse({ status: error?.status || 502, error: "github_callback_failed", action: "github_auth_callback", message: "GitHub login could not be completed.", actionRequired: error?.message || "Check GitHub OAuth app callback configuration and retry." });
@@ -880,6 +963,15 @@ async function completeXCallback(query = {}, requestMeta = {}) {
         verified: profile.verified === true,
         verifiedType: profile.verified_type || "",
         profileImageUrl: profile.profile_image_url || "",
+        publicMetrics: profile.public_metrics && typeof profile.public_metrics === "object"
+          ? {
+              followersCount: Number(profile.public_metrics.followers_count || 0),
+              followingCount: Number(profile.public_metrics.following_count || 0),
+              listedCount: Number(profile.public_metrics.listed_count || 0),
+              tweetCount: Number(profile.public_metrics.tweet_count || 0),
+            }
+          : {},
+        metricsCheckedAt: new Date().toISOString(),
       },
     });
   } catch (error) {
