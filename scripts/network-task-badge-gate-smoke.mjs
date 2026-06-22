@@ -84,6 +84,19 @@ await assert.rejects(
   /network_task_candidate_missing_badge/
 );
 
+await assert.rejects(
+  () => assertNetworkTaskBadgeEligibility({
+    accountId: coreAccount.id,
+    walletAddress: "rCoreBadgeGateSmoke",
+    requiredBadgeId: "core_contributor",
+    operatingBadgeId: "qa_worker",
+    workType: "code_task",
+    requestedRewardMinPft: 100,
+    requestedRewardMaxPft: 100,
+  }),
+  /network_task_badge_metadata_mismatch/
+);
+
 for (const [badgeId, workType, rewardMaxPft] of [
   ["inactive_badge", "inactive_work", 100],
   ["unknown_badge", "unknown_work", 100],

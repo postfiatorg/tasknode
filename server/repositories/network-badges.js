@@ -702,8 +702,8 @@ export async function assertNetworkTaskBadgeEligibility({
   requestedRewardMinPft = 0,
   requestedRewardMaxPft = 0,
 } = {}) {
-  const normalizedRequiredBadge = safeText(requiredBadgeId || operatingBadgeId, 80);
-  const normalizedOperatingBadge = safeText(operatingBadgeId || requiredBadgeId, 80);
+  const normalizedRequiredBadge = safeText(requiredBadgeId, 80);
+  const normalizedOperatingBadge = safeText(operatingBadgeId, 80);
   const normalizedWorkType = normalizeWorkType(workType || taskWorkType);
   if (!normalizedRequiredBadge || !normalizedOperatingBadge || !normalizedWorkType) {
     const error = new Error("network_task_missing_badge_metadata");
@@ -711,6 +711,18 @@ export async function assertNetworkTaskBadgeEligibility({
     error.decision = {
       eligible: false,
       block_reason: "network_task_missing_badge_metadata",
+      required_badge_id: normalizedRequiredBadge,
+      operating_badge_id: normalizedOperatingBadge,
+      work_type: normalizedWorkType,
+    };
+    throw error;
+  }
+  if (normalizedRequiredBadge !== normalizedOperatingBadge) {
+    const error = new Error("network_task_badge_metadata_mismatch");
+    error.status = 422;
+    error.decision = {
+      eligible: false,
+      block_reason: "network_task_badge_metadata_mismatch",
       required_badge_id: normalizedRequiredBadge,
       operating_badge_id: normalizedOperatingBadge,
       work_type: normalizedWorkType,

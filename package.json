@@ -100,7 +100,6 @@
     "orc-contributor-routing-artifacts-smoke": "node scripts/orc-contributor-routing-artifacts-smoke.mjs",
     "orc-review-queue-ingestion": "node scripts/orc-review-queue-ingest.mjs",
     "orc-review-queue-ingestion-smoke": "node scripts/orc-review-queue-ingestion-smoke.mjs",
-    "orc-review-evidence-formatter-smoke": "node scripts/orc-review-evidence-formatter-smoke.mjs",
     "sybil-blocklist-regression": "node scripts/sybil-blocklist-regression.mjs",
     "xrpl-contagion-risk-monitor": "node scripts/xrpl-contagion-risk-monitor.mjs",
     "xrpl-sybil-risk-matrix": "node scripts/xrpl-sybil-risk-matrix.mjs",
