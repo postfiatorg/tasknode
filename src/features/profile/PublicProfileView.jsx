@@ -1,4 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
+import {
+  Bot,
+  Bug,
+  Clapperboard,
+  ClipboardList,
+  Crown,
+  GitMerge,
+  GitPullRequest,
+  GraduationCap,
+  Megaphone,
+  Server,
+  User,
+} from "lucide-react";
 import { requestJson } from "../../api";
 
 const C = {
@@ -29,6 +42,19 @@ const contributionLevelLabel = (tierNumber) => {
   if (tier >= 2) return "Active contributor";
   if (tier >= 1) return "Contributor";
   return "Not established";
+};
+const badgeIconMap = {
+  bot: Bot,
+  bug: Bug,
+  clapperboard: Clapperboard,
+  clipboard_list: ClipboardList,
+  crown: Crown,
+  git_merge: GitMerge,
+  git_pull_request: GitPullRequest,
+  graduation_cap: GraduationCap,
+  megaphone: Megaphone,
+  server: Server,
+  user: User,
 };
 
 function imageCandidatesForNft(nft = {}) {
@@ -98,6 +124,46 @@ function ProfileAvatar({ nft = null, size = 120 }) {
   );
 }
 
+function PublicBadgeStrip({ badges = [] } = {}) {
+  const visibleBadges = Array.isArray(badges)
+    ? badges.filter((badge) => badge?.badgeId && badge?.label).slice(0, 8)
+    : [];
+  if (!visibleBadges.length) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+      {visibleBadges.map((badge) => {
+        const Icon = badgeIconMap[badge.symbolKey] || User;
+        const cap = Number(badge.maxPayoutPft || 0);
+        const capLabel = cap > 0 ? ` · cap ${fmtPft(cap)} PFT` : "";
+        return (
+          <span
+            key={badge.badgeId}
+            title={badge.publicDescription || badge.label}
+            style={{
+              alignItems: "center",
+              background: C.paper2,
+              border: `1px solid ${C.ruleSoft}`,
+              borderRadius: 999,
+              color: C.ink2,
+              display: "inline-flex",
+              fontSize: 12.5,
+              fontWeight: 650,
+              gap: 7,
+              lineHeight: 1,
+              minHeight: 30,
+              padding: "7px 10px",
+            }}
+          >
+            <Icon aria-hidden="true" size={14} strokeWidth={2.2} />
+            {badge.label}
+            <span style={{ color: C.ink4, fontWeight: 550 }}>{capLabel}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function IdentityHero({ profile = null, loading = false, profilePublic = true }) {
   const identity = profile?.identity || {};
   const metrics = profile?.metrics || {};
@@ -105,6 +171,7 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
   const displayHandle = identity.hiveHandle ? `@${identity.hiveHandle}` : "";
   const displayName = identity.displayName || displayHandle || "Hive contributor";
   const publicAliases = Array.isArray(identity.publicAliases) ? identity.publicAliases : [];
+  const networkBadges = Array.isArray(identity.networkBadges) ? identity.networkBadges : [];
   const operatorDisclosure = identity.operatorDisclosure || null;
   const totalPft = metrics.lifetimeTotalPft || 0;
   const taskPft = metrics.lifetimeTaskRewardPft || 0;
@@ -174,6 +241,7 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
               </>
             )}
           </div>
+          <PublicBadgeStrip badges={networkBadges} />
         </div>
 
         <div style={{ textAlign: "right" }}>

@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
+import { compactProjectLeaderAuthority } from "../project-leader-badge.js";
+import { getAccountIdentityProfile } from "../runtime-store.js";
 import { markBoardManagerFollowupsAnsweredForHiveEntry } from "./board-manager-state.js";
 
 const maxBodyLength = 24_000;
@@ -111,6 +113,18 @@ function sourceAttachment(attachment = {}) {
   };
 }
 
+function authorityBadgesForAccount(accountId = "") {
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!normalizedAccountId) return [];
+  try {
+    const identityProfile = getAccountIdentityProfile({ accountId: normalizedAccountId }) || {};
+    const projectLeaderAuthority = compactProjectLeaderAuthority(identityProfile.projectLeaderAccess);
+    return projectLeaderAuthority ? [projectLeaderAuthority] : [];
+  } catch {
+    return [];
+  }
+}
+
 function attachmentSourceText(attachments = []) {
   const normalized = jsonArray(attachments).map(sourceAttachment).filter((attachment) => attachment.name);
   if (normalized.length === 0) return "";
@@ -126,9 +140,11 @@ function attachmentSourceText(attachments = []) {
 function publicEntry(row = {}) {
   const attachments = row.attachments_json || row.attachments || [];
   const metadata = row.metadata_json || row.metadata || {};
+  const accountId = row.account_id || row.accountId || "";
+  const authorityBadges = authorityBadgesForAccount(accountId);
   return {
     id: row.id,
-    accountId: row.account_id || row.accountId || "",
+    accountId,
     displayName: row.display_name || row.displayName || "Unknown user",
     body: row.body || "",
     excerpt: safeText(row.body || "", 220),
@@ -142,6 +158,8 @@ function publicEntry(row = {}) {
       mimeType: safeText(attachment?.mimeType || attachment?.mime_type || "", 120),
       size: Math.max(0, Number(attachment?.size || attachment?.sizeBytes || attachment?.size_bytes || 0)),
     })),
+    authorityBadges,
+    projectLeaderAuthority: authorityBadges.find((badge) => badge.badgeId === "project_leader") || null,
     metadata: jsonObject(metadata),
     createdAt: toIso(row.created_at || row.createdAt),
     updatedAt: toIso(row.updated_at || row.updatedAt),
@@ -157,11 +175,17 @@ function groupedDocument(entries = []) {
       displayName: entry.displayName,
       latestAt: entry.createdAt,
       entryCount: 0,
+      authorityBadges: [],
       entries: [],
     };
     existing.displayName = existing.displayName || entry.displayName;
     existing.latestAt = latestIso(existing.latestAt, entry.createdAt);
     existing.entryCount += 1;
+    for (const badge of jsonArray(entry.authorityBadges)) {
+      if (badge?.badgeId && !existing.authorityBadges.some((item) => item.badgeId === badge.badgeId)) {
+        existing.authorityBadges.push(badge);
+      }
+    }
     existing.entries.push(entry);
     groupsByKey.set(key, existing);
   }
@@ -431,6 +455,9 @@ function sourceEntry(row = {}) {
     walletDisplay: displayWallet(entry.walletAddress),
     body: entry.body,
     attachments,
+    sourceConversationId: entry.sourceConversationId,
+    authorityBadges: entry.authorityBadges,
+    projectLeaderAuthority: entry.projectLeaderAuthority,
     createdAt: entry.createdAt,
   };
 }
@@ -444,8 +471,13 @@ function secretarySourcePacketFromEntries(entries = []) {
       accountId: entry.accountId,
       displayName: entry.displayName,
       walletAddress: entry.walletAddress,
+      authorityBadges: [],
       entries: [],
     };
+    const leaderAuthority = entry.projectLeaderAuthority;
+    if (leaderAuthority && !existing.authorityBadges.some((badge) => badge.badgeId === leaderAuthority.badgeId)) {
+      existing.authorityBadges.push(leaderAuthority);
+    }
     existing.entries.push(entry);
     groupsByAccount.set(key, existing);
   }
@@ -462,9 +494,13 @@ function secretarySourcePacketFromEntries(entries = []) {
       account_id: group.accountId,
       display_name: group.displayName,
       wallet_address: group.walletAddress,
+      authority_badges: group.authorityBadges,
+      project_leader_authority: group.authorityBadges.find((badge) => badge.badgeId === "project_leader") || null,
       entries: group.entries.map((entry) => ({
         id: entry.id,
         created_at: entry.createdAt,
+        source_conversation_id: entry.sourceConversationId,
+        authority_badges: entry.authorityBadges,
         body: entry.body,
         attachments: entry.attachments.map((attachment) => ({
           name: attachment.name,
@@ -490,6 +526,9 @@ function secretarySourcePacketFromEntries(entries = []) {
       ? groups.map((group) => [
           `Contributor: ${group.displayName || group.accountId || "Unknown user"}`,
           group.walletAddress ? `Validated wallet: ${displayWallet(group.walletAddress)}` : "",
+          group.authorityBadges.some((badge) => badge.badgeId === "project_leader")
+            ? `Project Leader: @${group.authorityBadges.find((badge) => badge.badgeId === "project_leader")?.handle || "unknown"} (Discretionary; may define special and open-source projects)`
+            : "",
           ...group.entries.map((entry, index) => [
             `Input ${index + 1}: ${entry.id}`,
             `Time: ${entry.createdAt}`,

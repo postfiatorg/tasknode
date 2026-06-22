@@ -43,7 +43,7 @@ export function NetworkTaskEligibilityPanel({ networkTasks = null }) {
   }, [view.status]);
 
   const firstFailingGateId = view.gates.find((gate) => gate.failing)?.id || "";
-  const hasDetails = !view.loading && !view.eligible && Boolean(
+  const hasDetails = !view.loading && Boolean(
     view.explanation ||
     view.error ||
     view.gates.length ||
@@ -57,6 +57,9 @@ export function NetworkTaskEligibilityPanel({ networkTasks = null }) {
         <span className="net-elig-label">{view.plainLabel}</span>
         {view.walletAddress && (
           <span className="net-elig-meta">· routing {view.walletLabel}</span>
+        )}
+        {view.badge?.laneLabel && (
+          <span className="net-elig-meta">· {view.badge.laneLabel}</span>
         )}
         {!view.eligible && view.nextAction && (
           <span className="net-elig-next">· {view.nextAction}</span>

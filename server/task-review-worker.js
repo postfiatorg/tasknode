@@ -827,6 +827,267 @@ function buildRewardEvidenceEvaluationContext({ initial = {}, verification = {} 
   };
 }
 
+function collectEvidenceText(value, {
+  maxChars = 30000,
+  maxDepth = 6,
+} = {}) {
+  const parts = [];
+  let used = 0;
+  const visit = (node, depth = 0) => {
+    if (used >= maxChars || depth > maxDepth || node === null || node === undefined) return;
+    if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
+      const text = safeText(node, Math.max(0, maxChars - used));
+      if (text) {
+        parts.push(text);
+        used += text.length + 1;
+      }
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node.slice(0, 50)) visit(item, depth + 1);
+      return;
+    }
+    if (typeof node === "object") {
+      for (const [key, item] of Object.entries(node).slice(0, 80)) {
+        if (used >= maxChars) break;
+        const keyText = safeText(key, 120);
+        if (keyText) {
+          parts.push(keyText);
+          used += keyText.length + 1;
+        }
+        visit(item, depth + 1);
+      }
+    }
+  };
+  visit(value, 0);
+  return safeText(parts.join("\n"), maxChars);
+}
+
+function evidencePayloadHasScreenshot(value, depth = 0) {
+  if (depth > 6 || value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.slice(0, 50).some((item) => evidencePayloadHasScreenshot(item, depth + 1));
+  if (typeof value !== "object") return false;
+  const object = safeObject(value);
+  const typeText = [
+    object.artifact_type,
+    object.artifactType,
+    object.evidence_type,
+    object.evidenceType,
+    object.verification_type,
+    object.verificationType,
+    object.type,
+  ]
+    .map((item) => safeText(item, 120).toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+  if (/\b(screenshot|screen\s*shot|image|photo)\b/.test(typeText)) return true;
+  const source = safeObject(object.source);
+  const file = safeObject(object.file);
+  const mime = safeText(object.mime_type || object.mimeType || source.mime_type || source.mimeType || file.mime_type || file.mimeType, 160).toLowerCase();
+  if (mime.startsWith("image/")) return true;
+  const fileName = safeText(object.file_name || object.fileName || object.filename || object.name || source.file_name || file.name, 500).toLowerCase();
+  if (/\.(png|jpe?g|webp|gif|heic)$/i.test(fileName)) return true;
+  return Object.values(object).slice(0, 80).some((item) => evidencePayloadHasScreenshot(item, depth + 1));
+}
+
+function normalizeBooleanFlag(value) {
+  if (value === true) return true;
+  if (value === false || value === null || value === undefined) return false;
+  const text = safeText(value, 80).toLowerCase();
+  return ["true", "1", "yes", "required", "require", "on"].includes(text);
+}
+
+function splitConfigList(value = "") {
+  return safeText(value, 4000)
+    .split(/[,\s]+/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseDiscordMessageLink(value = "") {
+  const match = safeText(value, 1000).match(
+    /https?:\/\/(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/channels\/(\d{15,25})\/(\d{15,25})\/(\d{15,25})/i
+  );
+  if (!match) return null;
+  return {
+    guildId: match[1],
+    channelId: match[2],
+    messageId: match[3],
+    url: safeText(match[0], 500),
+  };
+}
+
+function discordEvidencePolicy(env = process.env) {
+  return {
+    allowedGuildIds: splitConfigList(env.TASKNODE_DISCORD_ALLOWED_GUILD_IDS || env.TASKNODE_DISCORD_ANNOUNCEMENT_GUILD_IDS),
+    allowedChannelIds: splitConfigList(env.TASKNODE_DISCORD_ALLOWED_CHANNEL_IDS || env.TASKNODE_DISCORD_ANNOUNCEMENT_CHANNEL_IDS),
+    botToken: safeText(env.TASKNODE_DISCORD_BOT_TOKEN || env.DISCORD_BOT_TOKEN, 4000),
+    requireResolvableMessage: normalizeBooleanFlag(env.TASKNODE_DISCORD_REQUIRE_RESOLVABLE_MESSAGE),
+  };
+}
+
+function discordAnnouncementEvidenceStatus({
+  initialSubmission = {},
+  verificationResponse = {},
+  processedInitial = {},
+  processedVerification = {},
+} = {}) {
+  const packets = [verificationResponse, initialSubmission, processedVerification, processedInitial];
+  const text = collectEvidenceText(packets);
+  const discordMessage = parseDiscordMessageLink(text);
+  if (discordMessage) {
+    return {
+      ok: true,
+      evidence_type: "discord_message_link",
+      evidence_ref: discordMessage.url,
+      discord_message: discordMessage,
+      reason: "Discord message link evidence was provided.",
+    };
+  }
+  const messageId =
+    text.match(/\bdiscord\b[\s\S]{0,80}\b(?:message|msg)?\s*(?:id|link)?\s*[:#-]?\s*(\d{15,25})\b/i) ||
+    text.match(/\b(?:message|msg)\s*id\s*[:#-]?\s*(\d{15,25})\b[\s\S]{0,80}\bdiscord\b/i);
+  if (messageId?.[1]) {
+    return {
+      ok: true,
+      evidence_type: "discord_message_id",
+      evidence_ref: safeText(messageId[1], 80),
+      discord_message: {
+        guildId: "",
+        channelId: "",
+        messageId: safeText(messageId[1], 80),
+        url: "",
+      },
+      reason: "Discord message id evidence was provided.",
+    };
+  }
+  const hasScreenshot = packets.some((packet) => evidencePayloadHasScreenshot(packet));
+  if (hasScreenshot && /\bdiscord\b/i.test(text)) {
+    return {
+      ok: true,
+      evidence_type: "discord_announcement_screenshot",
+      evidence_ref: "screenshot_or_image_artifact",
+      discord_message: null,
+      reason: "Screenshot or image evidence was provided with Discord announcement context.",
+    };
+  }
+  return {
+    ok: false,
+    evidence_type: "",
+    evidence_ref: "",
+    reason: hasScreenshot
+      ? "Screenshot or image evidence was present, but it was not tied to a Discord announcement."
+      : "Missing Discord message link, Discord message id, or Discord-labeled announcement screenshot evidence.",
+  };
+}
+
+async function resolveDiscordAnnouncementEvidenceStatus(input = {}, {
+  env = process.env,
+  fetchImpl = fetch,
+} = {}) {
+  const status = discordAnnouncementEvidenceStatus(input);
+  if (!status.ok) return status;
+  const policy = discordEvidencePolicy(env);
+  const message = safeObject(status.discord_message);
+  const channelId = safeText(message.channelId, 80);
+  const guildId = safeText(message.guildId, 80);
+  const messageId = safeText(message.messageId, 80);
+
+  if (channelId && policy.allowedChannelIds.length && !policy.allowedChannelIds.includes(channelId)) {
+    return {
+      ...status,
+      ok: false,
+      discord_validation: {
+        status: "rejected",
+        reason: "channel_not_allowed",
+        channelId,
+      },
+      reason: "Discord message link points to a channel that is not in the approved announcement channel allowlist.",
+    };
+  }
+  if (guildId && policy.allowedGuildIds.length && !policy.allowedGuildIds.includes(guildId)) {
+    return {
+      ...status,
+      ok: false,
+      discord_validation: {
+        status: "rejected",
+        reason: "guild_not_allowed",
+        guildId,
+      },
+      reason: "Discord message link points to a guild that is not in the approved announcement guild allowlist.",
+    };
+  }
+
+  if (policy.requireResolvableMessage && (!channelId || !messageId)) {
+    return {
+      ...status,
+      ok: false,
+      discord_validation: {
+        status: "unresolved",
+        reason: "message_link_required_for_resolution",
+      },
+      reason: "Discord evidence must include a message link with channel id so the bot can resolve it.",
+    };
+  }
+
+  if (policy.botToken && channelId && messageId) {
+    try {
+      const response = await fetchImpl(`https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`, {
+        headers: {
+          authorization: `Bot ${policy.botToken}`,
+          "user-agent": TASK_REVIEW_USER_AGENT,
+        },
+      });
+      if (!response.ok) {
+        return {
+          ...status,
+          ok: false,
+          discord_validation: {
+            status: "unverified",
+            reason: `discord_api_http_${response.status}`,
+            channelId,
+            messageId,
+          },
+          reason: `Discord bot could not verify the announcement message (HTTP ${response.status}).`,
+        };
+      }
+      return {
+        ...status,
+        discord_validation: {
+          status: "verified",
+          reason: "discord_api_message_exists",
+          channelId,
+          messageId,
+        },
+        reason: "Discord announcement message link was verified by the configured Discord bot.",
+      };
+    } catch (error) {
+      return {
+        ...status,
+        ok: false,
+        discord_validation: {
+          status: "unverified",
+          reason: "discord_api_fetch_failed",
+          channelId,
+          messageId,
+          error: safeText(error?.message || error, 300),
+        },
+        reason: "Discord bot could not verify the announcement message.",
+      };
+    }
+  }
+
+  return {
+    ...status,
+    discord_validation: {
+      status: channelId && messageId ? "syntactic" : "self_attested",
+      reason: channelId && messageId
+        ? "message_link_shape_valid_without_bot_resolution"
+        : "no_resolvable_message_link_available",
+    },
+  };
+}
+
 async function callOpenAiJson({ promptPath, promptVersion, responseFormat, input, modelEnv = "TASKNODE_TASK_REVIEW_MODEL" }) {
   const apiKey = safeText(process.env.OPENAI_API_KEY);
   if (!apiKey) throw new Error("openai_api_key_missing");
@@ -1492,24 +1753,211 @@ async function processSubmittedTask(row, { logger = console } = {}) {
         error: error?.message || String(error),
         metadata: { publication_attempted: true },
       }).catch(() => null);
-    } else {
+    } else if (publicationLock?.acquired) {
       await releaseReviewPublicationLock({ taskId: row.task_id, workerName }).catch(() => null);
     }
     throw error;
   }
 }
 
-function normalizeRewardScore(output = {}, offerPft = 0) {
+function normalizeRewardScore(output = {}, offerPft = 0, { badgeRewardCapPft = 0 } = {}) {
   const decision = safeText(output.decision, 80);
-  const rewardPft = decision === "reject" ? 0 : normalizeReward(output.reward_pft, offerPft);
+  const cap = Number(badgeRewardCapPft);
+  const offer = Number(offerPft);
+  const trustedUpperBound =
+    Number.isFinite(cap) && cap > 0 && Number.isFinite(offer) && offer > 0
+      ? Math.min(offer, cap)
+      : offer;
+  const rewardPft = decision === "reject" ? 0 : normalizeReward(output.reward_pft, trustedUpperBound);
   return {
     decision: rewardPft > 0 ? (decision === "partial_reward" ? "partial_reward" : "reward") : "reject",
     reward_pft: rewardPft.toFixed(2),
+    badge_reward_cap_pft: Number.isFinite(cap) && cap > 0 ? cap.toFixed(2) : "",
+    badge_cap_applied: Number.isFinite(cap) && cap > 0 && Number.isFinite(offer) && offer > cap,
     completion: clampInteger(output.completion, 0),
     evidence_quality: clampInteger(output.evidence_quality, 0),
     reason: safeText(output.reason, 2000),
     user_feedback: safeText(output.user_feedback, 2000),
   };
+}
+
+async function networkTaskRewardBadgePolicy(row = {}) {
+  const taskId = safeText(row.task_id, 180);
+  const requestId = safeText(row.request_id, 180);
+  if (!taskId && !requestId) return {};
+  const result = await query(
+    `
+      SELECT source_payload_json
+      FROM network_task_generation_jobs
+      WHERE ($1::text <> '' AND task_id = $1)
+         OR ($2::text <> '' AND request_id = $2)
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 1
+    `,
+    [taskId, requestId]
+  );
+  const source = safeObject(result.rows[0]?.source_payload_json);
+  const networkTask = safeObject(source.networkTask || source.network_task);
+  const policy = safeObject(source.policy);
+  const badgeRewardCapPft = Number(
+    networkTask.badgeRewardCapPft ||
+      networkTask.badge_reward_cap_pft ||
+      policy.badgeRewardCapPft ||
+      policy.badge_reward_cap_pft ||
+      policy.badgeEligibilityDecision?.badge_reward_cap_pft ||
+      policy.badge_eligibility_decision?.badge_reward_cap_pft ||
+      0
+  );
+  return {
+    requiredBadgeId: safeText(networkTask.requiredBadgeId || networkTask.required_badge_id || policy.required_badge_id, 80),
+    operatingBadgeId: safeText(networkTask.operatingBadgeId || networkTask.operating_badge_id || policy.operating_badge_id, 80),
+    badgeWorkType: safeText(networkTask.badgeWorkType || networkTask.badge_work_type || policy.badge_work_type, 120),
+    badgeRewardCapPft: Number.isFinite(badgeRewardCapPft) && badgeRewardCapPft > 0 ? badgeRewardCapPft : 0,
+    discordEvidenceRequired: normalizeBooleanFlag(
+      networkTask.discordEvidenceRequired ??
+        networkTask.discord_evidence_required ??
+        policy.discordEvidenceRequired ??
+        policy.discord_evidence_required ??
+        false
+    ),
+  };
+}
+
+async function publishDiscordEvidenceVerificationRequest({
+  row = {},
+  taskOffer = {},
+  initialSubmission = {},
+  verificationResponse = {},
+  discordEvidence = {},
+  authorityWallet,
+  tasknodeKey,
+  logger = console,
+} = {}) {
+  const taskId = safeText(row.task_id, 180);
+  const verificationResponseRef = safeText(verificationResponse.cid || verificationResponse.source_cid || sha256(verificationResponse), 240);
+  const workerName = `discord_evidence_request_${sha256(`${taskId}:${verificationResponseRef}`).slice(0, 16)}`;
+  const publicationLock = await acquireReviewPublicationLock({
+    taskId,
+    workerName,
+    metadata: {
+      phase: "discord_evidence_request",
+      subject_wallet: row.subject_wallet,
+      verification_response_cid: verificationResponse.cid || "",
+      reason: discordEvidence.reason || "",
+    },
+  });
+  if (!publicationLock.acquired) {
+    const publishedRef = publicationLockPublishedRef(publicationLock.row);
+    logger.info?.("task_discord_evidence_request_lock_exists", {
+      taskId,
+      status: publicationLock.row?.status || "",
+      txHash: publishedRef?.txHash || "",
+    });
+    return { ok: true, skipped: true, reason: "discord_evidence_request_lock_exists", published: publishedRef };
+  }
+
+  let publicationAttempted = false;
+  try {
+    const now = new Date().toISOString();
+    const verificationRequest = {
+      assessment: "incomplete",
+      verification_ask:
+        "Please submit Discord announcement proof for this Network Task: provide a Discord message link/id from an approved Post Fiat channel, or a screenshot/image showing the announcement and the public work artifact. Reward scoring will continue after this required evidence is present.",
+      verification_type: "mixed",
+      reason: safeText(discordEvidence.reason || "Missing required Discord announcement evidence.", 1000),
+    };
+    const payload = {
+      schema: "pf.task.update.v1",
+      protocol: "tasknode.pftl",
+      created_at: now,
+      chain: process.env.TASKNODE_PFTL_CHAIN_NAME || "pftl-testnet",
+      task_id: taskId,
+      event_id: `evt_${sha256({ taskId, verificationResponseRef, verificationRequest }).slice(0, 24)}`,
+      actor_wallet: authorityWallet.classicAddress,
+      subject_wallet: row.subject_wallet,
+      authority_wallet: authorityWallet.classicAddress,
+      allocation_wallet: row.allocation_wallet || "",
+      transition: "verification_requested",
+      status_after: "verification_requested",
+      verification_request: verificationRequest,
+      verification_ask: verificationRequest.verification_ask,
+      verification_type: verificationRequest.verification_type,
+      submission_cid: initialSubmission.cid || "",
+      verification_response_cid: verificationResponse.cid || "",
+      blocking_requirement: "discord_announcement_evidence",
+      task_history: {
+        task: taskOffer,
+        submission: initialSubmission,
+        verification_response: verificationResponse,
+      },
+      generation: {
+        provider: "deterministic",
+        model: "task-review-worker",
+        prompt_version: "discord_announcement_evidence_required",
+        input_packet_digest: sha256({ taskOffer, initialSubmission, verificationResponse }),
+        output_digest: sha256(verificationRequest),
+        parse_status: "ok",
+      },
+    };
+    publicationAttempted = true;
+    const published = await publishAuthorityPointer({
+      payload,
+      contentKind: "TASK_UPDATE",
+      destination: row.subject_wallet,
+      kind: "TASK_UPDATE",
+      signerWallet: authorityWallet,
+      tasknodeKey,
+      accountId: row.account_id,
+    });
+    await markReviewPublicationPublished({
+      taskId,
+      workerName,
+      published,
+      metadata: {
+        source: "published_by_worker",
+        terminal_schema: "pf.task.update.v1",
+        blocking_requirement: "discord_announcement_evidence",
+      },
+    });
+    await finalizeWorkerPublish({
+      taskId,
+      workerName,
+      published,
+      expectedStatuses: ["verification_requested"],
+      accountId: row.account_id,
+      subjectWallet: row.subject_wallet,
+      authorityWallet: authorityWallet.classicAddress,
+      phase: "discord_evidence_request",
+      logger,
+    });
+    scheduleTaskWalletSync({
+      accountId: row.account_id,
+      subjectWallet: row.subject_wallet,
+      authorityWallet: authorityWallet.classicAddress,
+      taskId,
+      txHash: published.txHash,
+      phase: "discord_evidence_request",
+      logger,
+    });
+    logger.info?.("task_discord_evidence_request_published", {
+      taskId,
+      txHash: published.txHash,
+      cid: published.cid,
+    });
+    return { ok: true, published };
+  } catch (error) {
+    if (publicationAttempted) {
+      await markReviewPublicationError({
+        taskId,
+        workerName,
+        error: error?.message || String(error),
+        metadata: { publication_attempted: true },
+      }).catch(() => null);
+    } else {
+      await releaseReviewPublicationLock({ taskId, workerName }).catch(() => null);
+    }
+    throw error;
+  }
 }
 
 function buildRewardOutcomePayload({
@@ -1626,28 +2074,7 @@ async function processVerificationResponse(row, { logger = console } = {}) {
     throw new Error(`task_reward_payment_guard_active:${rewardPaymentGuardStatus(existingPaymentGuard) || "unknown"}`);
   }
 
-  const publicationLock = await acquireReviewPublicationLock({
-    taskId: row.task_id,
-    workerName,
-    metadata: {
-      phase: "reward_scoring",
-      subject_wallet: row.subject_wallet,
-      verification_response_cid: verificationResponse.cid || "",
-    },
-  });
-  if (!publicationLock.acquired) {
-    const publishedRef = publicationLockPublishedRef(publicationLock.row);
-    if (publishedRef) {
-      await markWorkerPublished({ taskId: row.task_id, workerName, published: publishedRef });
-    }
-    logger.info?.("task_reward_scoring_publication_lock_exists", {
-      taskId: row.task_id,
-      status: publicationLock.row?.status || "",
-      txHash: publishedRef?.txHash || "",
-    });
-    return { ok: true, taskId: row.task_id, skipped: true, reason: "reward_scoring_publication_lock_exists" };
-  }
-
+  let publicationLock = null;
   let publicationAttempted = false;
   let reward = null;
   try {
@@ -1660,6 +2087,60 @@ async function processVerificationResponse(row, { logger = console } = {}) {
       verification: processedVerification,
     });
     const offerPft = Number(taskOffer?.reward_offer?.amount_estimate_pft || row.reward_offer_pft || 0);
+    const badgePolicy = await networkTaskRewardBadgePolicy(row).catch(() => ({}));
+    const discordEvidence = await resolveDiscordAnnouncementEvidenceStatus({
+      initialSubmission,
+      verificationResponse,
+      processedInitial,
+      processedVerification,
+    });
+    if (badgePolicy.discordEvidenceRequired && !discordEvidence.ok) {
+      const blocked = await publishDiscordEvidenceVerificationRequest({
+        row,
+        taskOffer,
+        initialSubmission,
+        verificationResponse,
+        discordEvidence,
+        authorityWallet,
+        tasknodeKey,
+        logger,
+      });
+      await clearWorkerClaim({
+        taskId: row.task_id,
+        workerName,
+        error: "discord_announcement_evidence_missing",
+      }).catch(() => null);
+      return {
+        ok: true,
+        taskId: row.task_id,
+        blocked: true,
+        reason: "discord_announcement_evidence_missing",
+        published: blocked.published,
+      };
+    }
+
+    publicationLock = await acquireReviewPublicationLock({
+      taskId: row.task_id,
+      workerName,
+      metadata: {
+        phase: "reward_scoring",
+        subject_wallet: row.subject_wallet,
+        verification_response_cid: verificationResponse.cid || "",
+      },
+    });
+    if (!publicationLock.acquired) {
+      const publishedRef = publicationLockPublishedRef(publicationLock.row);
+      if (publishedRef) {
+        await markWorkerPublished({ taskId: row.task_id, workerName, published: publishedRef });
+      }
+      logger.info?.("task_reward_scoring_publication_lock_exists", {
+        taskId: row.task_id,
+        status: publicationLock.row?.status || "",
+        txHash: publishedRef?.txHash || "",
+      });
+      return { ok: true, taskId: row.task_id, skipped: true, reason: "reward_scoring_publication_lock_exists" };
+    }
+
     const scoring = await callOpenAiJson({
       promptPath: REWARD_PROMPT_PATH,
       promptVersion: REWARD_PROMPT_VERSION,
@@ -1676,7 +2157,13 @@ async function processVerificationResponse(row, { logger = console } = {}) {
         evidence_evaluation: evidenceEvaluation,
       },
     });
-    const score = normalizeRewardScore(scoring.output, offerPft);
+    const score = {
+      ...normalizeRewardScore(scoring.output, offerPft, badgePolicy),
+      discord_announcement_evidence_required: badgePolicy.discordEvidenceRequired,
+      discord_announcement_evidence_ok: discordEvidence.ok,
+      discord_announcement_evidence_type: discordEvidence.evidence_type,
+      discord_announcement_evidence_ref: discordEvidence.evidence_ref,
+    };
     const {
       payload: rewardPayload,
       rewardAmountDrops,
@@ -1684,7 +2171,10 @@ async function processVerificationResponse(row, { logger = console } = {}) {
     } = buildRewardOutcomePayload({
       row,
       score,
-      scoringMetadata: scoring.metadata,
+      scoringMetadata: {
+        ...scoring.metadata,
+        discord_announcement_evidence: discordEvidence,
+      },
       taskOffer,
       initialSubmission,
       verificationRequest,
@@ -1803,7 +2293,7 @@ async function processVerificationResponse(row, { logger = console } = {}) {
         taskId: row.task_id,
         error: error?.message || error,
       }).catch(() => null);
-    } else {
+    } else if (publicationLock?.acquired) {
       await releaseReviewPublicationLock({ taskId: row.task_id, workerName }).catch(() => null);
     }
     throw error;
@@ -1894,4 +2384,11 @@ export const taskReviewWorkerInternalsForTests = {
   timelineEventPublishedRef,
   buildRewardEvidenceEvaluationContext,
   buildRewardOutcomePayload,
+  collectEvidenceText,
+  discordAnnouncementEvidenceStatus,
+  discordEvidencePolicy,
+  evidencePayloadHasScreenshot,
+  parseDiscordMessageLink,
+  resolveDiscordAnnouncementEvidenceStatus,
+  normalizeRewardScore,
 };

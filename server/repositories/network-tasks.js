@@ -15,6 +15,10 @@ import {
   getNetworkTaskCapacityMetrics,
   listNetworkTaskCapacityBlockers,
 } from "./network-task-capacity.js";
+import {
+  assertNetworkTaskBadgeEligibility,
+  networkBadgeProjectionForAccount,
+} from "./network-badges.js";
 
 export { networkTaskRewardPolicy, normalizeNetworkTaskRewardBand } from "./network-tasks-utils.js";
 function useDatabase() { return databaseEnabled(); }
@@ -279,6 +283,7 @@ export async function getNetworkTaskEligibility({
       capacityIgnoresTaskClass: true,
       delinkedWalletTasksDoNotBlockCurrentWallet: true,
       personalTasksDoNotBlockNetworkTasks: true,
+      requiresNetworkTaskOperatingBadge: true,
       boardManagerSelectsWhenProjectNeedsWork: true,
     },
     status: "setup_required",
@@ -295,6 +300,16 @@ export async function getNetworkTaskEligibility({
     capacity: {
       available: false,
       blockers: [],
+    },
+    badgeEligibility: {
+      status: "unknown",
+      verifiedBadgeIds: [],
+      defaultBadge: "",
+      allowedWorkTypes: [],
+      rewardCaps: {},
+      source: "",
+      hasNonAnonOperatingBadge: false,
+      summary: "",
     },
     gates: [],
   };
@@ -325,7 +340,7 @@ export async function getNetworkTaskEligibility({
     };
   }
 
-  const [profileResult, jobResult, walletResult, blockerResult, capacityMetricsResult] = await Promise.all([
+  const [profileResult, jobResult, walletResult, blockerResult, capacityMetricsResult, badgeProjectionResult] = await Promise.all([
     query(
       `
         SELECT *
@@ -378,6 +393,12 @@ export async function getNetworkTaskEligibility({
       accountId: normalizedAccountId,
       walletAddress: normalizedWalletAddress,
     }),
+    networkBadgeProjectionForAccount({
+      accountId: normalizedAccountId,
+      walletAddress: normalizedWalletAddress,
+    }).catch((error) => ({
+      error: safeText(error?.message || "network_badge_projection_failed", 240),
+    })),
   ]);
 
   const profile = profileResult.rows[0] || null;
@@ -385,6 +406,37 @@ export async function getNetworkTaskEligibility({
   const wallet = walletResult.rows[0] || null;
   const blockers = blockerResult;
   const capacityMetrics = capacityMetricsResult;
+  const badgeProjection = badgeProjectionResult?.schema ? badgeProjectionResult : null;
+  const badgeProjectionError = safeText(badgeProjectionResult?.error || "", 240);
+  const badgeIds = safeArray(badgeProjection?.verifiedBadgeIds).map((badgeId) => safeText(badgeId, 80)).filter(Boolean);
+  const badgeEligible = badgeIds.length > 0;
+  const badgeLabels = safeArray(badgeProjection?.verifiedBadges)
+    .map((badge) => safeText(badge.label || badge.badgeId, 120))
+    .filter(Boolean);
+  const badgeEligibility = {
+    schema: "pf.task_node.network_task_badge_eligibility_summary.v1",
+    catalogVersion: safeText(badgeProjection?.catalogVersion || "", 80),
+    status: badgeEligible ? "available" : "missing",
+    verifiedBadgeIds: badgeIds,
+    verifiedBadges: safeArray(badgeProjection?.verifiedBadges).map((badge) => ({
+      badgeId: safeText(badge.badgeId, 80),
+      label: safeText(badge.label, 120),
+      symbolKey: safeText(badge.symbolKey, 80),
+      maxPayoutPft: numeric(badge.maxPayoutPft, 0),
+      allowedWorkTypes: safeArray(badge.allowedWorkTypes).map((workType) => safeText(workType, 120)).filter(Boolean),
+    })).filter((badge) => badge.badgeId),
+    defaultBadge: safeText(badgeProjection?.defaultBadge || "", 80),
+    allowedWorkTypes: safeArray(badgeProjection?.allowedWorkTypes).map((workType) => safeText(workType, 120)).filter(Boolean),
+    rewardCaps: safeObject(badgeProjection?.rewardCaps),
+    source: safeText(badgeProjection?.source || "", 80),
+    hasNonAnonOperatingBadge: badgeIds.length > 0,
+    error: badgeProjectionError,
+    summary: badgeProjectionError
+      ? "Task Node could not project Network Task badge state."
+      : !badgeEligible
+        ? "No verified Network Task operating badge was found."
+        : `Verified Network Task lanes: ${badgeLabels.join(", ")}.`,
+  };
   const profileStatus = profile
     ? "completed"
     : ["pending", "processing"].includes(job?.status)
@@ -426,23 +478,36 @@ export async function getNetworkTaskEligibility({
       profile ? "" : "Open Memory and refresh the Network Diagnostic Report"
     ),
     eligibilityGate(
+      "operating_badge",
+      "Network Task operating badge",
+      badgeEligible ? "complete" : "action_required",
+      badgeEligibility.summary,
+      badgeEligible ? "" : "Open Profile and qualify a routing badge"
+    ),
+    eligibilityGate(
       "capacity",
       "Network Task capacity",
-      blockers.length ? "blocked" : "complete",
-      blockers.length
+      !badgeEligible || blockers.length ? "blocked" : "complete",
+      !badgeEligible
+        ? "Network Task capacity is blocked until this account has a verified operating badge."
+        : blockers.length
         ? "An outstanding or pending Network Task is already consuming this account's Network Task capacity."
         : "No active Network Task capacity blocker was found for this account.",
-      blockers.length ? "Finish, refuse, or wait for the active Network Task to close" : ""
+      !badgeEligible
+        ? "Open Profile and qualify a routing badge"
+        : blockers.length
+          ? "Finish, refuse, or wait for the active Network Task to close"
+          : ""
     ),
     eligibilityGate(
       "board_routing",
       "Hive Board Manager routing",
-      profile && walletSynced && !blockers.length ? "waiting" : "blocked",
+      profile && walletSynced && badgeEligible && !blockers.length ? "waiting" : "blocked",
       "Network Tasks are generated by Board Manager when an active project needs work; personal proposed tasks do not block eligibility.",
     ),
   ];
 
-  const ready = Boolean(profile && normalizedWalletAddress && walletSynced && blockers.length === 0);
+  const ready = Boolean(profile && normalizedWalletAddress && walletSynced && badgeEligible && blockers.length === 0);
   const status = !normalizedWalletAddress
     ? "setup_required"
     : !walletSynced
@@ -453,7 +518,9 @@ export async function getNetworkTaskEligibility({
           ? "profile_failed"
           : !profile
             ? "profile_required"
-            : blockers.length
+            : !badgeEligible
+              ? "badge_required"
+              : blockers.length
               ? "at_capacity"
               : "available_for_routing";
   const labelByStatus = {
@@ -462,6 +529,7 @@ export async function getNetworkTaskEligibility({
     profile_pending: "Routing profile processing",
     profile_failed: "Routing profile failed",
     profile_required: "Network profile required",
+    badge_required: "Network Task badge required",
     at_capacity: "Network Task capacity busy",
     available_for_routing: "Eligible for Board Manager routing",
   };
@@ -471,6 +539,7 @@ export async function getNetworkTaskEligibility({
     profile_pending: "Wait for the memory worker to finish the Network Diagnostic Report.",
     profile_failed: "Open Memory and refresh the Network Diagnostic Report.",
     profile_required: "Open Memory and refresh the Network Diagnostic Report.",
+    badge_required: "Open Profile and qualify at least one routing badge.",
     at_capacity: "Finish or close the active Network Task before another Network Task can be routed.",
     available_for_routing: "No manual request is needed. Hive Board Manager can route a Network Task when a project needs work.",
   };
@@ -481,7 +550,7 @@ export async function getNetworkTaskEligibility({
     label: labelByStatus[status] || base.label,
     summary: ready
       ? "This account is routable for Network Tasks. Board Manager still chooses when an active project needs this profile."
-      : "Network Task routing needs a linked wallet, active wallet sync, a completed Network Diagnostic Report, and free Network Task capacity.",
+      : "Network Task routing needs a linked wallet, active wallet sync, a completed Network Diagnostic Report, a verified operating badge, and free Network Task capacity.",
     nextAction: nextActionByStatus[status] || base.nextAction,
     profile: {
       status: profileStatus,
@@ -498,10 +567,12 @@ export async function getNetworkTaskEligibility({
       lastFullSyncAt: toIso(wallet?.last_full_sync_at),
     },
     capacity: {
-      available: !blockers.length,
+      available: badgeEligible && !blockers.length,
       blockers,
       metrics: capacityMetrics,
+      badgeBlocked: !badgeEligible,
     },
+    badgeEligibility,
     gates,
   };
   if (recordCapacityEvent !== false) {
@@ -780,6 +851,7 @@ export function buildNetworkTaskGenerationSource({
   allocationReasonSummary = "",
   cadenceReason = "",
   acceptWindowHours = 24,
+  badgeEligibilityDecision = null,
 } = {}) {
   const payload = safeObject(decision.payload);
   const networkTask = safeObject(payload.network_task || payload.networkTask);
@@ -816,6 +888,21 @@ export function buildNetworkTaskGenerationSource({
     taskLineage,
     networkTask: {
       taskWorkType: safeText(networkTask.task_work_type || networkTask.taskWorkType, 80),
+      requiredBadgeId: safeText(networkTask.required_badge_id || networkTask.requiredBadgeId, 80),
+      operatingBadgeId: safeText(networkTask.operating_badge_id || networkTask.operatingBadgeId, 80),
+      badgeWorkType: safeText(networkTask.badge_work_type || networkTask.badgeWorkType || networkTask.task_work_type || networkTask.taskWorkType, 120),
+      badgeReason: safeText(networkTask.badge_reason || networkTask.badgeReason, 1000),
+      badgeRewardCapPft: numeric(
+        networkTask.badge_reward_cap_pft ||
+          networkTask.badgeRewardCapPft ||
+          badgeEligibilityDecision?.badge_reward_cap_pft,
+        0
+      ),
+      badgeEvidenceRequirements: safeArray(networkTask.badge_evidence_requirements || networkTask.badgeEvidenceRequirements)
+        .slice(0, 8)
+        .map((item) => safeText(item, 500))
+        .filter(Boolean),
+      discordEvidenceRequired: networkTask.discord_evidence_required ?? networkTask.discordEvidenceRequired ?? true,
       taskClass: normalizedTaskClass,
       projectNeedSummary,
       allocationReasonSummary,
@@ -836,6 +923,9 @@ export function buildNetworkTaskGenerationSource({
       taskLifecycle: "normal_pftl_task_engine",
       supportedEvidence: ["text", "url", "github_commit", "screenshot", "file", "mixed"],
       rewardBandPft: [band.min, band.max],
+      badgeEligibilityDecision: badgeEligibilityDecision || null,
+      badgeRewardCapPft: numeric(badgeEligibilityDecision?.badge_reward_cap_pft || networkTask.badge_reward_cap_pft || networkTask.badgeRewardCapPft, 0),
+      discordEvidenceRequired: networkTask.discord_evidence_required ?? networkTask.discordEvidenceRequired ?? true,
       boardManagerDoesNotAuthorTaskText: true,
       generationPolicy: compactGenerationQualityPolicy(sourcePacket.generationQualityPolicy || sourcePacket.generation_quality_policy),
     },
@@ -849,6 +939,12 @@ function networkTaskIntelligenceMetadata(sourceJson = {}) {
     priorOutputCorpusSummary: safeObject(sourceJson.priorOutputCorpus?.summary),
     taskLineage: safeObject(sourceJson.taskLineage),
     taskWorkType: safeText(sourceJson.networkTask?.taskWorkType, 80),
+    requiredBadgeId: safeText(sourceJson.networkTask?.requiredBadgeId, 80),
+    operatingBadgeId: safeText(sourceJson.networkTask?.operatingBadgeId, 80),
+    badgeWorkType: safeText(sourceJson.networkTask?.badgeWorkType, 120),
+    badgeRewardCapPft: numeric(sourceJson.networkTask?.badgeRewardCapPft || sourceJson.policy?.badgeRewardCapPft, 0),
+    discordEvidenceRequired: sourceJson.networkTask?.discordEvidenceRequired ?? sourceJson.policy?.discordEvidenceRequired ?? true,
+    badgeEligibilityDecision: safeObject(sourceJson.policy?.badgeEligibilityDecision),
     actionOutput: safeText(sourceJson.networkTask?.actionOutput, 1200),
     deliverySurface: safeText(sourceJson.networkTask?.deliverySurface, 120),
     recipientOrReviewer: safeText(sourceJson.networkTask?.recipientOrReviewer, 240),
@@ -908,6 +1004,57 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   const allocationReasonSummary = safeText(networkTask.allocation_reason_summary || networkTask.routing_reason || networkTask.routingReason || decision.reason, 1800);
   const cadenceReason = safeText(networkTask.cadence_reason || networkTask.cadenceReason || "board_manager_initiated", 600);
   const acceptWindowHours = Math.max(1, Number(networkTask.accept_window_hours || networkTask.acceptWindowHours || 24));
+  const requiredBadgeId = safeText(networkTask.required_badge_id || networkTask.requiredBadgeId, 80);
+  const operatingBadgeId = safeText(networkTask.operating_badge_id || networkTask.operatingBadgeId || requiredBadgeId, 80);
+  const badgeWorkType = safeText(
+    networkTask.badge_work_type ||
+      networkTask.badgeWorkType ||
+      networkTask.task_work_type ||
+      networkTask.taskWorkType,
+    120
+  );
+  let badgeEligibilityDecision = null;
+  try {
+    badgeEligibilityDecision = await assertNetworkTaskBadgeEligibility({
+      accountId: candidate.accountId,
+      walletAddress: candidate.walletAddress,
+      projectId,
+      workType: badgeWorkType,
+      taskWorkType: networkTask.task_work_type || networkTask.taskWorkType,
+      requiredBadgeId,
+      operatingBadgeId,
+      requestedRewardMinPft: band.min,
+      requestedRewardMaxPft: band.max,
+    });
+  } catch (error) {
+    await recordUserObservabilityEvent({
+      eventType: "user.network_task.candidate_blocked",
+      accountId: candidate.accountId,
+      walletAddress: candidate.walletAddress,
+      walletScope: "candidate_wallet",
+      projectId,
+      sourceSurface: "hive",
+      sourceRoute: "server/repositories/network-tasks.js::enqueueNetworkTaskGenerationFromBoardDecision",
+      resultStatus: "blocked",
+      reasonCode: safeText(error?.message || "network_task_badge_eligibility_failed", 240),
+      decision: {
+        schema: "pf.task_node.network_task_candidate_decision.v1",
+        eligible: false,
+        ...(safeObject(error?.decision)),
+        task_class: normalizedTaskClass,
+        reward_min_pft: band.min,
+        reward_max_pft: band.max,
+      },
+      metadata: {
+        boardManagerRunId: safeText(runId, 180),
+        projectId,
+        requiredBadgeId,
+        operatingBadgeId,
+        badgeWorkType,
+      },
+    }).catch(() => {});
+    throw error;
+  }
   const normalizedNeedHash = digestJson({ need: normalizedIntentText(projectNeedSummary) || normalizedIntentText(allocationReasonSummary) });
   const semanticIntentDigest = digestJson({
     action: "initiate_network_task",
@@ -915,6 +1062,9 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     candidateAccountId: candidate.accountId,
     candidateWalletAddress: candidate.walletAddress,
     taskClass: normalizedTaskClass,
+    requiredBadgeId: badgeEligibilityDecision.required_badge_id,
+    operatingBadgeId: badgeEligibilityDecision.operating_badge_id,
+    badgeWorkType: badgeEligibilityDecision.work_type,
     normalizedNeedHash,
     rewardMinPft: band.min,
     rewardMaxPft: band.max,
@@ -1065,6 +1215,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	    allocationReasonSummary,
 	    cadenceReason,
 	    acceptWindowHours,
+	    badgeEligibilityDecision,
 	  });
 	  const intelligenceMetadata = networkTaskIntelligenceMetadata(sourceJson);
 	  const sourceDigest = digestJson(sourceJson);
@@ -1129,6 +1280,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	          board_manager_source_digest: safeText(sourcePacket.sourcePacketDigest, 180),
 	          idempotency_key: idempotencyKey,
 	          network_task_intelligence: intelligenceMetadata,
+	          badge_eligibility_decision: badgeEligibilityDecision,
 	        }),
 	      ]
 	    );
@@ -1195,6 +1347,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	          source_payload_digest: sourceDigest,
 	          idempotency_key: idempotencyKey,
 	          network_task_intelligence: intelligenceMetadata,
+	          badge_eligibility_decision: badgeEligibilityDecision,
 	        }),
 	        expiresAt.toISOString(),
 	      ]
@@ -1278,6 +1431,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       task_class: normalizedTaskClass,
       reward_min_pft: band.min,
       reward_max_pft: band.max,
+      badge_eligibility_decision: badgeEligibilityDecision,
       active_capacity_blocker_count: activeCount,
     },
     metadata: {
@@ -1286,6 +1440,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       sourcePayloadDigest: sourceDigest,
       idempotencyKey,
       intentSemanticKey,
+      badgeEligibilityDecision,
     },
   }).catch(() => {});
   await recordUserObservabilityEvent({
@@ -1311,6 +1466,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       sourcePayloadDigest: sourceDigest,
       idempotencyKey,
       taskClass: normalizedTaskClass,
+      badgeEligibilityDecision,
     },
   }).catch(() => {});
   return {
@@ -1326,6 +1482,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     sourcePayloadDigest: sourceDigest,
     idempotencyKey,
     intentSemanticKey,
+    badgeEligibilityDecision,
   };
 }
 

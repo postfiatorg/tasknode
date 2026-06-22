@@ -13,6 +13,7 @@ import {
   listEligibleNetworkTaskCandidates,
   normalizeNetworkTaskRewardBand,
 } from "./network-tasks.js";
+import { buildBadgeEligibilityForCandidates } from "./network-badges.js";
 import {
   formatBoardManagerAgentJob,
   buildBoardManagerRunMicroSummary,
@@ -110,6 +111,13 @@ const emptyBoardManagerPayload = Object.freeze({
   },
   network_task: {
     task_work_type: "",
+    required_badge_id: "",
+    operating_badge_id: "",
+    badge_work_type: "",
+    badge_reason: "",
+    badge_reward_cap_pft: 0,
+    badge_evidence_requirements: [],
+    discord_evidence_required: true,
     task_class: "",
     candidate_account_id: "",
     candidate_wallet_address: "",
@@ -124,7 +132,7 @@ const emptyBoardManagerPayload = Object.freeze({
     referenced_outputs: [],
     deduped_against: [],
     why_not_duplicate: "",
-    reward_min_pft: 10000,
+    reward_min_pft: 100,
     reward_max_pft: 50000,
     accept_window_hours: 24,
     allow_over_capacity: false,
@@ -216,6 +224,7 @@ function normalizePayload(payload = {}) {
     min: networkTask.reward_min_pft ?? networkTask.rewardMinPft,
     max: networkTask.reward_max_pft ?? networkTask.rewardMaxPft,
   });
+  const discordEvidenceRequired = networkTask.discord_evidence_required ?? networkTask.discordEvidenceRequired;
   return {
     summary: safeText(input.summary, 2000),
     next_steps: safeArray(input.next_steps || input.nextSteps).slice(0, 8).map((item) => safeText(item, 500)).filter(Boolean),
@@ -260,6 +269,16 @@ function normalizePayload(payload = {}) {
     },
     network_task: {
       task_work_type: safeText(networkTask.task_work_type || networkTask.taskWorkType, 80),
+      required_badge_id: safeText(networkTask.required_badge_id || networkTask.requiredBadgeId, 80),
+      operating_badge_id: safeText(networkTask.operating_badge_id || networkTask.operatingBadgeId, 80),
+      badge_work_type: safeText(networkTask.badge_work_type || networkTask.badgeWorkType, 120),
+      badge_reason: safeText(networkTask.badge_reason || networkTask.badgeReason, 1000),
+      badge_reward_cap_pft: Math.max(0, Number(networkTask.badge_reward_cap_pft ?? networkTask.badgeRewardCapPft ?? 0) || 0),
+      badge_evidence_requirements: safeArray(networkTask.badge_evidence_requirements || networkTask.badgeEvidenceRequirements)
+        .slice(0, 8)
+        .map((item) => safeText(item, 500))
+        .filter(Boolean),
+      discord_evidence_required: typeof discordEvidenceRequired === "boolean" ? discordEvidenceRequired : true,
       task_class: safeText(networkTask.task_class || networkTask.taskClass, 40),
       candidate_account_id: safeText(networkTask.candidate_account_id || networkTask.candidateAccountId, 180),
       candidate_wallet_address: safeText(networkTask.candidate_wallet_address || networkTask.candidateWalletAddress, 120),
@@ -381,6 +400,18 @@ function ageMs(value) {
   return Number.isFinite(parsed) ? Math.max(0, Date.now() - parsed) : null;
 }
 
+function compactAuthorityBadges(value = []) {
+  return safeArray(value).slice(0, 8).map((badge) => ({
+    badgeId: safeText(badge.badgeId || badge.badge_id, 80),
+    label: safeText(badge.label, 120),
+    requirementsLabel: safeText(badge.requirementsLabel || badge.requirements_label, 120),
+    handle: safeText(badge.handle, 120),
+    matchedHandle: safeText(badge.matchedHandle || badge.matched_handle, 120),
+    authority: safeArray(badge.authority).slice(0, 8).map((item) => safeText(item, 120)).filter(Boolean),
+    proofMethod: safeText(badge.proofMethod || badge.proof_method, 120),
+  })).filter((badge) => badge.badgeId);
+}
+
 function compactContextDocument(document = {}) {
   return {
     id: safeText(document.id, 120),
@@ -392,6 +423,7 @@ function compactContextDocument(document = {}) {
       displayName: safeText(group.displayName, 120),
       latestAt: group.latestAt || null,
       entryCount: Number(group.entryCount || 0),
+      authorityBadges: compactAuthorityBadges(group.authorityBadges || group.authority_badges),
       entries: safeArray(group.entries).slice(0, 12).map((entry) => ({
         id: safeText(entry.id, 180),
         accountId: safeText(entry.accountId, 160),
@@ -400,6 +432,7 @@ function compactContextDocument(document = {}) {
         sourceConversationId: safeText(entry.sourceConversationId, 180),
         walletValidated: Boolean(entry.walletValidated),
         walletAddress: safeText(entry.walletAddress, 120),
+        authorityBadges: compactAuthorityBadges(entry.authorityBadges || entry.authority_badges),
         createdAt: entry.createdAt || null,
       })),
     })),
@@ -793,9 +826,32 @@ function contextEntries(document = {}) {
       sourceConversationId: safeText(entry.sourceConversationId, 180),
       walletValidated: Boolean(entry.walletValidated),
       walletAddress: safeText(entry.walletAddress, 120),
+      authorityBadges: compactAuthorityBadges(
+        safeArray(entry.authorityBadges).length ? entry.authorityBadges : group.authorityBadges
+      ),
       createdAt: entry.createdAt || group.latestAt || null,
     }))
   ).filter((entry) => entry.id || entry.body);
+}
+
+function extractProjectLeaderInputs(hiveContext = {}) {
+  return contextEntries(compactContextDocument(hiveContext))
+    .filter((entry) => safeArray(entry.authorityBadges).some((badge) => badge.badgeId === "project_leader"))
+    .slice(0, 16)
+    .map((entry) => {
+      const badge = safeArray(entry.authorityBadges).find((item) => item.badgeId === "project_leader") || {};
+      return {
+        sourceEntryId: entry.id,
+        accountId: entry.accountId,
+        displayName: entry.displayName,
+        hiveHandle: badge.handle || badge.matchedHandle || "",
+        walletAddress: entry.walletAddress,
+        sourceConversationId: entry.sourceConversationId,
+        createdAt: entry.createdAt || null,
+        authority: safeArray(badge.authority).slice(0, 8),
+        bodyExcerpt: safeText(entry.body, 800),
+      };
+    });
 }
 
 export function extractOperatorStandingPolicy({
@@ -1092,6 +1148,7 @@ function boardManagerSourceLogSnapshot(packet = {}) {
     priorOutputCorpusSummary: safeObject(source.priorOutputCorpusSummary),
     deduplicationWatchlist: safeArray(source.deduplicationWatchlist).slice(0, 16),
     capabilityInstrumentation: safeObject(source.capabilityInstrumentation),
+    badgeEligibility: safeObject(source.badgeEligibility),
     orcOperations: safeObject(source.orcOperations),
     routingConstraints: safeObject(source.routingConstraints),
     openFollowups: safeArray(source.openFollowups).slice(0, 20),
@@ -1387,6 +1444,7 @@ export async function buildBoardManagerSourcePacket({
   const generationQualityPolicy = buildHiveGenerationQualityPolicy({
     operatorConstraintsSummary: operatorStandingPolicy.map((item) => item.directive).filter(Boolean).slice(0, 4).join(" | "),
   });
+  const projectLeaderInputs = extractProjectLeaderInputs(hiveContext);
   const capabilityProfiles = await listCapabilityProfilesForBoardManager({
     accountIds: networkTaskCandidates.map((candidate) => candidate.accountId || candidate.account_id).filter(Boolean),
     projectIds: projectRegistry.map((project) => project.id).filter(Boolean),
@@ -1397,6 +1455,15 @@ export async function buildBoardManagerSourcePacket({
     networkTaskCandidates,
     capabilityProfiles,
   });
+  const badgeEligibility = await buildBadgeEligibilityForCandidates(networkTaskCandidates)
+    .catch((error) => ({
+      schema: "pf.task_node.badge_eligibility.v1",
+      catalogVersion: "network_badges_v1",
+      enforcement: "executor_required",
+      status: "unavailable",
+      error: safeText(error?.message || error, 500),
+      candidates: [],
+    }));
 	  // Canonical capacity verdicts: the same shared predicate used by the
 	  // executor hook and getNetworkTaskEligibility, so the Board Manager's view
   // of candidate availability cannot drift from enforcement.
@@ -1436,9 +1503,11 @@ export async function buildBoardManagerSourcePacket({
 	    evidenceEvaluationRefresh,
 	    operatorStandingPolicy,
 	    generationQualityPolicy,
+	    projectLeaderInputs,
 	    priorOutputCorpusSummary: safeObject(networkTaskOutputCorpus?.summary),
 	    deduplicationWatchlist: safeArray(networkTaskOutputCorpus?.deduplicationWatchlist).slice(0, 16),
 	    capabilityInstrumentation,
+	    badgeEligibility,
     orcOperations,
 	    taskWorkTypeVocabulary: boardManagerTaskWorkTypeVocabulary,
 	    networkTaskCandidates,
@@ -1460,7 +1529,8 @@ export async function buildBoardManagerSourcePacket({
       ],
       projectDeletionPolicy: "archive_project hides a project from the active Hive board without hard deletion. restore_project reactivates a non-operator-locked archived project. Board Manager archives are soft and reversible; only explicit operator archive locks prevent planner resurrection.",
       taskLifecyclePolicy: "Network tasks must use the existing PFTL task lifecycle.",
-      networkTaskPolicy: "Board Manager initiates allocation/generation jobs only. The network task generation worker writes concrete task offers through the existing task engine. Default reward band is 10000-50000 PFT. Repeated task intents for the same project, candidate, class, need hash, and reward band are suppressed before another generation job is queued.",
+      networkTaskPolicy: "Board Manager initiates allocation/generation jobs only. The network task generation worker writes concrete task offers through the existing task engine. Network tasks must include required_badge_id, operating_badge_id, and badge_work_type that match badgeEligibility; the executor rejects missing/unsupported badges, disallowed work types, and rewards above the badge cap before queuing rows. Active user-facing badge lanes are KOL, Core Contributor, Expert, Project Leader, and QA Worker.",
+      projectLeaderPolicy: "Project Leader is a backend-defined discretionary badge. Hive inputs listed in projectLeaderInputs may define special new projects, including open-source projects. If a user-proposed special/open-source project has no Project Leader source input, ask for discretionary approval instead of creating it.",
       userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message. A message_user action creates an open follow-up row; do not send another Hive message to the same account/project until new user input answers it, it expires, or a materially new blocker appears. For task-action messages, payload.message_precondition must identify the related task or allocation and the live statuses that must still hold when the runtime sends the message; stale preconditions are skipped at execution time.",
     },
   };

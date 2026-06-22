@@ -363,13 +363,21 @@ const smokeDecisionOutput = {
       sort_order: 0,
     },
     network_task: {
+      task_work_type: "",
+      required_badge_id: "",
+      operating_badge_id: "",
+      badge_work_type: "",
+      badge_reason: "",
+      badge_reward_cap_pft: 0,
+      badge_evidence_requirements: [],
+      discord_evidence_required: true,
       task_class: "",
       candidate_account_id: "",
       candidate_wallet_address: "",
       project_need_summary: "",
       routing_reason: "",
       cadence_reason: "",
-      reward_min_pft: 10000,
+      reward_min_pft: 100,
       reward_max_pft: 50000,
       accept_window_hours: 24,
       allow_over_capacity: false,
@@ -563,6 +571,14 @@ const networkDecision = normalizeBoardManagerDecision({
   confidence: 0.8,
   payload: {
     network_task: {
+      task_work_type: "code_task",
+      required_badge_id: "core_contributor",
+      operating_badge_id: "core_contributor",
+      badge_work_type: "code_task",
+      badge_reason: "The candidate is a Core Contributor in this normalization smoke.",
+      badge_reward_cap_pft: 30000,
+      badge_evidence_requirements: ["PR or commit URL."],
+      discord_evidence_required: true,
       task_class: "network",
       candidate_account_id: "acct_candidate",
       candidate_wallet_address: "rCandidate",
@@ -576,8 +592,9 @@ const networkDecision = normalizeBoardManagerDecision({
     },
   },
 });
-assert.equal(networkDecision.payload.network_task.reward_min_pft, 10000);
+assert.equal(networkDecision.payload.network_task.reward_min_pft, 100);
 assert.equal(networkDecision.payload.network_task.reward_max_pft, 50000);
+assert.equal(networkDecision.payload.network_task.required_badge_id, "core_contributor");
 
 assert.throws(
   () => normalizeBoardManagerDecision({ action: "delete_everything", reason: "bad", payload: {} }),

@@ -79,6 +79,9 @@ const migrations = [
   "069_board_manager_run_usage.sql",
   "070_agent_rate_limit_buckets.sql",
   "071_sybil_review_flags.sql",
+  "072_network_badges_identity_approvals.sql",
+  "073_network_badge_verifier_jobs.sql",
+  "074_drop_identity_approval_requests.sql",
 ];
 
 let migrated = false;
