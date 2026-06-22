@@ -119,7 +119,6 @@ The working ledger report output shows:
   }
 }
 ```
-
 The captured outputs prove:
 
 - add: inserted a verified smoke record for `task_01ba5f1d70d620780c333693c99a0cab`
@@ -945,4 +944,3 @@ main().catch((error) => {
   "generatedAt": "2026-06-20T01:36:54.623Z"
 }
 ```
-
