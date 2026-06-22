@@ -1,0 +1,8 @@
+Usage:
+  node scripts/orc-submitted-work-review-ledger.mjs add --ledger <file> --task-id <id> --reviewer <handle> --status <verified|unverified|self_attested> --score <0-100> --archive-action <action> [--flag <flag>] [--note <text>]
+  node scripts/orc-submitted-work-review-ledger.mjs query --ledger <file> (--task-id <id> | --reviewer <handle>)
+  node scripts/orc-submitted-work-review-ledger.mjs list --ledger <file> [--status <status>] [--flag <flag>]
+  node scripts/orc-submitted-work-review-ledger.mjs report --ledger <file>
+
+Statuses: verified, unverified, self_attested
+Archive actions: archive_hot, archive_cold, needs_followup, reject, hold

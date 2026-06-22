@@ -91,6 +91,7 @@
     "orc-submission-ingestion-tracker-smoke": "node scripts/orc-submission-ingestion-tracker-smoke.mjs",
     "orc-evidence-artifact-resolver": "node scripts/orc-evidence-artifact-resolver.mjs",
     "orc-evidence-artifact-resolver-smoke": "node scripts/orc-evidence-artifact-resolver-smoke.mjs",
+    "orc-submitted-work-review-ledger-smoke": "node scripts/orc-submitted-work-review-ledger-smoke.mjs",
     "orc-routing-suppression-enforcement-verifier-smoke": "node scripts/orc-routing-suppression-enforcement-verifier-smoke.mjs",
     "orc-sybil-enforcement-state-tracker-smoke": "node scripts/orc-sybil-enforcement-state-tracker-smoke.mjs",
     "orc-sybil-provenance-audit-trail": "node scripts/orc-sybil-provenance-audit-trail.mjs",

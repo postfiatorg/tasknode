@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "operation": "list",
+  "filters": {
+    "status": "",
+    "flag": "do_not_operationalize"
+  },
+  "count": 1,
+  "records": [
+    {
+      "id": "swrev_sample_self_attested",
+      "taskId": "task_d77a9dc367ff181ff9463f58d01362c9",
+      "reviewer": "tasknodeorc",
+      "reviewStatus": "self_attested",
+      "score": 68,
+      "reviewFlags": [
+        "money_sensitive",
+        "do_not_operationalize"
+      ],
+      "archiveAction": "hold",
+      "timestamp": "2026-06-20T00:03:00.000Z",
+      "source": {
+        "cid": "QmVpLdsySyxwrPY27kn5wmGp7nRpW4vF4X2W7NkU2FKwvW",
+        "txHash": "76E5D5AC37D06EFB9652909CC00CADB3260F3587A1765C2881E74700ACE8FF81"
+      },
+      "parserOutput": {
+        "taskGrade": "B-",
+        "rewardRecommendation": "partial_reward_with_controls",
+        "flagIndicators": [
+          "money_sensitive",
+          "do_not_operationalize"
+        ],
+        "archivalInstructions": "hold",
+        "reviewerNotes": "Treat executable reward-integrity artifacts as context only until independently verified."
+      }
+    }
+  ]
+}

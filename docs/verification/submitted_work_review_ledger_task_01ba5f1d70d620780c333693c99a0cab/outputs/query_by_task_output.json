@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "operation": "query",
+  "filters": {
+    "taskId": "task_01ba5f1d70d620780c333693c99a0cab",
+    "reviewer": ""
+  },
+  "count": 1,
+  "records": [
+    {
+      "id": "swrev_a1ad67024c43b6d98e47",
+      "taskId": "task_01ba5f1d70d620780c333693c99a0cab",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 88,
+      "reviewFlags": [
+        "ledger_smoke_test"
+      ],
+      "archiveAction": "archive_hot",
+      "timestamp": "2026-06-20T01:36:39.274Z",
+      "source": {
+        "cid": "QmQc4QKRr3j5KpNZNUp8fLvnpyVt8VzkKdYm2ggWV4EpTu",
+        "txHash": "4B2451DBC848F3CD56ECC7907BE065879F7C2EAAFEACAF93AD7ED50848860E93"
+      },
+      "parserOutput": {
+        "taskGrade": "A-",
+        "rewardRecommendation": "full_reward_candidate",
+        "flagIndicators": [
+          "ledger_smoke_test"
+        ],
+        "archivalInstructions": "archive_hot",
+        "reviewerNotes": "Smoke-added review ledger record proving add/query/list/report operations."
+      }
+    }
+  ]
+}
