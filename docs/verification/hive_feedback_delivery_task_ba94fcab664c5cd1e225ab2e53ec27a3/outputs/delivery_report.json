@@ -1,0 +1,133 @@
+{
+  "ok": true,
+  "schema": "pf.orc.hive_feedback_delivery.v1",
+  "generatedAt": "2026-06-20T02:17:27.296Z",
+  "generatedBy": "grashnuk",
+  "mode": "mock",
+  "mockEndpoint": {
+    "name": "local_hive_chat_delivery_mock_v1",
+    "behavior": "targets with mockStatus=failed reject; missing route or conversation id fails; all other resolved targets return mock_hivemsg_* ids"
+  },
+  "inputs": {
+    "messages": "docs/verification/hive_feedback_delivery_task_ba94fcab664c5cd1e225ab2e53ec27a3/sample_hive_payloads.json",
+    "targets": "docs/verification/hive_feedback_delivery_task_ba94fcab664c5cd1e225ab2e53ec27a3/sample_targets.json"
+  },
+  "summary": {
+    "totalAttempts": 5,
+    "sent": 2,
+    "failed": 3,
+    "byError": {
+      "mock_endpoint_rejected": 1,
+      "conversation_missing": 1,
+      "target_not_found": 1
+    },
+    "conversationTargets": [
+      {
+        "sourceTaskId": "task_mock_reward_visibility",
+        "handle": "gmoney",
+        "conversationId": "account_acct_oauth_31a2b120878c91e24add9ceb_hive",
+        "status": "sent"
+      },
+      {
+        "sourceTaskId": "task_mock_parser",
+        "handle": "zoz",
+        "conversationId": "account_acct_oauth_8b6a2004c07fe8d96493d95f_hive",
+        "status": "sent"
+      },
+      {
+        "sourceTaskId": "task_mock_context_sync",
+        "handle": "donravle",
+        "conversationId": "account_acct_oauth_donravle_mock_hive",
+        "status": "failed"
+      }
+    ]
+  },
+  "attempts": [
+    {
+      "index": 1,
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "recipientWalletAddress": "",
+      "resolution": "account_id",
+      "target": {
+        "accountId": "acct_oauth_31a2b120878c91e24add9ceb",
+        "walletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+        "handle": "gmoney",
+        "conversationId": "account_acct_oauth_31a2b120878c91e24add9ceb_hive"
+      },
+      "sourceTaskId": "task_mock_reward_visibility",
+      "sourceReviewId": "swrev_delivery_001",
+      "status": "sent",
+      "messageId": "mock_hivemsg_30c20e51b1d2e4199c2e",
+      "deliveredAt": "2026-06-20T02:17:27.296Z",
+      "conversationId": "account_acct_oauth_31a2b120878c91e24add9ceb_hive",
+      "conversationTitle": "Hive follow-up: gmoney",
+      "bodyPreview": "@gmoney - I am following up on reviewed Network Task task_mock_reward_visibility.\nReview status: verified.\nScore: 90/100.\nFlags: none.\nNext action: No contributor action required."
+    },
+    {
+      "index": 2,
+      "recipientAccountId": "",
+      "recipientWalletAddress": "rsS2Y6CK9dz9dVFjJvRyD2gBdoLPqjaXRZ",
+      "resolution": "wallet_address",
+      "target": {
+        "accountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+        "walletAddress": "rsS2Y6CK9dz9dVFjJvRyD2gBdoLPqjaXRZ",
+        "handle": "zoz",
+        "conversationId": "account_acct_oauth_8b6a2004c07fe8d96493d95f_hive"
+      },
+      "sourceTaskId": "task_mock_parser",
+      "sourceReviewId": "swrev_delivery_002",
+      "status": "sent",
+      "messageId": "mock_hivemsg_70694f86a01579e006d6",
+      "deliveredAt": "2026-06-20T02:17:27.296Z",
+      "conversationId": "account_acct_oauth_8b6a2004c07fe8d96493d95f_hive",
+      "conversationTitle": "Hive follow-up: zoz",
+      "bodyPreview": "@zoz - I am following up on reviewed Network Task task_mock_parser.\nReview status: unverifiable.\nScore: 58/100.\nFlags: missing_public_artifact, pipeline_adjacent.\nNext action: Provide source and output artifacts."
+    },
+    {
+      "index": 3,
+      "recipientAccountId": "acct_oauth_donravle_mock",
+      "recipientWalletAddress": "",
+      "resolution": "account_id",
+      "target": {
+        "accountId": "acct_oauth_donravle_mock",
+        "walletAddress": "raL2kvMockDonravleWalletFGwzd",
+        "handle": "donravle",
+        "conversationId": "account_acct_oauth_donravle_mock_hive"
+      },
+      "sourceTaskId": "task_mock_context_sync",
+      "sourceReviewId": "swrev_delivery_003",
+      "status": "failed",
+      "errorCode": "mock_endpoint_rejected",
+      "error": "Mock endpoint rejected delivery because contributor has paused automated follow-ups."
+    },
+    {
+      "index": 4,
+      "recipientAccountId": "acct_oauth_missing_conversation",
+      "recipientWalletAddress": "",
+      "resolution": "account_id",
+      "target": {
+        "accountId": "acct_oauth_missing_conversation",
+        "walletAddress": "rDT8rfMockBoscovichWalletQCBi",
+        "handle": "boscovich",
+        "conversationId": ""
+      },
+      "sourceTaskId": "task_mock_wallet_visibility",
+      "sourceReviewId": "swrev_delivery_004",
+      "status": "failed",
+      "errorCode": "conversation_missing",
+      "error": "Target exists but has no Hive conversation id"
+    },
+    {
+      "index": 5,
+      "recipientAccountId": "acct_oauth_unmapped_mock",
+      "recipientWalletAddress": "",
+      "resolution": "unresolved",
+      "target": {},
+      "sourceTaskId": "task_mock_unmapped",
+      "sourceReviewId": "swrev_delivery_005",
+      "status": "failed",
+      "errorCode": "target_not_found",
+      "error": "No target conversation found for account acct_oauth_unmapped_mock wallet (none)"
+    }
+  ]
+}

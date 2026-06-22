@@ -1,0 +1,10 @@
+Usage:
+  node scripts/orc-contributor-feedback-message-generator.mjs batch --ledger <file> --out <dir> [--generated-by <handle>]
+  node scripts/orc-contributor-feedback-message-generator.mjs generate --ledger <file> [--generated-by <handle>]
+
+Commands:
+  batch     Write hive_payloads.json, discord_messages.md, and summary.json for unnotified records.
+  generate  Print generated payloads to stdout without writing files.
+
+The ledger must contain records[] compatible with pf.orc.submitted_work_review_ledger.v1.
+Unnotified records are entries without notification.notifiedAt, notification.sentAt, or notifiedAt.

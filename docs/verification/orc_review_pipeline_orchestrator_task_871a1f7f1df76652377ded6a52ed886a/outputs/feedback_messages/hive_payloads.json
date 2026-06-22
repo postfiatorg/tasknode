@@ -1,0 +1,91 @@
+[
+  {
+    "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+    "messageBody": "@gmoney - I am following up on reviewed Network Task task_mock_verified_reward_visibility.\nReview status: verified.\nScore: 88/100.\nFlags: none.\nNext action: No contributor action required; the submission is ready to archive as verified.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_pipeline_a0ef2eb71eab9a1adf61",
+      "sourceTaskId": "task_mock_verified_reward_visibility",
+      "reviewStatus": "verified",
+      "score": 88,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "requiresContributorAction": false
+    }
+  },
+  {
+    "recipientAccountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+    "messageBody": "@zoz - I am following up on reviewed Network Task task_mock_unverifiable_parser.\nReview status: unverifiable.\nScore: 58/100.\nFlags: missing_public_artifact, pipeline_adjacent.\nNext action: Add the missing public artifact or a command/output pair that proves the claimed work.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_pipeline_8c4155dc4bc6ce7f7d79",
+      "sourceTaskId": "task_mock_unverifiable_parser",
+      "reviewStatus": "unverified",
+      "score": 58,
+      "reviewFlags": [
+        "missing_public_artifact",
+        "pipeline_adjacent"
+      ],
+      "archiveAction": "needs_followup",
+      "requiresContributorAction": true
+    }
+  },
+  {
+    "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+    "messageBody": "@grashnuk - I am following up on reviewed Network Task task_mock_self_attested_contagion.\nReview status: self-attested.\nScore: 70/100.\nFlags: self_attested_evidence, money_sensitive, do_not_operationalize.\nNext action: Publish independently inspectable artifacts before this work is operationalized.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_pipeline_ae6f9fd8ec94322a5335",
+      "sourceTaskId": "task_mock_self_attested_contagion",
+      "reviewStatus": "self_attested",
+      "score": 70,
+      "reviewFlags": [
+        "self_attested_evidence",
+        "money_sensitive",
+        "do_not_operationalize"
+      ],
+      "archiveAction": "hold",
+      "requiresContributorAction": true
+    }
+  },
+  {
+    "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+    "messageBody": "@grashnuk - I am following up on reviewed Network Task task_mock_verified_ledger.\nReview status: verified.\nScore: 88/100.\nFlags: none.\nNext action: No contributor action required; the submission is ready to archive as verified.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_pipeline_28f1a8ade78b7c933e41",
+      "sourceTaskId": "task_mock_verified_ledger",
+      "reviewStatus": "verified",
+      "score": 88,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "requiresContributorAction": false
+    }
+  },
+  {
+    "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+    "messageBody": "@gmoney - I am following up on reviewed Network Task task_mock_unverified_docker_overlay.\nReview status: unverifiable.\nScore: 60/100.\nFlags: missing_public_artifact.\nNext action: Add the missing public artifact or a command/output pair that proves the claimed work.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_pipeline_28d3e570d4e34573ffd1",
+      "sourceTaskId": "task_mock_unverified_docker_overlay",
+      "reviewStatus": "unverified",
+      "score": 60,
+      "reviewFlags": [
+        "missing_public_artifact"
+      ],
+      "archiveAction": "needs_followup",
+      "requiresContributorAction": true
+    }
+  }
+]

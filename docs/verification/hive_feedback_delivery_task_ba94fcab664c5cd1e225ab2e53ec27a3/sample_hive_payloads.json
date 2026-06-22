@@ -1,0 +1,89 @@
+[
+  {
+    "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+    "messageBody": "@gmoney - I am following up on reviewed Network Task task_mock_reward_visibility.\nReview status: verified.\nScore: 90/100.\nFlags: none.\nNext action: No contributor action required.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_delivery_001",
+      "sourceTaskId": "task_mock_reward_visibility",
+      "reviewStatus": "verified",
+      "score": 90,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "requiresContributorAction": false
+    }
+  },
+  {
+    "recipientWalletAddress": "rsS2Y6CK9dz9dVFjJvRyD2gBdoLPqjaXRZ",
+    "messageBody": "@zoz - I am following up on reviewed Network Task task_mock_parser.\nReview status: unverifiable.\nScore: 58/100.\nFlags: missing_public_artifact, pipeline_adjacent.\nNext action: Provide source and output artifacts.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_delivery_002",
+      "sourceTaskId": "task_mock_parser",
+      "reviewStatus": "unverified",
+      "score": 58,
+      "reviewFlags": [
+        "missing_public_artifact",
+        "pipeline_adjacent"
+      ],
+      "archiveAction": "needs_followup",
+      "requiresContributorAction": true
+    }
+  },
+  {
+    "recipientAccountId": "acct_oauth_donravle_mock",
+    "messageBody": "@donravle - I am following up on reviewed Network Task task_mock_context_sync.\nReview status: verified.\nScore: 82/100.\nFlags: none.\nNext action: Product team can use the report as backlog evidence.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_delivery_003",
+      "sourceTaskId": "task_mock_context_sync",
+      "reviewStatus": "verified",
+      "score": 82,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "requiresContributorAction": false
+    }
+  },
+  {
+    "recipientAccountId": "acct_oauth_missing_conversation",
+    "messageBody": "@boscovich - I am following up on reviewed Network Task task_mock_wallet_visibility.\nReview status: self-attested.\nScore: 71/100.\nFlags: self_attested_evidence.\nNext action: Provide independently inspectable artifacts.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_delivery_004",
+      "sourceTaskId": "task_mock_wallet_visibility",
+      "reviewStatus": "self_attested",
+      "score": 71,
+      "reviewFlags": [
+        "self_attested_evidence"
+      ],
+      "archiveAction": "hold",
+      "requiresContributorAction": true
+    }
+  },
+  {
+    "recipientAccountId": "acct_oauth_unmapped_mock",
+    "messageBody": "@unknown - I am following up on reviewed Network Task task_mock_unmapped.\nReview status: unverified.\nScore: 55/100.\nFlags: missing_public_artifact.\nNext action: Provide missing evidence.",
+    "metadata": {
+      "schema": "pf.orc.contributor_feedback_messages.v1",
+      "deliverySurface": "hive_chat",
+      "generatedBy": "grashnuk",
+      "sourceReviewId": "swrev_delivery_005",
+      "sourceTaskId": "task_mock_unmapped",
+      "reviewStatus": "unverified",
+      "score": 55,
+      "reviewFlags": [
+        "missing_public_artifact"
+      ],
+      "archiveAction": "needs_followup",
+      "requiresContributorAction": true
+    }
+  }
+]

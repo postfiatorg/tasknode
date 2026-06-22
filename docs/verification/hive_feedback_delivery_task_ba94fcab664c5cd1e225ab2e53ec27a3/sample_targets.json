@@ -1,0 +1,38 @@
+{
+  "schema": "pf.orc.hive_feedback_delivery_targets.v1",
+  "contributors": [
+    {
+      "accountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "walletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+      "handle": "gmoney",
+      "conversationId": "account_acct_oauth_31a2b120878c91e24add9ceb_hive",
+      "conversationTitle": "Hive follow-up: gmoney",
+      "mockStatus": "sent"
+    },
+    {
+      "accountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+      "walletAddress": "rsS2Y6CK9dz9dVFjJvRyD2gBdoLPqjaXRZ",
+      "handle": "zoz",
+      "conversationId": "account_acct_oauth_8b6a2004c07fe8d96493d95f_hive",
+      "conversationTitle": "Hive follow-up: zoz",
+      "mockStatus": "sent"
+    },
+    {
+      "accountId": "acct_oauth_donravle_mock",
+      "walletAddress": "raL2kvMockDonravleWalletFGwzd",
+      "handle": "donravle",
+      "conversationId": "account_acct_oauth_donravle_mock_hive",
+      "conversationTitle": "Hive follow-up: donravle",
+      "mockStatus": "failed",
+      "mockError": "Mock endpoint rejected delivery because contributor has paused automated follow-ups."
+    },
+    {
+      "accountId": "acct_oauth_missing_conversation",
+      "walletAddress": "rDT8rfMockBoscovichWalletQCBi",
+      "handle": "boscovich",
+      "conversationId": "",
+      "conversationTitle": "Hive follow-up: boscovich",
+      "mockStatus": "sent"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "schema": "pf.orc.contributor_feedback_messages.v1",
+  "generatedAt": "2026-06-20T02:06:23.438Z",
+  "unnotifiedRecords": 5,
+  "hivePayloads": 5,
+  "discordMessages": 5,
+  "byStatus": {
+    "verified": 2,
+    "unverified": 2,
+    "self_attested": 1
+  },
+  "flags": {
+    "missing_public_artifact": 2,
+    "pipeline_adjacent": 1,
+    "self_attested_evidence": 1,
+    "money_sensitive": 1,
+    "do_not_operationalize": 1
+  },
+  "taskIds": [
+    "task_mock_verified_reward_visibility",
+    "task_mock_unverifiable_parser",
+    "task_mock_self_attested_contagion",
+    "task_mock_verified_ledger",
+    "task_mock_unverified_docker_overlay"
+  ]
+}

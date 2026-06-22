@@ -1,0 +1,16 @@
+{
+  "taskId": "task_mock_unverifiable_parser",
+  "ledgerEntry": {
+    "id": "swrev_pipeline_8c4155dc4bc6ce7f7d79",
+    "reviewStatus": "unverified",
+    "reviewFlags": [
+      "missing_public_artifact",
+      "pipeline_adjacent"
+    ]
+  },
+  "contributorMessage": {
+    "hivePayloadMetadata": {
+      "sourceReviewId": "swrev_pipeline_8c4155dc4bc6ce7f7d79"
+    }
+  }
+}

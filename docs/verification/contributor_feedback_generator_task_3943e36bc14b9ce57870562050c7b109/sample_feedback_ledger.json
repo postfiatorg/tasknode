@@ -1,0 +1,146 @@
+{
+  "schema": "pf.orc.submitted_work_review_ledger.v1",
+  "updatedAt": "2026-06-20T01:55:00.000Z",
+  "records": [
+    {
+      "id": "swrev_feedback_001",
+      "taskId": "task_b800bcfe9c3c6e226e87b94a797bd9e1",
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "recipientHandle": "gmoney",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 90,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "timestamp": "2026-06-20T01:50:51.486Z",
+      "source": {
+        "cid": "QmcZjEcFDVya5zEDEDbrMctUSgH1uxprYZLcqZFHofn6bo",
+        "txHash": "D9F28201E910BB5571EE92AFD2E7F29EA35F667FDF7B4418BE4FA27B4E5C1D61"
+      },
+      "parserOutput": {
+        "taskGrade": "pass",
+        "rewardRecommendation": "eligible",
+        "flagIndicators": [],
+        "archivalInstructions": "archive_hot",
+        "reviewerNotes": "Genuine reward-visibility product feedback with screenshot-supported observations."
+      },
+      "recommendedAction": "No contributor action required; product team should use the report as backlog evidence."
+    },
+    {
+      "id": "swrev_feedback_002",
+      "taskId": "task_8df92c053af509e72dbec3e475766f7a",
+      "recipientAccountId": "acct_oauth_8b6a2004c07fe8d96493d95f",
+      "recipientHandle": "zoz",
+      "reviewer": "grashnuk",
+      "reviewStatus": "unverified",
+      "score": 58,
+      "reviewFlags": [
+        "missing_public_artifact",
+        "pipeline_adjacent"
+      ],
+      "archiveAction": "needs_followup",
+      "timestamp": "2026-06-20T00:14:00.000Z",
+      "source": {
+        "cid": "QmZqirR2L7zPNfvUHQqVoC9UNrLsHhEAkYChbfaTQ33yLi",
+        "txHash": "C6D14F8FD7274BE47EE5E480D965643225D45CE35F6F5EB9CFCD87B5B17248CA"
+      },
+      "parserOutput": {
+        "taskGrade": "hold",
+        "rewardRecommendation": "needs evidence",
+        "flagIndicators": [
+          "missing_public_artifact",
+          "pipeline_adjacent"
+        ],
+        "archivalInstructions": "needs_followup",
+        "reviewerNotes": "Parser work is useful but should not be operationalized until source and output artifacts are directly inspectable."
+      },
+      "recommendedAction": "Provide a source link or uploaded bundle plus one captured parser input/output pair."
+    },
+    {
+      "id": "swrev_feedback_003",
+      "taskId": "task_d77a9dc367ff181ff9463f58d01362c9",
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "recipientHandle": "grashnuk",
+      "reviewer": "tasknodeorc",
+      "reviewStatus": "self_attested",
+      "score": 72,
+      "reviewFlags": [
+        "money_sensitive",
+        "do_not_operationalize"
+      ],
+      "archiveAction": "hold",
+      "timestamp": "2026-06-20T00:22:00.000Z",
+      "source": {
+        "cid": "QmVpLdsySyxwrPY27kn5wmGp7nRpW4vF4X2W7NkU2FKwvW",
+        "txHash": "76E5D5AC37D06EFB9652909CC00CADB3260F3587A1765C2881E74700ACE8FF81"
+      },
+      "parserOutput": {
+        "taskGrade": "partial",
+        "rewardRecommendation": "manual review",
+        "flagIndicators": [
+          "money_sensitive",
+          "do_not_operationalize"
+        ],
+        "archivalInstructions": "hold",
+        "reviewerNotes": "Evidence is internally consistent but should remain recommend-only until independent artifact inspection completes."
+      },
+      "recommendedAction": "Publish inspectable artifacts and keep the script read-only; do not execute enforcement or money movement."
+    },
+    {
+      "id": "swrev_feedback_004",
+      "taskId": "task_01ba5f1d70d620780c333693c99a0cab",
+      "recipientAccountId": "acct_wallet_1a528118923ae8830d46f56e",
+      "recipientHandle": "grashnuk",
+      "reviewer": "goodalexander",
+      "reviewStatus": "verified",
+      "score": 85,
+      "reviewFlags": [
+        "self_attested_evidence"
+      ],
+      "archiveAction": "archive_hot",
+      "timestamp": "2026-06-20T01:42:47.451Z",
+      "source": {
+        "cid": "QmX3w4MH27UErJGmbKDXTdwqa9YBpVVDBnqusoh4CBZiUF",
+        "txHash": "E1E8C512F62B026815FB0D0E03177F891E264574D18BD7C4E26F7C61F4981453"
+      },
+      "parserOutput": {
+        "taskGrade": "pass",
+        "rewardRecommendation": "eligible",
+        "flagIndicators": [
+          "self_attested_evidence"
+        ],
+        "archivalInstructions": "archive_hot",
+        "reviewerNotes": "Ledger tool met requirements; future work should include public commits when possible."
+      },
+      "recommendedAction": "No immediate action required; include independently resolvable commit or PR links in future code-task evidence."
+    },
+    {
+      "id": "swrev_feedback_005",
+      "taskId": "task_f6c88dafb196b7d01e51833a31f32b33",
+      "recipientAccountId": "acct_oauth_31a2b120878c91e24add9ceb",
+      "recipientHandle": "gmoney",
+      "reviewer": "grashnuk",
+      "reviewStatus": "unverified",
+      "score": 64,
+      "reviewFlags": [
+        "needs_artifact_verification"
+      ],
+      "archiveAction": "needs_followup",
+      "timestamp": "2026-06-19T21:19:29.348Z",
+      "source": {
+        "cid": "QmR17Q4HJqFFAmWe9pRnofPowi6dtnAmmi8fiPuY2SizSM",
+        "txHash": "0A83825B58ECB0E3C91B1FF38183CB52BDE2629A6F714952C9096E6AA8557C68"
+      },
+      "parserOutput": {
+        "taskGrade": "hold",
+        "rewardRecommendation": "needs evidence",
+        "flagIndicators": [
+          "needs_artifact_verification"
+        ],
+        "archivalInstructions": "needs_followup",
+        "reviewerNotes": "Docker overlay output looks aligned, but the artifact path should be independently inspectable before reuse."
+      },
+      "recommendedAction": "Provide the docker-compose file, validator config, and startup log in a public branch or uploaded bundle."
+    }
+  ]
+}
