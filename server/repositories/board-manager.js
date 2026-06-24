@@ -31,6 +31,7 @@ import {
 import { buildHiveRoutingConstraintsSnapshot } from "./hive-account-live-state.js";
 import {
   compactBoardActionPressureForBoardManager,
+  compactCapabilityInstrumentationForBoardManager,
   compactEvidenceEvaluationRefreshForBoardManager,
   compactEvidenceEvaluationPacketsForBoardManager,
   compactHiveSecretaryStateForBoardManager,
@@ -1401,8 +1402,8 @@ export async function buildBoardManagerSourcePacket({
     currentProjectRegistry({ limit: 60 }),
 	    currentTaskState({ limit: 12 }),
 	    currentTaskRequests({ limit: 8 }),
-	    getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 12, stoppedLimit: 6, pendingLimit: 6 }).catch(() => null),
-	    getNetworkTaskOutputCorpus({ limit: 36 }).catch(() => compactNetworkTaskOutputCorpusForBoardManager([])),
+	    getNetworkTaskContentSnapshot({ completedLimit: 4, outstandingLimit: 8, stoppedLimit: 4, pendingLimit: 4 }).catch(() => null),
+	    getNetworkTaskOutputCorpus({ limit: 24 }).catch(() => compactNetworkTaskOutputCorpusForBoardManager([])),
 	    listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
 	    recentBoardManagerRuns({ limit: 20 }),
 	    buildHiveRoutingConstraintsSnapshot({ limit: 120 }).catch(() => ({ ok: false, status: "unavailable", accounts: [] })),
@@ -1520,14 +1521,14 @@ export async function buildBoardManagerSourcePacket({
       prior_task_ids: safeArray(item.prior_task_ids || item.priorTaskIds).slice(0, 4),
       why_not_repeat: safeText(item.why_not_repeat || item.whyNotRepeat, 220),
     })),
-	    capabilityInstrumentation,
+	    capabilityInstrumentation: compactCapabilityInstrumentationForBoardManager(capabilityInstrumentation),
 	    badgeEligibility,
     orcOperations: compactOrcOperationsForBoardManager(orcOperations),
 	    taskWorkTypeVocabulary: boardManagerTaskWorkTypeVocabulary,
 	    networkTaskCandidates: compactNetworkTaskCandidatesForBoardManager(networkTaskCandidates),
 	    routingConstraints: compactRoutingConstraintsForBoardManager(routingConstraints),
     openFollowups: compactOpenFollowupsForBoardManager(openFollowups),
-    recentBoardManagerRuns: compactRecentRuns.slice(0, 5),
+    recentBoardManagerRuns: compactRecentRuns.slice(0, 3),
     executionPolicy: {
       dryRunDefault: true,
       implementedActionHooks: [

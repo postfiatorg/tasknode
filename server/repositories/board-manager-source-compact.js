@@ -34,7 +34,7 @@ function compactProjectTask(task = {}) {
   return {
     taskId: safeText(task.taskId || task.task_id, 180),
     requestId: safeText(task.requestId || task.request_id, 180),
-    title: safeText(task.title || task.name, 240),
+    title: safeText(task.title || task.name, 160),
     state: safeText(task.state || task.status, 80),
     rewardPft: Number(task.rewardPft || task.reward_pft || task.rewardActualPft || task.rewardOfferPft || 0),
     updatedAt: task.updatedAt || task.updated_at || null,
@@ -46,11 +46,11 @@ function compactProductDocument(document = {}) {
   return {
     id: safeText(document.id, 180),
     title: safeText(document.title, 180),
-    summary: safeText(document.summary, 180),
-    projectStatus: safeText(document.projectStatus || document.project_status, 220),
-    keyPoints: safeArray(document.keyPoints || document.key_points).slice(0, 2).map((item) => safeText(item, 160)).filter(Boolean),
-    blockedOrUnclear: safeArray(document.blockedOrUnclear || document.blocked_or_unclear).slice(0, 2).map((item) => safeText(item, 160)).filter(Boolean),
-    nextActions: safeArray(document.nextActions || document.next_actions).slice(0, 2).map((item) => safeText(item, 160)).filter(Boolean),
+    summary: safeText(document.summary, 120),
+    projectStatus: safeText(document.projectStatus || document.project_status, 140),
+    keyPoints: safeArray(document.keyPoints || document.key_points).slice(0, 1).map((item) => safeText(item, 120)).filter(Boolean),
+    blockedOrUnclear: safeArray(document.blockedOrUnclear || document.blocked_or_unclear).slice(0, 1).map((item) => safeText(item, 120)).filter(Boolean),
+    nextActions: safeArray(document.nextActions || document.next_actions).slice(0, 1).map((item) => safeText(item, 120)).filter(Boolean),
   };
 }
 
@@ -67,22 +67,22 @@ export function compactHiveProjectsForBoardManager(document = {}) {
         id: safeText(project.id || id, 180),
         name: safeText(project.name || project.title, 180),
         type: safeText(project.type || project.typeKey, 80),
-        summary: safeText(project.summary, 260),
-        objective: safeText(project.objective, 320),
+        summary: safeText(project.summary, 180),
+        objective: safeText(project.objective, 200),
         status: safeText(project.status, 80),
         priority: Number(project.priority || 0),
         phase: safeText(project.phase || project.phaseLabel, 120),
         taskCount: Number(project.taskCount || 0),
         contributorCount: Number(project.contributorCount || 0),
         pft: Number(project.pft || project.pftRouted || 0),
-        contributors: safeArray(project.contributors).slice(0, 4).map((contributor) => ({
+        contributors: safeArray(project.contributors).slice(0, 2).map((contributor) => ({
           accountId: safeText(contributor.accountId || contributor.account_id, 180),
           walletAddress: safeText(contributor.walletAddress || contributor.wallet_address, 120),
           role: safeText(contributor.role || contributor.roleLabel || contributor.role_label, 120),
           status: safeText(contributor.status, 80),
         })),
-        tasks: safeArray(project.tasks).slice(0, 3).map(compactProjectTask),
-        activity: safeArray(project.activity).slice(0, 2).map((event) => ({
+        tasks: safeArray(project.tasks).slice(0, 2).map(compactProjectTask),
+        activity: safeArray(project.activity).slice(0, 1).map((event) => ({
           label: safeText(event.label || event.title || event.action, 180),
           state: safeText(event.state || event.status, 80),
           at: event.at || event.updatedAt || event.createdAt || null,
@@ -133,31 +133,31 @@ function compactNetworkTaskContentItem(task = {}) {
     requestId: safeText(task.requestId || task.request_id, 180),
     generationJobId: safeText(task.generationJobId || task.generation_job_id, 180),
     state,
-    title: safeText(task.title, 160),
-    description: safeText(task.description, completed ? 180 : 220),
+    title: safeText(task.title, 140),
+    description: safeText(task.description, completed ? 140 : 160),
     rewardOfferPft: numberValue(task.rewardOfferPft || task.reward_offer_pft, 0) || undefined,
     rewardActualPft: numberValue(task.rewardActualPft || task.reward_actual_pft, 0) || undefined,
-    projectNeedSummary: safeText(task.projectNeedSummary || task.project_need_summary, 160),
+    projectNeedSummary: safeText(task.projectNeedSummary || task.project_need_summary, 120),
     updatedAt: task.updatedAt || task.updated_at || null,
   };
   if (completed) {
     return presentObject({
       ...common,
-      rewardSummary: safeText(task.rewardSummary || task.reward_summary, 180),
+      rewardSummary: safeText(task.rewardSummary || task.reward_summary, 140),
     });
   }
   if (stopped) {
     return presentObject({
       ...common,
-      stopSummary: safeText(task.stopSummary || task.stop_summary, 160),
+      stopSummary: safeText(task.stopSummary || task.stop_summary, 120),
     });
   }
   return presentObject({
     ...common,
     steps: compactStringList(task.steps, { limit: 1, max: 120 }),
-    submissionRequirement: safeText(task.submissionRequirement || task.submission_requirement, 120),
-    verificationAsk: safeText(task.verificationAsk || task.verification_ask, 120),
-    routingReason: safeText(task.routingReason || task.routing_reason, 140),
+    submissionRequirement: safeText(task.submissionRequirement || task.submission_requirement, 100),
+    verificationAsk: safeText(task.verificationAsk || task.verification_ask, 100),
+    routingReason: safeText(task.routingReason || task.routing_reason, 110),
     candidateAccountId: safeText(task.candidateAccountId || task.candidate_account_id, 180),
     candidateWalletAddress: safeText(task.candidateWalletAddress || task.candidate_wallet_address, 120),
   });
@@ -168,11 +168,11 @@ export function compactNetworkTaskContentForBoardManager(content = {}) {
     schema: safeText(content.schema, 120),
     generatedAt: content.generatedAt || null,
     counts: safeObject(content.counts),
-    completed: safeArray(content.completed).slice(0, 5).map(compactNetworkTaskContentItem),
-    outstanding: safeArray(content.outstanding).slice(0, 6).map(compactNetworkTaskContentItem),
-    stopped: safeArray(content.stopped).slice(0, 3).map(compactNetworkTaskContentItem),
-    pendingGeneration: safeArray(content.pendingGeneration).slice(0, 4).map(compactNetworkTaskContentItem),
-    text: safeText(content.text, 400),
+    completed: safeArray(content.completed).slice(0, 4).map(compactNetworkTaskContentItem),
+    outstanding: safeArray(content.outstanding).slice(0, 5).map(compactNetworkTaskContentItem),
+    stopped: safeArray(content.stopped).slice(0, 2).map(compactNetworkTaskContentItem),
+    pendingGeneration: safeArray(content.pendingGeneration).slice(0, 3).map(compactNetworkTaskContentItem),
+    text: safeText(content.text, 500),
   };
 }
 
@@ -319,29 +319,29 @@ export function compactNetworkTaskOutputCorpusPacketForBoardManager(corpus = {})
     .map((output) => ({
       task_id: safeText(output.task_id || output.taskId, 180),
       project_id: safeText(output.project_id || output.projectId, 180),
-      title: safeText(output.title, 220),
-      summary: safeText(output.summary, 280),
+      title: safeText(output.title, 160),
+      summary: safeText(output.summary, 160),
       state: safeText(output.state || output.status, 80),
     }));
   return {
     schema: safeText(corpus.schema || "pf.hive.network_task_output_corpus.v1", 120),
     generatedAt: corpus.generatedAt || corpus.generated_at || null,
     summary: {
-      projects_covered: compactStringList(summary.projects_covered || summary.projectsCovered, { limit: 12, max: 180 }),
-      recent_outputs: recentOutputs.slice(0, 4),
-      repeated_themes: compactStringList(summary.repeated_themes || summary.repeatedThemes, { limit: 4, max: 220 }),
-      open_actionable_items: compactStringList(summary.open_actionable_items || summary.openActionableItems, { limit: 4, max: 220 }),
+      projects_covered: compactStringList(summary.projects_covered || summary.projectsCovered, { limit: 8, max: 140 }),
+      recent_outputs: recentOutputs.slice(0, 2),
+      repeated_themes: compactStringList(summary.repeated_themes || summary.repeatedThemes, { limit: 3, max: 160 }),
+      open_actionable_items: compactStringList(summary.open_actionable_items || summary.openActionableItems, { limit: 3, max: 160 }),
     },
-    outputs: safeArray(corpus.outputs).slice(0, 4).map(compactCorpusOutput),
+    outputs: safeArray(corpus.outputs).slice(0, 2).map(compactCorpusOutput),
     deduplicationWatchlist: safeArray(corpus.deduplicationWatchlist || corpus.deduplication_watchlist)
-      .slice(0, 4)
+      .slice(0, 2)
       .map((item) => ({
-        theme: safeText(item.theme, 180),
+        theme: safeText(item.theme, 140),
         project_id: safeText(item.project_id || item.projectId, 180),
-        prior_task_ids: compactStringList(item.prior_task_ids || item.priorTaskIds, { limit: 4, max: 180 }),
-        prior_cids: compactStringList(item.prior_cids || item.priorCids, { limit: 2, max: 240 }),
-        why_not_repeat: safeText(item.why_not_repeat || item.whyNotRepeat, 260),
-        next_action_suggestion: safeText(item.next_action_suggestion || item.nextActionSuggestion, 260),
+        prior_task_ids: compactStringList(item.prior_task_ids || item.priorTaskIds, { limit: 3, max: 180 }),
+        prior_cids: compactStringList(item.prior_cids || item.priorCids, { limit: 1, max: 180 }),
+        why_not_repeat: safeText(item.why_not_repeat || item.whyNotRepeat, 160),
+        next_action_suggestion: safeText(item.next_action_suggestion || item.nextActionSuggestion, 160),
       })),
   };
 }
@@ -387,10 +387,10 @@ function compactOrcReviewItem(review = {}) {
     actionRequired: Boolean(review.actionRequired ?? review.action_required),
     actionOwner: safeText(review.actionOwner || review.action_owner, 120),
     confidence: safeText(review.confidence, 40),
-    categories: compactStringList(review.categories, { limit: 4, max: 80 }),
-    integritySignals: compactStringList(review.integritySignals || review.integrity_signals, { limit: 4, max: 80 }),
-    summary: safeText(review.summary, 180),
-    recommendedAction: safeText(review.recommendedAction || review.recommended_action, 180),
+    categories: compactStringList(review.categories, { limit: 3, max: 70 }),
+    integritySignals: compactStringList(review.integritySignals || review.integrity_signals, { limit: 3, max: 70 }),
+    summary: safeText(review.summary, 120),
+    recommendedAction: safeText(review.recommendedAction || review.recommended_action, 120),
     reviewerHandle: safeText(review.reviewerHandle || review.reviewer_handle, 120),
     reviewerWallet: safeText(review.reviewerWallet || review.reviewer_wallet, 120),
     reviewedAt: review.reviewedAt || review.reviewed_at || null,
@@ -408,7 +408,8 @@ function compactOrcRollupItem(rollup = {}) {
     integrityFollowUpCount: numberValue(rollup.integrityFollowUpCount || rollup.integrity_follow_up_count, 0),
     hasIntegritySignals: Boolean(rollup.hasIntegritySignals ?? rollup.has_integrity_signals),
     highValueCategory: Boolean(rollup.highValueCategory ?? rollup.high_value_category),
-    repeatedIntegritySignals: compactStringList(rollup.repeatedIntegritySignals || rollup.repeated_integrity_signals, { limit: 4, max: 120 }),
+    integritySignalCounts: safeObject(rollup.integritySignalCounts || rollup.integrity_signal_counts),
+    repeatedIntegritySignals: compactStringList(rollup.repeatedIntegritySignals || rollup.repeated_integrity_signals, { limit: 3, max: 90 }),
     lastReviewedAction: {
       taskId: safeText(lastReviewedAction.taskId || lastReviewedAction.task_id, 180),
       disposition: safeText(lastReviewedAction.disposition, 120),
@@ -445,15 +446,23 @@ function compactOrcInteractionItem(interaction = {}) {
 }
 
 export function compactOrcOperationsForBoardManager(orcOperations = {}) {
+  const summary = safeObject(orcOperations.summary);
   return {
     schema: safeText(orcOperations.schema || "pf.hive.board_manager.orc_operations.v1", 120),
     generatedAt: orcOperations.generatedAt || orcOperations.generated_at || null,
     status: safeText(orcOperations.status, 120),
     enforcement: safeText(orcOperations.enforcement || "none_context_only", 120),
-    accountingPolicy: safeText(orcOperations.accountingPolicy || orcOperations.accounting_policy, 240),
+    accountingPolicy: safeText(orcOperations.accountingPolicy || orcOperations.accounting_policy, 120),
     tables: safeObject(orcOperations.tables),
-    summary: safeObject(orcOperations.summary),
-    agents: safeArray(orcOperations.agents).slice(0, 8).map((agent) => ({
+    summary: {
+      activeAgentCount: numberValue(summary.activeAgentCount || summary.active_agent_count, 0),
+      availableForRoutingCount: numberValue(summary.availableForRoutingCount || summary.available_for_routing_count, 0),
+      outstandingNetworkTaskCount: numberValue(summary.outstandingNetworkTaskCount || summary.outstanding_network_task_count, 0),
+      pendingGenerationCount: numberValue(summary.pendingGenerationCount || summary.pending_generation_count, 0),
+      actionRequiredReviewCount: numberValue(summary.actionRequiredReviewCount || summary.action_required_review_count, 0),
+      reviewRollupCount: numberValue(summary.reviewRollupCount || summary.review_rollup_count, 0),
+    },
+    agents: safeArray(orcOperations.agents).slice(0, 6).map((agent) => ({
       id: safeText(agent.id, 180),
       handle: safeText(agent.handle, 120),
       agentId: safeText(agent.agentId || agent.agent_id, 180),
@@ -464,28 +473,98 @@ export function compactOrcOperationsForBoardManager(orcOperations = {}) {
       active: Boolean(agent.active),
       capacityLimit: numberValue(agent.capacityLimit || agent.capacity_limit, 0),
       routingEligible: Boolean(agent.routingEligible ?? agent.routing_eligible),
-      currentTasks: safeObject(agent.currentTasks || agent.current_tasks),
-      reviews: safeObject(agent.reviews),
-      interactions: safeObject(agent.interactions),
-      lastRun: safeObject(agent.lastRun || agent.last_run),
+      currentTasks: {
+        outstandingNetworkTaskCount: numberValue(agent.currentTasks?.outstandingNetworkTaskCount || agent.current_tasks?.outstanding_network_task_count, 0),
+        pendingGenerationCount: numberValue(agent.currentTasks?.pendingGenerationCount || agent.current_tasks?.pending_generation_count, 0),
+      },
+      reviews: {
+        reviewedCount: numberValue(agent.reviews?.reviewedCount || agent.reviews?.reviewed_count, 0),
+        actionRequiredCount: numberValue(agent.reviews?.actionRequiredCount || agent.reviews?.action_required_count, 0),
+      },
+      interactions: {
+        count: numberValue(agent.interactions?.count, 0),
+        unresolvedCount: numberValue(agent.interactions?.unresolvedCount || agent.interactions?.unresolved_count, 0),
+      },
       updatedAt: agent.updatedAt || agent.updated_at || null,
     })),
-    routingCandidates: safeArray(orcOperations.routingCandidates || orcOperations.routing_candidates).slice(0, 6),
+    routingCandidates: safeArray(orcOperations.routingCandidates || orcOperations.routing_candidates).slice(0, 4),
     reviewQueue: {
       actionRequiredCount: numberValue(orcOperations.reviewQueue?.actionRequiredCount || orcOperations.review_queue?.action_required_count, 0),
-      recent: safeArray(orcOperations.reviewQueue?.recent || orcOperations.review_queue?.recent).slice(0, 4).map(compactOrcReviewItem),
+      recent: safeArray(orcOperations.reviewQueue?.recent || orcOperations.review_queue?.recent).slice(0, 3).map(compactOrcReviewItem),
     },
     reviewRollups: {
-      policy: safeText(orcOperations.reviewRollups?.policy || orcOperations.review_rollups?.policy, 160),
-      recent: safeArray(orcOperations.reviewRollups?.recent || orcOperations.review_rollups?.recent).slice(0, 4).map(compactOrcRollupItem),
-      repeatedIntegritySignals: safeArray(orcOperations.reviewRollups?.repeatedIntegritySignals || orcOperations.review_rollups?.repeated_integrity_signals).slice(0, 3).map(compactOrcRollupItem),
+      policy: safeText(orcOperations.reviewRollups?.policy || orcOperations.review_rollups?.policy, 120),
+      recent: safeArray(orcOperations.reviewRollups?.recent || orcOperations.review_rollups?.recent).slice(0, 12).map(compactOrcRollupItem),
+      repeatedIntegritySignals: safeArray(orcOperations.reviewRollups?.repeatedIntegritySignals || orcOperations.review_rollups?.repeated_integrity_signals).slice(0, 6).map(compactOrcRollupItem),
     },
     runJournal: {
-      recent: safeArray(orcOperations.runJournal?.recent || orcOperations.run_journal?.recent).slice(0, 5).map(compactOrcRunItem),
+      recent: safeArray(orcOperations.runJournal?.recent || orcOperations.run_journal?.recent).slice(0, 2).map(compactOrcRunItem),
     },
     operatorInteractions: {
-      recent: safeArray(orcOperations.operatorInteractions?.recent || orcOperations.operator_interactions?.recent).slice(0, 5).map(compactOrcInteractionItem),
+      recent: safeArray(orcOperations.operatorInteractions?.recent || orcOperations.operator_interactions?.recent).slice(0, 3).map(compactOrcInteractionItem),
     },
+  };
+}
+
+function compactCapabilityRequirement(requirement = {}) {
+  return {
+    project_id: safeText(requirement.project_id || requirement.projectId, 180),
+    capability_type: safeText(requirement.capability_type || requirement.capabilityType, 100),
+    scope_label: safeText(requirement.scope_label || requirement.scopeLabel, 140),
+    visibility: safeText(requirement.visibility, 80),
+    required_for_work_type: safeText(requirement.required_for_work_type || requirement.requiredForWorkType, 100),
+  };
+}
+
+function compactCapabilityCandidate(candidate = {}) {
+  return {
+    account_id: safeText(candidate.account_id || candidate.accountId, 180),
+    wallet_address: safeText(candidate.wallet_address || candidate.walletAddress, 120),
+    verified_capabilities: safeArray(candidate.verified_capabilities || candidate.verifiedCapabilities)
+      .slice(0, 4)
+      .map(compactCandidateCapability),
+    declared_capabilities: safeArray(candidate.declared_capabilities || candidate.declaredCapabilities)
+      .slice(0, 3)
+      .map(compactCandidateCapability),
+    capability_source: safeText(candidate.capability_source || candidate.capabilitySource, 100),
+  };
+}
+
+function compactCapabilityGap(gap = {}) {
+  return {
+    project_id: safeText(gap.project_id || gap.projectId, 180),
+    candidate_account_id: safeText(gap.candidate_account_id || gap.candidateAccountId, 180),
+    candidate_wallet_address: safeText(gap.candidate_wallet_address || gap.candidateWalletAddress, 120),
+    capability_type: safeText(gap.capability_type || gap.capabilityType, 100),
+    scope_label: safeText(gap.scope_label || gap.scopeLabel, 140),
+    candidate_status: safeText(gap.candidate_status || gap.candidateStatus, 100),
+    recommended_task_work_type: safeText(gap.recommended_task_work_type || gap.recommendedTaskWorkType, 120),
+  };
+}
+
+export function compactCapabilityInstrumentationForBoardManager(instrumentation = {}) {
+  return {
+    schema: safeText(instrumentation.schema || "pf.hive.board_manager.capability_instrumentation.v1", 120),
+    status: safeText(instrumentation.status, 120),
+    task_work_type_vocabulary: safeArray(instrumentation.task_work_type_vocabulary || instrumentation.taskWorkTypeVocabulary)
+      .slice(0, 4)
+      .map((item) => ({
+        id: safeText(item.id, 100),
+        label: safeText(item.label, 120),
+        definition: safeText(item.definition, 160),
+      })),
+    capability_profile_status: safeText(instrumentation.capability_profile_status || instrumentation.capabilityProfileStatus, 140),
+    project_capability_requirements: safeArray(instrumentation.project_capability_requirements || instrumentation.projectCapabilityRequirements)
+      .slice(0, 8)
+      .map(compactCapabilityRequirement),
+    candidate_capabilities: safeArray(instrumentation.candidate_capabilities || instrumentation.candidateCapabilities)
+      .slice(0, 8)
+      .map(compactCapabilityCandidate),
+    capability_gaps: safeArray(instrumentation.capability_gaps || instrumentation.capabilityGaps)
+      .slice(0, 12)
+      .map(compactCapabilityGap),
+    summary: safeObject(instrumentation.summary),
+    enforcement: safeText(instrumentation.enforcement || "none_context_only", 100),
   };
 }
 
@@ -509,12 +588,12 @@ export function compactProjectPlanningForBoardManager(planning = {}) {
       completedAt: generation.completedAt || generation.completed_at || null,
       output: {
         title: safeText(output.title, 180),
-        summary: safeText(output.summary, 520),
+        summary: safeText(output.summary, 300),
         projects: safeArray(output.projects).slice(0, 8).map((project) => ({
           id: safeText(project.id, 180),
           type: safeText(project.type, 80),
           title: safeText(project.title || project.name, 180),
-          summary: safeText(project.summary, 360),
+          summary: safeText(project.summary, 220),
           status: safeText(project.status, 80),
           priority: numberValue(project.priority, 0),
           phaseLabel: safeText(project.phase_label || project.phaseLabel || project.phase, 120),
@@ -534,7 +613,7 @@ export function compactHiveSecretaryStateForBoardManager(state = {}) {
       id: safeText(report.id, 180),
       sourcePacketDigest: safeText(report.sourcePacketDigest || report.source_packet_digest, 120),
       outputTitle: safeText(output.title, 180),
-      outputSummary: safeText(output.summary, 360),
+      outputSummary: safeText(output.summary, 240),
       completedAt: report.completedAt || report.completed_at || null,
       updatedAt: report.updatedAt || report.updated_at || null,
     } : null,
@@ -584,15 +663,15 @@ export function compactBoardActionPressureForBoardManager(pressure = {}) {
         state: safeText(blocker.state || blocker.status, 80),
       })),
     },
-    signals: safeArray(pressure.signals).slice(0, 8).map((signal) => ({
+    signals: safeArray(pressure.signals).slice(0, 5).map((signal) => ({
       projectId: safeText(signal.projectId || signal.project_id, 180),
       title: safeText(signal.title, 180),
       status: safeText(signal.status, 80),
       severity: safeText(signal.severity, 80),
       requiresAction: Boolean(signal.requiresAction ?? signal.requires_action),
       pressure: safeText(signal.pressure, 120),
-      reasons: compactStringList(signal.reasons, { limit: 4, max: 220 }),
-      allowedNextActions: compactStringList(signal.allowedNextActions || signal.allowed_next_actions, { limit: 5, max: 80 }),
+      reasons: compactStringList(signal.reasons, { limit: 2, max: 160 }),
+      allowedNextActions: compactStringList(signal.allowedNextActions || signal.allowed_next_actions, { limit: 4, max: 80 }),
       preferredNextAction: safeText(signal.preferredNextAction || signal.preferred_next_action, 80),
       plannedTaskCount: numberValue(signal.plannedTaskCount || signal.planned_task_count, 0),
       liveTaskCount: numberValue(signal.liveTaskCount || signal.live_task_count, 0),
@@ -618,7 +697,7 @@ export function compactRoutingConstraintsForBoardManager(snapshot = {}) {
     status: safeText(snapshot.status, 80),
     generatedAt: snapshot.generatedAt || snapshot.generated_at || null,
     activeAllocationStatuses: compactStringList(snapshot.activeAllocationStatuses || snapshot.active_allocation_statuses, { limit: 12, max: 80 }),
-    accounts: safeArray(snapshot.accounts).slice(0, 12).map((account) => ({
+    accounts: safeArray(snapshot.accounts).slice(0, 8).map((account) => ({
       accountId: safeText(account.accountId || account.account_id, 180),
       reservationRate: safeObject(account.reservationRate || account.reservation_rate),
       recentRefusals: safeObject(account.recentRefusals || account.recent_refusals),
@@ -628,14 +707,14 @@ export function compactRoutingConstraintsForBoardManager(snapshot = {}) {
 }
 
 export function compactOpenFollowupsForBoardManager(followups = []) {
-  return safeArray(followups).slice(0, 8).map((followup) => ({
+  return safeArray(followups).slice(0, 5).map((followup) => ({
     id: safeText(followup.id, 180),
     runId: safeText(followup.runId || followup.run_id, 180),
     accountId: safeText(followup.accountId || followup.account_id, 180),
     projectId: safeText(followup.projectId || followup.project_id, 180),
     blockerType: safeText(followup.blockerType || followup.blocker_type, 120),
-    blockerSummary: safeText(followup.blockerSummary || followup.blocker_summary, 360),
-    expectedResponse: safeText(followup.expectedResponse || followup.expected_response, 300),
+    blockerSummary: safeText(followup.blockerSummary || followup.blocker_summary, 220),
+    expectedResponse: safeText(followup.expectedResponse || followup.expected_response, 180),
     lastSentAt: followup.lastSentAt || followup.last_sent_at || null,
     expiresAt: followup.expiresAt || followup.expires_at || null,
   }));

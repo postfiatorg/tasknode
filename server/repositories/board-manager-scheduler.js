@@ -222,7 +222,17 @@ export async function shouldSkipBoardManagerJobForRecentRun({ job = {} } = {}) {
   const metadata = job?.metadata_json && typeof job.metadata_json === "object"
     ? job.metadata_json
     : {};
-  const since = metadata.skip_if_completed_after || metadata.state_changed_at || "";
+  const trigger = safeText(job.trigger, 120);
+  const observationTriggers = new Set([
+    "periodic_tick",
+    "post_action_followup",
+    "network_task_rewarded_followup",
+  ]);
+  const since = metadata.skip_if_completed_after ||
+    metadata.state_changed_at ||
+    (trigger === "periodic_tick" ? metadata.due_at : "") ||
+    (observationTriggers.has(trigger) ? job.run_after || job.created_at : "") ||
+    "";
   if (!since) return { ok: true, skip: false, reason: "recent_run_boundary_missing" };
   const recent = await findCompletedBoardManagerRunSince({
     scope: job.scope || "global_hive",

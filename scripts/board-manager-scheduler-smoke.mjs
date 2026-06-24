@@ -11,6 +11,7 @@ import {
   listBoardManagerSchedulerStatus,
   recoverStaleBoardManagerJobs,
   setBoardManagerScopeStatus,
+  shouldSkipBoardManagerJobForRecentRun,
 } from "../server/repositories/board-manager-scheduler.js";
 import { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole } from "../server/process-role.js";
 
@@ -34,6 +35,7 @@ const idempotencyKey = `board_scheduler_idem_${suffix}`;
 async function cleanup() {
   await query("DELETE FROM board_manager_jobs WHERE scope = $1", [scope]);
   await query("DELETE FROM board_manager_leases WHERE scope = $1", [scope]);
+  await query("DELETE FROM board_manager_runs WHERE scope = $1", [scope]);
   await query("DELETE FROM board_manager_scopes WHERE scope = $1", [scope]);
 }
 
@@ -58,6 +60,16 @@ async function main() {
 
     const tick = await enqueueDueBoardManagerTicks({ scope, limit: 10 });
     assert.equal(tick.enqueued, 1);
+    await query(
+      `INSERT INTO board_manager_runs (
+         id, scope, status, selected_action, dry_run, completed_at
+       )
+       VALUES ($1, $2, 'completed', 'do_nothing', false, now())`,
+      [`boardrun_scheduler_observation_skip_${suffix}`, scope]
+    );
+    const staleObservationSkip = await shouldSkipBoardManagerJobForRecentRun({ job: tick.jobs[0] });
+    assert.equal(staleObservationSkip.skip, true);
+    assert.equal(staleObservationSkip.reason, "recent_board_manager_run_after_trigger");
 
     const first = await enqueueBoardManagerJob({
       scope,
