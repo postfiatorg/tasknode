@@ -108,8 +108,8 @@ export async function checkAgentRateLimitBucket({
         $3,
         1,
         $4,
-        $5,
-        $6::timestamptz + ($5::double precision * interval '1 millisecond'),
+        $5::integer,
+        $6::timestamptz + ($5::integer::double precision * interval '1 millisecond'),
         $6::timestamptz
       )
       ON CONFLICT (bucket_key) DO UPDATE SET

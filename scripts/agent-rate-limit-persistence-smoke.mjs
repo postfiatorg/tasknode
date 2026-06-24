@@ -14,6 +14,8 @@ function fakeAgentRateLimitQuery() {
   return async (sql, params = []) => {
     assert.match(sql, /INSERT INTO agent_rate_limit_buckets/);
     assert.match(sql, /ON CONFLICT \(bucket_key\) DO UPDATE/);
+    assert.match(sql, /\$5::integer/);
+    assert.match(sql, /\$5::integer::double precision/);
     const [bucketKey, action, agentKey, limit, windowMs, nowIso] = params;
     const now = Date.parse(nowIso);
     const existing = rows.get(bucketKey);
