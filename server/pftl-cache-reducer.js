@@ -10,6 +10,7 @@ import {
 import { taskIsTerminal } from "../shared/task-lifecycle.js";
 
 const TASK_POINTER_KINDS = ["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"];
+const RETIRED_TASK_LIFECYCLE_POINTER_KINDS = new Set(["TASK_UPDATE", "TASK_SUBMISSION"]);
 const TASK_PAYLOAD_SCHEMAS = new Set([
   "pf.task.request.v1",
   "pf.task.offer.v1",
@@ -22,6 +23,20 @@ const TASK_PAYLOAD_SCHEMAS = new Set([
 function normalizeText(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
+}
+
+function truthyEnv(value = "") {
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+}
+
+export function taskPointerReducerRetired(env = process.env) {
+  return !truthyEnv(env.TASKNODE_TASK_POINTER_REDUCER_ENABLED ?? "true");
+}
+
+export function shouldSkipTaskPointerReducerEvent(event = {}, env = process.env) {
+  if (!taskPointerReducerRetired(env)) return false;
+  const pointerKind = normalizeText(event.pointer_kind || event.pointerKind).toUpperCase();
+  return RETIRED_TASK_LIFECYCLE_POINTER_KINDS.has(pointerKind);
 }
 
 function safeJson(value, fallback = {}) {
@@ -633,7 +648,18 @@ export async function processPftlReducerEvent(event, options = {}) {
     };
   }
   if (kind === "context_pointer_hydrate") return reduceContextPointer(event);
-  if (kind === "task_projection_replay") return reduceTaskProjection(event, options);
+  if (kind === "task_projection_replay") {
+    if (shouldSkipTaskPointerReducerEvent(event, options.env || process.env)) {
+      return {
+        skipped: true,
+        reason: "task_lifecycle_pointer_reducer_retired",
+        pointerKind: normalizeText(event.pointer_kind || event.pointerKind).toUpperCase(),
+        taskId: event.task_id || "",
+        txHash: event.tx_hash || "",
+      };
+    }
+    return reduceTaskProjection(event, options);
+  }
   throw new Error(`unknown_pftl_reducer_kind:${kind || "missing"}`);
 }
 

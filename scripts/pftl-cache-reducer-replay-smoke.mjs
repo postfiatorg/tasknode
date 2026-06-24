@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { reduceHydratedTaskEvents } from "../server/pftl-cache-reducer.js";
+import {
+  reduceHydratedTaskEvents,
+  shouldSkipTaskPointerReducerEvent,
+} from "../server/pftl-cache-reducer.js";
 import { TASK_STATUS } from "../shared/task-lifecycle.js";
 
 function hydratedEvent({
@@ -63,5 +66,30 @@ const terminalGuard = reduceHydratedTaskEvents([
   hydratedEvent({ schema: "pf.task.update.v1", transition: "accepted", ledgerIndex: 5, txHash: "tx-late" }),
 ]).projections.get("task_replay_smoke");
 assert.equal(terminalGuard.status, TASK_STATUS.rewarded);
+
+assert.equal(
+  shouldSkipTaskPointerReducerEvent(
+    { reducer_kind: "task_projection_replay", pointer_kind: "TASK_UPDATE", task_id: "task_replay_smoke" },
+    { TASKNODE_TASK_POINTER_REDUCER_ENABLED: "false" }
+  ),
+  true,
+  "retired task pointer reducer must skip lifecycle update replay rows"
+);
+assert.equal(
+  shouldSkipTaskPointerReducerEvent(
+    { reducer_kind: "task_projection_replay", pointer_kind: "REWARD", task_id: "task_replay_smoke" },
+    { TASKNODE_TASK_POINTER_REDUCER_ENABLED: "false" }
+  ),
+  false,
+  "retired task pointer reducer must keep reward replay rows for reward forensics"
+);
+assert.equal(
+  shouldSkipTaskPointerReducerEvent(
+    { reducer_kind: "task_projection_replay", pointer_kind: "TASK_SUBMISSION", task_id: "task_replay_smoke" },
+    {}
+  ),
+  false,
+  "task pointer reducer remains enabled by default unless explicitly disabled"
+);
 
 console.log("pftl cache reducer replay smoke ok");

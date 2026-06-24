@@ -172,6 +172,75 @@ def event_id_for(payload: dict[str, Any]) -> str:
     return f"evt_{digest[:24]}"
 
 
+def stable_json(value: Any) -> str:
+    if isinstance(value, list):
+        return "[" + ",".join(stable_json(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ",".join(
+            json.dumps(str(key), separators=(",", ":"), ensure_ascii=False) + ":" + stable_json(value[key])
+            for key in sorted(value.keys())
+        ) + "}"
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+
+
+def task_transition_signature_message(
+    payload: dict[str, Any],
+    *,
+    role: str = "actor",
+    transition: str = "",
+    task_id: str = "",
+) -> tuple[str, str]:
+    digest = f"sha256:{sha256_hex(stable_json(payload))}"
+    message = "\n".join([
+        "Post Fiat Task Node task transition",
+        "Purpose: task_transition",
+        f"Role: {_safe_text(role, 80)}",
+        f"Task-ID: {_safe_text(task_id or payload.get('task_id') or payload.get('taskId'), 180)}",
+        f"Transition: {_safe_text(transition or payload.get('transition') or payload.get('status_after') or payload.get('schema'), 120)}",
+        f"Payload-Digest: {digest}",
+    ])
+    return digest, message
+
+
+def sign_task_transition(
+    wallet: ProtocolWallet,
+    payload: dict[str, Any],
+    *,
+    role: str = "actor",
+    transition: str = "",
+    task_id: str = "",
+) -> dict[str, Any]:
+    digest, message = task_transition_signature_message(
+        payload,
+        role=role,
+        transition=transition,
+        task_id=task_id,
+    )
+    return {
+        "schema": "pf.task.transition_signature.v1",
+        "role": _safe_text(role, 80),
+        "task_id": _safe_text(task_id or payload.get("task_id") or payload.get("taskId"), 180),
+        "transition": _safe_text(transition or payload.get("transition") or payload.get("status_after") or payload.get("schema"), 120),
+        "signer_wallet": wallet.address,
+        "public_key": wallet.wallet.public_key,
+        "payload_digest": digest,
+        "message": message,
+        "signature": sign_message_hex(message_to_hex(message), wallet.wallet.private_key),
+        "signed_at": _utcnow(),
+        "algorithm": "ripple-keypairs.secp256k1",
+    }
+
+
+def direct_signed_transition(wallet: ProtocolWallet) -> SignedTransaction:
+    return SignedTransaction(
+        address=wallet.address,
+        tx_blob="",
+        tx_hash=None,
+        tx_json={},
+        verified=True,
+    )
+
+
 def _json_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
@@ -860,6 +929,41 @@ class TaskNodeAgentClient:
             f"{transition}_at": created_at,
         }
         payload = {**base_payload, "event_id": event_id_for(base_payload)}
+        offchain_lifecycle = config.get("offchainLifecycle") if isinstance(config, dict) else {}
+        direct_offchain = bool(
+            isinstance(offchain_lifecycle, dict)
+            and offchain_lifecycle.get("enabled")
+            and not offchain_lifecycle.get("dualWrite")
+        )
+        if direct_offchain:
+            signed = direct_signed_transition(self.wallet)
+            prepared = {
+                "phase": "direct_offchain",
+                "taskId": task_id,
+                "taskAction": task_action,
+                "offchainLifecycle": offchain_lifecycle,
+            }
+            submitted = None
+            if submit:
+                self._reserve_submit("task_action", task_id, task_action)
+                submitted = self.request(
+                    "POST",
+                    "/api/tasks/action",
+                    json_body={
+                        "phase": "submit",
+                        "taskId": task_id,
+                        "taskAction": task_action,
+                        "offchainPayload": payload,
+                        "actorSignature": sign_task_transition(
+                            self.wallet,
+                            payload,
+                            role="actor",
+                            transition=transition,
+                            task_id=task_id,
+                        ),
+                    },
+                )
+            return SignedFlowResult(config=config, prepared=prepared, signed=signed, payload=payload, submitted=submitted)
         encrypted = tasknode_encrypted_payload(
             payload,
             wallet=self.wallet,
@@ -968,6 +1072,40 @@ class TaskNodeAgentClient:
             base_payload["submitted_at"] = created_at
             base_payload["submission"] = evidence
         payload = {**base_payload, "event_id": event_id_for(base_payload)}
+        offchain_lifecycle = config.get("offchainLifecycle") if isinstance(config, dict) else {}
+        direct_offchain = bool(
+            isinstance(offchain_lifecycle, dict)
+            and offchain_lifecycle.get("enabled")
+            and not offchain_lifecycle.get("dualWrite")
+        )
+        if direct_offchain:
+            signed = direct_signed_transition(self.wallet)
+            prepared = {
+                "phase": "direct_offchain",
+                "taskId": task_id,
+                "submissionMode": mode,
+                "offchainLifecycle": offchain_lifecycle,
+            }
+            submitted = None
+            if submit:
+                self._reserve_submit("task_submission", task_id, mode)
+                submitted = self.request(
+                    "POST",
+                    "/api/tasks/submission",
+                    json_body={
+                        "phase": "submit",
+                        "taskId": task_id,
+                        "offchainPayload": payload,
+                        "actorSignature": sign_task_transition(
+                            self.wallet,
+                            payload,
+                            role="actor",
+                            transition=mode,
+                            task_id=task_id,
+                        ),
+                    },
+                )
+            return SignedFlowResult(config=config, prepared=prepared, signed=signed, payload=payload, submitted=submitted)
         encrypted = tasknode_encrypted_payload(
             payload,
             wallet=self.wallet,

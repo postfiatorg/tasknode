@@ -5,10 +5,19 @@ const RIPPLE_EPOCH_OFFSET = 946684800;
 const POINTER_MEMO_TYPE = "pf.ptr";
 const POINTER_MEMO_FORMAT = "v4";
 const TASK_POINTER_KINDS = new Set(["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"]);
+const RETIRED_TASK_LIFECYCLE_POINTER_KINDS = new Set(["TASK_UPDATE", "TASK_SUBMISSION"]);
 
 function normalizeText(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
+}
+
+function truthyEnv(value = "") {
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+}
+
+function taskPointerReducerRetired(env = process.env) {
+  return !truthyEnv(env.TASKNODE_TASK_POINTER_REDUCER_ENABLED ?? "true");
 }
 
 function intOrNull(value) {
@@ -742,6 +751,7 @@ function reducerKindForPointer(pointer = {}) {
   const kind = normalizeText(pointer?.pointer_kind || pointer).toUpperCase();
   if (kind === "CONTEXT") return "context_pointer_hydrate";
   if (TASK_POINTER_KINDS.has(kind) && !normalizeText(pointer?.task_id)) return "";
+  if (taskPointerReducerRetired() && RETIRED_TASK_LIFECYCLE_POINTER_KINDS.has(kind)) return "";
   if (TASK_POINTER_KINDS.has(kind)) return "task_projection_replay";
   return "";
 }

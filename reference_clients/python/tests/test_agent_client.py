@@ -105,6 +105,17 @@ def config_response(wallet, service):
     }
 
 
+def direct_config_response(wallet):
+    payload = config_response(wallet, generate_identity("unused_task_node_service"))
+    payload["tasknodeEncryptionPubkey"] = ""
+    payload["offchainLifecycle"] = {
+        "enabled": True,
+        "dualWrite": False,
+        "writeSource": "direct_write",
+    }
+    return payload
+
+
 def context_response(*, pointer_count=0, revision=0, latest_pointer=None):
     return {
         "document": {
@@ -461,6 +472,47 @@ class AgentClientTests(unittest.TestCase):
             ["config", "prepare", "submit", "config", "prepare"],
         )
 
+    def test_accept_task_direct_offchain_submits_actor_signature_without_pointer_prepare(self):
+        def submit_response(call):
+            body = call["json"]
+            self.assertEqual(body["phase"], "submit")
+            self.assertEqual(body["taskAction"], "accept")
+            self.assertEqual(body["offchainPayload"]["transition"], "accepted")
+            signature = body["actorSignature"]
+            self.assertEqual(signature["schema"], "pf.task.transition_signature.v1")
+            self.assertEqual(signature["role"], "actor")
+            self.assertEqual(signature["signer_wallet"], self.wallet.address)
+            self.assertEqual(signature["transition"], "accepted")
+            self.assertIn("Payload-Digest: sha256:", signature["message"])
+            self.assertTrue(
+                is_valid_message(
+                    bytes.fromhex(message_to_hex(signature["message"])),
+                    bytes.fromhex(signature["signature"]),
+                    signature["public_key"],
+                )
+            )
+            return FakeResponse(200, {
+                "phase": "submitted",
+                "txHash": "offchain:evt_direct_accept",
+                "cid": "postgres:evt_direct_accept",
+                "offchainLifecycle": {"enabled": True, "writeSource": "direct_write"},
+            })
+
+        http = FakeSession([
+            FakeResponse(200, direct_config_response(self.wallet)),
+            submit_response,
+        ])
+        client = self.client(http=http)
+        client.account_id = "acct_agent"
+
+        result = client.accept_task("task_test", reason="Direct accept", submit=True)
+
+        self.assertFalse(result.submit_skipped)
+        self.assertTrue(result.signed.verified)
+        self.assertEqual(result.signed.tx_blob, "")
+        self.assertEqual(result.prepared["phase"], "direct_offchain")
+        self.assertEqual([call["json"]["phase"] for call in http.calls], ["config", "submit"])
+
     def test_submission_and_verification_response_sign_without_submit(self):
         submission_tx = prepared_pointer_tx(self.wallet, kind="TASK_SUBMISSION", task_id="task_test", cid="bafkreisubmission")
         verification_tx = prepared_pointer_tx(self.wallet, kind="TASK_SUBMISSION", task_id="task_test", cid="bafkreiverification")
@@ -480,6 +532,44 @@ class AgentClientTests(unittest.TestCase):
         self.assertEqual(response.payload["schema"], "pf.task.verification_response.v1")
         self.assertTrue(submission.signed.verified)
         self.assertTrue(response.signed.verified)
+
+    def test_submit_evidence_direct_offchain_submits_actor_signature_without_pointer_prepare(self):
+        def submit_response(call):
+            body = call["json"]
+            self.assertEqual(body["phase"], "submit")
+            self.assertEqual(body["offchainPayload"]["phase"], "initial_submission")
+            signature = body["actorSignature"]
+            self.assertEqual(signature["signer_wallet"], self.wallet.address)
+            self.assertEqual(signature["transition"], "initial_submission")
+            self.assertIn("Task-ID: task_test", signature["message"])
+            self.assertTrue(
+                is_valid_message(
+                    bytes.fromhex(message_to_hex(signature["message"])),
+                    bytes.fromhex(signature["signature"]),
+                    signature["public_key"],
+                )
+            )
+            return FakeResponse(200, {
+                "phase": "submitted",
+                "txHash": "offchain:evt_direct_submission",
+                "cid": "postgres:evt_direct_submission",
+                "offchainLifecycle": {"enabled": True, "writeSource": "direct_write"},
+            })
+
+        http = FakeSession([
+            FakeResponse(200, direct_config_response(self.wallet)),
+            submit_response,
+        ])
+        client = self.client(http=http)
+        client.account_id = "acct_agent"
+
+        result = client.submit_evidence("task_test", evidence_text="done", submit=True)
+
+        self.assertFalse(result.submit_skipped)
+        self.assertTrue(result.signed.verified)
+        self.assertEqual(result.signed.tx_blob, "")
+        self.assertEqual(result.prepared["phase"], "direct_offchain")
+        self.assertEqual([call["json"]["phase"] for call in http.calls], ["config", "submit"])
 
     def test_request_task_signs_bundle_and_event_prepare_without_submit(self):
         request_bundle = {"bundle_id": "bundle_1", "request": {"request_id": "req_1"}}
