@@ -1775,6 +1775,7 @@ export async function walletLinkVerify(payload, method, session = null) {
     });
   }
 
+  const previousLinkedWallet = getLinkedWallet({ accountId: session.accountId });
   const result = linkWalletToAccount({
     accountId: session.accountId,
     address,
@@ -1806,6 +1807,16 @@ export async function walletLinkVerify(payload, method, session = null) {
     walletAddress: result.wallet.address,
     reason: challengeResult.challenge.purpose,
   });
+  if (
+    previousLinkedWallet?.status === "linked" &&
+    previousLinkedWallet.address &&
+    previousLinkedWallet.address !== result.wallet.address
+  ) {
+    await bestEffortDeactivatePftlSyncWallet({
+      walletAddress: previousLinkedWallet.address,
+      reason: "wallet_relinked",
+    });
+  }
   await Promise.allSettled([
     recordUserObservabilityEvent({
       eventType: "user.wallet.linked",
