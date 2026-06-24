@@ -18,6 +18,12 @@ import {
   enforceAgentActionRateLimit,
   recordAgentActionJournal,
 } from "./agent-quality-gates.js";
+import {
+  applyOffchainTaskTransition,
+  offchainTaskLifecycleDualWriteEnabled,
+  offchainTaskLifecycleEnabled,
+  transitionForTaskAction,
+} from "./offchain-task-lifecycle.js";
 
 const ACTION_ID = "task_lifecycle_action";
 const TASK_POINTER_SCHEMA = 1;
@@ -133,8 +139,13 @@ async function taskActionConfig({ payload, session }) {
   const resolved = await requireSessionTask({ payload, session });
   if (resolved.error) return resolved.error;
 
-  const tasknodeEncryptionKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
-  if (!tasknodeEncryptionKey?.publicKey) {
+  const offchainEnabled = offchainTaskLifecycleEnabled();
+  const offchainDualWrite = offchainTaskLifecycleDualWriteEnabled();
+  const pointerRequired = !offchainEnabled || offchainDualWrite;
+  const tasknodeEncryptionKey = pointerRequired
+    ? await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true })
+    : null;
+  if (pointerRequired && !tasknodeEncryptionKey?.publicKey) {
     return actionResponse({
       status: 409,
       error: "tasknode_encryption_key_missing",
@@ -150,8 +161,13 @@ async function taskActionConfig({ payload, session }) {
     status: resolved.task.status,
     title: resolved.task.title || "",
     actions,
-    tasknodeEncryptionPubkey: tasknodeEncryptionKey.publicKey,
-    tasknodeServiceAddress: tasknodeEncryptionKey.serviceAddress,
+    tasknodeEncryptionPubkey: tasknodeEncryptionKey?.publicKey || "",
+    tasknodeServiceAddress: tasknodeEncryptionKey?.serviceAddress || "",
+    offchainLifecycle: {
+      enabled: offchainEnabled,
+      dualWrite: offchainDualWrite,
+      writeSource: offchainEnabled && !offchainDualWrite ? "direct_write" : "pftl_pointer",
+    },
     wallets: {
       user: resolved.wallet.address,
       authority: resolved.task.authority_wallet || "",
@@ -316,6 +332,71 @@ async function submitTaskAction({ payload, session }) {
         action: ACTION_ID,
       },
     };
+  }
+
+  if (offchainTaskLifecycleEnabled() && !offchainTaskLifecycleDualWriteEnabled()) {
+    const transition = transitionForTaskAction(taskAction);
+    const actions = taskLifecycleActions(resolved.task.status);
+    if (!canApplyTaskStopAction(resolved.task.status, taskAction)) {
+      return actionResponse({
+        status: 409,
+        error: "task_action_not_available",
+        message: "This task state does not allow that action.",
+        actionRequired: "Refresh the task. Terminal tasks cannot be changed.",
+        extra: { status: resolved.task.status, actions },
+      });
+    }
+    const recorded = await applyOffchainTaskTransition({
+      accountId: resolved.accountId,
+      walletAddress: resolved.wallet.address,
+      task: resolved.task,
+      transition,
+      payload,
+      metadata: {
+        action: taskAction,
+        endpoint: "POST /api/tasks/action",
+      },
+    });
+    const txHash = recorded.event.sourceTxHash;
+    const orcWorkJournal = agentOrigin
+      ? await recordAgentActionJournal({
+          agentOrigin,
+          action: `task_${taskAction}`,
+          status: "recorded",
+          outcomeStatus: "submitted",
+          accountId: resolved.accountId,
+          taskId: resolved.task.task_id,
+          requestId: resolved.task.request_id || "",
+          cid: recorded.event.sourceCid,
+          txHash,
+          metadata: {
+            phase: "submit",
+            taskAction,
+            previousStatus: resolved.task.status,
+            writeSource: "direct_write",
+          },
+          idempotencyKey: `agent_task_action:${agentOrigin.walletAddress || resolved.accountId}:${resolved.task.task_id}:${taskAction}:${txHash}`,
+        })
+      : null;
+    return okResponse({
+      phase: "submitted",
+      message: "Task action recorded directly in Task Node.",
+      taskId: resolved.task.task_id,
+      cid: recorded.event.sourceCid,
+      txHash,
+      refresh: {
+        ok: true,
+        source: "direct_write",
+        reducerBypassed: true,
+      },
+      offchainLifecycle: {
+        enabled: true,
+        writeSource: "direct_write",
+        eventId: recorded.event.eventId,
+        transition,
+      },
+      orcWorkJournal,
+    });
   }
 
   const submit = await submitSignedPftTransaction({

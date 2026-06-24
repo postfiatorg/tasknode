@@ -168,6 +168,7 @@
     "task-review-integrity-smoke": "node scripts/task-review-integrity-smoke.mjs",
     "task-review-prompts-smoke": "node scripts/task-review-prompts-smoke.mjs",
     "task-lifecycle-smoke": "node scripts/task-lifecycle-smoke.mjs",
+    "offchain-task-lifecycle-smoke": "node scripts/offchain-task-lifecycle-smoke.mjs",
     "taskgen-replay-smoke": "node scripts/taskgen-replay-smoke.mjs",
     "task-receipt-projection-smoke": "node scripts/task-receipt-projection-smoke.mjs",
     "pftl-cache-reducer-replay-smoke": "node scripts/pftl-cache-reducer-replay-smoke.mjs",
