@@ -7,6 +7,7 @@ import "./task-request.css";
 
 export function TaskRequestModal({
   accountId = "",
+  directOffchain = false,
   linkedWalletAddress = "",
   onClose,
   onRecorded,
@@ -21,6 +22,7 @@ export function TaskRequestModal({
   const textareaRef = useRef(null);
   const unlockPolicy = evaluateTaskRequestUnlockPolicy({
     accountId,
+    directOffchain,
     linkedWalletAddress,
     walletSecret,
     walletVault,
@@ -81,11 +83,15 @@ export function TaskRequestModal({
         },
       });
 
+      const directRecorded = result?.offchainLifecycle?.writeSource === "direct_write" ||
+        String(result?.txHash || "").startsWith("offchain:");
       setStatus({
         error: "",
         pending: false,
         pendingLabel: "",
-        success: `Task request published to PFT. Transaction ${String(result.txHash || "").slice(0, 12)}...`,
+        success: directRecorded
+          ? "Task request recorded in Task Node."
+          : `Task request published to PFT. Transaction ${String(result.txHash || "").slice(0, 12)}...`,
       });
       setDetailText("");
       await onRecorded?.(result);
@@ -189,7 +195,7 @@ export function TaskRequestModal({
             {status.pending && (
               <p className="task-request-message">
                 <Check size={14} strokeWidth={2.2} />
-                {status.pendingLabel || "Publishing to PFTL"}
+                {status.pendingLabel || (directOffchain ? "Submitting request" : "Publishing to PFTL")}
               </p>
             )}
           </div>

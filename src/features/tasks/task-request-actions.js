@@ -66,12 +66,8 @@ export async function publishTaskRequest({
   attachments = [],
   onProgress = null,
 } = {}) {
-  if (!accountId || !walletSecret?.mnemonic || walletSecret.accountId !== accountId) {
-    throw new Error("Unlock the local seed vault before requesting a task.");
-  }
-  if (!linkedWalletAddress || walletSecret.address !== linkedWalletAddress) {
-    throw new Error("Unlocked wallet does not match the linked wallet.");
-  }
+  if (!accountId) throw new Error("Sign in before requesting a task.");
+  if (!linkedWalletAddress) throw new Error("Link a PFT wallet before requesting a task.");
 
   const requestPayload = {
     requestId,
@@ -88,8 +84,13 @@ export async function publishTaskRequest({
     if (typeof onProgress === "function") onProgress(label);
   };
   progress("Configuring request");
-  const walletCore = await import("../../wallet-core");
-  const userPubkey = await walletCore.deriveTaskNodePublicKey(walletSecret.mnemonic);
+  const walletReady = Boolean(
+    walletSecret?.mnemonic &&
+      walletSecret.accountId === accountId &&
+      walletSecret.address === linkedWalletAddress
+  );
+  const walletCore = walletReady ? await import("../../wallet-core") : null;
+  const userPubkey = walletReady ? await walletCore.deriveTaskNodePublicKey(walletSecret.mnemonic) : "";
 
   const config = await requestJson("/api/tasks/request", {
     method: "POST",
@@ -98,6 +99,33 @@ export async function publishTaskRequest({
   });
   if (!config.ok || !config.body?.tasknodeEncryptionPubkey || !config.body?.requestBundle) {
     throw new Error(config.body?.message || "Task request publishing is not configured.");
+  }
+  const dualWrite = Boolean(config.body?.offchainLifecycle?.enabled && config.body?.offchainLifecycle?.dualWrite);
+  const directOffchain = Boolean(config.body?.offchainLifecycle?.enabled && !dualWrite);
+
+  if (directOffchain) {
+    progress("Submitting request");
+    const submitted = await requestJson("/api/tasks/request", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        phase: "submit",
+        ...requestPayload,
+      }),
+    });
+    if (!submitted.ok || !submitted.body?.ok) {
+      throw new Error(submitted.body?.message || "Task request could not be recorded.");
+    }
+
+    return {
+      ...submitted.body,
+      requestBundle: config.body.requestBundle,
+      requestEvent: null,
+    };
+  }
+
+  if (!walletReady) {
+    throw new Error("Unlock the local seed vault before publishing the task request to PFTL.");
   }
 
   progress("Encrypting request");

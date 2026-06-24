@@ -21,6 +21,12 @@ import { taskRequestCanonicalText, taskRequestIntentStart } from "./task-request
 import { contextBodyText } from "./context-line-map.js";
 import { contextBudgetMetrics, TASKGEN_CONTEXT_MAX_CHARS } from "../shared/context-budget.js";
 import {
+  offchainTaskLifecycleDualWriteEnabled,
+  offchainTaskLifecycleEnabled,
+} from "./offchain-task-lifecycle.js";
+import { encryptTasknodePayload } from "./task-payloads.js";
+import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
+import {
   agentDisclosureMetadata,
   agentOriginForTaskSession,
   enforceAgentActionRateLimit,
@@ -370,6 +376,15 @@ async function taskRequestConfig({ payload, session }) {
     chain: process.env.TASKNODE_PFTL_CHAIN_NAME || "pftl-testnet",
     tasknodeEncryptionPubkey: tasknodeEncryptionKey.publicKey,
     tasknodeServiceAddress: authorityWallet,
+    offchainLifecycle: {
+      enabled: offchainTaskLifecycleEnabled(),
+      dualWrite: offchainTaskLifecycleDualWriteEnabled(),
+      writeSource: offchainTaskLifecycleEnabled()
+        ? offchainTaskLifecycleDualWriteEnabled()
+          ? "direct_write+pftl_pointer"
+          : "direct_write"
+        : "pftl_pointer",
+    },
     wallets: {
       user: resolved.wallet.address,
       authority: authorityWallet,
@@ -511,6 +526,43 @@ async function prepareRequestEvent({ payload, session }) {
   });
 }
 
+async function pinServerEncryptedRequestBundle({
+  accountId = "",
+  walletAddress = "",
+  request = {},
+  requestBundle = {},
+  tasknodeEncryptionKey = null,
+} = {}) {
+  const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
+    tasknodeKey: tasknodeEncryptionKey,
+    accountId,
+    walletAddress,
+    explicitPublicKeys: [
+      requestBundle.subject_encryption_pubkey,
+      requestBundle.wallet?.subject_encryption_pubkey,
+      requestBundle.encryption?.subject_public_key,
+    ],
+  });
+  const encryptedPayload = await encryptTasknodePayload({
+    plaintext: JSON.stringify(requestBundle),
+    recipientPublicKeys,
+  });
+  return await pinContextIpfsJson({
+    payload: encryptedPayload,
+    name: `tasknode-direct-request-bundle-${sha256(request.requestId).slice(0, 16)}`,
+    keyvalues: {
+      app: "tasknodeofficial",
+      content_kind: "TASK",
+      schema: "pf.task.request_bundle.v1",
+      source: "direct_write",
+      request_id: request.requestId,
+      bundle_id: request.bundleId,
+      maxPages: 1,
+      syncKind: "task_request_submit",
+    },
+  });
+}
+
 async function bestEffortRefreshTaskRequest({ accountId, walletAddress }) {
   try {
     const synced = await syncPftlWalletTransactions({
@@ -550,6 +602,136 @@ async function submitTaskRequest({ payload, session }) {
         action: ACTION_ID,
       },
     };
+  }
+
+  const directOffchain = offchainTaskLifecycleEnabled() && !offchainTaskLifecycleDualWriteEnabled();
+  if (directOffchain) {
+    const tasknodeEncryptionKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
+    if (!tasknodeEncryptionKey?.publicKey) {
+      return actionResponse({
+        status: 409,
+        error: "tasknode_encryption_key_missing",
+        message: "Task Node encryption key is not configured.",
+        actionRequired: "Configure the Task Node service encryption key before requesting tasks.",
+      });
+    }
+    const requestBundle = await buildRequestBundle({
+      accountId: resolved.accountId,
+      walletAddress: resolved.wallet.address,
+      request,
+      authorityWallet: tasknodeEncryptionKey.serviceAddress || "",
+      agentOrigin,
+    });
+    const pin = await pinServerEncryptedRequestBundle({
+      accountId: resolved.accountId,
+      walletAddress: resolved.wallet.address,
+      request,
+      requestBundle,
+      tasknodeEncryptionKey,
+    });
+    const txHash = `offchain:${request.requestId}`;
+    const requestEventCid = `postgres:${request.requestId}`;
+    let intent = null;
+    if (request.conversationId) {
+      const persisted = await taskRequestIntentStart(
+        {
+          ...request,
+          accountId: resolved.accountId,
+          conversationId: request.conversationId,
+          requestEventCid,
+          requestBundleCid: pin.cid,
+          txHash,
+          status: "task_request_recorded",
+          assistantMessage: "Task request recorded. The Task Node worker can now generate a task offer from the off-chain request bundle.",
+          attachments: request.attachments,
+        },
+        "POST"
+      ).catch((error) => ({ status: 500, body: { ok: false, error: error?.message || "intent_persist_failed" } }));
+      intent = persisted.body || null;
+    }
+
+    const visibleRequest = await upsertTaskRequest({
+      requestId: request.requestId,
+      bundleId: request.bundleId,
+      accountId: resolved.accountId,
+      subjectWallet: resolved.wallet.address,
+      source: request.source,
+      sourceConversationId: request.conversationId,
+      sourceConversationTitle: request.sourceConversationTitle,
+      requestText: request.requestText,
+      userDetailText: request.userDetailText,
+      requestedTaskKind: request.requestedTaskKind,
+      requestBundleCid: pin.cid,
+      requestEventCid,
+      requestTxHash: txHash,
+      status: "published",
+      metadata: {
+        source: "direct_write",
+        offchainLifecycle: {
+          enabled: true,
+          dualWrite: false,
+          writeSource: "direct_write",
+        },
+        pin: {
+          cid: pin.cid,
+          sha256: pin.sha256,
+          sizeBytes: pin.sizeBytes,
+        },
+        ...agentDisclosureMetadata(agentOrigin),
+      },
+    }).catch((error) => ({ ok: false, error: safeText(error?.message || error, 500) }));
+    const generationScheduled = visibleRequest?.ok
+      ? scheduleTaskGenerationQueue({
+          delayMs: 250,
+          limit: 3,
+          reason: "browser_task_request_direct_write",
+        })
+      : { scheduled: false, reason: "task_request_not_persisted" };
+
+    const orcWorkJournal = agentOrigin
+      ? await recordAgentActionJournal({
+          agentOrigin,
+          action: "task_request",
+          status: "recorded",
+          outcomeStatus: "submitted",
+          accountId: resolved.accountId,
+          requestId: request.requestId,
+          cid: requestEventCid,
+          txHash,
+          metadata: {
+            requestedTaskKind: request.requestedTaskKind,
+            source: request.source,
+            bundleCid: pin.cid,
+            writeSource: "direct_write",
+          },
+          idempotencyKey: `agent_task_request:${agentOrigin.walletAddress || resolved.accountId}:${request.requestId}:${txHash}`,
+        })
+      : null;
+
+    return okResponse({
+      phase: "submitted",
+      message: "Task request recorded in Task Node.",
+      requestId: request.requestId,
+      bundleId: request.bundleId,
+      cid: requestEventCid,
+      bundleCid: pin.cid,
+      bundleDigest: `sha256:${pin.sha256}`,
+      txHash,
+      intent,
+      visibleRequest,
+      generationScheduled,
+      refresh: {
+        ok: true,
+        source: "direct_write",
+        reducerBypassed: true,
+      },
+      offchainLifecycle: {
+        enabled: true,
+        dualWrite: false,
+        writeSource: "direct_write",
+      },
+      orcWorkJournal,
+    });
   }
 
   const submit = await submitSignedPftTransaction({

@@ -155,6 +155,7 @@
     "task-request-context-budget-smoke": "node scripts/task-request-context-budget-smoke.mjs",
     "task-request-public-state-smoke": "node scripts/task-request-public-state-smoke.mjs",
     "task-request-handoff-smoke": "node scripts/task-request-handoff-smoke.mjs",
+    "task-client-offchain-completion-smoke": "node --no-warnings --loader ./scripts/esm-extension-loader.mjs scripts/task-client-offchain-completion-smoke.mjs",
     "task-refresh-policy-smoke": "node scripts/task-refresh-policy-smoke.mjs",
     "task-app-state-refresh-smoke": "node scripts/task-app-state-refresh-smoke.mjs",
     "task-read-resilience-smoke": "node scripts/task-read-resilience-smoke.mjs",

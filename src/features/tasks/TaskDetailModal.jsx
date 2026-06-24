@@ -442,6 +442,7 @@ function TaskOriginalContext({ displayTask, expanded, onToggle, steps, verificat
 function TaskOverviewPanel({
   accountId,
   detail,
+  directOffchain = false,
   displayTask,
   linkedWalletAddress,
   loading,
@@ -493,6 +494,7 @@ function TaskOverviewPanel({
             <TaskLifecycleActionPanel
               accountId={accountId}
               actions={actions}
+              directOffchain={directOffchain}
               linkedWalletAddress={linkedWalletAddress}
               loading={loading}
               onLifecycleAction={onLifecycleAction}
@@ -509,6 +511,7 @@ function TaskOverviewPanel({
           <TaskLifecycleActionPanel
             accountId={accountId}
             actions={actions}
+            directOffchain={directOffchain}
             linkedWalletAddress={linkedWalletAddress}
             loading={loading}
             onLifecycleAction={onLifecycleAction}
@@ -583,6 +586,7 @@ function submitClosedCopy(task = {}) {
 function TaskLifecycleActionPanel({
   accountId,
   actions = {},
+  directOffchain = false,
   linkedWalletAddress,
   loading,
   onLifecycleAction,
@@ -598,6 +602,7 @@ function TaskLifecycleActionPanel({
 
   const unlockPolicy = evaluateTaskSigningUnlockPolicy({
     accountId,
+    directOffchain,
     linkedWalletAddress,
     walletSecret,
     walletVault,
@@ -606,9 +611,13 @@ function TaskLifecycleActionPanel({
   const signingReady = unlockPolicy.allowed;
   const actionLabel = actions.stopLabel || "Cancel task";
   const helper = actions.canAccept
-    ? "Accepting signs a PFTL task update and puts this task on your plate. Refusing closes the offer."
+    ? directOffchain
+      ? "Accepting records the task update directly in Task Node and puts this task on your plate. Refusing closes the offer."
+      : "Accepting signs a PFTL task update and puts this task on your plate. Refusing closes the offer."
     : signingReady
-      ? "Publishes a signed TASK_UPDATE pointer. The task will move after the chain cache indexes it."
+      ? directOffchain
+        ? "Records the task update directly in Task Node."
+        : "Publishes a signed TASK_UPDATE pointer. The task will move after the chain cache indexes it."
       : unlockPolicy.message;
   const stopDisabled = loading || state.pending;
   const acceptDisabled = stopDisabled;
@@ -648,7 +657,7 @@ function TaskLifecycleActionPanel({
           action: "accept",
           pendingAction,
           loading,
-          buttonLabel: acceptPending ? "Publishing" : acceptCopy,
+          buttonLabel: acceptPending ? (directOffchain ? "Accepting" : "Publishing") : acceptCopy,
         },
       };
     }
@@ -666,6 +675,7 @@ function TaskLifecycleActionPanel({
     acceptDisabled,
     acceptPending,
     actions.canAccept,
+    directOffchain,
     helper,
     loading,
     pendingAction,
@@ -719,7 +729,9 @@ function TaskLifecycleActionPanel({
         error: "",
         pending: false,
         pendingAction: "",
-        result: result?.txHash ? `Published ${truncateCid(result.txHash)}` : "Published",
+        result: result?.txHash
+          ? `${directOffchain ? "Recorded" : "Published"} ${truncateCid(result.txHash)}`
+          : (directOffchain ? "Recorded" : "Published"),
         resultAction: taskAction === "accept" ? "Accepted" : actionLabel,
       });
     } catch (error) {
@@ -757,7 +769,7 @@ function TaskLifecycleActionPanel({
             onClick={() => submitLifecycleAction("accept")}
             type="button"
           >
-            {acceptPending ? "Publishing" : acceptCopy}
+            {acceptPending ? (directOffchain ? "Accepting" : "Publishing") : acceptCopy}
             <ArrowRight size={14} strokeWidth={2} />
           </button>
         )}
@@ -768,7 +780,7 @@ function TaskLifecycleActionPanel({
             onClick={() => submitLifecycleAction(actions.stopAction || "cancel")}
             type="button"
           >
-            {stopPending ? "Publishing" : stopCopy}
+            {stopPending ? (directOffchain ? "Recording" : "Publishing") : stopCopy}
             <ArrowRight size={14} strokeWidth={2} />
           </button>
         )}
@@ -782,6 +794,7 @@ function TaskLifecycleActionPanel({
 function TaskSubmitPanel({
   accountId,
   detail,
+  directOffchain = false,
   linkedWalletAddress,
   loading,
   onEvidenceSubmitted,
@@ -818,6 +831,7 @@ function TaskSubmitPanel({
   const signingEnabled = Boolean(actions.browserSubmissionEnabled);
   const unlockPolicy = evaluateTaskSigningUnlockPolicy({
     accountId,
+    directOffchain,
     linkedWalletAddress,
     walletSecret,
     walletVault,
@@ -841,7 +855,9 @@ function TaskSubmitPanel({
   );
   const helperText = signingEnabled
     ? signingReady
-      ? "Evidence is encrypted in this browser, pinned to IPFS, and published as a signed PFTL task pointer."
+      ? directOffchain
+        ? "Evidence is recorded directly in Task Node. The linked wallet is kept for attribution and rewards."
+        : "Evidence is encrypted in this browser, pinned to IPFS, and published as a signed PFTL task pointer."
       : unlockPolicy.message
     : "This task state is not accepting evidence right now.";
   const methods = [
@@ -966,7 +982,12 @@ function TaskSubmitPanel({
       handleSigningUnlockAction(unlockPolicy, onWalletUnlock);
       return;
     }
-    setState({ error: "", pending: true, pendingLabel: "Publishing evidence", result: "" });
+    setState({
+      error: "",
+      pending: true,
+      pendingLabel: directOffchain ? "Submitting evidence" : "Publishing evidence",
+      result: "",
+    });
     try {
       const result = await publishTaskEvidenceSubmission({
         accountId,
@@ -993,7 +1014,9 @@ function TaskSubmitPanel({
         error: "",
         pending: false,
         pendingLabel: "",
-        result: result?.txHash ? `Published ${truncateCid(result.txHash)}` : "Evidence published",
+        result: result?.txHash
+          ? `${directOffchain ? "Recorded" : "Published"} ${truncateCid(result.txHash)}`
+          : (directOffchain ? "Evidence recorded" : "Evidence published"),
       });
       clearPersistedDraftState();
       resetSubmitDraftState({ clearStatus: false });
@@ -1229,6 +1252,7 @@ function TaskSubmitPanel({
 
 export function TaskDetailModal({
   accountId = "",
+  directOffchainTaskLifecycle = false,
   escapeDisabled = false,
   linkedWalletAddress = "",
   onClose,
@@ -1602,6 +1626,7 @@ export function TaskDetailModal({
             <TaskOverviewPanel
               accountId={accountId}
               detail={displayDetail}
+              directOffchain={directOffchainTaskLifecycle}
               displayTask={displayTask}
               linkedWalletAddress={linkedWalletAddress}
               loading={controlsBlocked}
@@ -1619,6 +1644,7 @@ export function TaskDetailModal({
             <TaskSubmitPanel
               accountId={accountId}
               detail={displayDetail}
+              directOffchain={directOffchainTaskLifecycle}
               linkedWalletAddress={linkedWalletAddress}
               loading={controlsBlocked}
               onEvidenceSubmitted={async (result) => {

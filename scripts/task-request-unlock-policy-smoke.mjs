@@ -75,5 +75,34 @@ const signingUnlocked = evaluateTaskSigningUnlockPolicy({
 });
 assert.equal(signingUnlocked.allowed, true);
 
+const directOffchainRequest = policy({
+  directOffchain: true,
+  walletVault: { available: false, address: wallet, unlocked: false },
+  walletSecret: null,
+});
+assert.equal(directOffchainRequest.state, TASK_REQUEST_UNLOCK_STATES.OFFCHAIN_READY);
+assert.equal(directOffchainRequest.allowed, true);
+assert.equal(directOffchainRequest.action, "submit");
+
+const directOffchainSigning = evaluateTaskSigningUnlockPolicy({
+  accountId,
+  directOffchain: true,
+  linkedWalletAddress: wallet,
+  walletVault: { available: false, address: wallet, unlocked: false },
+  walletSecret: null,
+});
+assert.equal(directOffchainSigning.state, TASK_REQUEST_UNLOCK_STATES.OFFCHAIN_READY);
+assert.equal(directOffchainSigning.allowed, true);
+
 console.log("task request unlock policy smoke ok");
-console.log(JSON.stringify({ locked, unlockPending, unlocked, invalidUnlock, missingVault, signingLocked, signingUnlocked }, null, 2));
+console.log(JSON.stringify({
+  locked,
+  unlockPending,
+  unlocked,
+  invalidUnlock,
+  missingVault,
+  signingLocked,
+  signingUnlocked,
+  directOffchainRequest,
+  directOffchainSigning,
+}, null, 2));

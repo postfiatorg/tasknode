@@ -43,6 +43,10 @@ import {
 import { recordChatFailureObservability } from "./repositories/user-observability.js";
 import { chatConversationExistsForAccount } from "./repositories/chat-conversation-lookup.js";
 import { migrateDatabase } from "./db/migrate.js";
+import {
+  offchainTaskLifecycleDualWriteEnabled,
+  offchainTaskLifecycleEnabled,
+} from "./offchain-task-lifecycle.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
 import { observeApiRoute } from "./route-observability.js";
@@ -167,6 +171,8 @@ async function readJson(req, maxBytes = 16384) {
 }
 
 function runtimeConfig() {
+  const taskLifecycleOffchain = offchainTaskLifecycleEnabled();
+  const taskLifecycleDualWrite = offchainTaskLifecycleDualWriteEnabled();
   return {
     appName: "tasknodeofficial",
     buildId,
@@ -178,6 +184,16 @@ function runtimeConfig() {
     posthogHost: process.env.VITE_POSTHOG_HOST || process.env.POSTHOG_UI_HOST || "",
     posthogKeyPresent: Boolean(process.env.POSTHOG_KEY || process.env.VITE_POSTHOG_KEY),
     walletUnlockIdleLockMinutes: process.env.TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES || "",
+    taskLifecycle: {
+      offchainEnabled: taskLifecycleOffchain,
+      dualWrite: taskLifecycleDualWrite,
+      directOffchain: taskLifecycleOffchain && !taskLifecycleDualWrite,
+      writeSource: taskLifecycleOffchain
+        ? taskLifecycleDualWrite
+          ? "direct_write+pftl_pointer"
+          : "direct_write"
+        : "pftl_pointer",
+    },
   };
 }
 

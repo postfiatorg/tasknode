@@ -167,6 +167,10 @@ const MemberProfilePage = lazy(() => import("./features/profile/ProfileView").th
 const DirectoryView = lazy(() => import("./features/directory/DirectoryView").then((module) => ({ default: module.DirectoryView })));
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
+function taskLifecycleDirectOffchain(config = {}) {
+  return Boolean(config?.taskLifecycle?.offchainEnabled && !config?.taskLifecycle?.dualWrite);
+}
+
 const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
 const CHAT_ATTACHMENT_MAX_COUNT = 4;
 const CHAT_PASTE_ATTACHMENT_THRESHOLD = 200;
@@ -649,6 +653,7 @@ function App() {
       ? appState.wallet.pftWallet
       : null;
   const linkedWalletAddress = linkedWallet?.address || "";
+  const directOffchainTaskLifecycle = taskLifecycleDirectOffchain(runtimeConfig);
   const memberProfileAccountId = view === "profile" ? memberProfileAccountIdFromLocation(locationHash) : "";
   const taskVisibleState = useMemo(() => reconcileTaskVisibleState({
     accountId: walletAccountId,
@@ -1726,6 +1731,7 @@ function App() {
               chatShareRequestKey={chatShareRequestKey}
               chat={appState?.chat}
               contextRefinePending={contextRefinePending}
+              directOffchainTaskLifecycle={directOffchainTaskLifecycle}
               linkedWalletAddress={linkedWalletAddress}
               onActiveChatChange={setActiveChat}
               onChatSettled={refreshAppState}
@@ -1740,6 +1746,7 @@ function App() {
           {view === "tasks" && (
             <TasksView
               accountId={walletAccountId}
+              directOffchainTaskLifecycle={directOffchainTaskLifecycle}
               linkedWalletAddress={linkedWalletAddress}
               onRequestSettled={refreshAppState}
               onSelectTask={openTaskDetail}
@@ -1863,6 +1870,7 @@ function App() {
           onTaskChanged={refreshAppState}
           onWalletUnlock={openWalletVaultControl}
           task={selectedTaskForModal}
+          directOffchainTaskLifecycle={directOffchainTaskLifecycle}
           walletSecret={walletSecretRef.current}
           walletUnlockPending={walletUnlockOpen}
           walletVault={walletVaultStatus}
@@ -1923,7 +1931,7 @@ function App() {
 
 function ChatSurface({
   accountId = "", activeChat, chat, chatResetKey, chatSelectionKey, chatShareRequestKey,
-  contextRefinePending = false, linkedWalletAddress = "", onActiveChatChange, onChatSettled,
+  contextRefinePending = false, directOffchainTaskLifecycle = false, linkedWalletAddress = "", onActiveChatChange, onChatSettled,
   onContextRefineHandled, onWalletUnlock, usage,
   walletSecret = null, walletUnlockPending = false, walletVault = {},
 }) {
@@ -1957,6 +1965,7 @@ function ChatSurface({
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const taskRequestUnlockPolicy = evaluateTaskRequestUnlockPolicy({
     accountId,
+    directOffchain: directOffchainTaskLifecycle,
     linkedWalletAddress,
     walletSecret,
     walletVault,
@@ -2268,7 +2277,11 @@ function ChatSurface({
           },
         });
 
-        const receipt = `Task request published to PFT. Transaction ${String(result.txHash || "").slice(0, 12)}...`;
+        const directRecorded = result?.offchainLifecycle?.writeSource === "direct_write" ||
+          String(result?.txHash || "").startsWith("offchain:");
+        const receipt = directRecorded
+          ? "Task request recorded in Task Node."
+          : `Task request published to PFT. Transaction ${String(result.txHash || "").slice(0, 12)}...`;
         const assistantTurn = normalizeChatMessage(
           {
             id: taskRequestAssistantId,
@@ -2276,7 +2289,7 @@ function ChatSurface({
             body: receipt,
             metadata: {
               ...taskRequestMetadata,
-              status: "pftl_request_published",
+              status: directRecorded ? "task_request_recorded" : "pftl_request_published",
               requestEventCid: result.cid,
               requestBundleCid: result.bundleCid,
               txHash: result.txHash,
@@ -2286,7 +2299,7 @@ function ChatSurface({
         );
         setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
         setTaskRequestMode(false);
-        setSendMessage("Task request published to PFT.");
+        setSendMessage(directRecorded ? "Task request recorded." : "Task request published to PFT.");
         setStatusTone("muted");
         setDraftConversationId(requestedConversationId);
         onActiveChatChange?.({
@@ -3395,6 +3408,7 @@ function EmptyState({ icon: Icon, title, desc }) {
 
 function TasksView({
   accountId = "",
+  directOffchainTaskLifecycle = false,
   linkedWalletAddress = "",
   onRequestSettled,
   onSelectTask,
@@ -3743,6 +3757,7 @@ function TasksView({
         {taskRequestOpen && (
           <TaskRequestModal
             accountId={accountId}
+            directOffchain={directOffchainTaskLifecycle}
             linkedWalletAddress={linkedWalletAddress}
             onClose={() => setTaskRequestOpen(false)}
             onRecorded={handleTaskRequestRecorded}

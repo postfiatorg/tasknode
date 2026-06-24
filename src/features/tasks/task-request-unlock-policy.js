@@ -5,6 +5,7 @@ export const TASK_REQUEST_UNLOCK_STATES = Object.freeze({
   LOCKED: "locked",
   UNLOCK_PENDING: "unlock_pending",
   INVALID_UNLOCK: "invalid_unlock",
+  OFFCHAIN_READY: "offchain_ready",
   UNLOCKED: "unlocked",
 });
 
@@ -32,6 +33,7 @@ export function evaluateTaskRequestUnlockPolicy({
   walletSecret = null,
   walletVault = {},
   unlockPending = false,
+  directOffchain = false,
   messages = DEFAULT_MESSAGES,
 } = {}) {
   const normalizedAccountId = String(accountId || "").trim();
@@ -57,6 +59,15 @@ export function evaluateTaskRequestUnlockPolicy({
       allowed: false,
       message: messages.needs_wallet,
       state: TASK_REQUEST_UNLOCK_STATES.NEEDS_WALLET,
+    };
+  }
+
+  if (directOffchain) {
+    return {
+      action: "submit",
+      allowed: true,
+      message: "",
+      state: TASK_REQUEST_UNLOCK_STATES.OFFCHAIN_READY,
     };
   }
 
