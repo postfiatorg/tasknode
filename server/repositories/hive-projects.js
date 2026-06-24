@@ -5,7 +5,7 @@ import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
 import { discoverableMemberProfileIds } from "./directory-leaderboard.js";
 import { listMachineOperatorDisclosures } from "./capability-profiles.js";
-import { listEvidenceEvaluationPackets, listEvidenceEvaluationPacketsForBoardManager } from "./evidence-evaluation-packets.js";
+import { listEvidenceEvaluationPackets } from "./evidence-evaluation-packets.js";
 import { latestHiveProjectPlanningState, projectHasOperatorArchiveLock } from "./hive-project-planning.js";
 import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
 import { deriveNetworkTaskStatusPacketFromRow } from "./network-task-status.js";
@@ -351,61 +351,6 @@ function operatorMap(projects = {}) {
   return operators;
 }
 
-function buildOrcOperationsSummary({
-  operators = {},
-  evidencePackets = [],
-} = {}) {
-  const machineOperators = Object.entries(operators)
-    .filter(([, operator]) => operator.operatorDisclosure?.isMachineOperator)
-    .map(([wallet, operator]) => ({
-      wallet,
-      accountId: safeText(operator.accountId, 180),
-      handle: safeText(operator.hiveHandle, 80),
-      displayName: safeText(operator.displayName || operator.publicDisplayName || operator.codename, 120),
-      label: safeText(operator.operatorDisclosure?.label, 80) || "Orc operator",
-      kind: safeText(operator.operatorDisclosure?.kind, 80),
-      status: safeText(operator.status, 80) || "active",
-      currentTaskCount: safeArray(operator.currentTasks).length,
-      capabilities: safeArray(operator.operatorDisclosure?.capabilities).slice(0, 6),
-    }))
-    .slice(0, 12);
-  const capabilitySummary = machineOperators
-    .flatMap((operator) =>
-      safeArray(operator.capabilities).map((profile) => ({
-        accountId: operator.accountId,
-        capabilityType: safeText(profile.capabilityType, 80),
-        scopeLabel: safeText(profile.scopeLabel, 180),
-        status: safeText(profile.status, 80),
-        evidenceTaskId: safeText(profile.evidenceTaskId, 180),
-        verifiedAt: toIso(profile.verifiedAt),
-        expiresAt: toIso(profile.expiresAt),
-      }))
-    )
-    .slice(0, 16);
-  const latestEvaluationPacket = safeArray(evidencePackets)[0] || null;
-  return {
-    schema: "pf.hive.orc_operations.v1",
-    generatedAt: new Date().toISOString(),
-    identityPolicy: "machine operator disclosure follows normal public/discoverable profile visibility",
-    runtimeSource: "boardManager.feed from /api/hive/context",
-    machineOperators,
-    capabilityProfiles: capabilitySummary,
-    lastEvaluationPacket: latestEvaluationPacket ? {
-      id: latestEvaluationPacket.id,
-      taskId: latestEvaluationPacket.taskId,
-      projectId: latestEvaluationPacket.projectId,
-      packetStatus: latestEvaluationPacket.packetStatus,
-      evaluatorId: latestEvaluationPacket.evaluatorId,
-      summary: latestEvaluationPacket.summary,
-      recommendation: latestEvaluationPacket.recommendation,
-      counts: latestEvaluationPacket.counts,
-      artifactVerdicts: safeArray(latestEvaluationPacket.artifactVerdicts).slice(0, 6),
-      updatedAt: latestEvaluationPacket.updatedAt || latestEvaluationPacket.createdAt,
-    } : null,
-    safety: "Seeds, session tokens, local runtime paths, and private payload plaintext are never included.",
-  };
-}
-
 function taskNextAction(state = "") {
   const normalized = safeText(state, 80).toLowerCase();
   if (normalized === "accepted") return "Complete the task and submit evidence for review.";
@@ -656,7 +601,6 @@ function documentFromRows({
   walletIdentities = [],
   publicProfileIds = new Set(),
   operatorDisclosures = {},
-  evidencePackets = [],
   includeEmptyActive = false,
 } = {}) {
   const projects = Object.fromEntries(projectRows.map((row) => {
@@ -711,10 +655,6 @@ function documentFromRows({
   const activeOperators = Object.values(operators).filter((operator) => operator.status === "active").length;
   const tasksInFlight = Object.values(visibleProjects).reduce((sum, project) => sum + safeArray(project.tasks).length, 0);
   const pftRouted = Object.values(visibleProjects).reduce((sum, project) => sum + numeric(project.pft), 0);
-  const orcOperations = buildOrcOperationsSummary({
-    operators,
-    evidencePackets,
-  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -722,7 +662,6 @@ function documentFromRows({
     projects: visibleProjects,
     operators,
     routingFeed,
-    orcOperations,
     stats: {
       activeProjects: projectIds.length,
       operatorsOnline: activeOperators,
@@ -1582,10 +1521,7 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
   );
   const identityAccountIds = Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)));
   const publicProfileIds = await discoverableMemberProfileIds(identityAccountIds);
-  const [operatorDisclosures, evidencePackets] = await Promise.all([
-    listMachineOperatorDisclosures({ accountIds: identityAccountIds }).catch(() => ({})),
-    listEvidenceEvaluationPacketsForBoardManager({ limit: 12 }).catch(() => []),
-  ]);
+  const operatorDisclosures = await listMachineOperatorDisclosures({ accountIds: identityAccountIds }).catch(() => ({}));
 
   return documentFromRows({
     projectRows: projectsResult.rows,
@@ -1599,7 +1535,6 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
     walletIdentities,
     publicProfileIds,
     operatorDisclosures,
-    evidencePackets,
     includeEmptyActive,
   });
 }

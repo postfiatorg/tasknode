@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, ArrowLeft, ArrowUpRight, Check, ChevronDown, ChevronRight, Copy, Flag, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, ChevronDown, ChevronRight, Copy, Flag, X } from "lucide-react";
 import { requestJson } from "../../api";
 import { profileNftImageCandidates } from "../profile/profile-nft-images.js";
 import "./hive.css";
@@ -188,14 +188,6 @@ function HiveIndex({ onOpenTask, onSelectProject, projectDocument, projectStatus
             <div className="hive-empty-project">No operators are allocated to active network projects yet.</div>
           )}
         </div>
-      </Section>
-
-      <Section title="Orc Operations" subtitle="Machine operators, evidence packets, and runtime health">
-        <OrcOperationsPanel
-          boardManager={boardManager}
-          operations={projectDocument?.orcOperations || null}
-          status={projectStatus}
-        />
       </Section>
 
       <Section title="Hive Context" subtitle="User-submitted network context, grouped by contributor">
@@ -1440,133 +1432,6 @@ function HiveContextInputs({
         </section>
       )}
     </>
-  );
-}
-
-function boardManagerRuntime(boardManager = null) {
-  const feed = Array.isArray(boardManager?.feed) ? boardManager.feed : [];
-  const entry = feed[0] || null;
-  if (!entry) {
-    return {
-      state: "quiet",
-      label: "No heartbeat",
-      lastHeartbeat: "",
-      currentTask: "",
-      lastAction: "",
-      lastError: "",
-    };
-  }
-  const failed = entry.state === "failed" || Boolean(entry.error);
-  const resultError = Array.isArray(entry.actionResults)
-    ? entry.actionResults.find((result) => result?.error)?.error || ""
-    : "";
-  return {
-    state: failed ? "failed" : entry.state || "recorded",
-    label: failed ? "Needs attention" : "Running",
-    lastHeartbeat: entry.completedAt || entry.startedAt || "",
-    currentTask: [entry.action || entry.label, entry.targetId].filter(Boolean).join(" · "),
-    lastAction: entry.summary || entry.reason || entry.microSummaryText || "",
-    lastError: entry.error || resultError || (failed ? entry.reason || "" : ""),
-  };
-}
-
-function OrcOperationsPanel({ boardManager = null, operations = null, status = "loading" }) {
-  const runtime = boardManagerRuntime(boardManager);
-  const machineOperators = Array.isArray(operations?.machineOperators) ? operations.machineOperators : [];
-  const capabilityProfiles = Array.isArray(operations?.capabilityProfiles) ? operations.capabilityProfiles : [];
-  const packet = operations?.lastEvaluationPacket || null;
-  const loading = status === "loading" && !operations;
-  return (
-    <div className="hive-card hive-orc-panel">
-      <header className="hive-orc-header">
-        <span>
-          <strong>Orc Operations</strong>
-          <small>{loading ? "Loading operations state" : operations?.safety || "No secrets or private payload plaintext are exposed."}</small>
-        </span>
-        <span className={`hive-orc-runtime is-${runtime.state}`}>
-          <Activity size={13} strokeWidth={1.8} />
-          {runtime.label}
-        </span>
-      </header>
-
-      <div className="hive-orc-grid">
-        <section className="hive-orc-card">
-          <h3>Runtime</h3>
-          <dl>
-            <div>
-              <dt>Last heartbeat</dt>
-              <dd>{runtime.lastHeartbeat ? formatContextTime(runtime.lastHeartbeat) : "Not recorded"}</dd>
-            </div>
-            <div>
-              <dt>Current/last action</dt>
-              <dd>{runtime.currentTask || "No current action"}</dd>
-            </div>
-            <div>
-              <dt>Last result</dt>
-              <dd>{runtime.lastAction || "No recent result"}</dd>
-            </div>
-            {runtime.lastError && (
-              <div>
-                <dt>Last error</dt>
-                <dd>{runtime.lastError}</dd>
-              </div>
-            )}
-          </dl>
-        </section>
-
-        <section className="hive-orc-card">
-          <h3>Machine operators</h3>
-          {machineOperators.length ? (
-            <div className="hive-orc-list">
-              {machineOperators.map((operator) => (
-                <article key={operator.accountId || operator.wallet || operator.kind}>
-                  <strong>{operator.displayName || operator.handle || compactWallet(operator.wallet)}</strong>
-                  <small>{operator.label || "Orc operator"} · {operator.kind || "machine_operator"}</small>
-                  <span>{operator.currentTaskCount || 0} active task{operator.currentTaskCount === 1 ? "" : "s"}</span>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="hive-context-empty">No public/discoverable machine operators are marked yet.</p>
-          )}
-        </section>
-
-        <section className="hive-orc-card">
-          <h3>Capability profile</h3>
-          {capabilityProfiles.length ? (
-            <div className="hive-orc-chips">
-              {capabilityProfiles.slice(0, 8).map((profile) => (
-                <code key={`${profile.accountId}-${profile.capabilityType}-${profile.scopeLabel}`}>
-                  {profile.capabilityType} · {profile.scopeLabel || "global"}
-                </code>
-              ))}
-            </div>
-          ) : (
-            <p className="hive-context-empty">No verified machine capability profiles are surfaced in this view.</p>
-          )}
-        </section>
-
-        <section className="hive-orc-card">
-          <h3>Last evaluation packet</h3>
-          {packet ? (
-            <div className="hive-orc-packet">
-              <span>{packet.packetStatus || "packet"} · {packet.evaluatorId || "evidence orc"}</span>
-              <p>{packet.summary}</p>
-              {packet.recommendation && <p><strong>Next.</strong> {packet.recommendation}</p>}
-              <div className="hive-orc-chips">
-                {Array.isArray(packet.artifactVerdicts) && packet.artifactVerdicts.slice(0, 4).map((verdict, index) => (
-                  <code key={`${verdict.status || "verdict"}-${verdict.label || index}`}>
-                    {verdict.status || "unknown"} · {verdict.label || verdict.artifactType || "artifact"}
-                  </code>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="hive-context-empty">No evidence evaluation packet has been surfaced yet.</p>
-          )}
-        </section>
-      </div>
-    </div>
   );
 }
 
