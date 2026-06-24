@@ -30,9 +30,21 @@ import {
 } from "./board-manager-state.js";
 import { buildHiveRoutingConstraintsSnapshot } from "./hive-account-live-state.js";
 import {
+  compactBoardActionPressureForBoardManager,
+  compactEvidenceEvaluationRefreshForBoardManager,
+  compactEvidenceEvaluationPacketsForBoardManager,
+  compactHiveSecretaryStateForBoardManager,
   compactHiveProjectsForBoardManager,
+  compactNetworkTaskCandidatesForBoardManager,
   compactNetworkTaskContentForBoardManager,
+  compactNetworkTaskOutputCorpusPacketForBoardManager,
+  compactOpenFollowupsForBoardManager,
+  compactOperatorStandingPolicyForBoardManager,
+  compactOrcOperationsForBoardManager,
   compactProjectRegistryForBoardManager,
+  compactProjectPlanningForBoardManager,
+  compactRoutingConstraintsForBoardManager,
+  compactSecretarySourceForBoardManager,
   compactTaskRequestsForBoardManager,
   compactTaskStateForBoardManager,
 } from "./board-manager-source-compact.js";
@@ -418,17 +430,17 @@ function compactContextDocument(document = {}) {
     generatedAt: document.generatedAt,
     entryCount: Number(document.entryCount || 0),
     userCount: Number(document.userCount || 0),
-    groups: safeArray(document.groups).slice(0, 24).map((group) => ({
+    groups: safeArray(document.groups).slice(0, 3).map((group) => ({
       accountId: safeText(group.accountId, 160),
       displayName: safeText(group.displayName, 120),
       latestAt: group.latestAt || null,
       entryCount: Number(group.entryCount || 0),
       authorityBadges: compactAuthorityBadges(group.authorityBadges || group.authority_badges),
-      entries: safeArray(group.entries).slice(0, 12).map((entry) => ({
+      entries: safeArray(group.entries).slice(0, 1).map((entry) => ({
         id: safeText(entry.id, 180),
         accountId: safeText(entry.accountId, 160),
         displayName: safeText(entry.displayName, 120),
-        body: safeText(entry.body, 3600),
+        body: safeText(entry.body, 280),
         sourceConversationId: safeText(entry.sourceConversationId, 180),
         walletValidated: Boolean(entry.walletValidated),
         walletAddress: safeText(entry.walletAddress, 120),
@@ -436,15 +448,6 @@ function compactContextDocument(document = {}) {
         createdAt: entry.createdAt || null,
       })),
     })),
-  };
-}
-
-function compactSecretarySourcePacket(packet = {}) {
-  return {
-    digest: safeText(packet.sourcePacketDigest, 120),
-    counts: safeObject(packet.counts),
-    sourceJson: safeObject(packet.sourceJson),
-    sourceText: safeText(packet.sourceText, 24000),
   };
 }
 
@@ -1480,6 +1483,8 @@ export async function buildBoardManagerSourcePacket({
     freshness,
     orcOperations,
   });
+  const compactNetworkTaskOutputCorpus = compactNetworkTaskOutputCorpusPacketForBoardManager(networkTaskOutputCorpus);
+  const compactCorpusSummary = safeObject(compactNetworkTaskOutputCorpus?.summary);
   const packetCore = {
     schema: "pf.hive.board_manager.source.v0",
     scope: safeText(scope, 120) || "global_hive",
@@ -1488,32 +1493,41 @@ export async function buildBoardManagerSourcePacket({
     database: databaseStatus(),
     actionRegistry: boardManagerActions,
     freshness,
-    boardActionPressure,
+    boardActionPressure: compactBoardActionPressureForBoardManager(boardActionPressure),
     hiveContext: compactContextDocument(hiveContext),
-    hiveSecretarySource: compactSecretarySourcePacket(hiveSecretarySource),
-    hiveSecretary: hiveSecretaryState,
+    hiveSecretarySource: compactSecretarySourceForBoardManager(hiveSecretarySource),
+    hiveSecretary: compactHiveSecretaryStateForBoardManager(hiveSecretaryState),
     hiveProjects: compactHiveProjectsForBoardManager(hiveProjects),
-    projectPlanning,
+    projectPlanning: compactProjectPlanningForBoardManager(projectPlanning),
     projectRegistry: compactProjectRegistryForBoardManager(projectRegistry),
     taskState: compactTaskStateForBoardManager(taskState),
 	    taskRequests: compactTaskRequestsForBoardManager(taskRequests),
 	    networkTaskContent: compactNetworkTaskContentForBoardManager(networkTaskContent),
-	    networkTaskOutputCorpus,
-	    evidenceEvaluationPackets,
-	    evidenceEvaluationRefresh,
-	    operatorStandingPolicy,
+	    networkTaskOutputCorpus: compactNetworkTaskOutputCorpus,
+	    evidenceEvaluationPackets: compactEvidenceEvaluationPacketsForBoardManager(evidenceEvaluationPackets),
+	    evidenceEvaluationRefresh: compactEvidenceEvaluationRefreshForBoardManager(evidenceEvaluationRefresh),
+	    operatorStandingPolicy: compactOperatorStandingPolicyForBoardManager(operatorStandingPolicy),
 	    generationQualityPolicy,
 	    projectLeaderInputs,
-	    priorOutputCorpusSummary: safeObject(networkTaskOutputCorpus?.summary),
-	    deduplicationWatchlist: safeArray(networkTaskOutputCorpus?.deduplicationWatchlist).slice(0, 16),
+	    priorOutputCorpusSummary: {
+      projects_covered: safeArray(compactCorpusSummary.projects_covered).slice(0, 8),
+      repeated_themes: safeArray(compactCorpusSummary.repeated_themes).slice(0, 4),
+      open_actionable_items: safeArray(compactCorpusSummary.open_actionable_items).slice(0, 4),
+    },
+	    deduplicationWatchlist: safeArray(compactNetworkTaskOutputCorpus?.deduplicationWatchlist).slice(0, 4).map((item) => ({
+      theme: safeText(item.theme, 180),
+      project_id: safeText(item.project_id || item.projectId, 180),
+      prior_task_ids: safeArray(item.prior_task_ids || item.priorTaskIds).slice(0, 4),
+      why_not_repeat: safeText(item.why_not_repeat || item.whyNotRepeat, 220),
+    })),
 	    capabilityInstrumentation,
 	    badgeEligibility,
-    orcOperations,
+    orcOperations: compactOrcOperationsForBoardManager(orcOperations),
 	    taskWorkTypeVocabulary: boardManagerTaskWorkTypeVocabulary,
-	    networkTaskCandidates,
-	    routingConstraints,
-    openFollowups,
-    recentBoardManagerRuns: compactRecentRuns,
+	    networkTaskCandidates: compactNetworkTaskCandidatesForBoardManager(networkTaskCandidates),
+	    routingConstraints: compactRoutingConstraintsForBoardManager(routingConstraints),
+    openFollowups: compactOpenFollowupsForBoardManager(openFollowups),
+    recentBoardManagerRuns: compactRecentRuns.slice(0, 5),
     executionPolicy: {
       dryRunDefault: true,
       implementedActionHooks: [

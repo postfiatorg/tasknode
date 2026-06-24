@@ -84,6 +84,16 @@ async function seedAllocation({ taskId, projectId, accountId, wallet, allocation
   );
 }
 
+async function cleanupSmokeRows() {
+  await query("DELETE FROM board_manager_evidence_evaluation_packets WHERE task_id LIKE 'task_cancel_%' OR project_id LIKE 'cancel_smoke_project_%'");
+  await query("DELETE FROM task_events WHERE task_id LIKE 'task_cancel_%'");
+  await query("DELETE FROM network_project_task_refs WHERE task_id LIKE 'task_cancel_%' OR id LIKE 'ref_task_cancel_%'");
+  await query("DELETE FROM network_task_generation_jobs WHERE task_id LIKE 'task_cancel_%' OR request_id LIKE 'req_task_cancel_%'");
+  await query("DELETE FROM network_task_allocations WHERE generated_task_id LIKE 'task_cancel_%' OR id LIKE 'alloc_task_cancel_%'");
+  await query("DELETE FROM task_projections WHERE task_id LIKE 'task_cancel_%'");
+  await query("DELETE FROM network_projects WHERE id LIKE 'cancel_smoke_project_%'");
+}
+
 async function projection(taskId) {
   const r = await query(
     `SELECT status,
@@ -189,25 +199,27 @@ async function main() {
     return;
   }
   await migrateDatabase();
+  await cleanupSmokeRows();
 
-  const sourcePacket = await buildBoardManagerSourcePacket({ trigger: NS, scope: "global_hive" });
-  const run = await startBoardManagerRun({
-    scope: "global_hive",
-    managerId: NS,
-    trigger: NS,
-    sourcePacket,
-    dryRun: false,
-    model: "smoke",
-    reasoningEffort: "none",
-  });
-  const runId = run.run.id;
-  const sp = { sourcePacketDigest: "cancel_smoke_digest" };
-  const projectId = `cancel_smoke_project_${randomUUID().slice(0, 8)}`;
-  await seedProject(projectId);
-  let cancelsExecuted = 0;
+  try {
+    const sourcePacket = await buildBoardManagerSourcePacket({ trigger: NS, scope: "global_hive" });
+    const run = await startBoardManagerRun({
+      scope: "global_hive",
+      managerId: NS,
+      trigger: NS,
+      sourcePacket,
+      dryRun: false,
+      model: "smoke",
+      reasoningEffort: "none",
+    });
+    const runId = run.run.id;
+    const sp = { sourcePacketDigest: "cancel_smoke_digest" };
+    const projectId = `cancel_smoke_project_${randomUUID().slice(0, 8)}`;
+    await seedProject(projectId);
+    let cancelsExecuted = 0;
 
-  // 1. proposed network task -> refused + mirror sync (refs + allocation).
-  {
+    // 1. proposed network task -> refused + mirror sync (refs + allocation).
+    {
     const taskId = `task_cancel_proposed_${randomUUID().slice(0, 8)}`;
     const wallet = `rCancelProp${taskId.slice(-12)}`;
     const accountId = `acct_${taskId.slice(-12)}`;
@@ -374,7 +386,10 @@ async function main() {
     console.log(`direct-write terminal guard ok: ${taskId}`);
   }
 
-  console.log(JSON.stringify({ ok: true, runId, cancelsExecuted }));
+    console.log(JSON.stringify({ ok: true, runId, cancelsExecuted }));
+  } finally {
+    await cleanupSmokeRows();
+  }
 }
 
 try {
