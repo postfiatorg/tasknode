@@ -19,6 +19,10 @@ import {
 import { getAccountIdentityProfile } from "./runtime-store.js";
 import { decodeTextDataUrl, normalizeChatAttachments } from "./chat-attachment-utils.js";
 import { executeHiveImmediateResponse } from "./hive-immediate-response.js";
+import {
+  getCachedHiveRead,
+  hiveReadResponseIsCacheSafe,
+} from "./hive-route-cache.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { agentOriginForWalletSession, metadataWithMachineAgentOrigin } from "./agent-origin.js";
 import {
@@ -346,20 +350,28 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       });
       return true;
     }
-    const document = await getHiveProjectsDocument();
+    const body = await getCachedHiveRead({
+      cacheKey: "hive_projects:v1",
+      compute: async () => ({
+        ok: true,
+        document: await getHiveProjectsDocument(),
+      }),
+      isSafe: (value) => hiveReadResponseIsCacheSafe({
+        pathname: url.pathname,
+        session,
+        value,
+      }),
+    });
     await recordHiveObservabilityEvent({
       eventType: "user.hive.project_viewed",
       accountId: session?.accountId || "",
       resultStatus: "viewed",
       sourceRoute: "server/hive-routes.js::/api/hive/projects",
       metrics: {
-        projectCount: Array.isArray(document?.projects) ? document.projects.length : 0,
+        projectCount: Array.isArray(body?.document?.projects) ? body.document.projects.length : 0,
       },
     });
-    json(res, 200, {
-      ok: true,
-      document,
-    });
+    json(res, 200, body);
     return true;
   }
 
@@ -464,9 +476,10 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
         }
       }
     }
-    json(res, 200, {
+    const limit = url.searchParams.get("limit") || 120;
+    const computeBody = async () => ({
       ok: true,
-      context: await getHiveContextDocument({ limit: url.searchParams.get("limit") || 120 }),
+      context: await getHiveContextDocument({ limit }),
       secretary: await getHiveSecretaryState(),
       boardManager: {
         feed: await getBoardManagerAgentFeed({
@@ -478,6 +491,18 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
         messages: accountId ? await getBoardManagerUserMessages({ accountId, limit: 12 }) : [],
       },
     });
+    const body = accountId
+      ? await computeBody()
+      : await getCachedHiveRead({
+          cacheKey: `hive_context:v1:limit=${safeText(limit, 20)}`,
+          compute: computeBody,
+          isSafe: (value) => hiveReadResponseIsCacheSafe({
+            pathname: url.pathname,
+            session,
+            value,
+          }),
+        });
+    json(res, 200, body);
     return true;
   }
 
