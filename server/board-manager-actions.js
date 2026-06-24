@@ -1521,10 +1521,9 @@ async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
   // Capacity is released automatically: listNetworkTaskCapacityBlockers excludes
   // tasks whose task_projections.status is terminal, so this cancelled/refused
   // task no longer blocks the candidate. The agent_cancelled metadata marker,
-  // together with the reducer persist-time guard in repositories/tasks.js,
-  // prevents the PFTL cache reducer from reviving this task on ANY later
-  // re-derivation (a lagging contributor pointer or even a stale reward pointer),
-  // so it can never reach the reward queue and can never be marked rewarded.
+  // together with the reducer guard in repositories/tasks.js and the direct-write
+  // guard in offchain-task-lifecycle.js, prevents stale lifecycle events from
+  // reviving or rewarding this task after Board Manager terminalizes it.
   return {
     executed: true,
     taskId,

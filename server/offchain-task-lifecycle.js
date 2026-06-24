@@ -3,6 +3,7 @@ import { transaction } from "./db/pool.js";
 import { signatureRecord, taskTransitionSignatureRequired } from "./task-transition-signatures.js";
 
 const DIRECT_WRITE_SOURCE = "direct_write";
+const TERMINAL_PROJECTION_STATUSES = Object.freeze(["refused", "cancelled", "rewarded"]);
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -198,19 +199,71 @@ export async function applyOffchainTaskTransitionWithClient(client, {
   };
   const projectionUpdate = await client.query(
     `
+      WITH current_projection AS (
+        SELECT task_id,
+               (
+                 COALESCE(metadata_json, '{}'::jsonb) ? 'agent_cancelled'
+                 OR (status = ANY($10::text[]) AND status <> $2)
+               ) AS preserve_terminal
+        FROM task_projections
+        WHERE task_id = $1
+          AND account_id = $7
+          AND subject_wallet = $8
+        LIMIT 1
+      )
       UPDATE task_projections
-         SET status = $2,
-             event_count = COALESCE(event_count, 0) + CASE WHEN $9::boolean THEN 1 ELSE 0 END,
-             last_event_tx_hash = $3,
-             last_event_cid = $4,
-             last_event_at = now(),
-             source = $5,
-             metadata_json = COALESCE(metadata_json, '{}'::jsonb) || $6::jsonb,
+         SET status = CASE
+               WHEN current_projection.preserve_terminal THEN task_projections.status
+               ELSE $2
+             END,
+             event_count = CASE
+               WHEN current_projection.preserve_terminal THEN task_projections.event_count
+               ELSE COALESCE(event_count, 0) + CASE WHEN $9::boolean THEN 1 ELSE 0 END
+             END,
+             last_event_tx_hash = CASE
+               WHEN current_projection.preserve_terminal THEN task_projections.last_event_tx_hash
+               ELSE $3
+             END,
+             last_event_cid = CASE
+               WHEN current_projection.preserve_terminal THEN task_projections.last_event_cid
+               ELSE $4
+             END,
+             last_event_at = CASE
+               WHEN current_projection.preserve_terminal THEN task_projections.last_event_at
+               ELSE now()
+             END,
+             source = CASE
+               WHEN current_projection.preserve_terminal THEN task_projections.source
+               ELSE $5
+             END,
+             metadata_json = COALESCE(metadata_json, '{}'::jsonb) ||
+               CASE
+                 WHEN current_projection.preserve_terminal THEN
+                   jsonb_build_object(
+                     'offchainLifecycleTerminalGuard',
+                     jsonb_build_object(
+                       'preserved', true,
+                       'lastSkippedEventId', $11::text,
+                       'lastSkippedTransition', $2::text,
+                       'lastSkippedAt', $12::text,
+                       'reason',
+                         CASE
+                           WHEN COALESCE(task_projections.metadata_json, '{}'::jsonb) ? 'agent_cancelled'
+                           THEN 'agent_cancelled_terminal'
+                           ELSE 'terminal_status'
+                         END
+                     )
+                   )
+                 ELSE $6::jsonb
+               END,
              updated_at = now()
-       WHERE task_id = $1
-         AND account_id = $7
-         AND subject_wallet = $8
-       RETURNING task_id, status, event_count, updated_at
+       FROM current_projection
+       WHERE task_projections.task_id = current_projection.task_id
+       RETURNING task_projections.task_id,
+                 task_projections.status,
+                 task_projections.event_count,
+                 task_projections.updated_at,
+                 current_projection.preserve_terminal AS terminal_preserved
     `,
     [
       safeText(task.task_id, 180),
@@ -222,6 +275,9 @@ export async function applyOffchainTaskTransitionWithClient(client, {
       safeText(accountId, 180),
       safeText(walletAddress, 180),
       eventInserted,
+      TERMINAL_PROJECTION_STATUSES,
+      event.eventId,
+      event.provenanceJson.recordedAt,
     ]
   );
   if (projectionUpdate.rowCount < 1) {
@@ -232,6 +288,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
     source: DIRECT_WRITE_SOURCE,
     transition: normalizedTransition,
     eventInserted,
+    terminalPreserved: projectionUpdate.rows[0]?.terminal_preserved === true,
     event,
   };
 }

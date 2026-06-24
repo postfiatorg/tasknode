@@ -8,6 +8,7 @@ if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
 const { closePool, databaseEnabled, query } = await import("../server/db/pool.js");
 const { migrateDatabase } = await import("../server/db/migrate.js");
 const { importTaskReplayReceipt } = await import("../server/repositories/tasks.js");
+const { applyOffchainTaskTransition } = await import("../server/offchain-task-lifecycle.js");
 const { executeBoardManagerDecision } = await import("../server/board-manager-actions.js");
 const {
   buildBoardManagerSourcePacket,
@@ -85,7 +86,16 @@ async function seedAllocation({ taskId, projectId, accountId, wallet, allocation
 
 async function projection(taskId) {
   const r = await query(
-    "SELECT status, reward_actual_pft, metadata_json->>'agent_cancelled' AS agent_cancelled FROM task_projections WHERE task_id = $1",
+    `SELECT status,
+            reward_actual_pft,
+            source,
+            event_count,
+            last_event_tx_hash,
+            last_event_cid,
+            metadata_json->>'agent_cancelled' AS agent_cancelled,
+            metadata_json->'offchainLifecycleTerminalGuard' AS terminal_guard
+       FROM task_projections
+      WHERE task_id = $1`,
     [taskId]
   );
   return r.rows[0] || {};
@@ -315,6 +325,53 @@ async function main() {
     assert.notEqual(Number(p.reward_actual_pft || 0), 15000, "guard: reward replay must not set reward_actual_pft");
     assert.equal(p.agent_cancelled, "true");
     console.log(`reducer replay guard ok: ${taskId}`);
+  }
+
+  // 8. direct-write guard: after the task-pointer reducer is retired, a late
+  // direct event must still not revive a Board-Manager terminal projection.
+  {
+    const taskId = `task_cancel_direct_${randomUUID().slice(0, 8)}`;
+    const wallet = `rCancelDirect${taskId.slice(-12)}`;
+    const accountId = `acct_${taskId.slice(-12)}`;
+    await seedProjection({ taskId, accountId, wallet, status: "proposed" });
+    await seedRef({ taskId, projectId, source: "network_task_generation", state: "proposed", wallet });
+    const res = await cancelDecision(runId, sp, taskId, "direct-write guard seed");
+    assert.equal(res.result?.executed, true);
+    const before = await projection(taskId);
+    assert.equal(before.status, "refused");
+    assert.equal(before.agent_cancelled, "true");
+    const recorded = await applyOffchainTaskTransition({
+      accountId,
+      walletAddress: wallet,
+      task: {
+        task_id: taskId,
+        request_id: `req_${taskId}`,
+        status: "accepted",
+      },
+      transition: "submitted",
+      payload: {
+        offchainPayload: {
+          event_id: `evt_direct_after_cancel_${taskId.slice(-8)}`,
+          task_id: taskId,
+          schema: "pf.task.submission.v1",
+          evidence: { artifact_type: "text", value: "Late stale direct-write smoke event." },
+        },
+      },
+      metadata: {
+        endpoint: "smoke",
+        reason: "direct_write_terminal_guard",
+      },
+    });
+    assert.equal(recorded.terminalPreserved, true);
+    const after = await projection(taskId);
+    assert.equal(after.status, "refused", "guard: direct write must not revive status");
+    assert.equal(after.source, before.source, "guard: direct write must not replace projection source");
+    assert.equal(after.last_event_tx_hash || "", before.last_event_tx_hash || "", "guard: direct write must not replace last event tx");
+    assert.equal(after.last_event_cid || "", before.last_event_cid || "", "guard: direct write must not replace last event cid");
+    assert.equal(Number(after.event_count || 0), Number(before.event_count || 0), "guard: direct write must not increment projection event count");
+    assert.equal(after.agent_cancelled, "true");
+    assert.ok(after.terminal_guard, "guard: direct write terminal skip should be recorded in metadata");
+    console.log(`direct-write terminal guard ok: ${taskId}`);
   }
 
   console.log(JSON.stringify({ ok: true, runId, cancelsExecuted }));

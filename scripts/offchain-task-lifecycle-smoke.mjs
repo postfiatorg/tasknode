@@ -7,7 +7,7 @@ import {
   transitionForTaskAction,
 } from "../server/offchain-task-lifecycle.js";
 
-function mockClient({ projectionRowCount = 1 } = {}) {
+function mockClient({ projectionRowCount = 1, terminalPreserved = false } = {}) {
   const calls = [];
   return {
     calls,
@@ -16,7 +16,7 @@ function mockClient({ projectionRowCount = 1 } = {}) {
       if (/UPDATE task_projections/i.test(sql)) {
         return {
           rowCount: projectionRowCount,
-          rows: [{ task_id: params[0], status: params[1], event_count: 2 }],
+          rows: [{ task_id: params[0], status: params[1], event_count: 2, terminal_preserved: terminalPreserved }],
         };
       }
       return { rowCount: 1, rows: [] };
@@ -89,10 +89,36 @@ assert.equal(insertedSignature.verification.present, false);
 assert.equal(insertedSignature.verification.reason, "signature_missing");
 
 assert.match(updateCall.sql, /UPDATE task_projections/i);
+assert.match(updateCall.sql, /current_projection AS/i);
+assert.match(updateCall.sql, /preserve_terminal/i);
+assert.match(updateCall.sql, /agent_cancelled_terminal/i);
 assert.equal(updateCall.params[0], "task_smoke");
 assert.equal(updateCall.params[1], "submitted");
 assert.equal(updateCall.params[4], "direct_write");
 assert.equal(updateCall.params[8], true);
+assert.deepEqual(updateCall.params[9], ["refused", "cancelled", "rewarded"]);
+assert.equal(updateCall.params[10], "evt_smoke_submission");
+assert.equal(result.terminalPreserved, false);
+
+const terminalClient = mockClient({ terminalPreserved: true });
+const terminalResult = await applyOffchainTaskTransitionWithClient(terminalClient, {
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  task: {
+    task_id: "task_terminal_smoke",
+    request_id: "req_terminal_smoke",
+    status: "accepted",
+  },
+  transition: "submitted",
+  payload: {
+    offchainPayload: {
+      event_id: "evt_terminal_smoke",
+      task_id: "task_terminal_smoke",
+      schema: "pf.task.submission.v1",
+    },
+  },
+});
+assert.equal(terminalResult.terminalPreserved, true);
 
 const missClient = mockClient({ projectionRowCount: 0 });
 await assert.rejects(
