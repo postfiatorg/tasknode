@@ -82,6 +82,9 @@ assert.equal(insertedPayload.transition, "submitted");
 const insertedProvenance = JSON.parse(insertCall.params[11]);
 assert.equal(insertedProvenance.source, "direct_write");
 assert.equal(insertedProvenance.mode, "server_authoritative_postgres");
+const insertedSignature = JSON.parse(insertCall.params[12]);
+assert.equal(insertedSignature.verification.present, false);
+assert.equal(insertedSignature.verification.reason, "signature_missing");
 
 assert.match(updateCall.sql, /UPDATE task_projections/i);
 assert.equal(updateCall.params[0], "task_smoke");

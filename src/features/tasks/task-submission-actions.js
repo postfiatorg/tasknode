@@ -1,4 +1,5 @@
 import { requestJson } from "../../api";
+import { buildActorTransitionSignature } from "./task-transition-signature.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -287,6 +288,14 @@ export async function publishTaskEvidenceSubmission({
   });
 
   if (directOffchain) {
+    const actorSignature = await buildActorTransitionSignature({
+      accountId,
+      linkedWalletAddress,
+      payload: submissionPayload,
+      taskId,
+      transition: submissionPayload.phase,
+      walletSecret,
+    });
     progress("Recording evidence");
     const submitted = await requestJson("/api/tasks/submission", {
       method: "POST",
@@ -295,6 +304,7 @@ export async function publishTaskEvidenceSubmission({
         phase: "submit",
         taskId,
         offchainPayload: submissionPayload,
+        actorSignature,
       }),
     });
     if (!submitted.ok || !submitted.body?.ok) {

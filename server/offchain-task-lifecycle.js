@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { transaction } from "./db/pool.js";
+import { signatureRecord, taskTransitionSignatureRequired } from "./task-transition-signatures.js";
 
 const DIRECT_WRITE_SOURCE = "direct_write";
 
@@ -91,6 +92,11 @@ export function offchainTaskEventPayload({
     metadata: safeObject(metadata),
   };
   const payloadDigest = sha256(JSON.stringify(eventPayload));
+  const signatureJson = signatureRecord({
+    payload: eventPayload,
+    signature: payload?.actorSignature || payload?.actor_signature || providedPayload.actor_signature || {},
+    required: taskTransitionSignatureRequired(),
+  });
   return {
     eventId,
     schema,
@@ -98,6 +104,7 @@ export function offchainTaskEventPayload({
     sourceCid: safeText(eventPayload.cid, 240) || sourceRefForEvent(eventId),
     eventDigest: payloadDigest,
     payloadJson: eventPayload,
+    signatureJson,
     pointerJson: {
       source: DIRECT_WRITE_SOURCE,
       offchain: true,
@@ -149,9 +156,10 @@ export async function applyOffchainTaskTransitionWithClient(client, {
         payload_json,
         pointer_json,
         write_source,
-        provenance_json
+        provenance_json,
+        signature_json
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12::jsonb)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12::jsonb, $13::jsonb)
       ON CONFLICT (task_id, event_type, source_tx_hash, source_cid)
       DO NOTHING
       RETURNING id
@@ -169,6 +177,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
       JSON.stringify(event.pointerJson),
       DIRECT_WRITE_SOURCE,
       JSON.stringify(event.provenanceJson),
+      JSON.stringify(event.signatureJson),
     ]
   );
   const eventInserted = eventInsert.rowCount > 0;
@@ -180,6 +189,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
       lastTransition: normalizedTransition,
       lastRecordedAt: event.provenanceJson.recordedAt,
       lastEventInserted: eventInserted,
+      lastSignatureVerified: event.signatureJson?.verification?.verified === true,
     },
   };
   const projectionUpdate = await client.query(
