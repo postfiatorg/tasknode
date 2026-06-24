@@ -50,6 +50,18 @@ export function getPool() {
   return pool;
 }
 
+export function poolMetrics() {
+  return {
+    configured: Boolean(databaseUrl()),
+    enabled: databaseEnabled(),
+    max: maxConnections,
+    total: pool?.totalCount || 0,
+    idle: pool?.idleCount || 0,
+    waiting: pool?.waitingCount || 0,
+    lastError,
+  };
+}
+
 export async function query(text, params = []) {
   const db = getPool();
   if (!db) {

@@ -45,6 +45,7 @@ import { chatConversationExistsForAccount } from "./repositories/chat-conversati
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
+import { observeApiRoute } from "./route-observability.js";
 import { authWalletStart, authWalletVerify } from "./auth-wallet-login.js";
 import { oauthStateCookieName, responseHeadersForAuthResult } from "./auth-oauth-http.js";
 import { telegramAuthHeaders } from "./auth-connected-accounts.js";
@@ -412,6 +413,7 @@ async function serveStatic(url, res) {
 async function routeApi(req, url, res) {
   const sessionId = cookieValue(req, sessionCookieName);
   const session = getSession(sessionId);
+  observeApiRoute({ req, res, url, session });
   let statePromise = null;
   const getState = () => {
     if (!statePromise) {
