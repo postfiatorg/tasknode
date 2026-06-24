@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  applyOffchainTaskOfferWithClient,
   applyOffchainTaskTransitionWithClient,
   offchainTaskLifecycleDualWriteEnabled,
   offchainTaskLifecycleEnabled,
@@ -119,6 +120,76 @@ const terminalResult = await applyOffchainTaskTransitionWithClient(terminalClien
   },
 });
 assert.equal(terminalResult.terminalPreserved, true);
+
+const offerClient = mockClient();
+const offerResult = await applyOffchainTaskOfferWithClient(offerClient, {
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  offerPayload: {
+    schema: "pf.task.offer.v1",
+    event_id: "evt_smoke_offer",
+    task_id: "task_offer_smoke",
+    request_id: "req_offer_smoke",
+    actor_wallet: "rAuthoritySmoke",
+    subject_wallet: "rSmokeWallet",
+    authority_wallet: "rAuthoritySmoke",
+    allocation_wallet: "rAllocationSmoke",
+    status: "proposed",
+    title: "Direct offer smoke",
+    description: "A direct-written offer should create its projection without pointer reduction.",
+    task_kind: "personal",
+    steps: ["Inspect the direct-write offer."],
+    submission_requirement: { type: "text", criteria: "Submit the observation." },
+    verification_policy: { followup_required: false, mode: "standard", verification_type: "text" },
+    reward_offer: { amount_estimate_pft: "1.25" },
+    accept_by: "2026-06-24T23:59:59.000Z",
+    deadline_at: null,
+    generation: { request_bundle_cid: "QmSmokeRequestBundle", model: "smoke" },
+  },
+});
+assert.equal(offerResult.ok, true);
+assert.equal(offerResult.event.eventId, "evt_smoke_offer");
+assert.equal(offerResult.event.schema, "pf.task.offer.v1");
+assert.equal(offerResult.event.sourceTxHash, "offchain:evt_smoke_offer");
+assert.equal(offerClient.calls.length, 2);
+const [offerInsertCall, offerProjectionCall] = offerClient.calls;
+assert.match(offerInsertCall.sql, /INSERT INTO task_events/i);
+assert.equal(offerInsertCall.params[4], "pf.task.offer.v1");
+assert.equal(offerInsertCall.params[10], "direct_write");
+assert.match(offerProjectionCall.sql, /INSERT INTO task_projections/i);
+assert.match(offerProjectionCall.sql, /agent_cancelled_terminal/i);
+assert.equal(offerProjectionCall.params[0], "task_offer_smoke");
+assert.equal(offerProjectionCall.params[9], 1.25);
+assert.equal(offerProjectionCall.params[19], "direct_write");
+assert.equal(offerProjectionCall.params[23], true);
+
+const rewardClient = mockClient();
+const rewardResult = await applyOffchainTaskTransitionWithClient(rewardClient, {
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  task: {
+    task_id: "task_reward_smoke",
+    request_id: "req_reward_smoke",
+    status: "verification_response_submitted",
+  },
+  transition: "rewarded",
+  payload: {
+    sourceTxHash: "REAL_REWARD_TX",
+    sourceCid: "QmRewardForensics",
+    offchainPayload: {
+      event_id: "evt_reward_smoke",
+      task_id: "task_reward_smoke",
+      schema: "pf.reward.v1",
+      reward_pft: "4.50",
+      economic_reward_pft: "4.50",
+    },
+  },
+});
+assert.equal(rewardResult.event.schema, "pf.reward.v1");
+assert.equal(rewardResult.event.sourceTxHash, "REAL_REWARD_TX");
+assert.equal(rewardResult.event.sourceCid, "QmRewardForensics");
+assert.match(rewardClient.calls[1].sql, /reward_actual_pft/i);
+assert.equal(rewardClient.calls[1].params[12], 4.5);
 
 const missClient = mockClient({ projectionRowCount: 0 });
 await assert.rejects(

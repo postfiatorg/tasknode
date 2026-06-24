@@ -13,6 +13,11 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function numeric(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : 0;
+}
+
 function sha256(value = "") {
   return createHash("sha256").update(String(value || ""), "utf8").digest("hex");
 }
@@ -48,9 +53,13 @@ export function transitionForSubmissionMode(mode = "") {
   return "";
 }
 
-function eventSchemaForTransition(transition = "") {
+function eventSchemaForTransition(transition = "", providedPayload = {}) {
+  const providedSchema = safeText(providedPayload.schema, 120);
+  if (providedSchema.startsWith("pf.")) return providedSchema;
+  if (transition === "proposed") return "pf.task.offer.v1";
   if (transition === "submitted") return "pf.task.submission.v1";
   if (transition === "verification_response_submitted") return "pf.task.verification_response.v1";
+  if (transition === "rewarded") return "pf.reward.v1";
   return "pf.task.update.v1";
 }
 
@@ -58,8 +67,33 @@ function sourceRefForEvent(eventId = "") {
   return `postgres:${eventId}`;
 }
 
-function txRefForEvent(eventId = "") {
-  return `offchain:${eventId}`;
+function txRefForEvent(eventId = "", payload = {}, providedPayload = {}) {
+  return safeText(
+    payload?.sourceTxHash ||
+      payload?.source_tx_hash ||
+      payload?.txHash ||
+      payload?.tx_hash ||
+      providedPayload.sourceTxHash ||
+      providedPayload.source_tx_hash ||
+      providedPayload.txHash ||
+      providedPayload.tx_hash,
+    240
+  ) || `offchain:${eventId}`;
+}
+
+function cidRefForEvent(eventId = "", payload = {}, providedPayload = {}, eventPayload = {}) {
+  return safeText(
+    payload?.sourceCid ||
+      payload?.source_cid ||
+      payload?.cid ||
+      payload?.eventCid ||
+      payload?.event_cid ||
+      providedPayload.sourceCid ||
+      providedPayload.source_cid ||
+      providedPayload.cid ||
+      eventPayload.cid,
+    240
+  ) || sourceRefForEvent(eventId);
 }
 
 export function offchainTaskEventPayload({
@@ -71,10 +105,10 @@ export function offchainTaskEventPayload({
   metadata = {},
   dualWrite = false,
 } = {}) {
-  const schema = eventSchemaForTransition(transition);
   const providedPayload = safeObject(
     payload?.offchainPayload || payload?.offchain_payload || payload?.eventPayload || payload?.event_payload
   );
+  const schema = eventSchemaForTransition(transition, providedPayload);
   const eventId = safeText(providedPayload.event_id || providedPayload.eventId, 180) || `task_evt_${randomUUID()}`;
   const recordedAt = nowIso();
   const eventPayload = {
@@ -99,11 +133,11 @@ export function offchainTaskEventPayload({
     signature: payload?.actorSignature || payload?.actor_signature || providedPayload.actor_signature || {},
     required: taskTransitionSignatureRequired(),
   });
-  return {
+  const result = {
     eventId,
     schema,
-    sourceTxHash: txRefForEvent(eventId),
-    sourceCid: safeText(eventPayload.cid, 240) || sourceRefForEvent(eventId),
+    sourceTxHash: txRefForEvent(eventId, payload, providedPayload),
+    sourceCid: cidRefForEvent(eventId, payload, providedPayload, eventPayload),
     eventDigest: payloadDigest,
     payloadJson: eventPayload,
     signatureJson,
@@ -123,6 +157,251 @@ export function offchainTaskEventPayload({
       transition,
       recordedAt,
     },
+  };
+  return result;
+}
+
+function taskOfferProjectionMetadata({ event = {}, offerPayload = {}, metadata = {} } = {}) {
+  return {
+    generatedTask: safeObject(offerPayload),
+    taskgen: safeObject(offerPayload.generation),
+    cids: {
+      offer: event.sourceCid,
+    },
+    txs: {
+      offer: {
+        tx_hash: event.sourceTxHash,
+        source: DIRECT_WRITE_SOURCE,
+      },
+    },
+    offchainLifecycle: {
+      enabled: true,
+      lastEventId: event.eventId,
+      lastTransition: "proposed",
+      lastRecordedAt: event.provenanceJson.recordedAt,
+      lastEventInserted: true,
+      dualWrite: false,
+    },
+    ...safeObject(metadata),
+  };
+}
+
+export async function applyOffchainTaskOfferWithClient(client, {
+  accountId = "",
+  walletAddress = "",
+  offerPayload = {},
+  metadata = {},
+} = {}) {
+  const payload = safeObject(offerPayload);
+  const taskId = safeText(payload.task_id, 180);
+  const subjectWallet = safeText(walletAddress || payload.subject_wallet, 180);
+  if (!taskId) throw new Error("offchain_offer_task_id_required");
+  if (!subjectWallet) throw new Error("offchain_offer_subject_wallet_required");
+  const task = {
+    task_id: taskId,
+    request_id: safeText(payload.request_id, 180),
+    status: "",
+  };
+  const event = offchainTaskEventPayload({
+    accountId,
+    walletAddress: subjectWallet,
+    task,
+    transition: "proposed",
+    payload: { offchainPayload: payload },
+    metadata,
+  });
+  const eventInsert = await client.query(
+    `
+      INSERT INTO task_events (
+        id,
+        task_id,
+        account_id,
+        wallet_address,
+        event_type,
+        source_tx_hash,
+        source_cid,
+        event_digest,
+        payload_json,
+        pointer_json,
+        write_source,
+        provenance_json,
+        signature_json
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12::jsonb, $13::jsonb)
+      ON CONFLICT (task_id, event_type, source_tx_hash, source_cid)
+      DO NOTHING
+      RETURNING id
+    `,
+    [
+      event.eventId,
+      taskId,
+      safeText(accountId, 180),
+      subjectWallet,
+      event.schema,
+      event.sourceTxHash,
+      event.sourceCid,
+      event.eventDigest,
+      JSON.stringify(event.payloadJson),
+      JSON.stringify(event.pointerJson),
+      DIRECT_WRITE_SOURCE,
+      JSON.stringify(event.provenanceJson),
+      JSON.stringify(event.signatureJson),
+    ]
+  );
+  const eventInserted = eventInsert.rowCount > 0;
+  const metadataJson = taskOfferProjectionMetadata({
+    event: {
+      ...event,
+      provenanceJson: {
+        ...event.provenanceJson,
+        lastEventInserted: eventInserted,
+      },
+    },
+    offerPayload: payload,
+    metadata,
+  });
+  metadataJson.offchainLifecycle.lastEventInserted = eventInserted;
+  const projectionResult = await client.query(
+    `
+      INSERT INTO task_projections (
+        task_id,
+        account_id,
+        subject_wallet,
+        authority_wallet,
+        allocation_wallet,
+        request_id,
+        status,
+        title,
+        description,
+        task_kind,
+        reward_offer_pft,
+        reward_actual_pft,
+        request_bundle_cid,
+        context_cid,
+        submission_type,
+        submission_requirement_text,
+        verification_policy_json,
+        accept_by,
+        deadline_at,
+        event_count,
+        last_event_tx_hash,
+        last_event_cid,
+        source,
+        metadata_json
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, 'proposed', $7, $8, $9,
+        $10, 0, $11, $12, $13, $14, $15::jsonb, $16, $17,
+        CASE WHEN $24::boolean THEN 1 ELSE 0 END, $18, $19, $20, $21::jsonb
+      )
+      ON CONFLICT (task_id)
+      DO UPDATE SET
+        account_id = EXCLUDED.account_id,
+        subject_wallet = EXCLUDED.subject_wallet,
+        authority_wallet = EXCLUDED.authority_wallet,
+        allocation_wallet = EXCLUDED.allocation_wallet,
+        request_id = EXCLUDED.request_id,
+        status = CASE
+          WHEN COALESCE(task_projections.metadata_json, '{}'::jsonb) ? 'agent_cancelled'
+            OR task_projections.status = ANY($22::text[])
+          THEN task_projections.status
+          ELSE EXCLUDED.status
+        END,
+        title = EXCLUDED.title,
+        description = EXCLUDED.description,
+        task_kind = EXCLUDED.task_kind,
+        reward_offer_pft = EXCLUDED.reward_offer_pft,
+        request_bundle_cid = EXCLUDED.request_bundle_cid,
+        context_cid = EXCLUDED.context_cid,
+        submission_type = EXCLUDED.submission_type,
+        submission_requirement_text = EXCLUDED.submission_requirement_text,
+        verification_policy_json = EXCLUDED.verification_policy_json,
+        accept_by = EXCLUDED.accept_by,
+        deadline_at = EXCLUDED.deadline_at,
+        event_count = CASE
+          WHEN COALESCE(task_projections.metadata_json, '{}'::jsonb) ? 'agent_cancelled'
+            OR task_projections.status = ANY($22::text[])
+          THEN task_projections.event_count
+          ELSE COALESCE(task_projections.event_count, 0) + CASE WHEN $24::boolean THEN 1 ELSE 0 END
+        END,
+        last_event_tx_hash = CASE
+          WHEN COALESCE(task_projections.metadata_json, '{}'::jsonb) ? 'agent_cancelled'
+            OR task_projections.status = ANY($22::text[])
+          THEN task_projections.last_event_tx_hash
+          ELSE EXCLUDED.last_event_tx_hash
+        END,
+        last_event_cid = CASE
+          WHEN COALESCE(task_projections.metadata_json, '{}'::jsonb) ? 'agent_cancelled'
+            OR task_projections.status = ANY($22::text[])
+          THEN task_projections.last_event_cid
+          ELSE EXCLUDED.last_event_cid
+        END,
+        source = CASE
+          WHEN COALESCE(task_projections.metadata_json, '{}'::jsonb) ? 'agent_cancelled'
+            OR task_projections.status = ANY($22::text[])
+          THEN task_projections.source
+          ELSE EXCLUDED.source
+        END,
+        metadata_json = COALESCE(task_projections.metadata_json, '{}'::jsonb) || $21::jsonb ||
+          CASE
+            WHEN COALESCE(task_projections.metadata_json, '{}'::jsonb) ? 'agent_cancelled'
+              OR task_projections.status = ANY($22::text[])
+            THEN jsonb_build_object(
+              'offchainLifecycleTerminalGuard',
+              jsonb_build_object(
+                'preserved', true,
+                'lastSkippedEventId', $23::text,
+                'lastSkippedTransition', 'proposed',
+                'lastSkippedAt', $25::text,
+                'reason',
+                  CASE
+                    WHEN COALESCE(task_projections.metadata_json, '{}'::jsonb) ? 'agent_cancelled'
+                    THEN 'agent_cancelled_terminal'
+                    ELSE 'terminal_status'
+                  END
+              )
+            )
+            ELSE '{}'::jsonb
+          END,
+        updated_at = now()
+      RETURNING task_id, status, event_count
+    `,
+    [
+      taskId,
+      safeText(accountId, 180),
+      subjectWallet,
+      safeText(payload.authority_wallet || payload.actor_wallet, 180),
+      safeText(payload.allocation_wallet, 180),
+      safeText(payload.request_id, 180),
+      safeText(payload.title, 240),
+      safeText(payload.description, 12000),
+      safeText(payload.task_kind, 80),
+      numeric(payload.reward_offer?.amount_estimate_pft),
+      safeText(payload.generation?.request_bundle_cid, 240),
+      safeText(safeObject(payload.context_refs?.[0]).cid, 240),
+      safeText(payload.submission_requirement?.type, 120),
+      safeText(payload.submission_requirement?.criteria || payload.submission_requirement?.description, 4000),
+      JSON.stringify(safeObject(payload.verification_policy)),
+      safeText(payload.accept_by, 80) || null,
+      safeText(payload.deadline_at, 80) || null,
+      event.sourceTxHash,
+      event.sourceCid,
+      DIRECT_WRITE_SOURCE,
+      JSON.stringify(metadataJson),
+      TERMINAL_PROJECTION_STATUSES,
+      event.eventId,
+      eventInserted,
+      event.provenanceJson.recordedAt,
+    ]
+  );
+  if (projectionResult.rowCount < 1) throw new Error("offchain_task_offer_projection_missed");
+  return {
+    ok: true,
+    source: DIRECT_WRITE_SOURCE,
+    transition: "proposed",
+    eventInserted,
+    event,
+    projection: projectionResult.rows[0],
   };
 }
 
@@ -197,6 +476,10 @@ export async function applyOffchainTaskTransitionWithClient(client, {
       dualWrite: Boolean(dualWrite),
     },
   };
+  const rewardActualPft =
+    normalizedTransition === "rewarded"
+      ? numeric(event.payloadJson.economic_reward_pft || event.payloadJson.reward_pft)
+      : 0;
   const projectionUpdate = await client.query(
     `
       WITH current_projection AS (
@@ -227,6 +510,11 @@ export async function applyOffchainTaskTransitionWithClient(client, {
              last_event_cid = CASE
                WHEN current_projection.preserve_terminal THEN task_projections.last_event_cid
                ELSE $4
+             END,
+             reward_actual_pft = CASE
+               WHEN current_projection.preserve_terminal THEN task_projections.reward_actual_pft
+               WHEN $13::numeric > 0 THEN $13::numeric
+               ELSE task_projections.reward_actual_pft
              END,
              last_event_at = CASE
                WHEN current_projection.preserve_terminal THEN task_projections.last_event_at
@@ -278,6 +566,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
       TERMINAL_PROJECTION_STATUSES,
       event.eventId,
       event.provenanceJson.recordedAt,
+      rewardActualPft,
     ]
   );
   if (projectionUpdate.rowCount < 1) {
@@ -297,6 +586,14 @@ export async function applyOffchainTaskTransition(input = {}) {
   let result = null;
   await transaction(async (client) => {
     result = await applyOffchainTaskTransitionWithClient(client, input);
+  });
+  return result;
+}
+
+export async function applyOffchainTaskOffer(input = {}) {
+  let result = null;
+  await transaction(async (client) => {
+    result = await applyOffchainTaskOfferWithClient(client, input);
   });
   return result;
 }

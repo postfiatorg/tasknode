@@ -11,6 +11,7 @@ import { preparePftPointerTransaction, submitSignedPftTransaction } from "./pftl
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { query, transaction } from "./db/pool.js";
 import { getTaskDetail } from "./repositories/tasks.js";
+import { applyOffchainTaskTransition } from "./offchain-task-lifecycle.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
 import { moneySeedFromEnv } from "./production-guards.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
@@ -1250,40 +1251,6 @@ async function syncTaskWallets({
   return { syncs, reduced, targeted: Boolean(targeted.claimed > 0) };
 }
 
-function scheduleTaskWalletSync({
-  accountId,
-  subjectWallet,
-  authorityWallet,
-  allocationWallet = "",
-  taskId,
-  txHash = "",
-  phase,
-  logger = console,
-}) {
-  setTimeout(() => {
-    syncTaskWallets({ accountId, subjectWallet, authorityWallet, allocationWallet, taskId, txHash })
-      .then((sync) => {
-        logger.info?.("task_review_projection_refresh_finished", {
-          taskId,
-          phase,
-          syncs: Array.isArray(sync?.syncs) ? sync.syncs.length : 0,
-          targeted: Boolean(sync?.targeted),
-        });
-      })
-      .catch((error) => {
-        logger.warn?.("task_review_projection_refresh_failed", {
-          taskId,
-          phase,
-          error: safeText(error?.message || error, 1000),
-        });
-      });
-  }, 0);
-  return {
-    scheduled: true,
-    source: "async_projection_refresh",
-  };
-}
-
 async function claimSubmittedTasks({ limit = 1 } = {}) {
   const staleSeconds = workerClaimStaleSeconds();
   return transaction(async (client) => {
@@ -1548,52 +1515,44 @@ function publicationLockPublishedRef(lockRow = {}) {
   return { txHash, cid };
 }
 
-async function finalizeWorkerPublish({
-  taskId,
-  workerName,
-  published = {},
-  expectedStatuses = [],
-  accountId = "",
-  subjectWallet = "",
-  authorityWallet = "",
-  allocationWallet = "",
-  phase = "",
-  logger = console,
-}) {
-  await syncTaskWallets({
-    accountId,
-    subjectWallet,
-    authorityWallet,
-    allocationWallet,
-    taskId,
-    txHash: published.txHash,
-  });
-  await markWorkerPublished({ taskId, workerName, published });
-  const statusResult = await query(
-    "SELECT status FROM task_projections WHERE task_id = $1 LIMIT 1",
-    [taskId]
-  );
-  const status = safeText(statusResult.rows[0]?.status, 80).toLowerCase();
-  const expected = expectedStatuses.map((value) => safeText(value, 80).toLowerCase()).filter(Boolean);
-  if (expected.includes(status)) {
-    logger.info?.("task_worker_publish_confirmed", { taskId, workerName, phase, status });
-    return { ok: true, status };
-  }
+function directWritePublishedRef(recorded = {}, extra = {}) {
+  const event = safeObject(recorded.event);
+  return {
+    txHash: safeText(event.sourceTxHash, 240),
+    cid: safeText(event.sourceCid, 240),
+    digest: event.eventDigest ? `sha256:${event.eventDigest}` : "",
+    ...safeObject(extra),
+  };
+}
 
-  logger.warn?.("task_worker_publish_projection_lag", {
-    taskId,
-    workerName,
-    phase,
-    status,
-    expectedStatuses: expected,
+async function directWriteReviewTransition({
+  row = {},
+  transition = "",
+  payload = {},
+  metadata = {},
+  sourceTxHash = "",
+  sourceCid = "",
+} = {}) {
+  return applyOffchainTaskTransition({
+    accountId: row.account_id,
+    walletAddress: row.subject_wallet,
+    task: row,
+    transition,
+    payload: {
+      offchainPayload: payload,
+      sourceTxHash,
+      sourceCid,
+      cid: sourceCid,
+    },
+    metadata: {
+      source: "task_review_worker",
+      ...safeObject(metadata),
+    },
   });
-  return { ok: false, status, expectedStatuses: expected };
 }
 
 async function processSubmittedTask(row, { logger = console } = {}) {
   const workerName = "verification_request";
-  const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
-  if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
   const authorityWallet = walletFromSeed(authoritySeed(), "task_authority_seed_missing");
   const detail = await getTaskDetail({
     accountId: row.account_id,
@@ -1711,42 +1670,24 @@ async function processSubmittedTask(row, { logger = console } = {}) {
       return { ok: true, taskId: row.task_id, skipped: true, reason: "verification_request_already_indexed_before_publish" };
     }
     publicationAttempted = true;
-    const published = await publishAuthorityPointer({
+    const recorded = await directWriteReviewTransition({
+      row,
+      transition: "verification_requested",
       payload,
-      contentKind: "TASK_UPDATE",
-      destination: row.subject_wallet,
-      kind: "TASK_UPDATE",
-      signerWallet: authorityWallet,
-      tasknodeKey,
-      accountId: row.account_id,
+      metadata: {
+        phase: "verification_request",
+        workerName,
+      },
     });
+    const published = directWritePublishedRef(recorded);
     await markReviewPublicationPublished({
       taskId: row.task_id,
       workerName,
       published,
-      metadata: { source: "published_by_worker" },
+      metadata: { source: "direct_write_by_worker" },
     });
-    await finalizeWorkerPublish({
-      taskId: row.task_id,
-      workerName,
-      published,
-      expectedStatuses: ["verification_requested"],
-      accountId: row.account_id,
-      subjectWallet: row.subject_wallet,
-      authorityWallet: authorityWallet.classicAddress,
-      phase: "verification_request",
-      logger,
-    });
-    scheduleTaskWalletSync({
-      accountId: row.account_id,
-      subjectWallet: row.subject_wallet,
-      authorityWallet: authorityWallet.classicAddress,
-      taskId: row.task_id,
-      txHash: published.txHash,
-      phase: "verification_request",
-      logger,
-    });
-    logger.info?.("task_verification_request_published", {
+    await markWorkerPublished({ taskId: row.task_id, workerName, published });
+    logger.info?.("task_verification_request_direct_written", {
       taskId: row.task_id,
       txHash: published.txHash,
       cid: published.cid,
@@ -1837,7 +1778,6 @@ async function publishDiscordEvidenceVerificationRequest({
   verificationResponse = {},
   discordEvidence = {},
   authorityWallet,
-  tasknodeKey,
   logger = console,
 } = {}) {
   const taskId = safeText(row.task_id, 180);
@@ -1907,46 +1847,29 @@ async function publishDiscordEvidenceVerificationRequest({
       },
     };
     publicationAttempted = true;
-    const published = await publishAuthorityPointer({
+    const recorded = await directWriteReviewTransition({
+      row,
+      transition: "verification_requested",
       payload,
-      contentKind: "TASK_UPDATE",
-      destination: row.subject_wallet,
-      kind: "TASK_UPDATE",
-      signerWallet: authorityWallet,
-      tasknodeKey,
-      accountId: row.account_id,
+      metadata: {
+        phase: "discord_evidence_request",
+        workerName,
+        blocking_requirement: "discord_announcement_evidence",
+      },
     });
+    const published = directWritePublishedRef(recorded);
     await markReviewPublicationPublished({
       taskId,
       workerName,
       published,
       metadata: {
-        source: "published_by_worker",
+        source: "direct_write_by_worker",
         terminal_schema: "pf.task.update.v1",
         blocking_requirement: "discord_announcement_evidence",
       },
     });
-    await finalizeWorkerPublish({
-      taskId,
-      workerName,
-      published,
-      expectedStatuses: ["verification_requested"],
-      accountId: row.account_id,
-      subjectWallet: row.subject_wallet,
-      authorityWallet: authorityWallet.classicAddress,
-      phase: "discord_evidence_request",
-      logger,
-    });
-    scheduleTaskWalletSync({
-      accountId: row.account_id,
-      subjectWallet: row.subject_wallet,
-      authorityWallet: authorityWallet.classicAddress,
-      taskId,
-      txHash: published.txHash,
-      phase: "discord_evidence_request",
-      logger,
-    });
-    logger.info?.("task_discord_evidence_request_published", {
+    await markWorkerPublished({ taskId, workerName, published });
+    logger.info?.("task_discord_evidence_request_direct_written", {
       taskId,
       txHash: published.txHash,
       cid: published.cid,
@@ -2186,7 +2109,6 @@ async function processVerificationResponse(row, { logger = console } = {}) {
         verificationResponse,
         discordEvidence,
         authorityWallet,
-        tasknodeKey,
         logger,
       });
       await clearWorkerClaim({
@@ -2328,12 +2250,30 @@ async function processVerificationResponse(row, { logger = console } = {}) {
       amountDrops: rewardAmountDrops,
     });
     await markRewardPaymentSubmitted({ taskId: row.task_id, reward });
+    const recordedReward = await directWriteReviewTransition({
+      row,
+      transition: "rewarded",
+      payload: {
+        ...rewardPayload,
+        cid: reward.cid,
+        tx_hash: reward.txHash,
+      },
+      sourceTxHash: reward.txHash,
+      sourceCid: reward.cid,
+      metadata: {
+        phase: "reward_scoring",
+        workerName,
+        reward_pft: score.reward_pft,
+      },
+    });
     const publishedRef = {
       txHash: reward.txHash,
       cid: reward.cid,
       forensicCid: reward.cid,
       forensicDigest: rewardForensicDigest,
       signature: rewardSignature,
+      directWriteTxHash: recordedReward.event.sourceTxHash,
+      directWriteCid: recordedReward.event.sourceCid,
     };
     await markReviewPublicationPublished({
       taskId: row.task_id,
@@ -2353,29 +2293,8 @@ async function processVerificationResponse(row, { logger = console } = {}) {
         terminal_schema: "pf.reward.v1",
       },
     });
-    await finalizeWorkerPublish({
-      taskId: row.task_id,
-      workerName,
-      published: publishedRef,
-      expectedStatuses: ["rewarded"],
-      accountId: row.account_id,
-      subjectWallet: row.subject_wallet,
-      authorityWallet: authorityWallet.classicAddress,
-      allocationWallet: rewardWallet.classicAddress,
-      phase: "reward_scoring",
-      logger,
-    });
-    scheduleTaskWalletSync({
-      accountId: row.account_id,
-      subjectWallet: row.subject_wallet,
-      authorityWallet: authorityWallet.classicAddress,
-      allocationWallet: rewardWallet.classicAddress,
-      taskId: row.task_id,
-      txHash: publishedRef.txHash,
-      phase: "reward_scoring",
-      logger,
-    });
-    logger.info?.("task_reward_outcome_published", {
+    await markWorkerPublished({ taskId: row.task_id, workerName, published: publishedRef });
+    logger.info?.("task_reward_outcome_published_and_direct_written", {
       taskId: row.task_id,
       rewardTxHash: reward.txHash,
       rewardPft: score.reward_pft,

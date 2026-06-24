@@ -1,12 +1,7 @@
 import { createHash } from "node:crypto";
 import { Wallet } from "xrpl";
-import { pinContextIpfsJson } from "./context-ipfs.js";
-import { resolveTasknodeEncryptionKey } from "./context-publish.js";
-import { runPftlCacheReducerOnce } from "./pftl-cache-reducer.js";
-import { syncPftlWalletTransactions } from "./pftl-cache-sync.js";
-import { buildPftPointerMemo, POINTER_FLAGS } from "./pftl-pointer.js";
-import { preparePftPointerTransaction, submitSignedPftTransaction } from "./pftl-submit.js";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
+import { applyOffchainTaskOffer } from "./offchain-task-lifecycle.js";
 import {
   claimTaskGenerationRequests,
   markTaskRequestFailed,
@@ -27,10 +22,8 @@ import {
   recordTaskgenReplayGenerated,
   recordTaskgenReplayPublished,
 } from "./repositories/taskgen-replay-cache.js";
-import { encryptTasknodePayload, fetchAndDecryptTasknodePayload } from "./task-payloads.js";
-import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
+import { fetchAndDecryptTasknodePayload } from "./task-payloads.js";
 
-const TASK_POINTER_SCHEMA = 1;
 const TASKGEN_PERSONAL_PROMPT = {
   path: "task_engine/taskgen_personal_v1.md",
   version: "taskgen_personal_v1",
@@ -608,7 +601,7 @@ function taskIdForOffer({ authorityWallet = "", requestBundleCid = "", output = 
   return `task_${sha256([authorityWallet, requestBundleCid, sha256(output)].join(":")).slice(0, 32)}`;
 }
 
-async function publishOffer({ request, requestBundle, taskgen, tasknodeKey, authorityWallet, requestBundleDigest = "" }) {
+async function publishOffer({ request, requestBundle, taskgen, authorityWallet, requestBundleDigest = "" }) {
   const subjectWallet = safeText(requestBundle.subject_wallet || request.subjectWallet, 120);
   if (!subjectWallet) throw new Error("task_request_subject_wallet_missing");
   const requestBundleCid = safeText(request.requestBundleCid, 240);
@@ -657,58 +650,27 @@ async function publishOffer({ request, requestBundle, taskgen, tasknodeKey, auth
       request_bundle_digest: requestBundleDigest,
     },
   };
-  const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
-    tasknodeKey,
+  const recorded = await applyOffchainTaskOffer({
     accountId: request.accountId,
     walletAddress: subjectWallet,
-    explicitPublicKeys: [
-      requestBundle.subject_encryption_pubkey,
-      requestBundle.wallet?.subject_encryption_pubkey,
-      requestBundle.encryption?.subject_public_key,
-    ],
-  });
-  const encryptedPayload = await encryptTasknodePayload({
-    plaintext: stableJson(offerPayload),
-    recipientPublicKeys,
-  });
-  const pin = await pinContextIpfsJson({
-    payload: encryptedPayload,
-    name: `tasknode-pf-task-offer-v1-${sha256(taskId).slice(0, 16)}`,
-    keyvalues: {
-      app: "tasknodeofficial",
-      content_kind: "TASK",
-      schema: "pf.task.offer.v1",
-      request_id: request.requestId,
-      task_id: taskId,
-      subject_wallet: subjectWallet,
+    offerPayload,
+    metadata: {
+      source: "task_generation_worker",
+      request_bundle_cid: requestBundleCid,
+      request_bundle_digest: requestBundleDigest,
+      taskgen_model: taskgen.metadata?.model || "",
     },
-  });
-  const pointerMemo = buildPftPointerMemo({
-    cid: pin.cid,
-    kind: "TASK",
-    schema: TASK_POINTER_SCHEMA,
-    flags: POINTER_FLAGS.encrypted,
-    taskId,
-  });
-  const prepared = await preparePftPointerTransaction({
-    account: authorityWallet.classicAddress,
-    destination: subjectWallet,
-    pointerMemo,
-  });
-  const signed = authorityWallet.sign(prepared.txJson);
-  const submitted = await submitSignedPftTransaction({
-    signedTxBlob: signed.tx_blob,
-    expectedAccount: authorityWallet.classicAddress,
   });
   return {
     taskId,
     subjectWallet,
     offerPayload,
-    offerCid: pin.cid,
-    offerDigest: `sha256:${pin.sha256}`,
-    txHash: submitted.txHash,
-    ledgerIndex: submitted.ledgerIndex,
-    engineResult: submitted.engineResult,
+    offerCid: recorded.event.sourceCid,
+    offerDigest: `sha256:${recorded.event.eventDigest}`,
+    txHash: recorded.event.sourceTxHash,
+    ledgerIndex: null,
+    engineResult: "direct_write",
+    source: recorded.source,
   };
 }
 
@@ -718,44 +680,13 @@ async function syncOfferProjection({
   authorityWallet = "",
   allocationWallet = "",
 } = {}) {
-  const syncJobs = [
-    syncPftlWalletTransactions({
-      walletAddress: authorityWallet,
-      accountId,
-      role: "task_authority",
-      limit: 80,
-      maxPages: 1,
-      syncKind: "task_offer_submit",
-    }),
-    syncPftlWalletTransactions({
-      walletAddress: subjectWallet,
-      accountId,
-      role: "user",
-      limit: 80,
-      maxPages: 1,
-      syncKind: "task_offer_subject_refresh",
-    }),
-  ];
-  const normalizedAllocationWallet = safeText(allocationWallet, 120);
-  if (normalizedAllocationWallet) {
-    syncJobs.push(
-      syncPftlWalletTransactions({
-        walletAddress: normalizedAllocationWallet,
-        accountId,
-        role: "allocation_reward",
-        limit: 80,
-        maxPages: 1,
-        syncKind: "task_offer_allocation_refresh",
-      })
-    );
-  }
-  const syncResults = await Promise.all(syncJobs);
-  const reduced = await runPftlCacheReducerOnce({ batchLimit: 20, logger: console });
   return {
-    authoritySync: syncResults[0],
-    subjectSync: syncResults[1],
-    allocationSync: syncResults[2] || null,
-    reduced,
+    source: "direct_write",
+    accountId: safeText(accountId, 180),
+    subjectWallet: safeText(subjectWallet, 180),
+    authorityWallet: safeText(authorityWallet, 180),
+    allocationWallet: safeText(allocationWallet, 180),
+    reduced: { claimed: 0, skipped: true, reason: "task_offer_projection_direct_written" },
   };
 }
 
@@ -772,8 +703,6 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
         bundleCid: request.requestBundleCid,
         bundleDigest: requestBundleDigest,
       });
-      const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
-      if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
       const authorityWallet = taskAuthorityWallet();
       replayIdentity = taskgenReplayIdentity({
         taskInput,
@@ -849,7 +778,6 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
           request,
           requestBundle,
           taskgen,
-          tasknodeKey,
           authorityWallet,
           requestBundleDigest,
         });

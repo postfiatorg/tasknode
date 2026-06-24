@@ -53,6 +53,38 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function timelineEventIdentity(event = {}) {
+  return [
+    safeText(event.schema, 120),
+    safeText(event.txHash, 240),
+    safeText(event.cid, 240),
+    safeText(event.eventDigest || event.id, 240),
+  ].join("|").toLowerCase();
+}
+
+function timelineEventSortMs(event = {}) {
+  const parsed = Date.parse(event.observedAt || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function mergeTaskForensicsTimeline(...groups) {
+  const seen = new Set();
+  const merged = [];
+  for (const group of groups) {
+    for (const event of Array.isArray(group) ? group : []) {
+      const identity = timelineEventIdentity(event);
+      if (identity && seen.has(identity)) continue;
+      if (identity) seen.add(identity);
+      merged.push(event);
+    }
+  }
+  return merged.sort((a, b) => (
+    timelineEventSortMs(a) - timelineEventSortMs(b) ||
+    Number(a.index || 0) - Number(b.index || 0) ||
+    safeText(a.id, 180).localeCompare(safeText(b.id, 180))
+  ));
+}
+
 function objectKeyCount(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).length : 0;
 }
@@ -753,7 +785,7 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
   const reducerTimeline = await Promise.all(reducerResult.rows.map((eventRow, index) => (
     hydrateForensicsEvent(publicReducerEvent(eventRow, index))
   )));
-  const timeline = pointerTimeline.length ? pointerTimeline : reducerTimeline;
+  const timeline = mergeTaskForensicsTimeline(pointerTimeline, reducerTimeline);
   const cidEntries = dedupeAuditEntries([
     ...publicCidEntries(metadata.cids),
     ...eventCidEntries(timeline),
