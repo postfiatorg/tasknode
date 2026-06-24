@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { appState } from "./app-state.js";
+import { getCachedAppState } from "./app-state.js";
 import { startBackgroundWorkers } from "./background-workers.js";
 import {
   isProductionEnvironment,
@@ -416,7 +416,7 @@ async function routeApi(req, url, res) {
   const getState = () => {
     if (!statePromise) {
       const refreshTaskProjection = url.searchParams.get("taskProjectionRefresh") === "1";
-      statePromise = appState(session, { refreshTaskProjection });
+      statePromise = getCachedAppState(session, { refreshTaskProjection });
     }
     return statePromise;
   };
@@ -1140,6 +1140,14 @@ const server = createServer((req, res) => {
       });
     })
     .catch((error) => {
+      if (url.pathname.startsWith("/api/")) {
+        console.warn("api_route_failed", {
+          method: req.method,
+          path: url.pathname,
+          status: error?.status || 500,
+          error: String(error?.message || error || "internal_error").slice(0, 1000),
+        });
+      }
       json(res, error?.status || 500, {
         ok: false,
         error: error?.message || "internal_error",

@@ -580,8 +580,7 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
       : rows.length > 0
         ? "ready"
         : "empty";
-  const projectionRefreshRequired = syncStatus === "integrity_unavailable" ||
-    syncStatus === "indexing_lag" ||
+  const projectionRefreshRequired = syncStatus === "indexing_lag" ||
     integrity.totals.pendingReducerCount > 0 ||
     integrity.totals.processingReducerCount > 0;
   const refresh = taskRefreshMetadata({

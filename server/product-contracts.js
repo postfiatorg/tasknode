@@ -2723,7 +2723,6 @@ export function authDevStart(payload, method) {
 
 export async function readiness() {
   const providers = authProviders();
-  const ledger = await usageSummary();
   const chatBilling = chatBillingStatus();
   const chatExecutionReady = anyChatProviderEnabled();
   const emailStatus = emailDeliveryStatus();
@@ -2774,7 +2773,7 @@ export async function readiness() {
     billing: {
       model: "usage_based",
       ledgerReady: true,
-      durableLedgerReady: ledger.durable,
+      durableLedgerReady: chatBilling.durable,
       postgresConfigured: chatBilling.configured,
       postgresEnabled: chatBilling.enabled,
       adminCreditReady: hasAll(["TASKNODE_ADMIN_CREDIT_TOKEN"]),
@@ -2783,7 +2782,7 @@ export async function readiness() {
       chatEstimateReady: true,
       chatExecutionReady,
       blockers: [
-        ledger.durable ? "" : "Durable Postgres ledger tables are not enabled",
+        chatBilling.durable ? "" : "Durable Postgres ledger tables are not enabled",
         ethDeposits.enabled
           ? ""
           : "ETH_DEPOSIT_XPUB is not configured for live Ethereum deposit addresses",

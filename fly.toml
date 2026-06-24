@@ -76,9 +76,9 @@ primary_region = "ewr"
   processes = ["app"]
 
   [http_service.concurrency]
-    type = "connections"
-    hard_limit = 50
-    soft_limit = 40
+    type = "requests"
+    hard_limit = 120
+    soft_limit = 90
 
   [[http_service.checks]]
     grace_period = "15s"
