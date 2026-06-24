@@ -14,6 +14,7 @@ import { getTaskDetail } from "./repositories/tasks.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
 import { moneySeedFromEnv } from "./production-guards.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
+import { signTaskTransition } from "./task-transition-signatures.js";
 
 const TASK_POINTER_SCHEMA = 1;
 const VERIFICATION_PROMPT_PATH = "task_engine/verification_request_v1.md";
@@ -1496,6 +1497,9 @@ async function markReviewPublicationPublished({ taskId, workerName, published = 
           source_tx_hash = $3,
           source_cid = $4,
           metadata_json = COALESCE(metadata_json, '{}'::jsonb) || $5::jsonb,
+          forensic_cid = CASE WHEN $6::text <> '' THEN $6 ELSE forensic_cid END,
+          forensic_digest = CASE WHEN $7::text <> '' THEN $7 ELSE forensic_digest END,
+          signature_json = CASE WHEN $8::jsonb <> '{}'::jsonb THEN $8::jsonb ELSE signature_json END,
           published_at = now(),
           updated_at = now()
       WHERE task_id = $1 AND worker_name = $2
@@ -1506,6 +1510,9 @@ async function markReviewPublicationPublished({ taskId, workerName, published = 
       safeText(published.txHash, 120),
       safeText(published.cid, 240),
       JSON.stringify(safeObject(metadata)),
+      safeText(published.forensicCid, 240),
+      safeText(published.forensicDigest, 180),
+      JSON.stringify(safeObject(published.signature)),
     ]
   );
 }
@@ -2008,6 +2015,83 @@ function buildRewardOutcomePayload({
   return { payload, rewardAmountDrops, economicRewardPft };
 }
 
+function compactTimelineForensics(detail = {}) {
+  return timelineEvents(detail).map((event, index) => ({
+    index: index + 1,
+    schema: safeText(event.schema || event.rawPayload?.schema, 160),
+    tx_hash: safeText(event.txHash, 160),
+    cid: safeText(event.cid, 240),
+    event_digest: safeText(event.eventDigest, 240),
+    write_source: safeText(event.writeSource, 80),
+    signature: event.signature
+      ? {
+          role: safeText(event.signature.role, 80),
+          signer_wallet: safeText(event.signature.signer_wallet || event.signature.address, 180),
+          payload_digest: safeText(event.signature.payload_digest, 180),
+          verified: event.signature.verification?.verified === true,
+          reason: safeText(event.signature.verification?.reason, 120),
+        }
+      : null,
+  }));
+}
+
+function compactTransitionSignature(signature = {}) {
+  return {
+    schema: safeText(signature.schema, 120),
+    role: safeText(signature.role, 80),
+    task_id: safeText(signature.task_id, 180),
+    transition: safeText(signature.transition, 120),
+    signer_wallet: safeText(signature.signer_wallet, 180),
+    public_key: safeText(signature.public_key, 180),
+    payload_digest: safeText(signature.payload_digest, 180),
+    signature: safeText(signature.signature, 260),
+    signed_at: safeText(signature.signed_at, 80),
+    algorithm: safeText(signature.algorithm, 120),
+  };
+}
+
+function attachRewardForensics({
+  detail = {},
+  rewardPayload = {},
+  rewardSignature = {},
+  scoringMetadata = {},
+} = {}) {
+  const unsignedRewardDigest = `sha256:${sha256(rewardPayload)}`;
+  const timeline = compactTimelineForensics(detail);
+  const transitionSignatures = [
+    ...timeline.map((event) => event.signature).filter(Boolean),
+    compactTransitionSignature(rewardSignature),
+  ].filter((signature) => signature?.payload_digest);
+  const forensicEnvelope = {
+    schema: "pf.reward.forensics.v1",
+    version: 1,
+    task_id: safeText(rewardPayload.task_id, 180),
+    created_at: new Date().toISOString(),
+    anchoring: {
+      mode: "single_reward_payload_cid",
+      description: "This pf.reward.v1 payload is the consolidated forensic document; its encrypted IPFS CID is carried by the reward transaction pointer memo.",
+    },
+    unsigned_reward_payload_digest: unsignedRewardDigest,
+    task_history_digest: `sha256:${sha256(rewardPayload.task_history || {})}`,
+    scoring_digest: `sha256:${sha256(rewardPayload.reward_score || {})}`,
+    scoring_metadata_digest: `sha256:${sha256(scoringMetadata || {})}`,
+    timeline,
+    transition_signatures: transitionSignatures,
+    integrity: {
+      timeline_event_count: timeline.length,
+      signed_transition_count: transitionSignatures.length,
+      actor_signed_transition_count: transitionSignatures.filter((signature) => signature.role === "actor").length,
+      pf_signed_transition_count: transitionSignatures.filter((signature) => signature.role !== "actor").length,
+      ipfs_write_policy: "reward_time_only",
+    },
+  };
+  return {
+    ...rewardPayload,
+    reward_forensics: forensicEnvelope,
+    transition_signatures: transitionSignatures,
+  };
+}
+
 async function processVerificationResponse(row, { logger = console } = {}) {
   const workerName = "reward_scoring";
   const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
@@ -2164,17 +2248,18 @@ async function processVerificationResponse(row, { logger = console } = {}) {
       discord_announcement_evidence_type: discordEvidence.evidence_type,
       discord_announcement_evidence_ref: discordEvidence.evidence_ref,
     };
+    const rewardScoringMetadata = {
+      ...scoring.metadata,
+      discord_announcement_evidence: discordEvidence,
+    };
     const {
-      payload: rewardPayload,
+      payload: baseRewardPayload,
       rewardAmountDrops,
       economicRewardPft,
     } = buildRewardOutcomePayload({
       row,
       score,
-      scoringMetadata: {
-        ...scoring.metadata,
-        discord_announcement_evidence: discordEvidence,
-      },
+      scoringMetadata: rewardScoringMetadata,
       taskOffer,
       initialSubmission,
       verificationRequest,
@@ -2208,6 +2293,20 @@ async function processVerificationResponse(row, { logger = console } = {}) {
       return { ok: true, taskId: row.task_id, skipped: true, reason: "reward_already_indexed_before_publish" };
     }
 
+    const rewardSignature = signTaskTransition({
+      payload: baseRewardPayload,
+      signerWallet: rewardWallet,
+      role: "pf_reward_authority",
+      transition: "rewarded",
+    });
+    const rewardPayload = attachRewardForensics({
+      detail: prePublishDetail,
+      rewardPayload: baseRewardPayload,
+      rewardSignature,
+      scoringMetadata: rewardScoringMetadata,
+    });
+    const rewardForensicDigest = `sha256:${sha256(rewardPayload.reward_forensics || {})}`;
+
     const paymentGuard = await claimRewardPaymentGuard({
       taskId: row.task_id,
       rewardPayload,
@@ -2232,6 +2331,9 @@ async function processVerificationResponse(row, { logger = console } = {}) {
     const publishedRef = {
       txHash: reward.txHash,
       cid: reward.cid,
+      forensicCid: reward.cid,
+      forensicDigest: rewardForensicDigest,
+      signature: rewardSignature,
     };
     await markReviewPublicationPublished({
       taskId: row.task_id,
@@ -2241,6 +2343,9 @@ async function processVerificationResponse(row, { logger = console } = {}) {
         source: "published_by_worker",
         reward_tx_hash: reward.txHash,
         reward_cid: reward.cid,
+        forensic_cid: reward.cid,
+        forensic_digest: rewardForensicDigest,
+        reward_signature_digest: rewardSignature.payload_digest,
         reward_pft: score.reward_pft,
         economic_reward_pft: economicRewardPft.toFixed(2),
         transaction_amount_drops: rewardAmountDrops,
@@ -2382,6 +2487,7 @@ export const taskReviewWorkerInternalsForTests = {
   isRewardReviewPayload,
   taskReviewPublisherPermission,
   timelineEventPublishedRef,
+  attachRewardForensics,
   buildRewardEvidenceEvaluationContext,
   buildRewardOutcomePayload,
   collectEvidenceText,

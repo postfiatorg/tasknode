@@ -293,6 +293,8 @@ export function publicPointerEvent(row, index = 0) {
 export function publicReducerEvent(row, index = 0) {
   const pointerJson = safeObject(row.pointer_json);
   const payload = bestPayload({ payloadJson: row.payload_json, pointerJson });
+  const signature = safeObject(row.signature_json);
+  const provenance = safeObject(row.provenance_json);
   const pointer = bestPointer({
     row: {
       ...row,
@@ -317,6 +319,9 @@ export function publicReducerEvent(row, index = 0) {
     details: payloadDetails(schema, payload, pointerJson.pointer || pointerJson),
     rawPayload: payload,
     pointer,
+    signature: Object.keys(signature).length ? signature : null,
+    provenance: Object.keys(provenance).length ? provenance : null,
+    writeSource: safeText(row.write_source || "", 80),
     observedAt: toIso(row.occurred_at),
   };
 }
