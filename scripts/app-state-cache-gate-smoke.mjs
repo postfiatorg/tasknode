@@ -4,6 +4,7 @@ import {
   __resetAppStateCacheForTests,
   __setAppStateComputeForTests,
   getCachedAppState,
+  invalidateCachedAppState,
 } from "../server/app-state.js";
 
 function delay(ms) {
@@ -151,9 +152,37 @@ async function runAnonSafetyCheck() {
   assert.equal(unsafeAnonComputes, 2, "unsafe signed-out payload should skip cache");
 }
 
+async function runAccountInvalidationCheck() {
+  __resetAppStateCacheForTests();
+  process.env.APP_STATE_CACHE_TTL_MS = "1000";
+  process.env.APP_STATE_MAX_CONCURRENT = "1";
+
+  let computeCount = 0;
+  __setAppStateComputeForTests(async (session) => {
+    computeCount += 1;
+    return appStateFixture({
+      accountId: session.accountId,
+      generatedAt: `invalidated_${computeCount}`,
+    });
+  });
+
+  const session = { accountId: "acct_invalidate" };
+  const first = await getCachedAppState(session);
+  const second = await getCachedAppState(session);
+  assert.equal(first.generatedAt, "invalidated_1");
+  assert.equal(second.generatedAt, "invalidated_1");
+  assert.equal(computeCount, 1);
+
+  invalidateCachedAppState(session);
+  const third = await getCachedAppState(session);
+  assert.equal(third.generatedAt, "invalidated_2");
+  assert.equal(computeCount, 2, "invalidating an account cache should force the next app-state compute");
+}
+
 await runSameAccountDedupeCheck();
 await runCapFallbackCheck();
 await runAnonSafetyCheck();
+await runAccountInvalidationCheck();
 __resetAppStateCacheForTests();
 
 console.log("app-state cache gate smoke ok");

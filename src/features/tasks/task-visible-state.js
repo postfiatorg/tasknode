@@ -362,7 +362,7 @@ export function needsLegacyTaskRefresh(tasks = {}) {
   return allTaskBuckets(tasks).some((task) => taskRequiresRefresh(task?.statusKey || task?.status));
 }
 
-export function taskSyncNoticeForStatus(sync = {}) {
+export function taskSyncNoticeForStatus(sync = {}, { directOffchain = false } = {}) {
   const status = safeText(sync?.status, 80);
   const indexingLagCount = Number(sync?.indexingLagCount || 0);
   if (status === "database_error") {
@@ -383,7 +383,7 @@ export function taskSyncNoticeForStatus(sync = {}) {
       body: `Some task updates failed to process${sync.failedReducerCount ? ` (${sync.failedReducerCount} failed)` : ""}. Task rows may lag until sync recovers.`,
     };
   }
-  if (status === "indexing_lag" && indexingLagCount > 3) {
+  if (!directOffchain && status === "indexing_lag" && indexingLagCount > 3) {
     return {
       label: "Task list is updating",
       body: "Several recently signed task changes are still syncing. Task rows refresh automatically.",
@@ -394,6 +394,7 @@ export function taskSyncNoticeForStatus(sync = {}) {
 
 export function reconcileTaskVisibleState({
   accountId = "",
+  directOffchain = false,
   linkedWalletAddress = "",
   nowMs = Date.now(),
   receipts = [],
@@ -421,6 +422,7 @@ export function reconcileTaskVisibleState({
   const taskSync = visibleTasks?.sync || {};
   const handoffProjectionPending = taskSync?.handoff?.requestHandoffState === "generated_projection_pending";
   const polling = taskRefreshPolicy({
+    directOffchain,
     handoffProjectionPending: Boolean(taskSync?.handoffProjectionPending || handoffProjectionPending),
     legacyRefreshNeeded: needsLegacyTaskRefresh(visibleTasks),
     nextPollMs: taskSync.nextPollMs,
@@ -474,7 +476,9 @@ export function reconcileTaskVisibleState({
     selectedTask: selectedTaskId ? findTaskById(visibleTasks, selectedTaskId) : null,
     sync: taskSync,
     handoff: taskSync?.handoff || null,
-    taskSyncNotice: shouldForceTaskSyncNotice(taskSync) ? taskSyncNoticeForStatus(taskSync) : null,
+    taskSyncNotice: shouldForceTaskSyncNotice(taskSync, { directOffchain })
+      ? taskSyncNoticeForStatus(taskSync, { directOffchain })
+      : null,
     polling,
     prunedReceipts: pruneTaskActionReceiptsForTaskState(receipts, tasks, {
       accountId,

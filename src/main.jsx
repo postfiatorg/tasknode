@@ -3439,12 +3439,13 @@ function TasksView({
 
   const visibleState = useMemo(() => reconcileTaskVisibleState({
     accountId,
+    directOffchain: directOffchainTaskLifecycle,
     linkedWalletAddress,
     taskReadFailureCount,
     taskRequestSettleUntilMs,
     tasks,
     tasksTab,
-  }), [accountId, linkedWalletAddress, taskReadFailureCount, taskRequestSettleUntilMs, tasks, tasksTab]);
+  }), [accountId, directOffchainTaskLifecycle, linkedWalletAddress, taskReadFailureCount, taskRequestSettleUntilMs, tasks, tasksTab]);
   const {
     activeRequests,
     activeRequestCount,

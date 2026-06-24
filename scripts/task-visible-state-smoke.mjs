@@ -82,6 +82,22 @@ assert.equal(acceptedVisible.polling.shouldRefreshTaskState, true);
 assert.equal(acceptedVisible.polling.shouldForceTaskProjection, true);
 assert.equal(acceptedVisible.selectedTask.statusKey, "accepted");
 
+const directOffchainIndexingLagState = reconcileTaskVisibleState({
+  accountId,
+  directOffchain: true,
+  linkedWalletAddress: walletAddress,
+  nowMs,
+  tasks: tasksWith("outstanding", proposed, {
+    status: "indexing_lag",
+    indexingLagCount: 4,
+    requiresRefresh: true,
+    forceProjectionRefresh: true,
+    refreshReason: "task_projection_indexing_lag",
+  }),
+});
+assert.equal(directOffchainIndexingLagState.taskSyncNotice, null);
+assert.equal(directOffchainIndexingLagState.polling.shouldRefreshTaskProjection, false);
+
 // Without receipts, the server slow tier is respected: an accepted task with
 // server metadata {requiresRefresh:true, nextPollMs:10000} keeps polling at
 // 10s and does not force projection refresh on every poll.

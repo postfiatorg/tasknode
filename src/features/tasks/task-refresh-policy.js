@@ -44,6 +44,7 @@ export function taskReadFailureBackoffMs(readFailureCount = 0) {
 }
 
 export function taskRefreshPolicy({
+  directOffchain = false,
   handoffProjectionPending = false,
   legacyRefreshNeeded = false,
   nextPollMs = null,
@@ -60,7 +61,7 @@ export function taskRefreshPolicy({
   // it only needs patient re-reads, so it never forces projection refresh.
   const temporaryReadFailure = syncStatus === "database_error" ||
     syncStatus === "integrity_unavailable";
-  const shouldRefreshTaskProjection = syncStatus === "indexing_lag" ||
+  const shouldRefreshTaskProjection = (!directOffchain && syncStatus === "indexing_lag") ||
     syncStatus === "reducer_attention";
   const requestCount = Number(processingRequestCount || 0);
   const taskRequestSettling = Number(settleUntilMs || 0) > Number(nowMs || 0);
@@ -100,9 +101,10 @@ export function taskRefreshPolicy({
   };
 }
 
-export function shouldForceTaskSyncNotice(sync = {}) {
+export function shouldForceTaskSyncNotice(sync = {}, { directOffchain = false } = {}) {
   const status = String(sync?.status || "ready");
   if (status === "database_error" || status === "integrity_unavailable") return true;
   if (status === "reducer_attention") return true;
+  if (directOffchain && status === "indexing_lag") return false;
   return status === "indexing_lag" && Number(sync?.indexingLagCount || 0) > 3;
 }

@@ -356,8 +356,23 @@ function latestPointerSortValue(row = {}) {
   ].join(":");
 }
 
-function isProjectionBehindCachedPointer(row = {}, latest = {}) {
+function directWriteProjectionIsAuthoritative(row = {}, latest = {}) {
+  const pointerKind = safeText(latest.pointer_kind || latest.pointerKind, 120).toUpperCase();
+  if (pointerKind === "REWARD") return false;
+  const source = safeText(row.source, 120).toLowerCase();
+  const projectionTx = safeText(row.last_event_tx_hash, 240).toLowerCase();
+  const projectionCid = safeText(row.last_event_cid, 240).toLowerCase();
+  const metadata = safeObject(row.metadata_json);
+  const offchainLifecycle = safeObject(metadata.offchainLifecycle);
+  return source === "direct_write" ||
+    projectionTx.startsWith("offchain:") ||
+    projectionCid.startsWith("postgres:") ||
+    (offchainLifecycle.enabled === true && offchainLifecycle.dualWrite !== true);
+}
+
+export function isProjectionBehindCachedPointer(row = {}, latest = {}) {
   if (!latest?.tx_hash && !latest?.cid) return false;
+  if (directWriteProjectionIsAuthoritative(row, latest)) return false;
   const projectionTx = safeText(row.last_event_tx_hash, 240);
   const projectionCid = safeText(row.last_event_cid, 240);
   const cachedTx = safeText(latest.tx_hash, 240);
@@ -581,6 +596,7 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
         ? {
           tx_hash: taskIntegrity.latestCachedPointer.txHash,
           cid: taskIntegrity.latestCachedPointer.cid,
+          pointer_kind: taskIntegrity.latestCachedPointer.pointerKind,
         }
         : {}
     );

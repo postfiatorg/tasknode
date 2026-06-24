@@ -10,6 +10,7 @@ import {
 } from "../shared/task-lifecycle.js";
 import { taskgenPromptForInput, validateTaskgenOutput } from "../server/task-generation-worker.js";
 import { isSafeEvidenceUrlLiteral } from "../server/task-review-worker.js";
+import { isProjectionBehindCachedPointer } from "../server/repositories/tasks.js";
 
 assert.equal(taskStatusTab(TASK_STATUS.verificationRequested), TASK_TABS.verification);
 // verification_requested waits on the user's own response, so it is a
@@ -169,5 +170,40 @@ assert.equal(laggedProposedTask.nextPollMs, 2500);
 assert.equal(laggedProposedTask.forceProjectionRefresh, true);
 assert.equal(laggedProposedTask.refreshReason, "task_projection_indexing_lag");
 assert.deepEqual(laggedProposedTask.refreshTaskIds, []);
+
+assert.equal(
+  isProjectionBehindCachedPointer(
+    {
+      source: "direct_write",
+      last_event_tx_hash: "offchain:evt_direct_submit",
+      last_event_cid: "postgres:evt_direct_submit",
+      metadata_json: { offchainLifecycle: { enabled: true, dualWrite: false } },
+    },
+    {
+      tx_hash: "OLD_POINTER_TX",
+      cid: "QmOldPointerCid",
+      pointer_kind: "TASK_SUBMISSION",
+    }
+  ),
+  false,
+  "direct-write projections are authoritative over stale lifecycle pointers"
+);
+assert.equal(
+  isProjectionBehindCachedPointer(
+    {
+      source: "direct_write",
+      last_event_tx_hash: "offchain:evt_direct_submit",
+      last_event_cid: "postgres:evt_direct_submit",
+      metadata_json: { offchainLifecycle: { enabled: true, dualWrite: false } },
+    },
+    {
+      tx_hash: "REWARD_POINTER_TX",
+      cid: "QmRewardPointerCid",
+      pointer_kind: "REWARD",
+    }
+  ),
+  true,
+  "reward anchors remain pointer-backed integrity signals"
+);
 
 console.log("task lifecycle smoke ok");

@@ -114,6 +114,18 @@ assert.equal(shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCoun
 assert.equal(shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCount: 4 }), true);
 assert.equal(shouldForceTaskSyncNotice({ status: "reducer_attention", failedReducerCount: 1 }), true);
 
+const directOffchainIndexingLag = taskRefreshPolicy({
+  directOffchain: true,
+  nowMs,
+  nextPollMs: 500,
+  processingRequestCount: 0,
+  taskSyncStatus: "indexing_lag",
+});
+assert.equal(directOffchainIndexingLag.shouldRefreshTaskProjection, false);
+assert.equal(directOffchainIndexingLag.shouldForceTaskProjection, false);
+assert.equal(directOffchainIndexingLag.shouldRefreshTaskState, false);
+assert.equal(shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCount: 4 }, { directOffchain: true }), false);
+
 // database_error/integrity_unavailable keep polling without forcing the
 // projection write pass, and back off exponentially: 5s -> 10s -> 30s cap.
 assert.equal(taskReadFailureBackoffMs(0), 0);

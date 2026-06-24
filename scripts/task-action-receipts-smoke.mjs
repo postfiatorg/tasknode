@@ -208,6 +208,11 @@ assert.equal(taskSyncNoticeForStatus({ status: "indexing_lag", indexingLagCount:
 assert.equal(shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCount: 1 }), false);
 assert.equal(shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCount: 4 }), true);
 assert.equal(taskSyncNoticeForStatus({ status: "indexing_lag", indexingLagCount: 4 }).label, "Task list is updating");
+assert.equal(
+  shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCount: 4 }, { directOffchain: true }),
+  false
+);
+assert.equal(taskSyncNoticeForStatus({ status: "indexing_lag", indexingLagCount: 4 }, { directOffchain: true }), null);
 assert.equal(taskSyncNoticeForStatus({ status: "reducer_attention", failedReducerCount: 1 }).label, "Task sync needs attention");
 
 console.log("task action receipts smoke ok");

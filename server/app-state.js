@@ -220,6 +220,11 @@ export async function getCachedAppState(session = null, { refreshTaskProjection 
   return refreshPromise || appStateComputeForCache(session, options);
 }
 
+export function invalidateCachedAppState(session = null) {
+  const key = appStateCacheKey(session);
+  appStateCache.delete(key);
+}
+
 export function __resetAppStateCacheForTests() {
   appStateCache.clear();
   appStateComputeForCache = (...args) => appState(...args);

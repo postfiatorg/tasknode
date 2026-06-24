@@ -1,4 +1,5 @@
 import { getTaskDetail, listTaskState } from "./repositories/tasks.js";
+import { invalidateCachedAppState } from "./app-state.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { scheduleLinkedWalletTaskProjectionRefresh } from "./task-projection-refresh.js";
 import { listTaskRequests } from "./repositories/task-requests.js";
@@ -32,6 +33,12 @@ function taskVisibilityEventType(status = "") {
   if (normalized === "verification_requested") return "user.task.verification_requested";
   if (["reward_decided", "rewarded", "completed"].includes(normalized)) return "user.task.reward_projected";
   return "";
+}
+
+function taskMutationSubmitted(payload = {}, result = {}) {
+  if (result?.body?.ok !== true) return false;
+  const phase = safeText(payload?.phase || result?.body?.phase || "", 80);
+  return phase === "submit" || Boolean(payload?.signedTxBlob || payload?.signed_tx_blob);
 }
 
 function linkedWalletAddressForEvent(getLinkedWallet, session) {
@@ -206,6 +213,7 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
         sourceRoute: "POST /api/tasks/action",
       });
     }
+    if (taskMutationSubmitted(payload, result)) invalidateCachedAppState(session);
     json(res, result.status, result.body);
     return true;
   }
@@ -230,6 +238,7 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
         sourceRoute: "POST /api/tasks/submission",
       });
     }
+    if (taskMutationSubmitted(payload, result)) invalidateCachedAppState(session);
     json(res, result.status, result.body);
     return true;
   }
