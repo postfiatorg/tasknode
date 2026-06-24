@@ -82,6 +82,7 @@ const migrations = [
   "072_network_badges_identity_approvals.sql",
   "073_network_badge_verifier_jobs.sql",
   "074_drop_identity_approval_requests.sql",
+  "075_task_event_write_source.sql",
 ];
 
 let migrated = false;

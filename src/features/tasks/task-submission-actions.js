@@ -253,30 +253,24 @@ export async function publishTaskEvidenceSubmission({
 } = {}) {
   const taskId = safeText(task.taskId || task.fullId || task.id || detail?.task?.taskId || detail?.task?.fullId, 180);
   if (!taskId) throw new Error("Task ID is missing.");
-  if (!accountId || !walletSecret?.mnemonic || walletSecret.accountId !== accountId) {
-    throw new Error("Unlock the local seed vault before submitting evidence.");
-  }
-  if (!linkedWalletAddress || walletSecret.address !== linkedWalletAddress) {
-    throw new Error("Unlocked wallet does not match the linked wallet.");
-  }
+  if (!accountId) throw new Error("Sign in before submitting evidence.");
+  if (!linkedWalletAddress) throw new Error("Link a PFT wallet before submitting evidence.");
 
   const progress = (label) => {
     if (typeof onProgress === "function") onProgress(label);
   };
 
   progress("Configuring evidence");
-  const walletCore = await import("../../wallet-core");
   const config = await requestJson("/api/tasks/submission", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ phase: "config", taskId }),
   });
-  if (!config.ok || !config.body?.tasknodeEncryptionPubkey) {
+  const directOffchain = Boolean(config.body?.offchainLifecycle?.enabled && !config.body?.offchainLifecycle?.dualWrite);
+  if (!config.ok || (!directOffchain && !config.body?.tasknodeEncryptionPubkey)) {
     throw new Error(config.body?.message || "Task evidence publishing is not configured.");
   }
 
-  progress("Encrypting evidence");
-  const userPubkey = await walletCore.deriveTaskNodePublicKey(walletSecret.mnemonic);
   const submissionPayload = await buildSubmissionPayload({
     detail: {
       ...detail,
@@ -291,6 +285,37 @@ export async function publishTaskEvidenceSubmission({
     file,
     evidenceItems,
   });
+
+  if (directOffchain) {
+    progress("Recording evidence");
+    const submitted = await requestJson("/api/tasks/submission", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        phase: "submit",
+        taskId,
+        offchainPayload: submissionPayload,
+      }),
+    });
+    if (!submitted.ok || !submitted.body?.ok) {
+      throw new Error(submitted.body?.message || "Task evidence could not be recorded.");
+    }
+    return {
+      ...submitted.body,
+      submissionPayload,
+    };
+  }
+
+  if (!walletSecret?.mnemonic || walletSecret.accountId !== accountId) {
+    throw new Error("Unlock the local seed vault before submitting evidence.");
+  }
+  if (walletSecret.address !== linkedWalletAddress) {
+    throw new Error("Unlocked wallet does not match the linked wallet.");
+  }
+
+  progress("Encrypting evidence");
+  const walletCore = await import("../../wallet-core");
+  const userPubkey = await walletCore.deriveTaskNodePublicKey(walletSecret.mnemonic);
   const encryptedPayload = await walletCore.encryptTaskNodePayload({
     plaintext: JSON.stringify(submissionPayload),
     recipientPublicKeys: [userPubkey, config.body.tasknodeEncryptionPubkey],

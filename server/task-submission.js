@@ -20,6 +20,12 @@ import {
   guardAgentSelfDealing,
   recordAgentActionJournal,
 } from "./agent-quality-gates.js";
+import {
+  applyOffchainTaskTransition,
+  offchainTaskLifecycleDualWriteEnabled,
+  offchainTaskLifecycleEnabled,
+  transitionForSubmissionMode,
+} from "./offchain-task-lifecycle.js";
 
 const ACTION_ID = "task_submission";
 const TASK_POINTER_SCHEMA = 1;
@@ -221,8 +227,13 @@ async function taskSubmissionConfig({ payload, session }) {
   const agentGate = await guardAgentSubmission({ payload, session, resolved, mode: allowed.mode });
   if (agentGate.error) return agentGate.error;
 
-  const tasknodeEncryptionKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
-  if (!tasknodeEncryptionKey?.publicKey) {
+  const offchainEnabled = offchainTaskLifecycleEnabled();
+  const offchainDualWrite = offchainTaskLifecycleDualWriteEnabled();
+  const pointerRequired = !offchainEnabled || offchainDualWrite;
+  const tasknodeEncryptionKey = pointerRequired
+    ? await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true })
+    : null;
+  if (pointerRequired && !tasknodeEncryptionKey?.publicKey) {
     return submissionResponse({
       status: 409,
       error: "tasknode_encryption_key_missing",
@@ -239,8 +250,13 @@ async function taskSubmissionConfig({ payload, session }) {
     title: resolved.task.title || "",
     submissionMode: allowed.mode,
     schema,
-    tasknodeEncryptionPubkey: tasknodeEncryptionKey.publicKey,
-    tasknodeServiceAddress: tasknodeEncryptionKey.serviceAddress,
+    tasknodeEncryptionPubkey: tasknodeEncryptionKey?.publicKey || "",
+    tasknodeServiceAddress: tasknodeEncryptionKey?.serviceAddress || "",
+    offchainLifecycle: {
+      enabled: offchainEnabled,
+      dualWrite: offchainDualWrite,
+      writeSource: offchainEnabled && !offchainDualWrite ? "direct_write" : "pftl_pointer",
+    },
     wallets: {
       user: resolved.wallet.address,
       authority: resolved.task.authority_wallet || "",
@@ -426,6 +442,74 @@ async function submitTaskSubmission({ payload, session }) {
         action: ACTION_ID,
       },
     };
+  }
+
+  if (offchainTaskLifecycleEnabled() && !offchainTaskLifecycleDualWriteEnabled()) {
+    const transition = transitionForSubmissionMode(allowed.mode);
+    if (!transition) {
+      return submissionResponse({
+        status: 409,
+        error: "task_submission_not_available",
+        message: "This task state does not accept evidence right now.",
+        actionRequired: "Refresh the task and follow the current primary action.",
+        extra: {
+          status: resolved.task.status,
+          actions: taskLifecycleActions(resolved.task.status),
+        },
+      });
+    }
+    const recorded = await applyOffchainTaskTransition({
+      accountId: resolved.accountId,
+      walletAddress: resolved.wallet.address,
+      task: resolved.task,
+      transition,
+      payload,
+      metadata: {
+        endpoint: "POST /api/tasks/submission",
+        submissionMode: allowed.mode,
+        schema: submissionSchemaForMode(allowed.mode),
+      },
+    });
+    const txHash = recorded.event.sourceTxHash;
+    const orcWorkJournal = agentGate.agentOrigin
+      ? await recordAgentActionJournal({
+          agentOrigin: agentGate.agentOrigin,
+          action: agentGate.action,
+          status: "recorded",
+          outcomeStatus: "submitted",
+          accountId: resolved.accountId,
+          taskId: resolved.task.task_id,
+          requestId: resolved.task.request_id || "",
+          cid: recorded.event.sourceCid,
+          txHash,
+          metadata: {
+            phase: "submit",
+            submissionMode: allowed.mode,
+            previousStatus: resolved.task.status,
+            writeSource: "direct_write",
+          },
+          idempotencyKey: `agent_task_submission:${agentGate.agentOrigin.walletAddress || resolved.accountId}:${resolved.task.task_id}:${allowed.mode}:${txHash}`,
+        })
+      : null;
+    return okResponse({
+      phase: "submitted",
+      message: "Task evidence recorded directly in Task Node.",
+      taskId: resolved.task.task_id,
+      cid: recorded.event.sourceCid,
+      txHash,
+      refresh: {
+        scheduled: false,
+        source: "direct_write",
+        reducerBypassed: true,
+      },
+      offchainLifecycle: {
+        enabled: true,
+        writeSource: "direct_write",
+        eventId: recorded.event.eventId,
+        transition,
+      },
+      orcWorkJournal,
+    });
   }
 
   const submit = await submitSignedPftTransaction({

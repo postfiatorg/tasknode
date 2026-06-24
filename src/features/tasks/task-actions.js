@@ -39,17 +39,23 @@ export async function publishTaskLifecycleAction({
 } = {}) {
   const taskId = safeText(task.taskId || task.fullId || task.id || detail?.task?.taskId || detail?.task?.fullId, 180);
   if (!taskId) throw new Error("Task ID is missing.");
-  if (!accountId || !walletSecret?.mnemonic || walletSecret.accountId !== accountId) {
-    throw new Error("Unlock the local seed vault before changing a task.");
-  }
-  if (!linkedWalletAddress || walletSecret.address !== linkedWalletAddress) {
-    throw new Error("Unlocked wallet does not match the linked wallet.");
-  }
+  if (!accountId) throw new Error("Sign in before changing a task.");
+  if (!linkedWalletAddress) throw new Error("Link a PFT wallet before changing a task.");
 
   const action = normalizeAction(taskAction);
   const transition = action === "accept" ? "accepted" : action === "refuse" ? "refused" : "cancelled";
+  const config = await requestJson("/api/tasks/action", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ phase: "config", taskId, taskAction: action }),
+  });
+  const directOffchain = Boolean(config.body?.offchainLifecycle?.enabled && !config.body?.offchainLifecycle?.dualWrite);
+  if (!config.ok || (!directOffchain && !config.body?.tasknodeEncryptionPubkey)) {
+    throw new Error(config.body?.message || "Task action publishing is not configured.");
+  }
+
   const createdAt = new Date().toISOString();
-  const wallets = detail?.wallets || {};
+  const wallets = detail?.wallets || config.body?.wallets || {};
   const basePayload = {
     schema: "pf.task.update.v1",
     protocol: "tasknode.pftl",
@@ -76,16 +82,34 @@ export async function publishTaskLifecycleAction({
     event_id: await eventIdFor(basePayload),
   };
 
-  const walletCore = await import("../../wallet-core");
-  const config = await requestJson("/api/tasks/action", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ phase: "config", taskId, taskAction: action }),
-  });
-  if (!config.ok || !config.body?.tasknodeEncryptionPubkey) {
-    throw new Error(config.body?.message || "Task action publishing is not configured.");
+  if (directOffchain) {
+    const submitted = await requestJson("/api/tasks/action", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        phase: "submit",
+        taskId,
+        taskAction: action,
+        offchainPayload: eventPayload,
+      }),
+    });
+    if (!submitted.ok || !submitted.body?.ok) {
+      throw new Error(submitted.body?.message || "Task action could not be recorded.");
+    }
+    return {
+      ...submitted.body,
+      eventPayload,
+    };
   }
 
+  if (!walletSecret?.mnemonic || walletSecret.accountId !== accountId) {
+    throw new Error("Unlock the local seed vault before changing a task.");
+  }
+  if (walletSecret.address !== linkedWalletAddress) {
+    throw new Error("Unlocked wallet does not match the linked wallet.");
+  }
+
+  const walletCore = await import("../../wallet-core");
   const userPubkey = await walletCore.deriveTaskNodePublicKey(walletSecret.mnemonic);
   const encryptedPayload = await walletCore.encryptTaskNodePayload({
     plaintext: JSON.stringify(eventPayload),
