@@ -255,7 +255,11 @@ async function taskSubmissionConfig({ payload, session }) {
     offchainLifecycle: {
       enabled: offchainEnabled,
       dualWrite: offchainDualWrite,
-      writeSource: offchainEnabled && !offchainDualWrite ? "direct_write" : "pftl_pointer",
+      writeSource: offchainEnabled
+        ? offchainDualWrite
+          ? "direct_write+pftl_pointer"
+          : "direct_write"
+        : "pftl_pointer",
     },
     wallets: {
       user: resolved.wallet.address,
@@ -526,6 +530,26 @@ async function submitTaskSubmission({ payload, session }) {
     });
   }
 
+  const offchainDualWrite = offchainTaskLifecycleEnabled() && offchainTaskLifecycleDualWriteEnabled();
+  const transition = offchainDualWrite ? transitionForSubmissionMode(allowed.mode) : "";
+  const dualWriteRecorded = offchainDualWrite
+    ? await applyOffchainTaskTransition({
+        accountId: resolved.accountId,
+        walletAddress: resolved.wallet.address,
+        task: resolved.task,
+        transition,
+        payload,
+        metadata: {
+          endpoint: "POST /api/tasks/submission",
+          submissionMode: allowed.mode,
+          schema: submissionSchemaForMode(allowed.mode),
+          pointerTxHash: txHash,
+          pointerCid: safeText(payload?.cid, 240),
+        },
+        dualWrite: true,
+      })
+    : null;
+
   const refresh = scheduleBestEffortRefreshTaskProjection({
     accountId: resolved.accountId,
     walletAddress: resolved.wallet.address,
@@ -548,6 +572,7 @@ async function submitTaskSubmission({ payload, session }) {
           phase: "submit",
           submissionMode: allowed.mode,
           previousStatus: resolved.task.status,
+          writeSource: offchainDualWrite ? "direct_write+pftl_pointer" : "pftl_pointer",
         },
         idempotencyKey: `agent_task_submission:${agentGate.agentOrigin.walletAddress || resolved.accountId}:${resolved.task.task_id}:${allowed.mode}:${txHash}`,
       })
@@ -561,6 +586,16 @@ async function submitTaskSubmission({ payload, session }) {
     txHash,
     engineResult: submit.engineResult,
     refresh,
+    offchainLifecycle: offchainDualWrite
+      ? {
+          enabled: true,
+          dualWrite: true,
+          writeSource: "direct_write+pftl_pointer",
+          pointerTxHash: txHash,
+          eventId: dualWriteRecorded.event.eventId,
+          transition,
+        }
+      : undefined,
     orcWorkJournal,
   });
 }

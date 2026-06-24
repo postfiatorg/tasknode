@@ -267,7 +267,8 @@ export async function publishTaskEvidenceSubmission({
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ phase: "config", taskId }),
   });
-  const directOffchain = Boolean(config.body?.offchainLifecycle?.enabled && !config.body?.offchainLifecycle?.dualWrite);
+  const dualWrite = Boolean(config.body?.offchainLifecycle?.enabled && config.body?.offchainLifecycle?.dualWrite);
+  const directOffchain = Boolean(config.body?.offchainLifecycle?.enabled && !dualWrite);
   if (!config.ok || (!directOffchain && !config.body?.tasknodeEncryptionPubkey)) {
     throw new Error(config.body?.message || "Task evidence publishing is not configured.");
   }
@@ -351,6 +352,16 @@ export async function publishTaskEvidenceSubmission({
     txJson: prepared.body.txJson,
     expectedAddress: linkedWalletAddress,
   });
+  const actorSignature = dualWrite
+    ? await buildActorTransitionSignature({
+        accountId,
+        linkedWalletAddress,
+        payload: submissionPayload,
+        taskId,
+        transition: submissionPayload.phase,
+        walletSecret,
+      })
+    : undefined;
   progress("Publishing to PFTL");
   const submitted = await requestJson("/api/tasks/submission", {
     method: "POST",
@@ -362,6 +373,8 @@ export async function publishTaskEvidenceSubmission({
       signedTxBlob: signed.txBlob,
       pointer: prepared.body.pointer,
       transaction: prepared.body.transaction,
+      offchainPayload: dualWrite ? submissionPayload : undefined,
+      actorSignature,
     }),
   });
   if (!submitted.ok || !submitted.body?.ok) {

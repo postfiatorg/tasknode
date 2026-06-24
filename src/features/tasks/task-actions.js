@@ -50,7 +50,8 @@ export async function publishTaskLifecycleAction({
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ phase: "config", taskId, taskAction: action }),
   });
-  const directOffchain = Boolean(config.body?.offchainLifecycle?.enabled && !config.body?.offchainLifecycle?.dualWrite);
+  const dualWrite = Boolean(config.body?.offchainLifecycle?.enabled && config.body?.offchainLifecycle?.dualWrite);
+  const directOffchain = Boolean(config.body?.offchainLifecycle?.enabled && !dualWrite);
   if (!config.ok || (!directOffchain && !config.body?.tasknodeEncryptionPubkey)) {
     throw new Error(config.body?.message || "Task action publishing is not configured.");
   }
@@ -145,6 +146,16 @@ export async function publishTaskLifecycleAction({
     txJson: prepared.body.txJson,
     expectedAddress: linkedWalletAddress,
   });
+  const actorSignature = dualWrite
+    ? await buildActorTransitionSignature({
+        accountId,
+        linkedWalletAddress,
+        payload: eventPayload,
+        taskId,
+        transition,
+        walletSecret,
+      })
+    : undefined;
   const submitted = await requestJson("/api/tasks/action", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -156,6 +167,8 @@ export async function publishTaskLifecycleAction({
       signedTxBlob: signed.txBlob,
       pointer: prepared.body.pointer,
       transaction: prepared.body.transaction,
+      offchainPayload: dualWrite ? eventPayload : undefined,
+      actorSignature,
     }),
   });
   if (!submitted.ok || !submitted.body?.ok) {

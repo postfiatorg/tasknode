@@ -68,6 +68,7 @@ export function offchainTaskEventPayload({
   transition = "",
   payload = {},
   metadata = {},
+  dualWrite = false,
 } = {}) {
   const schema = eventSchemaForTransition(transition);
   const providedPayload = safeObject(
@@ -116,7 +117,7 @@ export function offchainTaskEventPayload({
       source: DIRECT_WRITE_SOURCE,
       mode: "server_authoritative_postgres",
       featureFlag: "TASKNODE_OFFCHAIN_TASK_LIFECYCLE",
-      dualWrite: false,
+      dualWrite: Boolean(dualWrite),
       previousStatus: eventPayload.previous_status,
       transition,
       recordedAt,
@@ -131,6 +132,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
   transition = "",
   payload = {},
   metadata = {},
+  dualWrite = false,
 } = {}) {
   const normalizedTransition = safeText(transition, 80);
   if (!normalizedTransition) throw new Error("offchain_transition_required");
@@ -141,6 +143,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
     transition: normalizedTransition,
     payload,
     metadata,
+    dualWrite,
   });
   const eventInsert = await client.query(
     `
@@ -190,6 +193,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
       lastRecordedAt: event.provenanceJson.recordedAt,
       lastEventInserted: eventInserted,
       lastSignatureVerified: event.signatureJson?.verification?.verified === true,
+      dualWrite: Boolean(dualWrite),
     },
   };
   const projectionUpdate = await client.query(

@@ -58,6 +58,7 @@ const result = await applyOffchainTaskTransitionWithClient(client, {
     endpoint: "POST /api/tasks/submission",
     submissionMode: "initial_submission",
   },
+  dualWrite: true,
 });
 
 assert.equal(result.ok, true);
@@ -82,6 +83,7 @@ assert.equal(insertedPayload.transition, "submitted");
 const insertedProvenance = JSON.parse(insertCall.params[11]);
 assert.equal(insertedProvenance.source, "direct_write");
 assert.equal(insertedProvenance.mode, "server_authoritative_postgres");
+assert.equal(insertedProvenance.dualWrite, true);
 const insertedSignature = JSON.parse(insertCall.params[12]);
 assert.equal(insertedSignature.verification.present, false);
 assert.equal(insertedSignature.verification.reason, "signature_missing");

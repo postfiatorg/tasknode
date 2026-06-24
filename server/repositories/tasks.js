@@ -1154,6 +1154,26 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
             ELSE EXCLUDED.metadata_json
           END,
           updated_at = now()
+        WHERE task_projections.metadata_json ? 'agent_cancelled'
+           OR NOT EXISTS (
+             SELECT 1
+               FROM pftl_transactions current_tx
+               JOIN pftl_transactions incoming_tx
+                 ON incoming_tx.tx_hash = EXCLUDED.last_event_tx_hash
+              WHERE current_tx.tx_hash = task_projections.last_event_tx_hash
+                AND (
+                  current_tx.ledger_index > incoming_tx.ledger_index
+                  OR (
+                    current_tx.ledger_index = incoming_tx.ledger_index
+                    AND current_tx.close_time > incoming_tx.close_time
+                  )
+                  OR (
+                    current_tx.ledger_index = incoming_tx.ledger_index
+                    AND current_tx.close_time = incoming_tx.close_time
+                    AND task_projections.last_event_tx_hash > EXCLUDED.last_event_tx_hash
+                  )
+                )
+           )
       `,
       [
         projection.taskId,
