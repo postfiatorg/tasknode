@@ -34,6 +34,7 @@
     "system-status-smoke": "node scripts/system-status-smoke.mjs",
     "system-status-agent-activity-smoke": "node scripts/system-status-agent-activity-smoke.mjs",
     "system-status-network-spend-smoke": "node scripts/system-status-network-spend-smoke.mjs",
+    "app-state-cache-gate-smoke": "node scripts/app-state-cache-gate-smoke.mjs",
     "chat-markdown-smoke": "node scripts/chat-markdown-smoke.mjs",
     "chat-spirit-prompt-smoke": "node scripts/chat-spirit-prompt-smoke.mjs",
     "agent-chat-origin-smoke": "node scripts/agent-chat-origin-smoke.mjs",
