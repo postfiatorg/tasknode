@@ -40,6 +40,10 @@ const activeTaskStatuses = Object.freeze([
   "reward_decided",
 ]);
 
+const reportBodyMaxChars = 12_000;
+const reportMetadataMaxChars = 4_000;
+const discussionBodyMaxChars = 2_000;
+
 function useDatabase() {
   return databaseEnabled();
 }
@@ -74,6 +78,15 @@ function jsonValue(value) {
   return JSON.stringify(value && typeof value === "object" ? value : {});
 }
 
+function boundedText(value = "", max = 1000) {
+  const text = String(value || "").trim();
+  return {
+    text: text.slice(0, max),
+    originalLength: text.length,
+    truncated: text.length > max,
+  };
+}
+
 function digestValue(value = {}) {
   return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 }
@@ -103,14 +116,24 @@ function identitySummary(accountId = "", fallback = {}) {
 
 function reportInput(report = null) {
   if (!report) return null;
+  const body = boundedText(report.bodyMarkdown || "", reportBodyMaxChars);
+  const metadataText = JSON.stringify(safeObject(report.metadata));
   return {
     id: safeText(report.id, 180),
     type: safeText(report.type, 80),
     label: safeText(report.label, 120),
     generatedAt: safeText(report.generatedAt, 80),
     model: safeText(report.model, 180),
-    bodyMarkdown: report.bodyMarkdown || "",
-    metadata: safeObject(report.metadata),
+    bodyMarkdown: body.text,
+    bodyMarkdownTruncated: body.truncated,
+    bodyMarkdownOriginalLength: body.originalLength,
+    metadata: metadataText.length > reportMetadataMaxChars
+      ? {
+          truncated: true,
+          originalLength: metadataText.length,
+          excerpt: metadataText.slice(0, reportMetadataMaxChars),
+        }
+      : safeObject(report.metadata),
   };
 }
 
@@ -157,12 +180,15 @@ function taskRow(row = {}) {
 }
 
 function discussionRow(row = {}) {
+  const body = boundedText(row.body || "", discussionBodyMaxChars);
   return {
     id: safeText(row.id, 180),
     accountId: safeText(row.account_id, 180),
     speaker: identitySummary(row.account_id, { displayName: row.display_name }),
     displayName: safeText(row.display_name, 160),
-    body: safeText(row.body, 8000),
+    body: body.text,
+    bodyTruncated: body.truncated,
+    bodyOriginalLength: body.originalLength,
     sourceConversationTitle: safeText(row.source_conversation_title, 160),
     createdAt: iso(row.created_at),
     metadata: safeObject(row.metadata_json),

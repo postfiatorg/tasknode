@@ -42,7 +42,7 @@ export function hiveDecisionAgentProviderConfigured() {
   return process.env.TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK === "true" || Boolean(openRouterKey());
 }
 
-function compactJson(value, maxLength = 120_000) {
+function compactJson(value, maxLength = 70_000) {
   const text = JSON.stringify(value, null, 2);
   if (text.length <= maxLength) return text;
   return `${text.slice(0, Math.floor(maxLength * 0.72))}\n\n[...middle truncated...]\n\n${text.slice(-Math.floor(maxLength * 0.28))}`;
