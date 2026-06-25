@@ -98,6 +98,13 @@ import {
   patchContextEditProposalTurn,
   rejectContextEditProposal,
 } from "./features/context/context-edit-client";
+import {
+  CONTEXT_REWRITE_MODE,
+  CONTEXT_REWRITE_PLACEHOLDER,
+  contextRewriteIsTerminal,
+  createContextRewriteJob,
+  fetchContextRewriteJob,
+} from "./features/context/context-rewrite-client";
 import { publishContextToPft } from "./features/context/context-publish";
 import {
   ContextToolButton,
@@ -532,6 +539,7 @@ function App() {
   const [chatSelectionKey, setChatSelectionKey] = useState(0);
   const [chatShareRequestKey, setChatShareRequestKey] = useState(0);
   const [contextRefinePending, setContextRefinePending] = useState(false);
+  const [contextRewritePending, setContextRewritePending] = useState(false);
   const [chatActionMenu, setChatActionMenu] = useState(null);
   const [chatRenameTarget, setChatRenameTarget] = useState(null);
   const [chatDeleteTarget, setChatDeleteTarget] = useState(null);
@@ -996,6 +1004,16 @@ function App() {
     navigateToView("chat");
   }, [navigateToView, signedIn]);
 
+  const openContextRewrite = useCallback(() => {
+    setMoreMenuOpen(false);
+    if (!signedIn) {
+      setLoginOpen(true);
+      return;
+    }
+    setContextRewritePending(true);
+    navigateToView("chat");
+  }, [navigateToView, signedIn]);
+
   useEffect(() => {
     const initialTaskId = taskIdFromLocation();
     if (initialTaskId) {
@@ -1452,6 +1470,7 @@ function App() {
             {moreMenuOpen && sidebarOpen && (
               <div className="sidebar-popout">
                 <ToolMenuRow icon={Wand2} label="Context Refine" onClick={openContextRefine} />
+                <ToolMenuRow icon={FileText} label="Context Rewrite" onClick={openContextRewrite} />
                 <div className="menu-divider" />
                 <ToolMenuRow
                   icon={MessageSquare}
@@ -1731,11 +1750,13 @@ function App() {
               chatShareRequestKey={chatShareRequestKey}
               chat={appState?.chat}
               contextRefinePending={contextRefinePending}
+              contextRewritePending={contextRewritePending}
               directOffchainTaskLifecycle={directOffchainTaskLifecycle}
               linkedWalletAddress={linkedWalletAddress}
               onActiveChatChange={setActiveChat}
               onChatSettled={refreshAppState}
               onContextRefineHandled={() => setContextRefinePending(false)}
+              onContextRewriteHandled={() => setContextRewritePending(false)}
               onWalletUnlock={openWalletVaultControl}
               usage={appState?.usage}
               walletSecret={walletSecretRef.current}
@@ -1931,8 +1952,8 @@ function App() {
 
 function ChatSurface({
   accountId = "", activeChat, chat, chatResetKey, chatSelectionKey, chatShareRequestKey,
-  contextRefinePending = false, directOffchainTaskLifecycle = false, linkedWalletAddress = "", onActiveChatChange, onChatSettled,
-  onContextRefineHandled, onWalletUnlock, usage,
+  contextRefinePending = false, contextRewritePending = false, directOffchainTaskLifecycle = false, linkedWalletAddress = "", onActiveChatChange, onChatSettled,
+  onContextRefineHandled, onContextRewriteHandled, onWalletUnlock, usage,
   walletSecret = null, walletUnlockPending = false, walletVault = {},
 }) {
   const signedOut = !accountId;
@@ -1949,6 +1970,7 @@ function ChatSurface({
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [taskRequestMode, setTaskRequestMode] = useState(false);
   const [contextEditMode, setContextEditMode] = useState(false);
+  const [contextRewriteMode, setContextRewriteMode] = useState(false);
   const [contextEditSavingId, setContextEditSavingId] = useState("");
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
@@ -1978,6 +2000,7 @@ function ChatSurface({
   const fileInputRef = useRef(null);
   const composerDragDepthRef = useRef(0);
   const messageListRef = useRef(null);
+  const contextRewritePollsRef = useRef(new Map());
   const resetSeenRef = useRef(0);
   const shareSeenRef = useRef(chatShareRequestKey);
   const clearedChatRef = useRef(false);
@@ -2030,6 +2053,7 @@ function ChatSurface({
     if (!signedOut) return;
     setTaskRequestMode(false);
     setContextEditMode(false);
+    setContextRewriteMode(false);
     setSelectedMode("Help");
     setPlusMenuOpen(false);
     setHistoryLoading(false);
@@ -2051,6 +2075,7 @@ function ChatSurface({
     setAttachments([]);
     setTaskRequestMode(false);
     setContextEditMode(false);
+    setContextRewriteMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -2069,6 +2094,7 @@ function ChatSurface({
     clearedChatRef.current = false;
     setTaskRequestMode(false);
     setContextEditMode(false);
+    setContextRewriteMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -2116,11 +2142,33 @@ function ChatSurface({
     onContextRefineHandled?.();
     if (signedOut) return;
     setTaskRequestMode(false);
+    setContextRewriteMode(false);
     setContextEditMode(true);
     setSendMessage("");
     setStatusTone("muted");
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [contextRefinePending, onContextRefineHandled, signedOut]);
+
+  useEffect(() => {
+    if (!contextRewritePending) return;
+    onContextRewriteHandled?.();
+    if (signedOut) return;
+    setTaskRequestMode(false);
+    setContextEditMode(false);
+    setContextRewriteMode(true);
+    setSendMessage("Context Rewrite uses multiple model calls and web research, so the charge may be higher than a normal chat call.");
+    setStatusTone("muted");
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, [contextRewritePending, onContextRewriteHandled, signedOut]);
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of contextRewritePollsRef.current.values()) {
+        window.clearInterval(timerId);
+      }
+      contextRewritePollsRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     const textarea = inputRef.current;
@@ -2176,6 +2224,93 @@ function ChatSurface({
     return () => window.cancelAnimationFrame(frame);
   }, [turns, input, sending, updateScrollBottomVisibility]);
 
+  function replaceContextRewriteAssistant(pendingId, assistant, startedAt, { pending = false } = {}) {
+    const assistantTurn = normalizeChatMessage(
+      {
+        ...assistant,
+        thinking: {
+          state: pending ? "running" : "finished",
+          duration: pending ? undefined : formatElapsedSeconds(Date.now() - startedAt),
+          ...(assistant?.metadata?.thinking || {}),
+          ...(assistant?.thinking || {}),
+        },
+      },
+      pendingId
+    );
+    if (!assistantTurn) return;
+    setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId, pending }));
+  }
+
+  function contextRewriteAssistantWithJobProgress(assistant, job) {
+    if (!assistant || !job) return assistant;
+    const metadata = assistant.metadata && typeof assistant.metadata === "object" ? assistant.metadata : {};
+    const rewrite = metadata.contextRewrite && typeof metadata.contextRewrite === "object" ? metadata.contextRewrite : {};
+    const progress = job.progress && typeof job.progress === "object" ? job.progress : rewrite.progress;
+    return {
+      ...assistant,
+      metadata: {
+        ...metadata,
+        kind: "context_rewrite",
+        contextRewrite: {
+          ...rewrite,
+          jobId: job.id || rewrite.jobId,
+          status: job.status || rewrite.status,
+          stage: job.currentStage || rewrite.stage,
+          actualCostUsd: job.actualCostUsd ?? rewrite.actualCostUsd,
+          progress,
+          trace: Array.isArray(progress?.trace) ? progress.trace : rewrite.trace,
+        },
+      },
+    };
+  }
+
+  async function pollContextRewriteJob(jobId, pendingId, startedAt) {
+    if (!jobId || contextRewritePollsRef.current.has(jobId)) return;
+
+    async function tick() {
+      try {
+        const result = await fetchContextRewriteJob(jobId);
+        if (!result.ok || !result.body?.job) {
+          throw new Error(result.body?.message || `Context Rewrite returned HTTP ${result.status}.`);
+        }
+        const job = result.body.job;
+        const stage = job.currentStage || job.status || "running";
+        if (job.status === "failed" || job.status === "cancelled") {
+          const failureMessage = job.error || result.body?.assistant?.body || "Context Rewrite did not complete.";
+          setTurns((current) =>
+            replaceTurnById(current, pendingId, createErrorAssistantTurn(pendingId, failureMessage, startedAt))
+          );
+          setSendMessage(failureMessage);
+          setStatusTone("error");
+        } else if (result.body.assistant) {
+          replaceContextRewriteAssistant(pendingId, contextRewriteAssistantWithJobProgress(result.body.assistant, job), startedAt, {
+            pending: !contextRewriteIsTerminal(job.status),
+          });
+          setSendMessage(
+            job.status === "completed"
+              ? "Context Rewrite ready."
+              : job.progress?.message || `Context Rewrite ${stage.replaceAll("_", " ")}. Check back in this tab.`
+          );
+          setStatusTone("muted");
+        }
+        if (contextRewriteIsTerminal(job.status)) {
+          const timerId = contextRewritePollsRef.current.get(jobId);
+          if (timerId) window.clearInterval(timerId);
+          contextRewritePollsRef.current.delete(jobId);
+          await onChatSettled?.();
+        }
+      } catch (error) {
+        const failureMessage = error?.message || "Context Rewrite status is unavailable.";
+        setSendMessage(failureMessage);
+        setStatusTone("error");
+      }
+    }
+
+    const timerId = window.setInterval(tick, 4000);
+    contextRewritePollsRef.current.set(jobId, timerId);
+    await tick();
+  }
+
   async function submitMessage(event) {
     event.preventDefault();
     if (sending) return;
@@ -2186,12 +2321,14 @@ function ChatSurface({
     const startedAt = Date.now();
     const requestedConversationId = activeChat?.conversationId || activeChat?.id || draftConversationId;
     const isTaskRequest = taskRequestMode;
-    const isContextEdit = contextEditMode && !isTaskRequest;
-    const isHiveContext = isHiveChat && !isTaskRequest && !isContextEdit;
+    const isContextRewrite = contextRewriteMode && !isTaskRequest;
+    const isContextEdit = contextEditMode && !isTaskRequest && !isContextRewrite;
+    const isHiveContext = isHiveChat && !isTaskRequest && !isContextEdit && !isContextRewrite;
     const requestId = isTaskRequest ? newClientCorrelationId("req") : "";
     const bundleId = isTaskRequest ? newClientCorrelationId("bundle") : "";
     const taskRequestMessageId = requestId ? `msg_${requestId}_request_user`.slice(0, 180) : "";
     const taskRequestAssistantId = requestId ? `msg_${requestId}_request_assistant`.slice(0, 180) : "";
+    const contextRewriteMessageId = isContextRewrite ? `msg_${newClientCorrelationId("ctxrw")}_user`.slice(0, 180) : "";
     const hiveContextMessageId = isHiveContext ? `msg_${newClientCorrelationId("hive")}_user`.slice(0, 180) : "";
     const hiveContextAssistantId = isHiveContext ? `${hiveContextMessageId}_assistant`.slice(0, 180) : "";
     const pendingId = taskRequestAssistantId || hiveContextAssistantId || `assistant-pending-${startedAt}`;
@@ -2215,6 +2352,16 @@ function ChatSurface({
         }
       : undefined;
     const contextEditMetadata = isContextEdit ? { kind: CONTEXT_EDIT_MODE } : undefined;
+    const contextRewriteMetadata = isContextRewrite
+      ? {
+          kind: CONTEXT_REWRITE_MODE,
+          contextRewrite: {
+            status: "queued",
+            stage: "queued",
+            warning: "Context Rewrite runs multiple model calls and web research. The charge may be higher than other tool calls.",
+          },
+        }
+      : undefined;
     const hiveContextMetadata = isHiveContext
       ? {
           kind: "hive_context_entry",
@@ -2223,7 +2370,7 @@ function ChatSurface({
           sourceConversationTitle: HIVE_CHAT_TITLE,
       }
       : undefined;
-    const turnMetadata = taskRequestMetadata || contextEditMetadata || hiveContextMetadata;
+    const turnMetadata = taskRequestMetadata || contextRewriteMetadata || contextEditMetadata || hiveContextMetadata;
 
     if (isTaskRequest && !walletReady) {
       if (["unlock", "open_wallet"].includes(taskRequestUnlockPolicy.action)) onWalletUnlock?.();
@@ -2240,7 +2387,7 @@ function ChatSurface({
     setAttachments([]);
     const submittedUserTurn = createUserTurn(
         submittedText,
-        taskRequestMessageId || hiveContextMessageId || `user-local-${startedAt}`,
+        taskRequestMessageId || contextRewriteMessageId || hiveContextMessageId || `user-local-${startedAt}`,
         submittedAttachments,
         turnMetadata
       );
@@ -2253,7 +2400,7 @@ function ChatSurface({
         conversationId: requestedConversationId,
         source: "live",
         kind: isHiveContext ? "hive" : undefined,
-        title: isTaskRequest ? "Task request" : isHiveContext ? HIVE_CHAT_TITLE : chatTitleFromPrompt(message),
+        title: isTaskRequest ? "Task request" : isContextRewrite ? "Context Rewrite" : isHiveContext ? HIVE_CHAT_TITLE : chatTitleFromPrompt(message),
       });
     }
 
@@ -2309,6 +2456,41 @@ function ChatSurface({
           title: activeChat?.title || "Task request",
         });
         await onChatSettled?.({ taskProjectionRefresh: true });
+        return;
+      }
+
+      if (isContextRewrite) {
+        const result = await createContextRewriteJob({
+          message: submittedText,
+          conversationId: requestedConversationId,
+        });
+        if (!result.ok || !result.body?.job) {
+          throw new Error(result.body?.message || result.body?.actionRequired || `Context Rewrite returned HTTP ${result.status}.`);
+        }
+
+        if (result.body.user) {
+          const userTurn = normalizeChatMessage(result.body.user, 0);
+          if (userTurn) {
+            setTurns((current) => replaceTurnById(current, contextRewriteMessageId, userTurn));
+          }
+        }
+        if (result.body.assistant) {
+          replaceContextRewriteAssistant(pendingId, result.body.assistant, startedAt, { pending: true });
+        }
+
+        setContextRewriteMode(false);
+        setSendMessage(result.body.message || "Context Rewrite queued. Check back in this tab.");
+        setStatusTone("muted");
+        const settledConversationId = result.body?.job?.conversationId || requestedConversationId;
+        setDraftConversationId(settledConversationId);
+        onActiveChatChange?.({
+          id: settledConversationId,
+          conversationId: settledConversationId,
+          source: "live",
+          title: activeChat?.title || "Context Rewrite",
+        });
+        await onChatSettled?.();
+        void pollContextRewriteJob(result.body.job.id, pendingId, startedAt);
         return;
       }
 
@@ -2457,7 +2639,7 @@ function ChatSurface({
           createErrorAssistantTurn(pendingId, failureMessage, startedAt)
         )
       );
-      if (isTaskRequest || isContextEdit || isHiveContext) {
+      if (isTaskRequest || isContextEdit || isContextRewrite || isHiveContext) {
         setInput(message);
         setAttachments(submittedAttachments);
       }
@@ -2620,6 +2802,7 @@ function ChatSurface({
   }
 
   function handleContextEditRevise(proposal) {
+    setContextRewriteMode(false);
     setContextEditMode(true);
     setInput(`Revise this context edit: ${proposal?.rationale || ""}`.trim());
     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -2642,7 +2825,9 @@ function ChatSurface({
   const composerExpanded = input.length > 0;
   const composerPlaceholder = taskRequestMode
     ? TASK_REQUEST_PLACEHOLDER
-    : contextEditMode
+    : contextRewriteMode
+      ? CONTEXT_REWRITE_PLACEHOLDER
+      : contextEditMode
       ? CONTEXT_EDIT_PLACEHOLDER
       : isHiveChat
         ? HIVE_CHAT_PLACEHOLDER
@@ -2651,11 +2836,14 @@ function ChatSurface({
     "composer",
     composerDragActive ? "is-drag-active" : "",
     taskRequestMode ? "is-task-request" : "",
+    contextRewriteMode ? "is-context-rewrite" : "",
     contextEditMode ? "is-context-edit" : "",
     isHiveChat ? "is-hive-input" : "",
   ].filter(Boolean).join(" ");
-  const modelPickerDisabled = contextEditMode || isHiveChat;
-  const modelPickerLabel = contextEditMode
+  const modelPickerDisabled = contextEditMode || contextRewriteMode || isHiveChat;
+  const modelPickerLabel = contextRewriteMode
+    ? "Context Rewrite"
+    : contextEditMode
     ? "Thinking carefully"
     : isHiveChat
       ? HIVE_CHAT_TITLE
@@ -2690,6 +2878,15 @@ function ChatSurface({
             <Wand2 size={13} strokeWidth={1.9} />
             <span>Context Refine</span>
             <button aria-label="Exit Context Refine" onClick={() => setContextEditMode(false)} type="button">
+              <X size={12} strokeWidth={2} />
+            </button>
+          </div>
+        )}
+        {contextRewriteMode && (
+          <div className="composer-mode-chip">
+            <FileText size={13} strokeWidth={1.9} />
+            <span>Context Rewrite</span>
+            <button aria-label="Exit Context Rewrite" onClick={() => setContextRewriteMode(false)} type="button">
               <X size={12} strokeWidth={2} />
             </button>
           </div>
@@ -2732,8 +2929,22 @@ function ChatSurface({
                   onClick={() => {
                     setPlusMenuOpen(false);
                     setTaskRequestMode(false);
+                    setContextRewriteMode(false);
                     setContextEditMode(true);
                     setSendMessage("");
+                    setStatusTone("muted");
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                />
+                <ToolMenuRow
+                  icon={FileText}
+                  label="Context Rewrite"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    setTaskRequestMode(false);
+                    setContextEditMode(false);
+                    setContextRewriteMode(true);
+                    setSendMessage("Context Rewrite uses multiple model calls and web research, so the charge may be higher than a normal chat call.");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}
@@ -2745,6 +2956,7 @@ function ChatSurface({
                     setPlusMenuOpen(false);
                     setTaskRequestMode(true);
                     setContextEditMode(false);
+                    setContextRewriteMode(false);
                     setSendMessage("");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);

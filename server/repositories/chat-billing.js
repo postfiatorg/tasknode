@@ -831,6 +831,137 @@ export async function appendChatTurn({
   }
 }
 
+export async function recordBillableModelRun({
+  accountId = "",
+  conversationId = "dev",
+  requestMessageId = "",
+  responseMessageId = "",
+  provider = "",
+  model = "",
+  mode = "",
+  responseId = "",
+  status = "completed",
+  usage = {},
+  source = "chat_model_run",
+  note = "",
+  metadata = {},
+  error = "",
+} = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedConversationId = safeConversationId(conversationId);
+  assertConversationIdAccountBoundary({
+    accountId: normalizedAccountId,
+    conversationId: normalizedConversationId,
+  });
+  const modelRunId = `run_${randomUUID()}`;
+  const startedAt = new Date();
+  const completedAt = status === "completed" || status === "failed" ? new Date() : null;
+  const costUsd = numeric(usage?.costUsd || 0);
+  const inputTokens = Math.max(0, Number(usage?.inputTokens || 0));
+  const outputTokens = Math.max(0, Number(usage?.outputTokens || 0));
+  const totalTokens = Math.max(0, Number(usage?.totalTokens || inputTokens + outputTokens || 0));
+  const webSearchCalls = Math.max(0, Number(usage?.webSearchCalls || 0));
+  const toolCostUsd = numeric(usage?.toolCostUsd || 0);
+
+  if (!useDatabase()) {
+    return {
+      modelRunId,
+      ledgerEntry: null,
+      skipped: true,
+      reason: "database_not_configured",
+    };
+  }
+
+  const persisted = await transaction(async (client) => {
+    await client.query(
+      `
+        INSERT INTO chat_model_runs (
+          id,
+          conversation_id,
+          account_id,
+          request_message_id,
+          response_message_id,
+          provider,
+          model,
+          mode,
+          response_id,
+          status,
+          input_tokens,
+          output_tokens,
+          total_tokens,
+          web_search_calls,
+          tool_cost_usd,
+          model_cost_usd,
+          total_cost_usd,
+          started_at,
+          completed_at,
+          error,
+          metadata_json
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+        )
+      `,
+      [
+        modelRunId,
+        normalizedConversationId,
+        normalizedAccountId,
+        String(requestMessageId || "").slice(0, 180) || `context_rewrite_request_${modelRunId}`,
+        String(responseMessageId || "").slice(0, 180) || `context_rewrite_response_${modelRunId}`,
+        String(provider || "").slice(0, 80),
+        String(model || "").slice(0, 180),
+        String(mode || "").slice(0, 80),
+        responseId || null,
+        String(status || "completed").slice(0, 80),
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        webSearchCalls,
+        toolCostUsd,
+        costUsd,
+        costUsd + toolCostUsd,
+        startedAt,
+        completedAt,
+        String(error || "").slice(0, 1000) || null,
+        jsonValue(metadata),
+      ]
+    );
+
+    let ledgerEntry = null;
+    if (costUsd + toolCostUsd > 0 && String(status || "completed") === "completed") {
+      const row = await insertLedgerEntry(client, {
+        id: `ledger_${randomUUID()}`,
+        kind: "chat_debit",
+        accountId: normalizedAccountId,
+        amountUsd: costUsd + toolCostUsd,
+        source,
+        note,
+        conversationId: normalizedConversationId,
+        modelRunId,
+        provider,
+        model,
+        mode,
+        responseId,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        webSearchCalls,
+        toolCostUsd,
+        metadata,
+      });
+      ledgerEntry = publicLedgerEntry(row);
+    }
+
+    return {
+      modelRunId,
+      ledgerEntry,
+    };
+  });
+
+  return persisted;
+}
+
 export async function getChatMessages(input = "dev", options = {}) {
   const { accountId, conversationId, limit = 30 } = chatMessagesArgs(input, options);
   const normalizedLimit = Math.min(Math.max(Number(limit) || 30, 1), maxMessageLimit);

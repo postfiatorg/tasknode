@@ -22,6 +22,8 @@ The native document storage cap is `CONTEXT_DOCUMENT_MAX_CHARS` from `shared/con
 
 Context Refine runs through Chat, not a separate Context modal. `src/main.jsx::ChatSurface` activates `contextMode: "context_edit"` from the chat `+` menu or from the sidebar More tools menu entry, which navigates to Chat and activates the same composer mode. `server/context-edit-chat.js` uses `prompts/context/context_edit_jobs_v1.xml`, stores pending proposals in `context_edit_proposals`, and applies accepted proposals through `server/repositories/context.js::saveContextDocument`. The Context page then reloads the saved revision from Postgres.
 
+Context Rewrite runs through Chat, not the Context page. It is a billed async job that assembles context, chat, memory, tasks, network profile, Jobs retrieval, and research, then returns a copyable/downloadable Markdown artifact. It does not overwrite the current context document; users can copy from the artifact and decide what to save manually.
+
 Line numbers are generated from the same normalized HTML-to-text idea used by `server/context-line-map.js`. They are inspection anchors for the user and model packet; the server still validates accepted edits by revision, body hash, and exact `target_before` text before saving.
 
 ## Current Limits

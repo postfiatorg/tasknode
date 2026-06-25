@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Download,
   FileText,
   Paperclip,
   Pencil,
@@ -41,6 +42,19 @@ export async function copyText(text) {
   } finally {
     textarea.remove();
   }
+}
+
+function downloadTextFile({ filename = "context-rewrite.md", text = "" } = {}) {
+  const blob = new Blob([String(text || "")], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename || "context-rewrite.md";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return true;
 }
 
 export function UserMessage({
@@ -190,6 +204,7 @@ export function AssistantMessage({
   const sourceLabel = assistantSourceLabel(message.metadata);
   const showToolbar = !message.pending && !message.error && !isHiveInputAck && !isHiveContextStatus;
   const proposal = message.metadata?.contextEdit?.proposal || null;
+  const contextRewrite = message.metadata?.contextRewrite || null;
 
   if (isHiveInputAck) return null;
 
@@ -252,6 +267,7 @@ export function AssistantMessage({
         proposal={proposal}
         saving={contextEditSavingId === proposal?.id}
       />
+      <ContextRewriteArtifactCard contextRewrite={contextRewrite} />
       {message.error && <div className="assistant-error">Response failed</div>}
       {showToolbar && (
         <MessageToolbar
@@ -260,6 +276,82 @@ export function AssistantMessage({
         />
       )}
     </article>
+  );
+}
+
+function ContextRewriteArtifactCard({ contextRewrite = null }) {
+  const status = String(contextRewrite?.status || "").trim();
+  const markdown = String(contextRewrite?.markdown || "");
+  if (!contextRewrite) return null;
+  const filename = String(contextRewrite.filename || "context-rewrite.md").trim() || "context-rewrite.md";
+  const title = String(contextRewrite.title || "Context Rewrite").trim();
+  const summary = String(contextRewrite.summary || "").trim();
+  const lineCount = markdown.split(/\r?\n/).length;
+  const trace = contextRewriteTrace(contextRewrite);
+  const stage = String(contextRewrite.stage || contextRewrite.progress?.stage || status || "running").replaceAll("_", " ");
+  const hasArtifact = status === "completed" && markdown;
+  const subtitle = hasArtifact
+    ? summary || `${lineCount} Markdown lines ready`
+    : contextRewrite.progress?.message || `Context Rewrite ${stage}`;
+
+  return (
+    <div className={`context-rewrite-card is-${status || "running"}`}>
+      <div className="context-rewrite-card-head">
+        <span className="context-rewrite-icon">
+          <FileText size={16} strokeWidth={1.8} />
+        </span>
+        <div>
+          <strong>{title}</strong>
+          <small>{subtitle}</small>
+        </div>
+      </div>
+      {trace.length > 0 && <ContextRewriteTrace trace={trace} />}
+      {hasArtifact && (
+        <div className="context-rewrite-card-actions">
+          <button onClick={() => copyText(markdown)} type="button">
+            <Copy size={14} strokeWidth={1.8} />
+            Copy Markdown
+          </button>
+          <button onClick={() => downloadTextFile({ filename, text: markdown })} type="button">
+            <Download size={14} strokeWidth={1.8} />
+            Download .md
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function contextRewriteTrace(contextRewrite = {}) {
+  const progress = contextRewrite.progress && typeof contextRewrite.progress === "object" ? contextRewrite.progress : {};
+  const trace = Array.isArray(contextRewrite.trace)
+    ? contextRewrite.trace
+    : Array.isArray(progress.trace)
+      ? progress.trace
+      : [];
+  return trace
+    .map((step) => ({
+      key: String(step?.key || step?.label || "").trim(),
+      label: String(step?.label || step?.key || "").trim(),
+      status: String(step?.status || "queued").trim(),
+      detail: String(step?.detail || "").trim(),
+    }))
+    .filter((step) => step.key && step.label);
+}
+
+function ContextRewriteTrace({ trace = [] }) {
+  return (
+    <ol className="context-rewrite-trace">
+      {trace.map((step) => (
+        <li className={`is-${step.status || "queued"}`} key={step.key}>
+          <span className="context-rewrite-trace-dot" aria-hidden="true" />
+          <span>
+            <strong>{step.label}</strong>
+            {step.detail && <small>{step.detail}</small>}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -378,6 +470,15 @@ function assistantSourceLabel(metadata = {}) {
       title: metadata.taskId ? `Orc signal for ${metadata.taskId}` : "Orc agent Hive signal",
     };
   }
+  if (metadata?.kind === "context_rewrite") {
+    const rewrite = metadata.contextRewrite || {};
+    return {
+      kind: "context-rewrite",
+      label: "Context Rewrite",
+      meta: rewrite.status ? String(rewrite.status).replaceAll("_", " ") : "",
+      title: "Full context rewrite Markdown artifact",
+    };
+  }
   return null;
 }
 
@@ -399,6 +500,11 @@ function thinkingSteps(message) {
   }
   if (message.pending && message.metadata?.kind === "context_edit") {
     return ["Reading your context document", "Locating the edit", "Preparing a proposal"];
+  }
+  if (message.pending && message.metadata?.kind === "context_rewrite") {
+    const trace = contextRewriteTrace(message.metadata?.contextRewrite);
+    if (trace.length > 0) return trace.map((step) => `${step.label}: ${step.status.replaceAll("_", " ")}`);
+    return ["Assembling source packet", "Running scoring harness", "Running web research", "Drafting Markdown", "Polishing Markdown"];
   }
   if (message.pending) {
     return ["Reading context", "Selecting the execution route", "Drafting response"];

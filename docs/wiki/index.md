@@ -14,7 +14,7 @@ For a normal user-facing explanation, start with [User Guide](#docs/user-guide).
 - Hive is the network coordination board and Hive Chat is the default conversation for contributing validated network context.
 - Wallet is identity, rewards, publishing authority, and balance visibility.
 - Memory is lightweight compression of user and assistant turns so future chats can carry continuity.
-- Context Refine is the active specialized chat tool for editing the current context document. Motivation, Brainstorming Context, and Rewrite are not exposed in the interface right now.
+- Context Refine is the active specialized chat tool for targeted edits to the current context document. Context Rewrite is the active billed full-document rewrite pipeline that returns copyable/downloadable Markdown without replacing the current document. Motivation, Brainstorming Context, and general Rewrite are not exposed.
 
 ## System Diagram
 
@@ -54,6 +54,7 @@ locations instead:
 | Topic | Canonical Help page |
 | --- | --- |
 | Plain-English app walkthrough and feature catalogue | [User Guide](#docs/user-guide) |
+| Full-document context rewrite pipeline | [Context Rewrite](#docs/context-rewrite) |
 | Fresh checkout, local setup, smoke checks, first failure triage | [Bootup](#docs/bootup) |
 | Current product boundary, route map, enabled surfaces, and deferrals | [Current System](#docs/current-system) |
 | Account auth, wallet proof, local vault unlock, and seed custody | [Identity & Wallets](#docs/identity-wallets), [Wallet](#docs/wallet) |

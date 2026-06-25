@@ -2,6 +2,7 @@ import startHere from "../../../docs/wiki/index.md?raw";
 import agents from "../../../docs/wiki/surfaces/agents.md?raw";
 import chat from "../../../docs/wiki/surfaces/chat.md?raw";
 import context from "../../../docs/wiki/surfaces/context.md?raw";
+import contextRewrite from "../../../docs/wiki/surfaces/context-rewrite.md?raw";
 import dailyAirdrop from "../../../docs/wiki/surfaces/daily-airdrop.md?raw";
 import directory from "../../../docs/wiki/surfaces/directory.md?raw";
 import hive from "../../../docs/wiki/surfaces/hive.md?raw";
@@ -662,6 +663,12 @@ export const DOC_GROUPS = [
         title: "Refine Context",
         summary: "Clean up context without changing meaning.",
         markdown: refineContext,
+      },
+      {
+        slug: "context-rewrite",
+        title: "Context Rewrite",
+        summary: "Billed async full-document rewrite pipeline for context documents.",
+        markdown: contextRewrite,
       },
       { slug: "agents", title: "Agents", summary: "External wallet-native workers.", markdown: agents },
     ],

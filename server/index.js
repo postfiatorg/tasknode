@@ -56,6 +56,7 @@ import { telegramAuthHeaders } from "./auth-connected-accounts.js";
 import { handleTaskReadRoute } from "./task-routes.js";
 import { handleAccountRoute } from "./account-routes.js";
 import { contextEditProposalAction } from "./context-edit-actions.js";
+import { handleContextRewriteRoute } from "./context-rewrite-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
 import { handleProfileNftImageRoute, handleProfileNftPfpRoute } from "./profile-nft-image-proxy.js";
 import { handleMemoryRoute } from "./memory-routes.js";
@@ -1042,6 +1043,8 @@ async function routeApi(req, url, res) {
     json(res, result.status, result.body);
     return true;
   }
+
+  if (await handleContextRewriteRoute({ json, readJson, req, res, session, url })) return true;
 
   if (url.pathname.startsWith("/api/context/edit/proposals/")) {
     const parts = url.pathname.split("/").filter(Boolean);

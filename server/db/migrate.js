@@ -84,6 +84,7 @@ const migrations = [
   "074_drop_identity_approval_requests.sql",
   "075_task_event_write_source.sql",
   "076_task_forensics_signatures.sql",
+  "078_context_rewrite_jobs.sql",
 ];
 
 let migrated = false;

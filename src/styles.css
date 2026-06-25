@@ -1278,6 +1278,147 @@ h1 {
   color: #3f372e;
 }
 
+.assistant-message.is-context-rewrite .assistant-source-label {
+  border-color: #cbd8d2;
+  background: #eef7f2;
+  color: #255d49;
+}
+
+.context-rewrite-card {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 620px);
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #dfe7e2;
+  border-radius: 8px;
+  background: #fbfdfb;
+}
+
+.context-rewrite-card-head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.context-rewrite-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #dfe7e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #255d49;
+}
+
+.context-rewrite-card-head strong,
+.context-rewrite-card-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.context-rewrite-card-head strong {
+  color: #1f2f27;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.context-rewrite-card-head small {
+  margin-top: 2px;
+  color: #68766e;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.context-rewrite-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.context-rewrite-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid #d8e1dc;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #244b3b;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.context-rewrite-card-actions button:hover {
+  border-color: #b9c9c1;
+  background: #f4faf6;
+}
+
+.context-rewrite-trace {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.context-rewrite-trace li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: #56635b;
+}
+
+.context-rewrite-trace-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border: 1px solid #cbd8d2;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.context-rewrite-trace li.is-running .context-rewrite-trace-dot {
+  border-color: #255d49;
+  background: #255d49;
+  box-shadow: 0 0 0 3px rgba(37, 93, 73, 0.12);
+}
+
+.context-rewrite-trace li.is-completed .context-rewrite-trace-dot {
+  border-color: #6f9787;
+  background: #6f9787;
+}
+
+.context-rewrite-trace li.is-failed .context-rewrite-trace-dot,
+.context-rewrite-trace li.is-cancelled .context-rewrite-trace-dot {
+  border-color: #ad4f4f;
+  background: #ad4f4f;
+}
+
+.context-rewrite-trace strong,
+.context-rewrite-trace small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.context-rewrite-trace strong {
+  color: #25332b;
+  font-size: 12.5px;
+  line-height: 1.25;
+}
+
+.context-rewrite-trace small {
+  margin-top: 1px;
+  color: #6f7b74;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
 .hive-context-status-message {
   align-self: center;
   max-width: min(620px, 88%);
@@ -1798,6 +1939,12 @@ h1 {
   border-color: #b8b4aa;
   background: #fffdf8;
   box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.04);
+}
+
+.composer.is-context-rewrite {
+  border-color: #9fb8ac;
+  background: #fbfdfb;
+  box-shadow: 0 0 0 3px rgba(43, 93, 72, 0.06);
 }
 
 .composer.is-hive-input {

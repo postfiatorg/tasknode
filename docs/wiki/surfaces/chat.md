@@ -28,7 +28,7 @@ When there is no signed-in account, `appState` sets the chat default to Help and
 
 A new signed-in chat that is not the Hive conversation shows four starter prompt pills under the empty-state composer: `Help me build my context document`, `Give me my first task`, `How do I earn PFT?`, and `What should I do first?`. Clicking a pill prefills the composer text and focuses it; nothing is sent until the user presses send. Signed-out and Hive empty states do not show starter prompts.
 
-Standard chat is advisory by default. It can help the user decide, draft, evaluate, plan, and clarify evidence, but it must not claim it can perform app actions on the user's behalf. The `+` menu starts Request a task or Context Refine. The Tasks panel is where the user accepts or refuses tasks and submits evidence. The Hive panel is where the user views network work and contributes to the network. If chat recommends one of those actions, it should name the surface the user should use instead of saying chat can do the action.
+Standard chat is advisory by default. It can help the user decide, draft, evaluate, plan, and clarify evidence, but it must not claim it can perform app actions on the user's behalf. The `+` menu starts Request a task, Context Refine, or Context Rewrite. The Tasks panel is where the user accepts or refuses tasks and submits evidence. The Hive panel is where the user views network work and contributes to the network. If chat recommends one of those actions, it should name the surface the user should use instead of saying chat can do the action.
 
 The Jobs layer governs response cadence in the prompt, not by cutting output
 after generation. The current user turn drives response length: fewer than 3
@@ -68,7 +68,7 @@ This page is the current product contract for chat prompt assembly, Jobs
 retrieval, and Context Refine behavior. Historical implementation planning has
 been folded into this surface doc and the single active production scope plan.
 
-The visible tool menus currently expose only file upload, Context Refine, Request a task, and More. Motivation, Brainstorming Context, and Context Rewrite are intentionally hidden until they have production-quality flows.
+The visible tool menus expose file upload, Context Refine, Context Rewrite, Request a task, and More. Motivation, Brainstorming Context, and general Rewrite are intentionally hidden until they have production-quality flows. Context Rewrite is documented in [Context Rewrite](#docs/context-rewrite) as a billed async full-document context pipeline that returns a copyable/downloadable Markdown artifact.
 
 ## Chat Modes
 

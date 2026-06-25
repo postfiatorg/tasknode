@@ -9,6 +9,7 @@ import { startPftlArchiveWorker, startPftlCacheWorker } from "./pftl-cache-sync.
 import { startPftlCacheWatcher } from "./pftl-cache-watcher.js";
 import { startDailyAirdropWorker } from "./profile-daily-airdrop-worker.js";
 import { startRecommendedConnectionsWorker } from "./recommended-connections-worker.js";
+import { startContextRewriteWorker } from "./context-rewrite-worker.js";
 import { startTaskGenerationWorker } from "./task-generation-worker.js";
 import { startTaskReviewWorker } from "./task-review-worker.js";
 
@@ -25,6 +26,7 @@ export function startBackgroundWorkers() {
   startPftlCacheRetentionWorker();
   startDailyAirdropWorker();
   startRecommendedConnectionsWorker();
+  startContextRewriteWorker();
   startTaskGenerationWorker();
   startTaskReviewWorker();
 }
