@@ -164,6 +164,21 @@ try {
   assert.equal(doNothingExecution.executed, true, "active do_nothing executes through action adapter");
   assert.equal(doNothingExecution.translatedAction, "do_nothing");
 
+  const malformedMessageExecution = await executeHiveDecisionAgentAction({
+    decision: {
+      action: "message_user",
+      explanation: "Missing target should be recorded as a skipped action result.",
+      confidence: 0.5,
+      payload: { message_text: "Smoke malformed target." },
+    },
+    sourcePacket: activeSourcePacket,
+    guardrailResult: { ok: true, action: "message_user" },
+    active: true,
+  });
+  assert.equal(malformedMessageExecution.executed, false, "malformed active action does not execute");
+  assert.equal(malformedMessageExecution.skipped, true, "malformed active action is recorded as skipped");
+  assert.match(malformedMessageExecution.error || "", /message_user/, "action hook error is captured");
+
   const stale = await startHiveDecisionRun({
     trigger: "smoke_stale_reclaim",
     sourcePacket: detail.run.sourcePacket,

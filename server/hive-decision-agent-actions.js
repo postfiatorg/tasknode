@@ -252,12 +252,26 @@ export async function executeHiveDecisionAgentAction({
   }
 
   const translatedDecision = translateHiveDecisionToBoardDecision({ decision, sourcePacket });
-  const actionResult = await executeBoardManagerDecision({
-    runId: "",
-    decision: translatedDecision,
-    sourcePacket: boardSourcePacketForHiveDecision(sourcePacket),
-    dryRun: false,
-  });
+  let actionResult = null;
+  try {
+    actionResult = await executeBoardManagerDecision({
+      runId: "",
+      decision: translatedDecision,
+      sourcePacket: boardSourcePacketForHiveDecision(sourcePacket),
+      dryRun: false,
+    });
+  } catch (error) {
+    return {
+      executed: false,
+      skipped: true,
+      action: safeText(decision.action, 80),
+      translatedAction: translatedDecision.action,
+      translatedTargetType: translatedDecision.target_type,
+      translatedTargetId: translatedDecision.target_id,
+      translatedDecision,
+      error: safeText(error?.message || error, 1200),
+    };
+  }
   return {
     executed: actionResult?.result?.executed === true,
     action: safeText(decision.action, 80),
