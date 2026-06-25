@@ -4,7 +4,7 @@ if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
 }
 
-const [{ migrateDatabase }, { closePool }, { startHiveDecisionAgentWorker }] = await Promise.all([
+const [{ migrateDatabase }, { closePool }, { startHiveDecisionAgentWorker, stopHiveDecisionAgentWorker }] = await Promise.all([
   import("../server/db/migrate.js"),
   import("../server/db/pool.js"),
   import("../server/hive-decision-agent-worker.js"),
@@ -14,6 +14,7 @@ let keepAlive = null;
 
 async function shutdown(signal) {
   if (keepAlive) clearInterval(keepAlive);
+  await stopHiveDecisionAgentWorker().catch(() => null);
   await closePool().catch(() => null);
   console.log(`[hive-decision-agent-loop] stopped signal=${signal}`);
   process.exit(0);

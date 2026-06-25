@@ -27,6 +27,7 @@ import {
 let timer = null;
 let running = false;
 let scheduled = null;
+let currentLease = null;
 
 const workerScope = "hive_decision_agent:global_hive";
 const managerId = `hive_decision_agent_${hostname()}_${process.pid}`;
@@ -163,6 +164,7 @@ async function processHiveDecisionAgentQueue() {
     if (!lease.ok) {
       return;
     }
+    currentLease = lease;
     await failStaleHiveDecisionRuns({
       staleMinutes: staleMinutes(),
       limit: 10,
@@ -179,6 +181,9 @@ async function processHiveDecisionAgentQueue() {
     if (lease?.ok) {
       await releaseBoardManagerLease({ scope: workerScope, managerId }).catch(() => null);
     }
+    if (currentLease?.managerId === lease?.managerId) {
+      currentLease = null;
+    }
     running = false;
   }
 }
@@ -194,4 +199,20 @@ export function startHiveDecisionAgentWorker() {
   timer.unref?.();
   scheduleHiveDecisionAgentQueue({ delayMs: Math.min(5000, cadenceMs()) });
   return true;
+}
+
+export async function stopHiveDecisionAgentWorker() {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+  if (scheduled) {
+    clearTimeout(scheduled);
+    scheduled = null;
+  }
+  const lease = currentLease;
+  currentLease = null;
+  if (lease?.ok) {
+    await releaseBoardManagerLease({ scope: workerScope, managerId }).catch(() => null);
+  }
 }
