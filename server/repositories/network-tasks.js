@@ -630,7 +630,7 @@ async function resolveCandidate({ decision = {} } = {}) {
     120
   );
   if (!explicitAccountId && !explicitWallet) return null;
-  const candidates = await listEligibleNetworkTaskCandidates({ limit: 20 });
+  const candidates = await listEligibleNetworkTaskCandidates({ limit: 120 });
   const explicit = candidates.find((candidate) => (
     (!explicitAccountId || candidate.accountId === explicitAccountId) &&
     (!explicitWallet || candidate.walletAddress === explicitWallet)
