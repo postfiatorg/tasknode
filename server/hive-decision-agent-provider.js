@@ -187,6 +187,55 @@ function openRouterUsage(body = {}) {
   };
 }
 
+function emptyDecisionPayload() {
+  return {
+    project_id: "",
+    project_title: "",
+    candidate_account_id: "",
+    candidate_wallet_address: "",
+    required_badge_id: "",
+    operating_badge_id: "",
+    task_work_type: "",
+    badge_work_type: "",
+    title: "",
+    project_need_summary: "",
+    routing_reason: "",
+    dedup_basis: "",
+    message_text: "",
+    cancel_task_id: "",
+    archive_reason: "",
+    action_output: "",
+    delivery_surface: "",
+    recipient_or_reviewer: "",
+    escalation_stage: "",
+    reward_min_pft: 0,
+    reward_max_pft: 0,
+    badge_reward_cap_pft: 0,
+  };
+}
+
+function parseFallbackDecision({ error } = {}) {
+  return normalizeHiveDecisionOutput({
+    explanation: "The model response was not valid Decision Agent JSON, so no board mutation can be trusted for this run. The safe action is to do nothing and preserve the raw output for operator audit.",
+    options_considered: [
+      {
+        action: "do_nothing",
+        summary: "Reject malformed model output and make no board change.",
+        rejected_because: "Selected because execution requires a valid structured action payload.",
+      },
+    ],
+    informed_by: {
+      report_ids: [],
+      task_state_refs: [],
+      discussion_ids: [],
+    },
+    action: "do_nothing",
+    payload: emptyDecisionPayload(),
+    confidence: 0,
+    parse_error: safeText(error?.message || error, 1200),
+  });
+}
+
 function mockDecision(sourcePacket = {}) {
   const idle = safeArray(sourcePacket.candidates?.idleEligibleContributors);
   const reports = safeObject(sourcePacket.reports);
@@ -377,15 +426,25 @@ export async function fetchHiveDecisionAgentDecision({
       throw error;
     }
     const outputText = body?.choices?.[0]?.message?.content || "";
+    const usage = openRouterUsage(body);
+    let decision;
+    let parseError = null;
+    try {
+      decision = normalizeHiveDecisionOutput(parseJsonOutput(outputText));
+    } catch (error) {
+      parseError = error;
+      decision = parseFallbackDecision({ error });
+    }
     return {
-      decision: normalizeHiveDecisionOutput(parseJsonOutput(outputText)),
+      decision,
       outputText,
       provider: "openrouter",
       model: safeText(body?.model || model, 180),
       responseId: safeText(body?.id, 200),
       promptDigest: promptDigest(decisionPrompt),
       usage: {
-        ...openRouterUsage(body),
+        ...usage,
+        parseError: parseError ? safeText(parseError.message || parseError, 1200) : "",
         latencyMs: Date.now() - startedAt,
       },
     };

@@ -212,6 +212,29 @@ try {
     else process.env.TASKNODE_HIVE_DECISION_AGENT_TIMEOUT_MS = previousTimeout;
   }
 
+  try {
+    process.env.TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK = "false";
+    process.env.OPENROUTER_API_KEY = "smoke-test-key";
+    const malformed = await fetchHiveDecisionAgentDecision({
+      sourcePacket: detail.run.sourcePacket,
+      fetchImpl: async () => ({
+        ok: true,
+        text: async () => JSON.stringify({
+          id: "malformed-smoke",
+          model: "mock-malformed",
+          choices: [{ message: { content: "{\"action\":\"create_task\"" } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      }),
+    });
+    assert.equal(malformed.decision.action, "do_nothing", "malformed provider output falls back to no-op");
+    assert.match(malformed.usage.parseError || "", /(JSON|invalid_json)/, "parse error recorded");
+  } finally {
+    process.env.TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK = previousMock;
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+  }
+
   const reportIds = reports.generated.map((item) => item.reportId).filter(Boolean);
   await query("DELETE FROM hive_decision_runs WHERE id = ANY($1::text[])", [[decision.runId, stale.id]]);
   await query("DELETE FROM hive_reports WHERE id = ANY($1::text[])", [reportIds]);
