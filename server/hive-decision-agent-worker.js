@@ -1,9 +1,15 @@
+import { hostname } from "node:os";
 import { databaseEnabled } from "./db/pool.js";
+import {
+  claimBoardManagerLease,
+  releaseBoardManagerLease,
+} from "./repositories/board-manager.js";
 import {
   applyHiveDecisionGuardrails,
   buildHiveDecisionSourcePacket,
   completeHiveDecisionRun,
   failHiveDecisionRun,
+  failStaleHiveDecisionRuns,
   startHiveDecisionRun,
 } from "./repositories/hive-decision-agent.js";
 import {
@@ -18,9 +24,16 @@ let timer = null;
 let running = false;
 let scheduled = null;
 
+const workerScope = "hive_decision_agent:global_hive";
+const managerId = `hive_decision_agent_${hostname()}_${process.pid}`;
+
 function cadenceMs() {
   const seconds = Number(process.env.TASKNODE_HIVE_DECISION_AGENT_CADENCE_SECONDS || process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS || 300);
   return Math.min(Math.max(seconds, 60), 86400) * 1000;
+}
+
+function staleMinutes() {
+  return Math.min(Math.max(Number(process.env.TASKNODE_HIVE_DECISION_AGENT_STALE_MINUTES || 30), 5), 1440);
 }
 
 function shadowEnabled() {
@@ -114,7 +127,28 @@ export function scheduleHiveDecisionAgentQueue({ delayMs = 0 } = {}) {
 async function processHiveDecisionAgentQueue() {
   if (running || !shadowEnabled()) return;
   running = true;
+  let lease = null;
   try {
+    const ttlSeconds = Math.min(Math.max(Math.ceil(cadenceMs() / 1000) * 2, 600), 7200);
+    lease = await claimBoardManagerLease({
+      scope: workerScope,
+      managerId,
+      ttlSeconds,
+      metadata: {
+        worker: "hive_decision_agent",
+        phase: "shadow",
+        cadenceMs: cadenceMs(),
+      },
+    });
+    if (!lease.ok) {
+      return;
+    }
+    await failStaleHiveDecisionRuns({
+      staleMinutes: staleMinutes(),
+      limit: 10,
+    }).catch((error) => {
+      console.warn("[hive-decision-agent] stale reclaim failed", error?.message || error);
+    });
     const result = await runHiveDecisionAgentOnce({
       trigger: "shadow_periodic_tick",
     });
@@ -122,6 +156,9 @@ async function processHiveDecisionAgentQueue() {
       console.warn("[hive-decision-agent] shadow run failed", result.error || result.reason || result);
     }
   } finally {
+    if (lease?.ok) {
+      await releaseBoardManagerLease({ scope: workerScope, managerId }).catch(() => null);
+    }
     running = false;
   }
 }

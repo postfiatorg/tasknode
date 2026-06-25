@@ -624,6 +624,7 @@ export async function completeHiveDecisionRun({
           completed_at = now(),
           updated_at = now()
       WHERE id = $1
+        AND status = 'running'
       RETURNING *
     `,
     [
@@ -646,6 +647,7 @@ export async function completeHiveDecisionRun({
       safeText(outputText, 250_000),
     ]
   );
+  if (!result.rows[0]) throw new Error("hive_decision_run_not_running");
   return runRow(result.rows[0]);
 }
 
@@ -659,11 +661,40 @@ export async function failHiveDecisionRun({ runId = "", error = "", outputText =
           completed_at = now(),
           updated_at = now()
       WHERE id = $1
+        AND status = 'running'
       RETURNING *
     `,
     [safeText(runId, 180), safeText(error, 2000), safeText(outputText, 250_000)]
   );
   return result.rows[0] ? runRow(result.rows[0]) : null;
+}
+
+export async function failStaleHiveDecisionRuns({ staleMinutes = 30, limit = 20 } = {}) {
+  if (!useDatabase()) return [];
+  const minutes = Math.min(Math.max(Number(staleMinutes) || 30, 5), 1440);
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const result = await query(
+    `
+      UPDATE hive_decision_runs
+      SET status = 'failed',
+          error = COALESCE(NULLIF(error, ''), 'hive_decision_stale_running_reclaimed'),
+          result_json = COALESCE(result_json, '{}'::jsonb)
+            || jsonb_build_object('reclaimed', true, 'staleMinutes', $1::int),
+          completed_at = now(),
+          updated_at = now()
+      WHERE id IN (
+        SELECT id
+        FROM hive_decision_runs
+        WHERE status = 'running'
+          AND started_at < now() - ($1::text || ' minutes')::interval
+        ORDER BY started_at ASC, id ASC
+        LIMIT $2
+      )
+      RETURNING *
+    `,
+    [minutes, safeLimit]
+  );
+  return result.rows.map(runRow);
 }
 
 export async function listHiveDecisionRuns({ limit = 20, page = 1, action = "all" } = {}) {

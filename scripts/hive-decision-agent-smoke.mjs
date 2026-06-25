@@ -3,7 +3,11 @@
 import assert from "node:assert/strict";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool, query } from "../server/db/pool.js";
-import { getHiveDecisionRun } from "../server/repositories/hive-decision-agent.js";
+import {
+  failStaleHiveDecisionRuns,
+  getHiveDecisionRun,
+  startHiveDecisionRun,
+} from "../server/repositories/hive-decision-agent.js";
 import { runHiveReportsWorkerOnce } from "../server/hive-reports-worker.js";
 import { runHiveDecisionAgentOnce } from "../server/hive-decision-agent-worker.js";
 
@@ -37,8 +41,18 @@ try {
   assert.equal(detail.run.sourcePacket.phase, "shadow", "source packet marks shadow mode");
   assert.equal(detail.run.sourcePacket.guardrails.structuralDedupRequired, true, "dedup guardrail in source");
 
+  const stale = await startHiveDecisionRun({
+    trigger: "smoke_stale_reclaim",
+    sourcePacket: detail.run.sourcePacket,
+    provider: "mock",
+    model: "mock",
+  });
+  await query("UPDATE hive_decision_runs SET started_at = now() - interval '2 hours' WHERE id = $1", [stale.id]);
+  const reclaimed = await failStaleHiveDecisionRuns({ staleMinutes: 30, limit: 5 });
+  assert.ok(reclaimed.some((item) => item.id === stale.id), "stale running row reclaimed");
+
   const reportIds = reports.generated.map((item) => item.reportId).filter(Boolean);
-  await query("DELETE FROM hive_decision_runs WHERE id = $1", [decision.runId]);
+  await query("DELETE FROM hive_decision_runs WHERE id = ANY($1::text[])", [[decision.runId, stale.id]]);
   await query("DELETE FROM hive_reports WHERE id = ANY($1::text[])", [reportIds]);
   console.log(`hive-decision-agent-smoke ok: ${decision.runId}`);
 } finally {
