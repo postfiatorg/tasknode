@@ -19,6 +19,10 @@ import {
   hiveDecisionAgentProviderConfigured,
   hiveDecisionAgentReasoningEffort,
 } from "./hive-decision-agent-provider.js";
+import {
+  executeHiveDecisionAgentAction,
+  hiveDecisionAgentActive,
+} from "./hive-decision-agent-actions.js";
 
 let timer = null;
 let running = false;
@@ -36,7 +40,7 @@ function staleMinutes() {
   return Math.min(Math.max(Number(process.env.TASKNODE_HIVE_DECISION_AGENT_STALE_MINUTES || 8), 5), 1440);
 }
 
-function shadowEnabled() {
+function workerEnabled() {
   return (
     process.env.TASKNODE_HIVE_DECISION_AGENT_ENABLED !== "false" &&
     databaseEnabled() &&
@@ -59,7 +63,9 @@ export async function runHiveDecisionAgentOnce({
   const provider = hiveDecisionAgentProvider();
   const model = hiveDecisionAgentModel();
   const reasoningEffort = hiveDecisionAgentReasoningEffort();
-  const sourcePacket = await buildHiveDecisionSourcePacket({ scope, trigger, now });
+  const active = hiveDecisionAgentActive();
+  const phase = active ? "active" : "shadow";
+  const sourcePacket = await buildHiveDecisionSourcePacket({ scope, trigger, now, phase });
   const run = await startHiveDecisionRun({
     scope,
     trigger,
@@ -67,6 +73,7 @@ export async function runHiveDecisionAgentOnce({
     provider,
     model,
     reasoningEffort,
+    shadow: !active,
   });
   try {
     const result = await fetchHiveDecisionAgentDecision({
@@ -79,10 +86,18 @@ export async function runHiveDecisionAgentOnce({
       decision: result.decision,
       sourcePacket,
     });
+    const executionResult = await executeHiveDecisionAgentAction({
+      decision: result.decision,
+      sourcePacket,
+      guardrailResult,
+      active,
+    });
     const completed = await completeHiveDecisionRun({
       runId: run.id,
       decision: result.decision,
       guardrailResult,
+      executionResult,
+      shadow: !active,
       outputText: result.outputText,
       usage: result.usage,
       provider: result.provider,
@@ -94,7 +109,10 @@ export async function runHiveDecisionAgentOnce({
       action: completed.selectedAction,
       guardrailOk: guardrailResult.ok === true,
       guardrailReasons: guardrailResult.reasons || [],
-      shadow: true,
+      active,
+      executed: executionResult?.executed === true,
+      shadow: !active,
+      executionResult,
       reportIds: completed.inputReportIds,
     };
   } catch (error) {
@@ -112,7 +130,7 @@ export async function runHiveDecisionAgentOnce({
 }
 
 export function scheduleHiveDecisionAgentQueue({ delayMs = 0 } = {}) {
-  if (!shadowEnabled()) return false;
+  if (!workerEnabled()) return false;
   if (scheduled) clearTimeout(scheduled);
   scheduled = setTimeout(() => {
     scheduled = null;
@@ -125,9 +143,11 @@ export function scheduleHiveDecisionAgentQueue({ delayMs = 0 } = {}) {
 }
 
 async function processHiveDecisionAgentQueue() {
-  if (running || !shadowEnabled()) return;
+  if (running || !workerEnabled()) return;
   running = true;
   let lease = null;
+  const active = hiveDecisionAgentActive();
+  const phase = active ? "active" : "shadow";
   try {
     const ttlSeconds = Math.min(Math.max(Math.ceil(cadenceMs() / 1000) * 2, 600), 7200);
     lease = await claimBoardManagerLease({
@@ -136,7 +156,7 @@ async function processHiveDecisionAgentQueue() {
       ttlSeconds,
       metadata: {
         worker: "hive_decision_agent",
-        phase: "shadow",
+        phase,
         cadenceMs: cadenceMs(),
       },
     });
@@ -150,10 +170,10 @@ async function processHiveDecisionAgentQueue() {
       console.warn("[hive-decision-agent] stale reclaim failed", error?.message || error);
     });
     const result = await runHiveDecisionAgentOnce({
-      trigger: "shadow_periodic_tick",
+      trigger: active ? "active_periodic_tick" : "shadow_periodic_tick",
     });
     if (!result.ok) {
-      console.warn("[hive-decision-agent] shadow run failed", result.error || result.reason || result);
+      console.warn("[hive-decision-agent] run failed", result.error || result.reason || result);
     }
   } finally {
     if (lease?.ok) {
@@ -164,7 +184,7 @@ async function processHiveDecisionAgentQueue() {
 }
 
 export function startHiveDecisionAgentWorker() {
-  if (!shadowEnabled()) return false;
+  if (!workerEnabled()) return false;
   if (timer) return true;
   timer = setInterval(() => {
     processHiveDecisionAgentQueue().catch((error) => {

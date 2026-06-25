@@ -14,6 +14,7 @@ export const hiveDecisionActions = Object.freeze([
   "archive_board",
   "create_task",
   "cancel_task",
+  "cancel_network_task",
   "message_user",
   "do_nothing",
 ]);
@@ -180,6 +181,15 @@ function compactCandidate(candidate = {}, capacity = null, badge = null) {
     verifiedBadges: safeArray(badge?.verifiedBadges).map((item) => safeText(item, 80)).filter(Boolean),
     defaultBadge: safeText(badge?.defaultBadge, 80),
     allowedWorkTypes: safeArray(badge?.allowedWorkTypes).map((item) => safeText(item, 120)).filter(Boolean),
+    rewardCaps: safeObject(badge?.rewardCaps),
+    badgeDetails: safeArray(badge?.badgeDetails).slice(0, 8).map((item) => ({
+      badgeId: safeText(item.badgeId || item.badge_id, 80),
+      label: safeText(item.label, 120),
+      maxPayoutPft: numeric(item.maxPayoutPft || item.max_payout_pft),
+      allowedWorkTypes: safeArray(item.allowedWorkTypes || item.allowed_work_types)
+        .map((workType) => safeText(workType, 120))
+        .filter(Boolean),
+    })),
     profileSummary: safeText(candidate.profileSummary || candidate.summary || candidate.outputText || candidate.output_text, 900),
   };
 }
@@ -353,6 +363,7 @@ export async function buildHiveDecisionSourcePacket({
   scope = "global_hive",
   trigger = "manual_shadow",
   now = new Date(),
+  phase = "shadow",
 } = {}) {
   const [
     reports,
@@ -374,7 +385,7 @@ export async function buildHiveDecisionSourcePacket({
     trigger: safeText(trigger, 160) || "manual_shadow",
     generatedAt: now.toISOString(),
     actionRegistry: hiveDecisionActions,
-    phase: "shadow",
+    phase: safeText(phase, 40) === "active" ? "active" : "shadow",
     reports,
     liveTaskState: taskState,
     projects,
@@ -386,7 +397,8 @@ export async function buildHiveDecisionSourcePacket({
     guardrails: {
       routeOnlyToIdleEligibleContributors: true,
       structuralDedupRequired: true,
-      shadowOnlyNoMutations: true,
+      shadowOnlyNoMutations: safeText(phase, 40) !== "active",
+      activeExecutionFeatureFlag: "TASKNODE_HIVE_DECISION_AGENT_ACTIVE",
       candidateCapacitySource: "listNetworkTaskCandidateCapacityChecks",
       dedupIndex: buildDedupIndex(taskState),
     },
@@ -399,6 +411,7 @@ export async function buildHiveDecisionSourcePacket({
 
 function normalizeDecisionAction(value = "") {
   const action = safeText(value, 80).toLowerCase();
+  if (action === "cancel_network_task") return action;
   return hiveDecisionActions.includes(action) ? action : "do_nothing";
 }
 
@@ -489,14 +502,17 @@ function idleCandidateMatches(decision = {}, sourcePacket = {}) {
 
 export function applyHiveDecisionGuardrails({ decision = {}, sourcePacket = {} } = {}) {
   const action = normalizeDecisionAction(decision.action);
+  const active = sourcePacket.phase === "active";
   const result = {
     ok: true,
-    shadowOnly: true,
+    shadowOnly: !active,
     action,
     blocked: false,
     reasons: [],
     notes: [
-      "Phase 2 Decision Agent is shadow-only; no mutations are executed.",
+      active
+        ? "Phase 3 Decision Agent active mode: deterministic executor may mutate after guardrails pass."
+        : "Decision Agent shadow mode: no mutations are executed.",
     ],
   };
   if (action !== "create_task") {
@@ -558,6 +574,7 @@ export async function startHiveDecisionRun({
   provider = "openrouter",
   model = "",
   reasoningEffort = "high",
+  shadow = true,
 } = {}) {
   if (!useDatabase()) throw new Error("hive_decision_database_not_configured");
   const id = `hivedec_${randomUUID()}`;
@@ -576,7 +593,7 @@ export async function startHiveDecisionRun({
         task_status_snapshot_json, discussion_ids, source_packet_json, provider, model,
         reasoning_effort, started_at, created_at, updated_at
       )
-      VALUES ($1, $2, $3, 'running', true, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, now(), now(), now())
+      VALUES ($1, $2, $3, 'running', $12, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, now(), now(), now())
       RETURNING *
     `,
     [
@@ -591,6 +608,7 @@ export async function startHiveDecisionRun({
       safeText(provider, 80),
       safeText(model, 180),
       safeText(reasoningEffort, 40),
+      Boolean(shadow),
     ]
   );
   return runRow(result.rows[0]);
@@ -600,6 +618,8 @@ export async function completeHiveDecisionRun({
   runId = "",
   decision = {},
   guardrailResult = {},
+  executionResult = null,
+  shadow = true,
   outputText = "",
   usage = {},
   provider = "",
@@ -637,8 +657,9 @@ export async function completeHiveDecisionRun({
       jsonValue(normalized),
       jsonValue(guardrailResult),
       jsonValue({
-        shadow: true,
-        executed: false,
+        shadow: Boolean(shadow),
+        executed: executionResult?.executed === true,
+        executionResult,
         usage,
         guardrailOk: guardrailResult?.ok === true,
       }),

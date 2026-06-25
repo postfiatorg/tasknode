@@ -132,10 +132,21 @@ and UI-facing shape without spending model tokens.
 
 ### Hive v2 Decision Agent
 
-The Phase 2 Decision Agent is a shadow replacement for the old Board Manager.
-It runs on the same cadence but does not execute mutations in Phase 2. Each run
-is stored in `hive_decision_runs` and rendered in Hive Brain under `Decision
-Agent`.
+The Phase 3 Decision Agent is the active replacement for the old Board Manager
+execution path. It runs on the same cadence, stores each run in
+`hive_decision_runs`, and renders in Hive Brain under `Decision Agent`.
+Production cutover is controlled by two deploy flags:
+
+- `TASKNODE_HIVE_DECISION_AGENT_ACTIVE=true` lets the Decision Agent execute
+  guardrail-approved actions.
+- `TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED=false` keeps the old Board Manager
+  scheduler/audit path from mutating board state, even if its process command
+  includes `--execute`.
+
+Rollback is one deploy: set `TASKNODE_HIVE_DECISION_AGENT_ACTIVE=false` and
+`TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED=true`, then redeploy. Old
+`board_manager_runs`, secretary packets, and action tables remain available for
+audit and rollback context until the later decommission phase.
 
 Inputs are:
 
@@ -149,19 +160,27 @@ Inputs are:
 
 The prompt requires a structured action from the v2 registry
 (`create_board`, `archive_board`, `create_task`, `cancel_task`,
+`cancel_network_task`,
 `message_user`, or `do_nothing`), a one- or two-paragraph plain-English
 explanation, options considered, and the exact reports/task-state/discussion
 references that informed the decision.
 
 Deterministic guardrails run after the model output and before the run is
-marked complete. In Phase 2 these guardrails are audit-only because no action is
-executed, but they record whether the model's `create_task` recommendation
-would be allowed:
+marked complete. In active mode, action execution happens only after these
+guardrails pass:
 
 - the target must be an idle badge-eligible contributor from the live source
   packet, not merely a contributor from stale reports
 - the task must not duplicate the target's outstanding, pending, completed,
   rewarded, or recently terminal Network Tasks
+
+When `create_task` passes, the Decision Agent does not write a final task offer
+directly. It translates the recommendation into the existing
+`initiate_network_task` hook, which re-checks candidate eligibility, badge lane,
+capacity, reward cap, and semantic idempotency before queuing the normal Network
+Task generation worker. Other supported actions use the existing Board Manager
+action hooks with no legacy `board_manager_action_results` row; the execution
+result is persisted on the `hive_decision_runs.result_json` payload.
 
 The read API is operator-gated:
 
@@ -170,8 +189,8 @@ The read API is operator-gated:
 
 `TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK=true npm run
 hive-decision-agent-smoke` verifies report ingestion, shadow persistence,
-guardrail capture, and Hive Brain-facing shape without model spend. Cutover to
-executing decisions is intentionally reserved for Phase 3.
+active action translation, dedup guardrails, and Hive Brain-facing shape without
+model spend.
 
 ## New User Quickstart
 

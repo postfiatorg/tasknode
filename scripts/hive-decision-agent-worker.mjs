@@ -12,8 +12,8 @@ function argValue(name, fallback = "") {
 function usage() {
   return `Usage: npm run hive-decision-agent-worker -- [--mock] [--trigger name]
 
-Runs the Hive v2 Decision Agent once in shadow mode. It records an auditable
-hive_decision_runs row and never executes board mutations.`;
+Runs the Hive v2 Decision Agent once. It records an auditable
+hive_decision_runs row; execution is controlled by TASKNODE_HIVE_DECISION_AGENT_ACTIVE.`;
 }
 
 if (hasArg("--help") || hasArg("-h")) {
@@ -34,7 +34,7 @@ const [{ migrateDatabase }, { closePool }, { runHiveDecisionAgentOnce }] = await
 try {
   await migrateDatabase();
   const result = await runHiveDecisionAgentOnce({
-    trigger: argValue("--trigger", "manual_shadow_cli"),
+    trigger: argValue("--trigger", "manual_cli"),
   });
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.ok ? 0 : 1;

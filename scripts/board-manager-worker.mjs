@@ -69,6 +69,11 @@ function defaultBoardManagerModel(provider = "openrouter") {
   return provider === "openai" ? "gpt-5.5-pro" : "z-ai/glm-5.2";
 }
 
+function oldBoardManagerExecutionEnabled() {
+  return process.env.TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED !== "false" &&
+    process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE !== "true";
+}
+
 function sleep(ms, signal) {
   return new Promise((resolve) => {
     if (signal.aborted || ms <= 0) return resolve();
@@ -197,7 +202,7 @@ async function processOneJob({ turn }) {
     }
 
     const output = await runBoardManagerDecision({ job });
-    const followup = await enqueueFollowupIfNeeded({ job, output });
+    const followup = config.execute ? await enqueueFollowupIfNeeded({ job, output }) : null;
     await completeBoardManagerJob({
       jobId: job.id,
       runId: output.runId || "",
@@ -267,7 +272,7 @@ const config = {
     { min: 60, max: 86400 }
   ),
   maxTurns: numberArg("--max-turns", Number(process.env.TASKNODE_BOARD_MANAGER_WORKER_MAX_TURNS || 0), { min: 0 }),
-  execute: hasArg("--execute"),
+  execute: hasArg("--execute") && oldBoardManagerExecutionEnabled(),
   force: hasArg("--force"),
 };
 config.model = argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || defaultBoardManagerModel(config.provider));
@@ -289,6 +294,12 @@ if (hasArg("--print-config")) {
     maxActionsPerHour: config.maxActionsPerHour,
     staleJobSeconds: config.staleJobSeconds,
     execute: config.execute,
+    executionRequested: hasArg("--execute"),
+    executionDisabledReason: hasArg("--execute") && !config.execute
+      ? process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true"
+        ? "hive_decision_agent_active"
+        : "TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED=false"
+      : "",
   }, null, 2));
   process.exit(0);
 }

@@ -39,6 +39,11 @@ function hasArg(name) {
   return process.argv.includes(name);
 }
 
+function oldBoardManagerExecutionEnabled() {
+  return process.env.TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED !== "false" &&
+    process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE !== "true";
+}
+
 function usage() {
   return [
     "Usage: npm run board-manager:model -- [options]",
@@ -106,7 +111,7 @@ async function main() {
   const packetOnly = hasArg("--packet-only");
   const promptOnly = hasArg("--prompt-only");
   const noSecretary = hasArg("--no-secretary");
-  const execute = hasArg("--execute");
+  const execute = hasArg("--execute") && oldBoardManagerExecutionEnabled();
   const record = !hasArg("--no-record");
   const useLease = !hasArg("--no-lease");
   const json = hasArg("--json");

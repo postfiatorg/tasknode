@@ -5,15 +5,21 @@ import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool, query } from "../server/db/pool.js";
 import { fetchHiveDecisionAgentDecision } from "../server/hive-decision-agent-provider.js";
 import {
+  applyHiveDecisionGuardrails,
   failStaleHiveDecisionRuns,
   getHiveDecisionRun,
   startHiveDecisionRun,
 } from "../server/repositories/hive-decision-agent.js";
 import { runHiveReportsWorkerOnce } from "../server/hive-reports-worker.js";
 import { runHiveDecisionAgentOnce } from "../server/hive-decision-agent-worker.js";
+import {
+  executeHiveDecisionAgentAction,
+  translateHiveDecisionToBoardDecision,
+} from "../server/hive-decision-agent-actions.js";
 
 process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK = "true";
 process.env.TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK = "true";
+process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE = "false";
 
 try {
   await migrateDatabase({ force: true });
@@ -41,6 +47,108 @@ try {
   assert.equal(detail.run.result.executed, false, "no mutation executed");
   assert.equal(detail.run.sourcePacket.phase, "shadow", "source packet marks shadow mode");
   assert.equal(detail.run.sourcePacket.guardrails.structuralDedupRequired, true, "dedup guardrail in source");
+
+  const activeCandidate = {
+    accountId: "acct_smoke_candidate",
+    walletAddress: "rSmokeCandidateWallet",
+    verifiedBadges: ["core_contributor"],
+    defaultBadge: "core_contributor",
+    allowedWorkTypes: ["code_task"],
+    rewardCaps: { code_task: 30000 },
+    badgeDetails: [{
+      badgeId: "core_contributor",
+      label: "Core Contributor",
+      maxPayoutPft: 30000,
+      allowedWorkTypes: ["code_task"],
+    }],
+  };
+  const activeSourcePacket = {
+    schema: "pf.hive.decision_agent.source.v1",
+    phase: "active",
+    sourcePacketDigest: "smoke-active-digest",
+    candidates: {
+      all: [activeCandidate],
+      idleEligibleContributors: [activeCandidate],
+    },
+    guardrails: {
+      structuralDedupRequired: true,
+      dedupIndex: [],
+    },
+  };
+  const activeCreateDecision = {
+    action: "create_task",
+    explanation: "Route a code task to an idle core contributor.",
+    optionsConsidered: [],
+    informedBy: { taskStateRefs: ["acct_smoke_candidate"] },
+    confidence: 0.71,
+    payload: {
+      project_id: "reward_integrity_sybil_defense",
+      project_title: "Reward Integrity & Sybil Defense",
+      candidate_account_id: "acct_smoke_candidate",
+      candidate_wallet_address: "rSmokeCandidateWallet",
+      required_badge_id: "core_contributor",
+      operating_badge_id: "core_contributor",
+      task_work_type: "code_task",
+      badge_work_type: "code_task",
+      title: "Smoke active Decision Agent route",
+      project_need_summary: "Build a focused smoke artifact.",
+      routing_reason: "Idle eligible contributor with Core Contributor badge.",
+      dedup_basis: "No matching dedup index rows.",
+      reward_min_pft: 100,
+      reward_max_pft: 30000,
+      badge_reward_cap_pft: 30000,
+    },
+  };
+  const activeGuardrail = applyHiveDecisionGuardrails({
+    decision: activeCreateDecision,
+    sourcePacket: activeSourcePacket,
+  });
+  assert.equal(activeGuardrail.ok, true, JSON.stringify(activeGuardrail));
+  assert.equal(activeGuardrail.shadowOnly, false, "active guardrail marks active mode");
+  const translated = translateHiveDecisionToBoardDecision({
+    decision: activeCreateDecision,
+    sourcePacket: activeSourcePacket,
+  });
+  assert.equal(translated.action, "initiate_network_task", "create_task translates to existing action hook");
+  assert.equal(translated.payload.network_task.required_badge_id, "core_contributor");
+  assert.equal(translated.payload.network_task.reward_max_pft, 30000);
+
+  const duplicateGuardrail = applyHiveDecisionGuardrails({
+    decision: activeCreateDecision,
+    sourcePacket: {
+      ...activeSourcePacket,
+      guardrails: {
+        ...activeSourcePacket.guardrails,
+        dedupIndex: [{
+          source: "task_projection",
+          taskId: "task_smoke_duplicate",
+          accountId: "acct_smoke_candidate",
+          walletAddress: "rSmokeCandidateWallet",
+          status: "rewarded",
+          title: "Smoke active Decision Agent route",
+          summaryKey: "smoke active decision agent route build focused smoke artifact",
+          active: false,
+          terminal: true,
+        }],
+      },
+    },
+  });
+  assert.equal(duplicateGuardrail.ok, false, "duplicate create_task is blocked");
+  assert.ok(duplicateGuardrail.reasons.includes("structural_dedup_match"), "dedup reason recorded");
+
+  const doNothingExecution = await executeHiveDecisionAgentAction({
+    decision: {
+      action: "do_nothing",
+      explanation: "No action needed.",
+      confidence: 0.5,
+      payload: {},
+    },
+    sourcePacket: activeSourcePacket,
+    guardrailResult: { ok: true, action: "do_nothing" },
+    active: true,
+  });
+  assert.equal(doNothingExecution.executed, true, "active do_nothing executes through action adapter");
+  assert.equal(doNothingExecution.translatedAction, "do_nothing");
 
   const stale = await startHiveDecisionRun({
     trigger: "smoke_stale_reclaim",
