@@ -160,6 +160,43 @@ function compactProject(project = {}) {
   };
 }
 
+function compactTaskMetadata(value = {}) {
+  const metadata = safeObject(value);
+  const txs = safeObject(metadata.txs);
+  const cids = safeObject(metadata.cids);
+  const generatedTask = safeObject(metadata.generatedTask);
+  const networkTask = safeObject(generatedTask.network_task || metadata.network_task);
+  const taskgen = safeObject(metadata.taskgen);
+  return {
+    lastEventTxHash: safeText(txs.last_event?.tx_hash || metadata.last_event_tx_hash || metadata.txHash, 140),
+    lastEventCid: safeText(cids.last_event || metadata.lastEventCid, 140),
+    requestBundleCid: safeText(cids.request_bundle || metadata.requestBundleCid, 140),
+    contextDocCid: safeText(cids.context_doc || metadata.contextDocCid, 140),
+    sourceRunId: safeText(metadata.runId || metadata.run_id, 180),
+    taskgen: {
+      promptVersion: safeText(taskgen.promptVersion || taskgen.prompt_version || metadata.promptVersion, 120),
+      provider: safeText(taskgen.provider || metadata.provider, 80),
+      model: safeText(taskgen.model || metadata.model, 180),
+    },
+    generatedLane: {
+      projectId: safeText(networkTask.project_id || generatedTask.project_id, 180),
+      requiredBadgeId: safeText(networkTask.required_badge_id || generatedTask.required_badge_id, 80),
+      operatingBadgeId: safeText(networkTask.operating_badge_id || generatedTask.operating_badge_id, 80),
+      taskWorkType: safeText(networkTask.task_work_type || generatedTask.task_work_type, 120),
+    },
+    cancellation: {
+      cancelled: metadata.agent_cancelled === true,
+      cancelledAt: safeText(metadata.agent_cancelled_at, 80),
+      cancelledBy: safeText(metadata.agent_cancelled_by, 180),
+      reason: safeText(metadata.agent_cancelled_reason, 500),
+      referencedTaskIds: safeArray(metadata.agent_cancelled_referenced_task_ids)
+        .map((item) => safeText(item, 180))
+        .filter(Boolean)
+        .slice(0, 10),
+    },
+  };
+}
+
 function taskRow(row = {}) {
   return {
     taskId: safeText(row.task_id, 180),
@@ -175,7 +212,7 @@ function taskRow(row = {}) {
     rewardActualPft: numeric(row.reward_actual_pft),
     updatedAt: iso(row.updated_at),
     lastEventAt: iso(row.last_event_at),
-    metadata: safeObject(row.metadata_json),
+    metadata: compactTaskMetadata(row.metadata_json),
   };
 }
 
