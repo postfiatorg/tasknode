@@ -500,6 +500,47 @@ function idleCandidateMatches(decision = {}, sourcePacket = {}) {
   });
 }
 
+function badgeLaneViolations({ decision = {}, idleMatches = [] } = {}) {
+  const payload = safeObject(decision.payload);
+  const requiredBadge = safeText(payload.required_badge_id || payload.requiredBadgeId || payload.badge_id || payload.badgeId, 80);
+  const operatingBadge = safeText(payload.operating_badge_id || payload.operatingBadgeId || requiredBadge, 80);
+  const workType = safeText(
+    payload.badge_work_type ||
+      payload.badgeWorkType ||
+      payload.task_work_type ||
+      payload.taskWorkType,
+    120
+  );
+  const rewardMax = numeric(payload.reward_max_pft ?? payload.rewardMaxPft, 0);
+  const rewardMin = numeric(payload.reward_min_pft ?? payload.rewardMinPft, 0);
+  const violations = [];
+  for (const candidate of safeArray(idleMatches)) {
+    const allowedWorkTypes = safeArray(candidate.allowedWorkTypes);
+    const rewardCaps = safeObject(candidate.rewardCaps);
+    const badgeKnown = !requiredBadge || safeArray(candidate.verifiedBadges).includes(requiredBadge);
+    const operatingKnown = !operatingBadge || safeArray(candidate.verifiedBadges).includes(operatingBadge);
+    const workTypeAllowed = !workType || allowedWorkTypes.includes(workType) || Number(rewardCaps[workType] || 0) > 0;
+    const cap = numeric(rewardCaps[workType], 0);
+    if (!badgeKnown || !operatingKnown || !workTypeAllowed || (cap > 0 && (rewardMax > cap || rewardMin > cap))) {
+      violations.push({
+        accountId: candidate.accountId,
+        walletAddress: candidate.walletAddress,
+        requiredBadge,
+        operatingBadge,
+        workType,
+        rewardMinPft: rewardMin,
+        rewardMaxPft: rewardMax,
+        allowedWorkTypes,
+        rewardCapPft: cap,
+        badgeKnown,
+        operatingKnown,
+        workTypeAllowed,
+      });
+    }
+  }
+  return violations;
+}
+
 export function applyHiveDecisionGuardrails({ decision = {}, sourcePacket = {} } = {}) {
   const action = normalizeDecisionAction(decision.action);
   const active = sourcePacket.phase === "active";
@@ -523,6 +564,13 @@ export function applyHiveDecisionGuardrails({ decision = {}, sourcePacket = {} }
     result.ok = false;
     result.blocked = true;
     result.reasons.push("candidate_not_idle_badge_eligible_or_at_capacity");
+  }
+  const laneViolations = badgeLaneViolations({ decision, idleMatches });
+  if (laneViolations.length) {
+    result.ok = false;
+    result.blocked = true;
+    result.reasons.push("badge_lane_or_reward_cap_mismatch");
+    result.badgeLaneViolations = laneViolations;
   }
   const duplicates = duplicateMatches(decision, sourcePacket);
   if (duplicates.length) {

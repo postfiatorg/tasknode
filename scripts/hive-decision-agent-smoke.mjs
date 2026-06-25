@@ -136,6 +136,20 @@ try {
   assert.equal(duplicateGuardrail.ok, false, "duplicate create_task is blocked");
   assert.ok(duplicateGuardrail.reasons.includes("structural_dedup_match"), "dedup reason recorded");
 
+  const laneGuardrail = applyHiveDecisionGuardrails({
+    decision: {
+      ...activeCreateDecision,
+      payload: {
+        ...activeCreateDecision.payload,
+        task_work_type: "code",
+        badge_work_type: "code",
+      },
+    },
+    sourcePacket: activeSourcePacket,
+  });
+  assert.equal(laneGuardrail.ok, false, "invalid badge work type is blocked before execution");
+  assert.ok(laneGuardrail.reasons.includes("badge_lane_or_reward_cap_mismatch"), "badge lane mismatch reason recorded");
+
   const doNothingExecution = await executeHiveDecisionAgentAction({
     decision: {
       action: "do_nothing",
