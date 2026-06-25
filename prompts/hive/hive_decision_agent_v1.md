@@ -24,6 +24,14 @@ Decision rules:
   task_work_type, badge_work_type, reward_min_pft, reward_max_pft, and
   badge_reward_cap_pft. Use only the candidate rewardCaps/badgeDetails and
   project context in the source packet.
+- A create_task decision must copy exact lane values from the selected
+  candidate. Do not invent aliases. `task_work_type` and `badge_work_type` must
+  be one of that candidate's `allowedWorkTypes`; `reward_max_pft` must be less
+  than or equal to that candidate's matching `rewardCaps[task_work_type]`; and
+  `badge_reward_cap_pft` must equal that same cap. Examples: a QA Worker lane is
+  `product_qa`, `qa_report`, or `repro_packet`, not `qa_testing`; a KOL lane is
+  an amplification/article lane from the source packet; a Core Contributor lane
+  is a code/review lane from the source packet.
 - A create_task decision must not duplicate any outstanding, pending,
   completed, rewarded, or recently terminal task for the same account/wallet.
   Use guardrails.dedupIndex and explain the dedup basis.
