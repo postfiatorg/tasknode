@@ -42,10 +42,102 @@ export function hiveDecisionAgentProviderConfigured() {
   return process.env.TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK === "true" || Boolean(openRouterKey());
 }
 
-function compactJson(value, maxLength = 70_000) {
+function compactJson(value, maxLength = 140_000) {
   const text = JSON.stringify(value, null, 2);
   if (text.length <= maxLength) return text;
   return `${text.slice(0, Math.floor(maxLength * 0.72))}\n\n[...middle truncated...]\n\n${text.slice(-Math.floor(maxLength * 0.28))}`;
+}
+
+function modelReport(report = null) {
+  if (!report) return null;
+  return {
+    id: safeText(report.id, 180),
+    type: safeText(report.type, 80),
+    label: safeText(report.label, 120),
+    generatedAt: safeText(report.generatedAt, 80),
+    model: safeText(report.model, 180),
+    bodyMarkdown: safeText(report.bodyMarkdown, 6000),
+    bodyMarkdownTruncated: report.bodyMarkdownTruncated === true || String(report.bodyMarkdown || "").length > 6000,
+    bodyMarkdownOriginalLength: Number(report.bodyMarkdownOriginalLength || String(report.bodyMarkdown || "").length || 0),
+  };
+}
+
+function modelTask(task = {}) {
+  return {
+    taskId: safeText(task.taskId, 180),
+    requestId: safeText(task.requestId, 180),
+    accountId: safeText(task.accountId, 180),
+    walletAddress: safeText(task.walletAddress, 120),
+    status: safeText(task.status, 80),
+    title: safeText(task.title, 240),
+    description: safeText(task.description, 650),
+    submissionRequirement: safeText(task.submissionRequirement, 450),
+    rewardOfferPft: Number(task.rewardOfferPft || 0),
+    rewardActualPft: Number(task.rewardActualPft || 0),
+    updatedAt: safeText(task.updatedAt, 80),
+    lastEventAt: safeText(task.lastEventAt, 80),
+  };
+}
+
+function modelDedup(item = {}) {
+  return {
+    source: safeText(item.source, 80),
+    taskId: safeText(item.taskId, 180),
+    jobId: safeText(item.jobId, 180),
+    requestId: safeText(item.requestId, 180),
+    accountId: safeText(item.accountId, 180),
+    walletAddress: safeText(item.walletAddress, 120),
+    status: safeText(item.status, 80),
+    title: safeText(item.title, 240),
+    summaryKey: safeText(item.summaryKey, 320),
+    active: item.active === true,
+    terminal: item.terminal === true,
+    updatedAt: safeText(item.updatedAt, 80),
+  };
+}
+
+function modelSourcePacket(sourcePacket = {}) {
+  const reports = safeObject(sourcePacket.reports);
+  const liveTaskState = safeObject(sourcePacket.liveTaskState);
+  const candidates = safeObject(sourcePacket.candidates);
+  const guardrails = safeObject(sourcePacket.guardrails);
+  return {
+    schema: "pf.hive.decision_agent.model_input.v1",
+    sourceSchema: safeText(sourcePacket.schema, 120),
+    sourcePacketDigest: safeText(sourcePacket.sourcePacketDigest, 120),
+    version: safeText(sourcePacket.version, 80),
+    scope: safeText(sourcePacket.scope, 120),
+    trigger: safeText(sourcePacket.trigger, 160),
+    generatedAt: safeText(sourcePacket.generatedAt, 80),
+    phase: safeText(sourcePacket.phase, 40),
+    actionRegistry: safeArray(sourcePacket.actionRegistry),
+    routingCritical: {
+      copyExactCandidateLaneValues: true,
+      routeOnlyToIdleEligibleContributors: guardrails.routeOnlyToIdleEligibleContributors === true,
+      structuralDedupRequired: guardrails.structuralDedupRequired === true,
+      allCandidateCount: safeArray(candidates.all).length,
+      idleEligibleContributorCount: safeArray(candidates.idleEligibleContributors).length,
+    },
+    candidates: {
+      idleEligibleContributors: safeArray(candidates.idleEligibleContributors),
+    },
+    projects: sourcePacket.projects,
+    reports: Object.fromEntries(Object.entries(reports).map(([type, report]) => [type, modelReport(report)])),
+    liveTaskState: {
+      outstandingNetworkTasks: safeArray(liveTaskState.outstandingNetworkTasks).slice(0, 80).map(modelTask),
+      pendingGenerationJobs: safeArray(liveTaskState.pendingGenerationJobs).slice(0, 80),
+      recentTerminalNetworkTasks: safeArray(liveTaskState.recentTerminalNetworkTasks).slice(0, 100).map(modelTask),
+    },
+    boardDiscussions: safeArray(sourcePacket.boardDiscussions).slice(0, 40),
+    guardrails: {
+      routeOnlyToIdleEligibleContributors: guardrails.routeOnlyToIdleEligibleContributors === true,
+      structuralDedupRequired: guardrails.structuralDedupRequired === true,
+      shadowOnlyNoMutations: guardrails.shadowOnlyNoMutations === true,
+      activeExecutionFeatureFlag: safeText(guardrails.activeExecutionFeatureFlag, 120),
+      candidateCapacitySource: safeText(guardrails.candidateCapacitySource, 120),
+      dedupIndex: safeArray(guardrails.dedupIndex).slice(0, 260).map(modelDedup),
+    },
+  };
 }
 
 function decisionSchema() {
@@ -144,6 +236,7 @@ function decisionSchema() {
 }
 
 function messagesForSource(sourcePacket = {}) {
+  const modelPacket = modelSourcePacket(sourcePacket);
   return [
     {
       role: "system",
@@ -154,7 +247,7 @@ function messagesForSource(sourcePacket = {}) {
       content: [
         "HIVE DECISION SOURCE PACKET",
         "```json",
-        compactJson(sourcePacket),
+        compactJson(modelPacket),
         "```",
       ].join("\n"),
     },
