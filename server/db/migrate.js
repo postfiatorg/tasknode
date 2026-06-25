@@ -85,6 +85,7 @@ const migrations = [
   "075_task_event_write_source.sql",
   "076_task_forensics_signatures.sql",
   "078_context_rewrite_jobs.sql",
+  "079_hive_reports.sql",
 ];
 
 let migrated = false;

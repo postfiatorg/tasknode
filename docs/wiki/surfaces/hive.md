@@ -95,6 +95,41 @@ executor flushes in-flight output to that row so the HTTP server can stream it
 across process boundaries. The endpoint is still read-only: it cannot create
 projects, route tasks, execute hooks, or change Board Manager state.
 
+### Hive Reports
+
+Hive Brain also renders the Phase 1 Hive v2 report store. Reports are
+operator-only, read-only markdown documents stored in `hive_reports`; they are
+not JSON source packets. The list/detail API is:
+
+- `GET /api/hive/reports?type=&since=` for recent report documents
+- `GET /api/hive/reports/:id` for one full markdown report plus verification
+  phases
+
+Six report builders run from `server/hive-reports-worker.js`:
+
+- `rewarded_task`, every 20 minutes: per verified badge role, the last rewarded
+  Network Tasks with proposal and reward context.
+- `operative`, every 24 hours: verified operators by role, current allocation
+  state, and the work they appear to be doing.
+- `kol`, daily: public marketing/amplification state. It includes an
+  `agent_verify` phase from the KOL link verifier, which fetches public links
+  referenced by the report and records whether they are reachable.
+- `development`, every 24 hours: core development state. It includes an
+  `agent_verify` phase from the development repo verifier, which checks
+  Post Fiat repository links and recent public GitHub issue/PR visibility.
+- `qa`, every 24 hours: product QA activity and suggested improvements, drawing
+  from QA-role tasks and recent Hive chats that look like product feedback.
+- `executive`, every 24 hours: Project Leader Hive chats from the past 24 hours
+  assembled into an executive brief.
+
+Report inputs are existing durable facts: `account_network_badges` for roles,
+`task_projections` for active/rewarded Network Tasks, `network_projects` and
+their task mirrors for dynamic projects, and `hive_context_entries` for Hive
+chat. The builders use the configured OpenRouter Hive report model with high
+reasoning effort in production. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
+npm run hive-reports-smoke` exercises the same storage, worker, list/detail,
+and UI-facing shape without spending model tokens.
+
 ## New User Quickstart
 
 This is the minimum path for a new Hive Chat contributor.

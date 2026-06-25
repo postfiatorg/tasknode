@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Brain, ChevronDown, ChevronRight, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, Brain, ChevronDown, ChevronRight, FileText, RefreshCw, Search } from "lucide-react";
 import { requestJson } from "../../api";
 import "./hive.css";
 
@@ -10,6 +10,16 @@ const actionOptions = [
   { value: "message_user", label: "Message user" },
   { value: "create_project", label: "Create project" },
   { value: "error", label: "Errors" },
+];
+
+const reportTypeOptions = [
+  { value: "", label: "All reports" },
+  { value: "operative", label: "Operative" },
+  { value: "rewarded_task", label: "Rewarded Task" },
+  { value: "kol", label: "KOL" },
+  { value: "development", label: "Development" },
+  { value: "qa", label: "QA" },
+  { value: "executive", label: "Executive" },
 ];
 
 function formatTime(value = "") {
@@ -128,6 +138,139 @@ function LiveOutputPanel({ live = {}, status = "connecting" }) {
           <small>{run.status || "idle"} · {formatBytes(run.outputBytes)}</small>
         </div>
         <pre>{run.outputText || "Waiting for Board Manager output."}</pre>
+      </div>
+    </section>
+  );
+}
+
+function ReportDocument({ detail, loading }) {
+  if (loading && !detail) return <div className="hive-card hive-brain-empty">Loading report detail.</div>;
+  if (!detail?.ok) return <div className="hive-card hive-brain-empty">Select a Hive report to inspect.</div>;
+  const report = detail.report || {};
+  return (
+    <div className="hive-report-document">
+      <div className="hive-report-meta">
+        <span>{report.label || report.type}</span>
+        <strong>{formatTime(report.generatedAt)}</strong>
+        <small>{report.model || "model unknown"} · {formatBytes(report.bodyBytes)}</small>
+      </div>
+      <pre className="hive-report-body">{report.bodyMarkdown || "Report body unavailable."}</pre>
+      <CollapsibleSection
+        defaultOpen={false}
+        subtitle={`${detail.verifications?.length || 0} phases`}
+        title="Verification Phases"
+      >
+        <div className="hive-report-verifications">
+          {(detail.verifications || []).map((verification) => (
+            <article className="hive-card" key={verification.id}>
+              <div>
+                <strong>{verification.phase}</strong>
+                <small>{verification.agent} · {formatTime(verification.verifiedAt)}</small>
+              </div>
+              <pre>{verification.resultSummary}</pre>
+            </article>
+          ))}
+          {!detail.verifications?.length && <p>No verification phases recorded.</p>}
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+function ReportsPanel() {
+  const [reports, setReports] = useState([]);
+  const [selectedReportId, setSelectedReportId] = useState("");
+  const [detail, setDetail] = useState(null);
+  const [reportType, setReportType] = useState("");
+  const [listStatus, setListStatus] = useState("loading");
+  const [detailStatus, setDetailStatus] = useState("idle");
+
+  const loadReports = useCallback(async () => {
+    setListStatus("loading");
+    try {
+      const params = new URLSearchParams({ limit: "18" });
+      if (reportType) params.set("type", reportType);
+      const result = await requestJson(`/api/hive/reports?${params.toString()}`);
+      if (!result.ok) throw new Error(result.body?.message || `Hive reports failed with HTTP ${result.status}`);
+      const nextReports = result.body?.reports || [];
+      setReports(nextReports);
+      setSelectedReportId((current) => current || nextReports[0]?.id || "");
+      setListStatus("ready");
+    } catch {
+      setListStatus("error");
+    }
+  }, [reportType]);
+
+  useEffect(() => {
+    setSelectedReportId("");
+    setDetail(null);
+    loadReports();
+  }, [loadReports]);
+
+  useEffect(() => {
+    if (!selectedReportId) {
+      setDetail(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setDetailStatus("loading");
+    requestJson(`/api/hive/reports/${encodeURIComponent(selectedReportId)}`)
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) throw new Error(result.body?.message || `Hive report failed with HTTP ${result.status}`);
+        setDetail(result.body || null);
+        setDetailStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setDetailStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedReportId]);
+
+  return (
+    <section className="hive-section">
+      <div className="hive-section-heading">
+        <div>
+          <h2>Reports</h2>
+          <p>Human-readable Hive v2 reports. These are stored markdown documents, not JSON packets.</p>
+        </div>
+        <FileText size={18} strokeWidth={1.8} />
+      </div>
+      <div className="hive-brain-controls hive-report-controls">
+        <label>
+          <span>Type</span>
+          <select value={reportType} onChange={(event) => setReportType(event.target.value)}>
+            {reportTypeOptions.map((option) => (
+              <option key={option.value || "all"} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <button className="hive-brain-icon-button" onClick={loadReports} title="Refresh reports" type="button">
+          <RefreshCw size={16} strokeWidth={1.8} />
+        </button>
+      </div>
+      <div className="hive-report-grid">
+        <div className="hive-brain-timeline" role="list">
+          {reports.map((report) => (
+            <button
+              className={`hive-brain-run hive-report-row ${selectedReportId === report.id ? "is-active" : ""}`}
+              key={report.id}
+              onClick={() => setSelectedReportId(report.id)}
+              type="button"
+            >
+              <span className="hive-brain-run-time">{formatTime(report.generatedAt)}</span>
+              <strong>{report.label || report.type}</strong>
+              <small>{report.verificationCount || 0} phases · {formatBytes(report.bodyBytes)}</small>
+              {report.bodyExcerpt && <em>{report.bodyExcerpt}</em>}
+            </button>
+          ))}
+          {listStatus === "loading" && !reports.length && <div className="hive-card hive-brain-empty">Loading reports.</div>}
+          {listStatus === "error" && <div className="hive-card hive-brain-empty">Report list failed to load.</div>}
+          {listStatus === "ready" && !reports.length && <div className="hive-card hive-brain-empty">No reports have been generated yet.</div>}
+        </div>
+        <ReportDocument detail={detail} loading={detailStatus === "loading"} />
       </div>
     </section>
   );
@@ -365,6 +508,8 @@ export function HiveBrainView() {
             <span>{accessError}</span>
           </div>
         )}
+
+        <ReportsPanel />
 
         <section className="hive-section">
           <div className="hive-section-heading">

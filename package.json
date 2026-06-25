@@ -120,6 +120,8 @@
     "hive-generation-intelligence-smoke": "node scripts/hive-generation-intelligence-smoke.mjs",
     "hive-clickable-smoke": "node scripts/hive-clickable-smoke.mjs",
     "hive-brain-smoke": "node scripts/hive-brain-smoke.mjs",
+    "hive-reports-worker": "node scripts/hive-reports-worker.mjs",
+    "hive-reports-smoke": "node scripts/hive-reports-smoke.mjs",
     "hive-route-cache-observability-smoke": "node scripts/hive-route-cache-observability-smoke.mjs",
     "board-manager-message-repair": "node scripts/board-manager-message-delivery-repair.mjs",
     "board-manager-message-delivery-repair-smoke": "node scripts/board-manager-message-delivery-repair-smoke.mjs",

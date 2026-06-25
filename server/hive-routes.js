@@ -13,6 +13,7 @@ import {
   getHiveBrainRunDetail,
   listHiveBrainRuns,
 } from "./repositories/hive-brain.js";
+import { getHiveReport, listHiveReports } from "./repositories/hive-reports.js";
 import { getHiveProjectsDocument, getPublicHiveTaskDetail } from "./repositories/hive-projects.js";
 import {
   enqueueHiveSecretaryJob,
@@ -500,8 +501,57 @@ async function handleHiveBrainRoute({ json, req, res, session, url }) {
   return true;
 }
 
+async function handleHiveReportsRoute({ json, req, res, session, url }) {
+  if (!url.pathname.startsWith("/api/hive/reports")) return false;
+  const access = hiveBrainOperatorAccess(session);
+  if (!access.ok) {
+    json(res, access.status || 403, {
+      ok: false,
+      error: access.error,
+      message: access.message,
+    });
+    return true;
+  }
+  if (url.pathname === "/api/hive/reports") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_reports_method_not_allowed",
+        message: "Hive reports supports GET.",
+      });
+      return true;
+    }
+    const body = await listHiveReports({
+      type: url.searchParams.get("type") || "",
+      since: url.searchParams.get("since") || "",
+      limit: url.searchParams.get("limit") || 20,
+      page: url.searchParams.get("page") || 1,
+    });
+    json(res, 200, body);
+    return true;
+  }
+  const reportPrefix = "/api/hive/reports/";
+  if (url.pathname.startsWith(reportPrefix)) {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_report_detail_method_not_allowed",
+        message: "Hive report detail supports GET.",
+      });
+      return true;
+    }
+    const reportId = decodeURIComponent(url.pathname.slice(reportPrefix.length));
+    const body = await getHiveReport({ id: reportId });
+    json(res, body.ok ? 200 : body.status || 404, body);
+    return true;
+  }
+  json(res, 404, { ok: false, error: "hive_reports_route_not_found" });
+  return true;
+}
+
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
   if (await handleHiveBrainRoute({ json, req, res, session, url })) return true;
+  if (await handleHiveReportsRoute({ json, req, res, session, url })) return true;
   if (!["/api/hive/context", "/api/hive/projects", "/api/hive/task-detail", "/api/hive/chat"].includes(url.pathname)) return false;
 
   if (url.pathname === "/api/hive/projects") {

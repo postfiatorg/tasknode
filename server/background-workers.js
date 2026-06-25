@@ -1,6 +1,7 @@
 import { startMemoryWorker } from "./chat-memory-worker.js";
 import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
 import { startHiveProjectWorker } from "./hive-project-worker.js";
+import { startHiveReportsWorker } from "./hive-reports-worker.js";
 import { startIpfsReplicationWorker } from "./ipfs-replication-worker.js";
 import { startNetworkTaskGenerationWorker } from "./network-task-generation-worker.js";
 import { startPftlCacheRetentionWorker } from "./pftl-cache-maintenance.js";
@@ -17,6 +18,7 @@ export function startBackgroundWorkers() {
   startMemoryWorker();
   startHiveSecretaryWorker();
   startHiveProjectWorker();
+  startHiveReportsWorker();
   startIpfsReplicationWorker();
   startNetworkTaskGenerationWorker();
   startPftlCacheWorker();
