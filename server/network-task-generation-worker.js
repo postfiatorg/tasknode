@@ -71,6 +71,19 @@ export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward =
       blocked_or_unclear: compactList(sourceObject.project_document?.blockedOrUnclear || sourceObject.projectDocument?.blockedOrUnclear),
       next_actions: compactList(sourceObject.project_document?.nextActions || sourceObject.projectDocument?.nextActions),
     },
+    hive_reports: {
+      schema: safeText(sourceObject.hiveReports?.schema || "pf.hive.task_generation_reports.v1", 120),
+      source: safeText(sourceObject.hiveReports?.source || "", 120),
+      report_ids: safeArray(sourceObject.hiveReports?.reportIds).slice(0, 12).map((item) => safeText(item, 180)).filter(Boolean),
+      reports: safeArray(sourceObject.hiveReports?.reports).slice(0, 6).map((report) => ({
+        type: safeText(report?.type, 80),
+        id: safeText(report?.id, 180),
+        label: safeText(report?.label, 120),
+        generated_at: safeText(report?.generatedAt || report?.generated_at, 80),
+        body_markdown_excerpt: safeText(report?.bodyMarkdownExcerpt || report?.body_markdown_excerpt, 6000),
+      })).filter((report) => report.id || report.body_markdown_excerpt),
+    },
+    decision_agent_guardrails: safeObject(sourceObject.decisionAgentGuardrails || sourceObject.decision_agent_guardrails),
     reward_band_pft: {
       min: reward.min,
       max: reward.max,

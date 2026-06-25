@@ -32,6 +32,10 @@ const TASKGEN_NETWORK_PROMPT = {
   path: "task_engine/taskgen_network_v1.md",
   version: "taskgen_network_v1",
 };
+const TASKGEN_NETWORK_V2_PROMPT = {
+  path: "task_engine/taskgen_network_v2.md",
+  version: "taskgen_network_v2",
+};
 const TASKGEN_REPLAY_ACCEPT_BY_MIN_FRESH_MS = 5 * 60 * 1000;
 const TASKGEN_REPLAY_ACCEPT_BY_FALLBACK_MS = 24 * 60 * 60 * 1000;
 
@@ -124,6 +128,19 @@ function isNetworkGeneratedRequest(request = {}) {
   return source === "network_task" || requestedKind === "network" || requestedKind === "alpha";
 }
 
+function taskInputIsNetwork(taskInput = {}) {
+  const networkTask = safeObject(taskInput.network_task);
+  const policy = safeObject(taskInput.policy);
+  const request = safeObject(taskInput.request);
+  const taskClass = safeText(policy.task_class ?? policy.taskClass ?? request.requestedTaskKind ?? request.requested_task_kind, 80).toLowerCase();
+  return objectKeyCount(networkTask) > 0 || taskClass === "network" || taskClass === "alpha";
+}
+
+export function networkTaskGenerationV2Enabled(env = process.env) {
+  return env.TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED === "true" ||
+    env.TASKNODE_HIVE_TASK_GENERATION_V2_ENABLED === "true";
+}
+
 function networkGenerationFailureMetadata(message = "") {
   return {
     operator_repair: {
@@ -179,14 +196,32 @@ function objectKeyCount(value) {
 }
 
 export function taskgenPromptForInput(taskInput = {}) {
-  const networkTask = safeObject(taskInput.network_task);
-  const policy = safeObject(taskInput.policy);
-  const request = safeObject(taskInput.request);
-  const taskClass = safeText(policy.task_class ?? policy.taskClass ?? request.requestedTaskKind ?? request.requested_task_kind, 80).toLowerCase();
-  if (objectKeyCount(networkTask) > 0 || taskClass === "network" || taskClass === "alpha") {
+  if (taskInputIsNetwork(taskInput)) {
+    if (networkTaskGenerationV2Enabled()) return TASKGEN_NETWORK_V2_PROMPT;
     return TASKGEN_NETWORK_PROMPT;
   }
   return TASKGEN_PERSONAL_PROMPT;
+}
+
+export function taskgenProviderForInput(taskInput = {}, env = process.env) {
+  if (env.TASKNODE_TASKGEN_PROVIDER_MOCK === "true") return "mock";
+  if (taskInputIsNetwork(taskInput) && networkTaskGenerationV2Enabled(env)) {
+    return safeText(env.TASKNODE_NETWORK_TASKGEN_PROVIDER || env.TASKNODE_HIVE_TASK_GENERATION_PROVIDER || "openrouter", 80).toLowerCase();
+  }
+  return safeText(env.TASKNODE_TASKGEN_PROVIDER || "openai", 80).toLowerCase();
+}
+
+export function taskgenModelForInput(taskInput = {}, env = process.env) {
+  if (taskInputIsNetwork(taskInput) && networkTaskGenerationV2Enabled(env)) {
+    return safeText(
+      env.TASKNODE_NETWORK_TASKGEN_MODEL ||
+        env.TASKNODE_HIVE_TASK_GENERATION_MODEL ||
+        env.TASKNODE_TASKGEN_MODEL ||
+        "deepseek/deepseek-v4-pro",
+      160
+    );
+  }
+  return safeText(env.TASKNODE_TASKGEN_MODEL || "chat-latest", 160);
 }
 
 function stableJson(value) {
@@ -412,7 +447,7 @@ export function taskgenReplayIdentity({
   const policy = safeObject(taskInput.policy);
   const networkTask = safeObject(taskInput.network_task);
   const requestObject = safeObject(taskInput.request);
-  const model = safeText(process.env.TASKNODE_TASKGEN_MODEL || "chat-latest", 120);
+  const model = taskgenModelForInput(taskInput);
   const taskClass = safeText(
     policy.task_class ??
       policy.taskClass ??
@@ -537,24 +572,155 @@ function offerFromReplay(replay = {}) {
   };
 }
 
-async function generateTaskWithOpenAi(taskInput) {
+function taskgenApiConfig(taskInput = {}) {
+  const provider = taskgenProviderForInput(taskInput);
+  if (provider === "mock") {
+    return {
+      provider,
+      model: "mock-taskgen",
+      baseUrl: "",
+      apiKey: "mock",
+      headers: {},
+    };
+  }
+  if (provider === "openrouter") {
+    const apiKey = safeText(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER, 10000);
+    if (!apiKey) throw new Error("taskgen_openrouter_api_key_missing");
+    return {
+      provider,
+      model: taskgenModelForInput(taskInput),
+      baseUrl: (process.env.OPENROUTER_BASE_URL || "https://api.openrouter.ai/api/v1").replace(/\/+$/, ""),
+      apiKey,
+      headers: {
+        "HTTP-Referer": process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "https://tasknode.postfiat.org",
+        "X-Title": "Task Node task generation",
+      },
+    };
+  }
   const apiKey = safeText(process.env.OPENAI_API_KEY);
   if (!apiKey) throw new Error("openai_api_key_missing");
+  return {
+    provider: "frontier",
+    model: taskgenModelForInput(taskInput),
+    baseUrl: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, ""),
+    apiKey,
+    headers: {},
+  };
+}
+
+function discordProofCriteriaSuffix(taskInput = {}) {
+  return taskInputIsNetwork(taskInput)
+    ? " Include Discord announcement proof as a message link/id or screenshot from an approved Post Fiat channel."
+    : "";
+}
+
+function mockTaskgenOutput(taskInput = {}) {
+  const networkTask = safeObject(taskInput.network_task);
+  const policy = safeObject(taskInput.policy);
+  const taskKind = normalizeTaskKind(networkTask.task_class || policy.task_class || "personal", policy);
+  const reward = normalizeReward(networkTask.reward_band_pft?.min || policy.reward_offer_min_pft || "3.20", policy);
+  const titleBase = safeText(networkTask.action_output || networkTask.project_need_summary || taskInput.request?.requestText || "Prepare Task Evidence", 80);
+  return validateTaskgenOutput({
+    schema: "pf.taskgen.output.v1",
+    title: safeText(titleBase.replace(/[^\w\s-]+/g, " ").replace(/\s+/g, " ").trim() || "Prepare Task Evidence", 72),
+    description: safeText(
+      [
+        networkTask.project_title ? `This task supports ${networkTask.project_title}.` : "This task supports the selected Task Node project.",
+        safeText(networkTask.project_need_summary || taskInput.request?.requestText || "Prepare a concrete artifact and evidence packet.", 500),
+      ].join(" "),
+      900
+    ),
+    task_kind: taskKind,
+    steps: [
+      "Review the project need and any referenced source material.",
+      "Create the requested artifact or evidence packet.",
+      "Submit the artifact with enough proof for a reviewer to verify it.",
+    ],
+    submission_requirement: {
+      type: taskInputIsNetwork(taskInput) ? "mixed" : "text",
+      criteria: `Submit the completed artifact plus a concise note explaining what changed.${discordProofCriteriaSuffix(taskInput)}`,
+    },
+    verification_policy: {
+      followup_required: taskInputIsNetwork(taskInput),
+      mode: "standard_followup",
+      verification_type: taskInputIsNetwork(taskInput) ? "mixed" : "text",
+    },
+    reward_offer: {
+      amount_estimate_pft: reward,
+    },
+    deadline: {
+      accept_by: normalizeDeadlineTimestamp(null, { fallbackMs: 24 * 60 * 60 * 1000 }),
+      deadline_at: null,
+    },
+  }, policy);
+}
+
+function assertNetworkTaskgenV2Input(taskInput = {}) {
+  if (!taskInputIsNetwork(taskInput) || !networkTaskGenerationV2Enabled()) return null;
+  const networkTask = safeObject(taskInput.network_task);
+  const policy = safeObject(taskInput.policy);
+  const taskWorkType = safeText(networkTask.task_work_type || networkTask.taskWorkType || policy.task_work_type || policy.taskWorkType, 120);
+  const requiredBadge = safeText(networkTask.required_badge_id || networkTask.requiredBadgeId || policy.required_badge_id || policy.requiredBadgeId, 80);
+  const operatingBadge = safeText(networkTask.operating_badge_id || networkTask.operatingBadgeId || policy.operating_badge_id || policy.operatingBadgeId, 80);
+  const cap = Number(networkTask.badge_reward_cap_pft || networkTask.badgeRewardCapPft || policy.badge_reward_cap_pft || policy.badgeRewardCapPft || 0);
+  const isCapabilityGate = taskWorkType === "capability_gating_task";
+  if (!requiredBadge && !isCapabilityGate) throw new Error("network_taskgen_v2_required_badge_missing");
+  if (!operatingBadge && !isCapabilityGate) throw new Error("network_taskgen_v2_operating_badge_missing");
+  if (requiredBadge && operatingBadge && requiredBadge !== operatingBadge) {
+    throw new Error("network_taskgen_v2_badge_mismatch");
+  }
+  if (!taskWorkType) throw new Error("network_taskgen_v2_task_work_type_missing");
+  if (Number.isFinite(cap) && cap > 0) {
+    const max = Number(policy.reward_offer_max_pft ?? policy.rewardOfferMaxPft ?? networkTask.reward_band_pft?.max ?? 0);
+    if (Number.isFinite(max) && max > cap) throw new Error("network_taskgen_v2_reward_cap_violation");
+  }
+  return {
+    requiredBadge,
+    operatingBadge,
+    taskWorkType,
+    badgeRewardCapPft: Number.isFinite(cap) ? cap : 0,
+    reportIds: safeArray(networkTask.hive_reports?.report_ids || networkTask.hiveReports?.reportIds),
+  };
+}
+
+export async function generateTaskWithProvider(taskInput) {
+  const gate = assertNetworkTaskgenV2Input(taskInput);
   const taskgenPrompt = taskgenPromptForInput(taskInput);
   const systemPrompt = loadPrompt(taskgenPrompt.path);
-  const model = safeText(process.env.TASKNODE_TASKGEN_MODEL || "chat-latest", 120);
+  const apiConfig = taskgenApiConfig(taskInput);
+  const model = apiConfig.model;
   const startedAt = Date.now();
   const baseInstruction = `Generate a minimal Task Node task from this input packet. Return JSON matching schema pf.taskgen.output.v1.\n\n${stableJson(taskInput)}`;
+  if (apiConfig.provider === "mock") {
+    const output = mockTaskgenOutput(taskInput);
+    return {
+      output,
+      metadata: {
+        provider: "mock",
+        model,
+        prompt_version: taskgenPrompt.version,
+        prompt_path: taskgenPrompt.path,
+        prompt_digest: promptDigest(systemPrompt),
+        input_packet_digest: sha256(taskInput),
+        output_digest: sha256(output),
+        latency_ms: Date.now() - startedAt,
+        parse_status: "ok",
+        validation_attempts: 1,
+        network_taskgen_v2_gate: gate || null,
+      },
+    };
+  }
   let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const repairInstruction = attempt === 1
       ? ""
       : "\n\nThe previous draft used opaque internal compliance language. Rewrite the task card in plain product language with a concrete object, action, artifact, and evidence. Do not use conformance, compliance, gates, verdict, priority stack, P0 standards, gap note, or exact-edits language.";
-    const response = await fetch(`${(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
+    const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${apiKey}`,
+        authorization: `Bearer ${apiConfig.apiKey}`,
         "content-type": "application/json",
+        ...apiConfig.headers,
       },
       body: JSON.stringify({
         model,
@@ -576,7 +742,7 @@ async function generateTaskWithOpenAi(taskInput) {
       return {
         output,
         metadata: {
-          provider: "frontier",
+          provider: apiConfig.provider,
           model,
           prompt_version: taskgenPrompt.version,
           prompt_path: taskgenPrompt.path,
@@ -586,7 +752,9 @@ async function generateTaskWithOpenAi(taskInput) {
           latency_ms: Date.now() - startedAt,
           parse_status: "ok",
           openai_response_id: body.id || "",
+          provider_response_id: body.id || "",
           validation_attempts: attempt,
+          network_taskgen_v2_gate: gate || null,
         },
       };
     } catch (error) {
@@ -716,7 +884,7 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
       const replayedGeneratedOutput = hasGeneratedTaskgenReplay(replay);
       let taskgen = replayedGeneratedOutput
         ? taskgenFromReplay(replay, replayIdentity)
-        : await generateTaskWithOpenAi(taskInput);
+        : await generateTaskWithProvider(taskInput);
       let offer = replayedPublishedOffer ? offerFromReplay(replay) : null;
       if (replayedGeneratedOutput && !offer) {
         offer = await findPublishedTaskgenOfferByTaskId({

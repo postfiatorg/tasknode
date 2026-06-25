@@ -15,12 +15,17 @@ import { startContextRewriteWorker } from "./context-rewrite-worker.js";
 import { startTaskGenerationWorker } from "./task-generation-worker.js";
 import { startTaskReviewWorker } from "./task-review-worker.js";
 
+function shouldStartHiveDecisionAgentInBackground() {
+  const role = String(process.env.TASKNODE_PROCESS_ROLE || process.env.FLY_PROCESS_GROUP || "all").trim().toLowerCase();
+  return role === "all" || process.env.TASKNODE_HIVE_DECISION_AGENT_RUN_IN_WORKER === "true";
+}
+
 export function startBackgroundWorkers() {
   startMemoryWorker();
   startHiveSecretaryWorker();
   startHiveProjectWorker();
   startHiveReportsWorker();
-  startHiveDecisionAgentWorker();
+  if (shouldStartHiveDecisionAgentInBackground()) startHiveDecisionAgentWorker();
   startIpfsReplicationWorker();
   startNetworkTaskGenerationWorker();
   startPftlCacheWorker();

@@ -646,6 +646,13 @@ function sourcePacketText(source = {}) {
   const candidate = source.candidate || {};
   const networkTask = source.networkTask || {};
   const lineage = source.taskLineage || {};
+  const hiveReportLines = safeArray(source.hiveReports?.reports)
+    .slice(0, 6)
+    .map((report) => {
+      const item = safeObject(report);
+      return `- ${safeText(item.type, 80)} ${safeText(item.id, 180)}: ${safeText(item.bodyMarkdownExcerpt, 900)}`;
+    })
+    .filter(Boolean);
   const priorOutputLines = safeArray(source.priorOutputCorpus?.outputs)
     .slice(0, 12)
     .map((output) => {
@@ -698,6 +705,14 @@ function sourcePacketText(source = {}) {
     `documentationOnlyDefault: ${source.generationQualityPolicy?.documentationOnlyDefault || "low_value_unless_action_coupled"}`,
     `requiresConcreteActionOutput: ${source.generationQualityPolicy?.requiresConcreteActionOutput ? "true" : "false"}`,
     `escalationLadder: ${source.generationQualityPolicy?.escalationLadder || "document_to_action_v1"}`,
+    "",
+    "Hive v2 reports",
+    hiveReportLines.join("\n") || "No Hive reports attached.",
+    "",
+    "Decision Agent guardrails",
+    `structuralDedupRequired: ${source.decisionAgentGuardrails?.structuralDedupRequired ? "true" : "false"}`,
+    `routeOnlyToIdleEligibleContributors: ${source.decisionAgentGuardrails?.routeOnlyToIdleEligibleContributors ? "true" : "false"}`,
+    `dedupIndexCount: ${Number(source.decisionAgentGuardrails?.dedupIndexCount || 0)}`,
     "",
     "Concrete action/output",
     networkTask.actionOutput || "Not specified by Board Manager.",
@@ -838,6 +853,31 @@ function compactPriorOutputCorpus(value = {}, { projectId = "", candidate = {} }
   };
 }
 
+function compactHiveReportsForTaskGeneration(value = {}) {
+  const reports = safeObject(value);
+  const entries = Object.entries(reports)
+    .map(([type, report]) => {
+      const item = safeObject(report);
+      const body = safeText(item.bodyMarkdown || item.body_markdown || item.body || "", 6000);
+      return {
+        type: safeText(type || item.type, 80),
+        id: safeText(item.id, 180),
+        label: safeText(item.label, 120),
+        generatedAt: safeText(item.generatedAt || item.generated_at, 80),
+        model: safeText(item.model, 180),
+        bodyMarkdownExcerpt: body,
+        metadata: safeObject(item.metadata || item.metadata_json),
+      };
+    })
+    .filter((report) => report.id || report.bodyMarkdownExcerpt);
+  return {
+    schema: "pf.hive.task_generation_reports.v1",
+    source: "hive_decision_agent_source_packet",
+    reports: entries,
+    reportIds: entries.map((report) => report.id).filter(Boolean),
+  };
+}
+
 export function buildNetworkTaskGenerationSource({
   runId = "",
   decision = {},
@@ -879,6 +919,14 @@ export function buildNetworkTaskGenerationSource({
     project: compactProject(project),
     project_document: compactProductDoc(projectDocument),
     candidate,
+    hiveReports: compactHiveReportsForTaskGeneration(sourcePacket.reports),
+    decisionAgentGuardrails: {
+      structuralDedupRequired: sourcePacket.guardrails?.structuralDedupRequired === true,
+      routeOnlyToIdleEligibleContributors: sourcePacket.guardrails?.routeOnlyToIdleEligibleContributors === true,
+      dedupIndexCount: safeArray(sourcePacket.guardrails?.dedupIndex).length,
+      candidateCount: safeArray(sourcePacket.candidates?.all).length,
+      idleEligibleContributorCount: safeArray(sourcePacket.candidates?.idleEligibleContributors).length,
+    },
     operatorStandingPolicy: compactOperatorStandingPolicy(sourcePacket.operatorStandingPolicy || sourcePacket.operator_standing_policy),
     generationQualityPolicy: compactGenerationQualityPolicy(sourcePacket.generationQualityPolicy || sourcePacket.generation_quality_policy),
     priorOutputCorpus: compactPriorOutputCorpus(sourcePacket.networkTaskOutputCorpus || sourcePacket.priorOutputCorpus, {
@@ -936,6 +984,8 @@ function networkTaskIntelligenceMetadata(sourceJson = {}) {
   return {
     operatorStandingPolicy: safeArray(sourceJson.operatorStandingPolicy),
     generationQualityPolicy: safeObject(sourceJson.generationQualityPolicy),
+    hiveReportIds: safeArray(sourceJson.hiveReports?.reportIds).slice(0, 12),
+    decisionAgentGuardrails: safeObject(sourceJson.decisionAgentGuardrails),
     priorOutputCorpusSummary: safeObject(sourceJson.priorOutputCorpus?.summary),
     taskLineage: safeObject(sourceJson.taskLineage),
     taskWorkType: safeText(sourceJson.networkTask?.taskWorkType, 80),

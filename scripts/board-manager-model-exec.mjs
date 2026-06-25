@@ -44,6 +44,12 @@ function oldBoardManagerExecutionEnabled() {
     process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE !== "true";
 }
 
+function legacyBoardManagerDecommissioned() {
+  return process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true" &&
+    process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" &&
+    !hasArg("--force-legacy");
+}
+
 function usage() {
   return [
     "Usage: npm run board-manager:model -- [options]",
@@ -58,6 +64,7 @@ function usage() {
     "  --prompt-only          Build and print the prompt packet without calling the model provider.",
     "  --no-secretary         Skip DeepSeek secretary packet compression and send the full source packet.",
     "  --execute              Execute supported action hooks after the model chooses an action.",
+    "  --force-legacy         Allow the retired Board Manager LLM loop while Hive Decision Agent is active.",
     "  --no-record           Do not write board_manager_runs.",
     "  --no-lease            Do not claim board_manager_leases.",
     "  --json                Print machine-readable JSON.",
@@ -115,6 +122,24 @@ async function main() {
   const record = !hasArg("--no-record");
   const useLease = !hasArg("--no-lease");
   const json = hasArg("--json");
+
+  if (legacyBoardManagerDecommissioned() && !packetOnly && !promptOnly) {
+    const output = {
+      ok: true,
+      skipped: true,
+      decommissioned: true,
+      reason: "hive_decision_agent_active",
+      replacement: "hive_decision_agent",
+      execute: false,
+      decision: {
+        action: "do_nothing",
+        reason: "Retired Board Manager LLM loop skipped because Hive Decision Agent is active.",
+      },
+    };
+    console.log(json ? JSON.stringify(output, null, 2) : output.reason);
+    await closePool();
+    return;
+  }
 
   const rawSourcePacket = await buildBoardManagerSourcePacket({ trigger, scope });
   const rawSourcePacketBytes = Buffer.byteLength(JSON.stringify(rawSourcePacket));

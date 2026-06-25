@@ -57,6 +57,7 @@ function usage() {
     "  --action-delay-ms <ms>      Follow-up delay after mutating action. Default: 5000",
     "  --error-delay-ms <ms>       Retry delay after failed job. Default: 300000",
     "  --force                     Run even when TASKNODE_BOARD_MANAGER_ENABLED is not true.",
+    "  --force-legacy              Allow the retired Board Manager LLM loop while Hive Decision Agent is active.",
     "  --print-config              Print resolved config and exit before DB checks.",
   ].join("\n");
 }
@@ -72,6 +73,12 @@ function defaultBoardManagerModel(provider = "openrouter") {
 function oldBoardManagerExecutionEnabled() {
   return process.env.TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED !== "false" &&
     process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE !== "true";
+}
+
+function legacyBoardManagerDecommissioned() {
+  return process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true" &&
+    process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" &&
+    !hasArg("--force-legacy");
 }
 
 function sleep(ms, signal) {
@@ -295,11 +302,21 @@ if (hasArg("--print-config")) {
     staleJobSeconds: config.staleJobSeconds,
     execute: config.execute,
     executionRequested: hasArg("--execute"),
+    decommissioned: legacyBoardManagerDecommissioned(),
     executionDisabledReason: hasArg("--execute") && !config.execute
       ? process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true"
         ? "hive_decision_agent_active"
         : "TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED=false"
       : "",
+  }, null, 2));
+  process.exit(0);
+}
+
+if (legacyBoardManagerDecommissioned()) {
+  console.log(JSON.stringify({
+    event: "board_manager_worker_decommissioned",
+    reason: "hive_decision_agent_active",
+    replacement: "npm run start:board-manager",
   }, null, 2));
   process.exit(0);
 }
