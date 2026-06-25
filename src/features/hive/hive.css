@@ -568,6 +568,62 @@
   white-space: pre-wrap;
 }
 
+.hive-decision-detail {
+  min-width: 0;
+}
+
+.hive-decision-explanation {
+  margin: 0 0 12px;
+  padding: 12px;
+}
+
+.hive-decision-explanation h3 {
+  color: var(--hive-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.hive-decision-explanation p {
+  color: var(--hive-ink);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.hive-decision-options {
+  display: grid;
+  gap: 10px;
+}
+
+.hive-decision-options article {
+  padding: 12px;
+}
+
+.hive-decision-options strong {
+  color: var(--hive-ink);
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.hive-decision-options p {
+  color: var(--hive-ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin: 6px 0;
+}
+
+.hive-decision-options small {
+  color: var(--hive-muted);
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
 .hive-project-grid,
 .hive-contributor-grid {
   display: grid;

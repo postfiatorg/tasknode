@@ -130,6 +130,49 @@ reasoning effort in production. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
 npm run hive-reports-smoke` exercises the same storage, worker, list/detail,
 and UI-facing shape without spending model tokens.
 
+### Hive v2 Decision Agent
+
+The Phase 2 Decision Agent is a shadow replacement for the old Board Manager.
+It runs on the same cadence but does not execute mutations in Phase 2. Each run
+is stored in `hive_decision_runs` and rendered in Hive Brain under `Decision
+Agent`.
+
+Inputs are:
+
+- latest `hive_reports` documents for all six report types
+- live task state from `task_projections` and pending
+  `network_task_generation_jobs`
+- idle eligible contributors from the same badge/capacity predicates used by
+  Network Task routing
+- recent board discussions and Project Leader/operator Hive chat from
+  `hive_context_entries`
+
+The prompt requires a structured action from the v2 registry
+(`create_board`, `archive_board`, `create_task`, `cancel_task`,
+`message_user`, or `do_nothing`), a one- or two-paragraph plain-English
+explanation, options considered, and the exact reports/task-state/discussion
+references that informed the decision.
+
+Deterministic guardrails run after the model output and before the run is
+marked complete. In Phase 2 these guardrails are audit-only because no action is
+executed, but they record whether the model's `create_task` recommendation
+would be allowed:
+
+- the target must be an idle badge-eligible contributor from the live source
+  packet, not merely a contributor from stale reports
+- the task must not duplicate the target's outstanding, pending, completed,
+  rewarded, or recently terminal Network Tasks
+
+The read API is operator-gated:
+
+- `GET /api/hive/decision/runs`
+- `GET /api/hive/decision/run/:id`
+
+`TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK=true npm run
+hive-decision-agent-smoke` verifies report ingestion, shadow persistence,
+guardrail capture, and Hive Brain-facing shape without model spend. Cutover to
+executing decisions is intentionally reserved for Phase 3.
+
 ## New User Quickstart
 
 This is the minimum path for a new Hive Chat contributor.

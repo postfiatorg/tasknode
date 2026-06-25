@@ -14,6 +14,7 @@ import {
   listHiveBrainRuns,
 } from "./repositories/hive-brain.js";
 import { getHiveReport, listHiveReports } from "./repositories/hive-reports.js";
+import { getHiveDecisionRun, listHiveDecisionRuns } from "./repositories/hive-decision-agent.js";
 import { getHiveProjectsDocument, getPublicHiveTaskDetail } from "./repositories/hive-projects.js";
 import {
   enqueueHiveSecretaryJob,
@@ -549,8 +550,56 @@ async function handleHiveReportsRoute({ json, req, res, session, url }) {
   return true;
 }
 
+async function handleHiveDecisionRoute({ json, req, res, session, url }) {
+  if (!url.pathname.startsWith("/api/hive/decision")) return false;
+  const access = hiveBrainOperatorAccess(session);
+  if (!access.ok) {
+    json(res, access.status || 403, {
+      ok: false,
+      error: access.error,
+      message: access.message,
+    });
+    return true;
+  }
+  if (url.pathname === "/api/hive/decision/runs") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_decision_runs_method_not_allowed",
+        message: "Hive Decision Agent runs supports GET.",
+      });
+      return true;
+    }
+    const body = await listHiveDecisionRuns({
+      limit: url.searchParams.get("limit") || 20,
+      page: url.searchParams.get("page") || 1,
+      action: url.searchParams.get("action") || "all",
+    });
+    json(res, 200, body);
+    return true;
+  }
+  const runPrefix = "/api/hive/decision/run/";
+  if (url.pathname.startsWith(runPrefix)) {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_decision_run_method_not_allowed",
+        message: "Hive Decision Agent run detail supports GET.",
+      });
+      return true;
+    }
+    const runId = decodeURIComponent(url.pathname.slice(runPrefix.length));
+    const body = await getHiveDecisionRun({ runId });
+    json(res, body.ok ? 200 : body.status || 404, body);
+    return true;
+  }
+  json(res, 404, { ok: false, error: "hive_decision_route_not_found" });
+  return true;
+}
+
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
   if (await handleHiveBrainRoute({ json, req, res, session, url })) return true;
+  if (await handleHiveDecisionRoute({ json, req, res, session, url })) return true;
   if (await handleHiveReportsRoute({ json, req, res, session, url })) return true;
   if (!["/api/hive/context", "/api/hive/projects", "/api/hive/task-detail", "/api/hive/chat"].includes(url.pathname)) return false;
 

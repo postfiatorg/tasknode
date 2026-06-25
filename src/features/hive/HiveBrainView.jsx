@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Brain, ChevronDown, ChevronRight, FileText, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, Brain, ChevronDown, ChevronRight, FileText, GitBranch, RefreshCw, Search } from "lucide-react";
 import { requestJson } from "../../api";
 import "./hive.css";
 
@@ -20,6 +20,16 @@ const reportTypeOptions = [
   { value: "development", label: "Development" },
   { value: "qa", label: "QA" },
   { value: "executive", label: "Executive" },
+];
+
+const decisionActionOptions = [
+  { value: "all", label: "All decisions" },
+  { value: "create_task", label: "Create task" },
+  { value: "message_user", label: "Message user" },
+  { value: "cancel_task", label: "Cancel task" },
+  { value: "create_board", label: "Create board" },
+  { value: "archive_board", label: "Archive board" },
+  { value: "do_nothing", label: "Do nothing" },
 ];
 
 function formatTime(value = "") {
@@ -276,6 +286,163 @@ function ReportsPanel() {
   );
 }
 
+function DecisionAgentDetail({ detail, loading }) {
+  if (loading && !detail) return <div className="hive-card hive-brain-empty">Loading Decision Agent run.</div>;
+  if (!detail?.ok) return <div className="hive-card hive-brain-empty">Select a shadow Decision Agent run to inspect.</div>;
+  const run = detail.run || {};
+  const guardrail = run.guardrailResult || {};
+  return (
+    <div className="hive-decision-detail">
+      <div className="hive-report-meta">
+        <span>{run.selectedAction || "pending"}</span>
+        <strong>{formatTime(run.startedAt)}</strong>
+        <small>{run.model || "model unknown"} · shadow</small>
+      </div>
+      <article className="hive-card hive-decision-explanation">
+        <h3>Explanation</h3>
+        <p>{run.reasoningText || "No explanation recorded."}</p>
+      </article>
+      <div className="hive-brain-chips">
+        <span className="hive-brain-chip">
+          <small>Guardrail</small>
+          <strong>{guardrail.ok ? "ok" : guardrail.blocked ? "blocked" : "unknown"}</strong>
+        </span>
+        <span className="hive-brain-chip">
+          <small>Reports</small>
+          <strong>{run.inputReportIds?.length || 0}</strong>
+        </span>
+        <span className="hive-brain-chip">
+          <small>Idle candidates</small>
+          <strong>{run.taskStatusSnapshot?.idleEligibleContributorCount || 0}</strong>
+        </span>
+      </div>
+      <CollapsibleSection defaultOpen title="Options Considered">
+        <div className="hive-decision-options">
+          {(run.optionsConsidered || []).map((option, index) => (
+            <article className="hive-card" key={`${option.action}-${index}`}>
+              <strong>{option.action}</strong>
+              <p>{option.summary}</p>
+              <small>{option.rejectedBecause}</small>
+            </article>
+          ))}
+          {!run.optionsConsidered?.length && <p>No options recorded.</p>}
+        </div>
+      </CollapsibleSection>
+      <CollapsibleSection defaultOpen={false} title="Decision JSON">
+        <JsonBlock
+          value={{
+            informedBy: run.informedBy,
+            actionPayload: run.actionPayload,
+            guardrailResult: run.guardrailResult,
+            result: run.result,
+          }}
+        />
+      </CollapsibleSection>
+      <CollapsibleSection defaultOpen={false} title="Source Packet">
+        <JsonBlock value={run.sourcePacket || {}} />
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+function DecisionAgentPanel() {
+  const [runs, setRuns] = useState([]);
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [detail, setDetail] = useState(null);
+  const [action, setAction] = useState("all");
+  const [listStatus, setListStatus] = useState("loading");
+  const [detailStatus, setDetailStatus] = useState("idle");
+
+  const loadRuns = useCallback(async () => {
+    setListStatus("loading");
+    try {
+      const params = new URLSearchParams({ limit: "12", action });
+      const result = await requestJson(`/api/hive/decision/runs?${params.toString()}`);
+      if (!result.ok) throw new Error(result.body?.message || `Decision Agent runs failed with HTTP ${result.status}`);
+      const nextRuns = result.body?.runs || [];
+      setRuns(nextRuns);
+      setSelectedRunId((current) => current || nextRuns[0]?.id || "");
+      setListStatus("ready");
+    } catch {
+      setListStatus("error");
+    }
+  }, [action]);
+
+  useEffect(() => {
+    setSelectedRunId("");
+    setDetail(null);
+    loadRuns();
+  }, [loadRuns]);
+
+  useEffect(() => {
+    if (!selectedRunId) {
+      setDetail(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setDetailStatus("loading");
+    requestJson(`/api/hive/decision/run/${encodeURIComponent(selectedRunId)}`)
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) throw new Error(result.body?.message || `Decision Agent run failed with HTTP ${result.status}`);
+        setDetail(result.body || null);
+        setDetailStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setDetailStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRunId]);
+
+  return (
+    <section className="hive-section">
+      <div className="hive-section-heading">
+        <div>
+          <h2>Decision Agent</h2>
+          <p>Hive v2 shadow decisions from reports, live task state, and board discussions. No mutations execute in Phase 2.</p>
+        </div>
+        <GitBranch size={18} strokeWidth={1.8} />
+      </div>
+      <div className="hive-brain-controls hive-report-controls">
+        <label>
+          <span>Action</span>
+          <select value={action} onChange={(event) => setAction(event.target.value)}>
+            {decisionActionOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <button className="hive-brain-icon-button" onClick={loadRuns} title="Refresh Decision Agent runs" type="button">
+          <RefreshCw size={16} strokeWidth={1.8} />
+        </button>
+      </div>
+      <div className="hive-report-grid">
+        <div className="hive-brain-timeline" role="list">
+          {runs.map((run) => (
+            <button
+              className={`hive-brain-run hive-report-row ${selectedRunId === run.id ? "is-active" : ""}`}
+              key={run.id}
+              onClick={() => setSelectedRunId(run.id)}
+              type="button"
+            >
+              <span className="hive-brain-run-time">{formatTime(run.startedAt)}</span>
+              <strong>{run.selectedAction || run.status}</strong>
+              <small>{run.guardrailResult?.ok ? "guardrail ok" : run.guardrailResult?.blocked ? "blocked" : run.status}</small>
+              {run.reasoningText && <em>{run.reasoningText}</em>}
+            </button>
+          ))}
+          {listStatus === "loading" && !runs.length && <div className="hive-card hive-brain-empty">Loading Decision Agent runs.</div>}
+          {listStatus === "error" && <div className="hive-card hive-brain-empty">Decision Agent runs failed to load.</div>}
+          {listStatus === "ready" && !runs.length && <div className="hive-card hive-brain-empty">No shadow Decision Agent runs have been recorded yet.</div>}
+        </div>
+        <DecisionAgentDetail detail={detail} loading={detailStatus === "loading"} />
+      </div>
+    </section>
+  );
+}
+
 function SourcePacketSection({ detail }) {
   return (
     <CollapsibleSection defaultOpen number="01" subtitle={`${formatBytes(detail?.run?.sourcePacketBytes)} source packet`} title="Source Packet">
@@ -509,6 +676,7 @@ export function HiveBrainView() {
           </div>
         )}
 
+        <DecisionAgentPanel />
         <ReportsPanel />
 
         <section className="hive-section">
