@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool, query } from "../server/db/pool.js";
+import { fetchHiveDecisionAgentDecision } from "../server/hive-decision-agent-provider.js";
 import {
   failStaleHiveDecisionRuns,
   getHiveDecisionRun,
@@ -50,6 +51,29 @@ try {
   await query("UPDATE hive_decision_runs SET started_at = now() - interval '2 hours' WHERE id = $1", [stale.id]);
   const reclaimed = await failStaleHiveDecisionRuns({ staleMinutes: 30, limit: 5 });
   assert.ok(reclaimed.some((item) => item.id === stale.id), "stale running row reclaimed");
+
+  const previousMock = process.env.TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK;
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  const previousTimeout = process.env.TASKNODE_HIVE_DECISION_AGENT_TIMEOUT_MS;
+  try {
+    process.env.TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK = "false";
+    process.env.OPENROUTER_API_KEY = "smoke-test-key";
+    process.env.TASKNODE_HIVE_DECISION_AGENT_TIMEOUT_MS = "1000";
+    await assert.rejects(
+      () => fetchHiveDecisionAgentDecision({
+        sourcePacket: detail.run.sourcePacket,
+        fetchImpl: () => new Promise(() => {}),
+      }),
+      /hive_decision_agent_openrouter_timeout/,
+      "provider hard timeout rejects stuck fetches"
+    );
+  } finally {
+    process.env.TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK = previousMock;
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+    if (previousTimeout === undefined) delete process.env.TASKNODE_HIVE_DECISION_AGENT_TIMEOUT_MS;
+    else process.env.TASKNODE_HIVE_DECISION_AGENT_TIMEOUT_MS = previousTimeout;
+  }
 
   const reportIds = reports.generated.map((item) => item.reportId).filter(Boolean);
   await query("DELETE FROM hive_decision_runs WHERE id = ANY($1::text[])", [[decision.runId, stale.id]]);

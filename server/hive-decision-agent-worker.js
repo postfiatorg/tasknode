@@ -33,7 +33,7 @@ function cadenceMs() {
 }
 
 function staleMinutes() {
-  return Math.min(Math.max(Number(process.env.TASKNODE_HIVE_DECISION_AGENT_STALE_MINUTES || 30), 5), 1440);
+  return Math.min(Math.max(Number(process.env.TASKNODE_HIVE_DECISION_AGENT_STALE_MINUTES || 8), 5), 1440);
 }
 
 function shadowEnabled() {

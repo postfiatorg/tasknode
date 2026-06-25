@@ -35,7 +35,7 @@ export function hiveDecisionAgentReasoningEffort() {
 }
 
 function providerTimeoutMs() {
-  return Math.max(30000, Number(process.env.TASKNODE_HIVE_DECISION_AGENT_TIMEOUT_MS || 240000));
+  return Math.min(Math.max(Number(process.env.TASKNODE_HIVE_DECISION_AGENT_TIMEOUT_MS || 240000), 1000), 600000);
 }
 
 export function hiveDecisionAgentProviderConfigured() {
@@ -288,11 +288,19 @@ export async function fetchHiveDecisionAgentDecision({
   }
   const baseUrl = (process.env.OPENROUTER_BASE_URL || fallbackOpenRouterBaseUrl || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs());
+  const timeoutMs = providerTimeoutMs();
+  let timeout = null;
   const startedAt = Date.now();
   const messages = messagesForSource(sourcePacket);
   try {
-    const response = await fetchImpl(`${baseUrl}/chat/completions`, {
+    const timeoutPromise = new Promise((_, reject) => {
+      timeout = setTimeout(() => {
+        controller.abort();
+        reject(new Error("hive_decision_agent_openrouter_timeout"));
+      }, timeoutMs);
+      timeout.unref?.();
+    });
+    const response = await Promise.race([fetchImpl(`${baseUrl}/chat/completions`, {
       method: "POST",
       signal: controller.signal,
       headers: {
@@ -321,7 +329,7 @@ export async function fetchHiveDecisionAgentDecision({
           source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),
         },
       }),
-    });
+    }), timeoutPromise]);
     const bodyText = await response.text();
     const body = bodyText ? JSON.parse(bodyText) : {};
     if (!response.ok) {
@@ -343,9 +351,11 @@ export async function fetchHiveDecisionAgentDecision({
       },
     };
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("hive_decision_agent_openrouter_timeout");
+    if (error?.name === "AbortError" || error?.message === "hive_decision_agent_openrouter_timeout") {
+      throw new Error("hive_decision_agent_openrouter_timeout");
+    }
     throw error;
   } finally {
-    clearTimeout(timeout);
+    if (timeout) clearTimeout(timeout);
   }
 }
