@@ -66,6 +66,35 @@ replacement, so wallet feed names do not get clobbered by profile display names
 
 Project IDs are part of the product surface. The project detail header should expose the stable `network_projects.id` so operators can refer to a project in tasks, docs, and chat without ambiguity.
 
+## Hive Brain
+
+`Hive Brain` is an operator-only audit tab under the sidebar `More` menu at
+`#hive-brain`. It is read-only and exposes the Board Manager's durable run
+trail from `board_manager_runs` and `board_manager_secretary_packets`.
+
+The tab has four inspection layers for each run:
+
+1. Source Packet: the full Board Manager input packet plus highlight chips for
+   deterministic routing pressure such as `requiresAction`, `motionState`,
+   `eligibleCandidateCount`, projects without live tasks, outstanding Network
+   Task count, and open follow-up count.
+2. Secretary Report: the DeepSeek secretary packet that compressed the raw Hive
+   board state before GLM received it.
+3. Decision: the selected action, normalized `decision_json`, model output,
+   provider/model metadata, and usage.
+4. Result: action-hook result rows, terminal run status, errors, duration, and
+   usage.
+
+`GET /api/hive/brain/runs` returns a paginated timeline for filtering and
+searching compact run metadata, errors, micro-summaries, and stored model
+output. `GET /api/hive/brain/run/:id` lazy-loads the full untruncated audit
+record for one run, including the complete source packet and decision JSON.
+`GET /api/hive/brain/live` is an SSE stream that tails the current or latest
+Board Manager run output from `board_manager_runs.output_text`; the model
+executor flushes in-flight output to that row so the HTTP server can stream it
+across process boundaries. The endpoint is still read-only: it cannot create
+projects, route tasks, execute hooks, or change Board Manager state.
+
 ## New User Quickstart
 
 This is the minimum path for a new Hive Chat contributor.

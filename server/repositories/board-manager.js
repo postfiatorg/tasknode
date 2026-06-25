@@ -1897,3 +1897,29 @@ export async function completeBoardManagerRun({
     microSummary: refreshed?.microSummary || null,
   };
 }
+
+export async function updateBoardManagerRunOutput({
+  runId = "",
+  outputText = "",
+} = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const result = await query(
+    `
+      UPDATE board_manager_runs
+      SET output_text = $2,
+          updated_at = now()
+      WHERE id = $1
+        AND status = 'running'
+      RETURNING id, octet_length(COALESCE(output_text, '')) AS output_bytes
+    `,
+    [
+      safeText(runId, 180),
+      safeText(outputText, 1000000),
+    ]
+  );
+  return {
+    ok: true,
+    updated: result.rowCount || 0,
+    outputBytes: Number(result.rows[0]?.output_bytes || 0),
+  };
+}

@@ -9,6 +9,7 @@ import {
   Activity,
   BookOpen,
   Bold,
+  Brain,
   ChevronDown,
   ChevronRight,
   Check,
@@ -169,6 +170,7 @@ const WalletView = lazy(() => import("./features/wallet/WalletView").then((modul
 const MemoryView = lazy(() => import("./features/memory/MemoryView").then((module) => ({ default: module.MemoryView })));
 const DocsView = lazy(() => import("./features/docs/DocsView").then((module) => ({ default: module.DocsView })));
 const HiveView = lazy(() => import("./features/hive/HiveView").then((module) => ({ default: module.HiveView })));
+const HiveBrainView = lazy(() => import("./features/hive/HiveBrainView").then((module) => ({ default: module.HiveBrainView })));
 const ProfilePage = lazy(() => import("./features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
 const MemberProfilePage = lazy(() => import("./features/profile/ProfileView").then((module) => ({ default: module.MemberProfileView })));
 const DirectoryView = lazy(() => import("./features/directory/DirectoryView").then((module) => ({ default: module.DirectoryView })));
@@ -356,7 +358,7 @@ const SETTINGS_PAGES = [
   { key: "billing", label: "Billing", icon: CreditCard },
 ];
 
-const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "hive", "directory", "profile", "memory", "docs"]);
+const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "hive", "hive-brain", "directory", "profile", "memory", "docs"]);
 const EMPTY_WALLET_VAULT_STATUS = {
   available: false,
   unlocked: false,
@@ -1473,6 +1475,11 @@ function App() {
                 <ToolMenuRow icon={FileText} label="Context Rewrite" onClick={openContextRewrite} />
                 <div className="menu-divider" />
                 <ToolMenuRow
+                  icon={Brain}
+                  label="Hive Brain"
+                  onClick={() => navigateToView("hive-brain")}
+                />
+                <ToolMenuRow
                   icon={MessageSquare}
                   label="Memory"
                   onClick={() => navigateToView("memory")}
@@ -1781,6 +1788,11 @@ function App() {
           {view === "hive" && (
             <Suspense fallback={<StatusBanner>Loading hive</StatusBanner>}>
               <HiveView />
+            </Suspense>
+          )}
+          {view === "hive-brain" && (
+            <Suspense fallback={<StatusBanner>Loading hive brain</StatusBanner>}>
+              <HiveBrainView />
             </Suspense>
           )}
           {view === "directory" && (

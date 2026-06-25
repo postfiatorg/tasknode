@@ -432,6 +432,57 @@ assert.equal(openRouterDecision.decision.action, "message_user");
 assert.equal(openRouterDecision.usage.reasoningTokens, 25);
 assert.equal(openRouterDecision.usage.costUsd, 0.000625);
 
+let streamedOpenRouterBody = null;
+const streamedDeltas = [];
+const encoder = new TextEncoder();
+const streamedOpenRouterDecision = await fetchBoardManagerDecision({
+  sourcePacket: packet,
+  onOutputDelta: async (delta) => streamedDeltas.push(delta),
+  fetchImpl: async (_url, options = {}) => {
+    streamedOpenRouterBody = JSON.parse(options.body);
+    const chunks = [
+      JSON.stringify({
+        id: "or_board_manager_stream",
+        model: "z-ai/glm-5.2",
+        choices: [{ delta: { content: JSON.stringify(smokeDecisionOutput).slice(0, 40) } }],
+      }),
+      JSON.stringify({
+        id: "or_board_manager_stream",
+        model: "z-ai/glm-5.2",
+        choices: [{ delta: { content: JSON.stringify(smokeDecisionOutput).slice(40) } }],
+      }),
+      JSON.stringify({
+        id: "or_board_manager_stream",
+        model: "z-ai/glm-5.2",
+        choices: [{ delta: {} }],
+        usage: {
+          prompt_tokens: 110,
+          completion_tokens: 60,
+          total_tokens: 170,
+          reasoning_tokens: 30,
+          cost: 0.0008,
+        },
+      }),
+    ];
+    return {
+      ok: true,
+      headers: new Headers({ "content-type": "text/event-stream; charset=utf-8" }),
+      body: new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      }),
+    };
+  },
+});
+assert.equal(streamedOpenRouterBody.stream, true);
+assert.equal(streamedOpenRouterBody.stream_options.include_usage, true);
+assert.equal(streamedOpenRouterDecision.decision.action, "message_user");
+assert.equal(streamedOpenRouterDecision.usage.reasoningTokens, 30);
+assert.deepEqual(streamedDeltas.join(""), JSON.stringify(smokeDecisionOutput));
+
 const repairFetchBodies = [];
 const repairedOpenRouterDecision = await fetchBoardManagerDecision({
   sourcePacket: packet,

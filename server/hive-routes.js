@@ -8,6 +8,11 @@ import {
 } from "./repositories/chat-billing.js";
 import { scheduleHiveSecretaryQueue } from "./hive-secretary-worker.js";
 import { getBoardManagerAgentFeed, getBoardManagerUserMessages } from "./repositories/board-manager.js";
+import {
+  getHiveBrainLive,
+  getHiveBrainRunDetail,
+  listHiveBrainRuns,
+} from "./repositories/hive-brain.js";
 import { getHiveProjectsDocument, getPublicHiveTaskDetail } from "./repositories/hive-projects.js";
 import {
   enqueueHiveSecretaryJob,
@@ -30,6 +35,7 @@ import {
   resetAgentRateLimitBucketsForTests,
 } from "./repositories/agent-rate-limits.js";
 import { recordAgentHiveChatWorkJournal } from "./repositories/orc-work-journal.js";
+import { subscribeHiveBrainLive } from "./hive-brain-live.js";
 
 const maxHiveAttachmentTextLength = 12_000;
 const maxHiveAttachmentExcerptLength = 800;
@@ -338,7 +344,164 @@ async function saveHiveChatMessage({
   };
 }
 
+function normalizedList(value = "") {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim().replace(/^@+/, "").toLowerCase())
+    .filter(Boolean);
+}
+
+function hiveBrainOperatorAccess(session = null) {
+  if (!session?.accountId) {
+    return { ok: false, status: 401, error: "hive_brain_login_required", message: "Sign in before opening Hive Brain." };
+  }
+  const profile = getAccountIdentityProfile({ accountId: session.accountId }) || {};
+  const allowedAccounts = new Set(normalizedList(process.env.TASKNODE_HIVE_BRAIN_OPERATOR_ACCOUNT_IDS || ""));
+  if (allowedAccounts.has(String(session.accountId || "").trim().toLowerCase())) {
+    return { ok: true, profile };
+  }
+  const allowedHandles = new Set(normalizedList(
+    process.env.TASKNODE_HIVE_BRAIN_OPERATOR_HANDLES || "goodalexander,grashnuk,tasknodeorc"
+  ));
+  const candidateHandles = [
+    profile.hiveHandle,
+    profile.handle,
+    profile.publicDisplayName,
+    profile.displayName,
+    session.hiveHandle,
+    session.displayName,
+  ]
+    .map((value) => String(value || "").trim().replace(/^@+/, "").toLowerCase())
+    .filter(Boolean);
+  if (candidateHandles.some((handle) => allowedHandles.has(handle))) {
+    return { ok: true, profile };
+  }
+  return {
+    ok: false,
+    status: 403,
+    error: "hive_brain_operator_required",
+    message: "Hive Brain is restricted to operator accounts.",
+  };
+}
+
+function sendSse(res, event = "message", payload = {}) {
+  if (res.writableEnded) return;
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+async function streamHiveBrainLive({ req, res }) {
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-store",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+  let closed = false;
+  let lastRunId = "";
+  let lastOutputText = "";
+  let lastStatus = "";
+  const pushDurableSnapshot = async () => {
+    if (closed || res.writableEnded) return;
+    const live = await getHiveBrainLive().catch((error) => ({
+      ok: false,
+      error: error?.message || "hive_brain_live_failed",
+      run: null,
+    }));
+    const run = live?.run || {};
+    const outputText = String(run.outputText || "");
+    const runId = String(run.id || run.runId || "");
+    if (runId !== lastRunId) {
+      lastRunId = runId;
+      lastOutputText = "";
+      lastStatus = "";
+      sendSse(res, "snapshot", live);
+    }
+    if (outputText.length > lastOutputText.length && outputText.startsWith(lastOutputText)) {
+      sendSse(res, "output_delta", {
+        runId,
+        delta: outputText.slice(lastOutputText.length),
+        outputBytes: Buffer.byteLength(outputText),
+        updatedAt: run.updatedAt || new Date().toISOString(),
+      });
+      lastOutputText = outputText;
+    } else if (outputText !== lastOutputText) {
+      sendSse(res, "snapshot", live);
+      lastOutputText = outputText;
+    }
+    if ((run.status || "") !== lastStatus) {
+      lastStatus = run.status || "";
+      sendSse(res, "run_status", live);
+    }
+  };
+  const unsubscribe = subscribeHiveBrainLive((event, payload) => {
+    if (!closed) sendSse(res, event, payload);
+  });
+  await pushDurableSnapshot();
+  const poll = setInterval(() => {
+    pushDurableSnapshot().catch(() => null);
+  }, 1000);
+  const heartbeat = setInterval(() => {
+    if (!closed && !res.writableEnded) res.write(": heartbeat\n\n");
+  }, 15000);
+  const cleanup = () => {
+    closed = true;
+    clearInterval(poll);
+    clearInterval(heartbeat);
+    unsubscribe();
+  };
+  req.on("close", cleanup);
+}
+
+async function handleHiveBrainRoute({ json, req, res, session, url }) {
+  if (!url.pathname.startsWith("/api/hive/brain")) return false;
+  const access = hiveBrainOperatorAccess(session);
+  if (!access.ok) {
+    json(res, access.status || 403, {
+      ok: false,
+      error: access.error,
+      message: access.message,
+    });
+    return true;
+  }
+  if (url.pathname === "/api/hive/brain/runs") {
+    if (req.method !== "GET") {
+      json(res, 405, { ok: false, error: "hive_brain_runs_method_not_allowed", message: "Hive Brain runs supports GET." });
+      return true;
+    }
+    const body = await listHiveBrainRuns({
+      limit: url.searchParams.get("limit") || 20,
+      page: url.searchParams.get("page") || 1,
+      action: url.searchParams.get("action") || "all",
+      queryText: url.searchParams.get("q") || "",
+    });
+    json(res, 200, body);
+    return true;
+  }
+  if (url.pathname.startsWith("/api/hive/brain/run/")) {
+    if (req.method !== "GET") {
+      json(res, 405, { ok: false, error: "hive_brain_run_method_not_allowed", message: "Hive Brain run detail supports GET." });
+      return true;
+    }
+    const runId = decodeURIComponent(url.pathname.slice("/api/hive/brain/run/".length));
+    const body = await getHiveBrainRunDetail({ runId });
+    json(res, body.ok ? 200 : body.status || 404, body);
+    return true;
+  }
+  if (url.pathname === "/api/hive/brain/live") {
+    if (req.method !== "GET") {
+      json(res, 405, { ok: false, error: "hive_brain_live_method_not_allowed", message: "Hive Brain live supports GET." });
+      return true;
+    }
+    await streamHiveBrainLive({ req, res });
+    return true;
+  }
+  json(res, 404, { ok: false, error: "hive_brain_route_not_found" });
+  return true;
+}
+
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
+  if (await handleHiveBrainRoute({ json, req, res, session, url })) return true;
   if (!["/api/hive/context", "/api/hive/projects", "/api/hive/task-detail", "/api/hive/chat"].includes(url.pathname)) return false;
 
   if (url.pathname === "/api/hive/projects") {

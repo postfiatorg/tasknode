@@ -218,11 +218,77 @@ function openRouterUsage(body = {}) {
   };
 }
 
+function parseSseBlock(block = "") {
+  const lines = String(block || "").split(/\r?\n/);
+  const data = [];
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("data:")) data.push(line.slice("data:".length).trimStart());
+  }
+  return data.join("\n");
+}
+
+async function readEventStream(stream, onData) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\n\n|\r\n\r\n/);
+    buffer = blocks.pop() || "";
+    for (const block of blocks) {
+      const data = parseSseBlock(block);
+      if (data) await onData(data);
+    }
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    const data = parseSseBlock(buffer);
+    if (data) await onData(data);
+  }
+}
+
+async function readOpenRouterBoardManagerStream(response, { model = "", onOutputDelta = null } = {}) {
+  let text = "";
+  let responseId = "";
+  let responseModel = model;
+  let usageBody = {};
+  await readEventStream(response.body, async (data) => {
+    if (!data || data === "[DONE]") return;
+    const chunk = JSON.parse(data);
+    if (chunk.error) {
+      const error = new Error(chunk.error?.message || "board_manager_provider_stream_failed");
+      error.status = chunk.error?.code || 502;
+      throw error;
+    }
+    responseId = safeText(chunk.id || responseId, 200);
+    responseModel = safeText(chunk.model || responseModel || model, 120);
+    if (chunk.usage) usageBody = { usage: chunk.usage };
+    const delta = chunk.choices?.[0]?.delta?.content;
+    if (typeof delta === "string" && delta) {
+      text += delta;
+      await onOutputDelta?.(delta);
+    }
+  });
+  return {
+    body: {
+      id: responseId,
+      model: responseModel || model,
+      choices: [{ message: { content: text } }],
+      ...usageBody,
+    },
+    text,
+  };
+}
+
 async function fetchOpenAiBoardManagerDecision({
   sourcePacket = {},
   model = boardManagerModel("openai"),
   reasoningEffort = boardManagerReasoningEffort(),
   fetchImpl = fetch,
+  onOutputDelta = null,
 } = {}) {
   const apiKey = openAiKey();
   if (!apiKey) {
@@ -267,6 +333,7 @@ async function fetchOpenAiBoardManagerDecision({
       throw error;
     }
     const text = outputText(body);
+    if (typeof onOutputDelta === "function" && text) await onOutputDelta(text);
     const parsed = parseJsonOutputText(text);
     return {
       decision: normalizeBoardManagerDecision(parsed),
@@ -294,6 +361,7 @@ async function fetchOpenRouterBoardManagerDecision({
   model = boardManagerModel("openrouter"),
   reasoningEffort = boardManagerReasoningEffort(),
   fetchImpl = fetch,
+  onOutputDelta = null,
 } = {}) {
   const apiKey = openRouterKey();
   if (!apiKey) {
@@ -306,6 +374,9 @@ async function fetchOpenRouterBoardManagerDecision({
   const startedAt = Date.now();
   try {
     const requestDecision = async (messages) => {
+      const streamOutput =
+        typeof onOutputDelta === "function" &&
+        process.env.TASKNODE_BOARD_MANAGER_LIVE_STREAM_DISABLED !== "true";
       const response = await fetchImpl(`${(process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
         method: "POST",
         signal: controller.signal,
@@ -327,6 +398,8 @@ async function fetchOpenRouterBoardManagerDecision({
           },
           temperature: 0,
           max_tokens: Math.max(4000, Number(process.env.TASKNODE_BOARD_MANAGER_MAX_OUTPUT_TOKENS || 12000)),
+          stream: streamOutput || undefined,
+          stream_options: streamOutput ? { include_usage: true } : undefined,
           usage: { include: true },
           metadata: {
             app: "tasknodeofficial",
@@ -336,6 +409,10 @@ async function fetchOpenRouterBoardManagerDecision({
           },
         }),
       });
+      const contentType = response.headers?.get?.("content-type") || "";
+      if (response.ok && streamOutput && response.body && contentType.includes("text/event-stream")) {
+        return readOpenRouterBoardManagerStream(response, { model, onOutputDelta });
+      }
       const bodyText = await response.text();
       const body = bodyText ? JSON.parse(bodyText) : {};
       if (!response.ok) {
@@ -416,9 +493,10 @@ export async function fetchBoardManagerDecision({
   model = boardManagerModel(provider),
   reasoningEffort = boardManagerReasoningEffort(),
   fetchImpl = fetch,
+  onOutputDelta = null,
 } = {}) {
   if (provider === "openai") {
-    return fetchOpenAiBoardManagerDecision({ sourcePacket, model, reasoningEffort, fetchImpl });
+    return fetchOpenAiBoardManagerDecision({ sourcePacket, model, reasoningEffort, fetchImpl, onOutputDelta });
   }
-  return fetchOpenRouterBoardManagerDecision({ sourcePacket, model, reasoningEffort, fetchImpl });
+  return fetchOpenRouterBoardManagerDecision({ sourcePacket, model, reasoningEffort, fetchImpl, onOutputDelta });
 }

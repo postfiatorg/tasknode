@@ -6,6 +6,7 @@ import {
   completeBoardManagerRun,
   releaseBoardManagerLease,
   startBoardManagerRun,
+  updateBoardManagerRunOutput,
 } from "../server/repositories/board-manager.js";
 import {
   boardManagerDecisionInput,
@@ -19,6 +20,11 @@ import {
   buildBoardManagerSecretaryDecisionPacket,
   ensureBoardManagerSecretaryPacket,
 } from "../server/board-manager-secretary-packets.js";
+import {
+  appendHiveBrainRunOutput,
+  completeHiveBrainRunLive,
+  startHiveBrainRunLive,
+} from "../server/hive-brain-live.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
@@ -132,6 +138,18 @@ async function main() {
 
   let lease = null;
   let run = null;
+  let liveOutputText = "";
+  let lastLiveOutputFlushMs = 0;
+  async function flushLiveOutput({ force = false } = {}) {
+    if (!run?.id || !liveOutputText) return;
+    const now = Date.now();
+    if (!force && now - lastLiveOutputFlushMs < 750) return;
+    lastLiveOutputFlushMs = now;
+    await updateBoardManagerRunOutput({
+      runId: run.id,
+      outputText: liveOutputText,
+    }).catch(() => null);
+  }
   try {
     if (useLease) {
       lease = await claimBoardManagerLease({
@@ -171,13 +189,47 @@ async function main() {
             : "stateless_openrouter_chat",
       });
       run = started.run;
+      startHiveBrainRunLive({
+        runId: run?.id || "",
+        metadata: {
+          scope,
+          trigger,
+          provider,
+          model,
+          reasoningEffort,
+          sourceMode: decisionSource.sourceMode,
+          sourcePacketDigest: sourcePacket.sourcePacketDigest,
+        },
+      });
     }
 
-    const result = await fetchBoardManagerDecision({ sourcePacket, provider, model, reasoningEffort });
+    const result = await fetchBoardManagerDecision({
+      sourcePacket,
+      provider,
+      model,
+      reasoningEffort,
+      onOutputDelta: run?.id
+        ? async (delta) => {
+            liveOutputText = `${liveOutputText}${delta || ""}`;
+            appendHiveBrainRunOutput({ runId: run.id, delta });
+            await flushLiveOutput();
+          }
+        : null,
+    });
+    if (run?.id) {
+      liveOutputText = result.outputText || liveOutputText;
+      await flushLiveOutput({ force: true });
+    }
     if (record && run?.id) {
       await completeBoardManagerRun({
         runId: run.id,
         decision: result.decision,
+        outputText: result.outputText,
+        usage: result.usage,
+      });
+      completeHiveBrainRunLive({
+        runId: run.id,
+        status: "completed",
         outputText: result.outputText,
         usage: result.usage,
       });
@@ -236,11 +288,17 @@ async function main() {
     ].filter(Boolean).join("\n"));
   } catch (error) {
     if (record && run?.id) {
+      await flushLiveOutput({ force: true });
       await completeBoardManagerRun({
         runId: run.id,
         status: "failed",
         error: error?.message || String(error),
       }).catch(() => null);
+      completeHiveBrainRunLive({
+        runId: run.id,
+        status: "failed",
+        error: error?.message || String(error),
+      });
     }
     throw error;
   } finally {
