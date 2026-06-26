@@ -4,6 +4,7 @@ import { requestJson } from "../../api";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import hiveDecisionAgentPrompt from "../../../prompts/hive/hive_decision_agent_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
+import taskAccountingHarvesterPrompt from "../../../prompts/hive/task_accounting_harvester_v1.md?raw";
 import "./hive.css";
 
 const reportTabs = [
@@ -59,7 +60,12 @@ const reportTabs = [
   },
 ];
 
-const tabs = [{ id: "overview", label: "Overview" }, { id: "docs", label: "Docs", cadence: "system" }, ...reportTabs];
+const tabs = [
+  { id: "overview", label: "Overview" },
+  { id: "harvests", label: "Harvests", cadence: "rewarded" },
+  { id: "docs", label: "Docs", cadence: "system" },
+  ...reportTabs,
+];
 
 const decisionActions = [
   "create_task",
@@ -158,6 +164,18 @@ const boardSystemDocs = [
     body: "This replaces raw packet reading with operator-readable reports. KOL and Development reports run a verifier pass before the final report is stored.",
   },
   {
+    title: "Task Accounting Harvester",
+    badge: "Harvester",
+    cadence: "after reward",
+    provider: "OpenRouter Chat Completions",
+    model: "deepseek/deepseek-v4-pro",
+    promptPath: "prompts/hive/task_accounting_harvester_v1.md",
+    prompt: taskAccountingHarvesterPrompt,
+    reads: "Rewarded Network Task projections, task proposal text, reward event references, and submission requirements.",
+    writes: "task_accounting_harvests rows classified as requires_action or no_action, with suggested action text.",
+    body: "The accounting pass that replaced Orc-owned rewarded-task triage. It harvests every completed Network Task after reward and marks whether anything needs follow-up.",
+  },
+  {
     title: "Decision Agent",
     badge: "Router",
     cadence: "periodic tick",
@@ -235,6 +253,12 @@ function compactNumber(value = 0) {
   if (Math.abs(numeric) >= 1_000_000) return `${(numeric / 1_000_000).toFixed(1)}M`;
   if (Math.abs(numeric) >= 1_000) return `${(numeric / 1_000).toFixed(1)}K`;
   return String(Math.round(numeric));
+}
+
+function compactWallet(value = "") {
+  const text = String(value || "").trim();
+  if (text.length <= 14) return text || "unknown";
+  return `${text.slice(0, 6)}...${text.slice(-6)}`;
 }
 
 function parseMarkdownBlocks(markdown = "") {
@@ -514,6 +538,113 @@ function LiveTaskTable({ projectDocument = null, status = "loading" }) {
   );
 }
 
+function HarvestOutputRow({ harvest, onResolve }) {
+  const classification = harvest.classification || harvest.status || "not_harvested";
+  const confidence = Number(harvest.confidence || 0);
+  const confidenceLabel = confidence > 0 ? `${Math.round(confidence * 100)}% confidence` : "confidence pending";
+  const contributor = harvest.contributor || {};
+  const badgeContext = harvest.badgeContext || {};
+  const verifiedBadges = safeArray(contributor.verifiedBadges);
+  const contributorLabel = contributor.publicHandle
+    ? `@${String(contributor.publicHandle).replace(/^@+/, "")}`
+    : contributor.displayName || compactWallet(contributor.walletAddress || harvest.walletAddress);
+  const requiredBadgeLabel = badgeContext.requiredBadgeId
+    ? `${formatAction(badgeContext.requiredBadgeId)}${badgeContext.requiredBadgeSource === "inferred" ? " (inferred)" : ""}`
+    : "unknown";
+  return (
+    <details className="hive-brain-harvest-output">
+      <summary>
+        <div>
+          <strong>{harvest.title || "Untitled rewarded task"}</strong>
+          <span>{harvest.assessmentSummary || harvest.lastError || "Harvest output pending."}</span>
+        </div>
+        <div className="hive-brain-harvest-output-meta">
+          <Status type={classification}>{formatAction(classification)}</Status>
+          <em>{compactNumber(harvest.rewardActualPft || harvest.rewardOfferPft)} PFT</em>
+        </div>
+      </summary>
+      <div className="hive-brain-harvest-output-body">
+        <div className="hive-brain-harvest-output-grid">
+          <span><small>Task</small><code>{harvest.taskId}</code></span>
+          <span><small>Contributor</small><strong>{contributorLabel}</strong></span>
+          <span><small>Wallet</small><code>{compactWallet(contributor.walletAddress || harvest.walletAddress)}</code></span>
+          <span><small>Verified badges</small><strong>{verifiedBadges.length ? verifiedBadges.map((badge) => badge.label || formatAction(badge.badgeId)).join(", ") : "none"}</strong></span>
+          <span><small>Badge required for this work</small><strong>{requiredBadgeLabel}</strong></span>
+          <span><small>Work type</small><strong>{formatAction(badgeContext.taskWorkType || badgeContext.badgeWorkType || "unknown")}</strong></span>
+          <span><small>Category</small><strong>{formatAction(harvest.actionCategory || "none")}</strong></span>
+          <span><small>Rewarded</small><strong>{relativeTime(harvest.rewardedAt)}</strong></span>
+          <span><small>Harvested</small><strong>{relativeTime(harvest.completedAt || harvest.updatedAt)}</strong></span>
+          <span><small>Model</small><strong>{harvest.model || "pending"}</strong></span>
+          <span><small>Confidence</small><strong>{confidenceLabel}</strong></span>
+        </div>
+        <div className="hive-brain-harvest-output-copy">
+          <article>
+            <small>Assessment</small>
+            <p>{harvest.assessmentSummary || "No assessment summary has been recorded yet."}</p>
+          </article>
+          <article>
+            <small>Suggested action</small>
+            <p>{harvest.suggestedAction || "No suggested action recorded yet."}</p>
+          </article>
+        </div>
+        <div className="hive-brain-harvest-actions">
+          <button
+            disabled={harvest.resolved}
+            onClick={() => onResolve?.(harvest.taskId)}
+            type="button"
+          >
+            {harvest.resolved ? "Resolved" : "Mark resolved"}
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function HarvestPanel({ harvests = [], onResolve, summary = {}, status = "loading" }) {
+  return (
+    <section className="hive-brain-panel">
+      <div className="hive-brain-panel-head">
+        <h2>Task Accounting Harvester</h2>
+        <div>
+          <Badge variant="gray">DeepSeek V4 Pro</Badge>
+          <span>{summary.harvested || 0} harvested</span>
+          <span>{summary.queued || 0} queued</span>
+          <span>{summary.requiresAction || 0} actionable</span>
+          <span>{summary.resolved || 0} resolved</span>
+        </div>
+      </div>
+      <div className="hive-brain-card hive-brain-pad hive-brain-harvest-summary">
+        <div>
+          <div className="hive-brain-section-label">Accounting purpose</div>
+          <p className="hive-brain-body-copy">
+            Every rewarded Network Task gets one post-reward harvest. The output is an accounting label:
+            no action when the task is self-contained, or requires action when the rewarded packet contains a bug,
+            feature request, release communication, routing issue, or other concrete follow-up.
+          </p>
+        </div>
+        <div className="hive-brain-tag-row">
+          <span>{summary.total || 0} total</span>
+          <span>{summary.noAction || 0} no action</span>
+          <span>{summary.failed || 0} failed</span>
+        </div>
+      </div>
+      <div className="hive-brain-card hive-brain-harvest-card">
+        <div className="hive-brain-table-head">
+          <div className="hive-brain-section-label">Rewarded Network Task harvests</div>
+          <div className="hive-brain-section-sub">Each harvested output opens into the accounting assessment and suggested follow-up.</div>
+        </div>
+        <div className="hive-brain-harvest-output-list">
+          {harvests.map((harvest) => <HarvestOutputRow harvest={harvest} key={harvest.taskId} onResolve={onResolve} />)}
+          {status === "loading" && <div className="hive-brain-empty">Loading harvest queue.</div>}
+          {status === "error" && <div className="hive-brain-empty">Task Accounting harvests are unavailable.</div>}
+          {status === "ready" && !harvests.length && <div className="hive-brain-empty">No rewarded Network Task harvests are available yet.</div>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ReportsGrid({ latestByType, onOpenReport }) {
   return (
     <div>
@@ -678,7 +809,8 @@ function SystemDocsPanel() {
     ["02", "Secretary", "The Hive Secretary summarizes the context into structured project signals."],
     ["03", "Projects + Reports", "The project planner refreshes board cards while six report secretaries produce human-readable Markdown."],
     ["04", "Verification", "KOL links and development repo references get deterministic checks before final reports are stored."],
-    ["05", "Decision Agent", "The router reads reports, live task state, discussions, candidates, and dedup data before one guarded action."],
+    ["05", "Task Accounting", "Rewarded Network Tasks are harvested after reward into action/no-action accounting rows."],
+    ["06", "Decision Agent", "The router reads reports, live task state, discussions, candidates, and dedup data before one guarded action."],
   ];
   return (
     <section className="hive-brain-panel">
@@ -694,7 +826,7 @@ function SystemDocsPanel() {
             </p>
           </div>
           <div className="hive-brain-system-summary">
-            <span><strong>3</strong><small>LLM stages</small></span>
+            <span><strong>4</strong><small>LLM stages</small></span>
             <span><strong>6</strong><small>report secretaries</small></span>
             <span><strong>2</strong><small>deterministic verifiers</small></span>
             <span><strong>1</strong><small>guarded action</small></span>
@@ -801,6 +933,9 @@ export function HiveBrainView() {
   const [selectedRunId, setSelectedRunId] = useState("");
   const [decisionDetail, setDecisionDetail] = useState(null);
   const [decisionDetailStatus, setDecisionDetailStatus] = useState("idle");
+  const [harvests, setHarvests] = useState([]);
+  const [harvestSummary, setHarvestSummary] = useState({});
+  const [harvestStatus, setHarvestStatus] = useState("loading");
   const [projectDocument, setProjectDocument] = useState(null);
   const [projectStatus, setProjectStatus] = useState("loading");
   const lastGoodProjectDocument = useRef(null);
@@ -871,11 +1006,43 @@ export function HiveBrainView() {
     }
   }, []);
 
+  const loadHarvests = useCallback(async () => {
+    setHarvestStatus("loading");
+    try {
+      const result = await requestJson("/api/hive/brain/harvests?limit=80");
+      if (!result.ok) throw new Error(result.body?.message || `Task Accounting harvests failed with HTTP ${result.status}`);
+      setHarvests(result.body?.harvests || []);
+      setHarvestSummary(result.body?.summary || {});
+      setHarvestStatus("ready");
+    } catch {
+      setHarvests([]);
+      setHarvestSummary({});
+      setHarvestStatus("error");
+    }
+  }, []);
+
+  const resolveHarvest = useCallback(async (taskId = "") => {
+    if (!taskId) return;
+    const previous = harvests;
+    setHarvests((current) => current.filter((harvest) => harvest.taskId !== taskId));
+    try {
+      const result = await requestJson(`/api/hive/brain/harvests/${encodeURIComponent(taskId)}/resolve`, {
+        method: "POST",
+        body: JSON.stringify({ note: "Resolved from Hive Brain." }),
+      });
+      if (!result.ok) throw new Error(result.body?.message || `Resolve failed with HTTP ${result.status}`);
+      loadHarvests();
+    } catch {
+      setHarvests(previous);
+    }
+  }, [harvests, loadHarvests]);
+
   const refreshAll = useCallback(() => {
     loadReports();
     loadRuns();
     loadProjects();
-  }, [loadReports, loadProjects, loadRuns]);
+    loadHarvests();
+  }, [loadHarvests, loadProjects, loadReports, loadRuns]);
 
   useEffect(() => {
     refreshAll();
@@ -968,6 +1135,7 @@ export function HiveBrainView() {
           <Kpi label="Recent reports" sub="loaded" value={reports.length} />
           <Kpi label="Active projects" sub={projectStatus === "error" ? "unavailable" : "routing boards"} value={projectStatus === "ready" ? projectStats.activeProjects || 0 : "—"} />
           <Kpi label="Open tasks" sub="active rows" value={projectStatus === "ready" ? projectStats.tasksInFlight || 0 : "—"} />
+          <Kpi label="Actionable harvests" sub={harvestStatus === "error" ? "load failed" : "reward accounting"} value={harvestStatus === "ready" ? harvestSummary.requiresAction || 0 : "—"} />
           <Kpi accent label="PFT routed" sub="project total" value={projectStatus === "ready" ? compactNumber(projectStats.pftRouted) : "—"} />
           <Kpi label="Decisions loaded" sub={latestRun.startedAt ? relativeTime(latestRun.startedAt) : "none"} value={runs.length} />
         </div>
@@ -997,6 +1165,13 @@ export function HiveBrainView() {
             projectStatus={projectStatus}
             runs={runs}
             selectedRunId={selectedRunId}
+          />
+        ) : activeTab === "harvests" ? (
+          <HarvestPanel
+            harvests={harvests}
+            onResolve={resolveHarvest}
+            status={harvestStatus}
+            summary={harvestSummary}
           />
         ) : activeTab === "docs" ? (
           <SystemDocsPanel />

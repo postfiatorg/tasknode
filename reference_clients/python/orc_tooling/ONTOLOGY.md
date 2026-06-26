@@ -99,12 +99,13 @@ Primary dispositions are mutually exclusive:
   superseded.
 
 `orc_task_review_queue` left joins `orc_task_review_items` to
-`orc_task_review_states` and coalesces missing rows to `not_reviewed`. Review
-items include local `task_projections` rows as `local_projection`, public
-Directory rewarded-task packets as `directory_public`, and derived
-`network_status_packet` rows for operational repair cases. Local projection rows
-are the richer forensic source and win on conflict; public packets only fill
-gaps or newer public event pointers. Each item can carry a derived
+`orc_task_review_states` and coalesces missing rows to `not_reviewed`. This is
+legacy/shared Orc review state for operator investigations; rewarded Network
+Task accounting now lives in `task_accounting_harvests`. Review items include
+local `task_projections` rows as `local_projection`, legacy public Directory
+rewarded-task packets as `directory_public`, and derived `network_status_packet`
+rows for operational repair cases. Local projection rows are the richer forensic
+source and win on conflict. Each item can carry a derived
 `statusPacket` with allocation state, task state, reward movement, and repair
 reason. The queue admits positive-paid, zero-closed, duplicate-guarded, and
 repair-required tasks so review work does not silently drop zero-reward terminal

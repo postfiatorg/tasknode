@@ -85,7 +85,7 @@ Orc state is shared through Postgres when available, with local JSONL fallback o
 - `orc_run_journal`: local and DB-backed records of task accepts, submissions, responses, and operating events.
 - `orc_operator_interactions`: Nazgul-to-Orc redirects, dispatches, escalations, and operator-facing notes.
 - `orc_runtime_directives`: durable Nazgul-to-Orc queue rows with `queued`, `claimed`, `completed`, `failed`, and `cancelled` states.
-- `orc_task_review_items`: durable review queue items from local projections, public Directory rewarded-task packets, and derived status packets.
+- `orc_task_review_items`: legacy/shared review queue items for Orc operator investigations. Rewarded Network Task accounting is now handled by Task Accounting Harvester in `task_accounting_harvests`.
 - `orc_task_review_states`: current disposition for each reviewed task.
 - `orc_task_reviews`: append-only review history.
 - `orc_work_journal`: linked assignment and closure ledger tying source tasks, follow-up requests, follow-up tasks, CIDs, transaction hashes, operator handles, blockers, and terminal outcomes together.
@@ -121,7 +121,7 @@ Python operator tools live under `reference_clients/python/orc_tooling/` and are
 - `orc-hive-followup` and `orc-hive-signal`: Hive-facing follow-up and visible signal helpers.
 - `orc-task-payload`, `orc-tasks`, and `orc-request-task`: lower-level task and request utilities.
 
-Repo-level JS scripts under `scripts/orc-*` support evidence packets, Hive delivery repair, Hive Secretary conversion, review queue ingestion, action digests, routing suppression verification, submission ingestion tracking, Sybil provenance audit trails, and other bounded audit tasks.
+Repo-level JS scripts under `scripts/orc-*` support evidence packets, Hive delivery repair, Hive Secretary conversion, action digests, routing suppression verification, submission ingestion tracking, Sybil provenance audit trails, and other bounded audit tasks. The old Orc review queue ingestion script was removed; rewarded-task accounting is now the Task Accounting Harvester.
 
 ## Nazgul Oversight
 

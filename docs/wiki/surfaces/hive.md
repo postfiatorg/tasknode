@@ -69,31 +69,22 @@ Project IDs are part of the product surface. The project detail header should ex
 ## Hive Brain
 
 `Hive Brain` is an operator-only audit tab under the sidebar `More` menu at
-`#hive-brain`. It is read-only and exposes the Board Manager's durable run
-trail from `board_manager_runs` and `board_manager_secretary_packets`.
+`#hive-brain`. It is read-only and exposes the current board stack in human
+terms: the six Hive Reports, the Decision Agent decision trail, live task state,
+system prompt documentation, and post-reward Task Accounting harvests. Raw
+legacy Board Manager JSON is not the primary operator surface.
 
-The tab has four inspection layers for each run:
+The main read APIs are:
 
-1. Source Packet: the full Board Manager input packet plus highlight chips for
-   deterministic routing pressure such as `requiresAction`, `motionState`,
-   `eligibleCandidateCount`, projects without live tasks, outstanding Network
-   Task count, and open follow-up count.
-2. Secretary Report: the DeepSeek secretary packet that compressed the raw Hive
-   board state before GLM received it.
-3. Decision: the selected action, normalized `decision_json`, model output,
-   provider/model metadata, and usage.
-4. Result: action-hook result rows, terminal run status, errors, duration, and
-   usage.
+- `GET /api/hive/reports?type=&since=` for the six report secretaries
+- `GET /api/hive/reports/:id` for full report markdown plus verification phases
+- `GET /api/hive/decision/runs` and `GET /api/hive/decision/run/:id` for the
+  Decision Agent audit trail
+- `GET /api/hive/brain/harvests` for post-reward Task Accounting harvests
 
-`GET /api/hive/brain/runs` returns a paginated timeline for filtering and
-searching compact run metadata, errors, micro-summaries, and stored model
-output. `GET /api/hive/brain/run/:id` lazy-loads the full untruncated audit
-record for one run, including the complete source packet and decision JSON.
-`GET /api/hive/brain/live` is an SSE stream that tails the current or latest
-Board Manager run output from `board_manager_runs.output_text`; the model
-executor flushes in-flight output to that row so the HTTP server can stream it
-across process boundaries. The endpoint is still read-only: it cannot create
-projects, route tasks, execute hooks, or change Board Manager state.
+All Hive Brain endpoints are operator-gated and read-only. They cannot create
+projects, route tasks, execute hooks, change rewards, ban users, or modify
+eligibility.
 
 ### Hive Reports
 
@@ -129,6 +120,81 @@ chat. The builders use the configured OpenRouter Hive report model with high
 reasoning effort in production. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
 npm run hive-reports-smoke` exercises the same storage, worker, list/detail,
 and UI-facing shape without spending model tokens.
+
+### Task Accounting Harvester
+
+Task Accounting Harvester is the canonical post-reward accounting queue for
+rewarded Network Tasks. It replaces the prior Orc-owned rewarded-task triage
+path for this responsibility.
+
+The worker runs from the split `worker-hive` process through
+`server/task-accounting-harvester-worker.js`. On each interval it:
+
+1. scans canonical `task_projections` for rewarded or paid Network Tasks
+2. upserts one durable queue row in `task_accounting_harvests`
+3. sends a compact source packet to OpenRouter using
+   `deepseek/deepseek-v4-pro`
+4. stores a deterministic accounting classification:
+   `requires_action` or `no_action`
+5. records a short assessment summary, suggested action, category, confidence,
+   provider/model metadata, prompt digest, and usage
+
+The source packet includes bounded task lifecycle context from `task_events`,
+including submitted evidence text, verification asks/responses, and reward
+scoring rationale when those rows exist. This is required because harvest rows
+must be understandable without opening the original task packet.
+
+Before calling the model, the provider also extracts an `EVIDENCE_OUTLINE` from
+long submissions: headings, issue/finding labels, observed/expected behavior,
+impact, proposed fixes, screenshots, and reward-scoring rationale. The outline
+is sent above the raw packet so long reports do not collapse into vague output
+such as "fix the reported issues."
+
+The prompt is source-controlled at
+`prompts/hive/task_accounting_harvester_v1.md`. Its core instruction is:
+
+```text
+The following task proposal and reward were granted.
+Answer the following: does this task contain actionable further information such as a bug, a major release update that might require further communication to the community, a feature request that needs to be surfaced to personnel?
+```
+
+`requires_action=false` means the rewarded task was self-contained, for example
+a completed bug fix where no separate product or operator follow-up is needed.
+`requires_action=true` means the rewarded task packet contains follow-up signal:
+a bug, product/UX issue, feature request, release/community communication need,
+routing/accounting concern, or other concrete item that should be surfaced to a
+personnel or project owner.
+
+The suggested action must be a concrete output, not a handoff. It is one
+unconditional imperative instruction naming the artifact or system change to
+make. Valid examples are a PR, config change, QA bug with reproduction steps,
+release note, X post, Discord announcement, smoke test, migration, prompt
+change, or runbook update. Invalid examples are "route this", "surface this",
+"send this to the team", "review this", "assign this", "tag someone",
+"check this", or conditional "if/then" branches. The action text must not make
+a person's later approval, assignment, tag, or inspection the completion
+condition. The first verb must create or change something concrete: Open,
+Create, Add, Update, Implement, Publish, Write, Run, Configure, Remove, Merge,
+or File.
+
+The action must also name the actual findings. Rows should not say "the report,"
+"the memo," "the three issues," "the broken states," or "the proposed fixes"
+without spelling out what they are. For a UX report, the action should list the
+specific user-visible gaps to file or fix. If the stored task packet lacks the
+actual findings, the correct action is a data-capture fix for that packet class,
+not a vague follow-up.
+
+The harvester is accounting-only. It does not execute enforcement, clawbacks,
+reward changes, bans, eligibility changes, or routing mutations. Those still
+require the appropriate guarded product, protocol, or operator path.
+
+The Hive Brain `Harvests` tab displays the queue output: task, reward,
+classification, summary, suggested action, category, and harvest time. The API
+is `GET /api/hive/brain/harvests`. The focused mock smoke is:
+
+```bash
+TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK=true npm run task-accounting-harvester-smoke
+```
 
 ### Hive v2 Decision Agent
 

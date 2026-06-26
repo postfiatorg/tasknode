@@ -14,6 +14,10 @@ import {
   listHiveBrainRuns,
 } from "./repositories/hive-brain.js";
 import { getHiveReport, listHiveReports } from "./repositories/hive-reports.js";
+import {
+  listTaskAccountingHarvests,
+  resolveTaskAccountingHarvest,
+} from "./repositories/task-accounting-harvester.js";
 import { getHiveDecisionRun, listHiveDecisionRuns } from "./repositories/hive-decision-agent.js";
 import { getHiveProjectsDocument, getPublicHiveTaskDetail } from "./repositories/hive-projects.js";
 import {
@@ -477,6 +481,35 @@ function hiveBrainOperatorAccess(session = null) {
   };
 }
 
+function canResolveTaskAccountingHarvest({ session = null, profile = {}, linkedWallet = null } = {}) {
+  const allowedAccounts = new Set(normalizedList(
+    process.env.TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_ACCOUNT_IDS ||
+      "acct_oauth_3c70e69ab7b8ef1fad3df508"
+  ));
+  const allowedHandles = new Set(normalizedList(
+    process.env.TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_HANDLES || "goodalexander"
+  ));
+  const allowedWallets = new Set(normalizedList(
+    process.env.TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_WALLETS ||
+      "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx"
+  ));
+  const accountId = String(session?.accountId || "").trim();
+  const handleCandidates = [
+    profile.hiveHandle,
+    profile.handle,
+    profile.publicDisplayName,
+    profile.displayName,
+    session?.hiveHandle,
+    session?.displayName,
+  ].map((value) => String(value || "").trim().replace(/^@+/, "").toLowerCase()).filter(Boolean);
+  const wallet = String(linkedWallet?.address || linkedWallet?.walletAddress || "").trim();
+  return (
+    allowedAccounts.has(accountId.toLowerCase()) ||
+    handleCandidates.some((handle) => allowedHandles.has(handle)) ||
+    (wallet && allowedWallets.has(wallet.toLowerCase()))
+  );
+}
+
 function sendSse(res, event = "message", payload = {}) {
   if (res.writableEnded) return;
   res.write(`event: ${event}\n`);
@@ -546,7 +579,7 @@ async function streamHiveBrainLive({ req, res }) {
   req.on("close", cleanup);
 }
 
-async function handleHiveBrainRoute({ json, req, res, session, url }) {
+async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
   if (!url.pathname.startsWith("/api/hive/brain")) return false;
   const access = hiveBrainOperatorAccess(session);
   if (!access.ok) {
@@ -555,6 +588,58 @@ async function handleHiveBrainRoute({ json, req, res, session, url }) {
       error: access.error,
       message: access.message,
     });
+    return true;
+  }
+  const resolvePrefix = "/api/hive/brain/harvests/";
+  const resolveSuffix = "/resolve";
+  if (url.pathname.startsWith(resolvePrefix) && url.pathname.endsWith(resolveSuffix)) {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "task_accounting_harvest_resolve_method_not_allowed",
+        message: "Task Accounting harvest resolution requires POST.",
+      });
+      return true;
+    }
+    const linkedWallet = typeof getLinkedWallet === "function"
+      ? getLinkedWallet({ accountId: session.accountId })
+      : null;
+    if (!canResolveTaskAccountingHarvest({ session, profile: access.profile, linkedWallet })) {
+      json(res, 403, {
+        ok: false,
+        error: "task_accounting_harvest_resolver_required",
+        message: "Only authorized Task Accounting operators can resolve harvest rows.",
+      });
+      return true;
+    }
+    const taskId = decodeURIComponent(url.pathname.slice(resolvePrefix.length, -resolveSuffix.length));
+    const payload = typeof readJson === "function" ? await readJson(req, 8192) : {};
+    const body = await resolveTaskAccountingHarvest({
+      taskId,
+      resolvedByAccountId: session.accountId,
+      note: payload?.note || payload?.resolutionNote || "Resolved from Hive Brain.",
+    });
+    json(res, body.ok ? 200 : body.status || 404, body);
+    return true;
+  }
+  if (url.pathname === "/api/hive/brain/harvests") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "task_accounting_harvests_method_not_allowed",
+        message: "Task Accounting harvests supports GET.",
+      });
+      return true;
+    }
+    const body = await listTaskAccountingHarvests({
+      status: url.searchParams.get("status") || "",
+      classification: url.searchParams.get("classification") || "",
+      requiresAction: url.searchParams.get("requiresAction") || "",
+      includeResolved: ["1", "true", "yes"].includes(String(url.searchParams.get("includeResolved") || "").toLowerCase()),
+      limit: url.searchParams.get("limit") || 80,
+      page: url.searchParams.get("page") || 1,
+    });
+    json(res, 200, body);
     return true;
   }
   if (url.pathname === "/api/hive/brain/runs") {
@@ -689,7 +774,7 @@ async function handleHiveDecisionRoute({ json, req, res, session, url }) {
 }
 
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
-  if (await handleHiveBrainRoute({ json, req, res, session, url })) return true;
+  if (await handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
   if (await handleHiveDecisionRoute({ json, req, res, session, url })) return true;
   if (await handleHiveReportsRoute({ json, req, res, session, url })) return true;
   if (!["/api/hive/context", "/api/hive/projects", "/api/hive/task-detail", "/api/hive/chat"].includes(url.pathname)) return false;

@@ -156,8 +156,9 @@ otherwise risk duplicating work if idempotency metadata changes.
 
 ## Work And Review Flow
 
-1. Rewarded Network Tasks are ingested into `orc_task_review_items`, then read
-   through `orc_task_review_queue`.
+1. Rewarded Network Task accounting is harvested by Task Accounting Harvester
+   into `task_accounting_harvests`. Orc review queues are no longer the
+   canonical post-reward accounting path.
 2. `orcctl prioritize-network` ranks outstanding work. The same triage contract
    feeds `orcctl review next`, `nazgul dispatch`, and `orcctl self-cycle`.
 3. An Orc records a current disposition in `orc_task_review_states` and an
@@ -314,7 +315,7 @@ status.
 | Table/view | Purpose |
 | --- | --- |
 | `orc_agents` | Registered Orc/agent identity, wallet, handle, status, role, charter metadata. |
-| `orc_task_review_items` | Durable review queue input rows from local projections, public Directory packets, and status-packet repair cases. |
+| `orc_task_review_items` | Legacy/shared Orc review queue input rows for operator investigations; rewarded Network Task accounting now lives in `task_accounting_harvests`. |
 | `orc_task_review_queue` | Current queue view joining review items to review state. |
 | `orc_task_review_states` | Current disposition and follow-up linkage for each reviewed source task. |
 | `orc_task_reviews` | Append-only review history. |

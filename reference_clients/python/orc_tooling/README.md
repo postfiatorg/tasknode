@@ -256,8 +256,9 @@ next task, next command, source mode, review disposition, or follow-up action.
 
 By default the command reads the unified `orc_task_review_queue`. That queue is
 backed by `orc_task_review_items`, which preserves local `task_projections`
-forensic rows and also accepts public Directory rewarded-task packets ingested
-from `/api/directory/rewarded-tasks?taskKind=network`. Queue items can carry a
+forensic rows for operator investigations. Rewarded Network Task accounting is
+now handled by Task Accounting Harvester in `task_accounting_harvests`, not by
+Orc queue ingestion. Queue items can carry a
 derived status packet (`allocationState`, `taskState`, `rewardMovement`,
 `repairRequired`), so zero-reward terminal outcomes, duplicate-guarded rewards,
 and generation-link repair rows stay reviewable instead of disappearing behind a
@@ -266,12 +267,6 @@ asks OpenRouter model `z-ai/glm-5.2` to score the top heuristic-ranked
 candidates. It also computes a deterministic local heuristic and returns sanity
 warnings when the model score diverges sharply, omits reasons, or returns
 inconsistent task ids.
-
-Refresh the queue from the public Directory source:
-
-```bash
-npm run orc-review-queue-ingestion -- --execute
-```
 
 Rank the live Directory API directly, without using the shared queue:
 

@@ -87,6 +87,7 @@ import boardManagerPrompt from "../../../prompts/hive/board_manager_v1.md?raw";
 import boardManagerSecretaryPrompt from "../../../prompts/hive/board_manager_secretary_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
+import taskAccountingHarvesterPrompt from "../../../prompts/hive/task_accounting_harvester_v1.md?raw";
 import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
 import publicProfileSnapshotPrompt from "../../../prompts/profile/public_profile_snapshot_v1.md?raw";
 import recommendedConnectionsPrompt from "../../../prompts/profile/recommended_connections_v1.md?raw";
@@ -333,6 +334,19 @@ const PROMPT_SOURCES = [
       "GET /api/hive/projects",
     ],
     content: hiveActiveProjectsPrompt,
+  },
+  {
+    family: "Hive",
+    title: "Task Accounting Harvester",
+    path: "prompts/hive/task_accounting_harvester_v1.md",
+    summary: "Classifies each rewarded Network Task after reward as no-action or requires-action accounting follow-up.",
+    status: "Active async worker",
+    usedBy: [
+      "server/task-accounting-harvester-worker.js::runTaskAccountingHarvesterOnce",
+      "server/task-accounting-harvester-provider.js::runTaskAccountingHarvestCall",
+      "GET /api/hive/brain/harvests",
+    ],
+    content: taskAccountingHarvesterPrompt,
   },
   {
     family: "Task Engine",
