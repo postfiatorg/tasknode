@@ -44,6 +44,107 @@ function formatBytes(value = 0) {
   return `${bytes} B`;
 }
 
+function parseMarkdownBlocks(markdown = "") {
+  const lines = String(markdown || "").split(/\r?\n/);
+  const blocks = [];
+  let paragraph = [];
+  let list = null;
+  let code = null;
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    blocks.push({ type: "paragraph", text: paragraph.join(" ") });
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!list?.items?.length) return;
+    blocks.push(list);
+    list = null;
+  };
+  const flushCode = () => {
+    if (!code) return;
+    blocks.push({ type: "code", text: code.lines.join("\n") });
+    code = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\s+$/, "");
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```")) {
+      flushParagraph();
+      flushList();
+      if (code) flushCode();
+      else code = { lines: [] };
+      continue;
+    }
+    if (code) {
+      code.lines.push(line);
+      continue;
+    }
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+    const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "heading", level: Math.min(heading[1].length, 4), text: heading[2] });
+      continue;
+    }
+    const bullet = /^[-*]\s+(.+)$/.exec(trimmed);
+    const ordered = /^\d+\.\s+(.+)$/.exec(trimmed);
+    if (bullet || ordered) {
+      flushParagraph();
+      const type = ordered ? "ordered" : "unordered";
+      if (!list || list.type !== type) flushList();
+      if (!list) list = { type, items: [] };
+      list.items.push((bullet || ordered)[1]);
+      continue;
+    }
+    flushList();
+    paragraph.push(trimmed);
+  }
+  flushParagraph();
+  flushList();
+  flushCode();
+  return blocks;
+}
+
+function MarkdownReportBody({ markdown = "" }) {
+  const blocks = useMemo(() => parseMarkdownBlocks(markdown), [markdown]);
+  if (!blocks.length) {
+    return <div className="hive-report-body hive-report-markdown"><p>Report body unavailable.</p></div>;
+  }
+  return (
+    <div className="hive-report-body hive-report-markdown">
+      {blocks.map((block, index) => {
+        if (block.type === "heading") {
+          const Heading = `h${Math.min(Math.max(block.level + 1, 3), 5)}`;
+          return <Heading key={`${block.type}-${index}`}>{block.text}</Heading>;
+        }
+        if (block.type === "code") return <pre key={`${block.type}-${index}`}>{block.text}</pre>;
+        if (block.type === "ordered") {
+          return (
+            <ol key={`${block.type}-${index}`}>
+              {block.items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{item}</li>)}
+            </ol>
+          );
+        }
+        if (block.type === "unordered") {
+          return (
+            <ul key={`${block.type}-${index}`}>
+              {block.items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{item}</li>)}
+            </ul>
+          );
+        }
+        return <p key={`${block.type}-${index}`}>{block.text}</p>;
+      })}
+    </div>
+  );
+}
+
 function CollapsibleSection({ children, defaultOpen = false, number = "", subtitle = "", title = "" }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -76,7 +177,7 @@ function ReportDocument({ detail, loading }) {
         <strong>{formatTime(report.generatedAt)}</strong>
         <small>{report.model || "model unknown"} · {formatBytes(report.bodyBytes)}</small>
       </div>
-      <pre className="hive-report-body">{report.bodyMarkdown || "Report body unavailable."}</pre>
+      <MarkdownReportBody markdown={report.bodyMarkdown || ""} />
       <CollapsibleSection
         defaultOpen={false}
         subtitle={`${detail.verifications?.length || 0} phases`}
@@ -110,13 +211,16 @@ function ReportsPanel() {
   const loadReports = useCallback(async () => {
     setListStatus("loading");
     try {
-      const params = new URLSearchParams({ limit: "36" });
-      if (reportType) params.set("type", reportType);
+      const params = new URLSearchParams({ limit: "60" });
       const result = await requestJson(`/api/hive/reports?${params.toString()}`);
       if (!result.ok) throw new Error(result.body?.message || `Hive reports failed with HTTP ${result.status}`);
       const nextReports = result.body?.reports || [];
       setReports(nextReports);
-      setSelectedReportId((current) => current || nextReports[0]?.id || "");
+      setSelectedReportId((current) => {
+        if (current && nextReports.some((report) => report.id === current)) return current;
+        const preferred = reportType ? nextReports.find((report) => report.type === reportType) : nextReports[0];
+        return preferred?.id || "";
+      });
       setListStatus("ready");
     } catch {
       setListStatus("error");
@@ -124,8 +228,6 @@ function ReportsPanel() {
   }, [reportType]);
 
   useEffect(() => {
-    setSelectedReportId("");
-    setDetail(null);
     loadReports();
   }, [loadReports]);
 
@@ -158,6 +260,19 @@ function ReportsPanel() {
     }
     return entries;
   }, [reports]);
+  const visibleReports = useMemo(
+    () => (reportType ? reports.filter((report) => report.type === reportType) : reports),
+    [reportType, reports]
+  );
+  const expectedTypes = reportTypeOptions.filter((option) => option.value);
+  const readyTypeCount = expectedTypes.filter((option) => latestByType.has(option.value)).length;
+  const newestReport = reports[0] || null;
+
+  const selectReportType = useCallback((value) => {
+    setReportType(value);
+    const preferred = value ? reports.find((report) => report.type === value) : reports[0];
+    setSelectedReportId(preferred?.id || "");
+  }, [reports]);
 
   return (
     <section className="hive-section hive-brain-primary-reports">
@@ -168,6 +283,11 @@ function ReportsPanel() {
         </div>
         <FileText size={18} strokeWidth={1.8} />
       </div>
+      <div className="hive-report-health">
+        <span><strong>{readyTypeCount}/6</strong> report types ready</span>
+        <span><strong>{reports.length}</strong> recent reports loaded</span>
+        <span><strong>{newestReport ? formatTime(newestReport.generatedAt) : "none"}</strong> latest generation</span>
+      </div>
       <div className="hive-report-type-grid">
         {reportTypeOptions.filter((option) => option.value).map((option) => {
           const latest = latestByType.get(option.value);
@@ -176,7 +296,7 @@ function ReportsPanel() {
               className={`hive-report-type-card ${reportType === option.value ? "is-active" : ""}`}
               key={option.value}
               onClick={() => {
-                setReportType(option.value);
+                selectReportType(option.value);
                 if (latest?.id) setSelectedReportId(latest.id);
               }}
               type="button"
@@ -191,7 +311,7 @@ function ReportsPanel() {
       <div className="hive-brain-controls hive-report-controls">
         <label>
           <span>Type</span>
-          <select value={reportType} onChange={(event) => setReportType(event.target.value)}>
+          <select value={reportType} onChange={(event) => selectReportType(event.target.value)}>
             {reportTypeOptions.map((option) => (
               <option key={option.value || "all"} value={option.value}>{option.label}</option>
             ))}
@@ -203,7 +323,7 @@ function ReportsPanel() {
       </div>
       <div className="hive-report-grid">
         <div className="hive-brain-timeline" role="list">
-          {reports.map((report) => (
+          {visibleReports.map((report) => (
             <button
               className={`hive-brain-run hive-report-row ${selectedReportId === report.id ? "is-active" : ""}`}
               key={report.id}
@@ -218,7 +338,7 @@ function ReportsPanel() {
           ))}
           {listStatus === "loading" && !reports.length && <div className="hive-card hive-brain-empty">Loading reports.</div>}
           {listStatus === "error" && <div className="hive-card hive-brain-empty">Report list failed to load.</div>}
-          {listStatus === "ready" && !reports.length && <div className="hive-card hive-brain-empty">No reports have been generated yet.</div>}
+          {listStatus === "ready" && !visibleReports.length && <div className="hive-card hive-brain-empty">No matching reports have been generated yet.</div>}
         </div>
         <ReportDocument detail={detail} loading={detailStatus === "loading"} />
       </div>
@@ -228,7 +348,7 @@ function ReportsPanel() {
 
 function DecisionAgentDetail({ detail, loading }) {
   if (loading && !detail) return <div className="hive-card hive-brain-empty">Loading Decision Agent run.</div>;
-  if (!detail?.ok) return <div className="hive-card hive-brain-empty">Select a shadow Decision Agent run to inspect.</div>;
+  if (!detail?.ok) return <div className="hive-card hive-brain-empty">Select a Decision Agent run to inspect.</div>;
   const run = detail.run || {};
   const guardrail = run.guardrailResult || {};
   const reasons = Array.isArray(guardrail.reasons) ? guardrail.reasons : [];
@@ -245,7 +365,7 @@ function DecisionAgentDetail({ detail, loading }) {
       <div className="hive-report-meta">
         <span>{run.selectedAction || "pending"}</span>
         <strong>{formatTime(run.startedAt)}</strong>
-        <small>{run.model || "model unknown"} · shadow</small>
+        <small>{run.model || "model unknown"} · {run.shadow ? "shadow" : "active"}</small>
       </div>
       <article className="hive-card hive-decision-explanation">
         <h3>Explanation</h3>
@@ -341,7 +461,7 @@ function DecisionAgentPanel() {
       <div className="hive-section-heading">
         <div>
           <h2>Decision Agent</h2>
-          <p>Hive v2 shadow decisions from reports, live task state, and board discussions. No mutations execute in Phase 2.</p>
+          <p>Guarded Hive v2 decisions from reports, live task state, and board discussions. This section shows prose summaries, not raw packets.</p>
         </div>
         <GitBranch size={18} strokeWidth={1.8} />
       </div>
@@ -369,13 +489,13 @@ function DecisionAgentPanel() {
             >
               <span className="hive-brain-run-time">{formatTime(run.startedAt)}</span>
               <strong>{run.selectedAction || run.status}</strong>
-              <small>{run.guardrailResult?.ok ? "guardrail ok" : run.guardrailResult?.blocked ? "blocked" : run.status}</small>
+              <small>{run.shadow ? "shadow" : "active"} · {run.guardrailResult?.ok ? "guardrail ok" : run.guardrailResult?.blocked ? "blocked" : run.status}</small>
               {run.reasoningText && <em>{run.reasoningText}</em>}
             </button>
           ))}
           {listStatus === "loading" && !runs.length && <div className="hive-card hive-brain-empty">Loading Decision Agent runs.</div>}
           {listStatus === "error" && <div className="hive-card hive-brain-empty">Decision Agent runs failed to load.</div>}
-          {listStatus === "ready" && !runs.length && <div className="hive-card hive-brain-empty">No shadow Decision Agent runs have been recorded yet.</div>}
+          {listStatus === "ready" && !runs.length && <div className="hive-card hive-brain-empty">No Decision Agent runs have been recorded yet.</div>}
         </div>
         <DecisionAgentDetail detail={detail} loading={detailStatus === "loading"} />
       </div>
