@@ -540,6 +540,7 @@ function LiveTaskTable({ projectDocument = null, status = "loading" }) {
 
 function HarvestOutputRow({ harvest, onResolve }) {
   const classification = harvest.classification || harvest.status || "not_harvested";
+  const isResolved = Boolean(harvest.resolved || harvest.resolvedAt);
   const confidence = Number(harvest.confidence || 0);
   const confidenceLabel = confidence > 0 ? `${Math.round(confidence * 100)}% confidence` : "confidence pending";
   const contributor = harvest.contributor || {};
@@ -551,15 +552,19 @@ function HarvestOutputRow({ harvest, onResolve }) {
   const requiredBadgeLabel = badgeContext.requiredBadgeId
     ? `${formatAction(badgeContext.requiredBadgeId)}${badgeContext.requiredBadgeSource === "inferred" ? " (inferred)" : ""}`
     : "unknown";
+  const summaryText = isResolved
+    ? harvest.resolutionNote || harvest.assessmentSummary || harvest.lastError || "Resolved harvest row."
+    : harvest.assessmentSummary || harvest.lastError || "Harvest output pending.";
   return (
     <details className="hive-brain-harvest-output">
       <summary>
         <div>
           <strong>{harvest.title || "Untitled rewarded task"}</strong>
-          <span>{harvest.assessmentSummary || harvest.lastError || "Harvest output pending."}</span>
+          <span>{summaryText}</span>
         </div>
         <div className="hive-brain-harvest-output-meta">
           <Status type={classification}>{formatAction(classification)}</Status>
+          {isResolved && <Status type="resolved">Resolved</Status>}
           <em>{compactNumber(harvest.rewardActualPft || harvest.rewardOfferPft)} PFT</em>
         </div>
       </summary>
@@ -574,6 +579,7 @@ function HarvestOutputRow({ harvest, onResolve }) {
           <span><small>Category</small><strong>{formatAction(harvest.actionCategory || "none")}</strong></span>
           <span><small>Rewarded</small><strong>{relativeTime(harvest.rewardedAt)}</strong></span>
           <span><small>Harvested</small><strong>{relativeTime(harvest.completedAt || harvest.updatedAt)}</strong></span>
+          {isResolved && <span><small>Resolved</small><strong>{relativeTime(harvest.resolvedAt)}</strong></span>}
           <span><small>Model</small><strong>{harvest.model || "pending"}</strong></span>
           <span><small>Confidence</small><strong>{confidenceLabel}</strong></span>
         </div>
@@ -586,14 +592,20 @@ function HarvestOutputRow({ harvest, onResolve }) {
             <small>Suggested action</small>
             <p>{harvest.suggestedAction || "No suggested action recorded yet."}</p>
           </article>
+          {isResolved && (
+            <article>
+              <small>Resolution comment</small>
+              <p>{harvest.resolutionNote || "Resolved without a comment."}</p>
+            </article>
+          )}
         </div>
         <div className="hive-brain-harvest-actions">
           <button
-            disabled={harvest.resolved}
+            disabled={isResolved}
             onClick={() => onResolve?.(harvest)}
             type="button"
           >
-            {harvest.resolved ? "Resolved" : "Mark resolved"}
+            {isResolved ? "Resolved" : "Mark resolved"}
           </button>
         </div>
       </div>
@@ -665,7 +677,14 @@ function HarvestResolveDialog({
   );
 }
 
-function HarvestPanel({ harvests = [], onResolve, summary = {}, status = "loading" }) {
+function HarvestPanel({
+  harvests = [],
+  onResolve,
+  resolvedHarvests = [],
+  resolvedStatus = "loading",
+  summary = {},
+  status = "loading",
+}) {
   return (
     <section className="hive-brain-panel">
       <div className="hive-brain-panel-head">
@@ -695,14 +714,26 @@ function HarvestPanel({ harvests = [], onResolve, summary = {}, status = "loadin
       </div>
       <div className="hive-brain-card hive-brain-harvest-card">
         <div className="hive-brain-table-head">
-          <div className="hive-brain-section-label">Rewarded Network Task harvests</div>
-          <div className="hive-brain-section-sub">Each harvested output opens into the accounting assessment and suggested follow-up.</div>
+          <div className="hive-brain-section-label">Unresolved rewarded Network Task harvests</div>
+          <div className="hive-brain-section-sub">Each open output expands into the accounting assessment, suggested follow-up, and resolve action.</div>
         </div>
         <div className="hive-brain-harvest-output-list">
           {harvests.map((harvest) => <HarvestOutputRow harvest={harvest} key={harvest.taskId} onResolve={onResolve} />)}
           {status === "loading" && <div className="hive-brain-empty">Loading harvest queue.</div>}
           {status === "error" && <div className="hive-brain-empty">Task Accounting harvests are unavailable.</div>}
-          {status === "ready" && !harvests.length && <div className="hive-brain-empty">No rewarded Network Task harvests are available yet.</div>}
+          {status === "ready" && !harvests.length && <div className="hive-brain-empty">No unresolved rewarded Network Task harvests are available.</div>}
+        </div>
+      </div>
+      <div className="hive-brain-card hive-brain-harvest-card">
+        <div className="hive-brain-table-head">
+          <div className="hive-brain-section-label">Resolved history</div>
+          <div className="hive-brain-section-sub">Resolved harvest rows stay visible here with the operator comment used to close them.</div>
+        </div>
+        <div className="hive-brain-harvest-output-list">
+          {resolvedHarvests.map((harvest) => <HarvestOutputRow harvest={harvest} key={harvest.taskId} onResolve={onResolve} />)}
+          {resolvedStatus === "loading" && <div className="hive-brain-empty">Loading resolved harvest history.</div>}
+          {resolvedStatus === "error" && <div className="hive-brain-empty">Resolved harvest history is unavailable.</div>}
+          {resolvedStatus === "ready" && !resolvedHarvests.length && <div className="hive-brain-empty">No resolved harvest rows yet.</div>}
         </div>
       </div>
     </section>
@@ -998,8 +1029,10 @@ export function HiveBrainView() {
   const [decisionDetail, setDecisionDetail] = useState(null);
   const [decisionDetailStatus, setDecisionDetailStatus] = useState("idle");
   const [harvests, setHarvests] = useState([]);
+  const [resolvedHarvests, setResolvedHarvests] = useState([]);
   const [harvestSummary, setHarvestSummary] = useState({});
   const [harvestStatus, setHarvestStatus] = useState("loading");
+  const [resolvedHarvestStatus, setResolvedHarvestStatus] = useState("loading");
   const [harvestResolveDraft, setHarvestResolveDraft] = useState(null);
   const [harvestResolveError, setHarvestResolveError] = useState("");
   const [resolvingHarvestId, setResolvingHarvestId] = useState("");
@@ -1075,16 +1108,25 @@ export function HiveBrainView() {
 
   const loadHarvests = useCallback(async () => {
     setHarvestStatus("loading");
+    setResolvedHarvestStatus("loading");
     try {
-      const result = await requestJson("/api/hive/brain/harvests?limit=80");
-      if (!result.ok) throw new Error(result.body?.message || `Task Accounting harvests failed with HTTP ${result.status}`);
-      setHarvests(result.body?.harvests || []);
-      setHarvestSummary(result.body?.summary || {});
+      const [activeResult, resolvedResult] = await Promise.all([
+        requestJson("/api/hive/brain/harvests?resolved=false&limit=80"),
+        requestJson("/api/hive/brain/harvests?resolved=true&limit=40"),
+      ]);
+      if (!activeResult.ok) throw new Error(activeResult.body?.message || `Task Accounting harvests failed with HTTP ${activeResult.status}`);
+      if (!resolvedResult.ok) throw new Error(resolvedResult.body?.message || `Resolved Task Accounting harvests failed with HTTP ${resolvedResult.status}`);
+      setHarvests(activeResult.body?.harvests || []);
+      setResolvedHarvests(resolvedResult.body?.harvests || []);
+      setHarvestSummary(activeResult.body?.summary || resolvedResult.body?.summary || {});
       setHarvestStatus("ready");
+      setResolvedHarvestStatus("ready");
     } catch {
       setHarvests([]);
+      setResolvedHarvests([]);
       setHarvestSummary({});
       setHarvestStatus("error");
+      setResolvedHarvestStatus("error");
     }
   }, []);
 
@@ -1119,6 +1161,9 @@ export function HiveBrainView() {
       });
       if (!result.ok) throw new Error(result.body?.message || `Resolve failed with HTTP ${result.status}`);
       setHarvests((current) => current.filter((harvest) => harvest.taskId !== taskId));
+      if (result.body?.harvest) {
+        setResolvedHarvests((current) => [result.body.harvest, ...current.filter((harvest) => harvest.taskId !== taskId)]);
+      }
       setHarvestResolveDraft(null);
       loadHarvests();
     } catch (error) {
@@ -1261,6 +1306,8 @@ export function HiveBrainView() {
           <HarvestPanel
             harvests={harvests}
             onResolve={openResolveHarvest}
+            resolvedHarvests={resolvedHarvests}
+            resolvedStatus={resolvedHarvestStatus}
             status={harvestStatus}
             summary={harvestSummary}
           />

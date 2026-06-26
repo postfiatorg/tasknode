@@ -646,6 +646,7 @@ export async function listTaskAccountingHarvests({
   status = "",
   classification = "",
   requiresAction = "",
+  resolved = "",
   includeResolved = false,
   limit = 40,
   page = 1,
@@ -685,7 +686,10 @@ export async function listTaskAccountingHarvests({
     params.push(actionFilter === "true");
     filters.push(`requires_action = $${params.length}`);
   }
-  if (includeResolved !== true) {
+  const resolvedFilter = safeText(resolved, 20).toLowerCase();
+  if (["true", "false"].includes(resolvedFilter)) {
+    filters.push(resolvedFilter === "true" ? "resolved_at IS NOT NULL" : "resolved_at IS NULL");
+  } else if (includeResolved !== true) {
     filters.push("resolved_at IS NULL");
   }
   const safeLimit = intValue(limit, 40, { min: 1, max: 100 });

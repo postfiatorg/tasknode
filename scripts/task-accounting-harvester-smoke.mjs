@@ -11,7 +11,10 @@ process.env.TASKNODE_TASK_ACCOUNTING_HARVESTER_BATCH_LIMIT = "10";
 const { closePool, databaseEnabled, query } = await import("../server/db/pool.js");
 const { migrateDatabase } = await import("../server/db/migrate.js");
 const { runTaskAccountingHarvesterOnce } = await import("../server/task-accounting-harvester-worker.js");
-const { listTaskAccountingHarvests } = await import("../server/repositories/task-accounting-harvester.js");
+const {
+  listTaskAccountingHarvests,
+  resolveTaskAccountingHarvest,
+} = await import("../server/repositories/task-accounting-harvester.js");
 
 const suffix = `${Date.now()}`;
 const actionableTaskId = `task_accounting_action_${suffix}`;
@@ -115,6 +118,27 @@ async function main() {
     assert.equal(noAction.classification, "no_action");
     assert.equal(noAction.requiresAction, false);
     assert.equal(listed.summary.harvested >= 2, true, "summary includes harvested count");
+
+    const resolutionNote = "Closed by smoke test after filing TASKNODE-SMOKE-1.";
+    const resolved = await resolveTaskAccountingHarvest({
+      taskId: actionableTaskId,
+      resolvedByAccountId: accountId,
+      note: resolutionNote,
+    });
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.harvest.resolved, true);
+    assert.equal(resolved.harvest.resolutionNote, resolutionNote);
+
+    const unresolvedList = await listTaskAccountingHarvests({ limit: 20 });
+    assert.equal(
+      unresolvedList.harvests.some((row) => row.taskId === actionableTaskId),
+      false,
+      "default harvest list hides resolved rows"
+    );
+    const resolvedList = await listTaskAccountingHarvests({ resolved: "true", limit: 20 });
+    const resolvedRow = resolvedList.harvests.find((row) => row.taskId === actionableTaskId);
+    assert.ok(resolvedRow, "resolved=true lists resolved rows");
+    assert.equal(resolvedRow.resolutionNote, resolutionNote);
 
     console.log("task-accounting-harvester-smoke ok");
   } finally {

@@ -1567,12 +1567,14 @@
 }
 
 .hive-brain-status.is-no-action,
-.hive-brain-status.is-harvested {
+.hive-brain-status.is-harvested,
+.hive-brain-status.is-resolved {
   color: #3a6ea5;
 }
 
 .hive-brain-status.is-no-action::before,
-.hive-brain-status.is-harvested::before {
+.hive-brain-status.is-harvested::before,
+.hive-brain-status.is-resolved::before {
   background: #3a6ea5;
 }
 
@@ -1604,6 +1606,10 @@
 
 .hive-brain-harvest-card {
   overflow: hidden;
+}
+
+.hive-brain-harvest-card + .hive-brain-harvest-card {
+  margin-top: 16px;
 }
 
 .hive-brain-harvest-output-list {

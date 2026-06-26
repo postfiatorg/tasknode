@@ -193,9 +193,12 @@ reward changes, bans, eligibility changes, or routing mutations. Those still
 require the appropriate guarded product, protocol, or operator path.
 
 The Hive Brain `Harvests` tab displays the queue output: task, reward,
-classification, summary, suggested action, category, and harvest time. Operators
-mark rows resolved from that tab and can store a resolution comment with the
-row. The APIs are `GET /api/hive/brain/harvests` and
+classification, summary, suggested action, category, and harvest time. The
+default list is unresolved rows only. A separate resolved-history section keeps
+closed rows visible with the stored resolution comment. Operators mark rows
+resolved from that tab by entering a comment in the resolve dialog. The APIs
+are `GET /api/hive/brain/harvests?resolved=false`,
+`GET /api/hive/brain/harvests?resolved=true`, and
 `POST /api/hive/brain/harvests/:taskId/resolve`. The focused mock smoke is:
 
 ```bash
