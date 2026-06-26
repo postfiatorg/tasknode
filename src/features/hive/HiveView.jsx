@@ -299,48 +299,7 @@ function ProjectDetail({ onBack, onOpenTask, operators, project, status }) {
         </div>
       </Section>
 
-      <Section title="Contributors" subtitle={contributorsSubtitle(project)} layerNumber="02">
-        {project.contributors.length ? (
-          <div className="hive-contributor-grid">
-            {project.contributors.map((contributor) => (
-              <ContributorCard contributor={contributor} key={contributor.wallet} />
-            ))}
-          </div>
-        ) : (
-          <div className="hive-card hive-empty-project">Contributors will populate after live network tasks are allocated and rewarded.</div>
-        )}
-      </Section>
-
-      <Section title="Tasks" subtitle={tasksSubtitle(project)} layerNumber="03">
-        <div className="hive-card">
-          {projectTasks.length ? (
-            <>
-              {taskPageState.rows.map((task, index) => (
-                <ProjectTaskRow
-                  key={task.id || `${task.title}-${task.state}`}
-                  last={index === taskPageState.rows.length - 1}
-                  onOpenTask={onOpenTask}
-                  operators={operators}
-                  project={project}
-                  task={task}
-                />
-              ))}
-              <PaginationControls
-                label="Tasks"
-                onPageChange={setTaskPage}
-                page={taskPageState.page}
-                pageCount={taskPageState.pageCount}
-                pageSize={PROJECT_DETAIL_PAGE_SIZE}
-                total={projectTasks.length}
-              />
-            </>
-          ) : (
-            <div className="hive-empty-project">Network tasks will appear after the allocation worker creates PFTL task offers for this project.</div>
-          )}
-        </div>
-      </Section>
-
-      <Section title="Activity" subtitle="Recent events scoped to this project" layerNumber="04">
+      <Section title="Activity" subtitle="Recent events scoped to this project" layerNumber="02">
         <div className="hive-card">
           {projectActivity.length ? (
             <>
@@ -365,6 +324,47 @@ function ProjectDetail({ onBack, onOpenTask, operators, project, status }) {
             </>
           ) : (
             <div className="hive-empty-project">Project activity will populate as project-linked tasks move.</div>
+          )}
+        </div>
+      </Section>
+
+      <Section title="Contributors" subtitle={contributorsSubtitle(project)} layerNumber="03">
+        {project.contributors.length ? (
+          <div className="hive-contributor-grid">
+            {project.contributors.map((contributor) => (
+              <ContributorCard contributor={contributor} key={contributor.wallet} />
+            ))}
+          </div>
+        ) : (
+          <div className="hive-card hive-empty-project">Contributors will populate after live network tasks are allocated and rewarded.</div>
+        )}
+      </Section>
+
+      <Section title="Tasks" subtitle={tasksSubtitle(project)} layerNumber="04">
+        <div className="hive-card">
+          {projectTasks.length ? (
+            <>
+              {taskPageState.rows.map((task, index) => (
+                <ProjectTaskRow
+                  key={task.id || `${task.title}-${task.state}`}
+                  last={index === taskPageState.rows.length - 1}
+                  onOpenTask={onOpenTask}
+                  operators={operators}
+                  project={project}
+                  task={task}
+                />
+              ))}
+              <PaginationControls
+                label="Tasks"
+                onPageChange={setTaskPage}
+                page={taskPageState.page}
+                pageCount={taskPageState.pageCount}
+                pageSize={PROJECT_DETAIL_PAGE_SIZE}
+                total={projectTasks.length}
+              />
+            </>
+          ) : (
+            <div className="hive-empty-project">Network tasks will appear after the allocation worker creates PFTL task offers for this project.</div>
           )}
         </div>
       </Section>
