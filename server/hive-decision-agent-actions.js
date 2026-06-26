@@ -27,6 +27,13 @@ function firstRewardCapForCandidate({ candidate = {}, workType = "", badgeId = "
   return numeric(badge.maxPayoutPft || 0, 0);
 }
 
+function stringList(value, maxItems = 8, maxText = 700) {
+  return safeArray(value)
+    .map((item) => safeText(item, maxText))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
 function findCandidate(sourcePacket = {}, payload = {}) {
   const accountId = safeText(payload.candidate_account_id || payload.candidateAccountId || payload.account_id || payload.accountId, 180);
   const walletAddress = safeText(payload.candidate_wallet_address || payload.candidateWalletAddress || payload.wallet_address || payload.walletAddress, 120);
@@ -215,6 +222,29 @@ export function translateHiveDecisionToBoardDecision({ decision = {}, sourcePack
       payload: {
         archive_reason: safeText(payload.archive_reason || payload.archiveReason || reason, 1000),
         project: { id: projectId },
+      },
+    };
+  }
+
+  if (action === "refresh_board") {
+    const projectId = safeText(payload.project_id || payload.projectId, 180);
+    return {
+      action: "refresh_project_document",
+      target_type: "network_project",
+      target_id: projectId,
+      reason,
+      confidence,
+      payload: {
+        summary: safeText(payload.project_summary || payload.projectSummary || payload.project_need_summary || reason, 1200),
+        project: { id: projectId },
+        project_document: {
+          title: safeText(payload.project_title || payload.projectTitle || payload.title, 180),
+          summary: safeText(payload.project_summary || payload.projectSummary || payload.project_need_summary || reason, 1200),
+          project_status: safeText(payload.project_status || payload.projectStatus || payload.routing_reason || reason, 1800),
+          key_points: stringList(payload.key_points || payload.keyPoints, 8, 700),
+          blocked_or_unclear: stringList(payload.blocked_or_unclear || payload.blockedOrUnclear, 6, 700),
+          next_actions: stringList(payload.next_actions || payload.nextActions, 6, 700),
+        },
       },
     };
   }

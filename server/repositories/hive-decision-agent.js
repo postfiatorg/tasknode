@@ -12,6 +12,7 @@ export const hiveDecisionAgentVersion = "hive_decision_agent.v1";
 export const hiveDecisionActions = Object.freeze([
   "create_board",
   "archive_board",
+  "refresh_board",
   "create_task",
   "cancel_task",
   "cancel_network_task",
@@ -489,6 +490,9 @@ export async function buildHiveDecisionSourcePacket({
 function normalizeDecisionAction(value = "") {
   const action = safeText(value, 80).toLowerCase();
   if (action === "cancel_network_task") return action;
+  if (action === "refresh_project_document" || action === "update_board" || action === "update_project") {
+    return "refresh_board";
+  }
   return hiveDecisionActions.includes(action) ? action : "do_nothing";
 }
 

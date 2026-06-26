@@ -67,6 +67,7 @@ const decisionActions = [
   "cancel_task",
   "create_board",
   "archive_board",
+  "refresh_board",
   "do_nothing",
 ];
 

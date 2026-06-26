@@ -39,6 +39,10 @@ Decision rules:
 - Do not alter reward policy. Use only existing reward/cap context in the
   source packet.
 - Prefer message_user when the best next move needs missing human input.
+- Prefer refresh_board when an active project card or Project Status document is
+  stale, inaccurate, missing the current blocker, or fails to explain why the
+  project is not moving. This updates the Hive project card/status document; it
+  is not a task route and not an economic action.
 - Prefer do_nothing only when the board already has enough live motion or the
   reports show no responsible action.
 
@@ -49,7 +53,7 @@ Required JSON shape:
   "explanation": "One or two plain-English paragraphs explaining why this decision is the right next move.",
   "options_considered": [
     {
-      "action": "create_task | cancel_task | cancel_network_task | message_user | create_board | archive_board | do_nothing",
+      "action": "create_task | cancel_task | cancel_network_task | message_user | create_board | archive_board | refresh_board | do_nothing",
       "summary": "Short option summary.",
       "rejected_because": "Why this option was rejected, or why the selected option was kept."
     }
@@ -59,7 +63,7 @@ Required JSON shape:
     "task_state_refs": ["task ids, generation job ids, project ids, or candidate account ids used"],
     "discussion_ids": ["hive_context_entry ids used"]
   },
-  "action": "create_task | cancel_task | cancel_network_task | message_user | create_board | archive_board | do_nothing",
+  "action": "create_task | cancel_task | cancel_network_task | message_user | create_board | archive_board | refresh_board | do_nothing",
   "payload": {
     "project_id": "",
     "project_title": "",
@@ -71,6 +75,11 @@ Required JSON shape:
     "badge_work_type": "",
     "title": "",
     "project_need_summary": "",
+    "project_status": "",
+    "project_summary": "",
+    "key_points": [],
+    "blocked_or_unclear": [],
+    "next_actions": [],
     "routing_reason": "",
     "dedup_basis": "",
     "message_text": "",

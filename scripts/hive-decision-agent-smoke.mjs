@@ -164,6 +164,93 @@ try {
   assert.equal(doNothingExecution.executed, true, "active do_nothing executes through action adapter");
   assert.equal(doNothingExecution.translatedAction, "do_nothing");
 
+  const refreshProjectId = "hive_decision_refresh_smoke_project";
+  await query(
+    `
+      INSERT INTO network_projects (
+        id, type, title, summary, objective, about, status, origin, proposed_by
+      )
+      VALUES (
+        $1, 'protocol_development', 'Hive Decision Refresh Smoke',
+        'Temporary project for Decision Agent refresh_board coverage.',
+        'Verify the Decision Agent can update Hive project status cards.',
+        'Temporary smoke project.', 'active', 'system_generated', 'hive'
+      )
+      ON CONFLICT (id) DO UPDATE SET status = 'active', updated_at = now()
+    `,
+    [refreshProjectId]
+  );
+  const refreshDecision = {
+    action: "refresh_board",
+    explanation: "Refresh the visible project card because the current blocker changed.",
+    optionsConsidered: [],
+    informedBy: { taskStateRefs: [refreshProjectId] },
+    confidence: 0.73,
+    payload: {
+      project_id: refreshProjectId,
+      project_title: "Hive Decision Refresh Smoke",
+      candidate_account_id: "",
+      candidate_wallet_address: "",
+      required_badge_id: "",
+      operating_badge_id: "",
+      task_work_type: "",
+      badge_work_type: "",
+      title: "Hive Decision Refresh Smoke Status",
+      project_need_summary: "Update the project card status document.",
+      project_status: "The Decision Agent can refresh the Hive project status document without routing a task or changing reward policy.",
+      project_summary: "Temporary project status update written through refresh_board.",
+      key_points: [
+        "refresh_board translates to the existing refresh_project_document hook.",
+        "The write is scoped to the project status document.",
+      ],
+      blocked_or_unclear: [],
+      next_actions: [
+        "Keep project card refreshes separate from task routing.",
+      ],
+      routing_reason: "Visible project status was stale.",
+      dedup_basis: "",
+      message_text: "",
+      cancel_task_id: "",
+      archive_reason: "",
+      action_output: "",
+      delivery_surface: "",
+      recipient_or_reviewer: "",
+      escalation_stage: "",
+      reward_min_pft: 0,
+      reward_max_pft: 0,
+      badge_reward_cap_pft: 0,
+    },
+  };
+  const translatedRefresh = translateHiveDecisionToBoardDecision({
+    decision: refreshDecision,
+    sourcePacket: activeSourcePacket,
+  });
+  assert.equal(translatedRefresh.action, "refresh_project_document", "refresh_board uses the project document hook");
+  assert.equal(translatedRefresh.target_id, refreshProjectId);
+  const refreshExecution = await executeHiveDecisionAgentAction({
+    decision: refreshDecision,
+    sourcePacket: activeSourcePacket,
+    guardrailResult: { ok: true, action: "refresh_board" },
+    active: true,
+  });
+  assert.equal(refreshExecution.executed, true, JSON.stringify(refreshExecution));
+  assert.equal(refreshExecution.translatedAction, "refresh_project_document");
+  const refreshedDoc = await query(
+    `
+      SELECT project_status, key_points_json, next_actions_json
+      FROM network_project_product_docs
+      WHERE project_id = $1
+        AND status = 'current'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [refreshProjectId]
+  );
+  assert.match(refreshedDoc.rows[0]?.project_status || "", /Decision Agent can refresh/);
+  assert.equal(refreshedDoc.rows[0]?.key_points_json?.length, 2);
+  await query("DELETE FROM network_project_product_docs WHERE project_id = $1", [refreshProjectId]);
+  await query("DELETE FROM network_projects WHERE id = $1", [refreshProjectId]);
+
   const malformedMessageExecution = await executeHiveDecisionAgentAction({
     decision: {
       action: "message_user",
