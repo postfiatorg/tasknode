@@ -299,7 +299,7 @@ export async function listHiveBrainRuns({
   };
 }
 
-export async function getHiveBrainRunDetail({ runId = "" } = {}) {
+export async function getHiveBrainRunDetail({ runId = "", includeSourcePacket = true } = {}) {
   const normalizedRunId = safeText(runId, 180);
   if (!normalizedRunId) {
     return { ok: false, status: 400, error: "hive_brain_run_id_required", message: "A Board Manager run id is required." };
@@ -307,10 +307,11 @@ export async function getHiveBrainRunDetail({ runId = "" } = {}) {
   if (!(await tableExists("board_manager_runs"))) {
     return { ok: false, status: 404, error: "hive_brain_runs_unavailable", message: "Board Manager run storage is not available." };
   }
+  const sourceSelect = includeSourcePacket ? "source_packet_json" : "'{}'::jsonb AS source_packet_json";
   const result = await query(
     `
       SELECT id, scope, manager_id, trigger, status, source_packet_digest,
-             source_packet_json, selected_action, action_payload_json, decision_json,
+             ${sourceSelect}, selected_action, action_payload_json, decision_json,
              dry_run, provider, model, reasoning_effort, output_text, error,
              codex_session_id, codex_session_path, session_mode,
              micro_summary_json, micro_summary_text, usage_json,
@@ -334,25 +335,27 @@ export async function getHiveBrainRunDetail({ runId = "" } = {}) {
     safeText(sourcePacket.secretaryPacket?.sourceDigest, 120) ||
     safeText(sourcePacket.secretarySourceDigest, 120) ||
     safeText(row.source_packet_digest, 120);
-  const secretaryResult = await query(
-    `
-      SELECT id, scope, packet_type, source_digest, packet_digest,
-             packet_json, packet_text, provider, model, prompt_version,
-             prompt_digest, response_id, usage_json, status, error,
-             created_at, superseded_at
-      FROM board_manager_secretary_packets
-      WHERE source_digest = $1
-         OR packet_digest = $2
-         OR id = $3
-      ORDER BY created_at DESC, id DESC
-      LIMIT 1
-    `,
-    [
-      sourceDigest,
-      safeText(sourcePacket.secretaryPacket?.packetDigest, 120),
-      safeText(sourcePacket.secretaryPacket?.id, 180),
-    ]
-  ).catch(() => ({ rows: [] }));
+  const secretaryResult = includeSourcePacket
+    ? await query(
+        `
+          SELECT id, scope, packet_type, source_digest, packet_digest,
+                 packet_json, packet_text, provider, model, prompt_version,
+                 prompt_digest, response_id, usage_json, status, error,
+                 created_at, superseded_at
+          FROM board_manager_secretary_packets
+          WHERE source_digest = $1
+             OR packet_digest = $2
+             OR id = $3
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+        `,
+        [
+          sourceDigest,
+          safeText(sourcePacket.secretaryPacket?.packetDigest, 120),
+          safeText(sourcePacket.secretaryPacket?.id, 180),
+        ]
+      ).catch(() => ({ rows: [] }))
+    : { rows: [] };
   const actionResults = await query(
     `
       SELECT id, run_id, action, target_type, target_id, result_json, created_at
@@ -371,6 +374,7 @@ export async function getHiveBrainRunDetail({ runId = "" } = {}) {
       actionPayload: safeObject(row.action_payload_json),
       decision: safeObject(row.decision_json),
       sourcePacket,
+      sourcePacketOmitted: !includeSourcePacket && compact.sourcePacketBytes > 0,
       outputText: row.output_text || "",
       usage: safeObject(row.usage_json),
       codexSessionId: row.codex_session_id || "",

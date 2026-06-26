@@ -646,7 +646,8 @@ export function applyHiveDecisionGuardrails({ decision = {}, sourcePacket = {} }
   return result;
 }
 
-function runRow(row = {}) {
+function runRow(row = {}, { includeSourcePacket = true } = {}) {
+  const sourcePacketBytes = Number(row.source_packet_bytes || 0);
   return {
     id: safeText(row.id, 180),
     scope: safeText(row.scope, 120),
@@ -654,10 +655,12 @@ function runRow(row = {}) {
     status: safeText(row.status, 80),
     shadow: row.shadow !== false,
     sourcePacketDigest: safeText(row.source_packet_digest, 120),
+    sourcePacketBytes,
+    sourcePacketOmitted: !includeSourcePacket && sourcePacketBytes > 0,
     inputReportIds: safeArray(row.input_report_ids),
     taskStatusSnapshot: safeObject(row.task_status_snapshot_json),
     discussionIds: safeArray(row.discussion_ids),
-    sourcePacket: safeObject(row.source_packet_json),
+    sourcePacket: includeSourcePacket ? safeObject(row.source_packet_json) : {},
     reasoningText: row.reasoning_text || "",
     optionsConsidered: safeArray(row.options_considered_json),
     informedBy: safeObject(row.informed_by_json),
@@ -867,13 +870,19 @@ export async function listHiveDecisionRuns({ limit = 20, page = 1, action = "all
   };
 }
 
-export async function getHiveDecisionRun({ runId = "" } = {}) {
+export async function getHiveDecisionRun({ runId = "", includeSourcePacket = true } = {}) {
   const normalizedRunId = safeText(runId, 180);
   if (!normalizedRunId) return { ok: false, status: 400, error: "hive_decision_run_id_required" };
   if (!useDatabase()) return { ok: false, status: 503, error: "hive_decision_database_not_configured" };
+  const sourceSelect = includeSourcePacket ? "source_packet_json" : "'{}'::jsonb AS source_packet_json";
   const result = await query(
     `
-      SELECT *
+      SELECT id, scope, trigger, status, shadow, source_packet_digest, input_report_ids,
+             task_status_snapshot_json, discussion_ids, ${sourceSelect}, reasoning_text,
+             options_considered_json, informed_by_json, selected_action, action_payload_json,
+             decision_json, guardrail_result_json, result_json, provider, model,
+             reasoning_effort, output_text, error, started_at, completed_at, created_at, updated_at,
+             pg_column_size(source_packet_json) AS source_packet_bytes
       FROM hive_decision_runs
       WHERE id = $1
       LIMIT 1
@@ -882,5 +891,5 @@ export async function getHiveDecisionRun({ runId = "" } = {}) {
   );
   const row = result.rows[0] || null;
   if (!row) return { ok: false, status: 404, error: "hive_decision_run_not_found" };
-  return { ok: true, run: runRow(row) };
+  return { ok: true, run: runRow(row, { includeSourcePacket }) };
 }

@@ -353,6 +353,13 @@ function normalizedList(value = "") {
     .filter(Boolean);
 }
 
+function wantsRawAuditPacket(url = null) {
+  const value = String(url?.searchParams?.get("includeRaw") || url?.searchParams?.get("includeSourcePacket") || "")
+    .trim()
+    .toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
 function hiveBrainOperatorAccess(session = null) {
   if (!session?.accountId) {
     return { ok: false, status: 401, error: "hive_brain_login_required", message: "Sign in before opening Hive Brain." };
@@ -486,7 +493,7 @@ async function handleHiveBrainRoute({ json, req, res, session, url }) {
       return true;
     }
     const runId = decodeURIComponent(url.pathname.slice("/api/hive/brain/run/".length));
-    const body = await getHiveBrainRunDetail({ runId });
+    const body = await getHiveBrainRunDetail({ runId, includeSourcePacket: wantsRawAuditPacket(url) });
     json(res, body.ok ? 200 : body.status || 404, body);
     return true;
   }
@@ -589,7 +596,7 @@ async function handleHiveDecisionRoute({ json, req, res, session, url }) {
       return true;
     }
     const runId = decodeURIComponent(url.pathname.slice(runPrefix.length));
-    const body = await getHiveDecisionRun({ runId });
+    const body = await getHiveDecisionRun({ runId, includeSourcePacket: wantsRawAuditPacket(url) });
     json(res, body.ok ? 200 : body.status || 404, body);
     return true;
   }
