@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowUpRight, Check, ChevronDown, ChevronRight, Copy, Flag, X } from "lucide-react";
 import { requestJson } from "../../api";
 import { profileNftImageCandidates } from "../profile/profile-nft-images.js";
@@ -6,25 +6,50 @@ import "./hive.css";
 
 const PROJECT_DETAIL_PAGE_SIZE = 8;
 
+function validProjectDocument(document) {
+  return Boolean(
+    document &&
+      typeof document === "object" &&
+      !Array.isArray(document) &&
+      document.projects &&
+      typeof document.projects === "object" &&
+      !Array.isArray(document.projects) &&
+      Array.isArray(document.projectIds)
+  );
+}
+
 export function HiveView() {
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedHiveTask, setSelectedHiveTask] = useState(null);
   const [projectDocument, setProjectDocument] = useState(null);
   const [projectStatus, setProjectStatus] = useState("loading");
+  const lastGoodProjectDocument = useRef(null);
+  const projectRequestSeq = useRef(0);
   const openHiveTask = useCallback((task) => {
     if (task?.taskId) setSelectedHiveTask(task);
   }, []);
 
   const loadProjectDocument = useCallback(async ({ showLoading = false, shouldApply = () => true } = {}) => {
-    if (showLoading && shouldApply()) setProjectStatus("loading");
+    const requestSeq = projectRequestSeq.current + 1;
+    projectRequestSeq.current = requestSeq;
+    const canApply = () => shouldApply() && projectRequestSeq.current === requestSeq;
+    if (showLoading && canApply() && !lastGoodProjectDocument.current) setProjectStatus("loading");
     try {
       const result = await requestJson("/api/hive/projects");
-      if (!shouldApply()) return;
+      if (!canApply()) return;
       if (!result.ok) throw new Error(result.body?.message || `Hive projects returned HTTP ${result.status}.`);
-      setProjectDocument(result.body?.document || null);
+      const nextDocument = result.body?.document || null;
+      if (!validProjectDocument(nextDocument)) throw new Error("Hive projects returned an invalid document.");
+      lastGoodProjectDocument.current = nextDocument;
+      setProjectDocument(nextDocument);
       setProjectStatus("ready");
     } catch {
-      if (!shouldApply()) return;
+      if (!canApply()) return;
+      if (lastGoodProjectDocument.current) {
+        setProjectDocument(lastGoodProjectDocument.current);
+        setProjectStatus("ready");
+        return;
+      }
       setProjectDocument(null);
       setProjectStatus("error");
     }

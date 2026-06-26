@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { requestJson } from "../../api";
 import "./hive.css";
@@ -22,6 +22,18 @@ const decisionActions = [
   "archive_board",
   "do_nothing",
 ];
+
+function validProjectDocument(document) {
+  return Boolean(
+    document &&
+      typeof document === "object" &&
+      !Array.isArray(document) &&
+      document.projects &&
+      typeof document.projects === "object" &&
+      !Array.isArray(document.projects) &&
+      Array.isArray(document.projectIds)
+  );
+}
 
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
@@ -493,6 +505,8 @@ export function HiveBrainView() {
   const [decisionDetailStatus, setDecisionDetailStatus] = useState("idle");
   const [projectDocument, setProjectDocument] = useState(null);
   const [projectStatus, setProjectStatus] = useState("loading");
+  const lastGoodProjectDocument = useRef(null);
+  const projectRequestSeq = useRef(0);
 
   const latestByType = useMemo(() => {
     const entries = new Map();
@@ -534,13 +548,26 @@ export function HiveBrainView() {
   }, []);
 
   const loadProjects = useCallback(async () => {
-    setProjectStatus("loading");
+    const requestSeq = projectRequestSeq.current + 1;
+    projectRequestSeq.current = requestSeq;
+    const canApply = () => projectRequestSeq.current === requestSeq;
+    if (!lastGoodProjectDocument.current) setProjectStatus("loading");
     try {
       const result = await requestJson("/api/hive/projects");
+      if (!canApply()) return;
       if (!result.ok) throw new Error(result.body?.message || `Hive projects failed with HTTP ${result.status}`);
-      setProjectDocument(result.body?.document || null);
+      const nextDocument = result.body?.document || null;
+      if (!validProjectDocument(nextDocument)) throw new Error("Hive projects returned an invalid document.");
+      lastGoodProjectDocument.current = nextDocument;
+      setProjectDocument(nextDocument);
       setProjectStatus("ready");
     } catch {
+      if (!canApply()) return;
+      if (lastGoodProjectDocument.current) {
+        setProjectDocument(lastGoodProjectDocument.current);
+        setProjectStatus("ready");
+        return;
+      }
       setProjectDocument(null);
       setProjectStatus("error");
     }
