@@ -1,18 +1,65 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { requestJson } from "../../api";
+import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
+import hiveDecisionAgentPrompt from "../../../prompts/hive/hive_decision_agent_v1.md?raw";
+import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
 import "./hive.css";
 
 const reportTabs = [
-  { id: "operative", type: "operative", label: "Operative", title: "Operative report", cadence: "24h" },
-  { id: "rewarded", type: "rewarded_task", label: "Rewarded tasks", title: "Rewarded task report", cadence: "20m" },
-  { id: "kol", type: "kol", label: "KOL", title: "KOL report", cadence: "daily" },
-  { id: "dev", type: "development", label: "Development", title: "Development report", cadence: "24h" },
-  { id: "qa", type: "qa", label: "QA", title: "QA report", cadence: "24h" },
-  { id: "exec", type: "executive", label: "Executive", title: "Executive report", cadence: "24h" },
+  {
+    id: "operative",
+    type: "operative",
+    label: "Operative",
+    title: "Operative report",
+    cadence: "24h",
+    summary: "Per-role operator context, allocation state, and current task descriptions.",
+  },
+  {
+    id: "rewarded",
+    type: "rewarded_task",
+    label: "Rewarded tasks",
+    title: "Rewarded task report",
+    cadence: "20m",
+    summary: "Last rewarded Network Tasks per verified role, including proposal and reward context.",
+  },
+  {
+    id: "kol",
+    type: "kol",
+    label: "KOL",
+    title: "KOL report",
+    cadence: "daily",
+    summary: "Marketing state, public amplification evidence, KOL operators, and trajectory.",
+    verifier: "kol_link_verifier",
+  },
+  {
+    id: "dev",
+    type: "development",
+    label: "Development",
+    title: "Development report",
+    cadence: "24h",
+    summary: "Core development state, tasks, repository evidence, and delivery risks.",
+    verifier: "dev_repo_verifier",
+  },
+  {
+    id: "qa",
+    type: "qa",
+    label: "QA",
+    title: "QA report",
+    cadence: "24h",
+    summary: "Product QA activity, user-flow findings, and suggested improvements.",
+  },
+  {
+    id: "exec",
+    type: "executive",
+    label: "Executive",
+    title: "Executive report",
+    cadence: "24h",
+    summary: "Project Leader Hive chat over the past 24 hours.",
+  },
 ];
 
-const tabs = [{ id: "overview", label: "Overview" }, ...reportTabs];
+const tabs = [{ id: "overview", label: "Overview" }, { id: "docs", label: "Docs", cadence: "system" }, ...reportTabs];
 
 const decisionActions = [
   "create_task",
@@ -21,6 +68,106 @@ const decisionActions = [
   "create_board",
   "archive_board",
   "do_nothing",
+];
+
+const reportPromptByType = {
+  rewarded_task: [
+    "Group by role. For each role, summarize the last rewarded Network Tasks available in the packet.",
+    "For each task include task id, title, operator, proposal/evidence gist, actual reward, and why it matters.",
+  ],
+  operative: [
+    "Group operators by KOL, Core Contributor, QA Worker, Expert, and Project Leader where present.",
+    "For each person include profile context, whether they currently have a task, and 1-2 sentences on what they appear to be doing.",
+  ],
+  kol: [
+    "Summarize marketing/amplification state, KOL operators, public artifacts, key rewarded tasks, and trajectory.",
+    "List every public link you rely on so the link-verifier can check it.",
+  ],
+  development: [
+    "Summarize core development work, active code tasks, rewarded code tasks, repository evidence, and delivery risks.",
+    "List repository, PR, issue, or commit links you rely on so the repo-verifier can check them.",
+  ],
+  qa: [
+    "Write this as a product QA document: observed issues, suggested improvements, evidence from rewarded QA tasks, and Hive chat feedback.",
+    "Separate confirmed findings from ideas or thin reports.",
+  ],
+  executive: [
+    "Assemble Project Leader Hive chat from the last 24h into an executive brief.",
+    "Preserve who said what, project implications, unresolved decisions, and concrete next actions.",
+  ],
+};
+
+const reportWriterSystemPrompt = [
+  "You are the Task Node Hive Reports writer.",
+  "Your output is a prose operating report for a human operator.",
+  "Never output raw JSON as the report body.",
+  "Do not claim actions were executed; report only observed evidence.",
+].join("\n");
+
+function reportPromptText(tab = {}) {
+  return [
+    `Report type: ${tab.label || tab.type}`,
+    `Purpose: ${tab.summary || "Hive operating report."}`,
+    "Write a human-readable Markdown document. Do not output JSON.",
+    "Start with one H1. Use short sections, bullets, and concise evidence references.",
+    "Include relevant counts and KPIs when present in the source packet.",
+    "Call out uncertainty and missing evidence instead of inventing facts.",
+    "Projects are dynamic; do not assume a fixed project list.",
+    "Do not change or recommend reward policy, clawbacks, bans, or enforcement execution.",
+    ...(reportPromptByType[tab.type] || []),
+    "This is the initial phase. Produce the best report possible from the source packet.",
+  ].join("\n");
+}
+
+const boardSystemDocs = [
+  {
+    title: "Hive Secretary",
+    badge: "Secretary",
+    cadence: "context job",
+    provider: "OpenAI Responses",
+    model: "gpt-5.5-pro",
+    promptPath: "prompts/hive/hive_secretary_v1.md",
+    prompt: hiveSecretaryPrompt,
+    reads: "Hive Context source packets.",
+    writes: "Structured Hive Secretary reports, then queues the active-project planner.",
+    body: "The first summarizer in the board chain. It converts raw Hive context into project signals, network implications, open questions, and next system focus.",
+  },
+  {
+    title: "Active Project Planner",
+    badge: "Project planner",
+    cadence: "after secretary",
+    provider: "OpenAI Responses",
+    model: "gpt-5.5-pro",
+    promptPath: "prompts/hive/hive_active_projects_v1.md",
+    prompt: hiveActiveProjectsPrompt,
+    reads: "Hive Secretary report packets.",
+    writes: "The current active project cards shown on the Hive board.",
+    body: "Turns secretary signals into a small dynamic set of projects with objective, status, phase, rationale, task count, contributor count, and PFT routed.",
+  },
+  {
+    title: "Report Builder",
+    badge: "Reports",
+    cadence: "20m / 24h",
+    provider: "OpenRouter Chat Completions",
+    model: "z-ai/glm-5.2",
+    promptPath: "server/hive-report-provider.js generated prompt",
+    prompt: reportWriterSystemPrompt,
+    reads: "Verified badges, live task state, rewarded task history, Hive chat, and dynamic projects.",
+    writes: "Six human-readable Markdown reports used as primary Decision Agent inputs.",
+    body: "This replaces raw packet reading with operator-readable reports. KOL and Development reports run a verifier pass before the final report is stored.",
+  },
+  {
+    title: "Decision Agent",
+    badge: "Router",
+    cadence: "periodic tick",
+    provider: "OpenRouter Chat Completions",
+    model: "z-ai/glm-5.2",
+    promptPath: "prompts/hive/hive_decision_agent_v1.md",
+    prompt: hiveDecisionAgentPrompt,
+    reads: "The six reports, live task state, board discussions, idle eligible contributors, and dedup index.",
+    writes: "One guarded board action plus explanation, options considered, and audit metadata.",
+    body: "The active board brain. It can create tasks, message users, cancel tasks, create/archive boards, or do nothing. Mutations still pass through guardrails and the adapter.",
+  },
 ];
 
 function validProjectDocument(document) {
@@ -378,7 +525,7 @@ function ReportsGrid({ latestByType, onOpenReport }) {
             <button className="hive-brain-report-card" key={tab.id} onClick={() => onOpenReport(tab.id)} type="button">
               <div className="hive-brain-report-card-top">
                 <span>{tab.title}</span>
-                <Badge variant={report ? "gray" : "red"}>{report ? tab.cad : "missing"}</Badge>
+                <Badge variant={report ? "gray" : "red"}>{report ? tab.cadence : "missing"}</Badge>
               </div>
               <div className="hive-brain-report-take">
                 {report ? reportExcerpt(report) : "No report generated yet."}
@@ -428,6 +575,156 @@ function OverviewPanel({
         </div>
         <LiveTaskTable projectDocument={projectDocument} status={projectStatus} />
         <ReportsGrid latestByType={latestByType} onOpenReport={onOpenReport} />
+      </div>
+    </section>
+  );
+}
+
+function PromptDisclosure({ label, path, prompt }) {
+  return (
+    <details className="hive-brain-prompt-block">
+      <summary>
+        <span>{label}</span>
+        <code>{path}</code>
+      </summary>
+      <pre>{String(prompt || "").trim() || "Prompt unavailable."}</pre>
+    </details>
+  );
+}
+
+function SystemDocCard({ doc }) {
+  return (
+    <article className="hive-brain-card hive-brain-system-card">
+      <div className="hive-brain-system-card-top">
+        <Badge variant="blue">{doc.badge}</Badge>
+        <span>{doc.cadence}</span>
+      </div>
+      <h3>{doc.title}</h3>
+      <p>{doc.body}</p>
+      <div className="hive-brain-system-meta">
+        <span><small>Provider</small><strong>{doc.provider}</strong></span>
+        <span><small>Model</small><strong>{doc.model}</strong></span>
+        <span><small>Reads</small><strong>{doc.reads}</strong></span>
+        <span><small>Writes</small><strong>{doc.writes}</strong></span>
+      </div>
+      <PromptDisclosure label={`${doc.title} prompt`} path={doc.promptPath} prompt={doc.prompt} />
+    </article>
+  );
+}
+
+function ReportPromptCard({ tab }) {
+  const writerPrompt = [
+    "SYSTEM",
+    reportWriterSystemPrompt,
+    "",
+    "USER INSTRUCTIONS",
+    reportPromptText(tab),
+    "",
+    "SOURCE PACKET",
+    "The worker appends compacted live Hive report source data as JSON.",
+  ].join("\n");
+  return (
+    <article className="hive-brain-card hive-brain-system-card">
+      <div className="hive-brain-system-card-top">
+        <Badge variant={tab.verifier ? "action" : "gray"}>{tab.verifier ? "Verified" : "Report"}</Badge>
+        <span>{tab.cadence}</span>
+      </div>
+      <h3>{tab.title}</h3>
+      <p>{tab.summary}</p>
+      <div className="hive-brain-system-meta">
+        <span><small>Provider</small><strong>OpenRouter Chat Completions</strong></span>
+        <span><small>Model</small><strong>z-ai/glm-5.2</strong></span>
+        <span><small>Output</small><strong>Human-readable Markdown</strong></span>
+        <span><small>Verifier</small><strong>{tab.verifier || "none"}</strong></span>
+      </div>
+      <PromptDisclosure
+        label={`${tab.label} writer prompt`}
+        path="server/hive-report-provider.js reportInstructions()"
+        prompt={writerPrompt}
+      />
+      {tab.verifier && (
+        <details className="hive-brain-prompt-block">
+          <summary>
+            <span>{tab.verifier}</span>
+            <code>server/hive-report-provider.js</code>
+          </summary>
+          <pre>{tab.type === "kol"
+            ? [
+                "Deterministic verifier, not an LLM prompt.",
+                "",
+                "1. Extract public links from the KOL report, KOL rewarded tasks, and KOL role source packet.",
+                "2. Check up to 20 links for reachability.",
+                "3. Store a Markdown verification summary with confirmed and unverified links.",
+                "4. Feed that summary into the final report pass.",
+              ].join("\n")
+            : [
+                "Deterministic verifier, not an LLM prompt.",
+                "",
+                "1. Extract postfiatorg GitHub links from the Development report and core contributor task packets.",
+                "2. Check up to 20 repository, PR, issue, or commit links for reachability.",
+                "3. Query GitHub for recent visible postfiatorg issue/PR activity.",
+                "4. Store a Markdown verification summary and feed it into the final report pass.",
+              ].join("\n")}</pre>
+        </details>
+      )}
+    </article>
+  );
+}
+
+function SystemDocsPanel() {
+  const flow = [
+    ["01", "Hive Context", "Operator chat, task state, role badges, projects, and network evidence enter the board memory layer."],
+    ["02", "Secretary", "The Hive Secretary summarizes the context into structured project signals."],
+    ["03", "Projects + Reports", "The project planner refreshes board cards while six report secretaries produce human-readable Markdown."],
+    ["04", "Verification", "KOL links and development repo references get deterministic checks before final reports are stored."],
+    ["05", "Decision Agent", "The router reads reports, live task state, discussions, candidates, and dedup data before one guarded action."],
+  ];
+  return (
+    <section className="hive-brain-panel">
+      <div className="hive-brain-stack">
+        <div className="hive-brain-card hive-brain-system-hero">
+          <div>
+            <div className="hive-brain-section-label">Current board secretary system</div>
+            <h2>Reports first, then one guarded decision.</h2>
+            <p>
+              Hive Brain is the operator-facing audit surface for the current board stack. The system turns raw Hive
+              context into project cards and six Markdown reports, verifies the evidence that can be checked
+              mechanically, then asks the Decision Agent for a single auditable action.
+            </p>
+          </div>
+          <div className="hive-brain-system-summary">
+            <span><strong>3</strong><small>LLM stages</small></span>
+            <span><strong>6</strong><small>report secretaries</small></span>
+            <span><strong>2</strong><small>deterministic verifiers</small></span>
+            <span><strong>1</strong><small>guarded action</small></span>
+          </div>
+        </div>
+
+        <div className="hive-brain-system-flow">
+          {flow.map(([number, title, body]) => (
+            <article className="hive-brain-card" key={number}>
+              <span>{number}</span>
+              <strong>{title}</strong>
+              <p>{body}</p>
+            </article>
+          ))}
+        </div>
+
+        <div>
+          <div className="hive-brain-section-label">Secretaries, agents, and prompts</div>
+          <div className="hive-brain-section-sub">Current production path only. Prompt blocks are collapsed until opened.</div>
+          <div className="hive-brain-system-grid">
+            {boardSystemDocs.map((doc) => <SystemDocCard doc={doc} key={doc.title} />)}
+          </div>
+        </div>
+
+        <div>
+          <div className="hive-brain-section-label">Report secretaries</div>
+          <div className="hive-brain-section-sub">Each report has its own instructions and cadence, but shares the same report writer provider.</div>
+          <div className="hive-brain-system-grid">
+            {reportTabs.map((tab) => <ReportPromptCard key={tab.id} tab={tab} />)}
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -700,6 +997,8 @@ export function HiveBrainView() {
             runs={runs}
             selectedRunId={selectedRunId}
           />
+        ) : activeTab === "docs" ? (
+          <SystemDocsPanel />
         ) : (
           <ReportPanel
             detail={reportDetail}
