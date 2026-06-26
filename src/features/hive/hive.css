@@ -175,6 +175,56 @@
   max-width: 320px;
 }
 
+.hive-brain-primary-reports {
+  border-color: var(--hive-border-strong);
+}
+
+.hive-report-type-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.hive-report-type-card {
+  background: #fbfaf6;
+  border: 0.5px solid var(--hive-border);
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  min-height: 96px;
+  padding: 12px;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.hive-report-type-card:hover,
+.hive-report-type-card:focus-visible,
+.hive-report-type-card.is-active {
+  background: var(--hive-surface);
+  border-color: var(--hive-border-strong);
+  outline: none;
+}
+
+.hive-report-type-card strong {
+  color: var(--hive-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hive-report-type-card small {
+  color: var(--hive-muted);
+  font-size: 11.5px;
+}
+
+.hive-report-type-card span {
+  color: var(--hive-ink-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .hive-brain-controls label {
   align-items: center;
   background: var(--hive-surface);
@@ -2688,6 +2738,7 @@ button.hive-project-next-task:focus-visible {
 
   .hive-brain-controls,
   .hive-brain-grid,
+  .hive-report-type-grid,
   .hive-report-grid,
   .hive-brain-run {
     grid-template-columns: 1fr;
