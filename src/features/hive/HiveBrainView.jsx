@@ -412,7 +412,7 @@ function DecisionCard({ detail, loading }) {
   return (
     <div className="hive-brain-card hive-brain-decision-card">
       <div className="hive-brain-decision-top">
-        <Badge variant="action">Board manager · decision</Badge>
+        <Badge variant="action">Hive Decision · router</Badge>
         <Badge variant={run.guardrailResult?.blocked ? "amber" : "blue"}>{formatAction(action)}</Badge>
         <span className="hive-brain-grow" />
         <span>{loading ? "Loading run" : `Cycle · ${relativeTime(run.startedAt)}`}</span>
@@ -560,7 +560,7 @@ function OverviewPanel({
         <div className="hive-brain-grid2">
           <DecisionLog runs={runs} selectedRunId={selectedRunId} onSelectRun={onSelectRun} />
           <div className="hive-brain-card hive-brain-pad">
-            <div className="hive-brain-section-label">Board discussion → decisions</div>
+            <div className="hive-brain-section-label">Hive discussion → decisions</div>
             <div className="hive-brain-section-sub">Live operator context is now consumed through reports, not raw JSON packets.</div>
             <p className="hive-brain-body-copy">
               Hive Brain shows the decision layer in plain English: the latest report set, the Decision Agent action,
