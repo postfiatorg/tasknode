@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { CheckCircle2, RefreshCw, X } from "lucide-react";
 import { requestJson } from "../../api";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import hiveDecisionAgentPrompt from "../../../prompts/hive/hive_decision_agent_v1.md?raw";
@@ -590,7 +590,7 @@ function HarvestOutputRow({ harvest, onResolve }) {
         <div className="hive-brain-harvest-actions">
           <button
             disabled={harvest.resolved}
-            onClick={() => onResolve?.(harvest.taskId)}
+            onClick={() => onResolve?.(harvest)}
             type="button"
           >
             {harvest.resolved ? "Resolved" : "Mark resolved"}
@@ -598,6 +598,70 @@ function HarvestOutputRow({ harvest, onResolve }) {
         </div>
       </div>
     </details>
+  );
+}
+
+function HarvestResolveDialog({
+  busy = false,
+  error = "",
+  harvest = null,
+  note = "",
+  onCancel,
+  onNoteChange,
+  onSubmit,
+}) {
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, [harvest?.taskId]);
+
+  if (!harvest) return null;
+  return (
+    <div className="htp-layer hive-harvest-resolve-layer">
+      <div className="htp-wash is-mounted" onClick={busy ? undefined : onCancel} role="presentation" />
+      <section
+        aria-labelledby="hive-harvest-resolve-title"
+        aria-modal="true"
+        className="htp-modal is-mounted hive-harvest-resolve-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="htp-header">
+          <span className="htp-kicker">
+            <CheckCircle2 size={12} strokeWidth={2} />
+            Resolve harvest
+          </span>
+          <button className="htp-close" disabled={busy} onClick={onCancel} type="button">
+            <X size={14} strokeWidth={1.8} />
+            Close
+          </button>
+        </header>
+        <form className="hive-harvest-resolve-form" onSubmit={onSubmit}>
+          <div>
+            <h2 id="hive-harvest-resolve-title">Mark resolved</h2>
+            <p>{harvest.title || harvest.taskId || "Untitled rewarded task"}</p>
+          </div>
+          <label>
+            <span>Resolution comment</span>
+            <textarea
+              maxLength={1000}
+              onChange={(event) => onNoteChange?.(event.target.value)}
+              placeholder="What changed, where it was tracked, or why this harvest is no longer actionable."
+              ref={textareaRef}
+              value={note}
+            />
+          </label>
+          {error && <div className="hive-harvest-resolve-error">{error}</div>}
+          <footer>
+            <button disabled={busy} onClick={onCancel} type="button">Cancel</button>
+            <button disabled={busy} type="submit">
+              {busy ? "Saving..." : "Resolve"}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -936,6 +1000,9 @@ export function HiveBrainView() {
   const [harvests, setHarvests] = useState([]);
   const [harvestSummary, setHarvestSummary] = useState({});
   const [harvestStatus, setHarvestStatus] = useState("loading");
+  const [harvestResolveDraft, setHarvestResolveDraft] = useState(null);
+  const [harvestResolveError, setHarvestResolveError] = useState("");
+  const [resolvingHarvestId, setResolvingHarvestId] = useState("");
   const [projectDocument, setProjectDocument] = useState(null);
   const [projectStatus, setProjectStatus] = useState("loading");
   const lastGoodProjectDocument = useRef(null);
@@ -1021,21 +1088,45 @@ export function HiveBrainView() {
     }
   }, []);
 
-  const resolveHarvest = useCallback(async (taskId = "") => {
+  const openResolveHarvest = useCallback((harvest = null) => {
+    if (!harvest?.taskId) return;
+    setHarvestResolveError("");
+    setHarvestResolveDraft({ harvest, note: "" });
+  }, []);
+
+  const closeResolveHarvest = useCallback(() => {
+    if (resolvingHarvestId) return;
+    setHarvestResolveDraft(null);
+    setHarvestResolveError("");
+  }, [resolvingHarvestId]);
+
+  const updateResolveNote = useCallback((note = "") => {
+    setHarvestResolveDraft((current) => current ? { ...current, note } : current);
+    setHarvestResolveError("");
+  }, []);
+
+  const submitResolveHarvest = useCallback(async (event) => {
+    event?.preventDefault?.();
+    const taskId = harvestResolveDraft?.harvest?.taskId || "";
     if (!taskId) return;
-    const previous = harvests;
-    setHarvests((current) => current.filter((harvest) => harvest.taskId !== taskId));
+    const note = String(harvestResolveDraft?.note || "").trim() || "Resolved from Hive Brain.";
+    setResolvingHarvestId(taskId);
+    setHarvestResolveError("");
     try {
       const result = await requestJson(`/api/hive/brain/harvests/${encodeURIComponent(taskId)}/resolve`, {
         method: "POST",
-        body: JSON.stringify({ note: "Resolved from Hive Brain." }),
+        body: JSON.stringify({ note }),
       });
       if (!result.ok) throw new Error(result.body?.message || `Resolve failed with HTTP ${result.status}`);
+      setHarvests((current) => current.filter((harvest) => harvest.taskId !== taskId));
+      setHarvestResolveDraft(null);
       loadHarvests();
-    } catch {
-      setHarvests(previous);
+    } catch (error) {
+      setHarvestResolveError(error?.message || "Unable to mark this harvest resolved.");
+    } finally {
+      setResolvingHarvestId("");
     }
-  }, [harvests, loadHarvests]);
+  }, [harvestResolveDraft, loadHarvests]);
 
   const refreshAll = useCallback(() => {
     loadReports();
@@ -1169,7 +1260,7 @@ export function HiveBrainView() {
         ) : activeTab === "harvests" ? (
           <HarvestPanel
             harvests={harvests}
-            onResolve={resolveHarvest}
+            onResolve={openResolveHarvest}
             status={harvestStatus}
             summary={harvestSummary}
           />
@@ -1182,6 +1273,15 @@ export function HiveBrainView() {
             tab={activeReportTab}
           />
         )}
+        <HarvestResolveDialog
+          busy={Boolean(resolvingHarvestId)}
+          error={harvestResolveError}
+          harvest={harvestResolveDraft?.harvest || null}
+          note={harvestResolveDraft?.note || ""}
+          onCancel={closeResolveHarvest}
+          onNoteChange={updateResolveNote}
+          onSubmit={submitResolveHarvest}
+        />
       </div>
     </div>
   );

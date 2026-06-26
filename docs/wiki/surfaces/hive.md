@@ -193,8 +193,10 @@ reward changes, bans, eligibility changes, or routing mutations. Those still
 require the appropriate guarded product, protocol, or operator path.
 
 The Hive Brain `Harvests` tab displays the queue output: task, reward,
-classification, summary, suggested action, category, and harvest time. The API
-is `GET /api/hive/brain/harvests`. The focused mock smoke is:
+classification, summary, suggested action, category, and harvest time. Operators
+mark rows resolved from that tab and can store a resolution comment with the
+row. The APIs are `GET /api/hive/brain/harvests` and
+`POST /api/hive/brain/harvests/:taskId/resolve`. The focused mock smoke is:
 
 ```bash
 TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK=true npm run task-accounting-harvester-smoke

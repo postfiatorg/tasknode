@@ -1753,6 +1753,110 @@
   opacity: 0.55;
 }
 
+.hive-harvest-resolve-layer {
+  z-index: 80;
+}
+
+.hive-harvest-resolve-modal {
+  max-width: 520px;
+}
+
+.hive-harvest-resolve-form {
+  display: grid;
+  gap: 18px;
+  padding: 20px 22px 22px;
+}
+
+.hive-harvest-resolve-form h2 {
+  color: var(--hive-ink);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.hive-harvest-resolve-form p {
+  color: var(--hive-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 6px 0 0;
+}
+
+.hive-harvest-resolve-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.hive-harvest-resolve-form label span {
+  color: var(--hive-ink-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.hive-harvest-resolve-form textarea {
+  background: #fffdfa;
+  border: 1px solid var(--hive-border-strong);
+  border-radius: 8px;
+  color: var(--hive-ink);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  min-height: 132px;
+  outline: none;
+  padding: 11px 12px;
+  resize: vertical;
+  width: 100%;
+}
+
+.hive-harvest-resolve-form textarea:focus {
+  border-color: var(--hive-green);
+  box-shadow: 0 0 0 3px rgba(58, 104, 76, 0.14);
+}
+
+.hive-harvest-resolve-error {
+  background: #fff4ef;
+  border: 1px solid #efb39e;
+  border-radius: 8px;
+  color: #8c2d17;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 9px 10px;
+}
+
+.hive-harvest-resolve-form footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.hive-harvest-resolve-form footer button {
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 36px;
+  padding: 8px 13px;
+}
+
+.hive-harvest-resolve-form footer button:first-child {
+  background: #fff;
+  border: 1px solid var(--hive-border-strong);
+  color: var(--hive-ink-soft);
+}
+
+.hive-harvest-resolve-form footer button:last-child {
+  background: var(--hive-ink);
+  border: 1px solid var(--hive-ink);
+  color: #fffaf0;
+}
+
+.hive-harvest-resolve-form footer button:disabled,
+.htp-close:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
 .hive-brain-harvest-table td {
   vertical-align: top;
 }
@@ -4063,6 +4167,15 @@ button.hive-project-next-task:focus-visible {
   .hive-brain-harvest-output-grid,
   .hive-brain-harvest-output-copy {
     grid-template-columns: 1fr;
+  }
+
+  .hive-harvest-resolve-form footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .hive-harvest-resolve-form footer button {
+    width: 100%;
   }
 
   .hive-brain-prompt-block summary {
