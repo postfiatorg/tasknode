@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { databaseEnabled, query } from "../db/pool.js";
+import { databaseEnabled, query, transaction } from "../db/pool.js";
 
 export const taskAccountingHarvestPromptVersion = "task_accounting_harvester_v1";
 
@@ -103,6 +103,16 @@ function rowToHarvest(row = {}) {
     workerClaimedAt: iso(row.worker_claimed_at),
     workerHeartbeatAt: iso(row.worker_heartbeat_at),
     completedAt: iso(row.completed_at),
+    checkout: {
+      checkedOut: Boolean(row.checked_out_at),
+      checkedOutAt: iso(row.checked_out_at),
+      accountId: safeText(row.checked_out_by_account_id, 180),
+      walletAddress: safeText(row.checked_out_wallet_address, 120),
+    },
+    checkedOut: Boolean(row.checked_out_at),
+    checkedOutAt: iso(row.checked_out_at),
+    checkedOutByAccountId: safeText(row.checked_out_by_account_id, 180),
+    checkedOutWalletAddress: safeText(row.checked_out_wallet_address, 120),
     resolvedAt: iso(row.resolved_at),
     resolvedByAccountId: safeText(row.resolved_by_account_id, 180),
     resolutionNote: safeText(row.resolution_note, 1000),
@@ -110,6 +120,37 @@ function rowToHarvest(row = {}) {
     lastError: safeText(row.last_error, 1000),
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
+  };
+}
+
+function rowToCheckoutEvent(row = {}) {
+  const currentWallet = safeText(row.current_checkout_wallet_address, 120);
+  const currentAccountId = safeText(row.current_checkout_account_id, 180);
+  const eventWallet = safeText(row.wallet_address, 120);
+  const eventAccountId = safeText(row.account_id, 180);
+  return {
+    id: safeText(row.id, 180),
+    taskId: safeText(row.task_id, 180),
+    title: safeText(row.title, 360),
+    eventType: safeText(row.event_type, 80) || "checked_out",
+    accountId: eventAccountId,
+    walletAddress: eventWallet,
+    createdAt: iso(row.created_at),
+    current: Boolean(
+      row.current_checked_out_at &&
+        currentWallet.toLowerCase() === eventWallet.toLowerCase() &&
+        currentAccountId.toLowerCase() === eventAccountId.toLowerCase()
+    ),
+    currentCheckedOutAt: iso(row.current_checked_out_at),
+    currentCheckoutWalletAddress: currentWallet,
+    currentCheckoutAccountId: currentAccountId,
+    resolved: Boolean(row.resolved_at),
+    resolvedAt: iso(row.resolved_at),
+    classification: safeText(row.classification, 80),
+    requiresAction: Boolean(row.requires_action),
+    actionCategory: safeText(row.action_category, 120),
+    suggestedAction: safeText(row.suggested_action, 1000),
+    metadata: safeObject(row.metadata_json),
   };
 }
 
@@ -783,7 +824,8 @@ export async function listTaskAccountingHarvests({
       count(*) FILTER (WHERE status = 'failed')::int AS failed,
       count(*) FILTER (WHERE classification = 'requires_action')::int AS requires_action,
       count(*) FILTER (WHERE classification = 'no_action')::int AS no_action,
-      count(*) FILTER (WHERE resolved_at IS NOT NULL)::int AS resolved
+      count(*) FILTER (WHERE resolved_at IS NOT NULL)::int AS resolved,
+      count(*) FILTER (WHERE checked_out_at IS NOT NULL)::int AS checked_out
     FROM task_accounting_harvests
   `);
   const summary = summaryResult.rows[0] || {};
@@ -799,7 +841,167 @@ export async function listTaskAccountingHarvests({
       requiresAction: Number(summary.requires_action || 0),
       noAction: Number(summary.no_action || 0),
       resolved: Number(summary.resolved || 0),
+      checkedOut: Number(summary.checked_out || 0),
     },
+    page: safePage,
+    pageSize: safeLimit,
+    hasMore: result.rows.length > safeLimit,
+  };
+}
+
+export async function accountHasTaskAccountingCheckoutAccess({ accountId = "" } = {}) {
+  if (!databaseEnabled()) return false;
+  const normalizedAccountId = safeText(accountId, 180);
+  if (!normalizedAccountId) return false;
+  const result = await query(
+    `
+      SELECT 1
+      FROM account_network_badges badge
+      JOIN network_badge_definitions definition
+        ON definition.badge_id = badge.badge_id
+      WHERE badge.account_id = $1
+        AND badge.badge_id = 'core_contributor'
+        AND badge.status = 'verified'
+        AND badge.revoked_at IS NULL
+        AND definition.active = true
+        AND (badge.expires_at IS NULL OR badge.expires_at > now())
+      LIMIT 1
+    `,
+    [normalizedAccountId]
+  );
+  return Boolean(result.rows[0]);
+}
+
+export async function checkoutTaskAccountingHarvest({
+  taskId = "",
+  accountId = "",
+  walletAddress = "",
+  metadata = {},
+} = {}) {
+  if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const normalizedTaskId = safeText(taskId, 180);
+  const normalizedAccountId = safeText(accountId, 180);
+  const normalizedWallet = safeText(walletAddress, 120);
+  if (!normalizedTaskId) return { ok: false, status: 400, error: "task_accounting_harvest_task_required" };
+  if (!normalizedAccountId) return { ok: false, status: 401, error: "task_accounting_harvest_checkout_login_required" };
+  if (!normalizedWallet) return { ok: false, status: 409, error: "task_accounting_harvest_checkout_wallet_required" };
+
+  return transaction(async (client) => {
+    const current = await client.query(
+      `
+        SELECT *
+        FROM task_accounting_harvests
+        WHERE task_id = $1
+        FOR UPDATE
+      `,
+      [normalizedTaskId]
+    );
+    const row = current.rows[0];
+    if (!row) return { ok: false, status: 404, error: "task_accounting_harvest_not_found" };
+    if (row.resolved_at) {
+      return { ok: false, status: 409, error: "task_accounting_harvest_already_resolved" };
+    }
+    if (row.checked_out_at) {
+      const sameAccount = safeText(row.checked_out_by_account_id, 180).toLowerCase() === normalizedAccountId.toLowerCase();
+      const sameWallet = safeText(row.checked_out_wallet_address, 120).toLowerCase() === normalizedWallet.toLowerCase();
+      if (sameAccount && sameWallet) {
+        return { ok: true, alreadyCheckedOut: true, harvest: rowToHarvest(row) };
+      }
+      return {
+        ok: false,
+        status: 409,
+        error: "task_accounting_harvest_already_checked_out",
+        checkout: {
+          checkedOutAt: iso(row.checked_out_at),
+          accountId: safeText(row.checked_out_by_account_id, 180),
+          walletAddress: safeText(row.checked_out_wallet_address, 120),
+        },
+      };
+    }
+
+    const updated = await client.query(
+      `
+        UPDATE task_accounting_harvests
+        SET checked_out_at = now(),
+            checked_out_by_account_id = $2,
+            checked_out_wallet_address = $3,
+            updated_at = now()
+        WHERE task_id = $1
+        RETURNING *
+      `,
+      [normalizedTaskId, normalizedAccountId, normalizedWallet]
+    );
+    const event = await client.query(
+      `
+        INSERT INTO task_accounting_harvest_checkout_events (
+          id,
+          task_id,
+          event_type,
+          account_id,
+          wallet_address,
+          metadata_json
+        )
+        VALUES ($1, $2, 'checked_out', $3, $4, $5::jsonb)
+        RETURNING *
+      `,
+      [
+        `tah_checkout_${randomUUID().replaceAll("-", "")}`,
+        normalizedTaskId,
+        normalizedAccountId,
+        normalizedWallet,
+        JSON.stringify(safeObject(metadata)),
+      ]
+    );
+    return {
+      ok: true,
+      harvest: rowToHarvest(updated.rows[0]),
+      event: rowToCheckoutEvent({
+        ...event.rows[0],
+        title: updated.rows[0]?.title,
+        current_checked_out_at: updated.rows[0]?.checked_out_at,
+        current_checkout_account_id: updated.rows[0]?.checked_out_by_account_id,
+        current_checkout_wallet_address: updated.rows[0]?.checked_out_wallet_address,
+        resolved_at: updated.rows[0]?.resolved_at,
+        classification: updated.rows[0]?.classification,
+        requires_action: updated.rows[0]?.requires_action,
+        action_category: updated.rows[0]?.action_category,
+        suggested_action: updated.rows[0]?.suggested_action,
+      }),
+    };
+  });
+}
+
+export async function listTaskAccountingHarvestCheckouts({ limit = 80, page = 1 } = {}) {
+  if (!databaseEnabled()) {
+    return { ok: true, events: [], page: 1, pageSize: 0, hasMore: false };
+  }
+  const safeLimit = intValue(limit, 80, { min: 1, max: 100 });
+  const safePage = intValue(page, 1, { min: 1, max: 1000 });
+  const result = await query(
+    `
+      SELECT
+        event.*,
+        harvest.title,
+        harvest.classification,
+        harvest.requires_action,
+        harvest.action_category,
+        harvest.suggested_action,
+        harvest.resolved_at,
+        harvest.checked_out_at AS current_checked_out_at,
+        harvest.checked_out_by_account_id AS current_checkout_account_id,
+        harvest.checked_out_wallet_address AS current_checkout_wallet_address
+      FROM task_accounting_harvest_checkout_events event
+      JOIN task_accounting_harvests harvest
+        ON harvest.task_id = event.task_id
+      ORDER BY event.created_at DESC, event.id DESC
+      LIMIT $1
+      OFFSET $2
+    `,
+    [safeLimit + 1, (safePage - 1) * safeLimit]
+  );
+  return {
+    ok: true,
+    events: result.rows.slice(0, safeLimit).map(rowToCheckoutEvent),
     page: safePage,
     pageSize: safeLimit,
     hasMore: result.rows.length > safeLimit,

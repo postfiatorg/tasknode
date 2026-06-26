@@ -91,6 +91,7 @@ const migrations = [
   "082_task_generation_worker_ownership.sql",
   "083_task_accounting_harvester.sql",
   "084_task_accounting_harvest_resolution.sql",
+  "085_task_accounting_harvest_checkout.sql",
 ];
 
 let migrated = false;

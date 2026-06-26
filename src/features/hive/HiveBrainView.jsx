@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, RefreshCw, X } from "lucide-react";
+import { CheckCircle2, RefreshCw, UserCheck, X } from "lucide-react";
 import { requestJson } from "../../api";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import hiveDecisionAgentPrompt from "../../../prompts/hive/hive_decision_agent_v1.md?raw";
@@ -259,6 +259,10 @@ function compactWallet(value = "") {
   const text = String(value || "").trim();
   if (text.length <= 14) return text || "unknown";
   return `${text.slice(0, 6)}...${text.slice(-6)}`;
+}
+
+function sameText(left = "", right = "") {
+  return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
 }
 
 function parseMarkdownBlocks(markdown = "") {
@@ -538,9 +542,26 @@ function LiveTaskTable({ projectDocument = null, status = "loading" }) {
   );
 }
 
-function HarvestOutputRow({ harvest, onResolve }) {
+function HarvestOutputRow({
+  checkoutBusy = false,
+  harvest,
+  onCheckout,
+  onResolve,
+  permissions = {},
+}) {
   const classification = harvest.classification || harvest.status || "not_harvested";
   const isResolved = Boolean(harvest.resolved || harvest.resolvedAt);
+  const checkout = harvest.checkout || {};
+  const checkoutWallet = checkout.walletAddress || harvest.checkedOutWalletAddress || "";
+  const checkoutAccountId = checkout.accountId || harvest.checkedOutByAccountId || "";
+  const isCheckedOut = Boolean(checkout.checkedOut || checkout.checkedOutAt || harvest.checkedOutAt);
+  const checkedOutByYou = isCheckedOut && sameText(checkoutWallet, permissions.walletAddress);
+  const checkoutLabel = isCheckedOut
+    ? checkedOutByYou ? "Checked out to you" : "Checked out"
+    : !permissions.canCheckout
+      ? permissions.reason === "linked_wallet_required" ? "Link wallet to check out" : "Core contributor only"
+      : checkoutBusy ? "Checking out..." : "Check out";
+  const checkoutDisabled = checkoutBusy || isResolved || isCheckedOut || !permissions.canCheckout;
   const confidence = Number(harvest.confidence || 0);
   const confidenceLabel = confidence > 0 ? `${Math.round(confidence * 100)}% confidence` : "confidence pending";
   const contributor = harvest.contributor || {};
@@ -564,6 +585,7 @@ function HarvestOutputRow({ harvest, onResolve }) {
         </div>
         <div className="hive-brain-harvest-output-meta">
           <Status type={classification}>{formatAction(classification)}</Status>
+          {isCheckedOut && <Status type="checked-out">Checked out</Status>}
           {isResolved && <Status type="resolved">Resolved</Status>}
           <em>{compactNumber(harvest.rewardActualPft || harvest.rewardOfferPft)} PFT</em>
         </div>
@@ -579,6 +601,9 @@ function HarvestOutputRow({ harvest, onResolve }) {
           <span><small>Category</small><strong>{formatAction(harvest.actionCategory || "none")}</strong></span>
           <span><small>Rewarded</small><strong>{relativeTime(harvest.rewardedAt)}</strong></span>
           <span><small>Harvested</small><strong>{relativeTime(harvest.completedAt || harvest.updatedAt)}</strong></span>
+          {isCheckedOut && <span><small>Checked out</small><strong>{relativeTime(checkout.checkedOutAt || harvest.checkedOutAt)}</strong></span>}
+          {isCheckedOut && <span><small>Checkout wallet</small><code>{compactWallet(checkoutWallet)}</code></span>}
+          {isCheckedOut && <span><small>Checkout account</small><code>{checkoutAccountId || "unknown"}</code></span>}
           {isResolved && <span><small>Resolved</small><strong>{relativeTime(harvest.resolvedAt)}</strong></span>}
           <span><small>Model</small><strong>{harvest.model || "pending"}</strong></span>
           <span><small>Confidence</small><strong>{confidenceLabel}</strong></span>
@@ -600,6 +625,17 @@ function HarvestOutputRow({ harvest, onResolve }) {
           )}
         </div>
         <div className="hive-brain-harvest-actions">
+          {!isResolved && (
+            <button
+              className="is-secondary"
+              disabled={checkoutDisabled}
+              onClick={() => onCheckout?.(harvest)}
+              type="button"
+            >
+              <UserCheck size={13} strokeWidth={2.1} />
+              {checkoutLabel}
+            </button>
+          )}
           <button
             disabled={isResolved}
             onClick={() => onResolve?.(harvest)}
@@ -677,9 +713,44 @@ function HarvestResolveDialog({
   );
 }
 
+function HarvestCheckoutLog({ events = [], status = "loading" }) {
+  return (
+    <div className="hive-brain-card hive-brain-harvest-card">
+      <div className="hive-brain-table-head">
+        <div className="hive-brain-section-label">Checked-out log</div>
+        <div className="hive-brain-section-sub">Core Contributor checkout events for harvest follow-up ownership.</div>
+      </div>
+      <div className="hive-brain-checkout-log">
+        {events.map((event) => (
+          <div className="hive-brain-checkout-row" key={event.id || `${event.taskId}-${event.createdAt}`}>
+            <div>
+              <strong>{event.title || event.taskId || "Untitled harvest"}</strong>
+              <span>{compactWallet(event.walletAddress)} checked out {relativeTime(event.createdAt)}</span>
+            </div>
+            <div>
+              {event.current && <Status type="checked-out">Current</Status>}
+              {event.resolved && <Status type="resolved">Resolved</Status>}
+              <code>{event.taskId}</code>
+            </div>
+          </div>
+        ))}
+        {status === "loading" && <div className="hive-brain-empty">Loading checkout log.</div>}
+        {status === "error" && <div className="hive-brain-empty">Checkout log is unavailable.</div>}
+        {status === "ready" && !events.length && <div className="hive-brain-empty">No harvest rows have been checked out yet.</div>}
+      </div>
+    </div>
+  );
+}
+
 function HarvestPanel({
+  checkoutError = "",
+  checkoutLog = [],
+  checkoutStatus = "loading",
+  checkingOutHarvestId = "",
   harvests = [],
+  onCheckout,
   onResolve,
+  permissions = {},
   resolvedHarvests = [],
   resolvedStatus = "loading",
   summary = {},
@@ -694,6 +765,7 @@ function HarvestPanel({
           <span>{summary.harvested || 0} harvested</span>
           <span>{summary.queued || 0} queued</span>
           <span>{summary.requiresAction || 0} actionable</span>
+          <span>{summary.checkedOut || 0} checked out</span>
           <span>{summary.resolved || 0} resolved</span>
         </div>
       </div>
@@ -712,25 +784,43 @@ function HarvestPanel({
           <span>{summary.failed || 0} failed</span>
         </div>
       </div>
+      {checkoutError && <div className="hive-harvest-resolve-error hive-harvest-checkout-error">{checkoutError}</div>}
       <div className="hive-brain-card hive-brain-harvest-card">
         <div className="hive-brain-table-head">
           <div className="hive-brain-section-label">Unresolved rewarded Network Task harvests</div>
           <div className="hive-brain-section-sub">Each open output expands into the accounting assessment, suggested follow-up, and resolve action.</div>
         </div>
         <div className="hive-brain-harvest-output-list">
-          {harvests.map((harvest) => <HarvestOutputRow harvest={harvest} key={harvest.taskId} onResolve={onResolve} />)}
+          {harvests.map((harvest) => (
+            <HarvestOutputRow
+              checkoutBusy={checkingOutHarvestId === harvest.taskId}
+              harvest={harvest}
+              key={harvest.taskId}
+              onCheckout={onCheckout}
+              onResolve={onResolve}
+              permissions={permissions}
+            />
+          ))}
           {status === "loading" && <div className="hive-brain-empty">Loading harvest queue.</div>}
           {status === "error" && <div className="hive-brain-empty">Task Accounting harvests are unavailable.</div>}
           {status === "ready" && !harvests.length && <div className="hive-brain-empty">No unresolved rewarded Network Task harvests are available.</div>}
         </div>
       </div>
+      <HarvestCheckoutLog events={checkoutLog} status={checkoutStatus} />
       <div className="hive-brain-card hive-brain-harvest-card">
         <div className="hive-brain-table-head">
           <div className="hive-brain-section-label">Resolved history</div>
           <div className="hive-brain-section-sub">Resolved harvest rows stay visible here with the operator comment used to close them.</div>
         </div>
         <div className="hive-brain-harvest-output-list">
-          {resolvedHarvests.map((harvest) => <HarvestOutputRow harvest={harvest} key={harvest.taskId} onResolve={onResolve} />)}
+          {resolvedHarvests.map((harvest) => (
+            <HarvestOutputRow
+              harvest={harvest}
+              key={harvest.taskId}
+              onResolve={onResolve}
+              permissions={permissions}
+            />
+          ))}
           {resolvedStatus === "loading" && <div className="hive-brain-empty">Loading resolved harvest history.</div>}
           {resolvedStatus === "error" && <div className="hive-brain-empty">Resolved harvest history is unavailable.</div>}
           {resolvedStatus === "ready" && !resolvedHarvests.length && <div className="hive-brain-empty">No resolved harvest rows yet.</div>}
@@ -1030,9 +1120,14 @@ export function HiveBrainView() {
   const [decisionDetailStatus, setDecisionDetailStatus] = useState("idle");
   const [harvests, setHarvests] = useState([]);
   const [resolvedHarvests, setResolvedHarvests] = useState([]);
+  const [harvestCheckoutLog, setHarvestCheckoutLog] = useState([]);
+  const [harvestCheckoutStatus, setHarvestCheckoutStatus] = useState("loading");
+  const [harvestPermissions, setHarvestPermissions] = useState({});
   const [harvestSummary, setHarvestSummary] = useState({});
   const [harvestStatus, setHarvestStatus] = useState("loading");
   const [resolvedHarvestStatus, setResolvedHarvestStatus] = useState("loading");
+  const [checkingOutHarvestId, setCheckingOutHarvestId] = useState("");
+  const [harvestCheckoutError, setHarvestCheckoutError] = useState("");
   const [harvestResolveDraft, setHarvestResolveDraft] = useState(null);
   const [harvestResolveError, setHarvestResolveError] = useState("");
   const [resolvingHarvestId, setResolvingHarvestId] = useState("");
@@ -1109,26 +1204,60 @@ export function HiveBrainView() {
   const loadHarvests = useCallback(async () => {
     setHarvestStatus("loading");
     setResolvedHarvestStatus("loading");
+    setHarvestCheckoutStatus("loading");
     try {
-      const [activeResult, resolvedResult] = await Promise.all([
+      const [activeResult, resolvedResult, checkoutResult] = await Promise.all([
         requestJson("/api/hive/brain/harvests?resolved=false&limit=80"),
         requestJson("/api/hive/brain/harvests?resolved=true&limit=40"),
+        requestJson("/api/hive/brain/harvest-checkouts?limit=80"),
       ]);
       if (!activeResult.ok) throw new Error(activeResult.body?.message || `Task Accounting harvests failed with HTTP ${activeResult.status}`);
       if (!resolvedResult.ok) throw new Error(resolvedResult.body?.message || `Resolved Task Accounting harvests failed with HTTP ${resolvedResult.status}`);
+      if (!checkoutResult.ok) throw new Error(checkoutResult.body?.message || `Task Accounting checkout log failed with HTTP ${checkoutResult.status}`);
       setHarvests(activeResult.body?.harvests || []);
       setResolvedHarvests(resolvedResult.body?.harvests || []);
+      setHarvestCheckoutLog(checkoutResult.body?.events || []);
+      setHarvestPermissions(activeResult.body?.permissions || checkoutResult.body?.permissions || {});
       setHarvestSummary(activeResult.body?.summary || resolvedResult.body?.summary || {});
       setHarvestStatus("ready");
       setResolvedHarvestStatus("ready");
+      setHarvestCheckoutStatus("ready");
     } catch {
       setHarvests([]);
       setResolvedHarvests([]);
+      setHarvestCheckoutLog([]);
+      setHarvestPermissions({});
       setHarvestSummary({});
       setHarvestStatus("error");
       setResolvedHarvestStatus("error");
+      setHarvestCheckoutStatus("error");
     }
   }, []);
+
+  const checkoutHarvest = useCallback(async (harvest = null) => {
+    const taskId = harvest?.taskId || "";
+    if (!taskId || checkingOutHarvestId) return;
+    setCheckingOutHarvestId(taskId);
+    setHarvestCheckoutError("");
+    try {
+      const result = await requestJson(`/api/hive/brain/harvests/${encodeURIComponent(taskId)}/checkout`, {
+        method: "POST",
+      });
+      if (!result.ok) throw new Error(result.body?.message || `Checkout failed with HTTP ${result.status}`);
+      if (result.body?.permissions) setHarvestPermissions(result.body.permissions);
+      if (result.body?.harvest) {
+        setHarvests((current) => current.map((row) => row.taskId === taskId ? result.body.harvest : row));
+      }
+      if (result.body?.event) {
+        setHarvestCheckoutLog((current) => [result.body.event, ...current.filter((event) => event.id !== result.body.event.id)]);
+      }
+      loadHarvests();
+    } catch (error) {
+      setHarvestCheckoutError(error?.message || "Unable to check out this harvest row.");
+    } finally {
+      setCheckingOutHarvestId("");
+    }
+  }, [checkingOutHarvestId, loadHarvests]);
 
   const openResolveHarvest = useCallback((harvest = null) => {
     if (!harvest?.taskId) return;
@@ -1304,8 +1433,14 @@ export function HiveBrainView() {
           />
         ) : activeTab === "harvests" ? (
           <HarvestPanel
+            checkoutError={harvestCheckoutError}
+            checkoutLog={harvestCheckoutLog}
+            checkoutStatus={harvestCheckoutStatus}
+            checkingOutHarvestId={checkingOutHarvestId}
             harvests={harvests}
+            onCheckout={checkoutHarvest}
             onResolve={openResolveHarvest}
+            permissions={harvestPermissions}
             resolvedHarvests={resolvedHarvests}
             resolvedStatus={resolvedHarvestStatus}
             status={harvestStatus}

@@ -12,7 +12,10 @@ const { closePool, databaseEnabled, query } = await import("../server/db/pool.js
 const { migrateDatabase } = await import("../server/db/migrate.js");
 const { runTaskAccountingHarvesterOnce } = await import("../server/task-accounting-harvester-worker.js");
 const {
+  accountHasTaskAccountingCheckoutAccess,
+  checkoutTaskAccountingHarvest,
   listTaskAccountingHarvests,
+  listTaskAccountingHarvestCheckouts,
   resolveTaskAccountingHarvest,
 } = await import("../server/repositories/task-accounting-harvester.js");
 
@@ -24,8 +27,33 @@ const wallet = `rTaskAccounting${suffix}`.slice(0, 120);
 
 async function cleanup() {
   await query("DELETE FROM task_accounting_harvests WHERE task_id IN ($1, $2)", [actionableTaskId, noActionTaskId]);
+  await query("DELETE FROM account_network_badges WHERE account_id = $1 AND badge_id = 'core_contributor'", [accountId]);
   await query("DELETE FROM task_events WHERE task_id IN ($1, $2)", [actionableTaskId, noActionTaskId]);
   await query("DELETE FROM task_projections WHERE task_id IN ($1, $2)", [actionableTaskId, noActionTaskId]);
+}
+
+async function grantCoreContributorBadge() {
+  await query(
+    `
+      INSERT INTO account_network_badges (
+        id,
+        account_id,
+        badge_id,
+        status,
+        verified_by_operator,
+        evidence_url_or_ref
+      )
+      VALUES ($1, $2, 'core_contributor', 'verified', 'task_accounting_harvester_smoke', 'smoke')
+      ON CONFLICT (account_id, badge_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        revoked_at = NULL,
+        expires_at = NULL,
+        verified_by_operator = EXCLUDED.verified_by_operator,
+        evidence_url_or_ref = EXCLUDED.evidence_url_or_ref,
+        updated_at = now()
+    `,
+    [`badge_${accountId}_core`, accountId]
+  );
 }
 
 async function insertRewardedTask({ taskId, title, description, requirement, reward }) {
@@ -118,6 +146,32 @@ async function main() {
     assert.equal(noAction.classification, "no_action");
     assert.equal(noAction.requiresAction, false);
     assert.equal(listed.summary.harvested >= 2, true, "summary includes harvested count");
+
+    assert.equal(
+      await accountHasTaskAccountingCheckoutAccess({ accountId }),
+      false,
+      "checkout access requires a Core Contributor badge"
+    );
+    await grantCoreContributorBadge();
+    assert.equal(
+      await accountHasTaskAccountingCheckoutAccess({ accountId }),
+      true,
+      "verified Core Contributor badge grants checkout access"
+    );
+    const checkout = await checkoutTaskAccountingHarvest({
+      taskId: actionableTaskId,
+      accountId,
+      walletAddress: wallet,
+      metadata: { smoke: true },
+    });
+    assert.equal(checkout.ok, true);
+    assert.equal(checkout.harvest.checkedOut, true);
+    assert.equal(checkout.harvest.checkout.walletAddress, wallet);
+    const checkoutLog = await listTaskAccountingHarvestCheckouts({ limit: 20 });
+    const checkoutEvent = checkoutLog.events.find((event) => event.taskId === actionableTaskId);
+    assert.ok(checkoutEvent, "checkout log includes the checked-out harvest");
+    assert.equal(checkoutEvent.walletAddress, wallet);
+    assert.equal(checkoutEvent.current, true);
 
     const resolutionNote = "Closed by smoke test after filing TASKNODE-SMOKE-1.";
     const resolved = await resolveTaskAccountingHarvest({

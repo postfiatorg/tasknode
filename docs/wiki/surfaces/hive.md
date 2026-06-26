@@ -69,10 +69,10 @@ Project IDs are part of the product surface. The project detail header should ex
 ## Hive Brain
 
 `Hive Brain` is an operator-only audit tab under the sidebar `More` menu at
-`#hive-brain`. It is read-only and exposes the current board stack in human
-terms: the six Hive Reports, the Decision Agent decision trail, live task state,
-system prompt documentation, and post-reward Task Accounting harvests. Raw
-legacy Board Manager JSON is not the primary operator surface.
+`#hive-brain`. It exposes the current board stack in human terms: the six Hive
+Reports, the Decision Agent decision trail, live task state, system prompt
+documentation, and post-reward Task Accounting harvests. Raw legacy Board
+Manager JSON is not the primary operator surface.
 
 The main read APIs are:
 
@@ -81,10 +81,14 @@ The main read APIs are:
 - `GET /api/hive/decision/runs` and `GET /api/hive/decision/run/:id` for the
   Decision Agent audit trail
 - `GET /api/hive/brain/harvests` for post-reward Task Accounting harvests
+- `GET /api/hive/brain/harvest-checkouts` for the harvest checkout log
 
-All Hive Brain endpoints are operator-gated and read-only. They cannot create
-projects, route tasks, execute hooks, change rewards, ban users, or modify
-eligibility.
+All Hive Brain endpoints are operator-gated. Most are read-only. Harvest rows
+also support bounded accounting metadata mutations: verified Core Contributors
+can check out an unresolved harvest row to their linked wallet, and authorized
+Task Accounting operators can mark a row resolved with a comment. Hive Brain
+cannot create projects, route tasks, execute hooks, change rewards, ban users,
+or modify eligibility.
 
 ### Hive Reports
 
@@ -194,11 +198,18 @@ require the appropriate guarded product, protocol, or operator path.
 
 The Hive Brain `Harvests` tab displays the queue output: task, reward,
 classification, summary, suggested action, category, and harvest time. The
-default list is unresolved rows only. A separate resolved-history section keeps
-closed rows visible with the stored resolution comment. Operators mark rows
-resolved from that tab by entering a comment in the resolve dialog. The APIs
-are `GET /api/hive/brain/harvests?resolved=false`,
-`GET /api/hive/brain/harvests?resolved=true`, and
+default list is unresolved rows only. Verified Core Contributors can press
+`Check out` to assign a row to their linked wallet; the current checkout is
+stored on `task_accounting_harvests`, and every checkout writes an append-only
+event to `task_accounting_harvest_checkout_events`. The tab shows a
+checked-out log so operators can see which rows have been claimed for follow-up.
+A separate resolved-history section keeps closed rows visible with the stored
+resolution comment. Operators mark rows resolved from that tab by entering a
+comment in the resolve dialog. The APIs are
+`GET /api/hive/brain/harvests?resolved=false`,
+`GET /api/hive/brain/harvests?resolved=true`,
+`GET /api/hive/brain/harvest-checkouts`,
+`POST /api/hive/brain/harvests/:taskId/checkout`, and
 `POST /api/hive/brain/harvests/:taskId/resolve`. The focused mock smoke is:
 
 ```bash
