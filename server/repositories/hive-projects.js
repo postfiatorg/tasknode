@@ -44,7 +44,20 @@ const activeTaskStateRank = new Map([
   ["verification_requested", 20],
   ["verification_response_submitted", 30],
   ["submitted", 40],
+  ["reward_decided", 45],
   ["proposed", 50],
+]);
+
+const terminalTaskStates = new Set([
+  "rewarded",
+  "paid",
+  "refused",
+  "cancelled",
+  "rejected",
+  "expired",
+  "failed",
+  "completed",
+  "rerouted",
 ]);
 
 function intValue(value) {
@@ -368,6 +381,14 @@ function taskStateRank(state = "") {
   return activeTaskStateRank.get(safeText(state, 80).toLowerCase()) || 0;
 }
 
+function taskIsInFlight(task = {}) {
+  return taskStateRank(task.state) > 0;
+}
+
+function taskIsTerminal(task = {}) {
+  return terminalTaskStates.has(safeText(task.state, 80).toLowerCase());
+}
+
 function taskIsNextCandidate(task = {}) {
   return Boolean(task?.taskId && taskStateRank(task.state) > 0);
 }
@@ -407,7 +428,7 @@ function deriveContributorFromTask(project = {}, task = {}) {
   if (!wallet) return null;
   const taskState = safeText(task.state, 80).toLowerCase();
   const paidPft = taskState === "rewarded" ? numeric(task.pft) : 0;
-  const activeLoad = ["proposed", "accepted", "submitted", "verification_requested", "verification_response_submitted"].includes(taskState) ? 1 : 0;
+  const activeLoad = taskIsInFlight(task) ? 1 : 0;
   const identityLabel = task.assigneeDisplayName || (task.assigneeHandle ? `@${safeText(task.assigneeHandle, 80).replace(/^@+/, "")}` : "");
   return {
     wallet,
@@ -422,7 +443,7 @@ function deriveContributorFromTask(project = {}, task = {}) {
     allotted: true,
     cap: Math.max(1, activeLoad),
     load: activeLoad,
-    status: "active",
+    status: activeLoad > 0 ? "active" : "settled",
     tasks: 1,
     pft: paidPft,
     lastActive: task.age || "recently",
@@ -448,6 +469,9 @@ function mergeContributor(left = {}, right = {}) {
   const tasks = intValue(left.tasks) + intValue(right.tasks);
   const load = intValue(left.load) + intValue(right.load);
   const cap = Math.max(intValue(left.cap), intValue(right.cap), load, 1);
+  const status = load > 0 || left.status === "active" || right.status === "active"
+    ? "active"
+    : (left.status || right.status || "settled");
   const currentTasks = [...safeArray(left.currentTasks), ...safeArray(right.currentTasks)]
     .filter((task, index, list) => (
       task?.taskId &&
@@ -463,7 +487,7 @@ function mergeContributor(left = {}, right = {}) {
     allotted: Boolean(left.allotted || right.allotted),
     cap,
     load,
-    status: left.status || right.status || "active",
+    status,
     tasks,
     pft,
     lastActive: left.lastActive || right.lastActive,
@@ -550,6 +574,8 @@ function populateDerivedProjectRollups(projects = {}) {
       safeText(right.id).localeCompare(safeText(left.id))
     );
     project.taskCount = project.tasks.length;
+    project.tasksInFlight = project.tasks.filter(taskIsInFlight).length;
+    project.terminalTaskCount = project.tasks.filter(taskIsTerminal).length;
     project.contributorCount = project.contributors.length;
     project.pft = numeric(project.tasks.reduce((sum, task) => sum + numeric(task.pft), 0));
     project.nextTask = projectNextTask(project);
@@ -653,7 +679,9 @@ function documentFromRows({
     )
     .slice(0, 12);
   const activeOperators = Object.values(operators).filter((operator) => operator.status === "active").length;
-  const tasksInFlight = Object.values(visibleProjects).reduce((sum, project) => sum + safeArray(project.tasks).length, 0);
+  const taskRowCount = Object.values(visibleProjects).reduce((sum, project) => sum + safeArray(project.tasks).length, 0);
+  const tasksInFlight = Object.values(visibleProjects).reduce((sum, project) => sum + intValue(project.tasksInFlight), 0);
+  const terminalTaskRows = Object.values(visibleProjects).reduce((sum, project) => sum + intValue(project.terminalTaskCount), 0);
   const pftRouted = Object.values(visibleProjects).reduce((sum, project) => sum + numeric(project.pft), 0);
 
   return {
@@ -666,6 +694,8 @@ function documentFromRows({
       activeProjects: projectIds.length,
       operatorsOnline: activeOperators,
       tasksInFlight,
+      taskRows: taskRowCount,
+      terminalTaskRows,
       pftRouted,
     },
     secretaryInput: latestSecretary

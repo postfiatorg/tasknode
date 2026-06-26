@@ -152,6 +152,39 @@ const boardDocument = hiveProjectsDocumentForTests({
       projected_updated_at: "2026-05-26T00:01:00.000Z",
     },
     {
+      id: "ref_rewarded_history",
+      project_id: "live_project",
+      task_id: "task_rewarded_history",
+      title: "Rewarded history",
+      state: "rewarded",
+      assignee_wallet: "rHistory",
+      reward_pft: 0,
+      created_at: "2026-05-25T23:50:00.000Z",
+      updated_at: "2026-05-25T23:55:00.000Z",
+    },
+    {
+      id: "ref_refused_history",
+      project_id: "live_project",
+      task_id: "task_refused_history",
+      title: "Refused history",
+      state: "refused",
+      assignee_wallet: "rHistory",
+      reward_pft: 0,
+      created_at: "2026-05-25T23:40:00.000Z",
+      updated_at: "2026-05-25T23:45:00.000Z",
+    },
+    {
+      id: "ref_cancelled_history",
+      project_id: "live_project",
+      task_id: "task_cancelled_history",
+      title: "Cancelled history",
+      state: "cancelled",
+      assignee_wallet: "rHistory",
+      reward_pft: 0,
+      created_at: "2026-05-25T23:30:00.000Z",
+      updated_at: "2026-05-25T23:35:00.000Z",
+    },
+    {
       id: "ref_agent_archived",
       project_id: "agent_archived_project",
       task_id: "task_resurrected",
@@ -181,6 +214,8 @@ const boardDocument = hiveProjectsDocumentForTests({
 assert.deepEqual(boardDocument.projectIds, ["live_project", "pending_generation_project"]);
 assert.equal(boardDocument.stats.activeProjects, 2);
 assert.equal(boardDocument.stats.tasksInFlight, 1);
+assert.equal(boardDocument.stats.taskRows, 4);
+assert.equal(boardDocument.stats.terminalTaskRows, 3);
 assert.equal(boardDocument.stats.pftRouted, 250);
 assert.equal(boardDocument.projects.empty_active_project, undefined);
 assert.equal(boardDocument.projects.agent_archived_project, undefined);
@@ -189,6 +224,9 @@ assert.equal(boardDocument.projects.live_project.tasks[0].title, "Projected task
 assert.equal(boardDocument.projects.live_project.tasks[0].state, "accepted");
 assert.equal(boardDocument.projects.live_project.tasks[0].assignee, "rProjected");
 assert.equal(boardDocument.projects.live_project.tasks[0].pft, 250);
+assert.equal(boardDocument.projects.live_project.taskCount, 4);
+assert.equal(boardDocument.projects.live_project.tasksInFlight, 1);
+assert.equal(boardDocument.projects.live_project.terminalTaskCount, 3);
 assert.equal(boardDocument.projects.pending_generation_project.pendingGenerationCount, 1);
 assert.equal(boardDocument.projects.pending_generation_project.tasks.length, 0);
 assert.equal(boardDocument.operators.rProjected.load, 1);

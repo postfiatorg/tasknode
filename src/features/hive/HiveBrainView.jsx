@@ -642,7 +642,7 @@ export function HiveBrainView() {
           <Kpi label="Report types" sub={reportStatus === "error" ? "load failed" : "primary inputs"} value={`${readyTypeCount}/6`} />
           <Kpi label="Recent reports" sub="loaded" value={reports.length} />
           <Kpi label="Active projects" sub={projectStatus === "error" ? "unavailable" : "routing boards"} value={projectStatus === "ready" ? projectStats.activeProjects || 0 : "—"} />
-          <Kpi label="Open tasks" sub="live rows" value={projectStatus === "ready" ? projectStats.tasksInFlight || 0 : "—"} />
+          <Kpi label="Open tasks" sub="active rows" value={projectStatus === "ready" ? projectStats.tasksInFlight || 0 : "—"} />
           <Kpi accent label="PFT routed" sub="project total" value={projectStatus === "ready" ? compactNumber(projectStats.pftRouted) : "—"} />
           <Kpi label="Decisions loaded" sub={latestRun.startedAt ? relativeTime(latestRun.startedAt) : "none"} value={runs.length} />
         </div>

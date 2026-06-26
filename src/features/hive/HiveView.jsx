@@ -136,7 +136,7 @@ function HiveIndex({ onOpenTask, onSelectProject, projectDocument, projectStatus
         </div>
         <div className="hive-stats">
           <Stat label="Active projects" value={projectStatus === "ready" ? stats.activeProjects || 0 : "—"} />
-          <Stat label="Task rows" value={projectStatus === "ready" ? stats.tasksInFlight || 0 : "—"} />
+          <Stat label="Open tasks" value={projectStatus === "ready" ? stats.tasksInFlight || 0 : "—"} />
           <Stat label="PFT routed" value={projectStatus === "ready" ? formatCompactPft(stats.pftRouted) : "—"} accent />
         </div>
       </header>

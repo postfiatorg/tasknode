@@ -56,6 +56,15 @@ const roleDefinitions = Object.freeze({
   expert: { badgeId: "expert", label: "Expert", reportGroup: "expert" },
 });
 
+const activeProjectTaskStatuses = Object.freeze([
+  "proposed",
+  "accepted",
+  "submitted",
+  "verification_requested",
+  "verification_response_submitted",
+  "reward_decided",
+]);
+
 function useDatabase() {
   return databaseEnabled();
 }
@@ -227,7 +236,27 @@ function chatRow(row = {}) {
   };
 }
 
+function projectTaskIsActive(task = {}) {
+  return activeProjectTaskStatuses.includes(safeText(task.state || task.status, 80).toLowerCase());
+}
+
+function compactProjectTasks(project = {}, limit = 8) {
+  const tasks = safeArray(project.tasks);
+  const activeTasks = tasks.filter(projectTaskIsActive);
+  return (activeTasks.length ? activeTasks : tasks).slice(0, limit).map((task) => ({
+    taskId: safeText(task.taskId, 180),
+    title: safeText(task.title, 240),
+    state: safeText(task.state, 80),
+    assigneeAccountId: safeText(task.assigneeAccountId, 180),
+    assigneeHandle: safeText(task.assigneeHandle || task.assigneeDisplayName, 160),
+    pft: numeric(task.pft),
+    updatedAt: iso(task.updatedAt),
+  }));
+}
+
 function compactProject(project = {}) {
+  const taskCount = Number(project.taskCount || safeArray(project.tasks).length || 0);
+  const tasksInFlight = Number(project.tasksInFlight ?? safeArray(project.tasks).filter(projectTaskIsActive).length ?? 0);
   return {
     id: safeText(project.id, 180),
     name: safeText(project.name || project.title, 180),
@@ -235,19 +264,13 @@ function compactProject(project = {}) {
     status: safeText(project.status, 80),
     priority: Number(project.priority || 0),
     summary: safeText(project.summary || project.objective || project.about, 700),
-    taskCount: Number(project.taskCount || safeArray(project.tasks).length || 0),
+    taskCount,
+    tasksInFlight,
+    terminalTaskCount: Number(project.terminalTaskCount || Math.max(0, taskCount - tasksInFlight)),
     contributorCount: Number(project.contributorCount || safeArray(project.contributors).length || 0),
     pftRouted: numeric(project.pft),
     pendingGenerationCount: Number(project.pendingGenerationCount || 0),
-    tasks: safeArray(project.tasks).slice(0, 8).map((task) => ({
-      taskId: safeText(task.taskId, 180),
-      title: safeText(task.title, 240),
-      state: safeText(task.state, 80),
-      assigneeAccountId: safeText(task.assigneeAccountId, 180),
-      assigneeHandle: safeText(task.assigneeHandle || task.assigneeDisplayName, 160),
-      pft: numeric(task.pft),
-      updatedAt: iso(task.updatedAt),
-    })),
+    tasks: compactProjectTasks(project, 8),
   };
 }
 

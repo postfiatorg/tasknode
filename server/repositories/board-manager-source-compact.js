@@ -10,6 +10,15 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+const activeProjectTaskStatuses = new Set([
+  "proposed",
+  "accepted",
+  "submitted",
+  "verification_requested",
+  "verification_response_submitted",
+  "reward_decided",
+]);
+
 function numberValue(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -39,6 +48,16 @@ function compactProjectTask(task = {}) {
     rewardPft: Number(task.rewardPft || task.reward_pft || task.rewardActualPft || task.rewardOfferPft || 0),
     updatedAt: task.updatedAt || task.updated_at || null,
   };
+}
+
+function projectTaskIsActive(task = {}) {
+  return activeProjectTaskStatuses.has(safeText(task.state || task.status, 80).toLowerCase());
+}
+
+function compactProjectTasks(project = {}, limit = 2) {
+  const tasks = safeArray(project.tasks);
+  const activeTasks = tasks.filter(projectTaskIsActive);
+  return (activeTasks.length ? activeTasks : tasks).slice(0, limit).map(compactProjectTask);
 }
 
 function compactProductDocument(document = {}) {
@@ -73,6 +92,8 @@ export function compactHiveProjectsForBoardManager(document = {}) {
         priority: Number(project.priority || 0),
         phase: safeText(project.phase || project.phaseLabel, 120),
         taskCount: Number(project.taskCount || 0),
+        tasksInFlight: Number(project.tasksInFlight || 0),
+        terminalTaskCount: Number(project.terminalTaskCount || 0),
         contributorCount: Number(project.contributorCount || 0),
         pft: Number(project.pft || project.pftRouted || 0),
         contributors: safeArray(project.contributors).slice(0, 2).map((contributor) => ({
@@ -81,7 +102,7 @@ export function compactHiveProjectsForBoardManager(document = {}) {
           role: safeText(contributor.role || contributor.roleLabel || contributor.role_label, 120),
           status: safeText(contributor.status, 80),
         })),
-        tasks: safeArray(project.tasks).slice(0, 2).map(compactProjectTask),
+        tasks: compactProjectTasks(project, 2),
         activity: safeArray(project.activity).slice(0, 1).map((event) => ({
           label: safeText(event.label || event.title || event.action, 180),
           state: safeText(event.state || event.status, 80),
