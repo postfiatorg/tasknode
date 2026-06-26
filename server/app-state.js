@@ -197,6 +197,21 @@ export async function getCachedAppState(session = null, { refreshTaskProjection 
     touchCacheEntry(key, entry);
   }
 
+  if (refreshTaskProjection && key !== ANON_APP_STATE_CACHE_KEY) {
+    if (entry?.refreshPromise) {
+      return entry.refreshPromise;
+    }
+    if (entry?.value) {
+      scheduleProjectionRefreshFromCachedState({ key, value: entry.value, refreshTaskProjection });
+    }
+    const refreshPromise = computeAndStoreAppState(key, session, options, entry, {
+      allowOverflow: false,
+    });
+    if (refreshPromise) return refreshPromise;
+    if (entry?.value) return appStateWithRefreshFlag(entry.value);
+    return appStateComputeForCache(session, options);
+  }
+
   if (entry?.value && now < entry.expiresAt) {
     scheduleProjectionRefreshFromCachedState({ key, value: entry.value, refreshTaskProjection });
     return entry.value;

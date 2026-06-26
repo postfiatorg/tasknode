@@ -179,10 +179,41 @@ async function runAccountInvalidationCheck() {
   assert.equal(computeCount, 2, "invalidating an account cache should force the next app-state compute");
 }
 
+async function runTaskProjectionRefreshBypassesFreshCacheCheck() {
+  __resetAppStateCacheForTests();
+  process.env.APP_STATE_CACHE_TTL_MS = "60000";
+  process.env.APP_STATE_MAX_CONCURRENT = "1";
+
+  let computeCount = 0;
+  __setAppStateComputeForTests(async (session, options = {}) => {
+    computeCount += 1;
+    return appStateFixture({
+      accountId: session.accountId,
+      generatedAt: `task_refresh_${computeCount}_${options.refreshTaskProjection ? "refresh" : "normal"}`,
+    });
+  });
+
+  const session = { accountId: "acct_task_refresh" };
+  const first = await getCachedAppState(session);
+  const cached = await getCachedAppState(session);
+  assert.equal(first.generatedAt, "task_refresh_1_normal");
+  assert.equal(cached.generatedAt, "task_refresh_1_normal");
+  assert.equal(computeCount, 1, "ordinary app-state reads should still use the fresh cache");
+
+  const refreshed = await getCachedAppState(session, { refreshTaskProjection: true });
+  assert.equal(refreshed.generatedAt, "task_refresh_2_refresh");
+  assert.equal(computeCount, 2, "explicit task refresh should bypass the fresh app-state cache");
+
+  const cachedAfterRefresh = await getCachedAppState(session);
+  assert.equal(cachedAfterRefresh.generatedAt, "task_refresh_2_refresh");
+  assert.equal(computeCount, 2, "the fresh task refresh result should become the cached state");
+}
+
 await runSameAccountDedupeCheck();
 await runCapFallbackCheck();
 await runAnonSafetyCheck();
 await runAccountInvalidationCheck();
+await runTaskProjectionRefreshBypassesFreshCacheCheck();
 __resetAppStateCacheForTests();
 
 console.log("app-state cache gate smoke ok");
