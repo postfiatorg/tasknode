@@ -41,6 +41,90 @@ import { subscribeHiveBrainLive } from "./hive-brain-live.js";
 
 const maxHiveAttachmentTextLength = 12_000;
 const maxHiveAttachmentExcerptLength = 800;
+const hiveProjectsFastTimeoutMs = Math.min(
+  Math.max(Number(process.env.TASKNODE_HIVE_PROJECTS_FAST_TIMEOUT_MS || 900), 100),
+  5000
+);
+
+let lastHiveProjectsBody = null;
+let pendingHiveProjectsRead = null;
+let lastHiveProjectsFailureAt = 0;
+
+function fallbackHiveProjectsBody({ reason = "hive_projects_refreshing" } = {}) {
+  return {
+    ok: true,
+    degraded: true,
+    reason,
+    document: {
+      generatedAt: new Date().toISOString(),
+      projectIds: [],
+      projects: {},
+      operators: {},
+      routingFeed: [],
+      stats: {
+        activeProjects: 0,
+        operatorsOnline: 0,
+        tasksInFlight: 0,
+        taskRows: 0,
+        terminalTaskRows: 0,
+        pftRouted: 0,
+      },
+      secretaryInput: null,
+      projectPlanning: null,
+    },
+  };
+}
+
+function timeoutValue(ms, value) {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(value), ms);
+  });
+}
+
+function readHiveProjectsBody({ pathname, session }) {
+  const now = Date.now();
+  const retryDelayMs = 15_000;
+  if (!pendingHiveProjectsRead && (!lastHiveProjectsFailureAt || now - lastHiveProjectsFailureAt > retryDelayMs)) {
+    pendingHiveProjectsRead = getCachedHiveRead({
+      cacheKey: "hive_projects:v1",
+      compute: async () => ({
+        ok: true,
+        document: await getHiveProjectsDocument(),
+      }),
+      isSafe: (value) => hiveReadResponseIsCacheSafe({
+        pathname,
+        session,
+        value,
+      }),
+    })
+      .then((body) => {
+        lastHiveProjectsBody = body;
+        lastHiveProjectsFailureAt = 0;
+        return body;
+      })
+      .catch((error) => {
+        lastHiveProjectsFailureAt = Date.now();
+        console.warn("hive_projects_fast_read_refresh_failed", {
+          error: safeText(error?.message || error, 500),
+        });
+        return lastHiveProjectsBody || fallbackHiveProjectsBody({ reason: "hive_projects_refresh_failed" });
+      })
+      .finally(() => {
+        pendingHiveProjectsRead = null;
+      });
+  }
+
+  const fallback = lastHiveProjectsBody || fallbackHiveProjectsBody();
+  if (!pendingHiveProjectsRead) return Promise.resolve(fallback);
+  return Promise.race([
+    pendingHiveProjectsRead,
+    timeoutValue(hiveProjectsFastTimeoutMs, {
+      ...fallback,
+      degraded: true,
+      reason: lastHiveProjectsBody ? "hive_projects_stale_while_refreshing" : "hive_projects_refreshing",
+    }),
+  ]);
+}
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -619,17 +703,9 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       });
       return true;
     }
-    const body = await getCachedHiveRead({
-      cacheKey: "hive_projects:v1",
-      compute: async () => ({
-        ok: true,
-        document: await getHiveProjectsDocument(),
-      }),
-      isSafe: (value) => hiveReadResponseIsCacheSafe({
-        pathname: url.pathname,
-        session,
-        value,
-      }),
+    const body = await readHiveProjectsBody({
+      pathname: url.pathname,
+      session,
     });
     await recordHiveObservabilityEvent({
       eventType: "user.hive.project_viewed",
