@@ -24,6 +24,7 @@ import {
   tableMap,
 } from "./system-status-base.js";
 import { chatPricingStatus } from "./model-pricing-status.js";
+import { contextRewriteWatchdogSnapshot } from "./repositories/context-rewrite.js";
 
 const recentFailureWindowMs = 24 * hour;
 const DEFAULT_NETWORK_TASK_SPEND_DAYS = 30;
@@ -677,6 +678,69 @@ async function boardManagerItem(tables, nowMs) {
       scope?.last_run_id && `lastRunId=${scope.last_run_id}`,
       run?.id && `latestRun=${run.id} ${run.status}${run.selected_action ? ` action=${run.selected_action}` : ""}`,
       lease && `lease=${lease.status}${lease.owner_instance ? ` owner=${lease.owner_instance}` : ""}`,
+    ],
+  });
+}
+
+async function contextRewriteItem(tables) {
+  if (tables.get("context_rewrite_jobs") !== true) {
+    return item({
+      id: "context_rewrite",
+      category: "task_engine",
+      title: "Context Rewrite Worker",
+      description: "Billed multi-call context rewrite pipeline with provider-call audit and stale-job recovery.",
+      owner: "worker process",
+      trigger: "Context Rewrite chat tool",
+      cadence: `${intEnv(process.env.CONTEXT_REWRITE_WORKER_INTERVAL_MS, 15000, { min: 2000 })}ms`,
+      status: "disabled",
+      statusLabel: "Table missing",
+    });
+  }
+  const snapshot = await contextRewriteWatchdogSnapshot({ limit: 5 }).catch((error) => ({
+    ok: false,
+    counts: {},
+    providerCallCounts: {},
+    staleJobs: [],
+    staleCount: 0,
+    runningProviderCallCount: 0,
+    timedOutProviderCallCount: 0,
+    error: error?.message || "context_rewrite_status_failed",
+  }));
+  const counts = snapshot.counts || {};
+  const providerCounts = snapshot.providerCallCounts || {};
+  const staleCount = Number(snapshot.staleCount || 0);
+  const runningCount = Number(counts.running || 0);
+  const failedCount = Number(counts.failed || 0);
+  const timedOutProviderCallCount = Number(snapshot.timedOutProviderCallCount || providerCounts.timed_out || 0);
+  const status = staleCount > 0 || timedOutProviderCallCount > 0
+    ? { status: "critical", label: "Stalled jobs" }
+    : failedCount > 0
+      ? { status: "warning", label: "Failures present" }
+      : runningCount > 0
+        ? { status: "ok", label: "Running" }
+        : { status: "ok", label: "Ready" };
+  return item({
+    id: "context_rewrite",
+    category: "task_engine",
+    title: "Context Rewrite Worker",
+    description: "Billed multi-call context rewrite pipeline with provider-call audit and stale-job recovery.",
+    owner: "worker process",
+    trigger: "Context Rewrite chat tool",
+    cadence: `${intEnv(process.env.CONTEXT_REWRITE_WORKER_INTERVAL_MS, 15000, { min: 2000 })}ms`,
+    status: snapshot.ok === false ? "unknown" : status.status,
+    statusLabel: snapshot.ok === false ? "Status query failed" : status.label,
+    staleAfterMs: snapshot.staleAfterMs || null,
+    counts: {
+      ...counts,
+      stale: staleCount,
+      provider_running: Number(providerCounts.running || 0),
+      provider_timed_out: timedOutProviderCallCount,
+      provider_orphaned: Number(providerCounts.orphaned || 0),
+    },
+    lastError: snapshot.error || "",
+    details: [
+      `providerCalls=${JSON.stringify(providerCounts)}`,
+      ...((snapshot.staleJobs || []).slice(0, 3).map((job) => `stale=${job.id} stage=${job.currentStage} retry=${job.retryCount}`)),
     ],
   });
 }
@@ -1679,6 +1743,7 @@ async function categoryItems(tables, nowMs) {
   ];
 
   const taskItems = [
+    await contextRewriteItem(tables),
     await networkTaskGenerationItem(tables, nowMs),
     await taskGenerationItem(tables, nowMs),
     await taskReviewItem(tables, nowMs),

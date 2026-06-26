@@ -21,13 +21,21 @@ const [
     cancelContextRewriteJob,
     claimContextRewriteJobs,
     completeContextRewriteJob,
+    createContextRewriteProviderCall,
     createContextRewriteJob,
     failContextRewriteJob,
+    finishContextRewriteProviderCall,
     getContextRewriteAssistantMessage,
     getContextRewriteArtifact,
     getContextRewriteJob,
+    recordContextRewriteScoreRun,
+    recordContextRewriteSearchResult,
     updateContextRewriteStage,
   },
+  { assembleContextRewriteSourcePacket },
+  { contextRewriteModels, runContextRewriteScoreCall },
+  { aggregateContextRewriteScores, normalizeContextRewriteScore },
+  { selectContextRewriteResearchQueries },
   { runContextRewriteWorkerOnce },
 ] = await Promise.all([
   import("../server/db/migrate.js"),
@@ -36,6 +44,10 @@ const [
   import("../server/repositories/context.js"),
   import("../server/jobs-corpus.js"),
   import("../server/repositories/context-rewrite.js"),
+  import("../server/context-rewrite-source-packet.js"),
+  import("../server/context-rewrite-provider.js"),
+  import("../server/context-rewrite-scoring.js"),
+  import("../server/context-rewrite-search.js"),
   import("../server/context-rewrite-worker.js"),
 ]);
 
@@ -162,6 +174,170 @@ try {
 
   const afterScore = localContextScore(artifact.markdown);
   assert.ok(afterScore >= beforeScore, `expected local quality score not to regress: before=${beforeScore} after=${afterScore}`);
+
+  const providerCallCount = await query(
+    "SELECT count(*)::integer AS count FROM context_rewrite_provider_calls WHERE job_id = $1",
+    [created.job.id]
+  );
+  assert.ok(Number(providerCallCount.rows[0]?.count || 0) >= 6, "provider call audit rows must be recorded");
+  const currentArtifactCount = await query(
+    "SELECT count(*)::integer AS count FROM context_rewrite_artifacts WHERE job_id = $1 AND artifact_type = 'final_markdown' AND is_current = true",
+    [created.job.id]
+  );
+  assert.equal(Number(currentArtifactCount.rows[0]?.count || 0), 1);
+
+  const auditCreated = await createContextRewriteJob({
+    accountId,
+    conversationId,
+    instructionText: "Provider call audit regression job.",
+    estimateCostUsd: 0.35,
+  });
+  const auditClaimed = (await claimContextRewriteJobs({
+    limit: 1,
+    workerId: `context_rewrite_audit_smoke_${suffix}`,
+  })).find((job) => job.id === auditCreated.job.id);
+  const auditCall = await createContextRewriteProviderCall({
+    job: auditClaimed,
+    stage: "audit_probe",
+    callIndex: 1,
+    provider: "mock",
+    model: "mock-audit",
+    requestDigest: sha256("audit_probe"),
+    timeoutMs: 60_000,
+    metadata: { smoke: true },
+  });
+  assert.equal(auditCall.status, "running");
+  await finishContextRewriteProviderCall({
+    providerCallId: auditCall.id,
+    status: "failed",
+    error: "audit_probe_complete",
+  });
+  await cancelContextRewriteJob({ accountId, jobId: auditCreated.job.id });
+
+  const resumeCreated = await createContextRewriteJob({
+    accountId,
+    conversationId,
+    instructionText: "Resume from frozen source and completed scoring/research without duplicate paid stages.",
+    estimateCostUsd: 0.35,
+  });
+  const resumeClaimed = (await claimContextRewriteJobs({
+    limit: 1,
+    workerId: `context_rewrite_resume_seed_${suffix}`,
+  })).find((job) => job.id === resumeCreated.job.id);
+  assert.equal(resumeClaimed.status, "running");
+  const resumeSource = await assembleContextRewriteSourcePacket({
+    accountId,
+    conversationId,
+    instructionText: resumeCreated.user.body,
+  });
+  let resumeJob = await updateContextRewriteStage({
+    job: resumeClaimed,
+    stage: "scoring",
+    progress: { stage: "scoring", message: "Seed frozen source for stale resume smoke." },
+    sourcePacket: resumeSource.packet,
+    sourcePacketDigest: resumeSource.digest,
+    baseContextRevision: resumeSource.contextDocument?.revision || 0,
+    baseBodySha256: sha256(resumeSource.contextDocument?.body || ""),
+    jobsRetrieval: resumeSource.jobsRetrieval,
+  });
+  const models = contextRewriteModels();
+  const seededScores = [];
+  for (const task of [
+    { modelFamily: "glm", model: models.glm, runIndex: 1 },
+    { modelFamily: "deepseek", model: models.deepseek, runIndex: 1 },
+  ]) {
+    const scoreResult = await runContextRewriteScoreCall({
+      modelFamily: task.modelFamily,
+      model: task.model,
+      sourcePacket: resumeSource.packet,
+      runIndex: task.runIndex,
+    });
+    const parsedScore = normalizeContextRewriteScore(scoreResult.parsed);
+    seededScores.push(parsedScore);
+    await recordContextRewriteScoreRun({
+      job: resumeJob,
+      modelFamily: task.modelFamily,
+      runIndex: task.runIndex,
+      attemptId: resumeJob.currentAttemptId,
+      provider: scoreResult.provider,
+      model: scoreResult.model,
+      responseId: scoreResult.responseId,
+      parsedScore,
+      rawText: scoreResult.text,
+      usage: scoreResult.usage,
+      costUsd: 0,
+      status: "completed",
+    });
+  }
+  const resumeAggregate = aggregateContextRewriteScores(seededScores);
+  resumeJob = await updateContextRewriteStage({
+    job: resumeJob,
+    stage: "research",
+    progress: { stage: "research", message: "Seed completed research for stale resume smoke." },
+    aggregateScore: resumeAggregate,
+  });
+  const resumeQueries = selectContextRewriteResearchQueries(resumeAggregate);
+  await Promise.all(resumeQueries.map((queryInfo, index) => recordContextRewriteSearchResult({
+    job: resumeJob,
+    queryIndex: index,
+    queryText: queryInfo.query,
+    attemptId: resumeJob.currentAttemptId,
+    provider: "mock",
+    model: "mock-search",
+    responseId: `mock_resume_search_${index}`,
+    resultJson: {
+      query: queryInfo.query,
+      rationale: queryInfo.rationale,
+      parsed: {
+        schema: "context_rewrite.search_result.v1",
+        query: queryInfo.query,
+        summary: "Seeded research checkpoint.",
+        sources: [],
+      },
+      annotations: [],
+    },
+    usage: {},
+    costUsd: 0,
+    status: "completed",
+  })));
+  resumeJob = await updateContextRewriteStage({
+    job: resumeJob,
+    stage: "final_rewrite",
+    progress: { stage: "final_rewrite", message: "Seed stale final stage for resume smoke." },
+  });
+  await query(
+    "UPDATE context_rewrite_jobs SET locked_at = now() - interval '2 hours', updated_at = now() - interval '2 hours' WHERE id = $1",
+    [resumeJob.id]
+  );
+  const stalePublicJob = await getContextRewriteJob({ accountId, jobId: resumeJob.id });
+  assert.equal(stalePublicJob.stalled, true);
+  assert.match(stalePublicJob.statusMessage, /Stalled/);
+  const beforeResumeScoreRows = Number((await query(
+    "SELECT count(*)::integer AS count FROM context_rewrite_score_runs WHERE job_id = $1",
+    [resumeJob.id]
+  )).rows[0]?.count || 0);
+  const beforeResumeSearchRows = Number((await query(
+    "SELECT count(*)::integer AS count FROM context_rewrite_search_results WHERE job_id = $1",
+    [resumeJob.id]
+  )).rows[0]?.count || 0);
+  const resumeWorker = await runContextRewriteWorkerOnce({
+    limit: 1,
+    workerId: `context_rewrite_resume_worker_${suffix}`,
+  });
+  assert.equal(resumeWorker.ok, true);
+  assert.equal(resumeWorker.processed, 1);
+  const resumed = await getContextRewriteJob({ accountId, jobId: resumeJob.id });
+  assert.equal(resumed.status, "completed");
+  const afterResumeScoreRows = Number((await query(
+    "SELECT count(*)::integer AS count FROM context_rewrite_score_runs WHERE job_id = $1",
+    [resumeJob.id]
+  )).rows[0]?.count || 0);
+  const afterResumeSearchRows = Number((await query(
+    "SELECT count(*)::integer AS count FROM context_rewrite_search_results WHERE job_id = $1",
+    [resumeJob.id]
+  )).rows[0]?.count || 0);
+  assert.equal(afterResumeScoreRows, beforeResumeScoreRows);
+  assert.equal(afterResumeSearchRows, beforeResumeSearchRows);
 
   const cancelCreated = await createContextRewriteJob({
     accountId,

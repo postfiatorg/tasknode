@@ -10,14 +10,33 @@ function envInt(name, fallback, min, max) {
   return Math.min(Math.max(Math.trunc(value), min), max);
 }
 
+function timeoutDisableAllowed() {
+  if (process.env.CONTEXT_REWRITE_ALLOW_UNSAFE_NO_TIMEOUT === "true") return true;
+  const environment = String(process.env.NODE_ENV || process.env.TASKNODE_ENV || "").trim().toLowerCase();
+  return environment !== "production";
+}
+
 function envTimeoutMs(name, fallback = defaultTimeoutMs) {
   const raw = String(process.env[name] ?? "").trim().toLowerCase();
-  if (["0", "none", "false", "off", "no"].includes(raw)) return 0;
+  if (["0", "none", "false", "off", "no"].includes(raw)) {
+    return timeoutDisableAllowed() ? 0 : fallback;
+  }
   return envInt(name, fallback, 5000, 86_400_000);
 }
 
 function stageTimeoutMs(stageEnvName, fallback = defaultTimeoutMs) {
   return envTimeoutMs(stageEnvName, envTimeoutMs("CONTEXT_REWRITE_PROVIDER_TIMEOUT_MS", fallback));
+}
+
+export function contextRewriteStageTimeoutMs(stage = "") {
+  const normalized = String(stage || "").trim();
+  if (normalized.startsWith("score")) return stageTimeoutMs("CONTEXT_REWRITE_SCORE_TIMEOUT_MS", defaultScoreTimeoutMs);
+  if (normalized.startsWith("research")) return stageTimeoutMs("CONTEXT_REWRITE_SEARCH_TIMEOUT_MS", defaultSearchTimeoutMs);
+  if (normalized === "polish_rewrite") {
+    return stageTimeoutMs("CONTEXT_REWRITE_POLISH_TIMEOUT_MS", stageTimeoutMs("CONTEXT_REWRITE_FINAL_TIMEOUT_MS", defaultFinalTimeoutMs));
+  }
+  if (normalized === "final_rewrite") return stageTimeoutMs("CONTEXT_REWRITE_FINAL_TIMEOUT_MS", defaultFinalTimeoutMs);
+  return stageTimeoutMs("CONTEXT_REWRITE_PROVIDER_TIMEOUT_MS", defaultTimeoutMs);
 }
 
 function openRouterKey() {

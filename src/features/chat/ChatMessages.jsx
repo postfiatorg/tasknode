@@ -292,7 +292,7 @@ function ContextRewriteArtifactCard({ contextRewrite = null }) {
   const hasArtifact = status === "completed" && markdown;
   const subtitle = hasArtifact
     ? summary || `${lineCount} Markdown lines ready`
-    : contextRewrite.progress?.message || `Context Rewrite ${stage}`;
+    : contextRewrite.statusMessage || contextRewrite.progress?.message || `Context Rewrite ${stage}`;
 
   return (
     <div className={`context-rewrite-card is-${status || "running"}`}>
