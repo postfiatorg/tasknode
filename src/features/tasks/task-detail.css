@@ -1441,8 +1441,12 @@
 }
 
 @media (max-width: 760px) {
+  .app-shell.sidebar-collapsed .task-modal-layer,
   .task-modal-layer {
     left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     pointer-events: auto;
   }
 
@@ -1450,7 +1454,12 @@
     top: 0;
     right: 0;
     bottom: 0;
+    left: 0;
     width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
     max-width: none;
     min-width: 0;
     border: 0;
@@ -1460,8 +1469,15 @@
 
   .task-modal-header,
   .task-modal-body {
+    box-sizing: border-box;
     padding-left: 20px;
     padding-right: 20px;
+  }
+
+  .task-modal-body {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
 	  .task-modal-stats,
