@@ -128,7 +128,11 @@ rewarded Network Tasks. It replaces the prior Orc-owned rewarded-task triage
 path for this responsibility.
 
 The worker runs from the split `worker-hive` process through
-`server/task-accounting-harvester-worker.js`. On each interval it:
+`server/task-accounting-harvester-worker.js` only when
+`TASKNODE_TASK_ACCOUNTING_HARVESTER_ENABLED=true`. Production keeps this off by
+default so operators can start from an empty table and enable only small sample
+runs instead of bulk-harvesting historical rewarded tasks. When enabled, each
+interval:
 
 1. scans canonical `task_projections` for rewarded or paid Network Tasks
 2. upserts one durable queue row in `task_accounting_harvests`
