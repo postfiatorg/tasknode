@@ -1,27 +1,39 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, FileText, GitBranch, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { requestJson } from "../../api";
 import "./hive.css";
 
-const reportTypeOptions = [
-  { value: "", label: "All reports" },
-  { value: "operative", label: "Operative" },
-  { value: "rewarded_task", label: "Rewarded Task" },
-  { value: "kol", label: "KOL" },
-  { value: "development", label: "Development" },
-  { value: "qa", label: "QA" },
-  { value: "executive", label: "Executive" },
+const reportTabs = [
+  { id: "operative", type: "operative", label: "Operative", title: "Operative report", cadence: "24h" },
+  { id: "rewarded", type: "rewarded_task", label: "Rewarded tasks", title: "Rewarded task report", cadence: "20m" },
+  { id: "kol", type: "kol", label: "KOL", title: "KOL report", cadence: "daily" },
+  { id: "dev", type: "development", label: "Development", title: "Development report", cadence: "24h" },
+  { id: "qa", type: "qa", label: "QA", title: "QA report", cadence: "24h" },
+  { id: "exec", type: "executive", label: "Executive", title: "Executive report", cadence: "24h" },
 ];
 
-const decisionActionOptions = [
-  { value: "all", label: "All decisions" },
-  { value: "create_task", label: "Create task" },
-  { value: "message_user", label: "Message user" },
-  { value: "cancel_task", label: "Cancel task" },
-  { value: "create_board", label: "Create board" },
-  { value: "archive_board", label: "Archive board" },
-  { value: "do_nothing", label: "Do nothing" },
+const tabs = [{ id: "overview", label: "Overview" }, ...reportTabs];
+
+const decisionActions = [
+  "create_task",
+  "message_user",
+  "cancel_task",
+  "create_board",
+  "archive_board",
+  "do_nothing",
 ];
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function formatAction(value = "") {
+  return String(value || "pending")
+    .split("_")
+    .filter(Boolean)
+    .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
+}
 
 function formatTime(value = "") {
   if (!value) return "unknown";
@@ -37,11 +49,32 @@ function formatTime(value = "") {
   }
 }
 
+function relativeTime(value = "") {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return value ? formatTime(value) : "unknown";
+  const deltaMs = Date.now() - timestamp;
+  if (deltaMs < 60_000) return "just now";
+  const minutes = Math.round(deltaMs / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
 function formatBytes(value = 0) {
   const bytes = Number(value || 0);
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${bytes} B`;
+}
+
+function compactNumber(value = 0) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return "0";
+  if (Math.abs(numeric) >= 1_000_000) return `${(numeric / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(numeric) >= 1_000) return `${(numeric / 1_000).toFixed(1)}K`;
+  return String(Math.round(numeric));
 }
 
 function parseMarkdownBlocks(markdown = "") {
@@ -112,6 +145,25 @@ function parseMarkdownBlocks(markdown = "") {
   return blocks;
 }
 
+function Badge({ children, variant = "gray" }) {
+  return <span className={`hive-brain-badge is-${variant}`}>{children}</span>;
+}
+
+function Status({ children, type = "" }) {
+  const normalized = String(type || children || "").toLowerCase().replace(/_/g, "-");
+  return <span className={`hive-brain-status is-${normalized}`}>{children}</span>;
+}
+
+function Kpi({ accent = false, label, sub = "", value }) {
+  return (
+    <div className="hive-brain-kpi">
+      <div className="hive-brain-kpi-label">{label}</div>
+      <div className={`hive-brain-kpi-value ${accent ? "is-accent" : ""}`}>{value}</div>
+      {sub && <div className="hive-brain-kpi-sub">{sub}</div>}
+    </div>
+  );
+}
+
 function MarkdownReportBody({ markdown = "" }) {
   const blocks = useMemo(() => parseMarkdownBlocks(markdown), [markdown]);
   if (!blocks.length) {
@@ -145,113 +197,302 @@ function MarkdownReportBody({ markdown = "" }) {
   );
 }
 
-function CollapsibleSection({ children, defaultOpen = false, number = "", subtitle = "", title = "" }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <section className="hive-section hive-brain-section">
-      <button
-        className="hive-brain-section-toggle"
-        onClick={() => setOpen((value) => !value)}
-        type="button"
-      >
-        {open ? <ChevronDown size={16} strokeWidth={1.8} /> : <ChevronRight size={16} strokeWidth={1.8} />}
-        {number && <span className="hive-layer">{number}</span>}
-        <span>
-          <strong>{title}</strong>
-          {subtitle && <small>{subtitle}</small>}
-        </span>
-      </button>
-      {open && <div className="hive-brain-section-body">{children}</div>}
-    </section>
-  );
+function reportExcerpt(report = {}) {
+  return report.bodyExcerpt || report.bodyMarkdownExcerpt || "Open the report for the full markdown briefing.";
 }
 
-function ReportDocument({ detail, loading }) {
-  if (loading && !detail) return <div className="hive-card hive-brain-empty">Loading report detail.</div>;
-  if (!detail?.ok) return <div className="hive-card hive-brain-empty">Select a Hive report to inspect.</div>;
-  const report = detail.report || {};
+function decisionSummary(detail = null) {
+  const run = detail?.run || {};
+  const guardrail = run.guardrailResult || {};
+  const result = run.result || {};
+  const execution = result.executionResult || result;
+  if (run.reasoningText) return run.reasoningText;
+  if (execution.reason) return execution.reason;
+  if (guardrail.blocked) return "Guardrails blocked this action before mutation.";
+  if (guardrail.ok) return "Guardrails passed for this decision.";
+  return "The Decision Agent has not recorded a plain-English summary for this run yet.";
+}
+
+function decisionResult(detail = null) {
+  const run = detail?.run || {};
+  const guardrail = run.guardrailResult || {};
+  const reasons = safeArray(guardrail.reasons);
+  const result = run.result || {};
+  const execution = result.executionResult || result;
+  return [
+    guardrail.ok ? "Guardrails passed." : guardrail.blocked ? "Guardrails blocked execution." : "Guardrail status unknown.",
+    reasons.length ? `Reasons: ${reasons.join(", ")}.` : "",
+    execution.executed === true ? "Mutation executed through the guarded adapter." : "",
+    execution.executed === false ? "No mutation executed." : "",
+    execution.reason ? `Result reason: ${execution.reason}.` : "",
+  ].filter(Boolean).join(" ");
+}
+
+function flattenLiveTasks(projectDocument = null) {
+  const projects = projectDocument?.projects || {};
+  return Object.values(projects)
+    .flatMap((project) =>
+      safeArray(project.tasks).map((task) => ({
+        ...task,
+        project: project.name || project.id || "Project",
+      }))
+    )
+    .sort((a, b) => Date.parse(b.updatedAt || b.createdAt || "") - Date.parse(a.updatedAt || a.createdAt || ""))
+    .slice(0, 7);
+}
+
+function DecisionCard({ detail, loading }) {
+  const run = detail?.run || {};
+  const action = run.selectedAction || run.status || "pending";
+  const options = safeArray(run.optionsConsidered);
+  const chips = [
+    `Guardrail · ${run.guardrailResult?.ok ? "ok" : run.guardrailResult?.blocked ? "blocked" : "unknown"}`,
+    `Reports · ${safeArray(run.inputReportIds).length}`,
+    `Candidates · ${run.taskStatusSnapshot?.idleEligibleContributorCount || 0}`,
+  ];
   return (
-    <div className="hive-report-document">
-      <div className="hive-report-meta">
-        <span>{report.label || report.type}</span>
-        <strong>{formatTime(report.generatedAt)}</strong>
-        <small>{report.model || "model unknown"} · {formatBytes(report.bodyBytes)}</small>
+    <div className="hive-brain-card hive-brain-decision-card">
+      <div className="hive-brain-decision-top">
+        <Badge variant="action">Board manager · decision</Badge>
+        <Badge variant={run.guardrailResult?.blocked ? "amber" : "blue"}>{formatAction(action)}</Badge>
+        <span className="hive-brain-grow" />
+        <span>{loading ? "Loading run" : `Cycle · ${relativeTime(run.startedAt)}`}</span>
       </div>
-      <MarkdownReportBody markdown={report.bodyMarkdown || ""} />
-      <CollapsibleSection
-        defaultOpen={false}
-        subtitle={`${detail.verifications?.length || 0} phases`}
-        title="Verification Phases"
-      >
-        <div className="hive-report-verifications">
-          {(detail.verifications || []).map((verification) => (
-            <article className="hive-card" key={verification.id}>
-              <div>
-                <strong>{verification.phase}</strong>
-                <small>{verification.agent} · {formatTime(verification.verifiedAt)}</small>
-              </div>
-              <pre>{verification.resultSummary}</pre>
-            </article>
-          ))}
-          {!detail.verifications?.length && <p>No verification phases recorded.</p>}
+      <div className="hive-brain-decision-body">
+        <h2>{run.selectedAction ? `${formatAction(run.selectedAction)} selected` : "Latest Decision Agent run"}</h2>
+        <div className="hive-brain-who">
+          {run.model || "model unknown"} · {run.shadow ? "shadow" : "active"} · {formatTime(run.startedAt)}
         </div>
-      </CollapsibleSection>
+        <p>{decisionSummary(detail)}</p>
+        <p>{decisionResult(detail)}</p>
+        <div className="hive-brain-stat-row">
+          {chips.map((chip) => <span className="hive-brain-pill" key={chip}>{chip}</span>)}
+        </div>
+        <div className="hive-brain-actions">
+          <span className="hive-brain-action-label">Decision space</span>
+          {decisionActions.map((item) => (
+            <span className={`hive-brain-action ${item === run.selectedAction ? "is-chosen" : ""}`} key={item}>
+              {formatAction(item)}{item === run.selectedAction ? " ✓" : ""}
+            </span>
+          ))}
+        </div>
+        {options.length > 0 && (
+          <div className="hive-brain-option-strip">
+            {options.slice(0, 4).map((option, index) => (
+              <article key={`${option.action || "option"}-${index}`}>
+                <strong>{formatAction(option.action || `Option ${index + 1}`)}</strong>
+                <span>{option.summary || option.rejectedBecause || "No option summary recorded."}</span>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function ReportsPanel() {
+function DecisionLog({ runs = [], selectedRunId = "", onSelectRun }) {
+  return (
+    <div className="hive-brain-card hive-brain-pad hive-brain-log">
+      <div className="hive-brain-section-label">Recent decisions</div>
+      <div className="hive-brain-section-sub">Every Decision Agent action, auditable.</div>
+      {runs.map((run) => (
+        <button
+          className={`hive-brain-log-row ${selectedRunId === run.id ? "is-active" : ""}`}
+          key={run.id}
+          onClick={() => onSelectRun(run.id)}
+          type="button"
+        >
+          <span>{relativeTime(run.startedAt)}</span>
+          <strong>{formatAction(run.selectedAction || run.status)}</strong>
+          <em>{run.reasoningText || (run.guardrailResult?.blocked ? "blocked by guardrail" : run.status)}</em>
+        </button>
+      ))}
+      {!runs.length && <div className="hive-brain-empty">No Decision Agent runs have been recorded yet.</div>}
+    </div>
+  );
+}
+
+function LiveTaskTable({ projectDocument = null, status = "loading" }) {
+  const tasks = useMemo(() => flattenLiveTasks(projectDocument), [projectDocument]);
+  return (
+    <div className="hive-brain-card">
+      <div className="hive-brain-table-head">
+        <div className="hive-brain-section-label">Live task status</div>
+        <div className="hive-brain-section-sub">Real-time task rows from the Hive project document.</div>
+      </div>
+      <div className="hive-brain-table-wrap">
+        <table className="hive-brain-table">
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Operative</th>
+              <th>Project</th>
+              <th>Status</th>
+              <th className="is-num">Reward</th>
+              <th className="is-num">When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tasks.map((task) => (
+              <tr key={task.id || task.taskId}>
+                <td>{task.title || task.taskId || "Untitled task"}</td>
+                <td>{task.assigneeHandle || task.assigneeDisplayName || task.assignee || "Unassigned"}</td>
+                <td className="is-muted">{task.project}</td>
+                <td><Status type={task.state}>{formatAction(task.state)}</Status></td>
+                <td className="is-pft">{compactNumber(task.pft)}</td>
+                <td className="is-num is-muted">{task.age || relativeTime(task.updatedAt || task.createdAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {status === "loading" && <div className="hive-brain-empty">Loading live task status.</div>}
+        {status === "error" && <div className="hive-brain-empty">Live task status is unavailable.</div>}
+        {status === "ready" && !tasks.length && <div className="hive-brain-empty">No live task rows are available.</div>}
+      </div>
+    </div>
+  );
+}
+
+function ReportsGrid({ latestByType, onOpenReport }) {
+  return (
+    <div>
+      <div className="hive-brain-section-label">Reports & generations</div>
+      <div className="hive-brain-section-sub">Six human-readable reports feed the Decision Agent. Click any report to read it.</div>
+      <div className="hive-brain-report-grid">
+        {reportTabs.map((tab) => {
+          const report = latestByType.get(tab.type);
+          return (
+            <button className="hive-brain-report-card" key={tab.id} onClick={() => onOpenReport(tab.id)} type="button">
+              <div className="hive-brain-report-card-top">
+                <span>{tab.title}</span>
+                <Badge variant={report ? "gray" : "red"}>{report ? tab.cad : "missing"}</Badge>
+              </div>
+              <div className="hive-brain-report-take">
+                {report ? reportExcerpt(report) : "No report generated yet."}
+              </div>
+              <div className="hive-brain-report-foot">
+                <span>{report ? `Updated ${relativeTime(report.generatedAt)}` : "Not generated"}</span>
+                <strong>Open →</strong>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OverviewPanel({
+  decisionDetail,
+  decisionLoading,
+  latestByType,
+  onOpenReport,
+  projectDocument,
+  projectStatus,
+  runs,
+  selectedRunId,
+  onSelectRun,
+}) {
+  return (
+    <section className="hive-brain-panel">
+      <div className="hive-brain-stack">
+        <DecisionCard detail={decisionDetail} loading={decisionLoading} />
+        <div className="hive-brain-grid2">
+          <DecisionLog runs={runs} selectedRunId={selectedRunId} onSelectRun={onSelectRun} />
+          <div className="hive-brain-card hive-brain-pad">
+            <div className="hive-brain-section-label">Board discussion → decisions</div>
+            <div className="hive-brain-section-sub">Live operator context is now consumed through reports, not raw JSON packets.</div>
+            <p className="hive-brain-body-copy">
+              Hive Brain shows the decision layer in plain English: the latest report set, the Decision Agent action,
+              guardrail result, and the live task state it is routing against.
+            </p>
+            <div className="hive-brain-tag-row">
+              <span>Reports first</span>
+              <span>Guarded actions</span>
+              <span>No raw packet view</span>
+            </div>
+          </div>
+        </div>
+        <LiveTaskTable projectDocument={projectDocument} status={projectStatus} />
+        <ReportsGrid latestByType={latestByType} onOpenReport={onOpenReport} />
+      </div>
+    </section>
+  );
+}
+
+function VerificationPipe({ detail }) {
+  const verifications = safeArray(detail?.verifications);
+  const phases = verifications.length
+    ? verifications.slice(0, 3).map((verification, index) => ({
+        number: index + 1,
+        title: verification.phase || `Phase ${index + 1}`,
+        meta: verification.agent || "verification agent",
+        stamp: verification.verifiedAt ? `Recorded ${relativeTime(verification.verifiedAt)}` : "Recorded",
+      }))
+    : [
+        { number: 1, title: "Initial report", meta: "Human-readable markdown generated from live Hive data.", stamp: "Generated" },
+        { number: 2, title: "Agent verification", meta: "Verifier output is recorded when available.", stamp: "Pending" },
+        { number: 3, title: "Final report", meta: "Report feeds the Decision Agent.", stamp: "Active" },
+      ];
+  return (
+    <div className="hive-brain-pipe">
+      {phases.map((phase) => (
+        <div className="hive-brain-step" key={`${phase.number}-${phase.title}`}>
+          <span>{phase.number}</span>
+          <strong>{phase.title}</strong>
+          <small>{phase.meta}</small>
+          <em>{phase.stamp}</em>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReportPanel({ detail, loading, tab }) {
+  const report = detail?.report || {};
+  return (
+    <section className="hive-brain-panel">
+      <div className="hive-brain-panel-head">
+        <h2>{tab.title}</h2>
+        <div>
+          <Badge variant="gray">Every {tab.cadence}</Badge>
+          <span>Generated {report.generatedAt ? relativeTime(report.generatedAt) : "unknown"}</span>
+          <span>{report.bodyBytes ? `${formatBytes(report.bodyBytes)} markdown` : "markdown report"}</span>
+        </div>
+      </div>
+      <VerificationPipe detail={detail} />
+      <div className="hive-brain-card hive-brain-report-document">
+        {loading && !detail ? (
+          <div className="hive-brain-empty">Loading report detail.</div>
+        ) : detail?.ok ? (
+          <>
+            <div className="hive-brain-table-head">
+              <div className="hive-brain-section-label">Final report → Decision Agent</div>
+              <div className="hive-brain-section-sub">{report.model || "model unknown"} · {formatTime(report.generatedAt)}</div>
+            </div>
+            <MarkdownReportBody markdown={report.bodyMarkdown || ""} />
+          </>
+        ) : (
+          <div className="hive-brain-empty">No {tab.title.toLowerCase()} is available yet.</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function HiveBrainView() {
+  const [activeTab, setActiveTab] = useState("overview");
   const [reports, setReports] = useState([]);
-  const [selectedReportId, setSelectedReportId] = useState("");
-  const [detail, setDetail] = useState(null);
-  const [reportType, setReportType] = useState("");
-  const [listStatus, setListStatus] = useState("loading");
-  const [detailStatus, setDetailStatus] = useState("idle");
-
-  const loadReports = useCallback(async () => {
-    setListStatus("loading");
-    try {
-      const params = new URLSearchParams({ limit: "60" });
-      const result = await requestJson(`/api/hive/reports?${params.toString()}`);
-      if (!result.ok) throw new Error(result.body?.message || `Hive reports failed with HTTP ${result.status}`);
-      const nextReports = result.body?.reports || [];
-      setReports(nextReports);
-      setSelectedReportId((current) => {
-        if (current && nextReports.some((report) => report.id === current)) return current;
-        const preferred = reportType ? nextReports.find((report) => report.type === reportType) : nextReports[0];
-        return preferred?.id || "";
-      });
-      setListStatus("ready");
-    } catch {
-      setListStatus("error");
-    }
-  }, [reportType]);
-
-  useEffect(() => {
-    loadReports();
-  }, [loadReports]);
-
-  useEffect(() => {
-    if (!selectedReportId) {
-      setDetail(null);
-      return undefined;
-    }
-    let cancelled = false;
-    setDetailStatus("loading");
-    requestJson(`/api/hive/reports/${encodeURIComponent(selectedReportId)}`)
-      .then((result) => {
-        if (cancelled) return;
-        if (!result.ok) throw new Error(result.body?.message || `Hive report failed with HTTP ${result.status}`);
-        setDetail(result.body || null);
-        setDetailStatus("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setDetailStatus("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedReportId]);
+  const [reportDetail, setReportDetail] = useState(null);
+  const [reportStatus, setReportStatus] = useState("loading");
+  const [reportDetailStatus, setReportDetailStatus] = useState("idle");
+  const [runs, setRuns] = useState([]);
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [decisionDetail, setDecisionDetail] = useState(null);
+  const [decisionDetailStatus, setDecisionDetailStatus] = useState("idle");
+  const [projectDocument, setProjectDocument] = useState(null);
+  const [projectStatus, setProjectStatus] = useState("loading");
 
   const latestByType = useMemo(() => {
     const entries = new Map();
@@ -260,276 +501,185 @@ function ReportsPanel() {
     }
     return entries;
   }, [reports]);
-  const visibleReports = useMemo(
-    () => (reportType ? reports.filter((report) => report.type === reportType) : reports),
-    [reportType, reports]
-  );
-  const expectedTypes = reportTypeOptions.filter((option) => option.value);
-  const readyTypeCount = expectedTypes.filter((option) => latestByType.has(option.value)).length;
+  const activeReportTab = reportTabs.find((tab) => tab.id === activeTab) || null;
+  const activeReport = activeReportTab ? latestByType.get(activeReportTab.type) : null;
+  const readyTypeCount = reportTabs.filter((tab) => latestByType.has(tab.type)).length;
   const newestReport = reports[0] || null;
+  const latestRun = runs[0] || {};
+  const projectStats = projectDocument?.stats || {};
 
-  const selectReportType = useCallback((value) => {
-    setReportType(value);
-    const preferred = value ? reports.find((report) => report.type === value) : reports[0];
-    setSelectedReportId(preferred?.id || "");
-  }, [reports]);
-
-  return (
-    <section className="hive-section hive-brain-primary-reports">
-      <div className="hive-section-heading">
-        <div>
-          <h2>Hive Reports</h2>
-          <p>Human-readable Hive v2 reports. These six markdown reports are the primary Hive Brain surface.</p>
-        </div>
-        <FileText size={18} strokeWidth={1.8} />
-      </div>
-      <div className="hive-report-health">
-        <span><strong>{readyTypeCount}/6</strong> report types ready</span>
-        <span><strong>{reports.length}</strong> recent reports loaded</span>
-        <span><strong>{newestReport ? formatTime(newestReport.generatedAt) : "none"}</strong> latest generation</span>
-      </div>
-      <div className="hive-report-type-grid">
-        {reportTypeOptions.filter((option) => option.value).map((option) => {
-          const latest = latestByType.get(option.value);
-          return (
-            <button
-              className={`hive-report-type-card ${reportType === option.value ? "is-active" : ""}`}
-              key={option.value}
-              onClick={() => {
-                selectReportType(option.value);
-                if (latest?.id) setSelectedReportId(latest.id);
-              }}
-              type="button"
-            >
-              <strong>{option.label}</strong>
-              <small>{latest ? formatTime(latest.generatedAt) : "missing"}</small>
-              <span>{latest ? `${formatBytes(latest.bodyBytes)} markdown` : "No report generated yet"}</span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="hive-brain-controls hive-report-controls">
-        <label>
-          <span>Type</span>
-          <select value={reportType} onChange={(event) => selectReportType(event.target.value)}>
-            {reportTypeOptions.map((option) => (
-              <option key={option.value || "all"} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <button className="hive-brain-icon-button" onClick={loadReports} title="Refresh reports" type="button">
-          <RefreshCw size={16} strokeWidth={1.8} />
-        </button>
-      </div>
-      <div className="hive-report-grid">
-        <div className="hive-brain-timeline" role="list">
-          {visibleReports.map((report) => (
-            <button
-              className={`hive-brain-run hive-report-row ${selectedReportId === report.id ? "is-active" : ""}`}
-              key={report.id}
-              onClick={() => setSelectedReportId(report.id)}
-              type="button"
-            >
-              <span className="hive-brain-run-time">{formatTime(report.generatedAt)}</span>
-              <strong>{report.label || report.type}</strong>
-              <small>{report.verificationCount || 0} phases · {formatBytes(report.bodyBytes)}</small>
-              {report.bodyExcerpt && <em>{report.bodyExcerpt}</em>}
-            </button>
-          ))}
-          {listStatus === "loading" && !reports.length && <div className="hive-card hive-brain-empty">Loading reports.</div>}
-          {listStatus === "error" && <div className="hive-card hive-brain-empty">Report list failed to load.</div>}
-          {listStatus === "ready" && !visibleReports.length && <div className="hive-card hive-brain-empty">No matching reports have been generated yet.</div>}
-        </div>
-        <ReportDocument detail={detail} loading={detailStatus === "loading"} />
-      </div>
-    </section>
-  );
-}
-
-function DecisionAgentDetail({ detail, loading }) {
-  if (loading && !detail) return <div className="hive-card hive-brain-empty">Loading Decision Agent run.</div>;
-  if (!detail?.ok) return <div className="hive-card hive-brain-empty">Select a Decision Agent run to inspect.</div>;
-  const run = detail.run || {};
-  const guardrail = run.guardrailResult || {};
-  const reasons = Array.isArray(guardrail.reasons) ? guardrail.reasons : [];
-  const result = run.result || {};
-  const execution = result.executionResult || result;
-  const resultText = [
-    guardrail.ok ? "Guardrails passed." : guardrail.blocked ? "Guardrails blocked execution." : "Guardrail status is unknown.",
-    reasons.length ? `Reasons: ${reasons.join(", ")}.` : "",
-    execution.executed === false ? "No mutation executed." : execution.executed === true ? "Mutation executed through the guarded action adapter." : "",
-    execution.reason ? `Result reason: ${execution.reason}.` : "",
-  ].filter(Boolean).join(" ");
-  return (
-    <div className="hive-decision-detail">
-      <div className="hive-report-meta">
-        <span>{run.selectedAction || "pending"}</span>
-        <strong>{formatTime(run.startedAt)}</strong>
-        <small>{run.model || "model unknown"} · {run.shadow ? "shadow" : "active"}</small>
-      </div>
-      <article className="hive-card hive-decision-explanation">
-        <h3>Explanation</h3>
-        <p>{run.reasoningText || "No explanation recorded."}</p>
-      </article>
-      <article className="hive-card hive-decision-explanation">
-        <h3>Result</h3>
-        <p>{resultText || "No result recorded."}</p>
-      </article>
-      <div className="hive-brain-chips">
-        <span className="hive-brain-chip">
-          <small>Guardrail</small>
-          <strong>{guardrail.ok ? "ok" : guardrail.blocked ? "blocked" : "unknown"}</strong>
-        </span>
-        <span className="hive-brain-chip">
-          <small>Reports</small>
-          <strong>{run.inputReportIds?.length || 0}</strong>
-        </span>
-        <span className="hive-brain-chip">
-          <small>Idle candidates</small>
-          <strong>{run.taskStatusSnapshot?.idleEligibleContributorCount || 0}</strong>
-        </span>
-      </div>
-      <CollapsibleSection defaultOpen title="Options Considered">
-        <div className="hive-decision-options">
-          {(run.optionsConsidered || []).map((option, index) => (
-            <article className="hive-card" key={`${option.action}-${index}`}>
-              <strong>{option.action}</strong>
-              <p>{option.summary}</p>
-              <small>{option.rejectedBecause}</small>
-            </article>
-          ))}
-          {!run.optionsConsidered?.length && <p>No options recorded.</p>}
-        </div>
-      </CollapsibleSection>
-    </div>
-  );
-}
-
-function DecisionAgentPanel() {
-  const [runs, setRuns] = useState([]);
-  const [selectedRunId, setSelectedRunId] = useState("");
-  const [detail, setDetail] = useState(null);
-  const [action, setAction] = useState("all");
-  const [listStatus, setListStatus] = useState("loading");
-  const [detailStatus, setDetailStatus] = useState("idle");
+  const loadReports = useCallback(async () => {
+    setReportStatus("loading");
+    try {
+      const result = await requestJson("/api/hive/reports?limit=60");
+      if (!result.ok) throw new Error(result.body?.message || `Hive reports failed with HTTP ${result.status}`);
+      setReports(result.body?.reports || []);
+      setReportStatus("ready");
+    } catch {
+      setReports([]);
+      setReportStatus("error");
+    }
+  }, []);
 
   const loadRuns = useCallback(async () => {
-    setListStatus("loading");
     try {
-      const params = new URLSearchParams({ limit: "12", action });
-      const result = await requestJson(`/api/hive/decision/runs?${params.toString()}`);
+      const result = await requestJson("/api/hive/decision/runs?limit=12&action=all");
       if (!result.ok) throw new Error(result.body?.message || `Decision Agent runs failed with HTTP ${result.status}`);
       const nextRuns = result.body?.runs || [];
       setRuns(nextRuns);
       setSelectedRunId((current) => current || nextRuns[0]?.id || "");
-      setListStatus("ready");
     } catch {
-      setListStatus("error");
+      setRuns([]);
     }
-  }, [action]);
+  }, []);
+
+  const loadProjects = useCallback(async () => {
+    setProjectStatus("loading");
+    try {
+      const result = await requestJson("/api/hive/projects");
+      if (!result.ok) throw new Error(result.body?.message || `Hive projects failed with HTTP ${result.status}`);
+      setProjectDocument(result.body?.document || null);
+      setProjectStatus("ready");
+    } catch {
+      setProjectDocument(null);
+      setProjectStatus("error");
+    }
+  }, []);
+
+  const refreshAll = useCallback(() => {
+    loadReports();
+    loadRuns();
+    loadProjects();
+  }, [loadReports, loadProjects, loadRuns]);
 
   useEffect(() => {
-    setSelectedRunId("");
-    setDetail(null);
-    loadRuns();
-  }, [loadRuns]);
+    refreshAll();
+  }, [refreshAll]);
 
   useEffect(() => {
     if (!selectedRunId) {
-      setDetail(null);
+      setDecisionDetail(null);
       return undefined;
     }
     let cancelled = false;
-    setDetailStatus("loading");
+    setDecisionDetailStatus("loading");
     requestJson(`/api/hive/decision/run/${encodeURIComponent(selectedRunId)}`)
       .then((result) => {
         if (cancelled) return;
         if (!result.ok) throw new Error(result.body?.message || `Decision Agent run failed with HTTP ${result.status}`);
-        setDetail(result.body || null);
-        setDetailStatus("ready");
+        setDecisionDetail(result.body || null);
+        setDecisionDetailStatus("ready");
       })
       .catch(() => {
-        if (!cancelled) setDetailStatus("error");
+        if (!cancelled) {
+          setDecisionDetail(null);
+          setDecisionDetailStatus("error");
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [selectedRunId]);
 
-  return (
-    <section className="hive-section">
-      <div className="hive-section-heading">
-        <div>
-          <h2>Decision Agent</h2>
-          <p>Guarded Hive v2 decisions from reports, live task state, and board discussions. This section shows prose summaries, not raw packets.</p>
-        </div>
-        <GitBranch size={18} strokeWidth={1.8} />
-      </div>
-      <div className="hive-brain-controls hive-report-controls">
-        <label>
-          <span>Action</span>
-          <select value={action} onChange={(event) => setAction(event.target.value)}>
-            {decisionActionOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <button className="hive-brain-icon-button" onClick={loadRuns} title="Refresh Decision Agent runs" type="button">
-          <RefreshCw size={16} strokeWidth={1.8} />
-        </button>
-      </div>
-      <div className="hive-report-grid">
-        <div className="hive-brain-timeline" role="list">
-          {runs.map((run) => (
-            <button
-              className={`hive-brain-run hive-report-row ${selectedRunId === run.id ? "is-active" : ""}`}
-              key={run.id}
-              onClick={() => setSelectedRunId(run.id)}
-              type="button"
-            >
-              <span className="hive-brain-run-time">{formatTime(run.startedAt)}</span>
-              <strong>{run.selectedAction || run.status}</strong>
-              <small>{run.shadow ? "shadow" : "active"} · {run.guardrailResult?.ok ? "guardrail ok" : run.guardrailResult?.blocked ? "blocked" : run.status}</small>
-              {run.reasoningText && <em>{run.reasoningText}</em>}
-            </button>
-          ))}
-          {listStatus === "loading" && !runs.length && <div className="hive-card hive-brain-empty">Loading Decision Agent runs.</div>}
-          {listStatus === "error" && <div className="hive-card hive-brain-empty">Decision Agent runs failed to load.</div>}
-          {listStatus === "ready" && !runs.length && <div className="hive-card hive-brain-empty">No Decision Agent runs have been recorded yet.</div>}
-        </div>
-        <DecisionAgentDetail detail={detail} loading={detailStatus === "loading"} />
-      </div>
-    </section>
-  );
-}
+  useEffect(() => {
+    if (!activeReport?.id) {
+      setReportDetail(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setReportDetailStatus("loading");
+    requestJson(`/api/hive/reports/${encodeURIComponent(activeReport.id)}`)
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) throw new Error(result.body?.message || `Hive report failed with HTTP ${result.status}`);
+        setReportDetail(result.body || null);
+        setReportDetailStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setReportDetail(null);
+          setReportDetailStatus("error");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeReport?.id]);
 
-export function HiveBrainView() {
+  const openTab = useCallback((tabId) => {
+    setActiveTab(tabId);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
   return (
     <div className="route-scroll hive-route">
-      <div className="hive-shell hive-brain-shell">
-        <header className="hive-header">
+      <div className="hive-brain-page">
+        <div className="hive-brain-toolbar">
+          <span>Synced {newestReport ? relativeTime(newestReport.generatedAt) : "unknown"}</span>
+          <button className="hive-brain-refresh" onClick={refreshAll} type="button">
+            <RefreshCw size={13} strokeWidth={2.2} />
+            Refresh
+          </button>
+        </div>
+
+        <header className="hive-brain-head">
           <div>
-            <div className="hive-live-kicker">
-              <span />
-              Operator audit
-            </div>
+            <div className="hive-brain-eyebrow"><span />Live · Auditable</div>
             <h1>Hive Brain</h1>
-            <p>Human-readable reports and Decision Agent summaries for understanding the live Hive system.</p>
+            <p>
+              The decision layer for the network. Reports flow up from every role, the Decision Agent reads them,
+              and routes work with every action shown in plain English.
+            </p>
           </div>
-          <div className="hive-stats">
-            <div className="hive-stat">
-              <span>Primary</span>
-              <strong>Reports</strong>
-            </div>
-            <div className="hive-stat">
-              <span>Format</span>
-              <strong>Markdown</strong>
-            </div>
+          <div className="hive-brain-head-meta">
+            <div>Decision Agent <b>{latestRun.startedAt ? `ran ${relativeTime(latestRun.startedAt)}` : "not loaded"}</b></div>
+            <div>Latest action <b>{formatAction(latestRun.selectedAction || latestRun.status)}</b></div>
+            <div>Report set <b>{readyTypeCount}/6 ready</b></div>
           </div>
         </header>
 
-        <ReportsPanel />
-        <DecisionAgentPanel />
+        <div className="hive-brain-kpis">
+          <Kpi label="Report types" sub={reportStatus === "error" ? "load failed" : "primary inputs"} value={`${readyTypeCount}/6`} />
+          <Kpi label="Recent reports" sub="loaded" value={reports.length} />
+          <Kpi label="Active projects" sub={projectStatus === "error" ? "unavailable" : "routing boards"} value={projectStatus === "ready" ? projectStats.activeProjects || 0 : "—"} />
+          <Kpi label="Open tasks" sub="live rows" value={projectStatus === "ready" ? projectStats.tasksInFlight || 0 : "—"} />
+          <Kpi accent label="PFT routed" sub="project total" value={projectStatus === "ready" ? compactNumber(projectStats.pftRouted) : "—"} />
+          <Kpi label="Decisions loaded" sub={latestRun.startedAt ? relativeTime(latestRun.startedAt) : "none"} value={runs.length} />
+        </div>
+
+        <nav className="hive-brain-tabs" aria-label="Hive Brain reports">
+          {tabs.map((tab) => (
+            <button
+              className={`hive-brain-tab ${activeTab === tab.id ? "is-active" : ""}`}
+              key={tab.id}
+              onClick={() => openTab(tab.id)}
+              type="button"
+            >
+              {tab.label}
+              {tab.cadence && <span>{tab.cadence}</span>}
+            </button>
+          ))}
+        </nav>
+
+        {activeTab === "overview" ? (
+          <OverviewPanel
+            decisionDetail={decisionDetail}
+            decisionLoading={decisionDetailStatus === "loading"}
+            latestByType={latestByType}
+            onOpenReport={openTab}
+            onSelectRun={setSelectedRunId}
+            projectDocument={projectDocument}
+            projectStatus={projectStatus}
+            runs={runs}
+            selectedRunId={selectedRunId}
+          />
+        ) : (
+          <ReportPanel
+            detail={reportDetail}
+            loading={reportDetailStatus === "loading"}
+            tab={activeReportTab}
+          />
+        )}
       </div>
     </div>
   );
