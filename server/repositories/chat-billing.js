@@ -846,6 +846,7 @@ export async function recordBillableModelRun({
   note = "",
   metadata = {},
   error = "",
+  uniqueKey = "",
 } = {}) {
   const normalizedAccountId = safeAccountId(accountId);
   const normalizedConversationId = safeConversationId(conversationId);
@@ -948,7 +949,9 @@ export async function recordBillableModelRun({
         totalTokens,
         webSearchCalls,
         toolCostUsd,
+        uniqueKey,
         metadata,
+        onConflictUnique: Boolean(uniqueKey),
       });
       ledgerEntry = publicLedgerEntry(row);
     }

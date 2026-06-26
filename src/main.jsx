@@ -2269,6 +2269,14 @@ function ChatSurface({
           status: job.status || rewrite.status,
           stage: job.currentStage || rewrite.stage,
           actualCostUsd: job.actualCostUsd ?? rewrite.actualCostUsd,
+          maxCostUsd: job.maxCostUsd ?? rewrite.maxCostUsd,
+          retryCount: job.retryCount ?? rewrite.retryCount,
+          attempt: job.attempt ?? rewrite.attempt,
+          stalled: job.stalled === true,
+          staleAfter: job.staleAfter || rewrite.staleAfter,
+          lastProgressAt: job.lastProgressAt || rewrite.lastProgressAt,
+          elapsedSinceProgressMs: job.elapsedSinceProgressMs ?? rewrite.elapsedSinceProgressMs,
+          statusMessage: job.statusMessage || rewrite.statusMessage,
           progress,
           trace: Array.isArray(progress?.trace) ? progress.trace : rewrite.trace,
         },
@@ -2301,7 +2309,7 @@ function ChatSurface({
           setSendMessage(
             job.status === "completed"
               ? "Context Rewrite ready."
-              : job.progress?.message || `Context Rewrite ${stage.replaceAll("_", " ")}. Check back in this tab.`
+              : job.statusMessage || job.progress?.message || `Context Rewrite ${stage.replaceAll("_", " ")}. Check back in this tab.`
           );
           setStatusTone("muted");
         }

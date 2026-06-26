@@ -3,14 +3,25 @@ import { databaseEnabled } from "./db/pool.js";
 import { recordBillableModelRun } from "./repositories/chat-billing.js";
 import {
   addContextRewriteActualCost,
+  assertContextRewriteBudgetAvailable,
   claimContextRewriteJobs,
   completeContextRewriteJob,
+  contextRewriteWatchdogSnapshot,
+  createContextRewriteProviderCall,
   failContextRewriteJob,
+  finishContextRewriteProviderCall,
+  getCompletedContextRewriteProviderCall,
+  heartbeatContextRewriteProviderCall,
   isContextRewriteTerminalError,
+  listCompletedContextRewriteScoreRuns,
+  listCompletedContextRewriteSearchResults,
+  markTimedOutContextRewriteProviderCalls,
   recordContextRewriteScoreRun,
   recordContextRewriteSearchResult,
+  saveContextRewriteDraftCheckpoint,
   updateContextRewriteStage,
 } from "./repositories/context-rewrite.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { assembleContextRewriteSourcePacket } from "./context-rewrite-source-packet.js";
 import {
   contextRewriteFinalPromptSha256,
@@ -29,6 +40,7 @@ import {
   runContextRewritePolishCall,
   runContextRewriteScoreCall,
   runContextRewriteSearchCall,
+  contextRewriteStageTimeoutMs,
 } from "./context-rewrite-provider.js";
 import {
   aggregateContextRewriteScores,
@@ -37,6 +49,7 @@ import {
 import { selectContextRewriteResearchQueries } from "./context-rewrite-search.js";
 
 let timer = null;
+let watchdogTimer = null;
 let running = false;
 
 function sha256(value = "") {
@@ -74,6 +87,95 @@ function usageCost(usage = {}) {
   return numeric(Number(usage.costUsd || 0) + Number(usage.toolCostUsd || 0));
 }
 
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function requestDigest(value = {}) {
+  return sha256(stableJson(value));
+}
+
+function heartbeatIntervalMs() {
+  const parsed = Number(process.env.CONTEXT_REWRITE_HEARTBEAT_INTERVAL_MS || 30_000);
+  return Math.min(Math.max(Number.isFinite(parsed) ? Math.trunc(parsed) : 30_000, 5_000), 60_000);
+}
+
+function completedProviderResultFromCall(row = null) {
+  if (!row || row.status !== "completed") return null;
+  return {
+    provider: row.provider || "openrouter",
+    model: row.model || "",
+    responseId: row.response_id || "",
+    parsed: row.result_json && typeof row.result_json === "object" ? row.result_json : {},
+    text: row.raw_text_excerpt || JSON.stringify(row.result_json || {}),
+    annotations: Array.isArray(row.annotations_json) ? row.annotations_json : [],
+    usage: row.usage_json && typeof row.usage_json === "object" ? row.usage_json : {},
+    providerCallId: row.id,
+  };
+}
+
+async function runAuditedProviderCall({
+  job,
+  stage,
+  callIndex = 0,
+  model = "",
+  request = {},
+  metadata = {},
+  execute,
+} = {}) {
+  await assertContextRewriteBudgetAvailable({ job, stage });
+  const timeoutMs = contextRewriteStageTimeoutMs(stage);
+  const providerCall = await createContextRewriteProviderCall({
+    job,
+    stage,
+    callIndex,
+    provider: "openrouter",
+    model,
+    requestDigest: requestDigest({ stage, callIndex, model, request }),
+    timeoutMs,
+    metadata,
+  });
+  const providerCallId = providerCall?.id || "";
+  const intervalMs = heartbeatIntervalMs();
+  const heartbeat = providerCallId
+    ? setInterval(() => {
+      heartbeatContextRewriteProviderCall({ job, providerCallId }).catch(() => null);
+    }, intervalMs)
+    : null;
+  heartbeat?.unref?.();
+  try {
+    if (providerCallId) {
+      await heartbeatContextRewriteProviderCall({ job, providerCallId }).catch(() => null);
+    }
+    const result = await execute();
+    const costUsd = usageCost(result?.usage || {});
+    await finishContextRewriteProviderCall({
+      providerCallId,
+      status: "completed",
+      result,
+      usage: result?.usage || {},
+      costUsd,
+    });
+    return { ...result, providerCallId };
+  } catch (error) {
+    const status = error?.message === "context_rewrite_provider_timeout" ? "timed_out" : "failed";
+    await finishContextRewriteProviderCall({
+      providerCallId,
+      status,
+      usage: {},
+      costUsd: 0,
+      error: error?.message || String(error || "provider_call_failed"),
+    }).catch(() => null);
+    throw error;
+  } finally {
+    if (heartbeat) clearInterval(heartbeat);
+  }
+}
+
 function minimumFinalMarkdownChars(sourcePacket = {}) {
   const sourceLength = String(sourcePacket?.current_context?.body || "").trim().length;
   if (sourceLength <= 0) return 4000;
@@ -104,6 +206,7 @@ function validateFinalMarkdown({ markdown = "", sourcePacket = {} } = {}) {
 }
 
 async function billProviderCall({ job, stage, result, usage, metadata = {} } = {}) {
+  const costUsd = usageCost(usage);
   const billable = await recordBillableModelRun({
     accountId: job.accountId,
     conversationId: job.conversationId,
@@ -118,29 +221,54 @@ async function billProviderCall({ job, stage, result, usage, metadata = {} } = {
     note: `Context Rewrite ${stage}`,
     metadata: {
       contextRewriteJobId: job.id,
+      contextRewriteProviderCallId: result?.providerCallId || "",
       stage,
       ...metadata,
     },
+    uniqueKey: result?.providerCallId
+      ? `context_rewrite:${job.id}:${stage}:${result.providerCallId}`
+      : result?.responseId
+        ? `context_rewrite:${job.id}:${stage}:${result.responseId}`
+        : "",
   });
-  const costUsd = usageCost(usage);
-  if (costUsd > 0) await addContextRewriteActualCost({ jobId: job.id, costUsd });
+  if (costUsd > 0 && billable?.ledgerEntry) await addContextRewriteActualCost({ jobId: job.id, costUsd });
   return billable;
 }
 
 async function runOneScore({ job, sourcePacket, modelFamily, model, runIndex }) {
+  const stage = `score:${modelFamily}:${runIndex}`;
   const prompt = renderContextRewriteScorePrompt({ runIndex, modelFamily });
-  const result = await runContextRewriteScoreCall({
+  const request = {
+    sourceDigest: requestDigest(sourcePacket),
     modelFamily,
-    model,
-    systemPrompt: prompt,
-    sourcePacket,
     runIndex,
-    decorrelation: `${modelFamily} scorer run ${runIndex}`,
+    promptSha256: contextRewriteScorePromptSha256,
+  };
+  const result = await runAuditedProviderCall({
+    job,
+    stage,
+    callIndex: runIndex,
+    model,
+    request,
+    metadata: {
+      modelFamily,
+      runIndex,
+      promptSha256: contextRewriteScorePromptSha256,
+      promptVersion: contextRewriteScorePromptVersion,
+    },
+    execute: () => runContextRewriteScoreCall({
+      modelFamily,
+      model,
+      systemPrompt: prompt,
+      sourcePacket,
+      runIndex,
+      decorrelation: `${modelFamily} scorer run ${runIndex}`,
+    }),
   });
   const parsedScore = normalizeContextRewriteScore(result.parsed);
   await billProviderCall({
     job,
-    stage: `score:${modelFamily}:${runIndex}`,
+    stage,
     result,
     usage: result.usage,
     metadata: {
@@ -154,6 +282,8 @@ async function runOneScore({ job, sourcePacket, modelFamily, model, runIndex }) 
     job,
     modelFamily,
     runIndex,
+    attemptId: job.currentAttemptId,
+    providerCallId: result.providerCallId,
     provider: result.provider,
     model: result.model,
     responseId: result.responseId,
@@ -175,15 +305,68 @@ async function runScoring({ job, sourcePacket }) {
     tasks.push({ modelFamily: "glm", model: models.glm, runIndex: index });
     tasks.push({ modelFamily: "deepseek", model: models.deepseek, runIndex: index });
   }
+  const completedRows = await listCompletedContextRewriteScoreRuns({ jobId: job.id });
+  const completedByKey = new Map();
+  for (const row of completedRows) {
+    const key = `${row.model_family}:${row.run_index}`;
+    if (!completedByKey.has(key)) completedByKey.set(key, normalizeContextRewriteScore(row.parsed_score_json || {}));
+  }
+  const missingTasks = [];
+  for (const task of tasks) {
+    const key = `${task.modelFamily}:${task.runIndex}`;
+    if (!completedByKey.has(key)) {
+      const providerCall = await getCompletedContextRewriteProviderCall({
+        jobId: job.id,
+        stage: `score:${task.modelFamily}:${task.runIndex}`,
+        callIndex: task.runIndex,
+      });
+      const providerResult = completedProviderResultFromCall(providerCall);
+      if (providerResult) {
+        const parsedScore = normalizeContextRewriteScore(providerResult.parsed);
+        await billProviderCall({
+          job,
+          stage: `score:${task.modelFamily}:${task.runIndex}`,
+          result: providerResult,
+          usage: providerResult.usage,
+          metadata: {
+            promptVersion: contextRewriteScorePromptVersion,
+            promptSha256: contextRewriteScorePromptSha256,
+            modelFamily: task.modelFamily,
+            runIndex: task.runIndex,
+            recoveredProviderCall: true,
+          },
+        });
+        await recordContextRewriteScoreRun({
+          job,
+          modelFamily: task.modelFamily,
+          runIndex: task.runIndex,
+          attemptId: providerCall.attempt_id || job.currentAttemptId,
+          providerCallId: providerCall.id,
+          provider: providerResult.provider,
+          model: providerResult.model || task.model,
+          responseId: providerResult.responseId,
+          promptDigest: contextRewriteScorePromptSha256,
+          parsedScore,
+          rawText: providerResult.text,
+          usage: providerResult.usage,
+          costUsd: usageCost(providerResult.usage),
+          status: "completed",
+        });
+        completedByKey.set(key, parsedScore);
+      } else {
+        missingTasks.push(task);
+      }
+    }
+  }
 
   const settled = await Promise.allSettled(
-    tasks.map((task) => runOneScore({ job, sourcePacket, ...task }))
+    missingTasks.map((task) => runOneScore({ job, sourcePacket, ...task }))
   );
   const failures = settled.filter((item) => item.status === "rejected");
   if (failures.length > 0) {
     await Promise.allSettled(
       failures.map((failure, index) => {
-        const task = tasks[settled.indexOf(failure)] || {};
+        const task = missingTasks[settled.indexOf(failure)] || {};
         return recordContextRewriteScoreRun({
           job,
           modelFamily: task.modelFamily || "unknown",
@@ -201,7 +384,10 @@ async function runScoring({ job, sourcePacket }) {
       })
     );
   }
-  const successes = settled.filter((item) => item.status === "fulfilled").map((item) => item.value);
+  const successes = [
+    ...completedByKey.values(),
+    ...settled.filter((item) => item.status === "fulfilled").map((item) => item.value),
+  ];
   const quorum = scoreQuorumCount(tasks.length);
   if (successes.length < quorum) {
     const error = new Error("context_rewrite_score_quorum_not_met");
@@ -214,15 +400,30 @@ async function runScoring({ job, sourcePacket }) {
 }
 
 async function runOneResearch({ job, model, queryInfo, index }) {
+  const stage = `research:${index + 1}`;
   try {
-    const result = await runContextRewriteSearchCall({
+    const result = await runAuditedProviderCall({
+      job,
+      stage,
+      callIndex: index,
       model,
-      query: queryInfo.query,
-      index,
+      request: {
+        query: queryInfo.query,
+        index,
+      },
+      metadata: {
+        query: queryInfo.query,
+        queryIndex: index,
+      },
+      execute: () => runContextRewriteSearchCall({
+        model,
+        query: queryInfo.query,
+        index,
+      }),
     });
     await billProviderCall({
       job,
-      stage: `research:${index + 1}`,
+      stage,
       result,
       usage: result.usage,
       metadata: {
@@ -240,6 +441,8 @@ async function runOneResearch({ job, model, queryInfo, index }) {
       job,
       queryIndex: index,
       queryText: queryInfo.query,
+      attemptId: job.currentAttemptId,
+      providerCallId: result.providerCallId,
       provider: result.provider,
       model: result.model,
       responseId: result.responseId,
@@ -254,6 +457,7 @@ async function runOneResearch({ job, model, queryInfo, index }) {
       job,
       queryIndex: index,
       queryText: queryInfo.query,
+      attemptId: job.currentAttemptId,
       provider: "openrouter",
       model,
       resultJson: {
@@ -272,8 +476,61 @@ async function runOneResearch({ job, model, queryInfo, index }) {
 async function runResearch({ job, aggregateScore }) {
   const models = contextRewriteModels();
   const queries = selectContextRewriteResearchQueries(aggregateScore);
+  const completedRows = await listCompletedContextRewriteSearchResults({ jobId: job.id });
+  const completedByIndex = new Map();
+  for (const row of completedRows) {
+    const index = Number(row.query_index || 0);
+    if (!completedByIndex.has(index)) completedByIndex.set(index, row.result_json || {});
+  }
+  const missing = [];
+  for (const [index, queryInfo] of queries.entries()) {
+    if (!completedByIndex.has(index)) {
+      const providerCall = await getCompletedContextRewriteProviderCall({
+        jobId: job.id,
+        stage: `research:${index + 1}`,
+        callIndex: index,
+      });
+      const providerResult = completedProviderResultFromCall(providerCall);
+      if (providerResult) {
+        const resultJson = {
+          query: queryInfo.query,
+          rationale: queryInfo.rationale,
+          parsed: providerResult.parsed,
+          annotations: providerResult.annotations,
+        };
+        await billProviderCall({
+          job,
+          stage: `research:${index + 1}`,
+          result: providerResult,
+          usage: providerResult.usage,
+          metadata: {
+            query: queryInfo.query,
+            queryIndex: index,
+            recoveredProviderCall: true,
+          },
+        });
+        await recordContextRewriteSearchResult({
+          job,
+          queryIndex: index,
+          queryText: queryInfo.query,
+          attemptId: providerCall.attempt_id || job.currentAttemptId,
+          providerCallId: providerCall.id,
+          provider: providerResult.provider,
+          model: providerResult.model || models.research,
+          responseId: providerResult.responseId,
+          resultJson,
+          usage: providerResult.usage,
+          costUsd: usageCost(providerResult.usage),
+          status: "completed",
+        });
+        completedByIndex.set(index, resultJson);
+      } else {
+        missing.push({ queryInfo, index });
+      }
+    }
+  }
   const settled = await Promise.allSettled(
-    queries.map((queryInfo, index) =>
+    missing.map(({ queryInfo, index }) =>
       runOneResearch({
         job,
         model: models.research,
@@ -286,7 +543,10 @@ async function runResearch({ job, aggregateScore }) {
   if (failures.length > 0) {
     console.warn(`context rewrite research degraded with ${failures.length} failed query call(s)`);
   }
-  return settled.filter((item) => item.status === "fulfilled").map((item) => item.value);
+  return [
+    ...[...completedByIndex.entries()].sort((left, right) => left[0] - right[0]).map((entry) => entry[1]),
+    ...settled.filter((item) => item.status === "fulfilled").map((item) => item.value),
+  ];
 }
 
 function finalMetadata({ result, parsed, researchResults, draftResult = null, draftParsed = null } = {}) {
@@ -327,7 +587,28 @@ function draftMetadata({ result, parsed, researchResults } = {}) {
   };
 }
 
-export async function processContextRewriteJob(job) {
+function frozenSourceFromJob(job = {}) {
+  const packet = job.sourcePacket && typeof job.sourcePacket === "object" ? job.sourcePacket : {};
+  if (!packet.schema) return null;
+  return {
+    packet,
+    digest: job.sourcePacketDigest || requestDigest(packet),
+    contextDocument: {
+      revision: job.baseContextRevision || packet.current_context?.revision || 0,
+      body: packet.current_context?.body || "",
+    },
+    jobsRetrieval: job.jobsRetrieval || packet.jobs_retrieval || {},
+  };
+}
+
+function aggregateScoreFromJob(job = {}) {
+  const score = job.aggregateScore && typeof job.aggregateScore === "object" ? job.aggregateScore : {};
+  return score.schema || score.score_total || score.dimensions ? score : null;
+}
+
+async function loadOrCreateSourcePacket(job) {
+  const frozen = frozenSourceFromJob(job);
+  if (frozen) return { source: frozen, job };
   await updateContextRewriteStage({
     job,
     jobId: job.id,
@@ -339,58 +620,141 @@ export async function processContextRewriteJob(job) {
     conversationId: job.conversationId,
     instructionText: job.instructionText || "",
   });
-  job = await updateContextRewriteStage({
+  const updatedJob = await updateContextRewriteStage({
     job,
     jobId: job.id,
     stage: "scoring",
     progress: { stage: "scoring", message: "Running Context Rewrite scoring harness." },
+    sourcePacket: source.packet,
     sourcePacketDigest: source.digest,
     baseContextRevision: source.contextDocument?.revision || 0,
     baseBodySha256: sha256(source.contextDocument?.body || ""),
     jobsRetrieval: source.jobsRetrieval,
   });
+  return { source, job: updatedJob };
+}
 
-  const scores = await runScoring({ job, sourcePacket: source.packet });
-  const aggregateScore = aggregateContextRewriteScores(scores);
-  job = await updateContextRewriteStage({
-    job,
-    jobId: job.id,
-    stage: "research",
-    progress: { stage: "research", message: "Running two privacy-safe web research queries." },
-    aggregateScore,
-  });
+export async function processContextRewriteJob(job) {
+  const loaded = await loadOrCreateSourcePacket(job);
+  const source = loaded.source;
+  job = loaded.job;
+
+  let aggregateScore = aggregateScoreFromJob(job);
+  if (!aggregateScore) {
+    if (job.currentStage !== "scoring") {
+      job = await updateContextRewriteStage({
+        job,
+        jobId: job.id,
+        stage: "scoring",
+        progress: { stage: "scoring", message: "Running Context Rewrite scoring harness." },
+      });
+    }
+    const scores = await runScoring({ job, sourcePacket: source.packet });
+    aggregateScore = aggregateContextRewriteScores(scores);
+    job = await updateContextRewriteStage({
+      job,
+      jobId: job.id,
+      stage: "research",
+      progress: { stage: "research", message: "Running two privacy-safe web research queries." },
+      aggregateScore,
+    });
+  }
+
+  if (job.currentStage !== "research" && job.currentStage !== "final_rewrite" && !job.draftMarkdown) {
+    job = await updateContextRewriteStage({
+      job,
+      jobId: job.id,
+      stage: "research",
+      progress: { stage: "research", message: "Running two privacy-safe web research queries." },
+      aggregateScore,
+    });
+  }
 
   const researchResults = await runResearch({ job, aggregateScore });
-  job = await updateContextRewriteStage({
-    job,
-    jobId: job.id,
-    stage: "final_rewrite",
-    progress: { stage: "final_rewrite", message: "Writing the final Markdown artifact." },
-  });
-
+  let markdown = String(job.draftMarkdown || "").trim();
+  let parsed = {};
+  let result = null;
   const models = contextRewriteModels();
-  const result = await runContextRewriteFinalCall({
-    model: models.final,
-    systemPrompt: contextRewriteFinalPromptText(),
-    sourcePacket: source.packet,
-    aggregateScore,
-    researchResults,
-    jobsRetrieval: source.jobsRetrieval,
-  });
-  await billProviderCall({
-    job,
-    stage: "final_rewrite",
-    result,
-    usage: result.usage,
-    metadata: {
-      promptSha256: contextRewriteFinalPromptSha256,
-    },
-  });
 
-  const parsed = result.parsed || {};
-  const markdown = String(parsed.markdown || "").trim();
-  if (!markdown) throw new Error("context_rewrite_final_markdown_empty");
-  validateFinalMarkdown({ markdown, sourcePacket: source.packet });
+  if (!markdown) {
+    job = await updateContextRewriteStage({
+      job,
+      jobId: job.id,
+      stage: "final_rewrite",
+      progress: { stage: "final_rewrite", message: "Writing the final Markdown artifact." },
+    });
+    const completedFinalCall = await getCompletedContextRewriteProviderCall({
+      jobId: job.id,
+      stage: "final_rewrite",
+      callIndex: 1,
+    });
+    result = completedProviderResultFromCall(completedFinalCall);
+    if (!result) {
+      result = await runAuditedProviderCall({
+        job,
+        stage: "final_rewrite",
+        callIndex: 1,
+        model: models.final,
+        request: {
+          sourceDigest: source.digest,
+          aggregateScoreDigest: requestDigest(aggregateScore),
+          researchDigest: requestDigest(researchResults),
+          jobsDigest: requestDigest(source.jobsRetrieval),
+          promptSha256: contextRewriteFinalPromptSha256,
+        },
+        metadata: {
+          promptSha256: contextRewriteFinalPromptSha256,
+          promptVersion: "context_rewrite_final_v1",
+        },
+        execute: () => runContextRewriteFinalCall({
+          model: models.final,
+          systemPrompt: contextRewriteFinalPromptText(),
+          sourcePacket: source.packet,
+          aggregateScore,
+          researchResults,
+          jobsRetrieval: source.jobsRetrieval,
+        }),
+      });
+      await billProviderCall({
+        job,
+        stage: "final_rewrite",
+        result,
+        usage: result.usage,
+        metadata: {
+          promptSha256: contextRewriteFinalPromptSha256,
+        },
+      });
+    } else {
+      await billProviderCall({
+        job,
+        stage: "final_rewrite",
+        result,
+        usage: result.usage,
+        metadata: {
+          promptSha256: contextRewriteFinalPromptSha256,
+          recoveredProviderCall: true,
+        },
+      });
+    }
+    parsed = result.parsed || {};
+    markdown = String(parsed.markdown || "").trim();
+    if (!markdown) throw new Error("context_rewrite_final_markdown_empty");
+    validateFinalMarkdown({ markdown, sourcePacket: source.packet });
+    job = await saveContextRewriteDraftCheckpoint({
+      job,
+      markdown,
+      metadata: draftMetadata({ result, parsed, researchResults }),
+    });
+  } else {
+    parsed = job.draftMetadata || {};
+    result = {
+      provider: parsed.provider || "",
+      model: parsed.model || models.final,
+      responseId: parsed.responseId || "",
+      usage: parsed.usage || {},
+      parsed,
+    };
+  }
 
   job = await updateContextRewriteStage({
     job,
@@ -399,27 +763,67 @@ export async function processContextRewriteJob(job) {
     progress: { stage: "polish_rewrite", message: "Polishing the Markdown artifact for readability, flow, formatting, and action." },
   });
 
-  const polishResult = await runContextRewritePolishCall({
-    model: models.polish,
-    systemPrompt: contextRewritePolishPromptText(),
-    sourcePacket: source.packet,
-    aggregateScore,
-    researchResults,
-    jobsRetrieval: source.jobsRetrieval,
-    draftMarkdown: markdown,
-    draftMetadata: draftMetadata({ result, parsed, researchResults }),
-  });
-  await billProviderCall({
-    job,
+  const completedPolishCall = await getCompletedContextRewriteProviderCall({
+    jobId: job.id,
     stage: "polish_rewrite",
-    result: polishResult,
-    usage: polishResult.usage,
-    metadata: {
-      promptSha256: contextRewritePolishPromptSha256,
-      promptVersion: contextRewritePolishPromptVersion,
-      draftResponseId: result.responseId,
-    },
+    callIndex: 1,
   });
+  let polishResult = completedProviderResultFromCall(completedPolishCall);
+  if (!polishResult) {
+    polishResult = await runAuditedProviderCall({
+      job,
+      stage: "polish_rewrite",
+      callIndex: 1,
+      model: models.polish,
+      request: {
+        sourceDigest: source.digest,
+        draftDigest: sha256(markdown),
+        aggregateScoreDigest: requestDigest(aggregateScore),
+        researchDigest: requestDigest(researchResults),
+        jobsDigest: requestDigest(source.jobsRetrieval),
+        promptSha256: contextRewritePolishPromptSha256,
+      },
+      metadata: {
+        promptSha256: contextRewritePolishPromptSha256,
+        promptVersion: contextRewritePolishPromptVersion,
+        draftResponseId: result.responseId,
+      },
+      execute: () => runContextRewritePolishCall({
+        model: models.polish,
+        systemPrompt: contextRewritePolishPromptText(),
+        sourcePacket: source.packet,
+        aggregateScore,
+        researchResults,
+        jobsRetrieval: source.jobsRetrieval,
+        draftMarkdown: markdown,
+        draftMetadata: draftMetadata({ result, parsed, researchResults }),
+      }),
+    });
+    await billProviderCall({
+      job,
+      stage: "polish_rewrite",
+      result: polishResult,
+      usage: polishResult.usage,
+      metadata: {
+        promptSha256: contextRewritePolishPromptSha256,
+        promptVersion: contextRewritePolishPromptVersion,
+        draftResponseId: result.responseId,
+      },
+    });
+  } else {
+    await billProviderCall({
+      job,
+      stage: "polish_rewrite",
+      result: polishResult,
+      usage: polishResult.usage,
+      metadata: {
+        promptSha256: contextRewritePolishPromptSha256,
+        promptVersion: contextRewritePolishPromptVersion,
+        draftResponseId: result.responseId,
+        recoveredProviderCall: true,
+      },
+    });
+  }
 
   const polishParsed = polishResult.parsed || {};
   const polishedMarkdown = String(polishParsed.markdown || "").trim();
@@ -472,9 +876,51 @@ export async function runContextRewriteWorkerOnce({ limit = 1, workerId = "" } =
   }
 }
 
+export async function runContextRewriteWatchdogOnce() {
+  if (!workerEnabled()) {
+    return { ok: true, skipped: true, reason: "context_rewrite_worker_not_configured" };
+  }
+  const marked = await markTimedOutContextRewriteProviderCalls().catch(() => ({ marked: 0 }));
+  const snapshot = await contextRewriteWatchdogSnapshot({ limit: 25 });
+  if (snapshot.staleJobs.length > 0 || Number(marked.marked || 0) > 0) {
+    console.warn(
+      `context rewrite watchdog: staleJobs=${snapshot.staleJobs.length} markedProviderCalls=${Number(marked.marked || 0)}`
+    );
+  }
+  await Promise.allSettled(
+    snapshot.staleJobs.map((job) =>
+      recordUserObservabilityEvent({
+        eventType: "user.context_rewrite.stalled",
+        accountId: job.accountId,
+        conversationId: job.conversationId,
+        sourceSurface: "context_rewrite_worker",
+        sourceRoute: "server/context-rewrite-worker.js",
+        resultStatus: "stalled",
+        reasonCode: "context_rewrite_running_stale",
+        metrics: {
+          retryCount: job.retryCount,
+          elapsedSinceLockMs: job.elapsedSinceLockMs,
+        },
+        metadata: {
+          contextRewriteJobId: job.id,
+          currentStage: job.currentStage,
+          lockedAt: job.lockedAt,
+          lockedBy: job.lockedBy,
+        },
+        privacyClass: "internal",
+      })
+    )
+  );
+  return { ok: true, markedProviderCalls: Number(marked.marked || 0), ...snapshot };
+}
+
 export function startContextRewriteWorker() {
   if (timer || !workerEnabled()) return;
   const intervalMs = Math.min(Math.max(Number(process.env.CONTEXT_REWRITE_WORKER_INTERVAL_MS) || 15_000, 2_000), 300_000);
+  const watchdogIntervalMs = Math.min(
+    Math.max(Number(process.env.CONTEXT_REWRITE_WATCHDOG_INTERVAL_MS) || 60_000, 15_000),
+    600_000
+  );
   timer = setInterval(() => {
     runContextRewriteWorkerOnce({ limit: Number(process.env.CONTEXT_REWRITE_WORKER_LIMIT || 1) || 1 })
       .catch((error) => {
@@ -482,10 +928,21 @@ export function startContextRewriteWorker() {
       });
   }, intervalMs);
   timer.unref?.();
+  watchdogTimer = setInterval(() => {
+    runContextRewriteWatchdogOnce().catch((error) => {
+      console.warn(`context rewrite watchdog failed: ${error?.message || error}`);
+    });
+  }, watchdogIntervalMs);
+  watchdogTimer.unref?.();
 }
 
 export function stopContextRewriteWorker() {
-  if (!timer) return;
-  clearInterval(timer);
-  timer = null;
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+  if (watchdogTimer) {
+    clearInterval(watchdogTimer);
+    watchdogTimer = null;
+  }
 }

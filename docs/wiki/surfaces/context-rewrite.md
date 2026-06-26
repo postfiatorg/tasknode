@@ -143,7 +143,9 @@ The visible trace includes:
 - `polish_rewrite`: second GLM 5.2 `xhigh` polish pass;
 - `completed`: Markdown artifact ready.
 
-`progress_json.events` keeps the recent stage events with timestamps. Provider-level audit remains durable in `chat_model_runs`, `context_rewrite_score_runs`, and `context_rewrite_search_results`.
+`progress_json.events` keeps the recent stage events with timestamps. Public job reads also expose `lastProgressAt`, `elapsedSinceProgressMs`, `staleAfter`, `retryCount`, `attempt`, `stalled`, and `statusMessage` so the app can distinguish a healthy long-running provider call from a stale worker lease.
+
+Provider-level audit is durable in `context_rewrite_provider_calls`, `chat_model_runs`, `context_rewrite_score_runs`, and `context_rewrite_search_results`. A provider-call row is inserted before each OpenRouter dispatch and heartbeated while the call is in flight.
 
 ## Provider And Billing
 
@@ -156,7 +158,7 @@ Provider calls have bounded defaults so a hung OpenRouter request does not wedge
 - draft rewrite: `CONTEXT_REWRITE_FINAL_TIMEOUT_MS`, default 45 minutes;
 - polish rewrite: `CONTEXT_REWRITE_POLISH_TIMEOUT_MS`, default 45 minutes unless overridden.
 
-`CONTEXT_REWRITE_PROVIDER_TIMEOUT_MS` can set a shared fallback, and a stage-specific timeout can override it.
+`CONTEXT_REWRITE_PROVIDER_TIMEOUT_MS` can set a shared fallback, and a stage-specific timeout can override it. Production-shaped environments do not allow disabling timeouts with `0`, `none`, `false`, `off`, or `no` unless `CONTEXT_REWRITE_ALLOW_UNSAFE_NO_TIMEOUT=true` is explicitly set.
 
 OpenRouter requests use provider privacy controls:
 
@@ -179,9 +181,12 @@ The user-facing warning is:
 
 Each provider call writes:
 
+- one `context_rewrite_provider_calls` row before dispatch, then `completed`, `failed`, `timed_out`, or `orphaned`;
 - one `chat_model_runs` row;
 - one `billing_ledger_entries` debit when provider usage reports non-zero cost;
 - one stage row in `context_rewrite_score_runs` or `context_rewrite_search_results` when applicable.
+
+Context Rewrite passes deterministic billing idempotency keys based on job, stage, and provider-call id. Retries should not duplicate ledger debits for a completed provider call. Each job also carries `max_cost_usd` as a retry guardrail; if retries have already consumed the configured job budget, the worker stops before launching another provider call.
 
 ## API Surface
 
@@ -196,10 +201,17 @@ Public API responses do not include internal scores.
 
 Migration `078_context_rewrite_jobs.sql` creates:
 
-- `context_rewrite_jobs`: account, conversation, instruction message, assistant message, status, stage, public progress trace, base context hash, source packet digest, estimate, actual cost, internal aggregate score JSON, Jobs retrieval JSON, final Markdown, and timestamps.
+- `context_rewrite_jobs`: account, conversation, instruction message, assistant message, status, stage, public progress trace, frozen source packet snapshot, base context hash, source packet digest, estimate, max retry cost, actual cost, internal aggregate score JSON, Jobs retrieval JSON, draft checkpoint, final Markdown, and timestamps.
 - `context_rewrite_score_runs`: one row per scorer call, including parsed structured JSON.
 - `context_rewrite_search_results`: one row per selected web query.
 - `context_rewrite_artifacts`: final Markdown artifact rows.
+
+Migration `081_context_rewrite_reliability.sql` adds:
+
+- `context_rewrite_provider_calls`: provider-call audit rows created before dispatch with attempt id, stage, call index, request digest, timeout, heartbeat, usage, cost, parsed result, and terminal status;
+- source packet and draft checkpoint fields on jobs so retries can resume from the first incomplete stage;
+- attempt/provider-call references on score and search rows;
+- `is_current` on artifacts plus a unique current-final-artifact index.
 
 Current statuses:
 
@@ -211,7 +223,11 @@ Current statuses:
 
 Cancellation is terminal. Stage updates, failure updates, and final artifact writes require the job to still be `running` and, when a worker lock exists, still owned by that lock. A worker that returns after cancellation can still record provider spend already incurred, but it cannot revive the job, overwrite it to failed, or publish an artifact.
 
-The worker can reclaim stale `running` jobs after `CONTEXT_REWRITE_RUNNING_STALE_MINUTES`, default `180`, and each stage update refreshes the lock heartbeat.
+The worker can reclaim stale `running` jobs after `CONTEXT_REWRITE_RUNNING_STALE_MINUTES`, default `60`. Stage updates refresh the lock heartbeat, and provider calls refresh both `context_rewrite_jobs.locked_at` and `context_rewrite_provider_calls.heartbeat_at` every `CONTEXT_REWRITE_HEARTBEAT_INTERVAL_MS`, default 30 seconds.
+
+Reclaim is resumable. A reclaimed job keeps its current stage, gets a new `current_attempt_id`, reuses the frozen source packet, reuses completed score and research rows, reconstructs missing stage rows from completed provider-call rows when possible, and resumes from the first incomplete required stage instead of restarting from `source_packet`.
+
+The worker also runs a watchdog every `CONTEXT_REWRITE_WATCHDOG_INTERVAL_MS`, default 60 seconds. The watchdog marks stale running provider calls as `timed_out` or `orphaned`, writes server warnings, emits `user.context_rewrite.stalled` observability events, and feeds Context Rewrite counts into `/api/system/status`.
 
 Current stages:
 
@@ -232,4 +248,4 @@ Focused checks:
 - `npm run migration-registration-smoke`
 - `npm run context-rewrite-sample-smoke`
 
-`context-rewrite-sample-smoke` requires `DATABASE_URL` and runs against Postgres with deterministic Jobs embeddings and `CONTEXT_REWRITE_PROVIDER_MOCK=true`. It seeds `/home/pfrpc/repos/sample_context.md`, verifies that the artifact does not regress a local quality heuristic, verifies 15 internal score dimensions, verifies the polish stage appears in the public progress trace, verifies public job and assistant metadata do not expose scores, and verifies a claimed running job cannot be revived, failed, or completed after cancellation.
+`context-rewrite-sample-smoke` requires `DATABASE_URL` and runs against Postgres with deterministic Jobs embeddings and `CONTEXT_REWRITE_PROVIDER_MOCK=true`. It seeds `/home/pfrpc/repos/sample_context.md`, verifies that the artifact does not regress a local quality heuristic, verifies 15 internal score dimensions, verifies provider-call audit rows, verifies one current final artifact, verifies stale public job fields, verifies stale reclaim resumes without adding duplicate score/search rows, verifies the polish stage appears in the public progress trace, verifies public job and assistant metadata do not expose scores, and verifies a claimed running job cannot be revived, failed, or completed after cancellation.
