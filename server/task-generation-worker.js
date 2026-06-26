@@ -4,8 +4,10 @@ import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { applyOffchainTaskOffer } from "./offchain-task-lifecycle.js";
 import {
   claimTaskGenerationRequests,
+  heartbeatTaskGenerationRequest,
   markTaskRequestFailed,
   markTaskRequestProposed,
+  reclaimStaleTaskGenerationRequests,
 } from "./repositories/task-requests.js";
 import {
   completeNetworkTaskOfferFromTaskRequest,
@@ -109,6 +111,7 @@ const taskgenResponseFormat = {
 let timer = null;
 let immediateTimer = null;
 let immediateRunning = false;
+const taskGenerationWorkerId = `taskgen_worker_${process.pid}_${Date.now()}`;
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -120,6 +123,31 @@ function safeObject(value) {
 
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function positiveInteger(value, fallback, { min = 1, max = 1_200_000 } = {}) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+export function taskGenerationProviderTimeoutMs(env = process.env) {
+  return positiveInteger(env.TASKNODE_TASK_GENERATION_PROVIDER_TIMEOUT_MS, 90_000, {
+    min: 5_000,
+    max: 20 * 60 * 1000,
+  });
+}
+
+function taskGenerationMaxAttempts(env = process.env) {
+  return positiveInteger(env.TASKNODE_TASK_GENERATION_MAX_ATTEMPTS, 3, { min: 1, max: 25 });
+}
+
+function taskGenerationStaleSeconds(env = process.env) {
+  const minimumSeconds = Math.max(60, Math.ceil(taskGenerationProviderTimeoutMs(env) / 1000) + 60);
+  return positiveInteger(env.TASKNODE_TASK_GENERATION_STALE_SECONDS, 900, {
+    min: minimumSeconds,
+    max: 86_400,
+  });
 }
 
 function isNetworkGeneratedRequest(request = {}) {
@@ -156,6 +184,10 @@ function networkGenerationFailureMetadata(message = "") {
 
 async function markGenerationFailure({ request = {}, message = "", logger = console } = {}) {
   const requestId = request.requestId || request.request_id;
+  const ownership = {
+    workerAttemptId: request.workerAttemptId || request.worker_attempt_id || "",
+    workerId: request.workerId || request.worker_id || "",
+  };
   if (isNetworkGeneratedRequest(request)) {
     const repair = await failNetworkTaskGenerationChain({
       requestId,
@@ -175,11 +207,12 @@ async function markGenerationFailure({ request = {}, message = "", logger = cons
       requestId,
       error: message,
       metadata: networkGenerationFailureMetadata(message),
+      ...ownership,
     }).catch(() => null);
     return { ok: false, hidden: true, repair };
   }
 
-  await markTaskRequestFailed({ requestId, error: message }).catch(() => null);
+  await markTaskRequestFailed({ requestId, error: message, ...ownership }).catch(() => null);
   return { ok: true, hidden: false, repair: null };
 }
 
@@ -683,7 +716,35 @@ function assertNetworkTaskgenV2Input(taskInput = {}) {
   };
 }
 
-export async function generateTaskWithProvider(taskInput) {
+async function fetchWithProviderTimeout(url, init = {}, {
+  fetchImpl = fetch,
+  timeoutMs = taskGenerationProviderTimeoutMs(),
+} = {}) {
+  const controller = new AbortController();
+  const timerId = setTimeout(() => controller.abort(new Error("taskgen_provider_timeout")), timeoutMs);
+  timerId.unref?.();
+  try {
+    return await fetchImpl(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError" || String(error?.message || "").includes("taskgen_provider_timeout")) {
+      const timeoutError = new Error("taskgen_provider_timeout");
+      timeoutError.code = "TASKGEN_PROVIDER_TIMEOUT";
+      timeoutError.timeoutMs = timeoutMs;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timerId);
+  }
+}
+
+export async function generateTaskWithProvider(taskInput, {
+  fetchImpl = fetch,
+  providerTimeoutMs = taskGenerationProviderTimeoutMs(),
+} = {}) {
   const gate = assertNetworkTaskgenV2Input(taskInput);
   const taskgenPrompt = taskgenPromptForInput(taskInput);
   const systemPrompt = loadPrompt(taskgenPrompt.path);
@@ -715,7 +776,7 @@ export async function generateTaskWithProvider(taskInput) {
     const repairInstruction = attempt === 1
       ? ""
       : "\n\nThe previous draft used opaque internal compliance language. Rewrite the task card in plain product language with a concrete object, action, artifact, and evidence. Do not use conformance, compliance, gates, verdict, priority stack, P0 standards, gap note, or exact-edits language.";
-    const response = await fetch(`${apiConfig.baseUrl}/chat/completions`, {
+    const response = await fetchWithProviderTimeout(`${apiConfig.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${apiConfig.apiKey}`,
@@ -733,6 +794,9 @@ export async function generateTaskWithProvider(taskInput) {
         ],
         response_format: taskgenResponseFormat,
       }),
+    }, {
+      fetchImpl,
+      timeoutMs: providerTimeoutMs,
     });
     const bodyText = await response.text();
     if (!response.ok) throw new Error(`taskgen_openai_http_${response.status}:${bodyText.slice(0, 500)}`);
@@ -763,6 +827,35 @@ export async function generateTaskWithProvider(taskInput) {
     }
   }
   throw lastError || new Error("taskgen_failed");
+}
+
+async function heartbeatRequestAttempt(request = {}, stage = "") {
+  const result = await heartbeatTaskGenerationRequest({
+    requestId: request.requestId,
+    workerAttemptId: request.workerAttemptId,
+    workerId: request.workerId,
+    stage,
+  });
+  if (!result.ok) {
+    const error = new Error("task_generation_attempt_lost");
+    error.staleAttempt = true;
+    error.stage = stage;
+    throw error;
+  }
+  return result.request || request;
+}
+
+async function requestAttemptStillOwned(request = {}, stage = "") {
+  if (!request.workerAttemptId) return { ok: true, request };
+  const result = await heartbeatTaskGenerationRequest({
+    requestId: request.requestId,
+    workerAttemptId: request.workerAttemptId,
+    workerId: request.workerId,
+    stage,
+  });
+  return result.ok
+    ? { ok: true, request: result.request || request }
+    : { ok: false, reason: result.reason || "task_generation_attempt_not_owner" };
 }
 
 function taskIdForOffer({ authorityWallet = "", requestBundleCid = "", output = {} } = {}) {
@@ -859,14 +952,28 @@ async function syncOfferProjection({
 }
 
 export async function processTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
-  const requests = await claimTaskGenerationRequests({ limit });
+  const stale = await reclaimStaleTaskGenerationRequests({
+    maxAttempts: taskGenerationMaxAttempts(),
+    staleSeconds: taskGenerationStaleSeconds(),
+    limit: 25,
+  }).catch((error) => {
+    logger.warn?.("task_generation_stale_reclaim_failed", { error: error?.message || String(error) });
+    return { retried: [], failed: [] };
+  });
+  const requests = await claimTaskGenerationRequests({
+    limit,
+    workerId: taskGenerationWorkerId,
+    maxAttempts: taskGenerationMaxAttempts(),
+  });
   const results = [];
   for (const request of requests) {
     let replayIdentity = null;
     try {
+      await heartbeatRequestAttempt(request, "fetch_request_bundle");
       const requestBundleResult = await fetchAndDecryptTasknodePayload({ cid: request.requestBundleCid });
       const requestBundle = safeObject(requestBundleResult.payload);
       const requestBundleDigest = `sha256:${sha256(requestBundle)}`;
+      await heartbeatRequestAttempt(request, "project_taskgen_input");
       const taskInput = projectTaskgenInput(requestBundle, {
         bundleCid: request.requestBundleCid,
         bundleDigest: requestBundleDigest,
@@ -882,10 +989,12 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
       const replay = await getTaskgenReplay(replayIdentity.replay_key);
       const replayedPublishedOffer = hasPublishedTaskgenReplay(replay);
       const replayedGeneratedOutput = hasGeneratedTaskgenReplay(replay);
+      await heartbeatRequestAttempt(request, "provider_generation");
       let taskgen = replayedGeneratedOutput
         ? taskgenFromReplay(replay, replayIdentity)
         : await generateTaskWithProvider(taskInput);
       let offer = replayedPublishedOffer ? offerFromReplay(replay) : null;
+      await heartbeatRequestAttempt(request, "pre_publish_replay_check");
       if (replayedGeneratedOutput && !offer) {
         offer = await findPublishedTaskgenOfferByTaskId({
           taskId: replay.taskId,
@@ -925,6 +1034,7 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
         }
       }
       if (!offer) {
+        await heartbeatRequestAttempt(request, "pre_publish_offer");
         const publishReady = refreshTaskgenReplayDeadlineForPublish(taskgen, taskInput.policy || {});
         taskgen = publishReady.taskgen;
         if (!replayedGeneratedOutput || publishReady.refreshed) {
@@ -949,6 +1059,7 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
           authorityWallet,
           requestBundleDigest,
         });
+        await heartbeatRequestAttempt(request, "offer_published");
         await recordTaskgenReplayPublished({
           replayKey: replayIdentity.replay_key,
           identity: replayIdentity,
@@ -968,10 +1079,12 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
         authorityWallet: authorityWallet.classicAddress,
         allocationWallet: offer.offerPayload?.allocation_wallet || "",
       });
-      await markTaskRequestProposed({
+      const proposed = await markTaskRequestProposed({
         requestId: request.requestId,
         generatedTaskId: offer.taskId,
         subjectWallet: offer.subjectWallet,
+        workerAttemptId: request.workerAttemptId,
+        workerId: request.workerId,
         metadata: {
           offerCid: offer.offerCid,
           offerTxHash: offer.txHash,
@@ -984,6 +1097,11 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
           sync,
         },
       });
+      if (!proposed.ok) {
+        throw Object.assign(new Error(proposed.reason || "task_request_not_owned_by_attempt"), {
+          staleAttempt: true,
+        });
+      }
       await completeNetworkTaskOfferFromTaskRequest({
         requestId: request.requestId,
         taskId: offer.taskId,
@@ -1012,6 +1130,28 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
       });
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
+      if (error?.staleAttempt) {
+        logger.warn?.("task_generation_stale_attempt_stopped", {
+          requestId: request.requestId,
+          stage: error.stage || "",
+          error: message,
+        });
+        results.push({ ok: false, stale: true, requestId: request.requestId, error: message });
+        continue;
+      }
+      const ownership = await requestAttemptStillOwned(request, "failure_guard").catch((ownershipError) => ({
+        ok: false,
+        reason: ownershipError?.message || "task_generation_attempt_ownership_check_failed",
+      }));
+      if (!ownership.ok) {
+        logger.warn?.("task_generation_stale_failure_suppressed", {
+          requestId: request.requestId,
+          reason: ownership.reason,
+          error: message,
+        });
+        results.push({ ok: false, stale: true, requestId: request.requestId, error: message });
+        continue;
+      }
       if (replayIdentity?.replay_key) {
         await markTaskgenReplayFailed({ replayKey: replayIdentity.replay_key, error: message }).catch(() => null);
       }
@@ -1024,7 +1164,14 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
       results.push({ ok: false, requestId: request.requestId, error: message });
     }
   }
-  return { ok: true, claimed: requests.length, results };
+  return {
+    ok: true,
+    claimed: requests.length,
+    staleReclaimed: stale.retried.length + stale.failed.length,
+    staleRetried: stale.retried.length,
+    staleFailed: stale.failed.length,
+    results,
+  };
 }
 
 export function scheduleTaskGenerationQueue({

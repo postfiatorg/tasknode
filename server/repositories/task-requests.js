@@ -1,4 +1,5 @@
 import { databaseEnabled, query } from "../db/pool.js";
+import { randomUUID } from "node:crypto";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -61,6 +62,12 @@ function requestAgeMs(value) {
 
 function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function positiveInteger(value, fallback, { min = 1, max = 100 } = {}) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
 }
 
 export function isOperatorAuditOnlyTaskRequest(row = {}) {
@@ -136,8 +143,11 @@ export function publicTaskRequest(row = {}) {
     status,
     statusLabel: statusLabel(status, { operatorAuditOnly }),
     generatedTaskId: row.generated_task_id || "",
+    workerId: row.worker_id || "",
+    workerAttemptId: row.worker_attempt_id || "",
     workerAttemptCount: Number(row.worker_attempt_count || 0),
     workerClaimedAt: toIso(row.worker_claimed_at),
+    workerHeartbeatAt: toIso(row.worker_heartbeat_at),
     workerCompletedAt: toIso(row.worker_completed_at),
     lastError: operatorAuditOnly ? "" : row.last_error || "",
     createdAt: toIso(row.created_at),
@@ -244,8 +254,101 @@ export async function getTaskRequestByRequestId(requestId = "") {
   return result.rows[0] ? publicTaskRequest(result.rows[0]) : null;
 }
 
-export async function claimTaskGenerationRequests({ limit = 1 } = {}) {
+export async function reclaimStaleTaskGenerationRequests({
+  maxAttempts = 3,
+  staleSeconds = 900,
+  limit = 25,
+} = {}) {
+  if (!databaseEnabled()) return { retried: [], failed: [] };
+  const safeMaxAttempts = positiveInteger(maxAttempts, 3, { min: 1, max: 25 });
+  const safeStaleSeconds = positiveInteger(staleSeconds, 900, { min: 5, max: 86_400 });
+  const safeLimit = positiveInteger(limit, 25, { min: 1, max: 100 });
+  const stalePredicate = `
+    status = 'generating'
+    AND generated_task_id = ''
+    AND COALESCE(worker_heartbeat_at, worker_claimed_at, updated_at, created_at) < now() - ($2::text || ' seconds')::interval
+  `;
+  const retryResult = await query(
+    `
+      WITH stale AS (
+        SELECT request_id
+        FROM task_requests
+        WHERE ${stalePredicate}
+          AND worker_attempt_count < $1
+        ORDER BY COALESCE(worker_heartbeat_at, worker_claimed_at, updated_at, created_at) ASC, request_id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT $3
+      )
+      UPDATE task_requests tr
+      SET
+        status = 'queued',
+        worker_id = '',
+        worker_attempt_id = '',
+        worker_claimed_at = NULL,
+        worker_heartbeat_at = NULL,
+        last_error = 'task_generation_stale_reclaimed_for_retry',
+        metadata_json = metadata_json || jsonb_build_object(
+          'lastStaleReclaimAt', now(),
+          'lastStaleReclaimAction', 'retry',
+          'lastStaleReclaimMaxAttempts', $1,
+          'lastStaleReclaimStaleSeconds', $2
+        ),
+        updated_at = now()
+      FROM stale
+      WHERE tr.request_id = stale.request_id
+      RETURNING tr.*
+    `,
+    [safeMaxAttempts, safeStaleSeconds, safeLimit]
+  );
+  const remainingLimit = Math.max(0, safeLimit - retryResult.rows.length);
+  const failResult = remainingLimit > 0
+    ? await query(
+      `
+        WITH stale AS (
+          SELECT request_id
+          FROM task_requests
+          WHERE ${stalePredicate}
+            AND worker_attempt_count >= $1
+          ORDER BY COALESCE(worker_heartbeat_at, worker_claimed_at, updated_at, created_at) ASC, request_id ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT $3
+        )
+        UPDATE task_requests tr
+        SET
+          status = 'failed',
+          worker_completed_at = now(),
+          worker_id = '',
+          worker_attempt_id = '',
+          worker_heartbeat_at = NULL,
+          last_error = 'task_generation_stale_attempts_exhausted',
+          metadata_json = metadata_json || jsonb_build_object(
+            'lastStaleReclaimAt', now(),
+            'lastStaleReclaimAction', 'failed',
+            'lastStaleReclaimMaxAttempts', $1,
+            'lastStaleReclaimStaleSeconds', $2
+          ),
+          updated_at = now()
+        FROM stale
+        WHERE tr.request_id = stale.request_id
+        RETURNING tr.*
+      `,
+      [safeMaxAttempts, safeStaleSeconds, remainingLimit]
+    )
+    : { rows: [] };
+  return {
+    retried: retryResult.rows.map(publicTaskRequest),
+    failed: failResult.rows.map(publicTaskRequest),
+  };
+}
+
+export async function claimTaskGenerationRequests({
+  limit = 1,
+  workerId = "",
+  maxAttempts = 3,
+} = {}) {
   if (!databaseEnabled()) return [];
+  const normalizedWorkerId = safeText(workerId, 180) || `taskgen_worker_${process.pid || "unknown"}`;
+  const safeMaxAttempts = positiveInteger(maxAttempts, 3, { min: 1, max: 25 });
   const result = await query(
     `
       WITH next_requests AS (
@@ -254,6 +357,7 @@ export async function claimTaskGenerationRequests({ limit = 1 } = {}) {
         WHERE status IN ('published', 'queued')
           AND request_bundle_cid <> ''
           AND generated_task_id = ''
+          AND worker_attempt_count < $2
         ORDER BY updated_at ASC, created_at ASC, request_id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT $1
@@ -261,7 +365,10 @@ export async function claimTaskGenerationRequests({ limit = 1 } = {}) {
       UPDATE task_requests tr
       SET
         status = 'generating',
+        worker_id = $3,
+        worker_attempt_id = $4,
         worker_claimed_at = now(),
+        worker_heartbeat_at = now(),
         worker_completed_at = NULL,
         worker_attempt_count = tr.worker_attempt_count + 1,
         last_error = '',
@@ -270,9 +377,59 @@ export async function claimTaskGenerationRequests({ limit = 1 } = {}) {
       WHERE tr.request_id = next_requests.request_id
       RETURNING tr.*
     `,
-    [Math.min(Math.max(Number(limit || 1), 1), 10)]
+    [
+      Math.min(Math.max(Number(limit || 1), 1), 10),
+      safeMaxAttempts,
+      normalizedWorkerId,
+      `taskgen_attempt_${randomUUID().replaceAll("-", "")}`,
+    ]
   );
   return result.rows.map(publicTaskRequest);
+}
+
+export async function heartbeatTaskGenerationRequest({
+  requestId = "",
+  workerAttemptId = "",
+  workerId = "",
+  stage = "",
+} = {}) {
+  if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const metadata = stage
+    ? jsonbStageMetadata({ stage, workerId })
+    : "{}";
+  const result = await query(
+    `
+      UPDATE task_requests
+      SET
+        worker_heartbeat_at = now(),
+        metadata_json = metadata_json || $4::jsonb,
+        updated_at = now()
+      WHERE request_id = $1
+        AND status = 'generating'
+        AND worker_attempt_id = $2
+        AND ($3::text = '' OR worker_id = $3)
+      RETURNING *
+    `,
+    [
+      safeText(requestId, 180),
+      safeText(workerAttemptId, 180),
+      safeText(workerId, 180),
+      metadata,
+    ]
+  );
+  return result.rows[0]
+    ? { ok: true, request: publicTaskRequest(result.rows[0]) }
+    : { ok: false, stale: true, reason: "task_generation_attempt_not_owner" };
+}
+
+function jsonbStageMetadata({ stage = "", workerId = "" } = {}) {
+  return JSON.stringify({
+    workerHeartbeat: {
+      stage: safeText(stage, 120),
+      workerId: safeText(workerId, 180),
+      at: new Date().toISOString(),
+    },
+  });
 }
 
 export async function markTaskRequestProposed({
@@ -280,8 +437,12 @@ export async function markTaskRequestProposed({
   generatedTaskId = "",
   subjectWallet = "",
   metadata = {},
+  workerAttemptId = "",
+  workerId = "",
 } = {}) {
   if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const attemptGuard = safeText(workerAttemptId, 180);
+  const workerGuard = safeText(workerId, 180);
   const result = await query(
     `
       UPDATE task_requests
@@ -290,10 +451,19 @@ export async function markTaskRequestProposed({
         generated_task_id = $3,
         status = 'proposed',
         worker_completed_at = now(),
+        worker_heartbeat_at = now(),
         last_error = '',
         metadata_json = metadata_json || $4::jsonb,
         updated_at = now()
       WHERE request_id = $1
+        AND (
+          $5::text = ''
+          OR (
+            status = 'generating'
+            AND worker_attempt_id = $5
+            AND ($6::text = '' OR worker_id = $6)
+          )
+        )
       RETURNING *
     `,
     [
@@ -304,23 +474,44 @@ export async function markTaskRequestProposed({
         workerResult: metadata,
         workerCompletedAt: new Date().toISOString(),
       }),
+      attemptGuard,
+      workerGuard,
     ]
   );
-  return { ok: true, request: publicTaskRequest(result.rows[0]) };
+  return result.rows[0]
+    ? { ok: true, request: publicTaskRequest(result.rows[0]) }
+    : { ok: false, stale: Boolean(attemptGuard), reason: "task_request_not_owned_by_attempt" };
 }
 
-export async function markTaskRequestFailed({ requestId = "", error = "", metadata = {} } = {}) {
+export async function markTaskRequestFailed({
+  requestId = "",
+  error = "",
+  metadata = {},
+  workerAttemptId = "",
+  workerId = "",
+} = {}) {
   if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const attemptGuard = safeText(workerAttemptId, 180);
+  const workerGuard = safeText(workerId, 180);
   const result = await query(
     `
       UPDATE task_requests
       SET
         status = 'failed',
         worker_completed_at = now(),
+        worker_heartbeat_at = now(),
         last_error = $2,
         metadata_json = metadata_json || $3::jsonb,
         updated_at = now()
       WHERE request_id = $1
+        AND (
+          $4::text = ''
+          OR (
+            status = 'generating'
+            AND worker_attempt_id = $4
+            AND ($5::text = '' OR worker_id = $5)
+          )
+        )
       RETURNING *
     `,
     [
@@ -331,9 +522,13 @@ export async function markTaskRequestFailed({ requestId = "", error = "", metada
         workerFailedAt: new Date().toISOString(),
         ...metadata,
       }),
+      attemptGuard,
+      workerGuard,
     ]
   );
-  return { ok: true, request: publicTaskRequest(result.rows[0]) };
+  return result.rows[0]
+    ? { ok: true, request: publicTaskRequest(result.rows[0]) }
+    : { ok: false, stale: Boolean(attemptGuard), reason: "task_request_not_owned_by_attempt" };
 }
 
 export async function listTaskRequests({ accountId = "", walletAddress = "", limit = 40 } = {}) {

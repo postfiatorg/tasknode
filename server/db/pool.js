@@ -4,7 +4,27 @@ const { Pool } = pg;
 
 const statementTimeoutMs = Math.max(500, Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS || 5000));
 const connectionTimeoutMs = Math.max(500, Number(process.env.DATABASE_CONNECTION_TIMEOUT_MS || 5000));
-const maxConnections = Math.min(Math.max(Number(process.env.DATABASE_POOL_MAX || 6), 1), 30);
+
+function processRole(env = process.env) {
+  return String(env.TASKNODE_PROCESS_ROLE || env.FLY_PROCESS_GROUP || "all").trim().toLowerCase() || "all";
+}
+
+function defaultPoolMaxForRole(role = processRole()) {
+  if (["web", "app", "api"].includes(role)) return 10;
+  if (role === "board-manager") return 3;
+  if (role === "worker:taskgen" || role === "worker:context-rewrite") return 4;
+  if (role === "worker:pftl") return 4;
+  if (role === "worker:task-review" || role === "worker:hive") return 3;
+  if (role === "worker:memory-profile" || role === "worker:airdrop") return 2;
+  return 6;
+}
+
+const poolRole = processRole();
+const configuredPoolMax = process.env.DATABASE_POOL_MAX;
+const maxConnections = Math.min(
+  Math.max(Number(configuredPoolMax || defaultPoolMaxForRole(poolRole)), 1),
+  30
+);
 
 let pool = null;
 let lastError = "";
@@ -28,6 +48,9 @@ export function databaseStatus() {
     configured: Boolean(databaseUrl()),
     enabled: databaseEnabled(),
     durable: databaseEnabled(),
+    role: poolRole,
+    poolMax: maxConnections,
+    poolMaxSource: configuredPoolMax ? "DATABASE_POOL_MAX" : "role_default",
     lastError,
   };
 }
@@ -41,7 +64,7 @@ export function getPool() {
       connectionTimeoutMillis: connectionTimeoutMs,
       idleTimeoutMillis: Math.max(1000, Number(process.env.DATABASE_IDLE_TIMEOUT_MS || 30000)),
       query_timeout: statementTimeoutMs,
-      application_name: process.env.TASKNODE_APP_NAME || "tasknodeofficial",
+      application_name: `${process.env.TASKNODE_APP_NAME || "tasknodeofficial"}:${poolRole}`,
     });
     pool.on("error", (error) => {
       lastError = error?.message || "database_pool_error";
@@ -54,7 +77,9 @@ export function poolMetrics() {
   return {
     configured: Boolean(databaseUrl()),
     enabled: databaseEnabled(),
+    role: poolRole,
     max: maxConnections,
+    maxSource: configuredPoolMax ? "DATABASE_POOL_MAX" : "role_default",
     total: pool?.totalCount || 0,
     idle: pool?.idleCount || 0,
     waiting: pool?.waitingCount || 0,

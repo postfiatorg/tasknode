@@ -10,9 +10,15 @@ function usage() {
   return [
     "Usage: npm run fly:background-guard -- [--app tasknodeofficial-dev] [--count 1] [--require-env NAME=value] [--dry-run]",
     "",
-    "Runs the Fly worker guard for both non-HTTP background process groups:",
-    "  1. worker",
-    "  2. board-manager",
+    "Runs the Fly worker guard for non-HTTP background process groups:",
+    "  1. worker-pftl",
+    "  2. worker-taskgen",
+    "  3. worker-task-review",
+    "  4. worker-context-rewrite",
+    "  5. worker-hive",
+    "  6. worker-memory-profile",
+    "  7. worker-airdrop",
+    "  8. board-manager",
     "",
     "Use npm run fly:worker-guard or npm run fly:board-guard for one process group.",
   ].join("\n");
@@ -42,5 +48,11 @@ if (hasArg("--process")) {
 
 const sharedArgs = process.argv.slice(2);
 
-runGuard(["--process", "worker", ...sharedArgs]);
+runGuard(["--process", "worker-pftl", ...sharedArgs]);
+runGuard(["--process", "worker-taskgen", ...sharedArgs]);
+runGuard(["--process", "worker-task-review", ...sharedArgs]);
+runGuard(["--process", "worker-context-rewrite", ...sharedArgs]);
+runGuard(["--process", "worker-hive", ...sharedArgs]);
+runGuard(["--process", "worker-memory-profile", ...sharedArgs]);
+runGuard(["--process", "worker-airdrop", ...sharedArgs]);
 runGuard(["--process", "board-manager", ...sharedArgs]);

@@ -25,6 +25,10 @@ assert.equal(shouldStartHttpServer("web"), true);
 assert.equal(shouldStartBackgroundWorkers("web"), false);
 assert.equal(shouldStartHttpServer("worker"), false);
 assert.equal(shouldStartBackgroundWorkers("worker"), true);
+assert.equal(shouldStartHttpServer("worker:taskgen"), false);
+assert.equal(shouldStartBackgroundWorkers("worker:taskgen"), true);
+assert.equal(shouldStartHttpServer("worker:hive"), false);
+assert.equal(shouldStartBackgroundWorkers("worker:hive"), true);
 assert.equal(shouldStartHttpServer("all"), true);
 assert.equal(shouldStartBackgroundWorkers("all"), true);
 

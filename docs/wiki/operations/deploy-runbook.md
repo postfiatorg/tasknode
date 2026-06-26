@@ -6,16 +6,32 @@ rollbacks, and first-response deploy triage.
 
 ## Production Shape
 
-`fly.toml` defines three process groups:
+`fly.toml` defines the HTTP app, role-specific background workers, and the
+Board Manager process group:
 
 ```text
-app           npm run start:web
-worker        npm run start:worker
-board-manager npm run start:board-manager
+app                    npm run start:web
+worker-pftl            npm run start:worker:pftl
+worker-taskgen         npm run start:worker:taskgen
+worker-task-review     npm run start:worker:task-review
+worker-context-rewrite npm run start:worker:context-rewrite
+worker-hive            npm run start:worker:hive
+worker-memory-profile  npm run start:worker:memory-profile
+worker-airdrop         npm run start:worker:airdrop
+board-manager          npm run start:board-manager
 ```
 
-Only `app` receives HTTP traffic. The `worker` and `board-manager` process
-groups must be verified separately after every deploy.
+Only `app` receives HTTP traffic. Every `worker-*` process group and
+`board-manager` must be verified separately after every deploy. The legacy
+`worker` process still exists for local compatibility, but production rejects
+the monolith worker unless `TASKNODE_ALLOW_MONOLITH_WORKER=true` is set
+explicitly.
+
+Database pool defaults are role-aware. `web` gets a larger pool for request
+traffic, task generation/context rewrite get medium pools for provider-heavy
+work, and low-frequency workers get smaller pools. `/api/system/status` exposes
+`databasePool.role`, `max`, `total`, `idle`, and `waiting` for the current
+process.
 
 Every process starts through `server/index.js`, and startup calls
 `migrateDatabase()` before the process finishes booting. That migrator reads the
@@ -45,7 +61,7 @@ TASKNODE_CONFIRM_PRODUCTION_DEPLOY=yes \
 Do not use raw `fly deploy` for normal production releases. The npm wrapper
 checks migration registration, confirms that `fly.toml` targets the production
 hostname, deploys the image, and then runs the background guard so the
-non-HTTP `worker` and `board-manager` process groups are started and have
+non-HTTP `worker-*` and `board-manager` process groups are started and have
 `restart=always`.
 
 ## Rollback
@@ -266,7 +282,7 @@ fly logs -a tasknodeofficial-dev
 Expected:
 
 - `app` has a started machine and `/health` is green.
-- `worker` has a started machine with `restart=always`.
+- Every `worker-*` group has a started machine with `restart=always`.
 - `board-manager` has a started machine with `restart=always`.
 - The newly deployed endpoint, config, migration, or UI behavior is visible on
   production.

@@ -88,6 +88,7 @@ const migrations = [
   "079_hive_reports.sql",
   "080_hive_decision_runs.sql",
   "081_context_rewrite_reliability.sql",
+  "082_task_generation_worker_ownership.sql",
 ];
 
 let migrated = false;

@@ -14,28 +14,86 @@ import { startRecommendedConnectionsWorker } from "./recommended-connections-wor
 import { startContextRewriteWorker } from "./context-rewrite-worker.js";
 import { startTaskGenerationWorker } from "./task-generation-worker.js";
 import { startTaskReviewWorker } from "./task-review-worker.js";
+import { isMonolithWorkerRole, tasknodeProcessRole } from "./process-role.js";
 
 function shouldStartHiveDecisionAgentInBackground() {
   const role = String(process.env.TASKNODE_PROCESS_ROLE || process.env.FLY_PROCESS_GROUP || "all").trim().toLowerCase();
   return role === "all" || process.env.TASKNODE_HIVE_DECISION_AGENT_RUN_IN_WORKER === "true";
 }
 
-export function startBackgroundWorkers() {
-  startMemoryWorker();
-  startHiveSecretaryWorker();
-  startHiveProjectWorker();
-  startHiveReportsWorker();
-  if (shouldStartHiveDecisionAgentInBackground()) startHiveDecisionAgentWorker();
+function productionMonolithBlocked(role = tasknodeProcessRole()) {
+  const production = process.env.NODE_ENV === "production" || process.env.TASKNODE_ENV === "production";
+  return production &&
+    isMonolithWorkerRole(role) &&
+    process.env.TASKNODE_ALLOW_MONOLITH_WORKER !== "true";
+}
+
+function startPftlWorkers() {
   startIpfsReplicationWorker();
-  startNetworkTaskGenerationWorker();
   startPftlCacheWorker();
   startPftlArchiveWorker();
   startPftlCacheWatcher();
   startPftlCacheReducerWorker();
   startPftlCacheRetentionWorker();
-  startDailyAirdropWorker();
-  startRecommendedConnectionsWorker();
-  startContextRewriteWorker();
+}
+
+function startTaskgenWorkers() {
+  startNetworkTaskGenerationWorker();
   startTaskGenerationWorker();
+}
+
+function startTaskReviewWorkers() {
   startTaskReviewWorker();
+}
+
+function startContextRewriteWorkers() {
+  startContextRewriteWorker();
+}
+
+function startHiveWorkers() {
+  startHiveSecretaryWorker();
+  startHiveProjectWorker();
+  startHiveReportsWorker();
+  if (shouldStartHiveDecisionAgentInBackground()) startHiveDecisionAgentWorker();
+}
+
+function startMemoryProfileWorkers() {
+  startMemoryWorker();
+  startRecommendedConnectionsWorker();
+}
+
+function startAirdropWorkers() {
+  startDailyAirdropWorker();
+}
+
+export function startBackgroundWorkers() {
+  const role = tasknodeProcessRole();
+  if (productionMonolithBlocked(role)) {
+    throw new Error(
+      `monolith_background_worker_disabled_in_production:${role}. ` +
+        "Use split worker roles or set TASKNODE_ALLOW_MONOLITH_WORKER=true for an explicit compatibility run."
+    );
+  }
+  if (isMonolithWorkerRole(role)) {
+    console.warn("monolith_background_worker_role", {
+      role,
+      note: "Starting all background workers in one process. Production should use split worker roles.",
+    });
+    startPftlWorkers();
+    startTaskgenWorkers();
+    startTaskReviewWorkers();
+    startContextRewriteWorkers();
+    startHiveWorkers();
+    startMemoryProfileWorkers();
+    startAirdropWorkers();
+    return;
+  }
+  if (role === "worker:pftl") startPftlWorkers();
+  else if (role === "worker:taskgen") startTaskgenWorkers();
+  else if (role === "worker:task-review") startTaskReviewWorkers();
+  else if (role === "worker:context-rewrite") startContextRewriteWorkers();
+  else if (role === "worker:hive") startHiveWorkers();
+  else if (role === "worker:memory-profile") startMemoryProfileWorkers();
+  else if (role === "worker:airdrop") startAirdropWorkers();
+  else throw new Error(`unknown_background_worker_role:${role}`);
 }

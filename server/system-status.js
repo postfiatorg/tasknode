@@ -1,4 +1,4 @@
-import { databaseEnabled, databaseStatus, query } from "./db/pool.js";
+import { databaseEnabled, databaseStatus, poolMetrics, query } from "./db/pool.js";
 import { ethereumDepositConfigStatus } from "./ethereum-deposits.js";
 import {
   jobsEffectiveEmbeddingModel,
@@ -1834,6 +1834,7 @@ export async function readSystemStatus({
   const generatedAt = new Date();
   const nowMs = generatedAt.getTime();
   const database = databaseStatus();
+  const databasePool = poolMetrics();
   if (!databaseEnabled()) {
     const [categories, chatPricing, networkTaskSpendByDay, boardManagerDailyCost, agentActivity] = await Promise.all([
       categoryItems(new Map(), nowMs),
@@ -1846,6 +1847,7 @@ export async function readSystemStatus({
       ok: true,
       generatedAt: generatedAt.toISOString(),
       database,
+      databasePool,
       summary: summarizeCategories(categories),
       chatPricing,
       networkTaskSpendByDay,
@@ -1866,6 +1868,7 @@ export async function readSystemStatus({
     ok: true,
     generatedAt: generatedAt.toISOString(),
     database,
+    databasePool,
     summary: summarizeCategories(categories),
     chatPricing,
     networkTaskSpendByDay,

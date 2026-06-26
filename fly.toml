@@ -6,7 +6,13 @@ primary_region = "ewr"
 
 [processes]
   app = "npm run start:web"
-  worker = "npm run start:worker"
+  worker-pftl = "npm run start:worker:pftl"
+  worker-taskgen = "npm run start:worker:taskgen"
+  worker-task-review = "npm run start:worker:task-review"
+  worker-context-rewrite = "npm run start:worker:context-rewrite"
+  worker-hive = "npm run start:worker:hive"
+  worker-memory-profile = "npm run start:worker:memory-profile"
+  worker-airdrop = "npm run start:worker:airdrop"
   board-manager = "npm run start:board-manager"
 
 [env]

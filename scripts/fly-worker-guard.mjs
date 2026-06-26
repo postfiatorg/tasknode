@@ -92,12 +92,22 @@ function parseRequiredEnvSpec(spec = "") {
 }
 
 function defaultRequiredEnv(processGroup = "") {
-  if (processGroup !== "worker") return [];
-  return [
-    { name: "TASKNODE_TASK_GENERATION_WORKER_ENABLED", expected: "true" },
-    { name: "TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED", expected: "true" },
-    { name: "TASKNODE_TASK_REVIEW_WORKER_ENABLED", expected: "true" },
-  ];
+  return {
+    "worker-taskgen": [
+      { name: "TASKNODE_TASK_GENERATION_WORKER_ENABLED", expected: "true" },
+      { name: "TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED", expected: "true" },
+    ],
+    "worker-task-review": [
+      { name: "TASKNODE_TASK_REVIEW_WORKER_ENABLED", expected: "true" },
+    ],
+    "worker-pftl": [
+      { name: "PFTL_CACHE_WORKER_ENABLED", expected: "true" },
+      { name: "PFTL_CACHE_WSS_WATCHER_ENABLED", expected: "true" },
+    ],
+    "worker-airdrop": [
+      { name: "TASKNODE_DAILY_AIRDROP_WORKER_ENABLED", expected: "true" },
+    ],
+  }[processGroup] || [];
 }
 
 function verifyMachineEnv({ app, machineId, requiredEnv, dryRun = false } = {}) {

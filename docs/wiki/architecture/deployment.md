@@ -26,39 +26,49 @@ and non-GET API requests are exempt so Fly health checks keep passing.
 Fly builds the production Docker image from `Dockerfile` and runs the process definitions in `fly.toml`:
 
 ```text
-app           npm run start:web
-worker        npm run start:worker
-board-manager npm run start:board-manager
+app                    npm run start:web
+worker-pftl            npm run start:worker:pftl
+worker-taskgen         npm run start:worker:taskgen
+worker-task-review     npm run start:worker:task-review
+worker-context-rewrite npm run start:worker:context-rewrite
+worker-hive            npm run start:worker:hive
+worker-memory-profile  npm run start:worker:memory-profile
+worker-airdrop         npm run start:worker:airdrop
+board-manager          npm run start:board-manager
 ```
 
-Only the `app` process receives HTTP traffic. It serves the built frontend, exposes `/api/*`, and runs the startup migration check. The `worker` and `board-manager` processes are separate Fly machine groups; verify their live state with `fly status -a tasknodeofficial-dev` before assuming background loops are running.
+Only the `app` process receives HTTP traffic. It serves the built frontend, exposes `/api/*`, and runs the startup migration check. The `worker-*` and `board-manager` processes are separate Fly machine groups; verify their live state with `fly status -a tasknodeofficial-dev` before assuming background loops are running. The legacy `worker` process remains only for local compatibility; production rejects it unless `TASKNODE_ALLOW_MONOLITH_WORKER=true` is set intentionally.
 
 Run Fly releases through `npm run fly:deploy:prod`, not raw `fly deploy`.
 (`fly:deploy:prod` wraps `fly:deploy` with the production confirmation the
 deploy preflight requires now that `fly.toml` carries the production
 hostname.) The wrapped command deploys the image and then runs
 `npm run fly:background-guard`, which
-enforces one running `worker` machine and one running `board-manager` machine
-with `restart=always`. The worker guard also checks that task generation,
-Network Task generation, and task review are enabled. This is necessary because
-the Fly HTTP service only applies to the `app` process group; background
-process groups do not inherit `http_service.min_machines_running`.
+enforces one running machine for every `worker-*` group and one running
+`board-manager` machine with `restart=always`. The worker guard also checks the
+required flags for the groups that depend on them. This is necessary because the
+Fly HTTP service only applies to the `app` process group; background process
+groups do not inherit `http_service.min_machines_running`.
 
 ## Background Worker Operations
 
-The `worker` group is required for:
+The worker groups are split by failure domain:
 
-- task request generation from durable `task_requests` rows;
-- Network Task generation from durable `network_task_generation_jobs` rows into
-  normal task requests;
-- task review and reward transitions from `server/task-review-worker.js`;
-- PFTL cache sync, archive sync, watcher, reducer, and retention;
-- chat memory and profile/daily-airdrop background jobs when enabled.
+- `worker-taskgen`: task request generation from durable `task_requests` rows
+  and Network Task generation from durable `network_task_generation_jobs` rows.
+- `worker-task-review`: task review and reward transitions from
+  `server/task-review-worker.js`.
+- `worker-pftl`: PFTL cache sync, archive sync, watcher, reducer, retention,
+  and IPFS replication.
+- `worker-context-rewrite`: context rewrite jobs.
+- `worker-hive`: Hive secretary, project, report, and decision-agent workers.
+- `worker-memory-profile`: chat memory and recommended connection jobs.
+- `worker-airdrop`: profile daily airdrop jobs.
 
 The `board-manager` group is intentionally separate from task review, but the
-Hive board depends on it for Board Manager runs. Treat a stopped `worker` or a
-stopped active `board-manager` as a deploy failure unless an operator has
-explicitly paused that subsystem.
+Hive board depends on it for Board Manager runs. Treat a stopped `worker-*`
+group or a stopped active `board-manager` as a deploy failure unless an operator
+has explicitly paused that subsystem.
 
 Operator commands:
 
@@ -69,15 +79,24 @@ fly status -a tasknodeofficial-dev
 fly logs -a tasknodeofficial-dev
 ```
 
-Expected guard output names at least one `worker` machine and one
-`board-manager` machine with `state=started restart=always`. Stopped standby
-machines are acceptable. For `worker`, the guard must also pass these env
-checks:
+Expected guard output names at least one machine for every `worker-*` group and
+one `board-manager` machine with `state=started restart=always`. Stopped standby
+machines are acceptable. The guard also checks these group-specific flags:
 
 ```text
+worker-taskgen:
 TASKNODE_TASK_GENERATION_WORKER_ENABLED=true
 TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true
+
+worker-task-review:
 TASKNODE_TASK_REVIEW_WORKER_ENABLED=true
+
+worker-pftl:
+PFTL_CACHE_WORKER_ENABLED=true
+PFTL_CACHE_WSS_WATCHER_ENABLED=true
+
+worker-airdrop:
+TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true
 ```
 
 If the active background machine is stopped or those flags are missing, the
@@ -88,7 +107,7 @@ debugging task data.
 
 Production has two separate state layers:
 
-1. Fly process machines: `app`, `worker`, and `board-manager`.
+1. Fly process machines: `app`, `worker-*`, and `board-manager`.
 2. Durable Hive scheduler state: `board_manager_scopes.status` for
    `global_hive`.
 
@@ -127,7 +146,7 @@ Expected ramped state:
 ```text
 fly status:
   app            started
-  worker         started
+  worker-*       started
   board-manager  started
 
 board-manager:ops status:
@@ -176,7 +195,7 @@ fly ssh console --app tasknodeofficial-dev -C \
   "sh -lc 'cd /app && npm run board-manager:ops -- status'"
 ```
 
-3. Stop machines in this order: `board-manager`, `worker`, `app`. Use
+3. Stop machines in this order: `board-manager`, `worker-*`, `app`. Use
    `fly status` to copy the current IDs:
 
 ```bash
@@ -186,9 +205,10 @@ fly machine stop <worker-machine-id> -a tasknodeofficial-dev
 fly machine stop <app-machine-id> -a tasknodeofficial-dev
 ```
 
-Stopping `worker` halts task generation, Network Task generation, task review,
-PFTL cache loops, memory workers, and profile background jobs. Stopping `app`
-makes the public site unreachable, so it should be last.
+Stopping a `worker-*` group halts only that group's background loop. Stopping
+all `worker-*` groups halts task generation, Network Task generation, task
+review, PFTL cache loops, memory workers, and profile background jobs. Stopping
+`app` makes the public site unreachable, so it should be last.
 
 4. Verify:
 
@@ -209,9 +229,9 @@ fly ssh console --app tasknodeofficial-dev -C \
 fly status -a tasknodeofficial-dev
 ```
 
-Production is not fully ramped until `/health` passes, `worker` and
-`board-manager` are started, and `global_hive` is either intentionally paused
-or explicitly `enabled`.
+Production is not fully ramped until `/health` passes, every `worker-*` group
+and `board-manager` are started, and `global_hive` is either intentionally
+paused or explicitly `enabled`.
 
 ## Data Model
 
