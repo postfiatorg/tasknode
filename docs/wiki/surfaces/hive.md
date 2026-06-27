@@ -133,6 +133,13 @@ reasoning effort in production. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
 npm run hive-reports-smoke` exercises the same storage, worker, list/detail,
 and UI-facing shape without spending model tokens.
 
+Report source packets must include human-readable operator identity when it is
+durably known. Role and task rows use the latest account `public_handle` from
+observability events as the public app handle fallback, and identity approvals
+can provide a provider-specific handle/profile URL. This prevents role tables
+from degrading to opaque account IDs when badge proof rows only contain metrics
+such as KOL X follower counts.
+
 Hive Brain report detail uses a lightweight markdown renderer for operator
 readability. It renders headings, lists, code blocks, horizontal rules, and
 tables. Because report models sometimes collapse markdown table rows onto one

@@ -121,6 +121,7 @@
     "hive-brain-smoke": "node scripts/hive-brain-smoke.mjs",
     "hive-reports-worker": "node scripts/hive-reports-worker.mjs",
     "hive-reports-smoke": "node scripts/hive-reports-smoke.mjs",
+    "hive-report-identity-smoke": "node scripts/hive-report-identity-smoke.mjs",
     "hive-report-markdown-smoke": "node scripts/hive-report-markdown-smoke.mjs",
     "task-accounting-harvester-smoke": "node scripts/task-accounting-harvester-smoke.mjs",
     "duplicate-reward-reconciliation-ledger": "node scripts/duplicate-reward-reconciliation-ledger.mjs",

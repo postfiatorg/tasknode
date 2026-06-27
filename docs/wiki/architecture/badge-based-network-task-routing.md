@@ -158,6 +158,10 @@ Badge-specific identity approval requirements:
   and provider response digest in `metrics_json`. User screenshots are fallback
   evidence only when the API is unavailable or for non-X platforms that do not
   have a configured resolver.
+  Runtime KOL projections must preserve the linked X username and profile URL
+  alongside `followersCount` before writing `account_network_badges`; otherwise
+  downstream Hive reports can verify audience size but cannot name the operator
+  without falling back to app-level public handles.
 - Core Contributor: requires `L1 linked_provider` for GitHub and `L3` Task Node
   sanctioning for that GitHub handle. The proof refresh must keep GitHub OAuth
   at normal identity scope (`user:email`) and must not request `repo`,

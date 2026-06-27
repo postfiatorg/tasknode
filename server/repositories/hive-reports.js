@@ -81,6 +81,14 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function firstText(...values) {
+  for (const value of values) {
+    const text = safeText(value, 500);
+    if (text) return text;
+  }
+  return "";
+}
+
 function numeric(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : fallback;
@@ -160,6 +168,8 @@ function verificationRow(row = {}) {
 
 function identitySummary(accountId = "", fallback = {}) {
   const profile = accountId ? getAccountIdentityProfile({ accountId }) || {} : {};
+  const publicHandle = safeText(fallback.publicHandle || "", 120).replace(/^@+/, "");
+  const providerHandle = safeText(fallback.providerHandle || "", 120).replace(/^@+/, "");
   const hiveHandle = safeText(profile.hiveHandle || profile.handle || profile.username || fallback.handle, 120).replace(/^@+/, "");
   const displayName = safeText(
     profile.publicDisplayName ||
@@ -173,17 +183,60 @@ function identitySummary(accountId = "", fallback = {}) {
     accountId: safeText(accountId, 180),
     displayName,
     hiveHandle,
+    publicHandle,
+    providerHandle,
+    profileUrl: safeText(fallback.profileUrl, 500),
     primaryProvider: safeText(profile.primaryProvider || fallback.primaryProvider, 80),
+  };
+}
+
+export function hiveReportIdentityFallbackFromRow(row = {}) {
+  const evidence = safeObject(row.evidence_json || row.evidence);
+  const metrics = safeObject(row.validated_metrics_json || row.metrics);
+  const nestedEvidence = safeObject(evidence.evidence);
+  const publicHandle = firstText(
+    row.public_handle,
+    row.identity_public_handle,
+    evidence.publicHandle,
+    nestedEvidence.publicHandle
+  ).replace(/^@+/, "");
+  const providerHandle = firstText(
+    row.provider_handle,
+    row.provider_public_handle,
+    evidence.xHandle,
+    evidence.githubHandle,
+    evidence.handle,
+    evidence.username,
+    nestedEvidence.xHandle,
+    nestedEvidence.githubHandle,
+    nestedEvidence.handle,
+    nestedEvidence.username,
+    metrics.xHandle,
+    metrics.githubHandle,
+    metrics.handle,
+    metrics.username
+  ).replace(/^@+/, "");
+  return {
+    publicHandle,
+    providerHandle,
+    profileUrl: firstText(row.provider_profile_url, evidence.profileUrl, nestedEvidence.profileUrl),
+    handle: publicHandle || providerHandle,
+    displayName: firstText(
+      evidence.displayName,
+      nestedEvidence.displayName,
+      evidence.name,
+      nestedEvidence.name,
+      publicHandle,
+      providerHandle
+    ),
   };
 }
 
 function roleAccountRow(row = {}) {
   const evidence = safeObject(row.evidence_json);
   const metrics = safeObject(row.validated_metrics_json);
-  const identity = identitySummary(row.account_id, {
-    handle: evidence.handle || evidence.xHandle || evidence.githubHandle || evidence.username,
-    displayName: evidence.displayName || evidence.name,
-  });
+  const fallback = hiveReportIdentityFallbackFromRow(row);
+  const identity = identitySummary(row.account_id, fallback);
   return {
     ...identity,
     walletAddress: safeText(row.wallet_address, 120),
@@ -199,8 +252,9 @@ function roleAccountRow(row = {}) {
 function taskRow(row = {}) {
   const metadata = safeObject(row.metadata_json);
   const identity = identitySummary(row.account_id, {
-    handle: metadata.hiveHandle || metadata.handle,
-    displayName: metadata.displayName,
+    handle: metadata.hiveHandle || metadata.handle || row.public_handle,
+    publicHandle: row.public_handle,
+    displayName: metadata.displayName || row.public_handle,
   });
   return {
     taskId: safeText(row.task_id, 180),
@@ -520,10 +574,43 @@ async function listRoleAccounts() {
              badge.evidence_json,
              badge.validated_metrics_json,
              definition.label,
-             wallet.subject_wallet AS wallet_address
+             wallet.subject_wallet AS wallet_address,
+             identity.public_handle AS public_handle,
+             approval.public_handle AS provider_handle,
+             approval.profile_url AS provider_profile_url
       FROM account_network_badges badge
       JOIN network_badge_definitions definition
         ON definition.badge_id = badge.badge_id
+      LEFT JOIN LATERAL (
+        SELECT event.public_handle
+        FROM user_observability_events event
+        WHERE event.account_id = badge.account_id
+          AND event.public_handle <> ''
+        ORDER BY event.occurred_at DESC, event.id DESC
+        LIMIT 1
+      ) identity ON true
+      LEFT JOIN LATERAL (
+        SELECT identity_approval.public_handle,
+               identity_approval.profile_url
+        FROM account_identity_approvals identity_approval
+        WHERE identity_approval.account_id = badge.account_id
+          AND identity_approval.status = 'active'
+          AND identity_approval.revoked_at IS NULL
+          AND (identity_approval.expires_at IS NULL OR identity_approval.expires_at > now())
+          AND (
+            identity_approval.approval_scope = ('badge:' || badge.badge_id)
+            OR (
+              badge.badge_id = 'kol'
+              AND identity_approval.provider = 'x'
+            )
+            OR (
+              badge.badge_id = 'core_contributor'
+              AND identity_approval.provider = 'github'
+            )
+          )
+        ORDER BY identity_approval.updated_at DESC, identity_approval.id DESC
+        LIMIT 1
+      ) approval ON true
       LEFT JOIN LATERAL (
         SELECT projection.subject_wallet
         FROM task_projections projection
@@ -558,6 +645,7 @@ async function listRewardedTasksByRole({ perRole = 10 } = {}) {
         SELECT badge.badge_id,
                definition.label AS badge_label,
                projection.*,
+               identity.public_handle AS public_handle,
                row_number() OVER (
                  PARTITION BY badge.badge_id
                  ORDER BY projection.last_event_at DESC NULLS LAST, projection.updated_at DESC, projection.task_id DESC
@@ -567,6 +655,14 @@ async function listRewardedTasksByRole({ perRole = 10 } = {}) {
           ON definition.badge_id = badge.badge_id
         JOIN task_projections projection
           ON projection.account_id = badge.account_id
+        LEFT JOIN LATERAL (
+          SELECT event.public_handle
+          FROM user_observability_events event
+          WHERE event.account_id = projection.account_id
+            AND event.public_handle <> ''
+          ORDER BY event.occurred_at DESC, event.id DESC
+          LIMIT 1
+        ) identity ON true
         WHERE badge.status = 'verified'
           AND badge.revoked_at IS NULL
           AND (badge.expires_at IS NULL OR badge.expires_at > now())
@@ -595,6 +691,7 @@ async function listActiveTasksByRole({ perRole = 12 } = {}) {
         SELECT badge.badge_id,
                definition.label AS badge_label,
                projection.*,
+               identity.public_handle AS public_handle,
                row_number() OVER (
                  PARTITION BY badge.badge_id
                  ORDER BY projection.updated_at DESC, projection.task_id DESC
@@ -604,6 +701,14 @@ async function listActiveTasksByRole({ perRole = 12 } = {}) {
           ON definition.badge_id = badge.badge_id
         JOIN task_projections projection
           ON projection.account_id = badge.account_id
+        LEFT JOIN LATERAL (
+          SELECT event.public_handle
+          FROM user_observability_events event
+          WHERE event.account_id = projection.account_id
+            AND event.public_handle <> ''
+          ORDER BY event.occurred_at DESC, event.id DESC
+          LIMIT 1
+        ) identity ON true
         WHERE badge.status = 'verified'
           AND badge.revoked_at IS NULL
           AND (badge.expires_at IS NULL OR badge.expires_at > now())

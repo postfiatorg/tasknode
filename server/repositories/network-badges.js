@@ -574,6 +574,8 @@ export async function networkBadgeProjectionForAccount({
   if (xAlias && xAlias.verified !== false && Number.isFinite(xFollowers) && xFollowers >= 5000) {
     badges.push(projectionBadge(networkBadgeDefinitions.kol, {
       provider: "x",
+      handle: safeText(xAlias.username, 120),
+      profileUrl: safeText(xAlias.profileUrl, 500),
       followersCount: xFollowers,
       proofMethod: "x_public_metrics",
     }));
