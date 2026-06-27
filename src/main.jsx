@@ -3708,6 +3708,7 @@ function TasksView({
   const requestTaskButtonClass = activeCapacityTask
     ? "light-pill task-request-button"
     : "dark-pill task-request-button";
+  const requestTaskButtonLabel = activeCapacityTask ? "Request personal task" : "Request task";
 
   useEffect(() => {
     const syncStatus = String(taskSync?.status || "");
@@ -3960,7 +3961,7 @@ function TasksView({
             )}
             <button className={requestTaskButtonClass} onClick={() => setTaskRequestOpen(true)} type="button">
               <Plus size={16} strokeWidth={2} />
-              Request task
+              {requestTaskButtonLabel}
             </button>
           </div>
         </div>
