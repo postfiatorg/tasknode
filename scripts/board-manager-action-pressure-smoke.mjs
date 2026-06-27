@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { buildBoardManagerActionPressure } from "../server/repositories/board-manager-health.js";
+import { compactBoardActionPressureForBoardManager } from "../server/repositories/board-manager-source-compact.js";
 
 const projectId = "project_reward_followup_pressure";
 const closedAt = "2026-05-30T02:45:27.000Z";
@@ -212,5 +213,48 @@ const replacementAfterStoppedPressure = buildBoardManagerActionPressure({
 });
 assert.equal(replacementAfterStoppedPressure.summary.requiresAction, false);
 assert.equal(replacementAfterStoppedPressure.signals.length, 0);
+
+const acceptanceBlockerPressure = buildBoardManagerActionPressure({
+  ...baseInput,
+  networkTaskContent: {
+    completed: [],
+    outstanding: [],
+    pendingGeneration: [],
+    stopped: [],
+  },
+  candidateCapacityChecks: [
+    {
+      accountId: "acct_pressure_smoke",
+      walletAddress: "rPressureSmoke",
+      availableForNetworkTask: false,
+      blockers: [
+        {
+          kind: "proposed_task",
+          taskId: "task_acceptance_blocker",
+          allocationId: "alloc_acceptance_blocker",
+          projectId,
+          title: "Acceptance blocker",
+          state: "proposed",
+          rewardOfferPft: 12000,
+          acceptBy: "2026-06-28T12:30:00.000Z",
+          deadlineAt: "2026-06-29T12:30:00.000Z",
+        },
+      ],
+    },
+  ],
+});
+const acceptanceCandidateBlocker = acceptanceBlockerPressure.candidateCapacity.candidates[0].capacityBlockers[0];
+assert.equal(acceptanceCandidateBlocker.title, "Acceptance blocker");
+assert.equal(acceptanceCandidateBlocker.rewardOfferPft, 12000);
+assert.equal(acceptanceCandidateBlocker.acceptBy, "2026-06-28T12:30:00.000Z");
+assert.equal(acceptanceCandidateBlocker.deadlineAt, "2026-06-29T12:30:00.000Z");
+
+const compactAcceptancePressure = compactBoardActionPressureForBoardManager(acceptanceBlockerPressure);
+const compactAcceptanceBlocker = compactAcceptancePressure.candidateCapacity.candidates[0].capacityBlockers[0];
+assert.equal(compactAcceptanceBlocker.title, "Acceptance blocker");
+assert.equal(compactAcceptanceBlocker.rewardOfferPft, 12000);
+assert.equal(compactAcceptanceBlocker.acceptBy, "2026-06-28T12:30:00.000Z");
+assert.equal(compactAcceptanceBlocker.deadlineAt, "2026-06-29T12:30:00.000Z");
+assert.equal(compactAcceptancePressure.candidateCapacity.activeNetworkTaskCapacityBlockers[0].rewardOfferPft, 12000);
 
 console.log("board-manager-action-pressure-smoke ok");

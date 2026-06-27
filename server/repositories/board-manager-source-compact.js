@@ -661,6 +661,21 @@ export function compactOperatorStandingPolicyForBoardManager(policy = []) {
 
 export function compactBoardActionPressureForBoardManager(pressure = {}) {
   const candidateCapacity = safeObject(pressure.candidateCapacity || pressure.candidate_capacity);
+  const compactCapacityBlocker = (blocker = {}) => {
+    const rewardOfferPft = numberValue(blocker.rewardOfferPft ?? blocker.reward_offer_pft, 0);
+    return presentObject({
+      kind: safeText(blocker.kind, 40),
+      taskId: safeText(blocker.taskId || blocker.task_id, 180),
+      generationJobId: safeText(blocker.generationJobId || blocker.generation_job_id, 180),
+      allocationId: safeText(blocker.allocationId || blocker.allocation_id, 180),
+      projectId: safeText(blocker.projectId || blocker.project_id, 180),
+      title: safeText(blocker.title, 180),
+      state: safeText(blocker.state || blocker.status, 80),
+      rewardOfferPft: rewardOfferPft || undefined,
+      acceptBy: safeText(blocker.acceptBy || blocker.accept_by, 80),
+      deadlineAt: safeText(blocker.deadlineAt || blocker.deadline_at, 80),
+    });
+  };
   return {
     schema: safeText(pressure.schema || "pf.hive.board_action_pressure.v1", 120),
     summary: safeObject(pressure.summary),
@@ -670,19 +685,11 @@ export function compactBoardActionPressureForBoardManager(pressure = {}) {
         accountId: safeText(candidate.accountId || candidate.account_id, 180),
         walletAddress: safeText(candidate.walletAddress || candidate.wallet_address, 120),
         availableForNetworkTask: candidate.availableForNetworkTask !== false && candidate.available_for_network_task !== false,
-        capacityBlockers: safeArray(candidate.capacityBlockers || candidate.capacity_blockers).slice(0, 2).map((blocker) => ({
-          taskId: safeText(blocker.taskId || blocker.task_id, 180),
-          allocationId: safeText(blocker.allocationId || blocker.allocation_id, 180),
-          projectId: safeText(blocker.projectId || blocker.project_id, 180),
-          state: safeText(blocker.state || blocker.status, 80),
-        })),
+        capacityBlockers: safeArray(candidate.capacityBlockers || candidate.capacity_blockers).slice(0, 2).map(compactCapacityBlocker),
       })),
-      activeNetworkTaskCapacityBlockers: safeArray(candidateCapacity.activeNetworkTaskCapacityBlockers || candidateCapacity.active_network_task_capacity_blockers).slice(0, 5).map((blocker) => ({
-        taskId: safeText(blocker.taskId || blocker.task_id, 180),
-        allocationId: safeText(blocker.allocationId || blocker.allocation_id, 180),
-        projectId: safeText(blocker.projectId || blocker.project_id, 180),
-        state: safeText(blocker.state || blocker.status, 80),
-      })),
+      activeNetworkTaskCapacityBlockers: safeArray(candidateCapacity.activeNetworkTaskCapacityBlockers || candidateCapacity.active_network_task_capacity_blockers)
+        .slice(0, 5)
+        .map(compactCapacityBlocker),
     },
     signals: safeArray(pressure.signals).slice(0, 5).map((signal) => ({
       projectId: safeText(signal.projectId || signal.project_id, 180),
