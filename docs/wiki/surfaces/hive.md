@@ -125,6 +125,14 @@ reasoning effort in production. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
 npm run hive-reports-smoke` exercises the same storage, worker, list/detail,
 and UI-facing shape without spending model tokens.
 
+Hive Brain report detail uses a lightweight markdown renderer for operator
+readability. It renders headings, lists, code blocks, horizontal rules, and
+tables. Because report models sometimes collapse markdown table rows onto one
+line, the renderer normalizes table sequences such as
+`| Metric | Value | |---|---| | Active projects | 5 |` into real table rows
+before rendering. `npm run hive-report-markdown-smoke` covers both valid
+multi-line tables and collapsed report tables.
+
 ### Task Accounting Harvester
 
 Task Accounting Harvester is the canonical post-reward accounting queue for

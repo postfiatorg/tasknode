@@ -614,7 +614,8 @@
 .hive-report-markdown p,
 .hive-report-markdown ul,
 .hive-report-markdown ol,
-.hive-report-markdown pre {
+.hive-report-markdown pre,
+.hive-report-markdown hr {
   margin: 0;
 }
 
@@ -666,6 +667,47 @@
   overflow: auto;
   padding: 10px;
   white-space: pre-wrap;
+}
+
+.hive-report-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--hive-border);
+}
+
+.hive-report-table-wrap {
+  border: 0.5px solid var(--hive-border);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.hive-report-markdown table {
+  background: #fffdf8;
+  border-collapse: collapse;
+  min-width: 640px;
+  table-layout: auto;
+  width: 100%;
+}
+
+.hive-report-markdown th,
+.hive-report-markdown td {
+  border-bottom: 0.5px solid var(--hive-border);
+  color: var(--hive-ink-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.hive-report-markdown th {
+  background: #f7f4ec;
+  color: var(--hive-ink);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hive-report-markdown tr:last-child td {
+  border-bottom: 0;
 }
 
 .hive-report-verifications {

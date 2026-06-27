@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, RefreshCw, UserCheck, X } from "lucide-react";
 import { requestJson } from "../../api";
+import { parseMarkdownBlocks } from "./hive-report-markdown";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import hiveDecisionAgentPrompt from "../../../prompts/hive/hive_decision_agent_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
@@ -277,74 +278,6 @@ function sameText(left = "", right = "") {
   return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
 }
 
-function parseMarkdownBlocks(markdown = "") {
-  const lines = String(markdown || "").split(/\r?\n/);
-  const blocks = [];
-  let paragraph = [];
-  let list = null;
-  let code = null;
-
-  const flushParagraph = () => {
-    if (!paragraph.length) return;
-    blocks.push({ type: "paragraph", text: paragraph.join(" ") });
-    paragraph = [];
-  };
-  const flushList = () => {
-    if (!list?.items?.length) return;
-    blocks.push(list);
-    list = null;
-  };
-  const flushCode = () => {
-    if (!code) return;
-    blocks.push({ type: "code", text: code.lines.join("\n") });
-    code = null;
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/\s+$/, "");
-    const trimmed = line.trim();
-    if (trimmed.startsWith("```")) {
-      flushParagraph();
-      flushList();
-      if (code) flushCode();
-      else code = { lines: [] };
-      continue;
-    }
-    if (code) {
-      code.lines.push(line);
-      continue;
-    }
-    if (!trimmed) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-    const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
-    if (heading) {
-      flushParagraph();
-      flushList();
-      blocks.push({ type: "heading", level: Math.min(heading[1].length, 4), text: heading[2] });
-      continue;
-    }
-    const bullet = /^[-*]\s+(.+)$/.exec(trimmed);
-    const ordered = /^\d+\.\s+(.+)$/.exec(trimmed);
-    if (bullet || ordered) {
-      flushParagraph();
-      const type = ordered ? "ordered" : "unordered";
-      if (!list || list.type !== type) flushList();
-      if (!list) list = { type, items: [] };
-      list.items.push((bullet || ordered)[1]);
-      continue;
-    }
-    flushList();
-    paragraph.push(trimmed);
-  }
-  flushParagraph();
-  flushList();
-  flushCode();
-  return blocks;
-}
-
 function Badge({ children, variant = "gray" }) {
   return <span className={`hive-brain-badge is-${variant}`}>{children}</span>;
 }
@@ -376,7 +309,30 @@ function MarkdownReportBody({ markdown = "" }) {
           const Heading = `h${Math.min(Math.max(block.level + 1, 3), 5)}`;
           return <Heading key={`${block.type}-${index}`}>{block.text}</Heading>;
         }
+        if (block.type === "rule") return <hr key={`${block.type}-${index}`} />;
         if (block.type === "code") return <pre key={`${block.type}-${index}`}>{block.text}</pre>;
+        if (block.type === "table") {
+          const columnCount = Math.max(block.header.length, ...block.rows.map((row) => row.length));
+          const cellsFor = (row) => Array.from({ length: columnCount }, (_, cellIndex) => row[cellIndex] || "");
+          return (
+            <div className="hive-report-table-wrap" key={`${block.type}-${index}`}>
+              <table>
+                <thead>
+                  <tr>
+                    {cellsFor(block.header).map((cell, cellIndex) => <th key={`${index}-head-${cellIndex}`}>{cell}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, rowIndex) => (
+                    <tr key={`${index}-row-${rowIndex}`}>
+                      {cellsFor(row).map((cell, cellIndex) => <td key={`${index}-${rowIndex}-${cellIndex}`}>{cell}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
         if (block.type === "ordered") {
           return (
             <ol key={`${block.type}-${index}`}>
