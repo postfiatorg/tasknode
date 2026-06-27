@@ -695,7 +695,7 @@ function HarvestResolveDialog({
             <textarea
               maxLength={6000}
               onChange={(event) => onNoteChange?.(event.target.value)}
-              placeholder="Problem found, whether it was real, action taken, reward evidence/commentary, and the basic task proposal text."
+              placeholder="Short closeout: problem, verdict, action, proof. Keep it scannable."
               ref={textareaRef}
               value={note}
             />

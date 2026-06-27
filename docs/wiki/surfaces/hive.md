@@ -238,21 +238,18 @@ The live sequence is:
    row resolved from Hive Brain. The current checkout owner can do this for
    their own checked-out row while they remain checkout-eligible.
 
-The resolution comment is an operator-facing closeout note, not just a lifecycle
-receipt. It must be readable without opening the generated Grashnuk task. Use
-this structure:
+The resolution comment is an operator-facing closeout note, not an audit packet.
+Keep it short enough to scan in the Harvests card. Use 3-5 compact bullets and
+avoid copying the full reward rationale or generated task proposal unless the
+exact wording changes the closeout decision.
 
 ```text
-Problem: enumerate the issue(s) raised by the harvest in plain English.
-Validity: say whether this was a real product/accounting issue, a source-backed
-  but unverified report, or not actually a bug.
-Action taken: state exactly what Grashnuk produced or changed and where that
-  artifact lives.
-Reward evidence: include the generated personal task id, reward amount, reward
-  tx/CID when present, reward decision, and the reviewer commentary relevant to
-  closure.
-Task proposal: include the basic proposal text or a compact paraphrase of the
-  generated personal task so the reason for the follow-up is clear.
+Problem: 1-2 plain-English issue summaries.
+Verdict: real issue / source-backed only / not a bug.
+Action: artifact or fix produced by Grashnuk.
+Proof: generated task id, reward amount, reward tx/CID, and one short reviewer
+  sentence if it matters.
+Proposal gist: only when the action is otherwise unclear.
 ```
 
 This process keeps the accounting row, checkout owner, Orc task request,
