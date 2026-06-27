@@ -6,11 +6,11 @@ import {
   shouldRestoreTaskActionRoute,
 } from "../src/features/tasks/task-action-route.js";
 
-function fakeWindow(initialRoute = "/") {
+function fakeWindow(initialRoute = "/", historyState = { existing: true }) {
   const win = {
     location: {},
     history: {
-      state: { existing: true },
+      state: historyState,
       replaceState(state, _title, route) {
         this.state = state;
         this.replacedWith = route;
@@ -61,5 +61,26 @@ const lostHashSnapshot = captureTaskActionRoute(lostHashWindow);
 lostHashWindow.location.pathname = "/unexpected";
 lostHashWindow.location.hash = "";
 assert.equal(shouldRestoreTaskActionRoute(lostHashSnapshot, lostHashWindow), true);
+
+const rootLostHashWindow = fakeWindow("/#tasks/task_3", { tasknodeView: "tasks", taskId: "task_3" });
+const rootLostHashSnapshot = captureTaskActionRoute(rootLostHashWindow);
+rootLostHashWindow.location.hash = "";
+assert.equal(
+  shouldRestoreTaskActionRoute(rootLostHashSnapshot, rootLostHashWindow),
+  true,
+  "hash-only task routes must be restored when they are stripped to the root path"
+);
+assert.equal(restoreTaskActionRoute(rootLostHashSnapshot, rootLostHashWindow), true);
+assert.equal(rootLostHashWindow.history.replacedWith, "/#tasks/task_3");
+
+const explicitChatWindow = fakeWindow("/#tasks/task_4", { tasknodeView: "tasks", taskId: "task_4" });
+const explicitChatSnapshot = captureTaskActionRoute(explicitChatWindow);
+explicitChatWindow.location.hash = "";
+explicitChatWindow.history.state = { tasknodeView: "chat" };
+assert.equal(
+  shouldRestoreTaskActionRoute(explicitChatSnapshot, explicitChatWindow),
+  false,
+  "explicit navigation to a different in-app view must not be overwritten"
+);
 
 console.log("task-action-route-smoke ok");

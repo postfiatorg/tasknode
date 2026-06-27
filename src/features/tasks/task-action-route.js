@@ -18,6 +18,16 @@ function normalizedPath(value = "") {
   return path || "/";
 }
 
+function taskNodeViewFromHash(value = "") {
+  const hashPath = String(value || "").replace(/^#\/?/, "").trim();
+  return hashPath.split("?")[0].split("/")[0].toLowerCase();
+}
+
+function taskNodeViewFromHistory(win) {
+  const view = win?.history?.state?.tasknodeView;
+  return typeof view === "string" ? view.toLowerCase() : "";
+}
+
 export function captureTaskActionRoute(win = defaultWindow()) {
   const location = win?.location;
   if (!location) return null;
@@ -39,7 +49,12 @@ export function shouldRestoreTaskActionRoute(snapshot, win = defaultWindow()) {
 
   const previousHadHashRoute = String(snapshot.hash || "").startsWith("#");
   const currentLostHashRoute = previousHadHashRoute && !String(win.location.hash || "").startsWith("#");
-  return currentLostHashRoute && currentPath !== normalizedPath(snapshot.pathname);
+  if (!currentLostHashRoute) return false;
+
+  const snapshotView = taskNodeViewFromHash(snapshot.hash);
+  const currentStateView = taskNodeViewFromHistory(win);
+  if (snapshotView && currentStateView && currentStateView !== snapshotView) return false;
+  return true;
 }
 
 export function restoreTaskActionRoute(snapshot, win = defaultWindow()) {

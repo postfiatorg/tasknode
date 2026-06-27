@@ -205,6 +205,14 @@ batch reduction. This reduces avoidable queue delay, but the browser receipt
 remains the user-visible source of continuity while IPFS, wallet history, or
 reducer replay catches up.
 
+Task lifecycle actions must also preserve the current in-app route while the
+browser signs, submits, and refreshes task state. If an action briefly falls
+back to an auth path or strips a hash-only Task Node route such as
+`/#tasks/<task_id>`, the client restores the captured route after the action
+settles. Explicit navigation to a different Task Node view during the pending
+action is left alone. Regression coverage lives in
+`scripts/task-action-route-smoke.mjs`.
+
 On Fly, task generation and review both depend on the `worker` process group.
 Deploys must use `npm run fly:deploy`, which runs `npm run fly:background-guard`
 after the image rollout. If request receipts remain queued, offers do not
