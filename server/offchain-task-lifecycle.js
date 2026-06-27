@@ -13,6 +13,10 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function numeric(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : 0;
@@ -96,6 +100,151 @@ function cidRefForEvent(eventId = "", payload = {}, providedPayload = {}, eventP
   ) || sourceRefForEvent(eventId);
 }
 
+function isSubmissionTransition(transition = "") {
+  return ["submitted", "verification_response_submitted"].includes(safeText(transition, 80));
+}
+
+function directEvidenceItem(item = {}, fallback = {}) {
+  const source = safeObject(item);
+  const fallbackSource = safeObject(fallback);
+  const rawResponse = typeof source.response === "string" ? source.response : "";
+  const rawEvidence = typeof source.evidence === "string" ? source.evidence : "";
+  const rawSubmission = typeof source.submission === "string" ? source.submission : "";
+  const artifactType = safeText(
+    source.artifact_type ||
+      source.artifactType ||
+      source.evidence_type ||
+      source.evidenceType ||
+      source.method ||
+      fallbackSource.artifact_type ||
+      fallbackSource.artifactType ||
+      fallbackSource.evidence_type ||
+      fallbackSource.evidenceType ||
+      fallbackSource.method ||
+      "text",
+    80
+  ) || "text";
+  return {
+    artifact_type: artifactType,
+    value: safeText(
+      source.value ||
+        source.text ||
+        source.body ||
+        source.response_text ||
+        source.responseText ||
+        rawResponse ||
+        rawEvidence ||
+        rawSubmission ||
+        fallbackSource.value ||
+        fallbackSource.text ||
+        fallbackSource.response_text ||
+        fallbackSource.responseText ||
+        "",
+      120000
+    ),
+    notes: safeText(source.notes || source.note || fallbackSource.notes || fallbackSource.note || "", 8000),
+    file: safeObject(source.file || source.processedFile || source.processed_file),
+  };
+}
+
+function itemHasEvidence(item = {}) {
+  return Boolean(
+    safeText(item.value, 120000) ||
+      safeText(item.notes, 8000) ||
+      Object.keys(safeObject(item.file)).length > 0
+  );
+}
+
+function evidenceTextFromItem(item = {}) {
+  return safeText(
+    item.value ||
+      item.notes ||
+      safeObject(item.file).description ||
+      safeObject(item.file).text ||
+      "",
+    120000
+  );
+}
+
+function directEvidenceItemsFromPayload(payload = {}, providedPayload = {}) {
+  const items = [
+    ...safeArray(payload.evidence_items),
+    ...safeArray(payload.evidenceItems),
+    ...safeArray(providedPayload.evidence_items),
+    ...safeArray(providedPayload.evidenceItems),
+  ];
+  if (items.length > 0) {
+    return items.slice(0, 2).map((item, index) => ({
+      index: Number(item?.index || index + 1),
+      ...directEvidenceItem(item, payload),
+    })).filter(itemHasEvidence);
+  }
+  const item = directEvidenceItem(payload, providedPayload);
+  return itemHasEvidence(item) ? [item] : [];
+}
+
+function normalizeDirectSubmissionPayload({ payload = {}, providedPayload = {}, transition = "" } = {}) {
+  if (!isSubmissionTransition(transition)) return providedPayload;
+  const normalized = { ...providedPayload };
+  const artifactType = safeText(
+    normalized.artifact_type ||
+      normalized.artifactType ||
+      normalized.evidence_type ||
+      normalized.evidenceType ||
+      payload.artifact_type ||
+      payload.artifactType ||
+      payload.evidence_type ||
+      payload.evidenceType ||
+      payload.method ||
+      "text",
+    80
+  ) || "text";
+
+  if (typeof normalized.evidence === "string") {
+    normalized.evidence = directEvidenceItem({ value: normalized.evidence, artifact_type: artifactType }, payload);
+  }
+  if (typeof normalized.submission === "string") {
+    normalized.submission = directEvidenceItem({ value: normalized.submission, artifact_type: artifactType }, payload);
+  }
+  if (typeof normalized.response === "string") {
+    normalized.response_text = safeText(normalized.response_text || normalized.response, 120000);
+    normalized.response = directEvidenceItem({ value: normalized.response, artifact_type: artifactType }, payload);
+  }
+
+  const providedHasStructuredEvidence = Boolean(
+    safeObject(normalized.evidence).artifact_type ||
+      safeObject(normalized.submission).artifact_type ||
+      safeObject(normalized.response).artifact_type ||
+      safeText(normalized.response_text, 120000) ||
+      safeArray(normalized.evidence_items).length > 0
+  );
+  if (providedHasStructuredEvidence) return normalized;
+
+  const evidenceItems = directEvidenceItemsFromPayload(payload, providedPayload);
+  if (evidenceItems.length < 1) return normalized;
+
+  normalized.artifact_type = evidenceItems.length > 1 ? "mixed" : evidenceItems[0].artifact_type || artifactType;
+  normalized.evidence_type = normalized.artifact_type;
+  normalized.evidence_count = evidenceItems.length;
+  normalized.evidence_items = evidenceItems;
+  const primaryEvidence =
+    evidenceItems.length === 1
+      ? evidenceItems[0]
+      : {
+          artifact_type: "mixed",
+          notes: safeText(payload.notes || payload.note || "", 8000),
+          evidence_items: evidenceItems,
+        };
+  if (transition === "verification_response_submitted") {
+    normalized.response = primaryEvidence;
+    normalized.response_text = evidenceItems.map(evidenceTextFromItem).filter(Boolean).join("\n\n");
+  } else {
+    normalized.evidence = primaryEvidence;
+    normalized.submission = primaryEvidence;
+  }
+  return normalized;
+}
+
 export function offchainTaskEventPayload({
   accountId = "",
   walletAddress = "",
@@ -105,9 +254,14 @@ export function offchainTaskEventPayload({
   metadata = {},
   dualWrite = false,
 } = {}) {
-  const providedPayload = safeObject(
+  const rawProvidedPayload = safeObject(
     payload?.offchainPayload || payload?.offchain_payload || payload?.eventPayload || payload?.event_payload
   );
+  const providedPayload = normalizeDirectSubmissionPayload({
+    payload,
+    providedPayload: rawProvidedPayload,
+    transition,
+  });
   const schema = eventSchemaForTransition(transition, providedPayload);
   const eventId = safeText(providedPayload.event_id || providedPayload.eventId, 180) || `task_evt_${randomUUID()}`;
   const recordedAt = nowIso();

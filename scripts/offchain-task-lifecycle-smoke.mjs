@@ -101,6 +101,47 @@ assert.deepEqual(updateCall.params[9], ["refused", "cancelled", "rewarded"]);
 assert.equal(updateCall.params[10], "evt_smoke_submission");
 assert.equal(result.terminalPreserved, false);
 
+const simpleSubmissionClient = mockClient();
+await applyOffchainTaskTransitionWithClient(simpleSubmissionClient, {
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  task: {
+    task_id: "task_simple_submission",
+    request_id: "req_simple_submission",
+    status: "accepted",
+  },
+  transition: "submitted",
+  payload: {
+    method: "text",
+    value: "Simple direct-write evidence must survive review processing.",
+    notes: "Simple submission notes.",
+  },
+});
+const simpleSubmissionPayload = JSON.parse(simpleSubmissionClient.calls[0].params[8]);
+assert.equal(simpleSubmissionPayload.evidence.value, "Simple direct-write evidence must survive review processing.");
+assert.equal(simpleSubmissionPayload.submission.value, "Simple direct-write evidence must survive review processing.");
+assert.equal(simpleSubmissionPayload.evidence_items[0].notes, "Simple submission notes.");
+
+const simpleVerificationClient = mockClient();
+await applyOffchainTaskTransitionWithClient(simpleVerificationClient, {
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  task: {
+    task_id: "task_simple_verification",
+    request_id: "req_simple_verification",
+    status: "verification_requested",
+  },
+  transition: "verification_response_submitted",
+  payload: {
+    method: "text",
+    response: "Simple verification response text must survive review processing.",
+  },
+});
+const simpleVerificationPayload = JSON.parse(simpleVerificationClient.calls[0].params[8]);
+assert.equal(simpleVerificationPayload.response.value, "Simple verification response text must survive review processing.");
+assert.equal(simpleVerificationPayload.response_text, "Simple verification response text must survive review processing.");
+assert.equal(simpleVerificationPayload.evidence_items[0].artifact_type, "text");
+
 const terminalClient = mockClient({ terminalPreserved: true });
 const terminalResult = await applyOffchainTaskTransitionWithClient(terminalClient, {
   accountId: "acct_smoke",
