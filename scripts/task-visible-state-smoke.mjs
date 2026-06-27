@@ -7,6 +7,7 @@ import {
 } from "../src/features/tasks/task-action-receipts.js";
 import {
   findTaskById,
+  outstandingTaskKindCounts,
   reconcileTaskVisibleState,
 } from "../src/features/tasks/task-visible-state.js";
 
@@ -97,6 +98,14 @@ const directOffchainIndexingLagState = reconcileTaskVisibleState({
 });
 assert.equal(directOffchainIndexingLagState.taskSyncNotice, null);
 assert.equal(directOffchainIndexingLagState.polling.shouldRefreshTaskProjection, false);
+
+assert.deepEqual(
+  outstandingTaskKindCounts([
+    task("accepted", { kind: "Network", isNetworkTask: true }),
+    task("proposed", { kind: "Personal", isNetworkTask: false }),
+  ]),
+  { total: 2, network: 1, personal: 1 }
+);
 
 // Without receipts, the server slow tier is respected: an accepted task with
 // server metadata {requiresRefresh:true, nextPollMs:10000} keeps polling at

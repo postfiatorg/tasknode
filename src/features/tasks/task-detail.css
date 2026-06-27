@@ -266,6 +266,35 @@
   margin-top: 6px;
 }
 
+.task-proof-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.task-proof-summary span,
+.task-proof-summary code {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #fbfaf7;
+  color: #3a3936;
+  font-size: 12px;
+}
+
+.task-proof-summary code {
+  max-width: 100%;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .task-reward-outcome {
   display: grid;
   gap: 16px;

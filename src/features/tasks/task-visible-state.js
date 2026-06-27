@@ -36,6 +36,19 @@ export function taskArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+export function outstandingTaskKindCounts(tasks = []) {
+  const rows = taskArray(tasks);
+  const network = rows.filter((task) => {
+    const kind = String(task?.kind || "").toLowerCase();
+    return task?.isNetworkTask || kind === "network" || kind === "alpha";
+  }).length;
+  return {
+    total: rows.length,
+    network,
+    personal: Math.max(0, rows.length - network),
+  };
+}
+
 function safeText(value = "", max = 500) {
   return String(value || "").trim().slice(0, max);
 }

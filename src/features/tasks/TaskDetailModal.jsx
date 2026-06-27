@@ -298,6 +298,17 @@ function formatReviewMetric(value) {
   return String(value);
 }
 
+function formatIndexedEventCopy(count = 0) {
+  const parsed = Math.max(0, Number(count || 0));
+  return `${parsed.toLocaleString()} indexed ${parsed === 1 ? "event" : "events"}`;
+}
+
+function shortProofValue(value = "") {
+  const text = String(value || "").trim();
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 10)}...${text.slice(-8)}`;
+}
+
 function taskVersionKey(task = {}) {
   return [
     task.taskId || task.fullId || task.id || "",
@@ -462,6 +473,21 @@ function TaskOverviewPanel({
   const actions = detail?.actions || {};
   const currentVerificationRequest = detail?.currentVerificationRequest || null;
   const verificationRequestActive = Boolean(actions.canSubmitVerificationEvidence && currentVerificationRequest);
+  const lifecycleControls = (
+    <TaskLifecycleActionPanel
+      accountId={accountId}
+      actions={actions}
+      directOffchain={directOffchain}
+      linkedWalletAddress={linkedWalletAddress}
+      loading={loading}
+      onLifecycleAction={onLifecycleAction}
+      onWalletUnlock={onWalletUnlock}
+      taskId={taskIdentityKey(displayTask)}
+      walletSecret={walletSecret}
+      walletUnlockPending={walletUnlockPending}
+      walletVault={walletVault}
+    />
+  );
   return (
     <>
       <div className="task-modal-divider" />
@@ -493,36 +519,14 @@ function TaskOverviewPanel({
             )}
           </div>
           {showControls && (
-            <TaskLifecycleActionPanel
-              accountId={accountId}
-              actions={actions}
-              directOffchain={directOffchain}
-              linkedWalletAddress={linkedWalletAddress}
-              loading={loading}
-              onLifecycleAction={onLifecycleAction}
-              onWalletUnlock={onWalletUnlock}
-              taskId={taskIdentityKey(displayTask)}
-              walletSecret={walletSecret}
-              walletUnlockPending={walletUnlockPending}
-              walletVault={walletVault}
-            />
+            <div className="task-secondary-action">
+              {lifecycleControls}
+            </div>
           )}
         </>
       ) : (
         <>
-          <TaskLifecycleActionPanel
-            accountId={accountId}
-            actions={actions}
-            directOffchain={directOffchain}
-            linkedWalletAddress={linkedWalletAddress}
-            loading={loading}
-            onLifecycleAction={onLifecycleAction}
-            onWalletUnlock={onWalletUnlock}
-            taskId={taskIdentityKey(displayTask)}
-            walletSecret={walletSecret}
-            walletUnlockPending={walletUnlockPending}
-            walletVault={walletVault}
-          />
+          {actions.canAccept && lifecycleControls}
           <TaskSection title="Description">
             <p>{displayTask.description}</p>
           </TaskSection>
@@ -538,13 +542,65 @@ function TaskOverviewPanel({
               </ol>
             </TaskSection>
           )}
-          <TaskSection last title="Verification">
+          <TaskSection title="Verification">
             <strong>{verification.title || "Submit evidence"}</strong>
             <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
           </TaskSection>
+          {actions.canSubmitInitialEvidence && (
+            <div className="task-overview-actions">
+              <button className="dark-pill" onClick={() => onSelectTab?.("submit")} type="button">
+                Submit evidence
+                <ArrowRight size={14} strokeWidth={2} />
+              </button>
+            </div>
+          )}
+          <TaskProofSummary detail={detail} displayTask={displayTask} onSelectTab={onSelectTab} />
+          {!actions.canAccept && actions.canStop && (
+            <>
+              <div className="task-soft-divider" />
+              <button
+                className="task-muted-action"
+                onClick={() => setShowControls((value) => !value)}
+                type="button"
+              >
+                {showControls ? "Hide task controls" : "Cancel task"}
+              </button>
+              {showControls && (
+                <div className="task-secondary-action">
+                  {lifecycleControls}
+                </div>
+              )}
+            </>
+          )}
         </>
       )}
     </>
+  );
+}
+
+function TaskProofSummary({ detail, displayTask, onSelectTab }) {
+  const status = normalizeTaskStatus(displayTask?.statusKey || displayTask?.status);
+  if (status === "proposed") return null;
+
+  const forensics = detail?.forensics || {};
+  const indexedCount = taskForensicsIndexedEventCount({ detail, task: displayTask });
+  const txHash = String(forensics.lastEventTxHash || displayTask?.txHash || "").trim();
+  const cid = String(forensics.lastEventCid || "").trim();
+  if (!indexedCount && !txHash && !cid) return null;
+
+  return (
+    <TaskSection title="Task proof">
+      <p>The latest lifecycle proof for this task is indexed and available in Forensics.</p>
+      <div className="task-proof-summary">
+        <span>{formatIndexedEventCopy(indexedCount)}</span>
+        {txHash && <code title={txHash}>Tx {shortProofValue(txHash)}</code>}
+        {cid && <code title={cid}>CID {truncateCid(cid)}</code>}
+      </div>
+      <button className="task-text-toggle" onClick={() => onSelectTab?.("forensics")} type="button">
+        Open forensics
+        <ArrowRight size={12} strokeWidth={1.5} />
+      </button>
+    </TaskSection>
   );
 }
 
@@ -1616,7 +1672,7 @@ export function TaskDetailModal({
             </div>
             <div>
               <small>Indexed events</small>
-              <span>{forensicsCount.toLocaleString()}</span>
+              <span>{formatIndexedEventCopy(forensicsCount)}</span>
             </div>
           </div>
           <div className="task-modal-tabs" role="tablist" aria-label="Task detail sections">

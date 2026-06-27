@@ -32,7 +32,7 @@ function BlockerRow({ blocker }) {
   );
 }
 
-export function NetworkTaskEligibilityPanel({ networkTasks = null }) {
+export function NetworkTaskEligibilityPanel({ activeTask = null, networkTasks = null, onOpenActiveTask = null }) {
   const view = networkTaskEligibilityView(networkTasks);
   const [open, setOpen] = useState(false);
 
@@ -97,6 +97,14 @@ export function NetworkTaskEligibilityPanel({ networkTasks = null }) {
                   <BlockerRow blocker={blocker} key={`${blocker.key}-${index}`} />
                 ))}
               </ul>
+              {activeTask && typeof onOpenActiveTask === "function" && (
+                <div className="net-elig-actions">
+                  <button onClick={onOpenActiveTask} type="button">
+                    Open active Network task
+                  </button>
+                  <small>Submit evidence or close the blocker from the task detail.</small>
+                </div>
+              )}
             </div>
           )}
         </div>

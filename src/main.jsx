@@ -134,6 +134,7 @@ import {
 import {
   findTaskById,
   mergeTaskStateWithActionReceipts,
+  outstandingTaskKindCounts,
   reconcileTaskVisibleState,
 } from "./features/tasks/task-visible-state.js";
 import { mergeAppStateWithMonotonicTasks } from "./features/tasks/task-app-state-refresh.js";
@@ -3705,6 +3706,7 @@ function TasksView({
   const taskRequestHandoff = taskSync?.handoff || {};
   const activeCapacityTaskId = firstActiveCapacityBlockerTaskId(tasks?.networkTasks);
   const activeCapacityTask = activeCapacityTaskId ? findTaskById(visibleState.tasks, activeCapacityTaskId) : null;
+  const outstandingKindCounts = outstandingTaskKindCounts(outstanding);
   const requestTaskButtonClass = activeCapacityTask
     ? "light-pill task-request-button"
     : "dark-pill task-request-button";
@@ -3921,6 +3923,14 @@ function TasksView({
             <h1>Tasks</h1>
             <p>
               <strong>{outstandingCount} outstanding</strong>
+              {outstandingCount > 0 && (
+                <>
+                  <span aria-hidden="true">.</span>
+                  <span className="task-outstanding-breakdown">
+                    {outstandingKindCounts.network} Network / {outstandingKindCounts.personal} Personal
+                  </span>
+                </>
+              )}
               <span aria-hidden="true">.</span>
               <span className="task-in-flight">{totalPftInFlight.toLocaleString()} PFT in flight</span>
               {tasks?.sync?.projectionCount > 0 && (
@@ -3942,7 +3952,14 @@ function TasksView({
                 </>
               )}
             </p>
-            <NetworkTaskEligibilityPanel networkTasks={tasks?.networkTasks} />
+            <NetworkTaskEligibilityPanel
+              activeTask={activeCapacityTask}
+              networkTasks={tasks?.networkTasks}
+              onOpenActiveTask={activeCapacityTask ? () => {
+                setTasksTab("outstanding");
+                onSelectTask(activeCapacityTask);
+              } : null}
+            />
           </div>
           <div className="tasks-header-actions">
             {activeCapacityTask && (
