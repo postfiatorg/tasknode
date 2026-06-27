@@ -291,6 +291,9 @@ function publicContributor(row = {}) {
 function publicTask(row = {}) {
   const projectedReward = row.projected_reward_pft ?? row.reward_pft;
   const state = safeText(row.projected_status || row.state, 80) || "proposed";
+  const rewardProofState = ["rewarded", "paid"].includes(state.toLowerCase());
+  const proofTxHash = rewardProofState ? safeText(row.last_event_tx_hash || row.proof_tx_hash || row.tx_hash, 240) : "";
+  const proofCid = rewardProofState ? safeText(row.last_event_cid || row.proof_cid || row.cid, 240) : "";
   const assigneeNft = safeText(row.assignee_nft_image_cid || row.assignee_nft_image_gateway_url, 500)
     ? {
         title: safeText(row.assignee_nft_title, 160),
@@ -317,17 +320,20 @@ function publicTask(row = {}) {
     source: safeText(row.source, 100),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.projected_updated_at || row.updated_at),
+    proofTxHash,
+    proofCid,
     assigneeNft,
     statusPacket: deriveNetworkTaskStatusPacketFromRow(row),
   };
 }
 
 function publicActivity(row = {}) {
+  const metadata = safeObject(row.metadata_json);
   return {
     id: safeText(row.id, 180),
     projectId: safeText(row.project_id, 180),
     wallet: safeText(row.wallet_address, 120),
-    taskId: safeText(row.task_id || safeObject(row.metadata_json).taskId || safeObject(row.metadata_json).task_id, 180),
+    taskId: safeText(row.task_id || metadata.taskId || metadata.task_id, 180),
     accountId: "",
     hasPublicProfile: false,
     hiveHandle: "",
@@ -339,6 +345,8 @@ function publicActivity(row = {}) {
     pft: row.pft_amount === null || row.pft_amount === undefined ? null : numeric(row.pft_amount),
     nextAction: taskNextAction(row.action),
     routing: safeText(row.routing_label, 120),
+    proofTxHash: safeText(metadata.proofTxHash || metadata.rewardTxHash || metadata.txHash || metadata.sourceTxHash || metadata.source_tx_hash, 240),
+    proofCid: safeText(metadata.proofCid || metadata.rewardCid || metadata.cid || metadata.sourceCid || metadata.source_cid, 240),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -386,7 +394,7 @@ function taskNextAction(state = "") {
   if (normalized === "submitted") return "Wait for review, then respond quickly if verification is requested.";
   if (normalized === "proposed") return "Open the task and accept or refuse it before the deadline.";
   if (normalized === "reward_decided") return "Wait for the terminal reward outcome to settle.";
-  if (["rewarded", "paid"].includes(normalized)) return "Reward recorded; no further action is required.";
+  if (["rewarded", "paid"].includes(normalized)) return "Reward paid. View proof, copy the tx, or request another task.";
   if (["refused", "cancelled", "rejected", "expired"].includes(normalized)) return "Task is stopped; wait for a new routed task if more work is needed.";
   return "Open the project task row and inspect the latest state.";
 }
@@ -555,6 +563,8 @@ function deriveActivityFromTask(project = {}, task = {}) {
     pft: action === "rewarded" ? numeric(task.pft) : null,
     nextAction: task.nextAction || taskNextAction(action),
     routing: task.requestId ? `request ${task.requestId}` : "",
+    proofTxHash: action === "rewarded" ? task.proofTxHash || "" : "",
+    proofCid: action === "rewarded" ? task.proofCid || "" : "",
     project: project.name,
     derived: true,
     createdAt: task.createdAt || "",
@@ -875,12 +885,18 @@ function publicRewardOutcome(outcome = null) {
       decision: "",
       rewardPft: 0,
       reason: "",
+      paymentTxHash: "",
+      paymentCid: "",
+      paymentObservedAt: null,
     };
   }
   return {
     decision: publicSummaryText(outcome.decision || outcome.title || outcome.status, 120),
     rewardPft: numeric(outcome.rewardPft),
     reason: publicSummaryText(outcome.reason || outcome.userFeedback || outcome.summary, 900),
+    paymentTxHash: publicSummaryText(outcome.paymentTxHash, 240),
+    paymentCid: publicSummaryText(outcome.paymentCid, 240),
+    paymentObservedAt: toIso(outcome.paymentObservedAt),
   };
 }
 
@@ -1114,6 +1130,8 @@ export const publicHiveTaskDetailFields = [
   "task.source",
   "task.createdAt",
   "task.updatedAt",
+  "task.proofTxHash",
+  "task.proofCid",
   "task.assigneeNft.title",
   "task.assigneeNft.status",
   "task.assigneeNft.imageCid",
@@ -1149,6 +1167,9 @@ export const publicHiveTaskDetailFields = [
   "review.outcome.decision",
   "review.outcome.rewardPft",
   "review.outcome.reason",
+  "review.outcome.paymentTxHash",
+  "review.outcome.paymentCid",
+  "review.outcome.paymentObservedAt",
   "evaluationPackets[].id",
   "evaluationPackets[].taskId",
   "evaluationPackets[].projectId",

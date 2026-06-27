@@ -45,6 +45,19 @@ const document = hiveProjectsDocumentForTests({
       updated_at: "2026-06-15T10:00:00.000Z",
       created_at: "2026-06-15T09:00:00.000Z",
     },
+    {
+      project_id: "project_hive_clickable_smoke",
+      id: "task_ref_hive_clickable_rewarded",
+      task_id: "task_hive_clickable_rewarded",
+      title: "Expose Hive reward proof",
+      state: "rewarded",
+      assignee_wallet: wallet,
+      reward_pft: 75,
+      last_event_tx_hash: "ABC123REWARD",
+      last_event_cid: "bafybeihiveclickablereward",
+      updated_at: "2026-06-15T09:58:00.000Z",
+      created_at: "2026-06-15T08:00:00.000Z",
+    },
   ],
   activityRows: [
     {
@@ -93,9 +106,15 @@ assert.equal(document.operators[wallet].operatorDisclosure.isMachineOperator, tr
 assert.equal(project.tasks[0].assigneeAccountId, accountId);
 assert.equal(project.tasks[0].assigneeHasPublicProfile, true);
 assert.equal(project.tasks[0].assigneeOperatorDisclosure.isMachineOperator, true);
+const rewardedProjectTask = project.tasks.find((task) => task.taskId === "task_hive_clickable_rewarded");
+assert.equal(rewardedProjectTask.proofTxHash, "ABC123REWARD");
+assert.equal(rewardedProjectTask.proofCid, "bafybeihiveclickablereward");
 assert.equal(project.activity[0].accountId, accountId);
 assert.equal(project.activity[0].hasPublicProfile, true);
 assert.equal(project.activity[0].operatorDisclosure.isMachineOperator, true);
+const rewardedFeedRow = document.routingFeed.find((entry) => entry.taskId === "task_hive_clickable_rewarded");
+assert.equal(rewardedFeedRow.proofTxHash, "ABC123REWARD");
+assert.equal(rewardedFeedRow.proofCid, "bafybeihiveclickablereward");
 assert.equal(project.nextTask.assigneeAccountId, accountId);
 assert.equal(project.nextTask.assigneeHasPublicProfile, true);
 assert.equal(Object.hasOwn(document, "orcOperations"), false);
@@ -162,6 +181,8 @@ const networkDetail = await getPublicHiveTaskDetail({
           subject_wallet: wallet,
           reward_offer_pft: 120,
           reward_actual_pft: 120,
+          last_event_tx_hash: "ABC123REWARD",
+          last_event_cid: "bafybeihiveclickablereward",
           source: "task_projections",
           description: "Demonstrate the public read-only Hive task pop-out.",
           submission_requirement_text: "Submit a concise proof.",
@@ -284,6 +305,10 @@ assert.equal(networkDetail.review.evidence[1].artifactRefs.at(-1).cid, "bafybeih
 assert.equal(networkDetail.review.verification.request, "Confirm the exact component opened.");
 assert.equal(networkDetail.review.verification.response, "Verification response submitted.");
 assert.equal(networkDetail.review.outcome.reason, "The proof satisfied the public Hive pop-out check.");
+assert.equal(networkDetail.review.outcome.paymentTxHash, "ABC123REWARD");
+assert.equal(networkDetail.review.outcome.paymentCid, "bafybeihiveclickablereward");
+assert.equal(networkDetail.task.proofTxHash, "ABC123REWARD");
+assert.equal(networkDetail.task.proofCid, "bafybeihiveclickablereward");
 assert.equal(networkDetail.evaluationPackets[0].id, "evalpkt_hive_clickable");
 assert.equal(networkDetail.evaluationPackets[0].artifactVerdicts[0].status, "verified");
 assert.equal(networkDetail.timeline.at(-1).txHash, "ABC123REWARD");

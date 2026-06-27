@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { requestJson } from "../../api";
+import { transactionExplorerHref } from "../../pftl-explorer.js";
 import {
   normalizeTaskStatus,
   statusSlug,
@@ -325,10 +326,13 @@ function taskIdentityKey(task = {}) {
   return String(task?.taskId || task?.fullId || task?.id || "").trim();
 }
 
-function TaskRewardOutcome({ outcome }) {
+function TaskRewardOutcome({ copiedValue = "", onCopy, onSelectForensics, outcome, pftlExplorerUrl = "" }) {
   if (!outcome) return null;
   const rewardPft = Number(outcome.rewardPft || 0);
   const offeredPft = Number(outcome.offeredPft || 0);
+  const paymentTxHash = String(outcome.paymentTxHash || outcome.rewardTxHash || outcome.txHash || "").trim();
+  const paymentCid = String(outcome.paymentCid || outcome.rewardCid || outcome.cid || "").trim();
+  const paymentHref = transactionExplorerHref(paymentTxHash, pftlExplorerUrl);
   const rows = [
     ["Decision", outcome.decision],
     ["Reward outcome", `${formatPftValue(rewardPft)} PFT`],
@@ -366,6 +370,40 @@ function TaskRewardOutcome({ outcome }) {
         <div className="task-reward-outcome-text">
           <span>What to fix</span>
           <p>{outcome.userFeedback}</p>
+        </div>
+      )}
+      {(paymentTxHash || paymentCid) && (
+        <div className="task-reward-proof">
+          <span>Reward proof</span>
+          <p>Reward paid. View proof, copy the reward transaction, or open the on-chain record.</p>
+          <div className="task-reward-proof-values">
+            {paymentTxHash && <code title={paymentTxHash}>tx {paymentTxHash}</code>}
+            {paymentCid && <code title={paymentCid}>cid {paymentCid}</code>}
+          </div>
+          <div className="task-reward-proof-actions">
+            <button onClick={() => onSelectForensics?.()} type="button">
+              View proof
+              <ArrowRight size={12} strokeWidth={1.6} />
+            </button>
+            {paymentTxHash && (
+              <button onClick={() => onCopy?.("reward-tx", paymentTxHash)} type="button">
+                {copiedValue === "reward-tx" ? <Check size={12} strokeWidth={1.8} /> : <Copy size={12} strokeWidth={1.8} />}
+                Copy tx
+              </button>
+            )}
+            {paymentHref && (
+              <a href={paymentHref} rel="noreferrer" target="_blank">
+                <ExternalLink size={12} strokeWidth={1.8} />
+                Open tx
+              </a>
+            )}
+            {paymentCid && (
+              <button onClick={() => onCopy?.("reward-cid", paymentCid)} type="button">
+                {copiedValue === "reward-cid" ? <Check size={12} strokeWidth={1.8} /> : <Copy size={12} strokeWidth={1.8} />}
+                Copy CID
+              </button>
+            )}
+          </div>
         </div>
       )}
     </section>
@@ -455,14 +493,17 @@ function TaskOriginalContext({ displayTask, expanded, onToggle, steps, verificat
 
 function TaskOverviewPanel({
   accountId,
+  copiedValue = "",
   detail,
   directOffchain = false,
   displayTask,
   linkedWalletAddress,
   loading,
+  onCopy,
   onLifecycleAction,
   onSelectTab,
   onWalletUnlock,
+  pftlExplorerUrl = "",
   steps,
   verification,
   walletSecret,
@@ -492,7 +533,13 @@ function TaskOverviewPanel({
   return (
     <>
       <div className="task-modal-divider" />
-      <TaskRewardOutcome outcome={detail?.rewardOutcome} />
+      <TaskRewardOutcome
+        copiedValue={copiedValue}
+        onCopy={onCopy}
+        onSelectForensics={() => onSelectTab?.("forensics")}
+        outcome={detail?.rewardOutcome}
+        pftlExplorerUrl={pftlExplorerUrl}
+      />
       {verificationRequestActive ? (
         <>
           <TaskOriginalContext
@@ -1334,6 +1381,7 @@ export function TaskDetailModal({
   onTaskActionReceipt,
   onTaskChanged,
   onWalletUnlock,
+  pftlExplorerUrl = "",
   task,
   walletSecret = null,
   walletUnlockPending = false,
@@ -1380,6 +1428,11 @@ export function TaskDetailModal({
   const taskBriefPayload = buildTaskCopyPayloads(displayTask, displayDetail).codex;
   const forensicsCount = taskForensicsIndexedEventCount({ detail: displayDetail, task: displayTask });
   const controlsBlocked = taskDetailControlsBlocked({ ...detailState, data: displayDetail });
+  const normalizedStatusKey = normalizeTaskStatus(displayTask.statusKey || displayTask.status);
+  const rewardPaidAt = displayDetail?.rewardOutcome?.paymentObservedAt || displayTask.lastEventAt || displayTask.updatedAt || "";
+  const rewardPaidDisplay = formatTaskTimestamp(rewardPaidAt, { locale: "en-US" }) || displayTask.lastEventAtDisplay || displayTask.updatedAtDisplay || "Rewarded";
+  const dueStatLabel = ["rewarded", "paid"].includes(normalizedStatusKey) ? "Paid" : displayTask.dueLabel || "Deadline";
+  const dueStatValue = ["rewarded", "paid"].includes(normalizedStatusKey) ? rewardPaidDisplay : displayTask.fullDue;
 
   // Hold the receipt callback in a ref so commitTaskDetailResult keeps a
   // stable identity across parent re-renders; otherwise every observed
@@ -1671,8 +1724,8 @@ export function TaskDetailModal({
               </span>
             </div>
             <div>
-              <small>{displayTask.dueLabel || "Deadline"}</small>
-              <span>{displayTask.fullDue}</span>
+              <small>{dueStatLabel}</small>
+              <span>{dueStatValue}</span>
             </div>
             <div>
               <small>Reward</small>
@@ -1715,9 +1768,12 @@ export function TaskDetailModal({
               displayTask={displayTask}
               linkedWalletAddress={linkedWalletAddress}
               loading={controlsBlocked}
+              copiedValue={copiedValue}
+              onCopy={copyTaskValue}
               onLifecycleAction={handleLifecycleAction}
               onSelectTab={setActiveTab}
               onWalletUnlock={onWalletUnlock}
+              pftlExplorerUrl={pftlExplorerUrl}
               steps={steps}
               verification={verification}
               walletSecret={walletSecret}
@@ -1750,6 +1806,7 @@ export function TaskDetailModal({
               error={detailState.error}
               loading={detailState.loading}
               onCopy={copyTaskValue}
+              pftlExplorerUrl={pftlExplorerUrl}
             />
           )}
         </div>

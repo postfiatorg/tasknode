@@ -81,5 +81,6 @@ export function taskRewardOutcome({ offeredPft = null, task = {}, timeline = [] 
     evidenceQuality: score.evidence_quality ?? score.evidenceQuality ?? null,
     paymentCid: safeText(paymentEvent?.cid, 200),
     paymentTxHash: safeText(paymentEvent?.txHash, 200),
+    paymentObservedAt: safeText(paymentEvent?.observedAt || paymentEvent?.occurredAt || paymentEvent?.createdAt, 80),
   };
 }

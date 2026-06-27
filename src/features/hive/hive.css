@@ -2537,6 +2537,44 @@ button.hive-project-next-task:focus-visible {
   padding: 2px 7px;
 }
 
+.hive-proof-action {
+  align-items: center;
+  background: #fbfaf6;
+  border: 1px solid var(--hive-border);
+  border-radius: 999px;
+  color: var(--hive-ink);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 5px;
+  min-height: 26px;
+  max-width: 156px;
+  padding: 0 9px;
+  text-decoration: none;
+}
+
+.hive-proof-action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hive-proof-action:hover,
+.hive-proof-action:focus-visible {
+  border-color: var(--hive-border-strong);
+  color: var(--hive-green-ink);
+  outline: none;
+}
+
+.hive-task-proof-line {
+  min-height: 26px;
+}
+
+.hive-task-proof-line .hive-proof-action {
+  margin-top: 0;
+}
+
 .hive-feed-row time,
 .hive-activity-row time {
   color: var(--hive-muted);
@@ -4109,6 +4147,63 @@ button.hive-project-next-task:focus-visible {
   font-size: 12px;
   line-height: 1.5;
   margin: 0;
+}
+
+.htp-proof-card {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(91, 138, 85, 0.22);
+  border-radius: 9px;
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 10px;
+}
+
+.htp-proof-card strong {
+  color: var(--hive-green-ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.htp-proof-card code {
+  color: var(--hive-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.htp-proof-card > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.htp-proof-card button,
+.htp-proof-card a {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--hive-border);
+  border-radius: 999px;
+  color: var(--hive-ink);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 5px;
+  min-height: 26px;
+  padding: 0 9px;
+  text-decoration: none;
+}
+
+.htp-proof-card button:hover,
+.htp-proof-card a:hover,
+.htp-proof-card button:focus-visible,
+.htp-proof-card a:focus-visible {
+  border-color: var(--hive-border-strong);
+  color: var(--hive-green-ink);
+  outline: none;
 }
 
 .htp-timeline {

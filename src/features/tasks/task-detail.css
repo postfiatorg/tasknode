@@ -375,6 +375,74 @@
   border-top: 1px solid rgba(232, 230, 223, 0.8);
 }
 
+.task-reward-proof {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(232, 230, 223, 0.8);
+}
+
+.task-reward-proof > span {
+  color: #6b6b66;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.task-reward-proof p {
+  margin: 0;
+  color: #3d3d38;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.task-reward-proof-values {
+  display: grid;
+  gap: 6px;
+}
+
+.task-reward-proof-values code {
+  padding: 8px 10px;
+  border: 1px solid #e8e6df;
+  border-radius: 8px;
+  background: #fff;
+  color: #0d0d0d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.task-reward-proof-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-reward-proof-actions button,
+.task-reward-proof-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d8d3c3;
+  border-radius: 999px;
+  background: #fff;
+  color: #1f1f1d;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.task-reward-proof-actions button:hover,
+.task-reward-proof-actions a:hover,
+.task-reward-proof-actions button:focus-visible,
+.task-reward-proof-actions a:focus-visible {
+  border-color: #1f1f1d;
+  outline: none;
+}
+
 .task-current-requirement {
   display: grid; gap: 14px; margin: 0 0 32px; padding: 0;
   border: 0; border-radius: 0; background: transparent; box-shadow: none;
@@ -1318,6 +1386,20 @@
   margin-left: auto;
 }
 
+.task-forensics-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b6b66;
+  text-decoration: none;
+}
+
+.task-forensics-open-link:hover,
+.task-forensics-open-link:focus-visible {
+  color: #1f1f1d;
+  outline: none;
+}
+
 .task-forensics-raw-payload {
   max-height: 260px;
   margin: 10px 0 0;
@@ -1336,7 +1418,7 @@
 
 .task-audit-value {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 5px 8px;
   align-items: center;
   min-width: 0;
@@ -1348,7 +1430,7 @@
 }
 
 .task-audit-value span {
-  grid-column: 1 / 3;
+  grid-column: 1 / -1;
   color: #6b6b66;
   font-size: 10px;
   font-weight: 700;
@@ -1356,12 +1438,33 @@
 }
 
 .task-audit-value code {
-  overflow: hidden;
   color: #0d0d0d;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.task-audit-value button,
+.task-audit-value a {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #fff;
+  color: #6b6b66;
+  text-decoration: none;
+}
+
+.task-audit-value button:hover,
+.task-audit-value a:hover,
+.task-audit-value button:focus-visible,
+.task-audit-value a:focus-visible {
+  border-color: #1f1f1d;
+  color: #1f1f1d;
+  outline: none;
 }
 
 .task-forensics-pill {

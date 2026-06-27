@@ -523,7 +523,7 @@ Task assignees use the assignee wallet's latest selected/profile NFT image when 
 
 The Routing Feed and Allotted Operators sections are also derived from live project-linked tasks. `network_project_contributors` and `network_project_activity` may hold explicit project rows later, but the current board will not stay empty when `network_project_task_refs` has real tasks. A project-linked task with an assignee creates a contributor/operator read model, and its current task state creates a routing-feed entry. The Allotted Operators subtitle refers to operators currently routed by live project tasks, not a permanent full-time membership claim.
 
-The Routing Feed is intentionally compact. It should show who acted, what changed, which project/task it belongs to, and PFT when useful. It should not render raw request IDs, task IDs, CIDs, transaction hashes, or placeholder words such as `indexed`; those details belong in task forensics or operator logs.
+The Routing Feed is intentionally compact. It should show who acted, what changed, which project/task it belongs to, and PFT when useful. Rewarded rows also show a compact `Proof` action when a reward tx/CID exists, linking to the configured PFTL explorer or opening the task proof popout. It should not render raw request IDs, task IDs, CIDs, full transaction hashes, or placeholder words such as `indexed`; full proof values belong in task forensics, the Hive task popout, or operator logs.
 
 Current local Docker state:
 
@@ -617,7 +617,9 @@ response may include only:
   `review.verification.response`, `review.outcome.decision`,
   `review.outcome.rewardPft`, and `review.outcome.reason`;
 - timeline audit fields: `timeline[].action`, `timeline[].label`,
-  `timeline[].time`, `timeline[].txHash`, and `timeline[].cid`.
+  `review.outcome.paymentTxHash`, `review.outcome.paymentCid`,
+  `review.outcome.paymentObservedAt`, `timeline[].time`, `timeline[].txHash`,
+  and `timeline[].cid`.
 
 The pop-out is read-only. It has no accept, submit, verify, wallet signing, or
 lifecycle controls; those stay on the Tasks surface for the owner/operator

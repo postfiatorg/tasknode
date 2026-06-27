@@ -6,11 +6,13 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  ExternalLink,
   Flag,
   Link2,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
+import { transactionExplorerHref } from "../../pftl-explorer.js";
 import { formatTaskTimestamp } from "../../../shared/task-time-format";
 import { truncateCid } from "../context/context-view-utils.jsx";
 import {
@@ -82,7 +84,8 @@ function CopyButton({ copiedValue, name, onCopy, title = "Copy", value }) {
   );
 }
 
-function ProofFooter({ copiedValue, event, index, onCopy, rawOpen, onToggleRaw }) {
+function ProofFooter({ copiedValue, event, index, onCopy, pftlExplorerUrl = "", rawOpen, onToggleRaw }) {
+  const eventTxHref = transactionExplorerHref(event.txHash || "", pftlExplorerUrl);
   return (
     <div className="task-forensics-proof-footer">
       <Link2 size={12} strokeWidth={1.6} />
@@ -91,6 +94,12 @@ function ProofFooter({ copiedValue, event, index, onCopy, rawOpen, onToggleRaw }
       {event.txHash && <span aria-hidden="true">·</span>}
       <Mono>{truncateCid(event.txHash || "")}</Mono>
       {event.txHash && <CopyButton copiedValue={copiedValue} name={`event-tx-${index}`} onCopy={onCopy} value={event.txHash} />}
+      {eventTxHref && (
+        <a className="task-forensics-open-link" href={eventTxHref} rel="noreferrer" target="_blank" title="Open transaction">
+          <ExternalLink size={12} strokeWidth={1.7} />
+          Open tx
+        </a>
+      )}
       {event.rawPayload && (
         <button className="task-forensics-raw-toggle" onClick={onToggleRaw} type="button">
           Raw payload {rawOpen ? <ChevronDown size={12} strokeWidth={1.6} /> : <ChevronRight size={12} strokeWidth={1.6} />}
@@ -123,7 +132,8 @@ function Lifecycle({ timeline }) {
   );
 }
 
-function ProofAnchors({ copiedValue, expectedEvents, forensics, onCopy, timeline }) {
+function ProofAnchors({ copiedValue, expectedEvents, forensics, onCopy, pftlExplorerUrl = "", timeline }) {
+  const lastTxHref = transactionExplorerHref(forensics.lastEventTxHash || "", pftlExplorerUrl);
   return (
     <section className="task-forensics-proof-card">
       <header>
@@ -134,7 +144,7 @@ function ProofAnchors({ copiedValue, expectedEvents, forensics, onCopy, timeline
         <TaskAuditValue copiedValue={copiedValue} label="Request bundle" name="request-cid" onCopy={onCopy} value={forensics.requestBundleCid} />
         <TaskAuditValue copiedValue={copiedValue} label="Context CID" name="context-cid" onCopy={onCopy} value={forensics.contextCid} />
         <TaskAuditValue copiedValue={copiedValue} label="Last CID" name="last-cid" onCopy={onCopy} value={forensics.lastEventCid} />
-        <TaskAuditValue copiedValue={copiedValue} label="Last transaction" name="last-tx" onCopy={onCopy} value={forensics.lastEventTxHash} />
+        <TaskAuditValue copiedValue={copiedValue} href={lastTxHref} label="Last transaction" name="last-tx" onCopy={onCopy} value={forensics.lastEventTxHash} />
       </div>
     </section>
   );
@@ -204,7 +214,7 @@ function DetailQuote({ detail, index, onCopy, copiedValue }) {
   );
 }
 
-function TaskForensicsEvent({ copiedValue, event, index, onCopy }) {
+function TaskForensicsEvent({ copiedValue, event, index, onCopy, pftlExplorerUrl = "" }) {
   const [rawOpen, setRawOpen] = useState(false);
   const details = Array.isArray(event.details) ? event.details : [];
   const rawPayload = event.rawPayload && typeof event.rawPayload === "object" ? event.rawPayload : null;
@@ -254,6 +264,7 @@ function TaskForensicsEvent({ copiedValue, event, index, onCopy }) {
           event={event}
           index={index}
           onCopy={onCopy}
+          pftlExplorerUrl={pftlExplorerUrl}
           onToggleRaw={() => setRawOpen((open) => !open)}
           rawOpen={rawOpen}
         />
@@ -265,7 +276,7 @@ function TaskForensicsEvent({ copiedValue, event, index, onCopy }) {
   );
 }
 
-function ProofIndex({ cids, copiedValue, onCopy, reducerEvents, transactions }) {
+function ProofIndex({ cids, copiedValue, onCopy, pftlExplorerUrl = "", reducerEvents, transactions }) {
   const [open, setOpen] = useState(true);
   if (!cids.length && !transactions.length && !reducerEvents.length) return null;
   return (
@@ -283,7 +294,7 @@ function ProofIndex({ cids, copiedValue, onCopy, reducerEvents, transactions }) 
             <TaskProofColumn copiedValue={copiedValue} label="CIDs · IPFS payloads" namePrefix="cid" onCopy={onCopy} rows={cids} valueKey="cid" />
           )}
           {transactions.length > 0 && (
-            <TaskProofColumn copiedValue={copiedValue} label="Transactions · on-chain" namePrefix="tx" onCopy={onCopy} rows={transactions} valueKey="txHash" />
+            <TaskProofColumn copiedValue={copiedValue} label="Transactions · on-chain" namePrefix="tx" onCopy={onCopy} pftlExplorerUrl={pftlExplorerUrl} rows={transactions} valueKey="txHash" />
           )}
           {reducerEvents.length > 0 && (
             <div className="task-forensics-proof-column">
@@ -301,7 +312,7 @@ function ProofIndex({ cids, copiedValue, onCopy, reducerEvents, transactions }) 
   );
 }
 
-function TaskProofColumn({ copiedValue, label, namePrefix, onCopy, rows, valueKey }) {
+function TaskProofColumn({ copiedValue, label, namePrefix, onCopy, pftlExplorerUrl = "", rows, valueKey }) {
   return (
     <div className="task-forensics-proof-column">
       <h4>{label}</h4>
@@ -310,6 +321,7 @@ function TaskProofColumn({ copiedValue, label, namePrefix, onCopy, rows, valueKe
         return (
           <TaskAuditValue
             copiedValue={copiedValue}
+            href={namePrefix === "tx" ? transactionExplorerHref(value, pftlExplorerUrl) : ""}
             key={`${entry.label}-${value}`}
             label={entry.label}
             name={`${namePrefix}-${entry.label}-${value}`}
@@ -322,19 +334,26 @@ function TaskProofColumn({ copiedValue, label, namePrefix, onCopy, rows, valueKe
   );
 }
 
-function TaskAuditValue({ copiedValue, label, name, onCopy, value }) {
+function TaskAuditValue({ copiedValue, href = "", label, name, onCopy, value }) {
   const text = String(value || "");
   if (!text) return null;
   return (
-    <button className="task-audit-value" onClick={() => onCopy(name, text)} type="button">
+    <div className="task-audit-value">
       <span>{label}</span>
-      <code title={text}>{truncateCid(text)}</code>
-      {copiedValue === name ? <Check size={12} strokeWidth={1.8} /> : <Copy size={12} strokeWidth={1.8} />}
-    </button>
+      <code title={text}>{text}</code>
+      <button aria-label={`Copy ${label}`} onClick={() => onCopy(name, text)} title={`Copy ${label}`} type="button">
+        {copiedValue === name ? <Check size={12} strokeWidth={1.8} /> : <Copy size={12} strokeWidth={1.8} />}
+      </button>
+      {href && (
+        <a aria-label={`Open ${label}`} href={href} rel="noreferrer" target="_blank" title={`Open ${label}`}>
+          <ExternalLink size={12} strokeWidth={1.8} />
+        </a>
+      )}
+    </div>
   );
 }
 
-export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
+export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy, pftlExplorerUrl = "" }) {
   const forensics = detail?.forensics || {};
   const cids = Array.isArray(forensics.cids) ? forensics.cids : [];
   const transactions = Array.isArray(forensics.transactions) ? forensics.transactions : [];
@@ -369,6 +388,7 @@ export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy
         expectedEvents={expectedEvents}
         forensics={forensics}
         onCopy={onCopy}
+        pftlExplorerUrl={pftlExplorerUrl}
         timeline={timeline}
       />
       <TaskForensicsIntegrityNotice integrity={integrity} />
@@ -397,6 +417,7 @@ export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy
                 index={index}
                 key={event.id || `${event.schema}-${event.txHash}-${index}`}
                 onCopy={onCopy}
+                pftlExplorerUrl={pftlExplorerUrl}
               />
             ))}
           </div>
@@ -408,7 +429,7 @@ export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy
           </p>
         )}
       </section>
-      <ProofIndex cids={cids} copiedValue={copiedValue} onCopy={onCopy} reducerEvents={reducerEvents} transactions={transactions} />
+      <ProofIndex cids={cids} copiedValue={copiedValue} onCopy={onCopy} pftlExplorerUrl={pftlExplorerUrl} reducerEvents={reducerEvents} transactions={transactions} />
     </div>
   );
 }

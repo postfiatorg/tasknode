@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowUpRight, Check, ChevronDown, ChevronRight, Copy, Flag, X } from "lucide-react";
 import { requestJson } from "../../api";
+import { transactionExplorerHref } from "../../pftl-explorer.js";
 import { profileNftImageCandidates } from "../profile/profile-nft-images.js";
 import "./hive.css";
 
@@ -18,7 +19,7 @@ function validProjectDocument(document) {
   );
 }
 
-export function HiveView() {
+export function HiveView({ pftlExplorerUrl = "" }) {
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedHiveTask, setSelectedHiveTask] = useState(null);
   const [projectDocument, setProjectDocument] = useState(null);
@@ -74,6 +75,7 @@ export function HiveView() {
           onBack={() => setSelectedProject(null)}
           onOpenTask={openHiveTask}
           operators={projectDocument?.operators || {}}
+          pftlExplorerUrl={pftlExplorerUrl}
           project={projectDocument?.projects?.[selectedProject] || null}
           status={projectStatus}
         />
@@ -81,6 +83,7 @@ export function HiveView() {
         <HiveIndex
           onSelectProject={setSelectedProject}
           onOpenTask={openHiveTask}
+          pftlExplorerUrl={pftlExplorerUrl}
           projectDocument={projectDocument}
           projectStatus={projectStatus}
         />
@@ -89,13 +92,14 @@ export function HiveView() {
         <HiveTaskPopout
           initialTask={selectedHiveTask}
           onClose={() => setSelectedHiveTask(null)}
+          pftlExplorerUrl={pftlExplorerUrl}
         />
       )}
     </div>
   );
 }
 
-function HiveIndex({ onOpenTask, onSelectProject, projectDocument, projectStatus }) {
+function HiveIndex({ onOpenTask, onSelectProject, pftlExplorerUrl = "", projectDocument, projectStatus }) {
   const [hiveContext, setHiveContext] = useState(null);
   const [hiveSecretary, setHiveSecretary] = useState(null);
   const [boardManager, setBoardManager] = useState(null);
@@ -184,6 +188,7 @@ function HiveIndex({ onOpenTask, onSelectProject, projectDocument, projectStatus
               last={index === list.length - 1}
               onOpenTask={onOpenTask}
               operators={projectDocument?.operators || {}}
+              pftlExplorerUrl={pftlExplorerUrl}
               project={projectDocument?.projects?.[entry.projectId] || { name: entry.project }}
             />
           ))}
@@ -256,7 +261,7 @@ function ProjectGrid({ document, onOpenTask, onSelectProject, status }) {
   );
 }
 
-function ProjectDetail({ onBack, onOpenTask, operators, project, status }) {
+function ProjectDetail({ onBack, onOpenTask, operators, pftlExplorerUrl = "", project, status }) {
   const [taskPage, setTaskPage] = useState(1);
   const [activityPage, setActivityPage] = useState(1);
   const projectTasks = project?.tasks || [];
@@ -335,6 +340,7 @@ function ProjectDetail({ onBack, onOpenTask, operators, project, status }) {
                   last={index === activityPageState.rows.length - 1}
                   onOpenTask={onOpenTask}
                   operators={operators}
+                  pftlExplorerUrl={pftlExplorerUrl}
                   project={project}
                 />
               ))}
@@ -375,6 +381,7 @@ function ProjectDetail({ onBack, onOpenTask, operators, project, status }) {
                   last={index === taskPageState.rows.length - 1}
                   onOpenTask={onOpenTask}
                   operators={operators}
+                  pftlExplorerUrl={pftlExplorerUrl}
                   project={project}
                   task={task}
                 />
@@ -677,6 +684,8 @@ function assigneeForTask(task = {}, operators = {}) {
 function hiveTaskSeed(source = {}, { operators = {}, project = {} } = {}) {
   const taskId = source.taskId || source.task_id || "";
   const assignee = assigneeForTask(source, operators);
+  const proofTxHash = source.proofTxHash || source.rewardTxHash || source.lastEventTxHash || source.txHash || source.paymentTxHash || "";
+  const proofCid = source.proofCid || source.rewardCid || source.lastEventCid || source.cid || source.paymentCid || "";
   return {
     id: taskId || source.id || "",
     taskId,
@@ -687,6 +696,8 @@ function hiveTaskSeed(source = {}, { operators = {}, project = {} } = {}) {
     age: source.age || source.time || source.updatedAt || "",
     summary: source.summary || source.description || "",
     nextAction: source.nextAction || taskNextAction(source.state || source.action),
+    proofTxHash,
+    proofCid,
     project: {
       id: source.projectId || project.id || "",
       name: source.project || project.name || "",
@@ -704,7 +715,7 @@ function hiveTaskClickProps(seed = {}, onOpenTask = null) {
     className: "is-clickable",
     props: {
       onClick: (event) => {
-        if (event.target?.closest?.("a")) return;
+        if (event.target?.closest?.("a,button")) return;
         onOpenTask(seed);
       },
       onKeyDown: (event) => {
@@ -718,7 +729,49 @@ function hiveTaskClickProps(seed = {}, onOpenTask = null) {
   };
 }
 
-function FeedRow({ entry, last = false, onOpenTask, operators = {}, project = {} }) {
+function HiveProofAction({ onOpenTask, pftlExplorerUrl = "", seed = {} }) {
+  const state = String(seed.state || seed.action || "").trim().toLowerCase();
+  if (!["rewarded", "paid"].includes(state)) return null;
+  const txHash = String(seed.proofTxHash || "").trim();
+  const cid = String(seed.proofCid || "").trim();
+  const href = transactionExplorerHref(txHash, pftlExplorerUrl);
+  const label = txHash ? `Proof tx ${shortPublicReference(txHash)}` : cid ? `Proof cid ${shortPublicReference(cid)}` : "Proof";
+  if (!txHash && !cid) return null;
+  if (href) {
+    return (
+      <a
+        aria-label={`Open reward transaction ${txHash}`}
+        className="hive-proof-action"
+        href={href}
+        onClick={(event) => event.stopPropagation()}
+        rel="noreferrer"
+        target="_blank"
+        title={txHash}
+      >
+        <span>{label}</span>
+        <ArrowUpRight size={12} strokeWidth={1.8} />
+      </a>
+    );
+  }
+  if (!seed.taskId || typeof onOpenTask !== "function") return null;
+  return (
+    <button
+      aria-label={txHash ? `View reward proof ${txHash}` : `View reward proof ${cid}`}
+      className="hive-proof-action"
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpenTask(seed);
+      }}
+      title={txHash || cid}
+      type="button"
+    >
+      <span>{label}</span>
+      <ArrowUpRight size={12} strokeWidth={1.8} />
+    </button>
+  );
+}
+
+function FeedRow({ entry, last = false, onOpenTask, operators = {}, pftlExplorerUrl = "", project = {} }) {
   const operator = operatorForWallet(entry.wallet, operators);
   const timeLabel = String(entry.time || "").trim();
   const showTime = timeLabel && timeLabel.toLowerCase() !== "indexed";
@@ -738,6 +791,7 @@ function FeedRow({ entry, last = false, onOpenTask, operators = {}, project = {}
         <small>· {entry.project}</small>
       </span>
       {entry.pft !== null && entry.pft !== undefined && <span className="hive-pft">+{formatPft(entry.pft)} PFT</span>}
+      <HiveProofAction onOpenTask={onOpenTask} pftlExplorerUrl={pftlExplorerUrl} seed={seed} />
       {showTime && <time>{timeLabel}</time>}
     </div>
   );
@@ -806,7 +860,7 @@ function ContributorCard({ contributor }) {
   );
 }
 
-function ProjectTaskRow({ task, last = false, onOpenTask, operators = {}, project = {} }) {
+function ProjectTaskRow({ task, last = false, onOpenTask, operators = {}, pftlExplorerUrl = "", project = {} }) {
   const state = taskState(task.state);
   const age = String(task.age || "").trim();
   const nextAction = task.nextAction || taskNextAction(task.state);
@@ -824,6 +878,11 @@ function ProjectTaskRow({ task, last = false, onOpenTask, operators = {}, projec
           {age ? <> · {age}</> : null}
         </small>
         {nextAction && <small className="hive-task-next">Next: {nextAction}</small>}
+        {(seed.proofTxHash || seed.proofCid) && (
+          <small className="hive-task-proof-line">
+            <HiveProofAction onOpenTask={onOpenTask} pftlExplorerUrl={pftlExplorerUrl} seed={seed} />
+          </small>
+        )}
       </span>
       <span className="hive-task-assignee">
         {assignee ? (
@@ -871,7 +930,7 @@ function HiveProfileBadge({ nft = null, size = 20, variant = 0 }) {
   );
 }
 
-function ActivityRow({ entry, last = false, onOpenTask, operators = {}, project = {} }) {
+function ActivityRow({ entry, last = false, onOpenTask, operators = {}, pftlExplorerUrl = "", project = {} }) {
   const state = taskState(entry.action);
   const operator = operatorForWallet(entry.wallet, operators);
   const timeLabel = String(entry.time || "").trim() || formatContextTime(entry.updatedAt || entry.createdAt);
@@ -899,6 +958,11 @@ function ActivityRow({ entry, last = false, onOpenTask, operators = {}, project 
           {timeLabel ? <> · {timeLabel}</> : null}
         </small>
         {nextAction && <small className="hive-task-next">Acknowledged: {nextAction}</small>}
+        {(seed.proofTxHash || seed.proofCid) && (
+          <small className="hive-task-proof-line">
+            <HiveProofAction onOpenTask={onOpenTask} pftlExplorerUrl={pftlExplorerUrl} seed={seed} />
+          </small>
+        )}
       </span>
       <span className="hive-task-assignee">
         <HiveProfileIdentity
@@ -983,6 +1047,12 @@ function assigneeFromDetail(detailTask = {}, fallbackAssignee = null) {
 function mergeHiveTaskDetail(initialTask = {}, detailBody = null) {
   const detailTask = detailBody?.task || {};
   const taskId = detailTask.taskId || detailTask.id || initialTask.taskId || initialTask.id || "";
+  const outcome = detailBody?.review?.outcome || initialTask.review?.outcome || {};
+  const timeline = Array.isArray(detailBody?.timeline) ? detailBody.timeline : Array.isArray(initialTask.timeline) ? initialTask.timeline : [];
+  const rewardEvent = [...timeline].reverse().find((event) =>
+    String(event?.action || "").toLowerCase().includes("reward") ||
+    String(event?.label || "").toLowerCase().includes("reward")
+  ) || {};
   return {
     ...initialTask,
     ...detailTask,
@@ -996,6 +1066,8 @@ function mergeHiveTaskDetail(initialTask = {}, detailBody = null) {
     summary: detailTask.summary || initialTask.summary || "",
     description: detailTask.description || initialTask.description || "",
     nextAction: detailTask.nextAction || initialTask.nextAction || taskNextAction(detailTask.state || initialTask.state),
+    proofTxHash: detailTask.proofTxHash || outcome.paymentTxHash || initialTask.proofTxHash || rewardEvent.txHash || "",
+    proofCid: detailTask.proofCid || outcome.paymentCid || initialTask.proofCid || rewardEvent.cid || "",
     project: {
       id: detailTask.project?.id || initialTask.project?.id || "",
       name: detailTask.project?.name || initialTask.project?.name || "Hive project",
@@ -1025,9 +1097,9 @@ function hasReviewContent(review = null) {
   );
 }
 
-function HiveTaskPopout({ initialTask, onClose }) {
+function HiveTaskPopout({ initialTask, onClose, pftlExplorerUrl = "" }) {
   const [mounted, setMounted] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedValue, setCopiedValue] = useState("");
   const [loadStatus, setLoadStatus] = useState("loading");
   const [task, setTask] = useState(() => mergeHiveTaskDetail(initialTask));
 
@@ -1097,11 +1169,24 @@ function HiveTaskPopout({ initialTask, onClose }) {
         txHash: "",
         cid: "",
       }];
+  const rewardEvent = [...timeline].reverse().find((event) =>
+    String(event?.action || "").toLowerCase().includes("reward") ||
+    String(event?.label || "").toLowerCase().includes("reward")
+  ) || {};
+  const rewardTxHash = outcome.paymentTxHash || task.proofTxHash || rewardEvent.txHash || "";
+  const rewardCid = outcome.paymentCid || task.proofCid || rewardEvent.cid || "";
+  const rewardHref = transactionExplorerHref(rewardTxHash, pftlExplorerUrl);
+
+  function copyValue(name, value) {
+    const text = String(value || "").trim();
+    if (!text) return;
+    navigator.clipboard?.writeText(text).catch(() => {});
+    setCopiedValue(name);
+    window.setTimeout(() => setCopiedValue((current) => (current === name ? "" : current)), 1400);
+  }
 
   function copyId() {
-    navigator.clipboard?.writeText(task.taskId || task.id).catch(() => {});
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
+    copyValue("task-id", task.taskId || task.id);
   }
 
   return (
@@ -1131,7 +1216,7 @@ function HiveTaskPopout({ initialTask, onClose }) {
           <h2 id="htp-title">{task.title}</h2>
           <button className="htp-id" onClick={copyId} type="button">
             {task.taskId || task.id}
-            {copied ? <Check size={11} strokeWidth={1.9} /> : <Copy size={11} strokeWidth={1.7} />}
+            {copiedValue === "task-id" ? <Check size={11} strokeWidth={1.9} /> : <Copy size={11} strokeWidth={1.7} />}
           </button>
 
           <ol aria-label="Task lifecycle" className="htp-stepper">
@@ -1239,6 +1324,33 @@ function HiveTaskPopout({ initialTask, onClose }) {
                   <div className="htp-review-outcome">
                     <span>{outcome.decision || "Reward outcome"} · {formatPft(outcome.rewardPft)} PFT</span>
                     {outcome.reason && <p>{outcome.reason}</p>}
+                    {(rewardTxHash || rewardCid) && (
+                      <div className="htp-proof-card">
+                        <strong>Reward proof</strong>
+                        {rewardTxHash && <code title={rewardTxHash}>tx {rewardTxHash}</code>}
+                        {rewardCid && <code title={rewardCid}>cid {rewardCid}</code>}
+                        <div>
+                          {rewardTxHash && (
+                            <button onClick={() => copyValue("reward-tx", rewardTxHash)} type="button">
+                              {copiedValue === "reward-tx" ? <Check size={12} strokeWidth={1.8} /> : <Copy size={12} strokeWidth={1.8} />}
+                              Copy tx
+                            </button>
+                          )}
+                          {rewardHref && (
+                            <a href={rewardHref} rel="noreferrer" target="_blank">
+                              <ArrowUpRight size={12} strokeWidth={1.8} />
+                              Open tx
+                            </a>
+                          )}
+                          {rewardCid && (
+                            <button onClick={() => copyValue("reward-cid", rewardCid)} type="button">
+                              {copiedValue === "reward-cid" ? <Check size={12} strokeWidth={1.8} /> : <Copy size={12} strokeWidth={1.8} />}
+                              Copy CID
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1920,7 +2032,7 @@ function taskNextAction(state = "") {
   if (normalized === "submitted") return "Wait for review and respond if verification is requested.";
   if (normalized === "proposed") return "Open the task and accept or refuse it before the deadline.";
   if (normalized === "reward_decided") return "Wait for the terminal reward outcome to settle.";
-  if (["rewarded", "paid"].includes(normalized)) return "Reward recorded; no further action is required.";
+  if (["rewarded", "paid"].includes(normalized)) return "Reward paid. View proof, copy the tx, or request another task.";
   if (["refused", "cancelled", "rejected", "expired"].includes(normalized)) return "Task is stopped; wait for a new routed task if more work is needed.";
   return "Open the task row and inspect the latest state.";
 }

@@ -1789,7 +1789,7 @@ function App() {
           )}
           {view === "hive" && (
             <Suspense fallback={<StatusBanner>Loading hive</StatusBanner>}>
-              <HiveView />
+              <HiveView pftlExplorerUrl={runtimeConfig?.pftlExplorerUrl || ""} />
             </Suspense>
           )}
           {view === "hive-brain" && (
@@ -1909,6 +1909,7 @@ function App() {
           walletSecret={walletSecretRef.current}
           walletUnlockPending={walletUnlockOpen}
           walletVault={walletVaultStatus}
+          pftlExplorerUrl={runtimeConfig?.pftlExplorerUrl || ""}
         />
       )}
       {chatSearchOpen && (

@@ -660,7 +660,7 @@ export const DOC_GROUPS = [
     pages: [
       { slug: "chat", title: "Chat", summary: "The primary work surface.", markdown: chat },
       { slug: "tasks", title: "Tasks", summary: "Portable task lifecycle state.", markdown: tasks },
-      { slug: "hive", title: "Hive", summary: "Network project routing and operator coordination.", markdown: hive },
+      { slug: "hive", title: "Hive", summary: "Network project routing, reward proof visibility, and operator coordination.", markdown: hive },
       { slug: "directory", title: "Directory", summary: "Public discoverable operator leaderboard.", markdown: directory },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, and custody.", markdown: wallet },
       { slug: "profile", title: "Profile", summary: "Member trust surface and daily airdrop state.", markdown: profile },
