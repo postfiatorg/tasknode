@@ -28,6 +28,7 @@ import {
 import { formatTaskTimestamp } from "../../../shared/task-time-format";
 import { truncateCid } from "../context/context-view-utils.jsx";
 import { publishTaskLifecycleAction } from "./task-actions.js";
+import { captureTaskActionRoute, restoreTaskActionRoute } from "./task-action-route.js";
 import {
   processTaskEvidenceFile,
   publishTaskEvidenceSubmission,
@@ -1580,15 +1581,21 @@ export function TaskDetailModal({
   }
 
   async function handleLifecycleAction({ reason = "", taskAction = "cancel" } = {}) {
-    const result = await publishTaskLifecycleAction({
-      accountId,
-      linkedWalletAddress,
-      walletSecret,
-      task: displayTask,
-      detail: detailState.data,
-      taskAction,
-      reason,
-    });
+    const routeSnapshot = captureTaskActionRoute();
+    let result;
+    try {
+      result = await publishTaskLifecycleAction({
+        accountId,
+        linkedWalletAddress,
+        walletSecret,
+        task: displayTask,
+        detail: detailState.data,
+        taskAction,
+        reason,
+      });
+    } finally {
+      restoreTaskActionRoute(routeSnapshot);
+    }
     const receipt = taskActionReceiptFromLifecycleResult({
       accountId,
       walletAddress: linkedWalletAddress,
@@ -1601,7 +1608,11 @@ export function TaskDetailModal({
       onTaskActionReceipt?.(receipt);
     }
     setDetailRefreshKey((key) => key + 1);
-    await onTaskChanged?.({ taskProjectionRefresh: true });
+    try {
+      await onTaskChanged?.({ taskProjectionRefresh: true });
+    } finally {
+      restoreTaskActionRoute(routeSnapshot);
+    }
     return result;
   }
 

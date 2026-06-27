@@ -577,12 +577,15 @@
 }
 
 .task-lifecycle-action {
+  position: relative;
   display: grid;
   gap: 12px;
+  z-index: 80;
   padding: 16px;
   border: 1px solid rgba(124, 60, 46, 0.18);
   border-radius: 14px;
   background: rgba(124, 60, 46, 0.04);
+  pointer-events: auto;
 }
 
 .task-lifecycle-action h4 {
@@ -623,14 +626,19 @@
 }
 
 .task-lifecycle-buttons {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  z-index: 81;
 }
 
 .task-lifecycle-buttons .dark-pill,
 .task-lifecycle-buttons .light-pill {
+  position: relative;
+  z-index: 82;
   min-height: 38px;
+  pointer-events: auto;
 }
 
 /* Stop actions (refuse/cancel) stay available but read as secondary so the
