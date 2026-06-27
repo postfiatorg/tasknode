@@ -44,6 +44,7 @@ import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import networkTaskRecovery from "../../../docs/wiki/architecture/network-task-recovery.md?raw";
 import networkTaskGenerationWorker from "../../../docs/wiki/architecture/network-task-generation-worker.md?raw";
 import networkTaskProfileWorker from "../../../docs/wiki/architecture/network-task-profile-worker.md?raw";
+import grashnukAutonomousNetworkActorSpec from "../../../docs/wiki/architecture/grashnuk-autonomous-network-actor-spec.md?raw";
 import orcArmyOverview from "../../../docs/wiki/architecture/orc-army-overview.md?raw";
 import orcOperatorRuntime from "../../../docs/wiki/architecture/orc-operator-runtime.md?raw";
 import sybilReviewDetection from "../../../docs/wiki/architecture/sybil-review-detection.md?raw";
@@ -742,6 +743,12 @@ export const DOC_GROUPS = [
         title: "Orc Army And On-Chain Agent Overview",
         summary: "Full Orc, Nazgul, on-chain agent, runtime queue, Board Manager, and observability architecture map.",
         markdown: orcArmyOverview,
+      },
+      {
+        slug: "grashnuk-on-chain-agent",
+        title: "Grashnuk On-Chain Agent",
+        summary: "Reference wallet-native agent flow, harvest follow-up loop, and independent review requirements.",
+        markdown: grashnukAutonomousNetworkActorSpec,
       },
       {
         slug: "sybil-review-detection",

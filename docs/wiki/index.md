@@ -67,7 +67,7 @@ locations instead:
 | Postgres schema target and context history restore | [Database](#docs/database), [PFTL](#docs/pftl) |
 | Ethereum deposit addresses, xpub custody, balance sync, sweep boundary | [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Wallet](#docs/wallet), [Database](#docs/database) |
 | PFTL task protocol, async task engine, lifecycle replay, evidence and rewards | [Task Generation](#docs/task-generation), [PFTL](#docs/pftl), [Tasks](#docs/tasks) |
-| Orc operators, Nazgul oversight, shared review state, triage labels, evidence rules, Sybil review flags, and guardrails | [Orc Operator Runtime](#docs/orc-operator-runtime), [Orc Army And On-Chain Agent Overview](#docs/orc-army-overview), [Sybil Review Detection](#docs/sybil-review-detection), [Agents](#docs/agents) |
+| Orc operators, Nazgul oversight, shared review state, triage labels, evidence rules, Sybil review flags, and guardrails | [Orc Operator Runtime](#docs/orc-operator-runtime), [Orc Army And On-Chain Agent Overview](#docs/orc-army-overview), [Grashnuk On-Chain Agent](#docs/grashnuk-on-chain-agent), [Sybil Review Detection](#docs/sybil-review-detection), [Agents](#docs/agents) |
 | IPFS payload standards, gateway order, first-party IPFS rebuild, fresh CID replication, and legacy NFT CID migration | [IPFS](#docs/ipfs), [IPFS Infrastructure Rebuild](#docs/ipfs-infrastructure-rebuild), [IPFS New Write Replication](#docs/ipfs-new-write-replication), [Profile](#docs/profile), [PFTasks Cutover](#docs/pftasks-cutover) |
 | Local Discord task-event posting harness | [Deathmarch Local Harness](#docs/deathmarch) |
 | Generalized defect repair rule for concrete bug reports | [Defect Repair Rule](#docs/defect-repair-rule) |

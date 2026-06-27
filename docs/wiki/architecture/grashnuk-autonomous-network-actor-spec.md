@@ -122,6 +122,16 @@ Grashnuk's wallet/session tooling. Its job is to inspect the Grashnuk commit or
 range, run focused checks, and create a separate fix commit when it finds a real
 regression or missing test. If the review fix changes production behavior, the
 review agent deploys and verifies production health before reporting success.
+After the code review, the reviewer must also run a documentation-impact pass.
+When either the reviewed Grashnuk commit or the reviewer fix changes product
+behavior, operator workflow, prompts, task lifecycle, PFTL/replay behavior,
+wallet/auth behavior, Hive/Board behavior, or any public Help-facing contract,
+the reviewer updates the relevant `docs/wiki/` page and exposes it through
+`src/features/docs/docs-content.js` when a new Help page is needed. Missing or
+stale documentation for a changed behavior counts as a review defect; the
+reviewer should fix it in a follow-up commit and report the doc path in proof.
+If no documentation update is relevant, the reviewer states that reason in the
+review proof instead of leaving a placeholder TODO.
 
 **Option B (graduate to) — supervised worker on the durable runtime.** A process claims
 directives from `orc_runtime_directives` (#96) and executes via `orcctl`. True unsupervised
