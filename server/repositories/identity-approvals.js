@@ -126,6 +126,11 @@ function publicHandleForBadge(badge = {}) {
   );
 }
 
+function profileUrlForBadge(badge = {}) {
+  const evidence = safeObject(badge.evidence);
+  return safeText(evidence.profileUrl || evidence.profile_url || "", 500);
+}
+
 function metricsForBadge(badge = {}) {
   const evidence = safeObject(badge.evidence);
   const metrics = {};
@@ -158,6 +163,7 @@ export function approvalRecordsFromNetworkBadgeProjection({
     const provider = approvalProviderForBadge(badgeId);
     const approvalScope = `badge:${badgeId}`;
     const publicHandle = publicHandleForBadge(badge);
+    if (badgeId === "kol" && !publicHandle) return;
     const evidence = {
       source: "runtime_projection_refresh",
       badgeId,
@@ -172,7 +178,7 @@ export function approvalRecordsFromNetworkBadgeProjection({
       provider,
       providerUserIdHash: publicHandle ? `sha256:${digest(`${provider}:${publicHandle.toLowerCase()}`)}` : "",
       publicHandle,
-      profileUrl: "",
+      profileUrl: profileUrlForBadge(badge),
       approvalLevel: approvalLevelForBadge(badgeId),
       approvalScope,
       status: "active",

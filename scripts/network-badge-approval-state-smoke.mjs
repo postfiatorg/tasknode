@@ -72,6 +72,47 @@ assert.equal(defaultBadge.badgeId, "kol");
 assert.equal(materialized.accountBadges.every((badge) => badge.status === "verified"), true);
 assert.equal(materialized.accountBadges.every((badge) => badge.evidenceJson.source === "runtime_projection_refresh"), true);
 
+const metricOnlyKol = approvalRecordsFromNetworkBadgeProjection({
+  projection: {
+    catalogVersion: "network_badges_v1",
+    source: "runtime_projection",
+    accountId: "acct_metric_only",
+    verifiedBadges: [
+      {
+        badgeId: "kol",
+        evidence: {
+          followersCount: 31056,
+          proofMethod: "x_public_metrics",
+        },
+      },
+    ],
+  },
+});
+assert.deepEqual(metricOnlyKol.badgeIds, [], "KOL runtime materialization requires a handle, not only follower count");
+assert.equal(metricOnlyKol.identityApprovals.length, 0);
+assert.equal(metricOnlyKol.accountBadges.length, 0);
+
+const kolWithProfile = approvalRecordsFromNetworkBadgeProjection({
+  projection: {
+    catalogVersion: "network_badges_v1",
+    source: "runtime_projection",
+    accountId: "acct_kol_profile",
+    verifiedBadges: [
+      {
+        badgeId: "kol",
+        evidence: {
+          handle: "beau",
+          profileUrl: "https://x.com/beau",
+          followersCount: 31056,
+          proofMethod: "x_public_metrics",
+        },
+      },
+    ],
+  },
+});
+assert.equal(kolWithProfile.identityApprovals[0].publicHandle, "beau");
+assert.equal(kolWithProfile.identityApprovals[0].profileUrl, "https://x.com/beau");
+
 const manualApproval = manualBadgeApprovalRecords({
   accountId: "acct_demo",
   badgeId: "project_leader",
