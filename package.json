@@ -121,6 +121,7 @@
     "hive-reports-worker": "node scripts/hive-reports-worker.mjs",
     "hive-reports-smoke": "node scripts/hive-reports-smoke.mjs",
     "task-accounting-harvester-smoke": "node scripts/task-accounting-harvester-smoke.mjs",
+    "duplicate-reward-reconciliation-ledger": "node scripts/duplicate-reward-reconciliation-ledger.mjs",
     "hive-decision-agent-worker": "node scripts/hive-decision-agent-worker.mjs",
     "hive-decision-agent-smoke": "node scripts/hive-decision-agent-smoke.mjs",
     "hive-route-cache-observability-smoke": "node scripts/hive-route-cache-observability-smoke.mjs",

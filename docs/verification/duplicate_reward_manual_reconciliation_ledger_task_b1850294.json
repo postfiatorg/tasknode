@@ -1,0 +1,792 @@
+{
+  "schema": "tasknode.duplicate_reward_manual_reconciliation_ledger.v1",
+  "generatedAt": "2026-06-27T12:49:26.661Z",
+  "generatedBy": "grashnuk",
+  "sourceHarvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+  "sourceReport": {
+    "schema": "tasknode.duplicate_reward_reconciliation_report.v1",
+    "source": "scripts/duplicate-reward-reconciliation-scanner.mjs",
+    "generatedAt": "2026-06-19T21:49:11.072Z",
+    "sourceMode": "live_db",
+    "reference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json"
+  },
+  "readOnly": true,
+  "noSigning": true,
+  "noFundMovement": true,
+  "noLiveMutation": true,
+  "noRewardApproval": true,
+  "noClawbackExecution": true,
+  "operatorBoundary": "Manual accounting review ledger only. Entries assign investigation work to the accounting operator and do not execute policy.",
+  "aggregate": {
+    "sourceIncidentCount": 13,
+    "ledgerEntryCount": 13,
+    "duplicatePaymentEntryCount": 10,
+    "duplicateDecisionOnlyEntryCount": 3,
+    "totalDuplicatePaymentAfterFirstPft": "153002.500000",
+    "totalScannerRecommendedOffsetPft": "150002.500000",
+    "actionOwner": "accounting_operator_review"
+  },
+  "entries": [
+    {
+      "id": "dup_reward_recon_65140734dd9114ca",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_70828af0024abd3cff1501aadb689e22",
+      "title": "Write Task Node Boundary and Success Specification",
+      "taskKind": "alpha",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_0231923dea83da64755e32bf0b7f1373"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "30000.000000",
+      "paymentTotalPft": "60000.000000",
+      "duplicatePaymentAfterFirstPft": "30000.000000",
+      "scannerRecommendedOffsetPft": "30000.000000",
+      "paymentProjectionDeltaPft": "30000.000000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "AAF73EAEC59ED22A0E02E8F677CD79956B4B73F66AAC617B63855A66B3878911"
+      ],
+      "sourceEventTxHashes": [
+        "3DB87C1DB9FFC4C51BA7DF53D5F883B053EF7B6ECF5448883D47635BAECCC513",
+        "5E93110DF5EBC50C6186578758E2432381241A6DACB3292C11A45289845CF999",
+        "53EC99301582EE44C822F5ECBFD5A2FE2FD6535C38FE3E84FFF23051E0F691AE",
+        "AAF73EAEC59ED22A0E02E8F677CD79956B4B73F66AAC617B63855A66B3878911"
+      ],
+      "sourceEventCids": [
+        "QmNgM4jft6L4ZXBxe8UK9Ya95JCyNaVn3BjHoDQ5S94rqJ",
+        "QmP6nCRjcS1uMxnoLwB81WuDwXA6Qnhnj5sFmo1hcSeZiH",
+        "QmZUmU7vvtLHYykLXyipmCLq8WuL14kVvWmpnfSEDQStnq",
+        "QmWe4DTt4BqVPX8Md6m7tkhY6NU6ekTXdXibw7rCpkPt1t"
+      ],
+      "sourceReportGroupKey": "task_70828af0024abd3cff1501aadb689e22::network_allocation_id::netalloc_0231923dea83da64755e32bf0b7f1373",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_1f20d1c37fea7051",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_724460b146babbd93e71cdce425bd0e6",
+      "title": "Audit Task Node Determinism and Board State",
+      "taskKind": "network",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_e04b3a9b134f83640934f873c1cab23a"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "30000.000000",
+      "paymentTotalPft": "60000.000000",
+      "duplicatePaymentAfterFirstPft": "30000.000000",
+      "scannerRecommendedOffsetPft": "30000.000000",
+      "paymentProjectionDeltaPft": "30000.000000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "EBA17FE192F7AC3B064E78A496C977D4A3A6FD8608D83B6B7D24E53957DFA9CA"
+      ],
+      "sourceEventTxHashes": [
+        "085DBFD87EE9E33C2C7F85763A7A69B6A30848C0811EEC8B861A55DB3B8CD1D6",
+        "31B2FBCE40A054AF0D3761E3B40B16CA163AD12CD5CE24988C2CF85B409654C9",
+        "E789649A5442C67F7A657F8CDDD8C010510000174F4342E4CAFFA277BD655C0F",
+        "EBA17FE192F7AC3B064E78A496C977D4A3A6FD8608D83B6B7D24E53957DFA9CA"
+      ],
+      "sourceEventCids": [
+        "QmdfPzDPXR1o7dksM1gSUwnUNC7uP5NYCAiJgXhk8kaNeF",
+        "QmRYyBS36u7BNdFzEHqJCRGPovzwfS8Ko3AFnw7UmXG1jr",
+        "QmToy4gMsUiwc3xPwGVag5dyJae8aq2nhymSmS5NErkRkt",
+        "QmVG8r4HzMjDoTtEHvKPJQmcSh4zcT8jMpZafRcvuBAWDS"
+      ],
+      "sourceReportGroupKey": "task_724460b146babbd93e71cdce425bd0e6::network_allocation_id::netalloc_e04b3a9b134f83640934f873c1cab23a",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_d1ca36d85e6e4c53",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_19f12b461da11ee0fa9b4eb688fcb7a2",
+      "title": "Stress Test Email And Telegram Login State Flows",
+      "taskKind": "network",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_53ab603c2c06364c928b312c4bb790a3"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "18000.000000",
+      "paymentTotalPft": "36000.000000",
+      "duplicatePaymentAfterFirstPft": "18000.000000",
+      "scannerRecommendedOffsetPft": "18000.000000",
+      "paymentProjectionDeltaPft": "18000.000000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "FACFBFE2DAE2BE99D10F91066F105EBF8352A37FAFBFD2A8D4B3E16D9A6D0D6D"
+      ],
+      "sourceEventTxHashes": [
+        "06DA9625D6980FA2BD4C5BC87C15EC961F975C7DE64BE78F1E3B0D19F4E8105A",
+        "B7473BC824F093B2ED189B1C8B33DB8DA18147E1586AC61752EBDF0FA7F82E44",
+        "ACC16FFC59D7691A774F0B61F890D7079E279A3AB8365E13D170EF4B56363979",
+        "FACFBFE2DAE2BE99D10F91066F105EBF8352A37FAFBFD2A8D4B3E16D9A6D0D6D"
+      ],
+      "sourceEventCids": [
+        "QmNzgMEZe8vNnMtyujUsz4qRNQzjjWPH6QE4mcGTRUtZwL",
+        "QmaQ1Jr2fPhkMPdTxAdy7pecVfnxcNJUxTyLsuodpZ4Zrt",
+        "QmPJYGytudruqw6jXMXVwzpuF2WR3vq6Pfg8VhRavNGjFQ",
+        "QmStXBZCoTbFcMv1NGfm4jTePa6UaVUVAutyiqAqmHcXNc"
+      ],
+      "sourceReportGroupKey": "task_19f12b461da11ee0fa9b4eb688fcb7a2::network_allocation_id::netalloc_53ab603c2c06364c928b312c4bb790a3",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_97f5a98712ba0280",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_5dc3c23dd1460a044bfa2ce1fede2292",
+      "title": "Define Restored Core Product Task Flow",
+      "taskKind": "network",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_7695d0f0ff01a848d4ac31a68967fa21"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "18000.000000",
+      "paymentTotalPft": "36000.000000",
+      "duplicatePaymentAfterFirstPft": "18000.000000",
+      "scannerRecommendedOffsetPft": "18000.000000",
+      "paymentProjectionDeltaPft": "18000.000000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "EB4B4BA2EE813244CAE8BCE68B0DF39A4B8BE3E4ABC40641B891FFA3506A8E3B"
+      ],
+      "sourceEventTxHashes": [
+        "1C07FE037DBA5D66DCB585345B2779B240D23917185A1615E54CD41D865201D0",
+        "845950E681220240C5393D2B55118BC8D5EDAEEBCE219ADB11216FEDC01FDB4B",
+        "02385DD2E69D843C90EC725B05B2E281E51C885666A37E7D9FC728EC18B588BE",
+        "EB4B4BA2EE813244CAE8BCE68B0DF39A4B8BE3E4ABC40641B891FFA3506A8E3B"
+      ],
+      "sourceEventCids": [
+        "Qmc54Qkch2U5XcpjD8jtSmRpx37WqVAmXb72ZcTn68i9up",
+        "QmZgVCTQQB1mgSUzWzEWZSPytoHFr8LoCaR9yswppZ7zdv",
+        "Qma1UgzMJVaZnmbatx1AmKJiAjuW1yR6GbEacHmcNwgJoz",
+        "QmYpPbC7nECNRHjnWQvKAfVdZJFjMmhUbGpGLyhpj1fRFr"
+      ],
+      "sourceReportGroupKey": "task_5dc3c23dd1460a044bfa2ce1fede2292::network_allocation_id::netalloc_7695d0f0ff01a848d4ac31a68967fa21",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_bdab7efb4f16e70b",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_dc07336c457592a783e53b0b7a175df9",
+      "title": "Ship Four Acceptance Gates Beta Document",
+      "taskKind": "network",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_e8908c5bf03b2a8bcb0c39127edee5bc"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "18000.000000",
+      "paymentTotalPft": "36000.000000",
+      "duplicatePaymentAfterFirstPft": "18000.000000",
+      "scannerRecommendedOffsetPft": "18000.000000",
+      "paymentProjectionDeltaPft": "18000.000000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "BB051CA894FACA98571308109500C5A9E9F75FEFAB5F19B4CD6E67E1B4C9B914"
+      ],
+      "sourceEventTxHashes": [
+        "F3AF8BE72642BD68FB6A92281597B761A6D425C6543E71F2C3E2311605362AD3",
+        "1821989AF9AD299F0C17A738E13B307FA7262EAB5217778FDD4B8A226CBB756D",
+        "15EDD11122DA47D350DC4F1FE6E5FFFBBCCF75FFFDC132A2B33D542DC6FC56B2",
+        "BB051CA894FACA98571308109500C5A9E9F75FEFAB5F19B4CD6E67E1B4C9B914"
+      ],
+      "sourceEventCids": [
+        "QmUBPZNeRTgPAG4sF2e9adYWR5UG3p2eNaig6cEhZSgQox",
+        "QmNQs92ZNA4kCqrPrVu7LTdDEUJpddNsn4DGvV3vQTwogP",
+        "QmYa9nhtPDaVzu5KkA9Sbxfp8DwUi7kUCdXbU8TsUUFmCH",
+        "Qmf3gid11KQDbpu8nMsmAD5789TpYZ1HbCUaf664pDiXgD"
+      ],
+      "sourceReportGroupKey": "task_dc07336c457592a783e53b0b7a175df9::network_allocation_id::netalloc_e8908c5bf03b2a8bcb0c39127edee5bc",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_1c87637b9e1f6c8d",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_e5e3e7b9a600bcde85e3d8cf626ed6bb",
+      "title": "Define Task Node Beta Consolidation Boundaries",
+      "taskKind": "network",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_64e93300b0ea3ffd7d24ac8ad320eb8e"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "18000.000000",
+      "paymentTotalPft": "36000.000000",
+      "duplicatePaymentAfterFirstPft": "18000.000000",
+      "scannerRecommendedOffsetPft": "18000.000000",
+      "paymentProjectionDeltaPft": "18000.000000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "8C7A923B181F190B735169BFDED85CEA987797885B1CDECF56C2945DB15FE0F9"
+      ],
+      "sourceEventTxHashes": [
+        "53F3975799B39E3580EDD62D7593EE354E6DC9F85DCCE5D30CDBF399E54AFF07",
+        "D66C47C4B1298BE0E9A5058F307BC158C63D8880EC61FB11BF4C287EC536FF7A",
+        "D44A61D8F6B9B4C96877048293719BA78BE80B045B75C7C51553880A420FA6F9",
+        "8C7A923B181F190B735169BFDED85CEA987797885B1CDECF56C2945DB15FE0F9"
+      ],
+      "sourceEventCids": [
+        "QmZ4nGB4PYvZPfDpt4UHdfqcLy8SW1vRopKAoHXuD4EGcd",
+        "Qmezti1DLTLUcxhpA6ddj6GKsoVx98KWLmLVEUQnPG49if",
+        "QmRMLDqEwtG9ztM4heJfzoafNATbskguZ61zZyB2RxKXQE",
+        "QmT1bs1hHaZCRyGGGfnTH67rtGnfK5ZuHkG1KyKYLdtwmS"
+      ],
+      "sourceReportGroupKey": "task_e5e3e7b9a600bcde85e3d8cf626ed6bb::network_allocation_id::netalloc_64e93300b0ea3ffd7d24ac8ad320eb8e",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_457a9e154e98a8f0",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_2ebb368d49cd48d11802d4f3c4692dd7",
+      "title": "Verify And Patch Hive Acceptance Gate Messaging",
+      "taskKind": "network",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_f2186678dc0b5c646adca6c7049f5239"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "12000.000000",
+      "paymentTotalPft": "21000.000000",
+      "duplicatePaymentAfterFirstPft": "12000.000000",
+      "scannerRecommendedOffsetPft": "9000.000000",
+      "paymentProjectionDeltaPft": "9000.000000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "9A5412AA470409F1635577B38907C2F404B94BB445BE05153DA98DF276D8C356"
+      ],
+      "sourceEventTxHashes": [
+        "D32B6E058BB477D52ABCDA4E39ED88A49B63F5BD8863F09E1C07516427726F15",
+        "002A4368ACBD880429C536E571BE2EB90739E1269B51E41CAEF95E48F2E51F7F",
+        "B3D7B19EA78953031EDBF9F396F26A6A9F5979A908DFEE539E3187EAD296D3E6",
+        "9A5412AA470409F1635577B38907C2F404B94BB445BE05153DA98DF276D8C356"
+      ],
+      "sourceEventCids": [
+        "QmYMAEB6MF2FVGHc69vqWYNBh5jqLNY2FGyyWmTWQjdJip",
+        "QmVTy1Q7w1CforLJDm3MzZ5h3KjwTBwQBNtySmNo4WEudR",
+        "QmeB4X12kWbeQFyAsxhB6CMLL3X5wf5dq2UGMaG4NWeJ13",
+        "QmXnFBstpZyFqWMxEa4euZaNbGAEooCQYazciVd1XEaSi1"
+      ],
+      "sourceReportGroupKey": "task_2ebb368d49cd48d11802d4f3c4692dd7::network_allocation_id::netalloc_f2186678dc0b5c646adca6c7049f5239",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_f55ff649e9c0cee8",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_51695c2b7a50bcd890040e330391f6dd",
+      "title": "Produce Alpha Task Routing Seed Pack",
+      "taskKind": "network",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_120f5982bd0e3872568d1d2f6ea50183"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "9000.000000",
+      "paymentTotalPft": "18000.000000",
+      "duplicatePaymentAfterFirstPft": "9000.000000",
+      "scannerRecommendedOffsetPft": "9000.000000",
+      "paymentProjectionDeltaPft": "9000.000000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "0E2867BFFD34972C5E998BCC9CF2D4F14544C2B0E7E81B784D76C4D7F3456C39"
+      ],
+      "sourceEventTxHashes": [
+        "EB1A6136C27C9754D5394339E16B04873BA98E46AF51D0B3DC84ACA57AC9E546",
+        "CD38F88BB15FE2A747B41237EEB825F298E47C2AC14D04188029F2F841A90B4A",
+        "DFD24F081E166C28C83145BE613DB75DE4F5CD1FDD45BCF6EC474E2F7B2A3927",
+        "0E2867BFFD34972C5E998BCC9CF2D4F14544C2B0E7E81B784D76C4D7F3456C39"
+      ],
+      "sourceEventCids": [
+        "Qmevb3xdBUmXjBfT29WWw4bvSC3e35TxJjC6nmR2fcTpzt",
+        "QmXiCzEPvPu9DhNaxsrjp7nzjAsw78TQgTHhxj5Kvj4xo3",
+        "QmRNhAWf3KnY9UY5qtNhKMvLsV3AzakozLYtcQ5CuNSqo4",
+        "QmVCxHQP3AJfDsX6sCfFk8dbZPVXU3giKEGCibPXyt28Rh"
+      ],
+      "sourceReportGroupKey": "task_51695c2b7a50bcd890040e330391f6dd::network_allocation_id::netalloc_120f5982bd0e3872568d1d2f6ea50183",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_46d06ed3d030bc0f",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_a0911f73caee5fbf37eccd570f13e2e9",
+      "title": "Compare Objective and Subjective Purpose Arguments",
+      "taskKind": "personal",
+      "allocationReference": {
+        "type": "allocation_wallet",
+        "value": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "1.500000",
+      "paymentTotalPft": "3.000000",
+      "duplicatePaymentAfterFirstPft": "1.500000",
+      "scannerRecommendedOffsetPft": "1.500000",
+      "paymentProjectionDeltaPft": "1.500000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "D55B4F97E8417B83D48E31612A1F1E6BF1DD45B725D732BF5B5727740EFDF7A4"
+      ],
+      "sourceEventTxHashes": [
+        "B2A62D2A143BCE8D62C96504282AAA2A8566FB0C7941B5BA4A8AFB771FB5323D",
+        "459D144B9A75A23AF455EC10C5940AE12182D54506B03CE8D7BBBDEF820C05A1",
+        "3C5E405EA21C2CC5F3070794761823379F6E938A5C1351030A59EF0A9787AC16",
+        "D55B4F97E8417B83D48E31612A1F1E6BF1DD45B725D732BF5B5727740EFDF7A4"
+      ],
+      "sourceEventCids": [
+        "QmWGfmmrHY1nABXL2PmYHZP8teNZroUkVRKm9i2UQDthao",
+        "QmVkPPiqJcddHAo6QwpenwLZZbxK6NePdBY8iQG3US8djd",
+        "Qmb3MYhfgQXct6fo5uERzsc1J1hwpfsbYRQ6BTdj5CVmZC",
+        "QmPnqGxQDmTrM3w3bmWHAEUD4jiM6k9HWZfwbvUCDy7DUE"
+      ],
+      "sourceReportGroupKey": "task_a0911f73caee5fbf37eccd570f13e2e9::allocation_wallet::rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_86a77c3dba594d84",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "manual_reward_accounting_review",
+      "taskId": "task_faa50b46bd3a34a4e2acd32eaf14753d",
+      "title": "Review and Summarize Recent App Interaction",
+      "taskKind": "personal",
+      "allocationReference": {
+        "type": "allocation_wallet",
+        "value": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+      },
+      "decisionCount": 2,
+      "paymentCount": 2,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 1,
+      "projectionRewardPft": "1.000000",
+      "paymentTotalPft": "2.000000",
+      "duplicatePaymentAfterFirstPft": "1.000000",
+      "scannerRecommendedOffsetPft": "1.000000",
+      "paymentProjectionDeltaPft": "1.000000",
+      "flags": [
+        "multiple_reward_decisions",
+        "multiple_pf_reward_payments",
+        "payment_total_differs_from_projection"
+      ],
+      "duplicatePaymentTxHashes": [
+        "D8C95A1ECFC25BDDFF075694EFC8B3906B592428956D5864E89C49689BD388BF"
+      ],
+      "sourceEventTxHashes": [
+        "67025959113CC38F2CB51A4D3818FBD86375B4E3A7CD165F0692A863F218DDEF",
+        "9D8A539BE624F437705A549F533D2752A6153E004238CF984DE8F3944CC7FBBB",
+        "FEDEE9DD0C77C660717F2657366139BF7F9C2A7639ECB0A58D6214F665359AAD",
+        "D8C95A1ECFC25BDDFF075694EFC8B3906B592428956D5864E89C49689BD388BF"
+      ],
+      "sourceEventCids": [
+        "QmSFYAYTaxoVaBTkTyph8w89EVpyMVLH6XzQGy32KjrTZf",
+        "QmfY5eQDpYp4jpeRid3SBc4fHujc2eXfE1BvdaGZAZbTCz",
+        "QmXVjVk17Sch2kh6vBMexJrPDQWvM9VBKcthLizzgaNdav",
+        "QmVnqCyACMrDZKERBozpvbnPdPYiJGgFQ6Ei5bA7ZutgHZ"
+      ],
+      "sourceReportGroupKey": "task_faa50b46bd3a34a4e2acd32eaf14753d::allocation_wallet::rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "manual_reward_accounting_review",
+        "note": "Do not execute automatic clawback. Confirm canonical reward intent, chain-settled payments, and current projection before any policy-approved adjustment or offset."
+      }
+    },
+    {
+      "id": "dup_reward_recon_7ad11ef9f8c60104",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "review_duplicate_decision_only",
+      "taskId": "task_07db61566d7c4c44f0a3ffe3c88458e0",
+      "title": "Validate Four Beta Gates and Record Evidence",
+      "taskKind": "network",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_99d53d4dcef8787b2ee8919d2951cb3c"
+      },
+      "decisionCount": 2,
+      "paymentCount": 1,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 0,
+      "projectionRewardPft": "3000.000000",
+      "paymentTotalPft": "3000.000000",
+      "duplicatePaymentAfterFirstPft": "0.000000",
+      "scannerRecommendedOffsetPft": "0.000000",
+      "paymentProjectionDeltaPft": "0.000000",
+      "flags": [
+        "multiple_reward_decisions"
+      ],
+      "duplicatePaymentTxHashes": [],
+      "sourceEventTxHashes": [
+        "0E0F0D2304A8FC38B3DF181091F9DA17701686B2C6EEF1B69DD1DE6AD73ADF12",
+        "2305778F9A03D832FB1C574FD7BE8EE7182A319CBC59C2C2CB8D074EE0B77BFB",
+        "80F2C1AC372A71DA44602859B7A38650DADF1941EC0A97883EDCE1F7882BF825"
+      ],
+      "sourceEventCids": [
+        "Qmd6NgxF6ehs4iBwTK39HsagrZgbJc9Ue9W6FCL8th7U9z",
+        "QmZxBLnE4XXJoRJGxYxD4YGbywyzYewU1SiCFcdkc73HL1",
+        "QmeKKg7KE9sb2YMn6n1u3TyYgYQtt54zQH3RCjTLxnGwcz"
+      ],
+      "sourceReportGroupKey": "task_07db61566d7c4c44f0a3ffe3c88458e0::network_allocation_id::netalloc_99d53d4dcef8787b2ee8919d2951cb3c",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "review_duplicate_decision_only",
+        "note": "Multiple reward decisions were observed without multiple parsed payment outcomes. Check worker idempotency and projection history; no direct payment adjustment is recommended from this row alone."
+      }
+    },
+    {
+      "id": "dup_reward_recon_084c50230e1bb941",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "review_duplicate_decision_only",
+      "taskId": "task_cdd241775a0a65ddae909bae3b771d29",
+      "title": "Launch Death March Discord Protocol",
+      "taskKind": "personal",
+      "allocationReference": {
+        "type": "allocation_wallet",
+        "value": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+      },
+      "decisionCount": 2,
+      "paymentCount": 0,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 0,
+      "projectionRewardPft": "0.000000",
+      "paymentTotalPft": "0.000000",
+      "duplicatePaymentAfterFirstPft": "0.000000",
+      "scannerRecommendedOffsetPft": "0.000000",
+      "paymentProjectionDeltaPft": "0.000000",
+      "flags": [
+        "multiple_reward_decisions"
+      ],
+      "duplicatePaymentTxHashes": [],
+      "sourceEventTxHashes": [
+        "2830ACF922C2398E3B2DA295D5182E2A3CA4D0F594A1EC5B0B2B805513670936",
+        "D5969712CC1F3A7544DF606CA0C34021C66CF13ECC7DD09A198292A4EE71887F"
+      ],
+      "sourceEventCids": [
+        "QmZJgzZfgkyujnz262n7ciHeXqbAvzoN5CuvvSSrgai8Xy",
+        "QmT434y6ZgnLMWUxarzcDFZye9GNmiPSbiqgKaVTumFE1X"
+      ],
+      "sourceReportGroupKey": "task_cdd241775a0a65ddae909bae3b771d29::allocation_wallet::rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "review_duplicate_decision_only",
+        "note": "Multiple reward decisions were observed without multiple parsed payment outcomes. Check worker idempotency and projection history; no direct payment adjustment is recommended from this row alone."
+      }
+    },
+    {
+      "id": "dup_reward_recon_5a1cf4b26a8a2096",
+      "schema": "tasknode.duplicate_reward_manual_reconciliation_entry.v1",
+      "harvestTaskId": "task_b1850294f50ed777c7b0eb29a75e7d4a",
+      "status": "manual_review_required",
+      "actionOwner": "accounting_operator_review",
+      "reviewType": "review_duplicate_decision_only",
+      "taskId": "task_d2527276782f04a30ce1bbe19bc5c188",
+      "title": "Trace Distribution V3 Reward Routing Consistency",
+      "taskKind": "network",
+      "allocationReference": {
+        "type": "network_allocation_id",
+        "value": "netalloc_b260544500839a8f492be7e4bad41940"
+      },
+      "decisionCount": 2,
+      "paymentCount": 1,
+      "duplicateDecisionCount": 1,
+      "duplicatePaymentCount": 0,
+      "projectionRewardPft": "18000.000000",
+      "paymentTotalPft": "18000.000000",
+      "duplicatePaymentAfterFirstPft": "0.000000",
+      "scannerRecommendedOffsetPft": "0.000000",
+      "paymentProjectionDeltaPft": "0.000000",
+      "flags": [
+        "multiple_reward_decisions"
+      ],
+      "duplicatePaymentTxHashes": [],
+      "sourceEventTxHashes": [
+        "01B7D198FE68B4AF32C4E0201DDBA00388C79DDA764B3C88D387CD62CEB7F24D",
+        "5048CDE998B266F56B1D3D18FD516F2CDA3460824C8A6842EE19A06432EBFBCC",
+        "1F32CD58D4E015B100BB3CA0640BCE3AA8E2346DBAEBDF16A4D526DABB8A0A75"
+      ],
+      "sourceEventCids": [
+        "QmXsmrGaSoewkncJLR7mdZ1wm4fZxFo1VXrvhFgfauddKM",
+        "QmQo34HgfCMAEfLujzfjFTkLWG6zRKeUuPQyCgzjv63qeN",
+        "QmPFbFbW2kVZvVYoSY1bpX2NbJ8JJB2yxeXV5sm6o5PmuR"
+      ],
+      "sourceReportGroupKey": "task_d2527276782f04a30ce1bbe19bc5c188::network_allocation_id::netalloc_b260544500839a8f492be7e4bad41940",
+      "sourceReportGeneratedAt": "2026-06-19T21:49:11.072Z",
+      "sourceReportReference": "git:f5d33d55a654d002155d298deb709b0ae9459d8d:docs/verification/duplicate_reward_reconciliation_task_b1850294.json",
+      "operatorInstruction": {
+        "action": "manual_accounting_review_only",
+        "boundary": "This entry is review evidence, not a clawback, offset execution, reward approval, ban, or enforcement decision.",
+        "checks": [
+          "Confirm canonical reward intent for the task allocation.",
+          "Confirm chain-settled payment events and current projection before any accounting adjustment.",
+          "Apply only the accounting operator's approved reconciliation policy."
+        ]
+      },
+      "scannerRecommendation": {
+        "action": "review_duplicate_decision_only",
+        "note": "Multiple reward decisions were observed without multiple parsed payment outcomes. Check worker idempotency and projection history; no direct payment adjustment is recommended from this row alone."
+      }
+    }
+  ],
+  "secretPrinted": false
+}
