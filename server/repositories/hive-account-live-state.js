@@ -41,11 +41,17 @@ function normalizeStatus(value = "") {
   return safeText(value, 80).toLowerCase();
 }
 
+function hasNumericValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
 function publicTask(row = {}) {
   const taskStatus = normalizeStatus(row.task_status || row.projection_status || row.ref_state);
   const allocationStatus = normalizeStatus(row.allocation_status);
   const rewardMinPft = numeric(row.reward_min_pft, 0);
   const rewardMaxPft = numeric(row.reward_max_pft, 0);
+  const rewardOfferRecorded = hasNumericValue(row.reward_offer_pft);
+  const rewardActualRecorded = hasNumericValue(row.reward_actual_pft);
   const rewardOfferPft = numeric(row.reward_offer_pft, 0);
   return {
     allocationId: safeText(row.allocation_id || row.id, 180),
@@ -62,6 +68,8 @@ function publicTask(row = {}) {
     rewardMaxPft,
     rewardOfferPft,
     rewardActualPft: numeric(row.reward_actual_pft, 0),
+    rewardOfferRecorded,
+    rewardActualRecorded,
     acceptBy: toIso(row.accept_by),
     deadlineAt: toIso(row.deadline_at),
     waitingForUser: waitingForUserStatuses.has(taskStatus || allocationStatus),
@@ -72,13 +80,18 @@ function publicTask(row = {}) {
 }
 
 function taskVisibleRewardPft(task = {}) {
-  const taskStatus = normalizeStatus(task.taskStatus || task.task_status || "");
-  const allocationStatus = normalizeStatus(task.allocationStatus || task.allocation_status || "");
+  const taskStatus = normalizeStatus(task.taskStatus ?? task.task_status ?? "");
+  const allocationStatus = normalizeStatus(task.allocationStatus ?? task.allocation_status ?? "");
   const status = taskStatus || allocationStatus;
-  const rewardActualPft = numeric(task.rewardActualPft || task.reward_actual_pft, 0);
-  const rewardOfferPft = numeric(task.rewardOfferPft || task.reward_offer_pft, 0);
-  if (status === "rewarded" && rewardActualPft > 0) return rewardActualPft;
-  return rewardOfferPft;
+  const rewardActualValue = task.rewardActualPft ?? task.reward_actual_pft;
+  const rewardOfferValue = task.rewardOfferPft ?? task.reward_offer_pft;
+  const rewardActualRecorded = task.rewardActualRecorded ?? task.reward_actual_recorded ?? hasNumericValue(rewardActualValue);
+  const rewardOfferRecorded = task.rewardOfferRecorded ?? task.reward_offer_recorded ?? hasNumericValue(rewardOfferValue);
+  if (status === "rewarded" && rewardActualRecorded) {
+    return { available: true, value: numeric(rewardActualValue, 0) };
+  }
+  if (rewardOfferRecorded) return { available: true, value: numeric(rewardOfferValue, 0) };
+  return { available: false, value: 0 };
 }
 
 function publicFollowup(row = {}) {
@@ -441,8 +454,8 @@ function taskPromptLine(task = {}) {
     task.taskStatus ? `task_status=${task.taskStatus}` : "",
     task.allocationStatus ? `allocation_status=${task.allocationStatus}` : "",
     task.generationStatus ? `generation_status=${task.generationStatus}` : "",
-    rewardPft ? `reward_pft=${rewardPft}` : "",
-    !rewardPft && rewardCapPft ? `reward_cap_pft=${rewardCapPft}` : "",
+    rewardPft.available ? `reward_pft=${rewardPft.value}` : "",
+    !rewardPft.available && rewardCapPft ? `reward_cap_pft=${rewardCapPft}` : "",
     task.acceptBy ? `accept_by=${task.acceptBy}` : "",
     task.deadlineAt ? `deadline_at=${task.deadlineAt}` : "",
     task.waitingForUser ? "waiting_for_user=yes" : "waiting_for_user=no",

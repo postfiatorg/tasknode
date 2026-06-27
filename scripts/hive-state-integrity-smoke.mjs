@@ -444,6 +444,34 @@ assert.doesNotMatch(rewardMismatchPromptText, /reward_max_pft=50000/);
 assert.doesNotMatch(rewardMismatchPromptText, /reward_cap_pft=50000/);
 assert.match(rewardMismatchPromptText, /report reward_pft when present/);
 
+const zeroRewardPromptText = formatHiveAccountLiveStateForPrompt({
+  ok: true,
+  status: "ready",
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  snapshotAt: "2026-06-15T20:16:57.495Z",
+  networkTasks: [
+    {
+      taskId: "task_zero_reward",
+      allocationId: "netalloc_zero_reward",
+      title: "Zero reward outcome",
+      taskStatus: "rewarded",
+      allocationStatus: "accepted",
+      rewardOfferPft: 20000,
+      rewardActualPft: 0,
+      updatedAt: "2026-06-15T20:16:57.495Z",
+      waitingForUser: false,
+      terminal: true,
+    },
+  ],
+  openFollowups: [],
+  recentBoardMessages: [],
+  routingConstraints: {},
+});
+assert.match(zeroRewardPromptText, /task_zero_reward/);
+assert.match(zeroRewardPromptText, /reward_pft=0/);
+assert.doesNotMatch(zeroRewardPromptText, /reward_pft=20000/);
+
 const eligibilityPromptText = formatHiveAccountLiveStateForPrompt({
   ok: true,
   status: "ready",
