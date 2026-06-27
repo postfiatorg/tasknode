@@ -599,7 +599,7 @@ returns `hive_task_not_found` before reading `task_events`
 that keeps personal/private task ids out of the public Hive pop-out.
 
 The explicit public field contract is stored as
-`publicHiveTaskDetailFields` (`server/repositories/hive-projects.js:929`). The
+`publicHiveTaskDetailFields` in `server/repositories/hive-projects.js`. The
 response may include only:
 
 - task identity and display fields: `task.id`, `task.taskId`,
@@ -610,16 +610,17 @@ response may include only:
   `task.assigneeHasPublicProfile`, `task.assigneeHandle`,
   `task.assigneeDisplayName`, and selected `task.assigneeNft` title/status/CID
   fields;
-- public reward/project fields: `task.pft`, `task.project.id`,
-  `task.project.name`, and `task.project.type`;
+- public reward/project fields: `task.pft`, `task.proofTxHash`,
+  `task.proofCid`, `task.project.id`, `task.project.name`, and
+  `task.project.type`;
 - public work/review summaries: `review.submissions[].type`,
   `review.submissions[].summary`, `review.verification.request`,
   `review.verification.response`, `review.outcome.decision`,
-  `review.outcome.rewardPft`, and `review.outcome.reason`;
+  `review.outcome.rewardPft`, `review.outcome.reason`,
+  `review.outcome.paymentTxHash`, `review.outcome.paymentCid`, and
+  `review.outcome.paymentObservedAt`;
 - timeline audit fields: `timeline[].action`, `timeline[].label`,
-  `review.outcome.paymentTxHash`, `review.outcome.paymentCid`,
-  `review.outcome.paymentObservedAt`, `timeline[].time`, `timeline[].txHash`,
-  and `timeline[].cid`.
+  `timeline[].time`, `timeline[].txHash`, and `timeline[].cid`.
 
 The pop-out is read-only. It has no accept, submit, verify, wallet signing, or
 lifecycle controls; those stay on the Tasks surface for the owner/operator
