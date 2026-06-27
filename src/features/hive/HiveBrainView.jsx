@@ -247,6 +247,11 @@ function relativeTime(value = "") {
   return `${days}d ago`;
 }
 
+function timestampMs(value = "") {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function formatBytes(value = 0) {
   const bytes = Number(value || 0);
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -436,6 +441,16 @@ function flattenLiveTasks(projectDocument = null) {
     .slice(0, 7);
 }
 
+function sortResolvedHarvests(harvests = []) {
+  return safeArray(harvests)
+    .slice()
+    .sort((left, right) =>
+      timestampMs(right.resolvedAt || right.updatedAt || right.completedAt) -
+        timestampMs(left.resolvedAt || left.updatedAt || left.completedAt) ||
+      String(right.taskId || "").localeCompare(String(left.taskId || ""))
+    );
+}
+
 function DecisionCard({ detail, loading }) {
   const run = detail?.run || {};
   const action = run.selectedAction || run.status || "pending";
@@ -587,13 +602,17 @@ function HarvestOutputRow({
     <details className="hive-brain-harvest-output">
       <summary>
         <div>
-          <strong>{harvest.title || "Untitled rewarded task"}</strong>
+          <div className="hive-brain-harvest-title-row">
+            <strong>{harvest.title || "Untitled rewarded task"}</strong>
+            {harvest.taskId && <code className="hive-brain-harvest-task-id">{harvest.taskId}</code>}
+          </div>
           <span>{summaryText}</span>
         </div>
         <div className="hive-brain-harvest-output-meta">
           <Status type={classification}>{formatAction(classification)}</Status>
           {isCheckedOut && <Status type="checked-out">Checked out</Status>}
           {isResolved && <Status type="resolved">Resolved</Status>}
+          {isResolved && <span className="hive-brain-harvest-output-time">Resolved {relativeTime(harvest.resolvedAt)}</span>}
           <em>{compactNumber(harvest.rewardActualPft || harvest.rewardOfferPft)} PFT</em>
         </div>
       </summary>
@@ -778,6 +797,7 @@ function HarvestPanel({
   summary = {},
   status = "loading",
 }) {
+  const sortedResolvedHarvests = sortResolvedHarvests(resolvedHarvests);
   return (
     <section className="hive-brain-panel">
       <div className="hive-brain-panel-head">
@@ -835,7 +855,7 @@ function HarvestPanel({
           <div className="hive-brain-section-sub">Resolved harvest rows stay visible here with the operator comment used to close them.</div>
         </div>
         <div className="hive-brain-harvest-output-list">
-          {resolvedHarvests.map((harvest) => (
+          {sortedResolvedHarvests.map((harvest) => (
             <HarvestOutputRow
               harvest={harvest}
               key={harvest.taskId}

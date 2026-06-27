@@ -19,6 +19,7 @@ const {
   listTaskAccountingHarvests,
   listTaskAccountingHarvestCheckouts,
   resolveTaskAccountingHarvest,
+  taskAccountingHarvestOrderSql,
 } = await import("../server/repositories/task-accounting-harvester.js");
 
 const suffix = `${Date.now()}`;
@@ -141,6 +142,22 @@ async function insertRewardedTask({ taskId, title, description, requirement, rew
 }
 
 async function main() {
+  assert.match(
+    taskAccountingHarvestOrderSql({ resolvedFilter: "true" }),
+    /harvest\.resolved_at DESC NULLS LAST/,
+    "resolved harvest history sorts by resolution timestamp"
+  );
+  assert.doesNotMatch(
+    taskAccountingHarvestOrderSql({ resolvedFilter: "true" }),
+    /harvest\.requires_action DESC/,
+    "resolved harvest history does not use unresolved queue priority ordering"
+  );
+  assert.match(
+    taskAccountingHarvestOrderSql({ resolvedFilter: "false" }),
+    /harvest\.requires_action DESC/,
+    "unresolved harvest queue keeps action-priority ordering"
+  );
+
   if (!databaseEnabled()) {
     console.log("task-accounting-harvester-smoke skipped: database not configured");
     return;
@@ -249,6 +266,26 @@ async function main() {
     assert.equal(resolved.harvest.resolutionOutcome, "fixed");
     assert.equal(resolved.harvest.resolutionNote, resolutionNote);
 
+    const noActionResolution = await resolveTaskAccountingHarvest({
+      taskId: noActionTaskId,
+      resolvedByAccountId: accountId,
+      outcome: "fixed",
+      note: "Fixed by smoke test: verified standalone completion rows can be resolved and sorted by resolved_at in TASKNODE-SMOKE-2 regression coverage.",
+    });
+    assert.equal(noActionResolution.ok, true);
+    await query(
+      `
+        UPDATE task_accounting_harvests
+        SET resolved_at = CASE
+          WHEN task_id = $1 THEN now() - interval '2 hours'
+          WHEN task_id = $2 THEN now() - interval '1 hour'
+          ELSE resolved_at
+        END
+        WHERE task_id IN ($1, $2)
+      `,
+      [actionableTaskId, noActionTaskId]
+    );
+
     const unresolvedList = await listTaskAccountingHarvests({ limit: 20 });
     assert.equal(
       unresolvedList.harvests.some((row) => row.taskId === actionableTaskId),
@@ -259,6 +296,13 @@ async function main() {
     const resolvedRow = resolvedList.harvests.find((row) => row.taskId === actionableTaskId);
     assert.ok(resolvedRow, "resolved=true lists resolved rows");
     assert.equal(resolvedRow.resolutionNote, resolutionNote);
+    assert.deepEqual(
+      resolvedList.harvests
+        .filter((row) => [actionableTaskId, noActionTaskId].includes(row.taskId))
+        .map((row) => row.taskId),
+      [noActionTaskId, actionableTaskId],
+      "resolved history is sorted by resolved_at descending"
+    );
 
     console.log("task-accounting-harvester-smoke ok");
   } finally {

@@ -120,6 +120,24 @@ export function validateTaskAccountingResolution({ outcome = "", note = "" } = {
   return { ok: true, outcome: normalizedOutcome, note: normalizedNote };
 }
 
+export function taskAccountingHarvestOrderSql({ resolvedFilter = "" } = {}) {
+  const normalizedResolvedFilter = safeText(resolvedFilter, 20).toLowerCase();
+  if (normalizedResolvedFilter === "true") {
+    return `
+        harvest.resolved_at DESC NULLS LAST,
+        harvest.updated_at DESC,
+        harvest.task_id DESC
+      `;
+  }
+  return `
+        harvest.requires_action DESC,
+        harvest.completed_at DESC NULLS LAST,
+        harvest.rewarded_at DESC NULLS LAST,
+        harvest.updated_at DESC,
+        harvest.task_id DESC
+      `;
+}
+
 function rowToHarvest(row = {}) {
   const sourcePacket = safeObject(row.source_packet_json);
   const taskPacket = safeObject(sourcePacket.task);
@@ -820,6 +838,7 @@ export async function listTaskAccountingHarvests({
   }
   const safeLimit = intValue(limit, 40, { min: 1, max: 100 });
   const safePage = intValue(page, 1, { min: 1, max: 1000 });
+  const orderSql = taskAccountingHarvestOrderSql({ resolvedFilter });
   params.push(safeLimit + 1, (safePage - 1) * safeLimit);
   const result = await query(
     `
@@ -889,12 +908,7 @@ export async function listTaskAccountingHarvests({
           AND (badge.expires_at IS NULL OR badge.expires_at > now())
       ) badges ON true
       ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
-      ORDER BY
-        harvest.requires_action DESC,
-        harvest.completed_at DESC NULLS LAST,
-        harvest.rewarded_at DESC NULLS LAST,
-        harvest.updated_at DESC,
-        harvest.task_id DESC
+      ORDER BY ${orderSql}
       LIMIT $${params.length - 1}
       OFFSET $${params.length}
     `,
