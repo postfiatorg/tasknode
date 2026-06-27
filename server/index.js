@@ -396,6 +396,24 @@ function isInsideDist(filePath) {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+function isStaticAssetRequest(pathname = "") {
+  if (pathname.startsWith("/assets/")) return true;
+  return Boolean(path.extname(pathname));
+}
+
+function staticNotFound(res, pathname = "") {
+  res.writeHead(404, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    ...securityHeaders(),
+  });
+  res.end(JSON.stringify({
+    ok: false,
+    error: "static_asset_not_found",
+    path: pathname,
+  }));
+}
+
 async function serveStatic(url, res) {
   const requestPath = url.pathname;
   const decoded = decodeURIComponent(requestPath);
@@ -403,6 +421,11 @@ async function serveStatic(url, res) {
   const filePath = path.normalize(path.join(distDir, relative));
 
   if (!isInsideDist(filePath) || !existsSync(filePath)) {
+    if (!isInsideDist(filePath) || isStaticAssetRequest(url.pathname)) {
+      staticNotFound(res, url.pathname);
+      return;
+    }
+
     const fallback = path.join(distDir, "index.html");
     if (!existsSync(fallback)) {
       json(res, 404, { ok: false, error: "build_not_found" });
