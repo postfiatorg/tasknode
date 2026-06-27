@@ -13,7 +13,12 @@ import {
 } from "lucide-react";
 import { formatTaskTimestamp } from "../../../shared/task-time-format";
 import { truncateCid } from "../context/context-view-utils.jsx";
-import { shouldShowIndexedTaskEventsLoading } from "./task-forensics-state.js";
+import {
+  shouldShowIndexedTaskEventsLoading,
+  taskForensicsExpectedEventCount,
+  taskForensicsIndexedEventLabel,
+  taskForensicsTimeline,
+} from "./task-forensics-state.js";
 
 function statusTone(value = "") {
   const lower = String(value || "").toLowerCase();
@@ -118,12 +123,12 @@ function Lifecycle({ timeline }) {
   );
 }
 
-function ProofAnchors({ copiedValue, forensics, onCopy, timeline }) {
+function ProofAnchors({ copiedValue, expectedEvents, forensics, onCopy, timeline }) {
   return (
     <section className="task-forensics-proof-card">
       <header>
         <span><ShieldCheck size={14} strokeWidth={1.6} />Proof anchors</span>
-        <small>{timeline.length} events indexed</small>
+        <small>{taskForensicsIndexedEventLabel({ indexedCount: timeline.length, expectedCount: expectedEvents })}</small>
       </header>
       <div>
         <TaskAuditValue copiedValue={copiedValue} label="Request bundle" name="request-cid" onCopy={onCopy} value={forensics.requestBundleCid} />
@@ -331,13 +336,12 @@ function TaskAuditValue({ copiedValue, label, name, onCopy, value }) {
 
 export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
   const forensics = detail?.forensics || {};
-  const pointerTimeline = Array.isArray(forensics.timeline) ? forensics.timeline : [];
   const cids = Array.isArray(forensics.cids) ? forensics.cids : [];
   const transactions = Array.isArray(forensics.transactions) ? forensics.transactions : [];
   const reducerEvents = Array.isArray(forensics.reducerEvents) ? forensics.reducerEvents : [];
-  const timeline = pointerTimeline.length ? pointerTimeline : reducerEvents;
+  const timeline = taskForensicsTimeline(forensics);
   const integrity = forensics.integrity || {};
-  const expectedEvents = Number(forensics.eventCount || integrity.expectedEventCount || 0);
+  const expectedEvents = taskForensicsExpectedEventCount(forensics);
 
   if (shouldShowIndexedTaskEventsLoading({ detail, loading })) {
     return (
@@ -360,7 +364,13 @@ export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy
   return (
     <div className="task-forensics-panel">
       <Lifecycle timeline={timeline} />
-      <ProofAnchors copiedValue={copiedValue} forensics={forensics} onCopy={onCopy} timeline={timeline} />
+      <ProofAnchors
+        copiedValue={copiedValue}
+        expectedEvents={expectedEvents}
+        forensics={forensics}
+        onCopy={onCopy}
+        timeline={timeline}
+      />
       <TaskForensicsIntegrityNotice integrity={integrity} />
       {forensics.reviewState && <TaskForensicsNotice state={forensics.reviewState} />}
       <div className="task-forensics-note">
@@ -376,7 +386,7 @@ export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy
       <section className="task-forensics-section">
         <div className="task-forensics-section-head">
           <h3>Action timeline</h3>
-          <span>{timeline.length ? `${timeline.length}${expectedEvents ? ` / ${expectedEvents}` : ""}` : expectedEvents || 0} events</span>
+          <span>{taskForensicsIndexedEventLabel({ indexedCount: timeline.length, expectedCount: expectedEvents })}</span>
         </div>
         {timeline.length > 0 ? (
           <div className="task-forensics-list">

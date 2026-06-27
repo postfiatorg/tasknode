@@ -69,6 +69,7 @@ import {
   taskEvidenceDraftStorageKey,
 } from "./task-evidence-drafts.js";
 import { TaskForensicsPanel } from "./TaskForensicsPanel.jsx";
+import { taskForensicsIndexedEventCount } from "./task-forensics-state.js";
 import {
   evaluateTaskSigningUnlockPolicy,
   TASK_REQUEST_UNLOCK_STATES,
@@ -1320,7 +1321,7 @@ export function TaskDetailModal({
   const taskId = displayTask.taskId || displayTask.fullId || task.taskId || task.fullId || task.id || "";
   const currentTaskVisibleState = useMemo(() => visibleTaskStateFromTask(task), [taskVersion]);
   const taskBriefPayload = buildTaskCopyPayloads(displayTask, displayDetail).codex;
-  const forensicsCount = displayDetail?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
+  const forensicsCount = taskForensicsIndexedEventCount({ detail: displayDetail, task: displayTask });
   const controlsBlocked = taskDetailControlsBlocked({ ...detailState, data: displayDetail });
 
   // Hold the receipt callback in a ref so commitTaskDetailResult keeps a
