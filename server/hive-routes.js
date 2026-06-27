@@ -760,6 +760,7 @@ async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res,
     }
     const [body, permissions] = await Promise.all([
       listTaskAccountingHarvestCheckouts({
+        includeResolved: ["1", "true", "yes"].includes(String(url.searchParams.get("includeResolved") || "").toLowerCase()),
         limit: url.searchParams.get("limit") || 80,
         page: url.searchParams.get("page") || 1,
       }),

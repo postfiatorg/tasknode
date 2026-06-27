@@ -93,6 +93,7 @@ const migrations = [
   "084_task_accounting_harvest_resolution.sql",
   "085_task_accounting_harvest_checkout.sql",
   "086_task_accounting_harvest_resolution_outcome.sql",
+  "087_release_resolved_harvest_checkouts.sql",
 ];
 
 let migrated = false;

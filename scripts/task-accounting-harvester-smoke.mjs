@@ -265,6 +265,24 @@ async function main() {
     assert.equal(resolved.harvest.resolved, true);
     assert.equal(resolved.harvest.resolutionOutcome, "fixed");
     assert.equal(resolved.harvest.resolutionNote, resolutionNote);
+    assert.equal(resolved.harvest.checkedOut, false, "resolved harvest releases checkout ownership");
+    assert.equal(resolved.harvest.checkout.checkedOut, false, "resolved harvest checkout object is inactive");
+    assert.equal(
+      await accountCanResolveCheckedOutTaskAccountingHarvest({ taskId: actionableTaskId, accountId, walletAddress: wallet }),
+      false,
+      "resolved checkout owner no longer has active checkout resolver rights"
+    );
+    const activeCheckoutLog = await listTaskAccountingHarvestCheckouts({ limit: 20 });
+    assert.equal(
+      activeCheckoutLog.events.some((event) => event.taskId === actionableTaskId),
+      false,
+      "default checkout log hides resolved checkout events"
+    );
+    const fullCheckoutLog = await listTaskAccountingHarvestCheckouts({ includeResolved: true, limit: 20 });
+    const resolvedCheckoutEvent = fullCheckoutLog.events.find((event) => event.taskId === actionableTaskId);
+    assert.ok(resolvedCheckoutEvent, "includeResolved checkout log can audit the old checkout event");
+    assert.equal(resolvedCheckoutEvent.current, false, "resolved checkout event is not current");
+    assert.equal(resolvedCheckoutEvent.resolved, true, "resolved checkout event is marked resolved");
 
     const noActionResolution = await resolveTaskAccountingHarvest({
       taskId: noActionTaskId,

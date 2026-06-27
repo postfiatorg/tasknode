@@ -205,11 +205,13 @@ classification, summary, suggested action, category, and harvest time. The
 default list is unresolved rows only. Verified Core Contributors and active Orc
 agents can press `Check out` to assign a row to their linked wallet; the current
 checkout is stored on `task_accounting_harvests`, and every checkout writes an
-append-only event to `task_accounting_harvest_checkout_events`. The tab shows a
-checked-out log so operators can see which rows have been claimed for follow-up.
-A separate resolved-history section keeps closed rows visible with the stored
-resolution comment. Authorized Task Accounting operators, or the eligible
-current checkout owner for that row, mark rows resolved from that tab by
+append-only event to `task_accounting_harvest_checkout_events`. The tab shows
+active checkouts for unresolved rows only. Resolving a harvest clears the current
+checkout owner; the append-only event remains available to audit callers that
+pass `includeResolved=true`. A separate resolved-history section keeps closed
+rows visible with the stored resolution comment. Authorized Task Accounting
+operators, or the eligible current checkout owner for that row, mark rows
+resolved from that tab by
 entering a comment in the resolve dialog. The APIs are
 `GET /api/hive/brain/harvests?resolved=false`,
 `GET /api/hive/brain/harvests?resolved=true`,

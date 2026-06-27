@@ -758,8 +758,8 @@ function HarvestCheckoutLog({ events = [], status = "loading" }) {
   return (
     <div className="hive-brain-card hive-brain-harvest-card">
       <div className="hive-brain-table-head">
-        <div className="hive-brain-section-label">Checked-out log</div>
-        <div className="hive-brain-section-sub">Core Contributor checkout events for harvest follow-up ownership.</div>
+        <div className="hive-brain-section-label">Active checkouts</div>
+        <div className="hive-brain-section-sub">Unresolved harvest rows currently owned for follow-up.</div>
       </div>
       <div className="hive-brain-checkout-log">
         {events.map((event) => (
@@ -777,7 +777,7 @@ function HarvestCheckoutLog({ events = [], status = "loading" }) {
         ))}
         {status === "loading" && <div className="hive-brain-empty">Loading checkout log.</div>}
         {status === "error" && <div className="hive-brain-empty">Checkout log is unavailable.</div>}
-        {status === "ready" && !events.length && <div className="hive-brain-empty">No harvest rows have been checked out yet.</div>}
+        {status === "ready" && !events.length && <div className="hive-brain-empty">No unresolved harvest rows are checked out right now.</div>}
       </div>
     </div>
   );

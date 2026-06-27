@@ -139,6 +139,8 @@ export function taskAccountingHarvestOrderSql({ resolvedFilter = "" } = {}) {
 }
 
 function rowToHarvest(row = {}) {
+  const resolved = Boolean(row.resolved_at);
+  const checkedOut = Boolean(row.checked_out_at && !resolved);
   const sourcePacket = safeObject(row.source_packet_json);
   const taskPacket = safeObject(sourcePacket.task);
   const badgeIds = safeArray(row.verified_badges_json).map((badge) => safeText(badge.badgeId || badge.badge_id || badge.label, 80)).filter(Boolean);
@@ -206,20 +208,20 @@ function rowToHarvest(row = {}) {
     workerHeartbeatAt: iso(row.worker_heartbeat_at),
     completedAt: iso(row.completed_at),
     checkout: {
-      checkedOut: Boolean(row.checked_out_at),
-      checkedOutAt: iso(row.checked_out_at),
-      accountId: safeText(row.checked_out_by_account_id, 180),
-      walletAddress: safeText(row.checked_out_wallet_address, 120),
+      checkedOut,
+      checkedOutAt: checkedOut ? iso(row.checked_out_at) : null,
+      accountId: checkedOut ? safeText(row.checked_out_by_account_id, 180) : "",
+      walletAddress: checkedOut ? safeText(row.checked_out_wallet_address, 120) : "",
     },
-    checkedOut: Boolean(row.checked_out_at),
-    checkedOutAt: iso(row.checked_out_at),
-    checkedOutByAccountId: safeText(row.checked_out_by_account_id, 180),
-    checkedOutWalletAddress: safeText(row.checked_out_wallet_address, 120),
+    checkedOut,
+    checkedOutAt: checkedOut ? iso(row.checked_out_at) : null,
+    checkedOutByAccountId: checkedOut ? safeText(row.checked_out_by_account_id, 180) : "",
+    checkedOutWalletAddress: checkedOut ? safeText(row.checked_out_wallet_address, 120) : "",
     resolvedAt: iso(row.resolved_at),
     resolvedByAccountId: safeText(row.resolved_by_account_id, 180),
     resolutionOutcome: safeText(row.resolution_outcome, 80),
     resolutionNote: safeText(row.resolution_note, 6000),
-    resolved: Boolean(row.resolved_at),
+    resolved,
     lastError: safeText(row.last_error, 1000),
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
@@ -231,6 +233,7 @@ function rowToCheckoutEvent(row = {}) {
   const currentAccountId = safeText(row.current_checkout_account_id, 180);
   const eventWallet = safeText(row.wallet_address, 120);
   const eventAccountId = safeText(row.account_id, 180);
+  const resolved = Boolean(row.resolved_at);
   return {
     id: safeText(row.id, 180),
     taskId: safeText(row.task_id, 180),
@@ -240,14 +243,15 @@ function rowToCheckoutEvent(row = {}) {
     walletAddress: eventWallet,
     createdAt: iso(row.created_at),
     current: Boolean(
-      row.current_checked_out_at &&
+      !resolved &&
+        row.current_checked_out_at &&
         currentWallet.toLowerCase() === eventWallet.toLowerCase() &&
         currentAccountId.toLowerCase() === eventAccountId.toLowerCase()
     ),
     currentCheckedOutAt: iso(row.current_checked_out_at),
     currentCheckoutWalletAddress: currentWallet,
     currentCheckoutAccountId: currentAccountId,
-    resolved: Boolean(row.resolved_at),
+    resolved,
     resolvedAt: iso(row.resolved_at),
     classification: safeText(row.classification, 80),
     requiresAction: Boolean(row.requires_action),
@@ -924,7 +928,7 @@ export async function listTaskAccountingHarvests({
       count(*) FILTER (WHERE classification = 'requires_action')::int AS requires_action,
       count(*) FILTER (WHERE classification = 'no_action')::int AS no_action,
       count(*) FILTER (WHERE resolved_at IS NOT NULL)::int AS resolved,
-      count(*) FILTER (WHERE checked_out_at IS NOT NULL)::int AS checked_out
+      count(*) FILTER (WHERE checked_out_at IS NOT NULL AND resolved_at IS NULL)::int AS checked_out
     FROM task_accounting_harvests
   `);
   const summary = summaryResult.rows[0] || {};
@@ -1132,7 +1136,7 @@ export async function checkoutTaskAccountingHarvest({
   });
 }
 
-export async function listTaskAccountingHarvestCheckouts({ limit = 80, page = 1 } = {}) {
+export async function listTaskAccountingHarvestCheckouts({ includeResolved = false, limit = 80, page = 1 } = {}) {
   if (!databaseEnabled()) {
     return { ok: true, events: [], page: 1, pageSize: 0, hasMore: false };
   }
@@ -1154,11 +1158,12 @@ export async function listTaskAccountingHarvestCheckouts({ limit = 80, page = 1 
       FROM task_accounting_harvest_checkout_events event
       JOIN task_accounting_harvests harvest
         ON harvest.task_id = event.task_id
+      WHERE ($3::boolean = true OR harvest.resolved_at IS NULL)
       ORDER BY event.created_at DESC, event.id DESC
       LIMIT $1
       OFFSET $2
     `,
-    [safeLimit + 1, (safePage - 1) * safeLimit]
+    [safeLimit + 1, (safePage - 1) * safeLimit, Boolean(includeResolved)]
   );
   return {
     ok: true,
@@ -1186,6 +1191,9 @@ export async function resolveTaskAccountingHarvest({
           resolved_by_account_id = $2,
           resolution_outcome = $3,
           resolution_note = $4,
+          checked_out_at = NULL,
+          checked_out_by_account_id = '',
+          checked_out_wallet_address = '',
           updated_at = now()
       WHERE task_id = $1
         AND resolved_at IS NULL
