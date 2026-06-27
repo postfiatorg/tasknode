@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, RefreshCw, UserCheck, X } from "lucide-react";
 import { requestJson } from "../../api";
-import { parseMarkdownBlocks } from "./hive-report-markdown";
+import { normalizeHiveReportMarkdown, parseMarkdownBlocks } from "./hive-report-markdown";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import hiveDecisionAgentPrompt from "../../../prompts/hive/hive_decision_agent_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
@@ -353,8 +353,68 @@ function MarkdownReportBody({ markdown = "" }) {
   );
 }
 
+function cleanInlineMarkdown(value = "") {
+  return String(value || "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/^#+\s+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactReportExcerpt(value = "", max = 280) {
+  const text = cleanInlineMarkdown(value);
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1).trimEnd()}...`;
+}
+
+function metadataOnlyExcerpt(value = "") {
+  const text = cleanInlineMarkdown(value);
+  return Boolean(text) && /^(generated|report type|phase|scope|report date|report generated)\b/i.test(text);
+}
+
+function tableExcerpt(block = {}, heading = "") {
+  const rows = Array.isArray(block.rows) ? block.rows.slice(0, 4) : [];
+  if (!rows.length) return "";
+  const header = Array.isArray(block.header) ? block.header : [];
+  const pairs = rows.map((row) => {
+    const cells = Array.isArray(row) ? row : [];
+    if (header.length === 2 && /^metric$/i.test(header[0] || "") && /^value$/i.test(header[1] || "")) {
+      return `${cells[0] || "Metric"}: ${cells[1] || "unknown"}`;
+    }
+    return cells.slice(0, 3).filter(Boolean).join(" / ");
+  }).filter(Boolean);
+  if (!pairs.length) return "";
+  return compactReportExcerpt([heading, pairs.join("; ")].filter(Boolean).join(": "));
+}
+
 function reportExcerpt(report = {}) {
-  return report.bodyExcerpt || report.bodyMarkdownExcerpt || "Open the report for the full markdown briefing.";
+  const source = report.bodyMarkdown || report.bodyExcerpt || report.bodyMarkdownExcerpt || "";
+  const blocks = parseMarkdownBlocks(source);
+  let latestHeading = "";
+  for (const block of blocks) {
+    if (block.type === "heading") {
+      latestHeading = cleanInlineMarkdown(block.text);
+      continue;
+    }
+    if (block.type === "paragraph") {
+      const text = compactReportExcerpt(block.text);
+      if (text && !metadataOnlyExcerpt(text)) return text;
+      continue;
+    }
+    if (block.type === "unordered" || block.type === "ordered") {
+      const text = compactReportExcerpt((block.items || []).slice(0, 3).join("; "));
+      if (text) return text;
+      continue;
+    }
+    if (block.type === "table") {
+      const text = tableExcerpt(block, latestHeading);
+      if (text) return text;
+    }
+  }
+  return compactReportExcerpt(normalizeHiveReportMarkdown(source)) || "Open the report for the full markdown briefing.";
 }
 
 function decisionSummary(detail = null) {
@@ -1151,7 +1211,7 @@ export function HiveBrainView() {
   const loadReports = useCallback(async () => {
     setReportStatus("loading");
     try {
-      const result = await requestJson("/api/hive/reports?limit=60");
+      const result = await requestJson("/api/hive/reports?limit=60&includeLatestByType=true");
       if (!result.ok) throw new Error(result.body?.message || `Hive reports failed with HTTP ${result.status}`);
       setReports(result.body?.reports || []);
       setReportStatus("ready");

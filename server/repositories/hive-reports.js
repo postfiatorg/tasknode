@@ -355,6 +355,7 @@ export async function listHiveReports({
   since = "",
   limit = 20,
   page = 1,
+  includeLatestByType = false,
 } = {}) {
   if (!useDatabase()) {
     return { ok: true, reports: [], page: 1, pageSize: 0, hasMore: false, filters: { type: "", since: "" } };
@@ -391,15 +392,46 @@ export async function listHiveReports({
     `,
     params
   );
+  let rows = result.rows.slice(0, normalizedLimit);
+  const shouldIncludeLatestByType = Boolean(includeLatestByType) && !normalizedType && !sinceText && normalizedPage === 1;
+  if (shouldIncludeLatestByType) {
+    const latestByType = await query(
+      `
+        SELECT *
+        FROM (
+          SELECT r.*,
+                 (
+                   SELECT count(*)::int
+                   FROM hive_report_verifications verification
+                   WHERE verification.report_id = r.id
+                 ) AS verification_count,
+                 row_number() OVER (
+                   PARTITION BY r.type
+                   ORDER BY r.generated_at DESC, r.id DESC
+                 ) AS type_rank
+          FROM hive_reports r
+        ) ranked
+        WHERE type_rank = 1
+      `
+    );
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    for (const row of latestByType.rows) byId.set(row.id, row);
+    rows = [...byId.values()].sort((left, right) => {
+      const timeDiff = Number(new Date(right.generated_at)) - Number(new Date(left.generated_at));
+      if (timeDiff) return timeDiff;
+      return String(right.id || "").localeCompare(String(left.id || ""));
+    });
+  }
   return {
     ok: true,
-    reports: result.rows.slice(0, normalizedLimit).map(reportRow),
+    reports: rows.map(reportRow),
     page: normalizedPage,
     pageSize: normalizedLimit,
     hasMore: result.rows.length > normalizedLimit,
     filters: {
       type: normalizedType,
       since: sinceText,
+      includeLatestByType: shouldIncludeLatestByType,
     },
   };
 }

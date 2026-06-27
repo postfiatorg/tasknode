@@ -854,6 +854,7 @@ async function handleHiveReportsRoute({ json, req, res, session, url }) {
       since: url.searchParams.get("since") || "",
       limit: url.searchParams.get("limit") || 20,
       page: url.searchParams.get("page") || 1,
+      includeLatestByType: url.searchParams.get("includeLatestByType") === "true",
     });
     json(res, 200, body);
     return true;

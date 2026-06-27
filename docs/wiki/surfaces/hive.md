@@ -100,6 +100,14 @@ not JSON source packets. The list/detail API is:
 - `GET /api/hive/reports/:id` for one full markdown report plus verification
   phases
 
+The Hive Brain card grid calls the list API with
+`includeLatestByType=true`. That response returns the normal recent report
+page plus the newest row for each report type, so the 20-minute
+`rewarded_task` report cannot push 24-hour reports out of the operator view and
+make them appear missing. Card previews are derived from parsed markdown and
+collapse KPI tables into short text summaries; the full report view renders
+headings, lists, code, horizontal rules, and markdown tables.
+
 Six report builders run from `server/hive-reports-worker.js`:
 
 - `rewarded_task`, every 20 minutes: per verified badge role, the last rewarded

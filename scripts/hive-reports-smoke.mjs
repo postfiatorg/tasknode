@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool, query } from "../server/db/pool.js";
-import { getHiveReport, hiveReportTypeIds, listHiveReports } from "../server/repositories/hive-reports.js";
+import { getHiveReport, hiveReportTypeIds, listHiveReports, saveHiveReport } from "../server/repositories/hive-reports.js";
 import { runHiveReportsWorkerOnce } from "../server/hive-reports-worker.js";
 
 process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK = "true";
@@ -13,6 +13,8 @@ function assertMarkdown(body = "") {
   assert.notEqual(body.trimStart().slice(0, 1), "{", "report body is not a JSON object");
   assert.notEqual(body.trimStart().slice(0, 1), "[", "report body is not a JSON array");
 }
+
+const cleanupIds = [];
 
 try {
   await migrateDatabase({ force: true });
@@ -26,6 +28,7 @@ try {
 
   const generatedIds = result.generated.map((item) => item.reportId).filter(Boolean);
   assert.equal(generatedIds.length, hiveReportTypeIds.length, "generated reports have ids");
+  cleanupIds.push(...generatedIds);
 
   for (const item of result.generated) {
     const detail = await getHiveReport({ id: item.reportId });
@@ -44,8 +47,27 @@ try {
   assert.equal(listed.ok, true, "report list succeeds");
   assert.ok(generatedIds.some((id) => listed.reports.some((report) => report.id === id)), "generated report appears in list");
 
-  await query("DELETE FROM hive_reports WHERE id = ANY($1::text[])", [generatedIds]);
+  for (let index = 0; index < 8; index += 1) {
+    const extra = await saveHiveReport({
+      type: "rewarded_task",
+      generatedAt: new Date(`2026-06-25T13:${String(index).padStart(2, "0")}:00.000Z`),
+      bodyMarkdown: [`# Extra Rewarded Report ${index}`, "", "Rewarded report flood fixture."].join("\n"),
+      sourceRunId: `hive_reports_smoke_extra_${index}`,
+      model: "mock",
+    });
+    cleanupIds.push(extra.report.id);
+  }
+  const clipped = await listHiveReports({ limit: 2, includeLatestByType: true });
+  assert.equal(clipped.ok, true, "latest-per-type report list succeeds");
+  const clippedTypes = new Set(clipped.reports.map((report) => report.type));
+  for (const type of hiveReportTypeIds) {
+    assert.ok(clippedTypes.has(type), `latest ${type} report remains present when recent rows are clipped`);
+  }
+
   console.log(`hive-reports-smoke ok: generated/read ${generatedIds.length} markdown reports`);
 } finally {
+  if (cleanupIds.length) {
+    await query("DELETE FROM hive_reports WHERE id = ANY($1::text[])", [cleanupIds]).catch(() => null);
+  }
   await closePool().catch(() => null);
 }
