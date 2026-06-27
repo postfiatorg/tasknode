@@ -407,10 +407,42 @@ const promptText = formatHiveAccountLiveStateForPrompt({
 assert.match(promptText, /ACCOUNT LIVE STATE - AUTHORITATIVE/);
 assert.match(promptText, /user-stated minimum Network Task reward is 25000 PFT/);
 assert.match(promptText, /Smoke task/);
-assert.match(promptText, /reward_offer_pft=12000/);
+assert.match(promptText, /reward_pft=12000/);
+assert.doesNotMatch(promptText, /reward_max_pft=30000/);
+assert.doesNotMatch(promptText, /reward_cap_pft=30000/);
 assert.match(promptText, /accept_by=2026-06-28T12:30:00\.000Z/);
 assert.match(promptText, /deadline_at=2026-06-29T12:30:00\.000Z/);
 assert.match(promptText, /network_task_eligibility: unavailable in this snapshot/);
+
+const rewardMismatchPromptText = formatHiveAccountLiveStateForPrompt({
+  ok: true,
+  status: "ready",
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  snapshotAt: "2026-06-15T20:16:57.495Z",
+  networkTasks: [
+    {
+      taskId: "task_826d5c2dc2933e22533e4931370214ae",
+      allocationId: "netalloc_smoke",
+      title: "Document Hive Chat UX Friction Points",
+      taskStatus: "accepted",
+      allocationStatus: "accepted",
+      rewardOfferPft: 20000,
+      rewardMaxPft: 50000,
+      updatedAt: "2026-06-15T20:16:57.495Z",
+      waitingForUser: true,
+      terminal: false,
+    },
+  ],
+  openFollowups: [],
+  recentBoardMessages: [],
+  routingConstraints: {},
+});
+assert.match(rewardMismatchPromptText, /task_826d5c2dc2933e22533e4931370214ae/);
+assert.match(rewardMismatchPromptText, /reward_pft=20000/);
+assert.doesNotMatch(rewardMismatchPromptText, /reward_max_pft=50000/);
+assert.doesNotMatch(rewardMismatchPromptText, /reward_cap_pft=50000/);
+assert.match(rewardMismatchPromptText, /report reward_pft when present/);
 
 const eligibilityPromptText = formatHiveAccountLiveStateForPrompt({
   ok: true,

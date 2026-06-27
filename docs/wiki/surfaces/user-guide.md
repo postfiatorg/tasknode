@@ -115,6 +115,8 @@ Hive is the group coordination board. It shows shared Post Fiat projects, Networ
 
 Hive Chat is a pinned chat conversation for contributing network context. A Hive Chat message is saved to Hive Context. The immediate response can explain board state, but it does not create a task by itself. Network Tasks are routed later by the Board Manager when there is a project need, eligible contributor capacity, and a matching user profile.
 
+When Hive Chat describes an active Network Task reward, the user-visible task projection reward is authoritative. Internal allocation caps are only context for not-yet-offered work and should not be reported as the accepted task reward.
+
 Hive Context validation means the entry came from an account with a linked PFT wallet. Ordinary Hive Chat messages do not require the wallet vault to be unlocked. Wallet unlock is needed later for signed task actions.
 
 ### Telegram Login And Telegram Chat

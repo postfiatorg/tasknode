@@ -46,7 +46,7 @@ function publicTask(row = {}) {
   const allocationStatus = normalizeStatus(row.allocation_status);
   const rewardMinPft = numeric(row.reward_min_pft, 0);
   const rewardMaxPft = numeric(row.reward_max_pft, 0);
-  const rewardOfferPft = numeric(row.reward_offer_pft, rewardMaxPft || rewardMinPft);
+  const rewardOfferPft = numeric(row.reward_offer_pft, 0);
   return {
     allocationId: safeText(row.allocation_id || row.id, 180),
     generationJobId: safeText(row.generation_job_id, 180),
@@ -69,6 +69,16 @@ function publicTask(row = {}) {
     expiresAt: toIso(row.expires_at),
     updatedAt: toIso(row.updated_at || row.projection_updated_at),
   };
+}
+
+function taskVisibleRewardPft(task = {}) {
+  const taskStatus = normalizeStatus(task.taskStatus || task.task_status || "");
+  const allocationStatus = normalizeStatus(task.allocationStatus || task.allocation_status || "");
+  const status = taskStatus || allocationStatus;
+  const rewardActualPft = numeric(task.rewardActualPft || task.reward_actual_pft, 0);
+  const rewardOfferPft = numeric(task.rewardOfferPft || task.reward_offer_pft, 0);
+  if (status === "rewarded" && rewardActualPft > 0) return rewardActualPft;
+  return rewardOfferPft;
 }
 
 function publicFollowup(row = {}) {
@@ -421,6 +431,8 @@ export async function buildHiveAccountLiveState({
 }
 
 function taskPromptLine(task = {}) {
+  const rewardPft = taskVisibleRewardPft(task);
+  const rewardCapPft = numeric(task.rewardMaxPft || task.reward_max_pft, 0);
   return [
     `- ${safeText(task.title || task.taskId || task.allocationId || "Network task", 220)}`,
     task.taskId ? `task=${task.taskId}` : "",
@@ -429,8 +441,8 @@ function taskPromptLine(task = {}) {
     task.taskStatus ? `task_status=${task.taskStatus}` : "",
     task.allocationStatus ? `allocation_status=${task.allocationStatus}` : "",
     task.generationStatus ? `generation_status=${task.generationStatus}` : "",
-    task.rewardOfferPft ? `reward_offer_pft=${task.rewardOfferPft}` : "",
-    task.rewardMaxPft ? `reward_max_pft=${task.rewardMaxPft}` : "",
+    rewardPft ? `reward_pft=${rewardPft}` : "",
+    !rewardPft && rewardCapPft ? `reward_cap_pft=${rewardCapPft}` : "",
     task.acceptBy ? `accept_by=${task.acceptBy}` : "",
     task.deadlineAt ? `deadline_at=${task.deadlineAt}` : "",
     task.waitingForUser ? "waiting_for_user=yes" : "waiting_for_user=no",
@@ -507,6 +519,7 @@ export function formatHiveAccountLiveStateForPrompt(liveState = {}) {
     "Rules:",
     "- If this section conflicts with chat history, compressed Hive context, or secretary packets, trust this section.",
     "- Answer Network Task eligibility questions from the network_task_eligibility lines above: name the blocked gate and its next_action instead of guessing or inventing a prerequisite ladder.",
+    "- For task reward questions, report reward_pft when present. reward_cap_pft is an allocation cap for ungenerated/offered work, not the accepted task's visible reward.",
     "- Do not say this user has a proposed task, open follow-up, capacity blocker, or reservation-rate conflict unless it appears here.",
     "- If a task here is refused, rewarded, completed, cancelled, expired, rejected, rerouted, or failed, do not describe it as waiting on the user.",
   ].join("\n");
