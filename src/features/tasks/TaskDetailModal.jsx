@@ -53,6 +53,10 @@ import {
   visibleTaskStateFromTask,
 } from "./task-visible-state.js";
 import {
+  taskAcceptanceConfirmation,
+  taskSubmissionProgressSteps,
+} from "./task-workflow-visibility.js";
+import {
   taskActionReceiptFromEvidenceResult,
   taskActionReceiptFromLifecycleResult,
   taskActionReceiptFromObservedTask,
@@ -286,6 +290,52 @@ function ToggleTextButton({ expanded, onClick }) {
   );
 }
 
+function TaskWorkflowNotice({ notice, onAction }) {
+  if (!notice) return null;
+  return (
+    <section className={`task-workflow-notice is-${notice.tone || "success"}`} role="status">
+      <span className="task-workflow-notice-icon" aria-hidden="true">
+        <Check size={14} strokeWidth={2} />
+      </span>
+      <div>
+        <strong>{notice.title}</strong>
+        <p>{notice.body}</p>
+        {notice.detail && <small>{notice.detail}</small>}
+      </div>
+      {notice.actionLabel && onAction && (
+        <button className="dark-pill" onClick={onAction} type="button">
+          {notice.actionLabel}
+          <ArrowRight size={14} strokeWidth={2} />
+        </button>
+      )}
+    </section>
+  );
+}
+
+function TaskWorkflowSteps({ ariaLabel = "Task workflow progress", className = "", steps = [] }) {
+  if (!steps.length) return null;
+  const classes = ["task-workflow-steps", className].filter(Boolean).join(" ");
+  return (
+    <ol aria-label={ariaLabel} className={classes}>
+      {steps.map((step) => (
+        <li
+          aria-current={step.state === "current" ? "step" : undefined}
+          className={`is-${step.state || "pending"}`}
+          key={step.key}
+        >
+          <span className="task-workflow-step-dot" aria-hidden="true">
+            {step.state === "complete" ? <Check size={11} strokeWidth={2.2} /> : null}
+          </span>
+          <span className="task-workflow-step-copy">
+            <strong>{step.label}</strong>
+            <small>{step.detail}</small>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function formatPftValue(value) {
   const parsed = Number(value || 0);
   if (!Number.isFinite(parsed)) return "0";
@@ -515,6 +565,7 @@ function TaskOverviewPanel({
   const actions = detail?.actions || {};
   const currentVerificationRequest = detail?.currentVerificationRequest || null;
   const verificationRequestActive = Boolean(actions.canSubmitVerificationEvidence && currentVerificationRequest);
+  const acceptanceNotice = taskAcceptanceConfirmation({ actions, task: displayTask });
   const lifecycleControls = (
     <TaskLifecycleActionPanel
       accountId={accountId}
@@ -575,6 +626,7 @@ function TaskOverviewPanel({
       ) : (
         <>
           {actions.canAccept && lifecycleControls}
+          <TaskWorkflowNotice notice={acceptanceNotice} onAction={() => onSelectTab?.("submit")} />
           <TaskSection title="Description">
             <p>{displayTask.description}</p>
           </TaskSection>
@@ -957,6 +1009,13 @@ function TaskSubmitPanel({
   const responseMeta = readyEvidenceCount
     ? `${readyEvidenceCount} ready${evidenceDraftCount > readyEvidenceCount ? ` / ${evidenceDraftCount} draft${evidenceDraftCount === 1 ? "" : "s"}` : ""}`
     : `${evidenceDraftCount} draft${evidenceDraftCount === 1 ? "" : "s"}`;
+  const submissionProgressSteps = taskSubmissionProgressSteps({
+    confirmed,
+    pending: state.pending,
+    pendingLabel: state.pendingLabel,
+    readyEvidenceCount,
+    result: state.result,
+  });
   const canPrepareEvidence = Boolean(
     readyEvidenceCount > 0 &&
       !loading &&
@@ -1156,6 +1215,14 @@ function TaskSubmitPanel({
             {submissionOpen ? "Open" : task.status}
           </span>
         </div>
+      )}
+
+      {submissionOpen && (
+        <TaskWorkflowSteps
+          ariaLabel="Evidence submission progress"
+          className="task-submit-progress"
+          steps={submissionProgressSteps}
+        />
       )}
 
       {submissionOpen && actions.canSubmitVerificationEvidence && verificationRequest?.body && (
