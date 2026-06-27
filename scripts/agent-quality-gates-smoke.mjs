@@ -65,7 +65,7 @@ const selfDealing = agentSelfDealingDecision({
   action: "task_submission",
 });
 assert.equal(selfDealing.ok, true);
-assert.equal(selfDealing.reason, "self_requested_submission_allowed_independent_verification_required");
+assert.equal(selfDealing.reason, "self_requested_submission_allowed_independent_review_required");
 
 const selfVerify = agentSelfDealingDecision({
   agentOrigin,
@@ -75,8 +75,19 @@ const selfVerify = agentSelfDealingDecision({
   taskRequest: selfRequest,
   action: "task_verification_response",
 });
-assert.equal(selfVerify.ok, false);
-assert.equal(selfVerify.error, "agent_self_dealing_blocked");
+assert.equal(selfVerify.ok, true);
+assert.equal(selfVerify.reason, "self_requested_verification_response_allowed_independent_reward_required");
+
+const selfReward = agentSelfDealingDecision({
+  agentOrigin,
+  accountId: "acct_agent_quality",
+  walletAddress: "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW",
+  task: { ...selfTask, status: "verification_response_submitted" },
+  taskRequest: selfRequest,
+  action: "task_reward_decision",
+});
+assert.equal(selfReward.ok, false);
+assert.equal(selfReward.error, "agent_self_dealing_blocked");
 
 const boardRoutedTask = agentSelfDealingDecision({
   agentOrigin,

@@ -198,19 +198,53 @@ require the appropriate guarded product, protocol, or operator path.
 
 The Hive Brain `Harvests` tab displays the queue output: task, reward,
 classification, summary, suggested action, category, and harvest time. The
-default list is unresolved rows only. Verified Core Contributors can press
-`Check out` to assign a row to their linked wallet; the current checkout is
-stored on `task_accounting_harvests`, and every checkout writes an append-only
-event to `task_accounting_harvest_checkout_events`. The tab shows a
+default list is unresolved rows only. Verified Core Contributors and active Orc
+agents can press `Check out` to assign a row to their linked wallet; the current
+checkout is stored on `task_accounting_harvests`, and every checkout writes an
+append-only event to `task_accounting_harvest_checkout_events`. The tab shows a
 checked-out log so operators can see which rows have been claimed for follow-up.
 A separate resolved-history section keeps closed rows visible with the stored
-resolution comment. Operators mark rows resolved from that tab by entering a
-comment in the resolve dialog. The APIs are
+resolution comment. Authorized Task Accounting operators, or the eligible
+current checkout owner for that row, mark rows resolved from that tab by
+entering a comment in the resolve dialog. The APIs are
 `GET /api/hive/brain/harvests?resolved=false`,
 `GET /api/hive/brain/harvests?resolved=true`,
 `GET /api/hive/brain/harvest-checkouts`,
 `POST /api/hive/brain/harvests/:taskId/checkout`, and
 `POST /api/hive/brain/harvests/:taskId/resolve`. The focused mock smoke is:
+
+#### Grashnuk follow-up loop
+
+When an actionable harvest should be handled by the Orc process, the operator
+uses the harvest row as the source of a personal task for Grashnuk instead of
+editing the original rewarded Network Task. The request text must include the
+harvest `task_id`, the stored assessment summary, and the stored suggested
+action. It should ask for one concrete follow-up artifact that closes that
+suggested action; it should not restate the row as a vague review or handoff.
+
+The live sequence is:
+
+1. Submit a signed personal task request as Grashnuk with the harvest assessment
+   and suggested action as the task source.
+2. Check out the harvest row in Hive Brain so ownership is visible in the
+   checkout log. This still requires the checking-out account to have a verified
+   `core_contributor` badge or an active `orc_agents` row for the same linked
+   wallet; do not bypass that gate with a direct database write.
+3. Complete the generated personal task and submit evidence as Grashnuk. If the
+   self-requested task enters `verification_requested`, Grashnuk may answer the
+   reviewer follow-up as additional evidence, but it must not decide reward,
+   accounting, or enforcement outcomes.
+4. After the personal task has an independent reward decision, mark the harvest
+   row resolved from Hive Brain. The current checkout owner can do this for
+   their own checked-out row while they remain checkout-eligible. The resolution
+   comment should name the generated personal task id, the final reward
+   description or reward rationale, and the artifact or product state that now
+   closes the harvest action.
+
+This process keeps the accounting row, checkout owner, Orc task request,
+submitted evidence, independent verification/reward decision, and final
+resolution note connected without changing rewards, eligibility, enforcement, or
+the original harvested Network Task.
 
 ```bash
 TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK=true npm run task-accounting-harvester-smoke

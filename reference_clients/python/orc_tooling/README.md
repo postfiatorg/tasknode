@@ -162,7 +162,7 @@ uv run orcctl self-loop --iterations 12 --sleep-seconds 300 --execute
 ```
 
 The loop does not deploy, ban, claw back, alter rewards, or approve
-self-verification. Those remain reserved outside Orc autonomy.
+self-reward/self-approval. Those remain reserved outside Orc autonomy.
 
 ## Nazgul Oversight Console
 

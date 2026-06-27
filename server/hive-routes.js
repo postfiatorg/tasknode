@@ -15,8 +15,9 @@ import {
 } from "./repositories/hive-brain.js";
 import { getHiveReport, listHiveReports } from "./repositories/hive-reports.js";
 import {
-  accountHasTaskAccountingCheckoutAccess,
+  accountCanResolveCheckedOutTaskAccountingHarvest,
   checkoutTaskAccountingHarvest,
+  getTaskAccountingCheckoutAccess,
   listTaskAccountingHarvestCheckouts,
   listTaskAccountingHarvests,
   resolveTaskAccountingHarvest,
@@ -516,17 +517,22 @@ function canResolveTaskAccountingHarvest({ session = null, profile = {}, linkedW
 async function taskAccountingCheckoutPermissions({ getLinkedWallet, session = null } = {}) {
   const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
   const walletAddress = safeText(linkedWallet?.address || linkedWallet?.walletAddress || "", 120);
-  const hasCoreContributorBadge = await accountHasTaskAccountingCheckoutAccess({
+  const access = await getTaskAccountingCheckoutAccess({
     accountId: session?.accountId || "",
+    walletAddress,
   }).catch(() => false);
-  const reason = !hasCoreContributorBadge
-    ? "core_contributor_required"
+  const canCheckout = typeof access === "object" ? Boolean(access.canCheckout) : Boolean(access);
+  const hasCoreContributorBadge = typeof access === "object" ? Boolean(access.hasCoreContributorBadge) : Boolean(access);
+  const hasActiveOrcAgent = typeof access === "object" ? Boolean(access.hasActiveOrcAgent) : false;
+  const reason = !canCheckout
+    ? "core_contributor_or_active_orc_required"
     : !walletAddress
       ? "linked_wallet_required"
       : "";
   return {
-    canCheckout: Boolean(hasCoreContributorBadge && walletAddress),
+    canCheckout: Boolean(canCheckout && walletAddress),
     hasCoreContributorBadge,
+    hasActiveOrcAgent,
     walletAddress,
     accountId: safeText(session?.accountId || "", 180),
     reason,
@@ -626,11 +632,20 @@ async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res,
       return true;
     }
     const permissions = await taskAccountingCheckoutPermissions({ getLinkedWallet, session });
-    if (!permissions.hasCoreContributorBadge) {
+    if (!permissions.canCheckout && !permissions.walletAddress) {
+      json(res, 409, {
+        ok: false,
+        error: "task_accounting_harvest_checkout_wallet_required",
+        message: "Link a wallet before checking out a harvest row.",
+        permissions,
+      });
+      return true;
+    }
+    if (!permissions.canCheckout) {
       json(res, 403, {
         ok: false,
-        error: "task_accounting_harvest_checkout_core_contributor_required",
-        message: "Only verified Core Contributors can check out harvest rows.",
+        error: "task_accounting_harvest_checkout_core_contributor_or_orc_required",
+        message: "Only verified Core Contributors or active Orc agents can check out harvest rows.",
         permissions,
       });
       return true;
@@ -672,15 +687,21 @@ async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res,
     const linkedWallet = typeof getLinkedWallet === "function"
       ? getLinkedWallet({ accountId: session.accountId })
       : null;
-    if (!canResolveTaskAccountingHarvest({ session, profile: access.profile, linkedWallet })) {
+    const taskId = decodeURIComponent(url.pathname.slice(resolvePrefix.length, -resolveSuffix.length));
+    const canResolveAsOperator = canResolveTaskAccountingHarvest({ session, profile: access.profile, linkedWallet });
+    const canResolveAsCheckoutOwner = canResolveAsOperator ? false : await accountCanResolveCheckedOutTaskAccountingHarvest({
+      taskId,
+      accountId: session.accountId,
+      walletAddress: safeText(linkedWallet?.address || linkedWallet?.walletAddress || "", 120),
+    });
+    if (!canResolveAsOperator && !canResolveAsCheckoutOwner) {
       json(res, 403, {
         ok: false,
         error: "task_accounting_harvest_resolver_required",
-        message: "Only authorized Task Accounting operators can resolve harvest rows.",
+        message: "Only authorized Task Accounting operators or the eligible checkout owner can resolve harvest rows.",
       });
       return true;
     }
-    const taskId = decodeURIComponent(url.pathname.slice(resolvePrefix.length, -resolveSuffix.length));
     const payload = typeof readJson === "function" ? await readJson(req, 8192) : {};
     const body = await resolveTaskAccountingHarvest({
       taskId,

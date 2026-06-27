@@ -12,8 +12,10 @@ const { closePool, databaseEnabled, query } = await import("../server/db/pool.js
 const { migrateDatabase } = await import("../server/db/migrate.js");
 const { runTaskAccountingHarvesterOnce } = await import("../server/task-accounting-harvester-worker.js");
 const {
+  accountCanResolveCheckedOutTaskAccountingHarvest,
   accountHasTaskAccountingCheckoutAccess,
   checkoutTaskAccountingHarvest,
+  getTaskAccountingCheckoutAccess,
   listTaskAccountingHarvests,
   listTaskAccountingHarvestCheckouts,
   resolveTaskAccountingHarvest,
@@ -24,10 +26,14 @@ const actionableTaskId = `task_accounting_action_${suffix}`;
 const noActionTaskId = `task_accounting_done_${suffix}`;
 const accountId = `acct_task_accounting_${suffix}`;
 const wallet = `rTaskAccounting${suffix}`.slice(0, 120);
+const orcAccountId = `acct_task_accounting_orc_${suffix}`;
+const orcWallet = `rTaskAccountingOrc${suffix}`.slice(0, 120);
+const orcAgentId = `orc_task_accounting_${suffix}`;
 
 async function cleanup() {
   await query("DELETE FROM task_accounting_harvests WHERE task_id IN ($1, $2)", [actionableTaskId, noActionTaskId]);
   await query("DELETE FROM account_network_badges WHERE account_id = $1 AND badge_id = 'core_contributor'", [accountId]);
+  await query("DELETE FROM orc_agents WHERE id = $1", [orcAgentId]);
   await query("DELETE FROM task_events WHERE task_id IN ($1, $2)", [actionableTaskId, noActionTaskId]);
   await query("DELETE FROM task_projections WHERE task_id IN ($1, $2)", [actionableTaskId, noActionTaskId]);
 }
@@ -53,6 +59,33 @@ async function grantCoreContributorBadge() {
         updated_at = now()
     `,
     [`badge_${accountId}_core`, accountId]
+  );
+}
+
+async function grantActiveOrcAgent() {
+  await query(
+    `
+      INSERT INTO orc_agents (
+        id,
+        handle,
+        agent_id,
+        account_id,
+        wallet_address,
+        role,
+        status,
+        active,
+        runtime_kind,
+        metadata_json
+      )
+      VALUES ($1, 'task_accounting_orc_smoke', 'task_accounting_orc_smoke', $2, $3, 'operator', 'active', true, 'codex', $4::jsonb)
+      ON CONFLICT (id) DO UPDATE SET
+        account_id = EXCLUDED.account_id,
+        wallet_address = EXCLUDED.wallet_address,
+        status = EXCLUDED.status,
+        active = EXCLUDED.active,
+        updated_at = now()
+    `,
+    [orcAgentId, orcAccountId, orcWallet, JSON.stringify({ smoke: true })]
   );
 }
 
@@ -152,6 +185,18 @@ async function main() {
       false,
       "checkout access requires a Core Contributor badge"
     );
+    await grantActiveOrcAgent();
+    const orcAccess = await getTaskAccountingCheckoutAccess({
+      accountId: orcAccountId,
+      walletAddress: orcWallet,
+    });
+    assert.equal(orcAccess.canCheckout, true, "active Orc agent grants checkout access");
+    assert.equal(orcAccess.hasActiveOrcAgent, true, "active Orc agent flag is exposed");
+    assert.equal(
+      await accountHasTaskAccountingCheckoutAccess({ accountId: orcAccountId, walletAddress: orcWallet }),
+      true,
+      "active Orc agent is accepted by the legacy boolean helper"
+    );
     await grantCoreContributorBadge();
     assert.equal(
       await accountHasTaskAccountingCheckoutAccess({ accountId }),
@@ -167,6 +212,11 @@ async function main() {
     assert.equal(checkout.ok, true);
     assert.equal(checkout.harvest.checkedOut, true);
     assert.equal(checkout.harvest.checkout.walletAddress, wallet);
+    assert.equal(
+      await accountCanResolveCheckedOutTaskAccountingHarvest({ taskId: actionableTaskId, accountId, walletAddress: wallet }),
+      true,
+      "eligible checkout owner can resolve their checked-out harvest"
+    );
     const checkoutLog = await listTaskAccountingHarvestCheckouts({ limit: 20 });
     const checkoutEvent = checkoutLog.events.find((event) => event.taskId === actionableTaskId);
     assert.ok(checkoutEvent, "checkout log includes the checked-out harvest");

@@ -122,7 +122,7 @@ Safety defaults:
 - proposed assigned tasks are accepted only with `--accept-assigned`;
 - task evidence or verification responses require explicit text or file input;
 - the loop does not deploy, ban, claw back, alter rewards, or approve
-  self-verification.
+  self-reward or self-approval.
 
 ### Mode C: Durable Runtime Queue
 
@@ -231,9 +231,9 @@ controls, not trust in one pane:
   labeled as machine-agent actions.
 - **Independent verification:** agents submit evidence like users do; reward
   still depends on the normal review/reward path.
-- **Anti-self-verification:** an agent may request and submit evidence for its
-  own concrete task, but server policy blocks it from answering verification for
-  that self-requested task.
+- **Anti-self-dealing:** an agent may request a concrete task, submit evidence,
+  and answer reviewer follow-up prompts for that self-requested task. Server
+  policy still blocks terminal reward/control actions by the same agent.
 - **Rate ceilings:** agent request/action/submission/verification and Hive chat
   paths have env-configurable per-window limits. In production, buckets live in
   `agent_rate_limit_buckets`, so limits survive API restarts and are shared

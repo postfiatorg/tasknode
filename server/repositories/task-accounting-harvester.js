@@ -849,11 +849,17 @@ export async function listTaskAccountingHarvests({
   };
 }
 
-export async function accountHasTaskAccountingCheckoutAccess({ accountId = "" } = {}) {
-  if (!databaseEnabled()) return false;
+export async function getTaskAccountingCheckoutAccess({ accountId = "", walletAddress = "" } = {}) {
+  const denied = {
+    canCheckout: false,
+    hasCoreContributorBadge: false,
+    hasActiveOrcAgent: false,
+  };
+  if (!databaseEnabled()) return denied;
   const normalizedAccountId = safeText(accountId, 180);
-  if (!normalizedAccountId) return false;
-  const result = await query(
+  const normalizedWallet = safeText(walletAddress, 120);
+  if (!normalizedAccountId) return denied;
+  const badgeResult = await query(
     `
       SELECT 1
       FROM account_network_badges badge
@@ -868,6 +874,62 @@ export async function accountHasTaskAccountingCheckoutAccess({ accountId = "" } 
       LIMIT 1
     `,
     [normalizedAccountId]
+  );
+  const hasCoreContributorBadge = Boolean(badgeResult.rows[0]);
+  let hasActiveOrcAgent = false;
+  if (normalizedWallet) {
+    const orcResult = await query(
+      `
+        SELECT 1
+        FROM orc_agents agent
+        WHERE agent.account_id = $1
+          AND lower(agent.wallet_address) = lower($2)
+          AND agent.active = true
+          AND lower(agent.status) = 'active'
+        LIMIT 1
+      `,
+      [normalizedAccountId, normalizedWallet]
+    );
+    hasActiveOrcAgent = Boolean(orcResult.rows[0]);
+  }
+  return {
+    canCheckout: Boolean(hasCoreContributorBadge || hasActiveOrcAgent),
+    hasCoreContributorBadge,
+    hasActiveOrcAgent,
+  };
+}
+
+export async function accountHasTaskAccountingCheckoutAccess({ accountId = "", walletAddress = "" } = {}) {
+  const access = await getTaskAccountingCheckoutAccess({ accountId, walletAddress });
+  return Boolean(access.canCheckout);
+}
+
+export async function accountCanResolveCheckedOutTaskAccountingHarvest({
+  taskId = "",
+  accountId = "",
+  walletAddress = "",
+} = {}) {
+  if (!databaseEnabled()) return false;
+  const normalizedTaskId = safeText(taskId, 180);
+  const normalizedAccountId = safeText(accountId, 180);
+  const normalizedWallet = safeText(walletAddress, 120);
+  if (!normalizedTaskId || !normalizedAccountId || !normalizedWallet) return false;
+  const access = await getTaskAccountingCheckoutAccess({
+    accountId: normalizedAccountId,
+    walletAddress: normalizedWallet,
+  });
+  if (!access.canCheckout) return false;
+  const result = await query(
+    `
+      SELECT 1
+      FROM task_accounting_harvests
+      WHERE task_id = $1
+        AND checked_out_by_account_id = $2
+        AND lower(checked_out_wallet_address) = lower($3)
+        AND resolved_at IS NULL
+      LIMIT 1
+    `,
+    [normalizedTaskId, normalizedAccountId, normalizedWallet]
   );
   return Boolean(result.rows[0]);
 }

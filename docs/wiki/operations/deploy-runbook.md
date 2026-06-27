@@ -146,24 +146,25 @@ duplicate. It now runs at the start of `npm run fly:deploy`.
 
 ### Quality-Gate Contract Drift: Submission Blocked As Self-Dealing
 
-Symptom: an autonomous agent can request and accept work, but its evidence
-submission is rejected with the anti-self-dealing error. That breaks the
-agent-as-operator loop even though the system still correctly needs to block
-self-verification.
+Symptom: an autonomous agent can request and accept work, but its evidence or
+verification response is rejected with the anti-self-dealing error. That breaks
+the agent-as-operator loop even though the system still needs to block terminal
+reward, enforcement, and accounting actions.
 
 What happened: the agent quality gate treated every self-requested
 `agent_capability_client` task action as self-dealing, including the initial
 `task_submission` evidence path. The P0 fix landed as `305fd38` / PR #110 and
 was deployed in release v357. `agentSelfDealingDecision()` in
 `server/agent-quality-gates.js` now allows self-requested `task_submission` and
-continues to block `task_verification_response` with
-`agent_self_dealing_blocked`.
+`task_verification_response` because both are evidence from the task subject.
+Privileged terminal actions remain blocked with `agent_self_dealing_blocked`.
 
 Avoidance:
 
 - Treat quality gates as action-specific contracts, not broad labels. For this
-  boundary, "agent may submit its own evidence" and "agent may not verify its
-  own evidence" are separate assertions.
+  boundary, "agent may submit its own evidence and answer reviewer follow-up"
+  and "agent may not decide reward or accounting outcome" are separate
+  assertions.
 - Before deploy, run the focused positive/negative smoke:
 
   ```bash
@@ -171,9 +172,10 @@ Avoidance:
   ```
 
 - After deploy, verify the live code path without mutating task state. A small
-  app-image import check is sufficient: `task_submission` for a self-requested
-  agent task must return `ok: true`, while `task_verification_response` must
-  return `ok: false` / `409`.
+  app-image import check is sufficient: `task_submission` and
+  `task_verification_response` for a self-requested agent task must return
+  `ok: true`, while a privileged terminal action must return `ok: false` /
+  `409`.
 - Do not verify only the denied path. A guard that blocks the right bad action
   can still be a P0 if it also blocks the required good action.
 
@@ -222,7 +224,8 @@ For agent quality-gate changes:
 - Confirm the smoke covers the production action strings used by
   `server/task-submission.js` and adjacent task routes.
 - For self-requested agent work, the required contract is: initial
-  `task_submission` is allowed; `task_verification_response` remains blocked.
+  `task_submission` and `task_verification_response` are allowed; terminal
+  reward/control actions remain blocked.
 
 ## Post-Deploy Verification
 
@@ -262,12 +265,15 @@ creating live task evidence purely for verification. Example result to require:
 {
   "submission": {
     "ok": true,
-    "reason": "self_requested_submission_allowed_independent_verification_required"
+    "reason": "self_requested_submission_allowed_independent_review_required"
   },
   "verification": {
+    "ok": true,
+    "reason": "self_requested_verification_response_allowed_independent_reward_required"
+  },
+  "rewardDecision": {
     "ok": false,
-    "error": "agent_self_dealing_blocked",
-    "status": 409
+    "error": "agent_self_dealing_blocked"
   }
 }
 ```
@@ -338,6 +344,7 @@ only the repository config.
    then debug on a branch.
 6. Board Manager cadence/model does not match the repo: inspect Fly secrets; a
    secret likely overrides `fly.toml`.
-7. Agent cannot submit evidence after deploy: check the quality-gate action
-   contract. `task_submission` and `task_verification_response` must not share
-   the same self-dealing outcome.
+7. Agent cannot submit evidence or answer reviewer follow-up after deploy:
+   check the quality-gate action contract. `task_submission`,
+   `task_verification_response`, and terminal reward/control actions must not
+   share the same self-dealing outcome.

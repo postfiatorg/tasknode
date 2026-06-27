@@ -170,11 +170,13 @@ export function agentSelfDealingDecision({
   );
   if (!selfRequested) return { ok: true, skipped: true, reason: "not_agent_self_requested" };
   const normalizedAction = safeText(action || "task_submission", 80).toLowerCase();
-  if (normalizedAction !== "task_verification_response") {
+  if (normalizedAction === "task_submission" || normalizedAction === "task_verification_response") {
     return {
       ok: true,
       skipped: false,
-      reason: "self_requested_submission_allowed_independent_verification_required",
+      reason: normalizedAction === "task_verification_response"
+        ? "self_requested_verification_response_allowed_independent_reward_required"
+        : "self_requested_submission_allowed_independent_review_required",
       action,
       requestId,
     };
@@ -185,8 +187,8 @@ export function agentSelfDealingDecision({
     status: 409,
     action,
     requestId,
-    message: "Agent self-verification is blocked: an agent cannot answer verification on a task it requested for itself.",
-    actionRequired: "Use an independent verifier for the submitted evidence before any reward decision.",
+    message: "Agent self-dealing is blocked: an agent cannot perform this terminal or privileged action on a task it requested for itself.",
+    actionRequired: "Use an independent reviewer or guarded operator path before any reward, enforcement, or accounting decision.",
   };
 }
 
