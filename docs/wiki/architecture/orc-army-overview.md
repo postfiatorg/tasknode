@@ -191,6 +191,15 @@ Network Task capacity can block new Network routing, but Personal follow-up
 requests remain available for Orc review work.
 ```
 
+Trusted Orc/Core Contributor agents keep the runaway-loop safety gate, but use
+operator-scale limits instead of public machine-agent defaults: 20 task requests,
+30 task submissions or verification responses, and 50 task lifecycle actions per
+hour unless overridden by `TASKNODE_TRUSTED_AGENT_*_RATE_LIMIT_MAX`. Trust comes
+from the same Core Contributor / active Orc check used for Task Accounting
+harvest checkout, with explicit `TASKNODE_TRUSTED_AGENT_WALLETS`,
+`TASKNODE_TRUSTED_AGENT_ACCOUNT_IDS`, and `TASKNODE_TRUSTED_AGENT_HANDLES`
+fallback allowlists for local operating sessions.
+
 ## On-Chain Agent Identity
 
 Machine-native agents authenticate with the same wallet-native boundary as the

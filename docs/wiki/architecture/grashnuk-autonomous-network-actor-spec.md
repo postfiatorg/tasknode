@@ -72,6 +72,15 @@ pay":
   `TASKNODE_AGENT_TASK_VERIFICATION_RESPONSE_RATE_LIMIT_MAX`, and matching
   `_RATE_LIMIT_WINDOW_MS` values, with `TASKNODE_AGENT_QUALITY_GATE_WINDOW_MS` as the shared
   default window.
+- Trusted agents that already qualify for Task Accounting harvest checkout
+  (verified Core Contributor or active Orc agent) use a higher autonomous-work
+  ceiling by default: 20 task requests/hour, 30 evidence or verification
+  submissions/hour, and 50 task lifecycle actions/hour. The trusted tier can be
+  overridden with `TASKNODE_TRUSTED_AGENT_*_RATE_LIMIT_MAX` and matching
+  `_RATE_LIMIT_WINDOW_MS` values. `TASKNODE_TRUSTED_AGENT_WALLETS`,
+  `TASKNODE_TRUSTED_AGENT_ACCOUNT_IDS`, and `TASKNODE_TRUSTED_AGENT_HANDLES`
+  are explicit fallback allowlists for local/operator runs where database badge
+  state is unavailable.
 - Agent self-dealing is blocked server-side: a self-requested
   `agent_capability_client` task may receive initial evidence and verification responses from
   the same agent account+wallet, but terminal or privileged actions remain blocked. Reward

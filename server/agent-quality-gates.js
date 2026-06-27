@@ -5,6 +5,7 @@ import {
   resetAgentRateLimitBucketsForTests,
 } from "./repositories/agent-rate-limits.js";
 import { recordAgentWorkJournal } from "./repositories/orc-work-journal.js";
+import { getTaskAccountingCheckoutAccess } from "./repositories/task-accounting-harvester.js";
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -15,14 +16,75 @@ function numericEnv(name, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function rateLimitConfig(action = "") {
+function envSet(name = "") {
+  return new Set(
+    String(process.env[name] || "")
+      .split(/[,\s]+/)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function defaultRateLimitMax(action = "", { trusted = false } = {}) {
+  if (trusted) {
+    if (action === "task_request") return 20;
+    if (action === "task_submission" || action === "task_verification_response") return 30;
+    return 50;
+  }
+  if (action === "task_request") return 3;
+  if (action === "task_submission" || action === "task_verification_response") return 6;
+  return 12;
+}
+
+function explicitTrustedAgentMatch(agentOrigin = {}) {
+  const wallet = safeText(agentOrigin.walletAddress, 120).toLowerCase();
+  const accountId = safeText(agentOrigin.accountId, 180).toLowerCase();
+  const handle = safeText(agentOrigin.agentHandle, 80).toLowerCase();
+  return Boolean(
+    (wallet && envSet("TASKNODE_TRUSTED_AGENT_WALLETS").has(wallet)) ||
+      (accountId && envSet("TASKNODE_TRUSTED_AGENT_ACCOUNT_IDS").has(accountId)) ||
+      (handle && envSet("TASKNODE_TRUSTED_AGENT_HANDLES").has(handle))
+  );
+}
+
+async function trustedAgentRateLimitAccess(agentOrigin = {}) {
+  if (!agentOrigin?.agent) return { trusted: false, reason: "not_machine_agent" };
+  if (explicitTrustedAgentMatch(agentOrigin)) {
+    return { trusted: true, reason: "trusted_agent_allowlist" };
+  }
+  const accountId = safeText(agentOrigin.accountId, 180);
+  const walletAddress = safeText(agentOrigin.walletAddress, 120);
+  if (!accountId) return { trusted: false, reason: "account_required" };
+  try {
+    const access = await getTaskAccountingCheckoutAccess({ accountId, walletAddress });
+    return {
+      trusted: Boolean(access.canCheckout),
+      reason: access.hasCoreContributorBadge
+        ? "core_contributor"
+        : access.hasActiveOrcAgent
+          ? "active_orc_agent"
+          : "standard_machine_agent",
+      access,
+    };
+  } catch (error) {
+    return {
+      trusted: false,
+      reason: "trusted_agent_access_check_failed",
+      error: safeText(error?.message || error, 240),
+    };
+  }
+}
+
+function rateLimitConfig(action = "", { trusted = false } = {}) {
   const key = safeText(action, 80).toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  const maxPrefix = trusted ? "TASKNODE_TRUSTED_AGENT" : "TASKNODE_AGENT";
+  const trustedWindow = trusted ? numericEnv("TASKNODE_TRUSTED_AGENT_QUALITY_GATE_WINDOW_MS", 0) : 0;
   return {
     max: Math.min(
       Math.max(
         numericEnv(
-          `TASKNODE_AGENT_${key}_RATE_LIMIT_MAX`,
-          action === "task_request" ? 3 : action === "task_submission" || action === "task_verification_response" ? 6 : 12
+          `${maxPrefix}_${key}_RATE_LIMIT_MAX`,
+          defaultRateLimitMax(action, { trusted })
         ),
         1
       ),
@@ -31,8 +93,9 @@ function rateLimitConfig(action = "") {
     windowMs: Math.min(
       Math.max(
         numericEnv(
-          `TASKNODE_AGENT_${key}_RATE_LIMIT_WINDOW_MS`,
-          numericEnv("TASKNODE_AGENT_QUALITY_GATE_WINDOW_MS", 60 * 60 * 1000)
+          `${maxPrefix}_${key}_RATE_LIMIT_WINDOW_MS`,
+          trustedWindow ||
+            numericEnv("TASKNODE_AGENT_QUALITY_GATE_WINDOW_MS", 60 * 60 * 1000)
         ),
         1000
       ),
@@ -57,15 +120,27 @@ export function agentOriginForTaskSession(session = null, payload = {}, walletAd
 export async function checkAgentActionRateLimit({ agentOrigin = null, action = "", now = Date.now() } = {}) {
   if (!agentOrigin?.agent) return { ok: true, skipped: true };
   const normalizedAction = safeText(action || "agent_action", 80) || "agent_action";
-  const config = rateLimitConfig(normalizedAction);
+  const trust = await trustedAgentRateLimitAccess(agentOrigin);
+  const config = rateLimitConfig(normalizedAction, { trusted: trust.trusted });
   const agentKey = safeText(agentOrigin.walletAddress || agentOrigin.accountId || agentOrigin.agentHandle, 180);
-  return checkAgentRateLimitBucket({
+  const result = await checkAgentRateLimitBucket({
     action: normalizedAction,
     agentKey,
     limit: config.max,
     windowMs: config.windowMs,
     now,
   });
+  return {
+    ...result,
+    policy: {
+      trusted: Boolean(trust.trusted),
+      reason: trust.reason,
+      tier: trust.trusted ? "trusted_agent" : "standard_agent",
+      action: normalizedAction,
+      limit: config.max,
+      windowMs: config.windowMs,
+    },
+  };
 }
 
 export async function recordAgentActionJournal({
@@ -128,6 +203,8 @@ export async function enforceAgentActionRateLimit({
         limit: rateLimit.limit,
         retryAfterSeconds: rateLimit.retryAfterSeconds,
         windowMs: rateLimit.windowMs,
+        resetAt: rateLimit.resetAt ? new Date(rateLimit.resetAt).toISOString() : null,
+        policy: rateLimit.policy || null,
       },
     },
     idempotencyKey: `agent_rate_limit:${action}:${agentOrigin?.walletAddress || agentOrigin?.accountId || ""}:${taskId || requestId || ""}:${rateLimit.resetAt || ""}`,
@@ -142,6 +219,10 @@ export async function enforceAgentActionRateLimit({
       message: "Agent action rate limit exceeded. Retry after the indicated window.",
       actionRequired: "Wait for the rate-limit window to reset before submitting more autonomous actions.",
       retryAfterSeconds: rateLimit.retryAfterSeconds,
+      resetAt: rateLimit.resetAt ? new Date(rateLimit.resetAt).toISOString() : null,
+      limit: rateLimit.limit,
+      windowMs: rateLimit.windowMs,
+      policy: rateLimit.policy || null,
       orcWorkJournal,
     },
   };

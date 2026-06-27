@@ -128,6 +128,34 @@ assert.equal(second.status, 429);
 assert.equal(second.body.error, "agent_action_rate_limited");
 assert.equal(second.body.orcWorkJournal.reason, "database_disabled");
 
+process.env.TASKNODE_TRUSTED_AGENT_WALLETS = agentOrigin.walletAddress;
+resetAgentQualityGateRateLimitsForTests();
+const trustedTaskRequestAttempts = [];
+for (let index = 0; index < 20; index += 1) {
+  trustedTaskRequestAttempts.push(await checkAgentActionRateLimit({ agentOrigin, action: "task_request" }));
+}
+assert.equal(trustedTaskRequestAttempts.every((attempt) => attempt.ok), true);
+assert.equal(trustedTaskRequestAttempts[0].limit, 20);
+assert.equal(trustedTaskRequestAttempts[0].policy.tier, "trusted_agent");
+assert.equal(trustedTaskRequestAttempts[0].policy.reason, "trusted_agent_allowlist");
+const trustedRequestOverLimit = await enforceAgentActionRateLimit({
+  agentOrigin,
+  action: "task_request",
+  accountId: "acct_agent_quality",
+  requestId: "req_trusted_rate_limited",
+});
+assert.equal(trustedRequestOverLimit.ok, false);
+assert.equal(trustedRequestOverLimit.status, 429);
+assert.equal(trustedRequestOverLimit.body.limit, 20);
+assert.equal(trustedRequestOverLimit.body.policy.tier, "trusted_agent");
+assert.match(trustedRequestOverLimit.body.resetAt, /^\d{4}-\d{2}-\d{2}T/);
+
+resetAgentQualityGateRateLimitsForTests();
+const trustedSubmission = await checkAgentActionRateLimit({ agentOrigin, action: "task_submission" });
+assert.equal(trustedSubmission.ok, true);
+assert.equal(trustedSubmission.limit, 30);
+assert.equal(trustedSubmission.policy.tier, "trusted_agent");
+
 const journal = await recordAgentActionJournal({
   agentOrigin,
   action: "task_submission",

@@ -226,6 +226,11 @@ For agent quality-gate changes:
 - For self-requested agent work, the required contract is: initial
   `task_submission` and `task_verification_response` are allowed; terminal
   reward/control actions remain blocked.
+- For Orc/Core Contributor operating loops, confirm the trusted-agent tier still
+  has a rate ceiling but uses operator-scale defaults. The smoke must prove a
+  standard machine agent is rate-limited at the normal ceiling and a trusted
+  Grashnuk-style wallet receives the elevated tier plus a visible `resetAt`
+  timestamp when blocked.
 
 ## Post-Deploy Verification
 
