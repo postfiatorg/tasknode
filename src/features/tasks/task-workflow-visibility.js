@@ -40,10 +40,10 @@ export function taskSubmissionProgressSteps({
   pending = false,
   pendingLabel = "",
   readyEvidenceCount = 0,
-  result = "",
+  submitted = false,
 } = {}) {
   const readyCount = Math.max(0, Number(readyEvidenceCount || 0));
-  const complete = Boolean(safeText(result, 240));
+  const complete = Boolean(submitted);
   const hasReadyEvidence = complete || readyCount > 0;
   const reviewed = complete || Boolean(confirmed);
   const phase = pending ? submissionPendingPhase(pendingLabel) : "";

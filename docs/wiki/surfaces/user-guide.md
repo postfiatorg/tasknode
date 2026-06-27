@@ -45,7 +45,7 @@ The `+` menu is where chat becomes an explicit product action.
 
 Tasks is where work cards become real user actions. It shows proposed, accepted, verification, refused, and rewarded task records. Open a task to read the title, objective, steps, requested output, reward, state, and verification requirement.
 
-For a proposed task, the user accepts it if they will do the work or refuses it if it is wrong. For an accepted task, the user submits evidence. For a verification request, the user answers the specific follow-up. Task actions are wallet-bound signing actions and may ask the user to unlock the local wallet vault.
+For a proposed task, the user accepts it if they will do the work or refuses it if it is wrong. After acceptance, the task detail shows a confirmation while the indexed task state catches up and points the user to Submit. For an accepted task, the user submits evidence. The Submit tab shows the evidence path as Evidence, Review, and Submit; reading a screenshot or file is only preparation, while the final step completes after evidence is actually submitted. For a verification request, the user answers the specific follow-up. Task actions are wallet-bound signing actions and may ask the user to unlock the local wallet vault.
 
 Personal tasks come from the user's own request. Network Tasks come from Hive routing for shared network projects.
 

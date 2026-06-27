@@ -983,7 +983,7 @@ function TaskSubmitPanel({
   const [evidenceDrafts, setEvidenceDrafts] = useState(() => readPersistedDraftState().evidenceDrafts);
   const [confirmed, setConfirmed] = useState(false);
   const [showVerificationRequest, setShowVerificationRequest] = useState(true);
-  const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
+  const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "", submitted: false });
   const [notes, setNotes] = useState(() => readPersistedDraftState().notes);
   const summaries = Array.isArray(detail?.submission?.summaries) ? detail.submission.summaries : [];
   const signingEnabled = Boolean(actions.browserSubmissionEnabled);
@@ -1014,7 +1014,7 @@ function TaskSubmitPanel({
     pending: state.pending,
     pendingLabel: state.pendingLabel,
     readyEvidenceCount,
-    result: state.result,
+    submitted: state.submitted,
   });
   const canPrepareEvidence = Boolean(
     readyEvidenceCount > 0 &&
@@ -1045,7 +1045,7 @@ function TaskSubmitPanel({
     setEvidenceDrafts(restored.evidenceDrafts);
     setNotes(restored.notes);
     setConfirmed(false);
-    setState({ error: "", pending: false, pendingLabel: "", result: "" });
+    setState({ error: "", pending: false, pendingLabel: "", result: "", submitted: false });
   }, [defaultEvidenceMethod, draftStorageKey]);
 
   useEffect(() => {
@@ -1076,12 +1076,12 @@ function TaskSubmitPanel({
   function resetSubmitDraftState({ clearStatus = true } = {}) {
     setNotes("");
     setConfirmed(false);
-    if (clearStatus) setState({ error: "", pending: false, pendingLabel: "", result: "" });
+    if (clearStatus) setState({ error: "", pending: false, pendingLabel: "", result: "", submitted: false });
     setEvidenceDrafts(resetEvidenceDrafts(defaultEvidenceMethod));
   }
 
   function updateEvidenceDraft(id, key, value) {
-    setState({ error: "", pending: false, pendingLabel: "", result: "" });
+    setState({ error: "", pending: false, pendingLabel: "", result: "", submitted: false });
     setConfirmed(false);
     setEvidenceDrafts((current) =>
       current.map((draft) => (draft.id === id ? { ...draft, [key]: value } : draft))
@@ -1091,7 +1091,7 @@ function TaskSubmitPanel({
   function addEvidenceDraft() {
     setEvidenceDrafts((current) => addUserRequestedEvidenceDraft(current, defaultEvidenceMethod));
     setConfirmed(false);
-    setState({ error: "", pending: false, pendingLabel: "", result: "" });
+    setState({ error: "", pending: false, pendingLabel: "", result: "", submitted: false });
   }
 
   function removeEvidenceDraft(id) {
@@ -1100,7 +1100,7 @@ function TaskSubmitPanel({
       return current.filter((draft) => draft.id !== id);
     });
     setConfirmed(false);
-    setState({ error: "", pending: false, pendingLabel: "", result: "" });
+    setState({ error: "", pending: false, pendingLabel: "", result: "", submitted: false });
   }
 
   async function updateEvidenceFile(id, key, fileKey, file) {
@@ -1114,6 +1114,7 @@ function TaskSubmitPanel({
       pending: true,
       pendingLabel: key === "screenshot" ? "Reading screenshot" : "Reading file",
       result: "",
+      submitted: false,
     });
     try {
       const readFile = await readEvidenceFile(file);
@@ -1137,6 +1138,7 @@ function TaskSubmitPanel({
         pending: false,
         pendingLabel: "",
         result: key === "screenshot" ? "Screenshot read and compacted" : "",
+        submitted: false,
       });
     } catch (error) {
       setState({
@@ -1144,6 +1146,7 @@ function TaskSubmitPanel({
         pending: false,
         pendingLabel: "",
         result: "",
+        submitted: false,
       });
     }
   }
@@ -1158,6 +1161,7 @@ function TaskSubmitPanel({
       pending: true,
       pendingLabel: directOffchain ? "Submitting evidence" : "Publishing evidence",
       result: "",
+      submitted: false,
     });
     try {
       const result = await publishTaskEvidenceSubmission({
@@ -1173,6 +1177,7 @@ function TaskSubmitPanel({
             pending: true,
             pendingLabel: label,
             result: "",
+            submitted: false,
           }));
         },
         task,
@@ -1188,6 +1193,7 @@ function TaskSubmitPanel({
         result: result?.txHash
           ? `${directOffchain ? "Recorded" : "Published"} ${truncateCid(result.txHash)}`
           : (directOffchain ? "Evidence recorded" : "Evidence published"),
+        submitted: true,
       });
       clearPersistedDraftState();
       resetSubmitDraftState({ clearStatus: false });
@@ -1198,6 +1204,7 @@ function TaskSubmitPanel({
         pending: false,
         pendingLabel: "",
         result: "",
+        submitted: false,
       });
     }
   }
@@ -1392,7 +1399,7 @@ function TaskSubmitPanel({
           <textarea
             onChange={(event) => {
               setNotes(event.target.value);
-              setState({ error: "", pending: false, pendingLabel: "", result: "" });
+              setState({ error: "", pending: false, pendingLabel: "", result: "", submitted: false });
             }}
             placeholder="Add context for the verifier."
             rows={3}

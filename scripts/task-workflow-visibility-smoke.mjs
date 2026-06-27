@@ -55,6 +55,17 @@ assert.deepEqual(
   ]
 );
 
+const processedFileProgress = taskSubmissionProgressSteps({ readyEvidenceCount: 1 });
+assert.deepEqual(
+  processedFileProgress.map((step) => [step.key, step.state, step.detail]),
+  [
+    ["evidence", "complete", "1 ready"],
+    ["review", "current", "Mark ready"],
+    ["submit", "pending", "Waiting"],
+  ],
+  "reading a file or screenshot should not mark evidence as submitted"
+);
+
 const confirmedProgress = taskSubmissionProgressSteps({ confirmed: true, readyEvidenceCount: 1 });
 assert.deepEqual(
   confirmedProgress.map((step) => [step.key, step.state, step.detail]),
@@ -76,7 +87,7 @@ assert.equal(submitPending[1].state, "complete");
 assert.equal(submitPending[2].state, "current");
 assert.equal(submitPending[2].detail, "Pinning evidence");
 
-const completeProgress = taskSubmissionProgressSteps({ result: "Published ABC123" });
+const completeProgress = taskSubmissionProgressSteps({ submitted: true });
 assert.deepEqual(
   completeProgress.map((step) => step.state),
   ["complete", "complete", "complete"]

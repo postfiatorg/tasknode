@@ -23,6 +23,8 @@ The top summary shows outstanding count, PFT in flight, synced task-record count
 
 Network-pushed work appears in the same task queue, not in a separate lifecycle. Visible task labels are intentionally limited to `Personal`, `Network`, or `Alpha`; implementation categories such as engineering are not shown as task types. Project/routing metadata stays in the backing payload and forensics, while the list and detail page focus on the normal task lifecycle: accept or refuse, submit, verify, reward, and audit.
 
+Task detail keeps the current requirement visible as the user moves through the lifecycle. After an accept action reaches the accepted state, Overview shows an accepted confirmation and a Submit shortcut instead of leaving the user to infer that the accept worked. The Submit tab shows a three-step Evidence, Review, Submit progress strip. Preparing a file or screenshot can show a local read/processing message, but that preparation does not complete the Submit step; the progress strip reaches the final complete state only after the signed evidence submission succeeds.
+
 `Request task` is not the Network Task entry point. `Request task` creates a user-requested personal task proposal. Network Tasks are system-routed by Hive Board Manager when an active network project needs work and an eligible candidate is available.
 
 The user-facing routing gates are:
@@ -88,7 +90,7 @@ In plain English:
 4. Terminal states stop active refresh because no later lifecycle event is expected for the normal task loop.
 5. A signed submit, accept, refuse, or cancel result cannot be overwritten by a stale list response while the projection catches up.
 
-Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`, `scripts/task-action-receipts-smoke.mjs`, `scripts/task-detail-optimistic-state-smoke.mjs`, and `scripts/task-visible-state-smoke.mjs`. These checks assert that worker-facing review-loop states stay on the fast forced-refresh tier while `verification_requested` (which waits on the user) stays on the slow 10s tier, projection lag keeps a proposed task polling, terminal `rewarded` tasks do not keep the page polling forever, stale projections cannot overwrite a signed task action, list/detail overlays follow the same lifecycle progress rules, hard refresh and no-hard-refresh states match, and ordinary one-task lag does not trigger the global sync banner.
+Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`, `scripts/task-action-receipts-smoke.mjs`, `scripts/task-detail-optimistic-state-smoke.mjs`, `scripts/task-visible-state-smoke.mjs`, and `scripts/task-workflow-visibility-smoke.mjs`. These checks assert that worker-facing review-loop states stay on the fast forced-refresh tier while `verification_requested` (which waits on the user) stays on the slow 10s tier, projection lag keeps a proposed task polling, terminal `rewarded` tasks do not keep the page polling forever, stale projections cannot overwrite a signed task action, list/detail overlays follow the same lifecycle progress rules, accepted tasks keep a clear submit shortcut, file preparation cannot masquerade as submitted evidence, hard refresh and no-hard-refresh states match, and ordinary one-task lag does not trigger the global sync banner.
 
 ## Task State Convergence
 
