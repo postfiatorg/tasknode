@@ -2979,6 +2979,14 @@ h1 {
   font-weight: 600;
 }
 
+.tasks-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 720px) {
   .tasks-copy-header {
     flex-direction: column;
@@ -2999,6 +3007,10 @@ h1 {
 
   .tasks-copy-header p > span:not([aria-hidden]) {
     overflow-wrap: anywhere;
+  }
+
+  .tasks-header-actions {
+    justify-content: flex-start;
   }
 
   .tasks-copy-header .task-request-button {

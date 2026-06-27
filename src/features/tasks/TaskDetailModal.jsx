@@ -58,6 +58,7 @@ import {
 import {
   addUserRequestedEvidenceDraft,
   evidenceDraftStateHasUserInput,
+  evidenceDraftIsReady,
   evidenceFileForDraft,
   evidenceMethodFromContract,
   evidenceValueForDraft,
@@ -839,14 +840,20 @@ function TaskSubmitPanel({
   });
   const signingReady = unlockPolicy.allowed;
   const evidenceItems = evidenceDrafts.map((draft) => ({
+    draftReady: evidenceDraftIsReady(draft),
     file: evidenceFileForDraft(draft),
     method: draft.method,
     notes,
     value: evidenceValueForDraft(draft),
   }));
-  const readyEvidenceItems = evidenceItems.filter((item) => item.value.trim());
+  const readyEvidenceItems = evidenceItems.filter((item) => item.draftReady);
+  const readyEvidenceCount = readyEvidenceItems.length;
+  const evidenceDraftCount = evidenceDrafts.length;
+  const responseMeta = readyEvidenceCount
+    ? `${readyEvidenceCount} ready${evidenceDraftCount > readyEvidenceCount ? ` / ${evidenceDraftCount} draft${evidenceDraftCount === 1 ? "" : "s"}` : ""}`
+    : `${evidenceDraftCount} draft${evidenceDraftCount === 1 ? "" : "s"}`;
   const canPrepareEvidence = Boolean(
-    readyEvidenceItems.length > 0 &&
+    readyEvidenceCount > 0 &&
       !loading &&
       !state.pending &&
       signingEnabled &&
@@ -1078,7 +1085,7 @@ function TaskSubmitPanel({
         <>
       <SectionLabel
         title="Your response"
-        meta={`${readyEvidenceItems.length || evidenceDrafts.length} item${(readyEvidenceItems.length || evidenceDrafts.length) === 1 ? "" : "s"}`}
+        meta={responseMeta}
       />
       <div className="task-evidence-list">
         {evidenceDrafts.map((draft, index) => (
@@ -1231,11 +1238,18 @@ function TaskSubmitPanel({
       {signingEnabled && (
         <label className="task-submit-confirm">
           <input
-            checked={confirmed}
-            onChange={(event) => setConfirmed(event.target.checked)}
+            checked={readyEvidenceCount > 0 && confirmed}
+            disabled={readyEvidenceCount === 0 || state.pending}
+            onChange={(event) => {
+              if (readyEvidenceCount === 0) {
+                setConfirmed(false);
+                return;
+              }
+              setConfirmed(event.target.checked);
+            }}
             type="checkbox"
           />
-          This evidence is ready to submit.
+          {readyEvidenceCount > 0 ? "This evidence is ready to submit." : "Add evidence before marking it ready."}
         </label>
       )}
       {state.error && <p className="task-action-message is-error">{state.error}</p>}

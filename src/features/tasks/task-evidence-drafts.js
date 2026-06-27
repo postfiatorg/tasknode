@@ -88,6 +88,15 @@ export function evidenceFileForDraft(draft = {}) {
   return draft.method === "screenshot" ? draft.screenshotFile : draft.method === "file" ? draft.file : null;
 }
 
+export function evidenceDraftIsReady(draft = {}) {
+  const value = evidenceValueForDraft(draft).trim();
+  if (!value) return false;
+  if (draft.method === "screenshot" || draft.method === "file") {
+    return Boolean(evidenceFileForDraft(draft));
+  }
+  return true;
+}
+
 export function taskEvidenceDraftStorageKey({
   accountId = "",
   submissionModeKey = "",

@@ -1,5 +1,6 @@
 import { isValidClassicAddress } from "xrpl";
 import { extractPftPointerEvents } from "./context-history-rpc.js";
+import { databaseEnabled, query } from "./db/pool.js";
 import { readCachedAccountTx } from "./pftl-cache-sync.js";
 
 const PFT_DROPS_PER_PFT = 1_000_000;
@@ -117,6 +118,61 @@ function transactionNote(pointer) {
   if (pointer?.contextId) return pointer.contextId;
   if (pointer?.cid) return pointer.cid;
   return "";
+}
+
+function collectTransactionTaskIds(transactions = []) {
+  const seen = new Set();
+  const ids = [];
+  for (const tx of Array.isArray(transactions) ? transactions : []) {
+    const taskId = normalizeText(tx?.pointer?.taskId);
+    if (!taskId || seen.has(taskId)) continue;
+    seen.add(taskId);
+    ids.push(taskId);
+  }
+  return ids;
+}
+
+async function readTaskTitleMapForTransactions(transactions = []) {
+  const taskIds = collectTransactionTaskIds(transactions);
+  if (!taskIds.length || !databaseEnabled()) return new Map();
+  try {
+    const result = await query(
+      `
+        SELECT task_id, title
+        FROM task_projections
+        WHERE task_id = ANY($1::text[])
+      `,
+      [taskIds]
+    );
+    return new Map(
+      result.rows
+        .map((row) => [normalizeText(row.task_id), normalizeText(row.title)])
+        .filter(([taskId, title]) => taskId && title)
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+export function enrichWalletTransactionsWithTaskTitles(transactions = [], taskTitles = new Map()) {
+  const titleForTask = taskTitles instanceof Map
+    ? (taskId) => normalizeText(taskTitles.get(taskId))
+    : (taskId) => normalizeText(taskTitles?.[taskId]);
+  return (Array.isArray(transactions) ? transactions : []).map((tx) => {
+    const taskId = normalizeText(tx?.pointer?.taskId);
+    const taskTitle = taskId ? titleForTask(taskId) : "";
+    if (!taskTitle) return tx;
+    return {
+      ...tx,
+      taskTitle,
+      pointer: tx.pointer
+        ? {
+            ...tx.pointer,
+            taskTitle,
+          }
+        : tx.pointer,
+    };
+  });
 }
 
 function sortTransactionsDesc(left, right) {
@@ -242,9 +298,11 @@ export async function fetchWalletTransactions(walletAddress, {
       };
     }
 
-    const transactions = normalizeWalletTransactions(cachedAccountTx.transactions, account, {
+    const normalizedTransactions = normalizeWalletTransactions(cachedAccountTx.transactions, account, {
       limit: normalizedLimit,
     });
+    const taskTitles = await readTaskTitleMapForTransactions(normalizedTransactions);
+    const transactions = enrichWalletTransactionsWithTaskTitles(normalizedTransactions, taskTitles);
     const result = {
       ok: true,
       status: 200,

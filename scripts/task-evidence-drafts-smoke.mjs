@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   addUserRequestedEvidenceDraft,
   evidenceDraftStateHasUserInput,
+  evidenceDraftIsReady,
   evidenceMethodFromContract,
   evidenceValueForDraft,
   MAX_TASK_EVIDENCE_ITEMS,
@@ -15,14 +16,18 @@ const screenshotDefault = resetEvidenceDrafts("screenshot");
 assert.equal(screenshotDefault.length, 1);
 assert.equal(screenshotDefault[0].method, "screenshot");
 assert.equal(evidenceValueForDraft(screenshotDefault[0]), "");
+assert.equal(evidenceDraftIsReady(screenshotDefault[0]), false);
 
 const typedFirstEvidence = [{ ...screenshotDefault[0], screenshot: "proof.png" }];
 const withSecond = addUserRequestedEvidenceDraft(typedFirstEvidence, "text");
 assert.equal(withSecond.length, 2);
 assert.equal(withSecond[0].method, "screenshot");
 assert.equal(withSecond[0].screenshot, "proof.png");
+assert.equal(evidenceDraftIsReady(withSecond[0]), false, "screenshot filenames without processed file data are not ready");
 assert.equal(withSecond[1].method, "text");
 assert.equal(evidenceValueForDraft(withSecond[1]), "");
+assert.equal(evidenceDraftIsReady({ ...withSecond[0], screenshotFile: { name: "proof.png" } }), true);
+assert.equal(evidenceDraftIsReady({ ...withSecond[1], text: "second evidence body" }), true);
 
 const capped = addUserRequestedEvidenceDraft(withSecond, "url");
 assert.equal(capped.length, MAX_TASK_EVIDENCE_ITEMS);

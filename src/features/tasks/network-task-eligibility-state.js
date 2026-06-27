@@ -212,3 +212,20 @@ export function networkTaskEligibilityView(networkTasks = null) {
     error: cleanText(networkTasks.error),
   };
 }
+
+export function activeCapacityBlockerTaskIds(networkTasks = null) {
+  const view = networkTaskEligibilityView(networkTasks);
+  if (view.status !== "at_capacity") return [];
+  const seen = new Set();
+  const ids = [];
+  for (const blocker of view.blockers) {
+    if (!blocker.taskId || seen.has(blocker.taskId)) continue;
+    seen.add(blocker.taskId);
+    ids.push(blocker.taskId);
+  }
+  return ids;
+}
+
+export function firstActiveCapacityBlockerTaskId(networkTasks = null) {
+  return activeCapacityBlockerTaskIds(networkTasks)[0] || "";
+}

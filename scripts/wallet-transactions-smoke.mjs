@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { normalizeWalletTransactions } from "../server/pftl-transactions.js";
+import {
+  enrichWalletTransactionsWithTaskTitles,
+  normalizeWalletTransactions,
+} from "../server/pftl-transactions.js";
 
 const walletAddress = "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx";
 const incomingCounterparty = "rKt4peDoQ4YMq7AHvRtQnMZR3LAeAf6pQE";
@@ -73,5 +76,26 @@ assert.equal(rows[1].amountDrops, "3840000000");
 assert.equal(rows[1].signedDrops, "-3840000000");
 assert.equal(rows[1].amountPft, "3,840");
 assert.equal(rows[1].counterparty, outgoingCounterparty);
+
+const enriched = enrichWalletTransactionsWithTaskTitles(
+  [
+    {
+      id: "REWARDHASH",
+      label: "Task reward",
+      note: "task_rewarded",
+      pointer: { kindLabel: "REWARD", taskId: "task_rewarded" },
+    },
+    {
+      id: "PLAINHASH",
+      label: "Received PFT",
+      note: "",
+      pointer: null,
+    },
+  ],
+  new Map([["task_rewarded", "Fix wallet transaction reconciliation"]])
+);
+assert.equal(enriched[0].taskTitle, "Fix wallet transaction reconciliation");
+assert.equal(enriched[0].pointer.taskTitle, "Fix wallet transaction reconciliation");
+assert.equal(enriched[1].taskTitle, undefined);
 
 console.log("wallet transaction normalization smoke ok");

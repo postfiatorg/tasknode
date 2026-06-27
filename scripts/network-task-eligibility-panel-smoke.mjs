@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 
 import {
   badgeEligibilityView,
+  activeCapacityBlockerTaskIds,
   capacityBlockerView,
   eligibilityGateView,
+  firstActiveCapacityBlockerTaskId,
   firstFailingGate,
   networkTaskEligibilityView,
   plainEligibilityStatus,
@@ -173,6 +175,25 @@ assert.equal(capacityView.plainLabel, "Capacity blocked");
 assert.equal(capacityView.blockers.length, 2);
 assert.equal(capacityView.blockers[0].scopeLabel, "rNetCapC...100000");
 assert.equal(capacityView.blockers[1].scopeLabel, "account-wide");
+assert.deepEqual(activeCapacityBlockerTaskIds({
+  status: "at_capacity",
+  capacity: {
+    available: false,
+    blockers: [
+      { kind: "allocation", taskId: "task_busy", title: "Busy task", state: "accepted", walletAddress: "rNetCapCurrent1765432100000" },
+      { kind: "generation_job", taskId: "", title: "", state: "queued", walletAddress: "" },
+      { kind: "proposed_task", taskId: "task_busy", title: "Busy task", state: "proposed", walletAddress: "rNetCapCurrent1765432100000" },
+    ],
+  },
+}), ["task_busy"]);
+assert.equal(firstActiveCapacityBlockerTaskId({
+  status: "at_capacity",
+  capacity: { available: false, blockers: [{ kind: "allocation", taskId: "task_busy" }] },
+}), "task_busy");
+assert.deepEqual(activeCapacityBlockerTaskIds({
+  status: "available_for_routing",
+  capacity: { available: true, blockers: [{ kind: "allocation", taskId: "task_ready" }] },
+}), []);
 
 // 8. Unavailable and missing data stay honest, with the server error visible
 // and no default expansion of a checklist that cannot be trusted.

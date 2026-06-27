@@ -1294,7 +1294,8 @@ function WalletFeedEmpty({ body, title }) {
 function WalletTransactionRow({ hovered = false, onHover, tx }) {
   const isIn = tx.type === "in";
   const isSelf = tx.type === "self";
-  const note = tx.note ? truncateWalletNote(tx.note) : "";
+  const taskTitle = tx.taskTitle ? truncateWalletNote(tx.taskTitle) : "";
+  const note = !taskTitle && tx.note ? truncateWalletNote(tx.note) : "";
 
   return (
     <li
@@ -1307,8 +1308,14 @@ function WalletTransactionRow({ hovered = false, onHover, tx }) {
       </div>
       <div className="wallet-tx-copy">
         <strong>{tx.label || (isIn ? "Received PFT" : "Sent PFT")}</strong>
-        <small>
+        <small title={tx.taskTitle || tx.note || ""}>
           {isIn ? "From" : isSelf ? "Self" : "To"} {tx.counterpartyLabel || shortWalletAddress(tx.counterparty)}
+          {taskTitle && (
+            <>
+              <span aria-hidden="true"> · </span>
+              <span>{taskTitle}</span>
+            </>
+          )}
           {note && (
             <>
               <span aria-hidden="true"> · </span>

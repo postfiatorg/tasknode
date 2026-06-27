@@ -115,6 +115,7 @@ import {
 } from "./features/context/context-view-utils.jsx";
 import { PostFiatLogo, SidebarButton, ToolMenuRow } from "./features/shell/ShellControls";
 import { NetworkTaskEligibilityPanel } from "./features/tasks/NetworkTaskEligibilityPanel.jsx";
+import { firstActiveCapacityBlockerTaskId } from "./features/tasks/network-task-eligibility-state.js";
 import { TaskDetailModal } from "./features/tasks/TaskDetailModal.jsx";
 import { TaskRequestModal } from "./features/tasks/TaskRequestModal.jsx";
 import { TaskRequestQueue } from "./features/tasks/TaskRequestQueue.jsx";
@@ -3702,6 +3703,11 @@ function TasksView({
   } = polling;
   const outstandingCount = counts.outstanding;
   const taskRequestHandoff = taskSync?.handoff || {};
+  const activeCapacityTaskId = firstActiveCapacityBlockerTaskId(tasks?.networkTasks);
+  const activeCapacityTask = activeCapacityTaskId ? findTaskById(visibleState.tasks, activeCapacityTaskId) : null;
+  const requestTaskButtonClass = activeCapacityTask
+    ? "light-pill task-request-button"
+    : "dark-pill task-request-button";
 
   useEffect(() => {
     const syncStatus = String(taskSync?.status || "");
@@ -3937,10 +3943,26 @@ function TasksView({
             </p>
             <NetworkTaskEligibilityPanel networkTasks={tasks?.networkTasks} />
           </div>
-          <button className="dark-pill task-request-button" onClick={() => setTaskRequestOpen(true)} type="button">
-            <Plus size={16} strokeWidth={2} />
-            Request task
-          </button>
+          <div className="tasks-header-actions">
+            {activeCapacityTask && (
+              <button
+                className="dark-pill task-request-button"
+                onClick={() => {
+                  setTasksTab("outstanding");
+                  onSelectTask(activeCapacityTask);
+                }}
+                title={`Open ${activeCapacityTask.title || "active task"}`}
+                type="button"
+              >
+                Continue active task
+                <ArrowRight size={16} strokeWidth={2} />
+              </button>
+            )}
+            <button className={requestTaskButtonClass} onClick={() => setTaskRequestOpen(true)} type="button">
+              <Plus size={16} strokeWidth={2} />
+              Request task
+            </button>
+          </div>
         </div>
 
         <TaskRequestQueue requests={activeRequests} />
