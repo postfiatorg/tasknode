@@ -62,6 +62,8 @@ function publicTask(row = {}) {
     rewardMaxPft,
     rewardOfferPft,
     rewardActualPft: numeric(row.reward_actual_pft, 0),
+    acceptBy: toIso(row.accept_by),
+    deadlineAt: toIso(row.deadline_at),
     waitingForUser: waitingForUserStatuses.has(taskStatus || allocationStatus),
     terminal: terminalTaskStatuses.has(taskStatus || allocationStatus),
     expiresAt: toIso(row.expires_at),
@@ -186,6 +188,8 @@ async function accountNetworkTasks({ accountId = "", walletAddress = "", limit =
         COALESCE(NULLIF(proj.title, ''), NULLIF(refs.title, ''), NULLIF(alloc.project_need_summary, '')) AS title,
         proj.reward_offer_pft,
         proj.reward_actual_pft,
+        proj.accept_by,
+        proj.deadline_at,
         proj.updated_at AS projection_updated_at
       FROM network_task_allocations alloc
       LEFT JOIN network_task_generation_jobs job
@@ -425,7 +429,10 @@ function taskPromptLine(task = {}) {
     task.taskStatus ? `task_status=${task.taskStatus}` : "",
     task.allocationStatus ? `allocation_status=${task.allocationStatus}` : "",
     task.generationStatus ? `generation_status=${task.generationStatus}` : "",
+    task.rewardOfferPft ? `reward_offer_pft=${task.rewardOfferPft}` : "",
     task.rewardMaxPft ? `reward_max_pft=${task.rewardMaxPft}` : "",
+    task.acceptBy ? `accept_by=${task.acceptBy}` : "",
+    task.deadlineAt ? `deadline_at=${task.deadlineAt}` : "",
     task.waitingForUser ? "waiting_for_user=yes" : "waiting_for_user=no",
     task.terminal ? "terminal=yes" : "",
     task.updatedAt ? `updated=${task.updatedAt}` : "",

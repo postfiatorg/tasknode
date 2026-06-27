@@ -22,12 +22,19 @@ function GateRow({ gate, isFirstFailing }) {
 }
 
 function BlockerRow({ blocker }) {
+  const details = [
+    blocker.kindLabel,
+    blocker.state,
+    blocker.taskId,
+    blocker.rewardLabel,
+    blocker.acceptByDisplay ? `Accept by ${blocker.acceptByDisplay}` : "",
+    blocker.deadlineDisplay ? `Deadline ${blocker.deadlineDisplay}` : "",
+    blocker.accountScoped ? "account-wide" : `wallet ${blocker.scopeLabel}`,
+  ].filter(Boolean);
   return (
     <li>
       <b>{blocker.title}</b>
-      <small>
-        {blocker.kindLabel} · {blocker.state} · {blocker.accountScoped ? "account-wide" : `wallet ${blocker.scopeLabel}`}
-      </small>
+      <small>{details.join(" · ")}</small>
     </li>
   );
 }

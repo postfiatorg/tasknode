@@ -390,7 +390,10 @@ const promptText = formatHiveAccountLiveStateForPrompt({
       title: "Smoke task",
       taskStatus: "proposed",
       allocationStatus: "proposed",
+      rewardOfferPft: 12000,
       rewardMaxPft: 30_000,
+      acceptBy: "2026-06-28T12:30:00.000Z",
+      deadlineAt: "2026-06-29T12:30:00.000Z",
       waitingForUser: true,
       terminal: false,
     },
@@ -404,6 +407,9 @@ const promptText = formatHiveAccountLiveStateForPrompt({
 assert.match(promptText, /ACCOUNT LIVE STATE - AUTHORITATIVE/);
 assert.match(promptText, /user-stated minimum Network Task reward is 25000 PFT/);
 assert.match(promptText, /Smoke task/);
+assert.match(promptText, /reward_offer_pft=12000/);
+assert.match(promptText, /accept_by=2026-06-28T12:30:00\.000Z/);
+assert.match(promptText, /deadline_at=2026-06-29T12:30:00\.000Z/);
 assert.match(promptText, /network_task_eligibility: unavailable in this snapshot/);
 
 const eligibilityPromptText = formatHiveAccountLiveStateForPrompt({

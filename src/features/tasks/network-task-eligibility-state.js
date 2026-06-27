@@ -1,3 +1,5 @@
+import { formatTaskDeadline, taskIso } from "../../../shared/task-time-format.js";
+
 // Pure view-model for the Network Task Eligibility panel.
 //
 // `server/repositories/tasks.js::listTaskState` already attaches the full
@@ -8,6 +10,17 @@
 
 function cleanText(value) {
   return String(value || "").trim();
+}
+
+function numeric(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : 0;
+}
+
+function rewardLabel(value) {
+  const amount = numeric(value);
+  if (!amount) return "";
+  return `${amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} PFT`;
 }
 
 export function shortWalletAddress(address) {
@@ -116,6 +129,12 @@ const BLOCKER_KIND_LABELS = {
 
 export function capacityBlockerView(blocker = {}) {
   const walletAddress = cleanText(blocker.walletAddress);
+  const acceptBy = taskIso(blocker.acceptBy);
+  const deadlineAt = taskIso(blocker.deadlineAt);
+  const dueAt = deadlineAt || acceptBy;
+  const dueLabel = deadlineAt ? "Deadline" : acceptBy ? "Accept by" : "";
+  const acceptByDisplay = acceptBy ? formatTaskDeadline(acceptBy, { locale: "en-US" }) : "";
+  const deadlineDisplay = deadlineAt ? formatTaskDeadline(deadlineAt, { locale: "en-US" }) : "";
   return {
     key: cleanText(blocker.allocationId || blocker.taskId || blocker.generationJobId) || "blocker",
     title: cleanText(blocker.title) || cleanText(blocker.taskId) || "Network Task",
@@ -123,6 +142,15 @@ export function capacityBlockerView(blocker = {}) {
     state: cleanText(blocker.state || blocker.allocationStatus) || "active",
     kind: cleanText(blocker.kind),
     kindLabel: BLOCKER_KIND_LABELS[cleanText(blocker.kind)] || "Network Task",
+    rewardOfferPft: numeric(blocker.rewardOfferPft),
+    rewardLabel: rewardLabel(blocker.rewardOfferPft),
+    acceptBy,
+    deadlineAt,
+    dueAt,
+    dueLabel,
+    dueDisplay: dueAt ? formatTaskDeadline(dueAt, { locale: "en-US" }) : "",
+    acceptByDisplay,
+    deadlineDisplay,
     accountScoped: !walletAddress,
     // "" walletAddress means the blocker is account-scoped (candidate wallet
     // not assigned yet); anything else is wallet-bound.

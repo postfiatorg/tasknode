@@ -61,6 +61,9 @@ function capacityBlocker(row = {}) {
     state: safeText(row.state || row.allocation_status, 80),
     allocationStatus: safeText(row.allocation_status, 80),
     taskProjectionStatus: safeText(row.task_projection_status, 80),
+    rewardOfferPft: Number(row.reward_offer_pft || row.reward_max_pft || 0),
+    acceptBy: toIso(row.accept_by),
+    deadlineAt: toIso(row.deadline_at),
     accountId: safeText(row.candidate_account_id, 180),
     // "" means the blocker is account-scoped (candidate wallet not known yet).
     walletAddress: safeText(row.candidate_wallet_address, 120),
@@ -141,6 +144,10 @@ export async function listNetworkTaskCapacityBlockers({
         refs.title AS ref_title,
         p.title,
         p.status AS task_projection_status,
+        p.reward_offer_pft,
+        alloc.reward_max_pft,
+        p.accept_by,
+        p.deadline_at,
         COALESCE(p.status, refs.state, job.status, alloc.allocation_status) AS state,
         COALESCE(p.updated_at, refs.updated_at, job.updated_at, alloc.updated_at) AS updated_at
       FROM network_task_allocations alloc

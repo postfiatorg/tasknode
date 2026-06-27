@@ -54,6 +54,8 @@ const walletBlocker = capacityBlockerView({
   title: "Audit the capacity panel",
   state: "accepted",
   allocationStatus: "accepted",
+  rewardOfferPft: "12000.000000",
+  acceptBy: "2026-06-28T12:30:00.000Z",
   walletAddress: "rNetCapCurrent1765432100000",
   allocationId: "alloc_1",
 });
@@ -62,6 +64,11 @@ assert.equal(walletBlocker.accountScoped, false);
 assert.equal(walletBlocker.kindLabel, "Allocation");
 assert.equal(walletBlocker.title, "Audit the capacity panel");
 assert.equal(walletBlocker.state, "accepted");
+assert.equal(walletBlocker.rewardLabel, "12,000 PFT");
+assert.equal(walletBlocker.acceptBy, "2026-06-28T12:30:00.000Z");
+assert.equal(walletBlocker.dueLabel, "Accept by");
+assert.match(walletBlocker.dueDisplay, /Jun 28/);
+assert.match(walletBlocker.acceptByDisplay, /Jun 28/);
 
 const accountBlocker = capacityBlockerView({
   kind: "generation_job",

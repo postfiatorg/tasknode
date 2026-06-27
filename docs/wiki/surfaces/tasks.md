@@ -44,6 +44,8 @@ The Tasks page renders a compact `Network Task Eligibility` panel above the task
 
 The panel reads `tasks.networkTasks`, the `getNetworkTaskEligibility` payload that `server/repositories/tasks.js::listTaskState` already attaches to `GET /api/tasks` and the app-state task refresh. It adds no endpoint, no extra polling, and no client-side observability writes; capacity-check events stay owned by the existing server-side eligibility path.
 
+When the status is `at_capacity`, the blocker list shows the active Network Task title, task id, lifecycle state, reward offer, accept-by window or work deadline, and account/wallet scope when the projection has those fields. A proposed task should therefore read as work waiting for the contributor to accept or refuse, not as an opaque capacity outage.
+
 The header always shows the routing wallet prefix being evaluated and the overall status in the production plain language. Server statuses map to plain labels as follows:
 
 | Server status | Plain label |

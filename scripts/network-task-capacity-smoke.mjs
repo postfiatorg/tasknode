@@ -117,13 +117,25 @@ async function seedAllocation({
   );
 }
 
-async function seedProjection({ taskId, accountId, walletAddress, status, title }) {
+async function seedProjection({
+  taskId,
+  accountId,
+  walletAddress,
+  status,
+  title,
+  rewardOfferPft = 0,
+  acceptBy = null,
+  deadlineAt = null,
+}) {
   await query(
     `
-      INSERT INTO task_projections (task_id, account_id, subject_wallet, status, title, task_kind, source)
-      VALUES ($1, $2, $3, $4, $5, 'network', 'network_capacity_smoke')
+      INSERT INTO task_projections (
+        task_id, account_id, subject_wallet, status, title, task_kind, source,
+        reward_offer_pft, accept_by, deadline_at
+      )
+      VALUES ($1, $2, $3, $4, $5, 'network', 'network_capacity_smoke', $6, $7, $8)
     `,
-    [taskId, accountId, walletAddress, status, title]
+    [taskId, accountId, walletAddress, status, title, rewardOfferPft, acceptBy, deadlineAt]
   );
 }
 
@@ -247,6 +259,9 @@ async function main() {
       walletAddress: wallets.stale,
       status: "accepted",
       title: "Stale accepted network task",
+      rewardOfferPft: 12000,
+      acceptBy: "2026-06-28T12:30:00.000Z",
+      deadlineAt: "2026-06-29T12:30:00.000Z",
     });
     const stale = await assertConsistentVerdicts({
       accountId: accounts.stale,
@@ -262,6 +277,9 @@ async function main() {
     assert.equal(staleBlocker.walletAddress, wallets.stale);
     assert.ok(staleBlocker.title, "blocker title missing");
     assert.ok(staleBlocker.createdAt, "blocker createdAt missing");
+    assert.equal(staleBlocker.rewardOfferPft, 12000);
+    assert.equal(staleBlocker.acceptBy, "2026-06-28T12:30:00.000Z");
+    assert.equal(staleBlocker.deadlineAt, "2026-06-29T12:30:00.000Z");
     assert.equal(stale.pressure.row.capacityBlockers[0].taskId, staleTaskId);
     assert.equal(stale.pressure.pressure.summary.eligibleCandidateCount, 0);
 
