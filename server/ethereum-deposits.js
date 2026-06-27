@@ -540,6 +540,30 @@ function publicTopUpGrantResult(result, extra = {}) {
   };
 }
 
+function formatTopUpGrantUsd(value) {
+  const amount = Number(value || 0);
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+  return `$${safeAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
+}
+
+function usdcTopUpGrantProgressMessage({ account = null, pftGrant = null } = {}) {
+  if (pftGrant) return "";
+  const creditedUsdc = Number(account?.creditedBalances?.USDC?.amount || 0);
+  if (!Number.isFinite(creditedUsdc) || creditedUsdc <= 0) return "";
+  const thresholdUsd = usdcTopUpGrantThresholdUsd();
+  if (creditedUsdc > thresholdUsd) return "";
+
+  const remainingUsd = Math.max(0, thresholdUsd - creditedUsdc);
+  const addInstruction = remainingUsd === 0
+    ? "Add any USDC amount above $0.00"
+    : `Add more than ${formatTopUpGrantUsd(remainingUsd)} USDC`;
+  return [
+    `PFT grant requires more than ${formatTopUpGrantUsd(thresholdUsd)} USDC credited.`,
+    `Current credited USDC: ${formatTopUpGrantUsd(creditedUsdc)}.`,
+    `${addInstruction}, then unlock the matching local seed vault from Wallet to send the grant.`,
+  ].join(" ");
+}
+
 async function claimUsdcTopUpInitiationGift({ account = null, entry = null, accountId = "" } = {}) {
   const depositAccount = account || getEthereumDepositAccount({ accountId });
   if (!depositAccount?.accountId) return null;
@@ -694,7 +718,7 @@ export async function maybeClaimUsdcTopUpInitiationGift({ accountId = "" } = {})
   return claimUsdcTopUpInitiationGift({ accountId });
 }
 
-function topUpSyncMessage({ creditedEntries, pendingSymbols, syncErrors, pftGrant }) {
+function topUpSyncMessage({ account, creditedEntries, pendingSymbols, syncErrors, pftGrant }) {
   const depositMessage = creditedEntries.length > 0
     ? "Deposit credit recorded."
     : pendingSymbols.length > 0
@@ -702,13 +726,14 @@ function topUpSyncMessage({ creditedEntries, pendingSymbols, syncErrors, pftGran
       : syncErrors.length > 0
         ? "Deposit sync completed with partial data."
         : "No new deposit balance found.";
+  const progressMessage = usdcTopUpGrantProgressMessage({ account, pftGrant });
 
-  if (!pftGrant) return depositMessage;
+  if (!pftGrant) return [depositMessage, progressMessage].filter(Boolean).join(" ");
   if (pftGrant.ok) return `${depositMessage} ${pftGrant.message}`;
   if (pftGrant.status === "local_vault_required") return `${depositMessage} ${pftGrant.message}`;
   if (pftGrant.status === "not_configured") return `${depositMessage} ${pftGrant.message}`;
   if (pftGrant.status === "failed" || pftGrant.status === "unknown") return `${depositMessage} ${pftGrant.message}`;
-  return depositMessage;
+  return [depositMessage, progressMessage].filter(Boolean).join(" ");
 }
 
 export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
@@ -803,7 +828,13 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
     return {
       ok: true,
       action: "top_up_sync",
-      message: topUpSyncMessage({ creditedEntries, pendingSymbols, syncErrors, pftGrant }),
+      message: topUpSyncMessage({
+        account: updated || account,
+        creditedEntries,
+        pendingSymbols,
+        syncErrors,
+        pftGrant,
+      }),
       depositAccount: publicDepositAccount(updated || account),
       creditedEntries,
       pftGrant,

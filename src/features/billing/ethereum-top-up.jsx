@@ -155,7 +155,11 @@ export function EthereumTopUpModal({ onClose, onRefresh, state }) {
         <header>
           <div>
             <h2>Top up</h2>
-            <p>Send ETH, USDC, or USDT on Ethereum mainnet to your account deposit address. A new linked wallet can receive a 12 PFT grant after a USDC top-up over $10.</p>
+            <p>
+              Send ETH, USDC, or USDT on Ethereum mainnet to your account deposit address. A new linked wallet can
+              receive the 12 PFT grant after more than $10.00 USDC is credited and the matching local seed vault is
+              unlocked from Wallet.
+            </p>
           </div>
           <button className="icon-button" onClick={onClose} type="button" aria-label="Close top up">
             <X size={16} strokeWidth={2} />

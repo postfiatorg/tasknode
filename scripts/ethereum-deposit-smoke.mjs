@@ -109,20 +109,21 @@ export async function runEthereumDepositSmoke({
     });
     const emailGrantTopUp = await usageTopUpStart({}, "POST", { accountId: emailGrantAccount.id });
     const emailGrantAddress = emailGrantTopUp.body?.depositAccount?.address;
-    usdcBalancesByAddress.set(String(emailGrantAddress || "").toLowerCase(), 6_000_000n);
+    usdcBalancesByAddress.set(String(emailGrantAddress || "").toLowerCase(), 10_000_000n);
     const emailGrantPartialSync = await usageTopUpSync({}, "POST", { accountId: emailGrantAccount.id });
     usdcBalancesByAddress.set(String(emailGrantAddress || "").toLowerCase(), 12_340_000n);
     const emailGrantSync = await usageTopUpSync({}, "POST", { accountId: emailGrantAccount.id });
     if (
       emailGrantPartialSync.status !== 200 ||
-      emailGrantPartialSync.body?.creditedEntries?.[0]?.amountUsd !== 6 ||
-      emailGrantPartialSync.body?.pftGrant !== null
+      emailGrantPartialSync.body?.creditedEntries?.[0]?.amountUsd !== 10 ||
+      emailGrantPartialSync.body?.pftGrant !== null ||
+      !String(emailGrantPartialSync.body?.message || "").includes("Current credited USDC: $10.00.")
     ) {
       throw new Error(`Email USDC top-up should wait until credited USDC crosses the grant threshold: ${JSON.stringify(emailGrantPartialSync)}`);
     }
     if (
       emailGrantSync.status !== 200 ||
-      emailGrantSync.body?.creditedEntries?.[0]?.amountUsd !== 6.34 ||
+      emailGrantSync.body?.creditedEntries?.[0]?.amountUsd !== 2.34 ||
       emailGrantSync.body?.pftGrant?.status !== "local_vault_required" ||
       emailGrantSync.body?.pftGrant?.reason !== "local_vault_required"
     ) {
