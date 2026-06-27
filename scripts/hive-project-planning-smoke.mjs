@@ -232,4 +232,53 @@ assert.equal(boardDocument.projects.pending_generation_project.tasks.length, 0);
 assert.equal(boardDocument.operators.rProjected.load, 1);
 assert.equal(boardDocument.operators.rProjected.currentTasks.length, 1);
 
+const personalizedRows = {
+  projectRows: [
+    {
+      id: "personalized_project",
+      title: "Personalized project",
+      summary: "Backed by multiple active tasks.",
+      status: "active",
+      priority: 10,
+      metadata_json: {},
+    },
+  ],
+  taskRows: [
+    {
+      id: "ref_other_active",
+      project_id: "personalized_project",
+      task_id: "task_other_active",
+      title: "Other active task",
+      state: "accepted",
+      assignee_wallet: "rOther",
+      reward_pft: 300,
+      account_id: "acct_other",
+      created_at: "2026-05-26T00:00:00.000Z",
+      updated_at: "2026-05-26T00:01:00.000Z",
+    },
+    {
+      id: "ref_viewer_active",
+      project_id: "personalized_project",
+      task_id: "task_viewer_active",
+      title: "Viewer active task",
+      state: "accepted",
+      assignee_wallet: "rViewer",
+      reward_pft: 100,
+      account_id: "acct_viewer",
+      created_at: "2026-05-26T00:00:00.000Z",
+      updated_at: "2026-05-26T00:02:00.000Z",
+    },
+  ],
+};
+const anonymousBoardDocument = hiveProjectsDocumentForTests(personalizedRows);
+assert.equal(anonymousBoardDocument.projects.personalized_project.nextTask.title, "Other active task");
+assert.equal(anonymousBoardDocument.projects.personalized_project.nextTask.viewerScoped, false);
+const viewerBoardDocument = hiveProjectsDocumentForTests({
+  ...personalizedRows,
+  viewerAccountId: "acct_viewer",
+  viewerWalletAddress: "rViewer",
+});
+assert.equal(viewerBoardDocument.projects.personalized_project.nextTask.title, "Viewer active task");
+assert.equal(viewerBoardDocument.projects.personalized_project.nextTask.viewerScoped, true);
+
 console.log("hive project planning smoke ok");

@@ -107,6 +107,20 @@ function walletIdentityKey(wallet = "") {
   return safeText(wallet, 160).toLowerCase();
 }
 
+function viewerContext({ accountId = "", walletAddress = "" } = {}) {
+  return {
+    accountId: safeText(accountId, 180),
+    walletAddress: walletIdentityKey(walletAddress),
+  };
+}
+
+function taskMatchesViewer(task = {}, viewer = {}) {
+  const accountId = safeText(viewer.accountId, 180);
+  if (accountId && safeText(task.assigneeAccountId, 180) === accountId) return true;
+  const walletAddress = safeText(viewer.walletAddress, 180);
+  return Boolean(walletAddress && walletIdentityKey(task.assignee) === walletAddress);
+}
+
 function walletIdentityDisplayName(identity = {}) {
   const publicAlias = safeArray(identity.publicAliases).find((alias) => safeText(alias?.handle, 120));
   return safeText(
@@ -393,7 +407,10 @@ function taskIsNextCandidate(task = {}) {
   return Boolean(task?.taskId && taskStateRank(task.state) > 0);
 }
 
-function compareNextTask(left = {}, right = {}) {
+function compareNextTask(left = {}, right = {}, viewer = {}) {
+  const leftViewerRank = taskMatchesViewer(left, viewer) ? 0 : 1;
+  const rightViewerRank = taskMatchesViewer(right, viewer) ? 0 : 1;
+  if (leftViewerRank !== rightViewerRank) return leftViewerRank - rightViewerRank;
   const leftRank = taskStateRank(left.state);
   const rightRank = taskStateRank(right.state);
   if (leftRank !== rightRank) return leftRank - rightRank;
@@ -403,15 +420,16 @@ function compareNextTask(left = {}, right = {}) {
   return timestampMs(right.updatedAt) - timestampMs(left.updatedAt);
 }
 
-function projectNextTask(project = {}) {
+function projectNextTask(project = {}, viewer = {}) {
   const task = safeArray(project.tasks)
     .filter(taskIsNextCandidate)
-    .sort(compareNextTask)[0] || null;
+    .sort((left, right) => compareNextTask(left, right, viewer))[0] || null;
   if (!task) return null;
   return {
     taskId: task.taskId,
     title: task.title,
     state: task.state,
+    viewerScoped: taskMatchesViewer(task, viewer),
     assignee: task.assignee,
     assigneeAccountId: task.assigneeAccountId || "",
     assigneeHasPublicProfile: Boolean(task.assigneeHasPublicProfile),
@@ -544,7 +562,7 @@ function deriveActivityFromTask(project = {}, task = {}) {
   };
 }
 
-function populateDerivedProjectRollups(projects = {}) {
+function populateDerivedProjectRollups(projects = {}, viewer = {}) {
   for (const project of Object.values(projects)) {
     const byWallet = new Map(safeArray(project.contributors).map((contributor) => [contributor.wallet, contributor]));
     for (const task of safeArray(project.tasks)) {
@@ -578,7 +596,7 @@ function populateDerivedProjectRollups(projects = {}) {
     project.terminalTaskCount = project.tasks.filter(taskIsTerminal).length;
     project.contributorCount = project.contributors.length;
     project.pft = numeric(project.tasks.reduce((sum, task) => sum + numeric(task.pft), 0));
-    project.nextTask = projectNextTask(project);
+    project.nextTask = projectNextTask(project, viewer);
   }
 }
 
@@ -628,7 +646,10 @@ function documentFromRows({
   publicProfileIds = new Set(),
   operatorDisclosures = {},
   includeEmptyActive = false,
+  viewerAccountId = "",
+  viewerWalletAddress = "",
 } = {}) {
+  const viewer = viewerContext({ accountId: viewerAccountId, walletAddress: viewerWalletAddress });
   const projects = Object.fromEntries(projectRows.map((row) => {
     const project = publicProject(row);
     return [project.id, project];
@@ -655,7 +676,7 @@ function documentFromRows({
     if (project) project.productDocument = doc;
   }
   applyWalletIdentitiesToProjects(projects, walletIdentities, publicProfileIds, operatorDisclosures);
-  populateDerivedProjectRollups(projects);
+  populateDerivedProjectRollups(projects, viewer);
 
   const visibleProjects = Object.fromEntries(
     Object.values(projects)
@@ -1376,7 +1397,11 @@ export async function syncNetworkProjectsWithLatestHiveSecretary() {
   });
 }
 
-export async function getHiveProjectsDocument({ includeEmptyActive = false } = {}) {
+export async function getHiveProjectsDocument({
+  includeEmptyActive = false,
+  viewerAccountId = "",
+  viewerWalletAddress = "",
+} = {}) {
   if (!useDatabase()) {
     return documentFromRows({ includeEmptyActive });
   }
@@ -1566,6 +1591,8 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
     publicProfileIds,
     operatorDisclosures,
     includeEmptyActive,
+    viewerAccountId,
+    viewerWalletAddress,
   });
 }
 

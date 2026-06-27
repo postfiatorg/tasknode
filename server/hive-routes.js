@@ -89,7 +89,44 @@ function timeoutValue(ms, value) {
   });
 }
 
-function readHiveProjectsBody({ pathname, session }) {
+function hiveProjectsViewerContext({ getLinkedWallet, session } = {}) {
+  const accountId = safeText(session?.accountId, 180);
+  if (!accountId) return { accountId: "", walletAddress: "" };
+  const linkedWallet = typeof getLinkedWallet === "function"
+    ? getLinkedWallet({ accountId })
+    : null;
+  return {
+    accountId,
+    walletAddress: safeText(linkedWallet?.address || linkedWallet?.walletAddress || "", 120),
+  };
+}
+
+function hiveProjectsCacheKeyForViewer(viewer = {}) {
+  if (viewer.accountId) return `hive_projects:v1:account:${viewer.accountId}`;
+  if (viewer.walletAddress) return `hive_projects:v1:wallet:${viewer.walletAddress.toLowerCase()}`;
+  return "hive_projects:v1";
+}
+
+function readHiveProjectsBody({ getLinkedWallet, pathname, session }) {
+  const viewer = hiveProjectsViewerContext({ getLinkedWallet, session });
+  if (viewer.accountId || viewer.walletAddress) {
+    return getCachedHiveRead({
+      cacheKey: hiveProjectsCacheKeyForViewer(viewer),
+      compute: async () => ({
+        ok: true,
+        document: await getHiveProjectsDocument({
+          viewerAccountId: viewer.accountId,
+          viewerWalletAddress: viewer.walletAddress,
+        }),
+      }),
+      isSafe: (value) => hiveReadResponseIsCacheSafe({
+        pathname,
+        session,
+        value,
+      }),
+    });
+  }
+
   const now = Date.now();
   const retryDelayMs = 15_000;
   if (!pendingHiveProjectsRead && (!lastHiveProjectsFailureAt || now - lastHiveProjectsFailureAt > retryDelayMs)) {
@@ -902,6 +939,7 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       return true;
     }
     const body = await readHiveProjectsBody({
+      getLinkedWallet,
       pathname: url.pathname,
       session,
     });

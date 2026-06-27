@@ -577,7 +577,7 @@ function ProjectNextTaskPreview({ nextTask, onOpenTask, operators = {}, pendingG
       : {};
     return (
       <TaskTag className={`hive-project-next-task${canOpen ? " is-clickable" : ""}`} {...taskProps}>
-        <small>Next reward task</small>
+        <small>{nextTask.viewerScoped ? "Your active task" : "Next reward task"}</small>
         <strong>{nextTask.title}</strong>
         <em>{actionLabel(nextTask.state)} · {formatPft(nextTask.pft)} PFT</em>
         {nextTask.nextAction && <span>{nextTask.nextAction}</span>}
