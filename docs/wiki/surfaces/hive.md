@@ -290,6 +290,17 @@ Codex prompt without running the agent.
 TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK=true npm run task-accounting-harvester-smoke
 ```
 
+When a Grashnuk run produces code, run a separate review/fix pass against the
+Grashnuk commit:
+
+```bash
+npm run grashnuk:review-codex -- --commit <grashnuk_commit> --execute
+```
+
+The review pass is intentionally not wallet-capable. It checks the code change,
+runs focused verification, and creates a follow-up fix commit if it finds a real
+defect.
+
 ### Hive v2 Decision Agent
 
 The Phase 3 Decision Agent is the active replacement for the old Board Manager

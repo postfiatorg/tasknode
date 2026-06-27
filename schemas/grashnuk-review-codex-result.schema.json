@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GrashnukReviewCodexResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ok",
+    "target",
+    "reviewedCommits",
+    "reviewOutcome",
+    "fixesApplied",
+    "fixCommit",
+    "deployed",
+    "findings",
+    "fixes",
+    "proof",
+    "blockers",
+    "secretPrinted"
+  ],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "target": { "type": "string" },
+    "reviewedCommits": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "reviewOutcome": {
+      "type": "string",
+      "enum": ["clean", "fixed", "blocked"]
+    },
+    "fixesApplied": { "type": "boolean" },
+    "fixCommit": { "type": ["string", "null"] },
+    "deployed": { "type": ["boolean", "null"] },
+    "findings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "fixes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "proof": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "secretPrinted": { "type": "boolean", "const": false }
+  }
+}

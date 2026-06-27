@@ -110,6 +110,19 @@ actions. It is the preferred path when the goal is to prove the Orc can handle a
 harvest row without the outer operator manually writing request/evidence/resolve
 payloads.
 
+Each Grashnuk code-producing submission should then get a separate Codex review
+pass:
+
+```bash
+npm run grashnuk:review-codex -- --commit <grashnuk_commit> --execute
+```
+
+The review wrapper starts a different `codex exec` process that cannot use
+Grashnuk's wallet/session tooling. Its job is to inspect the Grashnuk commit or
+range, run focused checks, and create a separate fix commit when it finds a real
+regression or missing test. If the review fix changes production behavior, the
+review agent deploys and verifies production health before reporting success.
+
 **Option B (graduate to) — supervised worker on the durable runtime.** A process claims
 directives from `orc_runtime_directives` (#96) and executes via `orcctl`. True unsupervised
 autonomy, multi-worker. Build once the behaviors are proven under Option A.
