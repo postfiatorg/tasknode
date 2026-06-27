@@ -174,16 +174,20 @@ routing/accounting concern, or other concrete item that should be surfaced to a
 personnel or project owner.
 
 The suggested action must be a concrete output, not a handoff. It is one
-unconditional imperative instruction naming the artifact or system change to
-make. Valid examples are a PR, config change, QA bug with reproduction steps,
-release note, X post, Discord announcement, smoke test, migration, prompt
-change, or runbook update. Invalid examples are "route this", "surface this",
+imperative instruction naming the artifact or system change to make. Product,
+UX, routing, workflow, and accounting defects must become investigation/fix
+work: reproduce or inspect the named behavior, implement the fix when the
+defect exists, and provide not-a-bug evidence only when it does not reproduce.
+They must not become tracker-ready QA packets or documentation-only follow-up.
+Valid non-defect examples are a PR, config change, release note, X post,
+Discord announcement, smoke test, migration, prompt change, or runbook update.
+Invalid examples are "route this", "surface this",
 "send this to the team", "review this", "assign this", "tag someone",
 "check this", or conditional "if/then" branches. The action text must not make
 a person's later approval, assignment, tag, or inspection the completion
 condition. The first verb must create or change something concrete: Open,
 Create, Add, Update, Implement, Publish, Write, Run, Configure, Remove, Merge,
-or File.
+File, or Investigate.
 
 The action must also name the actual findings. Rows should not say "the report,"
 "the memo," "the three issues," "the broken states," or "the proposed fixes"
@@ -225,7 +229,10 @@ suggested action; it should not restate the row as a vague review or handoff.
 The live sequence is:
 
 1. Submit a signed personal task request as Grashnuk with the harvest assessment
-   and suggested action as the task source.
+   and suggested action as the task source. If the row describes a product
+   defect, the request must ask Grashnuk to reproduce/inspect and fix the
+   actual problem, or prove it is not a bug. Do not request a tracker-ready QA
+   packet as the closing artifact.
 2. Check out the harvest row in Hive Brain so ownership is visible in the
    checkout log. This still requires the checking-out account to have a verified
    `core_contributor` badge or an active `orc_agents` row for the same linked
@@ -234,9 +241,10 @@ The live sequence is:
    self-requested task enters `verification_requested`, Grashnuk may answer the
    reviewer follow-up as additional evidence, but it must not decide reward,
    accounting, or enforcement outcomes.
-4. After the personal task has an independent reward decision, mark the harvest
-   row resolved from Hive Brain. The current checkout owner can do this for
-   their own checked-out row while they remain checkout-eligible.
+4. After the personal task has an independent reward decision, close the harvest
+   row from Hive Brain only when the issue is actually fixed, already fixed,
+   not a bug, or a duplicate of another fix path. The current checkout owner can
+   do this for their own checked-out row while they remain checkout-eligible.
 
 The resolution comment is an operator-facing closeout note, not an audit packet.
 Keep it short enough to scan in the Harvests card. Use 3-5 compact bullets and
@@ -244,18 +252,18 @@ avoid copying the full reward rationale or generated task proposal unless the
 exact wording changes the closeout decision.
 
 ```text
+Outcome: fixed / already fixed / not a bug / duplicate.
 Problem: 1-2 plain-English issue summaries.
-Verdict: real issue / source-backed only / not a bug.
-Action: artifact or fix produced by Grashnuk.
+Action: actual fix, existing shipped fix, not-a-bug evidence, or duplicate path.
 Proof: generated task id, reward amount, reward tx/CID, and one short reviewer
   sentence if it matters.
-Proposal gist: only when the action is otherwise unclear.
 ```
 
 This process keeps the accounting row, checkout owner, Orc task request,
 submitted evidence, independent verification/reward decision, and final
 resolution note connected without changing rewards, eligibility, enforcement, or
-the original harvested Network Task.
+the original harvested Network Task. A documentation packet, tracker-ready QA
+note, or source-backed summary alone is not resolved and must stay open.
 
 ```bash
 TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK=true npm run task-accounting-harvester-smoke

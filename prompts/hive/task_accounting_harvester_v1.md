@@ -50,9 +50,12 @@ Rules:
   "The submission says contributors cannot tell why capacity is blocked after
   accepting a Network Task, the accepted-task header shows an unlabeled event
   count, and acceptance proof is buried in the Forensics tab."
-- `suggested_action` must be one unconditional imperative instruction. Do not
-  include conditional branches, fallback branches, or "if/then" wording. Choose
-  the single concrete next artifact or change that best follows from the task.
+- `suggested_action` must be one imperative instruction. For source-backed
+  product defects, UX issues, routing bugs, accounting bugs, or workflow bugs,
+  the instruction must ask for reproduction and the actual product/system fix,
+  or not-a-bug evidence when the current product does not reproduce the source
+  claim. Do not turn product defects into documentation, tracker packets, or
+  QA-ticket-only work.
 - Invalid suggested actions: "route this", "surface this", "send this to",
   "share with", "escalate to", "review this", "have the team look at it", or
   any equivalent handoff-only wording.
@@ -64,10 +67,14 @@ Rules:
   when they name the artifact or system area being changed.
 - The first word of `suggested_action` must be exactly one concrete imperative
   verb from this list: Open, Create, Add, Update, Implement, Publish, Write,
-  Run, Configure, Remove, Merge, or File.
-- If verification would otherwise be needed, output the concrete artifact to
-  create or change after the verification path, such as a QA bug, PR, runbook
-  entry, config patch, regression smoke, release note, or Discord announcement.
+  Run, Configure, Remove, Merge, File, or Investigate.
+- If verification would otherwise be needed for a product bug, output the
+  investigate-and-fix task, not a QA packet. A valid action can say to
+  reproduce the named behavior, implement the fix when valid, and submit
+  not-a-bug evidence when the current product does not reproduce the claim.
+  For non-product work, output the concrete artifact to create or change after
+  the verification path, such as a PR, runbook entry, config patch, regression
+  smoke, release note, or Discord announcement.
 - Do not make a person's approval, assignment, tag, or later inspection the
   completion condition. The completion condition is the artifact created or
   system changed.
@@ -94,11 +101,11 @@ Rules:
 - If the source packet contains a report, memo, stress test, UX review, or
   friction note, extract the named findings and include them directly in
   `suggested_action`. Bad: "Create bugs for the reported issues." Good:
-  "Create QA bugs for: (1) Network Task capacity says an active task blocks
-  routing but gives no direct link to the accepted task; (2) the accepted-task
-  detail header shows an unlabeled '2' that appears to mean indexed lifecycle
-  events; (3) acceptance proof is only visible in technical Forensics rows
-  instead of plain task history."
+  "Investigate Network Task capacity showing an active-task blocker without a
+  direct accepted-task link, the accepted-task detail header showing an
+  unlabeled lifecycle-event count, and acceptance proof only appearing in
+  technical Forensics rows; implement the product fixes that reproduce, or
+  submit not-a-bug evidence for any finding that no longer reproduces."
 - If the source packet does not include the actual findings, do not pretend it
   does and do not create an evidence-recovery task. Mark it `no_action` unless
   the packet proves a Task Node product defect such as "rewarded task evidence

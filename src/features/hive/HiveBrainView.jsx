@@ -77,6 +77,13 @@ const decisionActions = [
   "do_nothing",
 ];
 
+const harvestResolutionOutcomes = [
+  { id: "fixed", label: "Fixed" },
+  { id: "already_fixed", label: "Already fixed" },
+  { id: "not_a_bug", label: "Not a bug" },
+  { id: "duplicate", label: "Duplicate" },
+];
+
 const reportPromptByType = {
   rewarded_task: [
     "Group by role. For each role, summarize the last rewarded Network Tasks available in the packet.",
@@ -605,6 +612,7 @@ function HarvestOutputRow({
           {isCheckedOut && <span><small>Checkout wallet</small><code>{compactWallet(checkoutWallet)}</code></span>}
           {isCheckedOut && <span><small>Checkout account</small><code>{checkoutAccountId || "unknown"}</code></span>}
           {isResolved && <span><small>Resolved</small><strong>{relativeTime(harvest.resolvedAt)}</strong></span>}
+          {isResolved && harvest.resolutionOutcome && <span><small>Outcome</small><strong>{formatAction(harvest.resolutionOutcome)}</strong></span>}
           <span><small>Model</small><strong>{harvest.model || "pending"}</strong></span>
           <span><small>Confidence</small><strong>{confidenceLabel}</strong></span>
         </div>
@@ -641,7 +649,7 @@ function HarvestOutputRow({
             onClick={() => onResolve?.(harvest)}
             type="button"
           >
-            {isResolved ? "Resolved" : "Mark resolved"}
+            {isResolved ? "Resolved" : "Close"}
           </button>
         </div>
       </div>
@@ -654,8 +662,10 @@ function HarvestResolveDialog({
   error = "",
   harvest = null,
   note = "",
+  outcome = "",
   onCancel,
   onNoteChange,
+  onOutcomeChange,
   onSubmit,
 }) {
   const textareaRef = useRef(null);
@@ -678,7 +688,7 @@ function HarvestResolveDialog({
         <header className="htp-header">
           <span className="htp-kicker">
             <CheckCircle2 size={12} strokeWidth={2} />
-            Resolve harvest
+            Close harvest
           </span>
           <button className="htp-close" disabled={busy} onClick={onCancel} type="button">
             <X size={14} strokeWidth={1.8} />
@@ -687,15 +697,27 @@ function HarvestResolveDialog({
         </header>
         <form className="hive-harvest-resolve-form" onSubmit={onSubmit}>
           <div>
-            <h2 id="hive-harvest-resolve-title">Mark resolved</h2>
+            <h2 id="hive-harvest-resolve-title">Close only after proof</h2>
             <p>{harvest.title || harvest.taskId || "Untitled rewarded task"}</p>
           </div>
           <label>
-            <span>Resolution comment</span>
+            <span>Outcome</span>
+            <select
+              onChange={(event) => onOutcomeChange?.(event.target.value)}
+              value={outcome}
+            >
+              <option value="">Choose real outcome</option>
+              {harvestResolutionOutcomes.map((item) => (
+                <option key={item.id} value={item.id}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Closeout comment</span>
             <textarea
               maxLength={6000}
               onChange={(event) => onNoteChange?.(event.target.value)}
-              placeholder="Short closeout: problem, verdict, action, proof. Keep it scannable."
+              placeholder="State the actual fix/proof, existing duplicate, or why it was not a bug. QA packets do not count."
               ref={textareaRef}
               value={note}
             />
@@ -704,7 +726,7 @@ function HarvestResolveDialog({
           <footer>
             <button disabled={busy} onClick={onCancel} type="button">Cancel</button>
             <button disabled={busy} type="submit">
-              {busy ? "Saving..." : "Resolve"}
+              {busy ? "Saving..." : "Close"}
             </button>
           </footer>
         </form>
@@ -1262,7 +1284,7 @@ export function HiveBrainView() {
   const openResolveHarvest = useCallback((harvest = null) => {
     if (!harvest?.taskId) return;
     setHarvestResolveError("");
-    setHarvestResolveDraft({ harvest, note: "" });
+    setHarvestResolveDraft({ harvest, note: "", outcome: "" });
   }, []);
 
   const closeResolveHarvest = useCallback(() => {
@@ -1276,17 +1298,31 @@ export function HiveBrainView() {
     setHarvestResolveError("");
   }, []);
 
+  const updateResolveOutcome = useCallback((outcome = "") => {
+    setHarvestResolveDraft((current) => current ? { ...current, outcome } : current);
+    setHarvestResolveError("");
+  }, []);
+
   const submitResolveHarvest = useCallback(async (event) => {
     event?.preventDefault?.();
     const taskId = harvestResolveDraft?.harvest?.taskId || "";
     if (!taskId) return;
-    const note = String(harvestResolveDraft?.note || "").trim() || "Resolved from Hive Brain.";
+    const note = String(harvestResolveDraft?.note || "").trim();
+    const outcome = String(harvestResolveDraft?.outcome || "").trim();
+    if (!outcome) {
+      setHarvestResolveError("Choose the real closeout outcome before closing this harvest row.");
+      return;
+    }
+    if (!note) {
+      setHarvestResolveError("Add the fix/proof or not-a-bug explanation before closing this harvest row.");
+      return;
+    }
     setResolvingHarvestId(taskId);
     setHarvestResolveError("");
     try {
       const result = await requestJson(`/api/hive/brain/harvests/${encodeURIComponent(taskId)}/resolve`, {
         method: "POST",
-        body: JSON.stringify({ note }),
+        body: JSON.stringify({ note, outcome }),
       });
       if (!result.ok) throw new Error(result.body?.message || `Resolve failed with HTTP ${result.status}`);
       setHarvests((current) => current.filter((harvest) => harvest.taskId !== taskId));
@@ -1460,8 +1496,10 @@ export function HiveBrainView() {
           error={harvestResolveError}
           harvest={harvestResolveDraft?.harvest || null}
           note={harvestResolveDraft?.note || ""}
+          outcome={harvestResolveDraft?.outcome || ""}
           onCancel={closeResolveHarvest}
           onNoteChange={updateResolveNote}
+          onOutcomeChange={updateResolveOutcome}
           onSubmit={submitResolveHarvest}
         />
       </div>

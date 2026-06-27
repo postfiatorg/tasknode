@@ -176,6 +176,11 @@ async function main() {
     assert.equal(actionable.classification, "requires_action");
     assert.equal(actionable.requiresAction, true);
     assert.ok(actionable.suggestedAction, "actionable row stores suggested action");
+    assert.match(
+      actionable.suggestedAction,
+      /Investigate|Implement|Update|Add|Run/,
+      "actionable bug-like rows request investigation/fix work instead of QA paperwork"
+    );
     assert.equal(noAction.classification, "no_action");
     assert.equal(noAction.requiresAction, false);
     assert.equal(listed.summary.harvested >= 2, true, "summary includes harvested count");
@@ -223,14 +228,25 @@ async function main() {
     assert.equal(checkoutEvent.walletAddress, wallet);
     assert.equal(checkoutEvent.current, true);
 
-    const resolutionNote = "Closed by smoke test after filing TASKNODE-SMOKE-1.";
+    const invalidResolved = await resolveTaskAccountingHarvest({
+      taskId: actionableTaskId,
+      resolvedByAccountId: accountId,
+      outcome: "fixed",
+      note: "Resolved by creating a tracker-ready QA packet for the reported issue.",
+    });
+    assert.equal(invalidResolved.ok, false, "paperwork-only artifacts cannot close harvest rows");
+    assert.equal(invalidResolved.error, "task_accounting_harvest_resolution_not_a_fix");
+
+    const resolutionNote = "Fixed by smoke test: changed reward accounting display behavior and verified it with TASKNODE-SMOKE-1 regression coverage.";
     const resolved = await resolveTaskAccountingHarvest({
       taskId: actionableTaskId,
       resolvedByAccountId: accountId,
+      outcome: "fixed",
       note: resolutionNote,
     });
     assert.equal(resolved.ok, true);
     assert.equal(resolved.harvest.resolved, true);
+    assert.equal(resolved.harvest.resolutionOutcome, "fixed");
     assert.equal(resolved.harvest.resolutionNote, resolutionNote);
 
     const unresolvedList = await listTaskAccountingHarvests({ limit: 20 });

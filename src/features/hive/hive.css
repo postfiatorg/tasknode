@@ -1864,7 +1864,8 @@
   font-weight: 800;
 }
 
-.hive-harvest-resolve-form textarea {
+.hive-harvest-resolve-form textarea,
+.hive-harvest-resolve-form select {
   background: #fffdfa;
   border: 1px solid var(--hive-border-strong);
   border-radius: 8px;
@@ -1872,14 +1873,22 @@
   font: inherit;
   font-size: 13.5px;
   line-height: 1.5;
-  min-height: 132px;
   outline: none;
   padding: 11px 12px;
-  resize: vertical;
   width: 100%;
 }
 
-.hive-harvest-resolve-form textarea:focus {
+.hive-harvest-resolve-form select {
+  min-height: 42px;
+}
+
+.hive-harvest-resolve-form textarea {
+  min-height: 132px;
+  resize: vertical;
+}
+
+.hive-harvest-resolve-form textarea:focus,
+.hive-harvest-resolve-form select:focus {
   border-color: var(--hive-green);
   box-shadow: 0 0 0 3px rgba(58, 104, 76, 0.14);
 }

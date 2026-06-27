@@ -4,7 +4,7 @@ import { loadPrompt, promptDigest } from "./prompt-registry.js";
 
 const promptPath = "hive/task_accounting_harvester_v1.md";
 const promptVersion = "task_accounting_harvester_v1";
-const allowedActionStartPattern = /^(Open|Create|Add|Update|Implement|Publish|Write|Run|Configure|Remove|Merge|File)\b/;
+const allowedActionStartPattern = /^(Open|Create|Add|Update|Implement|Publish|Write|Run|Configure|Remove|Merge|File|Investigate)\b/;
 const forbiddenHandoffPattern =
   /\b(route|send|share|escalate)\b.{0,40}\b(to|with|owner|team|personnel|operator|project lead|goodalexander)\b/i;
 const vagueReferencePattern =
@@ -13,6 +13,10 @@ const evidenceChasePattern =
   /\b(add|fetch|recover|retrieve|request|ask|obtain|track down|chase)\b.{0,80}\b(full text|gist|screenshot|attachment|missing deliverable|missing artifact|submitted evidence|submission text|source packet|harvest packet|accounting packet|evidence packet)\b/i;
 const followupMissingEvidencePattern =
   /\b(open|create|file)\b.{0,40}\b(follow-up task|qa bug|ticket|issue)\b.{0,120}\b(missing deliverable|missing artifact|missing evidence|not provided|not submitted|placeholder)\b/i;
+const bugLikeCategoryPattern = /\b(bug|ux|ui|product|routing|workflow|regression|defect|issue)\b/i;
+const bugLikeActionPattern = /\b(bug|ux|ui|product|routing|workflow|regression|defect|broken|stuck|wrong|fails?|missing|confusing)\b/i;
+const paperworkOnlyBugActionPattern =
+  /^(Create|File|Open|Write)\b.{0,80}\b(qa bug|bug ticket|ticket|tracker|tracker-ready|packet|document|report|memo)\b/i;
 
 function boolEnv(name, fallback = false) {
   const value = process.env[name];
@@ -150,7 +154,7 @@ function validateHarvesterResult(result = {}) {
   }
   if (!allowedActionStartPattern.test(action)) {
     throw new Error(
-      "Task accounting harvester suggested_action must start with Open, Create, Add, Update, Implement, Publish, Write, Run, Configure, Remove, Merge, or File",
+      "Task accounting harvester suggested_action must start with Open, Create, Add, Update, Implement, Publish, Write, Run, Configure, Remove, Merge, File, or Investigate",
     );
   }
   const forbidden = action.match(forbiddenHandoffPattern);
@@ -167,6 +171,13 @@ function validateHarvesterResult(result = {}) {
   if (evidenceChase) {
     throw new Error(
       `Task accounting harvester suggested_action chases missing contributor evidence instead of naming a concrete product/system action: ${evidenceChase[0]}`,
+    );
+  }
+  const bugLike = bugLikeCategoryPattern.test(result.action_category || "") || bugLikeActionPattern.test(action);
+  const paperworkOnly = action.match(paperworkOnlyBugActionPattern);
+  if (bugLike && paperworkOnly) {
+    throw new Error(
+      `Task accounting harvester suggested_action turns a product defect into paperwork instead of investigation/fix work: ${paperworkOnly[0]}`,
     );
   }
   return result;
@@ -193,7 +204,7 @@ function mockHarvest(sourcePacket = {}) {
       ? "Mock harvester detected follow-up signals in the rewarded task packet."
       : "Mock harvester found the rewarded task self-contained with no separate follow-up signal.",
     suggested_action: requiresAction
-      ? "Create a QA bug with the reproduced issue, affected Task Node surface, expected behavior, actual behavior, and submitted evidence attached."
+      ? "Investigate the stale reward accounting display, reproduce the affected surface, and implement the product fix or provide not-a-bug evidence if the current product no longer reproduces it."
       : "Mark harvested with no further action.",
     confidence: 0.72,
   });

@@ -706,7 +706,8 @@ async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res,
     const body = await resolveTaskAccountingHarvest({
       taskId,
       resolvedByAccountId: session.accountId,
-      note: payload?.note || payload?.resolutionNote || "Resolved from Hive Brain.",
+      outcome: payload?.outcome || payload?.resolutionOutcome || "",
+      note: payload?.note || payload?.resolutionNote || "",
     });
     json(res, body.ok ? 200 : body.status || 404, body);
     return true;

@@ -76,6 +76,28 @@ Research is allowed only when it ends in a concrete user-specific artifact such 
 
 If no reliable direction exists, generate a personal operating-picture task: active bets, constraints, next artifacts, evidence of progress, and what to ignore or cut for now. The fallback must still be specific and independently verifiable.
 
+## Task Accounting Harvest Requests
+
+When the request is for Grashnuk to handle a Task Accounting Harvester row, the
+personal task must close the real underlying issue, not create a documentation
+packet about it. This applies when the request mentions Grashnuk, a harvest
+`task_id`, Task Accounting Harvester, a stored assessment, or a stored
+`suggested_action`.
+
+For source-backed product bugs, UX issues, routing bugs, accounting bugs, or
+workflow bugs, generate an investigation/fix task. The task should ask Grashnuk
+to reproduce or inspect the named behavior, implement the product/system fix if
+the issue exists, add or run focused verification, and submit not-a-bug evidence
+only for findings that do not reproduce. Do not generate a task whose only
+deliverable is a tracker-ready QA packet, bug ticket, documentation note, issue
+summary, report, or memo.
+
+For non-bug harvest rows, generate the concrete system change named by the
+harvest action, such as a config update, release/community message, runbook
+patch, test, migration, or code change. If the harvest source is too thin to
+identify a real change, make the task verify current behavior and produce a
+not-a-bug/invalid closeout, not a documentation artifact.
+
 ## Task Taste
 
 Strong task shapes include:

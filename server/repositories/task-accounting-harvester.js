@@ -36,6 +36,90 @@ function intValue(value, fallback = 0, { min = 0, max = 10000 } = {}) {
   return Math.min(Math.max(parsed, min), max);
 }
 
+const resolutionOutcomeLabels = new Map([
+  ["fixed", "Fixed"],
+  ["already_fixed", "Already fixed"],
+  ["not_a_bug", "Not a bug"],
+  ["duplicate", "Duplicate"],
+]);
+
+const closeoutOnlyPattern =
+  /\b(tracker-ready|tracker ready|qa packet|qa follow-up packet|bug packet|ticket packet|documentation packet|document-only|documentation-only)\b/i;
+const unresolvedCaveatPattern =
+  /\b(source-backed only|did not perform fresh|no fresh reproduction|not freshly reproduced|without fresh testing|self-attested text)\b/i;
+const fixedEvidencePattern =
+  /\b(fixed|implemented|merged|deployed|commit|pr\b|pull request|changed|updated|added|removed|configured|migration|test(?:ed|s)?|smoke|verified|verification)\b/i;
+const alreadyFixedPattern =
+  /\b(already fixed|previously fixed|no longer reproduces|existing fix|fixed before closeout|already shipped)\b/i;
+const notBugPattern =
+  /\b(not a bug|intended behavior|works as designed|cannot reproduce|could not reproduce|invalid report|not reproducible)\b/i;
+const duplicatePattern = /\bduplicate\b/i;
+const duplicateTargetPattern = /\b(task_[a-z0-9]+|pr\b|pull request|issue|ticket|commit|harvest)\b/i;
+
+export function validateTaskAccountingResolution({ outcome = "", note = "" } = {}) {
+  const normalizedOutcome = safeText(outcome, 80).toLowerCase();
+  const normalizedNote = safeText(note, 6000);
+  if (!resolutionOutcomeLabels.has(normalizedOutcome)) {
+    return {
+      ok: false,
+      error: "task_accounting_harvest_resolution_outcome_required",
+      message: "Choose a real closeout outcome: fixed, already fixed, not a bug, or duplicate.",
+    };
+  }
+  if (normalizedNote.length < 40) {
+    return {
+      ok: false,
+      error: "task_accounting_harvest_resolution_note_required",
+      message: "Add a short closeout note with the actual fix/proof or why this is not a real open issue.",
+    };
+  }
+  if (closeoutOnlyPattern.test(normalizedNote)) {
+    return {
+      ok: false,
+      error: "task_accounting_harvest_resolution_not_a_fix",
+      message: "A tracker packet, QA packet, or documentation-only artifact does not resolve a harvest row.",
+    };
+  }
+  if (normalizedOutcome === "fixed") {
+    if (unresolvedCaveatPattern.test(normalizedNote)) {
+      return {
+        ok: false,
+        error: "task_accounting_harvest_resolution_unverified_fix",
+        message: "Do not close as fixed while the note says the issue was only source-backed or not freshly verified.",
+      };
+    }
+    if (!fixedEvidencePattern.test(normalizedNote)) {
+      return {
+        ok: false,
+        error: "task_accounting_harvest_resolution_fix_evidence_required",
+        message: "Close as fixed only with fix evidence such as changed code/config, commit/PR, deployment, or regression verification.",
+      };
+    }
+  }
+  if (normalizedOutcome === "already_fixed" && !alreadyFixedPattern.test(normalizedNote)) {
+    return {
+      ok: false,
+      error: "task_accounting_harvest_resolution_already_fixed_evidence_required",
+      message: "Close as already fixed only when the note says the issue no longer reproduces or names the existing shipped fix.",
+    };
+  }
+  if (normalizedOutcome === "not_a_bug" && !notBugPattern.test(normalizedNote)) {
+    return {
+      ok: false,
+      error: "task_accounting_harvest_resolution_not_bug_evidence_required",
+      message: "Close as not a bug only when the note explains intended behavior, invalidity, or non-reproduction.",
+    };
+  }
+  if (normalizedOutcome === "duplicate" && (!duplicatePattern.test(normalizedNote) || !duplicateTargetPattern.test(normalizedNote))) {
+    return {
+      ok: false,
+      error: "task_accounting_harvest_resolution_duplicate_target_required",
+      message: "Close as duplicate only when the note names the existing task, issue, PR, commit, or harvest that owns the fix.",
+    };
+  }
+  return { ok: true, outcome: normalizedOutcome, note: normalizedNote };
+}
+
 function rowToHarvest(row = {}) {
   const sourcePacket = safeObject(row.source_packet_json);
   const taskPacket = safeObject(sourcePacket.task);
@@ -115,6 +199,7 @@ function rowToHarvest(row = {}) {
     checkedOutWalletAddress: safeText(row.checked_out_wallet_address, 120),
     resolvedAt: iso(row.resolved_at),
     resolvedByAccountId: safeText(row.resolved_by_account_id, 180),
+    resolutionOutcome: safeText(row.resolution_outcome, 80),
     resolutionNote: safeText(row.resolution_note, 6000),
     resolved: Boolean(row.resolved_at),
     lastError: safeText(row.last_error, 1000),
@@ -1073,22 +1158,39 @@ export async function listTaskAccountingHarvestCheckouts({ limit = 80, page = 1 
 export async function resolveTaskAccountingHarvest({
   taskId = "",
   resolvedByAccountId = "",
+  outcome = "",
   note = "",
 } = {}) {
   if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const normalizedTaskId = safeText(taskId, 180);
+  const validation = validateTaskAccountingResolution({ outcome, note });
+  if (!validation.ok) return { ok: false, status: 400, ...validation };
   const result = await query(
     `
       UPDATE task_accounting_harvests
       SET resolved_at = now(),
           resolved_by_account_id = $2,
-          resolution_note = $3,
+          resolution_outcome = $3,
+          resolution_note = $4,
           updated_at = now()
       WHERE task_id = $1
+        AND resolved_at IS NULL
       RETURNING *
     `,
-    [safeText(taskId, 180), safeText(resolvedByAccountId, 180), safeText(note, 6000)]
+    [normalizedTaskId, safeText(resolvedByAccountId, 180), validation.outcome, validation.note]
   );
-  return result.rows[0]
-    ? { ok: true, harvest: rowToHarvest(result.rows[0]) }
-    : { ok: false, status: 404, error: "task_accounting_harvest_not_found" };
+  if (result.rows[0]) return { ok: true, harvest: rowToHarvest(result.rows[0]) };
+  const exists = await query(
+    `
+      SELECT resolved_at
+      FROM task_accounting_harvests
+      WHERE task_id = $1
+      LIMIT 1
+    `,
+    [normalizedTaskId]
+  );
+  if (exists.rows[0]?.resolved_at) {
+    return { ok: false, status: 409, error: "task_accounting_harvest_already_resolved" };
+  }
+  return { ok: false, status: 404, error: "task_accounting_harvest_not_found" };
 }
