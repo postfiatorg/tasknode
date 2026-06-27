@@ -37,7 +37,16 @@ worker-airdrop         npm run start:worker:airdrop
 board-manager          npm run start:board-manager
 ```
 
-Only the `app` process receives HTTP traffic. It serves the built frontend, exposes `/api/*`, and runs the startup migration check. The `worker-*` and `board-manager` processes are separate Fly machine groups; verify their live state with `fly status -a tasknodeofficial-dev` before assuming background loops are running. The legacy `worker` process remains only for local compatibility; production rejects it unless `TASKNODE_ALLOW_MONOLITH_WORKER=true` is set intentionally.
+Only the `app` process receives HTTP traffic. It serves the built frontend,
+exposes `/api/*`, and runs the startup migration check. Missing built static
+asset requests, including `/assets/*` and other file-extension paths, return a
+404 JSON response instead of the SPA shell; extensionless navigation paths still
+fall back to `index.html`. The `worker-*` and `board-manager` processes are
+separate Fly machine groups; verify their live state with
+`fly status -a tasknodeofficial-dev` before assuming background loops are
+running. The legacy `worker` process remains only for local compatibility;
+production rejects it unless `TASKNODE_ALLOW_MONOLITH_WORKER=true` is set
+intentionally.
 
 Run Fly releases through `npm run fly:deploy:prod`, not raw `fly deploy`.
 (`fly:deploy:prod` wraps `fly:deploy` with the production confirmation the
@@ -487,6 +496,7 @@ the deployed app is built from), not from a stale `main`. After checks pass:
 
 ```bash
 npm run build
+npm run static-asset-fallback-smoke
 npm run smoke
 npm run route-smoke
 npm run fly:deploy:prod
