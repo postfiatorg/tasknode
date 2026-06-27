@@ -96,6 +96,20 @@ against a **standing charter** (§5), **pointed at prod**, self-looping: each cy
 an action (inventory scan, request a task, chat, ask chatbot) per the charter; the keep-alive
 keeps the session alive. *The agent decides, not the Nazgûl.* Lowest cost; uses deployed infra.
 
+For one-off Task Accounting harvest follow-up, operators can run the same
+Codex-session pattern non-interactively:
+
+```bash
+npm run grashnuk:harvest-codex -- --task-id task_... --execute
+```
+
+That wrapper starts `codex exec` as a separate Grashnuk work process and gives
+it only the scoped harvest mission plus the local
+`scripts/grashnuk-harvest-tools.mjs` command surface for signed task and harvest
+actions. It is the preferred path when the goal is to prove the Orc can handle a
+harvest row without the outer operator manually writing request/evidence/resolve
+payloads.
+
 **Option B (graduate to) — supervised worker on the durable runtime.** A process claims
 directives from `orc_runtime_directives` (#96) and executes via `orcctl`. True unsupervised
 autonomy, multi-worker. Build once the behaviors are proven under Option A.

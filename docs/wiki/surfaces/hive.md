@@ -267,6 +267,25 @@ resolution note connected without changing rewards, eligibility, enforcement, or
 the original harvested Network Task. A documentation packet, tracker-ready QA
 note, or source-backed summary alone is not resolved and must stay open.
 
+Operators can hand one harvest to a separate Grashnuk Codex process instead of
+performing the loop manually in the current shell:
+
+```bash
+npm run grashnuk:harvest-codex -- \
+  --task-id task_... \
+  --execute
+```
+
+`scripts/grashnuk-harvest-codex-exec.mjs` starts `codex exec` with a constrained
+Grashnuk prompt and the JSON result schema
+`schemas/grashnuk-harvest-codex-result.schema.json`. The child process uses
+`scripts/grashnuk-harvest-tools.mjs` for signed Grashnuk actions:
+inspect/check out the harvest, request a Personal task, wait for the generated
+task, submit evidence, answer verification follow-up, wait for reward proof, and
+resolve the harvest. The helper reads local Grashnuk wallet/session files but
+redacts seeds and session tokens from output. Use `--packet-only` to inspect the
+Codex prompt without running the agent.
+
 ```bash
 TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK=true npm run task-accounting-harvester-smoke
 ```

@@ -132,6 +132,8 @@
     "board-manager:worker": "node scripts/board-manager-worker.mjs",
     "board-manager:ops": "node scripts/board-manager-ops.mjs",
     "board-manager:manual-network-task": "node scripts/board-manager-manual-network-task.mjs",
+    "grashnuk:harvest-tools": "node scripts/grashnuk-harvest-tools.mjs",
+    "grashnuk:harvest-codex": "node scripts/grashnuk-harvest-codex-exec.mjs",
     "board-manager-scheduler-smoke": "node scripts/board-manager-scheduler-smoke.mjs",
     "network-task-recovery": "node scripts/network-task-recovery.mjs",
     "network-task-allocation-repair": "node scripts/network-task-allocation-repair.mjs",
