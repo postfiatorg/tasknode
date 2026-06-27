@@ -236,10 +236,24 @@ The live sequence is:
    accounting, or enforcement outcomes.
 4. After the personal task has an independent reward decision, mark the harvest
    row resolved from Hive Brain. The current checkout owner can do this for
-   their own checked-out row while they remain checkout-eligible. The resolution
-   comment should name the generated personal task id, the final reward
-   description or reward rationale, and the artifact or product state that now
-   closes the harvest action.
+   their own checked-out row while they remain checkout-eligible.
+
+The resolution comment is an operator-facing closeout note, not just a lifecycle
+receipt. It must be readable without opening the generated Grashnuk task. Use
+this structure:
+
+```text
+Problem: enumerate the issue(s) raised by the harvest in plain English.
+Validity: say whether this was a real product/accounting issue, a source-backed
+  but unverified report, or not actually a bug.
+Action taken: state exactly what Grashnuk produced or changed and where that
+  artifact lives.
+Reward evidence: include the generated personal task id, reward amount, reward
+  tx/CID when present, reward decision, and the reviewer commentary relevant to
+  closure.
+Task proposal: include the basic proposal text or a compact paraphrase of the
+  generated personal task so the reason for the follow-up is clear.
+```
 
 This process keeps the accounting row, checkout owner, Orc task request,
 submitted evidence, independent verification/reward decision, and final

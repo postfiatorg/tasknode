@@ -115,7 +115,7 @@ function rowToHarvest(row = {}) {
     checkedOutWalletAddress: safeText(row.checked_out_wallet_address, 120),
     resolvedAt: iso(row.resolved_at),
     resolvedByAccountId: safeText(row.resolved_by_account_id, 180),
-    resolutionNote: safeText(row.resolution_note, 1000),
+    resolutionNote: safeText(row.resolution_note, 6000),
     resolved: Boolean(row.resolved_at),
     lastError: safeText(row.last_error, 1000),
     createdAt: iso(row.created_at),
@@ -1086,7 +1086,7 @@ export async function resolveTaskAccountingHarvest({
       WHERE task_id = $1
       RETURNING *
     `,
-    [safeText(taskId, 180), safeText(resolvedByAccountId, 180), safeText(note, 1000)]
+    [safeText(taskId, 180), safeText(resolvedByAccountId, 180), safeText(note, 6000)]
   );
   return result.rows[0]
     ? { ok: true, harvest: rowToHarvest(result.rows[0]) }

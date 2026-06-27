@@ -693,9 +693,9 @@ function HarvestResolveDialog({
           <label>
             <span>Resolution comment</span>
             <textarea
-              maxLength={1000}
+              maxLength={6000}
               onChange={(event) => onNoteChange?.(event.target.value)}
-              placeholder="What changed, where it was tracked, or why this harvest is no longer actionable."
+              placeholder="Problem found, whether it was real, action taken, reward evidence/commentary, and the basic task proposal text."
               ref={textareaRef}
               value={note}
             />
