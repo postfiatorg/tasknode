@@ -189,14 +189,18 @@ export function item({
 
 export async function tableMap() {
   if (!databaseEnabled()) return new Map();
-  const result = await query(
-    `
-      SELECT table_name, to_regclass('public.' || table_name) IS NOT NULL AS exists
-      FROM unnest($1::text[]) AS table_name
-    `,
-    [trackedTables]
-  );
-  return new Map(result.rows.map((row) => [row.table_name, row.exists === true]));
+  try {
+    const result = await query(
+      `
+        SELECT table_name, to_regclass('public.' || table_name) IS NOT NULL AS exists
+        FROM unnest($1::text[]) AS table_name
+      `,
+      [trackedTables]
+    );
+    return new Map(result.rows.map((row) => [row.table_name, row.exists === true]));
+  } catch {
+    return new Map(trackedTables.map((name) => [name, false]));
+  }
 }
 
 function hasTable(tables, name) {
@@ -206,5 +210,9 @@ function hasTable(tables, name) {
 export async function optionalQuery(tables, requiredTables, sql, params = [], fallback = { rows: [] }) {
   if (!databaseEnabled()) return fallback;
   if (!requiredTables.every((name) => hasTable(tables, name))) return fallback;
-  return query(sql, params);
+  try {
+    return await query(sql, params);
+  } catch {
+    return fallback;
+  }
 }

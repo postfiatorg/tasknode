@@ -59,6 +59,10 @@ const hiveProjectsFastTimeoutMs = Math.min(
   Math.max(Number(process.env.TASKNODE_HIVE_PROJECTS_FAST_TIMEOUT_MS || 900), 100),
   5000
 );
+const hiveProjectsColdStartTimeoutMs = Math.min(
+  Math.max(Number(process.env.TASKNODE_HIVE_PROJECTS_COLD_START_TIMEOUT_MS || 4500), hiveProjectsFastTimeoutMs),
+  5000
+);
 
 let lastHiveProjectsBody = null;
 let pendingHiveProjectsRead = null;
@@ -153,9 +157,10 @@ function readSharedHiveProjectsBody({ pathname }) {
 
   const fallback = lastHiveProjectsBody || fallbackHiveProjectsBody();
   if (!pendingHiveProjectsRead) return Promise.resolve(fallback);
+  const timeoutMs = lastHiveProjectsBody ? hiveProjectsFastTimeoutMs : hiveProjectsColdStartTimeoutMs;
   return Promise.race([
     pendingHiveProjectsRead,
-    timeoutValue(hiveProjectsFastTimeoutMs, {
+    timeoutValue(timeoutMs, {
       ...fallback,
       degraded: true,
       reason: lastHiveProjectsBody ? "hive_projects_stale_while_refreshing" : "hive_projects_refreshing",

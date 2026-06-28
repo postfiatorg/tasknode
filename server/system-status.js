@@ -47,6 +47,14 @@ function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
 }
 
+async function safeStatusRead(promise, fallback) {
+  try {
+    return await promise;
+  } catch (error) {
+    return typeof fallback === "function" ? fallback(error) : fallback;
+  }
+}
+
 export function networkTaskSpendWindowDays(value = DEFAULT_NETWORK_TASK_SPEND_DAYS) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_NETWORK_TASK_SPEND_DAYS;
@@ -65,6 +73,17 @@ function normalizeNetworkTaskSpendRows(rows = []) {
     totalPft: Number(row.total_pft || row.totalPft || 0),
     taskCount: Number(row.task_count || row.taskCount || 0),
   })).filter((row) => row.date);
+}
+
+function networkTaskSpendUnavailable({ days = DEFAULT_NETWORK_TASK_SPEND_DAYS, reason = "query_failed" } = {}) {
+  return {
+    ok: false,
+    enabled: false,
+    reason,
+    windowDays: networkTaskSpendWindowDays(days),
+    rows: [],
+    totals: { totalPft: 0, taskCount: 0 },
+  };
 }
 
 export async function readNetworkTaskSpendByDay({
@@ -115,6 +134,17 @@ export async function readNetworkTaskSpendByDay({
       totalPft: rows.reduce((sum, row) => sum + row.totalPft, 0),
       taskCount: rows.reduce((sum, row) => sum + row.taskCount, 0),
     },
+  };
+}
+
+function boardManagerDailyCostUnavailable({ days = DEFAULT_BOARD_MANAGER_COST_DAYS, reason = "query_failed" } = {}) {
+  return {
+    ok: false,
+    enabled: false,
+    reason,
+    windowDays: boardManagerCostWindowDays(days),
+    rows: [],
+    totals: { runs: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
   };
 }
 
@@ -1500,9 +1530,11 @@ async function jobsPgvectorCorpusItem(tables) {
   });
   const expectedDimensions = jobsEmbeddingDimensions();
   const tableReady = tables.get("jobs_corpus_sources") === true && tables.get("jobs_corpus_chunks") === true;
-  const extensionResult = databaseEnabled()
-    ? await query("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS vector_installed")
-    : { rows: [] };
+  const extensionResult = await optionalQuery(
+    tables,
+    [],
+    "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS vector_installed"
+  );
   const [sourceResult, chunkResult] = await Promise.all([
     optionalQuery(
       tables,
@@ -1968,11 +2000,20 @@ export async function readSystemStatus({
   }
   const tables = await tableMap();
   const [categories, chatPricing, networkTaskSpendByDay, boardManagerDailyCost, agentActivity] = await Promise.all([
-    categoryItems(tables, nowMs),
-    chatPricingStatus(),
-    readNetworkTaskSpendByDay({ tables, days: networkSpendDays }),
-    readBoardManagerDailyCost({ tables, days: boardManagerCostDays }),
-    readAgentActivity({ tables }),
+    safeStatusRead(categoryItems(tables, nowMs), []),
+    safeStatusRead(chatPricingStatus(), { ok: false, modes: [], live: { enabled: false, status: "unknown" } }),
+    safeStatusRead(
+      readNetworkTaskSpendByDay({ tables, days: networkSpendDays }),
+      () => networkTaskSpendUnavailable({ days: networkSpendDays })
+    ),
+    safeStatusRead(
+      readBoardManagerDailyCost({ tables, days: boardManagerCostDays }),
+      () => boardManagerDailyCostUnavailable({ days: boardManagerCostDays })
+    ),
+    safeStatusRead(
+      readAgentActivity({ tables }),
+      () => agentActivityUnavailable({ reason: "query_failed" })
+    ),
   ]);
   return {
     ok: true,
