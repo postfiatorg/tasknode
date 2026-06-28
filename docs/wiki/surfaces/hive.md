@@ -83,6 +83,8 @@ The main read APIs are:
   Decision Agent audit trail
 - `GET /api/hive/brain/live-task-packet` for the plain-English Live Task
   Packet
+- `GET /api/hive/brain/harvest-report` for the latest resolved-history Harvest
+  Report
 - `GET /api/hive/brain/harvests` for post-reward Task Accounting harvests
 - `GET /api/hive/brain/harvest-checkouts` for the harvest checkout log
 
@@ -292,11 +294,32 @@ rows visible with the stored resolution comment. Authorized Task Accounting
 operators, or the eligible current checkout owner for that row, mark rows
 resolved from that tab by
 entering a comment in the resolve dialog. The APIs are
+`GET /api/hive/brain/harvest-report`,
 `GET /api/hive/brain/harvests?resolved=false`,
 `GET /api/hive/brain/harvests?resolved=true`,
 `GET /api/hive/brain/harvest-checkouts`,
 `POST /api/hive/brain/harvests/:taskId/checkout`, and
 `POST /api/hive/brain/harvests/:taskId/resolve`. The focused mock smoke is:
+
+The Harvest Report is the overview-level digest of resolved history. It is
+generated from deterministic row data, not from another LLM call. Every third
+newly resolved harvest creates the next persisted report in
+`task_accounting_harvest_reports`; the report endpoint also catches up missing
+three-resolution buckets if older code closed rows before a report existed. The
+report body stays plain-English and includes:
+
+- Overall BLUF: current unresolved/actionable/checked-out backlog state.
+- Key issues resolved: what concrete problems were identified and actioned by
+  Grashnuk or another eligible operator.
+- Solutions and deployment: the actual closeout outcome, with deployment or
+  verification evidence only when the resolution note states it.
+- Productive takeaways for the current board state and operators.
+- Initiators: who checked out/resolved the rows and what they need to know next.
+
+The Hive Brain overview tab displays the latest Harvest Report directly above
+the general Hive report grid. If fewer than three harvests have ever been
+resolved, the card shows how many more closeouts are needed before the first
+report is generated.
 
 #### Grashnuk follow-up loop
 

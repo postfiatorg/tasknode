@@ -973,6 +973,45 @@ function HarvestPanel({
   );
 }
 
+function HarvestReportCard({ packet = null, status = "loading", onRefresh }) {
+  const report = packet?.report || null;
+  const pending = Boolean(packet?.pending);
+  const resolvedUntilNext = Number(packet?.resolvedUntilNextReport || 0);
+  return (
+    <div className="hive-brain-card hive-brain-harvest-report-card">
+      <div className="hive-brain-live-task-packet-head">
+        <div>
+          <div className="hive-brain-section-label">Harvest Report</div>
+          <div className="hive-brain-section-sub">
+            Plain-English report from resolved harvest history. Regenerates every 3 resolved harvests.
+          </div>
+        </div>
+        <div className="hive-brain-live-task-packet-meta">
+          <span>{report?.generatedAt ? `Updated ${relativeTime(report.generatedAt)}` : pending ? "pending" : "not generated"}</span>
+          <button onClick={onRefresh} type="button">
+            <RefreshCw size={13} strokeWidth={2} />
+            Refresh
+          </button>
+        </div>
+      </div>
+      {status === "loading" && !report && <div className="hive-brain-empty">Loading Harvest Report.</div>}
+      {status === "error" && !report && <div className="hive-brain-empty">Harvest Report is unavailable.</div>}
+      {status === "ready" && !report && (
+        <div className="hive-brain-empty">
+          {pending
+            ? `Harvest Report will generate after ${resolvedUntilNext || 3} more resolved harvest${resolvedUntilNext === 1 ? "" : "s"}.`
+            : "No Harvest Report has been generated yet."}
+        </div>
+      )}
+      {report?.bodyMarkdown && (
+        <div className="hive-brain-harvest-report-body">
+          <MarkdownReportBody markdown={report.bodyMarkdown} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReportsGrid({ latestByType, onOpenReport }) {
   return (
     <div>
@@ -1005,10 +1044,13 @@ function ReportsGrid({ latestByType, onOpenReport }) {
 function OverviewPanel({
   decisionDetail,
   decisionLoading,
+  harvestReport,
+  harvestReportStatus,
   latestByType,
   liveTaskPacket,
   liveTaskPacketStatus,
   onOpenReport,
+  onRefreshHarvestReport,
   onRefreshLiveTaskPacket,
   runs,
   selectedRunId,
@@ -1038,6 +1080,11 @@ function OverviewPanel({
           packet={liveTaskPacket}
           status={liveTaskPacketStatus}
           onRefresh={onRefreshLiveTaskPacket}
+        />
+        <HarvestReportCard
+          packet={harvestReport}
+          status={harvestReportStatus}
+          onRefresh={onRefreshHarvestReport}
         />
         <ReportsGrid latestByType={latestByType} onOpenReport={onOpenReport} />
       </div>
@@ -1274,6 +1321,8 @@ export function HiveBrainView() {
   const [harvestSummary, setHarvestSummary] = useState({});
   const [harvestStatus, setHarvestStatus] = useState("loading");
   const [resolvedHarvestStatus, setResolvedHarvestStatus] = useState("loading");
+  const [harvestReport, setHarvestReport] = useState(null);
+  const [harvestReportStatus, setHarvestReportStatus] = useState("loading");
   const [checkingOutHarvestId, setCheckingOutHarvestId] = useState("");
   const [harvestCheckoutError, setHarvestCheckoutError] = useState("");
   const [harvestResolveDraft, setHarvestResolveDraft] = useState(null);
@@ -1360,6 +1409,18 @@ export function HiveBrainView() {
       setLiveTaskPacketStatus("ready");
     } catch {
       setLiveTaskPacketStatus("error");
+    }
+  }, []);
+
+  const loadHarvestReport = useCallback(async () => {
+    setHarvestReportStatus("loading");
+    try {
+      const result = await requestJson("/api/hive/brain/harvest-report");
+      if (!result.ok) throw new Error(result.body?.message || `Harvest Report failed with HTTP ${result.status}`);
+      setHarvestReport(result.body || null);
+      setHarvestReportStatus("ready");
+    } catch {
+      setHarvestReportStatus("error");
     }
   }, []);
 
@@ -1469,22 +1530,28 @@ export function HiveBrainView() {
       if (result.body?.harvest) {
         setResolvedHarvests((current) => [result.body.harvest, ...current.filter((harvest) => harvest.taskId !== taskId)]);
       }
+      if (result.body?.harvestReport) {
+        setHarvestReport({ ok: true, report: result.body.harvestReport });
+        setHarvestReportStatus("ready");
+      }
       setHarvestResolveDraft(null);
+      loadHarvestReport();
       loadHarvests();
     } catch (error) {
       setHarvestResolveError(error?.message || "Unable to mark this harvest resolved.");
     } finally {
       setResolvingHarvestId("");
     }
-  }, [harvestResolveDraft, loadHarvests]);
+  }, [harvestResolveDraft, loadHarvestReport, loadHarvests]);
 
   const refreshAll = useCallback(() => {
     loadReports();
     loadRuns();
     loadProjects();
     loadLiveTaskPacket();
+    loadHarvestReport();
     loadHarvests();
-  }, [loadHarvests, loadLiveTaskPacket, loadProjects, loadReports, loadRuns]);
+  }, [loadHarvestReport, loadHarvests, loadLiveTaskPacket, loadProjects, loadReports, loadRuns]);
 
   useEffect(() => {
     refreshAll();
@@ -1607,10 +1674,13 @@ export function HiveBrainView() {
           <OverviewPanel
             decisionDetail={decisionDetail}
             decisionLoading={decisionDetailStatus === "loading"}
+            harvestReport={harvestReport}
+            harvestReportStatus={harvestReportStatus}
             latestByType={latestByType}
             liveTaskPacket={liveTaskPacket}
             liveTaskPacketStatus={liveTaskPacketStatus}
             onOpenReport={openTab}
+            onRefreshHarvestReport={loadHarvestReport}
             onRefreshLiveTaskPacket={loadLiveTaskPacket}
             onSelectRun={setSelectedRunId}
             runs={runs}

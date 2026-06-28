@@ -15,6 +15,7 @@ const {
   accountCanResolveCheckedOutTaskAccountingHarvest,
   accountHasTaskAccountingCheckoutAccess,
   checkoutTaskAccountingHarvest,
+  getLatestTaskAccountingHarvestReport,
   getTaskAccountingCheckoutAccess,
   listTaskAccountingHarvests,
   listTaskAccountingHarvestCheckouts,
@@ -25,6 +26,8 @@ const {
 const suffix = `${Date.now()}`;
 const actionableTaskId = `task_accounting_action_${suffix}`;
 const noActionTaskId = `task_accounting_done_${suffix}`;
+const notBugTaskId = `task_accounting_not_bug_${suffix}`;
+const smokeTaskIds = [actionableTaskId, noActionTaskId, notBugTaskId];
 const accountId = `acct_task_accounting_${suffix}`;
 const wallet = `rTaskAccounting${suffix}`.slice(0, 120);
 const orcAccountId = `acct_task_accounting_orc_${suffix}`;
@@ -32,11 +35,12 @@ const orcWallet = `rTaskAccountingOrc${suffix}`.slice(0, 120);
 const orcAgentId = `orc_task_accounting_${suffix}`;
 
 async function cleanup() {
-  await query("DELETE FROM task_accounting_harvests WHERE task_id IN ($1, $2)", [actionableTaskId, noActionTaskId]);
+  await query("DELETE FROM task_accounting_harvest_reports WHERE source_task_ids_json ?| $1::text[]", [smokeTaskIds]);
+  await query("DELETE FROM task_accounting_harvests WHERE task_id = ANY($1::text[])", [smokeTaskIds]);
   await query("DELETE FROM account_network_badges WHERE account_id = $1 AND badge_id = 'core_contributor'", [accountId]);
   await query("DELETE FROM orc_agents WHERE id = $1", [orcAgentId]);
-  await query("DELETE FROM task_events WHERE task_id IN ($1, $2)", [actionableTaskId, noActionTaskId]);
-  await query("DELETE FROM task_projections WHERE task_id IN ($1, $2)", [actionableTaskId, noActionTaskId]);
+  await query("DELETE FROM task_events WHERE task_id = ANY($1::text[])", [smokeTaskIds]);
+  await query("DELETE FROM task_projections WHERE task_id = ANY($1::text[])", [smokeTaskIds]);
 }
 
 async function grantCoreContributorBadge() {
@@ -165,6 +169,9 @@ async function main() {
   await migrateDatabase();
   await cleanup();
   try {
+    const baselineHarvestReport = await getLatestTaskAccountingHarvestReport({ generate: true });
+    const baselineResolvedCount = Number(baselineHarvestReport.summary?.resolved || baselineHarvestReport.report?.resolvedCount || 0);
+    const nextReportIn = 3 - (baselineResolvedCount % 3 || 0);
     await insertRewardedTask({
       taskId: actionableTaskId,
       title: "Reward routing bug report",
@@ -174,20 +181,32 @@ async function main() {
     });
     await insertRewardedTask({
       taskId: noActionTaskId,
-      title: "Standalone contributor profile completion",
-      description: "The task output was a self-contained profile packet and the reward closed the work.",
-      requirement: "Submit the finished packet.",
+      title: "Standalone contributor completion",
+      description: "The task output was a self-contained completion packet with no separate follow-up signal.",
+      requirement: "Submit the completed packet.",
       reward: 100,
+    });
+    await insertRewardedTask({
+      taskId: notBugTaskId,
+      title: "Expected task state display",
+      description: "The task reported behavior that later review found was intended behavior for closed rows.",
+      requirement: "Submit the observed task state and whether it should change.",
+      reward: 50,
     });
 
     const run = await runTaskAccountingHarvesterOnce();
     assert.equal(run.ok, true, JSON.stringify(run.errors || []));
-    assert.ok(run.queued >= 2, "rewarded Network tasks were queued");
-    assert.equal(run.processed.length, 2, "two harvest rows processed");
+    assert.ok(run.queued >= 3, "rewarded Network tasks were queued");
+    const processedSmokeTaskIds = run.processed.map((row) => row.taskId).filter((taskId) => smokeTaskIds.includes(taskId));
+    assert.deepEqual(
+      processedSmokeTaskIds.sort(),
+      [...smokeTaskIds].sort(),
+      "three smoke harvest rows processed"
+    );
 
     const listed = await listTaskAccountingHarvests({ limit: 20 });
-    const rows = listed.harvests.filter((row) => [actionableTaskId, noActionTaskId].includes(row.taskId));
-    assert.equal(rows.length, 2, "both harvest rows are listable");
+    const rows = listed.harvests.filter((row) => smokeTaskIds.includes(row.taskId));
+    assert.equal(rows.length, 3, "all harvest rows are listable");
     const actionable = rows.find((row) => row.taskId === actionableTaskId);
     const noAction = rows.find((row) => row.taskId === noActionTaskId);
     assert.equal(actionable.classification, "requires_action");
@@ -261,6 +280,7 @@ async function main() {
       outcome: "fixed",
       note: resolutionNote,
     });
+    const resolutionResults = [resolved];
     assert.equal(resolved.ok, true);
     assert.equal(resolved.harvest.resolved, true);
     assert.equal(resolved.harvest.resolutionOutcome, "fixed");
@@ -290,18 +310,41 @@ async function main() {
       outcome: "fixed",
       note: "Fixed by smoke test: verified standalone completion rows can be resolved and sorted by resolved_at in TASKNODE-SMOKE-2 regression coverage.",
     });
+    resolutionResults.push(noActionResolution);
     assert.equal(noActionResolution.ok, true);
+
+    const notBugResolution = await resolveTaskAccountingHarvest({
+      taskId: notBugTaskId,
+      resolvedByAccountId: accountId,
+      outcome: "not_a_bug",
+      note: "Closed as not a bug by smoke test: the observed closed-row state is intended behavior and does not require a product change.",
+    });
+    resolutionResults.push(notBugResolution);
+    assert.equal(notBugResolution.ok, true);
+    const boundaryResolution = resolutionResults[nextReportIn - 1];
+    assert.equal(boundaryResolution.harvestReportGenerated, true, "Harvest Report generates at the next three-resolution boundary");
+    assert.ok(boundaryResolution.harvestReport?.bodyMarkdown, "generated Harvest Report has markdown");
+    assert.match(boundaryResolution.harvestReport.bodyMarkdown, /## Overall BLUF/);
+    assert.match(boundaryResolution.harvestReport.bodyMarkdown, /## Key Issues Resolved/);
+    assert.match(boundaryResolution.harvestReport.bodyMarkdown, /## Solutions And Deployment/);
+    assert.match(boundaryResolution.harvestReport.bodyMarkdown, /## Productive Takeaways/);
+    assert.match(boundaryResolution.harvestReport.bodyMarkdown, /## Initiators And What They Need To Know/);
+    assert.ok(
+      boundaryResolution.harvestReport.sourceTaskIds.includes(smokeTaskIds[nextReportIn - 1]),
+      "Harvest Report source task IDs include the smoke row that crossed the boundary"
+    );
     await query(
       `
         UPDATE task_accounting_harvests
         SET resolved_at = CASE
           WHEN task_id = $1 THEN now() - interval '2 hours'
           WHEN task_id = $2 THEN now() - interval '1 hour'
+          WHEN task_id = $3 THEN now()
           ELSE resolved_at
         END
-        WHERE task_id IN ($1, $2)
+        WHERE task_id = ANY(ARRAY[$1, $2, $3]::text[])
       `,
-      [actionableTaskId, noActionTaskId]
+      [actionableTaskId, noActionTaskId, notBugTaskId]
     );
 
     const unresolvedList = await listTaskAccountingHarvests({ limit: 20 });
@@ -316,9 +359,9 @@ async function main() {
     assert.equal(resolvedRow.resolutionNote, resolutionNote);
     assert.deepEqual(
       resolvedList.harvests
-        .filter((row) => [actionableTaskId, noActionTaskId].includes(row.taskId))
+        .filter((row) => smokeTaskIds.includes(row.taskId))
         .map((row) => row.taskId),
-      [noActionTaskId, actionableTaskId],
+      [notBugTaskId, noActionTaskId, actionableTaskId],
       "resolved history is sorted by resolved_at descending"
     );
 

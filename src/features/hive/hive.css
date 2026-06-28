@@ -2462,6 +2462,31 @@
   padding: 18px 24px 24px;
 }
 
+.hive-brain-harvest-report-card {
+  overflow: hidden;
+}
+
+.hive-brain-harvest-report-body .hive-report-body {
+  border: 0;
+  border-top: 1px solid var(--hive-border);
+  border-radius: 0;
+  margin: 0;
+  max-height: 560px;
+  overflow: auto;
+  padding: 18px 24px 24px;
+}
+
+.hive-brain-harvest-report-body .hive-report-body h3 {
+  font-size: 13px;
+  margin-top: 18px;
+}
+
+.hive-brain-harvest-report-body .hive-report-body p,
+.hive-brain-harvest-report-body .hive-report-body li {
+  font-size: 13.5px;
+  line-height: 1.58;
+}
+
 .hive-project-grid,
 .hive-contributor-grid {
   display: grid;

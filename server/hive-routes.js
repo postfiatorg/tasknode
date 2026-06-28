@@ -18,6 +18,7 @@ import { getHiveReport, listHiveReports } from "./repositories/hive-reports.js";
 import {
   accountCanResolveCheckedOutTaskAccountingHarvest,
   checkoutTaskAccountingHarvest,
+  getLatestTaskAccountingHarvestReport,
   getTaskAccountingCheckoutAccess,
   listTaskAccountingHarvestCheckouts,
   listTaskAccountingHarvests,
@@ -783,6 +784,21 @@ async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res,
       taskAccountingCheckoutPermissions({ getLinkedWallet, session }),
     ]);
     json(res, 200, { ...body, permissions });
+    return true;
+  }
+  if (url.pathname === "/api/hive/brain/harvest-report") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "task_accounting_harvest_report_method_not_allowed",
+        message: "Harvest Report supports GET.",
+      });
+      return true;
+    }
+    const body = await getLatestTaskAccountingHarvestReport({
+      generate: !["0", "false", "no"].includes(String(url.searchParams.get("generate") || "true").toLowerCase()),
+    });
+    json(res, body.ok ? 200 : body.status || 500, body);
     return true;
   }
   if (url.pathname === "/api/hive/brain/harvests") {
