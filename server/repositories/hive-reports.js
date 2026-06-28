@@ -972,14 +972,7 @@ async function taskRoutingConstraintsForHiveIntelligence({ limit = 80 } = {}) {
                definition.label AS badge_label,
                badge.evidence_json,
                badge.validated_metrics_json,
-               (
-                 SELECT event.wallet_address
-                 FROM user_observability_events event
-                 WHERE event.account_id = badge.account_id
-                   AND event.wallet_address <> ''
-                 ORDER BY event.occurred_at DESC, event.id DESC
-                 LIMIT 1
-               ) AS wallet_address
+               ''::text AS wallet_address
         FROM account_network_badges badge
         JOIN network_badge_definitions definition
           ON definition.badge_id = badge.badge_id
