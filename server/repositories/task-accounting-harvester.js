@@ -262,6 +262,8 @@ function rowToCheckoutEvent(row = {}) {
 }
 
 const harvestReportBatchSize = 3;
+const harvestReportVersion = 2;
+const harvestReportResolvedDetailLimit = 60;
 
 function compactIdentifier(value = "", head = 12, tail = 8) {
   const text = safeText(value, 180);
@@ -349,17 +351,17 @@ function backlogBluf(summary = {}, rows = []) {
   const checkedOut = Number(summary.checked_out || 0);
   const unresolved = Number(summary.unresolved || 0);
   const resolved = Number(summary.resolved || 0);
-  const covered = rows.length;
+  const detailed = rows.length;
   if (!resolved) {
     return "No harvests have been resolved yet. The backlog still needs real closeouts before a Harvest Report can say what changed.";
   }
   if (!openActionable) {
-    return `The harvest backlog is currently clear of actionable unresolved items. This report covers ${covered} recent closeouts, with ${resolved} harvests resolved overall.`;
+    return `The harvest backlog is currently clear of actionable unresolved items. ${resolved} harvests are resolved overall, with ${detailed} detailed in this report.`;
   }
   if (checkedOut >= openActionable) {
-    return `The backlog is active but owned: ${openActionable} actionable unresolved harvests remain and ${checkedOut} are checked out. This report covers ${covered} recent closeouts.`;
+    return `The backlog is active but owned: ${openActionable} actionable unresolved harvests remain and ${checkedOut} are checked out. ${resolved} harvests are resolved overall, with ${detailed} detailed in this report.`;
   }
-  return `The backlog still needs ownership: ${openActionable} actionable unresolved harvests remain, ${checkedOut} are checked out, and ${Math.max(openActionable - checkedOut, 0)} need an operator. Total unresolved harvests: ${unresolved}.`;
+  return `The backlog still needs ownership: ${openActionable} actionable unresolved harvests remain, ${checkedOut} are checked out, and ${Math.max(openActionable - checkedOut, 0)} need an operator. ${resolved} harvests are resolved overall, with ${detailed} detailed in this report. Total unresolved harvests: ${unresolved}.`;
 }
 
 function takeawayLines(summary = {}, rows = []) {
@@ -374,8 +376,8 @@ function takeawayLines(summary = {}, rows = []) {
   const categoryText = Array.from(categories.entries()).map(([label, count]) => `${label} (${count})`).join(", ") || "none";
   const outcomeText = Array.from(outcomes.entries()).map(([label, count]) => `${label} (${count})`).join(", ") || "none";
   const lines = [
-    `- Recent resolved work clustered around: ${categoryText}.`,
-    `- Closeout outcomes in this batch: ${outcomeText}.`,
+    `- Resolved work detailed here clustered around: ${categoryText}.`,
+    `- Closeout outcomes detailed here: ${outcomeText}.`,
   ];
   if (Number(summary.requires_action || 0) > 0) {
     lines.push(`- Operators should focus next on the ${summary.requires_action} actionable unresolved harvests, especially rows not yet checked out.`);
@@ -388,21 +390,27 @@ function takeawayLines(summary = {}, rows = []) {
 
 function buildHarvestReportMarkdown({ bucket = 0, rows = [], summary = {} } = {}) {
   const start = Math.max(bucket - harvestReportBatchSize + 1, 1);
+  const resolved = Number(summary.resolved || 0);
   const sourceTaskIds = rows.map((row) => safeText(row.task_id, 180)).filter(Boolean);
   const operatorGroups = groupByOperator(rows);
+  const scopeLine = rows.length < resolved
+    ? `This report regenerates every ${harvestReportBatchSize} resolved harvests. It summarizes the full resolved-history state at generation time: ${resolved} resolved harvests overall. To keep the report readable, the detailed issue list shows the latest ${rows.length} resolved harvests. The latest trigger window was resolved harvests ${start}-${bucket}.`
+    : `This report regenerates every ${harvestReportBatchSize} resolved harvests. It summarizes the full resolved-history state at generation time: ${resolved} resolved harvest${resolved === 1 ? "" : "s"} overall. The latest trigger window was resolved harvests ${start}-${bucket}.`;
   const lines = [
     "# Harvest Report",
     "",
     "## Overall BLUF",
     backlogBluf(summary, rows),
     "",
-    `This report covers resolved harvests ${start}-${bucket}: ${sourceTaskIds.join(", ") || "no source task IDs"}.`,
+    scopeLine,
+    "",
+    `Detailed resolved harvest task IDs: ${sourceTaskIds.join(", ") || "no source task IDs"}.`,
     "",
     "## Key Issues Resolved",
-    ...(rows.length ? rows.map(issueLine) : ["- No resolved harvest rows were available for this report bucket."]),
+    ...(rows.length ? rows.map(issueLine) : ["- No resolved harvest rows were available for this report."]),
     "",
     "## Solutions And Deployment",
-    ...(rows.length ? rows.map(solutionLine) : ["- No solutions were recorded because no source rows were available."]),
+    ...(rows.length ? rows.map(solutionLine) : ["- No solutions were recorded because no resolved source rows were available."]),
     "",
     "## Productive Takeaways",
     ...takeawayLines(summary, rows),
@@ -475,8 +483,9 @@ async function latestHarvestReportRow() {
   return result.rows[0] || null;
 }
 
-async function resolvedRowsForHarvestReportBucket(bucket = 0) {
-  const start = Math.max(Number(bucket || 0) - harvestReportBatchSize, 0);
+async function resolvedRowsForHarvestReport({ maxSequence = 0, limit = harvestReportResolvedDetailLimit } = {}) {
+  const safeMaxSequence = Math.max(0, Math.trunc(Number(maxSequence || 0)));
+  const safeLimit = intValue(limit, harvestReportResolvedDetailLimit, { min: 1, max: 200 });
   const result = await query(
     `
       WITH resolved AS (
@@ -560,24 +569,29 @@ async function resolvedRowsForHarvestReportBucket(bucket = 0) {
         ORDER BY agent.active DESC, agent.updated_at DESC, agent.id DESC
         LIMIT 1
       ) checkout_orc ON true
-      WHERE resolved.resolution_seq > $1
-        AND resolved.resolution_seq <= $2
+      WHERE ($1::int = 0 OR resolved.resolution_seq <= $1::int)
       ORDER BY resolved.resolved_at DESC, resolved.task_id DESC
+      LIMIT $2
     `,
-    [start, Number(bucket || 0)]
+    [safeMaxSequence, safeLimit]
   );
   return result.rows;
 }
 
 async function generateTaskAccountingHarvestReportForBucket(bucket = 0, summary = {}) {
   const normalizedBucket = Math.max(0, Math.trunc(Number(bucket || 0)));
-  const rows = await resolvedRowsForHarvestReportBucket(normalizedBucket);
+  const maxSequence = Math.max(Number(summary.resolved || 0), normalizedBucket);
+  const rows = await resolvedRowsForHarvestReport({ maxSequence });
   const sourceTaskIds = rows.map((row) => safeText(row.task_id, 180)).filter(Boolean);
   const bodyMarkdown = buildHarvestReportMarkdown({ bucket: normalizedBucket, rows, summary });
   const reportSummary = {
     ...summary,
+    reportVersion: harvestReportVersion,
+    triggerResolvedCount: normalizedBucket,
     coveredTaskIds: sourceTaskIds,
-    coveredResolvedRows: rows.length,
+    coveredResolvedRows: Number(summary.resolved || rows.length),
+    detailedResolvedRows: rows.length,
+    detailLimit: harvestReportResolvedDetailLimit,
     batchSize: harvestReportBatchSize,
   };
   const result = await query(
@@ -631,6 +645,7 @@ export async function maybeGenerateTaskAccountingHarvestReport({ force = false }
   const targetBucket = Math.floor(Number(summary.resolved || 0) / harvestReportBatchSize) * harvestReportBatchSize;
   const latestRow = await latestHarvestReportRow();
   let latest = harvestReportRow(latestRow);
+  const latestVersion = Number(latest?.summary?.reportVersion || 0);
   if (targetBucket < harvestReportBatchSize) {
     return {
       ok: true,
@@ -641,12 +656,18 @@ export async function maybeGenerateTaskAccountingHarvestReport({ force = false }
       report: latest,
     };
   }
-  if (!force && latest?.reportBucket >= targetBucket) {
+  if (!force && latest?.reportBucket >= targetBucket && latestVersion >= harvestReportVersion) {
     return { ok: true, generated: false, summary, report: latest };
   }
-  const startBucket = latest?.reportBucket >= harvestReportBatchSize
+  let startBucket = latest?.reportBucket >= harvestReportBatchSize && latestVersion >= harvestReportVersion
     ? latest.reportBucket + harvestReportBatchSize
     : harvestReportBatchSize;
+  if (force) {
+    startBucket = targetBucket;
+  }
+  if (latest?.reportBucket >= targetBucket && latestVersion < harvestReportVersion) {
+    startBucket = targetBucket;
+  }
   for (let bucket = startBucket; bucket <= targetBucket; bucket += harvestReportBatchSize) {
     latest = await generateTaskAccountingHarvestReportForBucket(bucket, summary);
   }

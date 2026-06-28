@@ -324,7 +324,19 @@ async function main() {
     const boundaryResolution = resolutionResults[nextReportIn - 1];
     assert.equal(boundaryResolution.harvestReportGenerated, true, "Harvest Report generates at the next three-resolution boundary");
     assert.ok(boundaryResolution.harvestReport?.bodyMarkdown, "generated Harvest Report has markdown");
+    assert.equal(boundaryResolution.harvestReport.summary?.reportVersion, 2, "Harvest Report uses full-history digest format");
+    assert.equal(
+      boundaryResolution.harvestReport.summary?.coveredResolvedRows >= baselineResolvedCount + nextReportIn,
+      true,
+      "Harvest Report summary covers all resolved rows known at generation time"
+    );
     assert.match(boundaryResolution.harvestReport.bodyMarkdown, /## Overall BLUF/);
+    assert.match(boundaryResolution.harvestReport.bodyMarkdown, /summarizes the full resolved-history state/);
+    assert.doesNotMatch(
+      boundaryResolution.harvestReport.bodyMarkdown,
+      /This report covers resolved harvests \d+-\d+:/,
+      "Harvest Report does not misrepresent the three-closeout cadence as the whole report scope"
+    );
     assert.match(boundaryResolution.harvestReport.bodyMarkdown, /## Key Issues Resolved/);
     assert.match(boundaryResolution.harvestReport.bodyMarkdown, /## Solutions And Deployment/);
     assert.match(boundaryResolution.harvestReport.bodyMarkdown, /## Productive Takeaways/);

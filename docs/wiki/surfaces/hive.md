@@ -306,7 +306,10 @@ generated from deterministic row data, not from another LLM call. Every third
 newly resolved harvest creates the next persisted report in
 `task_accounting_harvest_reports`; the report endpoint also catches up missing
 three-resolution buckets if older code closed rows before a report existed. The
-report body stays plain-English and includes:
+three-row boundary is the refresh cadence, not the report scope: each generated
+report summarizes the current resolved-history/backlog state at generation time
+and then lists the latest detailed resolved rows up to the report detail limit.
+The report body stays plain-English and includes:
 
 - Overall BLUF: current unresolved/actionable/checked-out backlog state.
 - Key issues resolved: what concrete problems were identified and actioned by
@@ -316,10 +319,10 @@ report body stays plain-English and includes:
 - Productive takeaways for the current board state and operators.
 - Initiators: who checked out/resolved the rows and what they need to know next.
 
-The Hive Brain overview tab displays the latest Harvest Report directly above
-the general Hive report grid. If fewer than three harvests have ever been
-resolved, the card shows how many more closeouts are needed before the first
-report is generated.
+The Hive Brain overview tab displays the latest Harvest Report as a card inside
+`Reports & generations`, next to the normal Hive reports. If fewer than three
+harvests have ever been resolved, the card shows how many more closeouts are
+needed before the first report is generated.
 
 #### Grashnuk follow-up loop
 

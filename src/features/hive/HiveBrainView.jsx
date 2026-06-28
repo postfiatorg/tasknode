@@ -1012,12 +1012,36 @@ function HarvestReportCard({ packet = null, status = "loading", onRefresh }) {
   );
 }
 
-function ReportsGrid({ latestByType, onOpenReport }) {
+function ReportsGrid({ harvestReport, harvestReportStatus, latestByType, onOpenHarvestReport, onOpenReport }) {
+  const report = harvestReport?.report || null;
+  const pending = Boolean(harvestReport?.pending);
+  const resolvedUntilNext = Number(harvestReport?.resolvedUntilNextReport || 0);
   return (
     <div>
       <div className="hive-brain-section-label">Reports & generations</div>
-      <div className="hive-brain-section-sub">Six human-readable reports feed the Decision Agent. Click any report to read it.</div>
+      <div className="hive-brain-section-sub">Human-readable reports and generated digests. Click any report to read it.</div>
       <div className="hive-brain-report-grid">
+        <button className="hive-brain-report-card" onClick={onOpenHarvestReport} type="button">
+          <div className="hive-brain-report-card-top">
+            <span>Harvest report</span>
+            <Badge variant={report ? "gray" : pending ? "amber" : "red"}>
+              {report ? "every 3" : pending ? "pending" : "missing"}
+            </Badge>
+          </div>
+          <div className="hive-brain-report-take">
+            {report
+              ? reportExcerpt(report)
+              : harvestReportStatus === "loading"
+                ? "Loading Harvest Report."
+                : pending
+                  ? `Harvest Report will generate after ${resolvedUntilNext || 3} more resolved harvest${resolvedUntilNext === 1 ? "" : "s"}.`
+                  : "No Harvest Report generated yet."}
+          </div>
+          <div className="hive-brain-report-foot">
+            <span>{report ? `Updated ${relativeTime(report.generatedAt)}` : "Not generated"}</span>
+            <strong>Open →</strong>
+          </div>
+        </button>
         {reportTabs.map((tab) => {
           const report = latestByType.get(tab.type);
           return (
@@ -1060,11 +1084,6 @@ function OverviewPanel({
     <section className="hive-brain-panel">
       <div className="hive-brain-stack">
         <DecisionCard detail={decisionDetail} loading={decisionLoading} />
-        <HarvestReportCard
-          packet={harvestReport}
-          status={harvestReportStatus}
-          onRefresh={onRefreshHarvestReport}
-        />
         <div className="hive-brain-grid2">
           <DecisionLog runs={runs} selectedRunId={selectedRunId} onSelectRun={onSelectRun} />
           <div className="hive-brain-card hive-brain-pad">
@@ -1086,7 +1105,13 @@ function OverviewPanel({
           status={liveTaskPacketStatus}
           onRefresh={onRefreshLiveTaskPacket}
         />
-        <ReportsGrid latestByType={latestByType} onOpenReport={onOpenReport} />
+        <ReportsGrid
+          harvestReport={harvestReport}
+          harvestReportStatus={harvestReportStatus}
+          latestByType={latestByType}
+          onOpenHarvestReport={() => onOpenReport("harvest-report")}
+          onOpenReport={onOpenReport}
+        />
       </div>
     </section>
   );
@@ -1686,6 +1711,14 @@ export function HiveBrainView() {
             runs={runs}
             selectedRunId={selectedRunId}
           />
+        ) : activeTab === "harvest-report" ? (
+          <section className="hive-brain-panel">
+            <HarvestReportCard
+              packet={harvestReport}
+              status={harvestReportStatus}
+              onRefresh={loadHarvestReport}
+            />
+          </section>
         ) : activeTab === "harvests" ? (
           <HarvestPanel
             checkoutError={harvestCheckoutError}
