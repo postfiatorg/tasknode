@@ -1060,6 +1060,11 @@ function OverviewPanel({
     <section className="hive-brain-panel">
       <div className="hive-brain-stack">
         <DecisionCard detail={decisionDetail} loading={decisionLoading} />
+        <HarvestReportCard
+          packet={harvestReport}
+          status={harvestReportStatus}
+          onRefresh={onRefreshHarvestReport}
+        />
         <div className="hive-brain-grid2">
           <DecisionLog runs={runs} selectedRunId={selectedRunId} onSelectRun={onSelectRun} />
           <div className="hive-brain-card hive-brain-pad">
@@ -1080,11 +1085,6 @@ function OverviewPanel({
           packet={liveTaskPacket}
           status={liveTaskPacketStatus}
           onRefresh={onRefreshLiveTaskPacket}
-        />
-        <HarvestReportCard
-          packet={harvestReport}
-          status={harvestReportStatus}
-          onRefresh={onRefreshHarvestReport}
         />
         <ReportsGrid latestByType={latestByType} onOpenReport={onOpenReport} />
       </div>
