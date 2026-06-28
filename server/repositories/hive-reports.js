@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { getAccountIdentityProfile } from "../runtime-store.js";
 import { getHiveProjectsDocument } from "./hive-projects.js";
+import { getHiveLiveTaskPacket } from "./hive-live-task-packet.js";
+import { getLatestTaskAccountingHarvestReport } from "./task-accounting-harvester.js";
 
 export const hiveReportVersion = "hive_reports.v1";
 
@@ -43,6 +45,12 @@ export const hiveReportTypes = Object.freeze({
     label: "Executive",
     cadenceMs: 24 * 60 * 60 * 1000,
     summary: "Project Leader Hive chat over the past 24 hours.",
+  },
+  hive_intelligence: {
+    type: "hive_intelligence",
+    label: "Hive Intelligence",
+    cadenceMs: 6 * 60 * 60 * 1000,
+    summary: "Strategic network intelligence brief synthesized from Hive reports, Harvest Report, Live Task Packet, and Board Secretary memos.",
   },
 });
 
@@ -785,8 +793,144 @@ function sourceCounts(source = {}) {
   };
 }
 
+const hiveIntelligenceSourceReportTypes = Object.freeze([
+  "operative",
+  "rewarded_task",
+  "kol",
+  "development",
+  "qa",
+  "executive",
+]);
+
+function compactStoredReport(row = {}, { bodyMax = 18000 } = {}) {
+  const type = safeText(row.type, 80);
+  return {
+    id: safeText(row.id, 180),
+    type,
+    label: hiveReportTypes[type]?.label || type,
+    generatedAt: iso(row.generated_at),
+    model: safeText(row.model, 180),
+    bodyMarkdown: safeText(row.body_markdown, bodyMax),
+    metadata: safeObject(row.metadata_json),
+  };
+}
+
+async function latestReportsForHiveIntelligence() {
+  const result = await query(
+    `
+      SELECT *
+      FROM (
+        SELECT report.*,
+               row_number() OVER (
+                 PARTITION BY report.type
+                 ORDER BY report.generated_at DESC, report.id DESC
+               ) AS type_rank
+        FROM hive_reports report
+        WHERE report.type = ANY($1::text[])
+      ) ranked
+      WHERE type_rank = 1
+      ORDER BY array_position($1::text[], type), generated_at DESC, id DESC
+    `,
+    [hiveIntelligenceSourceReportTypes]
+  ).catch(() => ({ rows: [] }));
+  return result.rows.map((row) => compactStoredReport(row, { bodyMax: 16000 }));
+}
+
+async function currentBoardSecretaryMemosForHiveIntelligence({ limit = 40 } = {}) {
+  const result = await query(
+    `
+      SELECT memo.*,
+             project.title AS project_title,
+             project.type AS project_type,
+             project.priority AS project_priority,
+             project.pft_routed AS project_pft_routed,
+             project.task_count AS project_task_count
+      FROM hive_board_secretary_memos memo
+      LEFT JOIN network_projects project
+        ON project.id = memo.project_id
+      WHERE memo.status = 'current'
+        AND memo.superseded_at IS NULL
+      ORDER BY project.priority ASC NULLS LAST, memo.generated_at DESC, memo.id DESC
+      LIMIT $1
+    `,
+    [Math.min(Math.max(Number(limit) || 40, 1), 100)]
+  ).catch(() => ({ rows: [] }));
+  return result.rows.map((row) => ({
+    id: safeText(row.id, 180),
+    projectId: safeText(row.project_id, 180),
+    projectTitle: safeText(row.project_title, 220),
+    projectType: safeText(row.project_type, 120),
+    projectPriority: Number(row.project_priority || 0),
+    projectPftRouted: numeric(row.project_pft_routed),
+    projectTaskCount: Number(row.project_task_count || 0),
+    generatedAt: iso(row.generated_at),
+    model: safeText(row.model, 180),
+    sourceCounts: safeObject(row.source_counts_json),
+    memoMarkdown: safeText(row.memo_markdown, 10000),
+  }));
+}
+
+async function buildHiveIntelligenceReportSourcePacket({ now = new Date() } = {}) {
+  const [
+    upstreamReports,
+    harvestReport,
+    liveTaskPacket,
+    boardSecretaryMemos,
+  ] = await Promise.all([
+    latestReportsForHiveIntelligence(),
+    getLatestTaskAccountingHarvestReport({ generate: true }).catch((error) => ({
+      ok: false,
+      error: safeText(error?.message || "harvest_report_unavailable", 300),
+      report: null,
+    })),
+    getHiveLiveTaskPacket({ limit: 24 }).catch((error) => ({
+      ok: false,
+      error: safeText(error?.message || "live_task_packet_unavailable", 300),
+      packet: null,
+    })),
+    currentBoardSecretaryMemosForHiveIntelligence({ limit: 40 }),
+  ]);
+  const missingReportTypes = hiveIntelligenceSourceReportTypes.filter(
+    (type) => !upstreamReports.some((report) => report.type === type)
+  );
+  const source = {
+    schema: "pf.task_node.hive_intelligence_report_source_packet.v1",
+    type: "hive_intelligence",
+    label: hiveReportTypes.hive_intelligence.label,
+    generatedAt: now.toISOString(),
+    focus: hiveReportTypes.hive_intelligence.summary,
+    northStar: {
+      asset: "PFT",
+      premise: "Post Fiat is a cryptocurrency and the base reward asset of the Hive Mind. Network strategy should increase PFT value by routing rewards toward work that grows community, improves product capability, and shapes useful economic outcomes.",
+      availableActions: [
+        "deploy tasks to members",
+        "send messages to people",
+        "recommend founder-level changes to Task Node or other network assets",
+      ],
+    },
+    sourceReports: upstreamReports,
+    harvestReport: harvestReport?.report || null,
+    liveTaskPacket: liveTaskPacket?.packet || null,
+    boardSecretaryMemos,
+    missingReportTypes,
+  };
+  return {
+    ...source,
+    sourceCounts: {
+      upstreamReportCount: upstreamReports.length,
+      missingReportTypeCount: missingReportTypes.length,
+      boardSecretaryMemoCount: boardSecretaryMemos.length,
+      harvestReportPresent: Boolean(harvestReport?.report),
+      liveTaskPacketContributorCount: safeArray(liveTaskPacket?.packet?.contributors).length,
+    },
+  };
+}
+
 export async function buildHiveReportSourcePacket({ type = "", now = new Date() } = {}) {
   const normalizedType = tableReportType(type);
+  if (normalizedType === "hive_intelligence") {
+    return buildHiveIntelligenceReportSourcePacket({ now });
+  }
   if (!useDatabase()) {
     return {
       schema: "pf.task_node.hive_report_source_packet.v1",

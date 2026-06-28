@@ -70,14 +70,14 @@ Project IDs are part of the product surface. The project detail header should ex
 ## Hive Brain
 
 `Hive Brain` is an operator-only audit tab under the sidebar `More` menu at
-`#hive-brain`. It exposes the current board stack in human terms: the six Hive
+`#hive-brain`. It exposes the current board stack in human terms: the Hive
 Reports, the Decision Agent decision trail, a deterministic Live Task Packet,
 system prompt documentation, and post-reward Task Accounting harvests. Raw
 legacy Board Manager JSON is not the primary operator surface.
 
 The main read APIs are:
 
-- `GET /api/hive/reports?type=&since=` for the six report secretaries
+- `GET /api/hive/reports?type=&since=` for the report secretaries
 - `GET /api/hive/reports/:id` for full report markdown plus verification phases
 - `GET /api/hive/decision/runs` and `GET /api/hive/decision/run/:id` for the
   Decision Agent audit trail
@@ -166,7 +166,7 @@ make them appear missing. Card previews are derived from parsed markdown and
 collapse KPI tables into short text summaries; the full report view renders
 headings, lists, code, horizontal rules, and markdown tables.
 
-Six report builders run from `server/hive-reports-worker.js`:
+Seven report builders run from `server/hive-reports-worker.js`:
 
 - `rewarded_task`, every 20 minutes: per verified badge role, the last rewarded
   Network Tasks with proposal and reward context.
@@ -182,12 +182,20 @@ Six report builders run from `server/hive-reports-worker.js`:
   from QA-role tasks and recent Hive chats that look like product feedback.
 - `executive`, every 24 hours: Project Leader Hive chats from the past 24 hours
   assembled into an executive brief.
+- `hive_intelligence`, every 6 hours: strategic Hive Mind intelligence brief
+  synthesized from all upstream Hive reports, the Harvest Report, the Live Task
+  Packet, and current Board Secretary memos. It evaluates whether reward routing
+  and operator work are likely to increase PFT value, then recommends actions
+  within the board manager action space: deploy tasks, send targeted messages, or
+  recommend founder-level changes.
 
 Report inputs are existing durable facts: `account_network_badges` for roles,
 `task_projections` for active/rewarded Network Tasks, `network_projects` and
 their task mirrors for dynamic projects, and `hive_context_entries` for Hive
 chat. The builders use the configured OpenRouter Hive report model with high
-reasoning effort in production. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
+reasoning effort in production; the `hive_intelligence` builder uses GLM 5.2
+`xhigh` reasoning by default through
+`TASKNODE_HIVE_INTELLIGENCE_REPORT_REASONING_EFFORT`. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
 npm run hive-reports-smoke` exercises the same storage, worker, list/detail,
 and UI-facing shape without spending model tokens.
 
@@ -426,7 +434,7 @@ audit and rollback context until the later decommission phase.
 
 Inputs are:
 
-- latest `hive_reports` documents for all six report types
+- latest `hive_reports` documents for the report set
 - live task state from `task_projections` and pending
   `network_task_generation_jobs`
 - idle eligible contributors from the same badge/capacity predicates used by

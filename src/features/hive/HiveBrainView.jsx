@@ -10,6 +10,14 @@ import "./hive.css";
 
 const reportTabs = [
   {
+    id: "intelligence",
+    type: "hive_intelligence",
+    label: "Intelligence",
+    title: "Hive Intelligence report",
+    cadence: "6h",
+    summary: "Strategic Hive Mind brief synthesizing all reports into PFT value judgments and action recommendations.",
+  },
+  {
     id: "operative",
     type: "operative",
     label: "Operative",
@@ -110,6 +118,21 @@ const reportPromptByType = {
     "Assemble Project Leader Hive chat from the last 24h into an executive brief.",
     "Preserve who said what, project implications, unresolved decisions, and concrete next actions.",
   ],
+  hive_intelligence: [
+    "Write a strategic intelligence brief for the Hive Mind, not a status report.",
+    "The north star is increasing the value of PFT, the Post Fiat cryptocurrency and base reward asset of the Hive Mind.",
+    "Ground the analysis in reward value: if PFT is being paid for work that is unlikely to increase PFT value, say so plainly and recommend corrective action.",
+    "Reference operators by handle, wallet, and account when available in the packet.",
+    "Stay within roughly 2-3 single-spaced pages. Be concise but do not truncate the brief or end with an unfinished section.",
+    "Use these top-level sections in this order:",
+    "A] Classification: state exactly `Public, Hive Mind`.",
+    "B] Title and Key Question: make the title/key question reflect the current network state and dynamics around increasing PFT Network value.",
+    "C] BLUF / Key Judgments: bullets that state the bottom-line assessment and so-what. Each judgment must include a confidence level (High, Moderate, or Low), probability language (almost certainly, likely, unlikely, etc.), and the main source of uncertainty.",
+    "D] Scope / Note / Context: describe which reports flowed into the intelligence brief: Operative, Rewarded Task, KOL, Development, QA, Executive, Harvest Report, Live Task Packet, and Board Secretary memos.",
+    "E] Discussion / Analysis: build a logical argument from the packet evidence. Clearly distinguish confirmed fact, analytic estimate, and assumption. Include objections, rebuttals, or alternative hypotheses where material.",
+    "F] Implications / Outlook: consequences, second/third-order effects, what to watch, what could change the conclusion, and concrete actions in the available action space.",
+    "Available action space is: deploy tasks to members, send messages to people, or recommend founder-level changes to Task Node or other network assets.",
+  ],
 };
 
 const reportWriterSystemPrompt = [
@@ -128,7 +151,7 @@ function reportPromptText(tab = {}) {
     "Include relevant counts and KPIs when present in the source packet.",
     "Call out uncertainty and missing evidence instead of inventing facts.",
     "Projects are dynamic; do not assume a fixed project list.",
-    "Do not change or recommend reward policy, clawbacks, bans, or enforcement execution.",
+    "Do not recommend clawbacks, bans, or enforcement execution. Reward routing, task strategy, and founder-level network recommendations are allowed when tied to evidence.",
     ...(reportPromptByType[tab.type] || []),
     "This is the initial phase. Produce the best report possible from the source packet.",
   ].join("\n");
@@ -167,9 +190,9 @@ const boardSystemDocs = [
     model: "z-ai/glm-5.2",
     promptPath: "server/hive-report-provider.js generated prompt",
     prompt: reportWriterSystemPrompt,
-    reads: "Verified badges, live task state, rewarded task history, Hive chat, and dynamic projects.",
-    writes: "Six human-readable Markdown reports used as primary Decision Agent inputs.",
-    body: "This replaces raw packet reading with operator-readable reports. KOL and Development reports run a verifier pass before the final report is stored.",
+    reads: "Verified badges, live task state, rewarded task history, Hive chat, dynamic projects, Harvest Report, Live Task Packet, and Board Secretary memos.",
+    writes: "Human-readable Markdown reports used as primary Decision Agent inputs, including the 6-hour Hive Intelligence Report.",
+    body: "This replaces raw packet reading with operator-readable reports. KOL and Development reports run a verifier pass before the final report is stored; Hive Intelligence synthesizes the report set into strategy.",
   },
   {
     title: "Task Accounting Harvester",
@@ -191,7 +214,7 @@ const boardSystemDocs = [
     model: "z-ai/glm-5.2",
     promptPath: "prompts/hive/hive_decision_agent_v1.md",
     prompt: hiveDecisionAgentPrompt,
-    reads: "The six reports, live task state, board discussions, idle eligible contributors, and dedup index.",
+    reads: "The Hive report set, live task state, board discussions, idle eligible contributors, and dedup index.",
     writes: "One guarded board action plus explanation, options considered, and audit metadata.",
     body: "The active board brain. It can create tasks, message users, cancel tasks, create/archive boards, or do nothing. Mutations still pass through guardrails and the adapter.",
   },
@@ -1212,7 +1235,7 @@ function SystemDocsPanel() {
   const flow = [
     ["01", "Hive Context", "Operator chat, task state, role badges, projects, and network evidence enter the board memory layer."],
     ["02", "Secretary", "The Hive Secretary summarizes the context into structured project signals."],
-    ["03", "Projects + Reports", "The project planner refreshes board cards while six report secretaries produce human-readable Markdown."],
+    ["03", "Projects + Reports", "The project planner refreshes board cards while seven report secretaries produce human-readable Markdown."],
     ["04", "Verification", "KOL links and development repo references get deterministic checks before final reports are stored."],
     ["05", "Task Accounting", "Rewarded Network Tasks are harvested after reward into action/no-action accounting rows."],
     ["06", "Decision Agent", "The router reads reports, live task state, discussions, candidates, and dedup data before one guarded action."],
@@ -1226,13 +1249,13 @@ function SystemDocsPanel() {
             <h2>Reports first, then one guarded decision.</h2>
             <p>
               Hive Brain is the operator-facing audit surface for the current board stack. The system turns raw Hive
-              context into project cards and six Markdown reports, verifies the evidence that can be checked
+              context into project cards and seven Markdown reports, verifies the evidence that can be checked
               mechanically, then asks the Decision Agent for a single auditable action.
             </p>
           </div>
           <div className="hive-brain-system-summary">
             <span><strong>4</strong><small>LLM stages</small></span>
-            <span><strong>6</strong><small>report secretaries</small></span>
+            <span><strong>7</strong><small>report secretaries</small></span>
             <span><strong>2</strong><small>deterministic verifiers</small></span>
             <span><strong>1</strong><small>guarded action</small></span>
           </div>
@@ -1667,12 +1690,12 @@ export function HiveBrainView() {
           <div className="hive-brain-head-meta">
             <div>Decision Agent <b>{latestRun.startedAt ? `ran ${relativeTime(latestRun.startedAt)}` : "not loaded"}</b></div>
             <div>Latest action <b>{formatAction(latestRun.selectedAction || latestRun.status)}</b></div>
-            <div>Report set <b>{readyTypeCount}/6 ready</b></div>
+            <div>Report set <b>{readyTypeCount}/{reportTabs.length} ready</b></div>
           </div>
         </header>
 
         <div className="hive-brain-kpis">
-          <Kpi label="Report types" sub={reportStatus === "error" ? "load failed" : "primary inputs"} value={`${readyTypeCount}/6`} />
+          <Kpi label="Report types" sub={reportStatus === "error" ? "load failed" : "primary inputs"} value={`${readyTypeCount}/${reportTabs.length}`} />
           <Kpi label="Recent reports" sub="loaded" value={reports.length} />
           <Kpi label="Active projects" sub={projectStatus === "error" ? "unavailable" : "routing boards"} value={projectStatus === "ready" ? projectStats.activeProjects || 0 : "—"} />
           <Kpi label="Open tasks" sub="active rows" value={projectStatus === "ready" ? projectStats.tasksInFlight || 0 : "—"} />

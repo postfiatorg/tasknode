@@ -24,7 +24,10 @@ export function hiveReportModel() {
   return safeText(process.env.TASKNODE_HIVE_REPORT_MODEL || process.env.TASKNODE_BOARD_MANAGER_MODEL || defaultReportModel, 160);
 }
 
-function hiveReportReasoningEffort() {
+function hiveReportReasoningEffort(type = "") {
+  if (type === "hive_intelligence") {
+    return safeText(process.env.TASKNODE_HIVE_INTELLIGENCE_REPORT_REASONING_EFFORT || "xhigh", 40);
+  }
   return safeText(process.env.TASKNODE_HIVE_REPORT_REASONING_EFFORT || "high", 40);
 }
 
@@ -64,7 +67,7 @@ function reportInstructions(type = "", phase = "initial") {
     "Include relevant counts and KPIs when present in the source packet.",
     "Call out uncertainty and missing evidence instead of inventing facts.",
     "Projects are dynamic; do not assume a fixed project list.",
-    "Do not change or recommend reward policy, clawbacks, bans, or enforcement execution.",
+    "Do not recommend clawbacks, bans, or enforcement execution. Reward routing, task strategy, and founder-level network recommendations are allowed when tied to evidence.",
   ];
   const byType = {
     rewarded_task: [
@@ -90,6 +93,21 @@ function reportInstructions(type = "", phase = "initial") {
     executive: [
       "Assemble Project Leader Hive chat from the last 24h into an executive brief.",
       "Preserve who said what, project implications, unresolved decisions, and concrete next actions.",
+    ],
+    hive_intelligence: [
+      "Write a strategic intelligence brief for the Hive Mind, not a status report.",
+      "The north star is increasing the value of PFT, the Post Fiat cryptocurrency and base reward asset of the Hive Mind.",
+      "Ground the analysis in reward value: if PFT is being paid for work that is unlikely to increase PFT value, say so plainly and recommend corrective action.",
+      "Reference operators by handle, wallet, and account when available in the packet.",
+      "Stay within roughly 2-3 single-spaced pages. Be concise but do not truncate the brief or end with an unfinished section.",
+      "Use these top-level sections in this order:",
+      "A] Classification: state exactly `Public, Hive Mind`.",
+      "B] Title and Key Question: make the title/key question reflect the current network state and dynamics around increasing PFT Network value.",
+      "C] BLUF / Key Judgments: bullets that state the bottom-line assessment and so-what. Each judgment must include a confidence level (High, Moderate, or Low), probability language (almost certainly, likely, unlikely, etc.), and the main source of uncertainty.",
+      "D] Scope / Note / Context: describe which reports flowed into the intelligence brief: Operative, Rewarded Task, KOL, Development, QA, Executive, Harvest Report, Live Task Packet, and Board Secretary memos.",
+      "E] Discussion / Analysis: build a logical argument from the packet evidence. Clearly distinguish confirmed fact, analytic estimate, and assumption. Include objections, rebuttals, or alternative hypotheses where material.",
+      "F] Implications / Outlook: consequences, second/third-order effects, what to watch, what could change the conclusion, and concrete actions in the available action space.",
+      "Available action space is: deploy tasks to members, send messages to people, or recommend founder-level changes to Task Node or other network assets.",
     ],
   };
   const phaseInstructions = phase === "final"
@@ -117,7 +135,7 @@ function reportMessages({ type = "", sourcePacket = {}, phase = "initial", initi
     verifierSummary ? ["VERIFIER SUMMARY", verifierSummary].join("\n") : "",
     "SOURCE PACKET",
     "```json",
-    compactJson(sourcePacket),
+    compactJson(sourcePacket, type === "hive_intelligence" ? 180_000 : 70_000),
     "```",
   ].filter(Boolean).join("\n\n");
   return [
@@ -138,6 +156,34 @@ function openRouterUsage(body = {}) {
 }
 
 function mockMarkdownReport({ type = "", sourcePacket = {}, phase = "initial", verifierSummary = "" } = {}) {
+  if (type === "hive_intelligence") {
+    const counts = safeObject(sourcePacket.sourceCounts);
+    return markdownBody([
+      "# Hive Intelligence Report",
+      "",
+      "## A] Classification",
+      "Public, Hive Mind",
+      "",
+      "## B] Title And Key Question",
+      "Title: PFT Network Value From Current Hive Work",
+      "",
+      "Key Question: Are current rewards, operators, and board tactics likely to increase the value of PFT?",
+      "",
+      "## C] BLUF / Key Judgments",
+      `- The intelligence pipeline is live and has ${counts.upstreamReportCount || 0} upstream reports available. Confidence: High; this is almost certainly true because the source packet contains the generated report inventory. Uncertainty: mock mode does not evaluate live report quality.`,
+      "- Reward routing should be judged by whether it creates product capability, community growth, or useful economic outcomes for PFT. Confidence: Moderate; this is likely the correct north star because it follows the stated network premise. Uncertainty: mock mode cannot price downstream market impact.",
+      "",
+      "## D] Scope / Note / Context",
+      "This mock intelligence brief validates the Hive Intelligence Report pipeline from upstream Hive reports, Harvest Report, Live Task Packet, and Board Secretary memos.",
+      "",
+      "## E] Discussion / Analysis",
+      "Confirmed fact: the source packet assembled the upstream reports and generated a Markdown brief. Analytic estimate: future production reports should focus on whether PFT rewards are producing value-accretive outputs. Alternative hypothesis: more task volume alone could matter, but that is weaker unless the tasks create visible product, community, or economic utility.",
+      "",
+      "## F] Implications / Outlook",
+      "Watch whether rewarded work maps to shipped product improvements, useful network growth, and operator accountability. The Board Manager action space should prioritize task deployment, targeted messages, and founder recommendations that tighten reward-value alignment.",
+      verifierSummary ? ["", "## Verification", verifierSummary].join("\n") : "",
+    ].filter(Boolean).join("\n"));
+  }
   const label = hiveReportTypes[type]?.label || type;
   const counts = safeObject(sourcePacket.sourceCounts);
   const generatedAt = safeText(sourcePacket.generatedAt, 80) || new Date().toISOString();
@@ -178,7 +224,7 @@ export async function generateHiveReportMarkdown({
     return {
       bodyMarkdown: mockMarkdownReport({ type, sourcePacket, phase, verifierSummary }),
       provider: "mock",
-      model: "mock-glm-high-thinking",
+      model: type === "hive_intelligence" ? "mock-glm-xhigh-thinking" : "mock-glm-high-thinking",
       responseId: `mock_hive_report_${type}_${phase}`,
       promptDigest: promptDigest(reportInstructions(type, phase)),
       usage: {
@@ -216,12 +262,12 @@ export async function generateHiveReportMarkdown({
       body: JSON.stringify({
         model,
         messages,
-        reasoning: { effort: hiveReportReasoningEffort() },
+        reasoning: { effort: hiveReportReasoningEffort(type) },
         provider: {
           data_collection: "deny",
         },
         temperature: 0.2,
-        max_tokens: Math.max(3000, Number(process.env.TASKNODE_HIVE_REPORT_MAX_TOKENS || 9000)),
+        max_tokens: Math.max(3000, Number(process.env.TASKNODE_HIVE_REPORT_MAX_TOKENS || (type === "hive_intelligence" ? 10000 : 9000))),
         usage: { include: true },
         metadata: {
           app: "tasknodeofficial",

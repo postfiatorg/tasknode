@@ -99,6 +99,7 @@ const migrations = [
   "090_hive_live_task_packet_indexes.sql",
   "091_hive_board_secretary_memos.sql",
   "092_task_accounting_harvest_reports.sql",
+  "093_hive_intelligence_report_type.sql",
 ];
 
 let migrated = false;
