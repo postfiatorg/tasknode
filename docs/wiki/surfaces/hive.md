@@ -189,6 +189,13 @@ Seven report builders run from `server/hive-reports-worker.js`:
   within the board manager action space: deploy tasks, send targeted messages, or
   recommend founder-level changes.
 
+The Hive Intelligence source packet also includes deterministic task-routing
+constraints: active task badge requirements plus operators grouped by verified
+badge. Concrete task deployment or reassignment recommendations must use those
+constraints. The report must not infer that an operator can receive a task from
+profile text, point-person status, prior rewards, or general skill signals when
+the task requires a different badge.
+
 Report inputs are existing durable facts: `account_network_badges` for roles,
 `task_projections` for active/rewarded Network Tasks, `network_projects` and
 their task mirrors for dynamic projects, and `hive_context_entries` for Hive

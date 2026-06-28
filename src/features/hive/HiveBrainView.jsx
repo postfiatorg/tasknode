@@ -132,6 +132,8 @@ const reportPromptByType = {
     "E] Discussion / Analysis: build a logical argument from the packet evidence. Clearly distinguish confirmed fact, analytic estimate, and assumption. Include objections, rebuttals, or alternative hypotheses where material.",
     "F] Implications / Outlook: consequences, second/third-order effects, what to watch, what could change the conclusion, and concrete actions in the available action space.",
     "Available action space is: deploy tasks to members, send messages to people, or recommend founder-level changes to Task Node or other network assets.",
+    "Concrete task deployment or reassignment recommendations must obey SOURCE PACKET taskRoutingConstraints. If a task has requiredBadgeId or operatingBadgeId, recommend only operators listed in that task's eligibleReplacementOperators or in eligibleOperatorsByBadge for the required badge.",
+    "Never infer task eligibility from profile text, point-person status, prior rewarded tasks, skills, wallet history, or general operator quality. If a high-quality operator lacks the required badge, recommend a message, a new correctly scoped task, or a founder-level badge/policy change instead of assigning the task to them.",
   ],
 };
 

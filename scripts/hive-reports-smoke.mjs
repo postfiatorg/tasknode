@@ -3,7 +3,13 @@
 import assert from "node:assert/strict";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool, query } from "../server/db/pool.js";
-import { getHiveReport, hiveReportTypeIds, listHiveReports, saveHiveReport } from "../server/repositories/hive-reports.js";
+import {
+  buildHiveReportSourcePacket,
+  getHiveReport,
+  hiveReportTypeIds,
+  listHiveReports,
+  saveHiveReport,
+} from "../server/repositories/hive-reports.js";
 import { runHiveReportsWorkerOnce } from "../server/hive-reports-worker.js";
 
 process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK = "true";
@@ -18,6 +24,19 @@ const cleanupIds = [];
 
 try {
   await migrateDatabase({ force: true });
+  const intelligenceSource = await buildHiveReportSourcePacket({
+    type: "hive_intelligence",
+    now: new Date("2026-06-25T12:00:00.000Z"),
+  });
+  assert.equal(
+    intelligenceSource.taskRoutingConstraints?.schema,
+    "pf.task_node.hive_intelligence_task_routing_constraints.v1",
+    "intelligence report source includes deterministic task routing constraints"
+  );
+  assert.ok(
+    intelligenceSource.taskRoutingConstraints.rules.some((rule) => rule.includes("requiredBadgeId")),
+    "task routing constraints tell the report to obey required badges"
+  );
   const result = await runHiveReportsWorkerOnce({
     types: hiveReportTypeIds,
     force: true,

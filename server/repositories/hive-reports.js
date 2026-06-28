@@ -870,12 +870,179 @@ async function currentBoardSecretaryMemosForHiveIntelligence({ limit = 40 } = {}
   }));
 }
 
+function badgeHandleFromEvidence(row = {}) {
+  const evidence = safeObject(row.evidence_json || row.evidence);
+  const nestedEvidence = safeObject(evidence.evidence);
+  const metrics = safeObject(row.validated_metrics_json || row.metrics);
+  return firstText(
+    row.public_handle,
+    row.provider_handle,
+    nestedEvidence.handle,
+    nestedEvidence.githubHandle,
+    nestedEvidence.xHandle,
+    nestedEvidence.username,
+    evidence.handle,
+    evidence.githubHandle,
+    evidence.xHandle,
+    evidence.username,
+    metrics.handle,
+    metrics.githubHandle,
+    metrics.xHandle,
+    metrics.username
+  ).replace(/^@+/, "");
+}
+
+function compactBadgeOperator(row = {}) {
+  const handle = badgeHandleFromEvidence(row);
+  return {
+    accountId: safeText(row.account_id, 180),
+    handle: handle ? `@${handle}` : "",
+    walletAddress: safeText(row.wallet_address, 120),
+    badgeId: safeText(row.badge_id, 80),
+    badgeLabel: safeText(row.badge_label || row.label, 120),
+  };
+}
+
+async function taskRoutingConstraintsForHiveIntelligence({ limit = 80 } = {}) {
+  const rules = [
+    "Task deployment or reassignment recommendations must obey the task requiredBadgeId and operatingBadgeId.",
+    "Only recommend a named operator for a task when that operator is listed as badge-eligible for the task's required badge in this packet.",
+    "Do not infer badge eligibility from profile text, project point-person status, prior rewards, skills, or wallet history.",
+    "If the desired operator is not badge-eligible, recommend a message, a new correctly scoped task, or a founder-level badge/policy change instead of deploying the task to that operator.",
+  ];
+  if (!useDatabase()) {
+    return {
+      schema: "pf.task_node.hive_intelligence_task_routing_constraints.v1",
+      rules,
+      activeTaskRequirements: [],
+      eligibleOperatorsByBadge: {},
+    };
+  }
+  const safeLimit = Math.min(Math.max(Number(limit) || 80, 1), 120);
+  const [taskRows, badgeRows] = await Promise.all([
+    query(
+      `
+        SELECT tp.task_id,
+               tp.title,
+               tp.status,
+               tp.account_id,
+               tp.subject_wallet,
+               tp.reward_offer_pft,
+               tp.updated_at,
+               COALESCE(refs.project_id, tp.metadata_json #>> '{generatedTask,network_task,project_id}', '') AS project_id,
+               project.title AS project_title,
+               COALESCE(
+                 tp.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
+                 tp.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
+                 tp.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,requiredBadge}',
+                 tp.metadata_json #>> '{taskgen,network_taskgen_v2_gate,requiredBadge}',
+                 tp.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
+                 tp.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
+                 ''
+               ) AS required_badge_id,
+               COALESCE(
+                 tp.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
+                 tp.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
+                 tp.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,operatingBadge}',
+                 tp.metadata_json #>> '{taskgen,network_taskgen_v2_gate,operatingBadge}',
+                 tp.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
+                 tp.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
+                 ''
+               ) AS operating_badge_id
+        FROM task_projections tp
+        LEFT JOIN network_project_task_refs refs
+          ON refs.task_id = tp.task_id
+        LEFT JOIN network_projects project
+          ON project.id = COALESCE(refs.project_id, tp.metadata_json #>> '{generatedTask,network_task,project_id}', '')
+        WHERE tp.status IN ('proposed', 'accepted', 'submitted', 'verification_requested', 'verification_response_submitted', 'reward_decided')
+          AND (
+            tp.task_kind = 'network'
+            OR refs.id IS NOT NULL
+            OR tp.metadata_json #>> '{generatedTask,network_task,task_class}' = 'network'
+          )
+        ORDER BY tp.updated_at DESC NULLS LAST, tp.task_id ASC
+        LIMIT $1
+      `,
+      [safeLimit]
+    ).catch(() => ({ rows: [] })),
+    query(
+      `
+        SELECT badge.account_id,
+               badge.badge_id,
+               definition.label AS badge_label,
+               badge.evidence_json,
+               badge.validated_metrics_json,
+               (
+                 SELECT event.wallet_address
+                 FROM user_observability_events event
+                 WHERE event.account_id = badge.account_id
+                   AND event.wallet_address <> ''
+                 ORDER BY event.occurred_at DESC, event.id DESC
+                 LIMIT 1
+               ) AS wallet_address
+        FROM account_network_badges badge
+        JOIN network_badge_definitions definition
+          ON definition.badge_id = badge.badge_id
+        WHERE badge.status = 'verified'
+          AND badge.revoked_at IS NULL
+          AND (badge.expires_at IS NULL OR badge.expires_at > now())
+        ORDER BY badge.badge_id ASC, badge.account_id ASC
+      `
+    ).catch(() => ({ rows: [] })),
+  ]);
+  const operatorsByBadge = new Map();
+  for (const row of badgeRows.rows) {
+    const badgeId = safeText(row.badge_id, 80);
+    if (!badgeId) continue;
+    if (!operatorsByBadge.has(badgeId)) operatorsByBadge.set(badgeId, []);
+    const operator = compactBadgeOperator(row);
+    const existing = operatorsByBadge.get(badgeId);
+    if (!existing.some((item) => item.accountId === operator.accountId)) existing.push(operator);
+  }
+  const eligibleOperatorsByBadge = Object.fromEntries(
+    Array.from(operatorsByBadge.entries()).map(([badgeId, operators]) => [badgeId, operators.slice(0, 40)])
+  );
+  const activeTaskRequirements = taskRows.rows.map((row) => {
+    const requiredBadgeId = safeText(row.required_badge_id, 80);
+    const operatingBadgeId = safeText(row.operating_badge_id || requiredBadgeId, 80);
+    const currentAccountId = safeText(row.account_id, 180);
+    const eligibleOperators = requiredBadgeId ? operatorsByBadge.get(requiredBadgeId) || [] : [];
+    return {
+      taskId: safeText(row.task_id, 180),
+      title: safeText(row.title, 220),
+      status: safeText(row.status, 80),
+      projectId: safeText(row.project_id, 180),
+      projectTitle: safeText(row.project_title, 220),
+      rewardOfferPft: numeric(row.reward_offer_pft),
+      requiredBadgeId,
+      operatingBadgeId,
+      currentAssignee: {
+        accountId: currentAccountId,
+        walletAddress: safeText(row.subject_wallet, 120),
+      },
+      eligibleReplacementOperators: eligibleOperators
+        .filter((operator) => operator.accountId && operator.accountId !== currentAccountId)
+        .slice(0, 16),
+      eligibilityNote: requiredBadgeId
+        ? "Badge eligibility only; final routing must still enforce capacity, wallet, and current-task blockers."
+        : "No required badge was extracted; do not recommend named reassignment without a routing executor check.",
+    };
+  });
+  return {
+    schema: "pf.task_node.hive_intelligence_task_routing_constraints.v1",
+    rules,
+    activeTaskRequirements,
+    eligibleOperatorsByBadge,
+  };
+}
+
 async function buildHiveIntelligenceReportSourcePacket({ now = new Date() } = {}) {
   const [
     upstreamReports,
     harvestReport,
     liveTaskPacket,
     boardSecretaryMemos,
+    taskRoutingConstraints,
   ] = await Promise.all([
     latestReportsForHiveIntelligence(),
     getLatestTaskAccountingHarvestReport({ generate: true }).catch((error) => ({
@@ -889,6 +1056,7 @@ async function buildHiveIntelligenceReportSourcePacket({ now = new Date() } = {}
       packet: null,
     })),
     currentBoardSecretaryMemosForHiveIntelligence({ limit: 40 }),
+    taskRoutingConstraintsForHiveIntelligence({ limit: 80 }),
   ]);
   const missingReportTypes = hiveIntelligenceSourceReportTypes.filter(
     (type) => !upstreamReports.some((report) => report.type === type)
@@ -912,6 +1080,7 @@ async function buildHiveIntelligenceReportSourcePacket({ now = new Date() } = {}
     harvestReport: harvestReport?.report || null,
     liveTaskPacket: liveTaskPacket?.packet || null,
     boardSecretaryMemos,
+    taskRoutingConstraints,
     missingReportTypes,
   };
   return {
@@ -920,6 +1089,7 @@ async function buildHiveIntelligenceReportSourcePacket({ now = new Date() } = {}
       upstreamReportCount: upstreamReports.length,
       missingReportTypeCount: missingReportTypes.length,
       boardSecretaryMemoCount: boardSecretaryMemos.length,
+      constrainedActiveTaskCount: safeArray(taskRoutingConstraints?.activeTaskRequirements).length,
       harvestReportPresent: Boolean(harvestReport?.report),
       liveTaskPacketContributorCount: safeArray(liveTaskPacket?.packet?.contributors).length,
     },
