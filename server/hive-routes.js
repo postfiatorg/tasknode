@@ -13,6 +13,7 @@ import {
   getHiveBrainRunDetail,
   listHiveBrainRuns,
 } from "./repositories/hive-brain.js";
+import { getHiveLiveTaskPacket } from "./repositories/hive-live-task-packet.js";
 import { getHiveReport, listHiveReports } from "./repositories/hive-reports.js";
 import {
   accountCanResolveCheckedOutTaskAccountingHarvest,
@@ -23,12 +24,17 @@ import {
   resolveTaskAccountingHarvest,
 } from "./repositories/task-accounting-harvester.js";
 import { getHiveDecisionRun, listHiveDecisionRuns } from "./repositories/hive-decision-agent.js";
-import { getHiveProjectsDocument, getPublicHiveTaskDetail } from "./repositories/hive-projects.js";
+import {
+  applyHiveProjectsViewerContext,
+  getHiveProjectsDocument,
+  getPublicHiveTaskDetail,
+} from "./repositories/hive-projects.js";
 import {
   enqueueHiveSecretaryJob,
   getHiveContextDocument,
   getHiveSecretaryState,
   markHiveContextEntriesWalletValidated,
+  normalizeHiveProjectCommentMetadata,
   saveHiveContextEntry,
 } from "./repositories/hive-context.js";
 import { getAccountIdentityProfile } from "./runtime-store.js";
@@ -101,32 +107,18 @@ function hiveProjectsViewerContext({ getLinkedWallet, session } = {}) {
   };
 }
 
-function hiveProjectsCacheKeyForViewer(viewer = {}) {
-  if (viewer.accountId) return `hive_projects:v1:account:${viewer.accountId}`;
-  if (viewer.walletAddress) return `hive_projects:v1:wallet:${viewer.walletAddress.toLowerCase()}`;
-  return "hive_projects:v1";
+function hiveProjectsBodyForViewer(body = {}, viewer = {}) {
+  if (!viewer.accountId && !viewer.walletAddress) return body;
+  return {
+    ...body,
+    document: applyHiveProjectsViewerContext(body.document || {}, {
+      viewerAccountId: viewer.accountId,
+      viewerWalletAddress: viewer.walletAddress,
+    }),
+  };
 }
 
-function readHiveProjectsBody({ getLinkedWallet, pathname, session }) {
-  const viewer = hiveProjectsViewerContext({ getLinkedWallet, session });
-  if (viewer.accountId || viewer.walletAddress) {
-    return getCachedHiveRead({
-      cacheKey: hiveProjectsCacheKeyForViewer(viewer),
-      compute: async () => ({
-        ok: true,
-        document: await getHiveProjectsDocument({
-          viewerAccountId: viewer.accountId,
-          viewerWalletAddress: viewer.walletAddress,
-        }),
-      }),
-      isSafe: (value) => hiveReadResponseIsCacheSafe({
-        pathname,
-        session,
-        value,
-      }),
-    });
-  }
-
+function readSharedHiveProjectsBody({ pathname }) {
   const now = Date.now();
   const retryDelayMs = 15_000;
   if (!pendingHiveProjectsRead && (!lastHiveProjectsFailureAt || now - lastHiveProjectsFailureAt > retryDelayMs)) {
@@ -138,7 +130,7 @@ function readHiveProjectsBody({ getLinkedWallet, pathname, session }) {
       }),
       isSafe: (value) => hiveReadResponseIsCacheSafe({
         pathname,
-        session,
+        session: null,
         value,
       }),
     })
@@ -169,6 +161,12 @@ function readHiveProjectsBody({ getLinkedWallet, pathname, session }) {
       reason: lastHiveProjectsBody ? "hive_projects_stale_while_refreshing" : "hive_projects_refreshing",
     }),
   ]);
+}
+
+async function readHiveProjectsBody({ getLinkedWallet, pathname, session }) {
+  const viewer = hiveProjectsViewerContext({ getLinkedWallet, session });
+  const body = await readSharedHiveProjectsBody({ pathname });
+  return hiveProjectsBodyForViewer(body, viewer);
 }
 
 function safeText(value = "", max = 1000) {
@@ -280,11 +278,22 @@ async function saveHiveChatMessage({
   agentOrigin = null,
 } = {}) {
   const body = safeText(payload?.body || payload?.message || "", 24_000);
+  const projectComment = normalizeHiveProjectCommentMetadata(
+    payload?.projectComment ||
+      payload?.boardComment ||
+      payload?.metadata?.projectComment ||
+      payload?.metadata?.boardComment ||
+      {}
+  );
   const sourceConversationId = safeText(
-    payload?.conversationId || hiveConversationIdForAccount(session.accountId),
+    projectComment ? "" : payload?.conversationId || hiveConversationIdForAccount(session.accountId),
     180
   );
-  const sourceConversationTitle = safeText(payload?.conversationTitle || "", 160);
+  const sourceConversationTitle = safeText(
+    payload?.conversationTitle ||
+      (projectComment ? `Hive board: ${projectComment.projectName || projectComment.projectId}` : ""),
+    160
+  );
   const attachments = safeAttachments(payload?.attachments || []);
   const hiveContextAttachments = hiveContextAttachmentSummaries(attachments);
   const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
@@ -308,9 +317,10 @@ async function saveHiveChatMessage({
     attachments: hiveContextAttachments,
     metadata: {
       ...trustedAgentMetadata,
-      kind: "hive_input",
-      source: "user_chat",
+      kind: projectComment ? "hive_project_comment" : "hive_input",
+      source: projectComment ? "project_board" : "user_chat",
       walletValidated: Boolean(linkedWallet?.address),
+      ...(projectComment ? { projectComment } : {}),
     },
   });
   const secretary = linkedWallet?.address
@@ -331,6 +341,7 @@ async function saveHiveChatMessage({
     sourceRoute,
     metadata: {
       entryId: entry.id,
+      projectComment: projectComment || undefined,
       sourceConversationTitlePresent: Boolean(sourceConversationTitle),
       walletValidated: Boolean(linkedWallet?.address),
       secretaryQueued: secretary?.queued === true,
@@ -791,6 +802,21 @@ async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res,
       taskAccountingCheckoutPermissions({ getLinkedWallet, session }),
     ]);
     json(res, 200, { ...body, permissions });
+    return true;
+  }
+  if (url.pathname === "/api/hive/brain/live-task-packet") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_live_task_packet_method_not_allowed",
+        message: "Live Task Packet supports GET.",
+      });
+      return true;
+    }
+    const body = await getHiveLiveTaskPacket({
+      limit: url.searchParams.get("limit") || 24,
+    });
+    json(res, body.ok ? 200 : body.status || 500, body);
     return true;
   }
   if (url.pathname === "/api/hive/brain/runs") {

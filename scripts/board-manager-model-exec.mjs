@@ -44,10 +44,19 @@ function oldBoardManagerExecutionEnabled() {
     process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE !== "true";
 }
 
+function legacyBoardManagerDisabled() {
+  return process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" && !hasArg("--force-legacy");
+}
+
 function legacyBoardManagerDecommissioned() {
   return process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true" &&
     process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" &&
     !hasArg("--force-legacy");
+}
+
+function normalizeProvider(value = "openrouter") {
+  if (process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "openrouter";
+  return String(value || "").toLowerCase() === "openai" ? "openai" : "openrouter";
 }
 
 function usage() {
@@ -112,7 +121,7 @@ async function main() {
 
   const trigger = argValue("--trigger", "manual_model_exec");
   const scope = argValue("--scope", "global_hive");
-  const provider = argValue("--provider", boardManagerProvider()).toLowerCase() === "openai" ? "openai" : "openrouter";
+  const provider = normalizeProvider(argValue("--provider", boardManagerProvider()));
   const model = argValue("--model", boardManagerModel(provider));
   const reasoningEffort = argValue("--reasoning", boardManagerReasoningEffort());
   const packetOnly = hasArg("--packet-only");
@@ -134,6 +143,23 @@ async function main() {
       decision: {
         action: "do_nothing",
         reason: "Retired Board Manager LLM loop skipped because Hive Decision Agent is active.",
+      },
+    };
+    console.log(json ? JSON.stringify(output, null, 2) : output.reason);
+    await closePool();
+    return;
+  }
+  if (legacyBoardManagerDisabled() && !packetOnly && !promptOnly) {
+    const output = {
+      ok: true,
+      skipped: true,
+      disabled: true,
+      reason: "legacy_board_manager_disabled",
+      replacement: "hive_board_secretary",
+      execute: false,
+      decision: {
+        action: "do_nothing",
+        reason: "Retired Board Manager LLM loop skipped because GLM Board Secretary memos replaced board action jobs.",
       },
     };
     console.log(json ? JSON.stringify(output, null, 2) : output.reason);

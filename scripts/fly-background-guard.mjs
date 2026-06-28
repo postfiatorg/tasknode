@@ -18,7 +18,7 @@ function usage() {
     "  5. worker-hive",
     "  6. worker-memory-profile",
     "  7. worker-airdrop",
-    "  8. board-manager",
+    "  8. board-secretary",
     "",
     "Use npm run fly:worker-guard or npm run fly:board-guard for one process group.",
   ].join("\n");
@@ -55,4 +55,4 @@ runGuard(["--process", "worker-context-rewrite", ...sharedArgs]);
 runGuard(["--process", "worker-hive", ...sharedArgs]);
 runGuard(["--process", "worker-memory-profile", ...sharedArgs]);
 runGuard(["--process", "worker-airdrop", ...sharedArgs]);
-runGuard(["--process", "board-manager", ...sharedArgs]);
+runGuard(["--process", "board-secretary", ...sharedArgs]);

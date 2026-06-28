@@ -2,7 +2,7 @@
 
 Hive is the network coordination surface. It shows active projects, task routing, operator load, and project-scoped activity in one place so members can understand where the network is concentrating attention.
 
-The current implementation uses Postgres-backed network project records plus live Hive Context and Hive Secretary data. The original Hive mock is preserved only as design reference. The target architecture is Board Manager centered: one leased Board Manager run decides when Hive context, projects, project documents, contributors, and Network Tasks should change.
+The current implementation uses Postgres-backed network project records plus live Hive Context, board comments, public profile snapshots, and GLM Board Secretary Project Status memos. The original Hive mock is preserved only as design reference. The old Board Manager action loop and Hive Decision Agent mutation lane are retired by default: Hive now separates readable board-status synthesis from any future task-management agent that may consume that status as advisory context.
 
 ## User Surface
 
@@ -12,9 +12,10 @@ The Hive route is available at `#hive` from the primary sidebar. The surface con
 - a routing feed showing recent project-linked task state transitions, newest first
 - allotted operators derived from live project-linked task allocation, shown with the user's profile NFT/PFP when available
 - project detail pages for active `network_projects` rows
-- a collapsed `Hive Context` section at the bottom of the page with two tabs: `Hive Context` for Secretary/raw inputs and `Hive Mind Agent` for Board Manager actions
+- a collapsed `Hive Context` section at the bottom of the page with two tabs: `Hive Context` for Secretary/raw inputs and `Hive Mind Agent` for historical Board Manager/action audit rows
+- collapsed project `Board comments` toggles inside each project detail About section, backed by Hive Context entries scoped to that project
 
-While the Hive route is open, the active project document quietly refreshes from `/api/hive/projects` on a short interval. Project-linked task rows, contributor state, and routing feed entries therefore catch up after PFTL/task projection updates without requiring a full browser reload.
+While the Hive route is open, the active project document quietly refreshes from `/api/hive/projects` on a short interval. Project-linked task rows, contributor state, and routing feed entries therefore catch up after PFTL/task projection updates without requiring a full browser reload. The route serves one shared cached board document for signed-in and signed-out viewers, then applies only a cheap per-viewer `nextTask` overlay so `Your active task` can still appear without rebuilding the whole project packet for every account poll.
 
 The project detail page is layered as:
 
@@ -70,9 +71,9 @@ Project IDs are part of the product surface. The project detail header should ex
 
 `Hive Brain` is an operator-only audit tab under the sidebar `More` menu at
 `#hive-brain`. It exposes the current board stack in human terms: the six Hive
-Reports, the Decision Agent decision trail, live task state, system prompt
-documentation, and post-reward Task Accounting harvests. Raw legacy Board
-Manager JSON is not the primary operator surface.
+Reports, the Decision Agent decision trail, a deterministic Live Task Packet,
+system prompt documentation, and post-reward Task Accounting harvests. Raw
+legacy Board Manager JSON is not the primary operator surface.
 
 The main read APIs are:
 
@@ -80,6 +81,8 @@ The main read APIs are:
 - `GET /api/hive/reports/:id` for full report markdown plus verification phases
 - `GET /api/hive/decision/runs` and `GET /api/hive/decision/run/:id` for the
   Decision Agent audit trail
+- `GET /api/hive/brain/live-task-packet` for the plain-English Live Task
+  Packet
 - `GET /api/hive/brain/harvests` for post-reward Task Accounting harvests
 - `GET /api/hive/brain/harvest-checkouts` for the harvest checkout log
 
@@ -89,6 +92,56 @@ can check out an unresolved harvest row to their linked wallet, and authorized
 Task Accounting operators can mark a row resolved with a comment. Hive Brain
 cannot create projects, route tasks, execute hooks, change rewards, ban users,
 or modify eligibility.
+
+The Live Task Packet is assembled without an LLM. `server/repositories/hive-live-task-packet.js`
+reads `task_projections`, `network_project_task_refs`,
+`profile_public_snapshots`, `account_network_badges`, and
+`network_badge_definitions`, then formats a readable contributor packet. Each
+contributor section includes assigned proposed Network Tasks, outstanding
+accepted/submitted/verification tasks, the last five rewarded Network Tasks,
+the public profile description card fields shown on Profile pages, and verified
+contributor badges. The Hive Brain overview polls the endpoint every 30 seconds
+and renders the packet as expandable contributor/task sections. A collapsed
+plain-text copy remains available for audit, but raw JSON and markdown tables
+are not the primary view.
+
+### GLM Board Secretary
+
+`server/hive-board-secretary-worker.js` writes the Project Status memo shown in
+each Hive project About section. It runs from the `board-secretary` process
+group every 15 minutes when `TASKNODE_HIVE_BOARD_SECRETARY_ENABLED=true`, uses
+OpenRouter `z-ai/glm-5.2`, and stores rows in
+`hive_board_secretary_memos`. The worker is advisory only. It cannot create
+tasks, cancel tasks, send user messages, change rewards, mark work resolved, or
+mutate project state.
+
+The worker sets its own DB statement timeout from
+`TASKNODE_HIVE_BOARD_SECRETARY_DB_STATEMENT_TIMEOUT_MS` and defaults to 60s so
+large board packets can be assembled without changing the app-wide DB timeout.
+
+Each run builds one deterministic board-scoped source packet from:
+
+- existing project/task state from `network_project_task_refs`,
+  `task_projections`, and pending generation jobs;
+- board comments stored as Hive Context entries with
+  `metadata.projectComment.projectId`;
+- eligible contributors with verified badges and the same public profile
+  description fields used by the Live Task Packet;
+- Project Leader Hive Context messages relevant to the board.
+
+Rewarded and paid tasks are intentionally compacted before the model sees them.
+The packet includes task id, proposal summary, contributor, reward amount,
+reward timestamp, reward tx/CID, and short reward commentary. It does not pass
+full evidence packets, full verification responses, or raw attachment blobs for
+rewarded work.
+
+The rendered memo is Markdown and uses the fixed sections `What This Project
+Is`, `Why This Advances PFT Value`, `Current Point People`, `Operators Needed`,
+`Next Tactics`, `Overall Strategy`, and `Recommendation For Task Management
+Agent`. The Hive UI prefers the latest current `hive_board_secretary_memos` row
+over historical Board Manager product documents for the collapsible `Project
+Status` block. If no memo exists yet, it falls back to the older
+`network_project_product_docs` row or the empty pending state.
 
 ### Hive Reports
 
@@ -435,6 +488,8 @@ Every signed-in user gets one default `Hive Chat` conversation in the chat sideb
 
 When the user sends a message in `Hive Chat`, `POST /api/hive/context` saves the user message to `Hive Context`, builds an account-scoped Hive source packet for the requesting user, loads the latest compressed Board Manager Secretary Packet plus a small live Board Manager source snapshot, and asks direct DeepSeek for an immediate conversational Hive response in the same chat. The prompt includes an explicit requesting-account block and labels Board Manager facts as shared board state; the model may say a task, follow-up, blocker, or reward belongs to the user only when the live facts mark it as tied to that account. The response is persisted as a normal assistant message with `provider=deepseek`, but it is system-paid and does not debit the user's chat credit. If DeepSeek is unavailable, the route still saves the Hive Context entry and records the user message, then falls back to the lightweight saved-status row. Hive Chat cannot create, queue, publish, accept, refuse, or submit personal tasks, Network Tasks, Alpha Tasks, or task proposals. It can explain status and record context only. Durable board mutations still happen only when the Board Manager later chooses an action such as `message_user`, `create_project`, `restore_project`, or `initiate_network_task`.
 
+Each Hive project detail page also has a collapsed `Board comments` toggle in the About section. It stays closed by default and resets closed when switching projects. Signed-in users can add a short project comment there; the same `POST /api/hive/context` route stores it with `metadata.projectComment.projectId` and `metadata.projectComment.projectName`, `kind=hive_project_comment`, and `source=project_board`. Project board comments do not create a separate task or assignment. They become normal Hive Context inputs for Secretary and Board Manager reads, and `GET /api/hive/projects` returns the latest scoped comments on the matching project so the board can show a simple handle-keyed comment stream.
+
 When a user asks for a Hive, Board Manager, Network, or project-linked task, Hive Chat must not offer a personal task as a fallback. The correct answer is that the request was saved into Hive Context and only Board Manager can route a project-linked Network Task. The `+` menu `Request task` action creates personal task proposals only when the user explicitly clicks that product action.
 
 `Hive Chat` is visually pinned and labeled differently from normal user-created chats. It cannot be renamed. If the user disables it from the chat action menu, the app warns that this removes the default Hive conversation and stops new Hive discussion there until it is re-enabled from Settings -> Data controls. Disabling Hive Chat changes the conversation status to `hive_disabled`; it does not hard-delete Hive Context entries.
@@ -599,18 +654,29 @@ Each project can now have a project-linked Product Document. Each project card o
 - who is working on it and why;
 - what is blocked or unclear.
 
-That Product Document is written by the Board Manager when it chooses `refresh_project_document`. The document is part of the Board Manager's JSON decision in `payload.project_document`; the action hook validates and stores it in `network_project_product_docs`. It does not call a second writer model. The static project identity remains in `network_projects.about`.
+Historical Product Documents were written by the Board Manager when it chose
+`refresh_project_document` and stored in `network_project_product_docs`. Those
+rows remain for audit/fallback, but the current Project Status writer is the
+GLM Board Secretary. It writes advisory Markdown memos to
+`hive_board_secretary_memos` from deterministic board packets and does not
+execute Board Manager actions.
 
-The Product Document appears as a collapsible `Project Status` section inside About. The static `network_projects.about` text explains what the project is. The generated Project Status explains the current execution picture, key points, blockers, and next actions. The collapsed view shows only the short summary so the project page remains scannable. This Hive surface page is the current product contract.
+The Project Status memo appears as a collapsible section inside About. The
+static `network_projects.about` text explains what the project is. The generated
+Project Status memo explains the current execution picture, point people,
+operator needs, next tactics, overall strategy, and the recommendation for a
+future task-management agent. The collapsed view shows only a short preview so
+the project page remains scannable.
 
 If no current product document exists, the About section shows the static project description plus the empty state `Project status has not been generated yet.` It does not show filler copy.
 
 Current endpoints:
 
-- `GET /api/hive/projects` returns active network projects, project task rows, contributor rollups, activity rows, and the latest Hive Secretary input reference.
+- `GET /api/hive/projects` returns active network projects, project task rows, contributor rollups, activity rows, the latest scoped project board comments, and the latest Hive Secretary input reference.
+- Project detail `Activity` is a recent feed. When activity rows are derived from task mirrors rather than stored `network_project_activity`, the response caps the derived activity list so terminal project history is not duplicated into both `tasks` and `activity` on every poll. Full task history remains in the `Tasks` table and project counters.
 - `GET /api/hive/task-detail?taskId=<taskId>` returns a public read-only detail document for a network-project task only. Non-project personal/private task IDs are rejected before task event rows are read.
 - `GET /api/hive/context` returns the grouped Hive Context document, Hive Secretary report/job state, and public Board Manager action feed. If the viewer is signed in, it also includes that account's private Board Manager messages. If the signed-in viewer passes `agentLogs=full`, Board Manager feed rows include expandable stored run logs for the Hive Mind Agent tab.
-- `POST /api/hive/context` stores one signed-in user's Hive chat entry, records the user message in the Hive conversation, and queues Hive Secretary when the user has a linked wallet.
+- `POST /api/hive/context` stores one signed-in user's Hive chat entry or project board comment and queues Hive Secretary when the user has a linked wallet. Normal Hive Chat entries also record the user message in the Hive conversation and may receive an immediate assistant response; project board comments are context entries scoped to a project board.
 - `GET /api/hive/chat` returns the signed-in account's Hive chat state.
 - `PATCH /api/hive/chat` marks the signed-in account's unread Board Manager Hive messages as read.
 - `POST /api/hive/chat` re-enables the default Hive chat after a user disables it.
@@ -657,11 +723,13 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `src/features/hive/hive.css` contains the isolated styling for the surface.
 - `src/main.jsx` registers `#hive`, adds the sidebar entry, and lazy-loads the view.
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
-- `server/hive-secretary-worker.js` processes validated Hive chat entries through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action handler.
-- `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
+- `server/hive-board-secretary-worker.js` runs the advisory per-board GLM 5.2 memo writer every 15 minutes.
+- `server/repositories/hive-board-secretary.js` builds deterministic board-scoped packets, truncates rewarded task evidence, persists current memo rows, and exposes public memo reads for Hive projects.
+- `server/hive-board-secretary-provider.js` calls OpenRouter `z-ai/glm-5.2` with `data_collection=deny` for Project Status Markdown.
+- `server/hive-secretary-worker.js` and `server/hive-project-worker.js` remain historical/context primitives, but the current Project Status surface is not written by GPT 5.5 Pro jobs.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
 - `server/profile-daily-airdrop-worker.js` runs recurring Daily Airdrop scoring/issuance when enabled and records internal `daily_airdrop` cards into the Hive Mind Agent feed.
-- `server/board-manager-decision-provider.js` calls OpenRouter Chat Completions with `z-ai/glm-5.2`, `reasoning.effort = high`, structured JSON output, and `data_collection = deny` by default for Board Manager decisions. It can still call OpenAI Responses when `TASKNODE_BOARD_MANAGER_PROVIDER=openai`.
+- `server/board-manager-decision-provider.js` is retained for historical/manual legacy paths. OpenAI/GPT 5.5 Pro Board Manager use is disabled unless an explicit legacy override is set.
 - `server/repositories/board-manager-health.js` computes `boardActionPressure`, including empty active project and stopped Network Task pressure.
 - `server/repositories/board-manager-scheduler.js` owns the durable Board Manager scheduler helpers: scope setup, job enqueue, due tick enqueue, job claiming, job completion, and deferred/failed retries.
 - `server/board-manager-actions.js` executes the first Board Manager action hooks.

@@ -29,13 +29,19 @@ function openRouterKey() {
 }
 
 export function boardManagerProvider() {
+  if (process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "openrouter";
   const provider = safeText(process.env.TASKNODE_BOARD_MANAGER_PROVIDER || "openrouter", 40).toLowerCase();
   return provider === "openai" ? "openai" : "openrouter";
 }
 
 export function boardManagerModel(provider = boardManagerProvider()) {
+  if (provider === "openai" && process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "z-ai/glm-5.2";
+  const configured = safeText(process.env.TASKNODE_BOARD_MANAGER_MODEL, 120);
+  if (/gpt-5\.5/i.test(configured) && process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") {
+    return "z-ai/glm-5.2";
+  }
   const fallback = provider === "openai" ? "gpt-5.5-pro" : "z-ai/glm-5.2";
-  return safeText(process.env.TASKNODE_BOARD_MANAGER_MODEL || fallback, 120);
+  return configured || fallback;
 }
 
 export function boardManagerReasoningEffort() {

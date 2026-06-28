@@ -37,6 +37,9 @@ export function profileNftImageCandidates(nft = {}, { avatarCssSize = 0 } = {}) 
         ? profileNftPfpPath(record.imageCid, { cssSize: avatarCssSize })
         : profileNftImagePath(record.imageCid)
     );
+    if (avatarCssSize > 0) {
+      candidates.push(profileNftImagePath(record.imageCid));
+    }
   }
   candidates.push(record.imageGatewayUrl);
   return uniqueTruthy(candidates);

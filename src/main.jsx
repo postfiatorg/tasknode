@@ -40,7 +40,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Send,
   Settings as SettingsIcon,
   Share,
   Shield,

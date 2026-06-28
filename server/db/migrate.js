@@ -94,6 +94,10 @@ const migrations = [
   "085_task_accounting_harvest_checkout.sql",
   "086_task_accounting_harvest_resolution_outcome.sql",
   "087_release_resolved_harvest_checkouts.sql",
+  "088_hive_project_comments.sql",
+  "089_hive_project_latency_indexes.sql",
+  "090_hive_live_task_packet_indexes.sql",
+  "091_hive_board_secretary_memos.sql",
 ];
 
 let migrated = false;

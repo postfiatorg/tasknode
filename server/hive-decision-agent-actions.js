@@ -77,8 +77,12 @@ function boardSourcePacketForHiveDecision(sourcePacket = {}) {
   };
 }
 
+export function hiveDecisionAgentEnabled(env = process.env) {
+  return env.TASKNODE_HIVE_DECISION_AGENT_ENABLED !== "false";
+}
+
 export function hiveDecisionAgentActive(env = process.env) {
-  return env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true";
+  return hiveDecisionAgentEnabled(env) && env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true";
 }
 
 export function translateHiveDecisionToBoardDecision({ decision = {}, sourcePacket = {} } = {}) {

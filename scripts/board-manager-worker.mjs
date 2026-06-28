@@ -63,10 +63,12 @@ function usage() {
 }
 
 function normalizeProvider(value = "openrouter") {
+  if (process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "openrouter";
   return String(value || "").toLowerCase() === "openai" ? "openai" : "openrouter";
 }
 
 function defaultBoardManagerModel(provider = "openrouter") {
+  if (provider === "openai" && process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "z-ai/glm-5.2";
   return provider === "openai" ? "gpt-5.5-pro" : "z-ai/glm-5.2";
 }
 
@@ -75,10 +77,8 @@ function oldBoardManagerExecutionEnabled() {
     process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE !== "true";
 }
 
-function legacyBoardManagerDecommissioned() {
-  return process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true" &&
-    process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" &&
-    !hasArg("--force-legacy");
+function legacyBoardManagerDisabled() {
+  return process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" && !hasArg("--force-legacy");
 }
 
 function sleep(ms, signal) {
@@ -302,7 +302,7 @@ if (hasArg("--print-config")) {
     staleJobSeconds: config.staleJobSeconds,
     execute: config.execute,
     executionRequested: hasArg("--execute"),
-    decommissioned: legacyBoardManagerDecommissioned(),
+    disabled: legacyBoardManagerDisabled(),
     executionDisabledReason: hasArg("--execute") && !config.execute
       ? process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true"
         ? "hive_decision_agent_active"
@@ -312,11 +312,11 @@ if (hasArg("--print-config")) {
   process.exit(0);
 }
 
-if (legacyBoardManagerDecommissioned()) {
+if (legacyBoardManagerDisabled()) {
   console.log(JSON.stringify({
-    event: "board_manager_worker_decommissioned",
-    reason: "hive_decision_agent_active",
-    replacement: "npm run start:board-manager",
+    event: "board_manager_worker_disabled",
+    reason: "legacy_board_manager_disabled",
+    replacement: "npm run hive-board-secretary-worker",
   }, null, 2));
   process.exit(0);
 }

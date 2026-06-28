@@ -14,7 +14,6 @@ import {
   Lock,
   Plus,
   RefreshCw,
-  Send,
   ShieldCheck,
   Unlock,
   Unlink,
@@ -693,7 +692,7 @@ export function WalletView({
                 Receive
               </button>
               <button className="wallet-secondary-action" disabled={!walletLinked} onClick={openSendFlow} type="button">
-                <Send size={16} strokeWidth={2} />
+                <ArrowUpRight size={16} strokeWidth={2} />
                 Send
               </button>
             </div>

@@ -6,7 +6,10 @@ delete process.env.TASKNODE_HIVE_PROJECT_REASONING_EFFORT;
 
 const { fetchHiveActiveProjects } = await import("../server/hive-project-worker.js");
 const { projectHasOperatorArchiveLock } = await import("../server/repositories/hive-project-planning.js");
-const { hiveProjectsDocumentForTests } = await import("../server/repositories/hive-projects.js");
+const {
+  applyHiveProjectsViewerContext,
+  hiveProjectsDocumentForTests,
+} = await import("../server/repositories/hive-projects.js");
 
 let capturedBody = null;
 const result = await fetchHiveActiveProjects(
@@ -280,5 +283,12 @@ const viewerBoardDocument = hiveProjectsDocumentForTests({
 });
 assert.equal(viewerBoardDocument.projects.personalized_project.nextTask.title, "Viewer active task");
 assert.equal(viewerBoardDocument.projects.personalized_project.nextTask.viewerScoped, true);
+const overlaidViewerDocument = applyHiveProjectsViewerContext(anonymousBoardDocument, {
+  viewerAccountId: "acct_viewer",
+  viewerWalletAddress: "rViewer",
+});
+assert.equal(anonymousBoardDocument.projects.personalized_project.nextTask.title, "Other active task");
+assert.equal(overlaidViewerDocument.projects.personalized_project.nextTask.title, "Viewer active task");
+assert.equal(overlaidViewerDocument.projects.personalized_project.nextTask.viewerScoped, true);
 
 console.log("hive project planning smoke ok");

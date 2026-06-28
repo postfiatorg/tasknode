@@ -45,11 +45,17 @@ function usage() {
 }
 
 function normalizeProvider(value = "openrouter") {
+  if (process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "openrouter";
   return String(value || "").toLowerCase() === "openai" ? "openai" : "openrouter";
 }
 
 function defaultBoardManagerModel(provider = "openrouter") {
+  if (provider === "openai" && process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "z-ai/glm-5.2";
   return provider === "openai" ? "gpt-5.5-pro" : "z-ai/glm-5.2";
+}
+
+function legacyBoardManagerDisabled() {
+  return process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" && !hasArg("--force-legacy");
 }
 
 function sleep(ms, signal) {
@@ -143,6 +149,15 @@ config.model = argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || d
 
 if (hasArg("--help") || hasArg("-h")) {
   console.log(usage());
+  process.exit(0);
+}
+
+if (legacyBoardManagerDisabled()) {
+  console.log(JSON.stringify({
+    event: "board_manager_loop_disabled",
+    reason: "legacy_board_manager_disabled",
+    replacement: "npm run hive-board-secretary-worker",
+  }, null, 2));
   process.exit(0);
 }
 

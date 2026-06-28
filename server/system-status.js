@@ -576,6 +576,28 @@ async function hiveDecisionAgentStatusItem(tables, nowMs) {
 }
 
 async function boardManagerItem(tables, nowMs) {
+  if (
+    process.env.TASKNODE_BOARD_MANAGER_ENABLED !== "true" &&
+    process.env.TASKNODE_HIVE_DECISION_AGENT_ENABLED === "false" &&
+    process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE !== "true"
+  ) {
+    return item({
+      id: "board_manager",
+      category: "hive",
+      title: "Hive Board Manager",
+      description: "Legacy Hive action manager. Retired in favor of advisory GLM board secretary memos.",
+      owner: "retired",
+      trigger: "disabled",
+      cadence: "disabled",
+      status: "disabled",
+      statusLabel: "Retired",
+      details: [
+        "TASKNODE_BOARD_MANAGER_ENABLED=false",
+        "TASKNODE_HIVE_DECISION_AGENT_ENABLED=false",
+        "TASKNODE_HIVE_DECISION_AGENT_ACTIVE=false",
+      ],
+    });
+  }
   if (process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true" && tables.get("hive_decision_runs") === true) {
     return hiveDecisionAgentStatusItem(tables, nowMs);
   }
@@ -678,6 +700,93 @@ async function boardManagerItem(tables, nowMs) {
       scope?.last_run_id && `lastRunId=${scope.last_run_id}`,
       run?.id && `latestRun=${run.id} ${run.status}${run.selected_action ? ` action=${run.selected_action}` : ""}`,
       lease && `lease=${lease.status}${lease.owner_instance ? ` owner=${lease.owner_instance}` : ""}`,
+    ],
+  });
+}
+
+async function hiveBoardSecretaryMemoItem(tables, nowMs) {
+  const cadenceSeconds = intEnv(process.env.TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS, 900, { min: 60, max: 86400 });
+  const enabled = process.env.TASKNODE_HIVE_BOARD_SECRETARY_ENABLED !== "false";
+  const [memoResult, countsResult, projectResult, failedResult] = await Promise.all([
+    optionalQuery(
+      tables,
+      ["hive_board_secretary_memos"],
+      `SELECT id, project_id, status, model, error, generated_at, created_at
+         FROM hive_board_secretary_memos
+        WHERE status = 'current'
+          AND superseded_at IS NULL
+        ORDER BY generated_at DESC, id DESC
+        LIMIT 1`
+    ),
+    optionalQuery(
+      tables,
+      ["hive_board_secretary_memos"],
+      `SELECT status, count(*)::int AS count
+         FROM hive_board_secretary_memos
+        GROUP BY status`
+    ),
+    optionalQuery(
+      tables,
+      ["network_projects"],
+      `SELECT count(*)::int AS count
+         FROM network_projects
+        WHERE status = 'active'`
+    ),
+    optionalQuery(
+      tables,
+      ["hive_board_secretary_memos"],
+      `SELECT count(failed.*)::int AS count,
+              max(failed.created_at) AS latest_failed_at
+         FROM hive_board_secretary_memos failed
+         LEFT JOIN hive_board_secretary_memos current
+           ON current.project_id = failed.project_id
+          AND current.status = 'current'
+          AND current.superseded_at IS NULL
+        WHERE failed.status = 'failed'
+          AND failed.created_at > now() - ($1 * interval '1 millisecond')
+          AND (
+            current.generated_at IS NULL OR
+            failed.created_at > current.generated_at
+          )`,
+      [recentFailureWindowMs]
+    ),
+  ]);
+  const memo = memoResult.rows[0] || null;
+  const activeProjects = Number(projectResult.rows[0]?.count || 0);
+  const recentFailed = Number(failedResult.rows[0]?.count || 0);
+  let status = runFreshness({
+    enabled,
+    lastSuccessAt: memo?.generated_at || null,
+    warningAfterMs: cadenceSeconds * 1000 + 5 * minute,
+    staleAfterMs: cadenceSeconds * 2000 + 5 * minute,
+    nowMs,
+    missingStatus: activeProjects > 0 ? "critical" : "unknown",
+  });
+  status = recentFailureStatus(status, recentFailed, "Recent failed memos");
+  return item({
+    id: "hive_board_secretary",
+    category: "hive",
+    title: "GLM Board Secretary",
+    description: "Per-board GLM 5.2 Project Status memo writer. Advisory only; no task, message, reward, or board mutations.",
+    owner: "board-secretary process",
+    trigger: "periodic project status memo refresh",
+    cadence: `${cadenceSeconds}s`,
+    status: status.status,
+    statusLabel: status.label,
+    lastRunAt: memo?.generated_at || memo?.created_at,
+    lastSuccessAt: memo?.generated_at || null,
+    staleAfterMs: cadenceSeconds * 2000 + 5 * minute,
+    counts: {
+      ...countsFromRows(countsResult.rows),
+      activeProjects,
+    },
+    lastError: memo?.error || "",
+    details: [
+      `model=${process.env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || "z-ai/glm-5.2"}`,
+      memo?.id && `latestMemo=${memo.id}`,
+      memo?.project_id && `latestProject=${memo.project_id}`,
+      memo?.model && `latestModel=${memo.model}`,
+      failedResult.rows[0]?.latest_failed_at && `latestUnresolvedFailure=${iso(failedResult.rows[0].latest_failed_at)}`,
     ],
   });
 }
@@ -1711,6 +1820,7 @@ async function dailyAirdropItem(tables, nowMs) {
 async function categoryItems(tables, nowMs) {
   const hiveItems = [
     await boardManagerItem(tables, nowMs),
+    await hiveBoardSecretaryMemoItem(tables, nowMs),
     await boardManagerSecretaryPacketItem(tables, nowMs),
     await hiveQueueItem({
       tables,

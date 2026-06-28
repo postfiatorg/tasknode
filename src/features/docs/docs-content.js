@@ -86,6 +86,7 @@ import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
 import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v2.md?raw";
 import boardManagerPrompt from "../../../prompts/hive/board_manager_v1.md?raw";
 import boardManagerSecretaryPrompt from "../../../prompts/hive/board_manager_secretary_v1.md?raw";
+import glmBoardSecretaryPrompt from "../../../prompts/hive/glm_board_secretary_status_memo_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import taskAccountingHarvesterPrompt from "../../../prompts/hive/task_accounting_harvester_v1.md?raw";
@@ -287,8 +288,8 @@ const PROMPT_SOURCES = [
     family: "Hive",
     title: "Board Manager",
     path: "prompts/hive/board_manager_v1.md",
-    summary: "Operating prompt for the single leased Board Manager action registry.",
-    status: "Active for persistent Board Manager Codex Exec runs and first action hooks",
+    summary: "Legacy operating prompt for the retired leased Board Manager action registry.",
+    status: "Retired by default; GLM Board Secretary writes advisory Project Status memos instead",
     usedBy: [
       "docs/wiki/architecture/board-manager.md",
       "scripts/board-manager-codex-exec.mjs",
@@ -299,10 +300,23 @@ const PROMPT_SOURCES = [
   },
   {
     family: "Hive",
+    title: "GLM Board Secretary",
+    path: "prompts/hive/glm_board_secretary_status_memo_v1.md",
+    summary: "Writes advisory per-board Project Status Markdown from deterministic board packets.",
+    status: "Active for board-secretary Project Status memos",
+    usedBy: [
+      "server/hive-board-secretary-provider.js::fetchHiveBoardSecretaryMemo",
+      "server/hive-board-secretary-worker.js::runHiveBoardSecretaryOnce",
+      "server/repositories/hive-board-secretary.js::buildHiveBoardSecretarySourcePacket",
+    ],
+    content: glmBoardSecretaryPrompt,
+  },
+  {
+    family: "Hive",
     title: "Board Manager Secretary Packet",
     path: "prompts/hive/board_manager_secretary_v1.md",
     summary: "Direct DeepSeek V4 Pro prompt that compresses raw Hive board state into compact packets for GLM 5.2 Board Manager decisions.",
-    status: "Active for Board Manager secretary packet generation",
+    status: "Historical Board Manager packet path; not used by GLM Board Secretary memos",
     usedBy: [
       "server/board-manager-secretary-packets.js::fetchBoardManagerSecretaryPacket",
       "server/board-manager-secretary-packets.js::ensureBoardManagerSecretaryPacket",

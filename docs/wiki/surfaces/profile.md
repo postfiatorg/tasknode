@@ -75,6 +75,20 @@ The model-generated fields come from `profile_public_snapshots`:
 
 The public profile snapshot prompt is `prompts/profile/public_profile_snapshot_v1.md`.
 
+Public profile snapshots are generated in two ways:
+
+- manually, when the signed-in user calls `POST /api/profile/public/regenerate`;
+- automatically, by `server/public-profile-snapshot-worker.js` in the
+  `worker:memory-profile` process.
+
+The automatic worker scans bounded batches of accounts with public profile
+activity from Network Tasks or profile NFTs. It skips accounts with a recent
+running snapshot, reuses completed snapshots when the deterministic input
+fingerprint is already current, and retries failed accounts only after the
+configured retry window. This prevents public profile pages and Hive Brain task
+packets from staying on `Profile snapshot pending` for contributors who already
+have task or NFT history.
+
 The prompt is tuned for member discovery. It should translate concrete task history into durable professional capabilities rather than repeating narrow task titles or internal implementation trivia. Ledger, wallet, replay, event stream, evidence, and verification work should be expressed as crypto protocol reliability, indexing, auditability, integration debugging, or verification systems work when the packet supports that interpretation.
 
 The public copy should be useful to someone deciding whether to assign work, follow, hire, or collaborate with the member. The prompt treats the public profile as a work-assignment signal, not a task log. It groups rewarded task history into repeated work themes, avoids project names and ticket summaries as identity labels, and returns exactly four discoverable skills.
@@ -271,7 +285,10 @@ size, while full-resolution profile gallery and hero views keep using
 `/api/profile/nft/image/:cid` (`src/features/profile/profile-nft-images.js:1`).
 Directory rows, Hive profile badges, recommended-connection cards, and compact
 profile avatars therefore download small cached thumbnails instead of multi-MB
-PNG originals.
+PNG originals. If the thumbnail request fails, the shared avatar helper now
+tries the same-origin full image proxy before falling back to a stored public
+gateway URL, so a thumbnail-cache or gateway failure does not leave the browser
+without a first-party image fallback.
 
 The warmer script pre-generates durable thumbnails and is idempotent. Run it on
 the app machine where `/data` is mounted, not on a worker machine with a

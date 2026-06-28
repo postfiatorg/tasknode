@@ -444,19 +444,6 @@ function decisionResult(detail = null) {
   ].filter(Boolean).join(" ");
 }
 
-function flattenLiveTasks(projectDocument = null) {
-  const projects = projectDocument?.projects || {};
-  return Object.values(projects)
-    .flatMap((project) =>
-      safeArray(project.tasks).map((task) => ({
-        ...task,
-        project: project.name || project.id || "Project",
-      }))
-    )
-    .sort((a, b) => Date.parse(b.updatedAt || b.createdAt || "") - Date.parse(a.updatedAt || a.createdAt || ""))
-    .slice(0, 7);
-}
-
 function sortResolvedHarvests(harvests = []) {
   return safeArray(harvests)
     .slice()
@@ -539,43 +526,141 @@ function DecisionLog({ runs = [], selectedRunId = "", onSelectRun }) {
   );
 }
 
-function LiveTaskTable({ projectDocument = null, status = "loading" }) {
-  const tasks = useMemo(() => flattenLiveTasks(projectDocument), [projectDocument]);
+function LiveTaskPacketTaskList({ empty = "None.", tasks = [] }) {
+  const rows = safeArray(tasks);
+  if (!rows.length) return <div className="hive-brain-live-task-empty">{empty}</div>;
   return (
-    <div className="hive-brain-card">
-      <div className="hive-brain-table-head">
-        <div className="hive-brain-section-label">Live task status</div>
-        <div className="hive-brain-section-sub">Real-time task rows from the Hive project document.</div>
+    <div className="hive-brain-live-task-list">
+      {rows.map((task) => (
+        <div className="hive-brain-live-task-row" key={task.taskId || `${task.title}-${task.updatedAt}`}>
+          <div>
+            <strong>{task.title || task.taskId || "Untitled Network Task"}</strong>
+            <span>
+              {task.projectTitle && <em>{task.projectTitle}</em>}
+              {task.taskId && <code>{task.taskId}</code>}
+            </span>
+          </div>
+          <div>
+            <Status type={task.status}>{formatAction(task.status)}</Status>
+            <b>{compactNumber(task.rewardActualPft || task.rewardOfferPft)} PFT</b>
+            <small>{relativeTime(task.updatedAt || task.lastEventAt)}</small>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LiveTaskPacketProfile({ profile = null }) {
+  const skills = safeArray(profile?.skills).filter(Boolean);
+  if (!profile?.roleTitle && !profile?.roleSummary && !skills.length && !profile?.usefulTo) {
+    return (
+      <div className="hive-brain-live-profile is-missing">
+        No completed public profile description card is available for this account.
       </div>
-      <div className="hive-brain-table-wrap">
-        <table className="hive-brain-table">
-          <thead>
-            <tr>
-              <th>Task</th>
-              <th>Operative</th>
-              <th>Project</th>
-              <th>Status</th>
-              <th className="is-num">Reward</th>
-              <th className="is-num">When</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map((task) => (
-              <tr key={task.id || task.taskId}>
-                <td>{task.title || task.taskId || "Untitled task"}</td>
-                <td>{task.assigneeHandle || task.assigneeDisplayName || task.assignee || "Unassigned"}</td>
-                <td className="is-muted">{task.project}</td>
-                <td><Status type={task.state}>{formatAction(task.state)}</Status></td>
-                <td className="is-pft">{compactNumber(task.pft)}</td>
-                <td className="is-num is-muted">{task.age || relativeTime(task.updatedAt || task.createdAt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {status === "loading" && <div className="hive-brain-empty">Loading live task status.</div>}
-        {status === "error" && <div className="hive-brain-empty">Live task status is unavailable.</div>}
-        {status === "ready" && !tasks.length && <div className="hive-brain-empty">No live task rows are available.</div>}
+    );
+  }
+  return (
+    <div className="hive-brain-live-profile">
+      {profile.roleTitle && <strong>{profile.roleTitle}</strong>}
+      {profile.roleSummary && <p>{profile.roleSummary}</p>}
+      {skills.length > 0 && (
+        <div className="hive-brain-live-skills">
+          {skills.map((skill) => <span key={skill}>{skill}</span>)}
+        </div>
+      )}
+      {profile.usefulTo && <p><b>Best fit:</b> {profile.usefulTo}</p>}
+    </div>
+  );
+}
+
+function LiveTaskPacketContributor({ contributor = {}, index = 0 }) {
+  const label = contributor.handle
+    ? `@${String(contributor.handle).replace(/^@+/, "")}`
+    : contributor.displayName || contributor.accountId || compactWallet(contributor.walletAddress);
+  const badges = safeArray(contributor.badges);
+  const taskCount = safeArray(contributor.proposals).length +
+    safeArray(contributor.outstanding).length +
+    safeArray(contributor.rewarded).length;
+  return (
+    <details className="hive-brain-live-contributor" open={index < 3}>
+      <summary>
+        <div>
+          <strong>Contributor {index + 1}: {label}</strong>
+          <span>
+            {contributor.accountId && <code>{contributor.accountId}</code>}
+            {contributor.walletAddress && <code>{contributor.walletAddress}</code>}
+          </span>
+        </div>
+        <div>
+          <Badge variant={taskCount ? "gray" : "amber"}>{taskCount} tasks</Badge>
+          <Badge variant={badges.length ? "blue" : "gray"}>{badges.length ? badges.join(", ") : "No badges"}</Badge>
+        </div>
+      </summary>
+      <div className="hive-brain-live-contributor-body">
+        <details open>
+          <summary>Network Task Assigned Proposal</summary>
+          <LiveTaskPacketTaskList tasks={contributor.proposals} />
+        </details>
+        <details open>
+          <summary>Network Task Outstanding</summary>
+          <LiveTaskPacketTaskList tasks={contributor.outstanding} />
+        </details>
+        <details>
+          <summary>Last 5 Rewarded Network Tasks</summary>
+          <LiveTaskPacketTaskList tasks={contributor.rewarded} />
+        </details>
+        <details>
+          <summary>Contributor Description Card</summary>
+          <LiveTaskPacketProfile profile={contributor.profile} />
+        </details>
       </div>
+    </details>
+  );
+}
+
+function LiveTaskPacketCard({ packet = null, status = "loading", onRefresh }) {
+  const generatedLabel = packet?.generatedAt ? formatTime(packet.generatedAt) : "not generated";
+  const contributors = safeArray(packet?.contributors);
+  return (
+    <div className="hive-brain-card hive-brain-live-task-packet">
+      <div className="hive-brain-live-task-packet-head">
+        <div>
+          <div className="hive-brain-section-label">Live Task Packet</div>
+          <div className="hive-brain-section-sub">
+            Plain-English contributor packet from task, profile, and badge rows. Refreshes every 30 seconds.
+          </div>
+        </div>
+        <div className="hive-brain-live-task-packet-meta">
+          <span>{generatedLabel}</span>
+          <button onClick={onRefresh} type="button">
+            <RefreshCw size={13} strokeWidth={2} />
+            Refresh
+          </button>
+        </div>
+      </div>
+      {status === "loading" && !packet?.text && <div className="hive-brain-empty">Loading Live Task Packet.</div>}
+      {status === "error" && !packet?.text && <div className="hive-brain-empty">Live Task Packet is unavailable.</div>}
+      {contributors.length > 0 && (
+        <div className="hive-brain-live-contributors">
+          {contributors.map((contributor, index) => (
+            <LiveTaskPacketContributor
+              contributor={contributor}
+              index={index}
+              key={contributor.key || contributor.accountId || contributor.walletAddress || index}
+            />
+          ))}
+        </div>
+      )}
+      {status === "ready" && packet && !contributors.length && (
+        <div className="hive-brain-empty">No assigned or recently rewarded Network Task contributors are available.</div>
+      )}
+      {packet?.text && (
+        <details className="hive-brain-live-raw">
+          <summary>Plain text packet</summary>
+          <pre>{packet.text}</pre>
+        </details>
+      )}
     </div>
   );
 }
@@ -921,9 +1006,10 @@ function OverviewPanel({
   decisionDetail,
   decisionLoading,
   latestByType,
+  liveTaskPacket,
+  liveTaskPacketStatus,
   onOpenReport,
-  projectDocument,
-  projectStatus,
+  onRefreshLiveTaskPacket,
   runs,
   selectedRunId,
   onSelectRun,
@@ -948,7 +1034,11 @@ function OverviewPanel({
             </div>
           </div>
         </div>
-        <LiveTaskTable projectDocument={projectDocument} status={projectStatus} />
+        <LiveTaskPacketCard
+          packet={liveTaskPacket}
+          status={liveTaskPacketStatus}
+          onRefresh={onRefreshLiveTaskPacket}
+        />
         <ReportsGrid latestByType={latestByType} onOpenReport={onOpenReport} />
       </div>
     </section>
@@ -1191,6 +1281,8 @@ export function HiveBrainView() {
   const [resolvingHarvestId, setResolvingHarvestId] = useState("");
   const [projectDocument, setProjectDocument] = useState(null);
   const [projectStatus, setProjectStatus] = useState("loading");
+  const [liveTaskPacket, setLiveTaskPacket] = useState(null);
+  const [liveTaskPacketStatus, setLiveTaskPacketStatus] = useState("loading");
   const lastGoodProjectDocument = useRef(null);
   const projectRequestSeq = useRef(0);
 
@@ -1256,6 +1348,18 @@ export function HiveBrainView() {
       }
       setProjectDocument(null);
       setProjectStatus("error");
+    }
+  }, []);
+
+  const loadLiveTaskPacket = useCallback(async () => {
+    setLiveTaskPacketStatus("loading");
+    try {
+      const result = await requestJson("/api/hive/brain/live-task-packet?limit=24");
+      if (!result.ok) throw new Error(result.body?.message || `Live Task Packet failed with HTTP ${result.status}`);
+      setLiveTaskPacket(result.body?.packet || null);
+      setLiveTaskPacketStatus("ready");
+    } catch {
+      setLiveTaskPacketStatus("error");
     }
   }, []);
 
@@ -1378,12 +1482,20 @@ export function HiveBrainView() {
     loadReports();
     loadRuns();
     loadProjects();
+    loadLiveTaskPacket();
     loadHarvests();
-  }, [loadHarvests, loadProjects, loadReports, loadRuns]);
+  }, [loadHarvests, loadLiveTaskPacket, loadProjects, loadReports, loadRuns]);
 
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      loadLiveTaskPacket();
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [loadLiveTaskPacket]);
 
   useEffect(() => {
     if (!selectedRunId) {
@@ -1496,10 +1608,11 @@ export function HiveBrainView() {
             decisionDetail={decisionDetail}
             decisionLoading={decisionDetailStatus === "loading"}
             latestByType={latestByType}
+            liveTaskPacket={liveTaskPacket}
+            liveTaskPacketStatus={liveTaskPacketStatus}
             onOpenReport={openTab}
+            onRefreshLiveTaskPacket={loadLiveTaskPacket}
             onSelectRun={setSelectedRunId}
-            projectDocument={projectDocument}
-            projectStatus={projectStatus}
             runs={runs}
             selectedRunId={selectedRunId}
           />

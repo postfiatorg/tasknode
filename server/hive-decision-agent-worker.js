@@ -22,6 +22,7 @@ import {
 import {
   executeHiveDecisionAgentAction,
   hiveDecisionAgentActive,
+  hiveDecisionAgentEnabled,
 } from "./hive-decision-agent-actions.js";
 
 let timer = null;
@@ -43,7 +44,7 @@ function staleMinutes() {
 
 function workerEnabled() {
   return (
-    process.env.TASKNODE_HIVE_DECISION_AGENT_ENABLED !== "false" &&
+    hiveDecisionAgentEnabled() &&
     databaseEnabled() &&
     hiveDecisionAgentProviderConfigured()
   );
@@ -55,6 +56,9 @@ export async function runHiveDecisionAgentOnce({
   now = new Date(),
   fetchImpl = fetch,
 } = {}) {
+  if (!hiveDecisionAgentEnabled()) {
+    return { ok: false, skipped: true, reason: "hive_decision_agent_disabled" };
+  }
   if (!databaseEnabled()) {
     return { ok: false, skipped: true, reason: "database_not_configured" };
   }

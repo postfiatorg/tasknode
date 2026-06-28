@@ -11,7 +11,9 @@ const {
   formatHiveSecretaryReport,
   getHiveContextDocument,
   getHiveSecretaryState,
+  listHiveProjectComments,
   markHiveContextEntriesWalletValidated,
+  normalizeHiveProjectCommentMetadata,
   saveHiveContextEntry,
 } = await import("../server/repositories/hive-context.js");
 const { hiveProjectsDocumentForTests } = await import("../server/repositories/hive-projects.js");
@@ -156,6 +158,83 @@ const boardManagerEmptyProjects = hiveProjectsDocumentForTests({
   ],
 });
 assert.equal(boardManagerEmptyProjects.projectIds.includes("empty_active_project"), true);
+
+assert.deepEqual(
+  normalizeHiveProjectCommentMetadata({
+    projectId: "routing_project",
+    projectName: "Routing Eligibility and Badge Projection",
+  }),
+  {
+    projectId: "routing_project",
+    projectName: "Routing Eligibility and Badge Projection",
+  }
+);
+
+await saveHiveContextEntry({
+  accountId: "account_board_comment",
+  displayName: "@boardop",
+  body: "Routing board comment: the eligibility source still needs a clear owner.",
+  walletAddress: "rBoardCommentWallet",
+  walletValidated: true,
+  metadata: {
+    kind: "hive_project_comment",
+    source: "project_board",
+    projectComment: {
+      projectId: "routing_project",
+      projectName: "Routing Eligibility and Badge Projection",
+    },
+  },
+});
+const projectComments = await listHiveProjectComments({
+  projectIds: ["routing_project", "unrelated_project"],
+  limitPerProject: 3,
+});
+assert.equal(projectComments.routing_project.length, 1);
+assert.equal(projectComments.routing_project[0].handle, "@boardop");
+assert.match(projectComments.routing_project[0].body, /eligibility source/);
+assert.deepEqual(projectComments.unrelated_project, []);
+const projectCommentDocument = hiveProjectsDocumentForTests({
+  includeEmptyActive: true,
+  projectRows: [
+    {
+      id: "routing_project",
+      title: "Routing Eligibility and Badge Projection",
+      type: "protocol_development",
+      status: "active",
+      priority: 1,
+    },
+  ],
+  projectCommentsByProject: projectComments,
+});
+assert.equal(projectCommentDocument.projects.routing_project.comments.length, 1);
+assert.equal(projectCommentDocument.projects.routing_project.comments[0].handle, "@boardop");
+
+let capturedProjectCommentResponse = null;
+await handleHiveRoute({
+  getLinkedWallet: () => ({ status: "linked", address: "rProjectCommentWallet" }),
+  json: (_res, status, body) => {
+    capturedProjectCommentResponse = { status, body };
+  },
+  readJson: async () => ({
+    body: "Project board route comment.",
+    conversationId: "conversation_should_not_receive_project_comment",
+    projectComment: {
+      projectId: "routing_project",
+      projectName: "Routing Eligibility and Badge Projection",
+    },
+  }),
+  req: { method: "POST" },
+  res: {},
+  session: { accountId: "account_project_comment", displayName: "@routecomment", primaryProvider: "smoke" },
+  url: new URL("https://tasknode.local/api/hive/context"),
+});
+assert.equal(capturedProjectCommentResponse.status, 200);
+assert.equal(capturedProjectCommentResponse.body.entry.metadata.kind, "hive_project_comment");
+assert.equal(capturedProjectCommentResponse.body.entry.metadata.source, "project_board");
+assert.equal(capturedProjectCommentResponse.body.entry.metadata.projectComment.projectId, "routing_project");
+assert.equal(capturedProjectCommentResponse.body.entry.sourceConversationId, "");
+assert.equal(capturedProjectCommentResponse.body.user, null);
+assert.equal(capturedProjectCommentResponse.body.assistant, null);
 
 const formattedHiveMindContext = formatHiveMindContextForImmediateResponse({
   boardManagerSourcePacket: {

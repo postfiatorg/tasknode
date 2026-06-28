@@ -6,7 +6,9 @@ import { currentVerificationRequest } from "../task-verification-view.js";
 import { discoverableMemberProfileIds } from "./directory-leaderboard.js";
 import { listMachineOperatorDisclosures } from "./capability-profiles.js";
 import { listEvidenceEvaluationPackets } from "./evidence-evaluation-packets.js";
+import { listHiveProjectComments } from "./hive-context.js";
 import { latestHiveProjectPlanningState, projectHasOperatorArchiveLock } from "./hive-project-planning.js";
+import { getCurrentHiveBoardSecretaryMemos } from "./hive-board-secretary.js";
 import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
 import { deriveNetworkTaskStatusPacketFromRow } from "./network-task-status.js";
 
@@ -59,6 +61,7 @@ const terminalTaskStates = new Set([
   "completed",
   "rerouted",
 ]);
+const maxProjectActivityRows = 48;
 
 function intValue(value) {
   const parsed = Number(value || 0);
@@ -263,6 +266,7 @@ function publicProject(row = {}) {
     contributors: [],
     tasks: [],
     activity: [],
+    comments: [],
   };
 }
 
@@ -597,10 +601,12 @@ function populateDerivedProjectRollups(projects = {}, viewer = {}) {
       timestampMs(right.updatedAt || right.createdAt) - timestampMs(left.updatedAt || left.createdAt) ||
       safeText(right.id).localeCompare(safeText(left.id))
     );
-    project.activity = safeArray(project.activity).sort((left, right) =>
-      timestampMs(right.updatedAt || right.createdAt) - timestampMs(left.updatedAt || left.createdAt) ||
-      safeText(right.id).localeCompare(safeText(left.id))
-    );
+    project.activity = safeArray(project.activity)
+      .sort((left, right) =>
+        timestampMs(right.updatedAt || right.createdAt) - timestampMs(left.updatedAt || left.createdAt) ||
+        safeText(right.id).localeCompare(safeText(left.id))
+      )
+      .slice(0, maxProjectActivityRows);
     project.taskCount = project.tasks.length;
     project.tasksInFlight = project.tasks.filter(taskIsInFlight).length;
     project.terminalTaskCount = project.tasks.filter(taskIsTerminal).length;
@@ -649,7 +655,9 @@ function documentFromRows({
   taskRows = [],
   activityRows = [],
   pendingGenerationRows = [],
+  projectCommentsByProject = {},
   productDocs = [],
+  boardSecretaryMemos = [],
   latestSecretary = null,
   projectPlanning = null,
   walletIdentities = [],
@@ -684,6 +692,14 @@ function documentFromRows({
   for (const doc of safeArray(productDocs)) {
     const project = projects[doc.projectId];
     if (project) project.productDocument = doc;
+  }
+  for (const memo of safeArray(boardSecretaryMemos)) {
+    const project = projects[memo.projectId];
+    if (project) project.secretaryMemo = memo;
+  }
+  for (const [projectId, comments] of Object.entries(safeObject(projectCommentsByProject))) {
+    const project = projects[projectId];
+    if (project) project.comments = safeArray(comments);
   }
   applyWalletIdentitiesToProjects(projects, walletIdentities, publicProfileIds, operatorDisclosures);
   populateDerivedProjectRollups(projects, viewer);
@@ -1275,25 +1291,47 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
       JOIN task_projections projection
         ON projection.task_id = refs.task_id
       LEFT JOIN LATERAL (
-        SELECT job.*
-        FROM network_task_generation_jobs job
-        WHERE job.task_id = projection.task_id
-           OR (projection.request_id <> '' AND job.request_id = projection.request_id)
-           OR (refs.metadata_json->>'generation_job_id' <> '' AND job.id = refs.metadata_json->>'generation_job_id')
-        ORDER BY (job.task_id = projection.task_id) DESC,
-                 job.updated_at DESC NULLS LAST,
-                 job.id DESC
+        SELECT candidate.*
+        FROM (
+          SELECT job.*, 0 AS match_rank
+          FROM network_task_generation_jobs job
+          WHERE job.task_id = projection.task_id
+          UNION ALL
+          SELECT job.*, 1 AS match_rank
+          FROM network_task_generation_jobs job
+          WHERE projection.request_id <> ''
+            AND job.request_id = projection.request_id
+          UNION ALL
+          SELECT job.*, 2 AS match_rank
+          FROM network_task_generation_jobs job
+          WHERE refs.metadata_json->>'generation_job_id' <> ''
+            AND job.id = refs.metadata_json->>'generation_job_id'
+        ) candidate
+        ORDER BY candidate.match_rank ASC,
+                 candidate.updated_at DESC NULLS LAST,
+                 candidate.id DESC
         LIMIT 1
       ) job ON true
       LEFT JOIN LATERAL (
-        SELECT alloc.*
-        FROM network_task_allocations alloc
-        WHERE alloc.generated_task_id = projection.task_id
-           OR (projection.request_id <> '' AND alloc.task_request_id = projection.request_id)
-           OR (job.allocation_id <> '' AND alloc.id = job.allocation_id)
-        ORDER BY (alloc.generated_task_id = projection.task_id) DESC,
-                 alloc.updated_at DESC NULLS LAST,
-                 alloc.id DESC
+        SELECT candidate.*
+        FROM (
+          SELECT alloc.*, 0 AS match_rank
+          FROM network_task_allocations alloc
+          WHERE alloc.generated_task_id = projection.task_id
+          UNION ALL
+          SELECT alloc.*, 1 AS match_rank
+          FROM network_task_allocations alloc
+          WHERE projection.request_id <> ''
+            AND alloc.task_request_id = projection.request_id
+          UNION ALL
+          SELECT alloc.*, 2 AS match_rank
+          FROM network_task_allocations alloc
+          WHERE job.allocation_id <> ''
+            AND alloc.id = job.allocation_id
+        ) candidate
+        ORDER BY candidate.match_rank ASC,
+                 candidate.updated_at DESC NULLS LAST,
+                 candidate.id DESC
         LIMIT 1
       ) alloc ON true
       WHERE refs.task_id = $1
@@ -1509,25 +1547,47 @@ export async function getHiveProjectsDocument({
         JOIN task_projections projection
           ON projection.task_id = refs.task_id
         LEFT JOIN LATERAL (
-          SELECT job.*
-          FROM network_task_generation_jobs job
-          WHERE job.task_id = projection.task_id
-             OR (projection.request_id <> '' AND job.request_id = projection.request_id)
-             OR (refs.metadata_json->>'generation_job_id' <> '' AND job.id = refs.metadata_json->>'generation_job_id')
-          ORDER BY (job.task_id = projection.task_id) DESC,
-                   job.updated_at DESC NULLS LAST,
-                   job.id DESC
+          SELECT candidate.*
+          FROM (
+            SELECT job.*, 0 AS match_rank
+            FROM network_task_generation_jobs job
+            WHERE job.task_id = projection.task_id
+            UNION ALL
+            SELECT job.*, 1 AS match_rank
+            FROM network_task_generation_jobs job
+            WHERE projection.request_id <> ''
+              AND job.request_id = projection.request_id
+            UNION ALL
+            SELECT job.*, 2 AS match_rank
+            FROM network_task_generation_jobs job
+            WHERE refs.metadata_json->>'generation_job_id' <> ''
+              AND job.id = refs.metadata_json->>'generation_job_id'
+          ) candidate
+          ORDER BY candidate.match_rank ASC,
+                   candidate.updated_at DESC NULLS LAST,
+                   candidate.id DESC
           LIMIT 1
         ) job ON true
         LEFT JOIN LATERAL (
-          SELECT alloc.*
-          FROM network_task_allocations alloc
-          WHERE alloc.generated_task_id = projection.task_id
-             OR (projection.request_id <> '' AND alloc.task_request_id = projection.request_id)
-             OR (job.allocation_id <> '' AND alloc.id = job.allocation_id)
-          ORDER BY (alloc.generated_task_id = projection.task_id) DESC,
-                   alloc.updated_at DESC NULLS LAST,
-                   alloc.id DESC
+          SELECT candidate.*
+          FROM (
+            SELECT alloc.*, 0 AS match_rank
+            FROM network_task_allocations alloc
+            WHERE alloc.generated_task_id = projection.task_id
+            UNION ALL
+            SELECT alloc.*, 1 AS match_rank
+            FROM network_task_allocations alloc
+            WHERE projection.request_id <> ''
+              AND alloc.task_request_id = projection.request_id
+            UNION ALL
+            SELECT alloc.*, 2 AS match_rank
+            FROM network_task_allocations alloc
+            WHERE job.allocation_id <> ''
+              AND alloc.id = job.allocation_id
+          ) candidate
+          ORDER BY candidate.match_rank ASC,
+                   candidate.updated_at DESC NULLS LAST,
+                   candidate.id DESC
           LIMIT 1
         ) alloc ON true
         LEFT JOIN LATERAL (
@@ -1581,6 +1641,13 @@ export async function getHiveProjectsDocument({
   const productDocs = await getCurrentProjectProductDocs({
     projectIds: projectsResult.rows.map((row) => row.id),
   });
+  const boardSecretaryMemos = await getCurrentHiveBoardSecretaryMemos({
+    projectIds: projectsResult.rows.map((row) => row.id),
+  }).catch(() => []);
+  const projectCommentsByProject = await listHiveProjectComments({
+    projectIds: projectsResult.rows.map((row) => row.id),
+    limitPerProject: 6,
+  }).catch(() => ({}));
   const projectPlanning = await latestHiveProjectPlanningState().catch(() => null);
   const walletIdentities = mergeWalletIdentityLists(
     listPublicAccountWalletIdentities(),
@@ -1605,7 +1672,9 @@ export async function getHiveProjectsDocument({
     taskRows: tasksResult.rows,
     activityRows: activityResult.rows,
     pendingGenerationRows: pendingGenerationResult.rows,
+    projectCommentsByProject,
     productDocs,
+    boardSecretaryMemos,
     latestSecretary: secretaryResult.rows[0] || null,
     projectPlanning,
     walletIdentities,
@@ -1615,6 +1684,28 @@ export async function getHiveProjectsDocument({
     viewerAccountId,
     viewerWalletAddress,
   });
+}
+
+export function applyHiveProjectsViewerContext(document = {}, {
+  viewerAccountId = "",
+  viewerWalletAddress = "",
+} = {}) {
+  const viewer = viewerContext({ accountId: viewerAccountId, walletAddress: viewerWalletAddress });
+  if (!viewer.accountId && !viewer.walletAddress) return document;
+  const sourceProjects = safeObject(document.projects);
+  const projects = { ...sourceProjects };
+  for (const projectId of safeArray(document.projectIds)) {
+    const project = sourceProjects[projectId];
+    if (!project) continue;
+    projects[projectId] = {
+      ...project,
+      nextTask: projectNextTask(project, viewer),
+    };
+  }
+  return {
+    ...document,
+    projects,
+  };
 }
 
 export const hiveProjectsDocumentForTests = documentFromRows;

@@ -14,6 +14,7 @@ const failedAttemptLimit = 3;
 const maxAttachmentTextLength = 12_000;
 const maxAttachmentSourceTextLength = 3_200;
 const maxAttachmentExcerptLength = 800;
+const maxProjectCommentLimit = 20;
 export const hiveSecretaryPromptVersion = "hive_secretary_v1";
 const fallbackEntries = [];
 const fallbackJobs = [];
@@ -61,6 +62,39 @@ function jsonArray(value) {
 
 function jsonObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function projectCommentMetadata(value = {}) {
+  const normalized = jsonObject(value);
+  const nested = jsonObject(normalized.projectComment || normalized.boardComment);
+  return {
+    projectId: safeText(
+      nested.projectId ||
+        nested.project_id ||
+        normalized.projectId ||
+        normalized.project_id ||
+        "",
+      180
+    ),
+    projectName: safeText(
+      nested.projectName ||
+        nested.project_name ||
+        nested.name ||
+        normalized.projectName ||
+        normalized.project_name ||
+        "",
+      180
+    ),
+  };
+}
+
+export function normalizeHiveProjectCommentMetadata(value = {}) {
+  const metadata = projectCommentMetadata(value);
+  if (!metadata.projectId && !metadata.projectName) return null;
+  return {
+    projectId: metadata.projectId,
+    projectName: metadata.projectName,
+  };
 }
 
 function jsonValue(value) {
@@ -163,6 +197,31 @@ function publicEntry(row = {}) {
     metadata: jsonObject(metadata),
     createdAt: toIso(row.created_at || row.createdAt),
     updatedAt: toIso(row.updated_at || row.updatedAt),
+  };
+}
+
+function displayHandle(value = "") {
+  const normalized = safeText(value, maxDisplayNameLength);
+  if (!normalized) return "Unknown user";
+  return normalized.startsWith("@") ? normalized : normalized;
+}
+
+function publicProjectComment(row = {}) {
+  const entry = publicEntry(row);
+  const metadata = projectCommentMetadata(entry.metadata);
+  return {
+    id: entry.id,
+    projectId: metadata.projectId,
+    projectName: metadata.projectName,
+    accountId: entry.accountId,
+    displayName: entry.displayName,
+    handle: displayHandle(entry.displayName),
+    body: safeText(entry.body, 1800),
+    excerpt: safeText(entry.body, 220),
+    walletAddress: entry.walletAddress,
+    walletValidated: entry.walletValidated,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
   };
 }
 
@@ -852,4 +911,51 @@ export async function getHiveContextDocument({ limit = 120 } = {}) {
     [normalizedLimit]
   );
   return groupedDocument(result.rows);
+}
+
+export async function listHiveProjectComments({
+  projectIds = [],
+  limitPerProject = 6,
+} = {}) {
+  const normalizedProjectIds = Array.from(new Set(jsonArray(projectIds).map((id) => safeText(id, 180)).filter(Boolean)));
+  const normalizedLimit = Math.min(Math.max(Number(limitPerProject) || 6, 1), maxProjectCommentLimit);
+  const commentsByProject = Object.fromEntries(normalizedProjectIds.map((id) => [id, []]));
+  if (!normalizedProjectIds.length) return commentsByProject;
+
+  const pushComment = (row) => {
+    const comment = publicProjectComment(row);
+    if (!comment.projectId || !commentsByProject[comment.projectId]) return;
+    if (commentsByProject[comment.projectId].length >= normalizedLimit) return;
+    commentsByProject[comment.projectId].push(comment);
+  };
+
+  if (!useDatabase()) {
+    fallbackEntries
+      .slice()
+      .sort((left, right) =>
+        String(right.createdAt || right.created_at || "").localeCompare(String(left.createdAt || left.created_at || "")) ||
+        String(right.id || "").localeCompare(String(left.id || ""))
+      )
+      .forEach(pushComment);
+    return commentsByProject;
+  }
+
+  const result = await query(
+    `
+      SELECT *
+      FROM hive_context_entries
+      WHERE deleted_at IS NULL
+        AND COALESCE(
+          metadata_json #>> '{projectComment,projectId}',
+          metadata_json #>> '{boardComment,projectId}',
+          metadata_json->>'projectId',
+          ''
+        ) = ANY($1::text[])
+      ORDER BY created_at DESC, id DESC
+      LIMIT $2
+    `,
+    [normalizedProjectIds, normalizedProjectIds.length * normalizedLimit]
+  );
+  result.rows.forEach(pushComment);
+  return commentsByProject;
 }

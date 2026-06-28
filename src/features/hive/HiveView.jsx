@@ -1,8 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowUpRight, Check, ChevronDown, ChevronRight, Copy, Flag, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUp,
+  ArrowUpRight,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Flag,
+  MessageSquare,
+  X,
+} from "lucide-react";
 import { requestJson } from "../../api";
 import { transactionExplorerHref } from "../../pftl-explorer.js";
 import { profileNftImageCandidates } from "../profile/profile-nft-images.js";
+import { parseMarkdownBlocks } from "./hive-report-markdown.js";
 import "./hive.css";
 
 const PROJECT_DETAIL_PAGE_SIZE = 8;
@@ -74,6 +86,7 @@ export function HiveView({ pftlExplorerUrl = "" }) {
         <ProjectDetail
           onBack={() => setSelectedProject(null)}
           onOpenTask={openHiveTask}
+          onProjectCommentSaved={() => loadProjectDocument({ shouldApply: () => true })}
           operators={projectDocument?.operators || {}}
           pftlExplorerUrl={pftlExplorerUrl}
           project={projectDocument?.projects?.[selectedProject] || null}
@@ -261,7 +274,7 @@ function ProjectGrid({ document, onOpenTask, onSelectProject, status }) {
   );
 }
 
-function ProjectDetail({ onBack, onOpenTask, operators, pftlExplorerUrl = "", project, status }) {
+function ProjectDetail({ onBack, onOpenTask, onProjectCommentSaved, operators, pftlExplorerUrl = "", project, status }) {
   const [taskPage, setTaskPage] = useState(1);
   const [activityPage, setActivityPage] = useState(1);
   const projectTasks = project?.tasks || [];
@@ -307,7 +320,8 @@ function ProjectDetail({ onBack, onOpenTask, operators, pftlExplorerUrl = "", pr
       <Section title="About" subtitle="What this project is" layerNumber="01">
         <div className="hive-card hive-about">
           <p>{project.about || project.objective || project.summary}</p>
-          <ProjectStatusDocument document={project.productDocument} />
+          <ProjectStatusDocument document={project.productDocument} memo={project.secretaryMemo} />
+          <ProjectBoardComments onCommentSaved={onProjectCommentSaved} project={project} />
           <div className="hive-about-meta">
             <span>
               <small>Proposed by {project.proposedBy || "hive"}</small>
@@ -432,8 +446,119 @@ function PaginationControls({ label, onPageChange, page, pageCount, pageSize, to
   );
 }
 
-function ProjectStatusDocument({ document }) {
+function MarkdownMemoBody({ markdown = "" }) {
+  const blocks = useMemo(() => parseMarkdownBlocks(markdown), [markdown]);
+  if (!blocks.length) return <p>Project status memo is empty.</p>;
+  return (
+    <div className="hive-report-markdown hive-project-doc-markdown">
+      {blocks.map((block, index) => {
+        if (block.type === "heading") {
+          const Heading = `h${Math.min(Math.max(block.level + 1, 3), 5)}`;
+          return <Heading key={`${block.type}-${index}`}>{block.text}</Heading>;
+        }
+        if (block.type === "rule") return <hr key={`${block.type}-${index}`} />;
+        if (block.type === "code") return <pre key={`${block.type}-${index}`}>{block.text}</pre>;
+        if (block.type === "ordered") {
+          return (
+            <ol key={`${block.type}-${index}`}>
+              {block.items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{item}</li>)}
+            </ol>
+          );
+        }
+        if (block.type === "unordered") {
+          return (
+            <ul key={`${block.type}-${index}`}>
+              {block.items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{item}</li>)}
+            </ul>
+          );
+        }
+        if (block.type === "table") {
+          const columnCount = Math.max(block.header.length, ...block.rows.map((row) => row.length));
+          const cellsFor = (row) => Array.from({ length: columnCount }, (_, cellIndex) => row[cellIndex] || "");
+          return (
+            <div className="hive-report-table-wrap" key={`${block.type}-${index}`}>
+              <table>
+                <thead>
+                  <tr>
+                    {cellsFor(block.header).map((cell, cellIndex) => <th key={`${index}-head-${cellIndex}`}>{cell}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, rowIndex) => (
+                    <tr key={`${index}-row-${rowIndex}`}>
+                      {cellsFor(row).map((cell, cellIndex) => <td key={`${index}-${rowIndex}-${cellIndex}`}>{cell}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+        return <p key={`${block.type}-${index}`}>{block.text}</p>;
+      })}
+    </div>
+  );
+}
+
+function markdownPreview(markdown = "", max = 260) {
+  const blocks = parseMarkdownBlocks(markdown);
+  const metadataPattern = /^(generated|model|source packet)\s*:/i;
+  let text = "";
+  for (const block of blocks) {
+    if (block.type === "paragraph" && !metadataPattern.test(block.text || "")) {
+      text = block.text;
+      break;
+    }
+    if (block.type === "unordered" || block.type === "ordered") {
+      const items = (block.items || []).filter((item) => !metadataPattern.test(item));
+      if (items.length) {
+        text = items.slice(0, 2).join(" ");
+        break;
+      }
+    }
+  }
+  const compact = String(text || "").replace(/\s+/g, " ").trim();
+  if (!compact) return "";
+  return compact.length <= max ? compact : `${compact.slice(0, max - 1).trimEnd()}...`;
+}
+
+function ProjectStatusDocument({ document, memo }) {
   const [expanded, setExpanded] = useState(false);
+  if (memo?.memoMarkdown) {
+    const metadata = [
+      "GLM Board Secretary",
+      memo.model || "",
+      memo.promptVersion || "",
+      memo.sourcePacketDigest ? `source ${memo.sourcePacketDigest.slice(0, 12)}` : "",
+    ].filter(Boolean);
+    return (
+      <div className={`hive-project-doc is-secretary-memo ${expanded ? "is-expanded" : ""}`}>
+        <button
+          aria-expanded={expanded}
+          className="hive-project-doc-toggle"
+          onClick={() => setExpanded((open) => !open)}
+          type="button"
+        >
+          <span>
+            <strong>Project Status</strong>
+            {memo.generatedAt && <time>{formatContextTime(memo.generatedAt)}</time>}
+          </span>
+          <ChevronDown className={expanded ? "is-open" : ""} size={16} strokeWidth={1.8} />
+        </button>
+        <div className="hive-project-doc-preview">
+          <p>{markdownPreview(memo.memoMarkdown) || "Open for the latest GLM board secretary memo."}</p>
+        </div>
+        {expanded && (
+          <>
+            <MarkdownMemoBody markdown={memo.memoMarkdown} />
+            <footer>
+              {metadata.map((item) => <span key={item}>{item}</span>)}
+            </footer>
+          </>
+        )}
+      </div>
+    );
+  }
   if (!document) {
     return (
       <div className="hive-project-doc is-empty">
@@ -476,6 +601,150 @@ function ProjectStatusDocument({ document }) {
         </>
       )}
     </div>
+  );
+}
+
+function ProjectBoardComments({ onCommentSaved, project = {} }) {
+  const [expanded, setExpanded] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [localComments, setLocalComments] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState({ tone: "", message: "" });
+  const comments = useMemo(
+    () => mergeProjectComments(localComments, project?.comments || []),
+    [localComments, project?.comments]
+  );
+  const trimmedDraft = draft.trim();
+  const commentCount = comments.length;
+
+  useEffect(() => {
+    setExpanded(false);
+    setDraft("");
+    setLocalComments([]);
+    setSaving(false);
+    setStatus({ tone: "", message: "" });
+  }, [project?.id]);
+
+  async function submitComment(event) {
+    event.preventDefault();
+    if (!trimmedDraft || saving) return;
+    setSaving(true);
+    setStatus({ tone: "", message: "" });
+    try {
+      const result = await requestJson("/api/hive/context", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          body: trimmedDraft,
+          conversationTitle: `Hive board: ${project.name || project.id || "Project"}`,
+          projectComment: {
+            projectId: project.id,
+            projectName: project.name,
+          },
+        }),
+      });
+      if (!result.ok || !result.body?.entry) {
+        throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
+      }
+      const savedComment = projectCommentFromEntry(result.body.entry, project);
+      setLocalComments((current) => mergeProjectComments([savedComment], current));
+      setDraft("");
+      setStatus({ tone: "success", message: "Saved to board comments." });
+      await onCommentSaved?.();
+    } catch (error) {
+      setStatus({ tone: "error", message: error?.message || "Could not save this comment." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className={`hive-project-comments ${expanded ? "is-expanded" : ""}`}>
+      <button
+        aria-expanded={expanded}
+        className="hive-project-comments-toggle"
+        onClick={() => setExpanded((open) => !open)}
+        type="button"
+      >
+        <span>
+          <MessageSquare size={15} strokeWidth={1.8} />
+          <strong>Board comments</strong>
+          <small>{commentCount ? `${commentCount} ${commentCount === 1 ? "comment" : "comments"}` : "No comments yet"}</small>
+        </span>
+        <ChevronDown className={expanded ? "is-open" : ""} size={16} strokeWidth={1.8} />
+      </button>
+      {expanded && (
+        <div className="hive-project-comments-body">
+          <form className="hive-project-comment-form" onSubmit={submitComment}>
+            <textarea
+              aria-label="Project board comment"
+              maxLength={2000}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder={`Comment on ${project.name || "this project"}`}
+              value={draft}
+            />
+            <button
+              aria-label={saving ? "Saving comment" : "Send comment"}
+              className="hive-project-comment-send"
+              disabled={saving || !trimmedDraft}
+              title={saving ? "Saving" : "Send comment"}
+              type="submit"
+            >
+              <ArrowUp size={18} strokeWidth={2.5} />
+            </button>
+          </form>
+          {status.message && (
+            <p className={`hive-project-comment-status ${status.tone ? `is-${status.tone}` : ""}`}>
+              {status.message}
+            </p>
+          )}
+          {comments.length ? (
+            <ol className="hive-project-comment-list">
+              {comments.map((comment) => (
+                <li key={comment.id || `${comment.accountId}-${comment.createdAt}`}>
+                  <header>
+                    <strong>{comment.handle || comment.displayName || "Contributor"}</strong>
+                    {comment.createdAt && <time>{formatContextTime(comment.createdAt)}</time>}
+                  </header>
+                  <p>{comment.body}</p>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="hive-project-comment-empty">Project comments will appear here after contributors add them.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function projectCommentFromEntry(entry = {}, project = {}) {
+  const metadata = entry.metadata?.projectComment || {};
+  return {
+    id: entry.id,
+    projectId: metadata.projectId || project.id || "",
+    projectName: metadata.projectName || project.name || "",
+    accountId: entry.accountId || "",
+    displayName: entry.displayName || "",
+    handle: entry.displayName || "Contributor",
+    body: entry.body || "",
+    walletValidated: Boolean(entry.walletValidated),
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+  };
+}
+
+function mergeProjectComments(...commentLists) {
+  const byId = new Map();
+  for (const comment of commentLists.flat()) {
+    if (!comment?.body) continue;
+    const key = comment.id || `${comment.accountId || comment.handle}-${comment.createdAt || comment.body}`;
+    if (!byId.has(key)) byId.set(key, comment);
+  }
+  return Array.from(byId.values()).sort((left, right) =>
+    String(right.createdAt || "").localeCompare(String(left.createdAt || "")) ||
+    String(right.id || "").localeCompare(String(left.id || ""))
   );
 }
 
