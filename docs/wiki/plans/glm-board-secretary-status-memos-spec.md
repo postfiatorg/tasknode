@@ -227,10 +227,6 @@ Required memo template:
 ```md
 # Project Status: <board title>
 
-- Generated: <ISO timestamp>
-- Model: z-ai/glm-5.2
-- Source packet: <digest>
-
 ## What This Project Is
 - <2-3 sentence explanation>
 
@@ -259,6 +255,9 @@ Quality rules:
 
 - be bullet pointed and easy to scan;
 - cite task ids, comment ids, and contributor handles when possible;
+- do not include generated timestamps, model names, source packet digests,
+  prompt versions, usage details, or other debugging/audit metadata in the
+  user-facing memo body;
 - distinguish source-backed facts from missing or conflicting data;
 - avoid vague "document the issue" recommendations unless documentation is actually the next value-producing step;
 - prefer action, integration, review, routing, testing, or contributor handoff when those are the real next move;
@@ -308,7 +307,8 @@ On each Hive project board:
 - show the latest Project Status memo in the existing project status area;
 - render Markdown bullets clearly;
 - make the memo expandable/collapsible;
-- show generated time, model, and source digest in small metadata text;
+- keep generated time, model, source digest, prompt version, and usage as stored
+  audit fields, not as visible memo body text;
 - keep the original static `About` project text separate from the generated memo;
 - show a clear stale state if the latest memo is older than 30 minutes.
 

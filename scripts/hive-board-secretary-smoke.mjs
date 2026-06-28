@@ -52,12 +52,23 @@ assert.equal(result.provider, "mock");
 assert.match(result.memoMarkdown, /^# Project Status: Smoke Project/m);
 assert.match(result.memoMarkdown, /## Why This Advances PFT Value/);
 assert.match(result.memoMarkdown, /## Recommendation For Task Management Agent/);
+assert.doesNotMatch(result.memoMarkdown, /^- Generated:/m);
+assert.doesNotMatch(result.memoMarkdown, /^- Model:/m);
+assert.doesNotMatch(result.memoMarkdown, /^- Source packet:/m);
 
 const publicMemo = publicHiveBoardSecretaryMemo({
   id: "hiveboardmemo_smoke",
   project_id: "project_smoke",
   status: "current",
-  memo_markdown: result.memoMarkdown,
+  memo_markdown: [
+    "# Project Status: Smoke Project",
+    "",
+    "- Generated: 2026-06-28T00:00:00.000Z",
+    "- Model: z-ai/glm-5.2",
+    "- Source packet: abc123smokedigest",
+    "",
+    result.memoMarkdown,
+  ].join("\n"),
   source_packet_digest: sourcePacket.sourcePacketDigest,
   source_counts_json: sourcePacket.counts,
   provider: result.provider,
@@ -71,5 +82,8 @@ const publicMemo = publicHiveBoardSecretaryMemo({
 assert.equal(publicMemo.projectId, "project_smoke");
 assert.equal(publicMemo.sourceCounts.activeTaskCount, 1);
 assert.equal(publicMemo.model, "mock-glm-board-secretary");
+assert.doesNotMatch(publicMemo.memoMarkdown, /^- Generated:/m);
+assert.doesNotMatch(publicMemo.memoMarkdown, /^- Model:/m);
+assert.doesNotMatch(publicMemo.memoMarkdown, /^- Source packet:/m);
 
 console.log("hive board secretary smoke ok");

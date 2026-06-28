@@ -446,11 +446,28 @@ function PaginationControls({ label, onPageChange, page, pageCount, pageSize, to
   );
 }
 
+function isMemoMetadataLine(value = "") {
+  return /^(generated|model|source packet|source digest|prompt version|usage)\s*:/i.test(String(value || "").trim());
+}
+
+function visibleMemoBlocks(markdown = "") {
+  return parseMarkdownBlocks(markdown)
+    .map((block) => {
+      if (block.type === "paragraph" && isMemoMetadataLine(block.text)) return null;
+      if (block.type === "unordered" || block.type === "ordered") {
+        const items = (block.items || []).filter((item) => !isMemoMetadataLine(item));
+        return items.length ? { ...block, items } : null;
+      }
+      return block;
+    })
+    .filter(Boolean);
+}
+
 function MarkdownMemoBody({ markdown = "" }) {
-  const blocks = useMemo(() => parseMarkdownBlocks(markdown), [markdown]);
+  const blocks = useMemo(() => visibleMemoBlocks(markdown), [markdown]);
   if (!blocks.length) return <p>Project status memo is empty.</p>;
   return (
-    <div className="hive-report-markdown hive-project-doc-markdown">
+    <div className="hive-project-doc-markdown">
       {blocks.map((block, index) => {
         if (block.type === "heading") {
           const Heading = `h${Math.min(Math.max(block.level + 1, 3), 5)}`;
@@ -501,16 +518,15 @@ function MarkdownMemoBody({ markdown = "" }) {
 }
 
 function markdownPreview(markdown = "", max = 260) {
-  const blocks = parseMarkdownBlocks(markdown);
-  const metadataPattern = /^(generated|model|source packet)\s*:/i;
+  const blocks = visibleMemoBlocks(markdown);
   let text = "";
   for (const block of blocks) {
-    if (block.type === "paragraph" && !metadataPattern.test(block.text || "")) {
+    if (block.type === "paragraph") {
       text = block.text;
       break;
     }
     if (block.type === "unordered" || block.type === "ordered") {
-      const items = (block.items || []).filter((item) => !metadataPattern.test(item));
+      const items = block.items || [];
       if (items.length) {
         text = items.slice(0, 2).join(" ");
         break;
@@ -525,12 +541,6 @@ function markdownPreview(markdown = "", max = 260) {
 function ProjectStatusDocument({ document, memo }) {
   const [expanded, setExpanded] = useState(false);
   if (memo?.memoMarkdown) {
-    const metadata = [
-      "GLM Board Secretary",
-      memo.model || "",
-      memo.promptVersion || "",
-      memo.sourcePacketDigest ? `source ${memo.sourcePacketDigest.slice(0, 12)}` : "",
-    ].filter(Boolean);
     return (
       <div className={`hive-project-doc is-secretary-memo ${expanded ? "is-expanded" : ""}`}>
         <button
@@ -549,12 +559,7 @@ function ProjectStatusDocument({ document, memo }) {
           <p>{markdownPreview(memo.memoMarkdown) || "Open for the latest GLM board secretary memo."}</p>
         </div>
         {expanded && (
-          <>
-            <MarkdownMemoBody markdown={memo.memoMarkdown} />
-            <footer>
-              {metadata.map((item) => <span key={item}>{item}</span>)}
-            </footer>
-          </>
+          <MarkdownMemoBody markdown={memo.memoMarkdown} />
         )}
       </div>
     );
@@ -567,11 +572,6 @@ function ProjectStatusDocument({ document, memo }) {
       </div>
     );
   }
-  const metadata = [
-    document.boardManagerRunId ? "Board Manager" : "",
-    document.model || "",
-    document.promptVersion || "",
-  ].filter(Boolean);
   return (
     <div className={`hive-project-doc ${expanded ? "is-expanded" : ""}`}>
       <button
@@ -595,9 +595,6 @@ function ProjectStatusDocument({ document, memo }) {
           <ProjectDocList items={document.keyPoints} title="Key execution points" />
           <ProjectDocList items={document.blockedOrUnclear} title="Blocked or unclear" />
           <ProjectDocList items={document.nextActions} title="Next actions" />
-          <footer>
-            {metadata.map((item) => <span key={item}>{item}</span>)}
-          </footer>
         </>
       )}
     </div>

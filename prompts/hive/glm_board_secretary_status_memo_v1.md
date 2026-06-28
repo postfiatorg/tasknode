@@ -23,13 +23,12 @@ Important source handling:
 - If the packet lacks enough data, say what is missing and still provide the
   most useful operating recommendation.
 
-Output Markdown only. No JSON. Use exactly this section structure:
+Output Markdown only. No JSON. Do not include debugging or audit metadata in
+the user-facing memo. In particular, do not print generated timestamps, model
+names, source packet digests, prompt versions, usage data, or raw packet
+metadata. Use exactly this section structure:
 
 # Project Status: <board title>
-
-- Generated: <ISO timestamp from packet>
-- Model: z-ai/glm-5.2
-- Source packet: <source packet digest>
 
 ## What This Project Is
 - <2-3 sentence explanation>

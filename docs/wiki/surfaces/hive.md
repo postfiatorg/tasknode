@@ -138,9 +138,12 @@ rewarded work.
 The rendered memo is Markdown and uses the fixed sections `What This Project
 Is`, `Why This Advances PFT Value`, `Current Point People`, `Operators Needed`,
 `Next Tactics`, `Overall Strategy`, and `Recommendation For Task Management
-Agent`. The Hive UI prefers the latest current `hive_board_secretary_memos` row
-over historical Board Manager product documents for the collapsible `Project
-Status` block. If no memo exists yet, it falls back to the older
+Agent`. Generated timestamps, model names, source packet digests, prompt
+versions, and usage details remain stored on the memo row for audit, but they
+are not rendered inside the user-facing board memo. The Hive UI prefers the
+latest current `hive_board_secretary_memos` row over historical Board Manager
+product documents for the collapsible `Project Status` block. If no memo exists
+yet, it falls back to the older
 `network_project_product_docs` row or the empty pending state.
 
 ### Hive Reports
@@ -666,7 +669,9 @@ static `network_projects.about` text explains what the project is. The generated
 Project Status memo explains the current execution picture, point people,
 operator needs, next tactics, overall strategy, and the recommendation for a
 future task-management agent. The collapsed view shows only a short preview so
-the project page remains scannable.
+the project page remains scannable. Debugging metadata such as source packet
+digests and provider/model details is kept in storage and system status, not in
+the visible memo body.
 
 If no current product document exists, the About section shows the static project description plus the empty state `Project status has not been generated yet.` It does not show filler copy.
 

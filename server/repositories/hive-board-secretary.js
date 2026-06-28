@@ -227,13 +227,22 @@ function normalizeContributor(row = {}) {
   };
 }
 
+function publicMemoMarkdown(markdown = "") {
+  return safeText(markdown, 20000)
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(?:[-*]\s*)?(generated|model|source packet|source digest|prompt version|usage)\s*:/i.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function publicHiveBoardSecretaryMemo(row = {}) {
   if (!row?.id) return null;
   return {
     id: safeText(row.id, 180),
     projectId: safeText(row.project_id, 180),
     status: safeText(row.status, 80),
-    memoMarkdown: safeText(row.memo_markdown, 20000),
+    memoMarkdown: publicMemoMarkdown(row.memo_markdown),
     sourcePacketDigest: safeText(row.source_packet_digest, 120),
     sourceCounts: safeObject(row.source_counts_json),
     provider: safeText(row.provider, 80),

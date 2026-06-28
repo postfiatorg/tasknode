@@ -80,16 +80,10 @@ function messagesForPacket(sourcePacket = {}) {
 
 function mockMemo(sourcePacket = {}) {
   const project = safeObject(sourcePacket.project);
-  const digest = safeText(sourcePacket.sourcePacketDigest, 120);
-  const generatedAt = safeText(sourcePacket.generatedAt, 80);
   const activeCount = Number(sourcePacket.counts?.activeTaskCount || 0);
   const terminalCount = Number(sourcePacket.counts?.terminalTaskCount || 0);
   return [
     `# Project Status: ${project.title || sourcePacket.projectId || "Hive Board"}`,
-    "",
-    `- Generated: ${generatedAt}`,
-    "- Model: z-ai/glm-5.2",
-    `- Source packet: ${digest}`,
     "",
     "## What This Project Is",
     `- ${project.summary || project.objective || "This board coordinates Task Node network work."}`,
@@ -98,7 +92,7 @@ function mockMemo(sourcePacket = {}) {
     "- It routes verified contributor attention toward work that improves task throughput, quality, and reward confidence for PFT-denominated work.",
     "",
     "## Current Point People",
-    "- Source packet: Point people should be inferred from active tasks, rewarded task history, and board comments before routing more work.",
+    "- Current contributors: Infer point people from active tasks, rewarded task history, and board comments before routing more work.",
     "",
     "## Operators Needed",
     "- Badge-eligible operators: Needed to convert board objectives into shipped, reviewed, or rewarded outcomes.",
