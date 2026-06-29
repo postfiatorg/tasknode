@@ -951,6 +951,22 @@ async function syncOfferProjection({
   };
 }
 
+async function taskRequestBundleForGeneration(request = {}) {
+  const requestBundleCid = safeText(request.requestBundleCid, 240);
+  if (requestBundleCid.startsWith("postgres:")) {
+    const requestBundle = safeObject(request.metadata?.requestBundle);
+    if (!Object.keys(requestBundle).length) {
+      throw new Error("task_request_postgres_bundle_missing");
+    }
+    return {
+      cid: requestBundleCid,
+      payload: requestBundle,
+      source: "task_requests.metadata_json",
+    };
+  }
+  return await fetchAndDecryptTasknodePayload({ cid: requestBundleCid });
+}
+
 export async function processTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
   const stale = await reclaimStaleTaskGenerationRequests({
     maxAttempts: taskGenerationMaxAttempts(),
@@ -970,7 +986,7 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
     let replayIdentity = null;
     try {
       await heartbeatRequestAttempt(request, "fetch_request_bundle");
-      const requestBundleResult = await fetchAndDecryptTasknodePayload({ cid: request.requestBundleCid });
+      const requestBundleResult = await taskRequestBundleForGeneration(request);
       const requestBundle = safeObject(requestBundleResult.payload);
       const requestBundleDigest = `sha256:${sha256(requestBundle)}`;
       await heartbeatRequestAttempt(request, "project_taskgen_input");

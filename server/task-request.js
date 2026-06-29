@@ -113,6 +113,90 @@ function requestInputForSession(payload = {}, session = null, walletAddress = ""
   return { request, agentOrigin };
 }
 
+function minimalRequestBundle({ accountId = "", walletAddress = "", request = {} } = {}) {
+  const createdAt = new Date();
+  const createdAtIso = createdAt.toISOString();
+  const acceptByIso = new Date(createdAt.getTime() + DEFAULT_TASK_ACCEPT_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+  return {
+    schema: "pf.task.request_bundle.v1",
+    bundle_id: request.bundleId,
+    subject_wallet: walletAddress,
+    subject_encryption_pubkey: request.subjectEncryptionPubkey || "",
+    created_at: createdAtIso,
+    client: {
+      name: "pfterminal",
+      version: "0.1.0",
+      source_app: "pfterminal",
+      account_id: accountId,
+      conversation_id: request.conversationId || null,
+      conversation_title: request.sourceConversationTitle,
+    },
+    request: {
+      request_id: request.requestId,
+      request_text: request.requestText,
+      user_detail_text: request.userDetailText,
+      requested_task_kind: request.requestedTaskKind,
+      source: request.source,
+      source_conversation_title: request.sourceConversationTitle,
+      attachments: request.attachments.map((attachment) => ({
+        name: safeText(attachment?.name, 240),
+        mime_type: safeText(attachment?.mimeType, 120),
+        size: Number(attachment?.size || 0),
+        source: safeText(attachment?.source, 80),
+      })),
+    },
+    recent_chat: {
+      conversations: [],
+      summary: "",
+    },
+    memory: {
+      deep_memory: [],
+      recent_memory: [],
+    },
+    relevant_history: {
+      strategy: "terminal_fast_request_minimal_bundle",
+      items: [],
+    },
+    context: {
+      primary_context_doc: {
+        context_id: `ctx_${sha256(accountId).slice(0, 24)}`,
+        cid: null,
+        digest: "",
+        summary: "",
+        revision: 0,
+        word_count: 0,
+      },
+      additional_refs: [],
+    },
+    task_queue: {
+      counts: {},
+      recent: [],
+    },
+    policy: {
+      task_policy_version: "task-policy-minimal-v1",
+      reward_policy_version: "reward-policy-minimal-v1",
+      generation_policy_version: "taskgen-policy-minimal-v1",
+      deadline: {
+        accept_by: acceptByIso,
+        deadline_at: null,
+        accept_window_hours: DEFAULT_TASK_ACCEPT_WINDOW_HOURS,
+        source: "server_default_accept_window",
+      },
+    },
+    wallet: {
+      subject_wallet: walletAddress,
+      subject_encryption_pubkey: request.subjectEncryptionPubkey || "",
+      authority_wallet: "",
+      authority_hint: "",
+      allocation_wallet: "",
+    },
+    encryption: {
+      subject_public_key: request.subjectEncryptionPubkey || "",
+      tasknode_service_required: false,
+    },
+  };
+}
+
 async function requireSessionWallet(session = null) {
   if (!session?.accountId) {
     return {
@@ -835,6 +919,105 @@ async function submitTaskRequest({ payload, session }) {
     refresh,
     orcWorkJournal,
   });
+}
+
+export async function terminalTaskRequestAction(payload = {}, method = "POST", session = null) {
+  if (method !== "POST") {
+    return actionResponse({
+      status: 405,
+      error: "task_request_method_not_allowed",
+      message: "Task requests require POST.",
+      actionRequired: "Call the task request endpoint with POST.",
+    });
+  }
+
+  try {
+    const resolved = await requireSessionWallet(session);
+    if (resolved.error) return resolved.error;
+    const { request } = requestInputForSession(payload, session, resolved.wallet.address);
+    if (!request.userDetailText) {
+      return actionResponse({
+        status: 400,
+        error: "task_request_detail_required",
+        message: "Task requests need detail text.",
+        actionRequired: "Describe the work you want generated before publishing the task request.",
+      });
+    }
+
+    const requestBundle = minimalRequestBundle({
+      accountId: resolved.accountId,
+      walletAddress: resolved.wallet.address,
+      request,
+    });
+    const requestBundleDigest = `sha256:${sha256(requestBundle)}`;
+    const requestBundleCid = `postgres:${request.requestId}`;
+    const requestEventCid = `postgres:${request.requestId}`;
+    const txHash = `offchain:${request.requestId}`;
+    const visibleRequest = await upsertTaskRequest({
+      requestId: request.requestId,
+      bundleId: request.bundleId,
+      accountId: resolved.accountId,
+      subjectWallet: resolved.wallet.address,
+      source: "pfterminal",
+      sourceConversationId: request.conversationId,
+      sourceConversationTitle: request.sourceConversationTitle || "PFTerminal",
+      requestText: request.requestText,
+      userDetailText: request.userDetailText,
+      requestedTaskKind: request.requestedTaskKind,
+      requestBundleCid,
+      requestEventCid,
+      requestTxHash: txHash,
+      status: "published",
+      metadata: {
+        source: "pfterminal",
+        terminalFastPath: true,
+        requestBundle,
+        requestBundleDigest,
+        offchainLifecycle: {
+          enabled: true,
+          dualWrite: false,
+          writeSource: "direct_write",
+        },
+      },
+    });
+    const generationScheduled = visibleRequest?.ok
+      ? scheduleTaskGenerationQueue({
+          delayMs: 250,
+          limit: 3,
+          reason: "pfterminal_task_request_fast_path",
+        })
+      : { scheduled: false, reason: "task_request_not_persisted" };
+
+    return okResponse({
+      phase: "submitted",
+      message: "Task request recorded in Task Node.",
+      requestId: request.requestId,
+      bundleId: request.bundleId,
+      cid: requestEventCid,
+      bundleCid: requestBundleCid,
+      bundleDigest: requestBundleDigest,
+      txHash,
+      visibleRequest,
+      generationScheduled,
+      refresh: {
+        ok: true,
+        source: "direct_write",
+        reducerBypassed: true,
+      },
+      offchainLifecycle: {
+        enabled: true,
+        dualWrite: false,
+        writeSource: "direct_write",
+      },
+    });
+  } catch (error) {
+    return actionResponse({
+      status: error?.status || 502,
+      error: error?.code || error?.message || "task_request_failed",
+      message: error?.message || "Task request could not be recorded.",
+      actionRequired: "Retry the terminal task request after Task Node storage is healthy.",
+    });
+  }
 }
 
 export async function taskRequestAction(payload = {}, method = "POST", session = null) {

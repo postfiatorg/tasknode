@@ -22,7 +22,7 @@ import {
   offchainTaskLifecycleEnabled,
 } from "./offchain-task-lifecycle.js";
 import { taskLifecycleAction } from "./task-actions.js";
-import { taskRequestAction } from "./task-request.js";
+import { terminalTaskRequestAction } from "./task-request.js";
 import { taskSubmissionAction } from "./task-submission.js";
 
 function safeText(value = "", max = 4000) {
@@ -488,7 +488,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
     }
 
     const payload = await readJson(req, 64 * 1024);
-    const result = await taskRequestAction({
+    const result = await terminalTaskRequestAction({
       ...payload,
       phase: "submit",
       source: "pfterminal",
