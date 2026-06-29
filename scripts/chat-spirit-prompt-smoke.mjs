@@ -46,6 +46,35 @@ const taskContext = {
     projectionCount: 4,
     lastSyncedAt: "2026-05-19T18:15:00.000Z",
   },
+  networkTasks: {
+    status: "badge_required",
+    label: "Network Task badge required",
+    summary: "Network Task routing needs a linked wallet, active wallet sync, a completed Network Diagnostic Report, a verified operating badge, and free Network Task capacity.",
+    nextAction: "Open Profile and qualify at least one routing badge.",
+    manualRequestCopy: "Request task creates personal task proposals. Network Tasks are routed by Hive Board Manager when an active project needs a candidate.",
+    policy: {
+      requiresNetworkTaskOperatingBadge: true,
+    },
+    badgeEligibility: {
+      status: "missing",
+      verifiedBadgeIds: [],
+      verifiedBadges: [],
+      allowedWorkTypes: [],
+      summary: "No verified Network Task operating badge was found.",
+    },
+    gates: [
+      {
+        id: "operating_badge",
+        label: "Network Task operating badge",
+        status: "action_required",
+        detail: "No verified Network Task operating badge was found.",
+        action: "Open Profile and qualify a routing badge",
+      },
+    ],
+    capacity: {
+      blockers: [],
+    },
+  },
   outstanding: [
     {
       title: "Finish the visible task loop",
@@ -123,6 +152,10 @@ function assertJobsInstructions(instructions, label) {
   );
   assert.ok(instructions.includes("houston 1421"), `${label} should include context document text`);
   assert.ok(instructions.includes("<account_tasks_context>"), `${label} should include task context`);
+  assert.ok(instructions.includes("<network_task_eligibility>"), `${label} should include Network Task eligibility context`);
+  assert.ok(instructions.includes("Status: badge_required"), `${label} should include badge-required routing state`);
+  assert.ok(instructions.includes("Requires verified operating badge: yes"), `${label} should include badge gate`);
+  assert.ok(instructions.includes("Network Task operating badge"), `${label} should include operating badge gate`);
   assert.ok(instructions.includes("<deep_memory>"), `${label} should include deep memory`);
   assert.ok(instructions.includes("Recent memory should carry forward"), `${label} should include recent memory`);
   assert.ok(
@@ -271,6 +304,9 @@ assert.ok(helpInstructions.includes("no task is created just because the user se
 assert.ok(helpInstructions.includes("Do not include this Hive quickstart in unrelated Help answers."));
 assert.ok(helpInstructions.includes("### Hive Chat First-Run Path"));
 assert.ok(helpInstructions.includes("The Network Diagnostic Report is generated automatically"));
+assert.ok(helpInstructions.includes("Contributor badges are Network Task routing permissions"));
+assert.ok(helpInstructions.includes("KOL`, `Core Contributor`, `QA Worker`, `Expert`, and `Project Leader"));
+assert.ok(helpInstructions.includes("If the runtime context says `badge_required`"));
 assert.ok(helpInstructions.includes("Never tell the user to find, request, or apply for a Network Diagnostic Report; there is no request flow."));
 assert.ok(helpInstructions.includes("opening the Memory page also queues it immediately when none exists"));
 assert.ok(helpInstructions.includes("there is no way to request it from Hive, Board Manager, or a person"));

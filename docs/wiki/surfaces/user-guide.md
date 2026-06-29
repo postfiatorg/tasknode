@@ -49,7 +49,7 @@ For a proposed task, the user accepts it if they will do the work or refuses it 
 
 Personal tasks come from the user's own request. Network Tasks come from Hive routing for shared network projects.
 
-Tasks also shows a `Network Tasks` eligibility panel. It displays a plain status pill, the routing wallet, and a checklist of the routing gates: signed-in account, linked PFT wallet, active wallet sync, completed Network Diagnostic Report, and free Network Task capacity. It names the next action for the first failing gate and lists any capacity blockers consuming the wallet's slot. The panel auto-expands when the user is not yet routable so the real blocker is visible without clicking.
+Tasks also shows a `Network Tasks` eligibility panel. It displays a plain status pill, the routing wallet, and a checklist of the routing gates: signed-in account, linked PFT wallet, active wallet sync, completed Network Diagnostic Report, verified Network Task operating badge, and free Network Task capacity. It names the next action for the first failing gate and lists any capacity blockers consuming the wallet's slot. The panel auto-expands when the user is not yet routable so the real blocker is visible without clicking.
 
 ### Context Screen
 
@@ -113,7 +113,7 @@ Recommendations require enough public/discoverable member data to compare agains
 
 Hive is the group coordination board. It shows shared Post Fiat projects, Network Task routing, contributor activity, Hive Context, and Hive Mind Agent activity. It is where the user inspects network work, not where they accept or submit tasks.
 
-Hive Chat is a pinned chat conversation for contributing network context. A Hive Chat message is saved to Hive Context. The immediate response can explain board state, but it does not create a task by itself. Network Tasks are routed later by the Board Manager when there is a project need, eligible contributor capacity, and a matching user profile.
+Hive Chat is a pinned chat conversation for contributing network context. A Hive Chat message is saved to Hive Context. The immediate response can explain board state, badges, and routing blockers, but it does not create a task by itself. Network Tasks are routed later by the Board Manager when there is a project need, eligible contributor capacity, a verified operating badge, and a matching user profile.
 
 When Hive Chat describes an active Network Task reward, the user-visible task projection reward is authoritative. Internal allocation caps are only context for not-yet-offered work and should not be reported as the accepted task reward.
 
@@ -402,8 +402,19 @@ The system tries to route Network Tasks when:
 - the user has a linked PFT wallet;
 - the wallet is indexed and active;
 - the user has a completed Network Diagnostic Report;
+- the user has a verified Network Task operating badge;
 - the user is not already consuming Network Task capacity;
-- Hive has a real project need that matches the user.
+- Hive has a real project need that matches the user's badge and profile.
+
+Contributor badges are the routing lanes for Network Tasks. They are not just profile decorations. The active user-facing badges are:
+
+- `KOL`: amplification, public announcements, X posts, and article distribution.
+- `Core Contributor`: code tasks, repo work, code review, and capability-gating work.
+- `QA Worker`: QA reports, product QA, and reproducible issue packets, capped at lower QA rewards.
+- `Expert`: domain analysis, expert bundles, and expert review.
+- `Project Leader`: project management, special project definition, and open-source project definition.
+
+If the eligibility panel or Help says `Network Task badge required`, the user is not being routed because no verified operating badge is available for the account. The next step is Profile: qualify or verify at least one routing badge. Having a good profile, a linked wallet, or prior rewarded personal tasks does not by itself route a Network Task if the required badge lane is missing.
 
 The Network Diagnostic Report is generated automatically; there is no way to request it from Hive, Board Manager, or a person. The app queues it after the user's second positively rewarded task (rewarded personal tasks count), and opening the Memory page also queues it right away when the user does not have one yet. If routing looks stuck, the usual fix is: link a PFT wallet, wait for the wallet to finish syncing, then open Memory so the report generates. Do not tell the user that completing personal tasks is required for Network Tasks; rewarded tasks only trigger the report automatically, and opening Memory produces the same report without any task history.
 

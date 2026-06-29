@@ -11,10 +11,24 @@ const taskContextTimeoutMs = Math.min(
 const refusedTaskLimit = 10;
 const rewardedTaskLimit = 12;
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function safeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 function clip(value = "", max = 260) {
   const text = String(value || "").trim().replace(/\s+/g, " ");
   if (text.length <= max) return text;
   return `${text.slice(0, Math.max(0, max - 15)).trimEnd()} [truncated]`;
+}
+
+function formatPftAmount(value = 0) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  return `${amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} PFT`;
 }
 
 function formatReward(task) {
@@ -50,6 +64,85 @@ function formatGroup(tasks = [], { limit = Infinity } = {}) {
   return visible.map(taskLine).join("\n") + omitted;
 }
 
+function formatBadgeLine(badge = {}) {
+  const badgeId = clip(badge.badgeId || badge.badge_id || "", 80);
+  const label = clip(badge.label || badge.badgeLabel || badgeId || "Badge", 120);
+  const cap = formatPftAmount(badge.maxPayoutPft || badge.max_payout_pft || badge.badgeRewardCapPft || 0);
+  const workTypes = safeArray(badge.allowedWorkTypes || badge.allowed_work_types)
+    .map((item) => clip(item, 80))
+    .filter(Boolean)
+    .slice(0, 8);
+  return [
+    `- ${label}${badgeId ? ` (${badgeId})` : ""}`,
+    cap ? `cap=${cap}` : "",
+    workTypes.length ? `work_types=${workTypes.join(", ")}` : "",
+  ].filter(Boolean).join("; ");
+}
+
+function formatGateLine(gate = {}) {
+  return [
+    `- ${clip(gate.label || gate.id || "Eligibility gate", 120)}`,
+    `status=${clip(gate.status || "unknown", 80)}`,
+    gate.detail ? `detail=${clip(gate.detail, 220)}` : "",
+    gate.action ? `action=${clip(gate.action, 180)}` : "",
+  ].filter(Boolean).join("; ");
+}
+
+function formatCapacityBlockerLine(blocker = {}) {
+  return [
+    `- ${clip(blocker.title || blocker.taskId || blocker.generationJobId || "Network Task", 140)}`,
+    blocker.taskId ? `task=${clip(blocker.taskId, 120)}` : "",
+    blocker.state || blocker.allocationStatus ? `state=${clip(blocker.state || blocker.allocationStatus, 80)}` : "",
+    blocker.rewardOfferPft ? `offer=${formatPftAmount(blocker.rewardOfferPft)}` : "",
+    blocker.acceptBy ? `accept_by=${clip(blocker.acceptBy, 80)}` : "",
+    blocker.deadlineAt ? `deadline=${clip(blocker.deadlineAt, 80)}` : "",
+  ].filter(Boolean).join("; ");
+}
+
+function formatNetworkTaskEligibility(networkTasks = null) {
+  if (!networkTasks || typeof networkTasks !== "object") {
+    return [
+      "<network_task_eligibility>",
+      "Status: unavailable.",
+      "Use generic Network Task guidance only; do not claim the user's badge or routing state is known.",
+      "</network_task_eligibility>",
+    ].join("\n");
+  }
+  const badgeEligibility = safeObject(networkTasks.badgeEligibility);
+  const verifiedBadges = safeArray(badgeEligibility.verifiedBadges);
+  const verifiedBadgeIds = safeArray(badgeEligibility.verifiedBadgeIds).map((item) => clip(item, 80)).filter(Boolean);
+  const gates = safeArray(networkTasks.gates);
+  const blockers = safeArray(safeObject(networkTasks.capacity).blockers);
+  const allowedWorkTypes = safeArray(badgeEligibility.allowedWorkTypes).map((item) => clip(item, 100)).filter(Boolean);
+  const badgeLines = verifiedBadges.length
+    ? verifiedBadges.map(formatBadgeLine)
+    : verifiedBadgeIds.length
+      ? verifiedBadgeIds.map((badgeId) => `- ${badgeId}`)
+      : ["- None verified."];
+  const gateLines = gates.length ? gates.map(formatGateLine) : ["- No eligibility gates returned."];
+  const blockerLines = blockers.length ? blockers.map(formatCapacityBlockerLine) : ["- None."];
+  return [
+    "<network_task_eligibility>",
+    "Use this section when explaining why the user is or is not getting Network Tasks. Do not invent badges, roles, task capacity, or eligibility gates beyond this data.",
+    `Status: ${clip(networkTasks.status || "unknown", 80)} (${clip(networkTasks.label || "Network Task eligibility", 120)})`,
+    networkTasks.summary ? `Summary: ${clip(networkTasks.summary, 320)}` : "",
+    networkTasks.nextAction ? `Next action: ${clip(networkTasks.nextAction, 220)}` : "",
+    networkTasks.manualRequestCopy ? `Manual request note: ${clip(networkTasks.manualRequestCopy, 260)}` : "",
+    `Requires verified operating badge: ${networkTasks.policy?.requiresNetworkTaskOperatingBadge === true ? "yes" : "unknown"}`,
+    `Badge status: ${clip(badgeEligibility.status || "unknown", 80)}`,
+    badgeEligibility.summary ? `Badge summary: ${clip(badgeEligibility.summary, 260)}` : "",
+    badgeEligibility.defaultBadge ? `Default badge: ${clip(badgeEligibility.defaultBadge, 80)}` : "",
+    allowedWorkTypes.length ? `Allowed work types: ${allowedWorkTypes.join(", ")}` : "",
+    "Verified contributor badges:",
+    badgeLines.join("\n"),
+    "Eligibility gates:",
+    gateLines.join("\n"),
+    "Network Task capacity blockers:",
+    blockerLines.join("\n"),
+    "</network_task_eligibility>",
+  ].filter(Boolean).join("\n");
+}
+
 export function formatChatTaskContext(taskContext = null) {
   if (!taskContext) return "";
   const outstanding = Array.isArray(taskContext.outstanding) ? taskContext.outstanding : [];
@@ -66,6 +159,7 @@ export function formatChatTaskContext(taskContext = null) {
 
   return renderPromptTemplate(taskContextPrompt, {
     SYNC_LINE: syncLine,
+    NETWORK_TASK_ELIGIBILITY: formatNetworkTaskEligibility(taskContext.networkTasks),
     OUTSTANDING_COUNT: outstanding.length,
     OUTSTANDING_TASKS: formatGroup(outstanding),
     PENDING_VERIFICATION_COUNT: pendingVerification.length,

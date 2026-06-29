@@ -344,6 +344,17 @@ async function accountNetworkTaskEligibility({ accountId = "", walletAddress = "
     walletSynced: Boolean(eligibility.wallet?.synced),
     diagnosticReportStatus: safeText(eligibility.profile?.status || "missing", 80),
     capacityAvailable: Boolean(eligibility.capacity?.available),
+    badgeStatus: safeText(eligibility.badgeEligibility?.status || "unknown", 80),
+    badgeSummary: safeText(eligibility.badgeEligibility?.summary || "", 260),
+    verifiedBadgeIds: safeArray(eligibility.badgeEligibility?.verifiedBadgeIds)
+      .map((badgeId) => safeText(badgeId, 80))
+      .filter(Boolean),
+    verifiedBadgeLabels: safeArray(eligibility.badgeEligibility?.verifiedBadges)
+      .map((badge) => safeText(badge.label || badge.badgeId, 120))
+      .filter(Boolean),
+    allowedWorkTypes: safeArray(eligibility.badgeEligibility?.allowedWorkTypes)
+      .map((workType) => safeText(workType, 120))
+      .filter(Boolean),
     blockedGates: safeArray(eligibility.gates)
       .filter((gate) => gate.id !== "board_routing" && gate.status !== "complete")
       .map((gate) => `${safeText(gate.id, 40)}=${safeText(gate.status, 40)}`),
@@ -486,9 +497,14 @@ function networkTaskEligibilityPromptLines(eligibility = null) {
       `wallet_linked=${eligibility.walletLinked ? "yes" : "no"}`,
       `wallet_synced=${eligibility.walletSynced ? "yes" : "no"}`,
       `diagnostic_report=${safeText(eligibility.diagnosticReportStatus, 80) || "missing"}`,
+      `badge_status=${safeText(eligibility.badgeStatus, 80) || "unknown"}`,
+      `verified_badges=${safeArray(eligibility.verifiedBadgeLabels).join(", ") || "none"}`,
       `capacity_available=${eligibility.capacityAvailable ? "yes" : "no"}`,
       `rewarded_tasks=${Number(eligibility.positiveRewardedTaskCount || 0)}/${Number(eligibility.autoReportRewardedTaskThreshold || 0)} toward automatic Network Diagnostic Report generation`,
     ].join(" | "),
+    eligibility.badgeSummary
+      ? `- network_task_badges: ${safeText(eligibility.badgeSummary, 260)} | allowed_work_types=${safeArray(eligibility.allowedWorkTypes).join(", ") || "none"}`
+      : "- network_task_badges: unavailable; do not claim a verified operating badge unless another authoritative section lists it.",
     blockedGates.length
       ? `- network_task_eligibility blocked gates: ${blockedGates.join(", ")} | next_action=${safeText(eligibility.nextAction, 240) || "none"}`
       : "- network_task_eligibility blocked gates: none; the account is routable and waits on Board Manager project need.",
