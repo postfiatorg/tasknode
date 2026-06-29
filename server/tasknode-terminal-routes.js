@@ -1,11 +1,14 @@
+import { createHash } from "node:crypto";
 import { authStart } from "./product-contracts.js";
 import { fetchPftBalance } from "./pftl-balance.js";
+import { getContextDocument, saveContextDocument } from "./repositories/context.js";
 import {
   getTerminalTaskProjectionDetail,
   listTaskProjectionCounts,
   listTaskProjectionRewards,
   listTaskProjectionTasks,
 } from "./repositories/tasks.js";
+import { contextBodyText, contextLineCount } from "../shared/context-line-map.js";
 import { listTaskRequests } from "./repositories/task-requests.js";
 import {
   accountHasLinkedProvider,
@@ -135,6 +138,34 @@ function cleanLines(lines = []) {
   return lines
     .map((line) => cleanText(line, 4000))
     .filter(Boolean);
+}
+
+function sha256(text = "") {
+  return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
+}
+
+function wordCount(text = "") {
+  const words = String(text || "").trim().match(/\S+/g);
+  return words ? words.length : 0;
+}
+
+function terminalContextDocument(document = {}) {
+  const body = String(document.body || "");
+  const bodyText = contextBodyText(body);
+  return {
+    ...document,
+    body,
+    bodyText,
+    terminal: {
+      digest: `sha256:${sha256(body).slice(0, 16)}`,
+      bodyDigest: `sha256:${sha256(body)}`,
+      textDigest: `sha256:${sha256(bodyText)}`,
+      lineCount: contextLineCount(body),
+      wordCount: wordCount(bodyText),
+      charCount: bodyText.length,
+      editableBodyFormat: /<\/?[a-z][\s\S]*>/i.test(body) ? "html" : "text",
+    },
+  };
 }
 
 function terminalTaskId(task = {}) {
@@ -429,6 +460,95 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
         offchainTaskLifecycle: offchainTaskLifecycleEnabled(),
         terminalTaskActions: terminalTaskActionsEnabled(),
       },
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/terminal/tasknode/context") {
+    const current = await getContextDocument({ accountId: session.accountId });
+    if (req.method === "GET") {
+      json(res, 200, {
+        ok: true,
+        context: terminalContextDocument(current),
+      });
+      return true;
+    }
+
+    if (req.method !== "POST" && req.method !== "PATCH") {
+      json(res, 405, {
+        ok: false,
+        error: "terminal_context_method_not_allowed",
+        message: "Task Node context supports GET, POST, and PATCH.",
+      });
+      return true;
+    }
+
+    if (!current.canEdit) {
+      json(res, 409, {
+        ok: false,
+        error: "terminal_context_read_only",
+        message: "This Task Node context document is read-only for the terminal session.",
+      });
+      return true;
+    }
+
+    const payload = await readJson(req, 256 * 1024);
+    const expectedRevision = Number(payload?.revision);
+    if (
+      Number.isFinite(expectedRevision) &&
+      expectedRevision >= 0 &&
+      expectedRevision !== Number(current.revision || 0)
+    ) {
+      json(res, 409, {
+        ok: false,
+        error: "terminal_context_revision_conflict",
+        message: "Task Node context changed after it was opened. Refresh before saving.",
+        context: terminalContextDocument(current),
+      });
+      return true;
+    }
+
+    const title = safeText(payload?.title || current.title || "Task Node Context", 120);
+    const body = String(payload?.body ?? "");
+    if (!body.trim()) {
+      json(res, 400, {
+        ok: false,
+        error: "terminal_context_body_required",
+        message: "Context body is required.",
+      });
+      return true;
+    }
+
+    const beforeDigest = sha256(current.body || "");
+    const result = await saveContextDocument({
+      accountId: session.accountId,
+      title,
+      body,
+      source: "pfterminal",
+      provenance: {
+        surface: "pfterminal",
+        terminal: true,
+        previousRevision: current.revision || 0,
+      },
+    });
+
+    if (!result.ok) {
+      json(res, result.status || 400, {
+        ok: false,
+        error: result.error || "terminal_context_save_failed",
+        message: "Task Node context could not be saved.",
+      });
+      return true;
+    }
+
+    const saved = result.document || current;
+    json(res, 200, {
+      ok: true,
+      message: sha256(saved.body || "") === beforeDigest
+        ? "Context unchanged."
+        : "Context saved.",
+      saved: sha256(saved.body || "") !== beforeDigest,
+      context: terminalContextDocument(saved),
     });
     return true;
   }
