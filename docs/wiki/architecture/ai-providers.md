@@ -125,6 +125,21 @@ Jobs source text audit block.
 
 Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.js`, defaulting to `text-embedding-3-small` with 1536 dimensions. That embedding call is internal retrieval infrastructure; it is not a chat completion provider route and does not enable web search on private modes.
 
+## PFTerminal Chat Bridge
+
+PFTerminal uses the GitHub-linked terminal session bridge under
+`/api/terminal/tasknode/chat/*` instead of browser-cookie `/api/chat/*` routes.
+The bridge exposes conversation list, history, search, non-streaming send, and
+SSE streaming send. Terminal chat defaults to `Private Thinking` even when the
+web app's environment default is a faster mode. The stream route emits the same
+`meta`, `delta`, `done`, and `error` event shape as the web chat stream, so the
+terminal can render visible assistant text incrementally while Task Node keeps
+the same context, memory, task-state, billing, and Jobs retrieval preflight.
+
+Terminal chat is text-only in the first bridge. It does not expose provider
+reasoning text: Private Thinking continues to send `reasoning.exclude=true`, so
+the UI receives final assistant text plus audit metadata, not hidden reasoning.
+
 ## Hive Board Manager And Planning Workers
 
 Hive planning workers are not user chat modes and are not billed to the user's chat balance. They are async internal coordination jobs.
