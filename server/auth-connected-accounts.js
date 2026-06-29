@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   consumeOAuthState,
+  completeTerminalAuthRequest,
   createAccountSession,
   createOAuthState,
   getOrCreateProviderAccount,
@@ -627,6 +628,13 @@ async function completeProviderAuth({
   }
   const initialCredit = await grantInitialProviderCredit(account, providerId);
   const created = createAccountSession(account, { provider: providerId, assurance });
+  const terminalAuth = stateRow.metadata?.terminalRequestId
+    ? completeTerminalAuthRequest({
+        requestId: stateRow.metadata.terminalRequestId,
+        accountId: account.id,
+        provider: providerId,
+      })
+    : null;
   recordAuthEvent({
     accountId: account.id,
     eventType: stateRow.linkAccountId ? `${providerId}_oauth_linked` : `${providerId}_oauth_verified`,
@@ -637,6 +645,8 @@ async function completeProviderAuth({
       username,
       providerUserId,
       emailVerified: emailInfo?.verified === true,
+      terminalAuthRequestId: stateRow.metadata?.terminalRequestId || "",
+      terminalAuthCompleted: terminalAuth?.ok === true,
       initialCreditUsd: initialCredit?.idempotentReplay ? 0 : Number(initialCredit?.amountUsd || 0),
       initialCreditIdempotentReplay: Boolean(initialCredit?.idempotentReplay),
       ...metadata,
@@ -769,13 +779,17 @@ function startGithubAuth(requestMeta = {}) {
     return actionResponse({ status: 409, error: "auth_redirect_origin_missing", action: "github_auth_start", message: "GitHub login needs a public Task Node origin.", actionRequired: "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin." });
   }
   const proofIntent = githubProofIntent(requestMeta.proof);
+  const terminalRequestId = String(requestMeta.terminalRequestId || "").trim();
   const stateRow = createOAuthState({
     provider: "github",
     redirectPath: safeRedirectPath(requestMeta.redirectPath),
     redirectUri,
     linkAccountId: requestMeta.session?.accountId || "",
     expiresInSeconds: 600,
-    metadata: proofIntent ? { proofIntent } : {},
+    metadata: {
+      ...(proofIntent ? { proofIntent } : {}),
+      ...(terminalRequestId ? { terminalRequestId } : {}),
+    },
   });
   const linkingAccount = Boolean(requestMeta.session?.accountId);
   const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
