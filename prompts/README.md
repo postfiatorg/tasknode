@@ -14,6 +14,9 @@ reviewed, versioned, and replayed.
 - `memory/`: Async memory and deep-memory summarization prompts.
 - `profile/`: Public profile scoring, recommendation, summary, and profile NFT
   image prompts used by live profile surfaces.
+- `hive/`: Hive coordination prompts, including Hive Chat immediate-response
+  instructions, Network Task routing policy, Board Manager/Secretary prompts,
+  and active-project planning prompts.
 - `hive/reports/`: Hive report writer prompts, including the shared report
   writer system prompt, common report instructions, per-report instructions,
   phase instructions, and message wrappers used by the report worker and Hive

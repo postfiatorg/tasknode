@@ -87,6 +87,8 @@ import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profi
 import boardManagerPrompt from "../../../prompts/hive/board_manager_v1.md?raw";
 import boardManagerSecretaryPrompt from "../../../prompts/hive/board_manager_secretary_v1.md?raw";
 import glmBoardSecretaryPrompt from "../../../prompts/hive/glm_board_secretary_status_memo_v1.md?raw";
+import hiveImmediateResponsePrompt from "../../../prompts/hive/hive_immediate_response_v1.md?raw";
+import hiveNetworkTaskRoutingPolicyPrompt from "../../../prompts/hive/hive_network_task_routing_policy_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import taskAccountingHarvesterPrompt from "../../../prompts/hive/task_accounting_harvester_v1.md?raw";
@@ -323,6 +325,31 @@ const PROMPT_SOURCES = [
       "scripts/board-manager-model-exec.mjs",
     ],
     content: boardManagerSecretaryPrompt,
+  },
+  {
+    family: "Hive",
+    title: "Hive Immediate Response",
+    path: "prompts/hive/hive_immediate_response_v1.md",
+    summary: "Replies in Hive Chat after saving the user's message and uses reports, live board facts, account state, and scoped Hive Context to ask useful clarifying questions.",
+    status: "Active Hive Chat immediate response",
+    usedBy: [
+      "server/hive-immediate-response.js::hiveSystemPrompt",
+      "server/hive-routes.js::saveHiveChatMessage",
+      "POST /api/hive/chat",
+    ],
+    content: hiveImmediateResponsePrompt,
+  },
+  {
+    family: "Hive",
+    title: "Hive Network Task Routing Policy",
+    path: "prompts/hive/hive_network_task_routing_policy_v1.md",
+    summary: "Authoritative routing-policy block injected into Hive Chat so it does not invent Network Task assignment or eligibility flows.",
+    status: "Active Hive Chat subprompt",
+    usedBy: [
+      "server/hive-immediate-response.js::networkTaskRoutingPolicyForPrompt",
+      "prompts/hive/hive_immediate_response_v1.md",
+    ],
+    content: hiveNetworkTaskRoutingPolicyPrompt,
   },
   {
     family: "Hive",

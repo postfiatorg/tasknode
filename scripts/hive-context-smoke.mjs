@@ -20,6 +20,7 @@ const { hiveProjectsDocumentForTests } = await import("../server/repositories/hi
 const { handleHiveRoute } = await import("../server/hive-routes.js");
 const { getChatMessages } = await import("../server/repositories/chat-billing.js");
 const {
+  formatHiveReportsContextForImmediateResponse,
   formatHiveMindContextForImmediateResponse,
   formatLiveBoardFactsForImmediateResponse,
 } = await import("../server/hive-immediate-response.js");
@@ -346,6 +347,50 @@ assert.match(formattedLiveFacts, /requesting_wallet=yes/);
 assert.match(formattedLiveFacts, /account=account_other/);
 assert.match(formattedLiveFacts, /requesting_user=no/);
 
+const formattedReportsContext = formatHiveReportsContextForImmediateResponse({
+  generatedAt: "2026-06-29T00:00:00.000Z",
+  reports: [
+    {
+      id: "hiverep_exec",
+      type: "executive",
+      label: "Executive",
+      generatedAt: "2026-06-29T00:00:00.000Z",
+      model: "z-ai/glm-5.2",
+      bodyMarkdown: "# Executive Report\n\nProject Leaders need clearer owner/blocker context.",
+    },
+    {
+      id: "hiverep_intel",
+      type: "hive_intelligence",
+      label: "Hive Intelligence",
+      generatedAt: "2026-06-29T00:00:00.000Z",
+      model: "z-ai/glm-5.2",
+      bodyMarkdown: "# Hive Intelligence Report\n\nThe network should focus rewards on work that increases PFT value.",
+    },
+  ],
+  harvestReport: {
+    report: {
+      id: "harvestreport_1",
+      generatedAt: "2026-06-29T00:00:00.000Z",
+      resolvedCount: 3,
+      unresolvedCount: 2,
+      bodyMarkdown: "# Harvest Report\n\nThree resolved harvests produced shipped product fixes.",
+    },
+  },
+  liveTaskPacket: {
+    packet: {
+      generatedAt: "2026-06-29T00:00:00.000Z",
+      contributorCount: 1,
+      text: "Contributor 1:\n- Network Task Assigned Proposal: Fix Hive Chat context.",
+    },
+  },
+});
+assert.match(formattedReportsContext, /HIVE REPORTS CONTEXT - AUTHORITATIVE STRATEGIC BACKGROUND/);
+assert.match(formattedReportsContext, /Executive Report/);
+assert.match(formattedReportsContext, /Hive Intelligence Report/);
+assert.match(formattedReportsContext, /Harvest Report/);
+assert.match(formattedReportsContext, /Live Task Packet/);
+assert.match(formattedReportsContext, /Fix Hive Chat context/);
+
 const routeAttachmentText = "Hive immediate response should see pasted launch surface context.";
 const routeSmokeCorrelationId = randomUUID().replace(/-/g, "").slice(0, 16);
 const routeSmokeConversationId = `account_account_hive_smoke_hive_${routeSmokeCorrelationId}`;
@@ -456,6 +501,13 @@ assert.match(deepSeekRequestSerialized, /Personal tasks can be useful work, but 
 assert.match(deepSeekRequestSerialized, /Do not offer to create a personal task, task proposal, or concrete card from Hive Chat/);
 assert.match(deepSeekRequestSerialized, /Live Board Facts are authoritative/);
 assert.match(deepSeekRequestSerialized, /Only describe a task, follow-up, capacity blocker, or reward as the user's own/);
+assert.match(deepSeekRequestSerialized, /Hive Reports Context/);
+assert.match(deepSeekRequestSerialized, /HIVE REPORTS CONTEXT - AUTHORITATIVE STRATEGIC BACKGROUND/);
+assert.match(deepSeekRequestSerialized, /Executive Report/);
+assert.match(deepSeekRequestSerialized, /Harvest Report/);
+assert.match(deepSeekRequestSerialized, /Live Task Packet/);
+assert.match(deepSeekRequestSerialized, /ask at most two targeted clarifying questions/);
+assert.match(deepSeekRequestSerialized, /what outcome they want/);
 assert.match(deepSeekRequestSerialized, /Requesting account: account_hive_smoke/);
 assert.match(deepSeekRequestSerialized, /Requesting wallet: rHiveSmokeWallet/);
 assert.doesNotMatch(deepSeekRequestSerialized, /Protocol Marketing needs/);

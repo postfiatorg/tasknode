@@ -67,6 +67,30 @@ replacement, so wallet feed names do not get clobbered by profile display names
 
 Project IDs are part of the product surface. The project detail header should expose the stable `network_projects.id` so operators can refer to a project in tasks, docs, and chat without ambiguity.
 
+### Hive Chat
+
+Hive Chat is the pinned chat conversation for contributing network context. A
+posted message is first saved as a Hive Context entry, then the immediate
+response is generated from a scoped prompt in
+`prompts/hive/hive_immediate_response_v1.md`. The prompt is not embedded in
+server code.
+
+The immediate response packet includes the requesting account identity, Account
+Live State, the requesting user's scoped Hive Context source packet, live board
+facts, the compressed Board Manager/Hive Mind packet, and a plain-text Hive
+Reports Context packet. The reports packet includes the latest generated Hive
+reports by type, the latest Harvest Report, and the deterministic Live Task
+Packet. Report bodies are clipped for prompt budget, but every report type is
+represented by name so Hive Chat can distinguish missing reports from generated
+reports.
+
+Hive Chat should use this context as an intake surface for the network. When a
+user message is ambiguous, the response should ask one or two targeted
+clarifying questions that would improve board management, report quality, task
+routing, or PFT-value judgment. When the user already supplied clear context,
+the response should state the operational implication and avoid pretending it
+created, assigned, archived, reviewed, rewarded, or resolved anything.
+
 ## Hive Brain
 
 `Hive Brain` is an operator-only audit tab under the sidebar `More` menu at
