@@ -515,7 +515,11 @@ function BoardManagerDecisionStrip({ report = {} }) {
   if (!decision) return null;
   const add = decision.addBoard || {};
   const archive = decision.archiveBoard || {};
-  const variant = add.decision === "recommended" || archive.decision === "recommended" ? "action" : "gray";
+  const unarchive = decision.unarchiveBoard || {};
+  const variant =
+    add.decision === "recommended" || archive.decision === "recommended" || unarchive.decision === "recommended"
+      ? "action"
+      : "gray";
   return (
     <div className="hive-brain-board-decision">
       <div className="hive-brain-board-decision-head">
@@ -525,6 +529,7 @@ function BoardManagerDecisionStrip({ report = {} }) {
       <div className="hive-brain-board-decision-actions">
         <span><strong>ADD_BOARD</strong>{add.summary || "Open report."}</span>
         <span><strong>ARCHIVE_BOARD</strong>{archive.summary || "Open report."}</span>
+        <span><strong>UNARCHIVE_BOARD</strong>{unarchive.summary || "Open report."}</span>
       </div>
     </div>
   );

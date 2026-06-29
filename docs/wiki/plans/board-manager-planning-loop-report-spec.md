@@ -26,10 +26,13 @@ The final action set is limited to:
 
 - `ADD_BOARD`
 - `ARCHIVE_BOARD`
+- `UNARCHIVE_BOARD`
 
 The report may also explain why existing boards should stay active, but "keep"
 is not an executable action. Archiving is a high-intensity action and must be
 recommended on a risk-averse basis only.
+Unarchiving is the reversal path when a current workstream is better served by
+restoring a relevant archived board than adding a duplicate board.
 
 ## Current System Findings
 
@@ -442,6 +445,22 @@ The report may recommend `ADD_BOARD` only when:
 - the first 2-3 tactics can be sequenced with current operators;
 - the upside to PFT value is clear enough to justify public board attention.
 
+## Unarchive Board Guardrails
+
+The report may recommend `UNARCHIVE_BOARD` only when:
+
+- an archived board directly matches a current strategic workstream;
+- restoring that board avoids a duplicate `ADD_BOARD` recommendation;
+- the archived board has no operator archive lock;
+- current evidence shows renewed demand, such as live tasks, recent comments,
+  Project Leader context, or Hive Intelligence findings;
+- the revived board has a clear PFT value lever, KPI, budget envelope, and first
+  2-3 tactics.
+
+If an archived board has `operatorArchiveLock=true`, the report must not
+recommend unarchiving it unless the source packet contains explicit
+founder/operator unlock context.
+
 ## Archived Board UX
 
 Do not render archived boards inside the main active board grid.
@@ -559,13 +578,13 @@ main active board payload unchanged.
 ### Phase 4: guarded action adapter
 
 Only after report quality is proven, add an executor that reads the latest
-Board Manager Planning Report and can convert `ADD_BOARD` or `ARCHIVE_BOARD`
-candidates into guarded actions.
+Board Manager Planning Report and can convert `ADD_BOARD`, `ARCHIVE_BOARD`, or
+`UNARCHIVE_BOARD` candidates into guarded actions.
 
 The adapter must:
 
 - re-read live board state;
-- re-check all archive/add guardrails;
+- re-check all add/archive/unarchive guardrails;
 - respect operator archive locks;
 - require a confidence/evidence threshold;
 - record an auditable result row;

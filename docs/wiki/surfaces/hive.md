@@ -218,8 +218,10 @@ Eight report builders run from `server/hive-reports-worker.js`:
   comments, Project Leader context, Live Task Packet contributor descriptions,
   badge-routing constraints, and a compact archived-board index. It ranks boards
   by outcome clarity, KPI believability, budget effectiveness, upside/downside,
-  and sequencing feasibility, then recommends only `ADD_BOARD` or
-  `ARCHIVE_BOARD` candidates. It does not execute those actions.
+  and sequencing feasibility, then recommends only `ADD_BOARD`,
+  `ARCHIVE_BOARD`, or `UNARCHIVE_BOARD` candidates. `UNARCHIVE_BOARD` uses the
+  archived-board index and must respect operator archive locks. It does not
+  execute those actions.
 
 The Hive Intelligence source packet also includes deterministic task-routing
 constraints: active task badge requirements plus operators grouped by verified

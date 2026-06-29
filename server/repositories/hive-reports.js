@@ -206,8 +206,13 @@ function boardManagerReportDecisionSummary(type = "", markdown = "") {
   if (safeText(type, 80) !== "board_manager_planning") return null;
   const addBoard = reportActionDecision(markdown, "ADD_BOARD");
   const archiveBoard = reportActionDecision(markdown, "ARCHIVE_BOARD");
-  const noPortfolioAction = addBoard.decision === "none" && archiveBoard.decision === "none";
-  const anyRecommended = addBoard.decision === "recommended" || archiveBoard.decision === "recommended";
+  const unarchiveBoard = reportActionDecision(markdown, "UNARCHIVE_BOARD");
+  const noPortfolioAction =
+    addBoard.decision === "none" && archiveBoard.decision === "none" && unarchiveBoard.decision === "none";
+  const anyRecommended =
+    addBoard.decision === "recommended" ||
+    archiveBoard.decision === "recommended" ||
+    unarchiveBoard.decision === "recommended";
   return {
     type: "board_manager_planning",
     overall: noPortfolioAction
@@ -217,6 +222,7 @@ function boardManagerReportDecisionSummary(type = "", markdown = "") {
         : "Decision unclear; open report.",
     addBoard,
     archiveBoard,
+    unarchiveBoard,
   };
 }
 
@@ -1924,7 +1930,7 @@ async function buildBoardManagerPlanningReportSourcePacket({ now = new Date() } 
     focus: hiveReportTypes.board_manager_planning.summary,
     northStar: {
       asset: "PFT",
-      executableActionVocabulary: ["ADD_BOARD", "ARCHIVE_BOARD"],
+      executableActionVocabulary: ["ADD_BOARD", "ARCHIVE_BOARD", "UNARCHIVE_BOARD"],
       advisoryOnly: true,
     },
     planningRules: {

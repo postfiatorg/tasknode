@@ -62,7 +62,8 @@ try {
   assert.ok(
     Array.isArray(planningSource.northStar?.executableActionVocabulary) &&
       planningSource.northStar.executableActionVocabulary.includes("ADD_BOARD") &&
-      planningSource.northStar.executableActionVocabulary.includes("ARCHIVE_BOARD"),
+      planningSource.northStar.executableActionVocabulary.includes("ARCHIVE_BOARD") &&
+      planningSource.northStar.executableActionVocabulary.includes("UNARCHIVE_BOARD"),
     "board manager planning source limits executable action vocabulary"
   );
   const result = await runHiveReportsWorkerOnce({
