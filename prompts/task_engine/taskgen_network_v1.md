@@ -47,11 +47,13 @@ Network Tasks must be sybil resistant in practice. Favor assignments where value
 
 ## System Model
 
-Board Manager is the Hive decision worker. It reads Hive context, active project state, project documents, task/reward state, eligible Network Diagnostic Reports, candidate availability, reward policy, and run history. On each run it chooses one scoped board action. For Network Tasks, it chooses `initiate_network_task`: project, candidate, task class, reward band, cadence reason, project need, and routing reason. It does not write the final task title, steps, verification rule, or evidence requirement.
+Task Manager is the Hive Network Task selector. It reads Hive intelligence, active board state, current task state, eligible contributor badges, candidate availability, user memory, refused tasks, rewarded tasks, and board context. On each run it narrows task generation to one board and one badge-eligible operator, then queues `initiate_network_task` with task class, reward band, cadence reason, project need, and routing reason. It does not write the final task title, steps, verification rule, or evidence requirement.
+
+Legacy Board Manager packets may still appear in older rows. Treat them as the same upstream routing layer only when they already provide a selected project, selected candidate, badge lane, reward band, project need, and routing reason.
 
 The runtime turns that decision into packets in this order:
 
-1. Board Manager action payload: `payload.network_task` contains the selected candidate, task class, reward min/max, `project_need_summary`, `routing_reason`, and cadence fields.
+1. Task Manager selection payload: `payload.network_task` contains the selected candidate, task class, reward min/max, `project_need_summary`, `routing_reason`, and cadence fields.
 2. Network mirrors: `network_task_allocations` records the assignment intent; `network_task_generation_jobs` stores the source payload, digest, candidate, project, task class, reward band, and prompt version.
 3. Request bundle: `server/network-task-generation-worker.js` builds a normal encrypted `pf.task.request_bundle.v1`, marks the request source as `network_task`, and appends `network_task` with schema `pf.hive.network_task_request.v1`.
 4. Taskgen input: `server/task-generation-worker.js` decrypts the request bundle and projects it into `pf.taskgen.input.v1`. If `network_task` is present, this prompt owns the generation.
@@ -61,7 +63,8 @@ Interpret the packets this way:
 
 - `network_task.project_need_summary` is the closest thing to the requested work, but it may be compressed Board Manager language. Translate it into a contributor-facing assignment.
 - `network_task.routing_reason` explains why this contributor was selected. Use it only to calibrate scope and fit; do not make it the task.
-- `network_task.project_document` is the current project operating picture. Use it to name the real surface, blocker, next action, and expected artifact.
+- `network_task.project_document` and `network_task.board_packet` are the current project operating picture. Use them to name the real surface, blocker, next action, and expected artifact.
+- `network_task.operator_packet` contains the selected operator's public profile, memory/context excerpt, refused task history, rewarded task history, and current task state. Use it to adapt scope and avoid routing work they recently refused or already completed.
 - `policy` and `network_task.reward_band_pft` set hard task class, badge, evidence, reward, and deadline constraints.
 - Contributor `context`, `memory`, and `chat` adapt the task to the person; they do not override the project need.
 
@@ -73,6 +76,7 @@ Read packet blocks in this order:
 
 - `hive_policy.operator_standing_policy` and `hive_policy.generation_quality_policy`: highest-authority instructions for task shape, allowed value type, output destination, and escalation behavior.
 - `network_task`: highest-authority source for project identity, project document context, task class, reward band, routing reason, contributor fit, concrete action output, delivery surface, lineage, and project need.
+- `task_manager`, `board_packet`, and `operator_packet`: authoritative context for the two-step Task Manager selection, including why this board/operator pair was selected, whether the operator has current/refused/rewarded work, and how the task should dovetail with their history.
 - `prior_output_corpus` and `task_lineage`: authoritative context for duplicate avoidance and document-to-action escalation.
 - `policy`: authoritative protocol, task class, evidence, reward, deadline, and output constraints.
 - `request`: system-created wrapper. It should identify source as `network_task`; do not treat wrapper text like `Network Task` as enough content.

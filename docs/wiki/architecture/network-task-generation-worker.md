@@ -52,17 +52,21 @@ the worker.
 
 ## Packet Lineage
 
-Board Manager is the Hive decision worker. It reads Hive context, active project
-state, project documents, task/reward state, eligible Network Diagnostic
-Reports, candidate availability, reward policy, and recent run history. For
-Network Tasks it chooses `initiate_network_task`, which selects a project,
-candidate, task class, reward band, cadence reason, project need, and routing
-reason. It does not author the final task title, steps, verification policy, or
-evidence requirement.
+Hive Task Manager is the normal Network Task selector. It runs every 5 minutes
+on GLM 5.2 with high reasoning, reads Hive reports, board state, current task
+state, eligible contributor badges, operator capacity, user memory, refused
+tasks, and rewarded tasks, then narrows generation to one active board and one
+badge-eligible idle operator. It emits a Board Manager-compatible
+`initiate_network_task` payload so the existing allocation and task-generation
+path remains canonical. It does not author the final task title, steps,
+verification policy, or evidence requirement.
+
+Legacy Board Manager rows may still feed this worker, but new automatic routing
+should come through Task Manager selection and guardrails.
 
 The packet chain is:
 
-1. Board Manager emits `payload.network_task` with candidate ids, task class,
+1. Task Manager emits `payload.network_task` with candidate ids, task class,
    reward min/max, `project_need_summary`, `routing_reason`, cadence fields,
    and model-authored context/audit fields such as `action_output`,
    `delivery_surface`, `referenced_outputs`, `deduped_against`, and
@@ -71,7 +75,8 @@ The packet chain is:
    `network_task_allocations` and creates a `network_task_generation_jobs` row
    with the source payload, digest, candidate, project, task class, reward band,
    prompt version, operator policy, generation quality policy, prior-output
-   corpus, task lineage, and transparency metadata
+   corpus, task lineage, Task Manager selection, board packet, operator packet,
+   and transparency metadata
    (`server/repositories/network-tasks.js:573`,
    `server/repositories/network-tasks.js:769`).
 3. `server/network-task-generation-worker.js` builds a normal encrypted

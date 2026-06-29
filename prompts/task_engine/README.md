@@ -27,7 +27,7 @@ here. The Task Node Official prompt contract is split by task source:
 | File | Purpose | Runtime status |
 | --- | --- | --- |
 | `taskgen_personal_v1.md` | System prompt for personal task generation from a `pf.taskgen.input.v1` packet. | Loaded by `server/task-generation-worker.js` and `reference_clients/python/tasknode_pftl/taskgen.py` for personal requests |
-| `taskgen_network_v1.md` | System prompt for Network and Alpha Task generation from structured Board Manager routing context. | Loaded by `server/task-generation-worker.js` and `reference_clients/python/tasknode_pftl/taskgen.py` when a `network_task` packet or `network`/`alpha` task class is present |
+| `taskgen_network_v1.md` | System prompt for Network and Alpha Task generation from structured Task Manager / legacy Board Manager routing context. | Loaded by `server/task-generation-worker.js` and `reference_clients/python/tasknode_pftl/taskgen.py` when a `network_task` packet or `network`/`alpha` task class is present |
 | `verification_request_v1.md` | Prompt policy for a single follow-up verification request. | Loaded by `server/task-review-worker.js` and `reference_clients/python/tasknode_pftl/engine/scoring.py` |
 | `evidence_screenshot_read_v1.md` | Vision prompt for screenshot evidence reads. | Loaded by `server/task-evidence-processing.js` and `reference_clients/python/tasknode_pftl/verification.py` |
 | `reward_scoring_v1.md` | Minimal reward scoring policy for reward adjudication. | Loaded by `server/task-review-worker.js` and `reference_clients/python/tasknode_pftl/engine/scoring.py` |

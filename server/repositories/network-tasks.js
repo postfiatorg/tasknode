@@ -878,6 +878,50 @@ function compactHiveReportsForTaskGeneration(value = {}) {
   };
 }
 
+function compactTaskManagerForGeneration({ sourcePacket = {}, project = {}, candidate = {} } = {}) {
+  const taskManager = safeObject(sourcePacket.taskManager || sourcePacket.task_manager);
+  const boardPackets = safeObject(sourcePacket.boardPacketsByProjectId || sourcePacket.board_packets_by_project_id);
+  const operatorPackets = safeObject(sourcePacket.operatorPacketsByAccount || sourcePacket.operator_packets_by_account);
+  const projectId = safeText(project.id || project.projectId, 180);
+  const accountId = safeText(candidate.accountId || candidate.account_id, 180);
+  const boardPacket = safeObject(boardPackets[projectId]);
+  const operatorPacket = safeObject(operatorPackets[accountId]);
+  return {
+    schema: "pf.hive.task_manager_generation_context.v1",
+    selection: safeObject(taskManager.selection),
+    promptVersion: safeText(taskManager.promptVersion || taskManager.prompt_version, 120),
+    boardPacket: {
+      projectId: safeText(boardPacket.projectId, 180),
+      title: safeText(boardPacket.title, 220),
+      type: safeText(boardPacket.type, 120),
+      summary: safeText(boardPacket.summary, 1200),
+      tasksInFlight: Number(boardPacket.tasksInFlight || 0),
+      contributorCount: Number(boardPacket.contributorCount || 0),
+      pendingGenerationCount: Number(boardPacket.pendingGenerationCount || 0),
+      tasks: safeArray(boardPacket.tasks).slice(0, 8),
+    },
+    operatorPacket: {
+      accountId: safeText(operatorPacket.accountId, 180),
+      walletAddress: safeText(operatorPacket.walletAddress, 120),
+      identity: safeObject(operatorPacket.identity),
+      verifiedBadges: safeArray(operatorPacket.verifiedBadges).slice(0, 8),
+      allowedWorkTypes: safeArray(operatorPacket.allowedWorkTypes).slice(0, 20),
+      publicProfile: safeObject(operatorPacket.publicProfile),
+      memory: {
+        contextTitle: safeText(operatorPacket.memory?.contextTitle, 160),
+        contextExcerpt: safeText(operatorPacket.memory?.contextExcerpt, 2000),
+        deepMemory: safeArray(operatorPacket.memory?.deepMemory).slice(0, 3),
+      },
+      taskState: {
+        counts: safeObject(operatorPacket.taskState?.counts),
+        currentTasks: safeObject(operatorPacket.taskState?.currentTasks),
+        refused: safeArray(operatorPacket.taskState?.refused).slice(0, 6),
+        rewarded: safeArray(operatorPacket.taskState?.rewarded).slice(0, 6),
+      },
+    },
+  };
+}
+
 export function buildNetworkTaskGenerationSource({
   runId = "",
   decision = {},
@@ -977,6 +1021,18 @@ export function buildNetworkTaskGenerationSource({
       boardManagerDoesNotAuthorTaskText: true,
       generationPolicy: compactGenerationQualityPolicy(sourcePacket.generationQualityPolicy || sourcePacket.generation_quality_policy),
     },
+    ...(() => {
+      const taskManagerContext = compactTaskManagerForGeneration({ sourcePacket, project, candidate });
+      return {
+        taskManager: {
+          schema: taskManagerContext.schema,
+          selection: taskManagerContext.selection,
+          promptVersion: taskManagerContext.promptVersion,
+        },
+        boardPacket: taskManagerContext.boardPacket,
+        operatorPacket: taskManagerContext.operatorPacket,
+      };
+    })(),
   };
 }
 
@@ -995,6 +1051,7 @@ function networkTaskIntelligenceMetadata(sourceJson = {}) {
     badgeRewardCapPft: numeric(sourceJson.networkTask?.badgeRewardCapPft || sourceJson.policy?.badgeRewardCapPft, 0),
     discordEvidenceRequired: sourceJson.networkTask?.discordEvidenceRequired ?? sourceJson.policy?.discordEvidenceRequired ?? true,
     badgeEligibilityDecision: safeObject(sourceJson.policy?.badgeEligibilityDecision),
+    taskManagerSelection: safeObject(sourceJson.taskManager?.selection),
     actionOutput: safeText(sourceJson.networkTask?.actionOutput, 1200),
     deliverySurface: safeText(sourceJson.networkTask?.deliverySurface, 120),
     recipientOrReviewer: safeText(sourceJson.networkTask?.recipientOrReviewer, 240),

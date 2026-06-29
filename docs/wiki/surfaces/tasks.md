@@ -298,16 +298,17 @@ Generated offers must match the browser UX. The task-generation prompts in
 
 Taskgen retries are replay-guarded. `server/task-generation-worker.js` builds a replay key from the request bundle CID/digest, source payload digest, taskgen input digest, prompt digest, model, task class, and reward/deadline policy versions. Once a request produces normalized taskgen output, `taskgen_replay_cache` stores that output and task id before the worker publishes the offer. A retry with the same replay key reuses the stored output instead of calling the model again; a retry after a recorded offer reuses the stored offer CID/tx hash instead of publishing another live `pf.task.offer.v1`. A changed source packet, prompt/model, request bundle, or policy version intentionally gets a different replay key.
 
-Network Tasks and Alpha Tasks use the separate network taskgen prompt. The network-task generation worker injects a `network_task` block into the request bundle with project id, task class, routing reason, diagnostic profile digest, and reward band. The Board Manager does not author the concrete task. It queues the allocation and records why the system is routing work to the contributor; `server/task-generation-worker.js` still generates the title, steps, submission requirement, and verification policy.
+Network Tasks and Alpha Tasks use the separate network taskgen prompt. The Hive Task Manager now performs the normal two-step selection every 5 minutes: first it narrows the choice to one active board and one idle badge-eligible operator, then it queues the existing network-task generation path with the board packet, operator packet, task state, refusal history, rewarded history, and user memory. The network-task generation worker injects a `network_task` block into the request bundle with project id, task class, routing reason, diagnostic profile digest, reward band, Task Manager selection, board packet, and operator packet. The Task Manager does not author the concrete task. `server/task-generation-worker.js` still generates the title, steps, submission requirement, and verification policy.
 
 The network prompt treats generated tasks as coordination units for contributors
 who may not know each other. A compliant Network Task should advance Post Fiat,
 Task Node, the shared data lake, or collective capital formation while producing
 a scoped artifact with reviewable, sybil-resistant proof. The assignment should
-translate project or Board Manager shorthand into plain-English work on a named
+translate project or Task Manager shorthand into plain-English work on a named
 surface, document, data state, code path, or artifact.
 
-The packet path is Board Manager `payload.network_task` ->
+The packet path is Task Manager selection -> Board Manager-compatible
+`payload.network_task` ->
 `network_task_allocations` / `network_task_generation_jobs` ->
 encrypted `pf.task.request_bundle.v1` with a `pf.hive.network_task_request.v1`
 block -> `pf.taskgen.input.v1` -> encrypted `pf.task.offer.v1`. That path keeps

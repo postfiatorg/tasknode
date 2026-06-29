@@ -3,6 +3,7 @@ import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
 import { startHiveProjectWorker } from "./hive-project-worker.js";
 import { startHiveDecisionAgentWorker } from "./hive-decision-agent-worker.js";
 import { startHiveReportsWorker } from "./hive-reports-worker.js";
+import { startHiveTaskManagerWorker } from "./hive-task-manager-worker.js";
 import { startTaskAccountingHarvesterWorker } from "./task-accounting-harvester-worker.js";
 import { startIpfsReplicationWorker } from "./ipfs-replication-worker.js";
 import { startNetworkTaskGenerationWorker } from "./network-task-generation-worker.js";
@@ -56,6 +57,7 @@ function startHiveWorkers() {
   startHiveSecretaryWorker();
   startHiveProjectWorker();
   startHiveReportsWorker();
+  startHiveTaskManagerWorker();
   startTaskAccountingHarvesterWorker();
   if (shouldStartHiveDecisionAgentInBackground()) startHiveDecisionAgentWorker();
 }
