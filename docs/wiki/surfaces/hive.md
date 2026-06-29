@@ -15,7 +15,7 @@ The Hive route is available at `#hive` from the primary sidebar. The surface con
 - a collapsed `Hive Context` section at the bottom of the page with two tabs: `Hive Context` for Secretary/raw inputs and `Hive Mind Agent` for historical Board Manager/action audit rows
 - collapsed project `Board comments` toggles inside each project detail About section, backed by Hive Context entries scoped to that project
 
-While the Hive route is open, the active project document quietly refreshes from `/api/hive/projects` on a short interval. Project-linked task rows, contributor state, and routing feed entries therefore catch up after PFTL/task projection updates without requiring a full browser reload. The route serves one shared cached board document for signed-in and signed-out viewers, then applies only a cheap per-viewer `nextTask` overlay so `Your active task` can still appear without rebuilding the whole project packet for every account poll.
+While the Hive route is open, the active project document quietly refreshes from `/api/hive/projects` on a short interval. Project-linked task rows, contributor state, and routing feed entries therefore catch up after PFTL/task projection updates without requiring a full browser reload. The route serves one shared cached board document for signed-in and signed-out viewers, then applies only a cheap per-viewer `nextTask` overlay so viewer-owned work can be highlighted without rebuilding the whole project packet for every account poll. Viewer-owned accepted/submitted/review tasks are labeled as active task state; viewer-owned proposed tasks are labeled as task offers, not active tasks.
 
 The project detail page is layered as:
 
@@ -96,8 +96,9 @@ created, assigned, archived, reviewed, rewarded, or resolved anything.
 `Hive Brain` is an operator-only audit tab under the sidebar `More` menu at
 `#hive-brain`. It exposes the current board stack in human terms: the Hive
 Reports, the Decision Agent decision trail, a deterministic Live Task Packet,
-system prompt documentation, and post-reward Task Accounting harvests. Raw
-legacy Board Manager JSON is not the primary operator surface.
+Task generation history, system prompt documentation, and post-reward Task
+Accounting harvests. Raw legacy Board Manager JSON is not the primary operator
+surface.
 
 The main read APIs are:
 
@@ -107,6 +108,8 @@ The main read APIs are:
   Decision Agent audit trail
 - `GET /api/hive/brain/live-task-packet` for the plain-English Live Task
   Packet
+- `GET /api/hive/brain/task-generation-history` for Task Manager selections
+  and Network Task generation jobs
 - `GET /api/hive/brain/harvest-report` for the latest resolved-history Harvest
   Report
 - `GET /api/hive/brain/harvests` for post-reward Task Accounting harvests
@@ -130,6 +133,17 @@ contributor badges. The Hive Brain overview polls the endpoint every 30 seconds
 and renders the packet as expandable contributor/task sections. A collapsed
 plain-text copy remains available for audit, but raw JSON and markdown tables
 are not the primary view.
+
+Task generation history is also assembled without an LLM. `server/repositories/hive-brain.js`
+reads Task Manager audit rows from `hive_decision_runs` where the scope starts
+with `hive_task_manager:` and durable worker rows from
+`network_task_generation_jobs`, then merges them into a reverse-chronological
+operator view. A Task Manager selection row answers what board/operator/task
+intent was selected and whether guardrails blocked it. A generation job row
+answers what durable worker job was queued, whether it linked to a request or
+visible task, which badge lane and reward band were used, and any recorded
+worker error. The surface is read-only and does not itself generate, approve,
+publish, or reward tasks.
 
 ### GLM Board Secretary
 

@@ -613,7 +613,11 @@ function markdownPreview(markdown = "", max = 260) {
 }
 
 function ProjectStatusDocument({ document, memo }) {
-  const [expanded, setExpanded] = useState(false);
+  const statusKey = memo?.id || memo?.generatedAt || document?.id || document?.createdAt || "";
+  const [expanded, setExpanded] = useState(true);
+  useEffect(() => {
+    setExpanded(true);
+  }, [statusKey]);
   if (memo?.memoMarkdown) {
     return (
       <div className={`hive-project-doc is-secretary-memo ${expanded ? "is-expanded" : ""}`}>
@@ -629,9 +633,11 @@ function ProjectStatusDocument({ document, memo }) {
           </span>
           <ChevronDown className={expanded ? "is-open" : ""} size={16} strokeWidth={1.8} />
         </button>
-        <div className="hive-project-doc-preview">
-          <p>{markdownPreview(memo.memoMarkdown) || "Open for the latest GLM board secretary memo."}</p>
-        </div>
+        {!expanded && (
+          <div className="hive-project-doc-preview">
+            <p>{markdownPreview(memo.memoMarkdown) || "Open for the latest GLM board secretary memo."}</p>
+          </div>
+        )}
         {expanded && (
           <MarkdownMemoBody markdown={memo.memoMarkdown} />
         )}
@@ -924,7 +930,7 @@ function ProjectNextTaskPreview({ nextTask, onOpenTask, operators = {}, pendingG
       : {};
     return (
       <TaskTag className={`hive-project-next-task${canOpen ? " is-clickable" : ""}`} {...taskProps}>
-        <small>{nextTask.viewerScoped ? "Your active task" : "Next reward task"}</small>
+        <small>{nextTaskEyebrow(nextTask)}</small>
         <strong>{nextTask.title}</strong>
         <em>{actionLabel(nextTask.state)} · {formatPft(nextTask.pft)} PFT</em>
         {nextTask.nextAction && <span>{nextTask.nextAction}</span>}
@@ -2436,6 +2442,15 @@ function taskNextAction(state = "") {
   if (["rewarded", "paid"].includes(normalized)) return "Reward paid. View proof, copy the tx, or request another task.";
   if (["refused", "cancelled", "rejected", "expired"].includes(normalized)) return "Task is stopped; wait for a new routed task if more work is needed.";
   return "Open the task row and inspect the latest state.";
+}
+
+function nextTaskEyebrow(nextTask = {}) {
+  if (!nextTask?.viewerScoped) return "Next reward task";
+  const normalized = String(nextTask.state || "").trim().toLowerCase();
+  if (nextTask.viewerRelation === "offer" || normalized === "proposed") return "Your task offer";
+  if (normalized === "verification_requested") return "Your review request";
+  if (["submitted", "verification_response_submitted", "reward_decided"].includes(normalized)) return "Your task status";
+  return "Your active task";
 }
 
 function formatContextTime(value = "") {

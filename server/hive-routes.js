@@ -11,6 +11,7 @@ import { getBoardManagerAgentFeed, getBoardManagerUserMessages } from "./reposit
 import {
   getHiveBrainLive,
   getHiveBrainRunDetail,
+  listHiveBrainTaskGenerationHistory,
   listHiveBrainRuns,
 } from "./repositories/hive-brain.js";
 import { requestHiveReportRerun } from "./hive-reports-worker.js";
@@ -897,6 +898,22 @@ async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res,
       page: url.searchParams.get("page") || 1,
       action: url.searchParams.get("action") || "all",
       queryText: url.searchParams.get("q") || "",
+    });
+    json(res, 200, body);
+    return true;
+  }
+  if (url.pathname === "/api/hive/brain/task-generation-history") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_brain_task_generation_history_method_not_allowed",
+        message: "Hive Brain task generation history supports GET.",
+      });
+      return true;
+    }
+    const body = await listHiveBrainTaskGenerationHistory({
+      limit: url.searchParams.get("limit") || 24,
+      page: url.searchParams.get("page") || 1,
     });
     json(res, 200, body);
     return true;

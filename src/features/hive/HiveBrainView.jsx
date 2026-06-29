@@ -644,6 +644,91 @@ function DecisionLog({ runs = [], selectedRunId = "", onSelectRun }) {
   );
 }
 
+function taskHistoryStatusVariant(item = {}) {
+  if (item.guardrailBlocked || item.status === "failed" || item.generationStatus === "failed") return "amber";
+  if (item.status === "rewarded" || item.generationStatus === "generated" || item.generationStatus === "published") return "blue";
+  return "gray";
+}
+
+function TaskGenerationHistoryCard({ items = [], status = "loading", onRefresh }) {
+  const rows = safeArray(items);
+  return (
+    <div className="hive-brain-card hive-brain-task-history">
+      <div className="hive-brain-live-task-packet-head">
+        <div>
+          <div className="hive-brain-section-label">Task generation history</div>
+          <div className="hive-brain-section-sub">
+            Task Manager selections and Network Task generation jobs, shown from durable audit rows.
+          </div>
+        </div>
+        <div className="hive-brain-live-task-packet-meta">
+          <span>{rows.length ? `${rows.length} recent` : status === "loading" ? "loading" : "none"}</span>
+          <button onClick={onRefresh} type="button">
+            <RefreshCw size={13} strokeWidth={2} />
+            Refresh
+          </button>
+        </div>
+      </div>
+      {status === "loading" && !rows.length && <div className="hive-brain-empty">Loading task generation history.</div>}
+      {status === "error" && !rows.length && <div className="hive-brain-empty">Task generation history is unavailable.</div>}
+      {status === "ready" && !rows.length && <div className="hive-brain-empty">No Task Manager or Network Task generation rows have been recorded yet.</div>}
+      {rows.length > 0 && (
+        <div className="hive-brain-task-history-list">
+          {rows.map((item, index) => {
+            const operatorLabel = item.accountId || compactWallet(item.walletAddress);
+            const boardLabel = item.projectTitle || item.projectId || "board unknown";
+            const rewardBand = item.rewardMaxPft
+              ? `${compactNumber(item.rewardMinPft)}-${compactNumber(item.rewardMaxPft)} PFT`
+              : item.rewardOfferPft
+                ? `${compactNumber(item.rewardOfferPft)} PFT`
+                : "not set";
+            return (
+              <details className="hive-brain-task-history-row" key={`${item.kind}-${item.id}`} open={index < 2}>
+                <summary>
+                  <div>
+                    <strong>{item.title || item.label || "Task generation event"}</strong>
+                    <span>
+                      <Badge variant={item.kind === "task_manager_run" ? "blue" : "gray"}>
+                        {item.kind === "task_manager_run" ? "Selection" : "Generation"}
+                      </Badge>
+                      <Badge variant={taskHistoryStatusVariant(item)}>
+                        {formatAction(item.generationStatus || item.status || item.action)}
+                      </Badge>
+                      {item.action && <em>{formatAction(item.action)}</em>}
+                    </span>
+                  </div>
+                  <div>
+                    <small>{relativeTime(item.occurredAt || item.updatedAt || item.createdAt)}</small>
+                    {item.taskId ? <code>{item.taskId}</code> : item.jobId ? <code>{item.jobId}</code> : <code>{item.id}</code>}
+                  </div>
+                </summary>
+                <div className="hive-brain-task-history-body">
+                  <p>{item.summary || item.routingReason || item.resultSummary || "No plain-English summary was recorded for this row."}</p>
+                  {item.routingReason && item.routingReason !== item.summary && <p>{item.routingReason}</p>}
+                  <div className="hive-brain-task-history-grid">
+                    <span><small>Board</small><strong>{boardLabel}</strong>{item.projectId && <code>{item.projectId}</code>}</span>
+                    <span><small>Operator</small><strong>{operatorLabel}</strong>{item.walletAddress && <code>{compactWallet(item.walletAddress)}</code>}</span>
+                    <span><small>Badge lane</small><strong>{formatAction(item.requiredBadgeId || item.badgeWorkType || "unknown")}</strong>{item.badgeWorkType && <em>{formatAction(item.badgeWorkType)}</em>}</span>
+                    <span><small>Reward band</small><strong>{rewardBand}</strong></span>
+                    <span><small>Request</small><strong>{item.requestId || "not linked"}</strong></span>
+                    <span><small>Job</small><strong>{item.jobId || "not queued"}</strong></span>
+                  </div>
+                  {(safeArray(item.guardrailReasons).length > 0 || item.error) && (
+                    <div className="hive-brain-task-history-note">
+                      {safeArray(item.guardrailReasons).length > 0 && <span>Guardrail: {item.guardrailReasons.join(", ")}</span>}
+                      {item.error && <span>Error: {item.error}</span>}
+                    </div>
+                  )}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LiveTaskPacketTaskList({ empty = "None.", tasks = [] }) {
   const rows = safeArray(tasks);
   if (!rows.length) return <div className="hive-brain-live-task-empty">{empty}</div>;
@@ -1250,11 +1335,14 @@ function OverviewPanel({
   onRerunReport,
   onRefreshHarvestReport,
   onRefreshLiveTaskPacket,
+  onRefreshTaskGenerationHistory,
   runs,
   rerunJobs,
   rerunningType,
   selectedRunId,
   onSelectRun,
+  taskGenerationHistory,
+  taskGenerationHistoryStatus,
 }) {
   return (
     <section className="hive-brain-panel">
@@ -1276,6 +1364,11 @@ function OverviewPanel({
             </div>
           </div>
         </div>
+        <TaskGenerationHistoryCard
+          items={taskGenerationHistory}
+          status={taskGenerationHistoryStatus}
+          onRefresh={onRefreshTaskGenerationHistory}
+        />
         <LiveTaskPacketCard
           packet={liveTaskPacket}
           status={liveTaskPacketStatus}
@@ -1557,6 +1650,8 @@ export function HiveBrainView() {
   const [projectStatus, setProjectStatus] = useState("loading");
   const [liveTaskPacket, setLiveTaskPacket] = useState(null);
   const [liveTaskPacketStatus, setLiveTaskPacketStatus] = useState("loading");
+  const [taskGenerationHistory, setTaskGenerationHistory] = useState([]);
+  const [taskGenerationHistoryStatus, setTaskGenerationHistoryStatus] = useState("loading");
   const reportRerunJobsRef = useRef(reportRerunJobs);
   const lastGoodProjectDocument = useRef(null);
   const projectRequestSeq = useRef(0);
@@ -1648,6 +1743,19 @@ export function HiveBrainView() {
       setLiveTaskPacketStatus("ready");
     } catch {
       setLiveTaskPacketStatus("error");
+    }
+  }, []);
+
+  const loadTaskGenerationHistory = useCallback(async () => {
+    setTaskGenerationHistoryStatus("loading");
+    try {
+      const result = await requestJson("/api/hive/brain/task-generation-history?limit=24");
+      if (!result.ok) throw new Error(result.body?.message || `Task generation history failed with HTTP ${result.status}`);
+      setTaskGenerationHistory(result.body?.items || []);
+      setTaskGenerationHistoryStatus("ready");
+    } catch {
+      setTaskGenerationHistory([]);
+      setTaskGenerationHistoryStatus("error");
     }
   }, []);
 
@@ -1788,9 +1896,10 @@ export function HiveBrainView() {
     loadRuns();
     loadProjects();
     loadLiveTaskPacket();
+    loadTaskGenerationHistory();
     loadHarvestReport();
     loadHarvests();
-  }, [loadHarvestReport, loadHarvests, loadLiveTaskPacket, loadProjects, loadReports, loadRuns]);
+  }, [loadHarvestReport, loadHarvests, loadLiveTaskPacket, loadProjects, loadReports, loadRuns, loadTaskGenerationHistory]);
 
   const rerunReport = useCallback(async (type = "") => {
     const normalizedType = String(type || "").trim();
@@ -1874,9 +1983,10 @@ export function HiveBrainView() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       loadLiveTaskPacket();
+      loadTaskGenerationHistory();
     }, 30_000);
     return () => window.clearInterval(interval);
-  }, [loadLiveTaskPacket]);
+  }, [loadLiveTaskPacket, loadTaskGenerationHistory]);
 
   useEffect(() => {
     if (!selectedRunId) {
@@ -1969,6 +2079,7 @@ export function HiveBrainView() {
           <Kpi label="Active projects" sub={projectStatus === "error" ? "unavailable" : "routing boards"} value={projectStatus === "ready" ? projectStats.activeProjects || 0 : "—"} />
           <Kpi label="Open tasks" sub="active rows" value={projectStatus === "ready" ? projectStats.tasksInFlight || 0 : "—"} />
           <Kpi label="Actionable harvests" sub={harvestStatus === "error" ? "load failed" : "reward accounting"} value={harvestStatus === "ready" ? harvestSummary.requiresAction || 0 : "—"} />
+          <Kpi label="Task history" sub={taskGenerationHistoryStatus === "error" ? "load failed" : "generation audit"} value={taskGenerationHistoryStatus === "ready" ? taskGenerationHistory.length : "—"} />
           <Kpi accent label="PFT routed" sub="project total" value={projectStatus === "ready" ? compactNumber(projectStats.pftRouted) : "—"} />
           <Kpi label="Decisions loaded" sub={latestRun.startedAt ? relativeTime(latestRun.startedAt) : "none"} value={runs.length} />
         </div>
@@ -2001,11 +2112,14 @@ export function HiveBrainView() {
             onRerunReport={rerunReport}
             onRefreshHarvestReport={loadHarvestReport}
             onRefreshLiveTaskPacket={loadLiveTaskPacket}
+            onRefreshTaskGenerationHistory={loadTaskGenerationHistory}
             onSelectRun={setSelectedRunId}
             rerunJobs={reportRerunJobs}
             rerunningType={rerunningReportType}
             runs={runs}
             selectedRunId={selectedRunId}
+            taskGenerationHistory={taskGenerationHistory}
+            taskGenerationHistoryStatus={taskGenerationHistoryStatus}
           />
         ) : activeTab === "harvest-report" ? (
           <section className="hive-brain-panel">

@@ -1562,6 +1562,147 @@
   padding: 20px 24px 24px;
 }
 
+.hive-brain-task-history {
+  padding: 20px 24px 24px;
+}
+
+.hive-brain-task-history-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.hive-brain-task-history-row {
+  border-top: 1px solid var(--hive-border);
+  padding-top: 10px;
+}
+
+.hive-brain-task-history-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.hive-brain-task-history-row > summary {
+  align-items: flex-start;
+  cursor: pointer;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  list-style: none;
+  padding: 7px 0;
+}
+
+.hive-brain-task-history-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.hive-brain-task-history-row > summary > div:first-child {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.hive-brain-task-history-row > summary strong {
+  color: var(--hive-ink);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.hive-brain-task-history-row > summary span {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.hive-brain-task-history-row > summary em {
+  color: var(--hive-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.hive-brain-task-history-row > summary > div:last-child {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: right;
+}
+
+.hive-brain-task-history-row small {
+  color: var(--hive-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hive-brain-task-history-row code {
+  background: #fbfaf6;
+  border: 1px solid var(--hive-border);
+  border-radius: 5px;
+  color: var(--hive-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  padding: 2px 5px;
+}
+
+.hive-brain-task-history-body {
+  display: grid;
+  gap: 10px;
+  padding: 8px 0 15px;
+}
+
+.hive-brain-task-history-body p {
+  color: var(--hive-ink);
+  font-size: 13.5px;
+  line-height: 1.56;
+  margin: 0;
+}
+
+.hive-brain-task-history-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.hive-brain-task-history-grid span {
+  background: #fbfaf6;
+  border: 1px solid var(--hive-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.hive-brain-task-history-grid small {
+  color: var(--hive-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hive-brain-task-history-grid strong {
+  color: var(--hive-ink);
+  font-size: 12.5px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.hive-brain-task-history-grid em {
+  color: var(--hive-muted);
+  font-size: 11.5px;
+  font-style: normal;
+}
+
+.hive-brain-task-history-note {
+  color: var(--hive-muted);
+  display: grid;
+  font-size: 12.5px;
+  gap: 4px;
+}
+
 .hive-brain-live-task-packet-head {
   align-items: flex-start;
   display: flex;
@@ -5263,14 +5404,20 @@ button.hive-project-next-task:focus-visible {
   }
 
   .hive-brain-live-contributor > summary,
-  .hive-brain-live-task-row {
+  .hive-brain-live-task-row,
+  .hive-brain-task-history-row > summary {
     grid-template-columns: 1fr;
   }
 
   .hive-brain-live-contributor > summary > div:last-child,
-  .hive-brain-live-task-row > div:last-child {
+  .hive-brain-live-task-row > div:last-child,
+  .hive-brain-task-history-row > summary > div:last-child {
     align-items: flex-start;
     text-align: left;
+  }
+
+  .hive-brain-task-history-grid {
+    grid-template-columns: 1fr;
   }
 
   .hive-brain-harvest-summary {

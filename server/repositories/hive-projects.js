@@ -124,6 +124,12 @@ function taskMatchesViewer(task = {}, viewer = {}) {
   return Boolean(walletAddress && walletIdentityKey(task.assignee) === walletAddress);
 }
 
+function viewerTaskRelation(task = {}, viewer = {}) {
+  if (!taskMatchesViewer(task, viewer)) return "";
+  const state = safeText(task.state, 80).toLowerCase();
+  return state === "proposed" ? "offer" : "active";
+}
+
 function walletIdentityDisplayName(identity = {}) {
   const publicAlias = safeArray(identity.publicAliases).find((alias) => safeText(alias?.handle, 120));
   return safeText(
@@ -420,8 +426,10 @@ function taskIsNextCandidate(task = {}) {
 }
 
 function compareNextTask(left = {}, right = {}, viewer = {}) {
-  const leftViewerRank = taskMatchesViewer(left, viewer) ? 0 : 1;
-  const rightViewerRank = taskMatchesViewer(right, viewer) ? 0 : 1;
+  const leftRelation = viewerTaskRelation(left, viewer);
+  const rightRelation = viewerTaskRelation(right, viewer);
+  const leftViewerRank = leftRelation === "active" ? 0 : leftRelation === "offer" ? 1 : 2;
+  const rightViewerRank = rightRelation === "active" ? 0 : rightRelation === "offer" ? 1 : 2;
   if (leftViewerRank !== rightViewerRank) return leftViewerRank - rightViewerRank;
   const leftRank = taskStateRank(left.state);
   const rightRank = taskStateRank(right.state);
@@ -437,11 +445,14 @@ function projectNextTask(project = {}, viewer = {}) {
     .filter(taskIsNextCandidate)
     .sort((left, right) => compareNextTask(left, right, viewer))[0] || null;
   if (!task) return null;
+  const viewerRelation = viewerTaskRelation(task, viewer);
   return {
     taskId: task.taskId,
     title: task.title,
     state: task.state,
-    viewerScoped: taskMatchesViewer(task, viewer),
+    viewerScoped: Boolean(viewerRelation),
+    viewerRelation,
+    viewerActive: viewerRelation === "active",
     assignee: task.assignee,
     assigneeAccountId: task.assigneeAccountId || "",
     assigneeHasPublicProfile: Boolean(task.assigneeHasPublicProfile),

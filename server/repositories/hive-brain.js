@@ -9,6 +9,10 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function iso(value) {
   if (!value) return null;
   try {
@@ -33,6 +37,11 @@ function durationMs(startedAt, completedAt) {
 function likePattern(value = "") {
   const text = safeText(value, 240).replace(/[\\%_]/g, (match) => `\\${match}`);
   return `%${text}%`;
+}
+
+function numeric(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 async function tableExists(name = "") {
@@ -184,6 +193,266 @@ function sourceSections(sourcePacket = {}) {
     },
     recentRuns: sourcePacket.recentBoardManagerRuns || sourcePacket.recent_board_manager_runs || null,
     badgeEligibility: sourcePacket.badgeEligibility || sourcePacket.badge_eligibility || null,
+  };
+}
+
+function firstText(values = [], max = 240) {
+  for (const value of values) {
+    const text = safeText(value, max);
+    if (text) return text;
+  }
+  return "";
+}
+
+function historyOccurredAt(item = {}) {
+  return iso(item.completedAt || item.updatedAt || item.startedAt || item.createdAt);
+}
+
+function compactTaskManagerHistory(row = {}) {
+  const decision = safeObject(row.decision_json);
+  const actionPayload = safeObject(row.action_payload_json);
+  const guardrail = safeObject(row.guardrail_result_json);
+  const result = safeObject(row.result_json);
+  const executionResult = safeObject(result.executionResult || result.execution_result);
+  const board = safeObject(
+    decision.boardSelection ||
+      decision.board_selection ||
+      actionPayload.boardSelection ||
+      actionPayload.board_selection
+  );
+  const operator = safeObject(
+    decision.operatorSelection ||
+      decision.operator_selection ||
+      actionPayload.operatorSelection ||
+      actionPayload.operator_selection
+  );
+  const taskIntent = safeObject(
+    decision.taskIntent ||
+      decision.task_intent ||
+      actionPayload.taskIntent ||
+      actionPayload.task_intent
+  );
+  const startedAt = iso(row.started_at);
+  const completedAt = iso(row.completed_at);
+  const updatedAt = iso(row.updated_at);
+  const createdAt = iso(row.created_at);
+  const executed = result.executed === true || executionResult.executed === true;
+  const title = firstText([
+    taskIntent.title,
+    taskIntent.task_title,
+    executionResult.title,
+    executionResult.taskTitle,
+    executionResult.task_title,
+    row.selected_action === "create_task" ? "Task Manager selected a task" : "",
+    row.selected_action || row.status,
+  ], 240);
+  return {
+    id: row.id || "",
+    kind: "task_manager_run",
+    label: "Task Manager selection",
+    scope: row.scope || "",
+    trigger: row.trigger || "",
+    status: row.status || "",
+    action: row.selected_action || "",
+    title,
+    summary: firstText([
+      row.reasoning_text,
+      decision.explanation,
+      actionPayload.explanation,
+      taskIntent.routingReason,
+      taskIntent.routing_reason,
+      executionResult.reason,
+    ], 1000),
+    projectId: firstText([board.projectId, board.project_id, executionResult.projectId, executionResult.project_id], 180),
+    projectTitle: firstText([board.projectTitle, board.project_title, board.title, executionResult.projectTitle], 240),
+    accountId: firstText([operator.accountId, operator.account_id, executionResult.accountId, executionResult.account_id], 180),
+    walletAddress: firstText([operator.walletAddress, operator.wallet_address, executionResult.walletAddress, executionResult.wallet_address], 140),
+    requiredBadgeId: firstText([operator.requiredBadgeId, operator.required_badge_id], 80),
+    badgeWorkType: firstText([operator.badgeWorkType, operator.badge_work_type, operator.taskWorkType, operator.task_work_type], 120),
+    rewardMinPft: numeric(taskIntent.rewardMinPft ?? taskIntent.reward_min_pft, 0),
+    rewardMaxPft: numeric(taskIntent.rewardMaxPft ?? taskIntent.reward_max_pft, 0),
+    requestId: firstText([executionResult.requestId, executionResult.request_id], 180),
+    jobId: firstText([executionResult.jobId, executionResult.job_id, executionResult.generationJobId], 180),
+    allocationId: firstText([executionResult.allocationId, executionResult.allocation_id], 180),
+    taskId: firstText([executionResult.taskId, executionResult.task_id], 180),
+    guardrailOk: guardrail.ok === true,
+    guardrailBlocked: guardrail.blocked === true,
+    guardrailReasons: safeArray(guardrail.reasons).map((reason) => safeText(reason, 180)).filter(Boolean),
+    executed,
+    resultSummary: firstText([
+      executionResult.reason,
+      executionResult.status,
+      executed ? "Queued Network Task generation." : "",
+      row.error,
+    ], 1000),
+    model: row.model || "",
+    provider: row.provider || "",
+    reasoningEffort: row.reasoning_effort || "",
+    error: row.error || "",
+    startedAt,
+    completedAt,
+    createdAt,
+    updatedAt,
+    occurredAt: historyOccurredAt({ completedAt, updatedAt, startedAt, createdAt }),
+  };
+}
+
+function compactGenerationJobHistory(row = {}) {
+  const sourcePayload = safeObject(row.source_payload_json);
+  const generatedPayload = safeObject(row.generated_task_payload);
+  const networkTask = safeObject(sourcePayload.networkTask || sourcePayload.network_task);
+  const project = safeObject(sourcePayload.project);
+  const candidate = safeObject(sourcePayload.candidate);
+  const taskManager = safeObject(sourcePayload.taskManager || sourcePayload.task_manager);
+  const taskManagerSelection = safeObject(taskManager.selection);
+  const taskIntent = safeObject(taskManagerSelection.taskIntent || taskManagerSelection.task_intent);
+  const operatorSelection = safeObject(taskManagerSelection.operatorSelection || taskManagerSelection.operator_selection);
+  const boardSelection = safeObject(taskManagerSelection.boardSelection || taskManagerSelection.board_selection);
+  const updatedAt = iso(row.updated_at);
+  const createdAt = iso(row.created_at);
+  const lastEventAt = iso(row.projected_last_event_at);
+  const title = firstText([
+    row.projected_task_title,
+    generatedPayload.title,
+    taskIntent.title,
+    networkTask.title,
+    row.task_id,
+    row.request_id,
+    row.id,
+  ], 240);
+  const rewardMin = numeric(row.reward_min_pft ?? networkTask.rewardMinPft ?? networkTask.reward_min_pft, 0);
+  const rewardMax = numeric(row.reward_max_pft ?? networkTask.rewardMaxPft ?? networkTask.reward_max_pft, 0);
+  return {
+    id: row.id || "",
+    kind: "generation_job",
+    label: "Network Task generation job",
+    status: row.projected_task_status || row.status || "",
+    generationStatus: row.status || "",
+    allocationStatus: row.allocation_status || "",
+    title,
+    summary: firstText([
+      networkTask.projectNeedSummary,
+      networkTask.project_need_summary,
+      row.allocation_project_need_summary,
+      taskIntent.projectNeedSummary,
+      taskIntent.project_need_summary,
+      sourcePayload.decision?.reason,
+      row.last_error,
+    ], 1000),
+    routingReason: firstText([
+      networkTask.allocationReasonSummary,
+      networkTask.allocation_reason_summary,
+      row.allocation_reason_summary,
+      taskIntent.routingReason,
+      taskIntent.routing_reason,
+    ], 1000),
+    projectId: firstText([row.project_id, project.id, boardSelection.projectId, boardSelection.project_id], 180),
+    projectTitle: firstText([row.project_title, project.title, boardSelection.projectTitle, boardSelection.title], 240),
+    projectType: firstText([row.project_type, project.type], 120),
+    accountId: firstText([row.candidate_account_id, candidate.accountId, candidate.account_id, operatorSelection.accountId, operatorSelection.account_id], 180),
+    walletAddress: firstText([row.candidate_wallet_address, candidate.walletAddress, candidate.wallet_address, operatorSelection.walletAddress, operatorSelection.wallet_address], 140),
+    requiredBadgeId: firstText([networkTask.requiredBadgeId, networkTask.required_badge_id, operatorSelection.requiredBadgeId, operatorSelection.required_badge_id], 80),
+    badgeWorkType: firstText([networkTask.badgeWorkType, networkTask.badge_work_type, operatorSelection.badgeWorkType, operatorSelection.badge_work_type], 120),
+    rewardMinPft: rewardMin,
+    rewardMaxPft: rewardMax,
+    rewardOfferPft: numeric(row.projected_reward_offer_pft, 0),
+    rewardActualPft: numeric(row.projected_reward_actual_pft, 0),
+    requestId: row.request_id || "",
+    jobId: row.id || "",
+    allocationId: row.allocation_id || "",
+    taskId: row.task_id || "",
+    promptVersion: row.prompt_version || "",
+    sourcePayloadDigest: row.source_payload_digest || "",
+    offerCid: row.offer_cid || "",
+    offerTxHash: row.offer_tx_hash || "",
+    attemptCount: numeric(row.attempt_count, 0),
+    error: row.last_error || "",
+    createdAt,
+    updatedAt,
+    lastEventAt,
+    occurredAt: historyOccurredAt({ updatedAt, createdAt, completedAt: lastEventAt }),
+  };
+}
+
+export async function listHiveBrainTaskGenerationHistory({
+  limit = 24,
+  page = 1,
+} = {}) {
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 24, 1), 80);
+  const normalizedPage = Math.min(Math.max(Number(page) || 1, 1), 1000);
+  const offset = (normalizedPage - 1) * normalizedLimit;
+  const windowLimit = Math.min(Math.max(offset + normalizedLimit + 1, normalizedLimit + 1), 200);
+  const hasDecisionRuns = await tableExists("hive_decision_runs");
+  const hasGenerationJobs = await tableExists("network_task_generation_jobs");
+  const [decisionResult, jobResult] = await Promise.all([
+    hasDecisionRuns
+      ? query(
+          `
+            SELECT id, scope, trigger, status, shadow, selected_action,
+                   action_payload_json, decision_json, guardrail_result_json,
+                   result_json, reasoning_text, provider, model,
+                   reasoning_effort, output_text, error, started_at,
+                   completed_at, created_at, updated_at
+            FROM hive_decision_runs
+            WHERE scope LIKE 'hive_task_manager:%'
+            ORDER BY started_at DESC NULLS LAST, created_at DESC, id DESC
+            LIMIT $1
+          `,
+          [windowLimit]
+        )
+      : Promise.resolve({ rows: [] }),
+    hasGenerationJobs
+      ? query(
+          `
+            SELECT job.id, job.allocation_id, job.project_id, job.task_class,
+                   job.candidate_account_id, job.candidate_wallet_address,
+                   job.reward_min_pft, job.reward_max_pft, job.status,
+                   job.trigger, job.board_manager_run_id, job.request_id,
+                   job.source_payload_digest, job.source_payload_json,
+                   job.provider, job.model, job.prompt_version,
+                   job.request_bundle_cid, job.generated_task_payload,
+                   job.task_id, job.offer_cid, job.offer_tx_hash,
+                   job.attempt_count, job.last_error,
+                   job.created_at, job.updated_at,
+                   project.title AS project_title,
+                   project.type AS project_type,
+                   allocation.allocation_status,
+                   allocation.project_need_summary AS allocation_project_need_summary,
+                   allocation.allocation_reason_summary,
+                   projection.title AS projected_task_title,
+                   projection.status AS projected_task_status,
+                   projection.reward_offer_pft AS projected_reward_offer_pft,
+                   projection.reward_actual_pft AS projected_reward_actual_pft,
+                   projection.last_event_at AS projected_last_event_at
+            FROM network_task_generation_jobs job
+            LEFT JOIN network_projects project ON project.id = job.project_id
+            LEFT JOIN network_task_allocations allocation ON allocation.id = job.allocation_id
+            LEFT JOIN task_projections projection ON projection.task_id = job.task_id
+            ORDER BY job.updated_at DESC, job.created_at DESC, job.id DESC
+            LIMIT $1
+          `,
+          [windowLimit]
+        )
+      : Promise.resolve({ rows: [] }),
+  ]);
+  const items = [
+    ...decisionResult.rows.map(compactTaskManagerHistory),
+    ...jobResult.rows.map(compactGenerationJobHistory),
+  ].sort((left, right) => {
+    const leftMs = Date.parse(left.occurredAt || left.updatedAt || left.createdAt || "");
+    const rightMs = Date.parse(right.occurredAt || right.updatedAt || right.createdAt || "");
+    return (Number.isFinite(rightMs) ? rightMs : 0) - (Number.isFinite(leftMs) ? leftMs : 0);
+  });
+  return {
+    ok: true,
+    items: items.slice(offset, offset + normalizedLimit),
+    page: normalizedPage,
+    pageSize: normalizedLimit,
+    hasMore: items.length > offset + normalizedLimit,
+    sources: {
+      taskManagerRuns: hasDecisionRuns,
+      generationJobs: hasGenerationJobs,
+    },
   };
 }
 

@@ -289,6 +289,8 @@ const viewerBoardDocument = hiveProjectsDocumentForTests({
 });
 assert.equal(viewerBoardDocument.projects.personalized_project.nextTask.title, "Viewer active task");
 assert.equal(viewerBoardDocument.projects.personalized_project.nextTask.viewerScoped, true);
+assert.equal(viewerBoardDocument.projects.personalized_project.nextTask.viewerRelation, "active");
+assert.equal(viewerBoardDocument.projects.personalized_project.nextTask.viewerActive, true);
 const overlaidViewerDocument = applyHiveProjectsViewerContext(anonymousBoardDocument, {
   viewerAccountId: "acct_viewer",
   viewerWalletAddress: "rViewer",
@@ -296,5 +298,31 @@ const overlaidViewerDocument = applyHiveProjectsViewerContext(anonymousBoardDocu
 assert.equal(anonymousBoardDocument.projects.personalized_project.nextTask.title, "Other active task");
 assert.equal(overlaidViewerDocument.projects.personalized_project.nextTask.title, "Viewer active task");
 assert.equal(overlaidViewerDocument.projects.personalized_project.nextTask.viewerScoped, true);
+assert.equal(overlaidViewerDocument.projects.personalized_project.nextTask.viewerRelation, "active");
+
+const viewerOfferDocument = hiveProjectsDocumentForTests({
+  projectRows: personalizedRows.projectRows,
+  taskRows: [
+    personalizedRows.taskRows[0],
+    {
+      id: "ref_viewer_offer",
+      project_id: "personalized_project",
+      task_id: "task_viewer_offer",
+      title: "Viewer proposed offer",
+      state: "proposed",
+      assignee_wallet: "rViewer",
+      reward_pft: 500,
+      account_id: "acct_viewer",
+      created_at: "2026-05-26T00:00:00.000Z",
+      updated_at: "2026-05-26T00:03:00.000Z",
+    },
+  ],
+  viewerAccountId: "acct_viewer",
+  viewerWalletAddress: "rViewer",
+});
+assert.equal(viewerOfferDocument.projects.personalized_project.nextTask.title, "Viewer proposed offer");
+assert.equal(viewerOfferDocument.projects.personalized_project.nextTask.viewerScoped, true);
+assert.equal(viewerOfferDocument.projects.personalized_project.nextTask.viewerRelation, "offer");
+assert.equal(viewerOfferDocument.projects.personalized_project.nextTask.viewerActive, false);
 
 console.log("hive project planning smoke ok");
