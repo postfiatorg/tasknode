@@ -1,6 +1,12 @@
 import { authStart } from "./product-contracts.js";
 import { fetchPftBalance } from "./pftl-balance.js";
-import { getTaskDetail, listTaskState } from "./repositories/tasks.js";
+import {
+  getTerminalTaskProjectionDetail,
+  listTaskProjectionCounts,
+  listTaskProjectionRewards,
+  listTaskProjectionTasks,
+} from "./repositories/tasks.js";
+import { listTaskRequests } from "./repositories/task-requests.js";
 import {
   accountHasLinkedProvider,
   consumeTerminalAuthRequestSession,
@@ -16,6 +22,7 @@ import {
   offchainTaskLifecycleEnabled,
 } from "./offchain-task-lifecycle.js";
 import { taskLifecycleAction } from "./task-actions.js";
+import { terminalTaskRequestAction } from "./task-request.js";
 import { taskSubmissionAction } from "./task-submission.js";
 
 function safeText(value = "", max = 4000) {
@@ -80,31 +87,11 @@ function terminalTaskActionsEnabled() {
   return offchainTaskLifecycleEnabled() && !offchainTaskLifecycleDualWriteEnabled();
 }
 
-function taskStateCounts(state = {}) {
-  return {
-    outstanding: Array.isArray(state.outstanding) ? state.outstanding.length : 0,
-    verification: Array.isArray(state.verification) ? state.verification.length : 0,
-    refused: Array.isArray(state.refused) ? state.refused.length : 0,
-    rewarded: Array.isArray(state.rewarded) ? state.rewarded.length : 0,
-  };
-}
-
 function linkedWalletForSession(session = {}) {
   const linkedWallet = getLinkedWallet({ accountId: session.accountId || "" });
   return linkedWallet.status === "linked" && linkedWallet.address
     ? linkedWallet
     : { status: linkedWallet.status || "not_linked", address: "" };
-}
-
-async function taskStateForSession(session = {}) {
-  const wallet = linkedWalletForSession(session);
-  return {
-    wallet,
-    state: await listTaskState({
-      accountId: session.accountId || "",
-      walletAddress: wallet.address || "",
-    }),
-  };
 }
 
 function mapWalletRequired(result = {}, origin = "", taskId = "") {
@@ -138,6 +125,147 @@ function terminalWriteUnavailable(origin = "", taskId = "") {
       handoffUrl: terminalHandoffUrl(origin, taskId),
     },
   };
+}
+
+function cleanText(value = "", max = 4000) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function cleanLines(lines = []) {
+  return lines
+    .map((line) => cleanText(line, 4000))
+    .filter(Boolean);
+}
+
+function terminalTaskId(task = {}) {
+  return cleanText(task.taskId || task.fullId || task.id || "", 180);
+}
+
+function terminalTaskReward(task = {}) {
+  const amount = Number(task.pft || 0);
+  return `${Number.isFinite(amount) ? amount.toLocaleString("en-US") : "0"} PFT`;
+}
+
+function terminalTaskVerification(task = {}) {
+  return cleanText(
+    task.verification?.body ||
+      task.submissionRequirement?.criteria ||
+      task.verification?.title ||
+      "",
+    4000
+  );
+}
+
+function terminalCurrentVerificationRequest(detail = {}) {
+  const request = detail?.currentVerificationRequest || {};
+  return cleanLines([
+    request.body || request.verificationAsk || request.ask || "",
+    request.reason ? `Reason: ${request.reason}` : "",
+  ]).join("\n");
+}
+
+function terminalTaskBrief(detail = {}) {
+  const task = detail?.task || {};
+  const title = cleanText(task.title || "Untitled task", 240);
+  const taskId = terminalTaskId(task);
+  const requestId = cleanText(task.metadata?.requestId || "", 180);
+  const networkProjectId = cleanText(task.metadata?.networkProjectId || "", 180);
+  const networkAllocationId = cleanText(task.metadata?.networkAllocationId || "", 180);
+  const status = cleanText(task.status || task.statusKey || "", 80);
+  const kind = cleanText(task.kind || "Task", 80);
+  const due = cleanText(task.fullDue || task.due || "", 120);
+  const dueLabel = cleanText(task.dueLabel || "Deadline", 80);
+  const description = cleanText(task.description || "", 8000);
+  const steps = Array.isArray(task.steps)
+    ? task.steps.map((step) => cleanText(step, 1000)).filter(Boolean).slice(0, 8)
+    : [];
+  const verification = terminalTaskVerification(task);
+  const currentVerificationRequest = terminalCurrentVerificationRequest(detail);
+  const sections = [
+    "Task for Codex",
+    "",
+    ...cleanLines([
+      `Title: ${title}`,
+      taskId ? `Task ID: ${taskId}` : "",
+      requestId ? `Request ID: ${requestId}` : "",
+      networkProjectId ? `Network Project: ${networkProjectId}` : "",
+      networkAllocationId ? `Network Allocation: ${networkAllocationId}` : "",
+      kind ? `Kind: ${kind}` : "",
+      status ? `Status: ${status}` : "",
+      `Reward: ${terminalTaskReward(task)}`,
+      due ? `${dueLabel}: ${due}` : "",
+    ]),
+    "",
+    "Objective",
+    description || "No description provided.",
+  ];
+
+  if (steps.length) {
+    sections.push("", "Steps", ...steps.map((step, index) => `${index + 1}. ${step}`));
+  }
+
+  sections.push("", "Verification Requirements", verification || "Submit evidence that satisfies the task requirement.");
+
+  if (currentVerificationRequest) {
+    sections.push("", "Current Verification Request", currentVerificationRequest);
+  }
+
+  sections.push(
+    "",
+    "Requested Output",
+    "Complete the task and return the evidence needed for the verification requirement. Include changed files, commands run, test results, links, screenshots, or concise proof artifacts when relevant."
+  );
+
+  return sections.join("\n");
+}
+
+function terminalEvidencePrompt(detail = {}) {
+  const task = detail?.task || {};
+  const actions = detail?.actions || {};
+  const mode = actions.canSubmitVerificationEvidence ? "verification_response" : "initial_submission";
+  const title = cleanText(task.title || "Untitled task", 240);
+  const currentVerificationRequest = terminalCurrentVerificationRequest(detail);
+  return {
+    mode,
+    title: `Submit ${mode === "verification_response" ? "verification response" : "evidence"} for ${title}`,
+    body: currentVerificationRequest || terminalTaskVerification(task) || "Submit evidence that satisfies the task requirement.",
+    acceptedTypes: ["text", "url", "github_pr", "git_commit"],
+    examples: [
+      "PR URL",
+      "commit URL",
+      "terminal output summary",
+      "test command and result",
+      "concise proof text",
+    ],
+    maxArtifacts: 2,
+  };
+}
+
+function withTerminalTaskRendering(detail = {}) {
+  if (!detail?.task) return detail;
+  return {
+    ...detail,
+    terminal: {
+      briefText: terminalTaskBrief(detail),
+      evidencePrompt: terminalEvidencePrompt(detail),
+    },
+  };
+}
+
+function mapTaskRequestTerminalResult(result = {}, origin = "") {
+  const error = result?.body?.error || "";
+  if (error === "task_request_wallet_required") {
+    return {
+      status: 409,
+      body: {
+        ok: false,
+        error: "wallet_not_linked",
+        message: "Link a PFT wallet in Task Node before requesting a task.",
+        handoffUrl: terminalHandoffUrl(origin),
+      },
+    };
+  }
+  return result;
 }
 
 function terminalAuthCompleteHtml() {
@@ -276,7 +404,11 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
   const session = resolved.session;
 
   if (url.pathname === "/api/terminal/tasknode/status") {
-    const { wallet, state } = await taskStateForSession(session);
+    const wallet = linkedWalletForSession(session);
+    const projection = await listTaskProjectionCounts({
+      accountId: session.accountId,
+      walletAddress: wallet.address || "",
+    });
     const github = getLinkedProviderForAccount({ accountId: session.accountId, provider: "github" });
     json(res, 200, {
       ok: true,
@@ -291,7 +423,8 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
         address: wallet.address || "",
         signingRequiredForActions: !terminalTaskActionsEnabled(),
       },
-      counts: taskStateCounts(state),
+      counts: projection.counts,
+      sync: projection.sync,
       server: {
         offchainTaskLifecycle: offchainTaskLifecycleEnabled(),
         terminalTaskActions: terminalTaskActionsEnabled(),
@@ -302,15 +435,68 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
 
   if (url.pathname === "/api/terminal/tasknode/tasks") {
     const tab = safeText(url.searchParams.get("tab") || "outstanding", 40);
-    const { state } = await taskStateForSession(session);
-    const tasks = Array.isArray(state[tab]) ? state[tab] : [];
+    const wallet = linkedWalletForSession(session);
+    const state = await listTaskProjectionTasks({
+      accountId: session.accountId,
+      walletAddress: wallet.address || "",
+      tab,
+      limit: 200,
+    });
     json(res, 200, {
       ok: true,
-      tab,
-      tasks,
-      counts: taskStateCounts(state),
+      tab: state.tab,
+      tasks: state.tasks,
+      counts: state.counts,
       sync: state.sync || {},
     });
+    return true;
+  }
+
+  if (url.pathname === "/api/terminal/tasknode/requests") {
+    const wallet = linkedWalletForSession(session);
+    if (req.method === "GET") {
+      const requests = await listTaskRequests({
+        accountId: session.accountId,
+        walletAddress: wallet.address || "",
+        limit: Math.min(Math.max(Number(url.searchParams.get("limit") || 20), 1), 50),
+      });
+      json(res, 200, {
+        ok: true,
+        ...requests,
+      });
+      return true;
+    }
+
+    if (wallet.status !== "linked" || !wallet.address) {
+      json(res, 409, {
+        ok: false,
+        error: "wallet_not_linked",
+        message: "Link a PFT wallet in Task Node before requesting a task.",
+        handoffUrl: terminalHandoffUrl(origin),
+      });
+      return true;
+    }
+
+    if (!terminalTaskActionsEnabled()) {
+      json(res, 409, {
+        ok: false,
+        error: "wallet_action_required",
+        message: "This Task Node deployment still requires a wallet-signed task request.",
+        handoffUrl: terminalHandoffUrl(origin),
+      });
+      return true;
+    }
+
+    const payload = await readJson(req, 64 * 1024);
+    const result = await terminalTaskRequestAction({
+      ...payload,
+      phase: "submit",
+      source: "pfterminal",
+      sourceConversationTitle: payload.sourceConversationTitle || "PFTerminal",
+      requestedTaskKind: payload.requestedTaskKind || "personal",
+    }, req.method, session);
+    const mapped = mapTaskRequestTerminalResult(result, origin);
+    json(res, mapped.status, mapped.body);
     return true;
   }
 
@@ -333,20 +519,51 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
 
   if (url.pathname === "/api/terminal/tasknode/rewards") {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 10), 1), 50);
-    const { state } = await taskStateForSession(session);
+    const wallet = linkedWalletForSession(session);
+    const projection = await listTaskProjectionRewards({
+      accountId: session.accountId,
+      walletAddress: wallet.address || "",
+      limit,
+    });
     json(res, 200, {
       ok: true,
-      rewards: (Array.isArray(state.rewarded) ? state.rewarded : []).slice(0, limit),
+      rewards: projection.rewards,
+      sync: projection.sync,
     });
     return true;
   }
 
   const parts = url.pathname.split("/").filter(Boolean);
+  if (parts[3] === "requests" && parts[4] && req.method === "GET") {
+    const wallet = linkedWalletForSession(session);
+    const requests = await listTaskRequests({
+      accountId: session.accountId,
+      walletAddress: wallet.address || "",
+      limit: 100,
+    });
+    const requestId = decodeURIComponent(parts[4]);
+    const request = (Array.isArray(requests.items) ? requests.items : [])
+      .find((item) => item.requestId === requestId);
+    if (!request) {
+      json(res, 404, {
+        ok: false,
+        error: "terminal_task_request_not_found",
+        message: "No active Task Node request was found for this account.",
+      });
+      return true;
+    }
+    json(res, 200, {
+      ok: true,
+      request,
+    });
+    return true;
+  }
+
   const taskId = parts[3] === "tasks" && parts[4] ? decodeURIComponent(parts[4]) : "";
   if (taskId && parts.length === 5 && req.method === "GET") {
     const wallet = linkedWalletForSession(session);
     const detail = wallet.address
-      ? await getTaskDetail({
+      ? await getTerminalTaskProjectionDetail({
           accountId: session.accountId,
           walletAddress: wallet.address,
           taskId,
@@ -362,7 +579,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
       });
       return true;
     }
-    json(res, 200, detail);
+    json(res, 200, withTerminalTaskRendering(detail));
     return true;
   }
 
