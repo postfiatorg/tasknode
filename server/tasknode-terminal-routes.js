@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { authStart } from "./product-contracts.js";
+import { authStart, chatModes, chatSend, chatStreamStart } from "./product-contracts.js";
+import { executeChatStream, logChatProviderError } from "./chat-router.js";
+import { conversationIdForChatWrite, explicitConversationId } from "./chat-conversation-ids.js";
 import { fetchPftBalance } from "./pftl-balance.js";
 import { getContextDocument, saveContextDocument } from "./repositories/context.js";
 import {
@@ -18,8 +20,16 @@ import {
   getLinkedWallet,
   getTerminalAuthRequest,
   getTerminalSessionByToken,
+  conversationIdForSession,
   revokeTerminalSessionByToken,
 } from "./runtime-store.js";
+import {
+  getChatMessages,
+  listChatConversations,
+  searchChatConversations,
+} from "./repositories/chat-billing.js";
+import { chatConversationExistsForAccount } from "./repositories/chat-conversation-lookup.js";
+import { recordChatFailureObservability } from "./repositories/user-observability.js";
 import {
   offchainTaskLifecycleDualWriteEnabled,
   offchainTaskLifecycleEnabled,
@@ -30,6 +40,11 @@ import { taskSubmissionAction } from "./task-submission.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
+}
+
+function writeSse(res, event, data) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
 function bearerToken(req) {
@@ -88,6 +103,25 @@ function terminalSession(req, origin = "") {
 
 function terminalTaskActionsEnabled() {
   return offchainTaskLifecycleEnabled() && !offchainTaskLifecycleDualWriteEnabled();
+}
+
+async function terminalChatConversationId(session = {}, requestedId = "") {
+  return conversationIdForChatWrite({
+    conversationIdForSession,
+    existsForAccount: chatConversationExistsForAccount,
+    requestedId,
+    session,
+  });
+}
+
+function terminalChatPayload(payload = {}, session = {}, conversationId = "") {
+  const requestedMode = safeText(payload?.mode || "", 80);
+  return {
+    ...payload,
+    accountId: session.accountId || "",
+    conversationId,
+    mode: requestedMode || "Private Thinking",
+  };
 }
 
 function linkedWalletForSession(session = {}) {
@@ -550,6 +584,168 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
       saved: sha256(saved.body || "") !== beforeDigest,
       context: terminalContextDocument(saved),
     });
+    return true;
+  }
+
+  if (url.pathname === "/api/terminal/tasknode/chat/modes") {
+    json(res, 200, {
+      ok: true,
+      defaultMode: "Private Thinking",
+      modes: chatModes({ signedOut: false }),
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/terminal/tasknode/chat/conversations") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 30), 1), 50);
+    json(res, 200, {
+      ok: true,
+      conversations: await listChatConversations({
+        accountId: session.accountId,
+        limit,
+      }),
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/terminal/tasknode/chat/history") {
+    const conversationId = explicitConversationId(url.searchParams.get("conversationId") || "")
+      || conversationIdForSession(session);
+    json(res, 200, {
+      ok: true,
+      conversationId,
+      messages: await getChatMessages({
+        accountId: session.accountId,
+        conversationId,
+        limit: Math.min(Math.max(Number(url.searchParams.get("limit") || 80), 1), 200),
+      }),
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/terminal/tasknode/chat/search") {
+    const searchQuery = safeText(url.searchParams.get("q") || "", 120);
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 20), 1), 50);
+    json(res, 200, {
+      ok: true,
+      query: searchQuery,
+      results: searchQuery.length < 2
+        ? []
+        : await searchChatConversations({
+            accountId: session.accountId,
+            query: searchQuery,
+            limit,
+          }),
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/terminal/tasknode/chat/send") {
+    const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
+    const conversationId = await terminalChatConversationId(session, payload?.conversationId || "");
+    const result = await chatSend(
+      terminalChatPayload(payload, session, conversationId),
+      req.method,
+      { source: "pfterminal" }
+    );
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/terminal/tasknode/chat/stream") {
+    const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
+    const conversationId = await terminalChatConversationId(session, payload?.conversationId || "");
+    const started = await chatStreamStart(
+      terminalChatPayload(payload, session, conversationId),
+      req.method,
+      { source: "pfterminal" }
+    );
+
+    if (!started.stream) {
+      json(res, started.status, started.body);
+      return true;
+    }
+
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-store, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    });
+    writeSse(res, "meta", started.body);
+
+    const controller = new AbortController();
+    res.on("close", () => {
+      if (!res.writableEnded) controller.abort();
+    });
+
+    try {
+      const result = await executeChatStream({
+        ...started.chat,
+        signal: controller.signal,
+        onDelta: (delta) => writeSse(res, "delta", { delta }),
+      });
+
+      writeSse(res, "done", {
+        ok: true,
+        action: "terminal_chat_stream",
+        message: "Chat response generated.",
+        conversationId,
+        mode: started.chat.mode,
+        provider: result.provider,
+        model: result.model,
+        responseId: result.responseId,
+        user: result.user,
+        assistant: result.assistant,
+        estimate: started.estimate,
+        usage: {
+          billingModel: "usage_based",
+          currency: "USD",
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          totalTokens: result.usage.totalTokens,
+          webSearchCalls: result.usage.webSearchCalls || 0,
+          toolCostUsd: result.usage.toolCostUsd || 0,
+          costUsd: result.usage.costUsd,
+          estimated: result.usage.estimated === true,
+        },
+        ledgerEntry: result.ledgerEntry,
+        contextStatus: result.contextStatus || started.chat.contextStatus,
+      });
+    } catch (error) {
+      if (error?.status !== 499) {
+        logChatProviderError(error, {
+          action: "terminal_chat_stream",
+          mode: started.chat.mode,
+          provider: started.estimate?.provider,
+          model: started.estimate?.model,
+        });
+        await recordChatFailureObservability({
+          accountId: started.chat.accountId,
+          conversationId,
+          mode: started.chat.mode,
+          provider: started.estimate?.provider,
+          model: started.estimate?.model,
+          status: error?.status || 502,
+          error,
+          sourceRoute: "server/tasknode-terminal-routes.js::/api/terminal/tasknode/chat/stream",
+        }).catch(() => {});
+        writeSse(res, "error", {
+          ok: false,
+          error: error?.message || "chat_provider_error",
+          action: "terminal_chat_stream",
+          message:
+            error?.status === 504
+              ? "The chat provider timed out before returning a response."
+              : "The chat provider could not complete this response.",
+          actionRequired:
+            "Retry with a shorter prompt, choose another configured mode, or check provider health.",
+          estimate: started.estimate,
+        });
+      }
+    } finally {
+      if (!res.destroyed && !res.writableEnded) res.end();
+    }
     return true;
   }
 
