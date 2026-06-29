@@ -382,6 +382,256 @@ export function isProjectionBehindCachedPointer(row = {}, latest = {}) {
   return Boolean(cachedTx || cachedCid);
 }
 
+function emptyTaskCounts() {
+  return {
+    outstanding: 0,
+    verification: 0,
+    refused: 0,
+    rewarded: 0,
+  };
+}
+
+function countTaskProjectionRows(rows = []) {
+  const counts = emptyTaskCounts();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const tab = taskStatusTab(normalizeTaskStatus(row.status));
+    if (tab === "rewarded") {
+      counts.rewarded += 1;
+    } else if (tab === "refused") {
+      counts.refused += 1;
+    } else if (tab === "verification") {
+      counts.verification += 1;
+    } else {
+      counts.outstanding += 1;
+    }
+  }
+  return counts;
+}
+
+async function listTaskProjectionRows({ accountId = "", walletAddress = "", limit = 200 } = {}) {
+  const normalizedLimit = Math.min(Math.max(Number(limit || 200), 1), 500);
+  if (!String(walletAddress || "").trim()) {
+    return {
+      rows: [],
+      sync: {
+        source: "task_projections",
+        status: "wallet_required",
+        walletAddress: null,
+        projectionCount: 0,
+        lastSyncedAt: null,
+      },
+    };
+  }
+  if (!databaseEnabled()) {
+    return {
+      rows: [],
+      sync: {
+        source: "task_projections",
+        status: "database_not_configured",
+        walletAddress,
+        projectionCount: 0,
+        lastSyncedAt: null,
+      },
+    };
+  }
+
+  const result = await query(
+    `
+      SELECT *
+      FROM task_projections
+      WHERE subject_wallet = $1
+        AND ($2::text = '' OR account_id = $2)
+      ORDER BY updated_at DESC, task_id DESC
+      LIMIT $3
+    `,
+    [walletAddress, accountId || "", normalizedLimit]
+  );
+  return {
+    rows: result.rows,
+    sync: {
+      source: "task_projections",
+      status: result.rows.length > 0 ? "ready" : "empty",
+      walletAddress,
+      projectionCount: result.rows.length,
+      lastSyncedAt: result.rows[0]?.updated_at ? toIso(result.rows[0].updated_at) : null,
+    },
+  };
+}
+
+export async function listTaskProjectionCounts({ accountId = "", walletAddress = "" } = {}) {
+  try {
+    const { rows, sync } = await listTaskProjectionRows({ accountId, walletAddress, limit: 200 });
+    return {
+      counts: countTaskProjectionRows(rows),
+      sync,
+    };
+  } catch (error) {
+    return {
+      counts: emptyTaskCounts(),
+      sync: {
+        source: "task_projections",
+        status: "database_error",
+        walletAddress: walletAddress || null,
+        projectionCount: 0,
+        lastSyncedAt: null,
+        error: safeText(error?.message || error, 500),
+      },
+    };
+  }
+}
+
+export async function listTaskProjectionRewards({
+  accountId = "",
+  walletAddress = "",
+  limit = 10,
+} = {}) {
+  const normalizedLimit = Math.min(Math.max(Number(limit || 10), 1), 50);
+  try {
+    const { rows, sync } = await listTaskProjectionRows({ accountId, walletAddress, limit: 200 });
+    return {
+      rewards: rows
+        .map((row) => publicTask(row))
+        .filter((task) => taskStatusTab(task.statusKey) === "rewarded")
+        .slice(0, normalizedLimit),
+      sync,
+    };
+  } catch (error) {
+    return {
+      rewards: [],
+      sync: {
+        source: "task_projections",
+        status: "database_error",
+        walletAddress: walletAddress || null,
+        projectionCount: 0,
+        lastSyncedAt: null,
+        error: safeText(error?.message || error, 500),
+      },
+    };
+  }
+}
+
+export async function listTaskProjectionTasks({
+  accountId = "",
+  walletAddress = "",
+  tab = "outstanding",
+  limit = 200,
+} = {}) {
+  const normalizedTab = safeText(tab || "outstanding", 80);
+  try {
+    const { rows, sync } = await listTaskProjectionRows({ accountId, walletAddress, limit });
+    const grouped = groupTasks(rows.map((row) => publicTask(row)));
+    const tasks = Array.isArray(grouped[normalizedTab]) ? grouped[normalizedTab] : [];
+    return {
+      tab: normalizedTab,
+      tasks,
+      counts: countTaskProjectionRows(rows),
+      sync,
+    };
+  } catch (error) {
+    return {
+      tab: normalizedTab,
+      tasks: [],
+      counts: emptyTaskCounts(),
+      sync: {
+        source: "task_projections",
+        status: "database_error",
+        walletAddress: walletAddress || null,
+        projectionCount: 0,
+        lastSyncedAt: null,
+        error: safeText(error?.message || error, 500),
+      },
+    };
+  }
+}
+
+export async function getTerminalTaskProjectionDetail({
+  accountId = "",
+  walletAddress = "",
+  taskId = "",
+} = {}) {
+  const normalizedTaskId = safeText(taskId, 180);
+  if (!String(walletAddress || "").trim() || !normalizedTaskId) return null;
+  if (!databaseEnabled()) {
+    const error = new Error("database_not_configured");
+    error.code = "TASKNODE_DATABASE_NOT_CONFIGURED";
+    throw error;
+  }
+
+  const result = await query(
+    `
+      SELECT *
+      FROM task_projections
+      WHERE task_id = $1
+        AND subject_wallet = $2
+        AND ($3::text = '' OR account_id = $3)
+      LIMIT 1
+    `,
+    [normalizedTaskId, walletAddress, accountId || ""]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+
+  const metadata = safeObject(row.metadata_json);
+  const submissionSummaries = Array.isArray(metadata.submissionSummaries)
+    ? metadata.submissionSummaries
+    : [];
+  const task = publicTask(row);
+  const eventCount = Number(row.event_count || 0);
+  return {
+    ok: true,
+    task,
+    wallets: {
+      user: row.subject_wallet || "",
+      authority: row.authority_wallet || "",
+      allocation: row.allocation_wallet || "",
+    },
+    actions: taskActionState(row.status),
+    submission: {
+      summaries: submissionSummaries.slice(0, 12),
+      generatedTask: safeObject(metadata.generatedTask),
+      verificationPolicy: safeObject(row.verification_policy_json),
+    },
+    currentVerificationRequest: safeObject(metadata.currentVerificationRequest),
+    rewardOutcome: null,
+    forensics: {
+      source: row.source || "task_projections",
+      eventCount,
+      requestBundleCid: row.request_bundle_cid || "",
+      contextCid: row.context_cid || "",
+      lastEventTxHash: row.last_event_tx_hash || "",
+      lastEventCid: row.last_event_cid || "",
+      cids: [],
+      transactions: [],
+      timeline: [],
+      pointerEvents: [],
+      reducerEvents: [],
+      reviewState: taskEventExpectation({ status: row.status, timeline: [] }),
+      integrity: {
+        expectedEventCount: eventCount,
+        pointerEventCount: 0,
+        reducerEventCount: 0,
+        renderedEventCount: 0,
+        terminalLightweight: true,
+        projectionLastEvent: {
+          txHash: safeText(row.last_event_tx_hash, 240),
+          cid: safeText(row.last_event_cid, 240),
+          status: safeText(row.status, 80),
+          eventCount,
+        },
+      },
+    },
+    sync: {
+      updatedAt: toIso(row.updated_at),
+      lastEventAt: toIso(row.last_event_at),
+      requiresRefresh: false,
+      nextPollMs: null,
+      refreshReason: "",
+      activeRequestCount: 0,
+      refreshTaskIds: [],
+    },
+  };
+}
+
 async function taskReadIntegrityByTaskId({ taskIds = [], accountId = "", walletAddress = "" } = {}) {
   const ids = [...new Set((Array.isArray(taskIds) ? taskIds : []).map((id) => safeText(id, 180)).filter(Boolean))];
   if (!ids.length || !databaseEnabled()) {

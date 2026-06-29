@@ -340,6 +340,35 @@ function taskOfferProjectionMetadata({ event = {}, offerPayload = {}, metadata =
   };
 }
 
+function currentVerificationRequestPatch(eventPayload = {}) {
+  const payload = safeObject(eventPayload);
+  const request = safeObject(payload.verification_request);
+  const ask = safeText(payload.verification_ask || request.verification_ask || request.ask, 4000);
+  if (!ask) return {};
+  return {
+    currentVerificationRequest: {
+      ask,
+      body: ask,
+      type: safeText(payload.verification_type || request.verification_type, 120),
+      assessment: safeText(request.assessment || payload.assessment, 120),
+      reason: safeText(payload.reason || request.reason, 1000),
+      eventId: safeText(payload.event_id, 180),
+      createdAt: safeText(payload.created_at || payload.recorded_at, 80),
+    },
+  };
+}
+
+function transitionMetadataPatch({ transition = "", eventPayload = {} } = {}) {
+  const normalizedTransition = safeText(transition, 80);
+  if (normalizedTransition === "verification_requested") {
+    return currentVerificationRequestPatch(eventPayload);
+  }
+  if (["verification_response_submitted", "rewarded", "cancelled", "refused"].includes(normalizedTransition)) {
+    return { currentVerificationRequest: null };
+  }
+  return {};
+}
+
 export async function applyOffchainTaskOfferWithClient(client, {
   accountId = "",
   walletAddress = "",
@@ -629,6 +658,10 @@ export async function applyOffchainTaskTransitionWithClient(client, {
       lastSignatureVerified: event.signatureJson?.verification?.verified === true,
       dualWrite: Boolean(dualWrite),
     },
+    ...transitionMetadataPatch({
+      transition: normalizedTransition,
+      eventPayload: event.payloadJson,
+    }),
   };
   const rewardActualPft =
     normalizedTransition === "rewarded"

@@ -85,6 +85,19 @@ export const apiRoutePolicies = [
   { id: "terminal_auth_revoke", path: "/api/auth/terminal/revoke", methods: ["POST"], auth: "bearer" },
   { id: "terminal_tasknode_status", path: "/api/terminal/tasknode/status", methods: ["GET"], auth: "bearer" },
   { id: "terminal_tasknode_tasks", path: "/api/terminal/tasknode/tasks", methods: ["GET"], auth: "bearer" },
+  {
+    id: "terminal_tasknode_requests",
+    path: "/api/terminal/tasknode/requests",
+    methods: ["GET", "POST"],
+    auth: "bearer",
+    rateLimit: { limit: 30, windowMs: 60_000 },
+  },
+  {
+    id: "terminal_tasknode_request",
+    pattern: /^\/api\/terminal\/tasknode\/requests\/[^/]+$/,
+    methods: ["GET"],
+    auth: "bearer",
+  },
   { id: "terminal_tasknode_balance", path: "/api/terminal/tasknode/balance", methods: ["GET"], auth: "bearer" },
   { id: "terminal_tasknode_rewards", path: "/api/terminal/tasknode/rewards", methods: ["GET"], auth: "bearer" },
   {
