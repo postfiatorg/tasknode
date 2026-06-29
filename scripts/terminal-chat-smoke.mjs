@@ -42,6 +42,17 @@ try {
     getOrCreateProviderAccount,
   } = await import("../server/runtime-store.js");
   const { handleTaskNodeTerminalRoute } = await import("../server/tasknode-terminal-routes.js");
+  const { routePolicyForPath } = await import("../server/route-policies.js");
+
+  const sendPolicy = routePolicyForPath("/api/terminal/tasknode/chat/send");
+  assert.equal(sendPolicy?.auth, "bearer");
+  assert.deepEqual(sendPolicy?.methods, ["POST"]);
+  assert.equal(sendPolicy?.rateLimit?.limit, 20);
+
+  const streamPolicy = routePolicyForPath("/api/terminal/tasknode/chat/stream");
+  assert.equal(streamPolicy?.auth, "bearer");
+  assert.deepEqual(streamPolicy?.methods, ["POST"]);
+  assert.equal(streamPolicy?.rateLimit?.limit, 20);
 
   const suffix = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const account = getOrCreateProviderAccount({

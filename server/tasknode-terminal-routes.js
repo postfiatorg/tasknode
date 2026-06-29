@@ -43,8 +43,10 @@ function safeText(value = "", max = 4000) {
 }
 
 function writeSse(res, event, data) {
+  if (res.destroyed || res.writableEnded) return false;
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
+  return true;
 }
 
 function bearerToken(req) {
