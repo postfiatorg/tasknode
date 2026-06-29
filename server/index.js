@@ -54,6 +54,7 @@ import { authWalletStart, authWalletVerify } from "./auth-wallet-login.js";
 import { oauthStateCookieName, responseHeadersForAuthResult } from "./auth-oauth-http.js";
 import { telegramAuthHeaders } from "./auth-connected-accounts.js";
 import { handleTaskReadRoute } from "./task-routes.js";
+import { handleTaskNodeTerminalRoute } from "./tasknode-terminal-routes.js";
 import { handleAccountRoute } from "./account-routes.js";
 import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleContextRewriteRoute } from "./context-rewrite-actions.js";
@@ -569,6 +570,16 @@ async function routeApi(req, url, res) {
     json(res, 200, { providers: authProviders() });
     return true;
   }
+
+  if (await handleTaskNodeTerminalRoute({
+    json,
+    readJson,
+    req,
+    res,
+    url,
+    origin: requestOrigin(req),
+    responseHeadersForAuthResult,
+  })) return true;
 
   if (url.pathname === "/api/auth/telegram/authorize") {
     if (req.method !== "GET") {
