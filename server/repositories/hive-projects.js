@@ -649,6 +649,51 @@ function visiblePublicProject(project = {}) {
   return publicFields;
 }
 
+function projectArchivedForIndex(project = {}) {
+  const status = safeText(project.status, 80).toLowerCase();
+  return status === "archived" || projectHasOperatorArchiveLock({ metadata_json: project.metadata });
+}
+
+function archivedBoardIndexEntry(project = {}) {
+  const metadata = safeObject(project.metadata);
+  const archivedAt = safeText(
+    metadata.archived_at ||
+      metadata.archive_at ||
+      metadata.archive_lock_applied_at ||
+      metadata.operator_archived_at ||
+      "",
+    80
+  );
+  const archivedReason = safeText(
+    metadata.archived_reason ||
+      metadata.archive_reason ||
+      metadata.archive_lock_reason ||
+      metadata.operator_archive_reason ||
+      "",
+    500
+  );
+  const latestActivity = safeArray(project.activity)[0] || {};
+  return {
+    id: project.id,
+    name: project.name,
+    type: project.type,
+    typeKey: project.typeKey,
+    summary: project.summary,
+    status: "archived",
+    priority: intValue(project.priority),
+    pft: numeric(project.pft),
+    taskCount: intValue(project.taskCount),
+    tasksInFlight: intValue(project.tasksInFlight),
+    terminalTaskCount: intValue(project.terminalTaskCount),
+    contributorCount: intValue(project.contributorCount),
+    pendingGenerationCount: intValue(project.pendingGenerationCount),
+    archivedAt,
+    archivedReason,
+    operatorArchiveLock: projectHasOperatorArchiveLock({ metadata_json: metadata }),
+    lastActivityAt: latestActivity.updatedAt || latestActivity.createdAt || "",
+  };
+}
+
 function documentFromRows({
   projectRows = [],
   contributorRows = [],
@@ -712,6 +757,17 @@ function documentFromRows({
   const projectIds = Object.values(visibleProjects)
     .sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name))
     .map((project) => project.id);
+  const archivedBoards = Object.values(projects)
+    .filter(projectArchivedForIndex)
+    .map(archivedBoardIndexEntry)
+    .sort((a, b) =>
+      timestampMs(b.archivedAt || b.lastActivityAt) - timestampMs(a.archivedAt || a.lastActivityAt) ||
+      a.priority - b.priority ||
+      a.name.localeCompare(b.name)
+    )
+    .slice(0, 80);
+  const archivedProjects = Object.fromEntries(archivedBoards.map((project) => [project.id, project]));
+  const archivedProjectIds = archivedBoards.map((project) => project.id);
   const operators = operatorMap(visibleProjects);
   const routingFeed = Object.values(visibleProjects)
     .flatMap((project) =>
@@ -734,11 +790,14 @@ function documentFromRows({
   return {
     generatedAt: new Date().toISOString(),
     projectIds,
+    archivedProjectIds,
     projects: visibleProjects,
+    archivedProjects,
     operators,
     routingFeed,
     stats: {
       activeProjects: projectIds.length,
+      archivedProjects: archivedProjectIds.length,
       operatorsOnline: activeOperators,
       tasksInFlight,
       taskRows: taskRowCount,

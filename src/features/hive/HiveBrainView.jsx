@@ -6,6 +6,18 @@ import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects
 import hiveDecisionAgentPrompt from "../../../prompts/hive/hive_decision_agent_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
 import taskAccountingHarvesterPrompt from "../../../prompts/hive/task_accounting_harvester_v1.md?raw";
+import boardManagerPlanningReportPrompt from "../../../prompts/hive/reports/board_manager_planning_v1.md?raw";
+import developmentReportPrompt from "../../../prompts/hive/reports/development_v1.md?raw";
+import executiveReportPrompt from "../../../prompts/hive/reports/executive_v1.md?raw";
+import hiveIntelligenceReportPrompt from "../../../prompts/hive/reports/hive_intelligence_v1.md?raw";
+import hiveReportCommonPrompt from "../../../prompts/hive/reports/hive_report_common_v1.md?raw";
+import hiveReportWriterSystemPrompt from "../../../prompts/hive/reports/hive_report_writer_system_v1.md?raw";
+import kolReportPrompt from "../../../prompts/hive/reports/kol_v1.md?raw";
+import operativeReportPrompt from "../../../prompts/hive/reports/operative_v1.md?raw";
+import phaseInitialReportPrompt from "../../../prompts/hive/reports/phase_initial_v1.md?raw";
+import promptDisclosureTemplate from "../../../prompts/hive/reports/prompt_disclosure_v1.md?raw";
+import qaReportPrompt from "../../../prompts/hive/reports/qa_v1.md?raw";
+import rewardedTaskReportPrompt from "../../../prompts/hive/reports/rewarded_task_v1.md?raw";
 import "./hive.css";
 
 const reportTabs = [
@@ -16,6 +28,14 @@ const reportTabs = [
     title: "Hive Intelligence report",
     cadence: "6h",
     summary: "Strategic Hive Mind brief synthesizing all reports into PFT value judgments and action recommendations.",
+  },
+  {
+    id: "board-manager",
+    type: "board_manager_planning",
+    label: "Board Manager",
+    title: "Board Manager planning report",
+    cadence: "3h",
+    summary: "Portfolio-level planning loop that ranks boards and recommends add/archive actions from Hive Intelligence and live board state.",
   },
   {
     id: "operative",
@@ -94,68 +114,110 @@ const harvestResolutionOutcomes = [
 ];
 
 const reportPromptByType = {
-  rewarded_task: [
-    "Group by role. For each role, summarize the last rewarded Network Tasks available in the packet.",
-    "For each task include task id, title, operator, proposal/evidence gist, actual reward, and why it matters.",
-  ],
-  operative: [
-    "Group operators by KOL, Core Contributor, QA Worker, Expert, and Project Leader where present.",
-    "For each person include profile context, whether they currently have a task, and 1-2 sentences on what they appear to be doing.",
-  ],
-  kol: [
-    "Summarize marketing/amplification state, KOL operators, public artifacts, key rewarded tasks, and trajectory.",
-    "List every public link you rely on so the link-verifier can check it.",
-  ],
-  development: [
-    "Summarize core development work, active code tasks, rewarded code tasks, repository evidence, and delivery risks.",
-    "List repository, PR, issue, or commit links you rely on so the repo-verifier can check them.",
-  ],
-  qa: [
-    "Write this as a product QA document: observed issues, suggested improvements, evidence from rewarded QA tasks, and Hive chat feedback.",
-    "Separate confirmed findings from ideas or thin reports.",
-  ],
-  executive: [
-    "Assemble Project Leader Hive chat from the last 24h into an executive brief.",
-    "Preserve who said what, project implications, unresolved decisions, and concrete next actions.",
-  ],
-  hive_intelligence: [
-    "Write a strategic intelligence brief for the Hive Mind, not a status report.",
-    "The north star is increasing the value of PFT, the Post Fiat cryptocurrency and base reward asset of the Hive Mind.",
-    "Ground the analysis in reward value: if PFT is being paid for work that is unlikely to increase PFT value, say so plainly and recommend corrective action.",
-    "Reference operators by handle, wallet, and account when available in the packet.",
-    "Stay within roughly 2-3 single-spaced pages. Be concise but do not truncate the brief or end with an unfinished section.",
-    "Use these top-level sections in this order:",
-    "A] Classification: state exactly `Public, Hive Mind`.",
-    "B] Title and Key Question: make the title/key question reflect the current network state and dynamics around increasing PFT Network value.",
-    "C] BLUF / Key Judgments: bullets that state the bottom-line assessment and so-what. Each judgment must include a confidence level (High, Moderate, or Low), probability language (almost certainly, likely, unlikely, etc.), and the main source of uncertainty.",
-    "D] Scope / Note / Context: describe which reports flowed into the intelligence brief: Operative, Rewarded Task, KOL, Development, QA, Executive, Harvest Report, Live Task Packet, and Board Secretary memos.",
-    "E] Discussion / Analysis: build a logical argument from the packet evidence. Clearly distinguish confirmed fact, analytic estimate, and assumption. Include objections, rebuttals, or alternative hypotheses where material.",
-    "F] Implications / Outlook: consequences, second/third-order effects, what to watch, what could change the conclusion, and concrete actions in the available action space.",
-    "Available action space is: deploy tasks to members, send messages to people, or recommend founder-level changes to Task Node or other network assets.",
-    "Concrete task deployment or reassignment recommendations must obey SOURCE PACKET taskRoutingConstraints. If a task has requiredBadgeId or operatingBadgeId, recommend only operators listed in that task's eligibleReplacementOperators or in eligibleOperatorsByBadge for the required badge.",
-    "Never infer task eligibility from profile text, point-person status, prior rewarded tasks, skills, wallet history, or general operator quality. If a high-quality operator lacks the required badge, recommend a message, a new correctly scoped task, or a founder-level badge/policy change instead of assigning the task to them.",
-  ],
+  rewarded_task: rewardedTaskReportPrompt,
+  operative: operativeReportPrompt,
+  kol: kolReportPrompt,
+  development: developmentReportPrompt,
+  qa: qaReportPrompt,
+  executive: executiveReportPrompt,
+  hive_intelligence: hiveIntelligenceReportPrompt,
+  board_manager_planning: boardManagerPlanningReportPrompt,
 };
 
-const reportWriterSystemPrompt = [
-  "You are the Task Node Hive Reports writer.",
-  "Your output is a prose operating report for a human operator.",
-  "Never output raw JSON as the report body.",
-  "Do not claim actions were executed; report only observed evidence.",
-].join("\n");
+const reportRerunStorageKey = "tasknode_hive_report_reruns_v1";
+const reportRerunTimeoutMs = 15 * 60 * 1000;
+
+function reportTabForType(type = "") {
+  return reportTabs.find((tab) => tab.type === type) || null;
+}
+
+function reportRerunTimedOut(job = {}) {
+  const startedMs = Date.parse(job.startedAt || "");
+  return Number.isFinite(startedMs) && Date.now() - startedMs > reportRerunTimeoutMs;
+}
+
+function activeReportRerunJobs(jobs = {}) {
+  return Object.entries(jobs)
+    .filter(([, job]) => job?.status === "running" && !reportRerunTimedOut(job))
+    .map(([type]) => type);
+}
+
+function readStoredReportRerunJobs() {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(window.localStorage?.getItem(reportRerunStorageKey) || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([type, job]) => reportTabForType(type) && job?.status === "running" && !reportRerunTimedOut(job))
+        .map(([type, job]) => [
+          type,
+          {
+            status: "running",
+            startedAt: String(job.startedAt || ""),
+            previousReportId: String(job.previousReportId || ""),
+            message: String(job.message || ""),
+          },
+        ])
+    );
+  } catch {
+    return {};
+  }
+}
+
+function storeReportRerunJobs(jobs = {}) {
+  if (typeof window === "undefined") return;
+  const stored = Object.fromEntries(
+    Object.entries(jobs).filter(([, job]) => job?.status === "running" && !reportRerunTimedOut(job))
+  );
+  try {
+    if (Object.keys(stored).length) window.localStorage?.setItem(reportRerunStorageKey, JSON.stringify(stored));
+    else window.localStorage?.removeItem(reportRerunStorageKey);
+  } catch {
+    // Local storage is best-effort status memory only.
+  }
+}
+
+function reconcileReportRerunJobs(jobs = {}, reports = []) {
+  const next = {};
+  const completed = [];
+  for (const [type, job] of Object.entries(jobs)) {
+    if (job?.status !== "running") {
+      next[type] = job;
+      continue;
+    }
+    const currentReport = reports.find((report) => report?.type === type);
+    const startedMs = Date.parse(job.startedAt || "");
+    const generatedMs = Date.parse(currentReport?.generatedAt || "");
+    const reportChanged = currentReport?.id && currentReport.id !== job.previousReportId;
+    const reportAfterStart = Number.isFinite(startedMs) && Number.isFinite(generatedMs)
+      ? generatedMs >= startedMs - 1000
+      : reportChanged;
+    if (reportChanged && reportAfterStart) {
+      completed.push({ type, report: currentReport });
+      continue;
+    }
+    next[type] = job;
+  }
+  return { next, completed };
+}
+
+function renderPromptTemplate(template = "", values = {}) {
+  return String(template || "").replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, key) => {
+    if (!Object.prototype.hasOwnProperty.call(values, key)) return "";
+    return String(values[key] ?? "");
+  });
+}
 
 function reportPromptText(tab = {}) {
   return [
-    `Report type: ${tab.label || tab.type}`,
-    `Purpose: ${tab.summary || "Hive operating report."}`,
-    "Write a human-readable Markdown document. Do not output JSON.",
-    "Start with one H1. Use short sections, bullets, and concise evidence references.",
-    "Include relevant counts and KPIs when present in the source packet.",
-    "Call out uncertainty and missing evidence instead of inventing facts.",
-    "Projects are dynamic; do not assume a fixed project list.",
-    "Do not recommend clawbacks, bans, or enforcement execution. Reward routing, task strategy, and founder-level network recommendations are allowed when tied to evidence.",
-    ...(reportPromptByType[tab.type] || []),
-    "This is the initial phase. Produce the best report possible from the source packet.",
+    renderPromptTemplate(hiveReportCommonPrompt, {
+      report_label: tab.label || tab.type,
+      report_type: tab.type,
+      report_purpose: tab.summary || "",
+    }),
+    reportPromptByType[tab.type] || "",
+    phaseInitialReportPrompt,
   ].join("\n");
 }
 
@@ -187,14 +249,14 @@ const boardSystemDocs = [
   {
     title: "Report Builder",
     badge: "Reports",
-    cadence: "20m / 24h",
+    cadence: "20m / 3h / 24h",
     provider: "OpenRouter Chat Completions",
     model: "z-ai/glm-5.2",
-    promptPath: "server/hive-report-provider.js generated prompt",
-    prompt: reportWriterSystemPrompt,
+    promptPath: "prompts/hive/reports/*.md",
+    prompt: hiveReportWriterSystemPrompt,
     reads: "Verified badges, live task state, rewarded task history, Hive chat, dynamic projects, Harvest Report, Live Task Packet, and Board Secretary memos.",
-    writes: "Human-readable Markdown reports used as primary Decision Agent inputs, including the 6-hour Hive Intelligence Report.",
-    body: "This replaces raw packet reading with operator-readable reports. KOL and Development reports run a verifier pass before the final report is stored; Hive Intelligence synthesizes the report set into strategy.",
+    writes: "Human-readable Markdown reports used as primary strategy inputs, including the 6-hour Hive Intelligence Report and 3-hour Board Manager Planning Report.",
+    body: "This replaces raw packet reading with operator-readable reports. KOL and Development reports run a verifier pass before the final report is stored; Hive Intelligence synthesizes the report set into strategy, and Board Manager Planning ranks the board portfolio.",
   },
   {
     title: "Task Accounting Harvester",
@@ -440,6 +502,32 @@ function reportExcerpt(report = {}) {
     }
   }
   return compactReportExcerpt(normalizeHiveReportMarkdown(source)) || "Open the report for the full markdown briefing.";
+}
+
+function boardManagerDecisionSummary(report = {}) {
+  const decision = report?.decisionSummary;
+  if (decision?.type === "board_manager_planning") return decision;
+  return null;
+}
+
+function BoardManagerDecisionStrip({ report = {} }) {
+  const decision = boardManagerDecisionSummary(report);
+  if (!decision) return null;
+  const add = decision.addBoard || {};
+  const archive = decision.archiveBoard || {};
+  const variant = add.decision === "recommended" || archive.decision === "recommended" ? "action" : "gray";
+  return (
+    <div className="hive-brain-board-decision">
+      <div className="hive-brain-board-decision-head">
+        <span>Board Manager decision</span>
+        <Badge variant={variant}>{decision.overall || "Decision available"}</Badge>
+      </div>
+      <div className="hive-brain-board-decision-actions">
+        <span><strong>ADD_BOARD</strong>{add.summary || "Open report."}</span>
+        <span><strong>ARCHIVE_BOARD</strong>{archive.summary || "Open report."}</span>
+      </div>
+    </div>
+  );
 }
 
 function decisionSummary(detail = null) {
@@ -1037,7 +1125,41 @@ function HarvestReportCard({ packet = null, status = "loading", onRefresh }) {
   );
 }
 
-function ReportsGrid({ harvestReport, harvestReportStatus, latestByType, onOpenHarvestReport, onOpenReport }) {
+function ReportRerunStatus({ job = null }) {
+  if (!job) return null;
+  if (job.status === "error") {
+    return (
+      <div className="hive-brain-report-rerun-status is-error">
+        <X size={13} strokeWidth={2} />
+        <span>{job.message || "Rerun failed before it could start."}</span>
+      </div>
+    );
+  }
+  if (job.status !== "running") return null;
+  const timedOut = reportRerunTimedOut(job);
+  return (
+    <div className={`hive-brain-report-rerun-status ${timedOut ? "is-stale" : "is-running"}`}>
+      <RefreshCw size={13} strokeWidth={2} />
+      <span>
+        {timedOut
+          ? "Rerun status unknown. Refresh reports or run it again."
+          : `Rerun running since ${job.startedAt ? relativeTime(job.startedAt) : "just now"}.`}
+      </span>
+    </div>
+  );
+}
+
+function ReportsGrid({
+  canRerunReports = false,
+  harvestReport,
+  harvestReportStatus,
+  latestByType,
+  onOpenHarvestReport,
+  onOpenReport,
+  onRerunReport,
+  rerunJobs = {},
+  rerunningType = "",
+}) {
   const report = harvestReport?.report || null;
   const pending = Boolean(harvestReport?.pending);
   const resolvedUntilNext = Number(harvestReport?.resolvedUntilNextReport || 0);
@@ -1069,8 +1191,11 @@ function ReportsGrid({ harvestReport, harvestReportStatus, latestByType, onOpenH
         </button>
         {reportTabs.map((tab) => {
           const report = latestByType.get(tab.type);
+          const rerunJob = rerunJobs[tab.type] || null;
+          const rerunning = rerunJob?.status === "running" && !reportRerunTimedOut(rerunJob);
+          const rerunDisabled = Boolean(rerunningType);
           return (
-            <button className="hive-brain-report-card" key={tab.id} onClick={() => onOpenReport(tab.id)} type="button">
+            <article className="hive-brain-report-card" key={tab.id}>
               <div className="hive-brain-report-card-top">
                 <span>{tab.title}</span>
                 <Badge variant={report ? "gray" : "red"}>{report ? tab.cadence : "missing"}</Badge>
@@ -1078,11 +1203,28 @@ function ReportsGrid({ harvestReport, harvestReportStatus, latestByType, onOpenH
               <div className="hive-brain-report-take">
                 {report ? reportExcerpt(report) : "No report generated yet."}
               </div>
+              {tab.type === "board_manager_planning" && report && <BoardManagerDecisionStrip report={report} />}
+              <ReportRerunStatus job={rerunJob} />
               <div className="hive-brain-report-foot">
                 <span>{report ? `Updated ${relativeTime(report.generatedAt)}` : "Not generated"}</span>
-                <strong>Open →</strong>
+                <div className="hive-brain-report-actions">
+                  {canRerunReports && (
+                    <button
+                      className="hive-brain-report-action"
+                      disabled={rerunDisabled}
+                      onClick={() => onRerunReport(tab.type)}
+                      type="button"
+                    >
+                      <RefreshCw size={12} strokeWidth={2} />
+                      {rerunning ? "Running" : "Rerun"}
+                    </button>
+                  )}
+                  <button className="hive-brain-report-open" onClick={() => onOpenReport(tab.id)} type="button">
+                    Open →
+                  </button>
+                </div>
               </div>
-            </button>
+            </article>
           );
         })}
       </div>
@@ -1098,10 +1240,14 @@ function OverviewPanel({
   latestByType,
   liveTaskPacket,
   liveTaskPacketStatus,
+  canRerunReports,
   onOpenReport,
+  onRerunReport,
   onRefreshHarvestReport,
   onRefreshLiveTaskPacket,
   runs,
+  rerunJobs,
+  rerunningType,
   selectedRunId,
   onSelectRun,
 }) {
@@ -1130,14 +1276,18 @@ function OverviewPanel({
           status={liveTaskPacketStatus}
           onRefresh={onRefreshLiveTaskPacket}
         />
-        <ReportsGrid
-          harvestReport={harvestReport}
-          harvestReportStatus={harvestReportStatus}
-          latestByType={latestByType}
-          onOpenHarvestReport={() => onOpenReport("harvest-report")}
-          onOpenReport={onOpenReport}
-        />
-      </div>
+          <ReportsGrid
+            canRerunReports={canRerunReports}
+            harvestReport={harvestReport}
+            harvestReportStatus={harvestReportStatus}
+            latestByType={latestByType}
+            onOpenHarvestReport={() => onOpenReport("harvest-report")}
+            onOpenReport={onOpenReport}
+            onRerunReport={onRerunReport}
+            rerunJobs={rerunJobs}
+            rerunningType={rerunningType}
+          />
+        </div>
     </section>
   );
 }
@@ -1175,16 +1325,10 @@ function SystemDocCard({ doc }) {
 }
 
 function ReportPromptCard({ tab }) {
-  const writerPrompt = [
-    "SYSTEM",
-    reportWriterSystemPrompt,
-    "",
-    "USER INSTRUCTIONS",
-    reportPromptText(tab),
-    "",
-    "SOURCE PACKET",
-    "The worker appends compacted live Hive report source data as JSON.",
-  ].join("\n");
+  const writerPrompt = renderPromptTemplate(promptDisclosureTemplate, {
+    system_prompt: hiveReportWriterSystemPrompt,
+    instructions: reportPromptText(tab),
+  });
   return (
     <article className="hive-brain-card hive-brain-system-card">
       <div className="hive-brain-system-card-top">
@@ -1201,7 +1345,7 @@ function ReportPromptCard({ tab }) {
       </div>
       <PromptDisclosure
         label={`${tab.label} writer prompt`}
-        path="server/hive-report-provider.js reportInstructions()"
+        path="prompts/hive/reports/*.md"
         prompt={writerPrompt}
       />
       {tab.verifier && (
@@ -1237,7 +1381,7 @@ function SystemDocsPanel() {
   const flow = [
     ["01", "Hive Context", "Operator chat, task state, role badges, projects, and network evidence enter the board memory layer."],
     ["02", "Secretary", "The Hive Secretary summarizes the context into structured project signals."],
-    ["03", "Projects + Reports", "The project planner refreshes board cards while seven report secretaries produce human-readable Markdown."],
+    ["03", "Projects + Reports", "The project planner refreshes board cards while eight report secretaries produce human-readable Markdown."],
     ["04", "Verification", "KOL links and development repo references get deterministic checks before final reports are stored."],
     ["05", "Task Accounting", "Rewarded Network Tasks are harvested after reward into action/no-action accounting rows."],
     ["06", "Decision Agent", "The router reads reports, live task state, discussions, candidates, and dedup data before one guarded action."],
@@ -1251,13 +1395,13 @@ function SystemDocsPanel() {
             <h2>Reports first, then one guarded decision.</h2>
             <p>
               Hive Brain is the operator-facing audit surface for the current board stack. The system turns raw Hive
-              context into project cards and seven Markdown reports, verifies the evidence that can be checked
+              context into project cards and eight Markdown reports, verifies the evidence that can be checked
               mechanically, then asks the Decision Agent for a single auditable action.
             </p>
           </div>
           <div className="hive-brain-system-summary">
             <span><strong>4</strong><small>LLM stages</small></span>
-            <span><strong>7</strong><small>report secretaries</small></span>
+            <span><strong>8</strong><small>report secretaries</small></span>
             <span><strong>2</strong><small>deterministic verifiers</small></span>
             <span><strong>1</strong><small>guarded action</small></span>
           </div>
@@ -1321,8 +1465,17 @@ function VerificationPipe({ detail }) {
   );
 }
 
-function ReportPanel({ detail, loading, tab }) {
+function ReportPanel({
+  canRerunReports = false,
+  detail,
+  loading,
+  onRerunReport,
+  rerunJob = null,
+  rerunningType = "",
+  tab,
+}) {
   const report = detail?.report || {};
+  const rerunning = rerunJob?.status === "running" && !reportRerunTimedOut(rerunJob);
   return (
     <section className="hive-brain-panel">
       <div className="hive-brain-panel-head">
@@ -1331,8 +1484,20 @@ function ReportPanel({ detail, loading, tab }) {
           <Badge variant="gray">Every {tab.cadence}</Badge>
           <span>Generated {report.generatedAt ? relativeTime(report.generatedAt) : "unknown"}</span>
           <span>{report.bodyBytes ? `${formatBytes(report.bodyBytes)} markdown` : "markdown report"}</span>
+          {canRerunReports && (
+            <button
+              className="hive-brain-report-action"
+              disabled={Boolean(rerunningType)}
+              onClick={() => onRerunReport(tab.type)}
+              type="button"
+            >
+              <RefreshCw size={12} strokeWidth={2} />
+              {rerunning ? "Running" : "Rerun report"}
+            </button>
+          )}
         </div>
       </div>
+      <ReportRerunStatus job={rerunJob} />
       <VerificationPipe detail={detail} />
       <div className="hive-brain-card hive-brain-report-document">
         {loading && !detail ? (
@@ -1343,6 +1508,7 @@ function ReportPanel({ detail, loading, tab }) {
               <div className="hive-brain-section-label">Final report → Decision Agent</div>
               <div className="hive-brain-section-sub">{report.model || "model unknown"} · {formatTime(report.generatedAt)}</div>
             </div>
+            {tab?.type === "board_manager_planning" && <BoardManagerDecisionStrip report={report} />}
             <MarkdownReportBody markdown={report.bodyMarkdown || ""} />
           </>
         ) : (
@@ -1356,9 +1522,13 @@ function ReportPanel({ detail, loading, tab }) {
 export function HiveBrainView() {
   const [activeTab, setActiveTab] = useState("overview");
   const [reports, setReports] = useState([]);
+  const [reportPermissions, setReportPermissions] = useState({});
   const [reportDetail, setReportDetail] = useState(null);
   const [reportStatus, setReportStatus] = useState("loading");
   const [reportDetailStatus, setReportDetailStatus] = useState("idle");
+  const [reportRerunRequestType, setReportRerunRequestType] = useState("");
+  const [reportRerunJobs, setReportRerunJobs] = useState(() => readStoredReportRerunJobs());
+  const [reportRerunNotice, setReportRerunNotice] = useState("");
   const [runs, setRuns] = useState([]);
   const [selectedRunId, setSelectedRunId] = useState("");
   const [decisionDetail, setDecisionDetail] = useState(null);
@@ -1382,6 +1552,7 @@ export function HiveBrainView() {
   const [projectStatus, setProjectStatus] = useState("loading");
   const [liveTaskPacket, setLiveTaskPacket] = useState(null);
   const [liveTaskPacketStatus, setLiveTaskPacketStatus] = useState("loading");
+  const reportRerunJobsRef = useRef(reportRerunJobs);
   const lastGoodProjectDocument = useRef(null);
   const projectRequestSeq = useRef(0);
 
@@ -1398,16 +1569,29 @@ export function HiveBrainView() {
   const newestReport = reports[0] || null;
   const latestRun = runs[0] || {};
   const projectStats = projectDocument?.stats || {};
+  const activeReportRerunTypes = useMemo(() => activeReportRerunJobs(reportRerunJobs), [reportRerunJobs]);
+  const rerunningReportType = reportRerunRequestType || activeReportRerunTypes[0] || "";
 
   const loadReports = useCallback(async () => {
     setReportStatus("loading");
     try {
       const result = await requestJson("/api/hive/reports?limit=60&includeLatestByType=true");
       if (!result.ok) throw new Error(result.body?.message || `Hive reports failed with HTTP ${result.status}`);
-      setReports(result.body?.reports || []);
+      const nextReports = result.body?.reports || [];
+      setReports(nextReports);
+      setReportPermissions(result.body?.permissions || {});
+      const { next: nextRerunJobs, completed } = reconcileReportRerunJobs(reportRerunJobsRef.current, nextReports);
+      reportRerunJobsRef.current = nextRerunJobs;
+      setReportRerunJobs(nextRerunJobs);
+      storeReportRerunJobs(nextRerunJobs);
+      if (completed.length) {
+        const completedTab = reportTabForType(completed[0].type);
+        setReportRerunNotice(`${completedTab?.title || "Report"} rerun completed.`);
+      }
       setReportStatus("ready");
     } catch {
       setReports([]);
+      setReportPermissions({});
       setReportStatus("error");
     }
   }, []);
@@ -1603,9 +1787,84 @@ export function HiveBrainView() {
     loadHarvests();
   }, [loadHarvestReport, loadHarvests, loadLiveTaskPacket, loadProjects, loadReports, loadRuns]);
 
+  const rerunReport = useCallback(async (type = "") => {
+    const normalizedType = String(type || "").trim();
+    if (!normalizedType || rerunningReportType) return;
+    const tab = reportTabs.find((item) => item.type === normalizedType);
+    const previousReport = latestByType.get(normalizedType) || {};
+    const optimisticJob = {
+      status: "running",
+      startedAt: new Date().toISOString(),
+      previousReportId: previousReport.id || "",
+      message: "Rerun request is being sent.",
+    };
+    setReportRerunRequestType(normalizedType);
+    const optimisticJobs = { ...reportRerunJobsRef.current, [normalizedType]: optimisticJob };
+    reportRerunJobsRef.current = optimisticJobs;
+    setReportRerunJobs(optimisticJobs);
+    storeReportRerunJobs(optimisticJobs);
+    setReportRerunNotice(`Queueing ${tab?.title || "report"} rerun.`);
+    try {
+      const result = await requestJson("/api/hive/reports/rerun", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: normalizedType }),
+      });
+      if (!result.ok) throw new Error(result.body?.message || `Report rerun failed with HTTP ${result.status}`);
+      if (result.body?.permissions) setReportPermissions(result.body.permissions);
+      setReportRerunNotice(result.body?.message || `${tab?.title || "Report"} rerun queued.`);
+      const runningJobs = {
+        ...reportRerunJobsRef.current,
+        [normalizedType]: {
+          status: "running",
+          startedAt: result.body?.startedAt || optimisticJob.startedAt,
+          previousReportId: previousReport.id || optimisticJob.previousReportId,
+          message: result.body?.message || "Rerun is running.",
+        },
+      };
+      reportRerunJobsRef.current = runningJobs;
+      setReportRerunJobs(runningJobs);
+      storeReportRerunJobs(runningJobs);
+      loadReports();
+      window.setTimeout(loadReports, 8_000);
+      window.setTimeout(loadReports, 30_000);
+      window.setTimeout(loadReports, 75_000);
+    } catch (error) {
+      const message = error?.message || "Unable to rerun this report.";
+      setReportRerunNotice(message);
+      const errorJobs = {
+        ...reportRerunJobsRef.current,
+        [normalizedType]: {
+          status: "error",
+          startedAt: optimisticJob.startedAt,
+          previousReportId: previousReport.id || "",
+          message,
+        },
+      };
+      reportRerunJobsRef.current = errorJobs;
+      setReportRerunJobs(errorJobs);
+      storeReportRerunJobs(errorJobs);
+    } finally {
+      setReportRerunRequestType("");
+    }
+  }, [latestByType, loadReports, rerunningReportType]);
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
+
+  useEffect(() => {
+    reportRerunJobsRef.current = reportRerunJobs;
+    storeReportRerunJobs(reportRerunJobs);
+  }, [reportRerunJobs]);
+
+  useEffect(() => {
+    if (!activeReportRerunTypes.length) return undefined;
+    const interval = window.setInterval(() => {
+      loadReports();
+    }, 5_000);
+    return () => window.clearInterval(interval);
+  }, [activeReportRerunTypes.length, loadReports]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -1673,7 +1932,10 @@ export function HiveBrainView() {
     <div className="route-scroll hive-route">
       <div className="hive-brain-page">
         <div className="hive-brain-toolbar">
-          <span>Synced {newestReport ? relativeTime(newestReport.generatedAt) : "unknown"}</span>
+          <span>
+            Synced {newestReport ? relativeTime(newestReport.generatedAt) : "unknown"}
+            {reportRerunNotice ? ` · ${reportRerunNotice}` : ""}
+          </span>
           <button className="hive-brain-refresh" onClick={refreshAll} type="button">
             <RefreshCw size={13} strokeWidth={2.2} />
             Refresh
@@ -1722,6 +1984,7 @@ export function HiveBrainView() {
 
         {activeTab === "overview" ? (
           <OverviewPanel
+            canRerunReports={Boolean(reportPermissions.canRerun)}
             decisionDetail={decisionDetail}
             decisionLoading={decisionDetailStatus === "loading"}
             harvestReport={harvestReport}
@@ -1730,9 +1993,12 @@ export function HiveBrainView() {
             liveTaskPacket={liveTaskPacket}
             liveTaskPacketStatus={liveTaskPacketStatus}
             onOpenReport={openTab}
+            onRerunReport={rerunReport}
             onRefreshHarvestReport={loadHarvestReport}
             onRefreshLiveTaskPacket={loadLiveTaskPacket}
             onSelectRun={setSelectedRunId}
+            rerunJobs={reportRerunJobs}
+            rerunningType={rerunningReportType}
             runs={runs}
             selectedRunId={selectedRunId}
           />
@@ -1763,8 +2029,12 @@ export function HiveBrainView() {
           <SystemDocsPanel />
         ) : (
           <ReportPanel
+            canRerunReports={Boolean(reportPermissions.canRerun)}
             detail={reportDetail}
             loading={reportDetailStatus === "loading"}
+            onRerunReport={rerunReport}
+            rerunJob={activeReportTab ? reportRerunJobs[activeReportTab.type] || null : null}
+            rerunningType={rerunningReportType}
             tab={activeReportTab}
           />
         )}

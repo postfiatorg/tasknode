@@ -248,8 +248,11 @@ function HiveIndex({ onOpenTask, onSelectProject, pftlExplorerUrl = "", projectD
 }
 
 function ProjectGrid({ document, onOpenTask, onSelectProject, status }) {
+  const [archivedOpen, setArchivedOpen] = useState(false);
   const projects = document?.projects || {};
   const projectIds = document?.projectIds || [];
+  const archivedProjects = document?.archivedProjects || {};
+  const archivedProjectIds = document?.archivedProjectIds || [];
   if (status === "loading") {
     return <div className="hive-card hive-empty-project">Loading active projects.</div>;
   }
@@ -257,20 +260,91 @@ function ProjectGrid({ document, onOpenTask, onSelectProject, status }) {
     return <div className="hive-card hive-empty-project">Active projects are unavailable.</div>;
   }
   if (!projectIds.length) {
-    return <div className="hive-card hive-empty-project">No active projects are registered.</div>;
+    return (
+      <>
+        <div className="hive-card hive-empty-project">No active projects are registered.</div>
+        <ArchivedBoardsToggle
+          archivedOpen={archivedOpen}
+          archivedProjectIds={archivedProjectIds}
+          archivedProjects={archivedProjects}
+          onToggle={() => setArchivedOpen((open) => !open)}
+        />
+      </>
+    );
   }
   return (
-    <div className="hive-project-grid">
-      {projectIds.map((id) => (
-        <ProjectCard
-          key={id}
-          onOpenTask={onOpenTask}
-          operators={document?.operators || {}}
-          project={projects[id] || {}}
-          onClick={() => onSelectProject(id)}
-        />
-      ))}
+    <>
+      <div className="hive-project-grid">
+        {projectIds.map((id) => (
+          <ProjectCard
+            key={id}
+            onOpenTask={onOpenTask}
+            operators={document?.operators || {}}
+            project={projects[id] || {}}
+            onClick={() => onSelectProject(id)}
+          />
+        ))}
+      </div>
+      <ArchivedBoardsToggle
+        archivedOpen={archivedOpen}
+        archivedProjectIds={archivedProjectIds}
+        archivedProjects={archivedProjects}
+        onToggle={() => setArchivedOpen((open) => !open)}
+      />
+    </>
+  );
+}
+
+function ArchivedBoardsToggle({ archivedOpen = false, archivedProjectIds = [], archivedProjects = {}, onToggle }) {
+  if (!archivedProjectIds.length) return null;
+  const count = archivedProjectIds.length;
+  return (
+    <div className={`hive-archived-boards ${archivedOpen ? "is-open" : ""}`}>
+      <button
+        aria-expanded={archivedOpen}
+        className="hive-archived-boards-toggle"
+        onClick={onToggle}
+        type="button"
+      >
+        <span>
+          <strong>See Archived Boards</strong>
+          <small>{count} {count === 1 ? "board" : "boards"}</small>
+        </span>
+        <ChevronDown className={archivedOpen ? "is-open" : ""} size={15} strokeWidth={1.8} />
+      </button>
+      {archivedOpen && (
+        <div className="hive-archived-board-list">
+          {archivedProjectIds.map((id) => (
+            <ArchivedBoardRow key={id} project={archivedProjects[id] || { id }} />
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+function ArchivedBoardRow({ project = {} }) {
+  const archivedAt = formatContextTime(project.archivedAt || project.lastActivityAt);
+  const taskCount = Number(project.taskCount || 0);
+  const contributorCount = Number(project.contributorCount || 0);
+  return (
+    <article className="hive-archived-board-row">
+      <span>
+        <strong>{project.name || project.id || "Archived board"}</strong>
+        <small>
+          {project.type || "Hive board"}
+          {archivedAt ? ` · archived ${archivedAt}` : ""}
+          {project.operatorArchiveLock ? " · operator locked" : ""}
+        </small>
+      </span>
+      {project.summary && <p>{project.summary}</p>}
+      <span className="hive-archived-board-metrics">
+        <small>{taskCount} {taskCount === 1 ? "task" : "tasks"}</small>
+        <small>{contributorCount} {contributorCount === 1 ? "operator" : "operators"}</small>
+        <small>{formatPft(project.pft)} PFT</small>
+      </span>
+      {project.archivedReason && <em>{project.archivedReason}</em>}
+    </article>
   );
 }
 
@@ -995,40 +1069,95 @@ function hiveTaskClickProps(seed = {}, onOpenTask = null) {
   };
 }
 
-function HiveProofAction({ onOpenTask, pftlExplorerUrl = "", seed = {} }) {
+function rewardProofTarget({ onOpenTask, pftlExplorerUrl = "", seed = {} } = {}) {
   const state = String(seed.state || seed.action || "").trim().toLowerCase();
   if (!["rewarded", "paid"].includes(state)) return null;
   const txHash = String(seed.proofTxHash || "").trim();
   const cid = String(seed.proofCid || "").trim();
-  const href = transactionExplorerHref(txHash, pftlExplorerUrl);
-  const label = txHash ? `Proof tx ${shortPublicReference(txHash)}` : cid ? `Proof cid ${shortPublicReference(cid)}` : "Proof";
   if (!txHash && !cid) return null;
+  const href = transactionExplorerHref(txHash, pftlExplorerUrl);
   if (href) {
+    return {
+      cid,
+      href,
+      title: txHash,
+      txHash,
+    };
+  }
+  if (!seed.taskId || typeof onOpenTask !== "function") return null;
+  return {
+    cid,
+    onOpen: () => onOpenTask(seed),
+    title: txHash || cid,
+    txHash,
+  };
+}
+
+function HiveProofAction({ label = "Reward proof", onOpenTask, pftlExplorerUrl = "", seed = {} }) {
+  const target = rewardProofTarget({ onOpenTask, pftlExplorerUrl, seed });
+  if (!target) return null;
+  if (target.href) {
     return (
       <a
-        aria-label={`Open reward transaction ${txHash}`}
+        aria-label={`Open reward transaction ${target.txHash}`}
         className="hive-proof-action"
-        href={href}
+        href={target.href}
         onClick={(event) => event.stopPropagation()}
         rel="noreferrer"
         target="_blank"
-        title={txHash}
+        title={target.title}
       >
         <span>{label}</span>
         <ArrowUpRight size={12} strokeWidth={1.8} />
       </a>
     );
   }
-  if (!seed.taskId || typeof onOpenTask !== "function") return null;
   return (
     <button
-      aria-label={txHash ? `View reward proof ${txHash}` : `View reward proof ${cid}`}
+      aria-label={target.txHash ? `View reward proof ${target.txHash}` : `View reward proof ${target.cid}`}
       className="hive-proof-action"
       onClick={(event) => {
         event.stopPropagation();
-        onOpenTask(seed);
+        target.onOpen?.();
       }}
-      title={txHash || cid}
+      title={target.title}
+      type="button"
+    >
+      <span>{label}</span>
+      <ArrowUpRight size={12} strokeWidth={1.8} />
+    </button>
+  );
+}
+
+function HiveRewardProofAmount({ amount, onOpenTask, pftlExplorerUrl = "", seed = {} }) {
+  const target = rewardProofTarget({ onOpenTask, pftlExplorerUrl, seed });
+  const label = `+${formatPft(amount)} PFT`;
+  if (!target) return <span className="hive-pft">{label}</span>;
+  if (target.href) {
+    return (
+      <a
+        aria-label={`Open reward proof for ${label}`}
+        className="hive-pft hive-reward-proof-amount"
+        href={target.href}
+        onClick={(event) => event.stopPropagation()}
+        rel="noreferrer"
+        target="_blank"
+        title={target.title}
+      >
+        <span>{label}</span>
+        <ArrowUpRight size={12} strokeWidth={1.8} />
+      </a>
+    );
+  }
+  return (
+    <button
+      aria-label={`View reward proof for ${label}`}
+      className="hive-pft hive-reward-proof-amount"
+      onClick={(event) => {
+        event.stopPropagation();
+        target.onOpen?.();
+      }}
+      title={target.title}
       type="button"
     >
       <span>{label}</span>
@@ -1056,8 +1185,14 @@ function FeedRow({ entry, last = false, onOpenTask, operators = {}, pftlExplorer
         {entry.task}
         <small>· {entry.project}</small>
       </span>
-      {entry.pft !== null && entry.pft !== undefined && <span className="hive-pft">+{formatPft(entry.pft)} PFT</span>}
-      <HiveProofAction onOpenTask={onOpenTask} pftlExplorerUrl={pftlExplorerUrl} seed={seed} />
+      {entry.pft !== null && entry.pft !== undefined && (
+        <HiveRewardProofAmount
+          amount={entry.pft}
+          onOpenTask={onOpenTask}
+          pftlExplorerUrl={pftlExplorerUrl}
+          seed={seed}
+        />
+      )}
       {showTime && <time>{timeLabel}</time>}
     </div>
   );

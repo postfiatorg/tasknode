@@ -14,6 +14,10 @@ reviewed, versioned, and replayed.
 - `memory/`: Async memory and deep-memory summarization prompts.
 - `profile/`: Public profile scoring, recommendation, summary, and profile NFT
   image prompts used by live profile surfaces.
+- `hive/reports/`: Hive report writer prompts, including the shared report
+  writer system prompt, common report instructions, per-report instructions,
+  phase instructions, and message wrappers used by the report worker and Hive
+  Brain prompt disclosure UI.
 - `non_production/`: Prompt research, local-only harness prompts, drafts, and
   reserved prompt artifacts that are not used by a live app surface. Steve Jobs
   reference material lives in `non_production/steve_jobs_ref/`. The Profile NFT
@@ -22,3 +26,7 @@ reviewed, versioned, and replayed.
 
 Runtime code should record the prompt version and prompt digest whenever a
 prompt output becomes part of a PFTL payload, database cache, or audit trail.
+
+Live prompt text must be stored in this directory tree. Runtime code may load,
+template, and compose prompt files, but should not embed live model
+instructions directly in provider, worker, repository, or UI source files.

@@ -18,6 +18,7 @@ import {
 let timer = null;
 let running = false;
 let scheduled = null;
+const manualReportReruns = new Map();
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -228,6 +229,96 @@ export async function runHiveReportsWorkerOnce({
     skipped,
     errors,
   };
+}
+
+export function requestHiveReportRerun({
+  type = "",
+  requestedBy = "",
+  now = new Date(),
+  fetchImpl = fetch,
+} = {}) {
+  const normalizedType = safeText(type, 80);
+  if (!hiveReportTypes[normalizedType]) {
+    return {
+      ok: false,
+      status: 400,
+      error: "hive_report_type_invalid",
+      message: "Choose a runnable Hive report type.",
+    };
+  }
+  if (!databaseEnabled()) {
+    return {
+      ok: false,
+      status: 503,
+      error: "database_not_configured",
+      message: "Hive report rerun needs database access.",
+    };
+  }
+  if (!hiveReportsProviderConfigured()) {
+    return {
+      ok: false,
+      status: 503,
+      error: "hive_report_provider_not_configured",
+      message: "Hive report provider is not configured.",
+    };
+  }
+  const existing = manualReportReruns.get(normalizedType);
+  if (existing) {
+    return {
+      ok: true,
+      queued: false,
+      running: true,
+      type: normalizedType,
+      requestedBy: existing.requestedBy,
+      startedAt: existing.startedAt,
+      message: `${hiveReportTypes[normalizedType]?.label || normalizedType} rerun is already running.`,
+    };
+  }
+  const startedAt = now.toISOString();
+  const run = {
+    requestedBy: safeText(requestedBy, 180),
+    startedAt,
+  };
+  manualReportReruns.set(normalizedType, run);
+  run.promise = generateHiveReport({
+    type: normalizedType,
+    now,
+    fetchImpl,
+  })
+    .then((result) => {
+      console.log("[hive-reports-worker] manual rerun generated", {
+        type: normalizedType,
+        reportId: result?.report?.id || "",
+        requestedBy: run.requestedBy,
+      });
+      return result;
+    })
+    .catch((error) => {
+      console.warn("[hive-reports-worker] manual rerun failed", {
+        type: normalizedType,
+        requestedBy: run.requestedBy,
+        error: error?.message || String(error),
+      });
+      return null;
+    })
+    .finally(() => {
+      manualReportReruns.delete(normalizedType);
+    });
+  return {
+    ok: true,
+    queued: true,
+    running: true,
+    type: normalizedType,
+    requestedBy: run.requestedBy,
+    startedAt,
+    message: `${hiveReportTypes[normalizedType]?.label || normalizedType} rerun queued.`,
+  };
+}
+
+export async function waitForHiveReportRerunForTests(type = "") {
+  const run = manualReportReruns.get(safeText(type, 80));
+  if (run?.promise) return run.promise;
+  return null;
 }
 
 export function scheduleHiveReportsQueue({ delayMs = 0 } = {}) {

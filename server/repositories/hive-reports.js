@@ -52,6 +52,12 @@ export const hiveReportTypes = Object.freeze({
     cadenceMs: 6 * 60 * 60 * 1000,
     summary: "Strategic network intelligence brief synthesized from Hive reports, Harvest Report, Live Task Packet, and Board Secretary memos.",
   },
+  board_manager_planning: {
+    type: "board_manager_planning",
+    label: "Board Manager Planning",
+    cadenceMs: 3 * 60 * 60 * 1000,
+    summary: "Portfolio-level Board Manager planning loop that ranks boards and recommends add/archive actions from Hive Intelligence and live board state.",
+  },
 });
 
 export const hiveReportTypeIds = Object.freeze(Object.keys(hiveReportTypes));
@@ -141,6 +147,79 @@ function markdownBody(value = "") {
   return body;
 }
 
+function cleanReportDecisionText(value = "") {
+  return String(value || "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/^[-*]\s+/, "")
+    .replace(/^#+\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractMarkdownHeadingSection(markdown = "", headingPattern) {
+  const lines = String(markdown || "").split(/\r?\n/);
+  let start = -1;
+  let level = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (!match) continue;
+    if (headingPattern.test(cleanReportDecisionText(match[2]))) {
+      start = index + 1;
+      level = match[1].length;
+      break;
+    }
+  }
+  if (start < 0) return "";
+  const section = [];
+  for (let index = start; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (match && match[1].length <= level) break;
+    section.push(lines[index]);
+  }
+  return section.join("\n").trim();
+}
+
+function reportActionDecision(markdown = "", action = "") {
+  const actionText = safeText(action, 40).toUpperCase();
+  const recommendedActions = extractMarkdownHeadingSection(markdown, /^recommended actions$/i) || markdown;
+  const actionSection = extractMarkdownHeadingSection(recommendedActions, new RegExp(`^${actionText.replace("_", "[_ ]")}$`, "i"));
+  const source = actionSection || recommendedActions;
+  const noAction = new RegExp(`no\\s+${actionText.replace("_", "[_ ]")}|no action recommended|none recommended`, "i").test(source);
+  const recommended = !noAction && new RegExp(`\\b${actionText.replace("_", "[_ ]")}\\b`, "i").test(source);
+  const lines = source
+    .split(/\r?\n/)
+    .map(cleanReportDecisionText)
+    .filter(Boolean)
+    .filter((line) => !new RegExp(`^${actionText.replace("_", "[_ ]")}$`, "i").test(line));
+  const firstMeaningful = lines.find((line) => !/^no action recommended\.?$/i.test(line)) || "";
+  return {
+    action: actionText,
+    decision: noAction ? "none" : recommended ? "recommended" : "unknown",
+    summary: safeText(noAction ? "No action recommended." : firstMeaningful || "Open report for decision details.", 260),
+  };
+}
+
+function boardManagerReportDecisionSummary(type = "", markdown = "") {
+  if (safeText(type, 80) !== "board_manager_planning") return null;
+  const addBoard = reportActionDecision(markdown, "ADD_BOARD");
+  const archiveBoard = reportActionDecision(markdown, "ARCHIVE_BOARD");
+  const noPortfolioAction = addBoard.decision === "none" && archiveBoard.decision === "none";
+  const anyRecommended = addBoard.decision === "recommended" || archiveBoard.decision === "recommended";
+  return {
+    type: "board_manager_planning",
+    overall: noPortfolioAction
+      ? "No board action recommended."
+      : anyRecommended
+        ? "Board action recommended."
+        : "Decision unclear; open report.",
+    addBoard,
+    archiveBoard,
+  };
+}
+
 function reportRow(row = {}) {
   const body = row.body_markdown || "";
   return {
@@ -155,6 +234,7 @@ function reportRow(row = {}) {
     sourceRunId: safeText(row.source_run_id, 180),
     model: safeText(row.model, 180),
     metadata: safeObject(row.metadata_json),
+    decisionSummary: boardManagerReportDecisionSummary(row.type, body),
     verificationCount: Number(row.verification_count || 0),
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
@@ -802,6 +882,27 @@ const hiveIntelligenceSourceReportTypes = Object.freeze([
   "executive",
 ]);
 
+const boardManagerPlanningOutstandingStatuses = Object.freeze([
+  "proposed",
+  "accepted",
+  "submitted",
+  "verification_requested",
+  "verification_response_submitted",
+  "reward_decided",
+]);
+
+const boardManagerPlanningTerminalStatuses = Object.freeze([
+  "rewarded",
+  "paid",
+  "refused",
+  "rejected",
+  "cancelled",
+  "expired",
+  "rerouted",
+  "failed",
+  "completed",
+]);
+
 function compactStoredReport(row = {}, { bodyMax = 18000 } = {}) {
   const type = safeText(row.type, 80);
   return {
@@ -834,6 +935,669 @@ async function latestReportsForHiveIntelligence() {
     [hiveIntelligenceSourceReportTypes]
   ).catch(() => ({ rows: [] }));
   return result.rows.map((row) => compactStoredReport(row, { bodyMax: 16000 }));
+}
+
+function compactReportForPlanning(report = null, { bodyMax = 24000 } = {}) {
+  if (!report) return null;
+  return {
+    id: safeText(report.id, 180),
+    type: safeText(report.type, 80),
+    label: safeText(report.label, 120),
+    generatedAt: safeText(report.generatedAt, 80),
+    model: safeText(report.model, 180),
+    bodyMarkdown: safeText(report.bodyMarkdown, bodyMax),
+    metadata: {
+      sourceCounts: safeObject(report.metadata?.sourceCounts),
+      sourceRunId: safeText(report.metadata?.sourceRunId, 180),
+    },
+  };
+}
+
+function compactPlanningTask(task = {}) {
+  return {
+    taskId: safeText(task.taskId || task.task_id, 180),
+    requestId: safeText(task.requestId || task.request_id, 180),
+    title: safeText(task.title, 260),
+    status: safeText(task.state || task.status, 80),
+    projectId: safeText(task.projectId || task.project_id, 180),
+    projectTitle: safeText(task.projectTitle || task.project_title || task.project, 240),
+    contributor: {
+      accountId: safeText(task.assigneeAccountId || task.accountId || task.account_id, 180),
+      handle: safeText(task.assigneeHandle || task.hiveHandle || task.handle, 160),
+      walletAddress: safeText(task.assignee || task.walletAddress || task.subject_wallet || task.wallet, 120),
+      displayName: safeText(task.assigneeDisplayName || task.displayName, 180),
+    },
+    rewardOfferPft: numeric(task.rewardOfferPft || task.reward_offer_pft || task.pft),
+    rewardActualPft: numeric(task.rewardActualPft || task.reward_actual_pft),
+    requiredBadgeId: safeText(task.requiredBadgeId || task.required_badge_id, 80),
+    operatingBadgeId: safeText(task.operatingBadgeId || task.operating_badge_id, 80),
+    updatedAt: iso(task.updatedAt || task.updated_at),
+    lastEventAt: iso(task.lastEventAt || task.last_event_at),
+    proposalSummary: safeText(task.description || task.proposal || task.projectNeedSummary || task.project_need_summary || "", 180),
+    submissionRequirement: safeText(task.submissionRequirement || task.submission_requirement_text || "", 120),
+    rewardProof: {
+      txHash: safeText(task.proofTxHash || task.rewardTxHash || task.lastEventTxHash || task.last_event_tx_hash, 180),
+      cid: safeText(task.proofCid || task.rewardCid || task.lastEventCid || task.last_event_cid, 180),
+    },
+  };
+}
+
+function compactTaskForPlanningFeed(task = {}) {
+  return {
+    taskId: safeText(task.taskId, 180),
+    title: safeText(task.title, 180),
+    status: safeText(task.status, 80),
+    projectId: safeText(task.projectId, 180),
+    projectTitle: safeText(task.projectTitle, 180),
+    contributor: {
+      handle: safeText(task.contributor?.handle, 160),
+      walletAddress: safeText(task.contributor?.walletAddress, 120),
+    },
+    rewardOfferPft: numeric(task.rewardOfferPft),
+    rewardActualPft: numeric(task.rewardActualPft),
+    requiredBadgeId: safeText(task.requiredBadgeId, 80),
+    operatingBadgeId: safeText(task.operatingBadgeId, 80),
+    updatedAt: safeText(task.updatedAt, 80),
+  };
+}
+
+function compactLiveTaskPacketTask(task = {}) {
+  return {
+    taskId: safeText(task.taskId, 180),
+    title: safeText(task.title, 180),
+    status: safeText(task.status || task.normalizedStatus, 80),
+    projectId: safeText(task.projectId, 180),
+    projectTitle: safeText(task.projectTitle, 180),
+    rewardOfferPft: numeric(task.rewardOfferPft),
+    rewardActualPft: numeric(task.rewardActualPft),
+    updatedAt: safeText(task.updatedAt, 80),
+  };
+}
+
+function compactLiveTaskPacketContributorForPlanning(contributor = {}) {
+  const profile = safeObject(contributor.profile);
+  return {
+    accountId: safeText(contributor.accountId, 180),
+    walletAddress: safeText(contributor.walletAddress, 120),
+    handle: safeText(contributor.handle, 160),
+    displayName: safeText(contributor.displayName, 180),
+    badges: safeArray(contributor.badges).slice(0, 8).map((badge) => safeText(badge, 120)).filter(Boolean),
+    profile: profile
+      ? {
+          roleTitle: safeText(profile.roleTitle || profile.role_title, 160),
+          roleSummary: safeText(profile.roleSummary || profile.role_summary, 260),
+          skills: safeArray(profile.skills).slice(0, 5).map((skill) => safeText(skill, 80)).filter(Boolean),
+          usefulTo: safeText(profile.usefulTo || profile.useful_to, 220),
+        }
+      : null,
+    proposals: safeArray(contributor.proposals).slice(0, 2).map(compactLiveTaskPacketTask),
+    outstanding: safeArray(contributor.outstanding).slice(0, 2).map(compactLiveTaskPacketTask),
+    rewarded: safeArray(contributor.rewarded).slice(0, 2).map(compactLiveTaskPacketTask),
+  };
+}
+
+function taskStatusBucket(status = "") {
+  const normalized = safeText(status, 80).toLowerCase();
+  if (boardManagerPlanningOutstandingStatuses.includes(normalized)) return "outstanding";
+  if (["rewarded", "paid", "reward_decided"].includes(normalized)) return "rewarded";
+  if (boardManagerPlanningTerminalStatuses.includes(normalized)) return "terminal";
+  return "other";
+}
+
+function compactPlanningBoard(project = {}) {
+  const tasks = safeArray(project.tasks).map(compactPlanningTask);
+  const outstandingTasks = tasks.filter((task) => taskStatusBucket(task.status) === "outstanding").slice(0, 12);
+  const recentRewardedTasks = tasks.filter((task) => taskStatusBucket(task.status) === "rewarded").slice(0, 5);
+  const recentStoppedTasks = tasks.filter((task) => {
+    const normalized = safeText(task.status, 80).toLowerCase();
+    return boardManagerPlanningTerminalStatuses.includes(normalized) && !["rewarded", "paid"].includes(normalized);
+  }).slice(0, 2);
+  const memo = safeObject(project.secretaryMemo);
+  return {
+    projectId: safeText(project.id, 180),
+    title: safeText(project.name || project.title, 220),
+    type: safeText(project.type, 120),
+    typeKey: safeText(project.typeKey, 80),
+    status: safeText(project.status, 80),
+    priority: Number(project.priority || 0),
+    phase: safeText(project.phase, 120),
+    summary: safeText(project.summary, 600),
+    objective: safeText(project.objective, 800),
+    about: safeText(project.about, 900),
+    pftRouted: numeric(project.pft),
+    taskCount: Number(project.taskCount ?? safeArray(project.tasks).length ?? 0),
+    tasksInFlight: Number(project.tasksInFlight ?? outstandingTasks.length ?? 0),
+    terminalTaskCount: Number(project.terminalTaskCount ?? 0),
+    contributorCount: Number(project.contributorCount ?? safeArray(project.contributors).length ?? 0),
+    pendingGenerationCount: Number(project.pendingGenerationCount ?? 0),
+    planned: {
+      pftTarget: numeric(project.plannedPftTarget),
+      taskCount: Number(project.plannedTaskCount || 0),
+      contributorTarget: Number(project.plannedContributorTarget || 0),
+    },
+    contributors: safeArray(project.contributors).slice(0, 8).map((contributor) => ({
+      accountId: safeText(contributor.accountId, 180),
+      walletAddress: safeText(contributor.wallet, 120),
+      handle: safeText(contributor.handle || contributor.hiveHandle, 160),
+      displayName: safeText(contributor.displayName || contributor.codename, 180),
+      role: safeText(contributor.role, 120),
+      allotted: contributor.allotted === true,
+      pft: numeric(contributor.pft),
+      tasks: Number(contributor.tasks || 0),
+    })),
+    outstandingTasks,
+    recentRewardedTasks,
+    recentStoppedTasks,
+    secretaryMemo: memo?.id
+      ? {
+          id: safeText(memo.id, 180),
+          generatedAt: safeText(memo.generatedAt, 80),
+          sourceCounts: safeObject(memo.sourceCounts),
+          memoMarkdown: safeText(memo.memoMarkdown, 2000),
+        }
+      : null,
+    comments: safeArray(project.comments).slice(0, 8).map((comment) => ({
+      id: safeText(comment.id, 180),
+      accountId: safeText(comment.accountId, 180),
+      displayName: safeText(comment.displayName, 180),
+      body: safeText(comment.body, 600),
+      createdAt: safeText(comment.createdAt, 80),
+    })),
+    nextTask: project.nextTask ? compactPlanningTask(project.nextTask) : null,
+  };
+}
+
+async function activeBoardStatesForBoardManagerPlanning() {
+  if (!useDatabase()) {
+    return {
+      ok: false,
+      error: "database_not_configured",
+      generatedAt: "",
+      stats: {},
+      boards: [],
+    };
+  }
+  let projectRows = [];
+  let taskRows = [];
+  let contributorRows = [];
+  let memoRows = [];
+  try {
+    const result = await Promise.all([
+      query(
+        `
+          SELECT *
+          FROM network_projects
+          WHERE status = 'active'
+          ORDER BY priority ASC NULLS LAST, title ASC, id ASC
+        `
+      ),
+      query(
+        `
+          SELECT refs.project_id,
+                 project.title AS project_title,
+                 COALESCE(projection.task_id, refs.task_id, '') AS task_id,
+                 COALESCE(projection.request_id, refs.request_id, '') AS request_id,
+                 COALESCE(projection.account_id, refs.metadata_json #>> '{accountId}', '') AS account_id,
+                 COALESCE(projection.subject_wallet, refs.assignee_wallet, '') AS subject_wallet,
+                 COALESCE(projection.status, refs.state, '') AS status,
+                 COALESCE(projection.title, refs.title, '') AS title,
+                 projection.description,
+                 projection.submission_requirement_text,
+                 COALESCE(projection.reward_offer_pft, refs.reward_pft, 0) AS reward_offer_pft,
+                 projection.reward_actual_pft,
+                 projection.updated_at,
+                 projection.last_event_at,
+                 projection.last_event_tx_hash,
+                 projection.last_event_cid,
+                 COALESCE(
+                   projection.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
+                   projection.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
+                   projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,requiredBadge}',
+                   projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,requiredBadge}',
+                   ''
+                 ) AS required_badge_id,
+                 COALESCE(
+                   projection.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
+                   projection.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
+                   projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,operatingBadge}',
+                   projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,operatingBadge}',
+                   ''
+                 ) AS operating_badge_id
+          FROM network_project_task_refs refs
+          JOIN network_projects project
+            ON project.id = refs.project_id
+           AND project.status = 'active'
+          LEFT JOIN task_projections projection
+            ON projection.task_id = refs.task_id
+          ORDER BY refs.project_id ASC,
+                   COALESCE(projection.updated_at, refs.updated_at) DESC NULLS LAST,
+                   refs.sort_order ASC,
+                   refs.id ASC
+          LIMIT 700
+        `
+      ),
+      query(
+        `
+          SELECT *
+          FROM network_project_contributors
+          WHERE project_id IN (
+            SELECT id
+            FROM network_projects
+            WHERE status = 'active'
+          )
+            AND status = 'active'
+          ORDER BY project_id ASC, allotted DESC, pft_earned DESC, task_count DESC, sort_order ASC, wallet_address ASC
+          LIMIT 240
+        `
+      ),
+      query(
+        `
+          SELECT *
+          FROM hive_board_secretary_memos
+          WHERE status = 'current'
+            AND superseded_at IS NULL
+            AND project_id IN (
+              SELECT id
+              FROM network_projects
+              WHERE status = 'active'
+            )
+          ORDER BY generated_at DESC, id DESC
+        `
+      ),
+    ]);
+    [projectRows, taskRows, contributorRows, memoRows] = result.map((item) => item.rows || []);
+  } catch (error) {
+    return {
+      ok: false,
+      error: safeText(error?.message || "board_state_unavailable", 500),
+      generatedAt: "",
+      stats: {},
+      boards: [],
+    };
+  }
+  const tasksByProject = new Map();
+  for (const row of taskRows) {
+    const projectId = safeText(row.project_id, 180);
+    if (!projectId) continue;
+    if (!tasksByProject.has(projectId)) tasksByProject.set(projectId, []);
+    tasksByProject.get(projectId).push(planningTaskRow(row));
+  }
+  const contributorsByProject = new Map();
+  for (const row of contributorRows) {
+    const projectId = safeText(row.project_id, 180);
+    if (!projectId) continue;
+    if (!contributorsByProject.has(projectId)) contributorsByProject.set(projectId, []);
+    contributorsByProject.get(projectId).push({
+      wallet: row.wallet_address,
+      handle: row.codename,
+      displayName: row.codename,
+      role: row.role_label || row.archetype,
+      allotted: row.allotted === true,
+      pft: row.pft_earned,
+      tasks: row.task_count,
+    });
+  }
+  const memoByProject = new Map();
+  for (const row of memoRows) {
+    const projectId = safeText(row.project_id, 180);
+    if (!projectId || memoByProject.has(projectId)) continue;
+    memoByProject.set(projectId, {
+      id: row.id,
+      generatedAt: iso(row.generated_at),
+      sourceCounts: safeObject(row.source_counts_json),
+      memoMarkdown: row.memo_markdown,
+    });
+  }
+  const boards = projectRows.map((row) => {
+    const tasks = tasksByProject.get(row.id) || [];
+    const outstandingTaskCount = tasks.filter((task) => taskStatusBucket(task.status) === "outstanding").length;
+    const terminalTaskCount = tasks.filter((task) => taskStatusBucket(task.status) === "terminal" || taskStatusBucket(task.status) === "rewarded").length;
+    const contributorKeys = new Set(
+      tasks.map((task) => task.contributor?.accountId || task.contributor?.walletAddress).filter(Boolean)
+    );
+    const explicitContributorCount = safeArray(contributorsByProject.get(row.id)).length;
+    return compactPlanningBoard({
+      id: row.id,
+      name: row.title,
+      title: row.title,
+      type: row.type,
+      status: row.status,
+      priority: row.priority,
+      phase: row.phase_label,
+      summary: row.summary,
+      objective: row.objective,
+      about: row.about,
+      pft: row.pft_routed,
+      taskCount: Number(row.task_count || tasks.length || 0),
+      tasksInFlight: outstandingTaskCount,
+      terminalTaskCount,
+      contributorCount: Math.max(Number(row.contributor_count || 0), explicitContributorCount, contributorKeys.size),
+      pendingGenerationCount: 0,
+      contributors: contributorsByProject.get(row.id) || [],
+      tasks,
+      secretaryMemo: memoByProject.get(row.id) || null,
+      comments: [],
+      nextTask: tasks.find((task) => taskStatusBucket(task.status) === "outstanding") || null,
+    });
+  });
+  const stats = {
+    activeProjects: boards.length,
+    taskRows: boards.reduce((total, board) => total + Number(board.taskCount || 0), 0),
+    tasksInFlight: boards.reduce((total, board) => total + Number(board.tasksInFlight || 0), 0),
+    terminalTaskRows: boards.reduce((total, board) => total + Number(board.terminalTaskCount || 0), 0),
+    pftRouted: boards.reduce((total, board) => total + numeric(board.pftRouted), 0),
+    contributors: boards.reduce((total, board) => total + Number(board.contributorCount || 0), 0),
+  };
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    stats,
+    boards,
+  };
+}
+
+function planningTaskRow(row = {}) {
+  const metadata = safeObject(row.metadata_json);
+  const generatedTask = safeObject(metadata.generatedTask);
+  const networkTask = safeObject(generatedTask.network_task || metadata.network_task);
+  return compactPlanningTask({
+    taskId: row.task_id,
+    requestId: row.request_id,
+    accountId: row.account_id,
+    subject_wallet: row.subject_wallet,
+    status: row.status,
+    title: row.title,
+    description: row.description,
+    submission_requirement_text: row.submission_requirement_text,
+    reward_offer_pft: row.reward_offer_pft,
+    reward_actual_pft: row.reward_actual_pft,
+    updated_at: row.updated_at,
+    last_event_at: row.last_event_at,
+    last_event_tx_hash: row.last_event_tx_hash,
+    last_event_cid: row.last_event_cid,
+    project_id: row.project_id,
+    project_title: row.project_title,
+    required_badge_id: row.required_badge_id || networkTask.required_badge_id || networkTask.requiredBadgeId,
+    operating_badge_id: row.operating_badge_id || networkTask.operating_badge_id || networkTask.operatingBadgeId,
+  });
+}
+
+async function liveTaskFeedForBoardManagerPlanning() {
+  if (!useDatabase()) {
+    return {
+      outstandingNetworkTasks: [],
+      recentTerminalNetworkTasks: [],
+      pendingGenerationJobs: [],
+    };
+  }
+  const [outstanding, terminal, generationJobs] = await Promise.all([
+    query(
+      `
+        SELECT projection.*,
+               COALESCE(refs.project_id, projection.metadata_json #>> '{generatedTask,network_task,project_id}', '') AS project_id,
+               project.title AS project_title,
+               COALESCE(
+                 projection.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
+                 projection.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
+                 projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,requiredBadge}',
+                 projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,requiredBadge}',
+                 ''
+               ) AS required_badge_id,
+               COALESCE(
+                 projection.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
+                 projection.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
+                 projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,operatingBadge}',
+                 projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,operatingBadge}',
+                 ''
+               ) AS operating_badge_id
+        FROM task_projections projection
+        LEFT JOIN network_project_task_refs refs
+          ON refs.task_id = projection.task_id
+        LEFT JOIN network_projects project
+          ON project.id = COALESCE(refs.project_id, projection.metadata_json #>> '{generatedTask,network_task,project_id}', '')
+        WHERE lower(projection.task_kind) = 'network'
+          AND lower(projection.status) = ANY($1::text[])
+        ORDER BY projection.updated_at DESC NULLS LAST, projection.task_id DESC
+        LIMIT 140
+      `,
+      [boardManagerPlanningOutstandingStatuses]
+    ).catch(() => ({ rows: [] })),
+    query(
+      `
+        SELECT projection.*,
+               COALESCE(refs.project_id, projection.metadata_json #>> '{generatedTask,network_task,project_id}', '') AS project_id,
+               project.title AS project_title,
+               COALESCE(
+                 projection.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
+                 projection.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
+                 projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,requiredBadge}',
+                 projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,requiredBadge}',
+                 ''
+               ) AS required_badge_id,
+               COALESCE(
+                 projection.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
+                 projection.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
+                 projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,operatingBadge}',
+                 projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,operatingBadge}',
+                 ''
+               ) AS operating_badge_id
+        FROM task_projections projection
+        LEFT JOIN network_project_task_refs refs
+          ON refs.task_id = projection.task_id
+        LEFT JOIN network_projects project
+          ON project.id = COALESCE(refs.project_id, projection.metadata_json #>> '{generatedTask,network_task,project_id}', '')
+        WHERE lower(projection.task_kind) = 'network'
+          AND lower(projection.status) = ANY($1::text[])
+        ORDER BY projection.updated_at DESC NULLS LAST, projection.task_id DESC
+        LIMIT 20
+      `,
+      [boardManagerPlanningTerminalStatuses]
+    ).catch(() => ({ rows: [] })),
+    query(
+      `
+        SELECT job.id,
+               job.project_id,
+               project.title AS project_title,
+               job.status,
+               job.allocation_id,
+               job.request_id,
+               job.task_id,
+               job.candidate_account_id,
+               job.candidate_wallet_address,
+               job.project_need_summary,
+               job.task_work_type,
+               job.required_badge_id,
+               job.operating_badge_id,
+               job.reward_min_pft,
+               job.reward_max_pft,
+               job.created_at,
+               job.updated_at
+        FROM network_task_generation_jobs job
+        LEFT JOIN network_projects project
+          ON project.id = job.project_id
+        WHERE job.status IN ('queued', 'running', 'generated', 'link_failed')
+        ORDER BY job.updated_at DESC NULLS LAST, job.id DESC
+        LIMIT 100
+      `
+    ).catch(() => ({ rows: [] })),
+  ]);
+  return {
+    outstandingNetworkTasks: outstanding.rows.map(planningTaskRow).map(compactTaskForPlanningFeed),
+    recentTerminalNetworkTasks: terminal.rows.map(planningTaskRow).map(compactTaskForPlanningFeed),
+    pendingGenerationJobs: generationJobs.rows.map((row) => ({
+      id: safeText(row.id, 180),
+      projectId: safeText(row.project_id, 180),
+      projectTitle: safeText(row.project_title, 220),
+      status: safeText(row.status, 80),
+      allocationId: safeText(row.allocation_id, 180),
+      requestId: safeText(row.request_id, 180),
+      taskId: safeText(row.task_id, 180),
+      candidateAccountId: safeText(row.candidate_account_id, 180),
+      candidateWalletAddress: safeText(row.candidate_wallet_address, 120),
+      projectNeedSummary: safeText(row.project_need_summary, 320),
+      taskWorkType: safeText(row.task_work_type, 120),
+      requiredBadgeId: safeText(row.required_badge_id, 80),
+      operatingBadgeId: safeText(row.operating_badge_id, 80),
+      rewardMinPft: numeric(row.reward_min_pft),
+      rewardMaxPft: numeric(row.reward_max_pft),
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    })),
+  };
+}
+
+async function boardCommentsForBoardManagerPlanning() {
+  if (!useDatabase()) return [];
+  const result = await query(
+    `
+      SELECT entry.id,
+             entry.account_id,
+             entry.display_name,
+             entry.body,
+             entry.created_at,
+             entry.metadata_json,
+             COALESCE(
+               entry.metadata_json #>> '{projectComment,projectId}',
+               entry.metadata_json #>> '{project_comment,project_id}',
+               entry.metadata_json #>> '{metadata,projectComment,projectId}',
+               ''
+             ) AS project_id,
+             project.title AS project_title
+      FROM hive_context_entries entry
+      LEFT JOIN network_projects project
+        ON project.id = COALESCE(
+          entry.metadata_json #>> '{projectComment,projectId}',
+          entry.metadata_json #>> '{project_comment,project_id}',
+          entry.metadata_json #>> '{metadata,projectComment,projectId}',
+          ''
+        )
+      WHERE entry.deleted_at IS NULL
+        AND (
+          entry.metadata_json->>'kind' = 'hive_project_comment'
+          OR entry.metadata_json->>'source' = 'project_board'
+          OR COALESCE(entry.metadata_json #>> '{projectComment,projectId}', '') <> ''
+          OR COALESCE(entry.metadata_json #>> '{project_comment,project_id}', '') <> ''
+        )
+      ORDER BY entry.created_at DESC, entry.id DESC
+      LIMIT 240
+    `
+  ).catch(() => ({ rows: [] }));
+  return result.rows.map((row) => ({
+    id: safeText(row.id, 180),
+    projectId: safeText(row.project_id, 180),
+    projectTitle: safeText(row.project_title, 220),
+    accountId: safeText(row.account_id, 180),
+    speaker: identitySummary(row.account_id, { displayName: row.display_name }),
+    body: safeText(row.body, 700),
+    createdAt: iso(row.created_at),
+  }));
+}
+
+async function projectLeaderContextForBoardManagerPlanning({ sinceHours = 72 } = {}) {
+  if (!useDatabase()) return [];
+  const hours = Math.min(Math.max(Number(sinceHours) || 72, 1), 720);
+  const result = await query(
+    `
+      SELECT entry.id,
+             entry.account_id,
+             entry.display_name,
+             entry.body,
+             entry.source_conversation_title,
+             entry.created_at,
+             entry.metadata_json
+      FROM hive_context_entries entry
+      WHERE entry.deleted_at IS NULL
+        AND entry.created_at >= now() - ($1::text)::interval
+        AND EXISTS (
+          SELECT 1
+          FROM account_network_badges badge
+          WHERE badge.account_id = entry.account_id
+            AND badge.badge_id = 'project_leader'
+            AND badge.status = 'verified'
+            AND badge.revoked_at IS NULL
+            AND (badge.expires_at IS NULL OR badge.expires_at > now())
+        )
+      ORDER BY entry.created_at DESC, entry.id DESC
+      LIMIT 120
+    `,
+    [`${hours} hours`]
+  ).catch(() => ({ rows: [] }));
+  return result.rows.map((row) => ({
+    id: safeText(row.id, 180),
+    accountId: safeText(row.account_id, 180),
+    speaker: identitySummary(row.account_id, { displayName: row.display_name }),
+    body: safeText(row.body, 800),
+    sourceConversationTitle: safeText(row.source_conversation_title, 160),
+    createdAt: iso(row.created_at),
+    metadata: safeObject(row.metadata_json),
+  }));
+}
+
+async function archivedBoardIndexForBoardManagerPlanning({ limit = 80 } = {}) {
+  if (!useDatabase()) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 24, 1), 80);
+  const result = await query(
+    `
+      SELECT project.id,
+             project.title,
+             project.type,
+             project.status,
+             project.priority,
+             project.summary,
+             project.objective,
+             project.pft_routed,
+             project.task_count,
+             project.contributor_count,
+             project.metadata_json,
+             project.updated_at,
+             (
+               SELECT count(*)::int
+               FROM network_project_task_refs refs
+               WHERE refs.project_id = project.id
+             ) AS task_ref_count,
+             (
+               SELECT max(COALESCE(projection.last_event_at, projection.updated_at, refs.updated_at))
+               FROM network_project_task_refs refs
+               LEFT JOIN task_projections projection
+                 ON projection.task_id = refs.task_id
+               WHERE refs.project_id = project.id
+             ) AS last_task_activity_at
+      FROM network_projects project
+      WHERE project.status = 'archived'
+      ORDER BY COALESCE(
+        (
+          SELECT max(COALESCE(projection.last_event_at, projection.updated_at, refs.updated_at))
+          FROM network_project_task_refs refs
+          LEFT JOIN task_projections projection
+            ON projection.task_id = refs.task_id
+          WHERE refs.project_id = project.id
+        ),
+        project.updated_at
+      ) DESC NULLS LAST,
+      project.priority ASC,
+      project.title ASC
+      LIMIT $1
+    `,
+    [safeLimit]
+  ).catch(() => ({ rows: [] }));
+  return result.rows.map((row) => {
+    const metadata = safeObject(row.metadata_json);
+    return {
+      projectId: safeText(row.id, 180),
+      title: safeText(row.title, 220),
+      type: safeText(row.type, 120),
+      priority: Number(row.priority || 0),
+      summary: safeText(row.summary || row.objective, 700),
+      pftRouted: numeric(row.pft_routed),
+      taskCount: Number(row.task_ref_count || row.task_count || 0),
+      contributorCount: Number(row.contributor_count || 0),
+      status: "archived",
+      archivedReason: safeText(metadata.archived_reason || metadata.archive_reason, 900),
+      archivedAt: safeText(metadata.archived_at || metadata.archive_at, 80),
+      operatorArchiveLock: Boolean(metadata.operator_archived === true || metadata.archive_lock_source || metadata.archive_lock_applied_at),
+      lastActivityAt: iso(row.last_task_activity_at || row.updated_at),
+    };
+  });
 }
 
 async function currentBoardSecretaryMemosForHiveIntelligence({ limit = 40 } = {}) {
@@ -903,17 +1667,57 @@ function compactBadgeOperator(row = {}) {
   };
 }
 
+function compactRoutingConstraintOperator(operator = {}) {
+  return {
+    accountId: safeText(operator.accountId || operator.account_id, 180),
+    handle: safeText(operator.handle, 160),
+    walletAddress: safeText(operator.walletAddress || operator.wallet_address, 120),
+    badgeId: safeText(operator.badgeId || operator.badge_id, 80),
+    badgeLabel: safeText(operator.badgeLabel || operator.badge_label, 120),
+  };
+}
+
+function compactTaskRoutingConstraintsForPlanning(constraints = {}) {
+  const sourceOperatorsByBadge = safeObject(constraints.eligibleOperatorsByBadge);
+  const eligibleOperatorsByBadge = Object.fromEntries(
+    Object.entries(sourceOperatorsByBadge).map(([badgeId, operators]) => [
+      safeText(badgeId, 80),
+      safeArray(operators).slice(0, 6).map(compactRoutingConstraintOperator),
+    ])
+  );
+  const activeTaskRequirements = safeArray(constraints.activeTaskRequirements).slice(0, 32).map((task) => ({
+    taskId: safeText(task.taskId, 180),
+    title: safeText(task.title, 220),
+    status: safeText(task.status, 80),
+    projectId: safeText(task.projectId, 180),
+    projectTitle: safeText(task.projectTitle, 220),
+    rewardOfferPft: numeric(task.rewardOfferPft),
+    requiredBadgeId: safeText(task.requiredBadgeId, 80),
+    operatingBadgeId: safeText(task.operatingBadgeId, 80),
+    currentAssignee: {
+      accountId: safeText(task.currentAssignee?.accountId, 180),
+      walletAddress: safeText(task.currentAssignee?.walletAddress, 120),
+    },
+    eligibleReplacementOperators: safeArray(task.eligibleReplacementOperators).slice(0, 3).map(compactRoutingConstraintOperator),
+    eligibilityNote: safeText(task.eligibilityNote, 240),
+  }));
+  return {
+    schema: safeText(constraints.schema, 180) || "pf.task_node.hive_intelligence_task_routing_constraints.v1",
+    rulePromptFiles: safeArray(constraints.rulePromptFiles).map((path) => safeText(path, 240)).filter(Boolean),
+    activeTaskRequirements,
+    eligibleOperatorsByBadge,
+  };
+}
+
 async function taskRoutingConstraintsForHiveIntelligence({ limit = 80 } = {}) {
-  const rules = [
-    "Task deployment or reassignment recommendations must obey the task requiredBadgeId and operatingBadgeId.",
-    "Only recommend a named operator for a task when that operator is listed as badge-eligible for the task's required badge in this packet.",
-    "Do not infer badge eligibility from profile text, project point-person status, prior rewards, skills, or wallet history.",
-    "If the desired operator is not badge-eligible, recommend a message, a new correctly scoped task, or a founder-level badge/policy change instead of deploying the task to that operator.",
+  const rulePromptFiles = [
+    "prompts/hive/reports/hive_intelligence_v1.md",
+    "prompts/hive/reports/board_manager_planning_v1.md",
   ];
   if (!useDatabase()) {
     return {
       schema: "pf.task_node.hive_intelligence_task_routing_constraints.v1",
-      rules,
+      rulePromptFiles,
       activeTaskRequirements: [],
       eligibleOperatorsByBadge: {},
     };
@@ -1023,7 +1827,7 @@ async function taskRoutingConstraintsForHiveIntelligence({ limit = 80 } = {}) {
   });
   return {
     schema: "pf.task_node.hive_intelligence_task_routing_constraints.v1",
-    rules,
+    rulePromptFiles,
     activeTaskRequirements,
     eligibleOperatorsByBadge,
   };
@@ -1089,10 +1893,100 @@ async function buildHiveIntelligenceReportSourcePacket({ now = new Date() } = {}
   };
 }
 
+async function buildBoardManagerPlanningReportSourcePacket({ now = new Date() } = {}) {
+  const boardStates = await activeBoardStatesForBoardManagerPlanning();
+  const [
+    intelligenceReport,
+    liveTaskFeed,
+    boardComments,
+    projectLeaderContext,
+    archivedBoards,
+    liveTaskPacket,
+    taskRoutingConstraints,
+  ] = await Promise.all([
+    latestHiveReport({ type: "hive_intelligence" }).catch(() => null),
+    liveTaskFeedForBoardManagerPlanning(),
+    boardCommentsForBoardManagerPlanning(),
+    projectLeaderContextForBoardManagerPlanning({ sinceHours: 72 }),
+    archivedBoardIndexForBoardManagerPlanning({ limit: 12 }),
+    getHiveLiveTaskPacket({ limit: 40 }).catch((error) => ({
+      ok: false,
+      error: safeText(error?.message || "live_task_packet_unavailable", 300),
+      packet: null,
+    })),
+    taskRoutingConstraintsForHiveIntelligence({ limit: 80 }),
+  ]);
+  const source = {
+    schema: "pf.task_node.board_manager_planning_report_source_packet.v1",
+    type: "board_manager_planning",
+    label: hiveReportTypes.board_manager_planning.label,
+    generatedAt: now.toISOString(),
+    focus: hiveReportTypes.board_manager_planning.summary,
+    northStar: {
+      asset: "PFT",
+      executableActionVocabulary: ["ADD_BOARD", "ARCHIVE_BOARD"],
+      advisoryOnly: true,
+    },
+    planningRules: {
+      cadence: "3 hours",
+      reasoningEffort: "high",
+      archivePosture: "risk_averse_high_intensity_action",
+      promptFiles: [
+        "prompts/hive/reports/hive_report_common_v1.md",
+        "prompts/hive/reports/board_manager_planning_v1.md",
+        "prompts/hive/reports/phase_initial_v1.md",
+      ],
+    },
+    activeBoardAuthority: {
+      source: "boardStates.boards",
+      activeBoardIds: safeArray(boardStates.boards).map((board) => board.projectId).filter(Boolean),
+    },
+    hiveIntelligenceReport: compactReportForPlanning(intelligenceReport, { bodyMax: 12000 }),
+    boardStates,
+    liveTaskFeed,
+    boardComments,
+    projectLeaderContext,
+    liveTaskPacket: liveTaskPacket?.packet
+      ? {
+          generatedAt: safeText(liveTaskPacket.packet.generatedAt, 80),
+          refreshCadenceSeconds: Number(liveTaskPacket.packet.refreshCadenceSeconds || 0),
+          contributorCount: Number(liveTaskPacket.packet.contributorCount || safeArray(liveTaskPacket.packet.contributors).length || 0),
+          contributors: safeArray(liveTaskPacket.packet.contributors).slice(0, 8).map(compactLiveTaskPacketContributorForPlanning),
+          text: safeText(liveTaskPacket.packet.text, 1000),
+        }
+      : {
+          unavailable: true,
+          error: safeText(liveTaskPacket?.error || "live_task_packet_unavailable", 300),
+        },
+    taskRoutingConstraints: compactTaskRoutingConstraintsForPlanning(taskRoutingConstraints),
+    archivedBoardIndex: archivedBoards,
+  };
+  return {
+    ...source,
+    sourceCounts: {
+      activeBoardCount: safeArray(boardStates.boards).length,
+      archivedBoardIndexCount: safeArray(archivedBoards).length,
+      boardStateAvailable: boardStates.ok === true,
+      boardStateError: safeText(boardStates.error, 500),
+      outstandingNetworkTaskCount: safeArray(liveTaskFeed.outstandingNetworkTasks).length,
+      recentTerminalNetworkTaskCount: safeArray(liveTaskFeed.recentTerminalNetworkTasks).length,
+      pendingGenerationJobCount: safeArray(liveTaskFeed.pendingGenerationJobs).length,
+      boardCommentCount: safeArray(boardComments).length,
+      projectLeaderContextCount: safeArray(projectLeaderContext).length,
+      liveTaskPacketContributorCount: safeArray(liveTaskPacket?.packet?.contributors).length,
+      constrainedActiveTaskCount: safeArray(taskRoutingConstraints?.activeTaskRequirements).length,
+      hiveIntelligenceReportPresent: Boolean(intelligenceReport?.id),
+    },
+  };
+}
+
 export async function buildHiveReportSourcePacket({ type = "", now = new Date() } = {}) {
   const normalizedType = tableReportType(type);
   if (normalizedType === "hive_intelligence") {
     return buildHiveIntelligenceReportSourcePacket({ now });
+  }
+  if (normalizedType === "board_manager_planning") {
+    return buildBoardManagerPlanningReportSourcePacket({ now });
   }
   if (!useDatabase()) {
     return {

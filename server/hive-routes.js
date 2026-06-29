@@ -13,6 +13,7 @@ import {
   getHiveBrainRunDetail,
   listHiveBrainRuns,
 } from "./repositories/hive-brain.js";
+import { requestHiveReportRerun } from "./hive-reports-worker.js";
 import { getHiveLiveTaskPacket } from "./repositories/hive-live-task-packet.js";
 import { getHiveReport, listHiveReports } from "./repositories/hive-reports.js";
 import {
@@ -539,6 +540,38 @@ function hiveBrainOperatorAccess(session = null) {
   };
 }
 
+function hiveReportRerunAccess(session = null) {
+  if (!session?.accountId) {
+    return { ok: false, status: 401, error: "hive_report_rerun_login_required", message: "Sign in before rerunning Hive reports." };
+  }
+  const profile = getAccountIdentityProfile({ accountId: session.accountId }) || {};
+  const allowedAccounts = new Set(normalizedList(
+    process.env.TASKNODE_HIVE_REPORT_RERUN_ACCOUNT_IDS ||
+      "acct_oauth_3c70e69ab7b8ef1fad3df508"
+  ));
+  const allowedHandles = new Set(normalizedList(
+    process.env.TASKNODE_HIVE_REPORT_RERUN_HANDLES || "goodalexander"
+  ));
+  const accountId = String(session.accountId || "").trim().toLowerCase();
+  const handleCandidates = [
+    profile.hiveHandle,
+    profile.handle,
+    profile.publicDisplayName,
+    profile.displayName,
+    session.hiveHandle,
+    session.displayName,
+  ].map((value) => String(value || "").trim().replace(/^@+/, "").toLowerCase()).filter(Boolean);
+  if (allowedAccounts.has(accountId) || handleCandidates.some((handle) => allowedHandles.has(handle))) {
+    return { ok: true, profile };
+  }
+  return {
+    ok: false,
+    status: 403,
+    error: "hive_report_rerun_goodalexander_required",
+    message: "Only goodalexander can rerun Hive reports from the UI.",
+  };
+}
+
 function canResolveTaskAccountingHarvest({ session = null, profile = {}, linkedWallet = null } = {}) {
   const allowedAccounts = new Set(normalizedList(
     process.env.TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_ACCOUNT_IDS ||
@@ -876,7 +909,7 @@ async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res,
   return true;
 }
 
-async function handleHiveReportsRoute({ json, req, res, session, url }) {
+async function handleHiveReportsRoute({ json, readJson, req, res, session, url }) {
   if (!url.pathname.startsWith("/api/hive/reports")) return false;
   const access = hiveBrainOperatorAccess(session);
   if (!access.ok) {
@@ -903,7 +936,40 @@ async function handleHiveReportsRoute({ json, req, res, session, url }) {
       page: url.searchParams.get("page") || 1,
       includeLatestByType: url.searchParams.get("includeLatestByType") === "true",
     });
+    body.permissions = {
+      ...(body.permissions || {}),
+      canRerun: hiveReportRerunAccess(session).ok,
+    };
     json(res, 200, body);
+    return true;
+  }
+  if (url.pathname === "/api/hive/reports/rerun") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_report_rerun_method_not_allowed",
+        message: "Hive report rerun requires POST.",
+      });
+      return true;
+    }
+    const rerunAccess = hiveReportRerunAccess(session);
+    if (!rerunAccess.ok) {
+      json(res, rerunAccess.status || 403, {
+        ok: false,
+        error: rerunAccess.error,
+        message: rerunAccess.message,
+      });
+      return true;
+    }
+    const payload = await readJson(req, 4096);
+    const result = requestHiveReportRerun({
+      type: payload?.type || "",
+      requestedBy: session?.accountId || "",
+    });
+    json(res, result.ok ? 202 : result.status || 400, {
+      ...result,
+      permissions: { canRerun: true },
+    });
     return true;
   }
   const reportPrefix = "/api/hive/reports/";
@@ -975,7 +1041,7 @@ async function handleHiveDecisionRoute({ json, req, res, session, url }) {
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
   if (await handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
   if (await handleHiveDecisionRoute({ json, req, res, session, url })) return true;
-  if (await handleHiveReportsRoute({ json, req, res, session, url })) return true;
+  if (await handleHiveReportsRoute({ json, readJson, req, res, session, url })) return true;
   if (!["/api/hive/context", "/api/hive/projects", "/api/hive/task-detail", "/api/hive/chat"].includes(url.pathname)) return false;
 
   if (url.pathname === "/api/hive/projects") {

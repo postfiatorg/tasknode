@@ -1,8 +1,31 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { hiveReportTypes } from "./repositories/hive-reports.js";
 
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const defaultReportModel = "z-ai/glm-5.2";
+
+const reportPromptFiles = Object.freeze({
+  system: "prompts/hive/reports/hive_report_writer_system_v1.md",
+  common: "prompts/hive/reports/hive_report_common_v1.md",
+  phaseInitial: "prompts/hive/reports/phase_initial_v1.md",
+  phaseFinal: "prompts/hive/reports/phase_final_v1.md",
+  userMessage: "prompts/hive/reports/user_message_v1.md",
+  initialReportSection: "prompts/hive/reports/initial_report_section_v1.md",
+  verifierSummarySection: "prompts/hive/reports/verifier_summary_section_v1.md",
+  byType: {
+    rewarded_task: "prompts/hive/reports/rewarded_task_v1.md",
+    operative: "prompts/hive/reports/operative_v1.md",
+    kol: "prompts/hive/reports/kol_v1.md",
+    development: "prompts/hive/reports/development_v1.md",
+    qa: "prompts/hive/reports/qa_v1.md",
+    executive: "prompts/hive/reports/executive_v1.md",
+    hive_intelligence: "prompts/hive/reports/hive_intelligence_v1.md",
+    board_manager_planning: "prompts/hive/reports/board_manager_planning_v1.md",
+  },
+});
+
+const reportPromptCache = new Map();
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -28,11 +51,28 @@ function hiveReportReasoningEffort(type = "") {
   if (type === "hive_intelligence") {
     return safeText(process.env.TASKNODE_HIVE_INTELLIGENCE_REPORT_REASONING_EFFORT || "xhigh", 40);
   }
+  if (type === "board_manager_planning") {
+    return safeText(process.env.TASKNODE_BOARD_MANAGER_PLANNING_REPORT_REASONING_EFFORT || "high", 40);
+  }
   return safeText(process.env.TASKNODE_HIVE_REPORT_REASONING_EFFORT || "high", 40);
 }
 
 function providerTimeoutMs() {
   return Math.max(30000, Number(process.env.TASKNODE_HIVE_REPORT_PROVIDER_TIMEOUT_MS || 240000));
+}
+
+function hiveReportMaxTokens(type = "") {
+  const globalMax = Number(process.env.TASKNODE_HIVE_REPORT_MAX_TOKENS || 0);
+  if (type === "hive_intelligence") {
+    return Math.max(10000, Number(globalMax || 10000));
+  }
+  if (type === "board_manager_planning") {
+    return Math.max(
+      14000,
+      Number(process.env.TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS || globalMax || 14000)
+    );
+  }
+  return Math.max(3000, Number(globalMax || 9000));
 }
 
 export function hiveReportsProviderConfigured() {
@@ -43,6 +83,22 @@ function promptDigest(text = "") {
   return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
 }
 
+function readReportPromptFile(relativePath = "") {
+  const promptPath = safeText(relativePath, 240);
+  if (!promptPath) return "";
+  if (reportPromptCache.has(promptPath)) return reportPromptCache.get(promptPath);
+  const body = readFileSync(new URL(`../${promptPath}`, import.meta.url), "utf8").trim();
+  reportPromptCache.set(promptPath, body);
+  return body;
+}
+
+function renderPromptTemplate(template = "", values = {}) {
+  return String(template || "").replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, key) => {
+    if (!Object.prototype.hasOwnProperty.call(values, key)) return "";
+    return String(values[key] ?? "");
+  });
+}
+
 function markdownBody(value = "") {
   const body = safeText(value, 250_000);
   if (!body) throw new Error("hive_report_provider_empty_markdown");
@@ -51,95 +107,60 @@ function markdownBody(value = "") {
   return body;
 }
 
-function compactJson(value, maxLength = 70_000) {
-  const text = JSON.stringify(value, null, 2);
+function cleanUserFacingReportMarkdown(value = "") {
+  const body = safeText(value, 250_000);
+  if (!body) return body;
+  const metadataLinePattern = /^\s*(?:\*\*)?(?:Generated|Model|Source packet|Source packet digest|Source run|Source run id)(?:\*\*)?\s*:/i;
+  const cleaned = body
+    .split("\n")
+    .filter((line) => !metadataLinePattern.test(line))
+    .join("\n")
+    .replace(
+      /Board state is available \(`boardStates\.ok = true`\)\. Five active boards confirmed from `activeBoardAuthority\.activeBoardIds` and `boardStates\.boards`:/g,
+      "Board state is available. Five active boards are confirmed from the live active-board read:"
+    )
+    .replace(/`boardStates\.boards`/g, "the live active-board read")
+    .replace(/`activeBoardAuthority\.activeBoardIds`/g, "the active-board authority list")
+    .replace(/`boardStates\.ok = true`/g, "board state is available")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return cleaned || body;
+}
+
+function compactJson(value, maxLength = 70_000, space = 2) {
+  const text = JSON.stringify(value, null, space);
   if (text.length <= maxLength) return text;
   return `${text.slice(0, Math.floor(maxLength * 0.72))}\n\n[...middle truncated for report prompt...]\n\n${text.slice(-Math.floor(maxLength * 0.28))}`;
 }
 
 function reportInstructions(type = "", phase = "initial") {
   const definition = hiveReportTypes[type] || {};
-  const common = [
-    `Report type: ${definition.label || type}`,
-    `Purpose: ${definition.summary || "Hive operating report."}`,
-    "Write a human-readable Markdown document. Do not output JSON.",
-    "Start with one H1. Use short sections, bullets, and concise evidence references.",
-    "Include relevant counts and KPIs when present in the source packet.",
-    "Call out uncertainty and missing evidence instead of inventing facts.",
-    "Projects are dynamic; do not assume a fixed project list.",
-    "Do not recommend clawbacks, bans, or enforcement execution. Reward routing, task strategy, and founder-level network recommendations are allowed when tied to evidence.",
-  ];
-  const byType = {
-    rewarded_task: [
-      "Group by role. For each role, summarize the last rewarded Network Tasks available in the packet.",
-      "For each task include task id, title, operator, proposal/evidence gist, actual reward, and why it matters.",
-    ],
-    operative: [
-      "Group operators by KOL, Core Contributor, QA Worker, Expert, and Project Leader where present.",
-      "For each person include profile context, whether they currently have a task, and 1-2 sentences on what they appear to be doing.",
-    ],
-    kol: [
-      "Summarize marketing/amplification state, KOL operators, public artifacts, key rewarded tasks, and trajectory.",
-      "List every public link you rely on so the link-verifier can check it.",
-    ],
-    development: [
-      "Summarize core development work, active code tasks, rewarded code tasks, repository evidence, and delivery risks.",
-      "List repository, PR, issue, or commit links you rely on so the repo-verifier can check them.",
-    ],
-    qa: [
-      "Write this as a product QA document: observed issues, suggested improvements, evidence from rewarded QA tasks, and Hive chat feedback.",
-      "Separate confirmed findings from ideas or thin reports.",
-    ],
-    executive: [
-      "Assemble Project Leader Hive chat from the last 24h into an executive brief.",
-      "Preserve who said what, project implications, unresolved decisions, and concrete next actions.",
-    ],
-    hive_intelligence: [
-      "Write a strategic intelligence brief for the Hive Mind, not a status report.",
-      "The north star is increasing the value of PFT, the Post Fiat cryptocurrency and base reward asset of the Hive Mind.",
-      "Ground the analysis in reward value: if PFT is being paid for work that is unlikely to increase PFT value, say so plainly and recommend corrective action.",
-      "Reference operators by handle, wallet, and account when available in the packet.",
-      "Stay within roughly 2-3 single-spaced pages. Be concise but do not truncate the brief or end with an unfinished section.",
-      "Use these top-level sections in this order:",
-      "A] Classification: state exactly `Public, Hive Mind`.",
-      "B] Title and Key Question: make the title/key question reflect the current network state and dynamics around increasing PFT Network value.",
-      "C] BLUF / Key Judgments: bullets that state the bottom-line assessment and so-what. Each judgment must include a confidence level (High, Moderate, or Low), probability language (almost certainly, likely, unlikely, etc.), and the main source of uncertainty.",
-      "D] Scope / Note / Context: describe which reports flowed into the intelligence brief: Operative, Rewarded Task, KOL, Development, QA, Executive, Harvest Report, Live Task Packet, and Board Secretary memos.",
-      "E] Discussion / Analysis: build a logical argument from the packet evidence. Clearly distinguish confirmed fact, analytic estimate, and assumption. Include objections, rebuttals, or alternative hypotheses where material.",
-      "F] Implications / Outlook: consequences, second/third-order effects, what to watch, what could change the conclusion, and concrete actions in the available action space.",
-      "Available action space is: deploy tasks to members, send messages to people, or recommend founder-level changes to Task Node or other network assets.",
-      "Concrete task deployment or reassignment recommendations must obey SOURCE PACKET taskRoutingConstraints. If a task has requiredBadgeId or operatingBadgeId, recommend only operators listed in that task's eligibleReplacementOperators or in eligibleOperatorsByBadge for the required badge.",
-      "Never infer task eligibility from profile text, point-person status, prior rewarded tasks, skills, wallet history, or general operator quality. If a high-quality operator lacks the required badge, recommend a message, a new correctly scoped task, or a founder-level badge/policy change instead of assigning the task to them.",
-    ],
-  };
-  const phaseInstructions = phase === "final"
-    ? [
-        "This is the final phase. Incorporate the verifier summary directly into the report.",
-        "Add a Verification section with confirmed, refuted, and unverified items.",
-      ]
-    : [
-        "This is the initial phase. Produce the best report possible from the source packet.",
-      ];
-  return [...common, ...(byType[type] || []), ...phaseInstructions].join("\n");
+  const common = renderPromptTemplate(readReportPromptFile(reportPromptFiles.common), {
+    report_label: definition.label || type,
+    report_type: type,
+    report_purpose: definition.summary || "Hive operating report.",
+  });
+  const typeInstructions = readReportPromptFile(reportPromptFiles.byType[type] || "");
+  const phaseInstructions = readReportPromptFile(phase === "final" ? reportPromptFiles.phaseFinal : reportPromptFiles.phaseInitial);
+  return [common, typeInstructions, phaseInstructions].filter(Boolean).join("\n");
 }
 
 function reportMessages({ type = "", sourcePacket = {}, phase = "initial", initialMarkdown = "", verifierSummary = "" } = {}) {
-  const system = [
-    "You are the Task Node Hive Reports writer.",
-    "Your output is a prose operating report for a human operator.",
-    "Never output raw JSON as the report body.",
-    "Do not claim actions were executed; report only observed evidence.",
-  ].join("\n");
-  const user = [
-    reportInstructions(type, phase),
-    "",
-    initialMarkdown ? ["INITIAL REPORT MARKDOWN", initialMarkdown].join("\n") : "",
-    verifierSummary ? ["VERIFIER SUMMARY", verifierSummary].join("\n") : "",
-    "SOURCE PACKET",
-    "```json",
-    compactJson(sourcePacket, type === "hive_intelligence" ? 180_000 : 70_000),
-    "```",
-  ].filter(Boolean).join("\n\n");
+  const system = readReportPromptFile(reportPromptFiles.system);
+  const user = renderPromptTemplate(readReportPromptFile(reportPromptFiles.userMessage), {
+    instructions: reportInstructions(type, phase),
+    initial_report_section: initialMarkdown
+      ? renderPromptTemplate(readReportPromptFile(reportPromptFiles.initialReportSection), { initial_markdown: initialMarkdown })
+      : "",
+    verifier_summary_section: verifierSummary
+      ? renderPromptTemplate(readReportPromptFile(reportPromptFiles.verifierSummarySection), { verifier_summary: verifierSummary })
+      : "",
+    source_packet_json: compactJson(
+      sourcePacket,
+      ["hive_intelligence", "board_manager_planning"].includes(type) ? 180_000 : 70_000,
+      type === "board_manager_planning" ? 0 : 2
+    ),
+  }).replace(/\n{3,}/g, "\n\n").trim();
   return [
     { role: "system", content: system },
     { role: "user", content: user },
@@ -186,6 +207,39 @@ function mockMarkdownReport({ type = "", sourcePacket = {}, phase = "initial", v
       verifierSummary ? ["", "## Verification", verifierSummary].join("\n") : "",
     ].filter(Boolean).join("\n"));
   }
+  if (type === "board_manager_planning") {
+    const counts = safeObject(sourcePacket.sourceCounts);
+    return markdownBody([
+      "# Board Manager Planning Report",
+      "",
+      "## BLUF",
+      `- The planning packet is live with ${counts.activeBoardCount || 0} active boards, ${counts.outstandingNetworkTaskCount || 0} outstanding Network Tasks, and ${counts.pendingGenerationJobCount || 0} pending generation jobs.`,
+      "- This mock report validates the advisory Board Manager Planning Report path. It does not execute ADD_BOARD or ARCHIVE_BOARD actions.",
+      "",
+      "## Current Board Portfolio",
+      `- Active boards: ${counts.activeBoardCount || 0}`,
+      `- Archived boards indexed: ${counts.archivedBoardIndexCount || 0}`,
+      `- Board comments in packet: ${counts.boardCommentCount || 0}`,
+      `- Project Leader context rows: ${counts.projectLeaderContextCount || 0}`,
+      "",
+      "## Board Ranking",
+      "- Mock mode does not score real board quality. Production reports rank each board by outcome clarity, KPI believability, budget effectiveness, upside/downside, and sequencing feasibility.",
+      "",
+      "## Recommended Actions",
+      "### ADD_BOARD",
+      "- No action recommended.",
+      "",
+      "### ARCHIVE_BOARD",
+      "- No action recommended.",
+      "",
+      "## Reasoning",
+      "Confirmed fact: the source packet assembled Hive Intelligence, live board state, live task state, board comments, Project Leader context, Live Task Packet contributor context, and archived-board index data. Analytic estimate: the production report should recommend board changes only when that evidence supports a PFT-value improving portfolio decision.",
+      "",
+      "## What The Task Management Agent Should Know",
+      "- Treat this report as advisory portfolio context. Any later executor must re-read live board state and re-check add/archive guardrails before mutating anything.",
+      verifierSummary ? ["", "## Verification", verifierSummary].join("\n") : "",
+    ].filter(Boolean).join("\n"));
+  }
   const label = hiveReportTypes[type]?.label || type;
   const counts = safeObject(sourcePacket.sourceCounts);
   const generatedAt = safeText(sourcePacket.generatedAt, 80) || new Date().toISOString();
@@ -224,7 +278,7 @@ export async function generateHiveReportMarkdown({
 } = {}) {
   if (process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK === "true") {
     return {
-      bodyMarkdown: mockMarkdownReport({ type, sourcePacket, phase, verifierSummary }),
+      bodyMarkdown: cleanUserFacingReportMarkdown(mockMarkdownReport({ type, sourcePacket, phase, verifierSummary })),
       provider: "mock",
       model: type === "hive_intelligence" ? "mock-glm-xhigh-thinking" : "mock-glm-high-thinking",
       responseId: `mock_hive_report_${type}_${phase}`,
@@ -269,7 +323,7 @@ export async function generateHiveReportMarkdown({
           data_collection: "deny",
         },
         temperature: 0.2,
-        max_tokens: Math.max(3000, Number(process.env.TASKNODE_HIVE_REPORT_MAX_TOKENS || (type === "hive_intelligence" ? 10000 : 9000))),
+        max_tokens: hiveReportMaxTokens(type),
         usage: { include: true },
         metadata: {
           app: "tasknodeofficial",
@@ -287,7 +341,7 @@ export async function generateHiveReportMarkdown({
       throw error;
     }
     return {
-      bodyMarkdown: markdownBody(body?.choices?.[0]?.message?.content || ""),
+      bodyMarkdown: markdownBody(cleanUserFacingReportMarkdown(body?.choices?.[0]?.message?.content || "")),
       provider: "openrouter",
       model: safeText(body?.model || model, 160),
       responseId: safeText(body?.id, 200),

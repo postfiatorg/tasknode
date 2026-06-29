@@ -29,7 +29,7 @@ function parseArgs(argv = []) {
 }
 
 function printHelp() {
-  console.log(`Usage: npm run hive-reports-worker -- [--type rewarded_task|operative|kol|development|qa|executive|all] [--force] [--mock]
+  console.log(`Usage: npm run hive-reports-worker -- [--type rewarded_task|operative|kol|development|qa|executive|hive_intelligence|board_manager_planning|all] [--force] [--mock]
 
 Generates due Hive v2 markdown reports once. Use --mock for local/prod smoke
 verification without OpenRouter spend.`);

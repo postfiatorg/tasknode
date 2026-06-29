@@ -10,7 +10,11 @@ import {
   listHiveReports,
   saveHiveReport,
 } from "../server/repositories/hive-reports.js";
-import { runHiveReportsWorkerOnce } from "../server/hive-reports-worker.js";
+import {
+  requestHiveReportRerun,
+  runHiveReportsWorkerOnce,
+  waitForHiveReportRerunForTests,
+} from "../server/hive-reports-worker.js";
 
 process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK = "true";
 
@@ -34,8 +38,32 @@ try {
     "intelligence report source includes deterministic task routing constraints"
   );
   assert.ok(
-    intelligenceSource.taskRoutingConstraints.rules.some((rule) => rule.includes("requiredBadgeId")),
-    "task routing constraints tell the report to obey required badges"
+    intelligenceSource.taskRoutingConstraints.rulePromptFiles.includes("prompts/hive/reports/hive_intelligence_v1.md"),
+    "task routing constraints reference the prompt file that tells the report to obey required badges"
+  );
+  const planningSource = await buildHiveReportSourcePacket({
+    type: "board_manager_planning",
+    now: new Date("2026-06-25T12:00:00.000Z"),
+  });
+  assert.equal(
+    planningSource.schema,
+    "pf.task_node.board_manager_planning_report_source_packet.v1",
+    "board manager planning source has the expected schema"
+  );
+  assert.equal(
+    planningSource.planningRules?.reasoningEffort,
+    "high",
+    "board manager planning source documents high thinking"
+  );
+  assert.ok(
+    planningSource.planningRules?.promptFiles?.includes("prompts/hive/reports/board_manager_planning_v1.md"),
+    "board manager planning source references prompt files instead of embedding prompt rules"
+  );
+  assert.ok(
+    Array.isArray(planningSource.northStar?.executableActionVocabulary) &&
+      planningSource.northStar.executableActionVocabulary.includes("ADD_BOARD") &&
+      planningSource.northStar.executableActionVocabulary.includes("ARCHIVE_BOARD"),
+    "board manager planning source limits executable action vocabulary"
   );
   const result = await runHiveReportsWorkerOnce({
     types: hiveReportTypeIds,
@@ -62,9 +90,35 @@ try {
     }
   }
 
-  const listed = await listHiveReports({ limit: 12 });
+  const planningGenerated = result.generated.find((item) => item.type === "board_manager_planning");
+  const listed = await listHiveReports({ type: "board_manager_planning", limit: 12 });
   assert.equal(listed.ok, true, "report list succeeds");
-  assert.ok(generatedIds.some((id) => listed.reports.some((report) => report.id === id)), "generated report appears in list");
+  assert.ok(
+    listed.reports.some((report) => report.id === planningGenerated?.reportId),
+    "generated Board Manager Planning report appears in filtered list"
+  );
+  const manualRerun = requestHiveReportRerun({
+    type: "board_manager_planning",
+    requestedBy: "acct_oauth_3c70e69ab7b8ef1fad3df508",
+    now: new Date("2026-06-25T14:00:00.000Z"),
+  });
+  assert.equal(manualRerun.ok, true, "manual report rerun queues");
+  assert.equal(manualRerun.queued, true, "manual rerun starts a new generation");
+  const duplicateRerun = requestHiveReportRerun({
+    type: "board_manager_planning",
+    requestedBy: "acct_oauth_3c70e69ab7b8ef1fad3df508",
+    now: new Date("2026-06-25T14:00:01.000Z"),
+  });
+  assert.equal(duplicateRerun.ok, true, "duplicate manual rerun request is accepted as running");
+  assert.equal(duplicateRerun.running, true, "duplicate manual rerun reports existing run");
+  assert.equal(duplicateRerun.queued, false, "duplicate manual rerun does not queue a second generation");
+  const manualResult = await waitForHiveReportRerunForTests("board_manager_planning");
+  const manualReportId = manualResult?.report?.id || "";
+  assert.ok(manualReportId, "manual rerun writes a fresh Board Manager Planning report");
+  const manualDetail = await getHiveReport({ id: manualReportId });
+  assert.equal(manualDetail.ok, true, "manual rerun report is readable");
+  assert.equal(manualDetail.report.type, "board_manager_planning", "manual rerun persisted the requested type");
+  cleanupIds.push(manualReportId);
 
   for (let index = 0; index < 8; index += 1) {
     const extra = await saveHiveReport({

@@ -166,7 +166,7 @@ make them appear missing. Card previews are derived from parsed markdown and
 collapse KPI tables into short text summaries; the full report view renders
 headings, lists, code, horizontal rules, and markdown tables.
 
-Seven report builders run from `server/hive-reports-worker.js`:
+Eight report builders run from `server/hive-reports-worker.js`:
 
 - `rewarded_task`, every 20 minutes: per verified badge role, the last rewarded
   Network Tasks with proposal and reward context.
@@ -188,6 +188,14 @@ Seven report builders run from `server/hive-reports-worker.js`:
   and operator work are likely to increase PFT value, then recommends actions
   within the board manager action space: deploy tasks, send targeted messages, or
   recommend founder-level changes.
+- `board_manager_planning`, every 3 hours: advisory Board Manager portfolio
+  planning report. It reads the latest Hive Intelligence report, live board
+  state, outstanding tasks, recent rewarded tasks, Board Secretary memos, board
+  comments, Project Leader context, Live Task Packet contributor descriptions,
+  badge-routing constraints, and a compact archived-board index. It ranks boards
+  by outcome clarity, KPI believability, budget effectiveness, upside/downside,
+  and sequencing feasibility, then recommends only `ADD_BOARD` or
+  `ARCHIVE_BOARD` candidates. It does not execute those actions.
 
 The Hive Intelligence source packet also includes deterministic task-routing
 constraints: active task badge requirements plus operators grouped by verified
@@ -202,7 +210,11 @@ their task mirrors for dynamic projects, and `hive_context_entries` for Hive
 chat. The builders use the configured OpenRouter Hive report model with high
 reasoning effort in production; the `hive_intelligence` builder uses GLM 5.2
 `xhigh` reasoning by default through
-`TASKNODE_HIVE_INTELLIGENCE_REPORT_REASONING_EFFORT`. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
+`TASKNODE_HIVE_INTELLIGENCE_REPORT_REASONING_EFFORT`. The
+`board_manager_planning` builder uses GLM 5.2 `high` reasoning by default
+through `TASKNODE_BOARD_MANAGER_PLANNING_REPORT_REASONING_EFFORT` and gets a
+larger default visible output budget through
+`TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS`. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
 npm run hive-reports-smoke` exercises the same storage, worker, list/detail,
 and UI-facing shape without spending model tokens.
 
@@ -423,8 +435,10 @@ defect.
 
 ### Hive v2 Decision Agent
 
-The Phase 3 Decision Agent is the active replacement for the old Board Manager
-execution path. It runs on the same cadence, stores each run in
+The Phase 3 Decision Agent is the guarded replacement shape for the old Board
+Manager execution path, but production keeps it disabled by default while Hive
+uses readable reports and Board Secretary memos for advisory coordination. When
+enabled intentionally, it runs on the same cadence, stores each run in
 `hive_decision_runs`, and renders in Hive Brain under `Decision Agent`.
 Production cutover is controlled by two deploy flags:
 

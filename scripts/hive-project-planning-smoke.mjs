@@ -215,7 +215,9 @@ const boardDocument = hiveProjectsDocumentForTests({
   ],
 });
 assert.deepEqual(boardDocument.projectIds, ["live_project", "pending_generation_project"]);
+assert.deepEqual(boardDocument.archivedProjectIds, ["agent_archived_project", "operator_archived_project"]);
 assert.equal(boardDocument.stats.activeProjects, 2);
+assert.equal(boardDocument.stats.archivedProjects, 2);
 assert.equal(boardDocument.stats.tasksInFlight, 1);
 assert.equal(boardDocument.stats.taskRows, 4);
 assert.equal(boardDocument.stats.terminalTaskRows, 3);
@@ -223,6 +225,10 @@ assert.equal(boardDocument.stats.pftRouted, 250);
 assert.equal(boardDocument.projects.empty_active_project, undefined);
 assert.equal(boardDocument.projects.agent_archived_project, undefined);
 assert.equal(boardDocument.projects.operator_archived_project, undefined);
+assert.equal(boardDocument.archivedProjects.agent_archived_project.name, "Agent archived project");
+assert.equal(boardDocument.archivedProjects.agent_archived_project.taskCount, 1);
+assert.equal(boardDocument.archivedProjects.agent_archived_project.operatorArchiveLock, false);
+assert.equal(boardDocument.archivedProjects.operator_archived_project.operatorArchiveLock, true);
 assert.equal(boardDocument.projects.live_project.tasks[0].title, "Projected task");
 assert.equal(boardDocument.projects.live_project.tasks[0].state, "accepted");
 assert.equal(boardDocument.projects.live_project.tasks[0].assignee, "rProjected");
