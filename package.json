@@ -172,6 +172,7 @@
     "task-request-unlock-policy-smoke": "node scripts/task-request-unlock-policy-smoke.mjs",
     "task-request-context-budget-smoke": "node scripts/task-request-context-budget-smoke.mjs",
     "task-request-public-state-smoke": "node scripts/task-request-public-state-smoke.mjs",
+    "terminal-task-request-smoke": "node scripts/terminal-task-request-smoke.mjs",
     "task-request-handoff-smoke": "node scripts/task-request-handoff-smoke.mjs",
     "task-action-route-smoke": "node scripts/task-action-route-smoke.mjs",
     "task-client-offchain-completion-smoke": "node --no-warnings --loader ./scripts/esm-extension-loader.mjs scripts/task-client-offchain-completion-smoke.mjs",

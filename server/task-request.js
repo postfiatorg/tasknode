@@ -66,6 +66,18 @@ function sha256(value = "") {
   return createHash("sha256").update(String(value || ""), "utf8").digest("hex");
 }
 
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sha256Json(value) {
+  return sha256(stableJson(value));
+}
+
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
 }
@@ -949,7 +961,7 @@ export async function terminalTaskRequestAction(payload = {}, method = "POST", s
       walletAddress: resolved.wallet.address,
       request,
     });
-    const requestBundleDigest = `sha256:${sha256(requestBundle)}`;
+    const requestBundleDigest = `sha256:${sha256Json(requestBundle)}`;
     const requestBundleCid = `postgres:${request.requestId}`;
     const requestEventCid = `postgres:${request.requestId}`;
     const txHash = `offchain:${request.requestId}`;
