@@ -45,6 +45,15 @@ function safeEventText(value = "", max = 500) {
   return String(value || "").trim().slice(0, max);
 }
 
+export function latestProfileStudioNft(nfts = [], { walletAddress = "" } = {}) {
+  const rows = Array.isArray(nfts) ? nfts : [];
+  const normalizedWalletAddress = safeEventText(walletAddress, 120);
+  const walletRows = normalizedWalletAddress
+    ? rows.filter((nft) => !nft?.walletAddress || nft.walletAddress === normalizedWalletAddress)
+    : rows;
+  return walletRows.find((nft) => nft?.promptSource !== "pftl_chain_inventory") || walletRows[0] || null;
+}
+
 async function recordProfileObservabilityEvent({
   eventType = "",
   accountId = "",
@@ -768,16 +777,24 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       console.warn(`profile nft stale generation sweep failed: ${error?.message || error}`);
     });
     const requestedLimit = Number(url.searchParams.get("limit") || 240);
+    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const walletAddress = linkedWallet?.status === "linked" ? linkedWallet.address || "" : "";
     const nfts = await listProfileNfts({
       accountId: session.accountId,
       limit: Number.isFinite(requestedLimit) ? requestedLimit : 240,
+      ...(walletAddress ? { walletAddress } : {}),
     });
-    const total = await countProfileNfts({ accountId: session.accountId });
+    const total = await countProfileNfts({
+      accountId: session.accountId,
+      ...(walletAddress ? { walletAddress } : {}),
+    });
     json(res, 200, {
       ok: true,
+      walletAddress,
+      walletScoped: Boolean(walletAddress),
       nfts,
       total,
-      latest: nfts[0] || null,
+      latest: latestProfileStudioNft(nfts, { walletAddress }),
     });
     return true;
   }

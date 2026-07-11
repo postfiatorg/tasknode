@@ -6,7 +6,7 @@ import {
 } from "./pftl-submit.js";
 import {
   getProfileNft,
-  markProfileNftFailed,
+  markProfileNftError,
   markProfileNftMinted,
   markProfileNftMintPrepared,
 } from "./repositories/profile-nfts.js";
@@ -197,17 +197,18 @@ export async function profileNftMintStart({
         : await prepareProfileNftMint({ nft, session, state, env });
     return { status: 200, body };
   } catch (error) {
-    await markProfileNftFailed({
+    const nftWithError = await markProfileNftError({
       accountId: session.accountId,
       nftId,
       error: error?.message || "profile_nft_mint_failed",
-    });
+    }).catch(() => null);
     return {
       status: error?.status || 500,
       body: {
         ok: false,
         error: error?.message || "profile_nft_mint_failed",
         message: error?.message || "Profile NFT minting failed.",
+        nft: nftWithError || nft,
       },
     };
   }

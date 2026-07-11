@@ -26,7 +26,7 @@ const { routePolicyForPath } = await import("../server/route-policies.js");
 const status = await readSystemStatus();
 assert.equal(status.ok, true);
 assert.equal(status.database.enabled, false);
-assert.equal(status.summary.total, 22);
+assert.equal(status.summary.total, 23);
 assert.equal(status.databasePool.enabled, false);
 assert.equal(status.databasePool.role, "all");
 assert.equal(status.databasePool.max, 6);
@@ -97,6 +97,7 @@ for (const id of [
   "deep_memory",
   "network_task_profile",
   "daily_airdrop_worker",
+  "daily_profile_nft_worker",
 ]) {
   assert.equal(itemIds.has(id), true, `missing status item ${id}`);
 }

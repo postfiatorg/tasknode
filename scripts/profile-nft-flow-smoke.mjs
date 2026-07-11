@@ -5,14 +5,17 @@ process.env.TASKNODE_DATABASE_DISABLED = "true";
 const {
   createGeneratingProfileNft,
   createGeneratedProfileNft,
+  countProfileNfts,
   getProfileNft,
   listProfileNfts,
+  markProfileNftError,
   markProfileNftFailed,
   markProfileNftGenerated,
   markProfileNftMintPrepared,
   markProfileNftMinted,
 } = await import("../server/repositories/profile-nfts.js");
 const { pftUriToHex } = await import("../server/pftl-submit.js");
+const { latestProfileStudioNft } = await import("../server/profile-routes.js");
 
 const accountId = "account_profile_nft_smoke";
 const walletAddress = "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7";
@@ -112,10 +115,12 @@ assert.equal(accountWide.length, 5);
 assert.ok(accountWide.some((nft) => nft.id === oldWalletNft.id));
 
 const currentWalletListed = await listProfileNfts({ accountId, walletAddress });
+const currentWalletCount = await countProfileNfts({ accountId, walletAddress });
 assert.ok(currentWalletListed.some((nft) => nft.id === generated.id));
 assert.ok(currentWalletListed.some((nft) => nft.id === recovered.id));
 assert.ok(currentWalletListed.some((nft) => nft.id === failed.id));
 assert.ok(currentWalletListed.some((nft) => nft.id === walletlessDraft.id));
+assert.equal(currentWalletCount, currentWalletListed.length);
 assert.equal(
   currentWalletListed.some((nft) => nft.id === oldWalletNft.id),
   false,
@@ -158,6 +163,29 @@ const prepared = await markProfileNftMintPrepared({
 assert.equal(prepared.status, "prepared");
 assert.equal(prepared.mintTxJson.URI, uriHex);
 
+const erroredPrepared = await markProfileNftError({
+  accountId,
+  nftId: prepared.id,
+  error: "Signed transaction does not match the linked wallet.",
+});
+assert.equal(erroredPrepared.status, "prepared", "mint errors must not turn generated art into failed generation");
+assert.match(erroredPrepared.error, /linked wallet/);
+
+const retryPrepared = await markProfileNftMintPrepared({
+  accountId,
+  nftId: prepared.id,
+  metadataCid: "QmSmokeProfileNftMetadataCid1111111111111111",
+  metadataUri,
+  metadataJson: { schema: "erc721", image: `ipfs://${generated.imageCid}` },
+  mintTxJson: {
+    TransactionType: "NFTokenMint",
+    Account: walletAddress,
+    URI: uriHex,
+  },
+});
+assert.equal(retryPrepared.status, "prepared");
+assert.equal(retryPrepared.error, "");
+
 const preparedDraft = await markProfileNftMintPrepared({
   accountId,
   nftId: walletlessDraft.id,
@@ -186,5 +214,24 @@ const fetched = await getProfileNft({ accountId, nftId: generated.id });
 assert.equal(fetched.nftTokenId, "000B013A95F14B0044F78A264E41713C64B5F89242540EE2");
 const orderedAfterMint = await listProfileNfts({ accountId, walletAddress });
 assert.equal(orderedAfterMint[0].id, walletlessDraft.id, "profile NFT list must default to newest created row, not latest minted row");
+
+const chainImported = {
+  id: "nft_chain_newest",
+  promptSource: "pftl_chain_inventory",
+  status: "minted",
+};
+assert.equal(
+  latestProfileStudioNft([chainImported, erroredPrepared])?.id,
+  erroredPrepared.id,
+  "Profile Studio latest must prefer app-generated rows over imported onchain inventory"
+);
+assert.equal(latestProfileStudioNft([chainImported])?.id, chainImported.id);
+assert.equal(
+  latestProfileStudioNft([oldWalletNft, erroredPrepared], { walletAddress })?.id,
+  erroredPrepared.id,
+  "Profile Studio latest must ignore app-generated rows from a previous wallet"
+);
+assert.equal(latestProfileStudioNft([oldWalletNft], { walletAddress }), null);
+assert.equal(latestProfileStudioNft([walletlessDraft], { walletAddress })?.id, walletlessDraft.id);
 
 console.log("profile-nft-flow-smoke ok");

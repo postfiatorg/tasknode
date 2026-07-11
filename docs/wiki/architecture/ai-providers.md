@@ -229,6 +229,7 @@ Current behavior:
 - Generator: `server/profile-nft-generation.js`.
 - Persistence: `server/repositories/profile-nfts.js` and `profile_nfts`.
 - Browser result: generated image data URL, IPFS image CID, model metadata, and prompt digests; not the prompt body.
+- Request and prompt caps: the profile NFT generate/mint route reads at most 65,536 request bytes. The browser generate action sends only `size` and `quality`; the server derives prompt inputs from signed-in account state. Context text is capped at 20,000 characters and can come from an explicit request `contextDocument` override or the current app-state context document `html`, `text`, or `body`. Compact NFT user data is capped at 20,000 characters.
 
 The production prompt tells the model to use the full color spectrum and not default to red/black, cyber-noir, monochrome ink, or a fixed brand palette. Red and black are allowed when context calls for them, but they are not the default palette. This matters because profile NFTs are user-facing identity artifacts and repeated red/black output makes different users look artificially identical.
 

@@ -75,6 +75,16 @@ export function buildProfileNftUserData({ session = null, state = null, payload 
   );
 }
 
+export function profileNftGenerationContextDocument({ payload = {}, state = null } = {}) {
+  return (
+    safeText(payload?.contextDocument, 20000) ||
+    safeText(state?.context?.document?.html, 20000) ||
+    safeText(state?.context?.document?.text, 20000) ||
+    safeText(state?.context?.document?.body, 20000) ||
+    "No current context document was available."
+  );
+}
+
 function profileNftTimeoutMs(env = process.env) {
   return Math.max(30_000, Number(env.PROFILE_NFT_IMAGE_TIMEOUT_MS || defaultProfileNftTimeoutMs));
 }
@@ -151,11 +161,7 @@ export async function profileNftGenerateStart({
     };
   }
 
-  const contextDocument =
-    safeText(payload?.contextDocument, 20000) ||
-    safeText(state?.context?.document?.html, 20000) ||
-    safeText(state?.context?.document?.text, 20000) ||
-    "No current context document was available.";
+  const contextDocument = profileNftGenerationContextDocument({ payload, state });
   const nftUserData =
     safeText(payload?.nftUserData, 20000) ||
     buildProfileNftUserData({ session, state, payload });

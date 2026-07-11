@@ -589,6 +589,7 @@ export async function markProfileNftMintPrepared({
       mintTxJson,
       preparedAt,
       updatedAt: preparedAt,
+      error: "",
     });
     runtimeNfts.set(record.id, next);
     return next;
@@ -642,6 +643,7 @@ export async function markProfileNftMinted({
       nftTokenId,
       mintedAt,
       updatedAt: mintedAt,
+      error: "",
     });
     runtimeNfts.set(record.id, next);
     return next;
@@ -659,6 +661,33 @@ export async function markProfileNftMinted({
         AND id = $2
       RETURNING *`,
     [safeAccountId(accountId), safeText(nftId, 120), safeText(txHash, 128), safeText(nftTokenId, 256)]
+  );
+  return result.rows[0] ? normalizeRecord(result.rows[0]) : null;
+}
+
+export async function markProfileNftError({ accountId = "", nftId = "", error = "" } = {}) {
+  const record = await getProfileNft({ accountId, nftId });
+  if (!record) return null;
+  const updatedAt = nowIso();
+
+  if (!databaseEnabled()) {
+    const next = normalizeRecord({
+      ...record,
+      error: safeText(error, 500),
+      updatedAt,
+    });
+    runtimeNfts.set(record.id, next);
+    return next;
+  }
+
+  const result = await query(
+    `UPDATE profile_nfts
+        SET error = $3,
+            updated_at = now()
+      WHERE account_id = $1
+        AND id = $2
+      RETURNING *`,
+    [safeAccountId(accountId), safeText(nftId, 120), safeText(error, 500)]
   );
   return result.rows[0] ? normalizeRecord(result.rows[0]) : null;
 }

@@ -28,6 +28,8 @@ const URL_EXCERPT_MAX_CHARS = 6000;
 const URL_FETCH_TIMEOUT_MS = 8000;
 const URL_REDIRECT_MAX_HOPS = 5;
 const TASK_REVIEW_USER_AGENT = "TaskNodeOfficialTaskReview/0.1";
+const TASK_REVIEW_RETRY_BASE_MS = 60_000;
+const TASK_REVIEW_RETRY_MAX_MS = 15 * 60_000;
 
 const verificationResponseFormat = {
   type: "json_schema",
@@ -185,6 +187,19 @@ function rewardPaymentGuardBlocksRetry(guard = {}) {
   return ["submitting", "submitted", "submit_unknown"].includes(rewardPaymentGuardStatus(guard));
 }
 
+function rewardPaymentGuardCanSkipPreflightSync(guard = {}) {
+  return rewardPaymentGuardStatus(guard) === "retry_wait";
+}
+
+function submissionDefinitelyNotAttempted(error) {
+  return error?.submissionAttempted === false;
+}
+
+function taskReviewRetryDelayMs(retryCount = 0) {
+  const boundedCount = Math.min(Math.max(Number(retryCount) || 0, 0), 10);
+  return Math.min(TASK_REVIEW_RETRY_BASE_MS * (2 ** boundedCount), TASK_REVIEW_RETRY_MAX_MS);
+}
+
 function rewardPaymentGuardPayload({ taskId = "", rewardPayload = {}, rewardPft = 0 } = {}) {
   const now = new Date().toISOString();
   return {
@@ -286,6 +301,17 @@ async function markRewardPaymentSubmitUnknown({ taskId = "", error = "" } = {}) 
   });
 }
 
+async function markRewardPaymentRetryWait({ taskId = "", error = "", retryAfter = "" } = {}) {
+  return updateRewardPaymentGuard({
+    taskId,
+    patch: {
+      status: "retry_wait",
+      last_error: safeText(error, 1000),
+      retry_after: safeText(retryAfter, 80),
+    },
+  });
+}
+
 function pftToDrops(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return "0";
@@ -362,6 +388,34 @@ function latestVerificationRequestPayload(payloads = []) {
     ) {
       return payload;
     }
+  }
+  return null;
+}
+
+function isInitialSubmissionPayload(payload = {}) {
+  if (payload?.schema !== "pf.task.submission.v1") return false;
+  const transition = safeText(payload.transition || payload.status_after || payload.status, 80);
+  if (transition === "verification_response_submitted") return false;
+  return safeText(payload.phase, 80) !== "verification_response";
+}
+
+function latestInitialSubmissionPayload(payloads = []) {
+  for (let index = payloads.length - 1; index >= 0; index -= 1) {
+    if (isInitialSubmissionPayload(payloads[index])) return payloads[index];
+  }
+  return null;
+}
+
+function isVerificationResponsePayload(payload = {}) {
+  if (payload?.schema === "pf.task.verification_response.v1") return true;
+  const transition = safeText(payload.transition || payload.status_after || payload.status, 80);
+  if (transition === "verification_response_submitted") return true;
+  return payload?.schema === "pf.task.submission.v1" && safeText(payload.phase, 80) === "verification_response";
+}
+
+function latestVerificationResponsePayload(payloads = []) {
+  for (let index = payloads.length - 1; index >= 0; index -= 1) {
+    if (isVerificationResponsePayload(payloads[index])) return payloads[index];
   }
   return null;
 }
@@ -1155,51 +1209,63 @@ async function publishAuthorityPointer({
   accountId = "",
   amountDrops = "1",
 }) {
-  const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
-    tasknodeKey,
-    accountId,
-    walletAddress: payload.subject_wallet || destination,
-  });
-  const encryptedPayload = await encryptTasknodePayload({
-    plaintext: stableJson(payload),
-    recipientPublicKeys,
-  });
-  const pin = await pinContextIpfsJson({
-    payload: encryptedPayload,
-    name: `tasknode-${payload.schema.replace(/\./g, "-")}-${sha256(`${payload.task_id}:${payload.event_id}`).slice(0, 16)}`,
-    keyvalues: {
-      app: "tasknodeofficial",
-      content_kind: contentKind,
-      schema: payload.schema,
-      task_id: payload.task_id,
-      subject_wallet: payload.subject_wallet,
-    },
-  });
-  const pointerMemo = buildPftPointerMemo({
-    cid: pin.cid,
-    kind,
-    schema: TASK_POINTER_SCHEMA,
-    flags: POINTER_FLAGS.encrypted,
-    taskId: payload.task_id,
-  });
-  const prepared = await preparePftPointerTransaction({
-    account: signerWallet.classicAddress,
-    destination,
-    pointerMemo,
-    amountDrops,
-  });
-  const signed = signerWallet.sign(prepared.txJson);
-  const submitted = await submitSignedPftTransaction({
-    signedTxBlob: signed.tx_blob,
-    expectedAccount: signerWallet.classicAddress,
-  });
-  return {
-    cid: pin.cid,
-    digest: `sha256:${pin.sha256}`,
-    txHash: submitted.txHash,
-    ledgerIndex: submitted.ledgerIndex,
-    engineResult: submitted.engineResult,
-  };
+  let stage = "payload_preparation";
+  try {
+    const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
+      tasknodeKey,
+      accountId,
+      walletAddress: payload.subject_wallet || destination,
+    });
+    const encryptedPayload = await encryptTasknodePayload({
+      plaintext: stableJson(payload),
+      recipientPublicKeys,
+    });
+    stage = "ipfs_pin";
+    const pin = await pinContextIpfsJson({
+      payload: encryptedPayload,
+      name: `tasknode-${payload.schema.replace(/\./g, "-")}-${sha256(`${payload.task_id}:${payload.event_id}`).slice(0, 16)}`,
+      keyvalues: {
+        app: "tasknodeofficial",
+        content_kind: contentKind,
+        schema: payload.schema,
+        task_id: payload.task_id,
+        subject_wallet: payload.subject_wallet,
+      },
+    });
+    const pointerMemo = buildPftPointerMemo({
+      cid: pin.cid,
+      kind,
+      schema: TASK_POINTER_SCHEMA,
+      flags: POINTER_FLAGS.encrypted,
+      taskId: payload.task_id,
+    });
+    stage = "transaction_prepare";
+    const prepared = await preparePftPointerTransaction({
+      account: signerWallet.classicAddress,
+      destination,
+      pointerMemo,
+      amountDrops,
+    });
+    const signed = signerWallet.sign(prepared.txJson);
+    stage = "transaction_submit";
+    const submitted = await submitSignedPftTransaction({
+      signedTxBlob: signed.tx_blob,
+      expectedAccount: signerWallet.classicAddress,
+    });
+    return {
+      cid: pin.cid,
+      digest: `sha256:${pin.sha256}`,
+      txHash: submitted.txHash,
+      ledgerIndex: submitted.ledgerIndex,
+      engineResult: submitted.engineResult,
+    };
+  } catch (error) {
+    if (error && typeof error === "object" && typeof error.submissionAttempted !== "boolean") {
+      error.submissionAttempted = stage === "transaction_submit";
+      error.submissionStage = stage;
+    }
+    throw error;
+  }
 }
 
 async function syncTaskWallets({
@@ -1334,6 +1400,10 @@ async function claimVerificationResponses({ limit = 1 } = {}) {
             FROM task_review_publications pub
             WHERE pub.task_id = task_projections.task_id
               AND pub.worker_name = 'reward_scoring'
+              AND NOT (
+                pub.status = 'retry_wait'
+                AND COALESCE(NULLIF(pub.metadata_json->>'retry_after', '')::timestamptz, '-infinity'::timestamptz) <= now()
+              )
           )
           AND NOT EXISTS (
             SELECT 1
@@ -1438,7 +1508,17 @@ async function acquireReviewPublicationLock({ taskId, workerName, metadata = {} 
         task_id, worker_name, status, metadata_json, reserved_at, updated_at
       )
       VALUES ($1, $2, 'reserved', $3::jsonb, now(), now())
-      ON CONFLICT (task_id, worker_name) DO NOTHING
+      ON CONFLICT (task_id, worker_name) DO UPDATE
+      SET status = 'reserved',
+          error = '',
+          metadata_json = task_review_publications.metadata_json || EXCLUDED.metadata_json,
+          reserved_at = now(),
+          updated_at = now()
+      WHERE task_review_publications.status = 'retry_wait'
+        AND COALESCE(
+              NULLIF(task_review_publications.metadata_json->>'retry_after', '')::timestamptz,
+              '-infinity'::timestamptz
+            ) <= now()
       RETURNING task_id, worker_name, status, source_tx_hash, source_cid, metadata_json
     `,
     [taskId, workerName, JSON.stringify(safeObject(metadata))]
@@ -1496,6 +1576,43 @@ async function markReviewPublicationError({ taskId, workerName, error = "", meta
     `,
     [taskId, workerName, safeText(error, 1000), JSON.stringify(safeObject(metadata))]
   );
+}
+
+async function markReviewPublicationRetryWait({ taskId, workerName, error = "", metadata = {} } = {}) {
+  return transaction(async (client) => {
+    const current = await client.query(
+      `
+        SELECT metadata_json
+        FROM task_review_publications
+        WHERE task_id = $1 AND worker_name = $2
+        FOR UPDATE
+      `,
+      [taskId, workerName]
+    );
+    if (!current.rows[0]) return null;
+    const currentMetadata = safeObject(current.rows[0].metadata_json);
+    const retryCount = Math.max(0, Number(currentMetadata.retry_count) || 0) + 1;
+    const retryAfter = new Date(Date.now() + taskReviewRetryDelayMs(retryCount - 1)).toISOString();
+    const nextMetadata = {
+      ...currentMetadata,
+      ...safeObject(metadata),
+      retry_count: retryCount,
+      retry_after: retryAfter,
+      submission_attempted: false,
+    };
+    await client.query(
+      `
+        UPDATE task_review_publications
+        SET status = 'retry_wait',
+            error = $3,
+            metadata_json = $4::jsonb,
+            updated_at = now()
+        WHERE task_id = $1 AND worker_name = $2
+      `,
+      [taskId, workerName, safeText(error, 1000), JSON.stringify(nextMetadata)]
+    );
+    return { retryCount, retryAfter };
+  });
 }
 
 async function releaseReviewPublicationLock({ taskId, workerName } = {}) {
@@ -2021,12 +2138,21 @@ async function processVerificationResponse(row, { logger = console } = {}) {
   if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
   const authorityWallet = walletFromSeed(authoritySeed(), "task_authority_seed_missing");
   const rewardWallet = walletFromSeed(rewardSeed(), "task_reward_seed_missing");
-  await syncTaskWallets({
-    accountId: row.account_id,
-    subjectWallet: row.subject_wallet,
-    authorityWallet: authorityWallet.classicAddress,
-    allocationWallet: rewardWallet.classicAddress,
-  });
+  const preflightPaymentGuard = rewardPaymentGuard(row.metadata_json);
+  if (rewardPaymentGuardCanSkipPreflightSync(preflightPaymentGuard)) {
+    logger.info?.("task_reward_pre_submit_retry_sync_skipped", {
+      taskId: row.task_id,
+      reason: "prior_attempt_definitely_not_submitted",
+    });
+  } else {
+    await syncTaskWallets({
+      accountId: row.account_id,
+      subjectWallet: row.subject_wallet,
+      authorityWallet: authorityWallet.classicAddress,
+      allocationWallet: rewardWallet.classicAddress,
+      taskId: row.task_id,
+    });
+  }
   const detail = await getTaskDetail({
     accountId: row.account_id,
     walletAddress: row.subject_wallet,
@@ -2034,9 +2160,9 @@ async function processVerificationResponse(row, { logger = console } = {}) {
   });
   const payloads = eventPayloads(detail);
   const taskOffer = latestPayloadBySchema(payloads, ["pf.task.offer.v1"]);
-  const initialSubmission = latestPayloadBySchema(payloads, ["pf.task.submission.v1"]);
+  const initialSubmission = latestInitialSubmissionPayload(payloads);
   const verificationRequest = latestVerificationRequestPayload(payloads);
-  const verificationResponse = latestPayloadBySchema(payloads, ["pf.task.verification_response.v1"]);
+  const verificationResponse = latestVerificationResponsePayload(payloads);
   if (!taskOffer || !initialSubmission || !verificationResponse) {
     throw new Error("task_scoring_missing_required_events");
   }
@@ -2303,20 +2429,39 @@ async function processVerificationResponse(row, { logger = console } = {}) {
     return { ok: true, taskId: row.task_id, reward };
   } catch (error) {
     if (publicationAttempted) {
-      await markReviewPublicationError({
-        taskId: row.task_id,
-        workerName,
-        error: error?.message || String(error),
-        metadata: {
-          publication_attempted: true,
-          reward_tx_hash: reward?.txHash || "",
-          reward_cid: reward?.cid || "",
-        },
-      }).catch(() => null);
-      await markRewardPaymentSubmitUnknown({
-        taskId: row.task_id,
-        error: error?.message || error,
-      }).catch(() => null);
+      if (submissionDefinitelyNotAttempted(error)) {
+        const retry = await markReviewPublicationRetryWait({
+          taskId: row.task_id,
+          workerName,
+          error: error?.message || String(error),
+          metadata: {
+            publication_attempted: true,
+            submission_stage: safeText(error?.submissionStage, 80),
+          },
+        }).catch(() => null);
+        await markRewardPaymentRetryWait({
+          taskId: row.task_id,
+          error: error?.message || error,
+          retryAfter: retry?.retryAfter || "",
+        }).catch(() => null);
+      } else {
+        await markReviewPublicationError({
+          taskId: row.task_id,
+          workerName,
+          error: error?.message || String(error),
+          metadata: {
+            publication_attempted: true,
+            submission_attempted: true,
+            submission_stage: safeText(error?.submissionStage, 80),
+            reward_tx_hash: reward?.txHash || "",
+            reward_cid: reward?.cid || "",
+          },
+        }).catch(() => null);
+        await markRewardPaymentSubmitUnknown({
+          taskId: row.task_id,
+          error: error?.message || error,
+        }).catch(() => null);
+      }
     } else if (publicationLock?.acquired) {
       await releaseReviewPublicationLock({ taskId: row.task_id, workerName }).catch(() => null);
     }
@@ -2329,8 +2474,11 @@ export const taskReviewWorkerInternals = {
   latestRewardPaymentEvent,
   normalizeReward,
   rewardPaymentGuardBlocksRetry,
+  rewardPaymentGuardCanSkipPreflightSync,
   rewardPaymentGuardPayload,
   rewardPaymentGuardStatus,
+  submissionDefinitelyNotAttempted,
+  taskReviewRetryDelayMs,
 };
 
 export async function processTaskReviewQueueOnce({ limit = 1, logger = console } = {}) {
@@ -2402,6 +2550,8 @@ export const taskReviewWorkerInternalsForTests = {
   workerClaimStaleSeconds,
   existingVerificationRequestEvent,
   existingRewardReviewEvent,
+  latestInitialSubmissionPayload,
+  latestVerificationResponsePayload,
   isVerificationRequestPayload,
   isRewardReviewPayload,
   taskReviewPublisherPermission,
@@ -2416,4 +2566,7 @@ export const taskReviewWorkerInternalsForTests = {
   parseDiscordMessageLink,
   resolveDiscordAnnouncementEvidenceStatus,
   normalizeRewardScore,
+  rewardPaymentGuardCanSkipPreflightSync,
+  submissionDefinitelyNotAttempted,
+  taskReviewRetryDelayMs,
 };

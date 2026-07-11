@@ -447,6 +447,12 @@ processing lease can be retried, but a recorded publication cannot be reclaimed
 for a second authority review or reward outcome. This prevents duplicate
 verification requests and duplicate reward outcomes during cache or reducer lag.
 
+The reward publication path records whether PFTL submission actually began.
+Failures before submission enter durable `retry_wait` with exponential backoff;
+failures after submission begins remain `submit_unknown` until chain/cache
+reconciliation proves the outcome. A transient websocket connection failure is
+therefore retryable and cannot permanently strand an `Awaiting review` task.
+
 This lock only protects workers that share the same database. Default local
 Docker therefore runs the API as web-only and does not publish task-review
 events to the live Fly task universe. Local end-to-end reward tests use

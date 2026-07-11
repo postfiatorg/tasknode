@@ -38,8 +38,10 @@ const trackedTables = [
   "pftl_sync_wallets",
   "profile_daily_airdrop_issuances",
   "profile_daily_airdrop_runs",
+  "profile_nft_daily_awards",
   "task_events",
   "task_projections",
+  "task_review_publications",
   "task_requests",
 ];
 

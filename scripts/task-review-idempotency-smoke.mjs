@@ -12,7 +12,12 @@ const {
   existingVerificationRequestEvent,
   isRewardReviewPayload,
   isVerificationRequestPayload,
+  latestInitialSubmissionPayload,
+  latestVerificationResponsePayload,
   normalizeRewardScore,
+  rewardPaymentGuardCanSkipPreflightSync,
+  submissionDefinitelyNotAttempted,
+  taskReviewRetryDelayMs,
   taskReviewPublisherPermission,
   timelineEventPublishedRef,
   workerClaimStaleSeconds,
@@ -62,6 +67,55 @@ assert.equal(isVerificationRequestPayload({ schema: "pf.task.reward_decision.v1"
 assert.equal(isRewardReviewPayload({ schema: "pf.task.reward_decision.v1" }), false);
 assert.equal(isRewardReviewPayload({ schema: "pf.reward.v1" }), true);
 assert.equal(isRewardReviewPayload({ schema: "pf.task.update.v1" }), false);
+const preSubmitConnectError = Object.assign(new Error("connect failed"), {
+  submissionAttempted: false,
+  submissionStage: "connect_before_submit",
+});
+const uncertainSubmitError = Object.assign(new Error("submit timed out"), {
+  submissionAttempted: true,
+  submissionStage: "submit_and_wait",
+});
+assert.equal(submissionDefinitelyNotAttempted(preSubmitConnectError), true);
+assert.equal(submissionDefinitelyNotAttempted(uncertainSubmitError), false);
+assert.equal(submissionDefinitelyNotAttempted(new Error("unclassified")), false);
+assert.equal(taskReviewRetryDelayMs(0), 60_000);
+assert.equal(taskReviewRetryDelayMs(1), 120_000);
+assert.equal(taskReviewRetryDelayMs(20), 900_000);
+assert.equal(rewardPaymentGuardCanSkipPreflightSync({ status: "retry_wait" }), true);
+assert.equal(rewardPaymentGuardCanSkipPreflightSync({ status: "submit_unknown" }), false);
+assert.equal(rewardPaymentGuardCanSkipPreflightSync({ status: "submitting" }), false);
+const mixedSubmissionPayloads = [
+  {
+    schema: "pf.task.submission.v1",
+    phase: "initial_submission",
+    transition: "submitted",
+    evidence: { value: "Initial evidence." },
+  },
+  {
+    schema: "pf.task.submission.v1",
+    phase: "initial_submission",
+    transition: "verification_response_submitted",
+    response_text: "Legacy malformed offchain verification response.",
+  },
+];
+assert.deepEqual(
+  latestInitialSubmissionPayload(mixedSubmissionPayloads),
+  {
+    schema: "pf.task.submission.v1",
+    phase: "initial_submission",
+    transition: "submitted",
+    evidence: { value: "Initial evidence." },
+  }
+);
+assert.deepEqual(
+  latestVerificationResponsePayload(mixedSubmissionPayloads),
+  {
+    schema: "pf.task.submission.v1",
+    phase: "initial_submission",
+    transition: "verification_response_submitted",
+    response_text: "Legacy malformed offchain verification response.",
+  }
+);
 
 const badgeCappedScore = normalizeRewardScore(
   {

@@ -8,6 +8,7 @@ import { wordlist } from "@scure/bip39/wordlists/english.js";
 import {
   callDeepSeekSummary,
   classifyEventAnonymity,
+  databaseRowsToDeathmarchEvents,
   deathmarchEnvWithSeedFile,
   decryptTasknodeUserMnemonicPayload,
   formatDeathmarchDiscordMessage,
@@ -59,8 +60,27 @@ assert.equal(levelOneText.includes("NVDA"), false);
 
 const levelTwo = sanitizeEventForAnonymity(sensitiveEvent, 2);
 const levelTwoText = JSON.stringify(levelTwo);
-assert.equal(levelTwo.public_instruction.includes("Redact client"), true);
+assert.equal(levelTwo.public_instruction.includes("Only explicit trading IP should be withheld."), true);
 assert.equal(levelTwoText.includes("client ACME Capital"), true);
+
+const clientWorkEvent = {
+  schema: "pf.task.offer.v1",
+  actionKind: "task_offer",
+  taskId: "task_client_work",
+  txHash: "CLIENTWORK1234567890",
+  cid: "QmClientWork",
+  memoIndex: 0,
+  occurredAt: "2026-06-01T00:00:00.000Z",
+  eventKey: "CLIENTWORK1234567890:0:QmClientWork:pf.task.offer.v1",
+  payload: {
+    schema: "pf.task.offer.v1",
+    task_id: "task_client_work",
+    title: "Prepare ACME Capital onboarding notes",
+    description: "Summarize the client onboarding plan and legal review status.",
+  },
+};
+const clientPacket = sanitizeEventForAnonymity(clientWorkEvent, 3, { level: 3, category: "client work" });
+assert.equal(JSON.stringify(clientPacket).includes("ACME Capital"), true);
 
 const requestEvent = {
   schema: "pf.task.request.v1",
@@ -358,10 +378,10 @@ const failedClassifierResult = await processDeathmarchEvents({
 assert.equal(failedClassifierResult.posted, 1);
 assert.equal(failedClassifierBodies.length, 2);
 const failedClassifierSummaryBody = JSON.stringify(failedClassifierBodies[1]);
-assert.equal(failedClassifierSummaryBody.includes("autocorrelation"), false);
-assert.equal(failedClassifierSummaryBody.includes("ACME"), false);
-assert.equal(failedClassifierSummaryBody.includes("confidential task (classification unavailable)"), true);
-assert.equal(failedClassifierPosts[0].content.includes("autocorrelation"), false);
+assert.equal(failedClassifierSummaryBody.includes("autocorrelation"), true);
+assert.equal(failedClassifierSummaryBody.includes("ACME"), true);
+assert.equal(failedClassifierSummaryBody.includes("classification unavailable"), true);
+assert.equal(failedClassifierPosts[0].content.includes("autocorrelation"), true);
 assert.equal(failedClassifierPosts[0].content.includes("confidential task"), true);
 
 const classifiedDirect = await classifyEventAnonymity({
@@ -462,6 +482,28 @@ const ignoredUnreadableRewardPointer = await processDeathmarchEvents({
 });
 assert.equal(ignoredUnreadableRewardPointer.checked, 1);
 assert.equal(ignoredUnreadableRewardPointer.marked, 0);
+
+const databaseEvents = databaseRowsToDeathmarchEvents([{
+  event_type: "pf.task.offer.v1",
+  task_id: "task_offchain_offer",
+  source_tx_hash: "offchain:evt_offchain_offer",
+  source_cid: "postgres:evt_offchain_offer",
+  occurred_at: "2026-06-30T22:06:57.757Z",
+  wallet_address: "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx",
+  payload_json: {
+    schema: "pf.task.offer.v1",
+    task_id: "task_offchain_offer",
+    title: "Draft direct-write Deathmarch feed support",
+  },
+  pointer_json: {
+    schema: "pf.task.offer.v1",
+    source: "direct_write",
+    offchain: true,
+  },
+}]);
+assert.equal(databaseEvents.length, 1);
+assert.equal(databaseEvents[0].txHash, "OFFCHAIN:EVT_OFFCHAIN_OFFER");
+assert.equal(databaseEvents[0].eventKey, "OFFCHAIN:EVT_OFFCHAIN_OFFER:0:postgres:evt_offchain_offer:pf.task.offer.v1");
 
 const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "deathmarch-smoke-"));
 const seedFile = path.join(tempDir, "deathmarchseed.txt");

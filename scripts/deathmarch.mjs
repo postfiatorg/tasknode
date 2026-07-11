@@ -6,10 +6,13 @@ import { fileURLToPath } from "node:url";
 import { mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import sodium from "libsodium-wrappers";
+import pg from "pg";
 
 import { fetchHistoricalAccountTransactions, extractPftPointerEvents } from "../server/context-history-rpc.js";
 import { fetchContextIpfsJson } from "../server/context-ipfs.js";
 import { fetchAndDecryptTasknodePayload } from "../server/task-payloads.js";
+
+const { Pool } = pg;
 
 const DEFAULT_WALLET = "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx";
 const DEFAULT_STATE_PATH = ".deathmarch-state.json";
@@ -18,7 +21,7 @@ const DEFAULT_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
 const DEFAULT_DEEPSEEK_TIMEOUT_MS = 20000;
 const DEFAULT_DISCORD_TIMEOUT_MS = 10000;
-const CLASSIFIER_FAILURE_CATEGORY = "confidential task (classification unavailable)";
+const CLASSIFIER_FAILURE_CATEGORY = "classification unavailable";
 const TASK_KIND_LABELS = new Set(["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"]);
 const TASK_SCHEMAS = new Set([
   "pf.task.request.v1",
@@ -28,6 +31,7 @@ const TASK_SCHEMAS = new Set([
   "pf.task.verification_response.v1",
   "pf.reward.v1",
 ]);
+let deathmarchDbPool = null;
 
 function safeText(value = "", max = 4000) {
   return String(value ?? "").trim().slice(0, max);
@@ -61,6 +65,30 @@ function safeErrorCode(error) {
   return safeText(error?.code || error?.message || error?.name || "deathmarch_error", 240)
     .replace(/[^a-zA-Z0-9_.:-]+/g, "_")
     .slice(0, 240);
+}
+
+function deathmarchDatabaseUrl(env = process.env) {
+  return safeText(env.DEATHMARCH_DATABASE_URL || env.DATABASE_URL || "", 4000);
+}
+
+function databaseEventsEnabled(env = process.env) {
+  return env.DEATHMARCH_DATABASE_EVENTS_ENABLED !== "false" && Boolean(deathmarchDatabaseUrl(env));
+}
+
+async function deathmarchDatabaseQuery(text, params = [], env = process.env) {
+  const connectionString = deathmarchDatabaseUrl(env);
+  if (!connectionString) throw new Error("deathmarch_database_url_missing");
+  if (!deathmarchDbPool) {
+    deathmarchDbPool = new Pool({
+      connectionString,
+      max: 1,
+      connectionTimeoutMillis: clampInteger(env.DEATHMARCH_DATABASE_CONNECTION_TIMEOUT_MS, 5000, 500, 60000),
+      idleTimeoutMillis: clampInteger(env.DEATHMARCH_DATABASE_IDLE_TIMEOUT_MS, 30000, 1000, 300000),
+      query_timeout: clampInteger(env.DEATHMARCH_DATABASE_QUERY_TIMEOUT_MS, 10000, 500, 120000),
+      application_name: "tasknodeofficial:deathmarch",
+    });
+  }
+  return deathmarchDbPool.query(text, params);
 }
 
 async function fetchWithTimeout(fetchImpl, url, options = {}, timeoutMs, timeoutCode) {
@@ -150,6 +178,8 @@ function usage() {
     `  DEATHMARCH_SEED_FILE=${DEFAULT_SEED_FILE}`,
     `  DEATHMARCH_DEEPSEEK_MODEL=${DEFAULT_DEEPSEEK_MODEL}`,
     `  DEATHMARCH_STATE_PATH=${DEFAULT_STATE_PATH}`,
+    "  DEATHMARCH_DATABASE_URL=postgres://...  # optional direct-write task_events feed",
+    "  DEATHMARCH_DATABASE_EVENTS_ENABLED=false  # disable database feed",
   ].join("\n");
 }
 
@@ -462,6 +492,64 @@ async function loadEventsFromWallet({
   });
 }
 
+export function databaseRowsToDeathmarchEvents(rows = []) {
+  return safeArray(rows).map(normalizeEvent).filter(isTaskEvent);
+}
+
+async function loadEventsFromDatabase({
+  wallet,
+  limit,
+  env = process.env,
+  queryImpl = deathmarchDatabaseQuery,
+} = {}) {
+  if (!databaseEventsEnabled(env)) return [];
+  const boundedLimit = clampInteger(limit, 100, 20, 400);
+  const walletAddress = safeText(wallet, 120);
+  const eventTypes = Array.from(TASK_SCHEMAS);
+  const result = await queryImpl(
+    `SELECT *
+       FROM (
+         SELECT event_type,
+                task_id,
+                source_tx_hash,
+                source_cid,
+                occurred_at,
+                wallet_address,
+                payload_json,
+                pointer_json
+           FROM task_events
+          WHERE event_type = ANY($1::text[])
+            AND (
+              $2::text = ''
+              OR wallet_address = $2
+              OR payload_json->>'wallet_address' = $2
+              OR payload_json->>'subject_wallet' = $2
+              OR payload_json->>'authority_wallet' = $2
+            )
+          ORDER BY occurred_at DESC, created_at DESC
+          LIMIT $3
+       ) recent
+      ORDER BY occurred_at ASC`,
+    [eventTypes, walletAddress, boundedLimit],
+    env
+  );
+  return databaseRowsToDeathmarchEvents(result.rows);
+}
+
+function mergeDeathmarchEvents(...groups) {
+  const byKey = new Map();
+  for (const event of groups.flat()) {
+    if (!event?.eventKey || byKey.has(event.eventKey)) continue;
+    byKey.set(event.eventKey, event);
+  }
+  return Array.from(byKey.values()).sort((left, right) => {
+    const leftTime = Date.parse(left.occurredAt || "") || 0;
+    const rightTime = Date.parse(right.occurredAt || "") || 0;
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    return safeText(left.eventKey, 500).localeCompare(safeText(right.eventKey, 500));
+  });
+}
+
 function eventTextBlob(event = {}) {
   const payload = safeObject(event.payload);
   return [
@@ -744,7 +832,7 @@ function safeClassificationCategory(value = "") {
 }
 
 function safeClassifierFallback() {
-  return { level: 1, category: CLASSIFIER_FAILURE_CATEGORY };
+  return { level: 3, category: CLASSIFIER_FAILURE_CATEGORY };
 }
 
 function parseClassifierJson(content = "") {
@@ -763,12 +851,12 @@ function deathmarchClassifierPrompt() {
     "You classify Task Node Death March event disclosure risk.",
     "Return strict JSON only: {\"level\":1|2|3,\"category\":\"short directional category\"}.",
     "",
-    "Level 1: trading IP, legal, team, client-confidential, or strategy-confidential work.",
-    "Use level 1 for market/trading strategy, instruments, tickers, alpha, portfolio, legal, HR/team decisions, client-confidential work, or anything whose details should not be disclosed.",
-    "Level 2: business interactions. Client, investor, customer, organization, contact, sales, fundraising, or partner interactions where broad action may be described but names/contact details must be redacted.",
-    "Level 3: public network, protocol, product, open documentation, open-source, and ordinary Task Node/Hive work where the event details are safe to disclose.",
+    "Level 1: explicit trading IP only.",
+    "Use level 1 only when the event discloses or requests market/trading strategy, alpha signals, trading models, portfolio positions, execution logic, backtests, instruments, tickers, or named trading rules.",
+    "Level 2: reserved compatibility level. Do not use it for ordinary legal, team, client, investor, customer, organization, sales, fundraising, partner, protocol, product, open documentation, or open-source work.",
+    "Level 3: everything that is not explicit trading IP, including business interactions, client work, team work, legal work, protocol work, product work, open documentation, and ordinary Task Node/Hive work.",
     "",
-    "When uncertain, choose the more restrictive lower level.",
+    "When uncertain, choose level 3 unless explicit trading IP is present.",
   ].join("\n");
 }
 
@@ -842,18 +930,18 @@ export function sanitizeEventForAnonymity(event = {}, anonymity = 3, classificat
     return {
       level,
       category,
-      disclosure_policy: "heavily redacted directional disclosure only",
+      disclosure_policy: "explicit trading IP redacted; directional disclosure only",
       directional_category: category,
       public_instruction:
-        "Do not disclose task title, sector, instrument, client, investor, team member, legal subject, evidence text, or named strategy.",
+        "Do not disclose task title, market sector, instrument, ticker, portfolio detail, backtest detail, evidence text, alpha signal, execution logic, or named trading strategy.",
     };
   }
   if (level === 2) {
     return {
       ...base,
       category,
-      disclosure_policy: "business interaction disclosure with names redacted",
-      public_instruction: "Redact client, investor, customer, organization names, and contact details.",
+      disclosure_policy: "compatibility level; disclose packet details unless explicit trading IP is present",
+      public_instruction: "Do not redact names or business details. Only explicit trading IP should be withheld.",
       event: publicPayloadFields(event),
     };
   }
@@ -1116,12 +1204,19 @@ async function runOnce(args) {
   });
   const events = args.file
     ? await loadEventsFromFile(args.file)
-    : await loadEventsFromWallet({
-      wallet: args.wallet,
-      limit: clampInteger(args.limit, 100, 20, 400),
-      maxPages: clampInteger(args.maxPages, 1, 1, 30),
-      env,
-    });
+    : mergeDeathmarchEvents(
+      await loadEventsFromWallet({
+        wallet: args.wallet,
+        limit: clampInteger(args.limit, 100, 20, 400),
+        maxPages: clampInteger(args.maxPages, 1, 1, 30),
+        env,
+      }),
+      await loadEventsFromDatabase({
+        wallet: args.wallet,
+        limit: clampInteger(args.limit, 100, 20, 400),
+        env,
+      })
+    );
   return processDeathmarchEvents({
     events,
     anonymity: args.anonymity,

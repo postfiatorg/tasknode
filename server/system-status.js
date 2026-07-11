@@ -1117,17 +1117,55 @@ async function networkTaskGenerationItem(tables, nowMs) {
 async function taskReviewItem(tables, nowMs) {
   const result = await optionalQuery(
     tables,
-    ["task_projections"],
-    `SELECT count(*) FILTER (WHERE status = 'submitted')::int AS submitted,
-            count(*) FILTER (WHERE status = 'verification_response_submitted')::int AS verification_response_submitted,
-            max(updated_at) FILTER (
-              WHERE status IN ('verification_requested','reward_decided','rewarded')
+    ["task_projections", "task_review_publications", "task_events"],
+    `WITH actionable AS (
+       SELECT p.*
+       FROM task_projections p
+       WHERE (
+           p.status = 'submitted'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM task_review_publications pub
+             WHERE pub.task_id = p.task_id
+               AND pub.worker_name = 'verification_request'
+           )
+           AND NOT EXISTS (
+             SELECT 1
+             FROM task_events existing
+             WHERE existing.task_id = p.task_id
+               AND existing.event_type = 'pf.task.update.v1'
+               AND (
+                 existing.payload_json->>'transition' = 'verification_requested'
+                 OR existing.payload_json->>'status_after' = 'verification_requested'
+                 OR existing.payload_json->>'status' = 'verification_requested'
+               )
+           )
+         )
+         OR (
+           p.status = 'verification_response_submitted'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM task_review_publications pub
+             WHERE pub.task_id = p.task_id
+               AND pub.worker_name = 'reward_scoring'
+           )
+           AND NOT EXISTS (
+             SELECT 1
+             FROM task_events existing
+             WHERE existing.task_id = p.task_id
+               AND existing.event_type IN ('pf.reward.v1', 'pf.task.reward_decision.v1')
+           )
+         )
+     )
+     SELECT count(*) FILTER (WHERE actionable.status = 'submitted')::int AS submitted,
+            count(*) FILTER (WHERE actionable.status = 'verification_response_submitted')::int AS verification_response_submitted,
+            max(p.updated_at) FILTER (
+              WHERE p.status IN ('verification_requested','reward_decided','rewarded')
             ) AS last_completed_at,
-            max(updated_at) AS last_seen_at,
-            min(updated_at) FILTER (
-              WHERE status IN ('submitted','verification_response_submitted')
-            ) AS oldest_pending_at
-       FROM task_projections`
+            max(p.updated_at) AS last_seen_at,
+            min(actionable.updated_at) AS oldest_pending_at
+       FROM task_projections p
+       LEFT JOIN actionable ON actionable.task_id = p.task_id`
   );
   const row = result.rows[0] || {};
   const counts = {
@@ -1849,6 +1887,87 @@ async function dailyAirdropItem(tables, nowMs) {
   });
 }
 
+async function dailyProfileNftItem(tables, nowMs) {
+  const enabled = boolEnv(process.env.TASKNODE_PROFILE_NFT_DAILY_WORKER_ENABLED);
+  const [latest, countsResult, latestSuccess] = await Promise.all([
+    optionalQuery(
+      tables,
+      ["profile_nft_daily_awards"],
+      `SELECT id, run_date, account_id, wallet_address, profile_nft_id, status, completed_at, updated_at, error
+         FROM profile_nft_daily_awards
+        ORDER BY COALESCE(completed_at, updated_at, created_at) DESC, id DESC
+        LIMIT 1`
+    ),
+    optionalQuery(
+      tables,
+      ["profile_nft_daily_awards"],
+      `SELECT status,
+              count(*)::int AS count,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed,
+              min(started_at) FILTER (WHERE status = 'running') AS oldest_running_at
+         FROM profile_nft_daily_awards
+        GROUP BY status`,
+      [recentFailureWindowMs]
+    ),
+    optionalQuery(
+      tables,
+      ["profile_nft_daily_awards"],
+      `SELECT max(completed_at) AS latest_success_at
+         FROM profile_nft_daily_awards
+        WHERE status = 'generated'`
+    ),
+  ]);
+  const row = latest.rows[0] || null;
+  const latestSuccessAt = iso(latestSuccess.rows[0]?.latest_success_at);
+  const counts = countsFromRows(countsResult.rows);
+  const recentFailed = countsResult.rows.reduce((sum, countRow) => sum + Number(countRow.recent_failed || 0), 0);
+  const oldestRunningAt = countsResult.rows
+    .map((countRow) => iso(countRow.oldest_running_at))
+    .filter(Boolean)
+    .sort()[0] || null;
+  let status = enabled
+    ? row
+      ? runFreshness({
+          enabled,
+          lastSuccessAt: latestSuccessAt,
+          warningAfterMs: 30 * hour,
+          staleAfterMs: 72 * hour,
+          missingStatus: "ok",
+          nowMs,
+        })
+      : { status: "ok", label: "Waiting for eligible accounts" }
+    : { status: "disabled", label: "Disabled" };
+  status = recentFailureStatus(status, recentFailed, "Recent failed awards");
+  if (oldestRunningAt && oldestAgeMs(oldestRunningAt, nowMs) > 2 * hour) {
+    status = mergeStatus(status, { status: "critical", label: "Running award stale" });
+  }
+  return item({
+    id: "daily_profile_nft_worker",
+    category: "memory",
+    title: "Daily Profile NFT Worker",
+    description: "Generates one claimable Profile NFT award per eligible account per UTC day.",
+    owner: "worker process",
+    trigger: "daily interval timer",
+    cadence: `${intEnv(process.env.TASKNODE_PROFILE_NFT_DAILY_INTERVAL_MS, hour, { min: minute })}ms`,
+    status: status.status,
+    statusLabel: status.label,
+    lastRunAt: row?.completed_at || row?.updated_at,
+    lastSuccessAt: latestSuccessAt,
+    staleAfterMs: 72 * hour,
+    counts,
+    lastError: row?.error || "",
+    details: [
+      row?.id && `latest=${row.id}`,
+      row?.run_date && `runDate=${row.run_date}`,
+      row?.account_id && `account=${row.account_id}`,
+      row?.wallet_address && `wallet=${row.wallet_address}`,
+      row?.profile_nft_id && `profileNft=${row.profile_nft_id}`,
+      recentFailed > 0 && `recentFailed=${recentFailed}`,
+      oldestRunningAt && `oldestRunning=${oldestRunningAt}`,
+    ],
+  });
+}
+
 async function categoryItems(tables, nowMs) {
   const hiveItems = [
     await boardManagerItem(tables, nowMs),
@@ -1939,6 +2058,7 @@ async function categoryItems(tables, nowMs) {
       nowMs,
     }),
     await dailyAirdropItem(tables, nowMs),
+    await dailyProfileNftItem(tables, nowMs),
   ];
 
   return [

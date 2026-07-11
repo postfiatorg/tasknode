@@ -79,6 +79,15 @@ model to score again or issuing a second reward outcome. Operators should repair
 from the recorded CID/transaction references, not from a Hive card or UI
 summary.
 
+Failures that are proven to occur before `submitAndWait` are different. Payload
+preparation, IPFS pinning, transaction preparation, and failure to connect the
+submission client cannot have submitted a transaction. Those failures move the
+publication and payment guard to `retry_wait`, retain the audit error and retry
+count, and retry with exponential backoff capped at 15 minutes. Only failures
+after submission begins remain fail-closed as `submit_unknown`. This distinction
+prevents transient PFTL connectivity from permanently parking tasks while still
+preventing duplicate payouts when submission outcome is genuinely uncertain.
+
 `TASKNODE_TASK_WORKER_CLAIM_STALE_SECONDS` controls stale claim recovery. The
 deployment value is 900 seconds and the code floor is 300 seconds because
 review/scoring can include provider calls, IPFS writes, PFTL publication, and

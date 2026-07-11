@@ -92,6 +92,13 @@ function sanitizePftlConnectError(error) {
   return "pftl_connect_failed";
 }
 
+function annotateSubmissionError(error, { attempted, stage } = {}) {
+  if (!error || typeof error !== "object") return error;
+  error.submissionAttempted = attempted === true;
+  error.submissionStage = String(stage || "").slice(0, 80);
+  return error;
+}
+
 function clientOptionsForEndpoint({ endpoint, index, env, timeoutMs }) {
   const options = { connectionTimeout: timeoutMs };
   const rejectUnauthorized = wssRejectUnauthorized(env, endpoint);
@@ -608,9 +615,20 @@ export async function submitSignedPftTransaction({
   }
 
   const timeoutMs = Math.max(3000, Number(env.PFTL_SUBMIT_TIMEOUT_MS || DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
-  const { client, endpoint } = await connectPftlClient({ env, timeoutMs });
+  let client;
+  let endpoint;
   try {
-    const result = await client.submitAndWait(blob);
+    ({ client, endpoint } = await connectPftlClient({ env, timeoutMs }));
+  } catch (error) {
+    throw annotateSubmissionError(error, { attempted: false, stage: "connect_before_submit" });
+  }
+  try {
+    let result;
+    try {
+      result = await client.submitAndWait(blob);
+    } catch (error) {
+      throw annotateSubmissionError(error, { attempted: true, stage: "submit_and_wait" });
+    }
     const engineResult = result?.result?.meta?.TransactionResult || result?.result?.engine_result || "";
     if (engineResult && engineResult !== "tesSUCCESS") {
       const error = new Error(describeEngineResult(engineResult));

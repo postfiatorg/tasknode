@@ -58,12 +58,12 @@ export function transitionForSubmissionMode(mode = "") {
 }
 
 function eventSchemaForTransition(transition = "", providedPayload = {}) {
-  const providedSchema = safeText(providedPayload.schema, 120);
-  if (providedSchema.startsWith("pf.")) return providedSchema;
   if (transition === "proposed") return "pf.task.offer.v1";
   if (transition === "submitted") return "pf.task.submission.v1";
   if (transition === "verification_response_submitted") return "pf.task.verification_response.v1";
   if (transition === "rewarded") return "pf.reward.v1";
+  const providedSchema = safeText(providedPayload.schema, 120);
+  if (providedSchema.startsWith("pf.")) return providedSchema;
   return "pf.task.update.v1";
 }
 
@@ -210,6 +210,8 @@ function normalizeDirectSubmissionPayload({ payload = {}, providedPayload = {}, 
     normalized.response_text = safeText(normalized.response_text || normalized.response, 120000);
     normalized.response = directEvidenceItem({ value: normalized.response, artifact_type: artifactType }, payload);
   }
+
+  normalized.phase = transition === "verification_response_submitted" ? "verification_response" : "initial_submission";
 
   const providedHasStructuredEvidence = Boolean(
     safeObject(normalized.evidence).artifact_type ||

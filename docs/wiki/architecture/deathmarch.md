@@ -1,6 +1,6 @@
 # Deathmarch Local Harness
 
-`deathmarch` is a local-only Discord posting harness for Task Node task events. It does not require Fly and does not start the Task Node app.
+`deathmarch` is a local-only Discord posting harness for Task Node task events. It does not start the Task Node app.
 
 The harness watches or ingests Task Node PFTL task actions, asks DeepSeek API Direct to summarize what the user just did, and posts the resulting plain-English update to the Discord Death March channel.
 
@@ -77,13 +77,25 @@ If the seed file is a 24-word Task Node wallet mnemonic, it is used as the local
 
 ## Data Feed
 
-Wallet mode does not read from Fly, SPRS, Postgres, or Discord. It reads the local PFTL feed for the configured wallet:
+Wallet mode reads the local PFTL feed for the configured wallet and, when
+`DATABASE_URL` is configured, also reads recent direct-write `task_events` rows
+for that wallet. This is required because the production task lifecycle can run
+with `TASKNODE_OFFCHAIN_TASK_LIFECYCLE=true`, where events have
+`source_tx_hash` values such as `offchain:evt_...` and do not appear in PFTL
+wallet history.
+
+Local pollers that read Fly `task_events` should use `DEATHMARCH_DATABASE_URL`
+pointed at a reachable local Fly MPG proxy, rather than inheriting a Fly-private
+`DATABASE_URL` hostname. Set `DEATHMARCH_DATABASE_EVENTS_ENABLED=false` to force
+wallet-only mode.
 
 1. `fetchHistoricalAccountTransactions` polls PFTL account history for `DEATHMARCH_WALLET`, defaulting to `rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx`.
 2. `extractPftPointerEvents` extracts `pf.ptr/v4` memo pointers from account transactions.
 3. The harness filters pointer kinds to `TASK`, `TASK_UPDATE`, `TASK_SUBMISSION`, and `REWARD`.
 4. Each pointer CID is fetched from IPFS through the existing context gateways.
 5. Encrypted payloads are decrypted locally with `TASKNODE_SERVICE_SEED`, or with the user mnemonic in `deathmarchseed.txt` when the payload is addressed to that wallet's Task Node encryption key.
+6. Direct-write database events are normalized from `task_events.payload_json`
+and `task_events.pointer_json`, then deduped with wallet events by event key.
 
 Default PFTL endpoints come from the repo's history RPC helper. Explicit
 `PFTL_HISTORY_*` values win. Otherwise the helper uses the app's current
@@ -197,10 +209,11 @@ The harness does not post legacy `pf.task.reward_decision.v1` events and does no
 
 ## DeepSeek Failure Behavior
 
-Classifier failure is safe-side. If the classifier API fails, returns non-JSON,
-or returns an invalid level, the event is treated as Level 1 with category
-`confidential task (classification unavailable)`. The raw event content is not
-sent to the summarizer in that case.
+Classifier failure is not treated as a blanket secrecy signal. If the
+classifier API fails, returns non-JSON, or returns an invalid level, the event is
+treated as Level 3 with category `classification unavailable`. Deathmarch should
+only redact explicit trading IP, not ordinary client, team, legal, protocol, or
+product work.
 
 There is no local summary fallback for a failed summary call. If the summarizer
 API fails, the harness reports the DeepSeek API error and does not post a
@@ -210,19 +223,19 @@ still formats the already-sanitized packet.
 
 ## Anonymity Levels
 
-Level 1: trading IP and legal/team/client-confidential work.
+Level 1: explicit trading IP only.
 
 - Heavily redacted.
 - Directional category only.
-- Does not pass task title, sector, instrument, ticker, client, investor, team member, evidence text, named strategy, or any other raw event content to the summarizer.
+- Does not pass task title, market sector, instrument, ticker, portfolio detail, backtest detail, evidence text, alpha signal, execution logic, named strategy, or any other raw event content to the summarizer.
 - Example acceptable output: `User requested a market or trading-related task. tx: ...`
 
-Level 2: business interactions.
+Level 2: compatibility level.
 
-- The summarizer is instructed to redact client, investor, customer, organization names, and contact details.
-- Can describe the broad action.
+- The summarizer is instructed not to redact names or business details.
+- Only explicit trading IP should be withheld.
 
-Level 3: network tasks and ordinary protocol work.
+Level 3: non-trading work.
 
 - Can disclose the task/action details present in the event packet.
 

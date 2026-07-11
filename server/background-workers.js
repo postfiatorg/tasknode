@@ -12,6 +12,7 @@ import { startPftlCacheReducerWorker } from "./pftl-cache-reducer.js";
 import { startPftlArchiveWorker, startPftlCacheWorker } from "./pftl-cache-sync.js";
 import { startPftlCacheWatcher } from "./pftl-cache-watcher.js";
 import { startDailyAirdropWorker } from "./profile-daily-airdrop-worker.js";
+import { startDailyProfileNftWorker } from "./profile-nft-daily-worker.js";
 import { startPublicProfileSnapshotWorker } from "./public-profile-snapshot-worker.js";
 import { startRecommendedConnectionsWorker } from "./recommended-connections-worker.js";
 import { startContextRewriteWorker } from "./context-rewrite-worker.js";
@@ -70,6 +71,7 @@ function startMemoryProfileWorkers() {
 
 function startAirdropWorkers() {
   startDailyAirdropWorker();
+  startDailyProfileNftWorker();
 }
 
 export function startBackgroundWorkers() {

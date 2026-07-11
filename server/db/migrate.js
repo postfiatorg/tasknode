@@ -101,6 +101,8 @@ const migrations = [
   "092_task_accounting_harvest_reports.sql",
   "093_hive_intelligence_report_type.sql",
   "094_board_manager_planning_report_type.sql",
+  "095_profile_nft_daily_awards.sql",
+  "096_task_review_pre_submit_retry.sql",
 ];
 
 let migrated = false;

@@ -138,9 +138,38 @@ await applyOffchainTaskTransitionWithClient(simpleVerificationClient, {
   },
 });
 const simpleVerificationPayload = JSON.parse(simpleVerificationClient.calls[0].params[8]);
+assert.equal(simpleVerificationClient.calls[0].params[4], "pf.task.verification_response.v1");
+assert.equal(simpleVerificationPayload.schema, "pf.task.verification_response.v1");
+assert.equal(simpleVerificationPayload.phase, "verification_response");
 assert.equal(simpleVerificationPayload.response.value, "Simple verification response text must survive review processing.");
 assert.equal(simpleVerificationPayload.response_text, "Simple verification response text must survive review processing.");
 assert.equal(simpleVerificationPayload.evidence_items[0].artifact_type, "text");
+
+const stalePreparedVerificationClient = mockClient();
+await applyOffchainTaskTransitionWithClient(stalePreparedVerificationClient, {
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  task: {
+    task_id: "task_stale_prepared_verification",
+    request_id: "req_stale_prepared_verification",
+    status: "verification_requested",
+  },
+  transition: "verification_response_submitted",
+  payload: {
+    offchainPayload: {
+      event_id: "evt_stale_prepared_verification",
+      task_id: "task_stale_prepared_verification",
+      schema: "pf.task.submission.v1",
+      phase: "initial_submission",
+      response: "A stale prepared payload must still record as a verification response.",
+    },
+  },
+});
+const stalePreparedVerificationPayload = JSON.parse(stalePreparedVerificationClient.calls[0].params[8]);
+assert.equal(stalePreparedVerificationClient.calls[0].params[4], "pf.task.verification_response.v1");
+assert.equal(stalePreparedVerificationPayload.schema, "pf.task.verification_response.v1");
+assert.equal(stalePreparedVerificationPayload.phase, "verification_response");
+assert.equal(stalePreparedVerificationPayload.response.value, "A stale prepared payload must still record as a verification response.");
 
 const terminalClient = mockClient({ terminalPreserved: true });
 const terminalResult = await applyOffchainTaskTransitionWithClient(terminalClient, {

@@ -6,7 +6,10 @@ import {
   privateProfileNftPromptPath,
   renderProfileNftPrompt,
 } from "../server/profile-nft-prompts.js";
-import { buildProfileNftUserData } from "../server/profile-nft-generation.js";
+import {
+  buildProfileNftUserData,
+  profileNftGenerationContextDocument,
+} from "../server/profile-nft-generation.js";
 
 const loaded = loadProfileNftPrompt();
 assert.equal(loaded.metadata.model, "gpt-image-2");
@@ -68,6 +71,34 @@ const rendered = renderProfileNftPrompt({
   contextDocument: "Task Node is the current product priority. The profile must show credible work identity.",
   bootString: "smoke_boot_string",
 });
+
+assert.equal(
+  profileNftGenerationContextDocument({
+    state: {
+      context: {
+        document: {
+          body: "Context body from app-state must feed the profile NFT prompt.",
+        },
+      },
+    },
+  }),
+  "Context body from app-state must feed the profile NFT prompt."
+);
+assert.equal(
+  profileNftGenerationContextDocument({
+    payload: {
+      contextDocument: "Explicit payload context wins.",
+    },
+    state: {
+      context: {
+        document: {
+          body: "This should not win.",
+        },
+      },
+    },
+  }),
+  "Explicit payload context wins."
+);
 
 assert.equal(rendered.unresolvedPlaceholders.length, 0);
 assert.ok(rendered.prompt.includes("Smoke User") || rendered.prompt.includes("account_smoke"));
