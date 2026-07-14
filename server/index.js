@@ -71,6 +71,10 @@ import { walletSendPrepare, walletSendSubmit } from "./wallet-send.js";
 import { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole } from "./process-role.js";
 import { startRealtimeNotificationListener, subscribeRealtimeEvents } from "./app-realtime.js";
 import { agentOriginForWalletSession } from "./agent-origin.js";
+import {
+  backgroundWorkerLivenessSelfCheck,
+  startBackgroundWorkerKeepalive,
+} from "./background-worker-liveness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -1225,7 +1229,15 @@ try {
   }
   throw error;
 }
-if (backgroundWorkersEnabled) startBackgroundWorkers();
+const backgroundStartup = backgroundWorkersEnabled ? startBackgroundWorkers() : null;
+if (backgroundWorkersEnabled && !httpEnabled) {
+  const liveness = startBackgroundWorkerKeepalive();
+  console.log("background_worker_liveness_self_check", JSON.stringify(backgroundWorkerLivenessSelfCheck({
+    role: processRole,
+    startup: backgroundStartup,
+    liveness,
+  })));
+}
 if (httpEnabled) {
   startRealtimeNotificationListener().catch((error) => {
     console.warn("realtime_notification_listener_start_failed", { error: error?.message || String(error) });

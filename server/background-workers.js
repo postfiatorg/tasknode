@@ -26,49 +26,53 @@ function productionMonolithBlocked(role = tasknodeProcessRole()) {
     process.env.TASKNODE_ALLOW_MONOLITH_WORKER !== "true";
 }
 
-function startPftlWorkers() {
-  startIpfsReplicationWorker();
-  startPftlCacheWorker();
-  startPftlArchiveWorker();
-  startPftlCacheWatcher();
-  startPftlCacheReducerWorker();
-  startPftlCacheRetentionWorker();
+function startPftlWorkers(startOne) {
+  startOne("ipfs_replication", startIpfsReplicationWorker);
+  startOne("pftl_cache", startPftlCacheWorker);
+  startOne("pftl_archive", startPftlArchiveWorker);
+  startOne("pftl_cache_watcher", startPftlCacheWatcher);
+  startOne("pftl_cache_reducer", startPftlCacheReducerWorker);
+  startOne("pftl_cache_retention", startPftlCacheRetentionWorker);
 }
 
-function startTaskgenWorkers() {
-  startNetworkTaskGenerationWorker();
-  startTaskGenerationWorker();
+function startTaskgenWorkers(startOne) {
+  startOne("network_task_generation", startNetworkTaskGenerationWorker);
+  startOne("task_generation", startTaskGenerationWorker);
 }
 
-function startTaskReviewWorkers() {
-  startTaskReviewWorker();
+function startTaskReviewWorkers(startOne) {
+  startOne("task_review", startTaskReviewWorker);
 }
 
-function startContextRewriteWorkers() {
-  startContextRewriteWorker();
+function startContextRewriteWorkers(startOne) {
+  startOne("context_rewrite", startContextRewriteWorker);
 }
 
-function startHiveWorkers() {
-  startHiveSecretaryWorker();
-  startHiveProjectWorker();
-  startHiveReportsWorker();
-  startHiveTaskManagerWorker();
-  startTaskAccountingHarvesterWorker();
+function startHiveWorkers(startOne) {
+  startOne("hive_secretary", startHiveSecretaryWorker);
+  startOne("hive_project", startHiveProjectWorker);
+  startOne("hive_reports", startHiveReportsWorker);
+  startOne("hive_task_manager", startHiveTaskManagerWorker);
+  startOne("task_accounting_harvester", startTaskAccountingHarvesterWorker);
 }
 
-function startMemoryProfileWorkers() {
-  startMemoryWorker();
-  startPublicProfileSnapshotWorker();
-  startRecommendedConnectionsWorker();
+function startMemoryProfileWorkers(startOne) {
+  startOne("chat_memory", startMemoryWorker);
+  startOne("public_profile_snapshot", startPublicProfileSnapshotWorker);
+  startOne("recommended_connections", startRecommendedConnectionsWorker);
 }
 
-function startAirdropWorkers() {
-  startDailyAirdropWorker();
-  startDailyProfileNftWorker();
+function startAirdropWorkers(startOne) {
+  startOne("daily_airdrop", startDailyAirdropWorker);
+  startOne("daily_profile_nft", startDailyProfileNftWorker);
 }
 
-export function startBackgroundWorkers() {
-  const role = tasknodeProcessRole();
+export function startBackgroundWorkers({ role = tasknodeProcessRole(), runWorker = (start) => start() } = {}) {
+  const startedWorkerGroups = [];
+  const startOne = (name, start) => {
+    runWorker(start);
+    startedWorkerGroups.push(name);
+  };
   if (productionMonolithBlocked(role)) {
     throw new Error(
       `monolith_background_worker_disabled_in_production:${role}. ` +
@@ -80,21 +84,22 @@ export function startBackgroundWorkers() {
       role,
       note: "Starting all background workers in one process. Production should use split worker roles.",
     });
-    startPftlWorkers();
-    startTaskgenWorkers();
-    startTaskReviewWorkers();
-    startContextRewriteWorkers();
-    startHiveWorkers();
-    startMemoryProfileWorkers();
-    startAirdropWorkers();
-    return;
+    startPftlWorkers(startOne);
+    startTaskgenWorkers(startOne);
+    startTaskReviewWorkers(startOne);
+    startContextRewriteWorkers(startOne);
+    startHiveWorkers(startOne);
+    startMemoryProfileWorkers(startOne);
+    startAirdropWorkers(startOne);
+    return { role, startedWorkerGroups };
   }
-  if (role === "worker:pftl") startPftlWorkers();
-  else if (role === "worker:taskgen") startTaskgenWorkers();
-  else if (role === "worker:task-review") startTaskReviewWorkers();
-  else if (role === "worker:context-rewrite") startContextRewriteWorkers();
-  else if (role === "worker:hive") startHiveWorkers();
-  else if (role === "worker:memory-profile") startMemoryProfileWorkers();
-  else if (role === "worker:airdrop") startAirdropWorkers();
+  if (role === "worker:pftl") startPftlWorkers(startOne);
+  else if (role === "worker:taskgen") startTaskgenWorkers(startOne);
+  else if (role === "worker:task-review") startTaskReviewWorkers(startOne);
+  else if (role === "worker:context-rewrite") startContextRewriteWorkers(startOne);
+  else if (role === "worker:hive") startHiveWorkers(startOne);
+  else if (role === "worker:memory-profile") startMemoryProfileWorkers(startOne);
+  else if (role === "worker:airdrop") startAirdropWorkers(startOne);
   else throw new Error(`unknown_background_worker_role:${role}`);
+  return { role, startedWorkerGroups };
 }

@@ -22,6 +22,7 @@
     "fly:worker-guard": "node scripts/fly-worker-guard.mjs",
     "fly:board-guard": "node scripts/fly-worker-guard.mjs --process board-secretary",
     "fly:background-guard": "node scripts/fly-background-guard.mjs",
+    "background-worker-liveness-smoke": "node scripts/background-worker-liveness-smoke.mjs",
     "fly:deploy": "npm run migration-registration-smoke && node scripts/fly-deploy-preflight.mjs && fly deploy -a tasknodeofficial-dev -c fly.toml --remote-only && npm run fly:background-guard",
     "fly:deploy:prod": "TASKNODE_CONFIRM_PRODUCTION_DEPLOY=yes npm run fly:deploy",
     "build": "vite build",
