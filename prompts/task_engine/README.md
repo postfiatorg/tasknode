@@ -4,8 +4,9 @@ This folder contains the small, versioned prompt assets used by the PFTL task
 engine. The prompts are source controlled so task behavior can be reviewed,
 replayed, and audited without relying on hidden database state.
 
-PFTasks is useful prior art, but its prompt set is intentionally not copied
-here. The Task Node Official prompt contract is split by task source:
+Earlier task engines may be useful as historical prior art, but their prompt
+sets are intentionally not copied here. The Task Node Official prompt contract
+is split by task source:
 
 - `taskgen_personal_v1.md` generates user-requested personal tasks.
 - `taskgen_network_v1.md` generates Board Manager-routed Network and Alpha Tasks.

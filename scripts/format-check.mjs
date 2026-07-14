@@ -20,7 +20,7 @@ const ignoredPathPrefixes = [
   "work_in_progress/",
 ];
 
-const ignoredFiles = new Set(["package-lock.json", "jsx_mock.jsx", "login.jsx"]);
+const ignoredFiles = new Set(["package-lock.json", "login.jsx"]);
 
 function trackedFiles() {
   return execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })

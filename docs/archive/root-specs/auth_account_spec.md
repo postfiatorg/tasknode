@@ -1,3 +1,5 @@
+> **Archive notice:** Historical reference only. **`docs/wiki/` is the authoritative documentation for Task Node Official.** Do not treat this file as current product or architecture authority.
+
 # Task Node Auth and Account Claim Spec
 
 Status: draft v0.1

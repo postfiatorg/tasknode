@@ -1,3 +1,4 @@
+// Archive notice: historical UI mock reference only. docs/wiki/ is the authoritative documentation for Task Node Official. This file is not a live product surface or current design authority.
 import React, { useState, useRef, useEffect } from "react";
 import {
   Area,

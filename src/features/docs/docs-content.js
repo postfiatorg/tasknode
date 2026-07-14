@@ -628,6 +628,9 @@ const pftlOperationsDoc = combinedDoc(
   ]
 );
 
+
+
+
 export const SYSTEM_STATUS_DOC_LINKS = {
   board_manager: { slug: "hive-operations", label: "Docs: Hive & Board Operations" },
   board_manager_secretary_packets: {
@@ -684,7 +687,7 @@ export const DOC_GROUPS = [
       {
         slug: "start",
         title: "Start Here",
-        summary: "The product and protocol mental model.",
+        summary: "docs/wiki is the authoritative product and architecture source; body includes Documentation Authority.",
         markdown: startHere,
       },
       {

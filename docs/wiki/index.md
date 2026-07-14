@@ -6,6 +6,15 @@ The most important distinction is canonical state versus convenience state. Post
 
 For a normal user-facing explanation, start with [User Guide](#docs/user-guide).
 
+
+
+## Documentation Authority
+
+1. **`docs/wiki/` is authoritative** for current product, operator, and architecture behavior.
+2. The in-app **Docs / Help** surface renders this wiki (via `src/features/docs/docs-content.js`).
+3. Files under **`docs/archive/root-specs/`** are historical reference only (early product briefs and UI mocks). They are not live authority.
+4. External/legacy task products and runtimes are migration archaeology, not this application's runtime.
+
 ## Product Map
 
 - Chat is where users work.

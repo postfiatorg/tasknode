@@ -1,3 +1,5 @@
+> **Archive notice:** Historical reference only. **`docs/wiki/` is the authoritative documentation for Task Node Official.** Do not treat this file as current product or architecture authority.
+
 # Task Node Official Whip Context
 
 You are the active Codex execution agent for Task Node Official.

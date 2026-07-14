@@ -16,15 +16,15 @@ minimal deployable dev app:
   deployments, background process groups, secrets, and operational checks.
 - `docs/wiki/architecture/current-system.md` maps the current app, API contracts, enabled
   surfaces, disabled surfaces, and near-term build path.
-- `product_spec.md` contains the initial product direction and migration notes.
-- `jsx_mock.jsx` contains a React mock for a ChatGPT-style Task Node interface with Tasks, Wallet, Context, Profile, Settings, and PFT balance surfaces.
+- Product and architecture truth lives in `docs/wiki/` (start at `docs/wiki/index.md`) and the in-app **Docs** surface.
+- Historical root briefs/mocks were moved to `docs/archive/root-specs/` (`product_spec.md`, `full_spec.md`, `auth_account_spec.md`, `whip_context.md`, `jsx_mock.jsx`) and are **not** primary inputs.
 - `login.jsx` contains a standalone login/sign-up modal mock with Telegram, Discord, X, GitHub, and email entry options.
 - `src/` and `server/` contain the first thin React shell and Node static server.
 - `fly.toml` deploys the dev app to `tasknodeofficial-dev` on Fly.io.
 - `/api/app-state` is the first server-owned product contract for session,
   chat modes, tasks, wallet, usage billing, and context sources. It is fixture
-  backed for now so real PFTasks/PFTL integrations can replace it behind a
-  stable boundary.
+  backed for development so live PFTL and app-store integrations can replace it
+  behind a stable boundary.
 - `/api/auth/providers` and `/api/readiness` expose non-secret integration
   readiness. Email code login and GitHub OAuth are implemented as the first
   account paths; Telegram, Discord, and X remain disabled until callbacks,
@@ -90,7 +90,7 @@ minimal deployable dev app:
   signed-in users can save edits without wallet unlock.
 - `/api/context/history` and `/api/context/history/indexed` expose the first
   PFDocs-compatible history bridge. Signed-in accounts can import indexed
-  PFTasks context/task rows as sanitized pointer metadata. `/api/context/history/ipfs/:cid`
+  context/task rows as sanitized pointer metadata. `/api/context/history/ipfs/:cid`
   fetches encrypted JSON only for imported pointer CIDs, and the browser
   decrypts the latest context payload with the locally unlocked seed vault.
   Shared URL imports remain disabled until their trust boundary is implemented.
@@ -109,9 +109,9 @@ Read these in order:
 2. `docs/wiki/architecture/current-system.md`
 3. `docs/wiki/architecture/bootup.md`
 4. `docs/wiki/architecture/deployment.md`
-5. `full_spec.md`
-6. `auth_account_spec.md`
-7. `whip_context.md`
+5. `docs/wiki/` (authoritative) and the in-app Docs surface
+6. `docs/archive/root-specs/` historical snapshots only (`full_spec.md`, `auth_account_spec.md`, `whip_context.md`, etc.)
+7. Live `src/`/`server/` implementation when docs and code must be compared
 
 ## Development
 
@@ -162,7 +162,7 @@ being bootstrapped.
 
 ## Product Direction
 
-Task Node GPT is a full redesign of the older PFTasks surface. The intended
+Task Node Official is the current product surface. The intended
 product is "ChatGPT except designed to make you more productive," with a clean
 chat-first interface and product-specific execution surfaces.
 
@@ -208,6 +208,6 @@ The current mock keeps Task Node close to ChatGPT while exposing:
   boundaries.
 - Define the scalable message storage architecture.
 - Decide whether the network board is refactored or eliminated.
-- Complete PFDocs/PFTasks context hydration and later Notion/document import
+- Complete context hydration and later Notion/document import
   research.
-- Convert `product_spec.md` into execution milestones and acceptance criteria.
+- Prefer `docs/wiki/` plans/surfaces for milestones and acceptance criteria; root product_spec is archival only.

@@ -31,12 +31,10 @@ encryption private keys.
 
 ## Configuration
 
-By default, the harness reads:
-
-```text
-/home/pfrpc/repos/pftasks/worker/.env
-/home/pfrpc/repos/pftasks/api/.env
-```
+By default, the harness may read local developer env dumps if present. Prefer
+Task Node Official / PFTL env configuration for this repository. Paths to older
+side repos (if still configured on a workstation) are historical convenience
+only and are not part of this product runtime.
 
 Required for a live run:
 
@@ -218,8 +216,9 @@ npm run tasknode-service-message-key -- --publish
 ## Verification Evidence Readers
 
 `tasknode_pftl.verification` is the canonical Python evidence adapter for
-PFTL verification payloads. It mirrors the PFTasks production verification
-surface without depending on the PFTasks database:
+PFTL verification payloads. It exercises Task Node Official verification
+contracts via this reference client without depending on any legacy side-app
+database:
 
 - screenshot evidence is read with OpenAI Responses vision image input;
 - PDF evidence is extracted with `pypdf` when installed, with a conservative
@@ -239,5 +238,5 @@ python3 -m tasknode_pftl.scenarios.verification_evidence_examples
 The example writes sample inputs, `pf.task.evidence.v1` packets, a
 `pf.task.verification_response.v1` packet, and a markdown receipt under
 `reference_clients/python/runs/`. Screenshot reads require `OPENAI_API_KEY`;
-the config loader reads the same PFTasks env files and workspace `env_dump.txt`
+the config loader may read optional local env files and workspace `env_dump.txt`
 used by the lifecycle harness.

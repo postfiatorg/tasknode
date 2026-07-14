@@ -1,3 +1,5 @@
+> **Archive notice:** Historical reference only. **`docs/wiki/` is the authoritative documentation for Task Node Official.** Do not treat this file as current product or architecture authority.
+
 USER STORY
 
 I want ChatGPT but integrated with my personal execution, and a well designed context document, fundable by crypto with private chat as an option

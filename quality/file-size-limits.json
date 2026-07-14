@@ -51,12 +51,6 @@
     }
   ],
   "exceptions": {
-    "jsx_mock.jsx": {
-      "maxLines": 5000,
-      "owner": "ux-mock-process",
-      "removeBy": "2026-06-15",
-      "reason": "Canonical root UX mock retained as product/design input; excluded from app-code modularity limits."
-    },
     "login.jsx": {
       "maxLines": 5000,
       "owner": "ux-mock-process",

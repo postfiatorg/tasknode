@@ -18,7 +18,8 @@ Mocks are a first-class design input, but they are not production code.
 - Put fresh user or designer drops in `mocks/incoming/`.
 - Promote stable reference mocks to `mocks/canonical/`.
 - Keep active product comparison mocks in `mocks/*.jsx` only when they are currently being implemented.
-- Existing root mocks such as `jsx_mock.jsx` and `login.jsx` may remain in place while they are active product input.
+- Root-era `jsx_mock.jsx` was moved to `docs/archive/root-specs/jsx_mock.jsx` as historical reference only. Prefer `mocks/` for active design drops.
+- `login.jsx` may remain at repo root only if still used as a comparison mock; it is not production code.
 - Move superseded mocks to `mocks/archive/`.
 - Do not import `mocks/` files from `src/` or `server/`.
 

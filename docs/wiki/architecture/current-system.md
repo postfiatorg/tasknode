@@ -27,11 +27,8 @@ Current product rules:
 ├── README.md                  # root project overview and quick commands
 ├── docs/wiki/                 # source Markdown for in-app Help
 │   └── architecture/          # source pages that Help groups by function
-├── full_spec.md               # current product/architecture source of truth
-├── product_spec.md            # raw initial product brief
-├── auth_account_spec.md       # auth/account/wallet-claim design
-├── whip_context.md            # automation execution context and guardrails
-├── jsx_mock.jsx               # canonical app-frame mock
+├── docs/wiki/                 # authoritative product/architecture docs
+├── docs/archive/root-specs/   # historical root briefs/mocks only
 ├── login.jsx                  # canonical login modal mock
 ├── mocks/                     # newer UX mocks from product iteration
 ├── prompts/                   # prompt research/input artifacts
@@ -320,6 +317,6 @@ P1 context:
 - Do not read or print real seed phrases.
 - Add regression tests for behavior classes, not just literal examples.
 - Treat user examples as evidence of a failed boundary, not as special cases.
-- Before expanding scope, update `full_spec.md` and this map.
+- Before expanding scope, update the relevant `docs/wiki/` page and this map.
 - If the whip causes scope drift or unsafe automation, pause it using
-  `whip_context.md`.
+  `docs/archive/root-specs/whip_context.md` (historical only).

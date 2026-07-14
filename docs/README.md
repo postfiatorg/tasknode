@@ -4,6 +4,11 @@ This folder is the engineering boot path for Task Node Official. It should let a
 new engineer understand what this repo is, how to run it, what is live, and what
 is intentionally not live yet.
 
+**Authority:** Start with `wiki/index.md`. Everything under `docs/wiki/` is the
+current product and architecture source of truth. Files under
+`docs/archive/root-specs/` are historical only.
+
+
 ## Read Order
 
 1. `wiki/index.md`
@@ -45,11 +50,11 @@ is intentionally not live yet.
    Identity-vector logging spec for user, wallet, task, reward, memory, Hive,
    Telegram, and usage investigations.
 
-11. `../full_spec.md`
-   Product/architecture source of truth and active burndown.
+11. `archive/root-specs/full_spec.md`
+   Historical product/architecture snapshot (not current authority).
 
-12. `../auth_account_spec.md`
-   Auth, provider linking, wallet claim, email login, and delink/relink design.
+12. `archive/root-specs/auth_account_spec.md`
+   Historical auth/account design notes (superseded by wiki auth docs).
 
 13. `wiki/architecture/auth-wallet-boundary.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
@@ -59,18 +64,22 @@ is intentionally not live yet.
    Repeatable QA workflow for email signup, identity reset, faucet eligibility,
    and top-up state preservation.
 
-15. `../whip_context.md`
-   Automation handoff instructions and whip shutdown guardrails.
+15. `archive/root-specs/whip_context.md`
+   Historical automation handoff notes (not current authority).
 
 ## Source Of Truth Rules
 
-- The latest user clarification plus `full_spec.md` supersede older PFTasks
-  documents.
-- `product_spec.md` is important historical/product input, but it is raw and
-  contains older assumptions. Prefer `full_spec.md` for current decisions.
-- PFTasks and PFDocs are implementation references, not product authority.
-- JSX mocks are canonical where they exist. When a mock is missing, match the
-  current ChatGPT interaction pattern and keep the UI quiet and practical.
+- **`docs/wiki/` is authoritative** for current product, operator, and architecture behavior.
+- The in-app Help/Docs surface is powered by `docs/wiki/` via `src/features/docs/docs-content.js`.
+- Root-era product briefs and mocks live under `docs/archive/root-specs/` (**historical reference only**).
+  - `docs/archive/root-specs/full_spec.md`
+  - `docs/archive/root-specs/product_spec.md`
+  - `docs/archive/root-specs/auth_account_spec.md`
+  - `docs/archive/root-specs/whip_context.md`
+  - `docs/archive/root-specs/jsx_mock.jsx`
+- Legacy PFTasks / PFDocs materials may still be useful as migration archaeology, but they are **not** live product authority and are not an executable runtime for this repository.
+- Current UI is defined by `src/` and the live app. Historical JSX mocks are reference only.
+
 
 ## Documentation Gaps To Fill
 
