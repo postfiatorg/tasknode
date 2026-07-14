@@ -109,6 +109,29 @@ function manifestHash(payload) {
   return createHash("sha256").update(stableJson(payload)).digest("hex");
 }
 
+export function projectDailyProfileNftBackfillSnapshot({ runDates = [], slots = [] } = {}) {
+  const normalizedRunDates = normalizeRunDates(runDates);
+  const projectedSlots = slots
+    .map((slot) => {
+      const normalized = normalizeBackfillSlot(slot, "", normalizedRunDates);
+      return {
+        accountId: normalized.accountId,
+        runDate: normalized.runDate,
+        existingStateProof: normalized.existingStateProof,
+        eligibilityReason: normalized.eligibilityReason,
+        personalCompletedCount: normalized.personalCompletedCount,
+        networkCompletedCount: normalized.networkCompletedCount,
+        lastCompletedAt: normalized.lastCompletedAt,
+      };
+    })
+    .sort((left, right) => left.accountId.localeCompare(right.accountId) || right.runDate.localeCompare(left.runDate));
+  return { runDates: normalizedRunDates, slots: projectedSlots };
+}
+
+export function dailyProfileNftBackfillSnapshotDigest({ runDates = [], slots = [] } = {}) {
+  return manifestHash(projectDailyProfileNftBackfillSnapshot({ runDates, slots }));
+}
+
 function backfillManifestPayload({ selectedAt, runDates, maxAccounts, slots, remainingSlots, snapshotDigest }) {
   return {
     schema: "tasknode.profile_nft_daily_backfill_manifest.v1",
@@ -210,7 +233,7 @@ export async function buildDailyProfileNftBackfillManifest({
   if (!slots.length) throw new Error("profile_nft_daily_backfill_no_missing_slots");
   const selectedKeys = new Set(slots.map(backfillSlotKey));
   const remainingSlots = normalizedCandidates.filter((candidate) => !selectedKeys.has(backfillSlotKey(candidate)));
-  const snapshotDigest = manifestHash({ runDates: normalizedRunDates, slots: normalizedCandidates });
+  const snapshotDigest = dailyProfileNftBackfillSnapshotDigest({ runDates: normalizedRunDates, slots: normalizedCandidates });
   const payload = backfillManifestPayload({ selectedAt, runDates: normalizedRunDates, maxAccounts: safeMaxAccounts, slots, remainingSlots, snapshotDigest });
   return { ...payload, manifestHash: manifestHash(payload) };
 }
@@ -241,7 +264,7 @@ export async function runDailyProfileNftBackfill({
     if (!lease.ok) return { ok: true, skipped: true, reason: "profile_nft_daily_backfill_lease_unavailable", manifestHash: hash };
     const currentSnapshot = await listBackfillSlots({ runDates: payload.runDates, personalTaskThreshold: Number(env.TASKNODE_PROFILE_NFT_DAILY_PERSONAL_TASK_THRESHOLD || 3), networkTaskThreshold: Number(env.TASKNODE_PROFILE_NFT_DAILY_NETWORK_TASK_THRESHOLD || 1) });
     const normalizedSnapshot = currentSnapshot.map((slot) => normalizeBackfillSlot(slot, payload.selectedAt, payload.runDates)).sort((left, right) => left.accountId.localeCompare(right.accountId) || right.runDate.localeCompare(left.runDate));
-    if (!sameSlotSet(allManifestSlots, normalizedSnapshot) || manifestHash({ runDates: payload.runDates, slots: normalizedSnapshot }) !== payload.snapshotDigest) {
+    if (!sameSlotSet(allManifestSlots, normalizedSnapshot) || dailyProfileNftBackfillSnapshotDigest({ runDates: payload.runDates, slots: normalizedSnapshot }) !== payload.snapshotDigest) {
       return { ok: false, reason: "profile_nft_daily_backfill_snapshot_drift", manifestHash: hash, results: [] };
     }
   const existingCount = await countAwardSlots({ slots: allManifestSlots });
@@ -261,6 +284,10 @@ export async function runDailyProfileNftBackfill({
     });
     if (!candidate || candidate.existingStateProof !== "no_award_row") {
       results.push({ accountId: slot.accountId, runDate: slot.runDate, status: "before_image_changed" });
+      continue;
+    }
+    if (safeText(candidate.walletAddress, 120) !== safeText(slot.walletAddress, 120)) {
+      results.push({ accountId: slot.accountId, runDate: slot.runDate, status: "before_image_changed", reason: "wallet_changed" });
       continue;
     }
     if (dryRun) {
@@ -305,7 +332,16 @@ export async function runDailyProfileNftBackfill({
     personalTaskThreshold: Number(env.TASKNODE_PROFILE_NFT_DAILY_PERSONAL_TASK_THRESHOLD || 3),
     networkTaskThreshold: Number(env.TASKNODE_PROFILE_NFT_DAILY_NETWORK_TASK_THRESHOLD || 1),
   });
-  if (currentRemaining.length !== payload.remainingSlots.length || !sameSlotSet(payload.remainingSlots, currentRemaining)) {
+  const normalizedCurrentRemaining = currentRemaining
+    .map((slot) => normalizeBackfillSlot(slot, payload.selectedAt, payload.runDates))
+    .sort((left, right) => left.accountId.localeCompare(right.accountId) || right.runDate.localeCompare(left.runDate));
+  const approvedRemainingKeys = new Set(payload.remainingSlots.map(backfillSlotKey));
+  const approvedCurrentRemaining = normalizedCurrentRemaining.filter((slot) => approvedRemainingKeys.has(backfillSlotKey(slot)));
+  const approvedRemainingChanged = approvedCurrentRemaining.length !== payload.remainingSlots.length ||
+    !sameSlotSet(payload.remainingSlots, approvedCurrentRemaining) ||
+    dailyProfileNftBackfillSnapshotDigest({ runDates: payload.runDates, slots: approvedCurrentRemaining }) !==
+      dailyProfileNftBackfillSnapshotDigest({ runDates: payload.runDates, slots: payload.remainingSlots });
+  if (approvedRemainingChanged) {
     return { ok: false, reason: "profile_nft_daily_backfill_remaining_slots_changed", manifestHash: hash, remainingCount: currentRemaining.length, expectedRemainingCount: payload.remainingSlots.length, results };
   }
   const skipped = await recordSkippedSlots({ slots: payload.remainingSlots, manifestHash: hash, mode: BACKFILL_MODE, reason: "Historical Daily Profile NFT slot intentionally skipped after approved one-slot backfill." });

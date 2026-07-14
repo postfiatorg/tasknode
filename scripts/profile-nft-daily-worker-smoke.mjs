@@ -5,6 +5,7 @@ process.env.TASKNODE_DATABASE_DISABLED = "true";
 const {
   buildDailyProfileNftGenerationPayload,
   buildDailyProfileNftBackfillManifest,
+  dailyProfileNftBackfillSnapshotDigest,
   runDailyProfileNftBackfill,
   runDailyProfileNftWorkerOnce,
 } = await import("../server/profile-nft-daily-worker.js");
@@ -265,6 +266,21 @@ assert.ok(manifest.slots.every((slot) => slot.runDate === "2026-06-30"), "each a
 assert.deepEqual(manifest.slots.map((slot) => slot.accountId), [...manifest.slots.map((slot) => slot.accountId)].sort(), "backfill order is stable by account");
 assert.match(manifest.manifestHash, /^[a-f0-9]{64}$/);
 
+const walletShiftedSlots = backfillSlots.map((slot) => ({ ...slot, walletAddress: `${slot.walletAddress}_shifted` }));
+const laterManifest = await buildDailyProfileNftBackfillManifest({
+  runDates: backfillRunDates,
+  maxAccounts: 41,
+  selectedAt: "2026-07-15T00:01:00.000Z",
+  dependencies: { listBackfillSlots: async () => walletShiftedSlots },
+});
+assert.equal(laterManifest.snapshotDigest, manifest.snapshotDigest, "wallet and selectedAt are excluded from the stable before-image digest");
+assert.notEqual(laterManifest.manifestHash, manifest.manifestHash, "the signed manifest hash still covers wallet and selectedAt");
+assert.equal(
+  dailyProfileNftBackfillSnapshotDigest({ runDates: backfillRunDates, slots: backfillSlots }),
+  manifest.snapshotDigest,
+  "manifest creation uses the canonical snapshot projection"
+);
+
 await assert.rejects(
   () => runDailyProfileNftBackfill({ manifest, manifestHash: "incorrect", enabled: true }),
   /profile_nft_daily_backfill_manifest_hash_mismatch/
@@ -302,6 +318,62 @@ const driftedBackfill = await runDailyProfileNftBackfill({
   },
 });
 assert.equal(driftedBackfill.results[0].status, "before_image_changed", "backfill never substitutes a drifted slot");
+
+for (const [field, value] of [
+  ["eligibilityReason", "personal_task_threshold"],
+  ["personalCompletedCount", 9],
+  ["networkCompletedCount", 4],
+  ["lastCompletedAt", "2026-07-14T12:00:00.000Z"],
+]) {
+  const changedSlots = backfillSlots.map((slot, index) => index === 0 ? { ...slot, [field]: value } : slot);
+  const changedSnapshot = await runDailyProfileNftBackfill({
+    manifest,
+    manifestHash: manifest.manifestHash,
+    enabled: true,
+    dependencies: {
+      claimLease: async () => ({ ok: true }),
+      releaseLease: async () => null,
+      listBackfillSlots: async () => changedSlots,
+    },
+  });
+  assert.equal(changedSnapshot.ok, false, `${field} drift must fail the global snapshot guard`);
+  assert.equal(changedSnapshot.reason, "profile_nft_daily_backfill_snapshot_drift", `${field} drift reason`);
+}
+
+let walletChangedProviderCalls = 0;
+let walletChangedSkippedCount = 0;
+let walletChangedManifestHash = "";
+const walletChangedAccount = manifest.slots[0].accountId;
+const walletChangedBackfill = await runDailyProfileNftBackfill({
+  manifest,
+  manifestHash: manifest.manifestHash,
+  enabled: true,
+  dryRun: false,
+  dependencies: {
+    claimLease: async () => ({ ok: true }),
+    releaseLease: async () => null,
+    countAwardSlots: async () => 0,
+    listBackfillSlots: async () => backfillSlots,
+    verifyBackfillSlot: async ({ accountId, runDate }) => {
+      const slot = backfillSlots.find((item) => item.accountId === accountId && item.runDate === runDate);
+      return accountId === walletChangedAccount ? { ...slot, walletAddress: `${slot.walletAddress}_changed` } : { ...slot };
+    },
+    createAward: async ({ accountId, runDate, walletAddress }) => ({ id: `wallet_changed_award_${accountId}_${runDate}`, accountId, runDate, walletAddress, status: "pending", attemptCount: 1 }),
+    markRunning: async ({ awardId }) => ({ id: awardId, status: "running", attemptCount: 1 }),
+    generateNft: async ({ award }) => { walletChangedProviderCalls += 1; return { id: `wallet_changed_nft_${award.id}` }; },
+    markGenerated: async ({ awardId, profileNftId }) => ({ id: awardId, profileNftId }),
+    markFailed: async () => null,
+    recordSkippedSlots: async ({ slots, manifestHash }) => { walletChangedSkippedCount = slots.length; walletChangedManifestHash = manifestHash; return { skippedCount: slots.length }; },
+  },
+});
+assert.equal(walletChangedBackfill.ok, true, "wallet drift is isolated to the affected selected account");
+assert.equal(walletChangedBackfill.results.length, 41);
+assert.equal(walletChangedBackfill.results[0].status, "before_image_changed");
+assert.equal(walletChangedBackfill.results[0].reason, "wallet_changed");
+assert.equal(walletChangedProviderCalls, 40, "wallet-changed slot makes zero provider calls while other selected slots proceed");
+assert.equal(walletChangedBackfill.skippedLedgerCount, 82);
+assert.equal(walletChangedSkippedCount, 82);
+assert.equal(walletChangedManifestHash, manifest.manifestHash);
 
 let generationCalls = 0;
 let backfillSnapshotReads = 0;
