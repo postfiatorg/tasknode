@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { formatDailyAirdropSummary } from "../server/profile-daily-airdrop-worker.js";
 import { formatBoardManagerAgentRun } from "../server/repositories/board-manager-run-summary.js";
+
+const workerSource = await readFile(new URL("../server/profile-daily-airdrop-worker.js", import.meta.url), "utf8");
+assert.match(workerSource, /catchupDays = Number\(process\.env\.TASKNODE_DAILY_AIRDROP_CATCHUP_DAYS \|\| 2\)/);
+const productionOverride = "0";
+assert.equal(Number(productionOverride || 2), 0, "the production string override must select current-day-only scheduling");
 
 const summary = formatDailyAirdropSummary({
   totalPft: 12500,
