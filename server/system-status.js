@@ -27,6 +27,436 @@ import { chatPricingStatus } from "./model-pricing-status.js";
 import { contextRewriteWatchdogSnapshot } from "./repositories/context-rewrite.js";
 
 const recentFailureWindowMs = 24 * hour;
+
+const PROFILE_NFT_DAILY_SCOPE = "profile_nft_daily";
+const PROFILE_NFT_MAX_ATTEMPTS_DEFAULT = 3;
+const PROFILE_NFT_STALE_RUNNING_DEFAULT_MS = 20 * minute;
+const PROFILE_NFT_TICK_WARNING_MS = 2 * hour;
+const PROFILE_NFT_TICK_STALE_MS = 6 * hour;
+const PROFILE_NFT_SUCCESS_WARNING_MS = 30 * hour;
+const PROFILE_NFT_SUCCESS_STALE_MS = 72 * hour;
+
+const PROFILE_NFT_AUTH_ERROR_MARKERS = [
+  "openai_not_configured",
+  "profile_nft_private_prompt_required",
+  "401",
+  "403",
+  "unauthorized",
+  "invalid api key",
+  "incorrect api key",
+  "authentication",
+  "permission",
+];
+
+function profileNftMaxAttempts(env = process.env) {
+  return intEnv(env.TASKNODE_PROFILE_NFT_DAILY_MAX_ATTEMPTS, PROFILE_NFT_MAX_ATTEMPTS_DEFAULT, { min: 1, max: 20 });
+}
+
+function profileNftStaleRunningMs(env = process.env) {
+  return intEnv(env.TASKNODE_PROFILE_NFT_DAILY_STALE_RUNNING_MS, PROFILE_NFT_STALE_RUNNING_DEFAULT_MS, {
+    min: minute,
+    max: 24 * hour,
+  });
+}
+
+function profileNftGenerationGated(env = process.env, heartbeat = null) {
+  if (heartbeat && (
+    heartbeat.generationGated === true
+    || heartbeat.generation_gated === true
+    || heartbeat.generation_enabled === false
+    || heartbeat.generationEnabled === false
+    || heartbeat.dryRun === true
+    || heartbeat.dry_run === true
+  )) {
+    return true;
+  }
+  const generationEnabled = String(env.TASKNODE_PROFILE_NFT_DAILY_GENERATION_ENABLED ?? "true").toLowerCase();
+  if (generationEnabled === "false" || generationEnabled === "0" || generationEnabled === "off") return true;
+  const dryRun = String(env.TASKNODE_PROFILE_NFT_DAILY_DRY_RUN || env.PROFILE_NFT_DAILY_DRY_RUN || "").toLowerCase();
+  return dryRun === "true" || dryRun === "1" || dryRun === "yes";
+}
+
+function normalizeProfileNftErrorCode(message = "", statusText = "") {
+  const blob = `${statusText} ${message}`.toLowerCase();
+  if (!blob.trim()) return "";
+  if (blob.includes("openai_not_configured") || blob.includes("openai not configured")) return "openai_not_configured";
+  if (blob.includes("profile_nft_private_prompt_required")) return "profile_nft_private_prompt_required";
+  if (/\b401\b/.test(blob) || blob.includes("unauthorized") || blob.includes("invalid api key") || blob.includes("incorrect api key")) {
+    return "provider_auth_failed";
+  }
+  if (/\b403\b/.test(blob) || blob.includes("permission")) return "provider_permission_denied";
+  if (blob.includes("timeout") || blob.includes("aborted")) return "generation_timeout";
+  if (blob.includes("pinata") || blob.includes("ipfs")) return "ipfs_pin_failed";
+  if (blob.includes("interrupted") || blob.includes("server restarted")) return "generation_interrupted";
+  if (blob.includes("lease")) return "worker_lease_unavailable";
+  if (blob.includes("database") || blob.includes("query")) return "database_query_failed";
+  return "profile_nft_generation_failed";
+}
+
+function isPermanentProfileNftError(code = "", message = "") {
+  const permanent = new Set([
+    "openai_not_configured",
+    "profile_nft_private_prompt_required",
+    "provider_auth_failed",
+    "provider_permission_denied",
+  ]);
+  if (permanent.has(code)) return true;
+  const blob = `${code} ${message}`.toLowerCase();
+  return PROFILE_NFT_AUTH_ERROR_MARKERS.some((marker) => blob.includes(marker));
+}
+
+function safeIso(value) {
+  return iso(value);
+}
+
+/**
+ * Pure evaluator used by /api/system/status and unit-like smoke coverage.
+ * Heartbeat/run fields are optional and Ghash-compatible:
+ * lastTickAt|tickAt|finishedAt|completedAt|startedAt|heartbeatAt,
+ * generationGated|generation_gated|dryRun|dry_run,
+ * lastErrorCode|errorCode|lastError|errorMessage|error,
+ * status.
+ */
+export function evaluateDailyProfileNftWorkerState({
+  nowMs = Date.now(),
+  env = process.env,
+  enabled = null,
+  generationGated = null,
+  awardsQueryOk = true,
+  awardsQueryError = "",
+  heartbeatQueryOk = true,
+  heartbeat = null,
+  lease = null,
+  counts = {},
+  latestAward = null,
+  latestSuccessAt = null,
+  oldestRunningAt = null,
+  permanentFailedCount = 0,
+  retryableFailedCount = 0,
+  pendingCount = 0,
+  runningCount = 0,
+  recentFailedCount = 0,
+  maxAttempts = null,
+  staleRunningMs = null,
+  intervalMs = null,
+} = {}) {
+  const workerEnabled = enabled == null
+    ? boolEnv(env.TASKNODE_PROFILE_NFT_DAILY_WORKER_ENABLED)
+    : Boolean(enabled);
+  const gated = generationGated == null
+    ? profileNftGenerationGated(env, heartbeat)
+    : Boolean(generationGated);
+  const attemptsCap = maxAttempts == null ? profileNftMaxAttempts(env) : Number(maxAttempts);
+  const staleRunMs = staleRunningMs == null ? profileNftStaleRunningMs(env) : Number(staleRunningMs);
+  const cadenceMs = intervalMs == null
+    ? intEnv(env.TASKNODE_PROFILE_NFT_DAILY_INTERVAL_MS, hour, { min: minute })
+    : Number(intervalMs);
+
+  const hb = heartbeat && typeof heartbeat === "object" ? heartbeat : null;
+  const lastTickStartedAt = safeIso(
+    hb?.last_tick_started_at || hb?.lastTickStartedAt || hb?.startedAt || hb?.started_at || null
+  );
+  const lastTickEndedAt = safeIso(
+    hb?.last_tick_finished_at || hb?.lastTickFinishedAt || hb?.finishedAt || hb?.completedAt || hb?.endedAt || null
+  );
+  const lastTickAt = safeIso(
+    lastTickEndedAt
+      || lastTickStartedAt
+      || hb?.lastTickAt
+      || hb?.tickAt
+      || hb?.updated_at
+      || hb?.updatedAt
+      || null
+  );
+  const leaseHeartbeatAt = safeIso(lease?.heartbeat_at || lease?.heartbeatAt || null);
+  const leaseExpiresAt = safeIso(lease?.expires_at || lease?.expiresAt || null);
+  const effectiveTickAt = lastTickAt || leaseHeartbeatAt;
+  const heartbeatSuccessAt = safeIso(hb?.last_success_at || hb?.lastSuccessAt || null);
+  const successAt = safeIso(latestSuccessAt || heartbeatSuccessAt);
+  const oldestRunning = safeIso(oldestRunningAt);
+  const latestErrorMessage = safeText(
+    hb?.last_error_message
+      || hb?.lastErrorMessage
+      || hb?.lastError
+      || hb?.errorMessage
+      || hb?.error
+      || latestAward?.error
+      || awardsQueryError
+      || "",
+    1000
+  );
+  const latestErrorCode = safeText(
+    hb?.last_error_code
+      || hb?.lastErrorCode
+      || hb?.errorCode
+      || normalizeProfileNftErrorCode(latestErrorMessage, latestAward?.status || ""),
+    120
+  );
+  const dbRetryable = Number(retryableFailedCount || 0);
+  const dbPermanent = Number(permanentFailedCount || 0);
+  // Award-table counts are authoritative for durable queues. Heartbeat tick
+  // metrics may lag or zero out after an empty fresh tick; use max so heartbeat
+  // zero cannot hide nonzero award backlog (and higher heartbeat remains visible).
+  const hbRetryableRaw = hb?.retryable_count ?? hb?.retryableCount;
+  const hbPermanentRaw = hb?.permanent_count ?? hb?.permanentCount;
+  const hbRetryable = hbRetryableRaw == null || hbRetryableRaw === "" ? 0 : Number(hbRetryableRaw);
+  const hbPermanent = hbPermanentRaw == null || hbPermanentRaw === "" ? 0 : Number(hbPermanentRaw);
+  const mergedRetryable = Math.max(dbRetryable, Number.isFinite(hbRetryable) ? hbRetryable : 0);
+  const mergedPermanent = Math.max(dbPermanent, Number.isFinite(hbPermanent) ? hbPermanent : 0);
+  const currentRetryAwardId = safeText(hb?.current_retry_award_id || hb?.currentRetryAwardId || "", 180);
+  const nextRetryAt = safeIso(hb?.next_retry_at || hb?.nextRetryAt || null);
+  const candidateCount = Number(hb?.candidate_count ?? hb?.candidateCount ?? 0);
+  const countsOut = {
+    ...counts,
+    pending: Number(pendingCount || counts.pending || 0),
+    running: Number(runningCount || counts.running || 0),
+    failed: Number(counts.failed || 0),
+    generated: Number(counts.generated || 0),
+    skipped: Number(counts.skipped || 0),
+    retryableFailed: mergedRetryable,
+    permanentFailed: mergedPermanent,
+    staleRunning: 0,
+    recentFailed: Number(recentFailedCount || 0),
+    candidateCount: Number(candidateCount || 0),
+    currentRetryAwardId,
+    nextRetryAt,
+  };
+  if (oldestRunning && oldestAgeMs(oldestRunning, nowMs) > staleRunMs) {
+    countsOut.staleRunning = Math.max(1, countsOut.running || 1);
+  }
+
+  const base = {
+    id: "daily_profile_nft_worker",
+    category: "memory",
+    title: "Daily Profile NFT Worker",
+    description: "Generates one claimable Profile NFT award per eligible account per UTC day.",
+    owner: "worker:airdrop process",
+    trigger: "interval timer with leased profile_nft_daily scope",
+    cadence: `${cadenceMs}ms`,
+    enabled: workerEnabled,
+    generationGated: gated,
+    generationEnabled: !gated,
+    lastTickAt: effectiveTickAt,
+    lastTickStartedAt,
+    lastTickEndedAt: lastTickEndedAt || effectiveTickAt,
+    lastSuccessAt: successAt,
+    lastErrorCode: latestErrorCode,
+    lastError: latestErrorMessage,
+    counts: countsOut,
+    maxAttempts: attemptsCap,
+    staleRunningMs: staleRunMs,
+    currentRetryAwardId,
+    nextRetryAt,
+    candidateCount,
+    workerState: "unknown",
+    reason: "",
+  };
+
+  if (!awardsQueryOk) {
+    return {
+      ...base,
+      status: "critical",
+      statusLabel: "Failing",
+      workerState: "failing",
+      reason: "database_query_failed",
+      lastErrorCode: latestErrorCode || "database_query_failed",
+      lastError: latestErrorMessage || "profile_nft_daily_awards query failed",
+      lastRunAt: effectiveTickAt,
+      staleAfterMs: PROFILE_NFT_TICK_STALE_MS,
+      details: [
+        "workerState=failing",
+        "reason=database_query_failed",
+        `enabled=${workerEnabled}`,
+        `generationGated=${gated}`,
+        !heartbeatQueryOk && "heartbeatQuery=failed_or_unavailable",
+      ],
+    };
+  }
+
+  if (!workerEnabled) {
+    return {
+      ...base,
+      status: "disabled",
+      statusLabel: "Disabled",
+      workerState: "disabled",
+      reason: "worker_disabled",
+      lastRunAt: effectiveTickAt || successAt,
+      staleAfterMs: null,
+      details: [
+        "workerState=disabled",
+        "reason=TASKNODE_PROFILE_NFT_DAILY_WORKER_ENABLED is not true",
+        `generationGated=${gated}`,
+      ],
+    };
+  }
+
+  const permanentFailure = isPermanentProfileNftError(latestErrorCode, latestErrorMessage)
+    || (mergedPermanent > 0 && isPermanentProfileNftError(latestErrorCode, latestErrorMessage));
+  if (permanentFailure) {
+    return {
+      ...base,
+      status: "critical",
+      statusLabel: "Failing",
+      workerState: "failing",
+      reason: latestErrorCode || "permanent_generation_failure",
+      lastRunAt: effectiveTickAt || safeIso(latestAward?.updated_at || latestAward?.completed_at),
+      staleAfterMs: PROFILE_NFT_SUCCESS_STALE_MS,
+      details: [
+        "workerState=failing",
+        `reason=${latestErrorCode || "permanent_generation_failure"}`,
+        `permanentFailed=${countsOut.permanentFailed}`,
+        `retryableFailed=${countsOut.retryableFailed}`,
+        `generationGated=${gated}`,
+        successAt && `lastSuccess=${successAt}`,
+      ],
+    };
+  }
+
+  if (countsOut.staleRunning > 0) {
+    return {
+      ...base,
+      status: "critical",
+      statusLabel: "Stale running",
+      workerState: "stale",
+      reason: "stale_running_award",
+      lastRunAt: oldestRunning || effectiveTickAt,
+      staleAfterMs: staleRunMs,
+      details: [
+        "workerState=stale",
+        "reason=stale_running_award",
+        oldestRunning && `oldestRunning=${oldestRunning}`,
+        `staleRunningMs=${staleRunMs}`,
+        `generationGated=${gated}`,
+        successAt && `lastSuccess=${successAt}`,
+      ],
+    };
+  }
+
+  const tickReference = effectiveTickAt;
+  const successAgeMs = successAt ? oldestAgeMs(successAt, nowMs) : null;
+  const tickAgeMs = tickReference ? oldestAgeMs(tickReference, nowMs) : null;
+
+  if (gated) {
+    // Gated generation is not healthy "producing NFTs"; operator-visible amber/ok with explicit state
+    const gatedHealthyTick = tickAgeMs != null && tickAgeMs <= PROFILE_NFT_TICK_WARNING_MS;
+    return {
+      ...base,
+      status: gatedHealthyTick ? "ok" : "warning",
+      statusLabel: gatedHealthyTick ? "Generation gated" : "Gated / no recent tick",
+      workerState: gatedHealthyTick ? "healthy" : "stale",
+      reason: "generation_gated",
+      lastRunAt: tickReference || successAt,
+      staleAfterMs: PROFILE_NFT_TICK_STALE_MS,
+      details: [
+        `workerState=${gatedHealthyTick ? "healthy" : "stale"}`,
+        "reason=generation_gated",
+        "generationEnabled=false",
+        tickReference && `lastTick=${tickReference}`,
+        successAt && `lastSuccess=${successAt}`,
+        "Note=worker may tick without producing images while gated",
+      ],
+    };
+  }
+
+  // No tick and no success information => stale once enabled long enough; "waiting" only if never had work but ticker not verified
+  if (!tickReference && !successAt) {
+    return {
+      ...base,
+      status: "warning",
+      statusLabel: "No tick data",
+      workerState: "stale",
+      reason: "no_tick_or_success",
+      lastRunAt: null,
+      staleAfterMs: PROFILE_NFT_TICK_STALE_MS,
+      details: [
+        "workerState=stale",
+        "reason=no_tick_or_success",
+        "enabled=true",
+        "Never treat enabled-only as healthy",
+      ],
+    };
+  }
+
+  if (tickAgeMs != null && tickAgeMs > PROFILE_NFT_TICK_STALE_MS) {
+    return {
+      ...base,
+      status: "critical",
+      statusLabel: "Stale",
+      workerState: "stale",
+      reason: "tick_stale",
+      lastRunAt: tickReference,
+      staleAfterMs: PROFILE_NFT_TICK_STALE_MS,
+      details: [
+        "workerState=stale",
+        "reason=tick_stale",
+        `lastTick=${tickReference}`,
+        successAt && `lastSuccess=${successAt}`,
+      ],
+    };
+  }
+
+  if ((tickAgeMs != null && tickAgeMs > PROFILE_NFT_TICK_WARNING_MS)
+    || (successAgeMs != null && successAgeMs > PROFILE_NFT_SUCCESS_WARNING_MS && successAgeMs <= PROFILE_NFT_SUCCESS_STALE_MS)) {
+    return {
+      ...base,
+      status: "warning",
+      statusLabel: successAgeMs != null && successAgeMs > PROFILE_NFT_SUCCESS_WARNING_MS ? "Success lagging" : "Tick lagging",
+      workerState: "stale",
+      reason: successAgeMs != null && successAgeMs > PROFILE_NFT_SUCCESS_WARNING_MS ? "success_lagging" : "tick_lagging",
+      lastRunAt: tickReference || successAt,
+      staleAfterMs: PROFILE_NFT_SUCCESS_STALE_MS,
+      details: [
+        "workerState=stale",
+        `reason=${successAgeMs != null && successAgeMs > PROFILE_NFT_SUCCESS_WARNING_MS ? "success_lagging" : "tick_lagging"}`,
+        tickReference && `lastTick=${tickReference}`,
+        successAt && `lastSuccess=${successAt}`,
+        countsOut.recentFailed > 0 && `recentFailed=${countsOut.recentFailed}`,
+      ],
+    };
+  }
+
+  if (successAgeMs != null && successAgeMs > PROFILE_NFT_SUCCESS_STALE_MS) {
+    return {
+      ...base,
+      status: "critical",
+      statusLabel: "Stale",
+      workerState: "stale",
+      reason: "success_stale",
+      lastRunAt: tickReference || successAt,
+      staleAfterMs: PROFILE_NFT_SUCCESS_STALE_MS,
+      details: [
+        "workerState=stale",
+        "reason=success_stale",
+        `lastSuccess=${successAt}`,
+        tickReference && `lastTick=${tickReference}`,
+      ],
+    };
+  }
+
+  // Fresh tick and no permanent auth failure => healthy, even with zero pending (may wait for eligible)
+  return {
+    ...base,
+    status: "ok",
+    statusLabel: "Healthy",
+    workerState: "healthy",
+    reason: tickReference ? "fresh_tick" : "recent_success",
+    lastRunAt: tickReference || successAt,
+    staleAfterMs: PROFILE_NFT_SUCCESS_STALE_MS,
+    details: [
+      "workerState=healthy",
+      `reason=${tickReference ? "fresh_tick" : "recent_success"}`,
+      `enabled=true`,
+      `generationGated=false`,
+      tickReference && `lastTick=${tickReference}`,
+      successAt && `lastSuccess=${successAt}`,
+      countsOut.pending > 0 && `pending=${countsOut.pending}`,
+      countsOut.retryableFailed > 0 && `retryableFailed=${countsOut.retryableFailed}`,
+      !successAt && "No generated award yet; worker timer observed",
+    ],
+  };
+}
+
+
 const DEFAULT_NETWORK_TASK_SPEND_DAYS = 30;
 const MAX_NETWORK_TASK_SPEND_DAYS = 90;
 const DEFAULT_BOARD_MANAGER_COST_DAYS = 30;
@@ -915,7 +1345,10 @@ async function taskGenerationItem(tables, nowMs) {
       `SELECT max(worker_completed_at) AS last_completed_at,
               max(updated_at) AS last_seen_at,
               min(updated_at) FILTER (WHERE status IN ('published','queued','generating')) AS oldest_pending_at,
-              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed,
+              count(*) FILTER (
+                WHERE status IN ('failed', 'failed_permanent', 'retry_wait')
+                  AND updated_at > now() - ($1 * interval '1 millisecond')
+              )::int AS recent_failed,
               max(last_error) FILTER (WHERE status = 'failed' AND last_error <> '') AS last_error
          FROM task_requests`,
       [recentFailureWindowMs]
@@ -1232,7 +1665,10 @@ async function pftlReducerItem(tables, nowMs) {
       `SELECT max(processed_at) FILTER (WHERE status = 'completed') AS last_completed_at,
               max(updated_at) AS last_seen_at,
               min(available_at) FILTER (WHERE status IN ('pending','processing')) AS oldest_pending_at,
-              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed,
+              count(*) FILTER (
+                WHERE status IN ('failed', 'failed_permanent', 'retry_wait')
+                  AND updated_at > now() - ($1 * interval '1 millisecond')
+              )::int AS recent_failed,
               max(last_error) FILTER (WHERE status = 'failed' AND last_error <> '') AS last_error
          FROM pftl_cache_reducer_events`,
       [recentFailureWindowMs]
@@ -1782,81 +2218,178 @@ async function dailyAirdropItem(tables, nowMs) {
 
 async function dailyProfileNftItem(tables, nowMs) {
   const enabled = boolEnv(process.env.TASKNODE_PROFILE_NFT_DAILY_WORKER_ENABLED);
-  const [latest, countsResult, latestSuccess] = await Promise.all([
-    optionalQuery(
-      tables,
-      ["profile_nft_daily_awards"],
-      `SELECT id, run_date, account_id, wallet_address, profile_nft_id, status, completed_at, updated_at, error
-         FROM profile_nft_daily_awards
-        ORDER BY COALESCE(completed_at, updated_at, created_at) DESC, id DESC
-        LIMIT 1`
-    ),
-    optionalQuery(
-      tables,
-      ["profile_nft_daily_awards"],
-      `SELECT status,
-              count(*)::int AS count,
-              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed,
-              min(started_at) FILTER (WHERE status = 'running') AS oldest_running_at
-         FROM profile_nft_daily_awards
-        GROUP BY status`,
-      [recentFailureWindowMs]
-    ),
-    optionalQuery(
-      tables,
-      ["profile_nft_daily_awards"],
-      `SELECT max(completed_at) AS latest_success_at
-         FROM profile_nft_daily_awards
-        WHERE status = 'generated'`
-    ),
-  ]);
+  const maxAttempts = profileNftMaxAttempts(process.env);
+  const staleRunningMs = profileNftStaleRunningMs(process.env);
+  const generationGated = profileNftGenerationGated(process.env);
+
+  let awardsQueryOk = true;
+  let awardsQueryError = "";
+  let heartbeatQueryOk = true;
+  let latest = { rows: [] };
+  let countsResult = { rows: [] };
+  let latestSuccess = { rows: [] };
+  let attemptCounts = { rows: [] };
+  let heartbeat = null;
+  let lease = null;
+
+  const awardsTableReady = databaseEnabled() && tables.get("profile_nft_daily_awards") === true;
+  if (!databaseEnabled()) {
+    awardsQueryOk = true; // treated as no-data disabled path below if !enabled
+  } else if (!awardsTableReady) {
+    awardsQueryOk = false;
+    awardsQueryError = "profile_nft_daily_awards table missing";
+  } else {
+    try {
+      latest = await query(
+        `SELECT id, run_date, account_id, wallet_address, profile_nft_id, status, completed_at, updated_at, created_at, error, attempt_count, started_at
+           FROM profile_nft_daily_awards
+          ORDER BY COALESCE(completed_at, updated_at, created_at) DESC, id DESC
+          LIMIT 1`
+      );
+      countsResult = await query(
+        `SELECT status,
+                count(*)::int AS count,
+                count(*) FILTER (
+                WHERE status IN ('failed', 'failed_permanent', 'retry_wait')
+                  AND updated_at > now() - ($1 * interval '1 millisecond')
+              )::int AS recent_failed,
+                min(started_at) FILTER (WHERE status = 'running') AS oldest_running_at
+           FROM profile_nft_daily_awards
+          GROUP BY status`,
+        [recentFailureWindowMs]
+      );
+      latestSuccess = await query(
+        `SELECT max(completed_at) AS latest_success_at
+           FROM profile_nft_daily_awards
+          WHERE status = 'generated'`
+      );
+      attemptCounts = await query(
+        `SELECT
+            count(*) FILTER (WHERE status = 'pending')::int AS pending_count,
+            count(*) FILTER (WHERE status = 'running')::int AS running_count,
+            count(*) FILTER (
+              WHERE status = 'retry_wait'
+                 OR (status = 'failed' AND attempt_count < $1)
+            )::int AS retryable_failed_count,
+            count(*) FILTER (
+              WHERE status = 'failed_permanent'
+                 OR (status = 'failed' AND attempt_count >= $1)
+            )::int AS permanent_failed_count
+           FROM profile_nft_daily_awards`,
+        [maxAttempts]
+      );
+    } catch (error) {
+      awardsQueryOk = false;
+      awardsQueryError = error?.message || String(error || "profile_nft_daily_awards query failed");
+    }
+  }
+
+  // Optional exact Ghash heartbeat table only (worker_key PK). Missing table is not a failure.
+  try {
+    if (databaseEnabled() && tables.get("profile_nft_daily_worker_heartbeats") === true) {
+      const hb = await query(
+        `SELECT
+            worker_key,
+            last_tick_started_at,
+            last_tick_finished_at,
+            last_success_at,
+            last_error_code,
+            last_error_message,
+            retryable_count,
+            permanent_count,
+            current_retry_award_id,
+            next_retry_at,
+            candidate_count,
+            generation_gated
+          FROM profile_nft_daily_worker_heartbeats
+         WHERE worker_key = $1
+         LIMIT 1`,
+        [PROFILE_NFT_DAILY_SCOPE]
+      );
+      heartbeat = hb.rows[0] || null;
+    }
+    if (databaseEnabled() && tables.get("board_manager_leases") === true) {
+      const leaseResult = await query(
+        `SELECT status, manager_id, owner_instance, heartbeat_at, expires_at, updated_at
+           FROM board_manager_leases
+          WHERE scope = $1
+          ORDER BY updated_at DESC
+          LIMIT 1`,
+        [PROFILE_NFT_DAILY_SCOPE]
+      );
+      lease = leaseResult.rows[0] || null;
+    }
+  } catch (error) {
+    heartbeatQueryOk = false;
+  }
+
   const row = latest.rows[0] || null;
-  const latestSuccessAt = iso(latestSuccess.rows[0]?.latest_success_at);
   const counts = countsFromRows(countsResult.rows);
   const recentFailed = countsResult.rows.reduce((sum, countRow) => sum + Number(countRow.recent_failed || 0), 0);
   const oldestRunningAt = countsResult.rows
     .map((countRow) => iso(countRow.oldest_running_at))
     .filter(Boolean)
     .sort()[0] || null;
-  let status = enabled
-    ? row
-      ? runFreshness({
-          enabled,
-          lastSuccessAt: latestSuccessAt,
-          warningAfterMs: 30 * hour,
-          staleAfterMs: 72 * hour,
-          missingStatus: "ok",
-          nowMs,
-        })
-      : { status: "ok", label: "Waiting for eligible accounts" }
-    : { status: "disabled", label: "Disabled" };
-  status = recentFailureStatus(status, recentFailed, "Recent failed awards");
-  if (oldestRunningAt && oldestAgeMs(oldestRunningAt, nowMs) > 2 * hour) {
-    status = mergeStatus(status, { status: "critical", label: "Running award stale" });
-  }
-  return item({
-    id: "daily_profile_nft_worker",
-    category: "memory",
-    title: "Daily Profile NFT Worker",
-    description: "Generates one claimable Profile NFT award per eligible account per UTC day.",
-    owner: "worker process",
-    trigger: "daily interval timer",
-    cadence: `${intEnv(process.env.TASKNODE_PROFILE_NFT_DAILY_INTERVAL_MS, hour, { min: minute })}ms`,
-    status: status.status,
-    statusLabel: status.label,
-    lastRunAt: row?.completed_at || row?.updated_at,
-    lastSuccessAt: latestSuccessAt,
-    staleAfterMs: 72 * hour,
+  const attemptRow = attemptCounts.rows[0] || {};
+  const evaluated = evaluateDailyProfileNftWorkerState({
+    nowMs,
+    env: process.env,
+    enabled,
+    generationGated: profileNftGenerationGated(process.env, heartbeat),
+    awardsQueryOk,
+    awardsQueryError,
+    heartbeatQueryOk,
+    heartbeat,
+    lease,
     counts,
-    lastError: row?.error || "",
+    latestAward: row,
+    latestSuccessAt: latestSuccess.rows[0]?.latest_success_at || null,
+    oldestRunningAt,
+    permanentFailedCount: Number(attemptRow.permanent_failed_count || 0),
+    retryableFailedCount: Number(attemptRow.retryable_failed_count || 0),
+    pendingCount: Number(attemptRow.pending_count || counts.pending || 0),
+    runningCount: Number(attemptRow.running_count || counts.running || 0),
+    recentFailedCount: recentFailed,
+    maxAttempts,
+    staleRunningMs,
+  });
+
+  return item({
+    id: evaluated.id,
+    category: evaluated.category,
+    title: evaluated.title,
+    description: evaluated.description,
+    owner: evaluated.owner,
+    trigger: evaluated.trigger,
+    cadence: evaluated.cadence,
+    status: evaluated.status,
+    statusLabel: evaluated.statusLabel,
+    state: evaluated.workerState,
+    reason: evaluated.reason,
+    lastRunAt: evaluated.lastRunAt,
+    lastSuccessAt: evaluated.lastSuccessAt,
+    nextRunAt: evaluated.nextRetryAt || null,
+    staleAfterMs: evaluated.staleAfterMs,
+    counts: evaluated.counts,
+    lastError: evaluated.lastError,
     details: [
-      row?.id && `latest=${row.id}`,
-      row?.run_date && `runDate=${row.run_date}`,
-      row?.account_id && `account=${row.account_id}`,
-      row?.wallet_address && `wallet=${row.wallet_address}`,
-      row?.profile_nft_id && `profileNft=${row.profile_nft_id}`,
-      recentFailed > 0 && `recentFailed=${recentFailed}`,
-      oldestRunningAt && `oldestRunning=${oldestRunningAt}`,
+      ...(evaluated.details || []),
+      evaluated.lastTickAt && `lastTick=${evaluated.lastTickAt}`,
+      evaluated.lastTickStartedAt && `lastTickStarted=${evaluated.lastTickStartedAt}`,
+      evaluated.lastTickEndedAt && `lastTickEnded=${evaluated.lastTickEndedAt}`,
+      evaluated.lastErrorCode && `errorCode=${evaluated.lastErrorCode}`,
+      `enabled=${evaluated.enabled}`,
+      `generationGated=${evaluated.generationGated}`,
+      `retryableFailed=${evaluated.counts.retryableFailed || 0}`,
+      `permanentFailed=${evaluated.counts.permanentFailed || 0}`,
+      `staleRunning=${evaluated.counts.staleRunning || 0}`,
+      evaluated.candidateCount != null && `candidateCount=${evaluated.candidateCount}`,
+      evaluated.currentRetryAwardId && `currentRetryAwardId=${evaluated.currentRetryAwardId}`,
+      evaluated.nextRetryAt && `nextRetryAt=${evaluated.nextRetryAt}`,
+      lease?.status && `lease=${lease.status}`,
+      row?.id && `latestAward=${row.id} ${row.status || ""}`.trim(),
+      `state=${evaluated.workerState}`,
+      evaluated.reason && `reason=${evaluated.reason}`,
     ],
   });
 }

@@ -39,6 +39,7 @@ const trackedTables = [
   "profile_daily_airdrop_issuances",
   "profile_daily_airdrop_runs",
   "profile_nft_daily_awards",
+  "profile_nft_daily_worker_heartbeats",
   "task_events",
   "task_projections",
   "task_review_publications",
@@ -161,6 +162,8 @@ export function item({
   cadence,
   status = "unknown",
   statusLabel = "Unknown",
+  state = null,
+  reason = null,
   lastRunAt = null,
   lastSuccessAt = null,
   nextRunAt = null,
@@ -169,7 +172,7 @@ export function item({
   details = [],
   lastError = "",
 } = {}) {
-  return {
+  const payload = {
     id,
     category,
     title,
@@ -187,6 +190,9 @@ export function item({
     details: details.filter(Boolean).map((detail) => redactStatusText(detail, 500)),
     lastError: redactStatusText(lastError, 1000),
   };
+  if (state != null && state !== "") payload.state = String(state);
+  if (reason != null && reason !== "") payload.reason = String(reason);
+  return payload;
 }
 
 export async function tableMap() {

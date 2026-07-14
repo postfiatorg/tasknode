@@ -138,4 +138,280 @@ const ignored = await handleSystemStatusRoute({
 });
 assert.equal(ignored, false);
 
+
+const {
+  evaluateDailyProfileNftWorkerState,
+} = await import("../server/system-status.js");
+
+const nowMs = Date.parse("2026-07-14T20:00:00.000Z");
+const disabled = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: false,
+  awardsQueryOk: true,
+  counts: {},
+});
+assert.equal(disabled.workerState, "disabled");
+assert.equal(disabled.status, "disabled");
+assert.equal(disabled.reason, "worker_disabled");
+
+const failingAuth = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+  latestAward: { status: "failed", error: "401 Incorrect API key provided: sk-test" },
+  permanentFailedCount: 2,
+  recentFailedCount: 2,
+  counts: { failed: 2 },
+});
+assert.equal(failingAuth.workerState, "failing");
+assert.equal(failingAuth.status, "critical");
+assert.equal(failingAuth.lastErrorCode, "provider_auth_failed");
+assert.match(failingAuth.reason, /provider_auth_failed|openai|auth/);
+
+const queryFail = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: false,
+  awardsQueryError: "relation profile_nft_daily_awards does not exist",
+});
+assert.equal(queryFail.workerState, "failing");
+assert.equal(queryFail.status, "critical");
+assert.equal(queryFail.reason, "database_query_failed");
+assert.notEqual(queryFail.status, "ok");
+
+const noTick = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+  counts: {},
+});
+assert.equal(noTick.workerState, "stale");
+assert.notEqual(noTick.status, "ok");
+assert.equal(noTick.reason, "no_tick_or_success");
+
+const staleRunning = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+  oldestRunningAt: "2026-07-11T02:20:51.133Z",
+  runningCount: 1,
+  counts: { running: 1 },
+  latestSuccessAt: "2026-07-11T02:17:45.852Z",
+  heartbeat: { lastTickAt: "2026-07-11T02:20:00.000Z" },
+  staleRunningMs: 10 * 60 * 1000,
+});
+assert.equal(staleRunning.workerState, "stale");
+assert.equal(staleRunning.reason, "stale_running_award");
+assert.ok(staleRunning.counts.staleRunning >= 1);
+
+const healthy = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+  generationGated: false,
+  heartbeat: {
+    worker_key: "profile_nft_daily",
+    last_tick_started_at: "2026-07-14T19:54:50.000Z",
+    last_tick_finished_at: "2026-07-14T19:55:00.000Z",
+    last_success_at: "2026-07-14T19:50:00.000Z",
+    retryable_count: 0,
+    permanent_count: 0,
+    candidate_count: 0,
+    generation_gated: false,
+  },
+  latestSuccessAt: "2026-07-14T19:50:00.000Z",
+  counts: { generated: 10, pending: 0 },
+});
+assert.equal(healthy.workerState, "healthy");
+assert.equal(healthy.status, "ok");
+assert.equal(healthy.reason, "fresh_tick");
+
+const gated = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  generationGated: true,
+  awardsQueryOk: true,
+  heartbeat: {
+    worker_key: "profile_nft_daily",
+    last_tick_started_at: "2026-07-14T19:54:50.000Z",
+    last_tick_finished_at: "2026-07-14T19:55:00.000Z",
+    generation_gated: true,
+    retryable_count: 0,
+    permanent_count: 0,
+    candidate_count: 1,
+  },
+  latestSuccessAt: "2026-07-10T00:00:00.000Z",
+});
+assert.equal(gated.generationGated, true);
+assert.equal(gated.reason, "generation_gated");
+assert.notEqual(gated.reason, "fresh_tick");
+
+const enabledOnlyNotHealthy = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+});
+assert.notEqual(enabledOnlyNotHealthy.workerState, "healthy");
+
+const nftItem = status.categories
+  .flatMap((category) => category.items)
+  .find((entry) => entry.id === "daily_profile_nft_worker");
+assert.ok(nftItem, "daily_profile_nft_worker missing from live status");
+assert.equal(nftItem.status, "disabled");
+assert.match((nftItem.details || []).join("\n"), /workerState=disabled|enabled=false/i);
+
+
+
+// Ghash exact heartbeat row shape (worker_key PK; no generic id/finished_at columns).
+const ghashHeartbeatRow = {
+  worker_key: "profile_nft_daily",
+  last_tick_started_at: "2026-07-14T19:54:50.000Z",
+  last_tick_finished_at: "2026-07-14T19:55:00.000Z",
+  last_success_at: "2026-07-14T19:50:00.000Z",
+  last_error_code: "",
+  last_error_message: "",
+  retryable_count: 2,
+  permanent_count: 0,
+  current_retry_award_id: "daily_nft_retry_fixture",
+  next_retry_at: "2026-07-14T20:10:00.000Z",
+  candidate_count: 5,
+  generation_gated: false,
+};
+const healthyFromSnake = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+  heartbeat: ghashHeartbeatRow,
+  retryableFailedCount: 0,
+  permanentFailedCount: 0,
+});
+assert.equal(healthyFromSnake.workerState, "healthy");
+assert.equal(healthyFromSnake.lastTickStartedAt, "2026-07-14T19:54:50.000Z");
+assert.equal(healthyFromSnake.lastTickEndedAt, "2026-07-14T19:55:00.000Z");
+assert.equal(healthyFromSnake.counts.retryableFailed, 2);
+assert.equal(healthyFromSnake.currentRetryAwardId, "daily_nft_retry_fixture");
+assert.equal(healthyFromSnake.nextRetryAt, "2026-07-14T20:10:00.000Z");
+assert.equal(healthyFromSnake.candidateCount, 5);
+assert.equal(healthyFromSnake.reason, "fresh_tick");
+
+const permanentFromSnake = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+  heartbeat: {
+    ...ghashHeartbeatRow,
+    last_error_code: "openai_not_configured",
+    last_error_message: "OPENAI_API_KEY missing",
+    permanent_count: 3,
+    retryable_count: 0,
+    last_tick_finished_at: "2026-07-14T19:00:00.000Z",
+  },
+  permanentFailedCount: 3,
+});
+assert.equal(permanentFromSnake.workerState, "failing");
+assert.equal(permanentFromSnake.lastErrorCode, "openai_not_configured");
+
+// Dynamic-column regression: exact query must not request nonexistent generic columns.
+const source = await import("node:fs").then((fs) => fs.readFileSync(new URL("../server/system-status.js", import.meta.url), "utf8"));
+assert.match(source, /FROM profile_nft_daily_worker_heartbeats/);
+assert.match(source, /WHERE worker_key = \$1/);
+assert.doesNotMatch(source, /profile_nft_daily_worker_runs/);
+assert.doesNotMatch(source, /ORDER BY COALESCE\(finished_at, completed_at, heartbeat_at/);
+assert.match(source, /failed_permanent/);
+assert.match(source, /retry_wait/);
+assert.match(source, /last_tick_started_at/);
+assert.match(source, /last_tick_finished_at/);
+assert.match(source, /current_retry_award_id/);
+assert.match(source, /next_retry_at/);
+assert.match(source, /candidate_count/);
+
+// Top-level state/reason must not be stripped by item().
+assert.equal(typeof item, "undefined");
+const { item: statusItem } = await import("../server/system-status-base.js");
+const shaped = statusItem({
+  id: "daily_profile_nft_worker",
+  category: "memory",
+  title: "Daily Profile NFT Worker",
+  description: "test",
+  owner: "test",
+  trigger: "test",
+  cadence: "1ms",
+  status: "ok",
+  statusLabel: "Healthy",
+  state: "healthy",
+  reason: "fresh_tick",
+});
+assert.equal(shaped.state, "healthy");
+assert.equal(shaped.reason, "fresh_tick");
+
+
+
+// Durable award-table counts must not be zeroed by a fresh heartbeat that
+// reports retryable_count/permanent_count 0 after a successful tick with empty
+// failure list.
+const durableRetryNotHidden = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+  retryableFailedCount: 2,
+  permanentFailedCount: 0,
+  heartbeat: {
+    worker_key: "profile_nft_daily",
+    last_tick_started_at: "2026-07-14T19:54:50.000Z",
+    last_tick_finished_at: "2026-07-14T19:55:00.000Z",
+    last_success_at: "2026-07-14T19:55:00.000Z",
+    retryable_count: 0,
+    permanent_count: 0,
+    candidate_count: 0,
+    generation_gated: false,
+  },
+});
+assert.equal(durableRetryNotHidden.counts.retryableFailed, 2, "award retry queue must remain visible when heartbeat is 0");
+assert.equal(durableRetryNotHidden.workerState, "healthy");
+
+const durablePermanentNotHidden = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+  retryableFailedCount: 0,
+  permanentFailedCount: 1,
+  latestAward: { status: "failed_permanent", error: "401 Incorrect API key provided" },
+  heartbeat: {
+    worker_key: "profile_nft_daily",
+    last_tick_started_at: "2026-07-14T19:54:50.000Z",
+    last_tick_finished_at: "2026-07-14T19:55:00.000Z",
+    last_success_at: "2026-07-14T19:50:00.000Z",
+    last_error_code: "provider_auth_failed",
+    last_error_message: "401 Incorrect API key provided",
+    retryable_count: 0,
+    permanent_count: 0,
+    candidate_count: 0,
+    generation_gated: false,
+  },
+});
+assert.equal(durablePermanentNotHidden.counts.permanentFailed, 1);
+assert.equal(durablePermanentNotHidden.workerState, "failing");
+assert.equal(durablePermanentNotHidden.status, "critical");
+
+const heartbeatHigherThanDbVisible = evaluateDailyProfileNftWorkerState({
+  nowMs,
+  enabled: true,
+  awardsQueryOk: true,
+  retryableFailedCount: 1,
+  permanentFailedCount: 0,
+  heartbeat: {
+    worker_key: "profile_nft_daily",
+    last_tick_started_at: "2026-07-14T19:54:50.000Z",
+    last_tick_finished_at: "2026-07-14T19:55:00.000Z",
+    last_success_at: "2026-07-14T19:50:00.000Z",
+    retryable_count: 4,
+    permanent_count: 0,
+    candidate_count: 2,
+    generation_gated: false,
+  },
+});
+assert.equal(heartbeatHigherThanDbVisible.counts.retryableFailed, 4, "higher heartbeat count remains visible");
+assert.equal(heartbeatHigherThanDbVisible.candidateCount, 2);
+
+
 console.log("system status smoke ok");

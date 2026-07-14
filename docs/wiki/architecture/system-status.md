@@ -35,6 +35,19 @@ workers; PFTL owns hot sync, archive sync, WSS, reducer, retention, and RPC
 checks; Hive and Board Operations owns the Board Manager, secretary packets,
 Hive Secretary reports, and active projects.
 
+## Daily Profile NFT four-state visibility
+
+`daily_profile_nft_worker` (four-state: disabled/failing/stale/healthy) uses an explicit worker state machine that is **not** green merely because `TASKNODE_PROFILE_NFT_DAILY_WORKER_ENABLED=true`.
+
+| workerState | API `status` | Meaning |
+| --- | --- | --- |
+| `disabled` | `disabled` | Worker flag off. |
+| `failing` | `critical` | Permanent/auth provider failure **or** award query failure. |
+| `stale` | `warning`/`critical` | No recent tick/success, lagging success, or stale `running` award. |
+| `healthy` | `ok` | Fresh tick with generation enabled (or explicitly generation-gated with a recent tick). |
+
+Optional tables `profile_nft_daily_worker_runs` / `profile_nft_daily_worker_heartbeats` supply `lastTickAt` when present (Ghash heartbeat branch). Until those tables exist, status still evaluates awards, lease heartbeats on scope `profile_nft_daily`, and never collapses query failures to empty-healthy.
+
 ## Categories And Monitored Items
 
 `server/system-status.js` emits four categories. Each row id below is the exact
