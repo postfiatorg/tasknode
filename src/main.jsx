@@ -4,7 +4,6 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowDownToLine,
-  ArrowRight,
   AlertTriangle,
   Activity,
   BookOpen,
@@ -3953,29 +3952,10 @@ function TasksView({
               )}
             </p>
             <NetworkTaskEligibilityPanel
-              activeTask={activeCapacityTask}
               networkTasks={tasks?.networkTasks}
-              onOpenActiveTask={activeCapacityTask ? () => {
-                setTasksTab("outstanding");
-                onSelectTask(activeCapacityTask);
-              } : null}
             />
           </div>
           <div className="tasks-header-actions">
-            {activeCapacityTask && (
-              <button
-                className="dark-pill task-request-button"
-                onClick={() => {
-                  setTasksTab("outstanding");
-                  onSelectTask(activeCapacityTask);
-                }}
-                title={`Open ${activeCapacityTask.title || "active task"}`}
-                type="button"
-              >
-                Continue active task
-                <ArrowRight size={16} strokeWidth={2} />
-              </button>
-            )}
             <button className={requestTaskButtonClass} onClick={() => setTaskRequestOpen(true)} type="button">
               <Plus size={16} strokeWidth={2} />
               {requestTaskButtonLabel}

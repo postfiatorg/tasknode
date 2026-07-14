@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   badgeEligibilityView,
@@ -232,5 +235,27 @@ const signedOutView = networkTaskEligibilityView({
 assert.equal(signedOutView.plainLabel, "Sign in required");
 assert.equal(signedOutView.walletLabel, "No wallet linked");
 assert.equal(signedOutView.nextAction, "Sign in");
+
+
+// 9. Panel source keeps capacity blocker identity/status + drops dual open-task navigation CTAs/props.
+{
+  const panelSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/features/tasks/NetworkTaskEligibilityPanel.jsx"), "utf8");
+  assert.match(panelSource, /Capacity blockers/);
+  assert.match(panelSource, /function BlockerRow/);
+  // Concatenate so this smoke file itself is not a false-positive for removed-literal inventory greps.
+  const banned = [
+    "Continue" + " active task",
+    "Open" + " active Network task",
+    "onOpen" + "ActiveTask",
+  ];
+  for (const phrase of banned) {
+    assert.equal(panelSource.includes(phrase), false, `panel still contains ${phrase}`);
+  }
+  assert.match(panelSource, /export function NetworkTaskEligibilityPanel\(\{\s*networkTasks = null\s*\}\)/);
+  const mainSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/main.jsx"), "utf8");
+  for (const phrase of banned) {
+    assert.equal(mainSource.includes(phrase), false, `main still contains ${phrase}`);
+  }
+}
 
 console.log("network-task-eligibility-panel-smoke ok");

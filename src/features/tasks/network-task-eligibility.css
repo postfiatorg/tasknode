@@ -182,36 +182,6 @@
   font-size: 12px;
 }
 
-.net-elig-actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  padding-top: 8px;
-}
-
-.net-elig-actions button {
-  background: var(--ink);
-  border: 1px solid var(--ink);
-  border-radius: 8px;
-  color: #fffaf0;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  min-height: 34px;
-  padding: 7px 10px;
-}
-
-.net-elig-actions button:hover {
-  background: #0d0d0d;
-}
-
-.net-elig-actions small {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.35;
-}
 
 @media (max-width: 720px) {
   .net-elig-line {
