@@ -21,8 +21,8 @@ External host schedulers and credentials outside this repository were not inspec
 | Removal risk | Count |
 | --- | ---: |
 | safe | 0 |
-| CUT | 6 |
-| needs-verification | 39 |
+| CUT | 7 |
+| needs-verification | 38 |
 | load-bearing | 20 |
 | resolved | 4 |
 | **Total** | **69** |
@@ -129,7 +129,7 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 | P3 | scripts/profile-public-hero-nft-smoke.mjs | superseded / unreferenced scripts | **CUT** in `Execute proven-safe repository bloat cuts`: pre-delete full-repo basename re-proof 0 matches; file deleted. | none in-repo | previously 8210399; cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
 | P3 | scripts/hive-project-canonical-repair.mjs | superseded / unreferenced scripts | **CUT** in `Execute proven-safe repository bloat cuts`: pre-delete full-repo basename re-proof 0 matches; file deleted. | none in-repo | previously dd4809b; cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
 | P3 | scripts/ethereum-deposit-smoke.mjs | superseded / unreferenced scripts | Not quality npm list entry; dynamic import scripts/runtime-store-smoke.mjs:691; also cited in model matrix fixture table. | runtime-store-smoke + matrix | abb3b61 2026-06-27 11:33:40 +0000 | **needs-verification** | Keep while importer lives |
-| P3 | scripts/task-event-expectation-smoke.mjs | superseded / unreferenced scripts | Cited run command in docs/review_burndown/reviews/surface-tasks.md:172. | review docs | 9cae143 2026-05-23 18:05:19 +0000 | **needs-verification** | Wire npm or stand down docs citation |
+| P3 | scripts/task-event-expectation-smoke.mjs | superseded / unreferenced scripts | **CUT** in `Cut post-safe-sweep task event smoke`: post-cut full-repo `rg -n -F 'task-event-expectation-smoke' --glob '!.git/**' --glob '!node_modules/**' --glob '!dist/**' --glob '!docs/wiki/architecture/repository-bloat-audit.md' .` → 0 matches (rg exit 1); only former review_burndown citation was already deleted. File deleted. | none in-repo | previously 9cae143; cut by `Cut post-safe-sweep task event smoke` | **CUT** | done |
 | P2 | scripts/distribution-v3-reward-dedup-audit.mjs | superseded / unreferenced scripts | Self-documented operator CLI; no package.json entry. | ops one-shot | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Archive after ledger closed |
 | P2 | scripts/task-determinism-board-state-audit.mjs | superseded / unreferenced scripts | Cited in model-default-inventory-upgrade-matrix.md fixture table. | matrix owner | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Coordinate with Workstream A/matrix |
 | P2 | scripts/query-user-tasks.mjs | superseded / unreferenced scripts | Documented fly ssh invocations: docs/wiki/surfaces/tasks.md, plans/task-page-hard-refresh-audit-2026-06-08.md, docs/wiki/architecture/pftasks-cutover.md. | operator runbooks | d1821c5 2026-06-04 21:03:14 +0000 | **needs-verification** | Keep while runbooks live |
@@ -213,6 +213,7 @@ All six previously proven-safe items executed in `Execute proven-safe repository
 4. `scripts/hive-project-canonical-repair.mjs` — **CUT**
 5. `docs/review_burndown/` — **CUT**
 6. direct root `libsodium` dependency — **CUT** (`libsodium-wrappers` retained)
+7. `scripts/task-event-expectation-smoke.mjs` — **CUT** (`Cut post-safe-sweep task event smoke`)
 
 ### Verify before cut
 
@@ -257,6 +258,21 @@ All **load-bearing** rows in the inventory tables (live workers including **Hive
 - Any host-level cron/systemd invoking scripts not referenced in-repo.
 - Bundle visualizer beyond Vite advisory output.
 - Product policy for subsetting in-app wiki pages.
+
+
+## Decision required
+
+Seven conversion findings need explicit product/docs owner authority before further cut (Ghash/Troll). Inventory rows above are **not** rewritten here.
+
+| Item | Blocker | Recommendation / authority |
+| --- | --- | --- |
+| `scripts/hive-decision-agent-loop.mjs` | Residual plan doc pointer; external host scheduler not inspected | Ops + plan-doc owner: confirm no crontab/systemd; then cut or rewire docs |
+| `scripts/distribution-v3-reward-dedup-audit.mjs` | Operator one-shot ledger tool; no package.json entry | Rewards/ops owner: archive after ledger closed or keep as manual runbook tool |
+| `docs/README.md` | Still prefers `full_spec.md` / root specs as decision authority | Docs owner: refresh authority order toward `docs/wiki` |
+| `README.md` primary-input references | Lists `product_spec.md` / `jsx_mock.jsx` / `full_spec.md` as primary inputs | Product+docs owner: rewrite root onboarding map |
+| `README.md` PFTasks wording | Historical PFTasks migration language remains | Docs owner: wording cleanup; never reintroduce `tasknode_runtime` |
+| `prompts/task_engine/README.md` | Historical PFTasks/runtime notes | Prompt owner: wording cleanup only |
+| `reference_clients/python/README.md` | Historical PFTasks notes; client tooling itself load-bearing | Python client owner: keep code; clean historical wording |
 
 ## Artifact integrity
 
