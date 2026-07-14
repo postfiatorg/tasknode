@@ -70,7 +70,7 @@ The worker groups are split by failure domain:
 - `worker-pftl`: PFTL cache sync, archive sync, watcher, reducer, retention,
   and IPFS replication.
 - `worker-context-rewrite`: context rewrite jobs.
-- `worker-hive`: Hive secretary, project, report, and decision-agent workers.
+- `worker-hive`: Hive secretary, project, report, task-manager, and accounting workers.
 - `worker-memory-profile`: chat memory and recommended connection jobs.
 - `worker-airdrop`: profile daily airdrop jobs.
 

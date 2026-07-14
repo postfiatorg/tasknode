@@ -41,17 +41,16 @@ restoring a relevant archived board than adding a duplicate board.
 Current production flags in `fly.toml` keep mutating board managers disabled:
 
 ```txt
-TASKNODE_HIVE_DECISION_AGENT_ENABLED=false
-TASKNODE_HIVE_DECISION_AGENT_ACTIVE=false
 TASKNODE_BOARD_MANAGER_ENABLED=false
 TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED=false
 TASKNODE_LEGACY_BOARD_MANAGER_ENABLED=false
 ```
 
-`npm run start:board-manager` currently points at
-`scripts/board-manager-disabled.mjs`, which logs that the legacy Board Manager
-and Hive Decision Agent action loops are retired. This means the new report can
-be added safely as advisory/reporting infrastructure first.
+`npm run start:board-manager` points at `scripts/board-manager-disabled.mjs`,
+which logs that the legacy Board Manager action loop is retired. The former Hive
+Decision Agent executor/provider/worker/launcher path is removed; its historical
+run/read-model tables remain available to report and audit readers. This means
+the new report can be added safely as advisory/reporting infrastructure first.
 
 The current per-board secretary remains live:
 
@@ -76,14 +75,13 @@ There are two historical board decision systems:
     `scripts/board-manager-model-exec.mjs`
   - storage: `board_manager_runs`, `board_manager_jobs`,
     `board_manager_action_results`, `board_manager_followups`
-- Hive Decision Agent:
+- Hive Decision Agent (historical read model only; executor removed):
   - prompt: `prompts/hive/hive_decision_agent_v1.md`
   - source repository: `server/repositories/hive-decision-agent.js`
-  - worker: `server/hive-decision-agent-worker.js`
-  - action adapter: `server/hive-decision-agent-actions.js`
   - storage: `hive_decision_runs`
 
-The Hive Decision Agent source packet already has useful ingredients:
+The historical Hive Decision Agent source-packet reader documents useful
+ingredients that may inform report design; it is not an executable path:
 
 - current Hive reports;
 - live outstanding Network Tasks;
@@ -509,18 +507,12 @@ Keep disabled by default:
 
 These remain audit/repair references, not the new planning report runtime.
 
-### Hive Decision Agent direct mutation loop
+### Hive Decision Agent direct mutation loop (removed)
 
-Keep disabled while the planning report is introduced:
-
-- `server/hive-decision-agent-worker.js`
-- `server/hive-decision-agent-actions.js`
-- `prompts/hive/hive_decision_agent_v1.md`
-
-If this lane is reused later, it should become a guarded executor that consumes
-the latest Board Manager Planning Report action candidates. It should not
-independently decide board portfolio actions from the old "latest six reports"
-prompt.
+The provider, worker, action adapter, and launcher were removed. Keep the raw
+`prompts/hive/hive_decision_agent_v1.md` and `hive_decision_runs` repository
+readers only as historical display/audit surfaces; they do not execute or
+schedule decisions.
 
 ### Old GPT 5.5 Pro board jobs
 
@@ -540,8 +532,8 @@ Update or mark stale during implementation:
   Report, and any future executor;
 - `src/features/hive/HiveBrainView.jsx`, to show the report in Reports &
   generations and avoid framing it as an immediate mutation agent;
-- `prompts/hive/hive_decision_agent_v1.md`, if kept, to stop saying it reads
-  only the latest six reports.
+- `prompts/hive/hive_decision_agent_v1.md`, retained only for historical prompt
+  display/audit and not as a launcher or provider contract.
 
 ## Implementation Plan
 

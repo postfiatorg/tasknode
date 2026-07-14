@@ -473,27 +473,17 @@ The review pass is intentionally not wallet-capable. It checks the code change,
 runs focused verification, and creates a follow-up fix commit if it finds a real
 defect.
 
-### Hive v2 Decision Agent
+### Hive v2 Decision Agent (removed)
 
-The Phase 3 Decision Agent is the guarded replacement shape for the old Board
-Manager execution path, but production keeps it disabled by default while Hive
-uses readable reports and Board Secretary memos for advisory coordination. When
-enabled intentionally, it runs on the same cadence, stores each run in
-`hive_decision_runs`, and renders in Hive Brain under `Decision Agent`.
-Production cutover is controlled by two deploy flags:
+The executable Hive v2 Decision Agent provider, worker, action adapter, and
+launchers were removed. There is no supported scheduler or deploy flag that can
+execute that path. The current Hive runtime uses readable reports, the GLM Board
+Secretary, and the Hive Task Manager for advisory coordination and task work.
+Historical `hive_decision_runs` rows, source-packet data, action records, and
+the raw `prompts/hive/hive_decision_agent_v1.md` display remain readable through
+the existing repository, routes, and Hive Brain prompt display for audit.
 
-- `TASKNODE_HIVE_DECISION_AGENT_ACTIVE=true` lets the Decision Agent execute
-  guardrail-approved actions.
-- `TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED=false` keeps the old Board Manager
-  scheduler/audit path from mutating board state, even if its process command
-  includes `--execute`.
-
-Rollback is one deploy: set `TASKNODE_HIVE_DECISION_AGENT_ACTIVE=false` and
-`TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED=true`, then redeploy. Old
-`board_manager_runs`, secretary packets, and action tables remain available for
-audit and rollback context until the later decommission phase.
-
-Inputs are:
+Historical Decision Agent runs used the following inputs:
 
 - latest `hive_reports` documents for the report set
 - live task state from `task_projections` and pending
@@ -503,39 +493,38 @@ Inputs are:
 - recent board discussions and Project Leader/operator Hive chat from
   `hive_context_entries`
 
-The prompt requires a structured action from the v2 registry
+The historical prompt required a structured action from the v2 registry
 (`create_board`, `archive_board`, `create_task`, `cancel_task`,
 `cancel_network_task`,
 `message_user`, or `do_nothing`), a one- or two-paragraph plain-English
 explanation, options considered, and the exact reports/task-state/discussion
 references that informed the decision.
 
-Deterministic guardrails run after the model output and before the run is
-marked complete. In active mode, action execution happens only after these
-guardrails pass:
+The historical implementation applied deterministic guardrails after model
+output and before a run was marked complete. Its former active mode required
+these checks before action execution:
 
 - the target must be an idle badge-eligible contributor from the live source
   packet, not merely a contributor from stale reports
 - the task must not duplicate the target's outstanding, pending, completed,
   rewarded, or recently terminal Network Tasks
 
-When `create_task` passes, the Decision Agent does not write a final task offer
-directly. It translates the recommendation into the existing
+When the historical `create_task` guardrail passed, that executor did not write
+a final task offer directly. It translated the recommendation into the existing
 `initiate_network_task` hook, which re-checks candidate eligibility, badge lane,
 capacity, reward cap, and semantic idempotency before queuing the normal Network
-Task generation worker. Other supported actions use the existing Board Manager
-action hooks with no legacy `board_manager_action_results` row; the execution
-result is persisted on the `hive_decision_runs.result_json` payload.
+Task generation worker. Other supported actions used the existing Board Manager
+action hooks with no legacy `board_manager_action_results` row; the historical
+execution result was persisted on the `hive_decision_runs.result_json` payload.
 
-The read API is operator-gated:
+The historical read API remains operator-gated:
 
 - `GET /api/hive/decision/runs`
 - `GET /api/hive/decision/run/:id`
 
-`TASKNODE_HIVE_DECISION_AGENT_PROVIDER_MOCK=true npm run
-hive-decision-agent-smoke` verifies report ingestion, shadow persistence,
-active action translation, dedup guardrails, and Hive Brain-facing shape without
-model spend.
+The former Decision Agent smoke and provider commands were removed with the
+executor; no model call or replacement executor is implied by the historical
+routes above.
 
 ## New User Quickstart
 

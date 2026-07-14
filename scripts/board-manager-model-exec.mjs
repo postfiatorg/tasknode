@@ -41,18 +41,11 @@ function hasArg(name) {
 }
 
 function oldBoardManagerExecutionEnabled() {
-  return process.env.TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED !== "false" &&
-    process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE !== "true";
+  return process.env.TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED !== "false";
 }
 
 function legacyBoardManagerDisabled() {
   return process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" && !hasArg("--force-legacy");
-}
-
-function legacyBoardManagerDecommissioned() {
-  return process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true" &&
-    process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" &&
-    !hasArg("--force-legacy");
 }
 
 function normalizeProvider(value = "openrouter") {
@@ -75,7 +68,7 @@ function usage() {
     "  --prompt-only          Build and print the prompt packet without calling the model provider.",
     "  --no-secretary         Skip DeepSeek secretary packet compression and send the full source packet.",
     "  --execute              Execute supported action hooks after the model chooses an action.",
-    "  --force-legacy         Allow the retired Board Manager LLM loop while Hive Decision Agent is active.",
+    "  --force-legacy         Allow the retired Board Manager LLM loop for manual compatibility checks.",
     "  --no-record           Do not write board_manager_runs.",
     "  --no-lease            Do not claim board_manager_leases.",
     "  --json                Print machine-readable JSON.",
@@ -136,23 +129,6 @@ async function main() {
   const useLease = !hasArg("--no-lease");
   const json = hasArg("--json");
 
-  if (legacyBoardManagerDecommissioned() && !packetOnly && !promptOnly) {
-    const output = {
-      ok: true,
-      skipped: true,
-      decommissioned: true,
-      reason: "hive_decision_agent_active",
-      replacement: "hive_decision_agent",
-      execute: false,
-      decision: {
-        action: "do_nothing",
-        reason: "Retired Board Manager LLM loop skipped because Hive Decision Agent is active.",
-      },
-    };
-    console.log(json ? JSON.stringify(output, null, 2) : output.reason);
-    await closePool();
-    return;
-  }
   if (legacyBoardManagerDisabled() && !packetOnly && !promptOnly) {
     const output = {
       ok: true,

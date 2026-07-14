@@ -515,102 +515,8 @@ export async function readBoardManagerDailyCost({
   };
 }
 
-async function hiveDecisionAgentStatusItem(tables, nowMs) {
-  const cadenceFallback = intEnv(process.env.TASKNODE_HIVE_DECISION_AGENT_CADENCE_SECONDS || process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS, 300, { min: 60, max: 86400 });
-  const [runResult, successResult, countsResult, leaseResult] = await Promise.all([
-    optionalQuery(
-      tables,
-      ["hive_decision_runs"],
-      `SELECT id, status, selected_action, trigger, error, started_at, completed_at, shadow, model
-         FROM hive_decision_runs
-        WHERE scope = 'global_hive'
-        ORDER BY started_at DESC, id DESC
-        LIMIT 1`
-    ),
-    optionalQuery(
-      tables,
-      ["hive_decision_runs"],
-      `SELECT id, status, selected_action, trigger, error, started_at, completed_at, shadow, model
-         FROM hive_decision_runs
-        WHERE scope = 'global_hive'
-          AND status = 'completed'
-        ORDER BY completed_at DESC NULLS LAST, started_at DESC, id DESC
-        LIMIT 1`
-    ),
-    optionalQuery(
-      tables,
-      ["hive_decision_runs"],
-      `SELECT status, count(*)::int AS count,
-              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
-         FROM hive_decision_runs
-        WHERE scope = 'global_hive'
-        GROUP BY status`,
-      [recentFailureWindowMs]
-    ),
-    optionalQuery(
-      tables,
-      ["board_manager_leases"],
-      `SELECT status, manager_id, owner_instance, heartbeat_at, expires_at, updated_at
-         FROM board_manager_leases
-        WHERE scope = 'hive_decision_agent:global_hive'
-        ORDER BY updated_at DESC
-        LIMIT 1`
-    ),
-  ]);
-  const run = runResult.rows[0] || null;
-  const successRun = successResult.rows[0] || null;
-  const lease = leaseResult.rows[0] || null;
-  const lastSuccessAt = successRun?.completed_at || null;
-  let status = runFreshness({
-    enabled: boolEnv(process.env.TASKNODE_HIVE_DECISION_AGENT_ENABLED, true),
-    lastSuccessAt,
-    warningAfterMs: cadenceFallback * 1000 + 5 * minute,
-    staleAfterMs: cadenceFallback * 2000 + 5 * minute,
-    nowMs,
-    missingStatus: "critical",
-  });
-  if (run?.status === "running") {
-    const runningMs = oldestAgeMs(run.started_at, nowMs);
-    status = runningMs > cadenceFallback * 2000 + 5 * minute
-      ? { status: "critical", label: "Run stale" }
-      : { status: "ok", label: "Running" };
-  }
-  if (run?.status === "failed") status = { status: "critical", label: "Last run failed" };
-  const recentFailed = countsResult.rows.reduce((sum, row) => sum + Number(row.recent_failed || 0), 0);
-  status = recentFailureStatus(status, recentFailed, "Recent failed runs");
-  return item({
-    id: "board_manager",
-    category: "hive",
-    title: "Hive Decision Agent",
-    description: "Hive v2 report-fed decision loop. This replaces the old Board Manager secretary/decision LLM mutation path.",
-    owner: "board-manager process",
-    trigger: "periodic Hive v2 decision tick",
-    cadence: `${cadenceFallback}s`,
-    status: status.status,
-    statusLabel: status.label,
-    lastRunAt: run?.completed_at || run?.started_at,
-    lastSuccessAt,
-    nextRunAt: null,
-    staleAfterMs: cadenceFallback * 2000 + 5 * minute,
-    counts: countsFromRows(countsResult.rows),
-    lastError: run?.error || "",
-    details: [
-      "mode=hive_decision_agent",
-      `active=${process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true"}`,
-      `oldBoardManagerMutations=${process.env.TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED !== "false" ? "enabled" : "disabled"}`,
-      run?.id && `latestRun=${run.id} ${run.status}${run.selected_action ? ` action=${run.selected_action}` : ""}`,
-      run?.model && `model=${run.model}`,
-      lease && `lease=${lease.status}${lease.owner_instance ? ` owner=${lease.owner_instance}` : ""}`,
-    ],
-  });
-}
-
 async function boardManagerItem(tables, nowMs) {
-  if (
-    process.env.TASKNODE_BOARD_MANAGER_ENABLED !== "true" &&
-    process.env.TASKNODE_HIVE_DECISION_AGENT_ENABLED === "false" &&
-    process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE !== "true"
-  ) {
+  if (process.env.TASKNODE_BOARD_MANAGER_ENABLED !== "true") {
     return item({
       id: "board_manager",
       category: "hive",
@@ -623,13 +529,8 @@ async function boardManagerItem(tables, nowMs) {
       statusLabel: "Retired",
       details: [
         "TASKNODE_BOARD_MANAGER_ENABLED=false",
-        "TASKNODE_HIVE_DECISION_AGENT_ENABLED=false",
-        "TASKNODE_HIVE_DECISION_AGENT_ACTIVE=false",
       ],
     });
-  }
-  if (process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true" && tables.get("hive_decision_runs") === true) {
-    return hiveDecisionAgentStatusItem(tables, nowMs);
   }
   const cadenceFallback = intEnv(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS, 300, { min: 60, max: 86400 });
   const [scopeResult, runResult, successResult, jobResult, leaseResult] = await Promise.all([
@@ -885,7 +786,6 @@ async function contextRewriteItem(tables) {
 }
 
 async function boardManagerSecretaryPacketItem(tables, nowMs) {
-  const archived = process.env.TASKNODE_HIVE_DECISION_AGENT_ACTIVE === "true";
   const result = await optionalQuery(
     tables,
     ["board_manager_secretary_packets"],
@@ -904,23 +804,16 @@ async function boardManagerSecretaryPacketItem(tables, nowMs) {
       GROUP BY status`
   );
   const row = result.rows[0] || null;
-  const status = !row
-    ? { status: "unknown", label: "No packet data" }
-    : row.status === "failed"
-      ? { status: "critical", label: "Last packet failed" }
-      : { status: "ok", label: "Current packet" };
   return item({
     id: "board_manager_secretary_packets",
     category: "hive",
     title: "Board Manager Secretary Packet",
-    description: archived
-      ? "Archived old secretary compression packets. Hive v2 reports and Decision Agent runs are now authoritative."
-      : "DeepSeek compression packet used before GLM 5.2 Board Manager decisions.",
+    description: "Archived DeepSeek compression packets retained for historical audit.",
     owner: "board-manager process",
-    trigger: archived ? "archived telemetry only" : "inside Board Manager run",
-    cadence: archived ? "archived" : "board-manager dependent",
-    status: archived ? "ok" : status.status,
-    statusLabel: archived ? "Archived" : status.label,
+    trigger: "archived telemetry only",
+    cadence: "archived",
+    status: "ok",
+    statusLabel: "Archived",
     lastRunAt: row?.created_at,
     lastSuccessAt: row?.status === "failed" ? null : row?.created_at,
     staleAfterMs: 6 * hour,
@@ -1100,7 +993,7 @@ async function networkTaskGenerationItem(tables, nowMs) {
     id: "network_task_generation",
     category: "task_engine",
     title: "Network Task Generation Worker",
-    description: "Turns Hive Decision Agent allocations into normal task request bundles.",
+    description: "Turns network task allocations into normal task request bundles.",
     owner: "worker process",
     trigger: "network_task_generation_jobs",
     cadence: `${intEnv(process.env.TASKNODE_NETWORK_TASK_GENERATION_WORKER_INTERVAL_MS, 15000, { min: 1000 })}ms`,

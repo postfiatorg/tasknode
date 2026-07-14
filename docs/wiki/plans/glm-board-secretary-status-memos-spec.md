@@ -26,12 +26,10 @@ Disable every existing board agent path that can select or execute action regist
   - `scripts/board-manager-worker.mjs`
   - `scripts/board-manager-loop.mjs`
   - `scripts/board-manager-model-exec.mjs`
-- current `board-manager` Fly process behavior:
-  - `npm run start:board-manager`
-  - currently points at `scripts/hive-decision-agent-loop.mjs`
-- Hive Decision Agent action mode:
-  - `server/hive-decision-agent-worker.js`
-  - `server/hive-decision-agent-actions.js`
+- current `board-manager` Fly process behavior remains the disabled manual
+  compatibility entrypoint (`scripts/board-manager-disabled.mjs`)
+- the former Hive Decision Agent executor/provider/worker/action adapter and
+  launchers were removed; historical run/read-model data remains read-only
 
 Required production flags:
 
@@ -39,8 +37,7 @@ Required production flags:
 TASKNODE_BOARD_MANAGER_ENABLED=false
 TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED=false
 TASKNODE_LEGACY_BOARD_MANAGER_ENABLED=false
-TASKNODE_HIVE_DECISION_AGENT_ENABLED=false
-TASKNODE_HIVE_DECISION_AGENT_ACTIVE=false
+Decision Agent enable/active flags are no longer runtime controls.
 ```
 
 The implementation should make these paths fail closed by default. If an operator tries to run a legacy Board Manager path without an explicit legacy override, it should exit before a provider call or action execution.
