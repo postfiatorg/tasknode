@@ -1,30 +1,29 @@
 # Repository bloat audit (report-only)
 
-**Date:** 2026-07-14 (amended)
-**Branch / worktree:** `burzum/bloat-audit-125` @ `/tmp/tasknode-bloat-audit-125`
-**Base:** `origin/main` @ `6229c14`
-**Scope:** Documentation audit only. No code, config, dependency, or model-matrix deletions.
-**Method:** Full-repo `rg` (excluding `.git`, `node_modules`, `dist`), `package.json`/`fly.toml` gates, `npm run build` chunks, `npm ls`/`package-lock.json`, `git log -1 --format='%h %ci %s'` per path. Bulk evidence: `/tmp/tasknode-bloat-audit-125.log`.
-**Workstream A note:** Board Manager OpenAI/GPT-5.5-Pro fallback cut has landed. Secretary/Project **code** migration is commit `05178c8` (OpenRouter/`z-ai/glm-5.2` defaults, explicit Fly pins, fail-closed Pro rejection). Production runtime **activation** still pending the single combined deploy that ships those pins.
+**Date:** 2026-07-14 (final reconciliation)
+**Base:** integrated `origin/main` @ `58d3295ebeb7450efc44057d1c9c92d1aff9cdcb`
+**Scope:** Documentation audit reconciled to integrated cuts, archive moves, and docs-authority changes. This commit changes this audit only.
+**Method:** Full-repo `rg` (excluding `.git`, `node_modules`, `dist`), `package.json`/`fly.toml` gates, `npm run build` chunks, `npm ls`/`package-lock.json`, `git log -1 --format='%h %ci %s'` per path. Final reconciliation evidence: `/tmp/tasknode-bloat-decision-final-227.log`.
+**Workstream A note:** Board Manager OpenAI/GPT-5.5-Pro fallback cut has landed. Secretary/Project migration is commit `05178c8` (OpenRouter/`z-ai/glm-5.2` defaults, explicit Fly pins, fail-closed Pro rejection); production activation was verified in release v561 (ID `2wL4Q5033yzLKTbj8Zk2OnXZD`) on worker-hive `d895202a20e418`.
 
 ## Verdict rules used
 
 - **`safe`**: concrete in-repo reachability or dependency-declaration evidence with a cited command and outcome. No unresolved external or product/legal condition is part of the verdict.
 - **`needs-verification`**: residual docs still name the path, ops/runbooks remain, quality wiring exists, plan docs point at the file, residual operator tooling remains, or product retention is unresolved.
 - **`load-bearing`**: production process/flag on, or required by a live runtime/quality entrypath.
-- **`CUT`**: proven-safe path removed by subject `Execute proven-safe repository bloat cuts`; target no longer present.
+- **`CUT`**: path actually removed by a cited verified commit; target no longer present.
 
-External host schedulers and credentials outside this repository were not inspected.
+**Decision Agent scheduler gate:** the 2026-07-14 inventory found cron, systemd, tmux, screen, and `ps` clean; all eight started Fly machines had `TASKNODE_HIVE_DECISION_AGENT_ENABLED=false` and `TASKNODE_HIVE_DECISION_AGENT_ACTIVE=false`. The execution transcript is `/tmp/tasknode-decision-agent-scheduler-inventory.log`; `041daa5` is the resulting verified removal commit. No provider request was made for this audit.
 
 ## Summary counts (exact; one row = one inventory item below)
 
 | Removal risk | Count |
 | --- | ---: |
 | safe | 0 |
-| CUT | 7 |
-| needs-verification | 36 |
+| CUT | 10 |
+| needs-verification | 19 |
 | load-bearing | 20 |
-| resolved | 6 |
+| resolved | 20 |
 | **Total** | **69** |
 
 | Category | Count |
@@ -69,20 +68,20 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 
 | P | Path/symbol | Category | Evidence | Imports/callers or gate | Last-touched | Risk | Proposed next check/cut |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| P1 | jsx_mock.jsx | dead/unreachable modules | Full-repo `rg -n -F 'jsx_mock.jsx' --glob '!.git/**' --glob '!node_modules/**' --glob '!dist/**' .`: no src/server import; still named in README.md, quality/README.md, quality/file-size-limits.json, scripts/format-check.mjs ignore set, full_spec.md, whip_context.md, auth_account_spec.md, docs/wiki/architecture/current-system.md | docs + quality references (not runtime) | ba13590 2026-05-15 20:34:07 +0000 | **needs-verification** | Product decision on mock canonicity; update linked docs/quality before delete |
-| P1 | product_spec.md | dead/unreachable modules | Full-repo `rg -n -F 'product_spec.md' …`: README.md, docs/README.md, full_spec.md, auth_account_spec.md, current-system.md. No runtime import. | cross-doc product history links | f2d4a32 2026-05-15 20:35:51 +0000 | **needs-verification** | Archive only after link-map rewrite; product/legal retention unknown |
-| P1 | full_spec.md | dead/unreachable modules | Full-repo `rg -n -F 'full_spec.md' …`: docs/README.md (prefers as current decisions), README.md, whip_context.md, auth_account_spec.md, current-system.md (“source of truth”). No runtime import. | docs still treat as authority | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Reconcile authority with docs/wiki before archive |
-| P1 | whip_context.md | dead/unreachable modules | Full-repo `rg -n -F 'whip_context.md' …`: auth_account_spec.md, docs/README.md, full_spec.md, README.md, current-system.md | guardrail doc refs remain | cace741 2026-05-16 12:53:58 +0000 | **needs-verification** | Same as other root specs |
-| P1 | auth_account_spec.md | dead/unreachable modules | Full-repo `rg -n -F 'auth_account_spec.md' …`: README.md, docs/README.md, full_spec.md, current-system.md | spec matrix refs remain | 05fc14b 2026-05-16 01:13:00 +0000 | **needs-verification** | Same as other root specs |
+| P1 | `docs/archive/root-specs/jsx_mock.jsx` | dead/unreachable modules | `58d3295` moved the root mock to this exact historical path; active design inputs are `mocks/`; no live `src`/`server` importer. | archive/documentation only | `58d3295` 2026-07-14 | **resolved** | Archived; root path and quality exceptions removed |
+| P1 | `docs/archive/root-specs/product_spec.md` | dead/unreachable modules | `58d3295` moved the root product brief to this exact historical path and rewrote authority links. | archive/documentation only | `58d3295` 2026-07-14 | **resolved** | Archived; no live tooling link |
+| P1 | `docs/archive/root-specs/full_spec.md` | dead/unreachable modules | `58d3295` moved the former root specification to this exact historical path; docs/wiki is the current authority. | archive/documentation only | `58d3295` 2026-07-14 | **resolved** | Archived; no live tooling link |
+| P1 | `docs/archive/root-specs/whip_context.md` | dead/unreachable modules | `58d3295` moved the root automation context to this exact historical path and rewrote the current-system pointer. | archive/documentation only | `58d3295` 2026-07-14 | **resolved** | Archived; no live tooling link |
+| P1 | `docs/archive/root-specs/auth_account_spec.md` | dead/unreachable modules | `58d3295` moved the root auth/account specification to this exact historical path and rewrote linked indexes. | archive/documentation only | `58d3295` 2026-07-14 | **resolved** | Archived; no live tooling link |
 
 ### B. Workers — disabled / no production scheduler (11)
 
 | P | Path/symbol | Category | Evidence | Imports/callers or gate | Last-touched | Risk | Proposed next check/cut |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | P0 | scripts/board-manager-disabled.mjs | workers (disabled / no prod scheduler) | File is noop setInterval + board_manager_disabled log. package.json start:board-manager points here. fly.toml [processes] has no board-manager group. | npm start alias; no fly process | 6e2a173 2026-06-28 12:36:01 +0000 | **needs-verification** | Confirm no external invocation of alias; then drop |
-| P0 | server/hive-decision-agent-worker.js | workers (disabled / no prod scheduler) | fly.toml TASKNODE_HIVE_DECISION_AGENT_ENABLED=false and …_ACTIVE=false. workerEnabled() requires those + DB + provider. Still imported by server/background-workers.js startHiveWorkers(). | fly false; still in hive role import graph | 6e2a173 2026-06-28 12:36:01 +0000 | **needs-verification** | Unplug after confirming no shadow mode |
-| P0 | server/hive-decision-agent-provider.js | workers (disabled / no prod scheduler) | Provider module exclusively for decision agent path; flag-gated with WORKER_OFF. | decision agent only | 97ccfaf 2026-06-26 02:27:49 +0000 | **needs-verification** | Cut with decision agent worker |
-| P0 | scripts/hive-decision-agent-loop.mjs | workers (disabled / no prod scheduler) | Not in package.json scripts. Full-repo `rg … hive-decision-agent-loop` excl. audit files → self + docs/wiki/plans/glm-board-secretary-status-memos-spec.md:31 only. External host cron not inspected (credentials out of scope). | plan doc residual pointer; external schedule unknown | e0b046c 2026-06-25 23:39:35 +0000 | **needs-verification** | Ops scheduler inventory + plan doc update |
+| P0 | `server/hive-decision-agent-worker.js` | workers (disabled / no prod scheduler) | **CUT** by `041daa5` after the clean scheduler inventory: worker removed with its background-worker import/start path. | no execution carrier remains | `041daa5` 2026-07-14 | **CUT** | Historical DB/read models remain |
+| P0 | `server/hive-decision-agent-provider.js` | workers (disabled / no prod scheduler) | **CUT** by `041daa5`: executable provider removed with the worker. | no execution carrier remains | `041daa5` 2026-07-14 | **CUT** | Historical prompt/read-model display remains |
+| P0 | `scripts/hive-decision-agent-loop.mjs` | workers (disabled / no prod scheduler) | **CUT** by `041daa5` after the clean scheduler inventory. Dependent launcher, smoke, and action adapter were also removed; Fly pins and live Board Manager gating were removed. | no scheduler or launcher remains | `041daa5` 2026-07-14 | **CUT** | Historical DB/read models and prompt display remain |
 | P0 | server/task-accounting-harvester-worker.js | workers (disabled / no prod scheduler) | fly.toml TASKNODE_TASK_ACCOUNTING_HARVESTER_ENABLED=false. Worker only starts when flag true. | hard false in fly | 50de0c2 2026-06-26 20:32:29 +0000 | **needs-verification** | Product roadmap keep/drop |
 | P0 | server/task-accounting-harvester-provider.js | workers (disabled / no prod scheduler) | Provider for accounting harvester only. | harvester only | bf95f7d 2026-06-27 02:11:00 +0000 | **needs-verification** | Cut with harvester |
 | P1 | scripts/board-manager-worker.mjs | workers (disabled / no prod scheduler) | TASKNODE_BOARD_MANAGER_ENABLED=false on fly; no process group; package board-manager:worker remains for manual --force with OpenRouter GLM-only provider validation. | manual ops only | 6e2a173 2026-06-28 12:36:01 +0000 | **resolved** | OpenAI/GPT-5.5-Pro normalization/help path removed; reject unsupported provider |
@@ -95,8 +94,8 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 
 | P | Path/symbol | Category | Evidence | Imports/callers or gate | Last-touched | Risk | Proposed next check/cut |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| P0 | server/hive-secretary-worker.js | workers (live) | **Historical** Snaga gate (`/tmp/tasknode-gpt55-prod-gate.log`): release **v560** **worker-hive** `d895202a20e418` was LIVE with unset Secretary env → then openai/`gpt-5.5-pro` defaults (start/config only; no queue consume/model call). **Code now (`05178c8`)**: defaults OpenRouter/`z-ai/glm-5.2`; Fly.toml pins `TASKNODE_HIVE_SECRETARY_PROVIDER=openrouter`, `MODEL=z-ai/glm-5.2`, effort `high`; unsupported Pro models fail closed. Still started via `startHiveWorkers()` for worker:hive. Production machine not re-gated post-migration. | prod worker-hive role (load-bearing worker, not cut) | f49edf1 pre-migration; code `05178c8` 2026-07-14 | **load-bearing** | KEEP worker; ship deploy to activate GLM pins |
-| P0 | server/hive-project-worker.js | workers (live) | **Historical** v560 **worker-hive** gate same machine: unset Project env → gpt-5.5-pro defaults. **Code now (`05178c8`)**: OpenRouter-only provider normalization + `z-ai/glm-5.2` default; Fly pins `TASKNODE_HIVE_PROJECT_PROVIDER/MODEL/REASONING_EFFORT`; Pro pattern rejected. Still hive-role background worker; Secretary completion can enqueue project planning. Deploy activation pending. | prod worker-hive role | f49edf1 pre-migration; code `05178c8` 2026-07-14 | **load-bearing** | KEEP worker; activate with combined deploy |
+| P0 | server/hive-secretary-worker.js | workers (live) | Historical v560 worker-hive `d895202a20e418` selected the former OpenAI default. `05178c8` changed code/Fly pins to OpenRouter/`z-ai/glm-5.2`/`high` and rejects Pro variants; release v561 (ID `2wL4Q5033yzLKTbj8Zk2OnXZD`) verified that state on worker-hive `d895202a20e418`. | prod worker-hive role (load-bearing worker, not cut) | `05178c8`; v561 verified 2026-07-14 | **load-bearing** | KEEP verified worker |
+| P0 | server/hive-project-worker.js | workers (live) | Historical v560 worker-hive `d895202a20e418` selected the former OpenAI default. `05178c8` changed code/Fly pins to OpenRouter/`z-ai/glm-5.2`/`high` and rejects Pro variants; release v561 (ID `2wL4Q5033yzLKTbj8Zk2OnXZD`) verified that state on worker-hive `d895202a20e418`. | prod worker-hive role | `05178c8`; v561 verified 2026-07-14 | **load-bearing** | KEEP verified worker |
 | P0 | server/hive-board-secretary-worker.js | workers (live) | fly.toml process board-secretary = npm run start:board-secretary; TASKNODE_HIVE_BOARD_SECRETARY_ENABLED=true. Companion scripts/hive-board-secretary-worker.mjs. | prod process | 6e2a173 2026-06-28 12:36:01 +0000 | **load-bearing** | keep |
 | P0 | server/task-generation-worker.js | workers (live) | fly TASKNODE_TASK_GENERATION_WORKER_ENABLED=true; process worker-taskgen. | prod | 64209dc 2026-07-14 16:41:15 +0000 | **load-bearing** | keep |
 | P0 | server/network-task-generation-worker.js | workers (live) | fly network-taskgen flags true; worker-taskgen role. | prod | 0300725 2026-06-29 02:40:39 +0000 | **load-bearing** | keep |
@@ -130,7 +129,7 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 | P3 | scripts/hive-project-canonical-repair.mjs | superseded / unreferenced scripts | **CUT** in `Execute proven-safe repository bloat cuts`: pre-delete full-repo basename re-proof 0 matches; file deleted. | none in-repo | previously dd4809b; cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
 | P3 | scripts/ethereum-deposit-smoke.mjs | superseded / unreferenced scripts | Not quality npm list entry; dynamic import scripts/runtime-store-smoke.mjs:691; also cited in model matrix fixture table. | runtime-store-smoke + matrix | abb3b61 2026-06-27 11:33:40 +0000 | **needs-verification** | Keep while importer lives |
 | P3 | scripts/task-event-expectation-smoke.mjs | superseded / unreferenced scripts | **CUT** in `Cut post-safe-sweep task event smoke`: post-cut full-repo `rg -n -F 'task-event-expectation-smoke' --glob '!.git/**' --glob '!node_modules/**' --glob '!dist/**' --glob '!docs/wiki/architecture/repository-bloat-audit.md' .` → 0 matches (rg exit 1); only former review_burndown citation was already deleted. File deleted. | none in-repo | previously 9cae143; cut by `Cut post-safe-sweep task event smoke` | **CUT** | done |
-| P2 | scripts/distribution-v3-reward-dedup-audit.mjs | superseded / unreferenced scripts | Self-documented operator CLI; no package.json entry. | ops one-shot | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Archive after ledger closed |
+| P2 | scripts/distribution-v3-reward-dedup-audit.mjs | superseded / unreferenced scripts | Intentionally retained read-only manual runbook: self-documented local Docker audit; no package script, Fly process, or automatic caller. | Task/reward reconciliation operator role | ruling reconciled at `58d3295` | **resolved** | Revisit only on closure of the v3 reward ledger; code unchanged |
 | P2 | scripts/task-determinism-board-state-audit.mjs | superseded / unreferenced scripts | Cited in model-default-inventory-upgrade-matrix.md fixture table. | matrix owner | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Coordinate with Workstream A/matrix |
 | P2 | scripts/query-user-tasks.mjs | superseded / unreferenced scripts | Documented fly ssh invocations: docs/wiki/surfaces/tasks.md, plans/task-page-hard-refresh-audit-2026-06-08.md, docs/wiki/architecture/pftasks-cutover.md. | operator runbooks | d1821c5 2026-06-04 21:03:14 +0000 | **needs-verification** | Keep while runbooks live |
 | P2 | scripts/ipfs-replication-requeue.mjs | superseded / unreferenced scripts | Documented in docs/wiki/architecture/ipfs.md and ipfs-new-write-replication.md. | operator tool | 1a067fb 2026-06-15 13:04:46 +0000 | **needs-verification** | Keep; optional package script |
@@ -144,9 +143,9 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | P1 | docs/wiki/surfaces/hive.md | stale docs vs live behavior | **resolved** by `05178c8`: planning-worker narrative updated with the OpenRouter/GLM migration (paired matrix/ai-providers edits in that commit). Historical v560 GPT reachability remains documentary context only. | product surface wiki | e29fe11 prior; resolved `05178c8` 2026-07-14 | **resolved** | Keep current; further polish only if deploy post-checks need it |
 | P1 | docs/wiki/architecture/ai-providers.md | stale docs vs live behavior | **resolved** by `05178c8`: Secretary/Project provider tables aligned to OpenRouter/`z-ai/glm-5.2` with fail-closed Pro stance. | architecture wiki | c4222a4 prior; resolved `05178c8` 2026-07-14 | **resolved** | Keep |
-| P2 | docs/wiki/architecture/current-system.md | stale docs vs live behavior | Still labels full_spec.md source of truth; roots mock/specs in tree diagram. | wiki map | c3dbf3d 2026-06-11 16:31:09 +0000 | **needs-verification** | Reconcile with docs/wiki-as-primary |
-| P2 | docs/README.md | stale docs vs live behavior | Prefers full_spec.md for current decisions; lists root specs. | docs index | 649de99 2026-06-08 18:03:45 +0000 | **needs-verification** | Refresh authority order |
-| P2 | README.md | stale docs vs live behavior | Lists product_spec.md / jsx_mock.jsx / full_spec.md as primary inputs. | root readme | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Refresh |
+| P2 | docs/wiki/architecture/current-system.md | stale docs vs live behavior | `58d3295` removes root-spec tree/authority claims and points historical material to `docs/archive/root-specs/`. | wiki map | `58d3295` 2026-07-14 | **resolved** | docs/wiki is current authority |
+| P2 | docs/README.md | stale docs vs live behavior | `58d3295` rewrites the index to list archive targets as historical reference and documents wiki-first authority. | docs index | `58d3295` 2026-07-14 | **resolved** | archive links verified |
+| P2 | README.md | stale docs vs live behavior | `58d3295` replaces the primary-input claims with the current docs/wiki map and historical archive boundary. | root readme | `58d3295` 2026-07-14 | **resolved** | root onboarding map corrected |
 | P2 | docs/review_burndown/ | stale docs vs live behavior | **CUT** in `Execute proven-safe repository bloat cuts`: pre-delete external-reference `rg` outside tree still 0 matches; directory removed. | previously disconnected | previously ca00dac; cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
 | P3 | docs/wiki/architecture/model-default-inventory-upgrade-matrix.md | stale docs vs live behavior | Living model matrix owned by Workstream A/Ghash; this workstream must not edit it. Present on branch base 6229c14 line. | owning workstream | 6229c14 2026-07-14 17:12:49 +0000 Document deprecated Hive primitives in model matrix | **load-bearing** | Keep; no edit here |
 
@@ -171,8 +170,8 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 | P2 | mocks/ | fixture/test cruft | du ~988K, 21 files. Referenced by scripts/mock-boundary-check.mjs and format tooling; not production runtime import graph. | quality tooling | 00b86ac 2026-06-26 00:46:12 +0000 | **needs-verification** | Prune after mock-boundary remains green |
 | P2 | docs/verification/ | fixture/test cruft | ~4.6 MB / 227 files; outside Vite import graph. | historical evidence store | 5972604 2026-07-14 15:41:02 +0000 | **needs-verification** | Relocation policy (lfs/object storage) |
 | P2 | package.json `quality` script | fixture/test cruft | Chains 80+ smokes; wall-clock/CI weight. | CI / operator entry | c4222a4 2026-07-11 15:27:01 +0000 | **load-bearing** | Tier PR vs nightly; no silent delete |
-| P3 | quality/file-size-limits.json (jsx_mock.jsx exception) | fixture/test cruft | Special-case size limit entry for jsx_mock.jsx (cf quality gate). Last-touch on limits file. | quality gate | cf8b076 2026-05-17 16:09:28 +0000 | **needs-verification** | Remove with mock decision |
-| P3 | scripts/format-check.mjs (jsx_mock.jsx ignore) | fixture/test cruft | Hard-coded ignore of jsx_mock.jsx and login.jsx. | format gate | cd6b015 2026-05-22 12:52:14 +0000 | **needs-verification** | Remove with mock decision |
+| P3 | quality/file-size-limits.json (former `jsx_mock.jsx` exception) | fixture/test cruft | `58d3295` removes the exact `jsx_mock.jsx` exception after archive migration; remaining quality entries are unchanged. | quality gate | `58d3295` 2026-07-14 | **resolved** | exact exception absent |
+| P3 | scripts/format-check.mjs (former `jsx_mock.jsx` ignore) | fixture/test cruft | `58d3295` removes the exact `jsx_mock.jsx` ignore; unrelated `login.jsx` handling remains. | format gate | `58d3295` 2026-07-14 | **resolved** | exact ignore absent |
 
 ### I. Legacy PFTasks-era remnants (5)
 
@@ -180,9 +179,9 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | P2 | scripts/import-pftasks-profile-nfts.mjs | legacy PFTasks-era remnants | Explicit PFTasks nft_mints → profile_nfts importer. package.json script profile-nft-import-pftasks. Documented in docs/wiki/surfaces/profile.md and user-observability-logging.md. | package script + wiki ops | 649de99 2026-06-08 18:03:45 +0000 | **needs-verification** | Keep until migration complete; then archive |
 | P3 | docs/wiki/architecture/pftasks-cutover.md | legacy PFTasks-era remnants | Cutover doc still instructs live fly ssh + query-user-tasks usage; names old PFTasks migration paths. | cutover runbook | c3dbf3d 2026-06-11 16:31:09 +0000 Align docs with the deployed production app | **needs-verification** | Retire when migration closed |
-| P3 | README.md PFTasks wording | legacy PFTasks-era remnants | Root README and product materials still mention PFTasks-era migration context (paired with product_spec/full_spec history). | docs wording | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Wording cleanup (never reintroduce tasknode_runtime) |
-| P3 | prompts/task_engine/README.md | legacy PFTasks-era remnants | `rg -l -i 'pftasks\|tasknode_runtime'` includes this path among historical references. | docs/prompts historical | 0300725 2026-06-29 02:40:39 +0000 Add two-step Hive task manager | **needs-verification** | Wording cleanup |
-| P3 | reference_clients/python/README.md | legacy PFTasks-era remnants | Python reference client README historical PFTasks notes; client code itself is load-bearing for PFTL scenarios. | docs only on wording; client is used | 7bd09b3 2026-05-24 15:57:17 +0000 | **needs-verification** | Keep code; clean wording |
+| P3 | README.md historical-runtime wording | legacy PFTasks-era remnants | `58d3295` removes the stale root wording while retaining a bounded historical archive note. | docs wording | `58d3295` 2026-07-14 | **resolved** | no old runtime term in live documentation |
+| P3 | prompts/task_engine/README.md | legacy PFTasks-era remnants | `58d3295` rewrites the historical prompt note; no executable prompt surface was removed. | docs/prompts historical | `58d3295` 2026-07-14 | **resolved** | wording-only correction |
+| P3 | reference_clients/python/README.md | legacy PFTasks-era remnants | `58d3295` rewrites historical wording while preserving the load-bearing Python reference client and its scenario documentation. | docs only on wording; client is used | `58d3295` 2026-07-14 | **resolved** | client code retained |
 
 ---
 
@@ -200,13 +199,22 @@ Snaga log `/tmp/tasknode-gpt55-prod-gate.log`: release **v560**, process **worke
 | board-manager manual launchers (loop/worker/model/codex) | No Fly process; residual operator surfaces | verify-only |
 | Historical pricing/display/test string literals (`system-status`, leftover fixtures as applicable) | Non-invocation readouts / fixtures | justified keep until billing/test-contract policy says otherwise |
 
-Executable provider paths no longer default to or accept GPT-5.5-Pro for Secretary/Project. Production machine verification after deploy remains pending.
+Executable provider paths no longer default to or accept GPT-5.5-Pro for Secretary/Project. Release v561 verified worker-hive `d895202a20e418` on the OpenRouter/`z-ai/glm-5.2`/`high` configuration.
+
+## Final reconciliation census (`58d3295`)
+
+- **Archive targets:** `docs/archive/root-specs/{auth_account_spec.md,full_spec.md,jsx_mock.jsx,product_spec.md,whip_context.md}` all exist; their former root paths are absent.
+- **Live tooling links:** `rg -n -F` for each former root basename across `src`, `server`, `scripts`, `package.json`, `fly.toml`, and `quality/file-size-limits.json` returns zero matches. Remaining mentions are explicit archive documentation or archived content.
+- **Decision Agent:** `server/hive-decision-agent-worker.js`, `server/hive-decision-agent-provider.js`, `scripts/hive-decision-agent-loop.mjs`, its launcher, smoke, and action adapter are absent. `fly.toml` and `package.json` have no Decision Agent execution pin/script; only historical DB/read models and prompt display remain.
+- **Reward dedup:** `scripts/distribution-v3-reward-dedup-audit.mjs` remains a self-documented, read-only local-Docker runbook with no package script, Fly process, or automatic caller. Its owner is the Task/reward reconciliation operator role; revisit only when the v3 reward ledger closes.
+
+Commands and complete outputs: `/tmp/tasknode-bloat-decision-final-227.log`.
 
 ## Prioritized cut list
 
 ### Safe first
 
-All six previously proven-safe items executed in `Execute proven-safe repository bloat cuts`:
+Verified removals:
 
 1. `scripts/chat-estimate-parity-smoke.mjs` — **CUT**
 2. `scripts/task-payload-read-retry-smoke.mjs` — **CUT**
@@ -215,68 +223,70 @@ All six previously proven-safe items executed in `Execute proven-safe repository
 5. `docs/review_burndown/` — **CUT**
 6. direct root `libsodium` dependency — **CUT** (`libsodium-wrappers` retained)
 7. `scripts/task-event-expectation-smoke.mjs` — **CUT** (`Cut post-safe-sweep task event smoke`)
+8. `server/hive-decision-agent-worker.js` — **CUT** (`041daa5`)
+9. `server/hive-decision-agent-provider.js` — **CUT** (`041daa5`)
+10. `scripts/hive-decision-agent-loop.mjs` plus its launcher/smoke/action adapter — **CUT** (`041daa5`)
+
+### Resolved archive and operator rulings
+
+1. The five root inputs moved to `docs/archive/root-specs/` in `58d3295`; docs/wiki is the current authority.
+2. The former `jsx_mock.jsx` quality-limit exception and format ignore were removed in `58d3295`.
+3. `scripts/distribution-v3-reward-dedup-audit.mjs` is intentionally retained as the Task/reward reconciliation operator's manual runbook until the v3 reward ledger closes.
 
 ### Verify before cut
 
-1. Root design inputs (`jsx_mock.jsx`, root specs) — still cross-linked; product retention unknown.
-2. Board Manager OpenAI/`gpt-5.5-pro` fallback + manual board-manager launchers (DEAD in prod per Snaga gate) — approved surgical cut landed; preserve OpenRouter GLM behavior.
-3. Hive Decision Agent + loop (`scripts/hive-decision-agent-loop.mjs`) — fly false but residual plan doc; external scheduler unknown.
-4. Task Accounting Harvester pair (flag false).
-5. Legacy Board Manager npm/ops surface + decision provider + codex defaults.
-6. Ops tools still documented (`query-user-tasks`, `ipfs-replication-requeue`, distribution audits).
-7. Orc cores without package bare names but with smokes/python/verification.
-8. Docs chunks / wallet-core load strategy (keep mechanism).
-9. mocks/, docs/verification/, quality tiering.
-10. PFTasks import + cutover docs residual.
-11. Post-deploy confirm Hive Secretary/Project machines adopted `05178c8` Fly pins (docs already resolved in that commit).
-12. Extract shared provider HTTP client (not silent delete).
+1. Task Accounting Harvester pair (flag false; product roadmap decision).
+2. Legacy Board Manager npm/ops surface and Codex defaults.
+3. Remaining operator tools (`query-user-tasks`, `ipfs-replication-requeue`) and Orc cores with smoke/Python/verification callers.
+4. Docs chunks / wallet-core load strategy; `src/main.jsx` split with UX regression coverage.
+5. `mocks/`, `docs/verification/`, and remaining quality tiering.
+6. PFTasks profile import and cutover runbook closure.
+7. Extract shared provider HTTP client (not silent delete).
 
 ### Keep / load-bearing
 
-All **load-bearing** rows in the inventory tables (live workers including **Hive Secretary/Project workers** now on GLM code defaults/`05178c8` Fly pins pending deploy activation, live providers, wallet crypto, matrix ownership, quality chain).
+All **load-bearing** rows in the inventory tables (live workers including **Hive Secretary/Project workers** verified in v561 on OpenRouter/`z-ai/glm-5.2`/`high`, live providers, wallet crypto, matrix ownership, quality chain).
 
 ---
 
-## Downgrades from first draft (this amend)
+## Reconciled conversion rulings
 
 | Path | Was | Now | Why |
 | --- | --- | --- | --- |
-| `scripts/hive-decision-agent-loop.mjs` | safe (cond.) | **needs-verification** | Plan doc still names it; external cron unverified |
-| `docs/review_burndown/` | safe (cond., unproven links) | **safe** (re-proven) | External-reference `rg` outside the tree returns 0 matches |
-| `jsx_mock.jsx` | safe (cond.) | **needs-verification** | README/quality/full_spec/current-system still reference |
-| `product_spec.md` | safe (cond.) | **needs-verification** | Cross-doc references + retention unknown |
-| `full_spec.md` | safe (cond.) | **needs-verification** | Still declared authority in wiki/docs |
-| `whip_context.md` | safe (cond.) | **needs-verification** | Cross-doc references |
-| `auth_account_spec.md` | safe (cond.) | **needs-verification** | Cross-doc references |
-| `scripts/chat-estimate-parity-smoke.mjs` | safe via package-only | **safe** (repo-reachability-only) | Full-repo search 0 hits; claim limited to in-repo |
-| direct `libsodium` | safe future `npm ls` | **safe** (proven) | `npm ls` + lockfile prove wrappers keep transitive `libsodium` |
+| Decision Agent execution carrier trio | needs-verification | **CUT** | Clean scheduler gate and verified removal commit `041daa5`; only historical DB/read-model and prompt display remain |
+| `docs/review_burndown/` | safe (cond., unproven links) | **CUT** | Removed by `5dc7f0c` (`Execute proven-safe repository bloat cuts`) after external-reference re-proof |
+| Root inputs and former JSX quality exceptions | needs-verification | **resolved** | Archived/reconciled by `58d3295` |
+| Authority docs, root historical wording, prompt README, Python README | needs-verification | **resolved** | Rewritten by `58d3295`; current authority is docs/wiki and Python client code remains retained |
+| `scripts/distribution-v3-reward-dedup-audit.mjs` | needs-verification | **resolved** | Intentionally retained manual runbook; revisit on v3 reward-ledger closure |
+| `scripts/chat-estimate-parity-smoke.mjs` | safe via package-only | **CUT** | Removed by `5dc7f0c` (`Execute proven-safe repository bloat cuts`) after full-repo re-proof |
+| direct `libsodium` | safe future `npm ls` | **CUT** | Removed by `5dc7f0c` (`Execute proven-safe repository bloat cuts`); `libsodium-wrappers` retains transitive `libsodium` |
 
 ---
 
 ## Unverified / incomplete items
 
-- Hive Secretary/Project: **historical** v560 gate proved start/config with then-GPT defaults; **code** is GLM via `05178c8`. Remaining gap: combined deploy/runtime verification (no paid model call performed by this audit).
-- Any host-level cron/systemd invoking scripts not referenced in-repo.
+- Bundle/runtime behavior beyond the cited focused build and machine checks.
 - Bundle visualizer beyond Vite advisory output.
 - Product policy for subsetting in-app wiki pages.
 
 
-## Decision required
+## Remaining needs-verification decisions (19)
 
-Seven conversion findings need explicit product/docs owner authority before further cut (Ghash/Troll). Inventory rows above are **not** rewritten here.
-
-| Item | Blocker | Recommendation / authority |
-| --- | --- | --- |
-| `scripts/hive-decision-agent-loop.mjs` | Residual plan doc pointer; external host scheduler not inspected | Ops + plan-doc owner: confirm no crontab/systemd; then cut or rewire docs |
-| `scripts/distribution-v3-reward-dedup-audit.mjs` | Operator one-shot ledger tool; no package.json entry | Rewards/ops owner: archive after ledger closed or keep as manual runbook tool |
-| `docs/README.md` | Still prefers `full_spec.md` / root specs as decision authority | Docs owner: refresh authority order toward `docs/wiki` |
-| `README.md` primary-input references | Lists `product_spec.md` / `jsx_mock.jsx` / `full_spec.md` as primary inputs | Product+docs owner: rewrite root onboarding map |
-| `README.md` PFTasks wording | Historical PFTasks migration language remains | Docs owner: wording cleanup; never reintroduce `tasknode_runtime` |
-| `prompts/task_engine/README.md` | Historical PFTasks/runtime notes | Prompt owner: wording cleanup only |
-| `reference_clients/python/README.md` | Historical PFTasks notes; client tooling itself load-bearing | Python client owner: keep code; clean historical wording |
+| Inventory items | Open blocker / next authority |
+| --- | --- |
+| `scripts/board-manager-disabled.mjs` | External manual invocation of the disabled package alias; ops inventory required. |
+| `server/task-accounting-harvester-worker.js`, `server/task-accounting-harvester-provider.js` | Product roadmap keep/drop decision. |
+| `scripts/board-manager-codex-exec.mjs` | Manual operator surface and Workstream A model-default decision. |
+| `server/board-manager-secretary-packets.js`, `scripts/grashnuk-harvest-codex-exec.mjs`, `scripts/grashnuk-review-codex-exec.mjs` | Secretary/CLI consolidation and model owner decision. |
+| `scripts/ethereum-deposit-smoke.mjs`, `scripts/task-determinism-board-state-audit.mjs` | Retain while runtime importer and matrix fixture expectation exist; coordinate with their owners. |
+| `scripts/query-user-tasks.mjs`, `scripts/ipfs-replication-requeue.mjs` | Operator runbooks remain live; ops owner must retire/rewrite them before cut. |
+| `scripts/orc-hive-followup.mjs`, `scripts/orc-hive-signal.mjs`, `scripts/orc-evidence-packet-generator.mjs` | Smoke, Python, and verification callers require coordinated retirement. |
+| `src/main.jsx` | Lazy-route design plus UX regression proof. |
+| `mocks/`, `docs/verification/` | Quality/evidence retention and relocation policy. |
+| `scripts/import-pftasks-profile-nfts.mjs`, `docs/wiki/architecture/pftasks-cutover.md` | Migration closure and operator-runbook retirement. |
 
 ## Artifact integrity
 
 - Single documentation file in this commit: `docs/wiki/architecture/repository-bloat-audit.md`
-- Evidence log (not committed): `/tmp/tasknode-bloat-audit-125.log`
-- Worktree isolated; no push
+- Final reconciliation evidence (not committed): `/tmp/tasknode-bloat-decision-final-227.log`
+- Reconciled directly on integrated `main` after the cited cuts and archive move.
