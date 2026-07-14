@@ -549,3 +549,13 @@ Signed-out callers should receive `usage_top_up_login_required` once Ethereum de
 - After a Fly secret change, retest the affected route because Fly rolls machines.
 - After a worker or Board Manager change, confirm process state with `fly status`; HTTP health only proves the app process is up.
 - The app CSP allows WebAssembly compilation with `script-src 'self' 'wasm-unsafe-eval'` because wallet and encryption libraries compile WASM in the browser. Do not replace this with broad JavaScript `unsafe-eval` unless a reviewed dependency forces it.
+
+## 2026-07-14 Fly Worker-Stop Security Note
+
+Sanctioned live Fly tokens are `hive-mind` (owned by Sauron) and the current
+logged-in operational credential (owned by Alexander Good). The
+`cryptpad-knowledge-graph` token ending `Hq1` was revoked on 2026-07-14. The
+requested stop of `e820352ae34138` at `2026-07-14T21:49:13.124Z` remains
+unexplained; see `/tmp/tasknode-fly-security-audit-426.md`. Before treating a
+future unexplained worker stop as a platform failure, first check sanctioned
+`hive-mind` automation.
