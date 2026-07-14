@@ -12,6 +12,7 @@
 - **`safe`**: concrete in-repo reachability or dependency-declaration evidence with a cited command and outcome. No unresolved external or product/legal condition is part of the verdict.
 - **`needs-verification`**: residual docs still name the path, ops/runbooks remain, quality wiring exists, plan docs point at the file, residual operator tooling remains, or product retention is unresolved.
 - **`load-bearing`**: production process/flag on, or required by a live runtime/quality entrypath.
+- **`CUT`**: proven-safe path removed by subject `Execute proven-safe repository bloat cuts`; target no longer present.
 
 External host schedulers and credentials outside this repository were not inspected.
 
@@ -19,9 +20,11 @@ External host schedulers and credentials outside this repository were not inspec
 
 | Removal risk | Count |
 | --- | ---: |
-| safe | 6 |
-| needs-verification | 43 |
+| safe | 0 |
+| CUT | 6 |
+| needs-verification | 39 |
 | load-bearing | 20 |
+| resolved | 4 |
 | **Total** | **69** |
 
 | Category | Count |
@@ -121,10 +124,10 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 
 | P | Path/symbol | Category | Evidence | Imports/callers or gate | Last-touched | Risk | Proposed next check/cut |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| P3 | scripts/chat-estimate-parity-smoke.mjs | superseded / unreferenced scripts | Full-repo `rg -n --glob '!.git/**' --glob '!node_modules/**' --glob '!dist/**' --glob '!docs/wiki/architecture/repository-bloat-audit.md' 'chat-estimate-parity-smoke\|chat-estimate-parity' .` → **0 matches**. Safety claim is **repo-reachability-only** (no package/docs/import callers in this tree). | none in-repo | 3a6fe3d 2026-05-23 18:18:39 +0000 | **safe** | Delete or intentionally re-wire npm script |
-| P3 | scripts/task-payload-read-retry-smoke.mjs | superseded / unreferenced scripts | Full-repo basename search excl audit → **0 matches**. | none in-repo | 1a067fb 2026-06-15 13:04:46 +0000 | **safe** | Delete or re-wire |
-| P3 | scripts/profile-public-hero-nft-smoke.mjs | superseded / unreferenced scripts | Full-repo basename search excl audit → **0 matches**. | none in-repo | 8210399 2026-06-15 13:53:44 +0000 | **safe** | Delete or re-wire |
-| P3 | scripts/hive-project-canonical-repair.mjs | superseded / unreferenced scripts | Full-repo basename search excl audit → **0 matches**. | none in-repo | dd4809b 2026-06-04 17:16:26 +0000 | **safe** | Delete if operators accept repo-unreachable one-shot complete |
+| P3 | scripts/chat-estimate-parity-smoke.mjs | superseded / unreferenced scripts | **CUT** in `Execute proven-safe repository bloat cuts`: pre-delete full-repo reachability re-proof still 0 matches; file deleted. | none in-repo | previously 3a6fe3d; cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
+| P3 | scripts/task-payload-read-retry-smoke.mjs | superseded / unreferenced scripts | **CUT** in `Execute proven-safe repository bloat cuts`: pre-delete full-repo basename re-proof 0 matches; file deleted. | none in-repo | previously 1a067fb; cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
+| P3 | scripts/profile-public-hero-nft-smoke.mjs | superseded / unreferenced scripts | **CUT** in `Execute proven-safe repository bloat cuts`: pre-delete full-repo basename re-proof 0 matches; file deleted. | none in-repo | previously 8210399; cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
+| P3 | scripts/hive-project-canonical-repair.mjs | superseded / unreferenced scripts | **CUT** in `Execute proven-safe repository bloat cuts`: pre-delete full-repo basename re-proof 0 matches; file deleted. | none in-repo | previously dd4809b; cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
 | P3 | scripts/ethereum-deposit-smoke.mjs | superseded / unreferenced scripts | Not quality npm list entry; dynamic import scripts/runtime-store-smoke.mjs:691; also cited in model matrix fixture table. | runtime-store-smoke + matrix | abb3b61 2026-06-27 11:33:40 +0000 | **needs-verification** | Keep while importer lives |
 | P3 | scripts/task-event-expectation-smoke.mjs | superseded / unreferenced scripts | Cited run command in docs/review_burndown/reviews/surface-tasks.md:172. | review docs | 9cae143 2026-05-23 18:05:19 +0000 | **needs-verification** | Wire npm or stand down docs citation |
 | P2 | scripts/distribution-v3-reward-dedup-audit.mjs | superseded / unreferenced scripts | Self-documented operator CLI; no package.json entry. | ops one-shot | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Archive after ledger closed |
@@ -144,14 +147,14 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 | P2 | docs/wiki/architecture/current-system.md | stale docs vs live behavior | Still labels full_spec.md source of truth; roots mock/specs in tree diagram. | wiki map | c3dbf3d 2026-06-11 16:31:09 +0000 | **needs-verification** | Reconcile with docs/wiki-as-primary |
 | P2 | docs/README.md | stale docs vs live behavior | Prefers full_spec.md for current decisions; lists root specs. | docs index | 649de99 2026-06-08 18:03:45 +0000 | **needs-verification** | Refresh authority order |
 | P2 | README.md | stale docs vs live behavior | Lists product_spec.md / jsx_mock.jsx / full_spec.md as primary inputs. | root readme | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Refresh |
-| P2 | docs/review_burndown/ | stale docs vs live behavior | External path/reference check: `rg -n --glob '!.git/**' --glob '!node_modules/**' --glob '!dist/**' --glob '!docs/review_burndown/**' --glob '!docs/wiki/architecture/repository-bloat-audit.md' 'review_burndown\|docs/review_burndown' .` → **0 matches**. Only self-references inside the directory tree. | disconnected (self-refs only) | ca00dac 2026-06-09 20:34:14 +0000 | **safe** | Archive or delete the directory |
+| P2 | docs/review_burndown/ | stale docs vs live behavior | **CUT** in `Execute proven-safe repository bloat cuts`: pre-delete external-reference `rg` outside tree still 0 matches; directory removed. | previously disconnected | previously ca00dac; cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
 | P3 | docs/wiki/architecture/model-default-inventory-upgrade-matrix.md | stale docs vs live behavior | Living model matrix owned by Workstream A/Ghash; this workstream must not edit it. Present on branch base 6229c14 line. | owning workstream | 6229c14 2026-07-14 17:12:49 +0000 Document deprecated Hive primitives in model matrix | **load-bearing** | Keep; no edit here |
 
 ### F. Unused direct dependency (1)
 
 | P | Path/symbol | Category | Evidence | Imports/callers or gate | Last-touched | Risk | Proposed next check/cut |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| P2 | package.json direct dependency `libsodium` | unused direct dependency | Source import of bare libsodium: `rg -n "from ['\"]libsodium['\"]\|require\\(['\"]libsodium['\"]\\)" --glob '!.git/**' --glob '!node_modules/**' --glob '!dist/**' --glob '!package*.json' .` → NONE. App uses libsodium-wrappers only. `npm ls libsodium libsodium-wrappers` shows root libsodium@0.8.4 and wrappers→libsodium@0.8.4 deduped. package-lock.json: root depends on both; node_modules/libsodium-wrappers.dependencies.libsodium=^0.8.0. Direct root declaration therefore redundant; wrappers keeps transitive required dep. | declaration-only redundancy | package.json c4222a4 2026-07-11 15:27:01 +0000 | **safe** | Remove direct root libsodium in a later PR; keep libsodium-wrappers; refresh lockfile |
+| P2 | package.json direct dependency `libsodium` | unused direct dependency | **CUT** in `Execute proven-safe repository bloat cuts`: removed root `dependencies.libsodium` only; retained `libsodium-wrappers`. After `npm ci`, `npm ls` shows wrappers@0.8.4 → transitive libsodium@0.8.4. Lockfile: single-line root deps removal; 0 package version churn. | was declaration-only | cut by `Execute proven-safe repository bloat cuts` | **CUT** | done |
 
 ### G. Oversized frontend chunks (3)
 
@@ -202,12 +205,14 @@ Snaga production gate (`/tmp/tasknode-gpt55-prod-gate.log`, release **v560**, pr
 
 ### Safe first
 
-1. **`scripts/chat-estimate-parity-smoke.mjs`** — safe because: Full-repo `rg -n --glob '!.git/**' --glob '!node_modules/**' --glob '!dist/**' --glob '!docs/wiki/architecture/repository-bloat-audit.md' 'chat-estimate-parity-smoke|chat-estimate-parity' .` → **0 matches**. Safety claim…
-2. **`scripts/task-payload-read-retry-smoke.mjs`** — safe because: Full-repo basename search excl audit → **0 matches**.
-3. **`scripts/profile-public-hero-nft-smoke.mjs`** — safe because: Full-repo basename search excl audit → **0 matches**.
-4. **`scripts/hive-project-canonical-repair.mjs`** — safe because: Full-repo basename search excl audit → **0 matches**.
-5. **`docs/review_burndown/`** — safe because: External path/reference check: `rg -n --glob '!.git/**' --glob '!node_modules/**' --glob '!dist/**' --glob '!docs/review_burndown/**' --glob '!docs/wiki/architecture/repository-bloat-audit.md' 'review_burndown|docs/revie…
-6. **`package.json direct dependency `libsodium``** — safe because: Source import of bare libsodium: `rg -n "from ['\"]libsodium['\"]|require\\(['\"]libsodium['\"]\\)" --glob '!.git/**' --glob '!node_modules/**' --glob '!dist/**' --glob '!package*.json' .` → NONE. App uses libsodium-wrap…
+All six previously proven-safe items executed in `Execute proven-safe repository bloat cuts`:
+
+1. `scripts/chat-estimate-parity-smoke.mjs` — **CUT**
+2. `scripts/task-payload-read-retry-smoke.mjs` — **CUT**
+3. `scripts/profile-public-hero-nft-smoke.mjs` — **CUT**
+4. `scripts/hive-project-canonical-repair.mjs` — **CUT**
+5. `docs/review_burndown/` — **CUT**
+6. direct root `libsodium` dependency — **CUT** (`libsodium-wrappers` retained)
 
 ### Verify before cut
 
