@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 
-process.env.OPENAI_API_KEY = "hive-project-planning-smoke-key";
+process.env.OPENROUTER_API_KEY = "hive-project-planning-smoke-key";
+delete process.env.OPENAI_API_KEY;
+delete process.env.TASKNODE_HIVE_SECRETARY_PROVIDER;
+delete process.env.TASKNODE_HIVE_SECRETARY_MODEL;
+delete process.env.TASKNODE_HIVE_SECRETARY_REASONING_EFFORT;
+delete process.env.TASKNODE_HIVE_PROJECT_PROVIDER;
 delete process.env.TASKNODE_HIVE_PROJECT_MODEL;
 delete process.env.TASKNODE_HIVE_PROJECT_REASONING_EFFORT;
 
+const { fetchHiveSecretaryReport } = await import("../server/hive-secretary-worker.js");
 const { fetchHiveActiveProjects } = await import("../server/hive-project-worker.js");
 const { projectHasOperatorArchiveLock } = await import("../server/repositories/hive-project-planning.js");
 const {
@@ -11,7 +17,54 @@ const {
   hiveProjectsDocumentForTests,
 } = await import("../server/repositories/hive-projects.js");
 
+let capturedSecretaryBody = null;
+let secretaryFetchCount = 0;
+const secretaryResult = await fetchHiveSecretaryReport(
+  { source_packet_text: "Validated Hive context: Task Node is the strongest project signal." },
+  {
+    fetchImpl: async (_url, options = {}) => {
+      secretaryFetchCount += 1;
+      capturedSecretaryBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        async text() {
+          return JSON.stringify({
+            model: "z-ai/glm-5.2",
+            choices: [{ message: { content: JSON.stringify({
+              title: "Hive Secretary",
+              summary: "Task Node is the strongest active project signal.",
+              project_signals: [{ project_type: "protocol_development", signal: "Task Node", reason: "Validated", input_refs: ["smoke"] }],
+              network_implications: ["Prioritize reliability."],
+              open_questions: [],
+              next_system_focus: ["Task allocation"],
+            }) } }],
+            usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150, reasoning_tokens: 25, cost: 0 },
+          });
+        },
+      };
+    },
+  }
+);
+assert.equal(capturedSecretaryBody.model, "z-ai/glm-5.2");
+assert.equal(capturedSecretaryBody.reasoning.effort, "high");
+assert.equal(capturedSecretaryBody.response_format.type, "json_schema");
+assert.equal(capturedSecretaryBody.response_format.json_schema.name, "hive_secretary_report");
+assert.equal(Object.hasOwn(capturedSecretaryBody.response_format.json_schema, "type"), false);
+assert.equal(capturedSecretaryBody.response_format.json_schema.strict, true);
+assert.ok(capturedSecretaryBody.response_format.json_schema.schema);
+assert.equal(capturedSecretaryBody.provider.zdr, true);
+assert.equal(capturedSecretaryBody.provider.data_collection, "deny");
+assert.equal(capturedSecretaryBody.provider.require_parameters, true);
+assert.ok(Array.isArray(capturedSecretaryBody.provider.order));
+assert.deepEqual(capturedSecretaryBody.provider.only, capturedSecretaryBody.provider.order);
+assert.ok(capturedSecretaryBody.response_format.json_schema.schema.required.includes("project_signals"));
+assert.equal(capturedSecretaryBody.usage.include, true);
+assert.equal(secretaryResult.provider, "openrouter");
+assert.equal(secretaryResult.model, "z-ai/glm-5.2");
+assert.equal(secretaryResult.usage.reasoningTokens, 25);
+
 let capturedBody = null;
+let projectFetchCount = 0;
 const result = await fetchHiveActiveProjects(
   {
     source_packet_text: [
@@ -31,14 +84,15 @@ const result = await fetchHiveActiveProjects(
   },
   {
     fetchImpl: async (_url, options = {}) => {
+      projectFetchCount += 1;
       capturedBody = JSON.parse(options.body);
       return {
         ok: true,
         async text() {
           return JSON.stringify({
             id: "resp_hive_project_smoke",
-            model: "gpt-5.5-pro-2026-04-23",
-            output_text: JSON.stringify({
+            model: "z-ai/glm-5.2",
+            choices: [{ message: { content: JSON.stringify({
               title: "Hive Active Projects",
               summary: "Task Node is the strongest active project signal.",
               projects: [
@@ -59,12 +113,12 @@ const result = await fetchHiveActiveProjects(
                   rationale: "The Secretary report supports this project directly.",
                 },
               ],
-            }),
+            }) } }],
             usage: {
               input_tokens: 100,
-              output_tokens: 50,
+              completion_tokens: 50,
               total_tokens: 150,
-              output_tokens_details: { reasoning_tokens: 25 },
+              reasoning_tokens: 25,
             },
           });
         },
@@ -73,14 +127,21 @@ const result = await fetchHiveActiveProjects(
   }
 );
 
-assert.equal(capturedBody.model, "gpt-5.5-pro");
+assert.equal(capturedBody.model, "z-ai/glm-5.2");
 assert.equal(capturedBody.reasoning.effort, "high");
-assert.equal(capturedBody.text.verbosity, "low");
-assert.equal(capturedBody.text.format.type, "json_schema");
-assert.equal(capturedBody.text.format.name, "hive_active_projects");
-assert.equal(capturedBody.store, false);
-assert.equal(result.provider, "openai");
-assert.equal(result.model, "gpt-5.5-pro-2026-04-23");
+assert.equal(capturedBody.response_format.type, "json_schema");
+assert.equal(capturedBody.response_format.json_schema.name, "hive_active_projects");
+assert.equal(Object.hasOwn(capturedBody.response_format.json_schema, "type"), false);
+assert.equal(capturedBody.response_format.json_schema.strict, true);
+assert.ok(capturedBody.response_format.json_schema.schema);
+assert.equal(capturedBody.provider.data_collection, "deny");
+assert.equal(capturedBody.provider.require_parameters, true);
+assert.equal(typeof capturedBody.max_tokens, "number");
+assert.equal(Object.hasOwn(capturedBody, "max_output_tokens"), false);
+assert.ok(capturedBody.response_format.json_schema.schema.required.includes("projects"));
+assert.equal(capturedBody.usage.include, true);
+assert.equal(result.provider, "openrouter");
+assert.equal(result.model, "z-ai/glm-5.2");
 assert.equal(result.output.projects.length, 1);
 assert.equal(result.output.projects[0].id, "task_node_core_product");
 assert.equal(result.output.projects[0].title, "Task Node Core Product");
@@ -89,6 +150,48 @@ assert.equal(result.output.projects[0].task_count, 0);
 assert.equal(result.output.projects[0].contributor_count, 0);
 assert.equal(result.output.projects[0].pft_routed, 0);
 assert.equal(result.usage.reasoningTokens, 25);
+
+const unsupportedModels = [
+  "gpt-5.5-pro",
+  "openai/gpt-5.5-pro-2026-04-23",
+  "OpenAI/GPT-5.5-Pro-2026-04-23",
+];
+for (const model of unsupportedModels) {
+  await assert.rejects(
+    fetchHiveSecretaryReport({ source_packet_text: "smoke" }, { model, fetchImpl: async () => { secretaryFetchCount += 1; throw new Error("unexpected_fetch"); } }),
+    new RegExp("hive_secretary_model_unsupported")
+  );
+  await assert.rejects(
+    fetchHiveActiveProjects({ source_packet_text: "smoke" }, { model, fetchImpl: async () => { projectFetchCount += 1; throw new Error("unexpected_fetch"); } }),
+    new RegExp("hive_project_model_unsupported")
+  );
+}
+await assert.rejects(
+  fetchHiveSecretaryReport({ source_packet_text: "smoke" }, { provider: "openai", fetchImpl: async () => { secretaryFetchCount += 1; throw new Error("unexpected_fetch"); } }),
+  new RegExp("hive_secretary_provider_unsupported")
+);
+await assert.rejects(
+  fetchHiveActiveProjects({ source_packet_text: "smoke" }, { provider: "openai", fetchImpl: async () => { projectFetchCount += 1; throw new Error("unexpected_fetch"); } }),
+  new RegExp("hive_project_provider_unsupported")
+);
+const secretaryFetchBeforeEnv = secretaryFetchCount;
+const projectFetchBeforeEnv = projectFetchCount;
+for (const model of unsupportedModels) {
+  process.env.TASKNODE_HIVE_SECRETARY_MODEL = model;
+  await assert.rejects(fetchHiveSecretaryReport({ source_packet_text: "smoke" }, { fetchImpl: async () => { secretaryFetchCount += 1; } }), /hive_secretary_model_unsupported/);
+  process.env.TASKNODE_HIVE_PROJECT_MODEL = model;
+  await assert.rejects(fetchHiveActiveProjects({ source_packet_text: "smoke" }, { fetchImpl: async () => { projectFetchCount += 1; } }), /hive_project_model_unsupported/);
+}
+process.env.TASKNODE_HIVE_SECRETARY_PROVIDER = "openai";
+await assert.rejects(fetchHiveSecretaryReport({ source_packet_text: "smoke" }, { fetchImpl: async () => { secretaryFetchCount += 1; } }), /hive_secretary_provider_unsupported/);
+process.env.TASKNODE_HIVE_PROJECT_PROVIDER = "openai";
+await assert.rejects(fetchHiveActiveProjects({ source_packet_text: "smoke" }, { fetchImpl: async () => { projectFetchCount += 1; } }), /hive_project_provider_unsupported/);
+assert.equal(secretaryFetchCount, secretaryFetchBeforeEnv);
+assert.equal(projectFetchCount, projectFetchBeforeEnv);
+delete process.env.TASKNODE_HIVE_SECRETARY_PROVIDER;
+delete process.env.TASKNODE_HIVE_PROJECT_PROVIDER;
+delete process.env.TASKNODE_HIVE_SECRETARY_MODEL;
+delete process.env.TASKNODE_HIVE_PROJECT_MODEL;
 assert.equal(projectHasOperatorArchiveLock({ metadata_json: { archived_reason: "agent_archived_without_operator_lock" } }), false);
 assert.equal(projectHasOperatorArchiveLock({ metadata_json: { operator_archived: true } }), true);
 assert.equal(projectHasOperatorArchiveLock({ metadata_json: { archive_lock_source: "migration" } }), true);

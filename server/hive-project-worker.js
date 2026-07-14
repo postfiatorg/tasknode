@@ -8,7 +8,7 @@ import {
 } from "./repositories/hive-project-planning.js";
 import { databaseEnabled } from "./db/pool.js";
 
-const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
+const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const hiveProjectPrompt = loadPrompt("hive/hive_active_projects_v1.md");
 const projectTimeoutMs = Math.max(30000, Number(process.env.TASKNODE_HIVE_PROJECT_TIMEOUT_MS || 240000));
 let timer = null;
@@ -19,12 +19,37 @@ function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
 }
 
-function openAiKey() {
-  return safeText(process.env.OPENAI_API_KEY, 10000);
+function openRouterKey() {
+  return safeText(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER, 10000);
 }
 
-function hiveProjectModel() {
-  return safeText(process.env.TASKNODE_HIVE_PROJECT_MODEL || "gpt-5.5-pro", 120);
+function unsupportedModel(model) {
+  return /(?:^|[/_:])gpt-5\.5-pro(?:[-_.:/]|$)/i.test(safeText(model, 160));
+}
+
+export function normalizeHiveProjectProvider(value = "openrouter") {
+  const provider = safeText(value, 80).toLowerCase() || "openrouter";
+  if (provider !== "openrouter") {
+    throw new Error(`hive_project_provider_unsupported:${provider || "unknown"}`);
+  }
+  return provider;
+}
+
+export function normalizeHiveProjectModel(value = "z-ai/glm-5.2") {
+  const rawModel = String(value || "").trim();
+  if (unsupportedModel(rawModel)) {
+    throw new Error(`hive_project_model_unsupported:${safeText(rawModel, 160).toLowerCase()}`);
+  }
+  const model = safeText(rawModel, 160) || "z-ai/glm-5.2";
+  return model;
+}
+
+export function hiveProjectProvider(env = process.env) {
+  return normalizeHiveProjectProvider(env.TASKNODE_HIVE_PROJECT_PROVIDER || "openrouter");
+}
+
+export function hiveProjectModel(env = process.env) {
+  return normalizeHiveProjectModel(env.TASKNODE_HIVE_PROJECT_MODEL || "z-ai/glm-5.2");
 }
 
 function hiveProjectReasoningEffort() {
@@ -32,10 +57,13 @@ function hiveProjectReasoningEffort() {
 }
 
 function hiveProjectEnabled() {
+  const provider = hiveProjectProvider();
+  hiveProjectModel();
   return (
     process.env.TASKNODE_HIVE_PROJECT_WORKER_ENABLED !== "false" &&
     databaseEnabled() &&
-    Boolean(openAiKey())
+    provider === "openrouter" &&
+    Boolean(openRouterKey())
   );
 }
 
@@ -49,13 +77,8 @@ function compactSourceText(value = "", maxLength = 90000) {
 }
 
 function outputText(body = {}) {
-  if (typeof body.output_text === "string") return body.output_text;
-  return (Array.isArray(body.output) ? body.output : [])
-    .flatMap((item) => Array.isArray(item?.content) ? item.content : [])
-    .map((part) => part?.text || "")
-    .filter(Boolean)
-    .join("\n")
-    .trim();
+  const content = body?.choices?.[0]?.message?.content;
+  return typeof content === "string" ? content : "";
 }
 
 function parseOutput(body = {}) {
@@ -64,13 +87,14 @@ function parseOutput(body = {}) {
   return normalizeHiveProjectPlanningOutput(parsed);
 }
 
-function usageFromOpenAi(body = {}) {
+function usageFromOpenRouter(body = {}) {
   const usage = body.usage || {};
   return {
-    inputTokens: Number(usage.input_tokens || 0),
-    outputTokens: Number(usage.output_tokens || 0),
+    inputTokens: Number(usage.prompt_tokens || usage.input_tokens || 0),
+    outputTokens: Number(usage.completion_tokens || usage.output_tokens || 0),
     totalTokens: Number(usage.total_tokens || 0),
-    reasoningTokens: Number(usage.output_tokens_details?.reasoning_tokens || 0),
+    reasoningTokens: Number(usage.reasoning_tokens || usage.output_tokens_details?.reasoning_tokens || 0),
+    costUsd: Number(usage.cost || 0),
   };
 }
 
@@ -141,9 +165,19 @@ function projectTextFormat() {
   };
 }
 
-export async function fetchHiveActiveProjects(job, { fetchImpl = fetch } = {}) {
-  if (!openAiKey()) {
-    const error = new Error("hive_project_openai_not_configured");
+function projectResponseFormat() {
+  const { type: _type, ...jsonSchema } = projectTextFormat();
+  return { type: "json_schema", json_schema: jsonSchema };
+}
+
+export async function fetchHiveActiveProjects(job, { fetchImpl = fetch, provider, model } = {}) {
+  const resolvedProvider = normalizeHiveProjectProvider(provider || hiveProjectProvider());
+  const resolvedModel = normalizeHiveProjectModel(model || hiveProjectModel());
+  if (resolvedProvider !== "openrouter") {
+    throw new Error(`hive_project_provider_unsupported:${resolvedProvider}`);
+  }
+  if (!openRouterKey()) {
+    const error = new Error("hive_project_openrouter_not_configured");
     error.status = 409;
     throw error;
   }
@@ -151,26 +185,27 @@ export async function fetchHiveActiveProjects(job, { fetchImpl = fetch } = {}) {
   const timeout = setTimeout(() => controller.abort(), projectTimeoutMs);
   const startedAt = Date.now();
   try {
-    const response = await fetchImpl(`${(process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "")}/responses`, {
+    const response = await fetchImpl(`${(process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
       method: "POST",
       signal: controller.signal,
       headers: {
-        authorization: `Bearer ${openAiKey()}`,
+        authorization: `Bearer ${openRouterKey()}`,
         "content-type": "application/json",
+        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
+        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
       },
       body: JSON.stringify({
-        model: hiveProjectModel(),
-        input: [
+        model: resolvedModel,
+        messages: [
           { role: "system", content: hiveProjectPrompt },
           { role: "user", content: compactSourceText(job.source_packet_text, 90000) },
         ],
         reasoning: { effort: hiveProjectReasoningEffort() },
-        text: {
-          verbosity: "low",
-          format: projectTextFormat(),
-        },
-        max_output_tokens: Math.max(4000, Number(process.env.TASKNODE_HIVE_PROJECT_MAX_OUTPUT_TOKENS || 12000)),
-        store: false,
+        response_format: projectResponseFormat(),
+        provider: { data_collection: "deny", require_parameters: true },
+        temperature: 0,
+        max_tokens: Math.max(4000, Number(process.env.TASKNODE_HIVE_PROJECT_MAX_OUTPUT_TOKENS || 12000)),
+        usage: { include: true },
         metadata: {
           app: "tasknodeofficial",
           worker: "hive_active_projects",
@@ -181,23 +216,23 @@ export async function fetchHiveActiveProjects(job, { fetchImpl = fetch } = {}) {
     const bodyText = await response.text();
     const body = bodyText ? JSON.parse(bodyText) : {};
     if (!response.ok) {
-      const error = new Error(body?.error?.message || `OpenAI Hive project planner HTTP ${response.status}`);
+      const error = new Error(body?.error?.message || `OpenRouter Hive project planner HTTP ${response.status}`);
       error.status = response.status;
       throw error;
     }
     return {
       output: parseOutput(body),
-      provider: "openai",
-      model: body?.model || hiveProjectModel(),
+      provider: "openrouter",
+      model: body?.model || resolvedModel,
       promptDigest: promptDigest(hiveProjectPrompt),
       responseId: safeText(body?.id, 200),
       usage: {
-        ...usageFromOpenAi(body),
+        ...usageFromOpenRouter(body),
         latencyMs: Date.now() - startedAt,
       },
     };
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("hive_project_openai_timeout");
+    if (error?.name === "AbortError") throw new Error("hive_project_openrouter_timeout");
     throw error;
   } finally {
     clearTimeout(timeout);

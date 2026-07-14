@@ -721,10 +721,10 @@ When a signed-in user posts in the Hive chat:
 2. The route checks the account's linked wallet through `getLinkedWallet`.
 3. If the account has a linked wallet, the entry is marked `wallet_validated = true`.
 4. Validated entries enqueue a Hive Secretary job.
-5. `server/hive-secretary-worker.js` calls OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false`.
+5. `server/hive-secretary-worker.js` calls OpenRouter Chat Completions with `z-ai/glm-5.2`, `reasoning.effort = high`, provider data-collection denial, and structured JSON output.
 6. The completed report is stored in `hive_secretary_reports`.
 7. In the current implementation, the completed report queues a Hive Active Projects job.
-8. `server/hive-project-worker.js` calls OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false`.
+8. `server/hive-project-worker.js` calls OpenRouter Chat Completions with `z-ai/glm-5.2`, `reasoning.effort = high`, provider data-collection denial, and structured JSON output.
 9. The completed project generation is stored in `hive_project_generations` and upserts active rows in `network_projects`.
 10. `GET /api/hive/context` returns both the grouped raw context and the current Secretary report.
 
