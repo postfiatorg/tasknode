@@ -239,7 +239,7 @@ export function taskgenPromptForInput(taskInput = {}) {
 export function taskgenProviderForInput(taskInput = {}, env = process.env) {
   if (env.TASKNODE_TASKGEN_PROVIDER_MOCK === "true") return "mock";
   if (taskInputIsNetwork(taskInput) && networkTaskGenerationV2Enabled(env)) {
-    return safeText(env.TASKNODE_NETWORK_TASKGEN_PROVIDER || env.TASKNODE_HIVE_TASK_GENERATION_PROVIDER || "openrouter", 80).toLowerCase();
+    return safeText(env.TASKNODE_NETWORK_TASKGEN_PROVIDER || env.TASKNODE_HIVE_TASK_GENERATION_PROVIDER || "openai", 80).toLowerCase();
   }
   return safeText(env.TASKNODE_TASKGEN_PROVIDER || "openai", 80).toLowerCase();
 }
@@ -250,11 +250,24 @@ export function taskgenModelForInput(taskInput = {}, env = process.env) {
       env.TASKNODE_NETWORK_TASKGEN_MODEL ||
         env.TASKNODE_HIVE_TASK_GENERATION_MODEL ||
         env.TASKNODE_TASKGEN_MODEL ||
-        "deepseek/deepseek-v4-pro",
+        "gpt-5.6-sol",
       160
     );
   }
-  return safeText(env.TASKNODE_TASKGEN_MODEL || "chat-latest", 160);
+  return safeText(env.TASKNODE_TASKGEN_MODEL || "gpt-5.6-sol", 160);
+}
+
+export function taskgenReasoningEffort(taskInput = {}, env = process.env) {
+  if (taskInputIsNetwork(taskInput) && networkTaskGenerationV2Enabled(env)) {
+    return safeText(
+      env.TASKNODE_NETWORK_TASKGEN_REASONING_EFFORT ||
+        env.TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT ||
+        env.TASKNODE_TASKGEN_REASONING_EFFORT ||
+        "xhigh",
+      40
+    );
+  }
+  return safeText(env.TASKNODE_TASKGEN_REASONING_EFFORT || "xhigh", 40);
 }
 
 function stableJson(value) {
@@ -635,6 +648,7 @@ function taskgenApiConfig(taskInput = {}) {
   return {
     provider: "frontier",
     model: taskgenModelForInput(taskInput),
+    reasoningEffort: taskgenReasoningEffort(taskInput),
     baseUrl: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, ""),
     apiKey,
     headers: {},
@@ -793,6 +807,7 @@ export async function generateTaskWithProvider(taskInput, {
           },
         ],
         response_format: taskgenResponseFormat,
+        reasoning_effort: apiConfig.reasoningEffort,
       }),
     }, {
       fetchImpl,

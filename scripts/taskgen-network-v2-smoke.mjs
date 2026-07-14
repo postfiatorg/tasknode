@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 process.env.TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED = "true";
 process.env.TASKNODE_TASKGEN_PROVIDER_MOCK = "true";
@@ -8,6 +9,7 @@ const {
   taskgenModelForInput,
   taskgenPromptForInput,
   taskgenProviderForInput,
+  taskgenReasoningEffort,
   taskgenReplayIdentity,
 } = await import("../server/task-generation-worker.js");
 
@@ -78,7 +80,30 @@ const taskInput = {
 
 assert.equal(taskgenPromptForInput(taskInput).version, "taskgen_network_v2");
 assert.equal(taskgenProviderForInput(taskInput), "mock");
-assert.equal(taskgenModelForInput(taskInput), "deepseek/deepseek-v4-pro");
+assert.equal(taskgenModelForInput(taskInput), "gpt-5.6-sol");
+
+const defaultNetworkEnv = { TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED: "true" };
+assert.equal(taskgenProviderForInput(taskInput, defaultNetworkEnv), "openai");
+assert.equal(taskgenModelForInput(taskInput, defaultNetworkEnv), "gpt-5.6-sol");
+assert.equal(taskgenReasoningEffort(taskInput, defaultNetworkEnv), "xhigh");
+const personalInput = { request: { requestedTaskKind: "personal" }, policy: { task_class: "personal" } };
+const defaultPersonalEnv = {};
+assert.equal(taskgenProviderForInput(personalInput, defaultPersonalEnv), "openai");
+assert.equal(taskgenModelForInput(personalInput, defaultPersonalEnv), "gpt-5.6-sol");
+assert.equal(taskgenReasoningEffort(personalInput, defaultPersonalEnv), "xhigh");
+
+const productionFlyConfig = readFileSync(new URL("../fly.toml", import.meta.url), "utf8");
+for (const [key, value] of [
+  ["TASKNODE_HIVE_TASK_GENERATION_PROVIDER", "openai"],
+  ["TASKNODE_HIVE_TASK_GENERATION_MODEL", "gpt-5.6-sol"],
+  ["TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT", "xhigh"],
+]) {
+  assert.match(
+    productionFlyConfig,
+    new RegExp(`^\\s+${key} = ${JSON.stringify(value)}$`, "m"),
+    `fly.toml production task generation pin drifted: ${key}`
+  );
+}
 
 const identity = taskgenReplayIdentity({
   taskInput,
@@ -92,7 +117,7 @@ const identity = taskgenReplayIdentity({
   requestBundleDigest: "sha256:bundle-v2-smoke",
 });
 assert.equal(identity.prompt_version, "taskgen_network_v2");
-assert.equal(identity.model, "deepseek/deepseek-v4-pro");
+assert.equal(identity.model, "gpt-5.6-sol");
 
 const generated = await generateTaskWithProvider(taskInput);
 assert.equal(generated.output.schema, "pf.taskgen.output.v1");

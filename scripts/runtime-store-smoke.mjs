@@ -93,8 +93,8 @@ try {
     throw new Error("Frontier Instant must default to OpenAI chat-latest.");
   }
 
-  if (modelForMode("Frontier Thinking") !== "gpt-5.5") {
-    throw new Error("Frontier Thinking must default to pinned OpenAI gpt-5.5.");
+  if (modelForMode("Frontier Thinking") !== "gpt-5.6-sol") {
+    throw new Error("Frontier Thinking must default to pinned OpenAI gpt-5.6-sol.");
   }
 
   if (modelForMode("Private Instant") !== "deepseek/deepseek-v4-flash") {
@@ -141,7 +141,7 @@ try {
   }
 
   if (actualChatCost("Frontier Thinking", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 35) {
-    throw new Error("Frontier Thinking gpt-5.5 pricing drifted from the configured OpenAI token rates.");
+    throw new Error("Frontier Thinking gpt-5.6-sol pricing drifted from the configured OpenAI token rates.");
   }
 
   if (actualChatCost("Private Thinking", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 5.3) {
@@ -450,7 +450,7 @@ try {
   }
   const frontierThinkingTaskRequest = openAiResponseRequest({
     mode: "Frontier Thinking",
-    model: "gpt-5.5",
+    model: "gpt-5.6-sol",
     message: "Think through my task state.",
     conversationId: "runtime-smoke-frontier-thinking-task-context-contract",
     taskContext: smokeTaskContext,
@@ -460,7 +460,7 @@ try {
   }
   const frontierThinkingContextRequest = openAiResponseRequest({
     mode: "Frontier Thinking",
-    model: "gpt-5.5",
+    model: "gpt-5.6-sol",
     message: "Think through my context.",
     conversationId: "runtime-smoke-frontier-thinking-context-contract",
     contextDocument: smokeContextDocument,
@@ -471,17 +471,17 @@ try {
 
   const frontierThinkingRequest = openAiResponseRequest({
     mode: "Frontier Thinking",
-    model: "gpt-5.5",
+    model: "gpt-5.6-sol",
     message: "Think carefully and answer.",
     conversationId: "runtime-smoke-frontier-thinking-contract",
   });
 
   if (
-    frontierThinkingRequest.model !== "gpt-5.5" ||
-    frontierThinkingRequest.reasoning?.effort !== "high" ||
+    frontierThinkingRequest.model !== "gpt-5.6-sol" ||
+    frontierThinkingRequest.reasoning?.effort !== "xhigh" ||
     Object.prototype.hasOwnProperty.call(frontierThinkingRequest, "max_output_tokens")
   ) {
-    throw new Error(`Frontier Thinking must use gpt-5.5 high reasoning without a hard output cap: ${JSON.stringify(frontierThinkingRequest)}`);
+    throw new Error(`Frontier Thinking must use gpt-5.6-sol xhigh reasoning without a hard output cap: ${JSON.stringify(frontierThinkingRequest)}`);
   }
 
   const openRouterRequest = openRouterChatRequest({

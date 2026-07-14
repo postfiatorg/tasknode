@@ -105,10 +105,10 @@ export const chatModePrices = {
     inputUsdPerMillion: 5,
     outputUsdPerMillion: 30,
     provider: "openai",
-    defaultModel: "gpt-5.5",
+    defaultModel: "gpt-5.6-sol",
     maxOutputTokens: null,
     estimatedOutputTokens: 4096,
-    reasoningEffort: "high",
+    reasoningEffort: "xhigh",
   },
 };
 export { effectiveDefaultChatMode, fallbackChatModeLabel };

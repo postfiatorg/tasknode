@@ -84,6 +84,40 @@ async function providerTimeoutSmoke() {
   );
 }
 
+async function openAiRequestBodySmoke() {
+  let requestBody = null;
+  const responsePayload = {
+    id: "taskgen-reliability-openai-request-smoke",
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          schema: "pf.taskgen.output.v1",
+          title: "Prepare reliability evidence",
+          description: "Create a concise reliability evidence packet.",
+          task_kind: "network",
+          steps: ["Review the request.", "Create the evidence packet."],
+          submission_requirement: { type: "text", criteria: "Submit the evidence packet." },
+          verification_policy: { followup_required: false, mode: "standard_followup", verification_type: "text" },
+          reward_offer: { amount_estimate_pft: "3.00" },
+          deadline: { accept_by: "2030-01-01T00:00:00.000Z", deadline_at: null },
+        }),
+      },
+    }],
+  };
+  const generated = await generateTaskWithProvider(taskInput, {
+    fetchImpl: async (_url, init = {}) => {
+      requestBody = JSON.parse(init.body);
+      return new Response(JSON.stringify(responsePayload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+  assert.equal(generated.metadata.provider, "frontier");
+  assert.equal(requestBody.model, "taskgen-reliability-smoke-model");
+  assert.equal(requestBody.reasoning_effort, "xhigh");
+}
+
 async function requestRow(id) {
   const result = await query("SELECT * FROM task_requests WHERE request_id = $1", [id]);
   return result.rows[0] || null;
@@ -240,6 +274,7 @@ async function ownershipSmoke() {
   }
 }
 
+await openAiRequestBodySmoke();
 await providerTimeoutSmoke();
 await ownershipSmoke();
 

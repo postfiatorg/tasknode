@@ -177,7 +177,7 @@ assert.match(metadata.digest, /^[a-f0-9]{64}$/);
 
 for (const [mode, model] of [
   ["Frontier Instant", "chat-latest"],
-  ["Frontier Thinking", "gpt-5.5"],
+  ["Frontier Thinking", "gpt-5.6-sol"],
 ]) {
   const request = openAiResponseRequest({
     mode,
