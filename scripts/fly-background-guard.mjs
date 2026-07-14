@@ -20,6 +20,9 @@ function usage() {
     "  7. worker-airdrop",
     "  8. board-secretary",
     "",
+    "By default, worker-airdrop is guarded at two replicas; every other group is guarded at one.",
+    "An explicit --count overrides that default for all guarded process groups.",
+    "",
     "Use npm run fly:worker-guard or npm run fly:board-guard for one process group.",
   ].join("\n");
 }
@@ -28,7 +31,26 @@ function hasArg(name) {
   return process.argv.includes(name);
 }
 
-function runGuard(args) {
+function argValue(args, name, fallback = "") {
+  const index = args.indexOf(name);
+  return index === -1 ? fallback : args[index + 1] || fallback;
+}
+
+function guardArgsForProcess(processGroup, sharedArgs) {
+  const defaultCount = processGroup === "worker-airdrop" && !sharedArgs.includes("--count")
+    ? ["--count", "2"]
+    : [];
+  return ["--process", processGroup, ...defaultCount, ...sharedArgs];
+}
+
+function runGuard(args, { dryRun = false } = {}) {
+  if (dryRun) {
+    console.log(
+      `[dry-run] worker guard process=${argValue(args, "--process")} ` +
+      `count=${argValue(args, "--count", "1")}`
+    );
+    return;
+  }
   execFileSync(process.execPath, [workerGuardPath, ...args], {
     cwd: path.resolve("."),
     env: process.env,
@@ -47,12 +69,17 @@ if (hasArg("--process")) {
 }
 
 const sharedArgs = process.argv.slice(2);
+const dryRun = hasArg("--dry-run");
 
-runGuard(["--process", "worker-pftl", ...sharedArgs]);
-runGuard(["--process", "worker-taskgen", ...sharedArgs]);
-runGuard(["--process", "worker-task-review", ...sharedArgs]);
-runGuard(["--process", "worker-context-rewrite", ...sharedArgs]);
-runGuard(["--process", "worker-hive", ...sharedArgs]);
-runGuard(["--process", "worker-memory-profile", ...sharedArgs]);
-runGuard(["--process", "worker-airdrop", ...sharedArgs]);
-runGuard(["--process", "board-secretary", ...sharedArgs]);
+for (const processGroup of [
+  "worker-pftl",
+  "worker-taskgen",
+  "worker-task-review",
+  "worker-context-rewrite",
+  "worker-hive",
+  "worker-memory-profile",
+  "worker-airdrop",
+  "board-secretary",
+]) {
+  runGuard(guardArgsForProcess(processGroup, sharedArgs), { dryRun });
+}
