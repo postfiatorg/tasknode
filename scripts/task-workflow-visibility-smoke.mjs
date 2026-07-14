@@ -2,8 +2,41 @@ import assert from "node:assert/strict";
 
 import {
   taskAcceptanceConfirmation,
+  taskLifecycleStopDescriptor,
   taskSubmissionProgressSteps,
 } from "../src/features/tasks/task-workflow-visibility.js";
+
+const proposedActions = {
+  canAccept: true,
+  canRefuse: true,
+  canStop: true,
+  stopAction: "refuse",
+  stopLabel: "Refuse task",
+};
+const acceptedActions = {
+  canCancel: true,
+  canRefuse: false,
+  canStop: true,
+  stopAction: "cancel",
+  stopLabel: "Cancel task",
+  canSubmitInitialEvidence: true,
+};
+
+assert.deepEqual(
+  taskLifecycleStopDescriptor(proposedActions),
+  { action: "refuse", label: "Refuse task" },
+  "proposed lifecycle payloads should expose refuse as the visible stop action"
+);
+assert.deepEqual(
+  taskLifecycleStopDescriptor(acceptedActions),
+  { action: "cancel", label: "Cancel task" },
+  "accepted lifecycle payloads should expose cancel as the visible stop action"
+);
+assert.equal(
+  taskLifecycleStopDescriptor({ canStop: true, canCancel: false, stopAction: "cancel", stopLabel: "Cancel task" }),
+  null,
+  "inconsistent stop capabilities should fail closed"
+);
 
 assert.equal(
   taskAcceptanceConfirmation({
@@ -22,6 +55,10 @@ const indexedNotice = taskAcceptanceConfirmation({
 assert.equal(indexedNotice.title, "Task accepted");
 assert.equal(indexedNotice.actionLabel, "Submit evidence");
 assert.equal(indexedNotice.tone, "success");
+assert.equal(indexedNotice.detail, "", "accepted notice should not repeat its next-step copy in the detail slot");
+
+const acceptedNoticeCtas = [indexedNotice.actionLabel].filter(Boolean);
+assert.deepEqual(acceptedNoticeCtas, ["Submit evidence"], "accepted overview should expose one submit CTA from the notice");
 
 const syncingNotice = taskAcceptanceConfirmation({
   actions: { canAccept: false, canSubmitInitialEvidence: true },

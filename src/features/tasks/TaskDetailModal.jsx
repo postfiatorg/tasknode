@@ -54,6 +54,7 @@ import {
 } from "./task-visible-state.js";
 import {
   taskAcceptanceConfirmation,
+  taskLifecycleStopDescriptor,
   taskSubmissionProgressSteps,
 } from "./task-workflow-visibility.js";
 import {
@@ -561,8 +562,8 @@ function TaskOverviewPanel({
   walletVault,
 }) {
   const [showOriginal, setShowOriginal] = useState(false);
-  const [showControls, setShowControls] = useState(false);
   const actions = detail?.actions || {};
+  const stopDescriptor = taskLifecycleStopDescriptor(actions);
   const currentVerificationRequest = detail?.currentVerificationRequest || null;
   const verificationRequestActive = Boolean(actions.canSubmitVerificationEvidence && currentVerificationRequest);
   const acceptanceNotice = taskAcceptanceConfirmation({ actions, task: displayTask });
@@ -607,17 +608,8 @@ function TaskOverviewPanel({
               Respond in Submit
               <ArrowRight size={14} strokeWidth={2} />
             </button>
-            {actions.canStop && (
-              <button
-                className="task-muted-action"
-                onClick={() => setShowControls((value) => !value)}
-                type="button"
-              >
-                {showControls ? "Hide task controls" : "Cancel task"}
-              </button>
-            )}
           </div>
-          {showControls && (
+          {stopDescriptor && (
             <div className="task-secondary-action">
               {lifecycleControls}
             </div>
@@ -646,31 +638,11 @@ function TaskOverviewPanel({
             <strong>{verification.title || "Submit evidence"}</strong>
             <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
           </TaskSection>
-          {actions.canSubmitInitialEvidence && (
-            <div className="task-overview-actions">
-              <button className="dark-pill" onClick={() => onSelectTab?.("submit")} type="button">
-                Submit evidence
-                <ArrowRight size={14} strokeWidth={2} />
-              </button>
-            </div>
-          )}
           <TaskProofSummary detail={detail} displayTask={displayTask} onSelectTab={onSelectTab} />
-          {!actions.canAccept && actions.canStop && (
-            <>
-              <div className="task-soft-divider" />
-              <button
-                className="task-muted-action"
-                onClick={() => setShowControls((value) => !value)}
-                type="button"
-              >
-                {showControls ? "Hide task controls" : "Cancel task"}
-              </button>
-              {showControls && (
-                <div className="task-secondary-action">
-                  {lifecycleControls}
-                </div>
-              )}
-            </>
+          {!actions.canAccept && stopDescriptor && (
+            <div className="task-secondary-action">
+              {lifecycleControls}
+            </div>
           )}
         </>
       )}
@@ -767,7 +739,8 @@ function TaskLifecycleActionPanel({
     unlockPending: walletUnlockPending,
   });
   const signingReady = unlockPolicy.allowed;
-  const actionLabel = actions.stopLabel || "Cancel task";
+  const stopDescriptor = taskLifecycleStopDescriptor(actions);
+  const actionLabel = stopDescriptor?.label || "";
   const helper = actions.canAccept
     ? directOffchain
       ? "Accepting records the task update directly in Task Node and puts this task on your plate. Refusing closes the offer."
@@ -779,14 +752,18 @@ function TaskLifecycleActionPanel({
       : unlockPolicy.message;
   const stopDisabled = loading || state.pending;
   const acceptDisabled = stopDisabled;
-  const stopCopy = signingButtonLabel(unlockPolicy, { ready: actionLabel, locked: "Unlock wallet", vault: "Open wallet" });
+  const stopCopy = actionLabel || signingButtonLabel(unlockPolicy, { ready: actionLabel, locked: "Unlock wallet", vault: "Open wallet" });
   const acceptCopy = signingButtonLabel(unlockPolicy, { ready: "Accept task", locked: "Unlock wallet", vault: "Open wallet" });
-  const title = actions.canAccept ? "Accept or refuse task" : actionLabel;
+  const title = actions.canAccept
+    ? actionLabel
+      ? `Accept or ${actionLabel.charAt(0).toLowerCase()}${actionLabel.slice(1)}`
+      : "Accept task"
+    : actionLabel;
   const resultAction = state.resultAction ? `${state.resultAction}: ` : "";
   const pendingAction = state.pendingAction || "";
   const stopPending = state.pending && pendingAction !== "accept";
   const acceptPending = state.pending && pendingAction === "accept";
-  const showStopButton = Boolean(actions.canStop && (signingReady || !actions.canAccept));
+  const showStopButton = Boolean(stopDescriptor);
   const reasonLabel = actions.canAccept ? "Refusal note" : "Reason";
   const reasonPlaceholder = actions.canAccept
     ? "Optional note if you refuse this task."
@@ -870,12 +847,18 @@ function TaskLifecycleActionPanel({
     lastAcceptUiEventRef.current = eventKey;
   }, [acceptUiEvent, actions.canAccept, actions.canStop, linkedWalletAddress, signingReady, taskId]);
 
-  if (!actions?.canAccept && !actions?.canStop) return null;
+  if (!actions?.canAccept && !stopDescriptor) return null;
 
   async function submitLifecycleAction(taskAction) {
+    const isTerminalAction = taskAction !== "accept";
+    if (isTerminalAction && !stopDescriptor) return;
     if (!signingReady) {
       handleSigningUnlockAction(unlockPolicy, onWalletUnlock);
       return;
+    }
+    if (isTerminalAction) {
+      const confirmationMessage = `Confirm ${stopDescriptor.label} (${stopDescriptor.action})? This terminal action cannot be undone.`;
+      if (typeof window === "undefined" || !window.confirm(confirmationMessage)) return;
     }
     setState({ error: "", pending: true, pendingAction: taskAction, result: "", resultAction: "" });
     try {
@@ -935,7 +918,7 @@ function TaskLifecycleActionPanel({
           <button
             className="light-pill"
             disabled={stopDisabled}
-            onClick={() => submitLifecycleAction(actions.stopAction || "cancel")}
+            onClick={() => submitLifecycleAction(stopDescriptor.action)}
             type="button"
           >
             {stopPending ? (directOffchain ? "Recording" : "Publishing") : stopCopy}

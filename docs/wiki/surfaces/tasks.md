@@ -386,7 +386,7 @@ Users must be able to stop a task even after it has entered the verification loo
 | Reward pending (`reward_decided`) | No stop action | The authority reward outcome is already in flight. |
 | Refused, rejected, cancelled, expired, rewarded | No stop action | Terminal state. |
 
-The stop action is shown on the Overview tab. Proposed tasks show both `Accept task` and `Refuse task`; accepted or review-loop tasks show the relevant cancel action. If the local seed vault is locked, clicking the action opens the shared wallet unlock flow. If the vault is unlocked, the browser builds an encrypted `pf.task.update.v1` payload and signs a PFTL `TASK_UPDATE` pointer transaction from the linked user wallet.
+The stop action is shown directly on the Overview tab. Proposed tasks show both `Accept task` and `Refuse task`; accepted or review-loop tasks show the relevant cancel action as a visible secondary control. Selecting a terminal action requires confirmation using the lifecycle-provided action label before any publish call. If the local seed vault is locked, clicking the action opens the shared wallet unlock flow. If the vault is unlocked, the browser builds an encrypted `pf.task.update.v1` payload and signs a PFTL `TASK_UPDATE` pointer transaction from the linked user wallet.
 
 The seed never leaves the browser. The server only receives:
 
@@ -597,7 +597,7 @@ The detail modal is state-specific.
 
 When a task is proposed or accepted, the overview shows the original task offer: description, steps, evidence requirement, and any Hive routing context. This helps the user decide what work is being requested.
 
-When a task enters `verification_requested`, the detail view uses the compact verification layout from `mocks/verify.jsx`. The overview shows a short `Original task` summary so the user knows what work the verification belongs to, but the full offer, steps, and Hive routing context stay behind a `Show` toggle. The active `Verification requested` ask appears directly below that summary, followed by a `Respond in Submit` action. Cancel controls stay secondary behind `Cancel task` so they do not compete with the current verification requirement.
+When a task enters `verification_requested`, the detail view uses the compact verification layout from `mocks/verify.jsx`. The overview shows a short `Original task` summary so the user knows what work the verification belongs to, but the full offer, steps, and Hive routing context stay behind a `Show` toggle. The active `Verification requested` ask appears directly below that summary, followed by a `Respond in Submit` action and a visible lifecycle-provided cancel control. The cancel control stays secondary in styling so it does not compete with the current verification requirement.
 
 The Submit tab repeats the current verification request in a collapsible block, then focuses on the user's response. It starts with one evidence item. A second item appears only when the user clicks `Add second evidence`; mixed evidence requirements do not auto-open a second blank card.
 

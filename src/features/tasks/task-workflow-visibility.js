@@ -7,6 +7,20 @@ function safeText(value = "", max = 500) {
   return String(value || "").trim().slice(0, max);
 }
 
+/**
+ * Return the single user-stop action advertised by the server lifecycle
+ * payload. Inconsistent payloads fail closed so the UI never invents a
+ * terminal transition or presents a misleading label.
+ */
+export function taskLifecycleStopDescriptor(actions = {}) {
+  if (!actions?.canStop) return null;
+  const action = safeText(actions.stopAction, 40).toLowerCase();
+  const label = safeText(actions.stopLabel, 80);
+  const capability = action === "cancel" ? actions.canCancel : action === "refuse" ? actions.canRefuse : false;
+  if (!capability || !label) return null;
+  return { action, label };
+}
+
 function submissionPendingPhase(label = "") {
   const normalized = safeText(label, 120).toLowerCase();
   if (normalized.includes("reading") || normalized.includes("screenshot") || normalized.includes("file")) {
@@ -29,7 +43,7 @@ export function taskAcceptanceConfirmation({ actions = {}, task = {} } = {}) {
     body: "This task is on your plate. Submit evidence when the work is ready.",
     detail: pending
       ? clientSyncDetail || "The confirmation stays visible while the task index catches up."
-      : "Accepted status is indexed for this task.",
+      : "",
     title: "Task accepted",
     tone: pending ? "syncing" : "success",
   };
