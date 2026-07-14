@@ -5,7 +5,7 @@
 **Base:** `origin/main` @ `6229c14`
 **Scope:** Documentation audit only. No code, config, dependency, or model-matrix deletions.
 **Method:** Full-repo `rg` (excluding `.git`, `node_modules`, `dist`), `package.json`/`fly.toml` gates, `npm run build` chunks, `npm ls`/`package-lock.json`, `git log -1 --format='%h %ci %s'` per path. Bulk evidence: `/tmp/tasknode-bloat-audit-125.log`.
-**Workstream A note:** The approved DEAD/DISABLED Board Manager OpenAI/GPT-5.5-Pro fallback cut has landed. LIVE Secretary/Project GPT-5.5-Pro carriers remain load-bearing and frozen; their deletion or migration remains out of scope.
+**Workstream A note:** Board Manager OpenAI/GPT-5.5-Pro fallback cut has landed. Secretary/Project **code** migration is commit `272b708` (OpenRouter/`z-ai/glm-5.2` defaults, explicit Fly pins, fail-closed Pro rejection). Production runtime **activation** still pending the single combined deploy that ships those pins.
 
 ## Verdict rules used
 
@@ -22,9 +22,9 @@ External host schedulers and credentials outside this repository were not inspec
 | --- | ---: |
 | safe | 0 |
 | CUT | 7 |
-| needs-verification | 38 |
+| needs-verification | 36 |
 | load-bearing | 20 |
-| resolved | 4 |
+| resolved | 6 |
 | **Total** | **69** |
 
 | Category | Count |
@@ -95,8 +95,8 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 
 | P | Path/symbol | Category | Evidence | Imports/callers or gate | Last-touched | Risk | Proposed next check/cut |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| P0 | server/hive-secretary-worker.js | workers (live) | **LIVE-IN-PROD** (Snaga gate `/tmp/tasknode-gpt55-prod-gate.log`): production release **v560** started process **worker-hive** machine `d895202a20e418`; `TASKNODE_DATABASE_ENABLED=true`; OpenAI key **presence** confirmed (value not read); `TASKNODE_HIVE_SECRETARY_ENABLED`/`PROVIDER`/`MODEL` **unset** so source defaults select openai/`gpt-5.5-pro`; started via `background-workers.js` `startHiveWorkers()` for worker:hive. Gate proves start/config reachability, not a completed paid invocation (no live queue job consumed; no model call). | prod worker-hive startup | f49edf1 2026-05-22 18:35:39 +0000 | **load-bearing** | KEEP under gut-only-if-not-in-prod; any replace/disable requires explicit migration |
-| P0 | server/hive-project-worker.js | workers (live) | **LIVE-IN-PROD** (same gate/release process): same **worker-hive** `d895202a20e418`; Project enable/model env unset → default `gpt-5.5-pro`; started with hive role; Secretary completion path can enqueue project planning. Gate proves start/config reachability (**no live queue** consumption, **no model call**). | prod worker-hive startup | f49edf1 2026-05-22 18:35:39 +0000 | **load-bearing** | KEEP; migrate only with approved replacement of project upsert semantics |
+| P0 | server/hive-secretary-worker.js | workers (live) | **Historical** Snaga gate (`/tmp/tasknode-gpt55-prod-gate.log`): release **v560** **worker-hive** `d895202a20e418` was LIVE with unset Secretary env → then openai/`gpt-5.5-pro` defaults (start/config only; no queue consume/model call). **Code now (`272b708`)**: defaults OpenRouter/`z-ai/glm-5.2`; Fly.toml pins `TASKNODE_HIVE_SECRETARY_PROVIDER=openrouter`, `MODEL=z-ai/glm-5.2`, effort `high`; unsupported Pro models fail closed. Still started via `startHiveWorkers()` for worker:hive. Production machine not re-gated post-migration. | prod worker-hive role (load-bearing worker, not cut) | f49edf1 pre-migration; code `272b708` 2026-07-14 | **load-bearing** | KEEP worker; ship deploy to activate GLM pins |
+| P0 | server/hive-project-worker.js | workers (live) | **Historical** v560 **worker-hive** gate same machine: unset Project env → gpt-5.5-pro defaults. **Code now (`272b708`)**: OpenRouter-only provider normalization + `z-ai/glm-5.2` default; Fly pins `TASKNODE_HIVE_PROJECT_PROVIDER/MODEL/REASONING_EFFORT`; Pro pattern rejected. Still hive-role background worker; Secretary completion can enqueue project planning. Deploy activation pending. | prod worker-hive role | f49edf1 pre-migration; code `272b708` 2026-07-14 | **load-bearing** | KEEP worker; activate with combined deploy |
 | P0 | server/hive-board-secretary-worker.js | workers (live) | fly.toml process board-secretary = npm run start:board-secretary; TASKNODE_HIVE_BOARD_SECRETARY_ENABLED=true. Companion scripts/hive-board-secretary-worker.mjs. | prod process | 6e2a173 2026-06-28 12:36:01 +0000 | **load-bearing** | keep |
 | P0 | server/task-generation-worker.js | workers (live) | fly TASKNODE_TASK_GENERATION_WORKER_ENABLED=true; process worker-taskgen. | prod | 64209dc 2026-07-14 16:41:15 +0000 | **load-bearing** | keep |
 | P0 | server/network-task-generation-worker.js | workers (live) | fly network-taskgen flags true; worker-taskgen role. | prod | 0300725 2026-06-29 02:40:39 +0000 | **load-bearing** | keep |
@@ -116,7 +116,7 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 | P2 | server/hive-report-provider.js | duplicated provider plumbing | Parallel provider pattern. | hive reports worker | c68a48d 2026-06-29 02:31:01 +0000 | **load-bearing** | keep |
 | P2 | server/context-rewrite-provider.js | duplicated provider plumbing | Parallel provider pattern. | context-rewrite worker | 641bd00 2026-06-26 00:16:13 +0000 | **load-bearing** | keep |
 | P2 | server/embedding-provider.js | duplicated provider plumbing | Embedding provider path for memory/search. | memory path | befb670 2026-05-19 19:45:34 +0000 | **load-bearing** | keep |
-| P2 | server/board-manager-secretary-packets.js | duplicated provider plumbing | DeepSeek 'secretary packet' path coexists with Hive board secretary (GLM) and legacy Hive secretary (gpt-5.5-pro) — three overlapping secretary surfaces. | BM source compression | 0dceeb7 2026-06-22 14:19:40 +0000 | **needs-verification** | Naming/table sunset plan |
+| P2 | server/board-manager-secretary-packets.js | duplicated provider plumbing | DeepSeek secretary-packet path still coexists with Hive board secretary (GLM) and Hive planning Secretary worker (now GLM via `272b708`) — overlapping “secretary” product surfaces remain, without a live GPT-5.5-Pro secretary default. | BM source compression | 0dceeb7 2026-06-22 14:19:40 +0000 | **needs-verification** | Naming/table sunset plan |
 | P3 | scripts/grashnuk-harvest-codex-exec.mjs | duplicated provider plumbing | Codex CLI family with board-manager-codex-exec / grashnuk-review; default model gpt-5.5; package-wired. | package script | 47efc89 2026-06-27 11:08:17 +0000 | **needs-verification** | Shared CLI helper + Workstream A models |
 | P3 | scripts/grashnuk-review-codex-exec.mjs | duplicated provider plumbing | Sibling codex CLI; default gpt-5.5; package-wired. | package script | 4d9fddc 2026-06-27 12:58:41 +0000 | **needs-verification** | same |
 
@@ -142,8 +142,8 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 
 | P | Path/symbol | Category | Evidence | Imports/callers or gate | Last-touched | Risk | Proposed next check/cut |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| P1 | docs/wiki/surfaces/hive.md | stale docs vs live behavior | Architecture/status docs (matrix + Project Status surface narrative) treat Hive Secretary/Project as deprecated historical primitives while runtime **worker-hive** still reaches those gpt-5.5-pro defaults (Snaga gate: LIVE-IN-PROD). Contradiction is deprecation narrative vs runtime reachability—not that Fly disables the workers. Board-secretary GLM stack is an additional live surface. | product surface wiki | e29fe11 2026-06-29 15:37:32 +0000 | **needs-verification** | Rewrite after migration policy; do not imply Fly-disabled |
-| P1 | docs/wiki/architecture/ai-providers.md | stale docs vs live behavior | Tables + planning mix: matrix deprecates Secretary/Project primitives while production worker-hive still starts them (LIVE-IN-PROD gate). Stale relative to architecture deprecation vs runtime reachability dual truth. | architecture wiki | c4222a4 2026-07-11 15:27:01 +0000 | **needs-verification** | Align deprecation prose only after deliberate migration of live carriers |
+| P1 | docs/wiki/surfaces/hive.md | stale docs vs live behavior | **resolved** by `272b708`: planning-worker narrative updated with the OpenRouter/GLM migration (paired matrix/ai-providers edits in that commit). Historical v560 GPT reachability remains documentary context only. | product surface wiki | e29fe11 prior; resolved `272b708` 2026-07-14 | **resolved** | Keep current; further polish only if deploy post-checks need it |
+| P1 | docs/wiki/architecture/ai-providers.md | stale docs vs live behavior | **resolved** by `272b708`: Secretary/Project provider tables aligned to OpenRouter/`z-ai/glm-5.2` with fail-closed Pro stance. | architecture wiki | c4222a4 prior; resolved `272b708` 2026-07-14 | **resolved** | Keep |
 | P2 | docs/wiki/architecture/current-system.md | stale docs vs live behavior | Still labels full_spec.md source of truth; roots mock/specs in tree diagram. | wiki map | c3dbf3d 2026-06-11 16:31:09 +0000 | **needs-verification** | Reconcile with docs/wiki-as-primary |
 | P2 | docs/README.md | stale docs vs live behavior | Prefers full_spec.md for current decisions; lists root specs. | docs index | 649de99 2026-06-08 18:03:45 +0000 | **needs-verification** | Refresh authority order |
 | P2 | README.md | stale docs vs live behavior | Lists product_spec.md / jsx_mock.jsx / full_spec.md as primary inputs. | root readme | dd4809b 2026-06-04 17:16:26 +0000 | **needs-verification** | Refresh |
@@ -188,18 +188,19 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 
 ## GPT-5.5 / GPT-5.5-Pro carriers
 
-Snaga production gate (`/tmp/tasknode-gpt55-prod-gate.log`, release **v560**, process **worker-hive** `d895202a20e418`) proves **start/config reachability** for Secretary/Project defaults. Gate confirms OpenAI key presence without values; **no live queue** job consumed; **no model call** performed.
+### Historical production gate (v560)
+Snaga log `/tmp/tasknode-gpt55-prod-gate.log`: release **v560**, process **worker-hive** `d895202a20e418`, DB enabled, OpenAI key **presence** only, Secretary/Project enable+provider+model **unset** → source defaults then selected openai/`gpt-5.5-pro`. Gate proved **start/config reachability only** (no live queue job; no model call).
 
-| Location | Prod status | Action under gut-only-if-not-in-prod |
+### Migration status (`272b708`)
+| Location | Current status | Action |
 | --- | --- | --- |
-| `server/hive-secretary-worker.js` default `gpt-5.5-pro` | **LIVE-IN-PROD** on worker-hive (env enable/provider/model unset → defaults; DB enabled; OpenAI key present) | **KEEP**; cut only after explicit migration |
-| `server/hive-project-worker.js` default `gpt-5.5-pro` | **LIVE-IN-PROD** same worker-hive / unset env defaults | **KEEP**; cut only after explicit migration |
-| `server/board-manager-decision-provider.js` OpenAI/`gpt-5.5-pro` fallback | DEAD/DISABLED in prod (no board-manager process; flags false; start stub) | **CUT LANDED**; provider now OpenRouter GLM-only and fails closed for unsupported providers |
-| board-manager loop/worker/model launchers | DEAD/DISABLED as Fly roles; manual only | **CUT LANDED**; manual launchers now support OpenRouter GLM only and reject unsupported providers |
-| grashnuk codex scripts | operator tools; not Fly worker-hive | verify only |
-| smokes / HiveBrainView labels / system-status pricing | non-invocation fixtures/display | keep/update with contracts |
+| `server/hive-secretary-worker.js` | Code defaults + Fly pins OpenRouter/`z-ai/glm-5.2`; Pro variants **rejected** fail-closed | **KEEP worker**; deploy to activate pins |
+| `server/hive-project-worker.js` | Same OpenRouter/`z-ai/glm-5.2` migration + Pro reject | **KEEP worker**; deploy to activate pins |
+| `server/board-manager-decision-provider.js` OpenAI Pro fallback | Already DEAD/DISABLED in prod; surgical Pro path previously cut | not a live prod carrier |
+| board-manager manual launchers (loop/worker/model/codex) | No Fly process; residual operator surfaces | verify-only |
+| Historical pricing/display/test string literals (`system-status`, leftover fixtures as applicable) | Non-invocation readouts / fixtures | justified keep until billing/test-contract policy says otherwise |
 
----
+Executable provider paths no longer default to or accept GPT-5.5-Pro for Secretary/Project. Production machine verification after deploy remains pending.
 
 ## Prioritized cut list
 
@@ -227,12 +228,12 @@ All six previously proven-safe items executed in `Execute proven-safe repository
 8. Docs chunks / wallet-core load strategy (keep mechanism).
 9. mocks/, docs/verification/, quality tiering.
 10. PFTasks import + cutover docs residual.
-11. Doc rewrites for hive.md / ai-providers.md vs fly.
+11. Post-deploy confirm Hive Secretary/Project machines adopted `272b708` Fly pins (docs already resolved in that commit).
 12. Extract shared provider HTTP client (not silent delete).
 
 ### Keep / load-bearing
 
-All **load-bearing** rows in the inventory tables (live workers including **Hive Secretary/Project LIVE-IN-PROD** under gut-only-if-not-in-prod, live providers, wallet crypto, matrix ownership, quality chain).
+All **load-bearing** rows in the inventory tables (live workers including **Hive Secretary/Project workers** now on GLM code defaults/`272b708` Fly pins pending deploy activation, live providers, wallet crypto, matrix ownership, quality chain).
 
 ---
 
@@ -254,7 +255,7 @@ All **load-bearing** rows in the inventory tables (live workers including **Hive
 
 ## Unverified / incomplete items
 
-- Hive Secretary/Project: gate proves **worker-hive** start/config reachability (v560/`d895202a20e418`); **no live queue** job was consumed and **no model call** was made—paid invocation still unproven.
+- Hive Secretary/Project: **historical** v560 gate proved start/config with then-GPT defaults; **code** is GLM via `272b708`. Remaining gap: combined deploy/runtime verification (no paid model call performed by this audit).
 - Any host-level cron/systemd invoking scripts not referenced in-repo.
 - Bundle visualizer beyond Vite advisory output.
 - Product policy for subsetting in-app wiki pages.
