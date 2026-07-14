@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { closePool, databaseEnabled } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
+import { normalizeBoardManagerModel } from "../server/board-manager-decision-provider.js";
 import {
   claimBoardManagerJob,
   completeBoardManagerJob,
@@ -282,7 +283,9 @@ const config = {
   execute: hasArg("--execute") && oldBoardManagerExecutionEnabled(),
   force: hasArg("--force"),
 };
-config.model = argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || defaultBoardManagerModel(config.provider));
+config.model = normalizeBoardManagerModel(
+  argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || defaultBoardManagerModel(config.provider))
+);
 
 if (hasArg("--help") || hasArg("-h")) {
   console.log(usage());

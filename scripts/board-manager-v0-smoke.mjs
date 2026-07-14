@@ -20,6 +20,7 @@ const {
   boardManagerModel,
   boardManagerProvider,
   fetchBoardManagerDecision,
+  normalizeBoardManagerModel,
 } = await import("../server/board-manager-decision-provider.js");
 const { loadPrompt } = await import("../server/prompt-registry.js");
 
@@ -387,8 +388,11 @@ const smokeDecisionOutput = {
 assert.equal(boardManagerProvider(), "openrouter");
 assert.equal(boardManagerModel(), "z-ai/glm-5.2");
 process.env.TASKNODE_BOARD_MANAGER_PROVIDER = "openai";
+process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED = "true";
 assert.equal(boardManagerProvider(), "openrouter");
+assert.equal(boardManagerModel(), "z-ai/glm-5.2");
 delete process.env.TASKNODE_BOARD_MANAGER_PROVIDER;
+delete process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED;
 
 let capturedOpenRouterUrl = "";
 let capturedOpenRouterBody = null;
@@ -572,6 +576,27 @@ await assert.rejects(
   /board_manager_provider_unsupported:openai/
 );
 assert.equal(unsupportedProviderFetchCount, 0);
+
+for (const unsupportedModel of ["gpt-5.5-pro", "openai/gpt-5.5-pro-2026-04-23", "OpenAI/GPT-5.5-Pro-2026-04-23"]) {
+  let unsupportedModelFetchCount = 0;
+  await assert.rejects(
+    () => fetchBoardManagerDecision({
+      sourcePacket: packet,
+      provider: "openrouter",
+      model: unsupportedModel,
+      fetchImpl: async () => {
+        unsupportedModelFetchCount += 1;
+        throw new Error("unsupported model must fail before fetch");
+      },
+    }),
+    (error) => error?.message === `board_manager_model_unsupported:${unsupportedModel}`
+  );
+  assert.equal(unsupportedModelFetchCount, 0);
+  assert.throws(
+    () => normalizeBoardManagerModel(unsupportedModel),
+    (error) => error?.message === `board_manager_model_unsupported:${unsupportedModel}`
+  );
+}
 
 const decision = normalizeBoardManagerDecision({
   action: "refresh_hive_secretary",

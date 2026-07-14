@@ -14,6 +14,7 @@ import {
   boardManagerProvider,
   boardManagerReasoningEffort,
   fetchBoardManagerDecision,
+  normalizeBoardManagerModel,
 } from "../server/board-manager-decision-provider.js";
 import {
   boardManagerSecretaryEnabled,
@@ -123,7 +124,9 @@ async function main() {
   const trigger = argValue("--trigger", "manual_model_exec");
   const scope = argValue("--scope", "global_hive");
   const provider = normalizeProvider(argValue("--provider", process.env.TASKNODE_BOARD_MANAGER_PROVIDER || boardManagerProvider()));
-  const model = argValue("--model", boardManagerModel(provider));
+  const model = normalizeBoardManagerModel(
+    hasArg("--model") ? argValue("--model") : boardManagerModel(provider)
+  );
   const reasoningEffort = argValue("--reasoning", boardManagerReasoningEffort());
   const packetOnly = hasArg("--packet-only");
   const promptOnly = hasArg("--prompt-only");

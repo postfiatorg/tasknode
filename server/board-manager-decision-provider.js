@@ -14,6 +14,7 @@ const boardManagerPrompt = loadPrompt("hive/board_manager_v1.md");
 const schemaPath = path.join(repoRoot, "schemas", "board-manager-action.schema.json");
 const boardManagerActionSchema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const unsupportedSchemaKeys = new Set(["$schema", "title", "minLength", "maxLength", "minimum", "maximum"]);
+const unsupportedBoardManagerModelPattern = /(?:^|\/)gpt-5\.5-pro(?![a-z0-9])/i;
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -27,12 +28,17 @@ export function boardManagerProvider() {
   return "openrouter";
 }
 
+export function normalizeBoardManagerModel(model = "") {
+  const safeModel = safeText(model, 120);
+  if (unsupportedBoardManagerModelPattern.test(safeModel)) {
+    throw new Error(`board_manager_model_unsupported:${safeModel}`);
+  }
+  return safeModel || "z-ai/glm-5.2";
+}
+
 export function boardManagerModel(_provider = boardManagerProvider()) {
   const configured = safeText(process.env.TASKNODE_BOARD_MANAGER_MODEL, 120);
-  if (/^gpt-5\.5-pro(?:-|$)/i.test(configured)) {
-    return "z-ai/glm-5.2";
-  }
-  return configured || "z-ai/glm-5.2";
+  return normalizeBoardManagerModel(configured);
 }
 
 export function boardManagerReasoningEffort() {
@@ -400,5 +406,12 @@ export async function fetchBoardManagerDecision({
   if (provider !== "openrouter") {
     throw new Error(`board_manager_provider_unsupported:${safeText(provider, 40) || "unknown"}`);
   }
-  return fetchOpenRouterBoardManagerDecision({ sourcePacket, model, reasoningEffort, fetchImpl, onOutputDelta });
+  const normalizedModel = normalizeBoardManagerModel(model);
+  return fetchOpenRouterBoardManagerDecision({
+    sourcePacket,
+    model: normalizedModel,
+    reasoningEffort,
+    fetchImpl,
+    onOutputDelta,
+  });
 }

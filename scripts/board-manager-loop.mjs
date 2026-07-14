@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeBoardManagerModel } from "../server/board-manager-decision-provider.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
@@ -145,7 +146,9 @@ const config = {
   dryRun: hasArg("--dry-run"),
   noLease: hasArg("--no-lease"),
 };
-config.model = argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || defaultBoardManagerModel(config.provider));
+config.model = normalizeBoardManagerModel(
+  argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || defaultBoardManagerModel(config.provider))
+);
 
 if (hasArg("--help") || hasArg("-h")) {
   console.log(usage());
