@@ -55,8 +55,9 @@ function legacyBoardManagerDecommissioned() {
 }
 
 function normalizeProvider(value = "openrouter") {
-  if (process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "openrouter";
-  return String(value || "").toLowerCase() === "openai" ? "openai" : "openrouter";
+  const provider = String(value || "").toLowerCase();
+  if (provider !== "openrouter") throw new Error(`board_manager_provider_unsupported:${provider || "unknown"}`);
+  return provider;
 }
 
 function usage() {
@@ -66,8 +67,8 @@ function usage() {
     "Options:",
     "  --trigger <name>       Run trigger label. Default: manual_model_exec",
     "  --scope <scope>        Manager scope. Default: global_hive",
-    "  --provider <provider>  Decision provider: openrouter or openai. Default: openrouter",
-    "  --model <model>        Provider model. Default: z-ai/glm-5.2 for OpenRouter, gpt-5.5-pro for OpenAI",
+    "  --provider <provider>  Decision provider: openrouter. Default: openrouter",
+    "  --model <model>        Provider model. Default: z-ai/glm-5.2",
     "  --reasoning <effort>   Provider reasoning effort. Default: high",
     "  --packet-only          Build and print the source packet without calling the model provider.",
     "  --prompt-only          Build and print the prompt packet without calling the model provider.",
@@ -121,7 +122,7 @@ async function main() {
 
   const trigger = argValue("--trigger", "manual_model_exec");
   const scope = argValue("--scope", "global_hive");
-  const provider = normalizeProvider(argValue("--provider", boardManagerProvider()));
+  const provider = normalizeProvider(argValue("--provider", process.env.TASKNODE_BOARD_MANAGER_PROVIDER || boardManagerProvider()));
   const model = argValue("--model", boardManagerModel(provider));
   const reasoningEffort = argValue("--reasoning", boardManagerReasoningEffort());
   const packetOnly = hasArg("--packet-only");
@@ -217,7 +218,7 @@ async function main() {
           model,
           reasoningEffort,
           dry_run: !execute,
-          engine: provider === "openai" ? "openai_responses" : "openrouter_chat_completions",
+          engine: "openrouter_chat_completions",
           source_mode: decisionSource.sourceMode,
           raw_source_packet_digest: rawSourcePacket.sourcePacketDigest,
           secretary_packet_id: decisionSource.secretary?.packet?.id || "",
@@ -239,10 +240,8 @@ async function main() {
         reasoningEffort,
         provider,
         sessionMode: decisionSource.sourceMode === "deepseek_secretary_packet"
-          ? `secretary_${provider}`
-          : provider === "openai"
-            ? "stateless_openai_responses"
-            : "stateless_openrouter_chat",
+          ? "secretary_openrouter"
+          : "stateless_openrouter_chat",
       });
       run = started.run;
       startHiveBrainRunLive({
@@ -303,7 +302,7 @@ async function main() {
       ok: true,
       dryRun: !execute,
       runId: run?.id || "",
-      engine: provider === "openai" ? "openai_responses" : "openrouter_chat_completions",
+      engine: "openrouter_chat_completions",
       provider: result.provider,
       model: result.model,
       reasoningEffort,

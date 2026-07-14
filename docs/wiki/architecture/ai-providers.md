@@ -156,7 +156,7 @@ The target architecture is Board Manager centered. The Board Manager is a leased
 
 Hive Immediate Response is the synchronous conversational layer for Hive Chat. It runs after the user message is saved into Hive Context, so its prompt sees the updated account-scoped source packet including bounded text paste attachments for the requesting user. It also reads the latest current `board_manager_secretary_packets` row when available, prefers an exact packet for the live source digest, and falls back to the latest compressed packet plus live board facts when the user's new input has made that packet slightly stale. The live board facts are read-only shared board facts and include current action pressure, open follow-ups, projects, tasks, task requests, candidates, and recent Board Manager run summaries. The prompt separately marks which tasks or follow-ups are tied to the requesting `account_id`; otherwise the response must discuss them as shared board state or other contributors' work. This lets Hive acknowledge and clarify immediately, but it cannot mutate board state; durable mutations still require a later Board Manager action. Set `TASKNODE_HIVE_IMMEDIATE_RESPONSE_ENABLED=false` to disable it, `TASKNODE_HIVE_IMMEDIATE_MODEL` to override the model, `TASKNODE_HIVE_IMMEDIATE_MAX_TOKENS` to tune output length, and `TASKNODE_HIVE_IMMEDIATE_REASONING=high` only if the immediate reply should spend reasoning budget. The default output budget is `1600` tokens, with `TASKNODE_HIVE_IMMEDIATE_MAX_TOKENS` clamped between `120` and `4096`.
 
-The Board Manager model default comes from OpenRouter's `z-ai/glm-5.2` route. The model page/API report a 1M context window, structured-output support, and pricing of $1.20 per 1M input tokens and $4.10 per 1M output tokens. OpenAI `gpt-5.5-pro` remains available as an explicit override when the operator needs the older higher-cost path: set `TASKNODE_BOARD_MANAGER_PROVIDER=openai` and `TASKNODE_BOARD_MANAGER_MODEL=gpt-5.5-pro`.
+The Board Manager model default comes from OpenRouter's `z-ai/glm-5.2` route. The model page/API report a 1M context window, structured-output support, and pricing of $1.20 per 1M input tokens and $4.10 per 1M output tokens. Board Manager is OpenRouter-only; the former OpenAI `gpt-5.5-pro` override branch was removed and unsupported providers fail closed.
 
 Before GLM 5.2 runs, the default path now asks the direct DeepSeek API to build a reusable Board Manager Secretary packet when `DEEPSEEK_API_KEY` is present and `TASKNODE_BOARD_MANAGER_SECRETARY_ENABLED` is not `false`. That packet is stored in `board_manager_secretary_packets` and keyed by a semantic source digest. If only generated timestamps, trigger names, freshness age counters, source-text generated lines, or no-op Board Manager runs changed, the stored packet is reused and DeepSeek is not called again. Operators can force the old full-source path with `--no-secretary`.
 
@@ -174,7 +174,7 @@ Environment overrides:
 
 - `TASKNODE_HIVE_SECRETARY_MODEL`
 - `TASKNODE_HIVE_SECRETARY_REASONING_EFFORT`
-- `TASKNODE_BOARD_MANAGER_PROVIDER` (`openrouter` by default, `openai` for the override route)
+- `TASKNODE_BOARD_MANAGER_PROVIDER` (`openrouter` only; unsupported providers fail closed)
 - `TASKNODE_BOARD_MANAGER_MODEL`
 - `TASKNODE_BOARD_MANAGER_REASONING_EFFORT`
 - `TASKNODE_BOARD_MANAGER_SECRETARY_ENABLED`

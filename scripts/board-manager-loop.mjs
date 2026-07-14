@@ -32,8 +32,8 @@ function usage() {
     "Options:",
     "  --scope <scope>             Manager scope. Default: global_hive",
     "  --trigger-prefix <name>     Trigger prefix for each tick. Default: board_manager_loop",
-    "  --provider <provider>       Decision provider: openrouter or openai. Default: openrouter",
-    "  --model <model>             Provider model. Default: z-ai/glm-5.2 for OpenRouter, gpt-5.5-pro for OpenAI",
+    "  --provider <provider>       Decision provider: openrouter. Default: openrouter",
+    "  --model <model>             Provider model. Default: z-ai/glm-5.2",
     "  --reasoning <effort>        Provider reasoning effort. Default: high",
     "  --idle-delay-ms <ms>        Delay after do_nothing/no board change. Default: 120000",
     "  --action-delay-ms <ms>      Delay after a mutating action. Default: 5000",
@@ -45,13 +45,13 @@ function usage() {
 }
 
 function normalizeProvider(value = "openrouter") {
-  if (process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "openrouter";
-  return String(value || "").toLowerCase() === "openai" ? "openai" : "openrouter";
+  const provider = String(value || "").toLowerCase();
+  if (provider !== "openrouter") throw new Error(`board_manager_provider_unsupported:${provider || "unknown"}`);
+  return provider;
 }
 
-function defaultBoardManagerModel(provider = "openrouter") {
-  if (provider === "openai" && process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "z-ai/glm-5.2";
-  return provider === "openai" ? "gpt-5.5-pro" : "z-ai/glm-5.2";
+function defaultBoardManagerModel() {
+  return "z-ai/glm-5.2";
 }
 
 function legacyBoardManagerDisabled() {

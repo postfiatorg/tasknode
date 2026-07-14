@@ -9,19 +9,14 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
-const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const boardManagerPrompt = loadPrompt("hive/board_manager_v1.md");
 const schemaPath = path.join(repoRoot, "schemas", "board-manager-action.schema.json");
 const boardManagerActionSchema = JSON.parse(readFileSync(schemaPath, "utf8"));
-const unsupportedOpenAiSchemaKeys = new Set(["$schema", "title", "minLength", "maxLength", "minimum", "maximum"]);
+const unsupportedSchemaKeys = new Set(["$schema", "title", "minLength", "maxLength", "minimum", "maximum"]);
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
-}
-
-function openAiKey() {
-  return safeText(process.env.OPENAI_API_KEY, 10000);
 }
 
 function openRouterKey() {
@@ -29,19 +24,15 @@ function openRouterKey() {
 }
 
 export function boardManagerProvider() {
-  if (process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "openrouter";
-  const provider = safeText(process.env.TASKNODE_BOARD_MANAGER_PROVIDER || "openrouter", 40).toLowerCase();
-  return provider === "openai" ? "openai" : "openrouter";
+  return "openrouter";
 }
 
-export function boardManagerModel(provider = boardManagerProvider()) {
-  if (provider === "openai" && process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") return "z-ai/glm-5.2";
+export function boardManagerModel(_provider = boardManagerProvider()) {
   const configured = safeText(process.env.TASKNODE_BOARD_MANAGER_MODEL, 120);
-  if (/gpt-5\.5/i.test(configured) && process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED !== "true") {
+  if (/^gpt-5\.5-pro(?:-|$)/i.test(configured)) {
     return "z-ai/glm-5.2";
   }
-  const fallback = provider === "openai" ? "gpt-5.5-pro" : "z-ai/glm-5.2";
-  return configured || fallback;
+  return configured || "z-ai/glm-5.2";
 }
 
 export function boardManagerReasoningEffort() {
@@ -52,48 +43,26 @@ function providerTimeoutMs() {
   return Math.max(30000, Number(process.env.TASKNODE_BOARD_MANAGER_TIMEOUT_MS || 240000));
 }
 
-function outputText(body = {}) {
-  if (typeof body.output_text === "string") return body.output_text;
-  return (Array.isArray(body.output) ? body.output : [])
-    .flatMap((item) => Array.isArray(item?.content) ? item.content : [])
-    .map((part) => part?.text || "")
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-}
-
-function usageFromOpenAi(body = {}) {
-  const usage = body.usage || {};
-  return {
-    inputTokens: Number(usage.input_tokens || 0),
-    outputTokens: Number(usage.output_tokens || 0),
-    totalTokens: Number(usage.total_tokens || 0),
-    reasoningTokens: Number(usage.output_tokens_details?.reasoning_tokens || 0),
-  };
-}
-
-function openAiSchemaValue(value) {
-  if (Array.isArray(value)) return value.map(openAiSchemaValue);
+function schemaValue(value) {
+  if (Array.isArray(value)) return value.map(schemaValue);
   if (!value || typeof value !== "object") return value;
   if (value.properties && typeof value.properties === "object" && !Array.isArray(value.properties)) {
     return Object.fromEntries(
       Object.entries(value)
-        .filter(([key]) => !unsupportedOpenAiSchemaKeys.has(key))
+        .filter(([key]) => !unsupportedSchemaKeys.has(key))
         .map(([key, item]) => {
-          if (key !== "properties") return [key, openAiSchemaValue(item)];
+          if (key !== "properties") return [key, schemaValue(item)];
           return [
             key,
-            Object.fromEntries(
-              Object.entries(item).map(([propertyName, propertySchema]) => [propertyName, openAiSchemaValue(propertySchema)])
-            ),
+            Object.fromEntries(Object.entries(item).map(([propertyName, propertySchema]) => [propertyName, schemaValue(propertySchema)])),
           ];
         })
     );
   }
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => !unsupportedOpenAiSchemaKeys.has(key))
-      .map(([key, item]) => [key, openAiSchemaValue(item)])
+      .filter(([key]) => !unsupportedSchemaKeys.has(key))
+      .map(([key, item]) => [key, schemaValue(item)])
   );
 }
 
@@ -102,7 +71,7 @@ export function boardManagerResponseFormat() {
     type: "json_schema",
     name: "board_manager_action",
     strict: true,
-    schema: openAiSchemaValue(boardManagerActionSchema),
+    schema: schemaValue(boardManagerActionSchema),
   };
 }
 
@@ -289,79 +258,6 @@ async function readOpenRouterBoardManagerStream(response, { model = "", onOutput
   };
 }
 
-async function fetchOpenAiBoardManagerDecision({
-  sourcePacket = {},
-  model = boardManagerModel("openai"),
-  reasoningEffort = boardManagerReasoningEffort(),
-  fetchImpl = fetch,
-  onOutputDelta = null,
-} = {}) {
-  const apiKey = openAiKey();
-  if (!apiKey) {
-    const error = new Error("board_manager_openai_not_configured");
-    error.status = 409;
-    throw error;
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs());
-  const startedAt = Date.now();
-  try {
-    const response = await fetchImpl(`${(process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "")}/responses`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        input: boardManagerDecisionInput({ sourcePacket }),
-        reasoning: { effort: reasoningEffort },
-        text: {
-          verbosity: "low",
-          format: boardManagerResponseFormat(),
-        },
-        max_output_tokens: Math.max(4000, Number(process.env.TASKNODE_BOARD_MANAGER_MAX_OUTPUT_TOKENS || 12000)),
-        store: false,
-        metadata: {
-          app: "tasknodeofficial",
-          worker: "board_manager",
-          prompt_version: boardManagerPromptVersion,
-          source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),
-        },
-      }),
-    });
-    const bodyText = await response.text();
-    const body = bodyText ? JSON.parse(bodyText) : {};
-    if (!response.ok) {
-      const error = new Error(body?.error?.message || `OpenAI Board Manager HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
-    }
-    const text = outputText(body);
-    if (typeof onOutputDelta === "function" && text) await onOutputDelta(text);
-    const parsed = parseJsonOutputText(text);
-    return {
-      decision: normalizeBoardManagerDecision(parsed),
-      outputText: text,
-      provider: "openai",
-      model: body?.model || model,
-      responseId: safeText(body?.id, 200),
-      promptDigest: promptDigest(boardManagerPrompt),
-      promptVersion: boardManagerPromptVersion,
-      usage: {
-        ...usageFromOpenAi(body),
-        latencyMs: Date.now() - startedAt,
-      },
-    };
-  } catch (error) {
-    if (error?.name === "AbortError") throw new Error("board_manager_openai_timeout");
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function fetchOpenRouterBoardManagerDecision({
   sourcePacket = {},
   model = boardManagerModel("openrouter"),
@@ -501,8 +397,8 @@ export async function fetchBoardManagerDecision({
   fetchImpl = fetch,
   onOutputDelta = null,
 } = {}) {
-  if (provider === "openai") {
-    return fetchOpenAiBoardManagerDecision({ sourcePacket, model, reasoningEffort, fetchImpl, onOutputDelta });
+  if (provider !== "openrouter") {
+    throw new Error(`board_manager_provider_unsupported:${safeText(provider, 40) || "unknown"}`);
   }
   return fetchOpenRouterBoardManagerDecision({ sourcePacket, model, reasoningEffort, fetchImpl, onOutputDelta });
 }

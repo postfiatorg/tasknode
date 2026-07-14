@@ -18,7 +18,7 @@ const {
 } = await import("../server/system-status.js");
 
 assert.equal(boardManagerModel("openrouter"), "z-ai/glm-5.2");
-assert.equal(boardManagerModel("openai"), "gpt-5.5-pro");
+assert.equal(boardManagerModel("unsupported"), "z-ai/glm-5.2");
 process.env.TASKNODE_BOARD_MANAGER_MODEL = "override/model";
 assert.equal(boardManagerModel("openrouter"), "override/model");
 delete process.env.TASKNODE_BOARD_MANAGER_MODEL;

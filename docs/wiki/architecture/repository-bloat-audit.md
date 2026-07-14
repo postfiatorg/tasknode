@@ -5,7 +5,7 @@
 **Base:** `origin/main` @ `6229c14`
 **Scope:** Documentation audit only. No code, config, dependency, or model-matrix deletions.
 **Method:** Full-repo `rg` (excluding `.git`, `node_modules`, `dist`), `package.json`/`fly.toml` gates, `npm run build` chunks, `npm ls`/`package-lock.json`, `git log -1 --format='%h %ci %s'` per path. Bulk evidence: `/tmp/tasknode-bloat-audit-125.log`.
-**Workstream A note:** Deprecated **GPT-5.5-Pro** carriers are **audit candidates only**. Deletion decisions defer to Workstream A / model matrix ownership (Ghash).
+**Workstream A note:** The approved DEAD/DISABLED Board Manager OpenAI/GPT-5.5-Pro fallback cut has landed. LIVE Secretary/Project GPT-5.5-Pro carriers remain load-bearing and frozen; their deletion or migration remains out of scope.
 
 ## Verdict rules used
 
@@ -82,11 +82,11 @@ Schema: **Priority | Path/symbol | Category | Evidence | Imports/callers or gate
 | P0 | scripts/hive-decision-agent-loop.mjs | workers (disabled / no prod scheduler) | Not in package.json scripts. Full-repo `rg … hive-decision-agent-loop` excl. audit files → self + docs/wiki/plans/glm-board-secretary-status-memos-spec.md:31 only. External host cron not inspected (credentials out of scope). | plan doc residual pointer; external schedule unknown | e0b046c 2026-06-25 23:39:35 +0000 | **needs-verification** | Ops scheduler inventory + plan doc update |
 | P0 | server/task-accounting-harvester-worker.js | workers (disabled / no prod scheduler) | fly.toml TASKNODE_TASK_ACCOUNTING_HARVESTER_ENABLED=false. Worker only starts when flag true. | hard false in fly | 50de0c2 2026-06-26 20:32:29 +0000 | **needs-verification** | Product roadmap keep/drop |
 | P0 | server/task-accounting-harvester-provider.js | workers (disabled / no prod scheduler) | Provider for accounting harvester only. | harvester only | bf95f7d 2026-06-27 02:11:00 +0000 | **needs-verification** | Cut with harvester |
-| P1 | scripts/board-manager-worker.mjs | workers (disabled / no prod scheduler) | TASKNODE_BOARD_MANAGER_ENABLED=false on fly; no process group; package board-manager:worker remains for manual --force. | manual ops only | 6e2a173 2026-06-28 12:36:01 +0000 | **needs-verification** | Retire ops surface after ops survey |
-| P1 | scripts/board-manager-loop.mjs | workers (disabled / no prod scheduler) | package board-manager:loop; openai default still gpt-5.5-pro; board manager fly-disabled. | manual | 6e2a173 2026-06-28 12:36:01 +0000 | **needs-verification** | same |
-| P1 | scripts/board-manager-model-exec.mjs | workers (disabled / no prod scheduler) | package board-manager:model; manual executor for disabled BM stack. | manual | 6e2a173 2026-06-28 12:36:01 +0000 | **needs-verification** | same |
+| P1 | scripts/board-manager-worker.mjs | workers (disabled / no prod scheduler) | TASKNODE_BOARD_MANAGER_ENABLED=false on fly; no process group; package board-manager:worker remains for manual --force with OpenRouter GLM-only provider validation. | manual ops only | 6e2a173 2026-06-28 12:36:01 +0000 | **resolved** | OpenAI/GPT-5.5-Pro normalization/help path removed; reject unsupported provider |
+| P1 | scripts/board-manager-loop.mjs | workers (disabled / no prod scheduler) | package board-manager:loop; OpenRouter GLM-only manual loop; Board Manager Fly-disabled. | manual | 6e2a173 2026-06-28 12:36:01 +0000 | **resolved** | OpenAI/GPT-5.5-Pro normalization/help path removed; reject unsupported provider |
+| P1 | scripts/board-manager-model-exec.mjs | workers (disabled / no prod scheduler) | package board-manager:model; manual executor for disabled BM stack with OpenRouter GLM-only provider validation. | manual | 6e2a173 2026-06-28 12:36:01 +0000 | **resolved** | OpenAI/GPT-5.5-Pro normalization/help path removed; reject unsupported provider |
 | P1 | scripts/board-manager-codex-exec.mjs | workers (disabled / no prod scheduler) | package board-manager:codex; default model gpt-5.5; manual. | manual | 44d057c 2026-05-23 19:02:31 +0000 | **needs-verification** | same + Workstream A model defaults |
-| P1 | server/board-manager-decision-provider.js | workers (disabled / no prod scheduler) | Legacy OpenAI decision path; openai fallback model gpt-5.5-pro; used by BM scripts/smokes only. | board-manager scripts path | 6e2a173 2026-06-28 12:36:01 +0000 | **needs-verification** | Workstream A + BM retirement |
+| P1 | server/board-manager-decision-provider.js | workers (disabled / no prod scheduler) | OpenRouter GLM-only decision provider; no Fly Board Manager process. | board-manager scripts path | 6e2a173 2026-06-28 12:36:01 +0000 | **resolved** | OpenAI/GPT-5.5-Pro branch removed; fail closed for unsupported provider |
 
 ### B2. Workers — live (10)
 
@@ -191,8 +191,8 @@ Snaga production gate (`/tmp/tasknode-gpt55-prod-gate.log`, release **v560**, pr
 | --- | --- | --- |
 | `server/hive-secretary-worker.js` default `gpt-5.5-pro` | **LIVE-IN-PROD** on worker-hive (env enable/provider/model unset → defaults; DB enabled; OpenAI key present) | **KEEP**; cut only after explicit migration |
 | `server/hive-project-worker.js` default `gpt-5.5-pro` | **LIVE-IN-PROD** same worker-hive / unset env defaults | **KEEP**; cut only after explicit migration |
-| `server/board-manager-decision-provider.js` openai/`gpt-5.5-pro` fallback | DEAD/DISABLED in prod (no board-manager process; flags false; start stub) | verify/cut candidate (surgical fallback removal) |
-| board-manager loop/worker/model/codex launchers | DEAD/DISABLED as Fly roles; manual only | verify/cut candidate |
+| `server/board-manager-decision-provider.js` OpenAI/`gpt-5.5-pro` fallback | DEAD/DISABLED in prod (no board-manager process; flags false; start stub) | **CUT LANDED**; provider now OpenRouter GLM-only and fails closed for unsupported providers |
+| board-manager loop/worker/model launchers | DEAD/DISABLED as Fly roles; manual only | **CUT LANDED**; manual launchers now support OpenRouter GLM only and reject unsupported providers |
 | grashnuk codex scripts | operator tools; not Fly worker-hive | verify only |
 | smokes / HiveBrainView labels / system-status pricing | non-invocation fixtures/display | keep/update with contracts |
 
@@ -212,7 +212,7 @@ Snaga production gate (`/tmp/tasknode-gpt55-prod-gate.log`, release **v560**, pr
 ### Verify before cut
 
 1. Root design inputs (`jsx_mock.jsx`, root specs) — still cross-linked; product retention unknown.
-2. Board Manager OpenAI/`gpt-5.5-pro` fallback + manual board-manager launchers (DEAD in prod per Snaga gate) — surgical verify/cut only after operator sign-off.
+2. Board Manager OpenAI/`gpt-5.5-pro` fallback + manual board-manager launchers (DEAD in prod per Snaga gate) — approved surgical cut landed; preserve OpenRouter GLM behavior.
 3. Hive Decision Agent + loop (`scripts/hive-decision-agent-loop.mjs`) — fly false but residual plan doc; external scheduler unknown.
 4. Task Accounting Harvester pair (flag false).
 5. Legacy Board Manager npm/ops surface + decision provider + codex defaults.

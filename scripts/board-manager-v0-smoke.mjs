@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 
 process.env.TASKNODE_DATABASE_DISABLED = "true";
 process.env.TASKNODE_POSTGRES_DISABLED = "true";
-process.env.OPENAI_API_KEY = "board-manager-smoke-openai-key";
 process.env.OPENROUTER_API_KEY = "board-manager-smoke-openrouter-key";
 delete process.env.TASKNODE_BOARD_MANAGER_PROVIDER;
 delete process.env.TASKNODE_BOARD_MANAGER_MODEL;
@@ -387,6 +386,9 @@ const smokeDecisionOutput = {
 
 assert.equal(boardManagerProvider(), "openrouter");
 assert.equal(boardManagerModel(), "z-ai/glm-5.2");
+process.env.TASKNODE_BOARD_MANAGER_PROVIDER = "openai";
+assert.equal(boardManagerProvider(), "openrouter");
+delete process.env.TASKNODE_BOARD_MANAGER_PROVIDER;
 
 let capturedOpenRouterUrl = "";
 let capturedOpenRouterBody = null;
@@ -557,43 +559,19 @@ assert.equal(malformedFallbackDecision.usage.repairAttempted, true);
 assert.equal(malformedFallbackDecision.usage.repairFailed, true);
 assert.equal(malformedFallbackDecision.usage.totalTokens, 300);
 
-let capturedOpenAiBody = null;
-const openAiDecision = await fetchBoardManagerDecision({
-  sourcePacket: packet,
-  provider: "openai",
-  model: "gpt-5.5-pro",
-  fetchImpl: async (_url, options = {}) => {
-    capturedOpenAiBody = JSON.parse(options.body);
-    return {
-      ok: true,
-      async text() {
-        return JSON.stringify({
-          id: "resp_board_manager_smoke",
-          model: "gpt-5.5-pro-2026-04-23",
-          output_text: JSON.stringify(smokeDecisionOutput),
-          usage: {
-            input_tokens: 100,
-            output_tokens: 50,
-            total_tokens: 150,
-            output_tokens_details: { reasoning_tokens: 25 },
-          },
-        });
-      },
-    };
-  },
-});
-assert.equal(capturedOpenAiBody.model, "gpt-5.5-pro");
-assert.equal(capturedOpenAiBody.reasoning.effort, "high");
-assert.equal(capturedOpenAiBody.text.format.type, "json_schema");
-assert.equal(capturedOpenAiBody.text.format.name, "board_manager_action");
-assert.ok(capturedOpenAiBody.text.format.schema.properties.payload.properties.project.properties.title);
-assert.ok(capturedOpenAiBody.text.format.schema.properties.decision_basis.properties.source_facts);
-assert.equal(capturedOpenAiBody.store, false);
-assert.equal(capturedOpenAiBody.metadata.prompt_version, "board_manager_v1");
-assert.equal(openAiDecision.provider, "openai");
-assert.equal(openAiDecision.model, "gpt-5.5-pro-2026-04-23");
-assert.equal(openAiDecision.decision.action, "message_user");
-assert.equal(openAiDecision.usage.reasoningTokens, 25);
+let unsupportedProviderFetchCount = 0;
+await assert.rejects(
+  () => fetchBoardManagerDecision({
+    sourcePacket: packet,
+    provider: "openai",
+    fetchImpl: async () => {
+      unsupportedProviderFetchCount += 1;
+      throw new Error("unsupported provider must fail before fetch");
+    },
+  }),
+  /board_manager_provider_unsupported:openai/
+);
+assert.equal(unsupportedProviderFetchCount, 0);
 
 const decision = normalizeBoardManagerDecision({
   action: "refresh_hive_secretary",
