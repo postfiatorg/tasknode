@@ -7,8 +7,9 @@ import {
   transitionForSubmissionMode,
   transitionForTaskAction,
 } from "../server/offchain-task-lifecycle.js";
+import { listNetworkTaskAllocationDivergences } from "../server/repositories/network-task-allocation-sync.js";
 
-function mockClient({ projectionRowCount = 1, terminalPreserved = false } = {}) {
+function mockClient({ projectionRowCount = 1, terminalPreserved = false, mirrorError = "" } = {}) {
   const calls = [];
   return {
     calls,
@@ -19,6 +20,9 @@ function mockClient({ projectionRowCount = 1, terminalPreserved = false } = {}) 
           rowCount: projectionRowCount,
           rows: [{ task_id: params[0], status: params[1], event_count: 2, terminal_preserved: terminalPreserved }],
         };
+      }
+      if (/UPDATE network_task_allocations/i.test(sql) && mirrorError) {
+        throw new Error(mirrorError);
       }
       return { rowCount: 1, rows: [] };
     },
@@ -97,9 +101,86 @@ assert.equal(updateCall.params[0], "task_smoke");
 assert.equal(updateCall.params[1], "submitted");
 assert.equal(updateCall.params[4], "direct_write");
 assert.equal(updateCall.params[8], true);
-assert.deepEqual(updateCall.params[9], ["refused", "cancelled", "rewarded"]);
+assert.deepEqual(updateCall.params[9], [
+  "refused",
+  "rejected",
+  "cancelled",
+  "expired",
+  "rerouted",
+  "failed",
+  "completed",
+  "rewarded",
+]);
 assert.equal(updateCall.params[10], "evt_smoke_submission");
 assert.equal(result.terminalPreserved, false);
+
+async function assertMirrorTransition({ taskId, previousStatus, transition, expectedStatus }) {
+  const transitionClient = mockClient();
+  const transitionResult = await applyOffchainTaskTransitionWithClient(transitionClient, {
+    accountId: "acct_terminal_sync_smoke",
+    walletAddress: "rTerminalSyncWallet",
+    task: {
+      task_id: taskId,
+      request_id: `${taskId}_request`,
+      status: previousStatus,
+    },
+    transition,
+    payload: {
+      offchainPayload: {
+        event_id: `${taskId}_event`,
+        task_id: taskId,
+        schema: "pf.task.update.v1",
+      },
+    },
+  });
+  assert.equal(transitionClient.calls.length, 3);
+  assert.match(transitionClient.calls[2].sql, /UPDATE network_task_allocations/i);
+  assert.equal(transitionClient.calls[2].params[2], expectedStatus);
+  assert.equal(transitionClient.calls[2].params[3], expectedStatus);
+  assert.equal(transitionResult.terminalMirrorSync.allocationsUpdated, 1);
+}
+
+await assertMirrorTransition({
+  taskId: "task_proposed_refused_sync",
+  previousStatus: "proposed",
+  transition: "refused",
+  expectedStatus: "refused",
+});
+await assertMirrorTransition({
+  taskId: "task_accepted_cancelled_sync",
+  previousStatus: "accepted",
+  transition: "cancelled",
+  expectedStatus: "cancelled",
+});
+
+const mirrorFailureClient = mockClient({ mirrorError: "network_task_mirror_sync_failed" });
+await assert.rejects(
+  () =>
+    applyOffchainTaskTransitionWithClient(mirrorFailureClient, {
+      accountId: "acct_terminal_sync_smoke",
+      walletAddress: "rTerminalSyncWallet",
+      task: {
+        task_id: "task_mirror_sync_failure",
+        request_id: "req_mirror_sync_failure",
+        status: "proposed",
+      },
+      transition: "refused",
+      payload: {
+        offchainPayload: {
+          event_id: "evt_mirror_sync_failure",
+          task_id: "task_mirror_sync_failure",
+          schema: "pf.task.update.v1",
+        },
+      },
+    }),
+  /network_task_mirror_sync_failed/
+);
+assert.equal(mirrorFailureClient.calls.length, 3);
+
+const divergenceQueryClient = mockClient();
+await listNetworkTaskAllocationDivergences({ client: divergenceQueryClient });
+assert.equal(divergenceQueryClient.calls.length, 1);
+assert.equal(divergenceQueryClient.calls[0].params[3], 500);
 
 const simpleSubmissionClient = mockClient();
 await applyOffchainTaskTransitionWithClient(simpleSubmissionClient, {
@@ -260,6 +341,11 @@ assert.equal(rewardResult.event.sourceTxHash, "REAL_REWARD_TX");
 assert.equal(rewardResult.event.sourceCid, "QmRewardForensics");
 assert.match(rewardClient.calls[1].sql, /reward_actual_pft/i);
 assert.equal(rewardClient.calls[1].params[12], 4.5);
+assert.equal(rewardClient.calls.length, 3);
+assert.match(rewardClient.calls[2].sql, /UPDATE network_task_allocations/i);
+assert.match(rewardClient.calls[2].sql, /generated_task_id/i);
+assert.match(rewardClient.calls[2].sql, /task_request_id/i);
+assert.equal(rewardResult.terminalMirrorSync.allocationsUpdated, 1);
 
 const missClient = mockClient({ projectionRowCount: 0 });
 await assert.rejects(

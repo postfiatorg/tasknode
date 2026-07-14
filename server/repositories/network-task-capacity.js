@@ -1,5 +1,6 @@
 import { databaseEnabled, query } from "../db/pool.js";
 import { activeAllocationStatuses, safeText, taskClass as normalizeTaskClass, toIso } from "./network-tasks-utils.js";
+import { canonicalAllocationProjectionLinkSql } from "./network-task-allocation-sync.js";
 
 // Canonical Network Task capacity rule (single source of truth).
 //
@@ -161,14 +162,12 @@ export async function listNetworkTaskCapacityBlockers({
       LEFT JOIN LATERAL (
         SELECT task_id, title, state, updated_at
         FROM network_project_task_refs refs
-        WHERE (alloc.generated_task_id <> '' AND refs.task_id = alloc.generated_task_id)
-           OR (COALESCE(job.task_id, '') <> '' AND refs.task_id = job.task_id)
-           OR (COALESCE(job.request_id, '') <> '' AND refs.request_id = job.request_id)
+        WHERE ${canonicalAllocationProjectionLinkSql("alloc", "refs")}
         ORDER BY refs.updated_at DESC
         LIMIT 1
       ) refs ON true
       LEFT JOIN task_projections p
-        ON p.task_id = COALESCE(NULLIF(alloc.generated_task_id, ''), NULLIF(job.task_id, ''), NULLIF(refs.task_id, ''))
+        ON ${canonicalAllocationProjectionLinkSql("alloc", "p")}
       WHERE ${capacityScopeSql}
         AND ($5::text = '' OR alloc.task_class = $5)
       ORDER BY COALESCE(p.updated_at, refs.updated_at, job.updated_at, alloc.updated_at) DESC,
@@ -236,7 +235,7 @@ export async function getNetworkTaskCapacityMetrics({ accountId = "", walletAddr
         LIMIT 1
       ) job ON true
       LEFT JOIN task_projections p
-        ON p.task_id = COALESCE(NULLIF(alloc.generated_task_id, ''), NULLIF(job.task_id, ''))
+        ON ${canonicalAllocationProjectionLinkSql("alloc", "p")}
       WHERE ${capacityScopeSql}
         AND (
           ($2::text <> '' AND alloc.candidate_account_id = $2)

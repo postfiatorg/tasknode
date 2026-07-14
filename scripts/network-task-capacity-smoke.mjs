@@ -6,6 +6,10 @@ import {
   listNetworkTaskCandidateCapacityChecks,
 } from "../server/repositories/network-task-capacity.js";
 import {
+  listNetworkTaskAllocationDivergences,
+  syncNetworkTaskAllocationMirrors,
+} from "../server/repositories/network-task-allocation-sync.js";
+import {
   enqueueNetworkTaskGenerationFromBoardDecision,
   getNetworkTaskEligibility,
 } from "../server/repositories/network-tasks.js";
@@ -22,12 +26,20 @@ const accounts = {
   stale: `acct_netcap_stale_${suffix}`,
   crossClass: `acct_netcap_cross_${suffix}`,
   terminal: `acct_netcap_terminal_${suffix}`,
+  syncRefused: `acct_netcap_sync_refused_${suffix}`,
+  syncCancelled: `acct_netcap_sync_cancelled_${suffix}`,
+  syncRewarded: `acct_netcap_sync_rewarded_${suffix}`,
+  syncFallback: `acct_netcap_sync_fallback_${suffix}`,
   wallets: `acct_netcap_wallets_${suffix}`,
 };
 const wallets = {
   stale: `rNetCapStale${suffix}`,
   crossClass: `rNetCapCross${suffix}`,
   terminal: `rNetCapTerminal${suffix}`,
+  syncRefused: `rNetCapSyncRefused${suffix}`,
+  syncCancelled: `rNetCapSyncCancelled${suffix}`,
+  syncRewarded: `rNetCapSyncRewarded${suffix}`,
+  syncFallback: `rNetCapSyncFallback${suffix}`,
   current: `rNetCapCurrent${suffix}`,
   old: `rNetCapOld${suffix}`,
 };
@@ -102,23 +114,25 @@ async function seedAllocation({
   allocationStatus = "accepted",
   taskClass = "network",
   taskId = "",
+  requestId = "",
   createdHoursAgo = 0,
 }) {
   await query(
     `
       INSERT INTO network_task_allocations (
         id, idempotency_key, project_id, task_class, allocation_status,
-        generated_task_id, candidate_account_id, candidate_wallet_address,
+        task_request_id, generated_task_id, candidate_account_id, candidate_wallet_address,
         project_need_summary, created_at
       )
-      VALUES ($1, $1, $2, $3, $4, $5, $6, $7, 'Capacity smoke need', now() - ($8::integer * interval '1 hour'))
+      VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, 'Capacity smoke need', now() - ($9::integer * interval '1 hour'))
     `,
-    [allocationId, projectId, taskClass, allocationStatus, taskId, accountId, walletAddress, createdHoursAgo]
+    [allocationId, projectId, taskClass, allocationStatus, requestId, taskId, accountId, walletAddress, createdHoursAgo]
   );
 }
 
 async function seedProjection({
   taskId,
+  requestId = "",
   accountId,
   walletAddress,
   status,
@@ -130,13 +144,39 @@ async function seedProjection({
   await query(
     `
       INSERT INTO task_projections (
-        task_id, account_id, subject_wallet, status, title, task_kind, source,
+        task_id, account_id, subject_wallet, request_id, status, title, task_kind, source,
         reward_offer_pft, accept_by, deadline_at
       )
-      VALUES ($1, $2, $3, $4, $5, 'network', 'network_capacity_smoke', $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, 'network', 'network_capacity_smoke', $7, $8, $9)
     `,
-    [taskId, accountId, walletAddress, status, title, rewardOfferPft, acceptBy, deadlineAt]
+    [taskId, accountId, walletAddress, requestId, status, title, rewardOfferPft, acceptBy, deadlineAt]
   );
+}
+
+async function setProjectionStatus(taskId, status) {
+  const result = await query(
+    `
+      UPDATE task_projections
+      SET status = $2, updated_at = now()
+      WHERE task_id = $1
+      RETURNING task_id, request_id, status, updated_at
+    `,
+    [taskId, status]
+  );
+  assert.equal(result.rowCount, 1, `projection ${taskId} should exist before status update`);
+  return result.rows[0];
+}
+
+async function allocationMirror(allocationId) {
+  const result = await query(
+    `
+      SELECT id, allocation_status, generated_task_id, task_request_id
+      FROM network_task_allocations
+      WHERE id = $1
+    `,
+    [allocationId]
+  );
+  return result.rows[0] || null;
 }
 
 function boardDecision({ accountId, walletAddress, taskClass = "network", need = "Capacity smoke routing need" }) {
@@ -238,7 +278,7 @@ async function main() {
       `,
       [projectId]
     );
-    for (const key of ["stale", "crossClass", "terminal"]) {
+    for (const key of ["stale", "crossClass", "terminal", "syncRefused", "syncCancelled", "syncRewarded", "syncFallback"]) {
       await seedCandidate({ accountId: accounts[key], walletAddress: wallets[key] });
     }
     await seedCandidate({ accountId: accounts.wallets, walletAddress: wallets.current });
@@ -332,6 +372,125 @@ async function main() {
     });
     assert.equal(terminal.eligibility.eligibility.status, "available_for_routing");
     assert.equal(terminal.executor.result.executed, true, "executor should allocate when only terminal blockers exist");
+
+    // Case C2: terminal transitions repair allocation mirrors immediately,
+    // including request_id fallback when generated_task_id is empty.
+    const refusedTaskId = `task_netcap_refused_sync_${suffix}`;
+    const refusedAllocationId = `netalloc_netcap_refused_sync_${suffix}`;
+    await seedAllocation({
+      allocationId: refusedAllocationId,
+      accountId: accounts.syncRefused,
+      walletAddress: wallets.syncRefused,
+      allocationStatus: "proposed",
+      taskId: refusedTaskId,
+    });
+    await seedProjection({
+      taskId: refusedTaskId,
+      accountId: accounts.syncRefused,
+      walletAddress: wallets.syncRefused,
+      status: "proposed",
+      title: "Proposed task that will be refused",
+    });
+    assert.equal((await listNetworkTaskAllocationDivergences({ taskId: refusedTaskId })).length, 0);
+    const refusedProjection = await setProjectionStatus(refusedTaskId, "refused");
+    const refusedDivergence = await listNetworkTaskAllocationDivergences({ taskId: refusedTaskId });
+    assert.equal(refusedDivergence.length, 1);
+    assert.equal(refusedDivergence[0].allocation_id, refusedAllocationId);
+    assert.equal(refusedDivergence[0].allocation_status, "proposed");
+    assert.equal(refusedDivergence[0].canonical_task_status, "refused");
+    const refusedSync = await syncNetworkTaskAllocationMirrors({ projection: refusedProjection });
+    assert.equal(refusedSync.allocationsUpdated, 1);
+    assert.equal((await allocationMirror(refusedAllocationId)).allocation_status, "refused");
+    assert.equal((await listNetworkTaskAllocationDivergences({ taskId: refusedTaskId })).length, 0);
+    assert.equal(
+      (await listNetworkTaskCapacityBlockers({ accountId: accounts.syncRefused, walletAddress: wallets.syncRefused }))
+        .some((blocker) => blocker.taskId === refusedTaskId),
+      false,
+      "refused mirror should not block capacity"
+    );
+
+    const cancelledTaskId = `task_netcap_cancelled_sync_${suffix}`;
+    const cancelledAllocationId = `netalloc_netcap_cancelled_sync_${suffix}`;
+    await seedAllocation({
+      allocationId: cancelledAllocationId,
+      accountId: accounts.syncCancelled,
+      walletAddress: wallets.syncCancelled,
+      allocationStatus: "accepted",
+      taskId: cancelledTaskId,
+    });
+    await seedProjection({
+      taskId: cancelledTaskId,
+      accountId: accounts.syncCancelled,
+      walletAddress: wallets.syncCancelled,
+      status: "accepted",
+      title: "Accepted task that will be cancelled",
+    });
+    assert.equal((await listNetworkTaskAllocationDivergences({ taskId: cancelledTaskId })).length, 0);
+    const cancelledProjection = await setProjectionStatus(cancelledTaskId, "cancelled");
+    const cancelledDivergence = await listNetworkTaskAllocationDivergences({ taskId: cancelledTaskId });
+    assert.equal(cancelledDivergence.length, 1);
+    assert.equal(cancelledDivergence[0].allocation_status, "accepted");
+    assert.equal(cancelledDivergence[0].canonical_task_status, "cancelled");
+    const cancelledSync = await syncNetworkTaskAllocationMirrors({ projection: cancelledProjection });
+    assert.equal(cancelledSync.allocationsUpdated, 1);
+    assert.equal((await allocationMirror(cancelledAllocationId)).allocation_status, "cancelled");
+    assert.equal((await listNetworkTaskAllocationDivergences({ taskId: cancelledTaskId })).length, 0);
+    assert.equal(
+      (await listNetworkTaskCapacityBlockers({ accountId: accounts.syncCancelled, walletAddress: wallets.syncCancelled }))
+        .some((blocker) => blocker.taskId === cancelledTaskId),
+      false,
+      "cancelled mirror should not block capacity"
+    );
+
+    const rewardedTaskId = `task_netcap_rewarded_sync_${suffix}`;
+    const rewardedAllocationId = `netalloc_netcap_rewarded_sync_${suffix}`;
+    await seedAllocation({
+      allocationId: rewardedAllocationId,
+      accountId: accounts.syncRewarded,
+      walletAddress: wallets.syncRewarded,
+      allocationStatus: "proposed",
+      taskId: rewardedTaskId,
+    });
+    await seedProjection({
+      taskId: rewardedTaskId,
+      accountId: accounts.syncRewarded,
+      walletAddress: wallets.syncRewarded,
+      status: "proposed",
+      title: "Proposed task that will be rewarded",
+    });
+    assert.equal((await listNetworkTaskAllocationDivergences({ taskId: rewardedTaskId })).length, 0);
+    const rewardedProjection = await setProjectionStatus(rewardedTaskId, "rewarded");
+    const rewardedDivergence = await listNetworkTaskAllocationDivergences({ taskId: rewardedTaskId });
+    assert.equal(rewardedDivergence.length, 1);
+    assert.equal(rewardedDivergence[0].allocation_status, "proposed");
+    assert.equal(rewardedDivergence[0].canonical_task_status, "rewarded");
+    const rewardedSync = await syncNetworkTaskAllocationMirrors({ projection: rewardedProjection });
+    assert.equal(rewardedSync.allocationsUpdated, 1);
+    assert.equal((await allocationMirror(rewardedAllocationId)).allocation_status, "rewarded");
+    assert.equal((await listNetworkTaskAllocationDivergences({ taskId: rewardedTaskId })).length, 0);
+
+    const requestFallbackTaskId = `task_netcap_request_fallback_${suffix}`;
+    const requestFallbackId = `req_netcap_request_fallback_${suffix}`;
+    const requestFallbackAllocationId = `netalloc_netcap_request_fallback_${suffix}`;
+    await seedAllocation({
+      allocationId: requestFallbackAllocationId,
+      accountId: accounts.syncFallback,
+      walletAddress: wallets.syncFallback,
+      allocationStatus: "proposed",
+      requestId: requestFallbackId,
+    });
+    await seedProjection({
+      taskId: requestFallbackTaskId,
+      requestId: requestFallbackId,
+      accountId: accounts.syncFallback,
+      walletAddress: wallets.syncFallback,
+      status: "proposed",
+      title: "Request-linked proposed task",
+    });
+    const requestFallbackProjection = await setProjectionStatus(requestFallbackTaskId, "refused");
+    const requestFallbackSync = await syncNetworkTaskAllocationMirrors({ projection: requestFallbackProjection });
+    assert.equal(requestFallbackSync.allocationsUpdated, 1, "empty generated_task_id should use request fallback");
+    assert.equal((await allocationMirror(requestFallbackAllocationId)).allocation_status, "refused");
 
     // Case D: old-wallet allocation (wallet no longer linked) does NOT block
     // the current wallet; an account-scoped allocation DOES.

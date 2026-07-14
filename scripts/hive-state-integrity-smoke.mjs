@@ -11,6 +11,7 @@ import {
 import {
   extractReservationRatePft,
   formatHiveAccountLiveStateForPrompt,
+  hiveAccountLiveStateInternals,
 } from "../server/repositories/hive-account-live-state.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -144,6 +145,20 @@ const refusedGuard = guardBoardManagerMessageUserFreshness({
 assert.equal(refusedGuard.ok, false);
 assert.equal(refusedGuard.reason, "board_manager_message_precondition_failed");
 assert.equal(refusedGuard.precondition.reason, "board_manager_message_user_missing_structured_precondition");
+
+const canonicalTerminalTask = hiveAccountLiveStateInternals.publicTask({
+  allocation_id: "netalloc_terminal_mirror",
+  allocation_status: "proposed",
+  projection_status: "refused",
+  generated_task_id: "task_terminal_mirror",
+  title: "Previously proposed task",
+});
+assert.equal(canonicalTerminalTask.taskStatus, "refused");
+assert.equal(canonicalTerminalTask.allocationStatus, "refused");
+assert.equal(canonicalTerminalTask.allocationMirrorStatus, "proposed");
+assert.equal(canonicalTerminalTask.allocationMirrorDiverged, true);
+assert.equal(canonicalTerminalTask.terminal, true);
+assert.equal(canonicalTerminalTask.waitingForUser, false);
 
 const missingPreconditionGuard = guardBoardManagerMessageUserFreshness({
   decision: {
@@ -414,6 +429,47 @@ assert.match(promptText, /accept_by=2026-06-28T12:30:00\.000Z/);
 assert.match(promptText, /deadline_at=2026-06-29T12:30:00\.000Z/);
 assert.match(promptText, /network_task_eligibility: unavailable in this snapshot/);
 
+const canonicalTerminalPromptText = formatHiveAccountLiveStateForPrompt({
+  ok: true,
+  status: "ready",
+  accountId: "acct_terminal_mirror",
+  walletAddress: "rTerminalMirror",
+  snapshotAt: "2026-07-14T19:40:00.000Z",
+  networkTasks: [
+    {
+      taskId: "task_terminal_mirror",
+      allocationId: "netalloc_terminal_mirror",
+      title: "Previously proposed task",
+      taskStatus: "refused",
+      allocationStatus: "refused",
+      allocationMirrorStatus: "proposed",
+      allocationMirrorDiverged: true,
+      terminal: true,
+      waitingForUser: false,
+    },
+  ],
+  openFollowups: [],
+  recentBoardMessages: [],
+  routingConstraints: {},
+  networkTaskEligibility: {
+    status: "available_for_routing",
+    walletLinked: true,
+    walletSynced: true,
+    diagnosticReportStatus: "completed",
+    badgeStatus: "available",
+    verifiedBadgeLabels: ["Core Contributor"],
+    capacityAvailable: true,
+    blockedGates: [],
+    positiveRewardedTaskCount: 3,
+    autoReportRewardedTaskThreshold: 2,
+  },
+});
+assert.match(canonicalTerminalPromptText, /task_status=refused/);
+assert.match(canonicalTerminalPromptText, /allocation_status=refused/);
+assert.doesNotMatch(canonicalTerminalPromptText, /allocation_status=proposed/);
+assert.match(canonicalTerminalPromptText, /capacity_available=yes/);
+assert.match(canonicalTerminalPromptText, /blocked gates: none/);
+
 const rewardMismatchPromptText = formatHiveAccountLiveStateForPrompt({
   ok: true,
   status: "ready",
@@ -496,7 +552,7 @@ const eligibilityPromptText = formatHiveAccountLiveStateForPrompt({
   },
 });
 assert.match(eligibilityPromptText, /network_task_eligibility: status=profile_required/);
-assert.match(eligibilityPromptText, /wallet_linked=yes \| wallet_synced=yes \| diagnostic_report=missing \| capacity_available=yes/);
+assert.match(eligibilityPromptText, /wallet_linked=yes \| wallet_synced=yes \| diagnostic_report=missing .*capacity_available=yes/);
 assert.match(eligibilityPromptText, /rewarded_tasks=1\/2 toward automatic Network Diagnostic Report generation/);
 assert.match(eligibilityPromptText, /blocked gates: routing_profile=action_required \| next_action=Open Memory and refresh the Network Diagnostic Report\./);
 assert.match(eligibilityPromptText, /Answer Network Task eligibility questions from the network_task_eligibility lines above/);

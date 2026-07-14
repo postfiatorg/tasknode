@@ -1,5 +1,6 @@
 import { databaseEnabled, query } from "../db/pool.js";
 import { getNetworkTaskEligibility } from "./network-tasks.js";
+import { canonicalAllocationProjectionLinkSql } from "./network-task-allocation-sync.js";
 import {
   networkTaskProfileRewardThreshold,
   positiveRewardStats,
@@ -46,8 +47,9 @@ function hasNumericValue(value) {
 }
 
 function publicTask(row = {}) {
-  const taskStatus = normalizeStatus(row.task_status || row.projection_status || row.ref_state);
-  const allocationStatus = normalizeStatus(row.allocation_status);
+  const taskStatus = normalizeStatus(row.projection_status || row.task_status || row.ref_state);
+  const allocationMirrorStatus = normalizeStatus(row.allocation_mirror_status || row.allocation_status);
+  const allocationStatus = taskStatus || allocationMirrorStatus;
   const rewardMinPft = numeric(row.reward_min_pft, 0);
   const rewardMaxPft = numeric(row.reward_max_pft, 0);
   const rewardOfferRecorded = hasNumericValue(row.reward_offer_pft);
@@ -62,6 +64,8 @@ function publicTask(row = {}) {
     title: safeText(row.title, 240),
     projectNeedSummary: safeText(row.project_need_summary, 600),
     allocationStatus,
+    allocationMirrorStatus,
+    allocationMirrorDiverged: Boolean(taskStatus && allocationMirrorStatus && taskStatus !== allocationMirrorStatus),
     taskStatus: taskStatus || allocationStatus || normalizeStatus(row.generation_status),
     generationStatus: normalizeStatus(row.generation_status),
     rewardMinPft,
@@ -196,6 +200,7 @@ async function accountNetworkTasks({ accountId = "", walletAddress = "", limit =
         alloc.id AS allocation_id,
         alloc.project_id,
         alloc.allocation_status,
+        alloc.allocation_status AS allocation_mirror_status,
         alloc.task_request_id,
         alloc.generated_task_id,
         alloc.project_need_summary,
@@ -207,6 +212,7 @@ async function accountNetworkTasks({ accountId = "", walletAddress = "", limit =
         job.status AS generation_status,
         job.request_id,
         COALESCE(NULLIF(proj.task_id, ''), NULLIF(refs.task_id, ''), NULLIF(job.task_id, ''), NULLIF(alloc.generated_task_id, '')) AS task_id,
+        proj.status AS projection_status,
         COALESCE(NULLIF(proj.status, ''), NULLIF(refs.state, '')) AS task_status,
         COALESCE(NULLIF(proj.title, ''), NULLIF(refs.title, ''), NULLIF(alloc.project_need_summary, '')) AS title,
         proj.reward_offer_pft,
@@ -218,10 +224,9 @@ async function accountNetworkTasks({ accountId = "", walletAddress = "", limit =
       LEFT JOIN network_task_generation_jobs job
         ON job.allocation_id = alloc.id
       LEFT JOIN network_project_task_refs refs
-        ON refs.task_id = alloc.generated_task_id
-        OR refs.request_id = alloc.task_request_id
+        ON ${canonicalAllocationProjectionLinkSql("alloc", "refs")}
       LEFT JOIN task_projections proj
-        ON proj.task_id = COALESCE(NULLIF(alloc.generated_task_id, ''), NULLIF(job.task_id, ''), NULLIF(refs.task_id, ''))
+        ON ${canonicalAllocationProjectionLinkSql("alloc", "proj")}
       WHERE ($1::text <> '' AND alloc.candidate_account_id = $1)
          OR ($2::text <> '' AND alloc.candidate_wallet_address = $2)
          OR ($1::text <> '' AND proj.account_id = $1)
@@ -633,6 +638,7 @@ export async function buildHiveRoutingConstraintsSnapshot({ limit = 80 } = {}) {
 
 export const hiveAccountLiveStateInternals = {
   extractReservationRatePft,
+  publicTask,
   terminalTaskStatuses,
   waitingForUserStatuses,
 };

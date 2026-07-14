@@ -1,9 +1,12 @@
 import { randomUUID, createHash } from "node:crypto";
 import { transaction } from "./db/pool.js";
+import {
+  syncNetworkTaskAllocationMirrors,
+  terminalNetworkTaskStatuses,
+} from "./repositories/network-task-allocation-sync.js";
 import { signatureRecord, taskTransitionSignatureRequired } from "./task-transition-signatures.js";
 
 const DIRECT_WRITE_SOURCE = "direct_write";
-const TERMINAL_PROJECTION_STATUSES = Object.freeze(["refused", "cancelled", "rewarded"]);
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -573,7 +576,7 @@ export async function applyOffchainTaskOfferWithClient(client, {
       event.sourceCid,
       DIRECT_WRITE_SOURCE,
       JSON.stringify(metadataJson),
-      TERMINAL_PROJECTION_STATUSES,
+      terminalNetworkTaskStatuses,
       event.eventId,
       eventInserted,
       event.provenanceJson.recordedAt,
@@ -752,7 +755,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
       safeText(accountId, 180),
       safeText(walletAddress, 180),
       eventInserted,
-      TERMINAL_PROJECTION_STATUSES,
+      terminalNetworkTaskStatuses,
       event.eventId,
       event.provenanceJson.recordedAt,
       rewardActualPft,
@@ -761,12 +764,27 @@ export async function applyOffchainTaskTransitionWithClient(client, {
   if (projectionUpdate.rowCount < 1) {
     throw new Error("offchain_task_projection_update_missed");
   }
+  const projection = projectionUpdate.rows[0] || {};
+  const terminalMirrorSync = terminalNetworkTaskStatuses.includes(
+    safeText(projection.status, 80).toLowerCase()
+  )
+    ? await syncNetworkTaskAllocationMirrors({
+      client,
+      projection: {
+        task_id: safeText(task.task_id, 180),
+        request_id: safeText(task.request_id, 180),
+        status: safeText(projection.status, 80),
+        updated_at: projection.updated_at,
+      },
+    })
+    : { ok: true, skipped: true, reason: "status_not_terminal", allocationsUpdated: 0, rows: [] };
   return {
     ok: true,
     source: DIRECT_WRITE_SOURCE,
     transition: normalizedTransition,
     eventInserted,
     terminalPreserved: projectionUpdate.rows[0]?.terminal_preserved === true,
+    terminalMirrorSync,
     event,
   };
 }

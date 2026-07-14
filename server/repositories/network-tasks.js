@@ -15,6 +15,7 @@ import {
   getNetworkTaskCapacityMetrics,
   listNetworkTaskCapacityBlockers,
 } from "./network-task-capacity.js";
+import { syncNetworkTaskAllocationMirrors } from "./network-task-allocation-sync.js";
 import {
   assertNetworkTaskBadgeEligibility,
   networkBadgeProjectionForAccount,
@@ -2306,7 +2307,7 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
 
   const projectionResult = await query(
     `
-      SELECT task_id, account_id, status, title, subject_wallet, reward_offer_pft, reward_actual_pft,
+      SELECT task_id, request_id, account_id, status, title, subject_wallet, reward_offer_pft, reward_actual_pft,
              last_event_tx_hash, last_event_cid, last_event_at, updated_at
       FROM task_projections
       WHERE task_id = $1
@@ -2352,26 +2353,10 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
     ]
   );
 
-  const allocationResult = await query(
-    `
-      UPDATE network_task_allocations alloc
-      SET allocation_status = $2,
-          metadata_json = alloc.metadata_json || $3::jsonb,
-          updated_at = now()
-      WHERE alloc.generated_task_id = $1
-      RETURNING alloc.id, alloc.project_id, alloc.generated_task_id, alloc.allocation_status
-    `,
-    [
-      normalizedTaskId,
-      allocationStatus,
-      jsonValue({
-        source_of_truth: "task_projections",
-        task_projection_status: canonicalStatus,
-        task_projection_updated_at: toIso(projection.updated_at),
-        task_projection_last_event_at: toIso(projection.last_event_at),
-      }),
-    ]
-  );
+  const allocationResult = await syncNetworkTaskAllocationMirrors({
+    projection,
+    taskId: normalizedTaskId,
+  });
   if (allocationResult.rows.length > 0) {
     await query(
       `
@@ -2476,7 +2461,7 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
     status: canonicalStatus,
     allocationStatus,
     taskRefsUpdated: refResult.rowCount || 0,
-    allocationsUpdated: allocationResult.rowCount || 0,
+    allocationsUpdated: allocationResult.allocationsUpdated || 0,
     projectIds,
     boardManagerFollowup,
     boardManagerFollowupsResolved,
