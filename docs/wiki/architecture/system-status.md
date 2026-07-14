@@ -46,7 +46,10 @@ Hive Secretary reports, and active projects.
 | `stale` | `warning`/`critical` | No recent tick/success, lagging success, or stale `running` award. |
 | `healthy` | `ok` | Fresh tick with generation enabled (or explicitly generation-gated with a recent tick). |
 
-Optional tables `profile_nft_daily_worker_runs` / `profile_nft_daily_worker_heartbeats` supply `lastTickAt` when present (Ghash heartbeat branch). Until those tables exist, status still evaluates awards, lease heartbeats on scope `profile_nft_daily`, and never collapses query failures to empty-healthy.
+The optional `profile_nft_daily_worker_heartbeats` table supplies `lastTickAt`
+when present. Status also evaluates the durable `profile_nft_daily_awards`
+rows and the `board_manager_leases` heartbeat for scope `profile_nft_daily`;
+query failures never collapse to empty-healthy.
 
 ## Categories And Monitored Items
 
