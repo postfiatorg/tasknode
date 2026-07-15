@@ -368,6 +368,97 @@ export async function runDailyProfileNftBackfill({
   }
 }
 
+export async function finalizeDailyProfileNftBackfillSkippedSlots({
+  manifest = {},
+  manifestHash: expectedHash = "",
+  enabled = dailyProfileNftBackfillEnabled(process.env),
+  logger = console,
+  dependencies = {},
+} = {}) {
+  if (!enabled) return { ok: true, skipped: true, reason: "profile_nft_daily_backfill_disabled" };
+  const { payload, hash } = assertBackfillManifest(manifest, expectedHash);
+  if (!payload.remainingSlots.length) {
+    throw new Error("profile_nft_daily_backfill_remaining_slots_required");
+  }
+
+  const countAwardSlots = dependencies.countAwardSlots || countDailyProfileNftAwardSlots;
+  const recordSkippedSlots = dependencies.recordSkippedSlots || recordDailyProfileNftBackfillSkippedSlots;
+  const managerId = `profile_nft_daily_backfill_finalize_skips_${hostname()}`;
+  const claimLease = dependencies.claimLease || claimBoardManagerLease;
+  const releaseLease = dependencies.releaseLease || releaseBoardManagerLease;
+  let lease = null;
+  let primaryError = null;
+  try {
+    lease = await claimLease({
+      scope: WORKER_SCOPE,
+      managerId,
+      ttlSeconds: 45 * 60,
+      metadata: { mode: BACKFILL_MODE, operation: "finalize_skips", manifestHash: hash },
+    });
+    if (!lease.ok) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "profile_nft_daily_backfill_lease_unavailable",
+        manifestHash: hash,
+      };
+    }
+
+    const existingCount = await countAwardSlots({ slots: payload.remainingSlots });
+    if (existingCount === payload.remainingSlots.length) {
+      return {
+        ok: true,
+        alreadyApplied: true,
+        finalizeOnly: true,
+        manifestHash: hash,
+        skippedLedgerCount: payload.remainingSlots.length,
+      };
+    }
+    if (existingCount !== 0) {
+      return {
+        ok: false,
+        reason: "profile_nft_daily_backfill_partial_remaining_state",
+        finalizeOnly: true,
+        manifestHash: hash,
+        existingCount,
+        expectedCount: payload.remainingSlots.length,
+      };
+    }
+
+    const result = await recordSkippedSlots({
+      slots: payload.remainingSlots,
+      manifestHash: hash,
+      mode: BACKFILL_MODE,
+      reason: "Historical Daily Profile NFT slot intentionally skipped after approved one-slot backfill.",
+    });
+    if (result.skippedCount !== payload.remainingSlots.length) {
+      throw new Error("profile_nft_daily_backfill_skip_count_mismatch");
+    }
+    return {
+      ok: true,
+      finalizeOnly: true,
+      manifestHash: hash,
+      skippedLedgerCount: result.skippedCount,
+    };
+  } catch (error) {
+    primaryError = error;
+    throw error;
+  } finally {
+    if (lease?.ok) {
+      try {
+        await releaseLease({ scope: WORKER_SCOPE, managerId });
+      } catch (releaseError) {
+        if (primaryError) {
+          logger.error?.("[profile-nft-daily-worker] backfill skip-finalizer lease release failed", releaseError?.message || releaseError);
+        } else {
+          // eslint-disable-next-line no-unsafe-finally -- a successful finalization must surface lease-release failure.
+          throw releaseError;
+        }
+      }
+    }
+  }
+}
+
 export function buildDailyProfileNftGenerationPayload({ candidate = {}, runDate = dateOnly() } = {}) {
   const normalizedRunDate = dateOnly(runDate);
   const personalCompletedCount = Number(candidate.personalCompletedCount || 0);
@@ -698,7 +789,7 @@ function cliOption(args, name) {
 async function runDailyProfileNftWorkerCli() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || command === "help") {
-    console.log("Usage: node server/profile-nft-daily-worker.js backfill-manifest --run-dates YYYY-MM-DD,... --max-accounts 1..41 --output PATH | backfill-execute --manifest PATH --sha256 HASH [--dry-run]");
+    console.log("Usage: node server/profile-nft-daily-worker.js backfill-manifest --run-dates YYYY-MM-DD,... --max-accounts 1..41 --output PATH | backfill-execute --manifest PATH --sha256 HASH [--dry-run] | backfill-finalize-skips --manifest PATH --sha256 HASH");
     return;
   }
   if (command === "backfill-manifest") {
@@ -719,6 +810,26 @@ async function runDailyProfileNftWorkerCli() {
     const results = result.results || [];
     const failureRows = results.filter((item) => ["retry_wait", "failed_permanent"].includes(item.status));
     console.log(JSON.stringify({ ok: result.ok, dryRun: Boolean(result.dryRun), manifestHash: result.manifestHash || expectedHash, generationCount: results.filter((item) => item.status === "generated").length, failureCount: failureRows.length, retryableFailureCount: failureRows.filter((item) => item.retryable).length, permanentFailureCount: failureRows.filter((item) => !item.retryable).length, results }));
+    return;
+  }
+  if (command === "backfill-finalize-skips") {
+    if (process.env.TASKNODE_PROFILE_NFT_DAILY_BACKFILL_ENABLED !== "true") throw new Error("profile_nft_daily_backfill_disabled");
+    const manifestPath = cliOption(args, "--manifest");
+    const expectedHash = cliOption(args, "--sha256");
+    if (!manifestPath || !expectedHash) throw new Error("profile_nft_daily_backfill_manifest_and_sha256_required");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const result = await finalizeDailyProfileNftBackfillSkippedSlots({ manifest, manifestHash: expectedHash });
+    console.log(JSON.stringify({
+      ok: result.ok,
+      skipped: Boolean(result.skipped),
+      alreadyApplied: Boolean(result.alreadyApplied),
+      finalizeOnly: true,
+      reason: result.reason || "",
+      manifestHash: result.manifestHash || expectedHash,
+      skippedLedgerCount: Number(result.skippedLedgerCount || 0),
+      existingCount: Number(result.existingCount || 0),
+      expectedCount: Number(result.expectedCount || manifest.remainingCount || 0),
+    }));
     return;
   }
   throw new Error("profile_nft_daily_worker_cli_command_invalid");

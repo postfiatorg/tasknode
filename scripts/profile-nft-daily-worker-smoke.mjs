@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 
 process.env.TASKNODE_DATABASE_DISABLED = "true";
 
@@ -6,6 +7,7 @@ const {
   buildDailyProfileNftGenerationPayload,
   buildDailyProfileNftBackfillManifest,
   dailyProfileNftBackfillSnapshotDigest,
+  finalizeDailyProfileNftBackfillSkippedSlots,
   runDailyProfileNftBackfill,
   runDailyProfileNftWorkerOnce,
 } = await import("../server/profile-nft-daily-worker.js");
@@ -266,6 +268,117 @@ assert.ok(manifest.slots.every((slot) => slot.runDate === "2026-06-30"), "each a
 assert.deepEqual(manifest.slots.map((slot) => slot.accountId), [...manifest.slots.map((slot) => slot.accountId)].sort(), "backfill order is stable by account");
 assert.match(manifest.manifestHash, /^[a-f0-9]{64}$/);
 
+let finalizerClaims = 0;
+let finalizerProviderCalls = 0;
+let finalizerReleaseCount = 0;
+let finalizedSlots = [];
+let finalizedHash = "";
+const finalized = await finalizeDailyProfileNftBackfillSkippedSlots({
+  manifest,
+  manifestHash: manifest.manifestHash,
+  enabled: true,
+  dependencies: {
+    claimLease: async () => ({ ok: true }),
+    releaseLease: async () => { finalizerReleaseCount += 1; },
+    countAwardSlots: async ({ slots }) => {
+      assert.deepEqual(slots, manifest.remainingSlots, "skip finalizer counts only signed remaining slots");
+      return 0;
+    },
+    listBackfillSlots: async () => { throw new Error("mutable_eligibility_must_not_be_queried"); },
+    createAward: async () => { finalizerClaims += 1; },
+    generateNft: async () => { finalizerProviderCalls += 1; },
+    recordSkippedSlots: async ({ slots, manifestHash, mode, reason }) => {
+      finalizedSlots = slots;
+      finalizedHash = manifestHash;
+      assert.equal(mode, "profile_nft_daily_backfill_v1");
+      assert.match(reason, /intentionally skipped/);
+      return { skippedCount: slots.length };
+    },
+  },
+});
+assert.equal(finalized.ok, true);
+assert.equal(finalized.finalizeOnly, true);
+assert.equal(finalized.skippedLedgerCount, 82);
+assert.equal(finalizerReleaseCount, 1, "skip finalizer releases the shared lease");
+assert.equal(finalizerClaims, 0, "skip finalizer never claims selected awards");
+assert.equal(finalizerProviderCalls, 0, "skip finalizer never calls the image provider");
+assert.equal(finalizedHash, manifest.manifestHash, "skip rows bind the signed manifest digest");
+assert.deepEqual(
+  finalizedSlots.map((slot) => `${slot.accountId}:${slot.runDate}`),
+  manifest.remainingSlots.map((slot) => `${slot.accountId}:${slot.runDate}`),
+  "skip finalizer records the exact signed remaining-slot identities"
+);
+
+let idempotentRecordCalls = 0;
+const idempotentFinalizer = await finalizeDailyProfileNftBackfillSkippedSlots({
+  manifest,
+  manifestHash: manifest.manifestHash,
+  enabled: true,
+  dependencies: {
+    claimLease: async () => ({ ok: true }),
+    releaseLease: async () => null,
+    countAwardSlots: async () => 82,
+    recordSkippedSlots: async () => { idempotentRecordCalls += 1; return { skippedCount: 82 }; },
+  },
+});
+assert.equal(idempotentFinalizer.alreadyApplied, true);
+assert.equal(idempotentFinalizer.skippedLedgerCount, 82);
+assert.equal(idempotentRecordCalls, 0, "idempotent skip finalization performs no inserts");
+
+let partialRecordCalls = 0;
+let partialReleaseCount = 0;
+const partialFinalizer = await finalizeDailyProfileNftBackfillSkippedSlots({
+  manifest,
+  manifestHash: manifest.manifestHash,
+  enabled: true,
+  dependencies: {
+    claimLease: async () => ({ ok: true }),
+    releaseLease: async () => { partialReleaseCount += 1; },
+    countAwardSlots: async () => 1,
+    recordSkippedSlots: async () => { partialRecordCalls += 1; return { skippedCount: 82 }; },
+  },
+});
+assert.equal(partialFinalizer.ok, false);
+assert.equal(partialFinalizer.reason, "profile_nft_daily_backfill_partial_remaining_state");
+assert.equal(partialFinalizer.existingCount, 1);
+assert.equal(partialRecordCalls, 0, "partial remaining state fails closed before inserts");
+assert.equal(partialReleaseCount, 1, "partial-state failure still releases the shared lease");
+
+await assert.rejects(
+  () => finalizeDailyProfileNftBackfillSkippedSlots({ manifest, manifestHash: "incorrect", enabled: true }),
+  /profile_nft_daily_backfill_manifest_hash_mismatch/
+);
+await assert.rejects(
+  () => finalizeDailyProfileNftBackfillSkippedSlots({
+    manifest,
+    manifestHash: manifest.manifestHash,
+    enabled: true,
+    dependencies: {
+      claimLease: async () => ({ ok: true }),
+      countAwardSlots: async () => 82,
+      releaseLease: async () => { throw new Error("finalizer_release_only_failure"); },
+    },
+  }),
+  /finalizer_release_only_failure/
+);
+const finalizerPrimaryLogs = [];
+await assert.rejects(
+  () => finalizeDailyProfileNftBackfillSkippedSlots({
+    manifest,
+    manifestHash: manifest.manifestHash,
+    enabled: true,
+    logger: { error: (...args) => finalizerPrimaryLogs.push(args.join(" ")) },
+    dependencies: {
+      claimLease: async () => ({ ok: true }),
+      countAwardSlots: async () => 0,
+      recordSkippedSlots: async () => { throw new Error("finalizer_primary_failure"); },
+      releaseLease: async () => { throw new Error("finalizer_release_after_primary_failure"); },
+    },
+  }),
+  /finalizer_primary_failure/
+);
+assert.match(finalizerPrimaryLogs.join("\n"), /finalizer_release_after_primary_failure/);
+
 const walletShiftedSlots = backfillSlots.map((slot) => ({ ...slot, walletAddress: `${slot.walletAddress}_shifted` }));
 const laterManifest = await buildDailyProfileNftBackfillManifest({
   runDates: backfillRunDates,
@@ -424,5 +537,13 @@ await assert.rejects(
   () => runDailyProfileNftBackfill({ manifest, manifestHash: manifest.manifestHash, enabled: true, logger: { error() {} }, dependencies: { claimLease: async () => ({ ok: true }), listBackfillSlots: async () => { throw new Error("primary_snapshot_failure"); }, releaseLease: async () => { throw new Error("release_after_primary_failure"); } } }),
   /primary_snapshot_failure/
 );
+
+const help = spawnSync(process.execPath, ["server/profile-nft-daily-worker.js", "--help"], {
+  cwd: process.cwd(),
+  env: { ...process.env, TASKNODE_DATABASE_DISABLED: "true" },
+  encoding: "utf8",
+});
+assert.equal(help.status, 0, help.stderr);
+assert.match(help.stdout, /backfill-finalize-skips --manifest PATH --sha256 HASH/);
 
 console.log("profile-nft-daily-worker-smoke ok");
