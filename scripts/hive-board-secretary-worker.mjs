@@ -1,5 +1,16 @@
 #!/usr/bin/env node
 
+import {
+  createCrashIsolatingTickRunner,
+  installProcessHardening,
+} from "../server/process-hardening.js";
+
+let flushResources = async () => {};
+installProcessHardening({
+  flush: () => flushResources(),
+  flushTimeoutMs: 5000,
+});
+
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
 }
@@ -14,6 +25,22 @@ const [{ migrateDatabase }, { closePool }, worker] = await Promise.all([
   import("../server/db/pool.js"),
   import("../server/hive-board-secretary-worker.js"),
 ]);
+
+let keepAliveRunner = null;
+flushResources = async () => {
+  keepAliveRunner?.stop();
+  const results = await Promise.allSettled([
+    worker.stopHiveBoardSecretaryWorker(),
+    closePool(),
+  ]);
+  for (const [index, result] of results.entries()) {
+    if (result.status !== "rejected") continue;
+    console.warn("hive_board_secretary_cleanup_failed", {
+      resource: index === 0 ? "worker" : "database_pool",
+      error: result.reason?.message || String(result.reason),
+    });
+  }
+};
 
 function hasArg(name) {
   return process.argv.includes(name);
@@ -45,12 +72,8 @@ if (hasArg("--once") || hasArg("--dry-run")) {
   process.exit(result.ok ? 0 : 1);
 }
 
-let keepAlive = null;
-
 async function shutdown(signal) {
-  if (keepAlive) clearInterval(keepAlive);
-  await worker.stopHiveBoardSecretaryWorker().catch(() => null);
-  await closePool().catch(() => null);
+  await flushResources();
   console.log(`[hive-board-secretary-worker] stopped signal=${signal}`);
   process.exit(0);
 }
@@ -70,4 +93,10 @@ if (!started) {
 }
 
 console.log("[hive-board-secretary-worker] started");
-keepAlive = setInterval(() => {}, 60 * 60 * 1000);
+keepAliveRunner = createCrashIsolatingTickRunner({
+  name: "hive_board_secretary_keepalive",
+  intervalMs: 60 * 60 * 1000,
+  maxBackoffMs: 60 * 60 * 1000,
+  tick: () => {},
+});
+keepAliveRunner.start();

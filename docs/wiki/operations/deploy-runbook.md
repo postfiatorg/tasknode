@@ -18,14 +18,14 @@ worker-context-rewrite npm run start:worker:context-rewrite
 worker-hive            npm run start:worker:hive
 worker-memory-profile  npm run start:worker:memory-profile
 worker-airdrop         npm run start:worker:airdrop
-board-manager          npm run start:board-manager
+board-secretary        npm run start:board-secretary
 ```
 
-Only `app` receives HTTP traffic. Every `worker-*` process group and
-`board-manager` must be verified separately after every deploy. The legacy
-`worker` process still exists for local compatibility, but production rejects
-the monolith worker unless `TASKNODE_ALLOW_MONOLITH_WORKER=true` is set
-explicitly.
+Only `app` receives HTTP traffic. Every listed background process group
+(`board-secretary` plus the seven `worker-*` groups) must be verified separately
+after every deploy. The legacy `worker` process still exists for local
+compatibility, but production rejects the monolith worker unless
+`TASKNODE_ALLOW_MONOLITH_WORKER=true` is set explicitly.
 
 Database pool defaults are role-aware. `web` gets a larger pool for request
 traffic, task generation/context rewrite get medium pools for provider-heavy
@@ -60,9 +60,42 @@ TASKNODE_CONFIRM_PRODUCTION_DEPLOY=yes \
 
 Do not use raw `fly deploy` for normal production releases. The npm wrapper
 checks migration registration, confirms that `fly.toml` targets the production
-hostname, deploys the image, and then runs the background guard so the
-non-HTTP `worker-*` and `board-manager` process groups are started and have
-`restart=always`.
+hostname, deploys the image, and then runs the background guard. The guard's
+verification path is read-only; any scale, start, or restart-policy change
+requires an explicit `--fix` invocation.
+
+### Process-group guard workflow
+
+The guard defaults to all nine process groups in `fly.toml`: `app`,
+`board-secretary`, `worker-pftl`, `worker-taskgen`,
+`worker-task-review`, `worker-context-rewrite`, `worker-hive`,
+`worker-memory-profile`, and `worker-airdrop`. It reads live Machine JSON
+and prints every Machine's state and restart policy.
+
+Verify without a mutation command:
+
+```bash
+node scripts/fly-worker-guard.mjs --app tasknodeofficial-dev
+```
+
+Run strictly read-only live verification. `--dry-run` prints no mutation
+commands and plans none; it never invokes `fly scale`, `fly machine start`,
+`fly machine update`, or SSH/env checks:
+
+```bash
+node scripts/fly-worker-guard.mjs --app tasknodeofficial-dev --dry-run
+```
+
+`--fix` is the only mutating mode and remains unrun in this workflow. Use it
+only to deliberately apply scale, start, and restart-policy repairs:
+
+```bash
+node scripts/fly-worker-guard.mjs --app tasknodeofficial-dev --fix
+```
+
+A non-zero read-only or dry-run exit means at least one group lacks the
+minimum started Machine or has a Machine whose restart policy is not
+`always`. Never substitute `--fix` when only evidence is required.
 
 ## Rollback
 

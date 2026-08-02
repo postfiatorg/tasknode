@@ -1,80 +1,132 @@
-import { createReadStream, existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { getCachedAppState } from "./app-state.js";
-import { startBackgroundWorkers } from "./background-workers.js";
-import {
-  isProductionEnvironment,
-  legacyHostRedirectTarget,
-  moneySeedStartupIssues,
-  productionOriginIssues,
-} from "./production-guards.js";
-import { fetchPftBalance } from "./pftl-balance.js";
-import { handlePftlCacheRoute } from "./pftl-cache-route.js";
-import { fetchWalletTransactions } from "./pftl-transactions.js";
-import {
-  authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart, authTelegramAuthorize, chatEstimateStart,
-  chatModes, chatSend, chatStreamStart, contextActionStart, contextActions, contextEditSave,
-  contextManifestInk, contextHistoryIpfsFetch, devAuthStatus, readiness, taskRequestIntentStart,
-  usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, userObservabilityClientEvent, walletActionStart, walletActions,
-  walletLinkStart, walletLinkVerify,
-} from "./product-contracts.js";
-import { executeChatStream, logChatProviderError } from "./chat-router.js";
-import { conversationIdForChatWrite, explicitConversationId } from "./chat-conversation-ids.js";
-import {
-  conversationIdForSession,
-  destroySession,
-  getLinkedWallet,
-  getSession,
-  runtimeStoreStatus,
-  sessionCookieName,
-  sessionTtlSeconds,
-} from "./runtime-store.js";
-import {
-  deleteChatConversation,
-  getChatMessages,
-  listChatConversations,
-  renameChatConversation,
-  searchChatConversations,
-  usageLedger,
-} from "./repositories/chat-billing.js";
-import { recordChatFailureObservability } from "./repositories/user-observability.js";
-import { chatConversationExistsForAccount } from "./repositories/chat-conversation-lookup.js";
-import { migrateDatabase } from "./db/migrate.js";
-import {
-  offchainTaskLifecycleDualWriteEnabled,
-  offchainTaskLifecycleEnabled,
-} from "./offchain-task-lifecycle.js";
-import { checkRateLimit } from "./rate-limit.js";
-import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
-import { observeApiRoute } from "./route-observability.js";
-import { authWalletStart, authWalletVerify } from "./auth-wallet-login.js";
-import { oauthStateCookieName, responseHeadersForAuthResult } from "./auth-oauth-http.js";
-import { telegramAuthHeaders } from "./auth-connected-accounts.js";
-import { handleTaskReadRoute } from "./task-routes.js";
-import { handleTaskNodeTerminalRoute } from "./tasknode-terminal-routes.js";
-import { handleAccountRoute } from "./account-routes.js";
-import { contextEditProposalAction } from "./context-edit-actions.js";
-import { handleContextRewriteRoute } from "./context-rewrite-actions.js";
-import { handleProfileRoute } from "./profile-routes.js";
-import { handleProfileNftImageRoute, handleProfileNftPfpRoute } from "./profile-nft-image-proxy.js";
-import { handleMemoryRoute } from "./memory-routes.js";
-import { handleDirectoryRoute } from "./directory-routes.js";
-import { handleHiveRoute } from "./hive-routes.js";
-import { handleCapabilityProfileRoute } from "./capability-profile-routes.js";
-import { handleNetworkBadgeAdminRoute } from "./network-badge-admin-routes.js";
-import { handleSystemStatusRoute } from "./system-status.js";
-import { handleTelegramBotRoute } from "./telegram-bot.js";
-import { walletSendPrepare, walletSendSubmit } from "./wallet-send.js";
-import { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole } from "./process-role.js";
-import { startRealtimeNotificationListener, subscribeRealtimeEvents } from "./app-realtime.js";
-import { agentOriginForWalletSession } from "./agent-origin.js";
-import {
-  backgroundWorkerLivenessSelfCheck,
-  startBackgroundWorkerKeepalive,
-} from "./background-worker-liveness.js";
+import { installProcessHardening } from "./process-hardening.js";
+
+installProcessHardening();
+
+const [
+  { createReadStream, existsSync },
+  { readFile },
+  { createServer },
+  { default: path },
+  { fileURLToPath },
+  { getCachedAppState },
+  { startBackgroundWorkers },
+  {
+    isProductionEnvironment,
+    legacyHostRedirectTarget,
+    moneySeedStartupIssues,
+    productionOriginIssues,
+  },
+  { fetchPftBalance },
+  { handlePftlCacheRoute },
+  { fetchWalletTransactions },
+  {
+    authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart, authTelegramAuthorize, chatEstimateStart,
+    chatModes, chatSend, chatStreamStart, contextActionStart, contextActions, contextEditSave,
+    contextManifestInk, contextHistoryIpfsFetch, devAuthStatus, readiness, taskRequestIntentStart,
+    usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, userObservabilityClientEvent, walletActionStart, walletActions,
+    walletLinkStart, walletLinkVerify,
+  },
+  { executeChatStream, logChatProviderError },
+  { conversationIdForChatWrite, explicitConversationId },
+  {
+    conversationIdForSession,
+    destroySession,
+    getLinkedWallet,
+    getSession,
+    runtimeStoreStatus,
+    sessionCookieName,
+    sessionTtlSeconds,
+  },
+  {
+    deleteChatConversation,
+    getChatMessages,
+    listChatConversations,
+    renameChatConversation,
+    searchChatConversations,
+    usageLedger,
+  },
+  { recordChatFailureObservability },
+  { chatConversationExistsForAccount },
+  { migrateDatabase },
+  {
+    offchainTaskLifecycleDualWriteEnabled,
+    offchainTaskLifecycleEnabled,
+  },
+  { checkRateLimit },
+  { routePolicyForPath, routePolicyRateLimitExtra },
+  { observeApiRoute },
+  { authWalletStart, authWalletVerify },
+  { oauthStateCookieName, responseHeadersForAuthResult },
+  { telegramAuthHeaders },
+  { handleTaskReadRoute },
+  { handleTaskNodeTerminalRoute },
+  { handleAccountRoute },
+  { contextEditProposalAction },
+  { handleContextRewriteRoute },
+  { handleProfileRoute },
+  { handleProfileNftImageRoute, handleProfileNftPfpRoute },
+  { handleMemoryRoute },
+  { handleDirectoryRoute },
+  { handleHiveRoute },
+  { handleCapabilityProfileRoute },
+  { handleNetworkBadgeAdminRoute },
+  { handleSystemStatusRoute },
+  { handleTelegramBotRoute },
+  { walletSendPrepare, walletSendSubmit },
+  { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole },
+  { startRealtimeNotificationListener, subscribeRealtimeEvents },
+  { agentOriginForWalletSession },
+  {
+    backgroundWorkerLivenessSelfCheck,
+    startBackgroundWorkerKeepalive,
+  },
+] = await Promise.all([
+  import("node:fs"),
+  import("node:fs/promises"),
+  import("node:http"),
+  import("node:path"),
+  import("node:url"),
+  import("./app-state.js"),
+  import("./background-workers.js"),
+  import("./production-guards.js"),
+  import("./pftl-balance.js"),
+  import("./pftl-cache-route.js"),
+  import("./pftl-transactions.js"),
+  import("./product-contracts.js"),
+  import("./chat-router.js"),
+  import("./chat-conversation-ids.js"),
+  import("./runtime-store.js"),
+  import("./repositories/chat-billing.js"),
+  import("./repositories/user-observability.js"),
+  import("./repositories/chat-conversation-lookup.js"),
+  import("./db/migrate.js"),
+  import("./offchain-task-lifecycle.js"),
+  import("./rate-limit.js"),
+  import("./route-policies.js"),
+  import("./route-observability.js"),
+  import("./auth-wallet-login.js"),
+  import("./auth-oauth-http.js"),
+  import("./auth-connected-accounts.js"),
+  import("./task-routes.js"),
+  import("./tasknode-terminal-routes.js"),
+  import("./account-routes.js"),
+  import("./context-edit-actions.js"),
+  import("./context-rewrite-actions.js"),
+  import("./profile-routes.js"),
+  import("./profile-nft-image-proxy.js"),
+  import("./memory-routes.js"),
+  import("./directory-routes.js"),
+  import("./hive-routes.js"),
+  import("./capability-profile-routes.js"),
+  import("./network-badge-admin-routes.js"),
+  import("./system-status.js"),
+  import("./telegram-bot.js"),
+  import("./wallet-send.js"),
+  import("./process-role.js"),
+  import("./app-realtime.js"),
+  import("./agent-origin.js"),
+  import("./background-worker-liveness.js"),
+]);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -1230,8 +1282,8 @@ try {
   throw error;
 }
 const backgroundStartup = backgroundWorkersEnabled ? startBackgroundWorkers() : null;
+const liveness = startBackgroundWorkerKeepalive();
 if (backgroundWorkersEnabled && !httpEnabled) {
-  const liveness = startBackgroundWorkerKeepalive();
   console.log("background_worker_liveness_self_check", JSON.stringify(backgroundWorkerLivenessSelfCheck({
     role: processRole,
     startup: backgroundStartup,

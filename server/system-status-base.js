@@ -224,3 +224,62 @@ export async function optionalQuery(tables, requiredTables, sql, params = [], fa
     return fallback;
   }
 }
+
+/**
+ * Worker-heartbeat surface. Pure helpers for the system-status payload.
+ *
+ * `workerHeartbeatStatus` maps a list of per-group heartbeat snapshots (as
+ * produced by readWorkerGroupHeartbeats) into the unified wire shape
+ * {group,lastTickAt,ageMs,stale,thresholdMs,availability,coverage,storage}.
+ * Entries outside the current process group remain unobserved: their local
+ * values are informational and cannot assert fleet-wide freshness or staleness.
+ */
+export function workerHeartbeatStatus(snapshots = [], expectedGroups = [], { selfGroup = "" } = {}) {
+  const normalizedSelfGroup = String(selfGroup || "").trim();
+  const byGroup = new Map();
+  for (const snapshot of snapshots) {
+    if (!snapshot || typeof snapshot !== "object") continue;
+    const group = String(snapshot.group || "").trim();
+    if (!group) continue;
+    byGroup.set(group, {
+      group,
+      lastTickAt: snapshot.lastTickAt || null,
+      ageMs: Number.isFinite(snapshot.ageMs) ? snapshot.ageMs : null,
+      stale: snapshot.stale === true,
+      thresholdMs: Number.isFinite(snapshot.thresholdMs) ? snapshot.thresholdMs : null,
+      availability: snapshot.availability || (snapshot.lastTickAt ? "available" : "missing"),
+      coverage: normalizedSelfGroup
+        ? group === normalizedSelfGroup ? "self" : "unobserved"
+        : snapshot.coverage === "self" ? "self" : "unobserved",
+      storage: snapshot.storage && typeof snapshot.storage === "object"
+        ? {
+            source: String(snapshot.storage.source || "in_process"),
+            database: String(snapshot.storage.database || "database_disabled"),
+          }
+        : { source: "in_process", database: "database_disabled" },
+    });
+  }
+  return expectedGroups.map((group) => {
+    const found = byGroup.get(group);
+    return (
+      found || {
+        group,
+        lastTickAt: null,
+        ageMs: null,
+        stale: true,
+        thresholdMs: null,
+        availability: "missing",
+        coverage: group === normalizedSelfGroup ? "self" : "unobserved",
+        storage: { source: "in_process", database: "database_disabled" },
+      }
+    );
+  });
+}
+
+export function workerHeartbeatMap(snapshots = []) {
+  const byGroup = new Map();
+  for (const entry of workerHeartbeatStatus(snapshots)) {
+    if (entry && typeof entry === "object" && entry.group) byGroup.set(entry.group, entry);
+  }
+  return byGroup;
+}

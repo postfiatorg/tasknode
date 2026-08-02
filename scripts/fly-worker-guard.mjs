@@ -5,17 +5,27 @@ import os from "node:os";
 import path from "node:path";
 
 const DEFAULT_APP = "tasknodeofficial-dev";
-const DEFAULT_PROCESS_GROUP = "worker";
 const DEFAULT_COUNT = 1;
+const PROCESS_GROUPS = [
+  "app",
+  "board-secretary",
+  "worker-pftl",
+  "worker-taskgen",
+  "worker-task-review",
+  "worker-context-rewrite",
+  "worker-hive",
+  "worker-memory-profile",
+  "worker-airdrop",
+];
 
 function usage() {
   return [
-    "Usage: npm run fly:worker-guard -- [--app tasknodeofficial-dev] [--process worker] [--count 1] [--require-env NAME=value] [--dry-run]",
+    "Usage: npm run fly:worker-guard -- [--app tasknodeofficial-dev] [--process GROUP] [--count 1] [--require-env NAME=value] [--dry-run|--fix]",
     "",
-    "Ensures a Fly background process group has at least one running Machine and restart=always.",
-    "This is intended to run immediately after fly deploy because non-HTTP process groups are not kept",
-    "alive by the app http_service min_machines_running setting.",
-    "For the worker process, it also verifies required task-generation worker flags are present.",
+    "Reads live Fly Machine JSON and verifies every required process group has at least one",
+    "started Machine with restart=always. Verification is read-only by default.",
+    "--dry-run is strictly read-only reporting: it prints no mutation commands and plans none.",
+    "--fix is the only mutating mode; it is required before scale, start, or restart-policy mutations.",
   ].join("\n");
 }
 
@@ -55,20 +65,24 @@ function fly(args, { dryRun = false } = {}) {
     console.log(`[dry-run] ${printable}`);
     return "";
   }
+  const token = accessToken();
   return execFileSync("fly", args, {
     cwd: path.resolve("."),
     encoding: "utf8",
     env: {
       ...process.env,
-      FLY_API_TOKEN: accessToken(),
-      FLY_ACCESS_TOKEN: accessToken(),
+      FLY_API_TOKEN: token,
+      FLY_ACCESS_TOKEN: token,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
 }
 
 function listMachines(app) {
-  return JSON.parse(fly(["machines", "list", "-a", app, "--json"]));
+  // Machine inventory is always a live query, including --dry-run.
+  const result = JSON.parse(fly(["machines", "list", "-a", app, "--json"]));
+  if (!Array.isArray(result)) throw new Error("Fly machines list returned an unexpected JSON shape.");
+  return result;
 }
 
 function processGroupOf(machine) {
@@ -77,6 +91,11 @@ function processGroupOf(machine) {
 
 function restartPolicyOf(machine) {
   return machine?.config?.restart?.policy || "";
+}
+
+function isStandby(machine) {
+  const standbys = machine?.config?.standbys;
+  return Array.isArray(standbys) ? standbys.length > 0 : Boolean(standbys);
 }
 
 function shellQuote(value = "") {
@@ -110,19 +129,19 @@ function defaultRequiredEnv(processGroup = "") {
   }[processGroup] || [];
 }
 
-function verifyMachineEnv({ app, machineId, requiredEnv, dryRun = false } = {}) {
+function verifyMachineEnv({ app, machineId, requiredEnv } = {}) {
   if (!requiredEnv.length) return;
   const checks = requiredEnv.map(({ name, expected }) => (
     `value=$(printenv ${shellQuote(name)} || true); ` +
     `if [ "$value" != ${shellQuote(expected)} ]; then ` +
-    `echo "${name}=\${value:-<unset>} expected ${expected}" >&2; missing=1; fi`
+    `echo "${name}=<mismatch>" >&2; missing=1; fi`
   ));
   const script = ["missing=0", ...checks, "exit $missing"].join("; ");
-  fly(["ssh", "console", "-a", app, "--machine", machineId, "-C", `sh -lc ${shellQuote(script)}`], { dryRun });
+  fly(["ssh", "console", "-a", app, "--machine", machineId, "-C", `sh -lc ${shellQuote(script)}`]);
 }
 
 function machineSummary(machine) {
-  return `${machine.id} state=${machine.state} restart=${restartPolicyOf(machine) || "unset"}`;
+  return `${machine.id} state=${machine.state || "unknown"} restart=${restartPolicyOf(machine) || "unset"}`;
 }
 
 function sortCandidates(a, b) {
@@ -133,6 +152,84 @@ function sortCandidates(a, b) {
   const bAlways = restartPolicyOf(b) === "always" ? 0 : 1;
   if (aAlways !== bAlways) return aAlways - bAlways;
   return String(a.created_at || a.id).localeCompare(String(b.created_at || b.id));
+}
+
+function selectedGroups() {
+  const requested = argValue("--process");
+  if (!requested) return PROCESS_GROUPS;
+  if (!PROCESS_GROUPS.includes(requested)) {
+    throw new Error(`Unknown --process ${requested}; expected one of: ${PROCESS_GROUPS.join(", ")}`);
+  }
+  return [requested];
+}
+
+function requiredEnvFor(processGroup) {
+  return [
+    ...defaultRequiredEnv(processGroup),
+    ...argValues("--require-env").map(parseRequiredEnvSpec),
+  ];
+}
+
+function candidateMachines(groupMachines, count) {
+  return groupMachines.filter((machine) => !isStandby(machine)).sort(sortCandidates).slice(0, count);
+}
+
+function groupReport({ processGroup, groupMachines, count }) {
+  const candidates = candidateMachines(groupMachines, count);
+  const started = candidates.filter((machine) => machine.state === "started");
+  const badRestart = candidates.filter((machine) => restartPolicyOf(machine) !== "always");
+  const violations = [];
+  if (candidates.length < count || started.length < count) {
+    violations.push(`started=${started.length} (minimum ${count})`);
+  }
+  if (badRestart.length) {
+    violations.push(`restart!=always on ${badRestart.map(machineSummary).join(", ")}`);
+  }
+
+  console.log(
+    `[${processGroup}] machines=${groupMachines.length} started=${started.length} minimum=${count}`
+  );
+  if (groupMachines.length) {
+    const candidateIds = new Set(candidates.map((machine) => machine.id));
+    for (const machine of groupMachines) {
+      const role = isStandby(machine) ? "standby" : "active";
+      const selection = candidateIds.has(machine.id) ? "selected" : "informational";
+      console.log(`[${processGroup}] ${role} ${selection} ${machineSummary(machine)}`);
+    }
+  } else {
+    console.log(`[${processGroup}] no machines found`);
+  }
+
+  if (violations.length) {
+    console.log(`[${processGroup}] repair required (read-only verification)`);
+  }
+
+  return { candidates, started, badRestart, violations };
+}
+
+function applyFixes({ app, processGroup, groupMachines, count }) {
+  const candidates = candidateMachines(groupMachines, count);
+  const badRestart = candidates.filter((machine) => restartPolicyOf(machine) !== "always");
+  for (const machine of badRestart) {
+    fly(["machine", "update", machine.id, "-a", app, "--restart", "always", "--yes"]);
+  }
+
+  for (const machine of candidates.filter((candidate) => candidate.state !== "started")) {
+    fly(["machine", "start", machine.id, "-a", app]);
+  }
+
+  if (candidates.length < count) {
+    fly([
+      "scale",
+      "count",
+      String(count),
+      "--process-group",
+      processGroup,
+      "-a",
+      app,
+      "--yes",
+    ]);
+  }
 }
 
 async function sleep(ms) {
@@ -146,84 +243,74 @@ async function main() {
   }
 
   const app = argValue("--app") || process.env.TASKNODE_FLY_APP || DEFAULT_APP;
-  const processGroup = argValue("--process") || process.env.TASKNODE_FLY_PROCESS_GROUP || DEFAULT_PROCESS_GROUP;
   const count = Number(argValue("--count") || process.env.TASKNODE_FLY_WORKER_COUNT || DEFAULT_COUNT);
   const dryRun = hasArg("--dry-run");
-  const requiredEnv = [
-    ...defaultRequiredEnv(processGroup),
-    ...argValues("--require-env").map(parseRequiredEnvSpec),
-  ];
+  const fixRequested = hasArg("--fix");
   if (!Number.isInteger(count) || count < 1) throw new Error("--count must be a positive integer.");
+  if (fixRequested && dryRun) {
+    console.warn("--dry-run takes precedence over --fix; no mutation will run.");
+  }
+  const fix = fixRequested && !dryRun;
+  const groups = selectedGroups();
+  const machines = listMachines(app);
+  const reports = [];
 
-  let machines = listMachines(app);
-  let groupMachines = machines.filter((machine) => processGroupOf(machine) === processGroup);
+  for (const processGroup of groups) {
+    const groupMachines = machines.filter((machine) => processGroupOf(machine) === processGroup);
+    const report = groupReport({ processGroup, groupMachines, count });
+    reports.push({ processGroup, groupMachines, ...report });
+  }
 
-  if (groupMachines.length < count) {
-    fly([
-      "scale",
-      "count",
-      String(count),
-      "--process-group",
-      processGroup,
-      "-a",
-      app,
-      "--yes",
-    ], { dryRun });
-    if (!dryRun) {
-      machines = listMachines(app);
-      groupMachines = machines.filter((machine) => processGroupOf(machine) === processGroup);
+  if (fix) {
+    const needsFix = reports.filter((report) => report.violations.length);
+    for (const report of needsFix) {
+      applyFixes({
+        app,
+        processGroup: report.processGroup,
+        groupMachines: report.groupMachines,
+        count,
+      });
+    }
+    if (needsFix.length) await sleep(3000);
+    const afterMachines = listMachines(app);
+    reports.length = 0;
+    for (const processGroup of groups) {
+      const groupMachines = afterMachines.filter((machine) => processGroupOf(machine) === processGroup);
+      const report = groupReport({ processGroup, groupMachines, count });
+      reports.push({ processGroup, groupMachines, ...report });
     }
   }
 
-  if (groupMachines.length < count) {
-    throw new Error(`Expected at least ${count} ${processGroup} machine(s); found ${groupMachines.length}.`);
-  }
-
-  const selected = [...groupMachines].sort(sortCandidates).slice(0, count);
-  for (const machine of selected) {
-    if (restartPolicyOf(machine) !== "always") {
-      fly(["machine", "update", machine.id, "-a", app, "--restart", "always", "--yes"], { dryRun });
+  const requiredEnvChecks = [];
+  if (fix) {
+    for (const report of reports) {
+      const requiredEnv = requiredEnvFor(report.processGroup);
+      const started = report.candidates.filter((machine) => machine.state === "started");
+      for (const machine of started) {
+        if (requiredEnv.length) requiredEnvChecks.push({ app, machine, requiredEnv });
+      }
     }
-    if (machine.state !== "started") {
-      fly(["machine", "start", machine.id, "-a", app], { dryRun });
-    }
-  }
-
-  if (!dryRun) await sleep(3000);
-
-  const afterMachines = dryRun ? groupMachines : listMachines(app).filter((machine) => processGroupOf(machine) === processGroup);
-  const started = afterMachines.filter((machine) => machine.state === "started");
-  const guardedIds = new Set(selected.map((machine) => machine.id));
-  const guardedAfter = afterMachines.filter((machine) => guardedIds.has(machine.id));
-  const badRestart = guardedAfter.filter((machine) => restartPolicyOf(machine) !== "always");
-
-  if (!dryRun && started.length < count) {
-    throw new Error(
-      `${processGroup} guard failed: expected ${count} started machine(s), got ${started.length}. ` +
-        `Machines: ${afterMachines.map(machineSummary).join(", ")}`
-    );
-  }
-  if (!dryRun && badRestart.length > 0) {
-    throw new Error(
-      `${processGroup} guard failed: restart policy is not always for ${badRestart.map(machineSummary).join(", ")}.`
-    );
-  }
-  if (!dryRun && requiredEnv.length) {
-    for (const machine of started.slice(0, count)) {
-      verifyMachineEnv({ app, machineId: machine.id, requiredEnv, dryRun });
+    for (const check of requiredEnvChecks) {
+      verifyMachineEnv({
+        app: check.app,
+        machineId: check.machine.id,
+        requiredEnv: check.requiredEnv,
+      });
     }
   }
 
-  if (started.length > count) {
-    console.warn(
-      `${processGroup} has ${started.length} started machines; expected ${count}. ` +
-        "Leaving extra machines running because stopping them is an explicit operator action."
-    );
+  const violations = reports.filter((report) => report.violations.length);
+  if (violations.length) {
+    for (const report of violations) {
+      console.error(`[${report.processGroup}] VIOLATION: ${report.violations.join("; ")}`);
+    }
+    process.exitCode = 1;
+    return;
   }
 
   console.log(
-    `${processGroup} guard ok for ${app}: ` +
-      `${afterMachines.map(machineSummary).join(", ")}`
+    `fly-worker-guard ok for ${app}: ${groups.length} process groups verified` +
+      (fix ? " (fix applied)" : " (read-only)")
   );
 }
 

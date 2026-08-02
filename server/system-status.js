@@ -22,9 +22,16 @@ import {
   runFreshness,
   summarizeCategories,
   tableMap,
+  workerHeartbeatStatus,
 } from "./system-status-base.js";
 import { chatPricingStatus } from "./model-pricing-status.js";
 import { contextRewriteWatchdogSnapshot } from "./repositories/context-rewrite.js";
+import {
+  WORKER_HEARTBEAT_GROUPS,
+  inferWorkerGroup,
+  readWorkerGroupHeartbeats,
+  workerHeartbeatScope as workerHeartbeatScopeMetadata,
+} from "./background-worker-liveness.js";
 
 const recentFailureWindowMs = 24 * hour;
 
@@ -2518,9 +2525,21 @@ async function categoryItems(tables, nowMs) {
 export async function readSystemStatus({
   networkSpendDays = DEFAULT_NETWORK_TASK_SPEND_DAYS,
   boardManagerCostDays = DEFAULT_BOARD_MANAGER_COST_DAYS,
+  workerHeartbeatGroup = null,
 } = {}) {
   const generatedAt = new Date();
   const nowMs = generatedAt.getTime();
+  const selfGroup = workerHeartbeatGroup || inferWorkerGroup();
+  const workerHeartbeatScope = workerHeartbeatScopeMetadata({ selfGroup });
+  const workerHeartbeats = workerHeartbeatStatus(
+    readWorkerGroupHeartbeats({
+      now: nowMs,
+      groups: WORKER_HEARTBEAT_GROUPS,
+      selfGroup,
+    }),
+    WORKER_HEARTBEAT_GROUPS,
+    { selfGroup }
+  );
   const database = databaseStatus();
   const databasePool = poolMetrics();
   if (!databaseEnabled()) {
@@ -2536,6 +2555,8 @@ export async function readSystemStatus({
       generatedAt: generatedAt.toISOString(),
       database,
       databasePool,
+      workerHeartbeats,
+      workerHeartbeatScope,
       summary: summarizeCategories(categories),
       chatPricing,
       networkTaskSpendByDay,
@@ -2566,6 +2587,8 @@ export async function readSystemStatus({
     generatedAt: generatedAt.toISOString(),
     database,
     databasePool,
+    workerHeartbeats,
+    workerHeartbeatScope,
     summary: summarizeCategories(categories),
     chatPricing,
     networkTaskSpendByDay,

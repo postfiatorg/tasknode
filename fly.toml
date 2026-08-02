@@ -115,6 +115,10 @@ primary_region = "ewr"
   VITE_POSTHOG_UI_HOST = "https://us.posthog.com"
   VITE_POSTHOG_REPLAY_ENABLED = "false"
 
+[[restart]]
+  policy = "always"
+  processes = ["app", "board-secretary", "worker-pftl", "worker-taskgen", "worker-task-review", "worker-context-rewrite", "worker-hive", "worker-memory-profile", "worker-airdrop"]
+
 [http_service]
   internal_port = 8080
   force_https = true
@@ -139,6 +143,12 @@ primary_region = "ewr"
   cpu_kind = "shared"
   cpus = 1
   memory_mb = 512
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 1024
+  processes = ["app"]
 
 [mounts]
   source = "tasknodeofficial_data"
