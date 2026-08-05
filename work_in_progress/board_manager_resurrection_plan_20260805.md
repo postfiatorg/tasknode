@@ -318,20 +318,36 @@ are compression workers feeding a decision-maker that no longer exists — so
 running the new agent alongside them during the pilot costs only some
 redundant secretary model spend, not conflicting board mutations.
 
-- [ ] **Gate 0 — Freeze (non-destructive).**
+- [x] **Gate 0 — Freeze (non-destructive).** DONE 2026-08-05: tag
+  `pre-hive-retirement` at `8ce4cf2`; branch `archive/hive-mind-retirement`
+  open. Deviation: the §3 `git mv` staging is deferred to Gate H so the
+  archive branch does not rot against mainline; inventory review stands.
   Tag `pre-hive-retirement`; open branch `archive/hive-mind-retirement` that
   stages the §3 `git mv` into `archive/hive-mind-2026/` but does **not**
   merge yet. Confirm in `fly.toml`/`package.json` that no *new* hive
   surfaces are being added. Proof: tag pushed, archive branch open, staged
   inventory reviewed against §3.
-- [ ] **Gate A — Deterministic boards.**
+- [x] **Gate A — Deterministic boards.** DONE 2026-08-05 (`4543e4a`):
+  migration `098_deterministic_boards.sql` seeds the six boards and
+  archive-locks 23 legacy projects; `hive-project-worker` flipped to explicit
+  opt-in; planning-apply and board-manager project actions hard-guarded by
+  `deterministicBoardsEnabled()`; admin routes `/api/boards/admin/list|update`
+  behind `TASKNODE_BOARD_ADMIN_TOKEN`. Proof:
+  `scripts/deterministic-boards-smoke.mjs` green against dev Postgres
+  (migration run twice, 6 active boards, guard blocked `create_project`);
+  `npm run lint` clean. Hive-surface render check deferred to deploy.
   Migration seeds exactly the six boards of §2.1 into `network_projects`
   (stable ids), disables model board mutation (`hive-project-worker` feature
   flag off), adds admin-only board update route. Proof: migration idempotence
   test + Hive surface renders the six boards.
-- [ ] **Gate B — `bm` CLI reads.**
-  `digest`, `board`, `user`, `history` against production DB via fly proxy.
-  Proof: recorded runs for each command with real data, no secrets in output.
+- [x] **Gate B — `bm` CLI reads.** DONE 2026-08-05: `scripts/bm.mjs` +
+  `scripts/bm/lib.mjs` implement `boards`, `digest`, `board`, `user`,
+  `history` (`npm run bm`). Proof: run against production through
+  `fly mpg proxy` (cluster `3x9jv02yd3dr6qp7`): six boards active in prod
+  (migration 098 applied), stable digests, real user packet (168 tasks,
+  445,568 PFT rewarded, 4 verified badges) — no secrets printed. Note:
+  migration 098 was applied to production at this gate with operator
+  consent; legacy projects archived+locked in prod.
 - [ ] **Gate C — `bm` CLI writes + reward caps + credential split.**
   `task create`, `verify request`, `review`, `board update`, `refer-badge`,
   `refer-merge`, `handoff`; `board_reward_budgets` migration; the §2.3
