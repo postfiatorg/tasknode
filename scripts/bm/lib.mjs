@@ -157,8 +157,46 @@ export async function boardPacket(boardId) {
     hive_chat_digest: secretary
       ? { report_id: secretary.id, created_at: secretary.created_at, text: String(secretary.output_text || "").slice(0, 1500) }
       : null,
-    budget: { configured: false, note: "board_reward_budgets lands in Gate C" },
+    budget: await boardBudgetStatus(boardId),
+    pending_decisions: await pendingDecisions(boardId),
   };
+}
+
+export async function boardBudgetStatus(boardId) {
+  const budget = await query(
+    `SELECT daily_budget_pft, per_task_cap_pft, per_user_7d_cap_pft
+     FROM board_reward_budgets WHERE board_id = $1`,
+    [boardId]
+  );
+  if (!budget.rows[0]) return { configured: false, note: "no board_reward_budgets row; run migrations" };
+  const spent = await query(
+    `SELECT COALESCE(sum(reward_pft), 0) AS today
+     FROM board_reward_spend
+     WHERE board_id = $1 AND created_at >= date_trunc('day', now())`,
+    [boardId]
+  );
+  const row = budget.rows[0];
+  const spentToday = Number(spent.rows[0]?.today || 0);
+  return {
+    configured: true,
+    daily_budget_pft: Number(row.daily_budget_pft),
+    per_task_cap_pft: Number(row.per_task_cap_pft),
+    per_user_7d_cap_pft: Number(row.per_user_7d_cap_pft),
+    spent_today_pft: spentToday,
+    remaining_today_pft: Math.max(0, Number(row.daily_budget_pft) - spentToday),
+  };
+}
+
+async function pendingDecisions(boardId) {
+  const result = await query(
+    `SELECT id, kind, task_id, decision, reward_pft, status, created_at
+     FROM bm_agent_decisions
+     WHERE board_id = $1 AND status = 'pending'
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    [boardId]
+  ).catch(() => ({ rows: [] }));
+  return result.rows;
 }
 
 export async function userPacket(accountOrWallet, { limit = 20 } = {}) {

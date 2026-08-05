@@ -87,7 +87,7 @@ export function normalizeBoardAdminUpdate(payload = {}) {
   return { ok: true, boardId, fields, metadataPatch };
 }
 
-async function applyBoardAdminUpdate({ boardId, fields, metadataPatch, actor = "" }) {
+export async function applyBoardAdminUpdate({ boardId, fields, metadataPatch, actor = "" }) {
   const sets = [];
   const values = [boardId];
   for (const [field, value] of Object.entries(fields)) {

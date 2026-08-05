@@ -16,6 +16,14 @@ import { encryptTasknodePayload } from "./task-payloads.js";
 import { moneySeedFromEnv } from "./production-guards.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 import { signTaskTransition } from "./task-transition-signatures.js";
+import {
+  agentDecisionsEnabled,
+  boardForTask,
+  computeRewardCap,
+  markAgentDecisionConsumed,
+  pendingAgentDecision,
+  recordBoardRewardSpend,
+} from "./repositories/bm-decisions.js";
 
 const TASK_POINTER_SCHEMA = 1;
 const VERIFICATION_PROMPT_PATH = "task_engine/verification_request_v1.md";
@@ -1697,6 +1705,32 @@ async function processSubmittedTask(row, { logger = console } = {}) {
     return { ok: true, taskId: row.task_id, skipped: true, reason: "verification_request_already_published" };
   }
 
+  // Board Manager v2: network tasks wait for an agent-authored verification
+  // request instead of the model auto-generated one.
+  const agentBoardId = agentDecisionsEnabled()
+    ? await boardForTask(row.task_id).catch(() => "")
+    : "";
+  const agentVerificationDecision = agentBoardId
+    ? await pendingAgentDecision({ taskId: row.task_id, kind: "verification_request" })
+    : null;
+  if (agentBoardId && !agentVerificationDecision) {
+    await clearWorkerClaim({
+      taskId: row.task_id,
+      workerName,
+      error: "awaiting_agent_verification_request",
+    }).catch(() => null);
+    logger.info?.("task_verification_request_awaiting_agent_decision", {
+      taskId: row.task_id,
+      boardId: agentBoardId,
+    });
+    return {
+      ok: true,
+      taskId: row.task_id,
+      skipped: true,
+      reason: "awaiting_agent_verification_request",
+    };
+  }
+
   const publicationLock = await acquireReviewPublicationLock({
     taskId: row.task_id,
     workerName,
@@ -1722,24 +1756,41 @@ async function processSubmittedTask(row, { logger = console } = {}) {
   let publicationAttempted = false;
   try {
     const processedEvidence = await processedEvidenceFromPayload(initialSubmission);
-    const verification = await callOpenAiJson({
-      promptPath: VERIFICATION_PROMPT_PATH,
-      promptVersion: VERIFICATION_PROMPT_VERSION,
-      responseFormat: verificationResponseFormat,
-      input: {
-        task_offer: taskOffer,
-        initial_submission: initialSubmission,
-        processed_evidence: processedEvidence,
-        context: {},
-      },
-    });
+    let verificationRequest;
+    let verificationGenerationMetadata;
+    if (agentVerificationDecision) {
+      verificationRequest = {
+        assessment: "board_manager_agent",
+        verification_ask: safeText(agentVerificationDecision.verification_ask, 4000),
+        verification_type: safeText(agentVerificationDecision.verification_type, 80) || "evidence",
+        reason: safeText(agentVerificationDecision.reason, 1000),
+      };
+      verificationGenerationMetadata = {
+        provider: "board_manager_agent",
+        decision_id: agentVerificationDecision.id,
+        board_id: agentBoardId,
+      };
+    } else {
+      const verification = await callOpenAiJson({
+        promptPath: VERIFICATION_PROMPT_PATH,
+        promptVersion: VERIFICATION_PROMPT_VERSION,
+        responseFormat: verificationResponseFormat,
+        input: {
+          task_offer: taskOffer,
+          initial_submission: initialSubmission,
+          processed_evidence: processedEvidence,
+          context: {},
+        },
+      });
+      verificationRequest = {
+        assessment: safeText(verification.output.assessment, 80),
+        verification_ask: safeText(verification.output.verification_ask, 4000),
+        verification_type: safeText(verification.output.verification_type, 80),
+        reason: safeText(verification.output.reason, 1000),
+      };
+      verificationGenerationMetadata = verification.metadata;
+    }
     const now = new Date().toISOString();
-    const verificationRequest = {
-      assessment: safeText(verification.output.assessment, 80),
-      verification_ask: safeText(verification.output.verification_ask, 4000),
-      verification_type: safeText(verification.output.verification_type, 80),
-      reason: safeText(verification.output.reason, 1000),
-    };
     const payload = {
       schema: "pf.task.update.v1",
       protocol: "tasknode.pftl",
@@ -1757,7 +1808,7 @@ async function processSubmittedTask(row, { logger = console } = {}) {
       verification_ask: verificationRequest.verification_ask,
       verification_type: verificationRequest.verification_type,
       submission_cid: initialSubmission.cid || "",
-      generation: verification.metadata,
+      generation: verificationGenerationMetadata,
     };
     const prePublishDetail = await getTaskDetail({
       accountId: row.account_id,
@@ -1809,6 +1860,12 @@ async function processSubmittedTask(row, { logger = console } = {}) {
       txHash: published.txHash,
       cid: published.cid,
     });
+    if (agentVerificationDecision) {
+      await markAgentDecisionConsumed({
+        decisionId: agentVerificationDecision.id,
+        ref: { tx_hash: published.txHash, cid: published.cid },
+      }).catch(() => null);
+    }
     return { ok: true, taskId: row.task_id, published };
   } catch (error) {
     if (publicationAttempted) {
@@ -2221,6 +2278,33 @@ async function processVerificationResponse(row, { logger = console } = {}) {
     });
     const offerPft = Number(taskOffer?.reward_offer?.amount_estimate_pft || row.reward_offer_pft || 0);
     const badgePolicy = await networkTaskRewardBadgePolicy(row).catch(() => ({}));
+
+    // Board Manager v2: network-task rewards are decided by the board agent
+    // and re-clamped here at publication. Without a pending decision the
+    // task waits; model auto-scoring only applies to non-board tasks.
+    const agentBoardId = agentDecisionsEnabled()
+      ? await boardForTask(row.task_id).catch(() => "")
+      : "";
+    const agentReviewDecision = agentBoardId
+      ? await pendingAgentDecision({ taskId: row.task_id, kind: "review" })
+      : null;
+    if (agentBoardId && !agentReviewDecision) {
+      await clearWorkerClaim({
+        taskId: row.task_id,
+        workerName,
+        error: "awaiting_agent_review_decision",
+      }).catch(() => null);
+      logger.info?.("task_reward_awaiting_agent_decision", {
+        taskId: row.task_id,
+        boardId: agentBoardId,
+      });
+      return {
+        ok: true,
+        taskId: row.task_id,
+        skipped: true,
+        reason: "awaiting_agent_review_decision",
+      };
+    }
     const discordEvidence = await resolveDiscordAnnouncementEvidenceStatus({
       initialSubmission,
       verificationResponse,
@@ -2273,31 +2357,71 @@ async function processVerificationResponse(row, { logger = console } = {}) {
       return { ok: true, taskId: row.task_id, skipped: true, reason: "reward_scoring_publication_lock_exists" };
     }
 
-    const scoring = await callOpenAiJson({
-      promptPath: REWARD_PROMPT_PATH,
-      promptVersion: REWARD_PROMPT_VERSION,
-      responseFormat: rewardResponseFormat,
-      input: {
-        task_offer: taskOffer,
-        initial_submission: initialSubmission,
-        verification_request: verificationRequest,
-        verification_response: verificationResponse,
-        processed_evidence: {
-          initial: processedInitial,
-          verification: processedVerification,
+    let scoreBase;
+    let scoringMetadataBase;
+    if (agentReviewDecision) {
+      const publicationCapCheck = await computeRewardCap({
+        boardId: agentBoardId,
+        accountId: row.account_id,
+        walletAddress: row.subject_wallet,
+        requestedPft: Number(agentReviewDecision.reward_pft || 0),
+      });
+      const decisionKind = safeText(agentReviewDecision.decision, 80);
+      scoreBase = normalizeRewardScore(
+        {
+          decision: decisionKind === "reject" ? "reject" : decisionKind === "partial_reward" ? "partial_reward" : "reward",
+          reward_pft:
+            decisionKind === "reject"
+              ? 0
+              : Math.min(Number(agentReviewDecision.reward_pft || 0), publicationCapCheck.allowedPft),
+          completion: 100,
+          evidence_quality: 100,
+          reason: safeText(agentReviewDecision.reason, 2000),
+          user_feedback: safeText(agentReviewDecision.user_feedback, 2000),
         },
-        evidence_evaluation: evidenceEvaluation,
-      },
-    });
+        offerPft,
+        badgePolicy
+      );
+      scoringMetadataBase = {
+        provider: "board_manager_agent",
+        decision_id: agentReviewDecision.id,
+        board_id: agentBoardId,
+        requested_reward_pft: Number(agentReviewDecision.requested_reward_pft || 0),
+        publication_cap_check: {
+          allowed_pft: publicationCapCheck.allowedPft,
+          caps_applied: publicationCapCheck.capsApplied,
+          refused: publicationCapCheck.refused,
+        },
+      };
+    } else {
+      const scoring = await callOpenAiJson({
+        promptPath: REWARD_PROMPT_PATH,
+        promptVersion: REWARD_PROMPT_VERSION,
+        responseFormat: rewardResponseFormat,
+        input: {
+          task_offer: taskOffer,
+          initial_submission: initialSubmission,
+          verification_request: verificationRequest,
+          verification_response: verificationResponse,
+          processed_evidence: {
+            initial: processedInitial,
+            verification: processedVerification,
+          },
+          evidence_evaluation: evidenceEvaluation,
+        },
+      });
+      scoreBase = normalizeRewardScore(scoring.output, offerPft, badgePolicy);
+      scoringMetadataBase = scoring.metadata;
+    }
     const score = {
-      ...normalizeRewardScore(scoring.output, offerPft, badgePolicy),
+      ...scoreBase,
       discord_announcement_evidence_required: badgePolicy.discordEvidenceRequired,
       discord_announcement_evidence_ok: discordEvidence.ok,
       discord_announcement_evidence_type: discordEvidence.evidence_type,
       discord_announcement_evidence_ref: discordEvidence.evidence_ref,
     };
     const rewardScoringMetadata = {
-      ...scoring.metadata,
+      ...scoringMetadataBase,
       discord_announcement_evidence: discordEvidence,
     };
     const {
@@ -2426,6 +2550,20 @@ async function processVerificationResponse(row, { logger = console } = {}) {
       rewardPft: score.reward_pft,
       amountDrops: rewardAmountDrops,
     });
+    if (agentReviewDecision) {
+      await markAgentDecisionConsumed({
+        decisionId: agentReviewDecision.id,
+        ref: { tx_hash: reward.txHash, cid: reward.cid, reward_pft: score.reward_pft },
+      }).catch(() => null);
+      await recordBoardRewardSpend({
+        boardId: agentBoardId,
+        taskId: row.task_id,
+        accountId: row.account_id,
+        walletAddress: row.subject_wallet,
+        rewardPft: Number(score.reward_pft || 0),
+        decisionId: agentReviewDecision.id,
+      }).catch(() => null);
+    }
     return { ok: true, taskId: row.task_id, reward };
   } catch (error) {
     if (publicationAttempted) {

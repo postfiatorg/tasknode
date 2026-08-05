@@ -126,6 +126,131 @@ async function main() {
     return;
   }
 
+  if (command === "review") {
+    const { reviewTask } = await import("./bm/writes.mjs");
+    const taskId = positional[0] || "";
+    if (!taskId) return fail("Usage: bm review <taskId> --decision reward|partial_reward|reject --pft N --reason ... [--feedback ...]");
+    const result = await reviewTask({
+      taskId,
+      decision: flagValue("--decision"),
+      pft: Number(flagValue("--pft", "0")),
+      reason: flagValue("--reason"),
+      feedback: flagValue("--feedback"),
+    });
+    console.log(JSON.stringify({
+      decision_id: result.decision.id,
+      status: result.decision.status,
+      requested_pft: result.decision.requested_reward_pft,
+      clamped_pft: result.clampedPft,
+      caps_applied: result.capCheck.capsApplied,
+      refused: result.refused,
+    }, null, 2));
+    if (result.refused) {
+      console.error("REFUSED by caps: escalate to operator via `bm refer-merge`/network task if this reward is justified.");
+    }
+    return;
+  }
+
+  if (command === "verify") {
+    const { verifyRequest } = await import("./bm/writes.mjs");
+    const sub = positional[0];
+    const taskId = positional[1] || "";
+    if (sub !== "request" || !taskId) return fail("Usage: bm verify request <taskId> --ask ... [--type evidence] [--reason ...]");
+    const result = await verifyRequest({
+      taskId,
+      ask: flagValue("--ask"),
+      type: flagValue("--type", "evidence"),
+      reason: flagValue("--reason"),
+    });
+    console.log(JSON.stringify({ decision_id: result.decision.id, status: result.decision.status }, null, 2));
+    return;
+  }
+
+  if (command === "task" && positional[0] === "create") {
+    const { taskCreate } = await import("./bm/writes.mjs");
+    const boardId = requireBoard(positional[1]);
+    if (!boardId) return;
+    const result = await taskCreate({
+      boardId,
+      accountId: flagValue("--account"),
+      wallet: flagValue("--wallet"),
+      need: flagValue("--need"),
+      reason: flagValue("--reason") || undefined,
+      workType: flagValue("--work-type", "code_task"),
+      requiredBadge: flagValue("--required-badge"),
+      badgeCap: Number(flagValue("--badge-cap", "0")),
+      rewardMin: Number(flagValue("--reward-min", "0")),
+      rewardMax: Number(flagValue("--reward-max", "0")),
+      assigneeHandle: flagValue("--assignee-handle"),
+      acceptWindowHours: Number(flagValue("--accept-window-hours", "24")),
+      execute: rest.includes("--execute"),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (command === "refer-badge") {
+    const { referBadge } = await import("./bm/writes.mjs");
+    const result = await referBadge({
+      accountId: positional[0] || "",
+      badgeId: positional[1] || "",
+      evidence: flagValue("--evidence"),
+      boardId: resolveBoardId(flagValue("--board", "tasknode")) || "board_tasknode_fixes",
+      operatorAccount: flagValue("--operator-account"),
+      operatorWallet: flagValue("--operator-wallet"),
+      execute: rest.includes("--execute"),
+    });
+    console.log(JSON.stringify({ runId: result.runId, dryRun: result.dryRun }, null, 2));
+    return;
+  }
+
+  if (command === "refer-merge") {
+    const { referMerge } = await import("./bm/writes.mjs");
+    const result = await referMerge({
+      prUrl: flagValue("--pr-url") || positional[0] || "",
+      summary: flagValue("--summary"),
+      boardId: resolveBoardId(flagValue("--board", "tasknode")) || "board_tasknode_fixes",
+      operatorAccount: flagValue("--operator-account"),
+      operatorWallet: flagValue("--operator-wallet"),
+      execute: rest.includes("--execute"),
+    });
+    console.log(JSON.stringify({ runId: result.runId, dryRun: result.dryRun }, null, 2));
+    return;
+  }
+
+  if (command === "board-update") {
+    const { boardUpdate } = await import("./bm/writes.mjs");
+    const boardId = requireBoard(positional[0]);
+    if (!boardId) return;
+    const payload = { boardId };
+    for (const field of ["title", "summary", "objective", "about", "status", "priority", "phase_label"]) {
+      const value = flagValue(`--${field.replace("_", "-")}`);
+      if (value) payload[field] = value;
+    }
+    const row = await boardUpdate(payload);
+    console.log(JSON.stringify(row, null, 2));
+    return;
+  }
+
+  if (command === "journal") {
+    const { journalAppend } = await import("./bm/writes.mjs");
+    const boardId = requireBoard(positional[0]);
+    if (!boardId) return;
+    const text = flagValue("--text");
+    const result = await journalAppend({ boardId, text });
+    console.log(result.file);
+    return;
+  }
+
+  if (command === "handoff") {
+    const { writeHandoff } = await import("./bm/writes.mjs");
+    const boardId = requireBoard(positional[0]);
+    if (!boardId) return;
+    const result = await writeHandoff({ boardId });
+    console.log(result.file);
+    return;
+  }
+
   if (command === "history") {
     const boardId = requireBoard(positional[0]);
     if (!boardId) return;
@@ -141,9 +266,17 @@ async function main() {
       "Usage: node scripts/bm.mjs <command>",
       "  boards                      list board ids",
       "  digest <board>              state digest (whip trigger input)",
-      "  board <board> [--json]      full board packet",
+      "  board <board> [--json]      full board packet (incl. budget + pending decisions)",
       "  user <account|wallet>       task history + badges",
       "  history <board> [--limit N] terminal task history",
+      "  task create <board> --account --wallet --need [--reward-max N] [--execute]",
+      "  verify request <taskId> --ask ... [--type evidence]",
+      "  review <taskId> --decision reward|partial_reward|reject --pft N --reason ...",
+      "  refer-badge <account> <badge> [--evidence ...] [--execute]",
+      "  refer-merge --pr-url <url> [--summary ...] [--execute]",
+      "  board-update <board> [--title ...] [--summary ...] [--status ...]",
+      "  journal <board> --text ...",
+      "  handoff <board>",
     ].join("\n")
   );
 }

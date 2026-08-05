@@ -105,6 +105,7 @@ const migrations = [
   "096_task_review_pre_submit_retry.sql",
   "097_profile_nft_daily_worker_hardening.sql",
   "098_deterministic_boards.sql",
+  "099_board_manager_v2_decisions.sql",
 ];
 
 let migrated = false;
