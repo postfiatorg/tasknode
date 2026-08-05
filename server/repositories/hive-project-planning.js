@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { applyCanonicalHiveProject } from "../hive-project-canonical.js";
+import { deterministicBoardsEnabled } from "../board-config.js";
 
 const maxClaimLimit = 2;
 const failedAttemptLimit = 3;
@@ -272,6 +273,11 @@ export async function completeHiveProjectPlanningJob({
   usage = {},
 } = {}) {
   if (!useDatabase() || !job?.id) return { ok: false };
+  if (deterministicBoardsEnabled()) {
+    // Boards are operator-seeded by migration 098; model planning output must
+    // not create, mutate, or archive network projects.
+    return { ok: false, skipped: true, reason: "deterministic_boards_enabled" };
+  }
   const normalized = normalizeHiveProjectPlanningOutput(output);
   if (!normalized.projects.length) throw new Error("hive_project_planning_no_projects");
   return transaction(async (client) => {

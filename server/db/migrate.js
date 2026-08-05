@@ -104,6 +104,7 @@ const migrations = [
   "095_profile_nft_daily_awards.sql",
   "096_task_review_pre_submit_retry.sql",
   "097_profile_nft_daily_worker_hardening.sql",
+  "098_deterministic_boards.sql",
 ];
 
 let migrated = false;

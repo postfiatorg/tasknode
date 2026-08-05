@@ -18,6 +18,7 @@ import {
   completeHiveProjectProductDoc,
 } from "./repositories/hive-project-product-docs.js";
 import { applyCanonicalHiveProject } from "./hive-project-canonical.js";
+import { deterministicBoardsEnabled } from "./board-config.js";
 import {
   enqueueNetworkTaskGenerationFromBoardDecision,
   syncNetworkTaskProjection,
@@ -1545,6 +1546,20 @@ export async function executeBoardManagerDecision({
   const normalizedDecision = normalizeBoardManagerDecision(decision);
   if (dryRun) {
     const result = { executed: false, dryRun: true, action: normalizedDecision.action };
+    await recordResult({ runId, decision: normalizedDecision, result });
+    return { ok: true, result };
+  }
+
+  const projectMutationActions = new Set(["create_project", "archive_project", "restore_project"]);
+  if (projectMutationActions.has(normalizedDecision.action) && deterministicBoardsEnabled()) {
+    // Boards are operator-seeded by migration 098; model actions must not
+    // create, archive, or restore network projects.
+    const result = {
+      executed: false,
+      skipped: true,
+      action: normalizedDecision.action,
+      reason: "deterministic_boards_enabled",
+    };
     await recordResult({ runId, decision: normalizedDecision, result });
     return { ok: true, result };
   }

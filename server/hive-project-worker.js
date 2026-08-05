@@ -60,7 +60,9 @@ function hiveProjectEnabled() {
   const provider = hiveProjectProvider();
   hiveProjectModel();
   return (
-    process.env.TASKNODE_HIVE_PROJECT_WORKER_ENABLED !== "false" &&
+    // Deterministic boards (migration 098): model-driven project planning is
+    // retired and must be explicitly opted into for local experiments only.
+    process.env.TASKNODE_HIVE_PROJECT_WORKER_ENABLED === "true" &&
     databaseEnabled() &&
     provider === "openrouter" &&
     Boolean(openRouterKey())
