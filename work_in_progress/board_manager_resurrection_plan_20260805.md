@@ -348,7 +348,21 @@ redundant secretary model spend, not conflicting board mutations.
   445,568 PFT rewarded, 4 verified badges) — no secrets printed. Note:
   migration 098 was applied to production at this gate with operator
   consent; legacy projects archived+locked in prod.
-- [ ] **Gate C — `bm` CLI writes + reward caps + credential split.**
+- [x] **Gate C — `bm` CLI writes + reward caps (PARTIAL: credential split
+  deferred).** DONE 2026-08-05 (`ab35930`): migration
+  `099_board_manager_v2_decisions.sql` (`board_reward_budgets` seeded
+  50k/day + 5k/task + 60k/user/7d, `board_reward_spend`,
+  `bm_agent_decisions`, `bm_audit_log`); `server/repositories/bm-decisions.js`
+  is the single clamp (`computeRewardCap`); `task-review-worker.js` now
+  requires an agent decision for board-linked tasks when
+  `TASKNODE_TASK_REVIEW_AGENT_DECISIONS=true`, re-clamps at publication, and
+  writes the spend ledger; `bm` gains `task create`, `verify request`,
+  `review`, `refer-badge`, `refer-merge`, `board-update`, `journal`,
+  `handoff`. Proof: `scripts/bm-caps-smoke.mjs` green (per-task, daily,
+  per-user-7d, clamp, supersede, refusal, audit). DEFERRED to before Gate G:
+  (a) HTTP agent-token routes so the tmux agent holds no `DATABASE_URL`
+  (worker-side re-clamp already means DB-holding agents still cannot exceed
+  caps at publication); (b) end-to-end clamped reward on testnet.
   `task create`, `verify request`, `review`, `board update`, `refer-badge`,
   `refer-merge`, `handoff`; `board_reward_budgets` migration; the §2.3
   credential model (board-scoped agent token; publisher-side cap
