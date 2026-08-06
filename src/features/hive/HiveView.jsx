@@ -96,6 +96,7 @@ export function HiveView({ pftlExplorerUrl = "" }) {
         />
       ) : (
         <HiveIndex
+          contributorsSpotlight={contributorsSpotlight}
           onSelectProject={setSelectedProject}
           onOpenTask={openHiveTask}
           pftlExplorerUrl={pftlExplorerUrl}
@@ -114,7 +115,7 @@ export function HiveView({ pftlExplorerUrl = "" }) {
   );
 }
 
-function HiveIndex({ onOpenTask, onSelectProject, pftlExplorerUrl = "", projectDocument, projectStatus }) {
+function HiveIndex({ contributorsSpotlight = [], onOpenTask, onSelectProject, pftlExplorerUrl = "", projectDocument, projectStatus }) {
   const [hiveContext, setHiveContext] = useState(null);
   const [hiveSecretary, setHiveSecretary] = useState(null);
   const [boardManager, setBoardManager] = useState(null);
