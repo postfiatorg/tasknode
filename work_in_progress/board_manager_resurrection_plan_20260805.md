@@ -413,7 +413,11 @@ redundant secretary model spend, not conflicting board mutations.
   capture; public route `GET /api/hive/bm-transcript`; `HiveBrainView.jsx`
   rewritten from a 2,174-line report browser to a ~110-line transcript
   viewer. Live-session visibility check completes during the Gate G pilot.
-- [ ] **Gate G — Pilot.**
+- [ ] **Gate G — Pilot. STARTED 2026-08-06.** Deployed with
+  `TASKNODE_TASK_REVIEW_AGENT_DECISIONS=true`; `bm-pfterminal` session live
+  on Kimi K3; whip/transcript/reset crons active; transcript publicly
+  served at `/api/hive/bm-transcript?board=board_pf_terminal` and rendered
+  in Hive Brain. One-week criteria below now accrue.
   Run board 2 (PF Terminal) alone for one week with the legacy pipeline
   still deployed. **This gate is the go/no-go for all destructive work**, so
   its bar is quantitative, and every criterion is auditable from the journal,
