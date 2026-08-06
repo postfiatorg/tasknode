@@ -123,6 +123,11 @@ export async function boardDigest(boardId) {
     // Idle eligible capacity is board state: a badge-verified contributor
     // freeing their slot should wake the manager for a routing pass.
     idle_capacity: (await idleEligibleContributors()).map((c) => c.account_id).sort(),
+    // Repo drift is board state: new commits or new TODO markers in the
+    // board's sources are routing raw material and wake the manager.
+    source_heads: repoSourceLeads(board.metadata_json?.sources?.repos || []).map(
+      (lead) => `${lead.repo}:${lead.head}:${lead.todo_count}`
+    ),
     secretary_report_id: secretary?.id || "",
   };
   return { boardId: board.id, digest: sha256(source), source };
@@ -172,6 +177,7 @@ export async function boardPacket(boardId) {
     budget: await boardBudgetStatus(boardId),
     pending_decisions: await pendingDecisions(boardId),
     idle_eligible_contributors: await idleEligibleContributors(),
+    source_leads: repoSourceLeads(board.metadata_json?.sources?.repos || []),
   };
 }
 
@@ -239,6 +245,50 @@ export async function idleEligibleContributors() {
     rewarded_tasks: Number(row.rewarded_tasks || 0),
     last_active: row.last_active,
   }));
+}
+
+// Mechanical source-lead mining (demand-side raw material). The issue
+// tracker is nearly empty for these repos; the real backlog lives in
+// TODO/FIXME markers and recent bug-shaped commits. This gives the manager
+// concrete file:line leads to judge — it generates leads, never tasks.
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+
+const REPO_ROOT = process.env.BM_REPO_ROOT || "/home/pfrpc/repos";
+
+function safeExec(cmd, args, { cwd, timeout = 8000 } = {}) {
+  try {
+    return execFileSync(cmd, args, { cwd, timeout, encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
+  } catch {
+    return "";
+  }
+}
+
+export function repoSourceLeads(repoNames = []) {
+  const leads = [];
+  for (const name of repoNames.slice(0, 4)) {
+    const dir = `${REPO_ROOT}/${String(name).replace(/[^A-Za-z0-9._-]/g, "")}`;
+    if (!existsSync(dir)) continue;
+    const head = safeExec("git", ["-C", dir, "rev-parse", "--short", "HEAD"]).trim();
+    const commits = safeExec("git", ["-C", dir, "log", "--oneline", "-8"])
+      .split("\n").filter(Boolean);
+    const todoOut = safeExec("rg", [
+      "-n", "TODO|FIXME|HACK\\b|XXX\\b",
+      "--glob", "!node_modules", "--glob", "!dist", "--glob", "!target",
+      "--glob", "!*.lock", "-m", "2", "--max-columns", "160",
+      ".",
+    ], { cwd: dir, timeout: 15000 });
+    const todoLines = todoOut.split("\n").filter(Boolean);
+    leads.push({
+      repo: name,
+      checkout: dir,
+      head,
+      recent_commits: commits,
+      todo_count: todoLines.length,
+      todo_sample: todoLines.slice(0, 20),
+    });
+  }
+  return leads;
 }
 
 async function pendingDecisions(boardId) {
