@@ -418,10 +418,9 @@ export async function computeBoardDuties(boardIds = []) {
         priority: 3,
         type: "routing_due",
         board_id: boardId,
-        detail: `${freeSlots} open-task slot(s) free and ${idle.length} idle badge-verified contributors (top: ${idle
-          .slice(0, 3)
-          .map((c) => `${c.account_id.slice(0, 24)}[${(c.badges || []).join("/")},${c.rewarded_tasks} rewarded]`)
-          .join("; ")}). Route grounded work that suits their history, or journal exactly why nothing in the sources is routable.`,
+        detail: `${freeSlots} open-task slot(s) free. The COMPLETE routing pool (every member is routable when their badges fit this board — this includes operator accounts; operator escalation-only applies to decisions, never to work): ${idle
+          .map((c) => `${c.account_id}[${(c.badges || []).join("/")},${c.rewarded_tasks} rewarded]`)
+          .join("; ")}. Route grounded work that suits their history, or journal exactly why nothing in the sources is routable — naming which pool members you considered.`,
       });
     }
 

@@ -238,6 +238,15 @@ with 85 rewarded tasks sit idle while the repo has open issues — if the
 sources have real work and a proven person is free, the default is to
 route, not to wait.
 
+**The operator is also a contributor.** When goodalexander's account holds
+verified badges and appears in the routing pool, route contributor-lane
+work to him exactly like anyone else — code tasks under core_contributor,
+amplification under kol, QA under qa_worker. "Escalation-only" governs
+which *decisions* are reserved for him (badge approvals, merges, over-cap
+rewards); it has never meant excluding him from *work*. Do not invent
+routing hesitancy from a contributor's cancellation history: cancelled
+tasks free capacity, they are not strikes.
+
 ## Escalation to the operator
 
 Three things always go to goodalexander and are never decided by you:
