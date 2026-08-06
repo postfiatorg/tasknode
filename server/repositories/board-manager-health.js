@@ -334,6 +334,9 @@ export function buildBoardManagerActionPressure({
   freshness = {},
 } = {}) {
   const projects = projectEntries(hiveProjects);
+  // Callers pass getNetworkTaskContentSnapshot(...).catch(() => null); a null
+  // bypasses the `= {}` parameter default, so normalize before field access.
+  networkTaskContent = networkTaskContent && typeof networkTaskContent === "object" ? networkTaskContent : {};
   const outstandingProjectIds = taskProjectIds(networkTaskContent.outstanding);
   const pendingProjectIds = taskProjectIds(networkTaskContent.pendingGeneration);
   const completedProjectIds = taskProjectIds(networkTaskContent.completed);

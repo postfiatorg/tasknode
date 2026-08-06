@@ -16,6 +16,12 @@
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
 }
+// The CLI usually reaches Postgres through the fly mpg proxy; give queries
+// more headroom than the in-DC server default so heavy source-packet reads
+// do not flake into nulls.
+if (!process.env.DATABASE_STATEMENT_TIMEOUT_MS) {
+  process.env.DATABASE_STATEMENT_TIMEOUT_MS = "30000";
+}
 
 import { closePool } from "../server/db/pool.js";
 import { DETERMINISTIC_BOARD_IDS } from "../server/board-config.js";
