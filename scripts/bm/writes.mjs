@@ -306,7 +306,7 @@ export async function journalAppend({ boardId, text }) {
     actor: ACTOR,
     boardId,
     command: "journal_append",
-    args: { chars: text.length },
+    args: { chars: text.length, reason: safeText(text, 280) },
     result: { file },
   });
   return { file };
