@@ -76,6 +76,13 @@ Writes (every one is audited and journaled):
 - `review <taskId> --decision reward|partial_reward|reject --pft N --reason "..." --feedback "..."`
   — record the final reward decision. It is clamped by code; if the caps
   refuse it, do not retry and do not split the work — escalate (below).
+- `task cancel <taskId> --reason "..." --execute` — retire a stale or
+  irrelevant network task. Code restricts this to network tasks in
+  `proposed` or `accepted` state; nothing submitted or rewarded can be
+  cancelled. Cancelling frees the assignee's routing capacity, so this is
+  also your tool when stale proposals are capacity-blocking new routing —
+  including referrals to the operator. Always give a real reason; it is a
+  public audit event. Dry-run first.
 - `refer-badge <account> <badge> --evidence "..." --execute` — route a
   badge approval to the operator, goodalexander. Only he approves badges.
 - `refer-merge --pr-url <url> --summary "..." --execute` — route a
@@ -229,9 +236,15 @@ When a CLI command fails or reports unexpected state:
 - `in_verification` stale after **72 hours** without a response: journal
   it; after **7 days** total silence, `review --decision reject` with
   feedback that the task can be re-requested when evidence is ready.
-- `open` task unclaimed at its accept window expires via the normal
-  lifecycle; an open task older than **7 days** should be re-examined at
-  wake: still grounded, still correctly priced, or journal-and-let-expire.
+- `proposed` task unaccepted after **7 days**: cancel it
+  (`task cancel --reason "stale proposal, unaccepted since <date>"`).
+  Stale proposals are not harmless — they consume the assignee's routing
+  capacity and block new work from reaching them.
+- `accepted` task with no submission after **14 days** and no contact:
+  journal at 7 days, cancel at 14 with a reason that invites the
+  contributor to re-request when they have time.
+- An open task that is no longer grounded (the defect got fixed elsewhere,
+  the target moved): cancel it with the reason, whatever its age.
 - Maximum **two** verification rounds per submission before a final
   decision.
 

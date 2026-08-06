@@ -189,6 +189,19 @@ async function main() {
     return;
   }
 
+  if (command === "task" && positional[0] === "cancel") {
+    const { cancelTask } = await import("./bm/writes.mjs");
+    const taskId = positional[1] || "";
+    if (!taskId) return fail("Usage: bm task cancel <taskId> --reason ... [--execute]");
+    const result = await cancelTask({
+      taskId,
+      reason: flagValue("--reason"),
+      execute: rest.includes("--execute"),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
   if (command === "refer-badge") {
     const { referBadge } = await import("./bm/writes.mjs");
     const result = await referBadge({
@@ -270,6 +283,7 @@ async function main() {
       "  user <account|wallet>       task history + badges",
       "  history <board> [--limit N] terminal task history",
       "  task create <board> --account --wallet --need [--reward-max N] [--execute]",
+      "  task cancel <taskId> --reason ... [--execute]   (proposed/accepted network tasks only)",
       "  verify request <taskId> --ask ... [--type evidence]",
       "  review <taskId> --decision reward|partial_reward|reject --pft N --reason ...",
       "  refer-badge <account> <badge> [--evidence ...] [--execute]",

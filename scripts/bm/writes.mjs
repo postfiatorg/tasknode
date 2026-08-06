@@ -223,6 +223,71 @@ export async function taskCreate({
   return { runId, dryRun: !execute, rewardMin: cappedMin, rewardMax: cappedMax, actionResult };
 }
 
+export async function cancelTask({ taskId, reason = "", execute = false }) {
+  if (!safeText(taskId)) throw new Error("taskId required");
+  if (!safeText(reason)) throw new Error("--reason required: cancellations are public audit events");
+  const task = await query(
+    `SELECT task_id, status, title FROM task_projections WHERE task_id = $1`,
+    [safeText(taskId, 180)]
+  );
+  const row = task.rows[0];
+  if (!row) throw new Error(`task_not_found:${taskId}`);
+  const boardId = await boardForTask(taskId);
+
+  const { buildBoardManagerSourcePacket, startBoardManagerRun, completeBoardManagerRun } =
+    await import("../../server/repositories/board-manager.js");
+  const { executeBoardManagerDecision } = await import("../../server/board-manager-actions.js");
+
+  const trigger = "board_manager_v2_task_cancel";
+  const sourcePacket = await buildBoardManagerSourcePacket({ trigger, scope: "global_hive" });
+  const decision = {
+    action: "cancel_network_task",
+    target_type: "network_task",
+    target_id: safeText(taskId, 180),
+    reason: safeText(reason, 1000),
+    confidence: 1,
+    payload: {
+      summary: `Cancel stale/irrelevant network task ${taskId}`,
+      cancel_target: { task_id: safeText(taskId, 180), reason: safeText(reason, 1000) },
+    },
+  };
+  const started = await startBoardManagerRun({
+    scope: "global_hive",
+    managerId: "board_manager_v2",
+    trigger,
+    sourcePacket,
+    dryRun: !execute,
+    model: "board_manager_v2_cli",
+    reasoningEffort: "none",
+    sessionMode: "board_manager_v2_cli",
+  });
+  const runId = started.run?.id || "";
+  await completeBoardManagerRun({
+    runId,
+    decision,
+    outputText: JSON.stringify({ board_manager_v2_decision: decision }, null, 2),
+  });
+  const actionResult = await executeBoardManagerDecision({
+    runId,
+    decision,
+    sourcePacket,
+    dryRun: !execute,
+  });
+  await appendBmAudit({
+    actor: ACTOR,
+    boardId,
+    command: "task_cancel",
+    args: { taskId, reason: safeText(reason, 280), status_before: row.status, execute },
+    result: {
+      runId,
+      executed: actionResult?.result?.executed ?? false,
+      skipped: actionResult?.result?.skipped ?? false,
+      reason: actionResult?.result?.reason || "",
+    },
+  });
+  return { runId, dryRun: !execute, statusBefore: row.status, actionResult };
+}
+
 function operatorTarget({ operatorAccount = "", operatorWallet = "" } = {}) {
   const accountId = operatorAccount || process.env.BM_OPERATOR_ACCOUNT_ID || "";
   const wallet = operatorWallet || process.env.BM_OPERATOR_WALLET || "";
