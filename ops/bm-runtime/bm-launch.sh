@@ -52,5 +52,9 @@ tmux new-session -d -s "$SESSION" -c "$WORKDIR" \
   -e BM_OPERATOR_WALLET="$BM_OPERATOR_WALLET" \
   "$PFTERMINAL_BIN -c model_provider=\"$BM_PROVIDER\" -m \"$BM_MODEL\" -c approval_policy=\"never\" -c sandbox_mode=\"danger-full-access\" $(printf '%q' "$PROMPT"); echo 'pfterminal exited'; sleep 86400"
 
+date -u +%FT%TZ > "$BM_STATE_DIR/$ALIAS.launched_at"
+cat "$HOME/.pfterminal/skills/board-manager/SKILL.md" "$HOME/.pfterminal/skills/board-"*"/SKILL.md" 2>/dev/null \
+  | sha256sum | awk '{print $1}' > "$BM_STATE_DIR/$ALIAS.skillhash"
+
 bm_log "launch: $SESSION started (board=$BOARD_ID provider=$BM_PROVIDER model=$BM_MODEL)"
 echo "launched $SESSION"

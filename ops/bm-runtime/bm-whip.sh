@@ -70,6 +70,18 @@ while IFS= read -r AGENT_LINE; do
     continue
   fi
 
+  # 1b. Contract currency. If the installed skills changed since this
+  # session launched, the loaded contract is stale. Rotate the session at a
+  # safe point (no pending unacknowledged wake) so session state always
+  # matches the installed contract. The round file below also embeds the
+  # full current contract every round regardless.
+  CURRENT_SKILL_HASH="$(cat "$HOME/.pfterminal/skills/board-manager/SKILL.md" "$HOME/.pfterminal/skills/board-"*"/SKILL.md" 2>/dev/null | sha256sum | awk '{print $1}')"
+  SESSION_SKILL_HASH="$(cat "$BM_STATE_DIR/$ALIAS.skillhash" 2>/dev/null || true)"
+  if [ -n "$CURRENT_SKILL_HASH" ] && [ "$CURRENT_SKILL_HASH" != "$SESSION_SKILL_HASH" ] && [ ! -f "$BM_STATE_DIR/$ALIAS.pending" ]; then
+    bm_log "whip: $ALIAS contract changed on disk; rotating session to load it"
+    "$(dirname "$0")/bm-launch.sh" "$ALIAS" >/dev/null 2>&1 || bm_log "whip: $ALIAS contract rotation failed"
+  fi
+
   # 2. Deterministic duty-driven wake with processing acknowledgment.
   #
   # Each round the whip computes the agent's mandatory to-do list from
@@ -104,13 +116,39 @@ while IFS= read -r AGENT_LINE; do
   mkdir -p "$DUTIES_DIR"
   ROUND_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
   ROUND_FILE="$DUTIES_DIR/round-$ROUND_STAMP.md"
+  SESSION_START_FILE="$BM_STATE_DIR/$ALIAS.launched_at"
+  SESSION_START="$(cat "$SESSION_START_FILE" 2>/dev/null || echo '1 hour ago')"
+  SYSTEM_CHANGES="$(cd "$BM_REPO" && git log --oneline --since="$SESSION_START" -- ops/bm-runtime scripts/bm scripts/bm.mjs server/repositories/network-tasks.js server/repositories/bm-decisions.js server/repositories/network-task-capacity.js 2>/dev/null | head -12)"
   {
     echo "# Round work order — $ALIAS — $ROUND_STAMP"
     echo
     echo "Boards: $BOARDS_CSV"
     echo "State: $COMBINED"
     echo
+    echo "## Current rules (generated from the live system this round — these"
+    echo "override anything in your journal, handoff, or session memory)"
+    echo
+    echo "- Task-creation engine checks EXACTLY: verified badge, delivery wallet,"
+    echo "  per-account capacity (free_slots shown per member below), and each"
+    echo "  board's assignable_handles constraint. Nothing else. No operator"
+    echo "  exclusions, no lane locks beyond badge fit, no one-task-per-person rule."
+    echo "- Per-member engine verdicts in the duties below are computed by the"
+    echo "  engine's own predicate this round. engine=eligible means task create"
+    echo "  will accept them."
+    if [ -n "$SYSTEM_CHANGES" ]; then
+      echo
+      echo "## System changes since your session started (your journal predates"
+      echo "these; conclusions drawn before them are expired)"
+      echo
+      echo "$SYSTEM_CHANGES" | sed 's/^/- /'
+    fi
+    echo
     echo "$DUTIES_TEXT"
+    echo
+    echo "## Operating contract (current, full text — this supersedes the skill"
+    echo "version loaded at your session start and anything in your journal)"
+    echo
+    cat "$HOME/.pfterminal/skills/board-manager/SKILL.md" 2>/dev/null
     echo
     echo "Rules: complete every numbered duty in order, or journal exactly why a"
     echo "specific duty cannot be completed this round. Use: cd $BM_REPO && node scripts/bm.mjs <command>."
