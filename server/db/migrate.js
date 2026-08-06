@@ -110,6 +110,7 @@ const migrations = [
   "101_pin_deterministic_boards.sql",
   "102_bm_activity_summaries.sql",
   "103_account_linked_wallets.sql",
+  "104_network_task_capacity_limits.sql",
 ];
 
 let migrated = false;

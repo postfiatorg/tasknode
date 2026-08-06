@@ -281,3 +281,21 @@ export async function listNetworkTaskCandidateCapacityChecks(candidates = []) {
   }
   return checks;
 }
+
+// Operator-set per-account capacity limit (migration 104). Default 1 live
+// allocation; trusted contributors can be raised by the operator.
+export async function getNetworkTaskCapacityLimit(accountId = "") {
+  const normalized = safeText(accountId, 180);
+  const fallback = Math.max(1, Number(process.env.TASKNODE_NETWORK_TASK_DEFAULT_CAPACITY || 1));
+  if (!normalized) return fallback;
+  try {
+    const result = await query(
+      `SELECT max_live_allocations FROM network_task_capacity_limits WHERE account_id = $1`,
+      [normalized]
+    );
+    const limit = Number(result.rows[0]?.max_live_allocations);
+    return Number.isFinite(limit) && limit > 0 ? limit : fallback;
+  } catch {
+    return fallback;
+  }
+}

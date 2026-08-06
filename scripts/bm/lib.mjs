@@ -226,13 +226,17 @@ export async function idleEligibleContributors() {
     ) hist ON true
     WHERE b.status = 'verified'
       AND b.revoked_at IS NULL
-      AND NOT EXISTS (
-        SELECT 1
+      AND (
+        SELECT count(*)
         FROM network_task_allocations a
         WHERE a.candidate_account_id = b.account_id
           AND a.allocation_status IN ('candidate', 'queued', 'proposed', 'accepted',
                                       'submitted', 'verification_requested',
                                       'verification_response_submitted')
+      ) < COALESCE(
+        (SELECT l.max_live_allocations FROM network_task_capacity_limits l
+         WHERE l.account_id = b.account_id),
+        1
       )
     GROUP BY b.account_id, hist.rewarded, hist.last_active
     ORDER BY COALESCE(hist.rewarded, 0) DESC

@@ -13,6 +13,7 @@ import {
 } from "./network-tasks-utils.js";
 import {
   getNetworkTaskCapacityMetrics,
+  getNetworkTaskCapacityLimit,
   listNetworkTaskCapacityBlockers,
 } from "./network-task-capacity.js";
 import { syncNetworkTaskAllocationMirrors } from "./network-task-allocation-sync.js";
@@ -1273,8 +1274,9 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     accountId: candidate.accountId,
     walletAddress: candidate.walletAddress,
   });
+  const capacityLimit = await getNetworkTaskCapacityLimit(candidate.accountId);
   const activeCount = capacityBlockers.length;
-  if (activeCount > 0 && !networkTask.allow_over_capacity) {
+  if (activeCount >= capacityLimit && !networkTask.allow_over_capacity) {
     await recordUserObservabilityEvent({
       eventType: "user.network_task.candidate_blocked",
       accountId: candidate.accountId,
