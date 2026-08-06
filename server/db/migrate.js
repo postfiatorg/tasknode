@@ -106,6 +106,7 @@ const migrations = [
   "097_profile_nft_daily_worker_hardening.sql",
   "098_deterministic_boards.sql",
   "099_board_manager_v2_decisions.sql",
+  "100_board_manager_transcripts.sql",
 ];
 
 let migrated = false;

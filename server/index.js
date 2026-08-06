@@ -71,6 +71,7 @@ const [
   { handleCapabilityProfileRoute },
   { handleNetworkBadgeAdminRoute },
   { handleBoardAdminRoute },
+  { handleBmTranscriptRoute },
   { handleSystemStatusRoute },
   { handleTelegramBotRoute },
   { walletSendPrepare, walletSendSubmit },
@@ -121,6 +122,7 @@ const [
   import("./capability-profile-routes.js"),
   import("./network-badge-admin-routes.js"),
   import("./board-admin-routes.js"),
+  import("./bm-transcript-routes.js"),
   import("./system-status.js"),
   import("./telegram-bot.js"),
   import("./wallet-send.js"),
@@ -845,6 +847,7 @@ async function routeApi(req, url, res) {
   if (await handleCapabilityProfileRoute({ json, readJson, req, res, url })) return true;
   if (await handleNetworkBadgeAdminRoute({ json, readJson, req, res, url })) return true;
   if (await handleBoardAdminRoute({ json, readJson, req, res, url })) return true;
+  if (await handleBmTranscriptRoute({ json, req, res, url })) return true;
 
   if (await handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 
