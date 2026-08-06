@@ -243,12 +243,37 @@ export async function idleEligibleContributors() {
     LIMIT 12
     `
   ).catch(() => ({ rows: [] }));
-  return result.rows.map((row) => ({
+  const members = result.rows.map((row) => ({
     account_id: row.account_id,
     badges: row.badges || [],
     rewarded_tasks: Number(row.rewarded_tasks || 0),
     last_active: row.last_active,
   }));
+  // Attach per-member capacity and the task-creation engine's own verdict,
+  // so duty text states engine facts instead of leaving them to agent
+  // inference (which has produced imaginary "engine walls").
+  const { explainNetworkTaskCandidateEligibility } = await import(
+    "../../server/repositories/network-tasks.js"
+  );
+  for (const member of members) {
+    const live = await query(
+      `SELECT count(*)::int AS n FROM network_task_allocations
+       WHERE candidate_account_id = $1
+         AND allocation_status IN ('candidate','queued','proposed','accepted',
+                                   'submitted','verification_requested','verification_response_submitted')`,
+      [member.account_id]
+    );
+    const limit = await query(
+      `SELECT max_live_allocations FROM network_task_capacity_limits WHERE account_id = $1`,
+      [member.account_id]
+    ).catch(() => ({ rows: [] }));
+    const cap = Number(limit.rows[0]?.max_live_allocations || 1);
+    member.free_slots = Math.max(0, cap - Number(live.rows[0]?.n || 0));
+    const verdict = await explainNetworkTaskCandidateEligibility({ accountId: member.account_id }).catch(() => null);
+    member.engine_verdict = verdict?.eligible ? "eligible" : `refused:${verdict?.reason || "unknown"}`;
+    member.delivery_wallet = verdict?.walletAddress || "";
+  }
+  return members;
 }
 
 // Mechanical source-lead mining (demand-side raw material). The issue
@@ -422,9 +447,9 @@ export async function computeBoardDuties(boardIds = []) {
         priority: 3,
         type: "routing_due",
         board_id: boardId,
-        detail: `${freeSlots} open-task slot(s) free. An eligible contributor without a task is a DEFICIENCY you must resolve this round. The COMPLETE routing pool (every member is routable when their badges fit this board — including operator accounts; operator escalation-only applies to decisions, never to work): ${idle
-          .map((c) => `${c.account_id}[${(c.badges || []).join("/")},${c.rewarded_tasks} rewarded]`)
-          .join("; ")}. For each pool member whose badges fit this board: route grounded work from the sources, OR route them a small investigation task (250-1,000 PFT) that produces the grounding — dig a named repo area, reproduce a suspected defect, or report on a concrete question whose answer creates future tasks. "Nothing routable" is not an acceptable outcome; if you truly cannot even frame an investigation for a member, journal that member by name with the specific reason.`,
+        detail: `${freeSlots} open-task slot(s) free. An eligible contributor without a task is a DEFICIENCY you must resolve this round. ENGINE FACTS (verified this round by the task-creation engine itself — do not infer additional restrictions; the engine checks exactly: verified badge, delivery wallet, per-account capacity, and this board's assignable_handles constraint, nothing else): ${idle
+          .map((c) => `${c.account_id}[badges=${(c.badges || []).join("/")}; free_slots=${c.free_slots}; engine=${c.engine_verdict}; ${c.rewarded_tasks} rewarded]`)
+          .join("; ")}. Any listed member with engine=eligible and free_slots>0 CAN be routed on this board when any of their badges fits the work (kol→amplification, core_contributor→code, qa_worker→QA, expert→analysis, project_leader→definitions). Route grounded work from the sources, OR route a small investigation task (250-1,000 PFT) that produces the grounding. If you believe the engine blocks a listed member, you must reproduce it this round with a dry-run and journal the exact error string — otherwise the claim is false and forbidden.`,
       });
     }
 

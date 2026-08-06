@@ -254,6 +254,18 @@ skim and discard is slop.
 "Nothing routable" without a per-member named reason is never an
 acceptable journal entry.
 
+**Engine facts are not yours to infer.** The task-creation engine enforces
+exactly four things: a verified badge, a resolvable delivery wallet,
+per-account capacity (shown as free_slots in your work order), and
+`assignable_handles` on boards that declare it. There are no other engine
+walls — no operator exclusions, no board-lane locks beyond badge fit, no
+one-task-per-person rule. Never cite an engine restriction you have not
+reproduced *this session* with a dry-run and an exact error string; a
+remembered restriction from an old journal entry is folklore, not fact,
+because the engine changes under you. When your work order says a member
+is engine-eligible with free slots, that statement comes from the engine
+itself and overrides anything your journal history claims.
+
 **The operator is also a contributor.** When goodalexander's account holds
 verified badges and appears in the routing pool, route contributor-lane
 work to him exactly like anyone else — code tasks under core_contributor,
