@@ -5595,3 +5595,31 @@ button.hive-project-next-task:focus-visible {
   }
 
 }
+
+/* Hive Brain v2: transcript viewer */
+.hive-brain-view .hive-subtitle { max-width: 720px; }
+.hive-refresh-button {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid var(--hive-border, #2a2a34);
+  color: inherit; border-radius: 8px; padding: 6px 12px; cursor: pointer;
+}
+.hive-refresh-button:disabled { opacity: 0.5; cursor: default; }
+.hive-spin { animation: hive-brain-spin 1s linear infinite; }
+@keyframes hive-brain-spin { to { transform: rotate(360deg); } }
+.hive-brain-transcript {
+  margin-top: 16px; border: 1px solid var(--hive-border, #2a2a34);
+  border-radius: 10px; overflow: hidden;
+}
+.hive-brain-meta {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 8px 14px; font-size: 12px; opacity: 0.75;
+  border-bottom: 1px solid var(--hive-border, #2a2a34);
+}
+.hive-brain-pre {
+  margin: 0; padding: 14px; overflow-x: auto; white-space: pre-wrap;
+  font-size: 12.5px; line-height: 1.45; max-height: 70vh; overflow-y: auto;
+}
+.hive-brain-empty, .hive-error {
+  margin-top: 16px; padding: 14px; border-radius: 10px;
+  border: 1px dashed var(--hive-border, #2a2a34); opacity: 0.8;
+}
