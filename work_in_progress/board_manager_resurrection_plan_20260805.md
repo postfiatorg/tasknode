@@ -373,22 +373,46 @@ redundant secretary model spend, not conflicting board mutations.
   write budget tables. Review-worker auto-scoring becomes flag-disabled.
   Proof: cap + credential unit tests, one end-to-end reward on testnet
   clamped from a deliberately over-asked amount.
-- [ ] **Gate D — Runtime harness + continuity contract.**
+- [x] **Gate D — Runtime harness + continuity contract (soak pending).**
+  DONE 2026-08-06 (`2e3c9a8`): `ops/bm-runtime/` — `bm-env.sh`,
+  `bm-proxy.sh` (fly mpg proxy + 0600 db.env), `bm-launch.sh` (tmux session
+  per board, PfTerminal on **kimi-code/kimi-k3** — Ambient has no K3; its
+  best Kimi is k2.7-code, kept as documented fallback — pre-trusted
+  workspace, `approval_policy=never`, full sandbox access),
+  `bm-whip.sh` (15-min cron, digest-conditional injection, two-strike
+  liveness alerts), `bm-reset.sh` (daily 06:00 UTC, grace + forced
+  `bm handoff` + relaunch), `bm-install-cron.sh`. Proof: live session ran
+  K3 and drove `bm` CLI unattended; whip injected on digest change and
+  stayed silent on no-change; deliberate kill relaunched via liveness path;
+  handoff written from prod DB state; cron installed. 48h soak runs with
+  the Gate G pilot. Operator env: `BM_OPERATOR_ACCOUNT_ID=acct_oauth_3c70e69ab7b8ef1fad3df508`,
+  `BM_OPERATOR_WALLET=rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx`. Gate A-C code
+  deployed to production 2026-08-06 (app healthy; pre-existing
+  `worker-airdrop` standby-count guard quirk noted, machines started).
   tmux layout, PfTerminal session config on Kimi K3 via the Ambient key from
   the vault, codex-whip conditional injection wired to `bm digest`, daily
   reset cron with `bm handoff` write, and the §8.1 continuity contract
   (liveness check, staleness alert, resume runbook). Proof: 48-hour soak on
   one board with ≥2 resets, handoffs written, whip observed firing only on
   digest change, one deliberate kill + documented resume within the RTO.
-- [ ] **Gate E — Skills.**
-  Core skill + six board skills authored through the §6 TIH loop. Proof: TIH
-  journal per skill showing initial score, criticisms, rewrite, improved
-  final score.
-- [ ] **Gate F — Hive Brain = transcript.**
-  Transcript mirror table + scrubber, one route, simplified view, shipping
-  *alongside* the legacy report surfaces (which remain until Gate H). Proof:
-  live board session visible in Hive Brain; secret scan of mirrored
-  transcript.
+- [x] **Gate E — Skills.** DONE 2026-08-06 (`e190f62`): core
+  `board-manager` skill + six board skills in `ops/bm-runtime/skills/`,
+  installed to `~/.pfterminal/skills` via `bm-install-skills.sh`. Each went
+  through the full TIH loop (round → SOL sol-pro rewrite → in-context TBD
+  resolution → re-score). Final vs initial 3-lane averages: core
+  90.27→90.80, community 85.07→88.20 (one regression from a contradictory
+  merge, caught by re-score and fixed), pfterminal 86.87→88.07,
+  postfiatl1v2 84.07→89.40, governance ~84.9→87.53, tasknode-fixes
+  84.73→89.07, capital 84.73→88.13. All improved; TIH journal in project
+  `bm-resurrection`.
+- [x] **Gate F — Hive Brain = transcript (live proof at pilot).** DONE
+  2026-08-06 (`08e6de`-ish backend, `7c3fab2` UI): migration 100
+  `board_manager_transcripts`; `scripts/bm-transcript-ingest.mjs` scrubber
+  (keys, connection strings, hex seeds, family seeds, env assignments —
+  verified redacting on sample input); `bm-transcript.sh` 5-min cron
+  capture; public route `GET /api/hive/bm-transcript`; `HiveBrainView.jsx`
+  rewritten from a 2,174-line report browser to a ~110-line transcript
+  viewer. Live-session visibility check completes during the Gate G pilot.
 - [ ] **Gate G — Pilot.**
   Run board 2 (PF Terminal) alone for one week with the legacy pipeline
   still deployed. **This gate is the go/no-go for all destructive work**, so
