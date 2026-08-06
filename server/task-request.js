@@ -35,7 +35,10 @@ import {
 
 const ACTION_ID = "task_request";
 const TASK_POINTER_SCHEMA = 1;
-const DEFAULT_TASK_ACCEPT_WINDOW_HOURS = 24;
+// Tasks never die by clock: no server-default accept window. Stale offers
+// are retired deliberately (board manager cancel / user refuse), not by
+// timestamp pressure. Kept as 0 so bundle shapes stay stable.
+const DEFAULT_TASK_ACCEPT_WINDOW_HOURS = 0;
 
 function actionResponse({ status, error, message, actionRequired, extra = {} }) {
   return {
@@ -128,7 +131,7 @@ function requestInputForSession(payload = {}, session = null, walletAddress = ""
 function minimalRequestBundle({ accountId = "", walletAddress = "", request = {} } = {}) {
   const createdAt = new Date();
   const createdAtIso = createdAt.toISOString();
-  const acceptByIso = new Date(createdAt.getTime() + DEFAULT_TASK_ACCEPT_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+  const acceptByIso = null; // no accept window (see DEFAULT_TASK_ACCEPT_WINDOW_HOURS)
   return {
     schema: "pf.task.request_bundle.v1",
     bundle_id: request.bundleId,
@@ -192,7 +195,7 @@ function minimalRequestBundle({ accountId = "", walletAddress = "", request = {}
         accept_by: acceptByIso,
         deadline_at: null,
         accept_window_hours: DEFAULT_TASK_ACCEPT_WINDOW_HOURS,
-        source: "server_default_accept_window",
+        source: "no_accept_window",
       },
     },
     wallet: {
@@ -327,7 +330,7 @@ function queueProjection(tasks = {}) {
 export async function buildRequestBundle({ accountId, walletAddress, request, authorityWallet, agentOrigin = null }) {
   const createdAt = new Date();
   const createdAtIso = createdAt.toISOString();
-  const acceptByIso = new Date(createdAt.getTime() + DEFAULT_TASK_ACCEPT_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+  const acceptByIso = null; // no accept window (see DEFAULT_TASK_ACCEPT_WINDOW_HOURS)
   const [context, memoryContext, recentChat, taskState] = await Promise.all([
     getContextDocument({ accountId }),
     getChatMemoryContext({ accountId, deepLimit: 3, turnLimit: 36 }),
@@ -408,7 +411,7 @@ export async function buildRequestBundle({ accountId, walletAddress, request, au
         accept_by: acceptByIso,
         deadline_at: null,
         accept_window_hours: DEFAULT_TASK_ACCEPT_WINDOW_HOURS,
-        source: "server_default_accept_window",
+        source: "no_accept_window",
       },
     },
     wallet: {

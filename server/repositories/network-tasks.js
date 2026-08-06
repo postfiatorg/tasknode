@@ -935,7 +935,7 @@ export function buildNetworkTaskGenerationSource({
   projectNeedSummary = "",
   allocationReasonSummary = "",
   cadenceReason = "",
-  acceptWindowHours = 24,
+  acceptWindowHours = 0,
   badgeEligibilityDecision = null,
 } = {}) {
   const payload = safeObject(decision.payload);
@@ -1111,7 +1111,10 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   const projectNeedSummary = safeText(networkTask.project_need_summary || networkTask.projectNeedSummary || payload.summary || decision.reason, 2400);
   const allocationReasonSummary = safeText(networkTask.allocation_reason_summary || networkTask.routing_reason || networkTask.routingReason || decision.reason, 1800);
   const cadenceReason = safeText(networkTask.cadence_reason || networkTask.cadenceReason || "board_manager_initiated", 600);
-  const acceptWindowHours = Math.max(1, Number(networkTask.accept_window_hours || networkTask.acceptWindowHours || 24));
+  // Accept windows are opt-in. Tasks never die by clock; the board manager
+  // retires stale work deliberately via cancel_network_task.
+  const rawAcceptWindowHours = Number(networkTask.accept_window_hours ?? networkTask.acceptWindowHours ?? 0) || 0;
+  const acceptWindowHours = rawAcceptWindowHours > 0 ? Math.max(1, rawAcceptWindowHours) : 0;
   const requiredBadgeId = safeText(networkTask.required_badge_id || networkTask.requiredBadgeId, 80);
   const operatingBadgeId = safeText(networkTask.operating_badge_id || networkTask.operatingBadgeId || requiredBadgeId, 80);
   const badgeWorkType = safeText(
@@ -1309,7 +1312,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	  const intentId = `netintent_${idSuffix}`;
 	  const allocationId = `netalloc_${idSuffix}`;
 	  const jobId = `nettaskjob_${idSuffix}`;
-	  const expiresAt = new Date(Date.now() + acceptWindowHours * 60 * 60 * 1000);
+	  const expiresAt = acceptWindowHours > 0 ? new Date(Date.now() + acceptWindowHours * 60 * 60 * 1000) : null;
 	  const sourceJson = buildNetworkTaskGenerationSource({
 	    runId,
 	    decision,
@@ -1457,7 +1460,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	          network_task_intelligence: intelligenceMetadata,
 	          badge_eligibility_decision: badgeEligibilityDecision,
 	        }),
-	        expiresAt.toISOString(),
+	        expiresAt ? expiresAt.toISOString() : null,
 	      ]
     );
     await client.query(

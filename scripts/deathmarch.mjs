@@ -75,18 +75,32 @@ function databaseEventsEnabled(env = process.env) {
   return env.DEATHMARCH_DATABASE_EVENTS_ENABLED !== "false" && Boolean(deathmarchDatabaseUrl(env));
 }
 
+export function observeDeathmarchDatabasePool(pool, { logger = console } = {}) {
+  if (!pool || typeof pool.on !== "function") {
+    throw new Error("deathmarch_database_pool_invalid");
+  }
+  pool.on("error", (error) => {
+    try {
+      logger.error?.(`deathmarch_database_pool_error:${safeErrorCode(error)}`);
+    } catch {
+      // A logger failure must never turn a recoverable idle-client error into a process crash.
+    }
+  });
+  return pool;
+}
+
 async function deathmarchDatabaseQuery(text, params = [], env = process.env) {
   const connectionString = deathmarchDatabaseUrl(env);
   if (!connectionString) throw new Error("deathmarch_database_url_missing");
   if (!deathmarchDbPool) {
-    deathmarchDbPool = new Pool({
+    deathmarchDbPool = observeDeathmarchDatabasePool(new Pool({
       connectionString,
       max: 1,
       connectionTimeoutMillis: clampInteger(env.DEATHMARCH_DATABASE_CONNECTION_TIMEOUT_MS, 5000, 500, 60000),
       idleTimeoutMillis: clampInteger(env.DEATHMARCH_DATABASE_IDLE_TIMEOUT_MS, 30000, 1000, 300000),
       query_timeout: clampInteger(env.DEATHMARCH_DATABASE_QUERY_TIMEOUT_MS, 10000, 500, 120000),
       application_name: "tasknodeofficial:deathmarch",
-    });
+    }));
   }
   return deathmarchDbPool.query(text, params);
 }
@@ -832,7 +846,12 @@ function safeClassificationCategory(value = "") {
 }
 
 function safeClassifierFallback() {
-  return { level: 3, category: CLASSIFIER_FAILURE_CATEGORY };
+  return {
+    level: 3,
+    category: CLASSIFIER_FAILURE_CATEGORY,
+    sensitive_entities: [],
+    sensitive_strategy_details: [],
+  };
 }
 
 function parseClassifierJson(content = "") {
@@ -840,23 +859,49 @@ function parseClassifierJson(content = "") {
   const object = safeObject(parsed);
   const level = clampInteger(object.level, 0, 1, 3);
   if (!level) throw new Error("deathmarch_classifier_level_invalid");
+  const sensitiveEntities = safeArray(object.sensitive_entities)
+    .slice(0, 16)
+    .map((entry) => {
+      const entity = safeObject(entry);
+      const kind = safeText(entity.kind, 40).toLowerCase();
+      const name = compactWhitespace(entity.name).slice(0, 160);
+      if (!name || !["client", "investor"].includes(kind)) return null;
+      return { kind, name };
+    })
+    .filter(Boolean)
+    .filter((entity, index, entities) => {
+      return entities.findIndex((candidate) => {
+        return candidate.kind === entity.kind && candidate.name.toLowerCase() === entity.name.toLowerCase();
+      }) === index;
+    });
+  const sensitiveStrategyDetails = safeArray(object.sensitive_strategy_details)
+    .slice(0, 8)
+    .map((value) => compactWhitespace(value).slice(0, 600))
+    .filter((value) => value.length >= 12)
+    .filter((value, index, values) => {
+      return values.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index;
+    });
   return {
     level,
     category: safeClassificationCategory(object.category || "classified task"),
+    sensitive_entities: sensitiveEntities,
+    sensitive_strategy_details: sensitiveStrategyDetails,
   };
 }
 
 function deathmarchClassifierPrompt() {
   return [
     "You classify Task Node Death March event disclosure risk.",
-    "Return strict JSON only: {\"level\":1|2|3,\"category\":\"short directional category\"}.",
+    "Return strict JSON only: {\"level\":1|2|3,\"category\":\"short category without names\",\"sensitive_entities\":[{\"kind\":\"client\"|\"investor\",\"name\":\"exact name from event\"}],\"sensitive_strategy_details\":[\"smallest exact confidential substring from event\"]}.",
     "",
-    "Level 1: explicit trading IP only.",
-    "Use level 1 only when the event discloses or requests market/trading strategy, alpha signals, trading models, portfolio positions, execution logic, backtests, instruments, tickers, or named trading rules.",
-    "Level 2: reserved compatibility level. Do not use it for ordinary legal, team, client, investor, customer, organization, sales, fundraising, partner, protocol, product, open documentation, or open-source work.",
-    "Level 3: everything that is not explicit trading IP, including business interactions, client work, team work, legal work, protocol work, product work, open documentation, and ordinary Task Node/Hive work.",
+    "Level 1: the event contains exact proprietary strategy or intellectual-property mechanics that should not be public, such as formulas, algorithm steps, signal definitions, portfolio construction rules, execution logic, confidential research methods, or similarly concrete secret know-how.",
+    "Do not use level 1 for a general topic, task direction, industry, instrument, ticker, product area, public documentation, ordinary business work, or a generic request to develop a strategy. The event must contain concrete proprietary mechanics.",
+    "For level 1, copy only the smallest exact substrings containing the secret mechanics into sensitive_strategy_details. Do not copy an entire title, description, or evidence item when a narrower phrase or sentence isolates the secret. Non-secret context must remain publishable.",
+    "Level 2: the event contains the specific proper name of an external client/customer or investor, but no level-1 strategy detail. List each exact client or investor name in sensitive_entities so it can be removed before summarization.",
+    "Level 3: everything else. Ordinary client work without a client name, fundraising without a named investor, legal/team/partner/protocol/product/open-source work, public organization names, contributor names, and project names are level 3.",
     "",
-    "When uncertain, choose level 3 unless explicit trading IP is present.",
+    "sensitive_entities must contain only explicit proper-name identifiers for clients/customers or investors. Never include generic roles, project names, team members, vendors, protocols, or organizations that are not identified as a client/customer or investor.",
+    "When uncertain, choose level 3. Redact only the three requested classes: exact client names, exact investor names, and exact proprietary strategy/IP details.",
   ].join("\n");
 }
 
@@ -880,7 +925,7 @@ export async function classifyEventAnonymity({
       },
     ],
     temperature: 0,
-    max_tokens: 120,
+    max_tokens: 1200,
   };
   try {
     const response = await fetchWithTimeout(fetchImpl, env.DEATHMARCH_DEEPSEEK_BASE_URL || DEFAULT_DEEPSEEK_URL, {
@@ -916,7 +961,36 @@ function effectiveAnonymityLevel({ globalFloor = 3, classifiedLevel = 3 } = {}) 
 
 export function sanitizeEventForAnonymity(event = {}, anonymity = 3, classification = {}) {
   const level = clampInteger(anonymity, 3, 1, 3);
-  const category = safeClassificationCategory(classification.category || event.category || "classified task");
+  const sensitiveEntities = safeArray(classification.sensitive_entities);
+  const sensitiveStrategyDetails = safeArray(classification.sensitive_strategy_details);
+  const redactionPattern = (value) => {
+    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(escaped.replace(/\s+/g, "\\s+"), "gi");
+  };
+  const redactProtectedText = (value) => {
+    if (typeof value === "string") {
+      const withoutStrategyDetails = sensitiveStrategyDetails.reduce((text, detail) => {
+        const protectedDetail = compactWhitespace(detail).slice(0, 600);
+        if (protectedDetail.length < 12) return text;
+        return text.replace(redactionPattern(protectedDetail), "[redacted strategy detail]");
+      }, value);
+      return sensitiveEntities.reduce((text, entry) => {
+        const entity = safeObject(entry);
+        const kind = safeText(entity.kind, 40).toLowerCase();
+        const name = compactWhitespace(entity.name).slice(0, 160);
+        if (!name || !["client", "investor"].includes(kind)) return text;
+        return text.replace(redactionPattern(name), `[redacted ${kind}]`);
+      }, withoutStrategyDetails);
+    }
+    if (Array.isArray(value)) return value.map(redactProtectedText);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, redactProtectedText(entry)]));
+    }
+    return value;
+  };
+  const category = safeClassificationCategory(redactProtectedText(
+    classification.category || event.category || "classified task"
+  ));
   const txHash = event.txHash;
   const base = {
     anonymity_level: level,
@@ -926,31 +1000,50 @@ export function sanitizeEventForAnonymity(event = {}, anonymity = 3, classificat
     action_kind: event.actionKind,
     occurred_at: event.occurredAt,
   };
-  if (level === 1) {
+  const redactedEvent = redactProtectedText(publicPayloadFields(event));
+  if (level === 1 && sensitiveStrategyDetails.length === 0) {
     return {
       level,
       category,
-      disclosure_policy: "explicit trading IP redacted; directional disclosure only",
+      disclosure_policy: "strategy detail classification lacked safe spans; directional fallback applied",
       directional_category: category,
       public_instruction:
-        "Do not disclose task title, market sector, instrument, ticker, portfolio detail, backtest detail, evidence text, alpha signal, execution logic, or named trading strategy.",
+        "The classifier did not provide safe redaction spans. Give only a broad directional category.",
+    };
+  }
+  if (level === 1) {
+    return {
+      ...base,
+      category,
+      disclosure_policy: "only exact proprietary strategy or IP spans and protected names were redacted",
+      public_instruction:
+        "Protected names and exact strategy details have already been replaced. Summarize the remaining context and do not reconstruct redacted text.",
+      redacted_entity_kinds: [...new Set(sensitiveEntities.map((entry) => safeText(entry?.kind, 40)).filter(Boolean))],
+      redacted_strategy_detail_count: sensitiveStrategyDetails.length,
+      event: redactedEvent,
     };
   }
   if (level === 2) {
     return {
       ...base,
       category,
-      disclosure_policy: "compatibility level; disclose packet details unless explicit trading IP is present",
-      public_instruction: "Do not redact names or business details. Only explicit trading IP should be withheld.",
-      event: publicPayloadFields(event),
+      disclosure_policy: "specific client and investor names redacted; other packet details allowed",
+      public_instruction:
+        "Client and investor names have already been replaced. Summarize the remaining details and do not reconstruct or guess any redacted name.",
+      redacted_entity_kinds: [...new Set(sensitiveEntities.map((entry) => safeText(entry?.kind, 40)).filter(Boolean))],
+      event: redactedEvent,
     };
   }
   return {
     ...base,
     category,
-    disclosure_policy: "network or public protocol work; full disclosure allowed from this packet",
-    public_instruction: "Full disclosure is allowed for the event details in this packet.",
-    event: publicPayloadFields(event),
+    disclosure_policy: sensitiveEntities.length
+      ? "specific client and investor names redacted; other packet details allowed"
+      : "no client names, investor names, or exact proprietary strategy details identified",
+    public_instruction: sensitiveEntities.length
+      ? "Client and investor names have already been replaced. Do not reconstruct or guess them."
+      : "Summarize the event normally without inventing private details.",
+    event: redactedEvent,
   };
 }
 
@@ -1084,7 +1177,10 @@ export async function postToDiscord({
   }
 
   const token = safeText(env.DISCORD_BOT_TOKEN || env.DEATHMARCH_DISCORD_BOT_TOKEN, 4000);
-  const channelId = safeText(env.DEATHMARCH_DISCORD_CHANNEL_ID || env.DISCORD_CHANNEL_ID, 120);
+  const channelId = safeText(
+    env.DEATHMARCH_DISCORD_CHANNEL_ID || env.DEATHMARCH_CHANNEL_ID || env.DISCORD_CHANNEL_ID,
+    120
+  );
   if (!token || !channelId) throw new Error("discord_destination_missing");
   const response = await fetchWithTimeout(fetchImpl, `https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`, {
     method: "POST",

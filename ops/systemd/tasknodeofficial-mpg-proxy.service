@@ -1,0 +1,15 @@
+[Unit]
+Description=Task Node Official local Fly MPG proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME=/home/pfrpc
+Environment=PATH=/home/pfrpc/.fly/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/pfrpc/.fly/bin/fly mpg proxy 3x9jv02yd3dr6qp7 --bind-addr 127.0.0.1 --local-port 16433
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +13,7 @@ import {
   deathmarchEnvWithSeedFile,
   decryptTasknodeUserMnemonicPayload,
   formatDeathmarchDiscordMessage,
+  observeDeathmarchDatabasePool,
   postToDiscord,
   processDeathmarchEvents,
   sanitizeEventForAnonymity,
@@ -29,9 +31,30 @@ function deepseekResponse(content) {
   };
 }
 
-function deepseekClassifierResponse({ level, category }) {
-  return deepseekResponse(JSON.stringify({ level, category }));
+function deepseekClassifierResponse({
+  level,
+  category,
+  sensitive_entities = [],
+  sensitive_strategy_details = [],
+}) {
+  return deepseekResponse(JSON.stringify({
+    level,
+    category,
+    sensitive_entities,
+    sensitive_strategy_details,
+  }));
 }
+
+const databasePoolErrors = [];
+const observedDatabasePool = observeDeathmarchDatabasePool(new EventEmitter(), {
+  logger: { error: (message) => databasePoolErrors.push(message) },
+});
+assert.doesNotThrow(() => {
+  observedDatabasePool.emit("error", new Error("Connection terminated unexpectedly"));
+});
+assert.deepEqual(databasePoolErrors, [
+  "deathmarch_database_pool_error:Connection_terminated_unexpectedly",
+]);
 
 const sensitiveEvent = {
   schema: "pf.task.request.v1",
@@ -46,22 +69,34 @@ const sensitiveEvent = {
     schema: "pf.task.request.v1",
     task_id: "task_sensitive",
     title: "Model autocorrelation on tech sector names for client ACME Capital",
-    description: "Build a medium frequency trading signal for NVDA and AMD.",
+    description: "Buy NVDA when the five-day residual autocorrelation exceeds 0.4, then hedge with AMD at the specified weight.",
   },
 };
 
-const levelOne = sanitizeEventForAnonymity(sensitiveEvent, 1, { category: "market or trading-related task" });
+const protectedStrategySentence = sensitiveEvent.payload.description;
+const levelOne = sanitizeEventForAnonymity(sensitiveEvent, 1, {
+  category: "market or trading-related task",
+  sensitive_entities: [{ kind: "client", name: "ACME Capital" }],
+  sensitive_strategy_details: [protectedStrategySentence],
+});
 const levelOneText = JSON.stringify(levelOne);
-assert.equal(levelOne.directional_category, "market or trading-related task");
-assert.equal(levelOneText.includes("autocorrelation"), false);
-assert.equal(levelOneText.includes("tech sector"), false);
+assert.equal(levelOne.category, "market or trading-related task");
+assert.equal(levelOneText.includes("Model autocorrelation on tech sector names"), true);
 assert.equal(levelOneText.includes("ACME"), false);
 assert.equal(levelOneText.includes("NVDA"), false);
+assert.equal(levelOneText.includes("[redacted client]"), true);
+assert.equal(levelOneText.includes("[redacted strategy detail]"), true);
 
-const levelTwo = sanitizeEventForAnonymity(sensitiveEvent, 2);
+const levelTwo = sanitizeEventForAnonymity(sensitiveEvent, 2, {
+  level: 2,
+  category: "client strategy work",
+  sensitive_entities: [{ kind: "client", name: "ACME Capital" }],
+});
 const levelTwoText = JSON.stringify(levelTwo);
-assert.equal(levelTwo.public_instruction.includes("Only explicit trading IP should be withheld."), true);
-assert.equal(levelTwoText.includes("client ACME Capital"), true);
+assert.equal(levelTwo.public_instruction.includes("already been replaced"), true);
+assert.equal(levelTwoText.includes("ACME Capital"), false);
+assert.equal(levelTwoText.includes("[redacted client]"), true);
+assert.equal(levelTwoText.includes("NVDA"), true);
 
 const clientWorkEvent = {
   schema: "pf.task.offer.v1",
@@ -79,8 +114,56 @@ const clientWorkEvent = {
     description: "Summarize the client onboarding plan and legal review status.",
   },
 };
-const clientPacket = sanitizeEventForAnonymity(clientWorkEvent, 3, { level: 3, category: "client work" });
-assert.equal(JSON.stringify(clientPacket).includes("ACME Capital"), true);
+const clientPacket = sanitizeEventForAnonymity(clientWorkEvent, 2, {
+  level: 2,
+  category: "client work",
+  sensitive_entities: [{ kind: "client", name: "ACME Capital" }],
+});
+assert.equal(JSON.stringify(clientPacket).includes("ACME Capital"), false);
+assert.equal(JSON.stringify(clientPacket).includes("[redacted client] onboarding notes"), true);
+assert.equal(JSON.stringify(clientPacket).includes("legal review status"), true);
+
+const genericStrategyEvent = {
+  ...clientWorkEvent,
+  taskId: "task_generic_strategy",
+  txHash: "GENERICSTRATEGY123",
+  eventKey: "GENERICSTRATEGY123:0:QmGenericStrategy:pf.task.offer.v1",
+  payload: {
+    schema: "pf.task.offer.v1",
+    task_id: "task_generic_strategy",
+    title: "Explore semiconductor momentum research",
+    description: "Survey public approaches for a possible NVDA and AMD strategy without specifying proprietary mechanics.",
+  },
+};
+const genericStrategyPacket = sanitizeEventForAnonymity(genericStrategyEvent, 3, {
+  level: 3,
+  category: "market research",
+  sensitive_entities: [],
+});
+assert.equal(JSON.stringify(genericStrategyPacket).includes("semiconductor momentum research"), true);
+assert.equal(JSON.stringify(genericStrategyPacket).includes("NVDA and AMD"), true);
+
+const investorEvent = {
+  ...clientWorkEvent,
+  taskId: "task_investor_update",
+  txHash: "INVESTORUPDATE123",
+  eventKey: "INVESTORUPDATE123:0:QmInvestorUpdate:pf.task.offer.v1",
+  payload: {
+    schema: "pf.task.offer.v1",
+    task_id: "task_investor_update",
+    title: "Prepare Northstar Ventures update",
+    description: "Summarize product traction for investor Northstar Ventures and keep the operating metrics visible.",
+  },
+};
+const investorPacket = sanitizeEventForAnonymity(investorEvent, 2, {
+  level: 2,
+  category: "investor update",
+  sensitive_entities: [{ kind: "investor", name: "Northstar Ventures" }],
+});
+const investorPacketText = JSON.stringify(investorPacket);
+assert.equal(investorPacketText.includes("Northstar Ventures"), false);
+assert.equal(investorPacketText.includes("[redacted investor]"), true);
+assert.equal(investorPacketText.includes("operating metrics visible"), true);
 
 const requestEvent = {
   schema: "pf.task.request.v1",
@@ -279,7 +362,12 @@ const result = await processDeathmarchEvents({
       const body = JSON.parse(options.body);
       deepseekBodies.push(body);
       return deepseekBodies.length === 1
-        ? deepseekClassifierResponse({ level: 1, category: "market or trading-related task" })
+        ? deepseekClassifierResponse({
+          level: 1,
+          category: "market or trading-related task",
+          sensitive_entities: [{ kind: "client", name: "ACME Capital" }],
+          sensitive_strategy_details: [protectedStrategySentence],
+        })
         : deepseekResponse("User requested a market or trading-related task. tx: ABCDEF1234567890");
     }
     posted.push(JSON.parse(options.body));
@@ -289,16 +377,19 @@ const result = await processDeathmarchEvents({
 
 assert.equal(result.posted, 1);
 assert.equal(deepseekBodies.length, 2);
+const classifierInstructions = deepseekBodies[0].messages[0].content;
+assert.equal(classifierInstructions.includes("Do not use level 1 for a general topic"), true);
+assert.equal(classifierInstructions.includes("exact client names, exact investor names"), true);
 const l1SummarizerBody = JSON.stringify(deepseekBodies[1]);
-assert.equal(l1SummarizerBody.includes("autocorrelation"), false);
-assert.equal(l1SummarizerBody.includes("tech sector"), false);
+assert.equal(l1SummarizerBody.includes("Model autocorrelation on tech sector names"), true);
 assert.equal(l1SummarizerBody.includes("ACME"), false);
 assert.equal(l1SummarizerBody.includes("NVDA"), false);
+assert.equal(l1SummarizerBody.includes("[redacted strategy detail]"), true);
 assert.equal(l1SummarizerBody.includes("market or trading-related task"), true);
 assert.equal(posted.length, 1);
 assert.equal(posted[0].content.includes("**Task requested**"), true);
 assert.equal(posted[0].content.includes("User requested a market or trading-related task."), true);
-assert.equal(posted[0].content.includes("autocorrelation"), false);
+assert.equal(posted[0].content.includes("Model autocorrelation on tech sector names"), true);
 assert.equal(posted[0].content.includes("ACME"), false);
 assert.equal(posted[0].content.includes("NVDA"), false);
 assert.equal((posted[0].content.match(/tx:/g) || []).length, 1);
@@ -392,7 +483,36 @@ const classifiedDirect = await classifyEventAnonymity({
   },
   fetchImpl: async () => deepseekClassifierResponse({ level: 3, category: "public protocol work" }),
 });
-assert.deepEqual(classifiedDirect, { level: 3, category: "public protocol work" });
+assert.deepEqual(classifiedDirect, {
+  level: 3,
+  category: "public protocol work",
+  sensitive_entities: [],
+  sensitive_strategy_details: [],
+});
+
+const classifiedNamedEntities = await classifyEventAnonymity({
+  event: investorEvent,
+  env: {
+    DEEPSEEK_API_KEY: "test",
+    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+  },
+  fetchImpl: async () => deepseekClassifierResponse({
+    level: 2,
+    category: "investor update",
+    sensitive_entities: [
+      { kind: "investor", name: "Northstar Ventures" },
+      { kind: "vendor", name: "Ignored Vendor" },
+      { kind: "investor", name: "northstar ventures" },
+    ],
+    sensitive_strategy_details: [],
+  }),
+});
+assert.deepEqual(classifiedNamedEntities, {
+  level: 2,
+  category: "investor update",
+  sensitive_entities: [{ kind: "investor", name: "Northstar Ventures" }],
+  sensitive_strategy_details: [],
+});
 
 let deepseekCalls = 0;
 const continuedPosts = [];
@@ -572,5 +692,20 @@ await assert.rejects(
   }),
   /discord_destination_missing/
 );
+
+let legacyChannelRequest = null;
+const legacyChannelPost = await postToDiscord({
+  content: "legacy channel compatibility",
+  env: {
+    DISCORD_BOT_TOKEN: "test-token",
+    DEATHMARCH_CHANNEL_ID: "123456789012345678",
+  },
+  fetchImpl: async (url, options) => {
+    legacyChannelRequest = { url, options };
+    return { ok: true, status: 200, text: async () => "{}" };
+  },
+});
+assert.equal(legacyChannelPost.ok, true);
+assert.equal(legacyChannelRequest.url.endsWith("/channels/123456789012345678/messages"), true);
 
 console.log("deathmarch smoke ok");

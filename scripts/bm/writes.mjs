@@ -122,7 +122,7 @@ export async function taskCreate({
   rewardMin = 0,
   rewardMax = 0,
   assigneeHandle = "",
-  acceptWindowHours = 24,
+  acceptWindowHours = 0,
   execute = false,
 }) {
   if (!boardId || !accountId || !wallet || !safeText(need)) {
@@ -186,7 +186,7 @@ export async function taskCreate({
         why_not_duplicate: "Board Manager v2 generated this against live board state.",
         reward_min_pft: cappedMin,
         reward_max_pft: cappedMax,
-        accept_window_hours: acceptWindowHours,
+        accept_window_hours: acceptWindowHours > 0 ? acceptWindowHours : 0,
         allow_over_capacity: false,
       },
     },

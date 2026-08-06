@@ -473,7 +473,10 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
       amount_estimate_pft: normalizeReward(reward.amount_estimate_pft, policy),
     },
     deadline: {
-      accept_by: normalizedPolicyAcceptBy || normalizedOutputAcceptBy || normalizeDeadlineTimestamp(null, { fallbackMs: 24 * 60 * 60 * 1000 }),
+      // Tasks never die by clock. An accept-by stamp appears only when the
+      // routing policy explicitly requested a window (accept_window_hours > 0
+      // upstream); the model cannot invent one and there is no default.
+      accept_by: normalizedPolicyAcceptBy || null,
       deadline_at: policyDeadlineAt.present ? normalizedPolicyDeadlineAt : normalizedOutputDeadlineAt,
     },
   };
@@ -558,7 +561,8 @@ export function refreshTaskgenReplayDeadlineForPublish(taskgen = {}, policy = {}
   const deadlineAtText = safeText(normalizedOutput.deadline?.deadline_at, 80);
   const deadlineAtMs = Date.parse(deadlineAtText);
   const minFreshMs = Number(nowMs) + TASKGEN_REPLAY_ACCEPT_BY_MIN_FRESH_MS;
-  const acceptByStale = !Number.isFinite(acceptByMs) || acceptByMs <= minFreshMs;
+  const hasAcceptBy = Boolean(normalizedOutput.deadline?.accept_by);
+  const acceptByStale = hasAcceptBy && (!Number.isFinite(acceptByMs) || acceptByMs <= minFreshMs);
   const deadlineAtStale = Boolean(deadlineAtText) && (!Number.isFinite(deadlineAtMs) || deadlineAtMs <= minFreshMs);
   if (!acceptByStale && !deadlineAtStale) {
     return {
@@ -574,8 +578,8 @@ export function refreshTaskgenReplayDeadlineForPublish(taskgen = {}, policy = {}
   const refreshedAcceptBy = acceptByStale
     ? new Date(Number(nowMs) + TASKGEN_REPLAY_ACCEPT_BY_FALLBACK_MS).toISOString()
     : normalizedOutput.deadline.accept_by;
-  const refreshedAcceptByMs = Date.parse(refreshedAcceptBy);
-  const refreshedDeadlineAt = deadlineAtText && Number.isFinite(deadlineAtMs) && deadlineAtMs > refreshedAcceptByMs
+  const refreshedAcceptByMs = Date.parse(refreshedAcceptBy || "");
+  const refreshedDeadlineAt = deadlineAtText && Number.isFinite(deadlineAtMs) && (!Number.isFinite(refreshedAcceptByMs) || deadlineAtMs > refreshedAcceptByMs)
     ? normalizedOutput.deadline.deadline_at
     : null;
   const refreshedOutput = {

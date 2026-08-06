@@ -107,6 +107,7 @@ const migrations = [
   "098_deterministic_boards.sql",
   "099_board_manager_v2_decisions.sql",
   "100_board_manager_transcripts.sql",
+  "101_pin_deterministic_boards.sql",
 ];
 
 let migrated = false;

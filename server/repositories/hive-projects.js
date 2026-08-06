@@ -1575,6 +1575,7 @@ export async function getHiveProjectsDocument({
         SELECT *
         FROM network_project_contributors
         WHERE status <> 'archived'
+          AND project_id IN (SELECT id FROM network_projects WHERE status <> 'archived')
         ORDER BY project_id ASC, sort_order ASC, wallet_address ASC
       `
     ),
@@ -1678,6 +1679,7 @@ export async function getHiveProjectsDocument({
           LIMIT 1
         ) nft ON true
         WHERE refs.task_id <> ''
+          AND refs.project_id IN (SELECT id FROM network_projects WHERE status <> 'archived')
         ORDER BY refs.project_id ASC, refs.sort_order ASC, refs.id ASC
       `
     ),
@@ -1685,6 +1687,7 @@ export async function getHiveProjectsDocument({
       `
         SELECT *
         FROM network_project_activity
+        WHERE project_id IN (SELECT id FROM network_projects WHERE status <> 'archived')
         ORDER BY project_id ASC, sort_order ASC, id ASC
       `
     ),
@@ -1693,6 +1696,7 @@ export async function getHiveProjectsDocument({
         SELECT project_id, count(*)::int AS pending_generation_count
         FROM network_task_generation_jobs
         WHERE status IN ('queued', 'running', 'generated')
+          AND project_id IN (SELECT id FROM network_projects WHERE status <> 'archived')
         GROUP BY project_id
         ORDER BY project_id ASC
       `

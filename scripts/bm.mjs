@@ -188,7 +188,7 @@ async function main() {
       rewardMin: Number(flagValue("--reward-min", "0")),
       rewardMax: Number(flagValue("--reward-max", "0")),
       assigneeHandle: flagValue("--assignee-handle"),
-      acceptWindowHours: Number(flagValue("--accept-window-hours", "24")),
+      acceptWindowHours: Number(flagValue("--accept-window-hours", "0")),
       execute: rest.includes("--execute"),
     });
     console.log(JSON.stringify(result, null, 2));

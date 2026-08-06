@@ -308,10 +308,10 @@ function normalizePayload(payload = {}) {
       why_not_duplicate: safeText(networkTask.why_not_duplicate || networkTask.whyNotDuplicate, 1200),
       reward_min_pft: rewardBand.min,
       reward_max_pft: rewardBand.max,
-      accept_window_hours: Math.min(
-        336,
-        Math.max(1, Math.round(Number(networkTask.accept_window_hours ?? networkTask.acceptWindowHours ?? 24) || 24))
-      ),
+      accept_window_hours: (() => {
+        const raw = Math.round(Number(networkTask.accept_window_hours ?? networkTask.acceptWindowHours ?? 0) || 0);
+        return raw > 0 ? Math.min(336, Math.max(1, raw)) : 0;
+      })(),
       allow_over_capacity: Boolean(networkTask.allow_over_capacity || networkTask.allowOverCapacity),
     },
     message_precondition: {

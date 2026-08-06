@@ -70,6 +70,11 @@ Writes (every one is audited and journaled):
 - `task create <board_id> --account A --wallet W --need "..." [--reward-max N] [--assignee-handle H] --execute`
   — create a targeted network task. Without `--execute` it is a dry run.
   Inspect the dry-run output, then re-run with `--execute`.
+  Tasks have **no accept deadline and never expire by clock**: an offer
+  stays open until the assignee accepts or refuses it, or you cancel it
+  under the staleness policy below. When you see a terminal task, read its
+  actual last transition (`refused`, `cancelled`, `rewarded`) instead of
+  assuming a window lapsed.
 - `verify request <taskId> --ask "..." [--type evidence]` — set a
   verification challenge for a submitted task. Derive it from the actual
   acceptance criteria: name the file, commit, screen, or number expected.
