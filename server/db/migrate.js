@@ -109,6 +109,7 @@ const migrations = [
   "100_board_manager_transcripts.sql",
   "101_pin_deterministic_boards.sql",
   "102_bm_activity_summaries.sql",
+  "103_account_linked_wallets.sql",
 ];
 
 let migrated = false;

@@ -2549,8 +2549,46 @@ export function linkWalletToAccount({
     state.authEvents = state.authEvents.slice(-1000);
   }
   saveState();
+  mirrorLinkedWalletToDatabase({
+    accountId: normalizedAccountId,
+    walletAddress: wallet.address,
+    linkedAt: wallet.linkedAt,
+    reclaimedAccountIds: reclaimedOwners.map(([ownerAccountId]) => ownerAccountId),
+  });
 
   return { ok: true, wallet, reclaimedWalletCount: reclaimedOwners.length };
+}
+
+// Durable cross-process mirror of wallet links (migration 103). The runtime
+// store lives on the app machine's volume only; worker machines (network
+// task generation) must be able to resolve an account's current wallet, so
+// every link/delink is mirrored to Postgres best-effort.
+function mirrorLinkedWalletToDatabase({ accountId, walletAddress, linkedAt = null, reclaimedAccountIds = [] }) {
+  (async () => {
+    const { databaseEnabled, query } = await import("./db/pool.js");
+    if (!databaseEnabled()) return;
+    await query(
+      `INSERT INTO account_linked_wallets (account_id, wallet_address, status, linked_at, updated_at)
+       VALUES ($1, $2, 'linked', $3, now())
+       ON CONFLICT (account_id) DO UPDATE SET
+         wallet_address = EXCLUDED.wallet_address,
+         status = 'linked',
+         linked_at = EXCLUDED.linked_at,
+         updated_at = now()`,
+      [accountId, walletAddress, linkedAt]
+    );
+    for (const reclaimed of reclaimedAccountIds) {
+      await query(`DELETE FROM account_linked_wallets WHERE account_id = $1`, [reclaimed]);
+    }
+  })().catch(() => null);
+}
+
+function mirrorDelinkedWalletToDatabase(accountId) {
+  (async () => {
+    const { databaseEnabled, query } = await import("./db/pool.js");
+    if (!databaseEnabled()) return;
+    await query(`DELETE FROM account_linked_wallets WHERE account_id = $1`, [accountId]);
+  })().catch(() => null);
 }
 
 export function resolveOrCreateWalletLoginAccount({
@@ -2679,6 +2717,7 @@ export function delinkWalletFromAccount({
     state.authEvents = state.authEvents.slice(-1000);
   }
   saveState();
+  mirrorDelinkedWalletToDatabase(normalizedAccountId);
 
   return { ok: true, wallet: previousWallet };
 }
