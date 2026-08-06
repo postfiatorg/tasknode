@@ -5889,3 +5889,21 @@ a.hive-veteran-name:hover { text-decoration: underline; }
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Hive Brain narrator card (replaces raw terminal) */
+.bm-narrative-list { display: flex; flex-direction: column; }
+.bm-narrative { border-bottom: 1px solid #23301f; padding: 13px 16px; }
+.bm-narrative:last-child { border-bottom: none; }
+.bm-narrative-text {
+  color: #d3e8c2;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0 0 7px;
+}
+.bm-narrative-meta {
+  color: #7d9370;
+  display: flex;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  gap: 6px;
+}

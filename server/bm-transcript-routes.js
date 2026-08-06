@@ -40,7 +40,7 @@ export async function handleBmFeedRoute({ json, req, res, url }) {
     json(res, 400, { ok: false, error: "unknown_board", boards: DETERMINISTIC_BOARD_IDS });
     return true;
   }
-  const [boardRow, budgetRow, spendRow, actionRows, transcriptRow, liveness] = await Promise.all([
+  const [boardRow, budgetRow, spendRow, actionRows, narrativeRow, liveness] = await Promise.all([
     query(`SELECT id, title, status, phase_label FROM network_projects WHERE id = $1`, [boardId]),
     query(
       `SELECT daily_budget_pft, per_task_cap_pft, per_user_7d_cap_pft
@@ -62,10 +62,10 @@ export async function handleBmFeedRoute({ json, req, res, url }) {
       [boardId]
     ),
     query(
-      `SELECT session_name, seq, content, captured_at
-       FROM board_manager_transcripts
+      `SELECT summary, model, source, created_at
+       FROM bm_activity_summaries
        WHERE board_id = $1
-       ORDER BY seq DESC LIMIT 1`,
+       ORDER BY created_at DESC LIMIT 3`,
       [boardId]
     ),
     query(
@@ -95,14 +95,16 @@ export async function handleBmFeedRoute({ json, req, res, url }) {
         }
       : null,
     actions: actionRows.rows.map(publicAction),
-    transcript: transcriptRow.rows[0] || null,
+    narratives: narrativeRow.rows,
   });
   return true;
 }
 
-// Public read-only view of board-manager terminal transcripts (Gate F).
-// Hive Brain renders this stream; it is the network's audit view of each
-// board agent's reasoning. Rows are secret-scrubbed at ingest.
+// RETIRED from public serving (operator security ruling 2026-08-06): raw
+// terminal output is a prompt-injection and secret-exposure surface. The
+// mirror table remains for internal forensics; the public feed serves
+// narrator summaries instead. Kept exported for potential admin tooling,
+// but no longer registered as a route.
 export async function handleBmTranscriptRoute({ json, req, res, url }) {
   if (url.pathname !== "/api/hive/bm-transcript" || req.method !== "GET") return false;
   if (!databaseEnabled()) {

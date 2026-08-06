@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Activity, RefreshCw } from "lucide-react";
 import { requestJson } from "../../api";
 import "./hive.css";
@@ -140,10 +140,7 @@ export function HiveBrainView() {
   }, [boardId, load]);
 
   const online = feed?.agent?.online === true;
-  const transcriptLines = useMemo(() => {
-    const content = feed?.transcript?.content || "";
-    return content.split("\n").filter((line) => line.trim() !== "").slice(-40).join("\n");
-  }, [feed]);
+  const narratives = feed?.narratives || [];
 
   return (
     <div className="route-scroll hive-route">
@@ -202,26 +199,34 @@ export function HiveBrainView() {
             </section>
 
             <aside className="bm-side">
-              <section className="bm-screen-card" aria-label="Agent terminal">
+              <section className="bm-screen-card" aria-label="Manager narrative">
                 <header className="bm-screen-head">
                   <span className={online ? "bm-led is-on" : "bm-led"} aria-hidden="true" />
-                  <span className="bm-screen-title">
-                    {feed.transcript?.session_name || "agent screen"}
-                  </span>
+                  <span className="bm-screen-title">what the manager is doing</span>
                   <span className="bm-screen-status">
                     {online
-                      ? "LIVE"
+                      ? "ACTIVE"
                       : feed.agent?.last_seen
                         ? `idle · ${timeAgo(feed.agent.last_seen)}`
                         : "offline"}
                   </span>
                 </header>
-                {transcriptLines ? (
-                  <pre className="bm-screen" tabIndex={0}>{transcriptLines}</pre>
+                {narratives.length ? (
+                  <div className="bm-narrative-list">
+                    {narratives.map((entry, index) => (
+                      <article key={entry.created_at || index} className="bm-narrative">
+                        <p className="bm-narrative-text">{entry.summary}</p>
+                        <footer className="bm-narrative-meta">
+                          <time dateTime={entry.created_at}>{timeAgo(entry.created_at)}</time>
+                          {entry.source === "model" ? <span>&middot; narrated</span> : <span>&middot; auto</span>}
+                        </footer>
+                      </article>
+                    ))}
+                  </div>
                 ) : (
                   <div className="bm-screen bm-screen-empty">
-                    No terminal capture yet. The agent&apos;s screen is
-                    mirrored here every few minutes while it runs.
+                    No narrated activity yet. Each manager action is
+                    summarized in plain English within a few minutes.
                   </div>
                 )}
               </section>

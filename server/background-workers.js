@@ -4,6 +4,7 @@ import { startHiveProjectWorker } from "./hive-project-worker.js";
 import { startHiveReportsWorker } from "./hive-reports-worker.js";
 import { startHiveTaskManagerWorker } from "./hive-task-manager-worker.js";
 import { startTaskAccountingHarvesterWorker } from "./task-accounting-harvester-worker.js";
+import { startBmNarratorWorker } from "./bm-narrator-worker.js";
 import { startIpfsReplicationWorker } from "./ipfs-replication-worker.js";
 import { startNetworkTaskGenerationWorker } from "./network-task-generation-worker.js";
 import { startPftlCacheRetentionWorker } from "./pftl-cache-maintenance.js";
@@ -54,6 +55,7 @@ function startHiveWorkers(startOne) {
   startOne("hive_reports", startHiveReportsWorker);
   startOne("hive_task_manager", startHiveTaskManagerWorker);
   startOne("task_accounting_harvester", startTaskAccountingHarvesterWorker);
+  startOne("bm_narrator", startBmNarratorWorker);
 }
 
 function startMemoryProfileWorkers(startOne) {
