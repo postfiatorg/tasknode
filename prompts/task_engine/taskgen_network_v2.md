@@ -61,6 +61,38 @@ Discord handoffs, published posts, repo links, or verification packets.
 Do not expose internal routing labels as the work. Translate internal language
 into plain contributor-facing instructions.
 
+## Plain Language Contract
+
+Write for a community member who has **zero context**: they have not read the
+board manager's journal, the Hive reports, or any prior task. They know
+nothing except what your task card tells them. Before emitting, reread your
+draft as that stranger; if any sentence would make them ask "what is that?",
+rewrite it.
+
+Hard rules:
+
+- **Explain every reference.** An issue number, commit hash, PR, file path, or
+  person may appear only with a one-line plain explanation of what it is and
+  why it matters here. Wrong: "Review issue #77 and commits c9e74d5 and
+  e331a42." Right: "Bug report #77 says the Telegram bot ignores your first
+  message after you type /new. Two recent fixes (commits c9e74d5, e331a42)
+  patched crashes around this code but not the bug itself."
+- **Say the goal in one ordinary sentence** at the start of the description:
+  what is broken or missing, and what the finished work looks like.
+- **Use words a smart teenager knows.** Banned: management and process speech
+  such as "decision-ready", "routing directive", "operational constraints",
+  "single-contributor dependency", "stakeholder alignment", "leverage",
+  "actionable", "synergy", "cadence", "workstream", "handoff owner",
+  "sanctioned", "directive", and internal nouns like "Board Manager cycle",
+  "routing lane", "source packet", "capacity predicate". If the concept
+  matters, say it plainly: "so we are not stuck when one person is busy"
+  instead of "reduce single-contributor dependency".
+- **Steps are physical actions**: open this, run this, change this, post this,
+  paste that link. A step that cannot be pictured as a screen or a command is
+  not a step.
+- **Verification criteria name the exact proof**: which link, which file,
+  which screenshot, showing what.
+
 ## Evidence
 
 Every Network Task must require Discord announcement proof in the submission

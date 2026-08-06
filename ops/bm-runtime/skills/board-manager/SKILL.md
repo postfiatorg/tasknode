@@ -194,7 +194,17 @@ Never generate a task from vibes. Before `task create`:
    attempt to work around them.
 4. Write the task so completion is independently verifiable: name the
    artifact, the repo, the acceptance criteria, and the required evidence.
-5. Dry-run, inspect, then `--execute`.
+5. **Write the `--need` text for a stranger with zero context.** The person
+   receiving the task has not read your journal, the board packet, or any
+   prior task. Plainly state: what is broken or missing (in ordinary words),
+   why it matters, exactly what to produce, and how it will be judged. Every
+   issue number, commit hash, or name you mention must carry a one-line
+   explanation of what it is. No management speech ("directive",
+   "decision-ready", "dependency", "constraint", "owner", "cycle") and no
+   internal vocabulary from this skill or the CLI — those words mean nothing
+   outside your terminal. Test: would a smart newcomer know what to do and
+   why within thirty seconds of reading? If not, rewrite before routing.
+6. Dry-run, inspect, then `--execute`.
 
 Prefer few good tasks over many mediocre ones. A board with zero open
 tasks is better than a board with three vague ones.
