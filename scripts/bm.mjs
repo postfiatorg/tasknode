@@ -104,6 +104,18 @@ async function main() {
       console.log(`\n## ${bucket} (${rows.length})`);
       for (const task of rows.slice(0, 25)) console.log(taskLine(task));
     }
+    const idle = packet.idle_eligible_contributors || [];
+    console.log(`\n## idle_eligible_contributors (${idle.length}) — badge-verified, free capacity, strongest first`);
+    for (const contributor of idle.slice(0, 10)) {
+      console.log(
+        `  ${contributor.account_id} badges=${(contributor.badges || []).join(",")} rewarded=${contributor.rewarded_tasks}`
+      );
+    }
+    for (const lead of packet.source_leads || []) {
+      console.log(`\n## source_leads: ${lead.repo} (HEAD ${lead.head}, ${lead.todo_count} TODO/FIXME markers)`);
+      for (const commit of (lead.recent_commits || []).slice(0, 5)) console.log(`  commit ${commit}`);
+      for (const todo of (lead.todo_sample || []).slice(0, 10)) console.log(`  ${todo}`);
+    }
     if (packet.hive_chat_digest) {
       console.log(`\n## hive_chat_digest (${packet.hive_chat_digest.report_id})`);
       console.log(packet.hive_chat_digest.text);

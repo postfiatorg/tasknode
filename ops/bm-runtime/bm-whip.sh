@@ -71,7 +71,7 @@ while IFS= read -r ALIAS; do
   PENDING_FILE="$BM_STATE_DIR/$ALIAS.pending"
   LAST="$(cat "$STATE_FILE" 2>/dev/null || true)"
 
-  WAKE_MESSAGE="Board state changed (digest $DIGEST). Run: cd $BM_REPO && node scripts/bm.mjs board $BOARD_ID — then handle anything in awaiting_review, generate needed tasks, and journal what you did (journaling is also your wake acknowledgment)."
+  WAKE_MESSAGE="Board state changed (digest $DIGEST). Run: cd $BM_REPO && node scripts/bm.mjs board $BOARD_ID and read the FULL output including idle_eligible_contributors and source_leads. Handle awaiting_review first, then run the routing pass: match idle badge-verified contributors to grounded source leads and route real work to them (or journal exactly why nothing was routable). While you are the only live board manager, this duty covers all six boards' routing, respecting each board's budget and caps. Journal what you did (journaling is also your wake acknowledgment)."
 
   if [ -f "$PENDING_FILE" ]; then
     # pending format: digest|iso_injected_at|attempts

@@ -299,5 +299,10 @@ When a CLI command fails or reports unexpected state:
 - Never edit budget tables, worker code, or the `tasknodeofficial` repo
   itself. You operate the product; you do not modify it. Product defects
   belong on the Task Node Fixes board.
-- Stay inside your board. Cross-board questions go in the journal for the
-  operator.
+- Stay inside your board — with one operator-granted exception: **while you
+  are the only live board manager (pilot), you also cover routing for the
+  dormant boards.** Respect each board's own budget, caps, evidence norms,
+  and routing constraints when acting on it, prefix cross-board journal
+  entries with the board id, and hand the duty back when that board's own
+  manager launches. Cross-board *policy* questions still go in the journal
+  for the operator.
