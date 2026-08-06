@@ -6,6 +6,8 @@ import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 import { buildRequestBundle } from "./task-request.js";
 import { scheduleTaskGenerationQueue } from "./task-generation-worker.js";
 import { getTaskRequestByRequestId, upsertTaskRequest } from "./repositories/task-requests.js";
+import { getLinkedWallet } from "./runtime-store.js";
+import { query } from "./db/pool.js";
 import {
   claimNetworkTaskGenerationJobs,
   markNetworkTaskGenerationJobFailed,
@@ -122,9 +124,44 @@ export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward =
 
 export async function createTaskRequestForNetworkJob(job = {}) {
   const source = safeObject(job.source_payload_json);
+
+  // Route to the candidate's CURRENT linked wallet. Candidate rows can carry
+  // stale wallets from historic profile data; a task offered to a wallet the
+  // user no longer follows is invisible in their wallet-scoped task UI.
+  // The runtime store on this worker is the linked-wallet source of truth.
+  const linkedWallet = getLinkedWallet({ accountId: job.candidate_account_id });
+  if (
+    linkedWallet?.status === "linked" &&
+    linkedWallet.address &&
+    linkedWallet.address !== job.candidate_wallet_address
+  ) {
+    job = {
+      ...job,
+      candidate_wallet_address: linkedWallet.address,
+      metadata_json: {
+        ...safeObject(job.metadata_json),
+        wallet_corrected_from: job.candidate_wallet_address,
+        wallet_corrected_reason: "routed_to_current_linked_wallet",
+      },
+    };
+  }
+
+  // Advertised reward bands must respect the board's per-task cap; the
+  // publisher clamps payouts anyway, but an offer must never advertise more
+  // than the caps can pay.
+  let perTaskCap = 0;
+  try {
+    const capRow = await query(
+      `SELECT per_task_cap_pft FROM board_reward_budgets WHERE board_id = $1`,
+      [safeText(job.project_id, 180)]
+    );
+    perTaskCap = Number(capRow.rows[0]?.per_task_cap_pft || 0);
+  } catch {
+    perTaskCap = 0;
+  }
   const reward = normalizeNetworkTaskRewardBand({
-    min: job.reward_min_pft,
-    max: job.reward_max_pft,
+    min: perTaskCap > 0 ? Math.min(Number(job.reward_min_pft) || 0, perTaskCap) : job.reward_min_pft,
+    max: perTaskCap > 0 ? Math.min(Number(job.reward_max_pft) || 0, perTaskCap) : job.reward_max_pft,
   });
   const requestId = safeText(job.request_id, 180) || `req_net_${sha256(job.id).slice(0, 32)}`;
   const bundleId = `bundle_net_${sha256(`${job.id}:${job.source_payload_digest}`).slice(0, 32)}`;
