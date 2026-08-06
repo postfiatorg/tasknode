@@ -95,11 +95,17 @@ async function latestSecretaryReport() {
 }
 
 export async function boardDigest(boardId) {
-  const [board, allocations, tasks, secretary] = await Promise.all([
+  const [board, allocations, tasks, secretary, decisions] = await Promise.all([
     boardRow(boardId),
     allocationState(boardId),
     linkedTasks(boardId, { limit: 500 }),
     latestSecretaryReport(),
+    query(
+      `SELECT id, status FROM bm_agent_decisions
+       WHERE board_id = $1 AND status IN ('pending', 'superseded', 'refused')
+       ORDER BY created_at DESC LIMIT 50`,
+      [boardId]
+    ).catch(() => ({ rows: [] })),
   ]);
   if (!board) return null;
   const source = {
@@ -111,6 +117,9 @@ export async function boardDigest(boardId) {
       last: String(row.last_updated),
     })),
     tasks: tasks.map((row) => ({ id: row.task_id, status: row.status, last: String(row.last_event_at) })),
+    // Decision state is board state: a superseded or refused decision must
+    // wake the manager through the normal whip channel.
+    decisions: decisions.rows.map((row) => `${row.id}:${row.status}`),
     secretary_report_id: secretary?.id || "",
   };
   return { boardId: board.id, digest: sha256(source), source };

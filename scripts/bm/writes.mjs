@@ -40,6 +40,19 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
   if (!task) throw new Error(`task_not_found:${taskId}`);
   const boardId = await boardForTask(taskId);
   if (!boardId) throw new Error(`task_not_board_linked:${taskId} (bm review only covers network board tasks)`);
+  // Lifecycle invariant (operator ruling): every task completes the full
+  // cycle. A review decision is only recordable after the contributor has
+  // answered a verification request. No skip paths.
+  if (task.status !== "verification_response_submitted") {
+    throw new Error(
+      `lifecycle_violation: task is in '${task.status}'. A review decision requires state ` +
+        `'verification_response_submitted'. The cycle is: submitted -> bm verify request ` +
+        `-> contributor verification response -> bm review. ` +
+        (task.status === "submitted"
+          ? `Next action: bm verify request ${taskId} --ask "..."`
+          : `No review action is available from '${task.status}'.`)
+    );
+  }
   const normalizedDecision = ["reward", "partial_reward", "reject"].includes(decision)
     ? decision
     : "";
@@ -82,6 +95,13 @@ export async function verifyRequest({ taskId, ask, type = "evidence", reason = "
   if (!task) throw new Error(`task_not_found:${taskId}`);
   const boardId = await boardForTask(taskId);
   if (!boardId) throw new Error(`task_not_board_linked:${taskId}`);
+  if (task.status !== "submitted") {
+    throw new Error(
+      `lifecycle_violation: task is in '${task.status}'. A verification request is issued ` +
+        `only for state 'submitted' (after initial evidence, before the contributor's ` +
+        `verification response).`
+    );
+  }
   if (!safeText(ask)) throw new Error("verification ask required (--ask)");
   const row = await recordAgentDecision({
     kind: "verification_request",
