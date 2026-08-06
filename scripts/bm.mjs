@@ -282,6 +282,22 @@ async function main() {
     return;
   }
 
+  if (command === "duties") {
+    // Deterministic per-round work order across one or more boards.
+    const { computeBoardDuties, formatDuties } = await import("./bm/lib.mjs");
+    const boardIds = positional.length
+      ? positional.map((input) => resolveBoardId(input)).filter(Boolean)
+      : [...DETERMINISTIC_BOARD_IDS];
+    if (!boardIds.length) return fail("Usage: bm duties [board...] (default: all boards)");
+    const result = await computeBoardDuties(boardIds);
+    if (asJson) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(formatDuties(result));
+      console.log(`\nduties_digest ${result.digest}`);
+    }
+    return;
+  }
+
   if (command === "activity") {
     // Rows in bm_audit_log for this board since a timestamp. The whip uses
     // this as the processing acknowledgment for injected wakes: the agent's
@@ -318,6 +334,7 @@ async function main() {
       "  board <board> [--json]      full board packet (incl. budget + pending decisions)",
       "  user <account|wallet>       task history + badges",
       "  history <board> [--limit N] terminal task history",
+      "  duties [board...]           deterministic per-round work order (whip input)",
       "  task create <board> --account --wallet --need [--reward-max N] [--execute]",
       "  task cancel <taskId> --reason ... [--execute]   (proposed/accepted network tasks only)",
       "  verify request <taskId> --ask ... [--type evidence]",

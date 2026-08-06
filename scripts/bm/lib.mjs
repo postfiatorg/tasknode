@@ -351,6 +351,108 @@ export async function userPacket(accountOrWallet, { limit = 20 } = {}) {
   };
 }
 
+// Deterministic per-round duty computation (the whip's work order). Every
+// duty is derived from durable state, so two runs against the same state
+// produce the same list and the same digest.
+export async function computeBoardDuties(boardIds = []) {
+  const duties = [];
+  const idle = await idleEligibleContributors();
+
+  for (const boardId of boardIds) {
+    const board = await query(
+      `SELECT id, title, updated_at FROM network_projects WHERE id = $1`,
+      [boardId]
+    );
+    const boardRowData = board.rows[0];
+    if (!boardRowData) continue;
+
+    const tasks = await query(
+      `SELECT tp.task_id, tp.status, tp.title, tp.last_event_at, tp.created_at
+       FROM network_task_allocations a
+       JOIN task_projections tp ON tp.task_id = a.generated_task_id
+       WHERE a.project_id = $1 AND a.generated_task_id <> ''
+         AND tp.status IN ('proposed','accepted','submitted','verification_requested','verification_response_submitted')`,
+      [boardId]
+    );
+    const pending = await query(
+      `SELECT task_id, kind FROM bm_agent_decisions
+       WHERE board_id = $1 AND status = 'pending'`,
+      [boardId]
+    );
+    const pendingByTask = new Map(pending.rows.map((row) => [`${row.task_id}:${row.kind}`, true]));
+
+    for (const task of tasks.rows) {
+      if (task.status === "verification_response_submitted" && !pendingByTask.has(`${task.task_id}:review`)) {
+        duties.push({
+          priority: 1,
+          type: "review_due",
+          board_id: boardId,
+          task_id: task.task_id,
+          detail: `Verification response awaiting your reward review: ${task.title}`,
+        });
+      }
+      if (task.status === "submitted" && !pendingByTask.has(`${task.task_id}:verification_request`)) {
+        duties.push({
+          priority: 2,
+          type: "verification_due",
+          board_id: boardId,
+          task_id: task.task_id,
+          detail: `Submission awaiting your verification request: ${task.title}`,
+        });
+      }
+      if (task.status === "proposed" && Date.now() - new Date(task.created_at).getTime() > 7 * 24 * 3600 * 1000) {
+        duties.push({
+          priority: 4,
+          type: "stale_proposal",
+          board_id: boardId,
+          task_id: task.task_id,
+          detail: `Proposed ${Math.floor((Date.now() - new Date(task.created_at).getTime()) / 86400000)}d ago, unaccepted — apply the staleness policy (cancel or journal why not): ${task.title}`,
+        });
+      }
+    }
+
+    const openCount = tasks.rows.filter((task) => ["proposed", "accepted"].includes(task.status)).length;
+    const freeSlots = Math.max(0, 3 - openCount);
+    if (freeSlots > 0 && idle.length > 0) {
+      duties.push({
+        priority: 3,
+        type: "routing_due",
+        board_id: boardId,
+        detail: `${freeSlots} open-task slot(s) free and ${idle.length} idle badge-verified contributors (top: ${idle
+          .slice(0, 3)
+          .map((c) => `${c.account_id.slice(0, 24)}[${(c.badges || []).join("/")},${c.rewarded_tasks} rewarded]`)
+          .join("; ")}). Route grounded work that suits their history, or journal exactly why nothing in the sources is routable.`,
+      });
+    }
+
+    if (Date.now() - new Date(boardRowData.updated_at).getTime() > 24 * 3600 * 1000) {
+      duties.push({
+        priority: 5,
+        type: "board_info_stale",
+        board_id: boardId,
+        detail: `Board info last updated ${Math.floor((Date.now() - new Date(boardRowData.updated_at).getTime()) / 3600000)}h ago (>24h) — refresh summary/phase via board-update.`,
+      });
+    }
+  }
+
+  duties.sort((left, right) => left.priority - right.priority || String(left.task_id || "").localeCompare(String(right.task_id || "")));
+  const digest = sha256(duties.map((duty) => `${duty.type}:${duty.board_id}:${duty.task_id || ""}`).join("|"));
+  return { generated_at: new Date().toISOString(), board_ids: boardIds, duties, digest };
+}
+
+export function formatDuties(result) {
+  const lines = [];
+  if (!result.duties.length) {
+    lines.push("No mandatory duties this round. All boards current.");
+  } else {
+    lines.push(`MANDATORY DUTIES this round (${result.duties.length}), in priority order:`);
+    result.duties.forEach((duty, index) => {
+      lines.push(`${index + 1}. [${duty.type}] [${duty.board_id}]${duty.task_id ? ` [${duty.task_id}]` : ""} ${duty.detail}`);
+    });
+  }
+  return lines.join("\n");
+}
+
 export async function boardHistory(boardId, { limit = 30 } = {}) {
   const result = await query(
     `SELECT tp.task_id, tp.status, tp.title, tp.account_id, tp.subject_wallet,

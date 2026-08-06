@@ -14,20 +14,35 @@
 set -uo pipefail
 . "$(dirname "$0")/bm-env.sh"
 
-ENABLED_FILE="$BM_HOME/enabled-boards"
-[ -f "$ENABLED_FILE" ] || { bm_log "whip: no enabled-boards file; nothing to do"; exit 0; }
+# Agent coverage config: each line "alias: board_id[,board_id...]" maps a
+# tmux session (bm-<alias>) to the boards it manages. This is the multi-agent
+# scaling knob: one agent can cover one board or several. Falls back to the
+# legacy enabled-boards file (one alias per line = that alias's own board).
+AGENTS_FILE="$BM_HOME/agents.conf"
+if [ ! -f "$AGENTS_FILE" ]; then
+  ENABLED_FILE="$BM_HOME/enabled-boards"
+  [ -f "$ENABLED_FILE" ] || { bm_log "whip: no agents.conf or enabled-boards; nothing to do"; exit 0; }
+  : > "$BM_STATE_DIR/agents.generated"
+  while IFS= read -r ALIAS; do
+    [ -n "$ALIAS" ] || continue
+    case "$ALIAS" in \#*) continue ;; esac
+    for pair in $BM_BOARDS_LIST; do
+      if [ "${pair%%:*}" = "$ALIAS" ]; then echo "$ALIAS: ${pair##*:}" >> "$BM_STATE_DIR/agents.generated"; fi
+    done
+  done < "$AGENTS_FILE"
+  AGENTS_FILE="$BM_STATE_DIR/agents.generated"
+fi
 
 "$(dirname "$0")/bm-proxy.sh" >/dev/null 2>&1 || { bm_log "whip: proxy failed"; exit 1; }
 bm_load_db_env
 
-while IFS= read -r ALIAS; do
-  [ -n "$ALIAS" ] || continue
-  case "$ALIAS" in \#*) continue ;; esac
-  BOARD_ID=""
-  for pair in $BM_BOARDS_LIST; do
-    if [ "${pair%%:*}" = "$ALIAS" ]; then BOARD_ID="${pair##*:}"; fi
-  done
-  [ -n "$BOARD_ID" ] || { bm_log "whip: unknown alias $ALIAS"; continue; }
+while IFS= read -r AGENT_LINE; do
+  [ -n "$AGENT_LINE" ] || continue
+  case "$AGENT_LINE" in \#*) continue ;; esac
+  ALIAS="${AGENT_LINE%%:*}"
+  BOARDS_CSV="$(echo "${AGENT_LINE#*:}" | tr -d ' ')"
+  BOARD_ID="${BOARDS_CSV%%,*}"   # primary board (used for launch context)
+  [ -n "$ALIAS" ] && [ -n "$BOARDS_CSV" ] || { bm_log "whip: bad agents line: $AGENT_LINE"; continue; }
   SESSION="bm-$ALIAS"
 
   # 1. Liveness. A session whose pane no longer has a live pfterminal
@@ -55,55 +70,73 @@ while IFS= read -r ALIAS; do
     continue
   fi
 
-  # 2. Wake delivery with processing acknowledgment.
+  # 2. Deterministic duty-driven wake with processing acknowledgment.
   #
-  # An injection is only *delivered*; it is *processed* when the agent writes
-  # any bm_audit_log row afterward (its contract requires journaling every
-  # wake). A pending wake without audit activity is re-injected up to 3
-  # times, then alerts. This survives interrupted turns and model timeouts;
-  # fire-and-forget does not.
-  DIGEST="$(cd "$BM_REPO" && node scripts/bm.mjs digest "$BOARD_ID" 2>/dev/null | awk '{print $2}')"
-  if [ -z "$DIGEST" ]; then
-    bm_log "whip: $ALIAS digest failed"
+  # Each round the whip computes the agent's mandatory to-do list from
+  # durable state (bm duties): reviews due, verification requests due,
+  # routing opportunities (idle badge capacity + free slots), stale
+  # proposals, stale board info. The injection IS the work order. It fires
+  # when the underlying board state OR the duty list changes, and stays
+  # pending until the agent's audit activity acknowledges it (3 retries,
+  # then alert).
+  BOARD_ARGS="$(echo "$BOARDS_CSV" | tr ',' ' ')"
+  DIGEST=""
+  for ONE_BOARD in $BOARD_ARGS; do
+    ONE="$(cd "$BM_REPO" && node scripts/bm.mjs digest "$ONE_BOARD" 2>/dev/null | awk '{print $2}')"
+    DIGEST="$DIGEST$ONE"
+  done
+  DIGEST="$(printf '%s' "$DIGEST" | sha256sum | awk '{print $1}')"
+  DUTIES_TEXT="$(cd "$BM_REPO" && node scripts/bm.mjs duties $BOARD_ARGS 2>/dev/null)"
+  DUTIES_DIGEST="$(printf '%s' "$DUTIES_TEXT" | rg -o 'duties_digest [a-f0-9]+' | awk '{print $2}')"
+  if [ -z "$DIGEST" ] || [ -z "$DUTIES_TEXT" ]; then
+    bm_log "whip: $ALIAS digest/duties failed"
     continue
   fi
+  COMBINED="$DIGEST:$DUTIES_DIGEST"
   STATE_FILE="$BM_STATE_DIR/$ALIAS.digest"
   PENDING_FILE="$BM_STATE_DIR/$ALIAS.pending"
   LAST="$(cat "$STATE_FILE" 2>/dev/null || true)"
 
-  WAKE_MESSAGE="Board state changed (digest $DIGEST). Run: cd $BM_REPO && node scripts/bm.mjs board $BOARD_ID and read the FULL output including idle_eligible_contributors and source_leads. Handle awaiting_review first, then run the routing pass: match idle badge-verified contributors to grounded source leads and route real work to them (or journal exactly why nothing was routable). While you are the only live board manager, this duty covers all six boards' routing, respecting each board's budget and caps. Journal what you did (journaling is also your wake acknowledgment)."
+  WAKE_MESSAGE="Round wake for boards: $BOARDS_CSV (state $COMBINED).
+$DUTIES_TEXT
+
+Complete every numbered duty above in order, or journal exactly why a specific duty cannot be completed this round. Use: cd $BM_REPO && node scripts/bm.mjs <command>. Respect each board's budget, caps, and routing constraints. Journal what you did — journaling is also your wake acknowledgment."
 
   if [ -f "$PENDING_FILE" ]; then
     # pending format: digest|iso_injected_at|attempts
     IFS='|' read -r PENDING_DIGEST PENDING_AT PENDING_ATTEMPTS < "$PENDING_FILE"
-    ACTIVITY="$(cd "$BM_REPO" && node scripts/bm.mjs activity "$BOARD_ID" --since "$PENDING_AT" 2>/dev/null || echo "")"
+    ACTIVITY=0
+    for ONE_BOARD in $BOARD_ARGS; do
+      ONE_N="$(cd "$BM_REPO" && node scripts/bm.mjs activity "$ONE_BOARD" --since "$PENDING_AT" 2>/dev/null || echo 0)"
+      ACTIVITY=$(( ACTIVITY + ${ONE_N:-0} ))
+    done
     if [ -n "$ACTIVITY" ] && [ "$ACTIVITY" -gt 0 ] 2>/dev/null; then
       echo "$PENDING_DIGEST" > "$STATE_FILE"
       rm -f "$PENDING_FILE"
-      bm_log "whip: $ALIAS wake acknowledged ($ACTIVITY audit rows); digest $PENDING_DIGEST committed"
+      bm_log "whip: $ALIAS wake acknowledged ($ACTIVITY audit rows); state $PENDING_DIGEST committed"
       LAST="$PENDING_DIGEST"
     else
       ATTEMPTS=$(( ${PENDING_ATTEMPTS:-1} ))
       if [ "$ATTEMPTS" -ge 3 ]; then
-        echo "$(date -u +%FT%TZ) $SESSION wake unacknowledged after $ATTEMPTS attempts (digest $PENDING_DIGEST)" >> "$BM_HOME/ALERTS.log"
-        bm_log "whip: ALERT $ALIAS wake unacknowledged after $ATTEMPTS attempts; committing digest to avoid a loop"
+        echo "$(date -u +%FT%TZ) $SESSION wake unacknowledged after $ATTEMPTS attempts (state $PENDING_DIGEST)" >> "$BM_HOME/ALERTS.log"
+        bm_log "whip: ALERT $ALIAS wake unacknowledged after $ATTEMPTS attempts; committing state to avoid a loop"
         echo "$PENDING_DIGEST" > "$STATE_FILE"
         rm -f "$PENDING_FILE"
         LAST="$PENDING_DIGEST"
       else
         tmux send-keys -t "$SESSION" "$WAKE_MESSAGE" Enter
-        echo "$DIGEST|$(date -u +%FT%TZ)|$(( ATTEMPTS + 1 ))" > "$PENDING_FILE"
-        bm_log "whip: $ALIAS re-injected unacknowledged wake (attempt $(( ATTEMPTS + 1 )), digest $DIGEST)"
+        echo "$COMBINED|$(date -u +%FT%TZ)|$(( ATTEMPTS + 1 ))" > "$PENDING_FILE"
+        bm_log "whip: $ALIAS re-injected unacknowledged wake (attempt $(( ATTEMPTS + 1 )), state $COMBINED)"
         continue
       fi
     fi
   fi
 
-  if [ "$DIGEST" = "$LAST" ]; then
-    bm_log "whip: $ALIAS unchanged ($DIGEST); no injection"
+  if [ "$COMBINED" = "$LAST" ]; then
+    bm_log "whip: $ALIAS unchanged ($COMBINED); no injection"
     continue
   fi
   tmux send-keys -t "$SESSION" "$WAKE_MESSAGE" Enter
-  echo "$DIGEST|$(date -u +%FT%TZ)|1" > "$PENDING_FILE"
-  bm_log "whip: $ALIAS injected (digest $DIGEST, awaiting acknowledgment)"
-done < "$ENABLED_FILE"
+  echo "$COMBINED|$(date -u +%FT%TZ)|1" > "$PENDING_FILE"
+  bm_log "whip: $ALIAS injected (state $COMBINED, awaiting acknowledgment)"
+done < "$AGENTS_FILE"
