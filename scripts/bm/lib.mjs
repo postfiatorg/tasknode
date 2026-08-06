@@ -120,6 +120,9 @@ export async function boardDigest(boardId) {
     // Decision state is board state: a superseded or refused decision must
     // wake the manager through the normal whip channel.
     decisions: decisions.rows.map((row) => `${row.id}:${row.status}`),
+    // Idle eligible capacity is board state: a badge-verified contributor
+    // freeing their slot should wake the manager for a routing pass.
+    idle_capacity: (await idleEligibleContributors()).map((c) => c.account_id).sort(),
     secretary_report_id: secretary?.id || "",
   };
   return { boardId: board.id, digest: sha256(source), source };
@@ -168,6 +171,7 @@ export async function boardPacket(boardId) {
       : null,
     budget: await boardBudgetStatus(boardId),
     pending_decisions: await pendingDecisions(boardId),
+    idle_eligible_contributors: await idleEligibleContributors(),
   };
 }
 
@@ -194,6 +198,47 @@ export async function boardBudgetStatus(boardId) {
     spent_today_pft: spentToday,
     remaining_today_pft: Math.max(0, Number(row.daily_budget_pft) - spentToday),
   };
+}
+
+// Badge-verified contributors with free routing capacity and a real track
+// record. This is the demand-side signal: idle eligible capacity is board
+// state, so it appears in the packet and the digest, and freeing a slot
+// wakes the manager.
+export async function idleEligibleContributors() {
+  const result = await query(
+    `
+    SELECT b.account_id,
+           array_agg(DISTINCT b.badge_id ORDER BY b.badge_id) AS badges,
+           COALESCE(hist.rewarded, 0) AS rewarded_tasks,
+           hist.last_active
+    FROM account_network_badges b
+    LEFT JOIN LATERAL (
+      SELECT count(*) FILTER (WHERE tp.status = 'rewarded')::int AS rewarded,
+             max(tp.last_event_at) AS last_active
+      FROM task_projections tp
+      WHERE tp.account_id = b.account_id
+    ) hist ON true
+    WHERE b.status = 'verified'
+      AND b.revoked_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM network_task_allocations a
+        WHERE a.candidate_account_id = b.account_id
+          AND a.allocation_status IN ('candidate', 'queued', 'proposed', 'accepted',
+                                      'submitted', 'verification_requested',
+                                      'verification_response_submitted')
+      )
+    GROUP BY b.account_id, hist.rewarded, hist.last_active
+    ORDER BY COALESCE(hist.rewarded, 0) DESC
+    LIMIT 12
+    `
+  ).catch(() => ({ rows: [] }));
+  return result.rows.map((row) => ({
+    account_id: row.account_id,
+    badges: row.badges || [],
+    rewarded_tasks: Number(row.rewarded_tasks || 0),
+    last_active: row.last_active,
+  }));
 }
 
 async function pendingDecisions(boardId) {

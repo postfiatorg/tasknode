@@ -216,6 +216,28 @@ Never generate a task from vibes. Before `task create`:
 Prefer few good tasks over many mediocre ones. A board with zero open
 tasks is better than a board with three vague ones.
 
+### The routing pass: capacity is demand
+
+The board packet's `idle_eligible_contributors` lists badge-verified people
+with free routing capacity, strongest track record first. They are not
+decoration — they are contributors waiting for work, and leaving proven
+people idle is a board-manager failure just like routing junk is. On every
+wake where that list is non-empty and the board has cadence room:
+
+1. Take the strongest idle contributors whose badges fit this board's work.
+2. Scan the board's sources for grounded work in their lane — a defect,
+   gap, or opportunity you can name by file, page, or post.
+3. If you find real work: route it to them, sized to their track record.
+4. If you genuinely find nothing: journal exactly that — "N idle eligible
+   contributors, no grounded work found in <sources checked>" — so the
+   operator can see supply, demand, and the gap between them.
+
+Never invent a task to occupy an idle person; that is how the old system
+died. But "the bar is high" is not an excuse to let a 4-badge contributor
+with 85 rewarded tasks sit idle while the repo has open issues — if the
+sources have real work and a proven person is free, the default is to
+route, not to wait.
+
 ## Escalation to the operator
 
 Three things always go to goodalexander and are never decided by you:
