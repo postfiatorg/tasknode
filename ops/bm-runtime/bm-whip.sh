@@ -55,21 +55,55 @@ while IFS= read -r ALIAS; do
     continue
   fi
 
-  # 2. Conditional injection on digest change.
+  # 2. Wake delivery with processing acknowledgment.
+  #
+  # An injection is only *delivered*; it is *processed* when the agent writes
+  # any bm_audit_log row afterward (its contract requires journaling every
+  # wake). A pending wake without audit activity is re-injected up to 3
+  # times, then alerts. This survives interrupted turns and model timeouts;
+  # fire-and-forget does not.
   DIGEST="$(cd "$BM_REPO" && node scripts/bm.mjs digest "$BOARD_ID" 2>/dev/null | awk '{print $2}')"
   if [ -z "$DIGEST" ]; then
     bm_log "whip: $ALIAS digest failed"
     continue
   fi
   STATE_FILE="$BM_STATE_DIR/$ALIAS.digest"
+  PENDING_FILE="$BM_STATE_DIR/$ALIAS.pending"
   LAST="$(cat "$STATE_FILE" 2>/dev/null || true)"
+
+  WAKE_MESSAGE="Board state changed (digest $DIGEST). Run: cd $BM_REPO && node scripts/bm.mjs board $BOARD_ID — then handle anything in awaiting_review, generate needed tasks, and journal what you did (journaling is also your wake acknowledgment)."
+
+  if [ -f "$PENDING_FILE" ]; then
+    # pending format: digest|iso_injected_at|attempts
+    IFS='|' read -r PENDING_DIGEST PENDING_AT PENDING_ATTEMPTS < "$PENDING_FILE"
+    ACTIVITY="$(cd "$BM_REPO" && node scripts/bm.mjs activity "$BOARD_ID" --since "$PENDING_AT" 2>/dev/null || echo "")"
+    if [ -n "$ACTIVITY" ] && [ "$ACTIVITY" -gt 0 ] 2>/dev/null; then
+      echo "$PENDING_DIGEST" > "$STATE_FILE"
+      rm -f "$PENDING_FILE"
+      bm_log "whip: $ALIAS wake acknowledged ($ACTIVITY audit rows); digest $PENDING_DIGEST committed"
+      LAST="$PENDING_DIGEST"
+    else
+      ATTEMPTS=$(( ${PENDING_ATTEMPTS:-1} ))
+      if [ "$ATTEMPTS" -ge 3 ]; then
+        echo "$(date -u +%FT%TZ) $SESSION wake unacknowledged after $ATTEMPTS attempts (digest $PENDING_DIGEST)" >> "$BM_HOME/ALERTS.log"
+        bm_log "whip: ALERT $ALIAS wake unacknowledged after $ATTEMPTS attempts; committing digest to avoid a loop"
+        echo "$PENDING_DIGEST" > "$STATE_FILE"
+        rm -f "$PENDING_FILE"
+        LAST="$PENDING_DIGEST"
+      else
+        tmux send-keys -t "$SESSION" "$WAKE_MESSAGE" Enter
+        echo "$DIGEST|$(date -u +%FT%TZ)|$(( ATTEMPTS + 1 ))" > "$PENDING_FILE"
+        bm_log "whip: $ALIAS re-injected unacknowledged wake (attempt $(( ATTEMPTS + 1 )), digest $DIGEST)"
+        continue
+      fi
+    fi
+  fi
+
   if [ "$DIGEST" = "$LAST" ]; then
     bm_log "whip: $ALIAS unchanged ($DIGEST); no injection"
     continue
   fi
-  tmux send-keys -t "$SESSION" \
-    "Board state changed (digest $DIGEST). Run: cd $BM_REPO && node scripts/bm.mjs board $BOARD_ID — then handle anything in awaiting_review, generate needed tasks, and journal what you did." \
-    Enter
-  echo "$DIGEST" > "$STATE_FILE"
-  bm_log "whip: $ALIAS injected (digest $DIGEST)"
+  tmux send-keys -t "$SESSION" "$WAKE_MESSAGE" Enter
+  echo "$DIGEST|$(date -u +%FT%TZ)|1" > "$PENDING_FILE"
+  bm_log "whip: $ALIAS injected (digest $DIGEST, awaiting acknowledgment)"
 done < "$ENABLED_FILE"

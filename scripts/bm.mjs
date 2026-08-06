@@ -270,6 +270,24 @@ async function main() {
     return;
   }
 
+  if (command === "activity") {
+    // Rows in bm_audit_log for this board since a timestamp. The whip uses
+    // this as the processing acknowledgment for injected wakes: the agent's
+    // contract requires journaling every wake, so zero activity after an
+    // injection means the wake was lost and must be re-delivered.
+    const boardId = requireBoard(positional[0]);
+    if (!boardId) return;
+    const since = flagValue("--since");
+    if (!since) return fail("Usage: bm activity <board> --since <iso8601>");
+    const { query } = await import("../server/db/pool.js");
+    const result = await query(
+      `SELECT count(*)::int AS n FROM bm_audit_log WHERE board_id = $1 AND created_at > $2::timestamptz`,
+      [boardId, since]
+    );
+    console.log(result.rows[0].n);
+    return;
+  }
+
   if (command === "history") {
     const boardId = requireBoard(positional[0]);
     if (!boardId) return;
