@@ -35,6 +35,7 @@ export function HiveView({ pftlExplorerUrl = "" }) {
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedHiveTask, setSelectedHiveTask] = useState(null);
   const [projectDocument, setProjectDocument] = useState(null);
+  const [contributorsSpotlight, setContributorsSpotlight] = useState([]);
   const [projectStatus, setProjectStatus] = useState("loading");
   const lastGoodProjectDocument = useRef(null);
   const projectRequestSeq = useRef(0);
@@ -52,6 +53,7 @@ export function HiveView({ pftlExplorerUrl = "" }) {
       if (!canApply()) return;
       if (!result.ok) throw new Error(result.body?.message || `Hive projects returned HTTP ${result.status}.`);
       const nextDocument = result.body?.document || null;
+      setContributorsSpotlight(Array.isArray(result.body?.contributors) ? result.body.contributors : []);
       if (!validProjectDocument(nextDocument)) throw new Error("Hive projects returned an invalid document.");
       lastGoodProjectDocument.current = nextDocument;
       setProjectDocument(nextDocument);
@@ -230,6 +232,26 @@ function HiveIndex({ onOpenTask, onSelectProject, pftlExplorerUrl = "", projectD
           {projectStatus === "ready" && !Object.values(projectDocument?.operators || {}).some((operator) => operator.allotted) && (
             <div className="hive-empty-project">No operators are allocated to active network projects yet.</div>
           )}
+        </div>
+      </Section>
+
+      <Section
+        title="Contributors"
+        subtitle="All-time recognized work across the network. This record is derived from rewarded task history and survives board changes."
+      >
+        <div className="hive-card">
+          {contributorsSpotlight.map((contributor, index) => (
+            <ContributorSpotlightRow
+              key={contributor.accountId || contributor.handle || index}
+              contributor={contributor}
+              last={index === contributorsSpotlight.length - 1}
+              rank={index + 1}
+            />
+          ))}
+          {projectStatus === "ready" && !contributorsSpotlight.length && (
+            <div className="hive-empty-project">No rewarded contributions recorded yet.</div>
+          )}
+          {projectStatus === "loading" && <div className="hive-empty-project">Loading contributors.</div>}
         </div>
       </Section>
 
@@ -1200,6 +1222,26 @@ function FeedRow({ entry, last = false, onOpenTask, operators = {}, pftlExplorer
         />
       )}
       {showTime && <time>{timeLabel}</time>}
+    </div>
+  );
+}
+
+function ContributorSpotlightRow({ contributor, rank = 0, last = false }) {
+  const name = contributor.displayName || (contributor.handle ? `@${contributor.handle}` : contributor.accountId);
+  const href = contributor.hasPublicProfile ? profileHref(contributor.accountId) : "";
+  return (
+    <div className={`hive-veteran-row ${last ? "is-last" : ""}`}>
+      <span className="hive-veteran-rank">{rank}</span>
+      <HiveProfileBadge nft={contributor.heroNft} size={26} variant={rank} />
+      {href ? (
+        <a className="hive-veteran-name" href={href}>{name}</a>
+      ) : (
+        <span className="hive-veteran-name">{name}</span>
+      )}
+      <span className="hive-veteran-stats">
+        <span>{contributor.tasksRewarded} rewarded</span>
+        <strong>{Number(contributor.rewards || 0).toLocaleString("en-US")} PFT</strong>
+      </span>
     </div>
   );
 }

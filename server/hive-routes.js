@@ -27,6 +27,7 @@ import {
   resolveTaskAccountingHarvest,
 } from "./repositories/task-accounting-harvester.js";
 import { getHiveDecisionRun, listHiveDecisionRuns } from "./repositories/hive-decision-agent.js";
+import { getDirectoryLeaderboardDocument } from "./repositories/directory-leaderboard.js";
 import {
   applyHiveProjectsViewerContext,
   getHiveProjectsDocument,
@@ -125,16 +126,41 @@ function hiveProjectsBodyForViewer(body = {}, viewer = {}) {
   };
 }
 
+// All-time contributor recognition for the Hive board. Derived from the
+// Directory leaderboard (rewarded task history + discoverable identities),
+// so it survives board reorganizations: archiving a project never erases a
+// contributor's visible record.
+function hiveContributorsSpotlight(leaderboard) {
+  const operators = Array.isArray(leaderboard?.operators) ? leaderboard.operators : [];
+  return operators.slice(0, 24).map((operator) => ({
+    accountId: operator.accountId || "",
+    handle: operator.handle || "",
+    displayName: operator.displayName || "",
+    tasksRewarded: Number(operator.tasksRewarded || 0),
+    networkTasks: Number(operator.networkTasks || 0),
+    rewards: Number(operator.rewards || 0),
+    heroNft: operator.heroNft || null,
+    hasPublicProfile: Boolean(operator.hasPublicProfile),
+  }));
+}
+
 function readSharedHiveProjectsBody({ pathname }) {
   const now = Date.now();
   const retryDelayMs = 15_000;
   if (!pendingHiveProjectsRead && (!lastHiveProjectsFailureAt || now - lastHiveProjectsFailureAt > retryDelayMs)) {
     pendingHiveProjectsRead = getCachedHiveRead({
       cacheKey: "hive_projects:v1",
-      compute: async () => ({
-        ok: true,
-        document: await getHiveProjectsDocument(),
-      }),
+      compute: async () => {
+        const [document, leaderboard] = await Promise.all([
+          getHiveProjectsDocument(),
+          getDirectoryLeaderboardDocument().catch(() => null),
+        ]);
+        return {
+          ok: true,
+          document,
+          contributors: hiveContributorsSpotlight(leaderboard),
+        };
+      },
       isSafe: (value) => hiveReadResponseIsCacheSafe({
         pathname,
         session: null,
