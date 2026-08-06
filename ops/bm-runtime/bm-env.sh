@@ -4,6 +4,11 @@
 
 set -u
 
+# Cron runs with a minimal environment; make sure user-installed binaries
+# (pfterminal, fly, node version managers) resolve exactly as they do in an
+# interactive shell.
+export PATH="$HOME/.local/bin:$HOME/.fly/bin:/usr/local/bin:$PATH"
+
 export BM_REPO="${BM_REPO:-/home/pfrpc/repos/tasknodeofficial}"
 export BM_HOME="${BM_HOME:-$HOME/pf-boards}"
 export BM_STATE_DIR="$BM_HOME/state"

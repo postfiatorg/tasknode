@@ -30,8 +30,17 @@ while IFS= read -r ALIAS; do
   [ -n "$BOARD_ID" ] || { bm_log "whip: unknown alias $ALIAS"; continue; }
   SESSION="bm-$ALIAS"
 
-  # 1. Liveness.
-  if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+  # 1. Liveness. A session whose pane no longer has a live pfterminal
+  # process (crashed, or exited into the keep-alive sleep) is dead even
+  # though tmux still reports the session; inspect the pane's children.
+  AGENT_ALIVE=false
+  if tmux has-session -t "$SESSION" 2>/dev/null; then
+    PANE_PID="$(tmux list-panes -t "$SESSION" -F '#{pane_pid}' 2>/dev/null | head -1 || true)"
+    if [ -n "$PANE_PID" ] && ps --ppid "$PANE_PID" -o comm= 2>/dev/null | grep -q "^pfterminal"; then
+      AGENT_ALIVE=true
+    fi
+  fi
+  if [ "$AGENT_ALIVE" != "true" ]; then
     STRIKES_FILE="$BM_STATE_DIR/$ALIAS.strikes"
     STRIKES=$(( $(cat "$STRIKES_FILE" 2>/dev/null || echo 0) + 1 ))
     echo "$STRIKES" > "$STRIKES_FILE"

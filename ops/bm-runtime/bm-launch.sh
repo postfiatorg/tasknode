@@ -39,6 +39,9 @@ if [ -n "$LATEST_HANDOFF" ]; then
 Read your predecessor's handoff first: $LATEST_HANDOFF"
 fi
 
+PFTERMINAL_BIN="${PFTERMINAL_BIN:-$(command -v pfterminal || echo "$HOME/.local/bin/pfterminal")}"
+[ -x "$PFTERMINAL_BIN" ] || { bm_log "launch: pfterminal binary not found"; exit 1; }
+
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s "$SESSION" -c "$WORKDIR" \
   -e DATABASE_URL="${DATABASE_URL:-}" \
@@ -47,7 +50,7 @@ tmux new-session -d -s "$SESSION" -c "$WORKDIR" \
   -e BM_ACTOR="board_manager_$ALIAS" \
   -e BM_OPERATOR_ACCOUNT_ID="$BM_OPERATOR_ACCOUNT_ID" \
   -e BM_OPERATOR_WALLET="$BM_OPERATOR_WALLET" \
-  "pfterminal -c model_provider=\"$BM_PROVIDER\" -m \"$BM_MODEL\" -c approval_policy=\"never\" -c sandbox_mode=\"danger-full-access\" $(printf '%q' "$PROMPT"); echo 'pfterminal exited'; sleep 86400"
+  "$PFTERMINAL_BIN -c model_provider=\"$BM_PROVIDER\" -m \"$BM_MODEL\" -c approval_policy=\"never\" -c sandbox_mode=\"danger-full-access\" $(printf '%q' "$PROMPT"); echo 'pfterminal exited'; sleep 86400"
 
 bm_log "launch: $SESSION started (board=$BOARD_ID provider=$BM_PROVIDER model=$BM_MODEL)"
 echo "launched $SESSION"
