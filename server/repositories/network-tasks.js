@@ -612,6 +612,48 @@ async function currentProjectProductDoc(projectId = "") {
   return result.rows[0] || null;
 }
 
+// Single eligibility predicate shared by the routing pool and the task
+// creation engine. Both surfaces MUST agree; when a candidate is refused,
+// the reason names exactly which rule failed:
+//   - account_unresolved: no account id given or derivable from the wallet
+//   - no_verified_badge: the sybil gate — no verified, unrevoked badge
+//   - wallet_unresolved: no current linked wallet, explicit wallet, or
+//     active sync wallet to deliver the offer to
+export async function explainNetworkTaskCandidateEligibility({
+  accountId = "",
+  explicitWallet = "",
+} = {}) {
+  const normalizedAccount = safeText(accountId, 180);
+  if (!normalizedAccount) return { eligible: false, reason: "account_unresolved" };
+
+  const badge = await query(
+    `SELECT badge_id FROM account_network_badges
+     WHERE account_id = $1 AND status = 'verified' AND revoked_at IS NULL
+     LIMIT 1`,
+    [normalizedAccount]
+  );
+  if (!badge.rows[0]) return { eligible: false, reason: "no_verified_badge" };
+
+  let walletAddress = "";
+  const mirror = await query(
+    `SELECT wallet_address FROM account_linked_wallets WHERE account_id = $1 AND status = 'linked' LIMIT 1`,
+    [normalizedAccount]
+  );
+  walletAddress = safeText(mirror.rows[0]?.wallet_address, 120);
+  if (!walletAddress) walletAddress = safeText(explicitWallet, 120);
+  if (!walletAddress) {
+    const sync = await query(
+      `SELECT wallet_address FROM pftl_sync_wallets
+       WHERE account_id = $1 AND role = 'user' AND status = 'active' AND wallet_address <> ''
+       ORDER BY priority DESC, last_hot_sync_at DESC NULLS LAST LIMIT 1`,
+      [normalizedAccount]
+    );
+    walletAddress = safeText(sync.rows[0]?.wallet_address, 120);
+  }
+  if (!walletAddress) return { eligible: false, reason: "wallet_unresolved" };
+  return { eligible: true, reason: "", accountId: normalizedAccount, walletAddress, badgeId: badge.rows[0].badge_id };
+}
+
 async function resolveCandidate({ decision = {} } = {}) {
   const payload = safeObject(decision.payload);
   const networkTask = safeObject(payload.network_task || payload.networkTask);
@@ -654,38 +696,17 @@ async function resolveCandidate({ decision = {} } = {}) {
       accountId = safeText(byHistory.rows[0]?.account_id, 180);
     }
   }
-  const notEligible = () => {
-    const error = new Error("network_task_candidate_not_eligible");
+  const verdict = await explainNetworkTaskCandidateEligibility({
+    accountId,
+    explicitWallet,
+  });
+  if (!verdict.eligible) {
+    const error = new Error(`network_task_candidate_not_eligible:${verdict.reason}`);
     error.status = 422;
-    return error;
-  };
-  if (!accountId) throw notEligible();
-
-  const badge = await query(
-    `SELECT badge_id FROM account_network_badges
-     WHERE account_id = $1 AND status = 'verified' AND revoked_at IS NULL
-     LIMIT 1`,
-    [accountId]
-  );
-  if (!badge.rows[0]) throw notEligible();
-
-  let walletAddress = "";
-  const mirror = await query(
-    `SELECT wallet_address FROM account_linked_wallets WHERE account_id = $1 AND status = 'linked' LIMIT 1`,
-    [accountId]
-  );
-  walletAddress = safeText(mirror.rows[0]?.wallet_address, 120);
-  if (!walletAddress) walletAddress = explicitWallet;
-  if (!walletAddress) {
-    const sync = await query(
-      `SELECT wallet_address FROM pftl_sync_wallets
-       WHERE account_id = $1 AND role = 'user' AND status = 'active' AND wallet_address <> ''
-       ORDER BY priority DESC, last_hot_sync_at DESC NULLS LAST LIMIT 1`,
-      [accountId]
-    );
-    walletAddress = safeText(sync.rows[0]?.wallet_address, 120);
+    error.reason = verdict.reason;
+    throw error;
   }
-  if (!walletAddress) throw notEligible();
+  const walletAddress = verdict.walletAddress;
 
   // Optional enrichment from the legacy profile table when present.
   const profile = await query(
