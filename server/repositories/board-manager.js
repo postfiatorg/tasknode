@@ -1402,7 +1402,7 @@ export async function buildBoardManagerSourcePacket({
     currentProjectRegistry({ limit: 60 }),
 	    currentTaskState({ limit: 12 }),
 	    currentTaskRequests({ limit: 8 }),
-	    getNetworkTaskContentSnapshot({ completedLimit: 4, outstandingLimit: 8, stoppedLimit: 4, pendingLimit: 4 }).catch(() => null),
+	    getNetworkTaskContentSnapshot({ completedLimit: 4, outstandingLimit: 8, stoppedLimit: 4, pendingLimit: 4 }).catch(() => ({})),
 	    getNetworkTaskOutputCorpus({ limit: 24 }).catch(() => compactNetworkTaskOutputCorpusForBoardManager([])),
 	    listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
 	    recentBoardManagerRuns({ limit: 20 }),

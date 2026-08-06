@@ -185,6 +185,9 @@ function compactNetworkTaskContentItem(task = {}) {
 }
 
 export function compactNetworkTaskContentForBoardManager(content = {}) {
+  // An explicit null (e.g. from a snapshot .catch fallback) bypasses the
+  // `= {}` parameter default; normalize before field access.
+  content = content && typeof content === "object" ? content : {};
   return {
     schema: safeText(content.schema, 120),
     generatedAt: content.generatedAt || null,
