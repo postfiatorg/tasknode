@@ -422,9 +422,9 @@ export async function computeBoardDuties(boardIds = []) {
         priority: 3,
         type: "routing_due",
         board_id: boardId,
-        detail: `${freeSlots} open-task slot(s) free. The COMPLETE routing pool (every member is routable when their badges fit this board — this includes operator accounts; operator escalation-only applies to decisions, never to work): ${idle
+        detail: `${freeSlots} open-task slot(s) free. An eligible contributor without a task is a DEFICIENCY you must resolve this round. The COMPLETE routing pool (every member is routable when their badges fit this board — including operator accounts; operator escalation-only applies to decisions, never to work): ${idle
           .map((c) => `${c.account_id}[${(c.badges || []).join("/")},${c.rewarded_tasks} rewarded]`)
-          .join("; ")}. Route grounded work that suits their history, or journal exactly why nothing in the sources is routable — naming which pool members you considered.`,
+          .join("; ")}. For each pool member whose badges fit this board: route grounded work from the sources, OR route them a small investigation task (250-1,000 PFT) that produces the grounding — dig a named repo area, reproduce a suspected defect, or report on a concrete question whose answer creates future tasks. "Nothing routable" is not an acceptable outcome; if you truly cannot even frame an investigation for a member, journal that member by name with the specific reason.`,
       });
     }
 

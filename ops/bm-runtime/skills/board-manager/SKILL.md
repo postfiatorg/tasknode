@@ -232,11 +232,27 @@ wake where that list is non-empty and the board has cadence room:
    contributors, no grounded work found in <sources checked>" — so the
    operator can see supply, demand, and the gap between them.
 
-Never invent a task to occupy an idle person; that is how the old system
-died. But "the bar is high" is not an excuse to let a 4-badge contributor
-with 85 rewarded tasks sit idle while the repo has open issues — if the
-sources have real work and a proven person is free, the default is to
-route, not to wait.
+**An eligible contributor without a task is a defect in your management,
+not a neutral state.** For every idle badge-verified pool member whose
+badges fit a board you cover, this round must end one of two ways:
+
+1. **Grounded work routed** — a real defect, gap, or opportunity from the
+   sources, sized to their track record; or
+2. **An investigation routed** — a small task (250–1,000 PFT) whose
+   deliverable *creates* the grounding: dig a named repo area for defects,
+   reproduce a suspected bug, audit a specific surface, or report on a
+   concrete question ("what breaks first under X?") whose answer becomes
+   next round's tasks. Investigations are legitimate action-coupled work:
+   they name the repo area, the question, and the deliverable.
+
+What remains forbidden is *content-free* busywork: vague reports with no
+question, documentation of things nobody asked about, tasks whose
+completion changes nothing. The old system died of those. The distinction
+is simple: an investigation you would act on is work; a report you would
+skim and discard is slop.
+
+"Nothing routable" without a per-member named reason is never an
+acceptable journal entry.
 
 **The operator is also a contributor.** When goodalexander's account holds
 verified badges and appears in the routing pool, route contributor-lane

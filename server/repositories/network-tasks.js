@@ -632,15 +632,79 @@ async function resolveCandidate({ decision = {} } = {}) {
     120
   );
   if (!explicitAccountId && !explicitWallet) return null;
-  const candidates = await listEligibleNetworkTaskCandidates({ limit: 120 });
-  const explicit = candidates.find((candidate) => (
-    (!explicitAccountId || candidate.accountId === explicitAccountId) &&
-    (!explicitWallet || candidate.walletAddress === explicitWallet)
-  ));
-  if (explicit) return explicit;
-  const error = new Error("network_task_candidate_not_eligible");
-  error.status = 422;
-  throw error;
+
+  // Eligibility is badge-based (the actual sybil gate), not membership in
+  // the legacy network_task_profiles table — that table was populated by
+  // the retired hive pipeline and rots. Wallet resolution prefers the
+  // durable linked-wallet mirror so offers land where the user looks.
+  let accountId = explicitAccountId;
+  if (!accountId && explicitWallet) {
+    const byMirror = await query(
+      `SELECT account_id FROM account_linked_wallets WHERE wallet_address = $1 AND status = 'linked' LIMIT 1`,
+      [explicitWallet]
+    );
+    accountId = safeText(byMirror.rows[0]?.account_id, 180);
+    if (!accountId) {
+      const byHistory = await query(
+        `SELECT account_id FROM task_projections
+         WHERE subject_wallet = $1 AND account_id <> ''
+         ORDER BY last_event_at DESC LIMIT 1`,
+        [explicitWallet]
+      );
+      accountId = safeText(byHistory.rows[0]?.account_id, 180);
+    }
+  }
+  const notEligible = () => {
+    const error = new Error("network_task_candidate_not_eligible");
+    error.status = 422;
+    return error;
+  };
+  if (!accountId) throw notEligible();
+
+  const badge = await query(
+    `SELECT badge_id FROM account_network_badges
+     WHERE account_id = $1 AND status = 'verified' AND revoked_at IS NULL
+     LIMIT 1`,
+    [accountId]
+  );
+  if (!badge.rows[0]) throw notEligible();
+
+  let walletAddress = "";
+  const mirror = await query(
+    `SELECT wallet_address FROM account_linked_wallets WHERE account_id = $1 AND status = 'linked' LIMIT 1`,
+    [accountId]
+  );
+  walletAddress = safeText(mirror.rows[0]?.wallet_address, 120);
+  if (!walletAddress) walletAddress = explicitWallet;
+  if (!walletAddress) {
+    const sync = await query(
+      `SELECT wallet_address FROM pftl_sync_wallets
+       WHERE account_id = $1 AND role = 'user' AND status = 'active' AND wallet_address <> ''
+       ORDER BY priority DESC, last_hot_sync_at DESC NULLS LAST LIMIT 1`,
+      [accountId]
+    );
+    walletAddress = safeText(sync.rows[0]?.wallet_address, 120);
+  }
+  if (!walletAddress) throw notEligible();
+
+  // Optional enrichment from the legacy profile table when present.
+  const profile = await query(
+    `SELECT id, source_packet_digest, output_text, output_json, completed_at
+     FROM network_task_profiles
+     WHERE account_id = $1 AND status = 'completed' AND superseded_at IS NULL
+     ORDER BY completed_at DESC NULLS LAST, created_at DESC LIMIT 1`,
+    [accountId]
+  ).catch(() => ({ rows: [] }));
+  const profileRow = profile.rows[0] || {};
+  return {
+    accountId,
+    walletAddress,
+    profileId: safeText(profileRow.id, 180),
+    profileDigest: safeText(profileRow.source_packet_digest, 180),
+    profileText: safeText(profileRow.output_text, 5000),
+    profileOutput: profileRow.output_json && typeof profileRow.output_json === "object" ? profileRow.output_json : {},
+    completedAt: profileRow.completed_at || null,
+  };
 }
 
 function sourcePacketText(source = {}) {
