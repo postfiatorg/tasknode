@@ -97,10 +97,31 @@ while IFS= read -r AGENT_LINE; do
   PENDING_FILE="$BM_STATE_DIR/$ALIAS.pending"
   LAST="$(cat "$STATE_FILE" 2>/dev/null || true)"
 
-  WAKE_MESSAGE="Round wake for boards: $BOARDS_CSV (state $COMBINED).
-$DUTIES_TEXT
+  # Write the round's work order to a tracked file; the injection is ONE
+  # short line referencing it. Multi-line tmux injections scramble the TUI
+  # composer, and files give us an auditable duty history.
+  DUTIES_DIR="$BM_HOME/duties/$ALIAS"
+  mkdir -p "$DUTIES_DIR"
+  ROUND_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+  ROUND_FILE="$DUTIES_DIR/round-$ROUND_STAMP.md"
+  {
+    echo "# Round work order — $ALIAS — $ROUND_STAMP"
+    echo
+    echo "Boards: $BOARDS_CSV"
+    echo "State: $COMBINED"
+    echo
+    echo "$DUTIES_TEXT"
+    echo
+    echo "Rules: complete every numbered duty in order, or journal exactly why a"
+    echo "specific duty cannot be completed this round. Use: cd $BM_REPO && node scripts/bm.mjs <command>."
+    echo "Respect each board's budget, caps, and routing constraints."
+    echo "Journal what you did — journaling is also your wake acknowledgment."
+  } > "$ROUND_FILE"
+  cp "$ROUND_FILE" "$DUTIES_DIR/latest.md"
+  (cd "$BM_REPO" && node scripts/bm.mjs duties $BOARD_ARGS --json 2>/dev/null) > "$DUTIES_DIR/latest.json" || true
+  ls -1t "$DUTIES_DIR"/round-*.md 2>/dev/null | tail -n +51 | while IFS= read -r OLD; do rm -f "$OLD"; done
 
-Complete every numbered duty above in order, or journal exactly why a specific duty cannot be completed this round. Use: cd $BM_REPO && node scripts/bm.mjs <command>. Respect each board's budget, caps, and routing constraints. Journal what you did — journaling is also your wake acknowledgment."
+  WAKE_MESSAGE="Round wake (state ${COMBINED:0:12}…): read $ROUND_FILE and complete every numbered duty, or journal why a specific duty cannot be done. Journaling acknowledges the wake."
 
   if [ -f "$PENDING_FILE" ]; then
     # pending format: digest|iso_injected_at|attempts
@@ -124,6 +145,7 @@ Complete every numbered duty above in order, or journal exactly why a specific d
         rm -f "$PENDING_FILE"
         LAST="$PENDING_DIGEST"
       else
+        tmux send-keys -t "$SESSION" C-u
         tmux send-keys -t "$SESSION" "$WAKE_MESSAGE" Enter
         echo "$COMBINED|$(date -u +%FT%TZ)|$(( ATTEMPTS + 1 ))" > "$PENDING_FILE"
         bm_log "whip: $ALIAS re-injected unacknowledged wake (attempt $(( ATTEMPTS + 1 )), state $COMBINED)"
@@ -136,6 +158,7 @@ Complete every numbered duty above in order, or journal exactly why a specific d
     bm_log "whip: $ALIAS unchanged ($COMBINED); no injection"
     continue
   fi
+  tmux send-keys -t "$SESSION" C-u
   tmux send-keys -t "$SESSION" "$WAKE_MESSAGE" Enter
   echo "$COMBINED|$(date -u +%FT%TZ)|1" > "$PENDING_FILE"
   bm_log "whip: $ALIAS injected (state $COMBINED, awaiting acknowledgment)"
