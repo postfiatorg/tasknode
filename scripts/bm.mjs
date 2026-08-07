@@ -112,9 +112,18 @@ async function main() {
       );
     }
     for (const lead of packet.source_leads || []) {
-      console.log(`\n## source_leads: ${lead.repo} (HEAD ${lead.head}, ${lead.todo_count} TODO/FIXME markers)`);
+      const commitLabel = lead.current_commit_verified
+        ? lead.head
+        : `BLOCKED (${lead.checkout_relation || "unverified"})`;
+      console.log(
+        `\n## source_leads: ${lead.repo} (current ${commitLabel}, ${lead.todo_count} verified TODO/FIXME markers)`
+      );
+      if (lead.checkout_warning) console.log(`  warning ${lead.checkout_warning}`);
       for (const commit of (lead.recent_commits || []).slice(0, 5)) console.log(`  commit ${commit}`);
       for (const todo of (lead.todo_sample || []).slice(0, 10)) console.log(`  ${todo}`);
+      for (const reference of (lead.unverified_references || []).slice(0, 5)) {
+        console.log(`  warning ${reference.warning}`);
+      }
     }
     if (packet.hive_chat_digest) {
       console.log(`\n## hive_chat_digest (${packet.hive_chat_digest.report_id})`);

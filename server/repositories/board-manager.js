@@ -1372,6 +1372,67 @@ export async function updateBoardManagerRunSession({
   return { ok: true, run: result.rows[0] || null };
 }
 
+export function isBoardManagerSourceReadTimeout(error) {
+  const code = safeText(error?.code, 80).toUpperCase();
+  if (["57014", "ETIMEDOUT", "ESOCKETTIMEDOUT"].includes(code)) return true;
+  const message = safeText(error?.message || error, 1000).toLowerCase();
+  return /(?:connection|query|read|statement)[\s\S]{0,80}(?:timed?\s*out|timeout)|timeout expired/.test(message);
+}
+
+function boardManagerReadFallback(reader, error) {
+  if (!Object.hasOwn(reader, "fallback")) throw error;
+  return typeof reader.fallback === "function" ? reader.fallback(error) : reader.fallback;
+}
+
+export async function runBoardManagerSourceReads(
+  readers = [],
+  {
+    concurrency = 3,
+    maxAttempts = 3,
+    retryDelayMs = 25,
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  } = {}
+) {
+  const queue = safeArray(readers);
+  const results = new Array(queue.length);
+  const workerCount = Math.min(Math.max(1, Number(concurrency) || 1), Math.max(1, queue.length));
+  let cursor = 0;
+
+  async function runOne(reader, index) {
+    if (typeof reader?.read !== "function") {
+      throw new TypeError(`board_manager_source_read_invalid:${safeText(reader?.label, 120) || index}`);
+    }
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        results[index] = await reader.read();
+        return;
+      } catch (error) {
+        if (!isBoardManagerSourceReadTimeout(error)) {
+          results[index] = boardManagerReadFallback(reader, error);
+          return;
+        }
+        if (attempt >= maxAttempts) {
+          error.boardManagerSourceRead = safeText(reader.label, 120) || `read_${index}`;
+          error.boardManagerSourceAttempts = attempt;
+          throw error;
+        }
+        await sleep(Math.max(0, Number(retryDelayMs) || 0) * attempt);
+      }
+    }
+  }
+
+  async function worker() {
+    while (cursor < queue.length) {
+      const index = cursor;
+      cursor += 1;
+      await runOne(queue[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
 export async function buildBoardManagerSourcePacket({
   trigger = "manual",
   scope = "global_hive",
@@ -1384,44 +1445,102 @@ export async function buildBoardManagerSourcePacket({
     hiveProjects,
     projectPlanning,
     projectRegistry,
-	    taskState,
-	    taskRequests,
-	    networkTaskContent,
-	    networkTaskOutputCorpus,
-	    networkTaskCandidates,
-	    recentRuns,
-	    routingConstraints,
+    taskState,
+    taskRequests,
+    networkTaskContent,
+    networkTaskOutputCorpus,
+    networkTaskCandidates,
+    recentRuns,
+    routingConstraints,
     orcOperations,
     openFollowups,
-  ] = await Promise.all([
-    getHiveContextDocument({ limit }),
-    buildHiveSecretarySourcePacket({ limit }),
-    getHiveSecretaryState(),
-    getHiveProjectsDocument({ includeEmptyActive: true }),
-    latestHiveProjectPlanningState().catch(() => null),
-    currentProjectRegistry({ limit: 60 }),
-	    currentTaskState({ limit: 12 }),
-	    currentTaskRequests({ limit: 8 }),
-	    getNetworkTaskContentSnapshot({ completedLimit: 4, outstandingLimit: 8, stoppedLimit: 4, pendingLimit: 4 }).catch(() => ({})),
-	    getNetworkTaskOutputCorpus({ limit: 24 }).catch(() => compactNetworkTaskOutputCorpusForBoardManager([])),
-	    listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
-	    recentBoardManagerRuns({ limit: 20 }),
-	    buildHiveRoutingConstraintsSnapshot({ limit: 120 }).catch(() => ({ ok: false, status: "unavailable", accounts: [] })),
-    getBoardManagerOrcOperations({ limit: 24 }).catch(() => ({
-      schema: "pf.hive.board_manager.orc_operations.v1",
-      status: "unavailable",
-      enforcement: "none_context_only",
-      summary: {},
-      agents: [],
-      routingCandidates: [],
-      reviewQueue: { recent: [] },
-      runJournal: { recent: [] },
-      operatorInteractions: { recent: [] },
-    })),
-    expireOpenBoardManagerFollowups()
-      .then(() => resolveStaleBoardManagerFollowups())
-      .then(() => listOpenBoardManagerFollowups({ limit: 20 }))
-      .catch(() => []),
+  ] = await runBoardManagerSourceReads([
+    {
+      label: "hive_context",
+      read: () => getHiveContextDocument({ limit }),
+    },
+    {
+      label: "hive_secretary_source",
+      read: () => buildHiveSecretarySourcePacket({ limit }),
+    },
+    {
+      label: "hive_secretary_state",
+      read: () => getHiveSecretaryState(),
+    },
+    {
+      label: "hive_projects",
+      read: () => getHiveProjectsDocument({ includeEmptyActive: true }),
+    },
+    {
+      label: "project_planning",
+      read: () => latestHiveProjectPlanningState(),
+      fallback: null,
+    },
+    {
+      label: "project_registry",
+      read: () => currentProjectRegistry({ limit: 60 }),
+    },
+    {
+      label: "task_state",
+      read: () => currentTaskState({ limit: 12 }),
+    },
+    {
+      label: "task_requests",
+      read: () => currentTaskRequests({ limit: 8 }),
+    },
+    {
+      label: "network_task_content",
+      read: () => getNetworkTaskContentSnapshot({
+        completedLimit: 4,
+        outstandingLimit: 8,
+        stoppedLimit: 4,
+        pendingLimit: 4,
+      }),
+      fallback: {},
+    },
+    {
+      label: "network_task_output_corpus",
+      read: () => getNetworkTaskOutputCorpus({ limit: 24 }),
+      fallback: () => compactNetworkTaskOutputCorpusForBoardManager([]),
+    },
+    {
+      label: "network_task_candidates",
+      read: () => listEligibleNetworkTaskCandidates({ limit: 12 }),
+      fallback: [],
+    },
+    {
+      label: "recent_board_manager_runs",
+      read: () => recentBoardManagerRuns({ limit: 20 }),
+    },
+    {
+      label: "routing_constraints",
+      read: () => buildHiveRoutingConstraintsSnapshot({ limit: 120 }),
+      fallback: { ok: false, status: "unavailable", accounts: [] },
+    },
+    {
+      label: "orc_operations",
+      read: () => getBoardManagerOrcOperations({ limit: 24 }),
+      fallback: {
+        schema: "pf.hive.board_manager.orc_operations.v1",
+        status: "unavailable",
+        enforcement: "none_context_only",
+        summary: {},
+        agents: [],
+        routingCandidates: [],
+        reviewQueue: { recent: [] },
+        runJournal: { recent: [] },
+        operatorInteractions: { recent: [] },
+      },
+    },
+    {
+      label: "open_followups",
+      read: async () => {
+        await expireOpenBoardManagerFollowups();
+        await resolveStaleBoardManagerFollowups();
+        return listOpenBoardManagerFollowups({ limit: 20 });
+      },
+      fallback: [],
+    },
   ]);
 
   const generatedAt = new Date().toISOString();
