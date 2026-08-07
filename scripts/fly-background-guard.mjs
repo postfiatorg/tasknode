@@ -20,7 +20,9 @@ function usage() {
     "  7. worker-airdrop",
     "  8. board-secretary",
     "",
-    "By default, worker-airdrop is guarded at two replicas; every other group is guarded at one.",
+    "Every group is guarded at one active replica; worker-airdrop intentionally",
+    "runs a single active machine plus a cold standby so airdrops are never",
+    "processed by two live workers at once.",
     "An explicit --count overrides that default for all guarded process groups.",
     "",
     "Use npm run fly:worker-guard or npm run fly:board-guard for one process group.",
@@ -37,10 +39,10 @@ function argValue(args, name, fallback = "") {
 }
 
 function guardArgsForProcess(processGroup, sharedArgs) {
-  const defaultCount = processGroup === "worker-airdrop" && !sharedArgs.includes("--count")
-    ? ["--count", "2"]
-    : [];
-  return ["--process", processGroup, ...defaultCount, ...sharedArgs];
+  // worker-airdrop deliberately runs one active machine plus a cold standby.
+  // Guarding it at two active replicas would demand a second live worker and
+  // risk double-processing airdrops, so every group is guarded at one.
+  return ["--process", processGroup, ...sharedArgs];
 }
 
 function runGuard(args, { dryRun = false } = {}) {
