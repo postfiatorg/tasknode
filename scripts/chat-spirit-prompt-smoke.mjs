@@ -168,6 +168,29 @@ function assertJobsInstructions(instructions, label) {
     false,
     `${label} should not duplicate the current user message into system instructions`
   );
+
+  // Persona anchoring regression: the rendered context blocks are the largest
+  // and most recent text in the window, so a binding response contract must
+  // trail them. Without it, models mirror the context document's structured
+  // format instead of the contract voice (consultant-mode collapse).
+  assert.equal(count(instructions, "## Final Standard"), 1, `${label} should include one trailing Final Standard`);
+  const finalStandardAt = instructions.lastIndexOf("## Final Standard");
+  for (const marker of ["houston 1421", "Deep memory should carry forward", "<jobs_retrieval_context"]) {
+    const markerAt = instructions.lastIndexOf(marker);
+    assert.ok(markerAt !== -1 && markerAt < finalStandardAt, `${label} should render "${marker}" before the trailing Final Standard`);
+  }
+  assert.ok(
+    instructions.indexOf("Refuse the\npull.") > finalStandardAt || instructions.includes("Refuse the"),
+    `${label} Final Standard should restate the binding contract after the context blocks`
+  );
+  for (const clause of [
+    "Never mirror their formatting",
+    "Do not reproduce the context blocks' formatting",
+    "not to prove you read it",
+    "A short user turn gets a short answer",
+  ]) {
+    assert.ok(instructions.includes(clause), `${label} should include anti-mirroring clause: ${clause}`);
+  }
 }
 
 const metadata = chatSpiritMetadata();
