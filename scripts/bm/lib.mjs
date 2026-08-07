@@ -257,7 +257,32 @@ export async function idleEligibleContributors() {
     badges: row.badges || [],
     rewarded_tasks: Number(row.rewarded_tasks || 0),
     last_active: row.last_active,
+    routing_handles: [],
   }));
+  const identityHandles = members.length
+    ? await query(
+        `SELECT account_id,
+                array_agg(
+                  DISTINCT lower(regexp_replace(public_handle, '^@+', ''))
+                  ORDER BY lower(regexp_replace(public_handle, '^@+', ''))
+                ) AS routing_handles
+         FROM account_identity_approvals
+         WHERE account_id = ANY($1::text[])
+           AND status = 'active'
+           AND public_handle <> ''
+           AND revoked_at IS NULL
+           AND (expires_at IS NULL OR expires_at > now())
+         GROUP BY account_id`,
+        [members.map((member) => member.account_id)]
+      ).catch(() => ({ rows: [] }))
+    : { rows: [] };
+  const routingHandlesByAccount = new Map(
+    identityHandles.rows.map((row) => [row.account_id, row.routing_handles || []])
+  );
+  members.forEach((member) => {
+    member.routing_handles = routingHandlesByAccount.get(member.account_id) || [];
+  });
+
   // Attach per-member capacity and the task-creation engine's own verdict,
   // so duty text states engine facts instead of leaving them to agent
   // inference (which has produced imaginary "engine walls").
@@ -586,16 +611,89 @@ export async function userPacket(accountOrWallet, { limit = 20 } = {}) {
   };
 }
 
+function normalizeRoutingHandle(value = "") {
+  return String(value || "").trim().replace(/^@+/, "").toLowerCase();
+}
+
+export function evaluateBoardRouting({
+  boardId = "",
+  freeSlots = 0,
+  idleContributors = [],
+  routingConstraints = {},
+} = {}) {
+  if (freeSlots <= 0) return { duty: null, skip: null };
+
+  const eligible = idleContributors.filter(
+    (contributor) => contributor.engine_verdict === "eligible" && Number(contributor.free_slots || 0) > 0
+  );
+  if (!eligible.length) return { duty: null, skip: null };
+
+  const assignableHandles = [
+    ...new Set(
+      (Array.isArray(routingConstraints.assignable_handles)
+        ? routingConstraints.assignable_handles
+        : []
+      )
+        .map(normalizeRoutingHandle)
+        .filter(Boolean)
+    ),
+  ];
+  const candidates = assignableHandles.length
+    ? eligible.filter((contributor) =>
+        (Array.isArray(contributor.routing_handles) ? contributor.routing_handles : [])
+          .map(normalizeRoutingHandle)
+          .some((handle) => assignableHandles.includes(handle))
+      )
+    : eligible;
+
+  if (assignableHandles.length && !candidates.length) {
+    const eligibleHandles = [
+      ...new Set(
+        eligible.flatMap((contributor) =>
+          (Array.isArray(contributor.routing_handles) ? contributor.routing_handles : [])
+            .map(normalizeRoutingHandle)
+            .filter(Boolean)
+        )
+      ),
+    ];
+    return {
+      duty: null,
+      skip: {
+        board_id: boardId,
+        reason_code: "assignable_handles_empty_eligible_pool",
+        retry_suppressed: true,
+        detail:
+          `Routing skipped without retry: assignable_handles=[${assignableHandles.join(", ")}] ` +
+          `has no match in the engine-eligible idle contributor handles=[${eligibleHandles.join(", ") || "none"}].`,
+      },
+    };
+  }
+
+  return {
+    duty: {
+      priority: 3,
+      type: "routing_due",
+      board_id: boardId,
+      candidate_account_ids: candidates.map((contributor) => contributor.account_id),
+      detail: `${freeSlots} open-task slot(s) free. An eligible contributor without a task is a DEFICIENCY you must resolve this round. ENGINE FACTS (verified this round by the task-creation engine itself — do not infer additional restrictions; the engine checks exactly: verified badge, delivery wallet, per-account capacity, and this board's assignable_handles constraint, nothing else): ${candidates
+        .map((contributor) => `${contributor.account_id}[badges=${(contributor.badges || []).join("/")}; free_slots=${contributor.free_slots}; engine=${contributor.engine_verdict}; ${contributor.rewarded_tasks} rewarded]`)
+        .join("; ")}. Any listed member with engine=eligible and free_slots>0 CAN be routed on this board when any of their badges fits the work (kol→amplification, core_contributor→code, qa_worker→QA, expert→analysis, project_leader→definitions). Route grounded work from the sources, OR route a small investigation task (250-1,000 PFT) that produces the grounding. If you believe the engine blocks a listed member, you must reproduce it this round with a dry-run and journal the exact error string — otherwise the claim is false and forbidden.`,
+    },
+    skip: null,
+  };
+}
+
 // Deterministic per-round duty computation (the whip's work order). Every
 // duty is derived from durable state, so two runs against the same state
 // produce the same list and the same digest.
 export async function computeBoardDuties(boardIds = []) {
   const duties = [];
+  const routingSkips = [];
   const idle = await idleEligibleContributors();
 
   for (const boardId of boardIds) {
     const board = await query(
-      `SELECT id, title, updated_at FROM network_projects WHERE id = $1`,
+      `SELECT id, title, metadata_json, updated_at FROM network_projects WHERE id = $1`,
       [boardId]
     );
     const boardRowData = board.rows[0];
@@ -648,16 +746,14 @@ export async function computeBoardDuties(boardIds = []) {
 
     const openCount = tasks.rows.filter((task) => ["proposed", "accepted"].includes(task.status)).length;
     const freeSlots = Math.max(0, 3 - openCount);
-    if (freeSlots > 0 && idle.length > 0) {
-      duties.push({
-        priority: 3,
-        type: "routing_due",
-        board_id: boardId,
-        detail: `${freeSlots} open-task slot(s) free. An eligible contributor without a task is a DEFICIENCY you must resolve this round. ENGINE FACTS (verified this round by the task-creation engine itself — do not infer additional restrictions; the engine checks exactly: verified badge, delivery wallet, per-account capacity, and this board's assignable_handles constraint, nothing else): ${idle
-          .map((c) => `${c.account_id}[badges=${(c.badges || []).join("/")}; free_slots=${c.free_slots}; engine=${c.engine_verdict}; ${c.rewarded_tasks} rewarded]`)
-          .join("; ")}. Any listed member with engine=eligible and free_slots>0 CAN be routed on this board when any of their badges fits the work (kol→amplification, core_contributor→code, qa_worker→QA, expert→analysis, project_leader→definitions). Route grounded work from the sources, OR route a small investigation task (250-1,000 PFT) that produces the grounding. If you believe the engine blocks a listed member, you must reproduce it this round with a dry-run and journal the exact error string — otherwise the claim is false and forbidden.`,
-      });
-    }
+    const routing = evaluateBoardRouting({
+      boardId,
+      freeSlots,
+      idleContributors: idle,
+      routingConstraints: boardRowData.metadata_json?.routing_constraints || {},
+    });
+    if (routing.duty) duties.push(routing.duty);
+    if (routing.skip) routingSkips.push(routing.skip);
 
     if (Date.now() - new Date(boardRowData.updated_at).getTime() > 24 * 3600 * 1000) {
       duties.push({
@@ -671,17 +767,33 @@ export async function computeBoardDuties(boardIds = []) {
 
   duties.sort((left, right) => left.priority - right.priority || String(left.task_id || "").localeCompare(String(right.task_id || "")));
   const digest = sha256(duties.map((duty) => `${duty.type}:${duty.board_id}:${duty.task_id || ""}`).join("|"));
-  return { generated_at: new Date().toISOString(), board_ids: boardIds, duties, digest };
+  return {
+    generated_at: new Date().toISOString(),
+    board_ids: boardIds,
+    duties,
+    routing_skips: routingSkips,
+    digest,
+  };
 }
 
 export function formatDuties(result) {
   const lines = [];
   if (!result.duties.length) {
-    lines.push("No mandatory duties this round. All boards current.");
+    lines.push(
+      result.routing_skips?.length
+        ? "No mandatory duties this round."
+        : "No mandatory duties this round. All boards current."
+    );
   } else {
     lines.push(`MANDATORY DUTIES this round (${result.duties.length}), in priority order:`);
     result.duties.forEach((duty, index) => {
       lines.push(`${index + 1}. [${duty.type}] [${duty.board_id}]${duty.task_id ? ` [${duty.task_id}]` : ""} ${duty.detail}`);
+    });
+  }
+  if (result.routing_skips?.length) {
+    lines.push("", `ROUTING SKIPS (retry suppressed: ${result.routing_skips.length}):`);
+    result.routing_skips.forEach((skip) => {
+      lines.push(`- [${skip.board_id}] [${skip.reason_code}] ${skip.detail}`);
     });
   }
   return lines.join("\n");

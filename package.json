@@ -85,6 +85,7 @@
     "board-manager-source-packet-smoke": "node scripts/board-manager-source-packet-smoke.mjs",
     "board-manager-repo-integrity-smoke": "node scripts/board-manager-repo-integrity-smoke.mjs",
     "board-manager-source-read-resilience-smoke": "node scripts/board-manager-source-read-resilience-smoke.mjs",
+    "board-manager-routing-constraints-smoke": "node scripts/board-manager-routing-constraints-smoke.mjs",
     "board-manager-capability-profile-smoke": "node scripts/board-manager-capability-profile-smoke.mjs",
     "board-manager-evidence-evaluation-smoke": "node scripts/board-manager-evidence-evaluation-smoke.mjs",
     "board-manager-phase-d-prompt-taskgen-smoke": "node scripts/board-manager-phase-d-prompt-taskgen-smoke.mjs",
