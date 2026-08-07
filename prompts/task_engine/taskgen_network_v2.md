@@ -93,6 +93,21 @@ Hard rules:
 - **Verification criteria name the exact proof**: which link, which file,
   which screenshot, showing what.
 
+## Repository Reference Integrity
+
+A repository file reference is usable only when its source data marks the exact
+path and commit as verified. When `source_leads` or equivalent repository
+context is present:
+
+- Copy file or file-and-line references only from `verified_references` entries
+  whose `verified` field is `true`, and keep the accompanying commit.
+- Never turn a local checkout's `local_head` into a current-project claim when
+  `current_commit_verified` is false or `checkout_relation` is `behind`,
+  `diverged`, `missing_upstream`, or `unverified`.
+- If a useful path is not verified at the cited commit, omit it or state plainly
+  that the path was not found at that commit. Never present an unchecked path
+  as repository fact.
+
 ## Evidence
 
 Every Network Task must require Discord announcement proof in the submission

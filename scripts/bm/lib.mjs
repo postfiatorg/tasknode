@@ -4,6 +4,9 @@
 // arrive in Gate C and go through server-side modules with cap enforcement.
 
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { query } from "../../server/db/pool.js";
 import { DETERMINISTIC_BOARD_IDS } from "../../server/board-config.js";
 
@@ -123,10 +126,16 @@ export async function boardDigest(boardId) {
     // Idle eligible capacity is board state: a badge-verified contributor
     // freeing their slot should wake the manager for a routing pass.
     idle_capacity: (await idleEligibleContributors()).map((c) => c.account_id).sort(),
-    // Repo drift is board state: new commits or new TODO markers in the
-    // board's sources are routing raw material and wake the manager.
-    source_heads: repoSourceLeads(board.metadata_json?.sources?.repos || []).map(
-      (lead) => `${lead.repo}:${lead.head}:${lead.todo_count}`
+    // Use cached tracking refs for digesting. A digest must stay read-only and
+    // stable through transient origin outages; full board packets perform the
+    // fetch-backed freshness check before presenting repository facts.
+    source_heads: repoSourceLeads(
+      board.metadata_json?.sources?.repos || [],
+      { fetchOrigin: false }
+    ).map(
+      (lead) =>
+        `${lead.repo}:${lead.checkout_relation}:${lead.head || "blocked"}:` +
+        `${lead.local_head}:${lead.upstream_head}:${lead.todo_count}`
     ),
     secretary_report_id: secretary?.id || "",
   };
@@ -280,41 +289,238 @@ export async function idleEligibleContributors() {
 // tracker is nearly empty for these repos; the real backlog lives in
 // TODO/FIXME markers and recent bug-shaped commits. This gives the manager
 // concrete file:line leads to judge — it generates leads, never tasks.
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-
 const REPO_ROOT = process.env.BM_REPO_ROOT || "/home/pfrpc/repos";
 
 function safeExec(cmd, args, { cwd, timeout = 8000 } = {}) {
   try {
-    return execFileSync(cmd, args, { cwd, timeout, encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
+    return execFileSync(cmd, args, {
+      cwd,
+      timeout,
+      encoding: "utf8",
+      maxBuffer: 2 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   } catch {
     return "";
   }
 }
 
-export function repoSourceLeads(repoNames = []) {
+function commandSucceeds(cmd, args, { cwd, timeout = 8000 } = {}) {
+  try {
+    execFileSync(cmd, args, { cwd, timeout, encoding: "utf8", stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizedRepoPath(value = "") {
+  const candidate = String(value || "").trim().replaceAll("\\", "/").replace(/^\.\//, "");
+  if (!candidate || path.posix.isAbsolute(candidate)) return "";
+  const segments = candidate.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === ".." || segment === ".git")) return "";
+  return candidate;
+}
+
+function resolvedGitCommit(checkout = "", commit = "HEAD") {
+  return safeExec("git", ["-C", checkout, "rev-parse", "--verify", `${commit}^{commit}`]).trim();
+}
+
+function gitLineAtReference({ checkout = "", commit = "", file = "", line = 0 } = {}) {
+  const output = safeExec("git", [
+    "-C",
+    checkout,
+    "blame",
+    "--porcelain",
+    "-L",
+    `${line},${line}`,
+    commit,
+    "--",
+    file,
+  ]);
+  const contentRecord = output.split("\n").find((value) => value.startsWith("\t"));
+  return contentRecord === undefined
+    ? { found: false, text: "" }
+    : { found: true, text: contentRecord.slice(1) };
+}
+
+export function validateGitFileReference({
+  checkout = "",
+  commit = "HEAD",
+  file = "",
+  line = 0,
+  expectedText,
+} = {}) {
+  const normalizedFile = normalizedRepoPath(file);
+  const resolvedCommit = resolvedGitCommit(checkout, commit);
+  const normalizedLine = Math.max(0, Number.parseInt(String(line || 0), 10) || 0);
+  const result = {
+    file: normalizedFile || String(file || "").trim(),
+    line: normalizedLine,
+    commit: resolvedCommit,
+    verified: false,
+    warning: "",
+  };
+  if (!normalizedFile) {
+    result.warning = "unverified: invalid repository-relative path";
+    return result;
+  }
+  if (!resolvedCommit) {
+    result.warning = `unverified: commit ${String(commit || "HEAD")} was not found`;
+    return result;
+  }
+  if (!commandSucceeds("git", ["-C", checkout, "cat-file", "-e", `${resolvedCommit}:${normalizedFile}`])) {
+    result.warning = `unverified: ${normalizedFile} was not found at commit ${resolvedCommit.slice(0, 12)}`;
+    return result;
+  }
+  if (normalizedLine > 0) {
+    const committedLine = gitLineAtReference({
+      checkout,
+      commit: resolvedCommit,
+      file: normalizedFile,
+      line: normalizedLine,
+    });
+    if (!committedLine.found) {
+      result.warning = `unverified: ${normalizedFile} line ${normalizedLine} was not found at commit ${resolvedCommit.slice(0, 12)}`;
+      return result;
+    }
+    if (
+      expectedText !== undefined &&
+      committedLine.text.trim() !== String(expectedText || "").trim()
+    ) {
+      result.warning = `unverified: ${normalizedFile}:${normalizedLine} content differs at commit ${resolvedCommit.slice(0, 12)}`;
+      return result;
+    }
+  }
+  result.verified = true;
+  return result;
+}
+
+export function gitCheckoutState(checkout = "", { fetchOrigin = false } = {}) {
+  const fetchVerified = fetchOrigin
+    ? commandSucceeds(
+      "git",
+      ["-C", checkout, "fetch", "--prune", "origin"],
+      { timeout: 30000 }
+    )
+    : null;
+  const localHead = resolvedGitCommit(checkout, "HEAD");
+  const branch = safeExec("git", ["-C", checkout, "symbolic-ref", "--quiet", "--short", "HEAD"]).trim();
+  const upstream = branch
+    ? safeExec("git", ["-C", checkout, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]).trim()
+    : "";
+  const upstreamHead = upstream ? resolvedGitCommit(checkout, "@{upstream}") : "";
+  const state = {
+    branch,
+    upstream,
+    status: safeExec("git", ["-C", checkout, "status", "-sb"]).trim().split("\n")[0] || "",
+    fetch_verified: fetchVerified,
+    local_head: localHead,
+    upstream_head: upstreamHead,
+    ahead: 0,
+    behind: 0,
+    relation: "unverified",
+    current_commit: "",
+    current_commit_verified: false,
+    warning: "",
+  };
+  if (fetchOrigin && !fetchVerified) {
+    state.warning = "unverified checkout: origin fetch failed, so upstream freshness is unknown";
+    return state;
+  }
+  if (!localHead) {
+    state.warning = "unverified checkout: HEAD is not a commit";
+    return state;
+  }
+  if (!branch || !upstream || !upstreamHead) {
+    state.relation = "missing_upstream";
+    state.warning = "unverified checkout: the current branch has no resolvable upstream";
+    return state;
+  }
+  const counts = safeExec("git", ["-C", checkout, "rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
+    .trim()
+    .split(/\s+/)
+    .map((value) => Number.parseInt(value, 10));
+  if (counts.length !== 2 || counts.some((value) => !Number.isFinite(value))) {
+    state.warning = "unverified checkout: upstream divergence could not be measured";
+    return state;
+  }
+  [state.ahead, state.behind] = counts;
+  if (state.ahead > 0 && state.behind > 0) state.relation = "diverged";
+  else if (state.behind > 0) state.relation = "behind";
+  else if (state.ahead > 0) state.relation = "ahead";
+  else state.relation = "synced";
+
+  state.current_commit_verified = state.relation === "synced" || state.relation === "ahead";
+  state.current_commit = state.current_commit_verified ? localHead : "";
+  if (!state.current_commit_verified) {
+    state.warning = `checkout ${state.relation}: local HEAD must not be presented as the current project commit`;
+  }
+  return state;
+}
+
+function parsedTodoReference(value = "") {
+  const match = String(value || "").match(/^(.+?):(\d+):(.*)$/);
+  if (!match) return null;
+  return { file: match[1].replace(/^\.\//, ""), line: Number(match[2]), text: match[3].trim() };
+}
+
+export function repoSourceLeads(repoNames = [], { fetchOrigin = true } = {}) {
   const leads = [];
   for (const name of repoNames.slice(0, 4)) {
     const dir = `${REPO_ROOT}/${String(name).replace(/[^A-Za-z0-9._-]/g, "")}`;
     if (!existsSync(dir)) continue;
-    const head = safeExec("git", ["-C", dir, "rev-parse", "--short", "HEAD"]).trim();
-    const commits = safeExec("git", ["-C", dir, "log", "--oneline", "-8"])
-      .split("\n").filter(Boolean);
+    const checkoutState = gitCheckoutState(dir, { fetchOrigin });
+    const referenceCommit = checkoutState.current_commit || (
+      checkoutState.fetch_verified !== false ? checkoutState.upstream_head : ""
+    );
+    const commits = referenceCommit
+      ? safeExec("git", ["-C", dir, "log", "--oneline", "-8", referenceCommit]).split("\n").filter(Boolean)
+      : [];
     const todoOut = safeExec("rg", [
       "-n", "TODO|FIXME|HACK\\b|XXX\\b",
       "--glob", "!node_modules", "--glob", "!dist", "--glob", "!target",
       "--glob", "!*.lock", "-m", "2", "--max-columns", "160",
       ".",
     ], { cwd: dir, timeout: 15000 });
-    const todoLines = todoOut.split("\n").filter(Boolean);
+    const checkedReferences = todoOut
+      .split("\n")
+      .filter(Boolean)
+      .map(parsedTodoReference)
+      .filter(Boolean)
+      .map((reference) => ({
+        ...reference,
+        ...validateGitFileReference({
+          checkout: dir,
+          commit: referenceCommit,
+          file: reference.file,
+          line: reference.line,
+          expectedText: reference.text,
+        }),
+      }));
+    const allVerifiedReferences = checkedReferences.filter((reference) => reference.verified);
+    const verifiedReferences = allVerifiedReferences.slice(0, 20);
+    const unverifiedReferences = checkedReferences
+      .filter((reference) => !reference.verified)
+      .slice(0, 20)
+      .map((reference) => ({ file: reference.file, line: reference.line, warning: reference.warning }));
     leads.push({
       repo: name,
       checkout: dir,
-      head,
+      head: checkoutState.current_commit ? checkoutState.current_commit.slice(0, 12) : "",
+      local_head: checkoutState.local_head,
+      upstream_head: checkoutState.upstream_head,
+      upstream: checkoutState.upstream,
+      checkout_status: checkoutState.status,
+      fetch_verified: checkoutState.fetch_verified,
+      checkout_relation: checkoutState.relation,
+      current_commit_verified: checkoutState.current_commit_verified,
+      checkout_warning: checkoutState.warning,
       recent_commits: commits,
-      todo_count: todoLines.length,
-      todo_sample: todoLines.slice(0, 20),
+      todo_count: allVerifiedReferences.length,
+      todo_sample: verifiedReferences.map((reference) => `${reference.file}:${reference.line}:${reference.text}`),
+      verified_references: verifiedReferences,
+      unverified_references: unverifiedReferences,
     });
   }
   return leads;
