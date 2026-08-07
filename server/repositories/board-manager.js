@@ -1166,7 +1166,7 @@ function boardManagerSourceLogSnapshot(packet = {}) {
   };
 }
 
-async function recentBoardManagerRuns({ limit = 12, includeInternal = false, includeDetails = false } = {}) {
+export async function recentBoardManagerRuns({ limit = 12, includeInternal = false, includeDetails = false } = {}) {
   if (!useDatabase()) return [];
   const exists = await query("SELECT to_regclass('public.board_manager_runs') AS name");
   if (!exists.rows[0]?.name) return [];
