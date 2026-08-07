@@ -124,28 +124,29 @@ export function normalizeHiveProjectPlanningOutput(output = {}) {
   };
 }
 
-export async function latestHiveProjectPlanningState() {
+export async function latestHiveProjectPlanningState({ queryImpl = query } = {}) {
   if (!useDatabase()) return { job: null, generation: null };
-  const [jobResult, generationResult] = await Promise.all([
-    query(
-      `
-        SELECT *
-        FROM hive_project_planning_jobs
-        WHERE status IN ('pending', 'processing')
-        ORDER BY created_at DESC, id DESC
-        LIMIT 1
-      `
-    ),
-    query(
-      `
-        SELECT *
-        FROM hive_project_generations
-        WHERE status = 'completed'
-        ORDER BY completed_at DESC, created_at DESC, id DESC
-        LIMIT 1
-      `
-    ),
-  ]);
+  const readJob = () => queryImpl(
+    `
+      SELECT *
+      FROM hive_project_planning_jobs
+      WHERE status IN ('pending', 'processing')
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `
+  );
+  const readGeneration = () => queryImpl(
+    `
+      SELECT *
+      FROM hive_project_generations
+      WHERE status = 'completed'
+      ORDER BY completed_at DESC, created_at DESC, id DESC
+      LIMIT 1
+    `
+  );
+  const [jobResult, generationResult] = queryImpl === query
+    ? await Promise.all([readJob(), readGeneration()])
+    : [await readJob(), await readGeneration()];
   return {
     job: publicJob(jobResult.rows[0] || null),
     generation: publicGeneration(generationResult.rows[0] || null),

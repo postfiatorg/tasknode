@@ -50,6 +50,24 @@ export async function getNetworkTaskContentSnapshot({
 
   const taskResult = await query(
     `
+      WITH network_refs AS MATERIALIZED (
+        SELECT *
+        FROM network_project_task_refs
+        WHERE source = 'network_task_generation'
+      ),
+      matched_generation_job_ids AS MATERIALIZED (
+        SELECT refs.id AS ref_id, job.id AS job_id
+        FROM network_refs refs
+        JOIN network_task_generation_jobs job
+          ON refs.task_id <> ''
+         AND job.task_id = refs.task_id
+        UNION
+        SELECT refs.id AS ref_id, job.id AS job_id
+        FROM network_refs refs
+        JOIN network_task_generation_jobs job
+          ON refs.request_id <> ''
+         AND job.request_id = refs.request_id
+      )
       SELECT
         refs.project_id,
         refs.task_id,
@@ -115,17 +133,15 @@ export async function getNetworkTaskContentSnapshot({
           ORDER BY e.occurred_at DESC, e.id DESC
           LIMIT 1
         ) AS verification_request_payload
-      FROM network_project_task_refs refs
+      FROM network_refs refs
       LEFT JOIN task_projections p
         ON p.task_id = refs.task_id
+      LEFT JOIN matched_generation_job_ids matched_job
+        ON matched_job.ref_id = refs.id
       LEFT JOIN network_task_generation_jobs job
-        ON (
-          (refs.task_id <> '' AND job.task_id = refs.task_id)
-          OR (refs.request_id <> '' AND job.request_id = refs.request_id)
-        )
+        ON job.id = matched_job.job_id
       LEFT JOIN network_task_allocations alloc
         ON alloc.id = job.allocation_id
-      WHERE refs.source = 'network_task_generation'
       ORDER BY COALESCE(p.updated_at, refs.updated_at, job.updated_at, alloc.updated_at, refs.created_at) DESC,
                refs.id DESC
       LIMIT $1

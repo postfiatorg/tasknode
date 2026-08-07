@@ -137,15 +137,15 @@ function publicIdentityMap(identities = []) {
   return result;
 }
 
-async function recommendedProfilesReady() {
+async function recommendedProfilesReady(queryImpl = query) {
   if (!databaseEnabled()) return false;
-  const result = await query("SELECT to_regclass('public.recommended_connection_profiles') AS profile_table");
+  const result = await queryImpl("SELECT to_regclass('public.recommended_connection_profiles') AS profile_table");
   return Boolean(result.rows[0]?.profile_table);
 }
 
-export async function discoverableMemberProfileIds(accountIds = []) {
-  if (!accountIds.length || !await recommendedProfilesReady()) return new Set();
-  const result = await query(
+export async function discoverableMemberProfileIds(accountIds = [], { queryImpl = query } = {}) {
+  if (!accountIds.length || !await recommendedProfilesReady(queryImpl)) return new Set();
+  const result = await queryImpl(
     `
       SELECT account_id
       FROM recommended_connection_profiles profile

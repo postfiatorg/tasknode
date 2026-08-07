@@ -916,6 +916,7 @@ export async function getHiveContextDocument({ limit = 120 } = {}) {
 export async function listHiveProjectComments({
   projectIds = [],
   limitPerProject = 6,
+  queryImpl = query,
 } = {}) {
   const normalizedProjectIds = Array.from(new Set(jsonArray(projectIds).map((id) => safeText(id, 180)).filter(Boolean)));
   const normalizedLimit = Math.min(Math.max(Number(limitPerProject) || 6, 1), maxProjectCommentLimit);
@@ -940,7 +941,7 @@ export async function listHiveProjectComments({
     return commentsByProject;
   }
 
-  const result = await query(
+  const result = await queryImpl(
     `
       SELECT *
       FROM hive_context_entries

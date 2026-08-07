@@ -103,6 +103,25 @@ export async function query(text, params = []) {
   }
 }
 
+export async function withDatabaseClient(work) {
+  const db = getPool();
+  if (!db) {
+    const error = new Error("database_not_configured");
+    error.code = "TASKNODE_DATABASE_NOT_CONFIGURED";
+    throw error;
+  }
+
+  const client = await db.connect();
+  try {
+    return await work(client);
+  } catch (error) {
+    lastError = error?.message || "database_query_failed";
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function transaction(work) {
   const db = getPool();
   if (!db) {

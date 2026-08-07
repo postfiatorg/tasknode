@@ -95,11 +95,11 @@ export function publicProjectProductDoc(row = {}) {
   };
 }
 
-export async function getCurrentProjectProductDocs({ projectIds = [] } = {}) {
+export async function getCurrentProjectProductDocs({ projectIds = [], queryImpl = query } = {}) {
   if (!useDatabase()) return [];
   const ids = safeArray(projectIds).map((item) => safeText(item, 180)).filter(Boolean);
   if (!ids.length) return [];
-  const result = await query(
+  const result = await queryImpl(
     `
       SELECT *
       FROM network_project_product_docs

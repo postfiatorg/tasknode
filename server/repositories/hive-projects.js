@@ -1,4 +1,4 @@
-import { databaseEnabled, query, transaction } from "../db/pool.js";
+import { databaseEnabled, query, transaction, withDatabaseClient } from "../db/pool.js";
 import { listPublicAccountWalletIdentities } from "../runtime-store.js";
 import { publicReducerEvent } from "../task-forensics-format.js";
 import { taskRewardOutcome } from "../task-reward-outcome.js";
@@ -26,6 +26,12 @@ function safeArray(value) {
 
 function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+async function runSequentialReads(reads = []) {
+  const results = [];
+  for (const read of reads) results.push(await read());
+  return results;
 }
 
 function emptyOperatorDisclosure() {
@@ -1526,16 +1532,15 @@ export async function syncNetworkProjectsWithLatestHiveSecretary() {
   });
 }
 
-export async function getHiveProjectsDocument({
+async function hiveProjectsDocumentFromDatabase({
+  client,
   includeEmptyActive = false,
   viewerAccountId = "",
   viewerWalletAddress = "",
 } = {}) {
-  if (!useDatabase()) {
-    return documentFromRows({ includeEmptyActive });
-  }
-  const [projectsResult, contributorsResult, tasksResult, activityResult, pendingGenerationResult, secretaryResult] = await Promise.all([
-    query(
+  const queryImpl = (text, params = []) => client.query(text, params);
+  const [projectsResult, contributorsResult, tasksResult, activityResult, pendingGenerationResult, secretaryResult] = await runSequentialReads([
+    () => queryImpl(
       `
         SELECT *
         FROM network_projects
@@ -1570,7 +1575,7 @@ export async function getHiveProjectsDocument({
         ORDER BY priority ASC, title ASC
       `
     ),
-    query(
+    () => queryImpl(
       `
         SELECT *
         FROM network_project_contributors
@@ -1579,8 +1584,97 @@ export async function getHiveProjectsDocument({
         ORDER BY project_id ASC, sort_order ASC, wallet_address ASC
       `
     ),
-    query(
+    () => queryImpl(
       `
+        WITH active_task_refs AS MATERIALIZED (
+          SELECT refs.id,
+                 refs.task_id,
+                 projection.request_id AS projection_request_id,
+                 refs.metadata_json
+          FROM network_project_task_refs refs
+          JOIN task_projections projection
+            ON projection.task_id = refs.task_id
+          WHERE refs.task_id <> ''
+            AND refs.project_id IN (SELECT id FROM network_projects WHERE status <> 'archived')
+        ),
+        generation_job_candidates AS MATERIALIZED (
+          SELECT refs.id AS ref_id,
+                 job.id AS job_id,
+                 0 AS match_rank,
+                 job.updated_at
+          FROM active_task_refs refs
+          JOIN network_task_generation_jobs job
+            ON job.task_id = refs.task_id
+          UNION ALL
+          SELECT refs.id AS ref_id,
+                 job.id AS job_id,
+                 1 AS match_rank,
+                 job.updated_at
+          FROM active_task_refs refs
+          JOIN network_task_generation_jobs job
+            ON refs.projection_request_id <> ''
+           AND job.request_id = refs.projection_request_id
+          UNION ALL
+          SELECT refs.id AS ref_id,
+                 job.id AS job_id,
+                 2 AS match_rank,
+                 job.updated_at
+          FROM active_task_refs refs
+          JOIN network_task_generation_jobs job
+            ON refs.metadata_json->>'generation_job_id' <> ''
+           AND job.id = refs.metadata_json->>'generation_job_id'
+        ),
+        selected_generation_jobs AS MATERIALIZED (
+          SELECT DISTINCT ON (ref_id)
+                 ref_id,
+                 job_id
+          FROM generation_job_candidates
+          ORDER BY ref_id,
+                   match_rank ASC,
+                   updated_at DESC NULLS LAST,
+                   job_id DESC
+        ),
+        allocation_candidates AS MATERIALIZED (
+          SELECT refs.id AS ref_id,
+                 alloc.id AS allocation_id,
+                 0 AS match_rank,
+                 alloc.updated_at
+          FROM active_task_refs refs
+          JOIN network_task_allocations alloc
+            ON alloc.generated_task_id = refs.task_id
+          UNION ALL
+          SELECT refs.id AS ref_id,
+                 alloc.id AS allocation_id,
+                 1 AS match_rank,
+                 alloc.updated_at
+          FROM active_task_refs refs
+          JOIN network_task_allocations alloc
+            ON refs.projection_request_id <> ''
+           AND alloc.task_request_id = refs.projection_request_id
+          UNION ALL
+          SELECT refs.id AS ref_id,
+                 alloc.id AS allocation_id,
+                 2 AS match_rank,
+                 alloc.updated_at
+          FROM active_task_refs refs
+          JOIN selected_generation_jobs selected_job
+            ON selected_job.ref_id = refs.id
+          JOIN network_task_generation_jobs job
+            ON job.id = selected_job.job_id
+           AND job.allocation_id <> ''
+          JOIN network_task_allocations alloc
+            ON alloc.id = job.allocation_id
+        ),
+        selected_allocations AS MATERIALIZED (
+          SELECT DISTINCT ON (ref_id)
+                 ref_id,
+                 allocation_id
+          FROM allocation_candidates
+          ORDER BY ref_id,
+                   match_rank ASC,
+                   updated_at DESC NULLS LAST,
+                   allocation_id DESC
+        )
         SELECT refs.*,
                projection.status AS projected_status,
                projection.status AS status,
@@ -1617,50 +1711,14 @@ export async function getHiveProjectsDocument({
         FROM network_project_task_refs refs
         JOIN task_projections projection
           ON projection.task_id = refs.task_id
-        LEFT JOIN LATERAL (
-          SELECT candidate.*
-          FROM (
-            SELECT job.*, 0 AS match_rank
-            FROM network_task_generation_jobs job
-            WHERE job.task_id = projection.task_id
-            UNION ALL
-            SELECT job.*, 1 AS match_rank
-            FROM network_task_generation_jobs job
-            WHERE projection.request_id <> ''
-              AND job.request_id = projection.request_id
-            UNION ALL
-            SELECT job.*, 2 AS match_rank
-            FROM network_task_generation_jobs job
-            WHERE refs.metadata_json->>'generation_job_id' <> ''
-              AND job.id = refs.metadata_json->>'generation_job_id'
-          ) candidate
-          ORDER BY candidate.match_rank ASC,
-                   candidate.updated_at DESC NULLS LAST,
-                   candidate.id DESC
-          LIMIT 1
-        ) job ON true
-        LEFT JOIN LATERAL (
-          SELECT candidate.*
-          FROM (
-            SELECT alloc.*, 0 AS match_rank
-            FROM network_task_allocations alloc
-            WHERE alloc.generated_task_id = projection.task_id
-            UNION ALL
-            SELECT alloc.*, 1 AS match_rank
-            FROM network_task_allocations alloc
-            WHERE projection.request_id <> ''
-              AND alloc.task_request_id = projection.request_id
-            UNION ALL
-            SELECT alloc.*, 2 AS match_rank
-            FROM network_task_allocations alloc
-            WHERE job.allocation_id <> ''
-              AND alloc.id = job.allocation_id
-          ) candidate
-          ORDER BY candidate.match_rank ASC,
-                   candidate.updated_at DESC NULLS LAST,
-                   candidate.id DESC
-          LIMIT 1
-        ) alloc ON true
+        LEFT JOIN selected_generation_jobs selected_job
+          ON selected_job.ref_id = refs.id
+        LEFT JOIN network_task_generation_jobs job
+          ON job.id = selected_job.job_id
+        LEFT JOIN selected_allocations selected_alloc
+          ON selected_alloc.ref_id = refs.id
+        LEFT JOIN network_task_allocations alloc
+          ON alloc.id = selected_alloc.allocation_id
         LEFT JOIN LATERAL (
           SELECT id, title, status, image_cid, image_gateway_url, selected, created_at, updated_at
           FROM profile_nfts
@@ -1683,7 +1741,7 @@ export async function getHiveProjectsDocument({
         ORDER BY refs.project_id ASC, refs.sort_order ASC, refs.id ASC
       `
     ),
-    query(
+    () => queryImpl(
       `
         SELECT *
         FROM network_project_activity
@@ -1691,7 +1749,7 @@ export async function getHiveProjectsDocument({
         ORDER BY project_id ASC, sort_order ASC, id ASC
       `
     ),
-    query(
+    () => queryImpl(
       `
         SELECT project_id, count(*)::int AS pending_generation_count
         FROM network_task_generation_jobs
@@ -1701,7 +1759,7 @@ export async function getHiveProjectsDocument({
         ORDER BY project_id ASC
       `
     ),
-    query(
+    () => queryImpl(
       `
         SELECT id, source_packet_digest, output_json, completed_at
         FROM hive_secretary_reports
@@ -1714,15 +1772,18 @@ export async function getHiveProjectsDocument({
   ]);
   const productDocs = await getCurrentProjectProductDocs({
     projectIds: projectsResult.rows.map((row) => row.id),
+    queryImpl,
   });
   const boardSecretaryMemos = await getCurrentHiveBoardSecretaryMemos({
     projectIds: projectsResult.rows.map((row) => row.id),
+    queryImpl,
   }).catch(() => []);
   const projectCommentsByProject = await listHiveProjectComments({
     projectIds: projectsResult.rows.map((row) => row.id),
     limitPerProject: 6,
+    queryImpl,
   }).catch(() => ({}));
-  const projectPlanning = await latestHiveProjectPlanningState().catch(() => null);
+  const projectPlanning = await latestHiveProjectPlanningState({ queryImpl }).catch(() => null);
   const walletIdentities = mergeWalletIdentityLists(
     listPublicAccountWalletIdentities(),
     await resolveHivePublicWalletIdentities({
@@ -1734,11 +1795,12 @@ export async function getHiveProjectsDocument({
       walletAccounts: hiveWalletAccountsFromRows({
         taskRows: tasksResult.rows,
       }),
+      queryImpl,
     })
   );
   const identityAccountIds = Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)));
-  const publicProfileIds = await discoverableMemberProfileIds(identityAccountIds);
-  const operatorDisclosures = await listMachineOperatorDisclosures({ accountIds: identityAccountIds }).catch(() => ({}));
+  const publicProfileIds = await discoverableMemberProfileIds(identityAccountIds, { queryImpl });
+  const operatorDisclosures = await listMachineOperatorDisclosures({ accountIds: identityAccountIds, queryImpl }).catch(() => ({}));
 
   return documentFromRows({
     projectRows: projectsResult.rows,
@@ -1758,6 +1820,22 @@ export async function getHiveProjectsDocument({
     viewerAccountId,
     viewerWalletAddress,
   });
+}
+
+export async function getHiveProjectsDocument({
+  includeEmptyActive = false,
+  viewerAccountId = "",
+  viewerWalletAddress = "",
+} = {}) {
+  if (!useDatabase()) {
+    return documentFromRows({ includeEmptyActive });
+  }
+  return withDatabaseClient((client) => hiveProjectsDocumentFromDatabase({
+    client,
+    includeEmptyActive,
+    viewerAccountId,
+    viewerWalletAddress,
+  }));
 }
 
 export function applyHiveProjectsViewerContext(document = {}, {
