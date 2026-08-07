@@ -1,14 +1,25 @@
 // Read-model queries for the `bm` board-manager CLI (Gate B).
 //
-// All queries are read-only. Write paths (task create, review, rewards)
-// arrive in Gate C and go through server-side modules with cap enforcement.
+// Database queries are read-only. The explicit repository refresh path only
+// updates Git remote-tracking refs and its checkout-local freshness cache.
 
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import { query } from "../../server/db/pool.js";
 import { DETERMINISTIC_BOARD_IDS } from "../../server/board-config.js";
+
+const execFileAsync = promisify(execFile);
 
 export const BOARD_ALIASES = Object.freeze({
   community: "board_community_promotion",
@@ -97,6 +108,14 @@ async function latestSecretaryReport() {
   return result.rows[0] || null;
 }
 
+export function repoSourceDigestHeads(repoNames = []) {
+  return repoSourceLeads(repoNames).map(
+    (lead) =>
+      `${lead.repo}:${lead.checkout_relation}:${lead.head || "blocked"}:` +
+      `${lead.local_head}:${lead.upstream_head}:${lead.todo_count}`
+  );
+}
+
 export async function boardDigest(boardId) {
   const [board, allocations, tasks, secretary, decisions] = await Promise.all([
     boardRow(boardId),
@@ -126,16 +145,10 @@ export async function boardDigest(boardId) {
     // Idle eligible capacity is board state: a badge-verified contributor
     // freeing their slot should wake the manager for a routing pass.
     idle_capacity: (await idleEligibleContributors()).map((c) => c.account_id).sort(),
-    // Use cached tracking refs for digesting. A digest must stay read-only and
-    // stable through transient origin outages; full board packets perform the
-    // fetch-backed freshness check before presenting repository facts.
-    source_heads: repoSourceLeads(
-      board.metadata_json?.sources?.repos || [],
-      { fetchOrigin: false }
-    ).map(
-      (lead) =>
-        `${lead.repo}:${lead.checkout_relation}:${lead.head || "blocked"}:` +
-        `${lead.local_head}:${lead.upstream_head}:${lead.todo_count}`
+    // Use cached tracking refs for digesting. Digests and board packets are
+    // read-only; explicit refreshes update the cached remote-tracking state.
+    source_heads: repoSourceDigestHeads(
+      board.metadata_json?.sources?.repos || []
     ),
     secretary_report_id: secretary?.id || "",
   };
@@ -187,6 +200,17 @@ export async function boardPacket(boardId) {
     pending_decisions: await pendingDecisions(boardId),
     idle_eligible_contributors: await idleEligibleContributors(),
     source_leads: repoSourceLeads(board.metadata_json?.sources?.repos || []),
+  };
+}
+
+export async function refreshBoardRepositories(boardId, options = {}) {
+  const board = await boardRow(boardId);
+  if (!board) return null;
+  const repositories = board.metadata_json?.sources?.repos || [];
+  return {
+    boardId,
+    refreshedAt: new Date().toISOString(),
+    source_leads: await refreshRepoSourceLeads(repositories, options),
   };
 }
 
@@ -314,6 +338,160 @@ function commandSucceeds(cmd, args, { cwd, timeout = 8000 } = {}) {
   }
 }
 
+function gitCommonDir(checkout = "") {
+  const value = safeExec("git", ["-C", checkout, "rev-parse", "--git-common-dir"]).trim();
+  if (!value) return "";
+  return path.isAbsolute(value) ? value : path.resolve(checkout, value);
+}
+
+function repoRefreshPaths(checkout = "") {
+  const commonDir = gitCommonDir(checkout);
+  return commonDir
+    ? {
+        lockDir: path.join(commonDir, "bm-fetch-refresh.lock"),
+        stateFile: path.join(commonDir, "bm-fetch-refresh.json"),
+      }
+    : { lockDir: "", stateFile: "" };
+}
+
+function readRepoRefreshState(checkout = "") {
+  const { stateFile } = repoRefreshPaths(checkout);
+  if (!stateFile) return {};
+  try {
+    const value = JSON.parse(readFileSync(stateFile, "utf8"));
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRepoRefreshState(checkout = "", value = {}) {
+  const { stateFile } = repoRefreshPaths(checkout);
+  if (!stateFile) return false;
+  const temporary = `${stateFile}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(value)}\n`, "utf8");
+  renameSync(temporary, stateFile);
+  return true;
+}
+
+function lockIsStale(lockDir = "", nowMs = Date.now()) {
+  try {
+    return nowMs - statSync(lockDir).mtimeMs > 120000;
+  } catch {
+    return false;
+  }
+}
+
+async function acquireRepoRefreshLock(checkout = "", {
+  timeoutMs = 35000,
+  pollMs = 25,
+} = {}) {
+  const { lockDir } = repoRefreshPaths(checkout);
+  if (!lockDir) throw new Error("repository refresh lock path is unavailable");
+  const deadline = Date.now() + Math.max(100, Number(timeoutMs) || 35000);
+  while (Date.now() <= deadline) {
+    try {
+      mkdirSync(lockDir);
+      return lockDir;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      if (lockIsStale(lockDir)) {
+        try {
+          rmdirSync(lockDir);
+          continue;
+        } catch {
+          // Another process still owns or just released the lock.
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, Math.max(5, Number(pollMs) || 25)));
+    }
+  }
+  throw new Error("repository refresh lock timed out");
+}
+
+async function defaultGitFetch(checkout = "") {
+  await execFileAsync(
+    "git",
+    ["-C", checkout, "fetch", "--prune", "origin"],
+    {
+      timeout: 30000,
+      encoding: "utf8",
+      maxBuffer: 2 * 1024 * 1024,
+    }
+  );
+}
+
+function failedRefreshCheckoutState(checkout = "", warning = "origin fetch failed") {
+  const state = gitCheckoutState(checkout);
+  return {
+    ...state,
+    fetch_verified: false,
+    relation: "unverified",
+    current_commit: "",
+    current_commit_verified: false,
+    warning: `unverified checkout: ${warning}; upstream freshness is unknown`,
+  };
+}
+
+export async function refreshGitCheckout(checkout = "", {
+  runFetch = defaultGitFetch,
+  now = () => new Date(),
+  lockTimeoutMs = 35000,
+  lockPollMs = 25,
+} = {}) {
+  let lockDir = "";
+  try {
+    lockDir = await acquireRepoRefreshLock(checkout, {
+      timeoutMs: lockTimeoutMs,
+      pollMs: lockPollMs,
+    });
+    try {
+      await runFetch(checkout);
+      const refreshedAt = now().toISOString();
+      writeRepoRefreshState(checkout, {
+        fetch_verified: true,
+        refreshed_at: refreshedAt,
+        attempted_at: refreshedAt,
+        error: "",
+      });
+      return gitCheckoutState(checkout);
+    } catch (error) {
+      const attemptedAt = now().toISOString();
+      const previous = readRepoRefreshState(checkout);
+      writeRepoRefreshState(checkout, {
+        fetch_verified: false,
+        refreshed_at: "",
+        attempted_at: attemptedAt,
+        last_verified_at: previous.fetch_verified ? previous.refreshed_at || "" : previous.last_verified_at || "",
+        error: String(error?.message || "origin fetch failed").slice(0, 500),
+      });
+      return failedRefreshCheckoutState(checkout, "origin fetch failed");
+    }
+  } catch (error) {
+    return failedRefreshCheckoutState(checkout, error?.message || "origin fetch failed");
+  } finally {
+    if (lockDir) {
+      try {
+        rmdirSync(lockDir);
+      } catch {
+        // The next refresh will recover a stale empty lock after the timeout.
+      }
+    }
+  }
+}
+
+export async function refreshRepoSourceLeads(repoNames = [], options = {}) {
+  const checkouts = repoNames
+    .slice(0, 4)
+    .map((name) => ({
+      name,
+      dir: `${REPO_ROOT}/${String(name).replace(/[^A-Za-z0-9._-]/g, "")}`,
+    }))
+    .filter(({ dir }) => existsSync(dir));
+  await Promise.all(checkouts.map(({ dir }) => refreshGitCheckout(dir, options)));
+  return repoSourceLeads(checkouts.map(({ name }) => name));
+}
+
 function normalizedRepoPath(value = "") {
   const candidate = String(value || "").trim().replaceAll("\\", "/").replace(/^\.\//, "");
   if (!candidate || path.posix.isAbsolute(candidate)) return "";
@@ -396,13 +574,10 @@ export function validateGitFileReference({
   return result;
 }
 
-export function gitCheckoutState(checkout = "", { fetchOrigin = false } = {}) {
-  const fetchVerified = fetchOrigin
-    ? commandSucceeds(
-      "git",
-      ["-C", checkout, "fetch", "--prune", "origin"],
-      { timeout: 30000 }
-    )
+export function gitCheckoutState(checkout = "") {
+  const refreshState = readRepoRefreshState(checkout);
+  const fetchVerified = typeof refreshState.fetch_verified === "boolean"
+    ? refreshState.fetch_verified
     : null;
   const localHead = resolvedGitCommit(checkout, "HEAD");
   const branch = safeExec("git", ["-C", checkout, "symbolic-ref", "--quiet", "--short", "HEAD"]).trim();
@@ -415,6 +590,8 @@ export function gitCheckoutState(checkout = "", { fetchOrigin = false } = {}) {
     upstream,
     status: safeExec("git", ["-C", checkout, "status", "-sb"]).trim().split("\n")[0] || "",
     fetch_verified: fetchVerified,
+    fetch_refreshed_at: String(refreshState.refreshed_at || refreshState.last_verified_at || ""),
+    fetch_attempted_at: String(refreshState.attempted_at || ""),
     local_head: localHead,
     upstream_head: upstreamHead,
     ahead: 0,
@@ -424,8 +601,8 @@ export function gitCheckoutState(checkout = "", { fetchOrigin = false } = {}) {
     current_commit_verified: false,
     warning: "",
   };
-  if (fetchOrigin && !fetchVerified) {
-    state.warning = "unverified checkout: origin fetch failed, so upstream freshness is unknown";
+  if (fetchVerified === false) {
+    state.warning = "unverified checkout: the latest origin refresh failed, so upstream freshness is unknown";
     return state;
   }
   if (!localHead) {
@@ -465,12 +642,12 @@ function parsedTodoReference(value = "") {
   return { file: match[1].replace(/^\.\//, ""), line: Number(match[2]), text: match[3].trim() };
 }
 
-export function repoSourceLeads(repoNames = [], { fetchOrigin = true } = {}) {
+export function repoSourceLeads(repoNames = []) {
   const leads = [];
   for (const name of repoNames.slice(0, 4)) {
     const dir = `${REPO_ROOT}/${String(name).replace(/[^A-Za-z0-9._-]/g, "")}`;
     if (!existsSync(dir)) continue;
-    const checkoutState = gitCheckoutState(dir, { fetchOrigin });
+    const checkoutState = gitCheckoutState(dir);
     const referenceCommit = checkoutState.current_commit || (
       checkoutState.fetch_verified !== false ? checkoutState.upstream_head : ""
     );
@@ -513,6 +690,8 @@ export function repoSourceLeads(repoNames = [], { fetchOrigin = true } = {}) {
       upstream: checkoutState.upstream,
       checkout_status: checkoutState.status,
       fetch_verified: checkoutState.fetch_verified,
+      fetch_refreshed_at: checkoutState.fetch_refreshed_at,
+      fetch_attempted_at: checkoutState.fetch_attempted_at,
       checkout_relation: checkoutState.relation,
       current_commit_verified: checkoutState.current_commit_verified,
       checkout_warning: checkoutState.warning,

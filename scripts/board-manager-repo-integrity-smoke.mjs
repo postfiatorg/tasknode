@@ -20,6 +20,8 @@ const root = mkdtempSync(path.join(tmpdir(), "board-manager-repo-integrity-"));
 process.env.BM_REPO_ROOT = root;
 const {
   gitCheckoutState,
+  refreshGitCheckout,
+  repoSourceDigestHeads,
   repoSourceLeads,
   validateGitFileReference,
 } = await import("./bm/lib.mjs");
@@ -96,7 +98,7 @@ try {
   assert.equal(invalidLine.verified, false);
   assert.match(invalidLine.warning, /line 99 was not found at commit/);
 
-  const dirtyWorkingTreeLead = repoSourceLeads(["checkout"], { fetchOrigin: false })[0];
+  const dirtyWorkingTreeLead = repoSourceLeads(["checkout"])[0];
   assert.equal(dirtyWorkingTreeLead.todo_count, 0);
   assert.equal(dirtyWorkingTreeLead.verified_references.length, 0);
   assert.match(dirtyWorkingTreeLead.unverified_references[0].warning, /content differs at commit/);
@@ -142,13 +144,64 @@ try {
   assert.equal(missingUpstream.current_commit_verified, false);
   assert.equal(missingUpstream.current_commit, "");
 
+  const neverRefreshedLead = repoSourceLeads(["checkout"])[0];
+  assert.equal(neverRefreshedLead.fetch_verified, null);
+  assert.equal(neverRefreshedLead.fetch_refreshed_at, "");
+  assert.equal(neverRefreshedLead.checkout_relation, "missing_upstream");
+
+  git(checkout, ["checkout", "main"]);
+  git(checkout, ["reset", "--hard", "origin/main"]);
+  const syncedBeforeRefresh = gitCheckoutState(checkout);
+  assert.equal(syncedBeforeRefresh.relation, "synced");
+  assert.equal(syncedBeforeRefresh.current_commit_verified, true);
+
+  let activeFetches = 0;
+  let peakFetches = 0;
+  let fetchCalls = 0;
+  const runFetch = async () => {
+    fetchCalls += 1;
+    activeFetches += 1;
+    peakFetches = Math.max(peakFetches, activeFetches);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    activeFetches -= 1;
+  };
+  const refreshed = await Promise.all([
+    refreshGitCheckout(checkout, {
+      runFetch,
+      now: () => new Date("2026-08-07T22:00:00.000Z"),
+      lockPollMs: 5,
+    }),
+    refreshGitCheckout(checkout, {
+      runFetch,
+      now: () => new Date("2026-08-07T22:00:01.000Z"),
+      lockPollMs: 5,
+    }),
+  ]);
+  assert.equal(fetchCalls, 2);
+  assert.equal(peakFetches, 1);
+  assert.equal(refreshed.every((state) => state.fetch_verified), true);
+  assert.equal(refreshed.every((state) => state.fetch_refreshed_at), true);
+
+  const callsBeforePacketReads = fetchCalls;
+  const cachedLead = repoSourceLeads(["checkout"])[0];
+  const digestHeads = repoSourceDigestHeads(["checkout"]);
+  assert.equal(fetchCalls, callsBeforePacketReads, "packet and digest reads must not fetch");
+  assert.equal(cachedLead.fetch_verified, true);
+  assert.equal(cachedLead.fetch_refreshed_at, "2026-08-07T22:00:01.000Z");
+  assert.equal(digestHeads.length, 1);
+
   git(checkout, ["remote", "set-url", "origin", path.join(root, "missing-remote.git")]);
-  const cachedLead = repoSourceLeads(["checkout"], { fetchOrigin: false })[0];
-  assert.equal(cachedLead.fetch_verified, null);
-  assert.equal(cachedLead.checkout_relation, "missing_upstream");
-  const fetchBackedLead = repoSourceLeads(["checkout"], { fetchOrigin: true })[0];
-  assert.equal(fetchBackedLead.fetch_verified, false);
-  assert.equal(fetchBackedLead.checkout_relation, "unverified");
+  const failedRefresh = await refreshGitCheckout(checkout, {
+    now: () => new Date("2026-08-07T22:00:02.000Z"),
+  });
+  assert.equal(failedRefresh.fetch_verified, false);
+  assert.equal(failedRefresh.current_commit_verified, false);
+  assert.equal(failedRefresh.current_commit, "");
+  assert.equal(failedRefresh.relation, "unverified");
+  const failedLead = repoSourceLeads(["checkout"])[0];
+  assert.equal(failedLead.fetch_verified, false);
+  assert.equal(failedLead.current_commit_verified, false);
+  assert.equal(failedLead.checkout_relation, "unverified");
 
   console.log(JSON.stringify({
     references: {
@@ -167,8 +220,13 @@ try {
       missingUpstream,
     },
     fetchModes: {
+      neverRefreshedLead,
       cachedLead,
-      fetchBackedLead,
+      failedLead,
+      failedRefresh,
+      digestHeads,
+      fetchCalls,
+      peakFetches,
     },
   }, null, 2));
   console.log("board-manager-repo-integrity-smoke ok");

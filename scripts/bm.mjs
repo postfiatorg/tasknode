@@ -5,6 +5,7 @@
 //
 // Usage:
 //   node scripts/bm.mjs digest <board>
+//   node scripts/bm.mjs refresh <board> [--json]
 //   node scripts/bm.mjs board <board> [--json]
 //   node scripts/bm.mjs user <account_or_wallet> [--json]
 //   node scripts/bm.mjs history <board> [--limit N] [--json]
@@ -29,6 +30,7 @@ import {
   boardDigest,
   boardHistory,
   boardPacket,
+  refreshBoardRepositories,
   resolveBoardId,
   userPacket,
 } from "./bm/lib.mjs";
@@ -82,6 +84,22 @@ async function main() {
     if (!result) return fail(`Board not found in database: ${boardId}. Run migrations.`);
     if (asJson) console.log(JSON.stringify(result, null, 2));
     else console.log(`${result.boardId} ${result.digest}`);
+    return;
+  }
+
+  if (command === "refresh") {
+    const boardId = requireBoard(positional[0]);
+    if (!boardId) return;
+    const result = await refreshBoardRepositories(boardId);
+    if (!result) return fail(`Board not found in database: ${boardId}. Run migrations.`);
+    if (asJson) return console.log(JSON.stringify(result, null, 2));
+    console.log(`${result.boardId} refreshed=${result.refreshedAt}`);
+    for (const lead of result.source_leads || []) {
+      console.log(
+        `  ${lead.repo} fetch_verified=${lead.fetch_verified} refreshed_at=${lead.fetch_refreshed_at || "never"} relation=${lead.checkout_relation}`
+      );
+      if (lead.checkout_warning) console.log(`    warning ${lead.checkout_warning}`);
+    }
     return;
   }
 
@@ -340,6 +358,7 @@ async function main() {
       "Usage: node scripts/bm.mjs <command>",
       "  boards                      list board ids",
       "  digest <board>              state digest (whip trigger input)",
+      "  refresh <board> [--json]    serialized origin refresh for source checkouts",
       "  board <board> [--json]      full board packet (incl. budget + pending decisions)",
       "  user <account|wallet>       task history + badges",
       "  history <board> [--limit N] terminal task history",
