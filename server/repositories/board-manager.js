@@ -1376,7 +1376,13 @@ export function isBoardManagerSourceReadTimeout(error) {
   const code = safeText(error?.code, 80).toUpperCase();
   if (["57014", "ETIMEDOUT", "ESOCKETTIMEDOUT"].includes(code)) return true;
   const message = safeText(error?.message || error, 1000).toLowerCase();
-  return /(?:connection|query|read|statement)[\s\S]{0,80}(?:timed?\s*out|timeout)|timeout expired/.test(message);
+  return [
+    /^(?:connection|query|read|statement)(?: read)? timeout\b/,
+    /^connection terminated due to connection timeout\b/,
+    /^(?:connection|query|read|statement)\b[^\n]*\btimed out\b/,
+    /^timeout exceeded when trying to connect\b/,
+    /\btimeout expired\b/,
+  ].some((pattern) => pattern.test(message));
 }
 
 function boardManagerReadFallback(reader, error) {
@@ -1387,6 +1393,8 @@ function boardManagerReadFallback(reader, error) {
 export async function runBoardManagerSourceReads(
   readers = [],
   {
+    // Match the board-manager database pool instead of launching every source
+    // query at once. This trades some packet latency for lower pool pressure.
     concurrency = 3,
     maxAttempts = 3,
     retryDelayMs = 25,
@@ -1412,6 +1420,9 @@ export async function runBoardManagerSourceReads(
           return;
         }
         if (attempt >= maxAttempts) {
+          // Persistent timeouts fail the packet even for optional sources.
+          // Routing on silently incomplete corpus data is less safe than
+          // retrying the entire packet after the database recovers.
           error.boardManagerSourceRead = safeText(reader.label, 120) || `read_${index}`;
           error.boardManagerSourceAttempts = attempt;
           throw error;

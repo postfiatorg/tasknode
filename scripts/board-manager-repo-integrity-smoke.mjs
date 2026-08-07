@@ -3,10 +3,6 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  gitCheckoutState,
-  validateGitFileReference,
-} from "./bm/lib.mjs";
 
 function git(cwd, args) {
   return execFileSync("git", ["-C", cwd, ...args], {
@@ -21,6 +17,13 @@ function configureRepo(cwd) {
 }
 
 const root = mkdtempSync(path.join(tmpdir(), "board-manager-repo-integrity-"));
+process.env.BM_REPO_ROOT = root;
+const {
+  gitCheckoutState,
+  repoSourceLeads,
+  validateGitFileReference,
+} = await import("./bm/lib.mjs");
+
 const remote = path.join(root, "remote.git");
 const source = path.join(root, "source");
 const checkout = path.join(root, "checkout");
@@ -52,6 +55,19 @@ try {
     commit: firstCommit,
     file: "existing.txt",
     line: 2,
+    expectedText: "line two",
+  });
+  writeFileSync(
+    path.join(checkout, "existing.txt"),
+    "line one\nTODO dirty working-tree replacement\n",
+    "utf8"
+  );
+  const mismatchedAtFirst = validateGitFileReference({
+    checkout,
+    commit: firstCommit,
+    file: "existing.txt",
+    line: 2,
+    expectedText: "TODO dirty working-tree replacement",
   });
   const missingAtFirst = validateGitFileReference({
     checkout,
@@ -72,11 +88,18 @@ try {
     line: 99,
   });
   assert.equal(validAtFirst.verified, true);
+  assert.equal(mismatchedAtFirst.verified, false);
+  assert.match(mismatchedAtFirst.warning, /content differs at commit/);
   assert.equal(missingAtFirst.verified, false);
   assert.match(missingAtFirst.warning, /was not found at commit/);
   assert.equal(validAtSecond.verified, true);
   assert.equal(invalidLine.verified, false);
-  assert.match(invalidLine.warning, /exceeds/);
+  assert.match(invalidLine.warning, /line 99 was not found at commit/);
+
+  const dirtyWorkingTreeLead = repoSourceLeads(["checkout"], { fetchOrigin: false })[0];
+  assert.equal(dirtyWorkingTreeLead.todo_count, 0);
+  assert.equal(dirtyWorkingTreeLead.verified_references.length, 0);
+  assert.match(dirtyWorkingTreeLead.unverified_references[0].warning, /content differs at commit/);
 
   const synced = gitCheckoutState(checkout);
   assert.equal(synced.relation, "synced");
@@ -119,11 +142,21 @@ try {
   assert.equal(missingUpstream.current_commit_verified, false);
   assert.equal(missingUpstream.current_commit, "");
 
+  git(checkout, ["remote", "set-url", "origin", path.join(root, "missing-remote.git")]);
+  const cachedLead = repoSourceLeads(["checkout"], { fetchOrigin: false })[0];
+  assert.equal(cachedLead.fetch_verified, null);
+  assert.equal(cachedLead.checkout_relation, "missing_upstream");
+  const fetchBackedLead = repoSourceLeads(["checkout"], { fetchOrigin: true })[0];
+  assert.equal(fetchBackedLead.fetch_verified, false);
+  assert.equal(fetchBackedLead.checkout_relation, "unverified");
+
   console.log(JSON.stringify({
     references: {
       before: missingAtFirst,
       after: validAtSecond,
       validAtFirst,
+      mismatchedAtFirst,
+      dirtyWorkingTreeLead,
       invalidLine,
     },
     checkoutStates: {
@@ -132,6 +165,10 @@ try {
       behind,
       diverged,
       missingUpstream,
+    },
+    fetchModes: {
+      cachedLead,
+      fetchBackedLead,
     },
   }, null, 2));
   console.log("board-manager-repo-integrity-smoke ok");

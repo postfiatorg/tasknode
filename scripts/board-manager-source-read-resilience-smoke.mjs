@@ -100,6 +100,10 @@ assert.equal(
   isBoardManagerSourceReadTimeout(new Error("Connection terminated due to connection timeout")),
   true
 );
+assert.equal(
+  isBoardManagerSourceReadTimeout(new Error("failed to read timeout settings")),
+  false
+);
 assert.equal(isBoardManagerSourceReadTimeout(new Error("syntax error")), false);
 
 console.log(JSON.stringify({

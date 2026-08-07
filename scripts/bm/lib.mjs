@@ -126,9 +126,13 @@ export async function boardDigest(boardId) {
     // Idle eligible capacity is board state: a badge-verified contributor
     // freeing their slot should wake the manager for a routing pass.
     idle_capacity: (await idleEligibleContributors()).map((c) => c.account_id).sort(),
-    // Repo drift is board state: new commits or new TODO markers in the
-    // board's sources are routing raw material and wake the manager.
-    source_heads: repoSourceLeads(board.metadata_json?.sources?.repos || []).map(
+    // Use cached tracking refs for digesting. A digest must stay read-only and
+    // stable through transient origin outages; full board packets perform the
+    // fetch-backed freshness check before presenting repository facts.
+    source_heads: repoSourceLeads(
+      board.metadata_json?.sources?.repos || [],
+      { fetchOrigin: false }
+    ).map(
       (lead) =>
         `${lead.repo}:${lead.checkout_relation}:${lead.head || "blocked"}:` +
         `${lead.local_head}:${lead.upstream_head}:${lead.todo_count}`
@@ -322,7 +326,31 @@ function resolvedGitCommit(checkout = "", commit = "HEAD") {
   return safeExec("git", ["-C", checkout, "rev-parse", "--verify", `${commit}^{commit}`]).trim();
 }
 
-export function validateGitFileReference({ checkout = "", commit = "HEAD", file = "", line = 0 } = {}) {
+function gitLineAtReference({ checkout = "", commit = "", file = "", line = 0 } = {}) {
+  const output = safeExec("git", [
+    "-C",
+    checkout,
+    "blame",
+    "--porcelain",
+    "-L",
+    `${line},${line}`,
+    commit,
+    "--",
+    file,
+  ]);
+  const contentRecord = output.split("\n").find((value) => value.startsWith("\t"));
+  return contentRecord === undefined
+    ? { found: false, text: "" }
+    : { found: true, text: contentRecord.slice(1) };
+}
+
+export function validateGitFileReference({
+  checkout = "",
+  commit = "HEAD",
+  file = "",
+  line = 0,
+  expectedText,
+} = {}) {
   const normalizedFile = normalizedRepoPath(file);
   const resolvedCommit = resolvedGitCommit(checkout, commit);
   const normalizedLine = Math.max(0, Number.parseInt(String(line || 0), 10) || 0);
@@ -346,10 +374,21 @@ export function validateGitFileReference({ checkout = "", commit = "HEAD", file 
     return result;
   }
   if (normalizedLine > 0) {
-    const contents = safeExec("git", ["-C", checkout, "show", `${resolvedCommit}:${normalizedFile}`]);
-    const lineCount = contents ? contents.replace(/\n$/, "").split("\n").length : 0;
-    if (normalizedLine > lineCount) {
-      result.warning = `unverified: ${normalizedFile}:${normalizedLine} exceeds ${lineCount} lines at commit ${resolvedCommit.slice(0, 12)}`;
+    const committedLine = gitLineAtReference({
+      checkout,
+      commit: resolvedCommit,
+      file: normalizedFile,
+      line: normalizedLine,
+    });
+    if (!committedLine.found) {
+      result.warning = `unverified: ${normalizedFile} line ${normalizedLine} was not found at commit ${resolvedCommit.slice(0, 12)}`;
+      return result;
+    }
+    if (
+      expectedText !== undefined &&
+      committedLine.text.trim() !== String(expectedText || "").trim()
+    ) {
+      result.warning = `unverified: ${normalizedFile}:${normalizedLine} content differs at commit ${resolvedCommit.slice(0, 12)}`;
       return result;
     }
   }
@@ -426,14 +465,14 @@ function parsedTodoReference(value = "") {
   return { file: match[1].replace(/^\.\//, ""), line: Number(match[2]), text: match[3].trim() };
 }
 
-export function repoSourceLeads(repoNames = []) {
+export function repoSourceLeads(repoNames = [], { fetchOrigin = true } = {}) {
   const leads = [];
   for (const name of repoNames.slice(0, 4)) {
     const dir = `${REPO_ROOT}/${String(name).replace(/[^A-Za-z0-9._-]/g, "")}`;
     if (!existsSync(dir)) continue;
-    const checkoutState = gitCheckoutState(dir, { fetchOrigin: true });
+    const checkoutState = gitCheckoutState(dir, { fetchOrigin });
     const referenceCommit = checkoutState.current_commit || (
-      checkoutState.fetch_verified ? checkoutState.upstream_head : ""
+      checkoutState.fetch_verified !== false ? checkoutState.upstream_head : ""
     );
     const commits = referenceCommit
       ? safeExec("git", ["-C", dir, "log", "--oneline", "-8", referenceCommit]).split("\n").filter(Boolean)
@@ -451,9 +490,16 @@ export function repoSourceLeads(repoNames = []) {
       .filter(Boolean)
       .map((reference) => ({
         ...reference,
-        ...validateGitFileReference({ checkout: dir, commit: referenceCommit, file: reference.file, line: reference.line }),
+        ...validateGitFileReference({
+          checkout: dir,
+          commit: referenceCommit,
+          file: reference.file,
+          line: reference.line,
+          expectedText: reference.text,
+        }),
       }));
-    const verifiedReferences = checkedReferences.filter((reference) => reference.verified).slice(0, 20);
+    const allVerifiedReferences = checkedReferences.filter((reference) => reference.verified);
+    const verifiedReferences = allVerifiedReferences.slice(0, 20);
     const unverifiedReferences = checkedReferences
       .filter((reference) => !reference.verified)
       .slice(0, 20)
@@ -471,7 +517,7 @@ export function repoSourceLeads(repoNames = []) {
       current_commit_verified: checkoutState.current_commit_verified,
       checkout_warning: checkoutState.warning,
       recent_commits: commits,
-      todo_count: verifiedReferences.length,
+      todo_count: allVerifiedReferences.length,
       todo_sample: verifiedReferences.map((reference) => `${reference.file}:${reference.line}:${reference.text}`),
       verified_references: verifiedReferences,
       unverified_references: unverifiedReferences,
