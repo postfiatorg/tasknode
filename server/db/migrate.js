@@ -111,6 +111,7 @@ const migrations = [
   "102_bm_activity_summaries.sql",
   "103_account_linked_wallets.sql",
   "104_network_task_capacity_limits.sql",
+  "105_board_manager_runs_global_recent.sql",
 ];
 
 let migrated = false;
