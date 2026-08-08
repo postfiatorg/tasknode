@@ -10,3 +10,6 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "installed:"
 crontab -l | grep bm-
+
+# Keep repository freshness installation in the standard Board Manager deploy path.
+"$DIR/../systemd/install-board-refresh.sh"

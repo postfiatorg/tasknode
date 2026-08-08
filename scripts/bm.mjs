@@ -134,7 +134,7 @@ async function main() {
         ? lead.head
         : `BLOCKED (${lead.checkout_relation || "unverified"})`;
       console.log(
-        `\n## source_leads: ${lead.repo} (current ${commitLabel}, ${lead.todo_count} verified TODO/FIXME markers)`
+        `\n## source_leads: ${lead.repo} (current ${commitLabel}, ${lead.todo_count} verified TODO/FIXME markers; fetch_verified=${Boolean(lead.fetch_verified)}; fetch_refreshed_at=${lead.fetch_refreshed_at || "never"})`
       );
       if (lead.checkout_warning) console.log(`  warning ${lead.checkout_warning}`);
       for (const commit of (lead.recent_commits || []).slice(0, 5)) console.log(`  commit ${commit}`);

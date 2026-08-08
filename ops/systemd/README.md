@@ -1,8 +1,8 @@
 # Task Node systemd units
 
-`tasknodeofficial-board-refresh.timer` starts the oneshot Board Manager repository refresh every 15 minutes. Install the service and timer as user units, then enable the timer with `systemctl --user enable --now tasknodeofficial-board-refresh.timer`. The job uses an atomic process lock and exits successfully when another run owns it, so timer events never stack.
+`tasknodeofficial-board-refresh.timer` starts the oneshot Board Manager repository refresh every 15 minutes. The standard Board Manager deploy command, `ops/bm-runtime/bm-install-cron.sh`, installs and enables the timer through `install-board-refresh.sh`; there is no separate post-deploy step. To repair or reinstall only these units, run `ops/systemd/install-board-refresh.sh` directly. The job uses an atomic process lock and exits successfully when another run owns it, so timer events never stack.
 
-Board and digest reads are fetch-free: this timer owns repository freshness. Each source lead exposes `fetch_refreshed_at`; when it is more than 30 minutes old (or absent), consumers must treat the lead as historical rather than current repository truth. The service journal includes the latest per-board and per-repository refresh timestamps.
+Board and digest reads are fetch-free: this timer owns repository freshness. Each source lead exposes `fetch_verified` and `fetch_refreshed_at` in both JSON and human-readable `bm board` output; when the timestamp is more than 30 minutes old (or absent), consumers must treat the lead as historical rather than current repository truth. The service journal includes the latest per-board and per-repository refresh timestamps.
 
 Production sample from 2026-08-08 (abridged):
 
