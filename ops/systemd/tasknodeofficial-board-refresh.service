@@ -1,0 +1,15 @@
+[Unit]
+Description=Task Node Official Board Manager repository refresh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pfrpc/repos/tasknodeofficial
+Environment=HOME=/home/pfrpc
+Environment=PATH=/home/pfrpc/.local/bin:/home/pfrpc/.fly/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env bash /home/pfrpc/repos/tasknodeofficial/ops/bm-runtime/bm-refresh-repositories.sh
+TimeoutStartSec=10min
+
+[Install]
+WantedBy=default.target
