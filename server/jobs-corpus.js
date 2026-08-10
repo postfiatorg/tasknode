@@ -19,7 +19,10 @@ const maxRetrievalChunkChars = Math.min(
   1600
 );
 const defaultRetrievalLimit = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_RETRIEVAL_LIMIT) || 3, 1), 5);
-const retrievalTimeoutMs = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_RETRIEVAL_TIMEOUT_MS) || 2500, 250), 8000);
+// 2500ms proved too tight in production: embedding-provider tail latency
+// (cold starts) intermittently exceeded it and dropped the Jobs corpus from
+// live turns. Retrieval is worth a slightly longer wait; 8000ms clamp holds.
+const retrievalTimeoutMs = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_RETRIEVAL_TIMEOUT_MS) || 5000, 250), 8000);
 
 function chatSpiritEnabled() {
   const value = String(process.env.TASKNODE_CHAT_SPIRIT_ENABLED || "true").trim().toLowerCase();
@@ -454,15 +457,24 @@ export async function jobsRetrievalForChat({ message = "", contextDocument = nul
   const queryText = buildJobsRetrievalQuery({ message, contextDocument, memoryContext, taskContext });
   if (!queryText.trim()) return { ok: false, skipped: true, reason: "empty_query", text: "", chunks: [] };
 
+  const startedAt = Date.now();
   try {
     const result = await Promise.race([
       searchJobsCorpus({ queryText }),
       new Promise((resolve) => {
-        setTimeout(() => resolve({ ok: false, skipped: true, reason: "jobs_retrieval_timeout", chunks: [] }), retrievalTimeoutMs);
+        const timer = setTimeout(
+          () => resolve({ ok: false, skipped: true, reason: "jobs_retrieval_timeout", chunks: [] }),
+          retrievalTimeoutMs
+        );
+        if (typeof timer?.unref === "function") timer.unref();
       }),
     ]);
+    if (result?.reason === "jobs_retrieval_timeout") {
+      console.warn(`jobs retrieval timed out after ${Date.now() - startedAt}ms (budget ${retrievalTimeoutMs}ms)`);
+    }
     return {
       ...result,
+      elapsedMs: Date.now() - startedAt,
       retrievalId: `jobs_ret_${randomUUID()}`,
       text: formatJobsRetrieval(result.chunks),
     };

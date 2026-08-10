@@ -1978,7 +1978,20 @@ function ChatSurface({
     : chat?.defaultMode || "Private Instant";
   const isHiveChat = activeChat?.kind === "hive";
   const [turns, setTurns] = useState(() => normalizeChatMessages(messages));
-  const [selectedMode, setSelectedMode] = useState(defaultMode);
+  // The user's chosen chat mode is a preference, not view state. It must
+  // survive navigation and remounts instead of snapping back to the server
+  // default. Stored per account; only an explicit picker click writes it.
+  const chatModeStorageKey = accountId ? `tasknode.chat.mode.${accountId}` : "";
+  const storedChatMode = (() => {
+    if (!chatModeStorageKey) return "";
+    try {
+      const value = window.localStorage?.getItem(chatModeStorageKey) || "";
+      return modes.some((mode) => mode.label === value && mode.enabled) ? value : "";
+    } catch {
+      return "";
+    }
+  })();
+  const [selectedMode, setSelectedMode] = useState(storedChatMode || defaultMode);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [taskRequestMode, setTaskRequestMode] = useState(false);
@@ -2059,8 +2072,12 @@ function ChatSurface({
   }, [chat?.historyPath]);
 
   useEffect(() => {
+    // Re-apply the server default only when the user has no stored
+    // preference; a remount or app-state refresh must not clobber a choice.
+    if (storedChatMode) return;
     setSelectedMode(defaultMode);
-  }, [defaultMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultMode, storedChatMode]);
 
   useEffect(() => {
     if (!signedOut) return;
@@ -3034,6 +3051,13 @@ function ChatSurface({
                       onClick={() => {
                         if (!mode.enabled) return;
                         setSelectedMode(mode.label);
+                        if (chatModeStorageKey) {
+                          try {
+                            window.localStorage?.setItem(chatModeStorageKey, mode.label);
+                          } catch {
+                            /* storage unavailable: selection still applies for this session */
+                          }
+                        }
                         setModelMenuOpen(false);
                       }}
                     />
