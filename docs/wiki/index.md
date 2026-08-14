@@ -11,7 +11,7 @@ For a normal user-facing explanation, start with [User Guide](#docs/user-guide).
 ## Documentation Authority
 
 1. **`docs/wiki/` is authoritative** for current product, operator, and architecture behavior.
-2. The in-app **Docs / Help** surface renders this wiki (via `src/features/docs/docs-content.js`).
+2. The in-app **Help** surface renders this wiki (via `src/features/docs/docs-content.js`). The first-class **Docs** screen is the encrypted PFDocs-backed document library, not the wiki.
 3. Files under **`docs/archive/root-specs/`** are historical reference only (early product briefs and UI mocks). They are not live authority.
 4. External/legacy task products and runtimes are migration archaeology, not this application's runtime.
 
@@ -21,6 +21,8 @@ For a normal user-facing explanation, start with [User Guide](#docs/user-guide).
 - Context is the durable profile of what the user is building and what matters.
 - Tasks are portable work objects that request, accept, submit, verify, and reward through PFTL/IPFS while Postgres provides the fast read model.
 - Hive is the network coordination board and Hive Chat is the default conversation for contributing validated network context.
+- Docs is the wallet-encrypted collaborative document library backed by embedded PFDocs.
+- Team is the directional teammate task-history sharing surface under More.
 - Wallet is identity, rewards, publishing authority, and balance visibility.
 - Memory is lightweight compression of user and assistant turns so future chats can carry continuity.
 - Context Refine is the active specialized chat tool for targeted edits to the current context document. Context Rewrite is the active billed full-document rewrite pipeline that returns copyable/downloadable Markdown without replacing the current document. Motivation, Brainstorming Context, and general Rewrite are not exposed.

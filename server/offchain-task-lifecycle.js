@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { transaction } from "./db/pool.js";
+import { enqueueRewardedTaskMemoryForTask } from "./repositories/task-reward-memory.js";
 import {
   syncNetworkTaskAllocationMirrors,
   terminalNetworkTaskStatuses,
@@ -794,6 +795,15 @@ export async function applyOffchainTaskTransition(input = {}) {
   await transaction(async (client) => {
     result = await applyOffchainTaskTransitionWithClient(client, input);
   });
+  if (safeText(input.transition, 80).toLowerCase() === "rewarded") {
+    result.rewardedTaskMemory = await enqueueRewardedTaskMemoryForTask({
+      taskId: safeText(input.task?.task_id || input.task?.taskId, 180),
+    }).catch((error) => ({
+      queued: false,
+      reason: "rewarded_task_memory_enqueue_failed",
+      error: safeText(error?.message || error, 1000),
+    }));
+  }
   return result;
 }
 

@@ -9,6 +9,12 @@ reviewed, versioned, and replayed.
   verification, evidence reading, and reward scoring policy.
 - `chat/`: Chat system instructions plus account context, task, and memory
   injection templates.
+- `docs/`: Canonical ODV and Trading Coach personality prompts shared by the
+  primary chat personality router and PFDocs mentions. Jobs remains in
+  `chat/jobs_standard_chat_codex_style_draft.md`; only that personality may
+  receive Jobs pgvector excerpts.
+- `kravis.md`: Canonical downside-first private-equity personality prompt used
+  by the primary chat personality router.
 - `context/`: Context document editing prompts used by the chat-based Context
   Refine mode.
 - `memory/`: Async memory and deep-memory summarization prompts.
@@ -25,7 +31,10 @@ reviewed, versioned, and replayed.
   reserved prompt artifacts that are not used by a live app surface. Steve Jobs
   reference material lives in `non_production/steve_jobs_ref/`. The Profile NFT
   placeholder prompt lives in `non_production/profile_nft_dev/` for fallback
-  tests only; live generation uses `prompts/profile/profile_nft_image_v1.md`.
+  tests only. Live generation uses the two-pass
+  `prompts/profile/profile_nft_privacy_abstraction_v1.md` and
+  `prompts/profile/profile_nft_privacy_review_v1.md` gateway; OpenAI receives
+  only the validated high-level rendered art brief.
 
 Runtime code should record the prompt version and prompt digest whenever a
 prompt output becomes part of a PFTL payload, database cache, or audit trail.

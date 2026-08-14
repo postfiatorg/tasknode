@@ -6,6 +6,7 @@ import {
   buildJobsRetrievalQuery,
   formatJobsRetrieval,
   ingestJobsCorpus,
+  jobsCorpusChunkId,
   jobsRetrievalForChat,
   searchJobsCorpus,
 } from "../server/jobs-corpus.js";
@@ -36,6 +37,26 @@ const raw = [
   "Taste is the act of refusing clutter. A product should make the important thing feel inevitable.",
 ].join("\n");
 const rawSha256 = sha256(raw);
+
+const deterministicChunkId = jobsCorpusChunkId({
+  rawSha256,
+  embeddingModel: "deterministic-bag-of-words-v1",
+  dimensions: 1536,
+  chunkIndex: 0,
+});
+const historicalOpenAiChunkId = jobsCorpusChunkId({
+  rawSha256,
+  embeddingModel: "text-embedding-3-small",
+  dimensions: 1536,
+  chunkIndex: 0,
+});
+assert.notEqual(deterministicChunkId, historicalOpenAiChunkId);
+assert.equal(deterministicChunkId, jobsCorpusChunkId({
+  rawSha256,
+  embeddingModel: "deterministic-bag-of-words-v1",
+  dimensions: 1536,
+  chunkIndex: 0,
+}));
 
 try {
   await migrateDatabase();

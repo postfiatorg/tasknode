@@ -27,20 +27,11 @@ function messageTranscriptText(message) {
   return [message?.body || "", attachmentTranscriptText(message)].filter(Boolean).join("\n\n");
 }
 
-export function chatHistoryCharacterEstimate(historyMessages = [], { provider = "openai" } = {}) {
+export function chatHistoryCharacterEstimate(historyMessages = []) {
   const messages = Array.isArray(historyMessages) ? historyMessages.slice(-12) : [];
   if (messages.length === 0) return 0;
 
-  if (provider === "openrouter") {
-    return messages.reduce((total, message) => {
-      return total + messageTranscriptText(message).length + 24;
-    }, 0);
-  }
-
-  const history = messages
-    .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${messageTranscriptText(message)}`)
-    .join("\n");
-  return `Recent conversation:\n${history}\n\n`.length;
+  return messages.reduce((total, message) => total + messageTranscriptText(message).length + 24, 0);
 }
 
 function recentTranscriptFromMessages(messages, currentMessage) {
@@ -100,6 +91,7 @@ export function openRouterMessages({
   jobsEssence = "",
   deliveryContext = null,
   instructionsOverride = "",
+  persona = "jobs",
 }) {
   const normalizedAttachments = normalizeChatAttachments(attachments);
   const sourceHistory = Array.isArray(historyMessages)
@@ -124,7 +116,7 @@ export function openRouterMessages({
       role: "system",
       content:
         instructionsOverride ||
-        taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext }),
+        taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
     },
     ...history,
     { role: "user", content: userContent },
@@ -151,6 +143,7 @@ export function deepSeekMessages({
   jobsEssence = "",
   deliveryContext = null,
   instructionsOverride = "",
+  persona = "jobs",
 }) {
   const sourceHistory = Array.isArray(historyMessages)
     ? historyMessages
@@ -170,7 +163,7 @@ export function deepSeekMessages({
       role: "system",
       content:
         instructionsOverride ||
-        taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext }),
+        taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
     },
     ...history,
     { role: "user", content: userContent },

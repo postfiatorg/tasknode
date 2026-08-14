@@ -122,7 +122,7 @@ Examples:
 
 - non-JSON model output;
 - provider timeout;
-- OpenRouter HTTP failure;
+- Ambient HTTP or tool-execution failure;
 - model unavailable;
 - malformed response payload.
 

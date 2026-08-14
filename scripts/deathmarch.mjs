@@ -11,15 +11,15 @@ import pg from "pg";
 import { fetchHistoricalAccountTransactions, extractPftPointerEvents } from "../server/context-history-rpc.js";
 import { fetchContextIpfsJson } from "../server/context-ipfs.js";
 import { fetchAndDecryptTasknodePayload } from "../server/task-payloads.js";
+import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "../server/ambient-inference.js";
 
 const { Pool } = pg;
 
 const DEFAULT_WALLET = "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx";
 const DEFAULT_STATE_PATH = ".deathmarch-state.json";
 const DEFAULT_SEED_FILE = "deathmarchseed.txt";
-const DEFAULT_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
-const DEFAULT_DEEPSEEK_TIMEOUT_MS = 20000;
+const DEFAULT_AMBIENT_MODEL = AMBIENT_MODELS.structured;
+const DEFAULT_AMBIENT_TIMEOUT_MS = 20000;
 const DEFAULT_DISCORD_TIMEOUT_MS = 10000;
 const CLASSIFIER_FAILURE_CATEGORY = "classification unavailable";
 const TASK_KIND_LABELS = new Set(["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"]);
@@ -184,13 +184,13 @@ function usage() {
     "  npm run deathmarch -- --poll --seed-file ./deathmarchseed.txt",
     "",
     "Required env:",
-    "  DEEPSEEK_API_KEY",
+    "  AMBIENT_API_KEY",
     "  DEATHMARCH_DISCORD_WEBHOOK_URL or DISCORD_BOT_TOKEN + DEATHMARCH_DISCORD_CHANNEL_ID",
     "",
     "Optional env:",
     `  DEATHMARCH_WALLET=${DEFAULT_WALLET}`,
     `  DEATHMARCH_SEED_FILE=${DEFAULT_SEED_FILE}`,
-    `  DEATHMARCH_DEEPSEEK_MODEL=${DEFAULT_DEEPSEEK_MODEL}`,
+    `  DEATHMARCH_AMBIENT_MODEL=${DEFAULT_AMBIENT_MODEL}`,
     `  DEATHMARCH_STATE_PATH=${DEFAULT_STATE_PATH}`,
     "  DEATHMARCH_DATABASE_URL=postgres://...  # optional direct-write task_events feed",
     "  DEATHMARCH_DATABASE_EVENTS_ENABLED=false  # disable database feed",
@@ -910,10 +910,9 @@ export async function classifyEventAnonymity({
   env = process.env,
   fetchImpl = fetch,
 } = {}) {
-  const apiKey = safeText(env.DEEPSEEK_API_KEY || env.DEATHMARCH_DEEPSEEK_API_KEY, 4000);
-  if (!apiKey) return safeClassifierFallback();
+  if (!ambientConfigured(env)) return safeClassifierFallback();
   const requestBody = {
-    model: env.DEATHMARCH_DEEPSEEK_CLASSIFY_MODEL || env.DEATHMARCH_DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL,
+    model: env.DEATHMARCH_AMBIENT_CLASSIFY_MODEL || env.DEATHMARCH_AMBIENT_MODEL || DEFAULT_AMBIENT_MODEL,
     messages: [
       { role: "system", content: deathmarchClassifierPrompt() },
       {
@@ -928,23 +927,13 @@ export async function classifyEventAnonymity({
     max_tokens: 1200,
   };
   try {
-    const response = await fetchWithTimeout(fetchImpl, env.DEATHMARCH_DEEPSEEK_BASE_URL || DEFAULT_DEEPSEEK_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
-    }, clampInteger(
-      env.DEATHMARCH_DEEPSEEK_TIMEOUT_MS,
-      DEFAULT_DEEPSEEK_TIMEOUT_MS,
+    const result = await ambientChatCompletion({ env, fetchImpl, body: requestBody, capability: "strict_json", timeoutMs: clampInteger(
+      env.DEATHMARCH_AMBIENT_TIMEOUT_MS,
+      DEFAULT_AMBIENT_TIMEOUT_MS,
       1000,
       120000
-    ), "deepseek_classifier_timeout");
-    const bodyText = await response.text();
-    if (!response.ok) return safeClassifierFallback();
-    const body = bodyText ? JSON.parse(bodyText) : null;
-    const content = safeText(body?.choices?.[0]?.message?.content, 2000);
+    ) });
+    const content = safeText(result.text, 2000);
     if (!content) return safeClassifierFallback();
     return parseClassifierJson(content);
   } catch {
@@ -1072,8 +1061,7 @@ export async function callDeepSeekSummary({
   env = process.env,
   fetchImpl = fetch,
 } = {}) {
-  const apiKey = safeText(env.DEEPSEEK_API_KEY || env.DEATHMARCH_DEEPSEEK_API_KEY, 4000);
-  if (!apiKey) throw new Error("deepseek_api_key_missing");
+  if (!ambientConfigured(env)) throw new Error("ambient_api_key_missing");
   const prompt = await readPrompt();
   const classified = classification || await classifyEventAnonymity({ event, env, fetchImpl });
   const level = effectiveAnonymityLevel({
@@ -1083,7 +1071,7 @@ export async function callDeepSeekSummary({
   const sanitized = sanitizeEventForAnonymity(event, level, classified);
   const formatEvent = formatEventForAnonymity(event, sanitized);
   const requestBody = {
-    model: env.DEATHMARCH_DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL,
+    model: env.DEATHMARCH_AMBIENT_MODEL || DEFAULT_AMBIENT_MODEL,
     messages: [
       { role: "system", content: prompt },
       {
@@ -1096,43 +1084,23 @@ export async function callDeepSeekSummary({
     ],
     temperature: 0.2,
   };
-  if (safeText(env.DEATHMARCH_DEEPSEEK_MAX_TOKENS, 40)) {
+  if (safeText(env.DEATHMARCH_AMBIENT_MAX_TOKENS, 40)) {
     requestBody.max_tokens = clampInteger(
-      env.DEATHMARCH_DEEPSEEK_MAX_TOKENS,
+      env.DEATHMARCH_AMBIENT_MAX_TOKENS,
       4000,
       128,
       12000
     );
   }
-  const response = await fetchWithTimeout(fetchImpl, env.DEATHMARCH_DEEPSEEK_BASE_URL || DEFAULT_DEEPSEEK_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(requestBody),
-  }, clampInteger(
-    env.DEATHMARCH_DEEPSEEK_TIMEOUT_MS,
-    DEFAULT_DEEPSEEK_TIMEOUT_MS,
+  const result = await ambientChatCompletion({ env, fetchImpl, body: requestBody, capability: "reasoning_text", timeoutMs: clampInteger(
+    env.DEATHMARCH_AMBIENT_TIMEOUT_MS,
+    DEFAULT_AMBIENT_TIMEOUT_MS,
     1000,
     120000
-  ), "deepseek_api_timeout");
-  const bodyText = await response.text();
-  let body = null;
-  try {
-    body = bodyText ? JSON.parse(bodyText) : null;
-  } catch {
-    body = null;
-  }
-  if (!response.ok) {
-    const detail = body?.error?.message || body?.message || safeText(bodyText, 500) || `HTTP ${response.status}`;
-    const error = new Error(`deepseek_api_error:${response.status}:${detail}`);
-    error.status = response.status;
-    throw error;
-  }
-  const content = safeText(body?.choices?.[0]?.message?.content, 2000);
+  ) });
+  const content = safeText(result.text, 2000);
   if (!content) {
-    const choice = safeObject(body?.choices?.[0]);
+    const choice = safeObject(result.body?.choices?.[0]);
     const message = safeObject(choice.message);
     const detail = [
       choice.finish_reason ? `finish_reason=${safeText(choice.finish_reason, 80)}` : "",
@@ -1141,7 +1109,7 @@ export async function callDeepSeekSummary({
     if (env.DEATHMARCH_DETERMINISTIC_FALLBACK !== "false") {
       return formatDeathmarchDiscordMessage({ summary: "", event: formatEvent });
     }
-    throw new Error(`deepseek_api_error:empty_response${detail ? `:${detail}` : ""}`);
+    throw new Error(`ambient_api_error:empty_response${detail ? `:${detail}` : ""}`);
   }
   return formatDeathmarchDiscordMessage({ summary: content, event: formatEvent });
 }

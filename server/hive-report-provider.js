@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { hiveReportTypes } from "./repositories/hive-reports.js";
+import { ambientConfigured, ambientFetchCompatibility } from "./ambient-inference.js";
 
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const defaultReportModel = "z-ai/glm-5.2";
 
 const reportPromptFiles = Object.freeze({
@@ -39,10 +39,6 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function openRouterKey() {
-  return safeText(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER, 10000);
-}
-
 export function hiveReportModel() {
   return safeText(process.env.TASKNODE_HIVE_REPORT_MODEL || process.env.TASKNODE_BOARD_MANAGER_MODEL || defaultReportModel, 160);
 }
@@ -76,7 +72,7 @@ function hiveReportMaxTokens(type = "") {
 }
 
 export function hiveReportsProviderConfigured() {
-  return process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK === "true" || Boolean(openRouterKey());
+  return process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK === "true" || ambientConfigured();
 }
 
 function promptDigest(text = "") {
@@ -296,9 +292,8 @@ export async function generateHiveReportMarkdown({
       },
     };
   }
-  const apiKey = openRouterKey();
-  if (!apiKey) {
-    const error = new Error("hive_report_openrouter_not_configured");
+  if (!ambientConfigured()) {
+    const error = new Error("hive_report_ambient_not_configured");
     error.status = 409;
     throw error;
   }
@@ -308,23 +303,14 @@ export async function generateHiveReportMarkdown({
   const startedAt = Date.now();
   const messages = reportMessages({ type, sourcePacket, phase, initialMarkdown, verifierSummary });
   try {
-    const response = await fetchImpl(`${(process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
+    const response = await ambientFetchCompatibility(fetchImpl, "", {
       method: "POST",
       signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-      },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({
         model,
         messages,
         reasoning: { effort: hiveReportReasoningEffort(type) },
-        provider: {
-          data_collection: "deny",
-        },
         temperature: 0.2,
         max_tokens: hiveReportMaxTokens(type),
         usage: { include: true },
@@ -335,17 +321,17 @@ export async function generateHiveReportMarkdown({
           report_phase: phase,
         },
       }),
-    });
+    }, { capability: "strict_json", timeoutMs: providerTimeoutMs() });
     const text = await response.text();
     const body = text ? JSON.parse(text) : {};
     if (!response.ok) {
-      const error = new Error(body?.error?.message || body?.message || `OpenRouter Hive Report HTTP ${response.status}`);
+      const error = new Error(body?.error?.message || body?.message || `Ambient Hive Report HTTP ${response.status}`);
       error.status = response.status;
       throw error;
     }
     return {
       bodyMarkdown: markdownBody(cleanUserFacingReportMarkdown(body?.choices?.[0]?.message?.content || "")),
-      provider: "openrouter",
+      provider: "ambient",
       model: safeText(body?.model || model, 160),
       responseId: safeText(body?.id, 200),
       promptDigest: promptDigest(JSON.stringify(messages)),
@@ -355,7 +341,7 @@ export async function generateHiveReportMarkdown({
       },
     };
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("hive_report_openrouter_timeout");
+    if (error?.name === "AbortError") throw new Error("hive_report_ambient_timeout");
     throw error;
   } finally {
     clearTimeout(timeout);

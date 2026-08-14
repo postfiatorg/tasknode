@@ -2,7 +2,7 @@
 
 `deathmarch` is a local-only Discord posting harness for Task Node task events. It does not start the Task Node app.
 
-The harness watches or ingests Task Node PFTL task actions, asks DeepSeek API Direct to summarize what the user just did, and posts the resulting plain-English update to the Discord Death March channel.
+The harness watches or ingests Task Node PFTL task actions, asks Ambient GLM 5.2 to summarize what the user just did, and posts the resulting plain-English update to the Discord Death March channel.
 
 Default watched wallet:
 
@@ -15,7 +15,7 @@ rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx
 Required:
 
 ```bash
-export DEEPSEEK_API_KEY=...
+export AMBIENT_API_KEY=...
 export DEATHMARCH_DISCORD_WEBHOOK_URL=...
 ```
 
@@ -33,10 +33,9 @@ Optional:
 ```bash
 export DEATHMARCH_WALLET=rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx
 export DEATHMARCH_SEED_FILE=deathmarchseed.txt
-export DEATHMARCH_DEEPSEEK_MODEL=deepseek-v4-pro
-export DEATHMARCH_DEEPSEEK_CLASSIFY_MODEL=deepseek-v4-pro
-export DEATHMARCH_DEEPSEEK_BASE_URL=https://api.deepseek.com/chat/completions
-export DEATHMARCH_DEEPSEEK_TIMEOUT_MS=20000
+export DEATHMARCH_AMBIENT_MODEL=z-ai/glm-5.2
+export DEATHMARCH_AMBIENT_CLASSIFY_MODEL=z-ai/glm-5.2
+export DEATHMARCH_AMBIENT_TIMEOUT_MS=20000
 export DEATHMARCH_DISCORD_TIMEOUT_MS=10000
 export DEATHMARCH_ANONYMITY_LEVEL=3
 export DEATHMARCH_STATE_PATH=.deathmarch-state.json
@@ -46,8 +45,8 @@ export DEATHMARCH_STATE_PATH=.deathmarch-state.json
 The per-event classifier can always choose a lower, more restrictive level.
 The effective level is `min(DEATHMARCH_ANONYMITY_LEVEL, classified level)`.
 
-`DEATHMARCH_DEEPSEEK_MAX_TOKENS` is intentionally unset by default. Set it only
-for a temporary provider-cost cap. If DeepSeek returns an empty content message
+`DEATHMARCH_AMBIENT_MAX_TOKENS` is intentionally unset by default. Set it only
+for a temporary provider-cost cap. If Ambient returns an empty content message
 after spending tokens on reasoning, Deathmarch falls back to deterministic event
 formatting for that task packet instead of dropping the event.
 
@@ -141,6 +140,42 @@ Poll continuously with an explicit local seed file:
 npm run deathmarch -- --poll --seed-file ./deathmarchseed.txt
 ```
 
+## Supervised Local Service
+
+The always-on poller runs on the Task Node operator host under user systemd. It
+uses a dedicated supervised Fly MPG proxy on local port `16433`; the launch
+wrapper reads the current production database credential from the Fly app at
+startup and never writes that credential to disk. The supervised path allows 15
+seconds to connect and 30 seconds for a query because the database is reached
+through a WAN proxy; both remain overrideable with the existing
+`DEATHMARCH_DATABASE_*_TIMEOUT_MS` variables.
+
+Repository units:
+
+```text
+ops/systemd/tasknodeofficial-mpg-proxy.service
+ops/systemd/tasknodeofficial-deathmarch.service
+```
+
+Install or refresh them with symlinks in `~/.config/systemd/user/`, then run:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now tasknodeofficial-mpg-proxy.service
+systemctl --user enable --now tasknodeofficial-deathmarch.service
+systemctl --user status tasknodeofficial-deathmarch.service
+```
+
+Both units use `Restart=always`. An idle Postgres client disconnect is also
+handled inside the poller, so it is logged as `deathmarch_database_pool_error`
+without terminating Node. Ordinary query failures remain retryable on the next
+poll interval.
+
+Before the first supervised start after an outage, use `--mark-existing` to
+checkpoint a reviewed backlog when replaying every missed event would flood the
+channel. Back up `.deathmarch-state.json` first if later manual replay may be
+needed.
+
 Ingest an exported event JSON file:
 
 ```bash
@@ -179,7 +214,12 @@ tx: 7005B006FDFF2C30F8914BC050A4B3B6C6FC72305F65A1ACD8CE8CB77BBF7C0C
 ```
 
 Each event makes two DeepSeek calls before posting: a fast classifier and then
-the summarizer. The classifier returns strict JSON `{level, category}`. The
+the summarizer. The classifier returns strict JSON
+`{level, category, sensitive_entities, sensitive_strategy_details}`.
+`sensitive_entities` may contain only exact client/customer or investor names
+copied from the event. `sensitive_strategy_details` contains the smallest exact
+event substrings that expose concrete secret mechanics. The harness
+deterministically replaces those names and spans before the second model call. The
 summarizer receives only the packet allowed by that effective level. DeepSeek
 writes only the plain-English explanation sentence. The harness adds the action
 heading, optional task title when disclosure allows it, task id, and exactly one
@@ -211,9 +251,10 @@ The harness does not post legacy `pf.task.reward_decision.v1` events and does no
 
 Classifier failure is not treated as a blanket secrecy signal. If the
 classifier API fails, returns non-JSON, or returns an invalid level, the event is
-treated as Level 3 with category `classification unavailable`. Deathmarch should
-only redact explicit trading IP, not ordinary client, team, legal, protocol, or
-product work.
+treated as Level 3 with category `classification unavailable` and no inferred
+name list. The classifier is intentionally narrow: it redacts only exact named
+clients/customers, named investors, and concrete proprietary strategy or IP
+mechanics.
 
 There is no local summary fallback for a failed summary call. If the summarizer
 API fails, the harness reports the DeepSeek API error and does not post a
@@ -223,21 +264,33 @@ still formats the already-sanitized packet.
 
 ## Anonymity Levels
 
-Level 1: explicit trading IP only.
+Level 1: exact proprietary strategy or IP mechanics.
 
-- Heavily redacted.
-- Directional category only.
-- Does not pass task title, market sector, instrument, ticker, portfolio detail, backtest detail, evidence text, alpha signal, execution logic, named strategy, or any other raw event content to the summarizer.
-- Example acceptable output: `User requested a market or trading-related task. tx: ...`
+- Used only when the event contains concrete secret know-how such as formulas,
+  algorithm steps, signal definitions, construction rules, execution logic, or
+  confidential research methods.
+- A general task direction, market, industry, instrument, ticker, product area,
+  or request to develop a strategy is not enough for Level 1.
+- Replaces only the exact confidential spans with
+  `[redacted strategy detail]`; surrounding public context remains available.
+- If the classifier declares Level 1 but fails to return usable exact spans, the
+  harness fails closed to a directional category for that event.
 
-Level 2: compatibility level.
+Level 2: exact client and investor name redaction.
 
-- The summarizer is instructed not to redact names or business details.
-- Only explicit trading IP should be withheld.
+- The classifier returns exact proper-name entities only when the event identifies
+  them as an external client/customer or investor.
+- The harness replaces those strings with `[redacted client]` or
+  `[redacted investor]` before summarization.
+- All other useful task and business details remain available to the summary.
 
-Level 3: non-trading work.
+Level 3: normal disclosure.
 
-- Can disclose the task/action details present in the event packet.
+- Can disclose the task/action details present in the event packet when none of
+  the three protected classes was identified.
+- Public organization names, contributors, team members, vendors, projects,
+  protocols, products, legal work, fundraising without a named investor, and
+  client work without a named client remain Level 3.
 
 The L1/L2/L3 decision is model-authored and per-event. It is intentionally not
 implemented as local keyword or regular-expression matching, because the

@@ -66,7 +66,7 @@ const estimate = chatEstimate({
 }, {
   contextDocument: document,
 });
-assert.equal(estimate.mode, "Frontier Thinking");
+assert.equal(estimate.mode, "Thinking");
 assert.equal(estimate.contextMode, "context_edit");
 assert.equal(estimate.estimatedWebSearchCalls, 0);
 assert.ok(estimate.contextEditLineNumberCharacters > 0);

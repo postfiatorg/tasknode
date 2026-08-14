@@ -14,7 +14,9 @@ import {
   Check,
   Copy,
   CreditCard,
+  CandlestickChart,
   Database,
+  Drama,
   ExternalLink,
   FileText,
   Flag,
@@ -24,7 +26,9 @@ import {
   Heading2,
   Heading3,
   Italic,
+  Landmark,
   LifeBuoy,
+  Lightbulb,
   List,
   ListOrdered,
   ListPlus,
@@ -43,12 +47,14 @@ import {
   Share,
   Shield,
   SquarePen,
+  Sparkles,
   Store,
   Table,
   Trash2,
   Trophy,
   Unlock,
   User as UserIcon,
+  Users,
   Wand2,
   Wallet,
   X,
@@ -163,12 +169,20 @@ import { isSignedInSession } from "./session";
 import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "../shared/context-html";
 import { contextBodyText, contextLineCount as countContextLines } from "../shared/context-line-map.js";
 import { CONTEXT_DOCUMENT_MAX_CHARS, contextBudgetMetrics, TASKGEN_CONTEXT_MAX_CHARS } from "../shared/context-budget.js";
+import {
+  CHAT_PERSONAS,
+  DEFAULT_CHAT_PERSONA,
+  chatPersonaDefinition,
+  normalizeChatPersona,
+} from "../shared/chat-personas.js";
 import "./styles.css";
 import "./features/context/context.css";
 
 const WalletView = lazy(() => import("./features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
 const MemoryView = lazy(() => import("./features/memory/MemoryView").then((module) => ({ default: module.MemoryView })));
-const DocsView = lazy(() => import("./features/docs/DocsView").then((module) => ({ default: module.DocsView })));
+const HelpView = lazy(() => import("./features/docs/DocsView").then((module) => ({ default: module.DocsView })));
+const DocsLibraryView = lazy(() => import("./features/docs-library/DocsLibraryView").then((module) => ({ default: module.DocsLibraryView })));
+const TeamView = lazy(() => import("./features/team/TeamView").then((module) => ({ default: module.TeamView })));
 const HiveView = lazy(() => import("./features/hive/HiveView").then((module) => ({ default: module.HiveView })));
 const HiveBrainView = lazy(() => import("./features/hive/HiveBrainView").then((module) => ({ default: module.HiveBrainView })));
 const ProfilePage = lazy(() => import("./features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
@@ -185,6 +199,12 @@ const CHAT_ATTACHMENT_MAX_COUNT = 4;
 const CHAT_PASTE_ATTACHMENT_THRESHOLD = 200;
 const CHAT_COMPOSER_MAX_HEIGHT = 220;
 const CHAT_SCROLL_BOTTOM_THRESHOLD = 96;
+const CHAT_PERSONA_ICONS = Object.freeze({
+  odv: Sparkles,
+  "trading-coach": CandlestickChart,
+  jobs: Lightbulb,
+  kravis: Landmark,
+});
 const TASK_REQUEST_CANONICAL_TEXT =
   "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.";
 const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request";
@@ -358,7 +378,7 @@ const SETTINGS_PAGES = [
   { key: "billing", label: "Billing", icon: CreditCard },
 ];
 
-const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "hive", "hive-brain", "directory", "profile", "memory", "docs"]);
+const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "hive", "hive-brain", "directory", "profile", "memory", "docs", "team", "help"]);
 const EMPTY_WALLET_VAULT_STATUS = {
   available: false,
   unlocked: false,
@@ -378,7 +398,11 @@ const AUTH_SESSION_HINT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 function viewFromLocation() {
   if (typeof window === "undefined") return "chat";
   const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
-  const hashView = hashPath.split("?")[0].split("/")[0].toLowerCase();
+  const pathParts = hashPath.split("?")[0].split("/").filter(Boolean);
+  const hashView = (pathParts[0] || "").toLowerCase();
+  // Before the encrypted library shipped, #docs/<wiki-slug> was the Help route.
+  // New document IDs are UUIDs, so this protocol-level distinction preserves old links.
+  if (hashView === "docs" && pathParts[1] && !/^[0-9a-f-]{36}$/i.test(pathParts[1])) return "help";
   return APP_VIEWS.has(hashView) ? hashView : "chat";
 }
 
@@ -473,9 +497,9 @@ function writeViewLocation(nextView, { replace = false } = {}) {
   const url = new URL(window.location.href);
   if (normalizedView === "chat") {
     url.hash = "";
-  } else if (normalizedView === "docs") {
+  } else if (normalizedView === "docs" || normalizedView === "help") {
     const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
-    url.hash = hashPath.toLowerCase().startsWith("docs/") ? hashPath : "docs";
+    url.hash = hashPath.toLowerCase().startsWith(`${normalizedView}/`) ? hashPath : normalizedView;
   } else {
     url.hash = normalizedView;
   }
@@ -1434,6 +1458,18 @@ function App() {
             sidebarOpen={sidebarOpen}
             trailing={sidebarOpen ? <small className="nav-live-state">live</small> : null}
           />
+          {runtimeConfig?.collaboration?.docsEnabled && (
+            <SidebarButton
+              active={view === "docs"}
+              icon={FileText}
+              label="Docs"
+              onClick={() => {
+                navigateToView("docs");
+                if (!signedIn) setLoginOpen(true);
+              }}
+              sidebarOpen={sidebarOpen}
+            />
+          )}
           <SidebarButton
             active={view === "wallet"}
             icon={Wallet}
@@ -1471,6 +1507,8 @@ function App() {
             />
             {moreMenuOpen && sidebarOpen && (
               <div className="sidebar-popout">
+                {runtimeConfig?.collaboration?.teamEnabled && <ToolMenuRow icon={Users} label="Team" onClick={() => { navigateToView("team"); if (!signedIn) setLoginOpen(true); }} />}
+                {runtimeConfig?.collaboration?.teamEnabled && <div className="menu-divider" />}
                 <ToolMenuRow icon={Wand2} label="Context Refine" onClick={openContextRefine} />
                 <ToolMenuRow icon={FileText} label="Context Rewrite" onClick={openContextRewrite} />
                 <div className="menu-divider" />
@@ -1669,7 +1707,7 @@ function App() {
                           navigateToView("profile");
                         }}
                       />
-                      <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("docs")} trailing={<ChevronRight size={14} />} />
+                      <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("help")} trailing={<ChevronRight size={14} />} />
                       <div className="menu-divider" />
                       {logoutConfirming ? (
                         <div className="profile-menu-logout-confirm">
@@ -1698,7 +1736,7 @@ function App() {
                         }}
                         trailing={<ChevronRight size={14} />}
                       />
-                      <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("docs")} trailing={<ChevronRight size={14} />} />
+                      <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("help")} trailing={<ChevronRight size={14} />} />
                     </>
                   )}
                 </div>
@@ -1861,7 +1899,29 @@ function App() {
           )}
           {view === "docs" && (
             <Suspense fallback={<StatusBanner>Loading docs</StatusBanner>}>
-              <DocsView />
+              <DocsLibraryView
+                collaboration={runtimeConfig?.collaboration}
+                onLogin={() => setLoginOpen(true)}
+                onWalletUnlock={openWalletVaultControl}
+                signedIn={signedIn}
+                tasks={visibleTasks}
+                walletSecret={walletSecretRef.current}
+                walletVault={walletVaultStatus}
+              />
+            </Suspense>
+          )}
+          {view === "team" && (
+            <Suspense fallback={<StatusBanner>Loading team</StatusBanner>}>
+              <TeamView
+                accountId={walletAccountId}
+                onWalletUnlock={openWalletVaultControl}
+                walletSecret={walletSecretRef.current}
+              />
+            </Suspense>
+          )}
+          {view === "help" && (
+            <Suspense fallback={<StatusBanner>Loading help</StatusBanner>}>
+              <HelpView />
             </Suspense>
           )}
         </RouteErrorBoundary>
@@ -1975,7 +2035,7 @@ function ChatSurface({
   const messages = chat?.seedMessages || [];
   const defaultMode = signedOut
     ? modes.find((mode) => mode.label === "Help" && mode.enabled)?.label || "Help"
-    : chat?.defaultMode || "Private Instant";
+    : chat?.defaultMode || "Instant";
   const isHiveChat = activeChat?.kind === "hive";
   const [turns, setTurns] = useState(() => normalizeChatMessages(messages));
   // The user's chosen chat mode is a preference, not view state. It must
@@ -1992,8 +2052,19 @@ function ChatSurface({
     }
   })();
   const [selectedMode, setSelectedMode] = useState(storedChatMode || defaultMode);
+  const chatPersonaStorageKey = accountId ? `tasknode.chat.persona.${accountId}` : "";
+  const storedChatPersona = (() => {
+    if (!chatPersonaStorageKey) return "";
+    try {
+      return normalizeChatPersona(window.localStorage?.getItem(chatPersonaStorageKey) || "", { fallback: "" });
+    } catch {
+      return "";
+    }
+  })();
+  const [selectedPersona, setSelectedPersona] = useState(storedChatPersona || DEFAULT_CHAT_PERSONA);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [personaMenuOpen, setPersonaMenuOpen] = useState(false);
   const [taskRequestMode, setTaskRequestMode] = useState(false);
   const [contextEditMode, setContextEditMode] = useState(false);
   const [contextRewriteMode, setContextRewriteMode] = useState(false);
@@ -2076,8 +2147,11 @@ function ChatSurface({
     // preference; a remount or app-state refresh must not clobber a choice.
     if (storedChatMode) return;
     setSelectedMode(defaultMode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultMode, storedChatMode]);
+
+  useEffect(() => {
+    setSelectedPersona(storedChatPersona || DEFAULT_CHAT_PERSONA);
+  }, [accountId, storedChatPersona]);
 
   useEffect(() => {
     if (!signedOut) return;
@@ -2085,7 +2159,9 @@ function ChatSurface({
     setContextEditMode(false);
     setContextRewriteMode(false);
     setSelectedMode("Help");
+    setSelectedPersona(DEFAULT_CHAT_PERSONA);
     setPlusMenuOpen(false);
+    setPersonaMenuOpen(false);
     setHistoryLoading(false);
   }, [signedOut]);
 
@@ -2224,6 +2300,7 @@ function ChatSurface({
     function closeMenus(event) {
       if (plusRef.current && !plusRef.current.contains(event.target)) {
         setPlusMenuOpen(false);
+        setPersonaMenuOpen(false);
       }
       if (modelRef.current && !modelRef.current.contains(event.target)) {
         setModelMenuOpen(false);
@@ -2408,7 +2485,10 @@ function ChatSurface({
           sourceConversationTitle: HIVE_CHAT_TITLE,
       }
       : undefined;
-    const turnMetadata = taskRequestMetadata || contextRewriteMetadata || contextEditMetadata || hiveContextMetadata;
+    const personaMetadata = !isTaskRequest && !isContextRewrite && !isContextEdit && !isHiveContext
+      ? { chatPersona: selectedPersona }
+      : undefined;
+    const turnMetadata = taskRequestMetadata || contextRewriteMetadata || contextEditMetadata || hiveContextMetadata || personaMetadata;
 
     if (isTaskRequest && !walletReady) {
       if (["unlock", "open_wallet"].includes(taskRequestUnlockPolicy.action)) onWalletUnlock?.();
@@ -2597,7 +2677,8 @@ function ChatSurface({
 
       const chatPayload = {
         message: submittedText,
-        mode: isContextEdit ? "Frontier Thinking" : signedOut ? "Help" : selectedMode,
+        mode: isContextEdit ? "Thinking" : signedOut ? "Help" : selectedMode,
+        persona: isContextEdit ? DEFAULT_CHAT_PERSONA : selectedPersona,
         contextMode: isContextEdit ? CONTEXT_EDIT_MODE : undefined,
         conversationId: requestedConversationId,
         attachments: serializeChatAttachments(submittedAttachments),
@@ -2879,6 +2960,8 @@ function ChatSurface({
     isHiveChat ? "is-hive-input" : "",
   ].filter(Boolean).join(" ");
   const modelPickerDisabled = contextEditMode || contextRewriteMode || isHiveChat;
+  const activePersona = chatPersonaDefinition(selectedPersona);
+  const ActivePersonaIcon = CHAT_PERSONA_ICONS[activePersona.id] || Lightbulb;
   const modelPickerLabel = contextRewriteMode
     ? "Context Rewrite"
     : contextEditMode
@@ -2943,7 +3026,10 @@ function ChatSurface({
               onClick={() => {
                 if (signedOut) return;
                 setModelMenuOpen(false);
-                setPlusMenuOpen((open) => !open);
+                setPlusMenuOpen((open) => {
+                  if (open) setPersonaMenuOpen(false);
+                  return !open;
+                });
               }}
               type="button"
               aria-label={signedOut ? "Sign in for app actions" : "Add"}
@@ -2951,7 +3037,7 @@ function ChatSurface({
               <Plus size={20} strokeWidth={1.75} />
             </button>
             {plusMenuOpen && (
-              <div className="plus-menu">
+              <div className={`plus-menu${personaMenuOpen ? " has-personas" : ""}`}>
                 <ToolMenuRow
                   icon={Paperclip}
                   label="Upload photos & files"
@@ -3001,6 +3087,61 @@ function ChatSurface({
                   }}
                 />
                 <ToolMenuRow
+                  icon={Drama}
+                  label="Personality"
+                  onClick={() => setPersonaMenuOpen((open) => !open)}
+                  trailing={(
+                    <span className="personality-menu-current">
+                      {activePersona.name}
+                      <ChevronRight
+                        className={personaMenuOpen ? "is-open" : ""}
+                        size={14}
+                        strokeWidth={1.75}
+                      />
+                    </span>
+                  )}
+                />
+                {personaMenuOpen && (
+                  <div className="personality-menu" role="menu" aria-label="Chat personality">
+                    {CHAT_PERSONAS.map((persona) => {
+                      const PersonaIcon = CHAT_PERSONA_ICONS[persona.id] || Lightbulb;
+                      const selected = persona.id === selectedPersona;
+                      return (
+                        <button
+                          aria-checked={selected}
+                          className={`personality-menu-row${selected ? " selected" : ""}`}
+                          key={persona.id}
+                          onClick={() => {
+                            setSelectedPersona(persona.id);
+                            if (chatPersonaStorageKey) {
+                              try {
+                                window.localStorage?.setItem(chatPersonaStorageKey, persona.id);
+                              } catch {
+                                /* storage unavailable: selection still applies for this session */
+                              }
+                            }
+                            setTaskRequestMode(false);
+                            setContextEditMode(false);
+                            setContextRewriteMode(false);
+                            setPersonaMenuOpen(false);
+                            setPlusMenuOpen(false);
+                            window.setTimeout(() => inputRef.current?.focus(), 0);
+                          }}
+                          role="menuitemradio"
+                          type="button"
+                        >
+                          <PersonaIcon size={17} strokeWidth={1.75} />
+                          <span>
+                            <strong>{persona.name}</strong>
+                            <small>{persona.tagline}</small>
+                          </span>
+                          {selected && <Check size={15} strokeWidth={2} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <ToolMenuRow
                   icon={MoreHorizontal}
                   label="More"
                   trailing={<ChevronRight size={14} strokeWidth={1.75} />}
@@ -3026,6 +3167,12 @@ function ChatSurface({
             value={input}
           />
           <div className="composer-tools">
+            {selectedPersona !== DEFAULT_CHAT_PERSONA && !modelPickerDisabled && (
+              <span className="chat-persona-chip" title={`Personality: ${activePersona.name}`}>
+                <ActivePersonaIcon size={13} strokeWidth={1.75} />
+                {activePersona.name}
+              </span>
+            )}
             <div className="model-picker" ref={modelRef}>
               <button
                 className="model-button"
@@ -3033,6 +3180,7 @@ function ChatSurface({
                 onClick={() => {
                   if (modelPickerDisabled) return;
                   setPlusMenuOpen(false);
+                  setPersonaMenuOpen(false);
                   setModelMenuOpen((open) => !open);
                 }}
                 type="button"
@@ -3574,12 +3722,9 @@ function formatModeLabel(label) {
 
 function modeDescription(mode = {}) {
   const label = String(mode.label || "");
-  if (label === "Private Instant") return "ZDR. Open Source. Fast.";
-  if (label === "Private Thinking") return "ZDR. Open Source. More reasoning.";
-  if (label === "Discount Thinking") return "DeepSeek API Direct";
-  if (label === "Frontier Instant") return "Fast frontier model";
+  if (label === "Instant") return "DeepSeek Flash 7/31. Fast.";
+  if (label === "Thinking") return "GLM 5.2. More reasoning.";
   if (label === "Help") return "Plain-English app guide";
-  if (label === "Frontier Thinking") return "Deeper frontier reasoning";
   return mode.latency || mode.privacy || "";
 }
 

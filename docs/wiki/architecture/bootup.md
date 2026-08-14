@@ -179,7 +179,7 @@ If chat does not execute:
 
 - check `/api/chat/modes`;
 - check `/api/readiness`;
-- verify `OPENAI_API_KEY` or `OPENROUTER_API_KEY`;
+- verify `AMBIENT_API_KEY`;
 - check whether the selected mode is configured and enabled.
 
 If login behaves strangely:

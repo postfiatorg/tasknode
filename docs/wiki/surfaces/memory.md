@@ -1,22 +1,24 @@
 # Memory
 
-Memory is lightweight compression of user and assistant interactions. It helps future chats know what the user has been exploring without replaying entire conversations.
+Memory is lightweight compression of user interactions and rewarded work. It helps future chats retain what the user has explored and accomplished without replaying entire conversations or task forensics.
 
 ## User Flow
 
 1. A user receives an assistant response.
 2. The app returns the response immediately.
 3. A background worker summarizes the user request and assistant response.
-4. Every 36 memory rows, a deep memory job snapshots the exact 36 source memory row IDs and compresses those summaries into broader user, assistant, and memory bullets.
-5. The Memory page renders a Network Diagnostic Report that combines the generated Network Task Profile with live Network Context Inputs from profile/task projections.
-6. The async Network Task Profile job summarizes the source packet for future network task routing, while live inputs continue to refresh independently.
-7. The Memory page lets the user inspect what the system remembers, what the generated report says, and what inputs the report is built from.
+4. When a positive task reward becomes canonical, Task Node snapshots the task, submission, verification, and reward events into an idempotent rewarded-task memory job.
+5. DeepSeek Flash summarizes that rewarded task into Recent Memory. A bounded backfill scan repairs any reward whose enqueue was missed during a crash or deploy.
+6. Every 36 recent memory rows, including rewarded-task memories, a deep memory job snapshots the exact 36 source memory row IDs and compresses those summaries into broader user, assistant, and memory bullets.
+7. The Memory page renders a Network Diagnostic Report that combines the generated Network Task Profile with live Network Context Inputs from profile/task projections.
+8. The async Network Task Profile job summarizes the source packet for future network task routing, while live inputs continue to refresh independently.
+9. The Memory page lets the user inspect what the system remembers, what the generated report says, and what inputs the report is built from.
 
 ## Technical Architecture
 
-The memory UI is `src/features/memory/MemoryView.jsx`. Backend memory logic is in `server/chat-memory-worker.js`, `server/chat-memory-context.js`, `server/repositories/chat-memory.js`, and `server/repositories/network-task-profile.js`. Migrations are `server/db/migrations/004_chat_memory.sql`, `server/db/migrations/005_deep_chat_memory.sql`, `server/db/migrations/013_deep_memory_snapshots.sql`, and `server/db/migrations/024_network_task_profiles.sql`.
+The memory UI is `src/features/memory/MemoryView.jsx`. Backend memory logic is in `server/chat-memory-worker.js`, `server/chat-memory-context.js`, `server/repositories/chat-memory.js`, `server/repositories/task-reward-memory.js`, and `server/repositories/network-task-profile.js`. Rewarded-task memory is added by `server/db/migrations/108_rewarded_task_memory.sql`.
 
-Private memory jobs use the configured OpenRouter ZDR model path. The worker requires the provider to honor JSON mode and hidden-reasoning controls: `response_format.type = "json_object"`, `reasoning.effort = "none"`, `reasoning.exclude = true`, and `provider.require_parameters = true`. This keeps memory compression output as parseable JSON instead of spending the output cap on invisible reasoning and returning a truncated object. Memory writes are not billed to the user right now. Ordinary chat model tokens remain billable.
+Memory jobs use Ambient's pinned `fast_text` capability, `deepseek/deepseek-v4-flash-0731`, with JSON mode and reasoning disabled. The rewarded-task prompt is `prompts/memory/rewarded_task_memory_v1.md`. Rewarded-task jobs disable the normal fast-text capacity fallback: if DeepSeek Flash is unavailable, the durable job retries instead of silently using GLM. Memory writes are not billed to the user right now. Ordinary chat model tokens remain billable.
 
 Deep-memory jobs are stable snapshots. `chat_deep_memory_jobs.source_entry_ids` stores the exact 36 `chat_memory_entries.id` values selected when the block is queued. The worker reads those IDs directly instead of recalculating the block later from timestamps, so backfills, imports, or corrected timestamps cannot change what a queued deep-memory job summarizes. `chat_memory_entries` also enforces one `deep_memory` row per account and block index, so retrying or recreating a deep-memory job updates the existing block summary rather than creating duplicates. The enqueue path repairs any completed or failed deep-memory job whose visible `deep_memory` row is missing; it reuses the stored source snapshot and sends that block back to the worker.
 
@@ -29,7 +31,7 @@ The repair contract is now:
 - missing deep-memory rows requeue the corresponding completed or failed jobs;
 - if the stored 36-row source snapshot is stale and no deep-memory output row exists, repair refreshes the snapshot from the current 36-row block before requeueing.
 
-Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v2.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh from the Memory page. Generation is automatic: a job is queued once an account has at least two positively rewarded tasks, both when rewarded task projections are imported and during the memory worker backfill pass, and opening the Memory page queues a job immediately when no profile exists yet. There is no request, application, or approval flow for the report, and chat surfaces must not tell users to ask for one; the Hive and Help prompts state this same path. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
+Network Task Profile jobs use the same Ambient DeepSeek Flash memory worker. The prompt is `prompts/memory/network_task_profile_v2.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh from the Memory page. Generation is automatic: a job is queued once an account has at least two positively rewarded tasks, both when rewarded task projections are imported and during the memory worker backfill pass, and opening the Memory page queues a job immediately when no profile exists yet. There is no request, application, or approval flow for the report, and chat surfaces must not tell users to ask for one; the Hive and Help prompts state this same path. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
 
 This page is the current product contract for Memory and Network Diagnostic
 Report behavior. Historical Network Task Profile planning has been folded into
@@ -84,7 +86,7 @@ The generated report and Network Context Inputs intentionally live in the same t
 The `Deep Memory` tab remains normal memory inspection:
 
 - `Deep Memory`: the last 3 deep-memory bundles.
-- `Recent Memory`: the last 36 ordinary memory summaries, with the total stored turn-memory count shown separately when more than 36 exist.
+- `Recent Memory`: the last 36 chat-turn and rewarded-task summaries, with the total stored recent-memory count shown separately when more than 36 exist.
 
 Users can delete individual memory rows, clear all deep-memory summaries, clear all recent turn-memory summaries, or reset the generated diagnostic report. Deletes are account-scoped hard deletes from the memory/profile tables. Clearing deep memory also deletes the associated deep-memory job rows so stale completed jobs cannot hide missing summaries. Resetting the diagnostic report deletes generated `network_task_profiles` rows and queued `network_task_profile_jobs`; it does not delete Deep Memory or Recent Memory.
 
@@ -116,7 +118,8 @@ The UI labels `domain_expertise` as `Companies this User Would Move the Needle A
 
 ## Data Model
 
-- Memory row: date, conversation title, user summary, assistant summary, memory summary.
+- Memory row: date, source title, user/task summary, outcome summary, memory summary, and kind (`turn_memory`, `rewarded_task_memory`, or `deep_memory`).
+- Rewarded-task memory job: one unique row per canonical positive task reward, with a durable source snapshot, retry/lock state, and resulting memory entry id.
 - Deep memory job: account, block number, exact source memory entry IDs, retry and lock state.
 - Deep memory row: batch number, user bullets, assistant bullets, combined memory summary. There is only one deep-memory row per account/block.
 - Network Task Profile job: account, lock/retry state, source packet JSON/text, source packet digest.
@@ -129,7 +132,7 @@ The UI labels `domain_expertise` as `Companies this User Would Move the Needle A
 sequenceDiagram
   participant Chat as Chat Response
   participant Worker as Memory Worker
-  participant OR as ZDR Model
+  participant OR as Ambient DeepSeek Flash
   participant DB as Postgres
   Chat-->>Worker: enqueue user plus assistant turn
   Worker->>OR: summarize
@@ -144,7 +147,7 @@ sequenceDiagram
   participant API as Memory API
   participant DB as Postgres
   participant Worker as Memory Worker
-  participant OR as OpenRouter ZDR
+  participant OR as Ambient DeepSeek Flash
   UI->>API: GET /api/memory/network-task-profile
   API->>DB: read profile facts and task_projections for Network Context Inputs
   API->>DB: read latest generated profile

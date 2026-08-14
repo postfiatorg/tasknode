@@ -19,40 +19,38 @@ import {
   failNetworkTaskProfileJob,
   networkTaskProfilePromptVersion,
 } from "./repositories/network-task-profile.js";
+import {
+  AMBIENT_MODELS,
+  ambientChatCompletion,
+  ambientConfigured,
+} from "./ambient-inference.js";
+import {
+  claimRewardedTaskMemoryJobs,
+  completeRewardedTaskMemoryJob,
+  enqueueMissingRewardedTaskMemoryJobs,
+  failRewardedTaskMemoryJob,
+} from "./repositories/task-reward-memory.js";
 
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
-const defaultProviderOrder = ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"];
 const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_MEMORY_PROVIDER_TIMEOUT_MS || 45000));
 const promptVersion = "chat_memory_v1";
 const deepPromptVersion = "deep_memory_v1";
 const chatMemoryPrompt = loadPrompt("memory/chat_memory_v1.md");
 const deepMemoryPrompt = loadPrompt("memory/deep_memory_v1.md");
 const networkTaskProfilePrompt = loadPrompt("memory/network_task_profile_v2.md");
+const rewardedTaskMemoryPrompt = loadPrompt("memory/rewarded_task_memory_v1.md");
+const rewardedTaskMemoryPromptVersion = "rewarded_task_memory_v1";
 let timer = null;
 let running = false;
 
-function openRouterKey() {
-  return process.env.OPENROUTER_API_KEY || process.env.OPENROUTER || "";
-}
-
-function providerOrder() {
-  const configured = process.env.TASKNODE_MEMORY_OPENROUTER_PROVIDERS || "";
-  return configured
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 12);
-}
-
 function memoryModel() {
-  return process.env.TASKNODE_MEMORY_MODEL || "deepseek/deepseek-v4-flash";
+  return process.env.TASKNODE_MEMORY_MODEL || AMBIENT_MODELS.fastText;
 }
 
 function memoryWorkerEnabled() {
   return (
     process.env.TASKNODE_MEMORY_ENABLED !== "false" &&
     databaseEnabled() &&
-    Boolean(openRouterKey())
+    ambientConfigured()
   );
 }
 
@@ -85,23 +83,18 @@ export function networkTaskProfileMaxTokens() {
   return envNumberAtLeast("TASKNODE_NETWORK_TASK_PROFILE_MAX_TOKENS", 1800, 900);
 }
 
+export function rewardedTaskMemoryMaxTokens() {
+  return envNumberAtLeast("TASKNODE_REWARDED_TASK_MEMORY_MAX_TOKENS", 1200, 900);
+}
+
 export function memoryOpenRouterProviderPreferences() {
-  const order = providerOrder();
-  const allowedProviders = order.length > 0 ? order : defaultProviderOrder;
-  return {
-    zdr: true,
-    data_collection: "deny",
-    order: allowedProviders,
-    only: allowedProviders,
-    require_parameters: true,
-  };
+  return {};
 }
 
 export function memoryOpenRouterRequestBody({ messages = [], temperature = 0.1, maxTokens = turnMemoryMaxTokens() } = {}) {
   return {
     model: memoryModel(),
     messages,
-    provider: memoryOpenRouterProviderPreferences(),
     reasoning: {
       effort: "none",
       exclude: true,
@@ -109,7 +102,6 @@ export function memoryOpenRouterRequestBody({ messages = [], temperature = 0.1, 
     response_format: { type: "json_object" },
     temperature,
     max_tokens: maxTokens,
-    usage: { include: true },
   };
 }
 
@@ -124,6 +116,10 @@ function redactSensitiveText(value = "") {
     .replace(
       /\b(seed phrase|recovery phrase|mnemonic|private key|password)\s*[:=]\s*[^\n\r]+/gi,
       "$1: [redacted]"
+    )
+    .replace(
+      /("(?:seed_phrase|recovery_phrase|mnemonic|private_key|password|api_key|access_token)"\s*:\s*)"[^"]*"/gi,
+      '$1"[redacted]"'
     );
 }
 
@@ -227,51 +223,24 @@ function openRouterUsage(body = {}) {
 }
 
 async function fetchMemorySummary(source) {
-  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
   const userPayload = {
     conversation_title: source.conversation_title || "New chat",
     user_query: compactSourceText(source.user_body, 12000),
     system_response: compactSourceText(source.assistant_body, 18000),
   };
-  let response;
-  try {
-    response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${openRouterKey()}`,
-        "content-type": "application/json",
-        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-      },
-      body: JSON.stringify(
-        memoryOpenRouterRequestBody({
-          messages: [
-            { role: "system", content: memorySystemPrompt() },
-            { role: "user", content: JSON.stringify(userPayload) },
-          ],
-          temperature: 0.1,
-          maxTokens: turnMemoryMaxTokens(),
-        })
-      ),
-    });
-  } catch (error) {
-    if (error?.name === "AbortError") throw new Error("memory_provider_timeout");
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-  const text = await response.text();
-  const body = text ? JSON.parse(text) : {};
-
-  if (!response.ok) {
-    const error = new Error(body?.error?.message || body?.message || `OpenRouter memory HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
+  const result = await ambientChatCompletion({
+    capability: "fast_text",
+    timeoutMs: providerTimeoutMs,
+    body: memoryOpenRouterRequestBody({
+      messages: [
+        { role: "system", content: memorySystemPrompt() },
+        { role: "user", content: JSON.stringify(userPayload) },
+      ],
+      temperature: 0.1,
+      maxTokens: turnMemoryMaxTokens(),
+    }),
+  });
+  const body = result.body;
 
   const content = body?.choices?.[0]?.message?.content || "";
   const parsed = parseSummaryJson(content);
@@ -284,7 +253,7 @@ async function fetchMemorySummary(source) {
     conversationTitle: source.conversation_title || "New chat",
     sourceUserExcerpt: compactSourceText(source.user_body, 500),
     sourceAssistantExcerpt: compactSourceText(source.assistant_body, 500),
-    provider: "openrouter",
+    provider: "ambient",
     model: body?.model || memoryModel(),
     promptVersion,
     usage: openRouterUsage(body),
@@ -292,54 +261,27 @@ async function fetchMemorySummary(source) {
 }
 
 async function fetchDeepMemorySummary(source) {
-  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
   const memorySummaries = source.entries.map(boundedDeepMemoryEntry);
-  let response;
-  try {
-    response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${openRouterKey()}`,
-        "content-type": "application/json",
-        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-      },
-      body: JSON.stringify(
-        memoryOpenRouterRequestBody({
-          messages: [
-            { role: "system", content: deepMemorySystemPrompt() },
-            {
-              role: "user",
-              content: JSON.stringify({
-                deep_memory_block_index: source.block_index,
-                summary_count: memorySummaries.length,
-                memory_summaries: memorySummaries,
-              }),
-            },
-          ],
-          temperature: 0.1,
-          maxTokens: deepMemoryMaxTokens(),
-        })
-      ),
-    });
-  } catch (error) {
-    if (error?.name === "AbortError") throw new Error("deep_memory_provider_timeout");
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-  const text = await response.text();
-  const body = text ? JSON.parse(text) : {};
-
-  if (!response.ok) {
-    const error = new Error(body?.error?.message || body?.message || `OpenRouter deep memory HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
+  const result = await ambientChatCompletion({
+    capability: "fast_text",
+    timeoutMs: providerTimeoutMs,
+    body: memoryOpenRouterRequestBody({
+      messages: [
+        { role: "system", content: deepMemorySystemPrompt() },
+        {
+          role: "user",
+          content: JSON.stringify({
+            deep_memory_block_index: source.block_index,
+            summary_count: memorySummaries.length,
+            memory_summaries: memorySummaries,
+          }),
+        },
+      ],
+      temperature: 0.1,
+      maxTokens: deepMemoryMaxTokens(),
+    }),
+  });
+  const body = result.body;
 
   const content = body?.choices?.[0]?.message?.content || "";
   const parsed = parseSummaryJson(content);
@@ -351,7 +293,7 @@ async function fetchDeepMemorySummary(source) {
     ...parsed,
     sourceUserExcerpt: `${memorySummaries.length} memory summaries in block ${source.block_index}.`,
     sourceAssistantExcerpt: `Deep memory synthesis for block ${source.block_index}.`,
-    provider: "openrouter",
+    provider: "ambient",
     model: body?.model || memoryModel(),
     promptVersion: deepPromptVersion,
     usage: openRouterUsage(body),
@@ -359,46 +301,19 @@ async function fetchDeepMemorySummary(source) {
 }
 
 async function fetchNetworkTaskProfile(source) {
-  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
-  let response;
-  try {
-    response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${openRouterKey()}`,
-        "content-type": "application/json",
-        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-      },
-      body: JSON.stringify(
-        memoryOpenRouterRequestBody({
-          messages: [
-            { role: "system", content: networkTaskProfileSystemPrompt() },
-            { role: "user", content: compactSourceText(source.source_packet_text, 60000) },
-          ],
-          temperature: 0,
-          maxTokens: networkTaskProfileMaxTokens(),
-        })
-      ),
-    });
-  } catch (error) {
-    if (error?.name === "AbortError") throw new Error("network_task_profile_provider_timeout");
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-  const text = await response.text();
-  const body = text ? JSON.parse(text) : {};
-
-  if (!response.ok) {
-    const error = new Error(body?.error?.message || body?.message || `OpenRouter network task profile HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
+  const result = await ambientChatCompletion({
+    capability: "fast_text",
+    timeoutMs: providerTimeoutMs,
+    body: memoryOpenRouterRequestBody({
+      messages: [
+        { role: "system", content: networkTaskProfileSystemPrompt() },
+        { role: "user", content: compactSourceText(source.source_packet_text, 60000) },
+      ],
+      temperature: 0,
+      maxTokens: networkTaskProfileMaxTokens(),
+    }),
+  });
+  const body = result.body;
 
   const content = body?.choices?.[0]?.message?.content || "";
   const parsed = parseNetworkTaskProfileJson(content);
@@ -413,10 +328,38 @@ async function fetchNetworkTaskProfile(source) {
 
   return {
     output: parsed,
-    provider: "openrouter",
+    provider: "ambient",
     model: body?.model || memoryModel(),
     promptDigest: promptDigest(networkTaskProfileSystemPrompt()),
     promptVersion: networkTaskProfilePromptVersion,
+    usage: openRouterUsage(body),
+  };
+}
+
+async function fetchRewardedTaskMemorySummary(source) {
+  const result = await ambientChatCompletion({
+    capability: "fast_text",
+    allowCapacityFallback: false,
+    timeoutMs: providerTimeoutMs,
+    body: memoryOpenRouterRequestBody({
+      messages: [
+        { role: "system", content: rewardedTaskMemoryPrompt },
+        { role: "user", content: compactSourceText(source.source_packet_text, 60000) },
+      ],
+      temperature: 0.1,
+      maxTokens: rewardedTaskMemoryMaxTokens(),
+    }),
+  });
+  const body = result.body;
+  const parsed = parseSummaryJson(body?.choices?.[0]?.message?.content || "");
+  if (!parsed.userRequestSummary || !parsed.systemResponseSummary || !parsed.memoryText) {
+    throw new Error("rewarded_task_memory_summary_missing_fields");
+  }
+  return {
+    ...parsed,
+    provider: "ambient",
+    model: body?.model || memoryModel(),
+    promptVersion: rewardedTaskMemoryPromptVersion,
     usage: openRouterUsage(body),
   };
 }
@@ -438,6 +381,11 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
   let networkProfileClaimed = 0;
   let networkProfileSeeded = 0;
   let networkProfileSeedFailed = 0;
+  let rewardedTaskProcessed = 0;
+  let rewardedTaskFailed = 0;
+  let rewardedTaskClaimed = 0;
+  let rewardedTaskSeeded = 0;
+  let rewardedTaskSeedFailed = 0;
   try {
     const jobs = await claimChatMemoryJobs({ limit });
     for (const job of jobs) {
@@ -452,6 +400,28 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
       } catch (error) {
         failed += 1;
         await failChatMemoryJob(job, error);
+      }
+    }
+    const rewardedTaskSeed = await enqueueMissingRewardedTaskMemoryJobs({
+      limit: Math.min(Math.max(Number(process.env.TASKNODE_REWARDED_TASK_MEMORY_AUTO_QUEUE_LIMIT || 3), 1), 25),
+    }).catch((error) => ({
+      queuedCount: 0,
+      failedCount: 1,
+      error: error?.message || String(error),
+    }));
+    rewardedTaskSeeded = Number(rewardedTaskSeed.queuedCount || 0);
+    rewardedTaskSeedFailed = Number(rewardedTaskSeed.failedCount || 0);
+    const rewardedTaskJobs = await claimRewardedTaskMemoryJobs({ limit });
+    rewardedTaskClaimed = rewardedTaskJobs.length;
+    for (const job of rewardedTaskJobs) {
+      try {
+        if (!job?.source_packet_text) throw new Error("rewarded_task_memory_source_missing");
+        const summary = await fetchRewardedTaskMemorySummary(job);
+        await completeRewardedTaskMemoryJob({ job, summary });
+        rewardedTaskProcessed += 1;
+      } catch (error) {
+        rewardedTaskFailed += 1;
+        await failRewardedTaskMemoryJob(job, error);
       }
     }
     const deepJobs = await claimDeepMemoryJobs({ limit: Math.max(1, Math.floor(Number(limit || 1) / 2)) });
@@ -520,6 +490,11 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
       networkProfileClaimed,
       networkProfileSeeded,
       networkProfileSeedFailed,
+      rewardedTaskProcessed,
+      rewardedTaskFailed,
+      rewardedTaskClaimed,
+      rewardedTaskSeeded,
+      rewardedTaskSeedFailed,
     };
   } finally {
     running = false;

@@ -19,7 +19,6 @@ import {
   formatChatContextDocument,
 } from "./chat-account-context.js";
 import {
-  maxOpenAiWebSearchToolCalls,
   webSearchUsdPerCall,
 } from "./chat-search-tools.js";
 import {
@@ -35,6 +34,10 @@ import {
 } from "./context-edit-prompts.js";
 import { getActiveContextEditProposal } from "./repositories/context-edit.js";
 import { getChatMessages } from "./repositories/chat-billing.js";
+import {
+  chatPersonaUsesJobsRetrieval,
+  normalizeChatPersona,
+} from "../shared/chat-personas.js";
 
 function estimatePayload(payload) {
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
@@ -42,14 +45,20 @@ function estimatePayload(payload) {
   const mode = requestedMode || defaultChatModeForEstimate();
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 4) : [];
   const contextMode = payload?.contextMode === "context_edit" || mode === "context_edit" ? "context_edit" : "";
-  const effectiveMode = contextMode ? "Frontier Thinking" : mode;
+  const effectiveMode = contextMode ? "Thinking" : mode;
+  const persona = contextMode ? "jobs" : normalizeChatPersona(payload?.persona);
   if (!isKnownChatMode(effectiveMode)) {
     const error = new Error("unknown_chat_mode");
     error.status = 400;
     error.mode = effectiveMode;
     throw error;
   }
-  return { message, mode: normalizedChatMode(effectiveMode), attachments, contextMode };
+  if (!persona) {
+    const error = new Error("unknown_chat_persona");
+    error.status = 400;
+    throw error;
+  }
+  return { message, mode: normalizedChatMode(effectiveMode), attachments, contextMode, persona };
 }
 
 export function chatEstimate(
@@ -62,7 +71,7 @@ export function chatEstimate(
     activeProposal = null,
   } = {}
 ) {
-  const { message, mode, attachments, contextMode } = estimatePayload(payload);
+  const { message, mode, attachments, contextMode, persona } = estimatePayload(payload);
   const modeConfig = chatModeConfig(mode);
   const baseInputCharacters = chatInputCharacterEstimate({ message, attachments });
   const historyCharacters = contextMode === "context_edit" || !Array.isArray(historyMessages) || historyMessages.length === 0
@@ -71,7 +80,9 @@ export function chatEstimate(
   const contextDocumentCharacters = formatChatContextDocument(contextDocument).length;
   const memoryContextCharacters = formatChatMemoryContext(memoryContext).length;
   const taskContextCharacters = formatChatTaskContext(taskContext).length;
-  const estimatedJobsEssence = contextMode === "context_edit" ? "" : jobsRetrievalEstimateText();
+  const estimatedJobsEssence = contextMode === "context_edit" || !chatPersonaUsesJobsRetrieval(persona)
+    ? ""
+    : jobsRetrievalEstimateText();
   const jobsRetrievalCharacters = estimatedJobsEssence.length;
   const instructionCharacters = contextMode === "context_edit"
     ? renderContextEditPrompt({
@@ -82,7 +93,7 @@ export function chatEstimate(
         activeProposal,
         userRequest: message,
       }).length
-    : isHelpChatMode(mode)
+    : isHelpChatMode(mode) && chatPersonaUsesJobsRetrieval(persona)
       ? helpModeInstructions({
           contextDocument,
           memoryContext,
@@ -94,6 +105,7 @@ export function chatEstimate(
           memoryContext,
           taskContext,
           jobsEssence: estimatedJobsEssence,
+          persona,
         }).length;
   const contextEditLineNumberCharacters = contextMode === "context_edit"
     ? contextDocumentPacket(contextDocument || {}).lineNumberedText.length
@@ -124,8 +136,7 @@ export function chatEstimate(
     inputTokens,
     outputTokens: estimatedOutputTokens,
   });
-  const estimatedWebSearchCalls =
-    modeConfig.provider === "openai" && contextMode !== "context_edit" ? maxOpenAiWebSearchToolCalls : 0;
+  const estimatedWebSearchCalls = 0;
   const estimatedToolCostUsd = Number((estimatedWebSearchCalls * webSearchUsdPerCall).toFixed(6));
   const estimatedUsd = Number(Math.max(0.0001, estimatedTokenUsd + estimatedToolCostUsd).toFixed(6));
   const execution = chatExecutionStatus(mode);
@@ -133,6 +144,7 @@ export function chatEstimate(
   return {
     ok: true,
     mode,
+    persona,
     provider: execution.provider,
     model: execution.model,
     providerConfigured: execution.configured,

@@ -26,7 +26,7 @@ const filePath = argValue("--file") || process.env.TASKNODE_JOBS_CORPUS_FILE || 
 const sourceUrl = argValue("--url") || process.env.TASKNODE_JOBS_CORPUS_URL || defaultJobsCorpusUrl;
 const provider = hasArg("--deterministic")
   ? "deterministic"
-  : argValue("--provider") || process.env.TASKNODE_JOBS_EMBEDDING_PROVIDER || "openai";
+  : argValue("--provider") || process.env.TASKNODE_JOBS_EMBEDDING_PROVIDER || "deterministic";
 const force = hasArg("--force");
 
 try {

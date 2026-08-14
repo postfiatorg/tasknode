@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 
-process.env.OPENROUTER_API_KEY = "hive-project-planning-smoke-key";
-delete process.env.OPENAI_API_KEY;
+process.env.AMBIENT_API_KEY = "hive-project-planning-smoke-key";
 delete process.env.TASKNODE_HIVE_SECRETARY_PROVIDER;
 delete process.env.TASKNODE_HIVE_SECRETARY_MODEL;
 delete process.env.TASKNODE_HIVE_SECRETARY_REASONING_EFFORT;
@@ -52,14 +51,10 @@ assert.equal(capturedSecretaryBody.response_format.json_schema.name, "hive_secre
 assert.equal(Object.hasOwn(capturedSecretaryBody.response_format.json_schema, "type"), false);
 assert.equal(capturedSecretaryBody.response_format.json_schema.strict, true);
 assert.ok(capturedSecretaryBody.response_format.json_schema.schema);
-assert.equal(capturedSecretaryBody.provider.zdr, true);
-assert.equal(capturedSecretaryBody.provider.data_collection, "deny");
-assert.equal(capturedSecretaryBody.provider.require_parameters, true);
-assert.ok(Array.isArray(capturedSecretaryBody.provider.order));
-assert.deepEqual(capturedSecretaryBody.provider.only, capturedSecretaryBody.provider.order);
+assert.equal(capturedSecretaryBody.provider, undefined);
 assert.ok(capturedSecretaryBody.response_format.json_schema.schema.required.includes("project_signals"));
-assert.equal(capturedSecretaryBody.usage.include, true);
-assert.equal(secretaryResult.provider, "openrouter");
+assert.equal(capturedSecretaryBody.usage, undefined);
+assert.equal(secretaryResult.provider, "ambient");
 assert.equal(secretaryResult.model, "z-ai/glm-5.2");
 assert.equal(secretaryResult.usage.reasoningTokens, 25);
 
@@ -134,13 +129,12 @@ assert.equal(capturedBody.response_format.json_schema.name, "hive_active_project
 assert.equal(Object.hasOwn(capturedBody.response_format.json_schema, "type"), false);
 assert.equal(capturedBody.response_format.json_schema.strict, true);
 assert.ok(capturedBody.response_format.json_schema.schema);
-assert.equal(capturedBody.provider.data_collection, "deny");
-assert.equal(capturedBody.provider.require_parameters, true);
+assert.equal(capturedBody.provider, undefined);
 assert.equal(typeof capturedBody.max_tokens, "number");
 assert.equal(Object.hasOwn(capturedBody, "max_output_tokens"), false);
 assert.ok(capturedBody.response_format.json_schema.schema.required.includes("projects"));
-assert.equal(capturedBody.usage.include, true);
-assert.equal(result.provider, "openrouter");
+assert.equal(capturedBody.usage, undefined);
+assert.equal(result.provider, "ambient");
 assert.equal(result.model, "z-ai/glm-5.2");
 assert.equal(result.output.projects.length, 1);
 assert.equal(result.output.projects[0].id, "task_node_core_product");
@@ -151,21 +145,6 @@ assert.equal(result.output.projects[0].contributor_count, 0);
 assert.equal(result.output.projects[0].pft_routed, 0);
 assert.equal(result.usage.reasoningTokens, 25);
 
-const unsupportedModels = [
-  "gpt-5.5-pro",
-  "openai/gpt-5.5-pro-2026-04-23",
-  "OpenAI/GPT-5.5-Pro-2026-04-23",
-];
-for (const model of unsupportedModels) {
-  await assert.rejects(
-    fetchHiveSecretaryReport({ source_packet_text: "smoke" }, { model, fetchImpl: async () => { secretaryFetchCount += 1; throw new Error("unexpected_fetch"); } }),
-    new RegExp("hive_secretary_model_unsupported")
-  );
-  await assert.rejects(
-    fetchHiveActiveProjects({ source_packet_text: "smoke" }, { model, fetchImpl: async () => { projectFetchCount += 1; throw new Error("unexpected_fetch"); } }),
-    new RegExp("hive_project_model_unsupported")
-  );
-}
 await assert.rejects(
   fetchHiveSecretaryReport({ source_packet_text: "smoke" }, { provider: "openai", fetchImpl: async () => { secretaryFetchCount += 1; throw new Error("unexpected_fetch"); } }),
   new RegExp("hive_secretary_provider_unsupported")
@@ -176,12 +155,6 @@ await assert.rejects(
 );
 const secretaryFetchBeforeEnv = secretaryFetchCount;
 const projectFetchBeforeEnv = projectFetchCount;
-for (const model of unsupportedModels) {
-  process.env.TASKNODE_HIVE_SECRETARY_MODEL = model;
-  await assert.rejects(fetchHiveSecretaryReport({ source_packet_text: "smoke" }, { fetchImpl: async () => { secretaryFetchCount += 1; } }), /hive_secretary_model_unsupported/);
-  process.env.TASKNODE_HIVE_PROJECT_MODEL = model;
-  await assert.rejects(fetchHiveActiveProjects({ source_packet_text: "smoke" }, { fetchImpl: async () => { projectFetchCount += 1; } }), /hive_project_model_unsupported/);
-}
 process.env.TASKNODE_HIVE_SECRETARY_PROVIDER = "openai";
 await assert.rejects(fetchHiveSecretaryReport({ source_packet_text: "smoke" }, { fetchImpl: async () => { secretaryFetchCount += 1; } }), /hive_secretary_provider_unsupported/);
 process.env.TASKNODE_HIVE_PROJECT_PROVIDER = "openai";

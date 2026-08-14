@@ -25,7 +25,7 @@ import {
 import { contextDocumentPacket } from "./context-line-map.js";
 
 export const contextEditMode = "context_edit";
-const contextEditChatMode = "Frontier Thinking";
+const contextEditChatMode = "Thinking";
 
 function enqueueMemoryForTurn({ accountId, conversationId, persisted }) {
   if (!accountId || !persisted?.user?.id || !persisted?.assistant?.id) return;

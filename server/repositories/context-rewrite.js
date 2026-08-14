@@ -898,7 +898,7 @@ export async function createContextRewriteProviderCall({
   job = {},
   stage = "",
   callIndex = 0,
-  provider = "openrouter",
+  provider = "ambient",
   model = "",
   requestDigest = "",
   timeoutMs = 0,

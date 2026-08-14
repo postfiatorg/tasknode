@@ -386,14 +386,14 @@ function ThinkingDetails({ message }) {
       {responseGate && (
         <div className="thinking-vector-panel thinking-response-gate-panel">
           <div className="thinking-vector-header">
-            <strong>Frontier response JSON</strong>
+            <strong>Legacy response-gate JSON</strong>
             <span>{thinkingResponseGateSummary(responseGate)}</span>
           </div>
           {responseGateJson ? (
             <pre className="thinking-source-block thinking-json-block">{responseGateJson}</pre>
           ) : (
             <span className="thinking-vector-empty">
-              No Frontier response JSON was stored for this message.
+              No legacy response-gate JSON was stored for this message.
             </span>
           )}
         </div>

@@ -285,6 +285,11 @@ Generated offers must match the browser UX. The task-generation prompts in
 `prompts/task_engine/taskgen_network_v1.md`, plus worker validation in
 `server/task-generation-worker.js`, enforce this contract:
 
+Personal, Network, and Alpha task generation all use Ambient's `strict_json`
+capability, currently `z-ai/glm-5.2`. The same resolved model is written into
+the replay identity and provider metadata so cached generations cannot be
+labeled as a model different from the outbound request.
+
 | Contract | Current behavior |
 | --- | --- |
 | Evidence surfaces | Text, URL, screenshot/image, uploaded file or document, public commit link when explicitly appropriate, or mixed evidence made from those surfaces. |
@@ -406,7 +411,7 @@ A user can include one or two artifacts in the same signed packet, which covers 
 Screenshot and file uploads use a Task Node styled picker, not the native browser `Choose File` control. The browser route is:
 
 1. For screenshot evidence, the browser reads the selected image and calls `POST /api/tasks/submission` with `phase: process_evidence`.
-2. The server uses `prompts/task_engine/evidence_screenshot_read_v1.md` with OpenAI vision to extract visible proof text. The raw screenshot bytes are not placed in the final PFTL evidence payload.
+2. The server uses `prompts/task_engine/evidence_screenshot_read_v1.md` with Ambient's `verification_vision` capability, currently Kimi K2.7 Code, to extract visible proof text. The raw screenshot bytes are not placed in the final PFTL evidence payload.
 3. `POST /api/tasks/submission` configures the task, confirms the current state accepts evidence, and returns the Task Node encryption pubkey.
 4. The browser builds `pf.task.submission.v1` for initial evidence or `pf.task.verification_response.v1` for verification evidence. The payload includes `evidence_items` with a maximum of two compact artifacts. If two artifacts are present, the top-level `artifact_type` is `mixed`; each item keeps its own type, value, file metadata, SHA-256, extracted text or screenshot description, and processing metadata. It does not embed raw base64 media.
 5. The browser encrypts the compact payload to the user key and Task Node key.

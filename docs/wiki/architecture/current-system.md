@@ -60,11 +60,12 @@ Server:
 - `server/db/`: Postgres pool and migration runner.
 - `server/repositories/chat-billing.js`: Postgres-backed chat history and
   usage billing repository with JSON fallback when `DATABASE_URL` is absent.
-- `server/chat-router.js`: chat mode config, provider readiness, cost
-  estimates, OpenAI/OpenRouter execution. Frontier Instant is pinned to the
-  direct OpenAI `chat-latest` route unless a mode-specific
-  `CHAT_MODEL_FRONTIER_INSTANT` override is provided. Frontier Thinking is
-  pinned to direct OpenAI `gpt-5.5` with `reasoning.effort` set to `high`.
+- `server/chat-router.js`: canonical Instant, Thinking, and Help mode config,
+  Ambient readiness, cost estimates, and execution. Instant and Help use
+  `deepseek/deepseek-v4-flash-0731`; Thinking uses `z-ai/glm-5.2`. Its validated
+  personality router keeps Jobs, ODV, and Trading Coach prompt selection
+  independent from model selection and prevents non-Jobs personas from calling
+  the Jobs vector corpus.
 - `server/app-state.js`: server-owned UI read model for session, chat, tasks,
   wallet, usage, context, and readiness.
 
@@ -181,7 +182,7 @@ Usage/billing:
 
 - React app shell.
 - ChatGPT-style main frame.
-- App navigation with Tasks, Wallet, Context, Profile, Settings.
+- App navigation with Chat, Tasks, Hive, Docs, Wallet, Context, Directory, Profile, Memory, Team, Help, and Settings.
 - Chat response toolbar keeps only backed actions: copy response and export the
   visible transcript.
 - Email code login contract and development delivery.
@@ -204,13 +205,14 @@ Usage/billing:
 - PFTL cache projection for historical context metadata. The app stores
   CIDs/provenance/counts, not decrypted context or evidence plaintext, and the
   projection is scoped to the active linked wallet.
-- OpenAI execution and streaming when configured, gated by signed-in account
-  and available usage credit before provider calls.
-- OpenRouter execution and streaming when configured. Private routes enforce
-  OpenRouter ZDR/data-collection-deny provider preferences, support
-  image/PDF/text attachments, use pinned ZDR-listed defaults for instant and
-  thinking, constrain private requests to known ZDR provider allowlists, and do
-  not enable OpenRouter web search.
+- Ambient execution and streaming when configured, gated by signed-in account
+  and available usage credit before provider calls. The canonical picker is
+  Instant, Thinking, and Help; image/PDF/text attachments are preprocessed
+  locally and visual inputs use the approved Ambient vision capability. The
+  composer `+` menu separately selects Jobs, ODV, or Trading Coach; only Jobs
+  receives Jobs pgvector retrieval.
+- A first-class Docs library backed by embedded, dedicated-Fly PFDocs, with wallet-unlocked encrypted metadata/capability sharing, bidirectional title synchronization, human document chat, and opt-in Ambient GLM 5.2 `@ODV`/`@coach` assistants.
+- A Team screen under More with signed directional task-history grants, Collaborator/Manager/Direct Report roles, read-only task lists, and accessible task-detail side-panel/bottom-sheet popouts.
 - Usage ledger and idempotency-keyed admin credit when configured.
 - Account-scoped Ethereum mainnet top-up addresses when `ETH_DEPOSIT_XPUB` is
   configured. The rail accepts ETH, USDC, and USDT without MetaMask signatures,
@@ -244,8 +246,7 @@ Usage/billing:
 - Wallet delink/relink behavior.
 - Production sweep service for Ethereum deposit addresses.
 - Context import into the Postgres cache.
-- OpenRouter production route verification against selected ZDR endpoints and
-  attachment-heavy prompts.
+- Additional attachment-heavy Ambient production fixtures.
 - Formal Postgres-backed context cache backfill in production.
 - Initial eligible-provider credit for Telegram, Discord, and X callback paths.
 - Durable summaries/caches for decrypted historical context.
@@ -267,7 +268,7 @@ P0 production chat:
 1. Done: replace fake sidebar recents with server-owned conversations/messages
    in the JSON runtime store.
 2. Done: add real recents and per-thread history hydration from the app server.
-3. Done: add streaming OpenAI/OpenRouter adapters and `/api/chat/stream`.
+3. Done: add Ambient streaming through `/api/chat/stream`.
 4. Done: render user messages immediately and stream assistant deltas.
 5. Done: persist final assistant output and usage on completion.
 6. Done: remove unbacked chat toolbar controls and fake source/activity panels.

@@ -16,7 +16,7 @@ import {
   taskgenReplayIdentity,
 } from "../server/task-generation-worker.js";
 
-process.env.TASKNODE_TASKGEN_MODEL = "taskgen-replay-smoke-model";
+process.env.AMBIENT_MODEL_STRUCTURED = "taskgen-replay-smoke-model";
 
 const taskInput = {
   schema: "pf.taskgen.input.v1",
@@ -47,6 +47,7 @@ const taskInput = {
     reward_policy_version: "network-reward-policy-v1",
     task_policy_version: "task-policy-network-v1",
     generation_policy_version: "taskgen-policy-network-v1",
+    deadline: { accept_by: "2030-06-18T12:00:00.000Z", deadline_at: null },
   },
 };
 
@@ -140,8 +141,8 @@ const completeTaskgenOutput = {
     amount_estimate_pft: "2.50",
   },
   deadline: {
-    accept_by: "2026-06-18T12:00:00.000Z",
-    deadline_at: "2026-06-18T13:00:00.000Z",
+    accept_by: "2030-06-18T12:00:00.000Z",
+    deadline_at: "2030-06-18T13:00:00.000Z",
   },
 };
 const refreshedForPublish = refreshTaskgenReplayDeadlineForPublish(
@@ -150,11 +151,11 @@ const refreshedForPublish = refreshTaskgenReplayDeadlineForPublish(
     metadata: { provider: "smoke", model: identity.model },
   },
   taskInput.policy,
-  { nowMs: Date.parse("2026-06-18T14:00:00.000Z") }
+  { nowMs: Date.parse("2030-06-18T14:00:00.000Z") }
 );
 assert.equal(refreshedForPublish.refreshed, true);
-assert.equal(refreshedForPublish.staleAcceptBy, "2026-06-18T12:00:00.000Z");
-assert.equal(refreshedForPublish.taskgen.output.deadline.accept_by, "2026-06-19T14:00:00.000Z");
+assert.equal(refreshedForPublish.staleAcceptBy, "2030-06-18T12:00:00.000Z");
+assert.equal(refreshedForPublish.taskgen.output.deadline.accept_by, "2030-06-19T14:00:00.000Z");
 assert.equal(refreshedForPublish.taskgen.output.deadline.deadline_at, null);
 assert.equal(refreshedForPublish.taskgen.metadata.replay_deadline_refreshed, true);
 

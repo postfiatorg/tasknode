@@ -120,11 +120,8 @@ The public profile role layout renders the model summary as exactly two sentence
 
 Provider policy:
 
-- model: `deepseek/deepseek-v4-pro`;
-- provider: OpenRouter private route;
-- ZDR required;
-- `data_collection: "deny"`;
-- `require_parameters: true`;
+- model: Ambient `deepseek/deepseek-v4-flash-0731` by default;
+- provider: `ambient` through the shared strict-JSON capability;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.
@@ -598,10 +595,8 @@ Runtime call sites:
 
 Provider policy:
 
-- model: `deepseek/deepseek-v4-pro`;
-- provider: OpenRouter private route;
-- ZDR required;
-- `data_collection: "deny"`;
+- model: Ambient `z-ai/glm-5.2` by default;
+- provider: `ambient` through the shared strict-JSON capability;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.

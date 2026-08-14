@@ -33,6 +33,11 @@ function sha256(value = "") {
   return createHash("sha256").update(String(value || ""), "utf8").digest("hex");
 }
 
+export function jobsCorpusChunkId({ rawSha256 = "", embeddingModel = "", dimensions = 0, chunkIndex = 0 } = {}) {
+  const embeddingIdentity = sha256(`${embeddingModel}:${Number(dimensions) || 0}`).slice(0, 8);
+  return `jobs_chunk_${safeText(rawSha256, 16)}_${embeddingIdentity}_${String(chunkIndex).padStart(5, "0")}`;
+}
+
 function safeText(value = "", max = 500) {
   return String(value || "").trim().slice(0, max);
 }
@@ -320,7 +325,12 @@ export async function ingestJobsCorpus({
               updated_at = now()
         `,
         [
-          `jobs_chunk_${rawSha256.slice(0, 16)}_${String(chunk.chunkIndex).padStart(5, "0")}`,
+          jobsCorpusChunkId({
+            rawSha256,
+            embeddingModel: embeddingResult.model,
+            dimensions: embeddingResult.dimensions,
+            chunkIndex: chunk.chunkIndex,
+          }),
           sourceId,
           chunk.chunkIndex,
           safeText(chunk.packetLabel, 220),

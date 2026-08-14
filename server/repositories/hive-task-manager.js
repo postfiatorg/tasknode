@@ -462,7 +462,7 @@ export async function startHiveTaskManagerRun({
   scope = "global_hive",
   trigger = "periodic_tick",
   sourcePacket = {},
-  provider = "openrouter",
+  provider = "ambient",
   model = "",
   reasoningEffort = "high",
   shadow = false,

@@ -11,7 +11,7 @@ process.env.TASKNODE_DATABASE_DISABLED = "true";
 process.env.TASKNODE_AUTH_SECRET = "expert-badge-smoke-secret";
 process.env.TASKNODE_EMAIL_DEV_DELIVERY = "true";
 process.env.TASKNODE_INITIAL_PROVIDER_CREDIT_USD = "0";
-process.env.OPENROUTER_API_KEY = "expert-badge-openrouter-test-key";
+process.env.AMBIENT_API_KEY = "expert-badge-ambient-test-key";
 
 const {
   evaluateExpertBadge,
@@ -66,7 +66,7 @@ const underGate = await evaluateExpertBadge({
 });
 assert.equal(underGate.ok, false, "under-gate result should not be ok");
 assert.equal(underGate.error, "expert_badge_personal_task_count_required");
-assert.equal(fetchCalls, 0, "under-gate evaluation should not call OpenRouter");
+assert.equal(fetchCalls, 0, "under-gate evaluation should not call Ambient");
 
 let requestBody = null;
 const passed = await evaluateExpertBadge({
@@ -113,8 +113,7 @@ assert.equal(passed.ok, true, "passing evaluation should succeed");
 assert.equal(passed.expertAccess.eligible, true, "passing evaluation should mark Expert eligible");
 assert.equal(passed.expertAccess.score, 86);
 assert.equal(requestBody.model, "z-ai/glm-5.2");
-assert.equal(requestBody.provider.data_collection, "deny");
-assert.deepEqual(requestBody.provider.order, ["z-ai", "wafer", "fireworks", "novita"]);
+assert.equal(requestBody.provider, undefined);
 assert.match(JSON.stringify(requestBody.messages), /market structure/);
 assert.match(JSON.stringify(requestBody.messages), /task_personal_20/);
 

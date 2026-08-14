@@ -1,5 +1,7 @@
 # Repository bloat audit (report-only)
 
+> **Historical audit — superseded for provider routing.** Provider statements below describe the 2026-07-14 repository baseline and release v561, not the current runtime. OpenRouter, direct DeepSeek, and general OpenAI inference were retired by the Ambient cutover on 2026-08-12. Preserve the rows as dated removal evidence; use [AI Providers](#docs/ai-providers) for current egress.
+
 **Date:** 2026-07-14 (final reconciliation)
 **Base:** integrated `origin/main` @ `58d3295ebeb7450efc44057d1c9c92d1aff9cdcb`
 **Scope:** Documentation audit reconciled to integrated cuts, archive moves, and docs-authority changes. This commit changes this audit only.

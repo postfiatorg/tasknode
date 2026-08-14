@@ -63,7 +63,7 @@ Add a new worker:
 - server module: `server/hive-board-secretary-worker.js`
 - repository module: `server/repositories/hive-board-secretary.js`
 - prompt: `prompts/hive/glm_board_secretary_status_memo_v1.md`
-- model provider: OpenRouter
+- model provider: Ambient
 - model: `z-ai/glm-5.2`
 - cadence: every 15 minutes for every active board/project
 
@@ -71,7 +71,7 @@ Recommended production flags:
 
 ```txt
 TASKNODE_HIVE_BOARD_SECRETARY_ENABLED=true
-TASKNODE_HIVE_BOARD_SECRETARY_PROVIDER=openrouter
+TASKNODE_HIVE_BOARD_SECRETARY_PROVIDER=ambient
 TASKNODE_HIVE_BOARD_SECRETARY_MODEL=z-ai/glm-5.2
 TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS=900
 TASKNODE_HIVE_BOARD_SECRETARY_PROJECT_LIMIT=100

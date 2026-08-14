@@ -1,6 +1,6 @@
 # Board Manager Secretary Packet
 
-The Board Manager Secretary Packet is the DeepSeek-powered compression layer in
+The Board Manager Secretary Packet is the Ambient GLM 5.2 compression layer in
 front of the Board Manager decision model. It turns verbose Hive board state
 into a compact reusable packet so the Board Manager can make a decision without
 receiving the full raw board every tick.
@@ -9,7 +9,7 @@ System Status row: `board_manager_secretary_packets`
 
 ## Runtime Boundary
 
-- Provider path: direct DeepSeek chat completions.
+- Provider path: shared Ambient `strict_json` capability, default `z-ai/glm-5.2`.
 - Prompt: `prompts/hive/board_manager_secretary_v1.md`.
 - Runtime module: `server/board-manager-secretary-packets.js`.
 - Primary store: `board_manager_secretary_packets`.
@@ -122,7 +122,7 @@ npm run board-manager-secretary-packet-smoke
 npm run board-manager:model -- --no-execute
 ```
 
-Confirm `DEEPSEEK_API_KEY` is configured when secretary packets are enabled. If
+Confirm `AMBIENT_API_KEY` is configured when secretary packets are enabled. If
 the row is failed, inspect the latest packet `error`, source digest, and provider
 response shape. Fix the provider/config error first, then let the next Board
 Manager model tick produce or reuse a current packet.

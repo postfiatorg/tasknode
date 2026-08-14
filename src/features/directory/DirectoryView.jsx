@@ -238,9 +238,9 @@ export function DirectoryView() {
           <div className="directory-board-title">
             <div>
               <h2>Leaderboard</h2>
-              <p>Rank score = 3x network tasks + personal tasks + rewards/25000 + alignment. Open - Alex's call.</p>
+              <p>Rank score = 3x network tasks + personal tasks + rewards/25000 + alignment.</p>
             </div>
-            <small>Public exposure default: public + discoverable only. Open - Alex's call.</small>
+            <small>Showing public, discoverable operators only.</small>
           </div>
 
           <div className="directory-row directory-row-head" role="row">

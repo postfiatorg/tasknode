@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
 import { getAccountExpertReview, setAccountExpertReview } from "./runtime-store.js";
 import { listTaskState } from "./repositories/tasks.js";
+import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
 
 export const expertRequiredPersonalTaskCount = 20;
 export const expertScoreThreshold = 80;
 export const expertPromptVersion = "expert_badge_evaluator_v1";
 
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
-const providerOrder = ["z-ai", "wafer", "fireworks", "novita"];
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -33,12 +32,8 @@ function promptDigest(text = "") {
   return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
 }
 
-function openRouterKey() {
-  return safeText(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER, 10000);
-}
-
 function expertModel() {
-  return safeText(process.env.TASKNODE_EXPERT_EVALUATOR_MODEL || "z-ai/glm-5.2", 120);
+  return safeText(process.env.TASKNODE_EXPERT_EVALUATOR_MODEL || AMBIENT_MODELS.structured, 120);
 }
 
 function expertReasoningEffort() {
@@ -243,61 +238,40 @@ function expertMessages({ topic = "", tasks = [] } = {}) {
 }
 
 async function fetchExpertEvaluation({ topic = "", tasks = [], fetchImpl = fetch } = {}) {
-  const apiKey = openRouterKey();
-  if (!apiKey) {
-    const error = new Error("expert_badge_openrouter_not_configured");
+  if (!ambientConfigured()) {
+    const error = new Error("expert_badge_ambient_not_configured");
     error.status = 409;
     throw error;
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), expertTimeoutMs());
   const startedAt = Date.now();
   const model = expertModel();
   const promptText = expertEvaluationPrompt();
   try {
-    const response = await fetchImpl(`${(process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-      },
-      body: JSON.stringify({
+    const result = await ambientChatCompletion({
+      fetchImpl,
+      capability: "strict_json",
+      timeoutMs: expertTimeoutMs(),
+      body: {
         model,
         messages: expertMessages({ topic, tasks }),
         reasoning: { effort: expertReasoningEffort() },
         response_format: expertResponseFormat(),
-        provider: {
-          order: providerOrder,
-          data_collection: "deny",
-          require_parameters: true,
-        },
         temperature: 0,
         max_tokens: Math.max(1200, Number(process.env.TASKNODE_EXPERT_EVALUATOR_MAX_OUTPUT_TOKENS || 2500)),
-        usage: { include: true },
         metadata: {
           app: "tasknodeofficial",
           worker: "expert_badge_evaluator",
           prompt_version: expertPromptVersion,
         },
-      }),
+      },
     });
-    const bodyText = await response.text();
-    const body = bodyText ? JSON.parse(bodyText) : {};
-    if (!response.ok) {
-      const error = new Error(body?.error?.message || body?.message || `OpenRouter Expert evaluator HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
-    }
-    const text = body?.choices?.[0]?.message?.content || "";
+    const body = result.body;
+    const text = result.text;
     const parsed = parseJsonOutputText(text);
     return {
       parsed,
-      provider: "openrouter",
+      provider: "ambient",
       model: body?.model || model,
       responseId: safeText(body?.id, 200),
       promptDigest: promptDigest(promptText),
@@ -308,10 +282,8 @@ async function fetchExpertEvaluation({ topic = "", tasks = [], fetchImpl = fetch
       },
     };
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("expert_badge_openrouter_timeout");
+    if (error?.code === "ambient_timeout") throw new Error("expert_badge_ambient_timeout");
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

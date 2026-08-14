@@ -91,8 +91,8 @@ async function createJob({ readJson, req, session }) {
     return response(409, {
       error: "context_rewrite_provider_not_configured",
       action: "context_rewrite_create",
-      message: "Context Rewrite requires OpenRouter provider configuration.",
-      actionRequired: "Configure OPENROUTER_API_KEY or enable the mock provider for local smoke tests.",
+      message: "Context Rewrite requires Ambient provider configuration.",
+      actionRequired: "Configure AMBIENT_API_KEY or enable the mock provider for local smoke tests.",
       estimate: estimatePayload(),
     });
   }

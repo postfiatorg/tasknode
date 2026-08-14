@@ -150,7 +150,7 @@ publish, or reward tasks.
 `server/hive-board-secretary-worker.js` writes the Project Status memo shown in
 each Hive project About section. It runs from the `board-secretary` process
 group every 15 minutes when `TASKNODE_HIVE_BOARD_SECRETARY_ENABLED=true`, uses
-OpenRouter `z-ai/glm-5.2`, and stores rows in
+Ambient `z-ai/glm-5.2`, and stores rows in
 `hive_board_secretary_memos`. The worker is advisory only. It cannot create
 tasks, cancel tasks, send user messages, change rewards, mark work resolved, or
 mutate project state.
@@ -247,7 +247,7 @@ the task requires a different badge.
 Report inputs are existing durable facts: `account_network_badges` for roles,
 `task_projections` for active/rewarded Network Tasks, `network_projects` and
 their task mirrors for dynamic projects, and `hive_context_entries` for Hive
-chat. The builders use the configured OpenRouter Hive report model with high
+chat. The builders use the configured Ambient Hive report model with high
 reasoning effort in production; the `hive_intelligence` builder uses GLM 5.2
 `xhigh` reasoning by default through
 `TASKNODE_HIVE_INTELLIGENCE_REPORT_REASONING_EFFORT`. The
@@ -288,8 +288,8 @@ interval:
 
 1. scans canonical `task_projections` for rewarded or paid Network Tasks
 2. upserts one durable queue row in `task_accounting_harvests`
-3. sends a compact source packet to OpenRouter using
-   `deepseek/deepseek-v4-pro`
+3. sends a compact source packet through Ambient `strict_json`, defaulting to
+   `z-ai/glm-5.2`
 4. stores a deterministic accounting classification:
    `requires_action` or `no_action`
 5. records a short assessment summary, suggested action, category, confidence,
@@ -573,7 +573,7 @@ Hive and Tasks are connected, but they are not the same surface.
 
 Every signed-in user gets one default `Hive Chat` conversation in the chat sidebar. The main coordination page remains `Hive`. `Hive Chat` is not a temporary composer mode and it is not selected from the chat `+` menu. It is a durable conversation dedicated to talking to the network coordination layer.
 
-When the user sends a message in `Hive Chat`, `POST /api/hive/context` saves the user message to `Hive Context`, builds an account-scoped Hive source packet for the requesting user, loads the latest compressed Board Manager Secretary Packet plus a small live Board Manager source snapshot, and asks direct DeepSeek for an immediate conversational Hive response in the same chat. The prompt includes an explicit requesting-account block and labels Board Manager facts as shared board state; the model may say a task, follow-up, blocker, or reward belongs to the user only when the live facts mark it as tied to that account. The response is persisted as a normal assistant message with `provider=deepseek`, but it is system-paid and does not debit the user's chat credit. If DeepSeek is unavailable, the route still saves the Hive Context entry and records the user message, then falls back to the lightweight saved-status row. Hive Chat cannot create, queue, publish, accept, refuse, or submit personal tasks, Network Tasks, Alpha Tasks, or task proposals. It can explain status and record context only. Durable board mutations still happen only when the Board Manager later chooses an action such as `message_user`, `create_project`, `restore_project`, or `initiate_network_task`.
+When the user sends a message in `Hive Chat`, `POST /api/hive/context` saves the user message to `Hive Context`, builds an account-scoped Hive source packet for the requesting user, loads the latest compressed Board Manager Secretary Packet plus a small live Board Manager source snapshot, and asks Ambient's `fast_text` capability for an immediate conversational Hive response in the same chat. The default is DeepSeek Flash 7/31 through Ambient. The prompt includes an explicit requesting-account block and labels Board Manager facts as shared board state; the model may say a task, follow-up, blocker, or reward belongs to the user only when the live facts mark it as tied to that account. The response is persisted with `provider=ambient`, but it is system-paid and does not debit the user's chat credit. If Ambient is unavailable, the route still saves the Hive Context entry and records the user message, then falls back to the lightweight saved-status row. Hive Chat cannot create, queue, publish, accept, refuse, or submit personal tasks, Network Tasks, Alpha Tasks, or task proposals. It can explain status and record context only. Durable board mutations still happen only when the Board Manager later chooses an action such as `message_user`, `create_project`, `restore_project`, or `initiate_network_task`.
 
 Each Hive project detail page also has a collapsed `Board comments` toggle in the About section. It stays closed by default and resets closed when switching projects. Signed-in users can add a short project comment there; the same `POST /api/hive/context` route stores it with `metadata.projectComment.projectId` and `metadata.projectComment.projectName`, `kind=hive_project_comment`, and `source=project_board`. Project board comments do not create a separate task or assignment. They become normal Hive Context inputs for Secretary and Board Manager reads, and `GET /api/hive/projects` returns the latest scoped comments on the matching project so the board can show a simple handle-keyed comment stream.
 
@@ -613,9 +613,9 @@ Active board counts must be live execution counts, not planned or scoped counts.
 Board Manager archives are reversible unless an explicit operator archive lock
 is present.
 
-V0 now builds the current Hive source packet, optionally compresses it through a DeepSeek secretary packet, calls the configured decision provider, validates the returned action against `schemas/board-manager-action.schema.json`, and records the decision in `board_manager_runs` when Postgres is enabled. The Board Manager decision provider is OpenRouter Chat Completions with `z-ai/glm-5.2`, `high` reasoning, structured JSON output, `data_collection="deny"`, and usage reporting. The former Board Manager OpenAI/GPT-5.5-Pro branch and override were removed; unsupported providers fail closed. It defaults to dry-run for app mutations, and executes supported action hooks only when the executor is run with `--execute`. Codex Exec remains available as a manual repo/operator tool, but it is no longer the normal Board Manager decision engine.
+V0 now builds the current Hive source packet, optionally compresses it through a reusable secretary packet, calls the configured decision provider, validates the returned action against `schemas/board-manager-action.schema.json`, and records the decision in `board_manager_runs` when Postgres is enabled. Both the packet compressor and decision provider use Ambient `z-ai/glm-5.2` structured output; the decision call uses high reasoning and usage reporting. Retired OpenRouter, direct DeepSeek, and OpenAI branches are not eligible providers and fail closed. It defaults to dry-run for app mutations, and executes supported action hooks only when the executor is run with `--execute`. Codex Exec remains available as a manual repo/operator tool, but it is no longer the normal Board Manager decision engine.
 
-The DeepSeek secretary path uses the direct DeepSeek API with `deepseek-v4-pro`; it is not the private ZDR chat route. Its job is to turn the full board packet into a reusable `board_triage` packet stored in `board_manager_secretary_packets`. GLM 5.2 receives that smaller packet instead of the full Hive state. The secretary digest ignores clock-only changes and no-op run churn, so quiet ticks reuse the stored packet instead of calling DeepSeek again. Operators can run the old full-source path with `--no-secretary`.
+The secretary path uses Ambient GLM 5.2 to turn the full board packet into a reusable `board_triage` packet stored in `board_manager_secretary_packets`. The Board Manager receives that smaller packet instead of the full Hive state. The secretary digest ignores clock-only changes and no-op run churn, so quiet ticks reuse the stored packet instead of making another inference call. Operators can run the old full-source path with `--no-secretary`.
 
 The local continuous runner is `npm run board-manager:loop -- --execute`. It calls the same one-shot Board Manager executor repeatedly. If the manager selects `do_nothing`, the loop sleeps for two minutes before the next tick. If the manager changes the board, it waits only the shorter action delay and then rechecks the resulting Hive state. This is a development harness, not the production deployment model.
 
@@ -710,10 +710,10 @@ When a signed-in user posts in the Hive chat:
 2. The route checks the account's linked wallet through `getLinkedWallet`.
 3. If the account has a linked wallet, the entry is marked `wallet_validated = true`.
 4. Validated entries enqueue a Hive Secretary job.
-5. `server/hive-secretary-worker.js` calls OpenRouter Chat Completions with `z-ai/glm-5.2`, `reasoning.effort = high`, provider data-collection denial, and structured JSON output.
+5. `server/hive-secretary-worker.js` calls Ambient `z-ai/glm-5.2` with `reasoning.effort = high` and structured JSON output.
 6. The completed report is stored in `hive_secretary_reports`.
 7. In the current implementation, the completed report queues a Hive Active Projects job.
-8. `server/hive-project-worker.js` calls OpenRouter Chat Completions with `z-ai/glm-5.2`, `reasoning.effort = high`, provider data-collection denial, and structured JSON output.
+8. `server/hive-project-worker.js` calls Ambient `z-ai/glm-5.2` with `reasoning.effort = high` and structured JSON output.
 9. The completed project generation is stored in `hive_project_generations` and upserts active rows in `network_projects`.
 10. `GET /api/hive/context` returns both the grouped raw context and the current Secretary report.
 
@@ -814,11 +814,11 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
 - `server/hive-board-secretary-worker.js` runs the advisory per-board GLM 5.2 memo writer every 15 minutes.
 - `server/repositories/hive-board-secretary.js` builds deterministic board-scoped packets, truncates rewarded task evidence, persists current memo rows, and exposes public memo reads for Hive projects.
-- `server/hive-board-secretary-provider.js` calls OpenRouter `z-ai/glm-5.2` with `data_collection=deny` for Project Status Markdown.
+- `server/hive-board-secretary-provider.js` calls Ambient `z-ai/glm-5.2` for Project Status Markdown.
 - `server/hive-secretary-worker.js` and `server/hive-project-worker.js` remain historical/context primitives, but the current Project Status surface is not written by GPT 5.5 Pro jobs.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
 - `server/profile-daily-airdrop-worker.js` runs recurring Daily Airdrop scoring/issuance when enabled and records internal `daily_airdrop` cards into the Hive Mind Agent feed.
-- `server/board-manager-decision-provider.js` is retained for historical/manual paths and now exposes only the OpenRouter GLM 5.2 decision route; the former OpenAI/GPT 5.5 Pro branch and legacy override were removed.
+- `server/board-manager-decision-provider.js` exposes only the Ambient GLM 5.2 decision route; retired provider values fail closed.
 - `server/repositories/board-manager-health.js` computes `boardActionPressure`, including empty active project and stopped Network Task pressure.
 - `server/repositories/board-manager-scheduler.js` owns the durable Board Manager scheduler helpers: scope setup, job enqueue, due tick enqueue, job claiming, job completion, and deferred/failed retries.
 - `server/board-manager-actions.js` executes the first Board Manager action hooks.

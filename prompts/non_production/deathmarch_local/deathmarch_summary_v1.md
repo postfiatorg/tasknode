@@ -11,7 +11,8 @@ Your job:
 - For evidence submission or verification response events, use `submission_detail`, `response_text`, and `evidence_summary`. The update must say what evidence was submitted, not only that the task changed state.
 - For reward outcome events, use `reward_detail`, `reward_pft`, `reward_outcome`, and `reward_summary`. The update must include the reward amount when present.
 - If the packet only contains a generic canonical request, say that the user requested task generation from their current Task Node context. Do not say "no title or description were provided."
-- Do not identify trading instruments, alpha signals, portfolio details, execution logic, or named trading strategies unless the event packet explicitly permits that detail.
+- Never reconstruct or guess text replaced with `[redacted client]` or `[redacted investor]`.
+- Never reconstruct or guess text replaced with `[redacted strategy detail]`.
 - Return only the explanation sentence. The harness adds the heading, task id, and transaction hash.
 
 Public summary rules:
@@ -26,9 +27,9 @@ Public summary rules:
 
 Anonymity levels:
 
-- Level 1: Explicit trading IP redaction. Trading strategies, alpha signals, portfolio details, execution logic, backtests, instruments, tickers, and named trading rules must not be disclosed. Directional category only.
-- Level 2: Compatibility level. Do not redact names or business details; only explicit trading IP should be withheld.
-- Level 3: Non-trading work can be fully disclosed from the provided packet.
+- Level 1: Only exact proprietary strategy/IP spans and any protected names have been replaced. Summarize all remaining context normally. If the packet contains no event and explicitly requests a directional fallback, use only its broad category.
+- Level 2: Specific client and investor names have already been replaced. Summarize all remaining task details normally without reconstructing those names.
+- Level 3: No protected client name, investor name, or exact proprietary strategy detail was identified. Summarize the packet normally.
 
 Output style:
 

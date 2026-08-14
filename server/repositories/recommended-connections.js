@@ -15,13 +15,13 @@ import {
 import { getLatestNetworkTaskProfile } from "./network-task-profile.js";
 import { buildPublicProfileSnapshotInput, getLatestPublicProfileSnapshot } from "./profile-public.js";
 import { nonFixtureTaskProjectionSql } from "./task-projection-integrity.js";
+import { AMBIENT_MODELS, ambientConfigured, ambientFetchCompatibility } from "../ambient-inference.js";
 
 export const recommendedConnectionsPromptVersion = "recommended_connections_v1";
 const weeklyRefreshMs = 7 * 24 * 60 * 60 * 1000;
 const maxCandidateCount = 50;
 const maxRecommendations = 4;
 const minRecommendations = 3;
-const defaultDeepSeekBaseUrl = "https://api.deepseek.com";
 
 function useDatabase() {
   return databaseEnabled();
@@ -818,8 +818,7 @@ async function callDeepSeekRecommendedConnections({
   candidates,
   fetchImpl = fetch,
 } = {}) {
-  const apiKey = process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK || "";
-  if (!apiKey) {
+  if (!ambientConfigured()) {
     return {
       provider: "deterministic_fallback",
       model: "deterministic-recommended-connections-v1",
@@ -828,19 +827,15 @@ async function callDeepSeekRecommendedConnections({
       usage: {},
     };
   }
-  const model = process.env.TASKNODE_RECOMMENDED_CONNECTIONS_MODEL ||
-    process.env.DEEPSEEK_CHAT_MODEL ||
-    "deepseek-v4-pro";
-  const baseUrl = (process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "");
+  const model = process.env.TASKNODE_RECOMMENDED_CONNECTIONS_MODEL || AMBIENT_MODELS.fastText;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(10_000, Number(process.env.TASKNODE_RECOMMENDED_CONNECTIONS_TIMEOUT_MS || 90_000)));
   let response;
   try {
-    response = await fetchImpl(`${baseUrl}/chat/completions`, {
+    response = await ambientFetchCompatibility(fetchImpl, "", {
       method: "POST",
       signal: controller.signal,
       headers: {
-        authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -852,7 +847,7 @@ async function callDeepSeekRecommendedConnections({
         temperature: 0,
         response_format: { type: "json_object" },
       }),
-    });
+    }, { capability: "fast_text", timeoutMs: Math.max(10_000, Number(process.env.TASKNODE_RECOMMENDED_CONNECTIONS_TIMEOUT_MS || 90_000)) });
   } catch (error) {
     if (error?.name === "AbortError") throw new Error("recommended_connections_deepseek_timeout");
     throw error;
@@ -867,7 +862,7 @@ async function callDeepSeekRecommendedConnections({
   }
   const content = body?.choices?.[0]?.message?.content || "";
   return {
-    provider: "deepseek",
+    provider: "ambient",
     model: body?.model || model,
     recommendations: parseRecommendedConnectionsJson(content, candidates),
     output: body,

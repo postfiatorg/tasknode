@@ -13,6 +13,7 @@ import { startPftlArchiveWorker, startPftlCacheWorker } from "./pftl-cache-sync.
 import { startPftlCacheWatcher } from "./pftl-cache-watcher.js";
 import { startDailyAirdropWorker } from "./profile-daily-airdrop-worker.js";
 import { startDailyProfileNftWorker } from "./profile-nft-daily-worker.js";
+import { startProfileNftRenderWorker } from "./profile-nft-render-worker.js";
 import { startPublicProfileSnapshotWorker } from "./public-profile-snapshot-worker.js";
 import { startRecommendedConnectionsWorker } from "./recommended-connections-worker.js";
 import { startContextRewriteWorker } from "./context-rewrite-worker.js";
@@ -102,6 +103,7 @@ export function startBackgroundWorkers({ role = tasknodeProcessRole(), runWorker
   else if (role === "worker:hive") startHiveWorkers(startOne);
   else if (role === "worker:memory-profile") startMemoryProfileWorkers(startOne);
   else if (role === "worker:airdrop") startAirdropWorkers(startOne);
+  else if (role === "worker:nft-renderer") startOne("profile_nft_renderer", startProfileNftRenderWorker);
   else throw new Error(`unknown_background_worker_role:${role}`);
   return { role, startedWorkerGroups };
 }

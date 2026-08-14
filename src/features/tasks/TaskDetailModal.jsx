@@ -1120,7 +1120,7 @@ function TaskSubmitPanel({
         error: "",
         pending: false,
         pendingLabel: "",
-        result: key === "screenshot" ? "Screenshot read and compacted" : "",
+        result: key === "screenshot" ? "Screenshot read and compacted" : "File text extracted for verification",
         submitted: false,
       });
     } catch (error) {

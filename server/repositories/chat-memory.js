@@ -310,7 +310,7 @@ async function maybeEnqueueDeepMemoryJobsForAccount(client, { accountId = "" } =
       SELECT count(*)::integer AS count
       FROM chat_memory_entries
       WHERE account_id = $1
-        AND kind = 'turn_memory'
+        AND kind IN ('turn_memory', 'rewarded_task_memory')
     `,
     [normalizedAccountId]
   );
@@ -345,7 +345,7 @@ async function turnMemoryEntryIdsForBlock(client, { accountId = "", blockIndex =
           row_number() OVER (ORDER BY created_at ASC, id ASC) AS ordinal
         FROM chat_memory_entries
         WHERE account_id = $1
-          AND kind = 'turn_memory'
+          AND kind IN ('turn_memory', 'rewarded_task_memory')
       )
       SELECT id
       FROM ordered
@@ -368,7 +368,7 @@ export async function enqueueMissingDeepMemoryJobs({ accountId = "" } = {}) {
       SELECT count(*)::integer AS count
       FROM chat_memory_entries
       WHERE account_id = $1
-        AND kind = 'turn_memory'
+        AND kind IN ('turn_memory', 'rewarded_task_memory')
     `,
     [normalizedAccountId]
   );
@@ -532,7 +532,7 @@ async function deepMemorySourceIdsComplete(client, { accountId = "", sourceEntry
       JOIN chat_memory_entries AS entry
         ON entry.id = source_ids.id
        AND entry.account_id = $1
-       AND entry.kind = 'turn_memory'
+       AND entry.kind IN ('turn_memory', 'rewarded_task_memory')
     `,
     [normalizedAccountId, JSON.stringify(normalizedSourceEntryIds)]
   );
@@ -609,7 +609,7 @@ export async function deepMemoryJobSource(job) {
       JOIN chat_memory_entries AS entry
         ON entry.id = source_ids.id
        AND entry.account_id = $1
-       AND entry.kind = 'turn_memory'
+       AND entry.kind IN ('turn_memory', 'rewarded_task_memory')
       ORDER BY source_ids.ordinality ASC
     `,
     [safeAccountId(job.account_id), JSON.stringify(sourceEntryIds)]
@@ -792,12 +792,24 @@ export async function failDeepMemoryJob(job, error) {
 export async function getChatMemoryQueueHealth({ accountId = "" } = {}) {
   const emptyCounts = { pending: 0, processing: 0, failed: 0, total: 0 };
   if (!useDatabase()) {
-    return { turnJobs: { ...emptyCounts }, deepJobs: { ...emptyCounts }, durable: false, storePath: "runtime" };
+    return {
+      turnJobs: { ...emptyCounts },
+      rewardedTaskJobs: { ...emptyCounts },
+      deepJobs: { ...emptyCounts },
+      durable: false,
+      storePath: "runtime",
+    };
   }
 
   const normalizedAccountId = safeAccountId(accountId);
   if (!normalizedAccountId) {
-    return { turnJobs: { ...emptyCounts }, deepJobs: { ...emptyCounts }, durable: true, storePath: "postgres" };
+    return {
+      turnJobs: { ...emptyCounts },
+      rewardedTaskJobs: { ...emptyCounts },
+      deepJobs: { ...emptyCounts },
+      durable: true,
+      storePath: "postgres",
+    };
   }
 
   const summarize = (rows = []) => {
@@ -811,11 +823,20 @@ export async function getChatMemoryQueueHealth({ accountId = "" } = {}) {
     return counts;
   };
 
-  const [turnResult, deepResult] = await Promise.all([
+  const [turnResult, rewardedTaskResult, deepResult] = await Promise.all([
     query(
       `
         SELECT status, count(*)::int AS count
         FROM chat_memory_jobs
+        WHERE account_id = $1
+        GROUP BY status
+      `,
+      [normalizedAccountId]
+    ),
+    query(
+      `
+        SELECT status, count(*)::int AS count
+        FROM task_reward_memory_jobs
         WHERE account_id = $1
         GROUP BY status
       `,
@@ -834,6 +855,7 @@ export async function getChatMemoryQueueHealth({ accountId = "" } = {}) {
 
   return {
     turnJobs: summarize(turnResult.rows),
+    rewardedTaskJobs: summarize(rewardedTaskResult.rows),
     deepJobs: summarize(deepResult.rows),
     durable: true,
     storePath: "postgres",
@@ -919,7 +941,7 @@ export async function listChatMemory({
             SELECT *
             FROM chat_memory_entries
             WHERE account_id = $1
-              AND kind = 'turn_memory'
+              AND kind IN ('turn_memory', 'rewarded_task_memory')
               ${searchClause}
             ORDER BY created_at DESC, id DESC
             LIMIT $2
@@ -953,6 +975,7 @@ async function getChatMemoryEntryCounts({ accountId = "" } = {}) {
     return {
       deepMemoryTotal: 0,
       turnMemoryTotal: 0,
+      rewardedTaskMemoryTotal: 0,
       total: 0,
     };
   }
@@ -961,7 +984,8 @@ async function getChatMemoryEntryCounts({ accountId = "" } = {}) {
     `
       SELECT
         COUNT(*) FILTER (WHERE kind = 'deep_memory')::integer AS deep_memory_total,
-        COUNT(*) FILTER (WHERE kind = 'turn_memory')::integer AS turn_memory_total,
+        COUNT(*) FILTER (WHERE kind IN ('turn_memory', 'rewarded_task_memory'))::integer AS turn_memory_total,
+        COUNT(*) FILTER (WHERE kind = 'rewarded_task_memory')::integer AS rewarded_task_memory_total,
         COUNT(*)::integer AS total
       FROM chat_memory_entries
       WHERE account_id = $1
@@ -972,6 +996,7 @@ async function getChatMemoryEntryCounts({ accountId = "" } = {}) {
   return {
     deepMemoryTotal: Number(row.deep_memory_total || 0),
     turnMemoryTotal: Number(row.turn_memory_total || 0),
+    rewardedTaskMemoryTotal: Number(row.rewarded_task_memory_total || 0),
     total: Number(row.total || 0),
   };
 }
@@ -1026,7 +1051,10 @@ export async function clearChatMemoryEntriesByKind({ accountId = "", kind = "" }
       `
         DELETE FROM chat_memory_entries
         WHERE account_id = $1
-          AND kind = $2
+          AND (
+            kind = $2
+            OR ($2 = 'turn_memory' AND kind = 'rewarded_task_memory')
+          )
       `,
       [normalizedAccountId, normalizedKind]
     );
@@ -1104,7 +1132,7 @@ export async function getChatMemoryContext({
             SELECT *
             FROM chat_memory_entries
             WHERE account_id = $1
-              AND kind = 'turn_memory'
+              AND kind IN ('turn_memory', 'rewarded_task_memory')
             ORDER BY created_at DESC, id DESC
             LIMIT $2
           `,

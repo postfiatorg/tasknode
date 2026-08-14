@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadPrompt, promptDigest } from "../server/prompt-registry.js";
 import { validateTaskgenOutput } from "../server/task-generation-worker.js";
+import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "../server/ambient-inference.js";
 
 const taskId = "task_724460b146babbd93e71cdce425bd0e6";
 const evidencePath = path.join(
@@ -13,8 +14,7 @@ const evidencePath = path.join(
 );
 const taskgenPromptPath = "task_engine/taskgen_personal_v1.md";
 const taskgenPromptVersion = "taskgen_personal_v1";
-const taskgenModel = process.env.TASKNODE_TASKGEN_MODEL || "chat-latest";
-const openAiBaseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
+const taskgenModel = process.env.TASKNODE_TASKGEN_MODEL || AMBIENT_MODELS.structured;
 
 const responseFormat = {
   type: "json_schema",
@@ -355,13 +355,7 @@ function diffOutputs(a = {}, b = {}) {
 
 async function callTaskgen(taskInput, systemPrompt) {
   const startedAt = Date.now();
-  const response = await fetch(`${openAiBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
+  const result = await ambientChatCompletion({ capability: "strict_json", body: {
       model: taskgenModel,
       messages: [
         { role: "system", content: systemPrompt },
@@ -371,17 +365,11 @@ async function callTaskgen(taskInput, systemPrompt) {
         },
       ],
       response_format: responseFormat,
-    }),
-  });
-  const bodyText = await response.text();
-  if (!response.ok) {
-    throw new Error(`taskgen_http_${response.status}:${safeText(bodyText, 500)}`);
-  }
-  const body = JSON.parse(bodyText);
-  const rawContent = body?.choices?.[0]?.message?.content || "";
+    } });
+  const rawContent = result.text;
   const output = validateTaskgenOutput(parseJsonObject(rawContent), taskInput.policy || {});
   return {
-    responseId: body.id || "",
+    responseId: result.id || "",
     latencyMs: Date.now() - startedAt,
     output,
     outputDigest: sha256(output),
@@ -446,8 +434,8 @@ async function captureLiveBoardState() {
 }
 
 async function main() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY required; source .env.tasknodeofficial-dev before running live audit");
+  if (!ambientConfigured()) {
+    throw new Error("AMBIENT_API_KEY required before running live audit");
   }
   const systemPrompt = loadPrompt(taskgenPromptPath);
   const runs = [];
@@ -474,7 +462,7 @@ async function main() {
     environment: {
       repoPath: process.cwd(),
       appUrl: "https://tasknodeofficial-dev.fly.dev/",
-      provider: "openai_chat_completions",
+      provider: "ambient_chat_completions",
       model: taskgenModel,
       promptVersion: taskgenPromptVersion,
       promptDigest: promptDigest(systemPrompt),

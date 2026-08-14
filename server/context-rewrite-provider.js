@@ -1,4 +1,4 @@
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
+import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
 const defaultTimeoutMs = 20 * 60 * 1000;
 const defaultScoreTimeoutMs = 12 * 60 * 1000;
 const defaultSearchTimeoutMs = 5 * 60 * 1000;
@@ -39,65 +39,6 @@ export function contextRewriteStageTimeoutMs(stage = "") {
   return stageTimeoutMs("CONTEXT_REWRITE_PROVIDER_TIMEOUT_MS", defaultTimeoutMs);
 }
 
-function openRouterKey() {
-  return String(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER || "")
-    .trim()
-    .replace(/^['"‘’]+|['"‘’]+$/g, "");
-}
-
-function baseUrl() {
-  return (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-}
-
-function referer() {
-  return (
-    process.env.OPENROUTER_REFERER ||
-    process.env.TASKNODE_PUBLIC_URL ||
-    process.env.VITE_SITE_ORIGIN ||
-    "https://tasknodeofficial-dev.fly.dev"
-  );
-}
-
-function title() {
-  return process.env.OPENROUTER_TITLE || "Task Node Official";
-}
-
-function headerValue(value = "", fallback = "") {
-  const normalized = String(value || fallback || "")
-    .normalize("NFKD")
-    .replace(/[^\x20-\x7e]/g, "")
-    .trim();
-  return normalized || fallback;
-}
-
-function providerOrderFromEnv(name = "") {
-  return String(process.env[name] || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 12);
-}
-
-function providerPreferences({ modelFamily = "", requireParameters = true } = {}) {
-  const family = String(modelFamily || "").toLowerCase();
-  const order =
-    family === "glm"
-      ? providerOrderFromEnv("CONTEXT_REWRITE_GLM_OPENROUTER_PROVIDERS")
-      : family === "deepseek"
-        ? providerOrderFromEnv("CONTEXT_REWRITE_DEEPSEEK_OPENROUTER_PROVIDERS")
-        : providerOrderFromEnv("CONTEXT_REWRITE_OPENROUTER_PROVIDERS");
-  const provider = {
-    zdr: true,
-    data_collection: "deny",
-  };
-  if (requireParameters) provider.require_parameters = true;
-  if (order.length > 0) {
-    provider.order = order;
-    provider.only = order;
-  }
-  return provider;
-}
-
 function outputTextFromOpenRouter(body = {}) {
   const content = body?.choices?.[0]?.message?.content;
   if (typeof content === "string") return content.trim();
@@ -127,20 +68,20 @@ function annotationsFromOpenRouter(body = {}) {
 export function contextRewriteModels() {
   return {
     glm: process.env.CONTEXT_REWRITE_GLM_MODEL || "z-ai/glm-5.2",
-    deepseek: process.env.CONTEXT_REWRITE_DEEPSEEK_MODEL || "deepseek/deepseek-v4-pro",
+    deepseek: process.env.CONTEXT_REWRITE_SECONDARY_MODEL || AMBIENT_MODELS.structured,
     final: process.env.CONTEXT_REWRITE_FINAL_MODEL || process.env.CONTEXT_REWRITE_GLM_MODEL || "z-ai/glm-5.2",
     polish:
       process.env.CONTEXT_REWRITE_POLISH_MODEL ||
       process.env.CONTEXT_REWRITE_FINAL_MODEL ||
       process.env.CONTEXT_REWRITE_GLM_MODEL ||
       "z-ai/glm-5.2",
-    research: process.env.CONTEXT_REWRITE_RESEARCH_MODEL || "openai/gpt-5.4-mini",
+    research: process.env.CONTEXT_REWRITE_RESEARCH_MODEL || AMBIENT_MODELS.research,
   };
 }
 
 export function contextRewriteProviderConfigured() {
   if (process.env.CONTEXT_REWRITE_PROVIDER_MOCK === "true") return true;
-  return Boolean(openRouterKey());
+  return ambientConfigured();
 }
 
 export function contextRewriteEstimateUsd() {
@@ -183,49 +124,21 @@ function parseJsonText(text = "", errorCode = "context_rewrite_invalid_json") {
 }
 
 async function fetchOpenRouter(body, { timeoutMs = defaultTimeoutMs } = {}) {
-  const useTimeout = Number(timeoutMs || 0) > 0;
-  const controller = useTimeout ? new AbortController() : null;
-  const timeout = useTimeout ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  let response;
   try {
-    response = await fetch(`${baseUrl()}/chat/completions`, {
-      method: "POST",
-      signal: controller?.signal,
-      headers: {
-        authorization: `Bearer ${openRouterKey()}`,
-        "content-type": "application/json",
-        "http-referer": headerValue(referer(), "https://tasknodeofficial-dev.fly.dev"),
-        "x-title": headerValue(title(), "Task Node Official"),
-        "x-openrouter-title": headerValue(title(), "Task Node Official"),
-      },
-      body: JSON.stringify(body),
+    const result = await ambientChatCompletion({
+      body,
+      capability: Array.isArray(body?.tools) && body.tools.length ? "research_text" : "strict_json",
+      timeoutMs,
     });
+    return result.body;
   } catch (error) {
-    if (error?.name === "AbortError") {
+    if (error?.code === "ambient_timeout") {
       const timeoutError = new Error("context_rewrite_provider_timeout");
       timeoutError.status = 504;
       throw timeoutError;
     }
     throw error;
-  } finally {
-    if (timeout) clearTimeout(timeout);
   }
-
-  const text = await response.text();
-  let parsed = {};
-  try {
-    parsed = text ? JSON.parse(text) : {};
-  } catch {
-    parsed = { raw: text };
-  }
-  if (!response.ok) {
-    const error = new Error("context_rewrite_provider_failed");
-    error.status = response.status;
-    error.providerMessage =
-      parsed?.error?.message || parsed?.message || text || `OpenRouter returned HTTP ${response.status}`;
-    throw error;
-  }
-  return parsed;
 }
 
 function commonRequest({
@@ -238,7 +151,6 @@ function commonRequest({
   json = true,
   tools = [],
   reasoningEffort = "none",
-  includeProvider = true,
 } = {}) {
   const body = {
     model,
@@ -254,9 +166,6 @@ function commonRequest({
     max_tokens: maxTokens,
     usage: { include: true },
   };
-  if (includeProvider) {
-    body.provider = providerPreferences({ modelFamily, requireParameters: true });
-  }
   if (json) body.response_format = { type: "json_object" };
   if (tools.length > 0) body.tools = tools;
   return body;
@@ -480,7 +389,7 @@ export async function runContextRewriteScoreCall({
   const text = outputTextFromOpenRouter(body);
   if (!text) throw new Error("context_rewrite_score_empty_response");
   return {
-    provider: "openrouter",
+    provider: "ambient",
     model: body?.model || model,
     responseId: body?.id || null,
     text,
@@ -538,7 +447,7 @@ export async function runContextRewriteSearchCall({ model, query = "", index = 0
       json: true,
       tools: [
         {
-          type: "openrouter:web_search",
+          type: "web_search",
           parameters: {
             engine,
             max_results: maxResults,
@@ -571,7 +480,7 @@ export async function runContextRewriteSearchCall({ model, query = "", index = 0
       })),
     };
     return {
-      provider: "openrouter",
+      provider: "ambient",
       model: body?.model || model,
       responseId: body?.id || null,
       text: JSON.stringify(parsed),
@@ -581,7 +490,7 @@ export async function runContextRewriteSearchCall({ model, query = "", index = 0
     };
   }
   return {
-    provider: "openrouter",
+    provider: "ambient",
     model: body?.model || model,
     responseId: body?.id || null,
     text,
@@ -635,7 +544,7 @@ export async function runContextRewriteFinalCall({
   const text = outputTextFromOpenRouter(body);
   if (!text) throw new Error("context_rewrite_final_empty_response");
   return {
-    provider: "openrouter",
+    provider: "ambient",
     model: body?.model || model,
     responseId: body?.id || null,
     text,
@@ -694,7 +603,7 @@ export async function runContextRewritePolishCall({
   const text = outputTextFromOpenRouter(body);
   if (!text) throw new Error("context_rewrite_polish_empty_response");
   return {
-    provider: "openrouter",
+    provider: "ambient",
     model: body?.model || model,
     responseId: body?.id || null,
     text,

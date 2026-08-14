@@ -20,13 +20,10 @@ Chat is the main AI workspace. It can answer questions, reason through work, dra
 
 Chat does not secretly press product buttons. It cannot accept a task, refuse a task, submit evidence, mint an NFT, send PFT, edit Context, or create Hive work unless the user uses an explicit app control.
 
-The chat mode picker changes the provider and behavior:
+The chat mode picker changes the model behavior. All options use Ambient:
 
-- `Private Instant` is fast private OpenRouter chat for normal reasoning.
-- `Private Thinking` is slower private OpenRouter reasoning for harder questions.
-- `Discount Thinking` is direct DeepSeek reasoning for lower-cost deeper analysis.
-- `Frontier Instant` is OpenAI frontier chat with prompt-governed web search and file understanding.
-- `Frontier Thinking` is OpenAI frontier reasoning for deeper or more source-heavy work.
+- `Instant` uses DeepSeek Flash 7/31 for fast everyday chat.
+- `Thinking` uses GLM 5.2 for deeper reasoning.
 - `Help` is product help. It uses this guide plus the user's available app context to explain what the user is seeing and which surface to use.
 
 A new empty chat shows four starter prompts for signed-in users: `Help me build my context document`, `Give me my first task`, `How do I earn PFT?`, and `What should I do first?`. Clicking one fills the composer so the user can edit or send it; it does not send by itself.
@@ -66,6 +63,16 @@ Line numbers shown in Context and Context Refine are anchors into the normalized
 ### Memory Screen
 
 Memory is a compressed record of useful chat history. It helps future chats carry continuity without replaying every conversation. Memory is lower authority than the user's current message and Context. If chat seems stale, update Context first and inspect Memory second.
+
+### Docs Screen
+
+Docs is the wallet-encrypted collaborative rich-text library in the primary sidebar. Unlock the linked wallet to create the Docs key envelope, decrypt titles, create/open documents, and share with an exact Task Node handle or linked wallet. The editor is embedded in Task Node; a separate popup is a defect. Renaming in either Task Node or PFDocs synchronizes the owner's encrypted canonical title.
+
+Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use Ambient GLM 5.2. By default they receive only the current document and mention. Turn on `Full context` only when the response should also use recent document chat, Context, Memory, and task state.
+
+### Team Screen
+
+Team lives under More. `Collaborator` grants task-history visibility in both directions. `Manager` and `Direct Report` create one-way visibility from report to manager. The cards state both directions explicitly. `View tasks` opens a read-only history, and selecting a row opens a task-detail side panel on desktop or bottom sheet on mobile. Team access never permits acting on another person's task and never grants document access.
 
 ### Wallet Screen
 
@@ -129,9 +136,9 @@ Telegram bot chat is a phone-sized delivery surface for Task Node chat. It shoul
 
 Billing shows app usage credit and model-run ledger entries. Chat and model features spend usage credit based on provider usage. PFT task rewards and PFT wallet balance are separate from usage credit.
 
-### Help And Docs
+### Help
 
-Help mode in Chat answers product questions using this guide and available runtime context. The Help/Docs screen exposes user-facing documentation and prompt/source maps. Use Help when the user does not know which page to use or why they are seeing a state.
+Help mode in Chat answers product questions using this guide and available runtime context. The Help screen exposes user-facing documentation and prompt/source maps. It is separate from the first-class Docs document library. Use Help when the user does not know which page to use or why they are seeing a state.
 
 ### Search And Agents
 

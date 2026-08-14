@@ -421,6 +421,11 @@ chat_model_runs
   mode
   status
   input_tokens
+  prompt_cache_hit_tokens
+  prompt_cache_miss_tokens
+  cache_usage_reported
+  cache_savings_usd
+  cost_source
   output_tokens
   total_tokens
   web_search_calls
@@ -458,8 +463,8 @@ Rules:
   it is part of the user interaction and required for restore/replay.
 - PDFs, images, and binary files store metadata plus hash only unless an
   encrypted external object store/IPFS pointer is added in `storage_uri`.
-- Provider run cost and token accounting comes from `chat_model_runs` and the
-  billing ledger.
+- Provider run cost, token accounting, prompt-cache reporting coverage, and
+  cache savings come from `chat_model_runs` and the billing ledger.
 - Large files should live in object storage or IPFS-compatible storage, not in
   Postgres bytea by default.
 - Attachment extracted text can be chunked into retrieval tables, but the

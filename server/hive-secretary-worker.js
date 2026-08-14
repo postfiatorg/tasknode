@@ -10,59 +10,38 @@ import {
 } from "./repositories/hive-context.js";
 import { enqueueHiveProjectPlanningJob } from "./repositories/hive-project-planning.js";
 import { scheduleHiveProjectQueue } from "./hive-project-worker.js";
+import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
 
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
-const defaultProviderOrder = ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"];
 const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_HIVE_SECRETARY_PROVIDER_TIMEOUT_MS || 240000));
 const hiveSecretaryPrompt = loadPrompt("hive/hive_secretary_v1.md");
 let timer = null;
 let running = false;
 let scheduled = null;
 
-function openRouterKey() {
-  return process.env.OPENROUTER_API_KEY || process.env.OPENROUTER || "";
-}
-
 function safeConfig(value = "", max = 200) {
   return String(value || "").trim().slice(0, max);
 }
 
-function unsupportedModel(model) {
-  return /(?:^|[/_:])gpt-5\.5-pro(?:[-_.:/]|$)/i.test(safeConfig(model));
-}
-
-export function normalizeHiveSecretaryProvider(value = "openrouter") {
-  const provider = safeConfig(value, 80).toLowerCase() || "openrouter";
-  if (provider !== "openrouter") {
+export function normalizeHiveSecretaryProvider(value = "ambient") {
+  const provider = safeConfig(value, 80).toLowerCase() || "ambient";
+  if (provider !== "ambient") {
     throw new Error(`hive_secretary_provider_unsupported:${provider || "unknown"}`);
   }
   return provider;
 }
 
-export function normalizeHiveSecretaryModel(value = "z-ai/glm-5.2") {
+export function normalizeHiveSecretaryModel(value = AMBIENT_MODELS.structured) {
   const rawModel = String(value || "").trim();
-  if (unsupportedModel(rawModel)) {
-    throw new Error(`hive_secretary_model_unsupported:${safeConfig(rawModel, 160).toLowerCase()}`);
-  }
-  const model = safeConfig(rawModel, 160) || "z-ai/glm-5.2";
+  const model = safeConfig(rawModel, 160) || AMBIENT_MODELS.structured;
   return model;
 }
 
 export function hiveSecretaryProvider(env = process.env) {
-  return normalizeHiveSecretaryProvider(env.TASKNODE_HIVE_SECRETARY_PROVIDER || "openrouter");
-}
-
-function providerOrder() {
-  const configured = process.env.TASKNODE_HIVE_SECRETARY_OPENROUTER_PROVIDERS || process.env.TASKNODE_MEMORY_OPENROUTER_PROVIDERS || "";
-  return configured
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 12);
+  return normalizeHiveSecretaryProvider(env.TASKNODE_HIVE_SECRETARY_PROVIDER || "ambient");
 }
 
 export function hiveSecretaryModel(env = process.env) {
-  return normalizeHiveSecretaryModel(env.TASKNODE_HIVE_SECRETARY_MODEL || "z-ai/glm-5.2");
+  return normalizeHiveSecretaryModel(env.TASKNODE_HIVE_SECRETARY_MODEL || AMBIENT_MODELS.structured);
 }
 
 function hiveSecretaryReasoningEffort() {
@@ -75,8 +54,8 @@ function hiveSecretaryEnabled() {
   return (
     process.env.TASKNODE_HIVE_SECRETARY_ENABLED !== "false" &&
     databaseEnabled() &&
-    provider === "openrouter" &&
-    Boolean(openRouterKey())
+    provider === "ambient" &&
+    ambientConfigured()
   );
 }
 
@@ -185,23 +164,11 @@ function hiveSecretaryResponseFormat() {
 }
 
 async function fetchHiveSecretaryReportOpenRouter(source, { fetchImpl, model } = {}) {
-  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const order = providerOrder();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
-  let response;
-  try {
-    response = await fetchImpl(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${openRouterKey()}`,
-        "content-type": "application/json",
-        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-      },
-      body: JSON.stringify({
+  const result = await ambientChatCompletion({
+    fetchImpl,
+    capability: "strict_json",
+    timeoutMs: providerTimeoutMs,
+    body: {
         model,
         messages: [
           { role: "system", content: hiveSecretaryPrompt },
@@ -209,37 +176,16 @@ async function fetchHiveSecretaryReportOpenRouter(source, { fetchImpl, model } =
         ],
         reasoning: { effort: hiveSecretaryReasoningEffort() },
         response_format: hiveSecretaryResponseFormat(),
-        provider: {
-          zdr: true,
-          data_collection: "deny",
-          require_parameters: true,
-          order: order.length > 0 ? order : defaultProviderOrder,
-          only: order.length > 0 ? order : defaultProviderOrder,
-        },
         temperature: 0,
         max_tokens: Math.max(900, Number(process.env.TASKNODE_HIVE_SECRETARY_MAX_TOKENS || 1800)),
-        usage: { include: true },
-      }),
-    });
-  } catch (error) {
-    if (error?.name === "AbortError") throw new Error("hive_secretary_provider_timeout");
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  const text = await response.text();
-  const body = text ? JSON.parse(text) : {};
-  if (!response.ok) {
-    const error = new Error(body?.error?.message || body?.message || `OpenRouter Hive Secretary HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
+      },
+  });
+  const body = result.body;
 
   const content = body?.choices?.[0]?.message?.content || "";
   return {
     output: parseHiveSecretaryJson(content),
-    provider: "openrouter",
+    provider: "ambient",
     model: body?.model || model,
     promptDigest: promptDigest(hiveSecretaryPrompt),
     promptVersion: hiveSecretaryPromptVersion,
@@ -250,11 +196,11 @@ async function fetchHiveSecretaryReportOpenRouter(source, { fetchImpl, model } =
 export async function fetchHiveSecretaryReport(source, { fetchImpl = fetch, provider, model } = {}) {
   const resolvedProvider = normalizeHiveSecretaryProvider(provider || hiveSecretaryProvider());
   const resolvedModel = normalizeHiveSecretaryModel(model || hiveSecretaryModel());
-  if (resolvedProvider !== "openrouter") {
+  if (resolvedProvider !== "ambient") {
     throw new Error(`hive_secretary_provider_unsupported:${resolvedProvider}`);
   }
-  if (!openRouterKey()) {
-    const error = new Error("hive_secretary_openrouter_not_configured");
+  if (!ambientConfigured()) {
+    const error = new Error("hive_secretary_ambient_not_configured");
     error.status = 409;
     throw error;
   }

@@ -21,9 +21,23 @@ Only contributors with verified contributor badges are eligible for Network Task
 
 Do not select an operator with an outstanding Network Task or pending Network Task generation blocker. The source packet pre-filters eligible operators, but you must still explain that the task-state check mattered.
 
-Use the operator packet, including memory, public profile, refused tasks, rewarded tasks, and current outstanding task state, to choose work that fits the person. Refusal history is feedback, not a permanent ban: route materially different work or sync-up work if the refusal reason shows confusion.
+Use the operator packet, including memory, public profile, refused tasks, rewarded tasks, and current outstanding task state, to choose work that fits the person. Refusal history is feedback, not a permanent ban: route materially different work when the refusal reason shows confusion.
 
-If no eligible operator exists for the needed board work, choose `do_nothing` and state the cold-start problem plainly. If adding or syncing contributors would unblock the board and an eligible operator such as goodalexander is present, you may create an interpersonal Network Task for that operator to add, clarify, or coordinate contributors.
+If no eligible operator exists for valid board work, choose `do_nothing` and state the cold-start problem plainly. Do not create coordination, contributor-management, or sync-up work as a substitute.
+
+## Temporary Hard-Coded Task Policy
+
+Create a task only when it fits exactly one of these lanes:
+
+1. A KOL task assigned to an operator with a verified KOL badge. The deliverable must create public distribution, useful attention, or audience reach for PFT.
+2. PfTerminal implementation work assigned to an operator with a verified Core Contributor badge. The deliverable must be a product change in the public PfTerminal repository, submitted as a pull request with concrete verification evidence.
+3. Post Fiat Layer 1 or validator implementation work assigned to an operator with a verified Core Contributor badge. The deliverable must be a product or protocol change in a public Layer 1 repository, submitted as a pull request with concrete verification evidence.
+
+This list is exhaustive. For every other kind of proposed work, choose `do_nothing`.
+
+In particular, do not create audit, investigation, triage, scoping, planning, review-only, documentation-only, evidence-only, remediation-plan, governance, coordination, recruiting, handoff, closeout, or meta-work tasks. Do not create tasks for private repositories. Do not create standalone QA tasks or QA reports. Testing and QA may appear only as verification inside a valid PfTerminal or Layer 1 implementation task whose required outcome is a product change and pull request.
+
+Do not route around this policy because a board describes other work as urgent, valuable, already investigated, or previously rewarded. If the available board need, operator badge, repository, or required outcome does not satisfy one of the three lanes, choose `do_nothing`.
 
 ## Step 2: Task Intent For Generation
 
@@ -34,16 +48,16 @@ The task intent must:
 - align with the selected board and current network priorities;
 - dovetail with the selected operator's history, memory, public profile, refused tasks, and rewarded tasks;
 - avoid duplicating outstanding, pending, refused-with-same-reason, or recently rewarded work;
-- name the real surface, artifact, code path, document, person, or handoff to act on;
+- name the public campaign surface or public repository and code path to act on;
 - use plain language without internal jargon;
 - include concrete completion evidence;
-- unblock the board or the wider PFT network.
+- satisfy exactly one lane in the Temporary Hard-Coded Task Policy.
 
-Prefer action tasks over documentation-only tasks. Good tasks can be interpersonal when coordination is the real blocker: message a specific operator, recruit a missing contributor type, collect a decision from a Project Leader, or create a clear handoff that someone can act on.
+For Core Contributor work, the intended result must be a product-changing pull request in an allowed public repository. A report, review, test result, issue, specification, or recommendation without that product change is not sufficient.
 
 ## PFT North Star
 
-The task should increase the value of PFT by improving product utility, protocol reliability, adoption, useful attention, treasury deployment, cashflow, operator quality of life, installs, contributor count, or evidence quality. If no available task plausibly improves PFT value, choose `do_nothing`.
+The task should increase the value of PFT through KOL distribution, a PfTerminal product change, or a Post Fiat Layer 1 or validator change. Broader claims about treasury deployment, operator quality of life, contributor count, evidence quality, or board progress do not make any other task type valid. If no available task satisfies the hard-coded policy, choose `do_nothing`.
 
 ## Output Discipline
 

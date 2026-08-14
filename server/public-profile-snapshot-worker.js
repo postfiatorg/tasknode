@@ -1,4 +1,5 @@
 import { databaseEnabled, query } from "./db/pool.js";
+import { ambientConfigured } from "./ambient-inference.js";
 import { runPublicProfileSnapshot } from "./profile-public-snapshot.js";
 
 const defaultIntervalMs = 10 * 60 * 1000;
@@ -12,10 +13,6 @@ function clampMs(value, fallback, { min, max } = {}) {
   const parsed = Number(value);
   const base = Number.isFinite(parsed) ? parsed : fallback;
   return Math.min(Math.max(base, min), max);
-}
-
-function openRouterKey(env = process.env) {
-  return String(env.OPENROUTER_API_KEY || env.OPENROUTER || "").trim();
 }
 
 export async function listPublicProfileSnapshotCandidates({
@@ -114,8 +111,8 @@ export async function runPublicProfileSnapshotWorkerOnce({
   if (!databaseEnabled()) {
     return { ok: true, skipped: true, reason: "database_not_enabled", summary: {} };
   }
-  if (!dryRun && !openRouterKey(env)) {
-    return { ok: true, skipped: true, reason: "openrouter_key_missing", summary: {} };
+  if (!dryRun && !ambientConfigured(env)) {
+    return { ok: true, skipped: true, reason: "ambient_key_missing", summary: {} };
   }
   const limit = Math.min(Math.max(Number(env.TASKNODE_PUBLIC_PROFILE_SNAPSHOT_WORKER_LIMIT || 2), 1), 25);
   const failedRetryMinutes = Math.min(

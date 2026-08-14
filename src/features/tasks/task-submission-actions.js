@@ -65,6 +65,13 @@ function compactEvidence({ method = "text", value = "", notes = "", file = null 
         processing: file.processing && typeof file.processing === "object"
           ? {
               status: safeText(file.processing.status, 80),
+              parser: safeText(file.processing.parser, 120),
+              warnings: Array.isArray(file.processing.warnings)
+                ? file.processing.warnings.slice(0, 20).map((warning) => safeText(warning, 300))
+                : [],
+              metadata: file.processing.metadata && typeof file.processing.metadata === "object"
+                ? file.processing.metadata
+                : {},
               provider: safeText(file.processing.provider, 80),
               model: safeText(file.processing.model, 120),
               prompt_path: safeText(file.processing.prompt_path, 180),
@@ -131,7 +138,7 @@ export async function readEvidenceFile(file) {
     type: file.type,
     size: file.size,
     sha256,
-    dataUrl: /^image\//i.test(file.type) ? `data:${file.type};base64,${contentBase64}` : "",
+    dataUrl: `data:${file.type || "application/octet-stream"};base64,${contentBase64}`,
     text,
   };
 }
@@ -144,9 +151,6 @@ export async function processTaskEvidenceFile({
   verificationCriteria = "",
 } = {}) {
   if (!file) return null;
-  if (method !== "screenshot") {
-    return file;
-  }
 
   const processed = await requestJson("/api/tasks/submission", {
     method: "POST",
@@ -161,7 +165,7 @@ export async function processTaskEvidenceFile({
     }),
   });
   if (!processed.ok || !processed.body?.processedEvidence?.file) {
-    throw new Error(processed.body?.message || "Screenshot evidence could not be processed.");
+    throw new Error(processed.body?.message || "Evidence file could not be processed.");
   }
 
   const evidence = processed.body.processedEvidence;

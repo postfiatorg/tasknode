@@ -16,16 +16,12 @@ System Status row: `chat_turn_memory`
 
 ## Provider Contract
 
-The worker calls OpenRouter Chat Completions through the private memory route in
-`server/chat-memory-worker.js`. The request must keep:
+The worker calls Ambient Chat Completions through the `fast_text` capability in
+`server/chat-memory-worker.js`, pinned to DeepSeek Flash 7/31. The request keeps:
 
-- `provider.zdr = true` and `provider.data_collection = "deny"`;
-- the configured provider allowlist in both `provider.order` and
-  `provider.only`;
-- `provider.require_parameters = true`;
 - `reasoning.effort = "none"` and `reasoning.exclude = true`;
 - `response_format.type = "json_object"`;
-- `usage.include = true`.
+- the bounded output-token cap.
 
 Turn memory defaults to `TASKNODE_MEMORY_MAX_TOKENS` or `1200`, with a floor of
 `900`. This cap is for visible JSON output. Hidden reasoning is disabled so the

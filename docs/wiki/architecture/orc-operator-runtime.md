@@ -59,7 +59,7 @@ uv run orcctl request-followup task_... --submit
 uv run orcctl close-followup task_... --followup-task-id task_followup_...
 ```
 
-`orcctl prioritize-network` builds bounded reward packets and can use the OpenRouter `z-ai/glm-5.2` classifier cache to rank review priority. The classifier is advisory. It helps sort work into tiers such as suspicious or low value, important to network function, and highly valuable. The final persisted review state is an Orc decision grounded in the task packet and evidence.
+`orcctl prioritize-network` builds bounded reward packets and can use the Ambient `z-ai/glm-5.2` classifier cache to rank review priority. The classifier is advisory. It helps sort work into tiers such as suspicious or low value, important to network function, and highly valuable. The final persisted review state is an Orc decision grounded in the task packet and evidence.
 
 ## Review Dispositions
 

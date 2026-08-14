@@ -9,8 +9,8 @@ advance tasks, or change Board Manager scheduler state.
 
 The top of the live status page also renders Chat Model Pricing. That section is
 not a worker health row. It is an audit snapshot of the current chat-mode
-provider contracts from `server/chat-router.js`, plus cached live OpenRouter
-model metadata from `https://openrouter.ai/api/v1/models`.
+provider contracts from `server/chat-router.js`, plus cached live Ambient
+model metadata from `https://api.ambient.xyz/v1/models`.
 
 The page also includes a collapsed Network Task spend audit toggle. It reads
 `networkTaskSpendByDay` from `/api/system/status` and shows total PFT spent on
@@ -101,47 +101,49 @@ scoring/issuance.
 
 - `jobs_pgvector_corpus`: Postgres pgvector corpus for Jobs-style retrieval.
 - `chat_turn_memory`: turn memory summarization worker.
+- `rewarded_task_memory`: per-reward durable memory summarization worker using DeepSeek Flash.
 - `deep_memory`: deep memory compression worker.
 - `network_task_profile`: compact routing profiles for future Network Tasks.
 - `daily_airdrop_worker`: daily airdrop scoring and optional PFT issuance, plus
   unresolved airdrop debt tracking.
 
-The current monitored set is 20 items across these four categories. The summary
+The monitored set is derived from the current category rows. The summary
 block at the top of the response counts each row by status
 (`ok`/`warning`/`critical`/`unknown`/`disabled`). Transient `warning` rows are
 normal for sync-lag conditions and do not imply a permanent state.
 
 ## Chat Model Pricing
 
-The status page pricing block separates three values that are easy to confuse:
+The status page pricing block separates two values that are easy to confuse:
 
-- Configured estimate: the per-million-token estimate in `chatModePrices`. This
-  is used for preflight estimates and confirmation thresholds.
-- Live OpenRouter model price: public model metadata returned by OpenRouter for
-  the selected model id. This is useful audit context, but it can describe the
-  cheapest model endpoint rather than the exact endpoint Task Node will use.
-- Live OpenRouter endpoint prices: provider-level endpoint metadata for the
-  current model. For private modes the UI marks endpoints in the Task Node
-  `provider.only` allowlist as allowed, and labels non-allowlisted DeepSeek
-  endpoints as reference prices only.
-- DeepSeek API Direct price: the configured direct DeepSeek V4 Pro price for
-  Discount Thinking and Help, including the lower cache-hit input token price when
-  DeepSeek reports cache-hit tokens.
+- Configured user tariff: the per-million-token tariff in `chatModePrices`. This
+  is authoritative for preflight estimates, confirmation thresholds, and ledger debits.
+- Live Ambient model metadata: the current catalog record for the model pinned
+  to Instant, Thinking, or Help.
 
-Actual chat billing prefers provider-returned usage. For OpenRouter this means
-`usage.cost` from the response wins over the configured estimate whenever it is
-present. For DeepSeek API Direct, DeepSeek returns token usage rather than a USD
-cost field, so Task Node computes the debit from `prompt_tokens`,
-`completion_tokens`, `prompt_cache_hit_tokens`, and `prompt_cache_miss_tokens`
-using the configured direct prices. The pricing block is therefore an audit and
-preflight aid, not a debit source of truth.
+Ambient token and cache counts determine the billable quantities, but its
+provider-reported wholesale cost never overrides the configured user tariff.
+The pricing block is therefore both the tariff source of truth and a live
+wholesale comparison surface.
 
-Private modes also send `provider.zdr=true` and
-`provider.data_collection="deny"`. A cheap endpoint shown by OpenRouter is not
-automatically a Task Node private route unless it is compatible with that request
-policy. The direct DeepSeek V4 Pro reference price is shown because it explains
-the public `$0.87/M output` headline and backs Discount Thinking and Help. It is
-not a Task Node private/ZDR chat route.
+The same block exposes `chatPricing.cacheEfficiency`, a rolling Ambient chat
+cache audit with a seven-day default window. It reports total runs, runs that
+actually included provider cache details, reporting coverage, reported input
+tokens, cache-hit and cache-miss tokens, cache-hit percentage, and
+pricing-derived cache savings. Runs from before migration 107 remain
+`cache_usage_reported=false`; they count toward coverage but are not silently
+treated as misses. Per-mode rows appear on the corresponding pricing card.
+
+To verify the upstream cache contract without exposing a key or prompt body, run
+the paid opt-in smoke with an explicitly supplied key file:
+
+```bash
+npm run ambient-cache-live-smoke -- --execute --api-key-file /path/to/ambient_key.txt
+```
+
+The smoke sends the same bounded GLM request twice and fails unless the second
+response reports a positive `prompt_tokens_details.cached_tokens` value. It
+prints only model, token, cache-rate, savings, cost, and cost-source metadata.
 
 ## Network Task Spend By Day
 
@@ -165,7 +167,7 @@ only; it does not move funds, change rewards, or alter task state.
 `board_manager_runs` and `board_manager_secretary_packets` usage rows over a
 30-day default window with a 90-day maximum. It prefers provider-reported
 `usage.cost` when present, then falls back to configured per-model input/output
-token prices such as the Board Manager default `z-ai/glm-5.2` OpenRouter route.
+token prices such as the Board Manager default Ambient `z-ai/glm-5.2` route.
 
 The response returns daily rows with `{date, runs, inputTokens, outputTokens,
 totalTokens, costUsd}` plus totals. The Docs UI keeps this section collapsed by

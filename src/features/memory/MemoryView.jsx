@@ -56,7 +56,9 @@ export function MemoryView({ session }) {
   const deepMemoryTotal = Number(memoryCounts?.deepMemoryTotal ?? deepEntries.length);
   const turnMemoryTotal = Number(memoryCounts?.turnMemoryTotal ?? memoryEntries.length);
   const failedJobCount =
-    Number(queueHealth?.turnJobs?.failed || 0) + Number(queueHealth?.deepJobs?.failed || 0);
+    Number(queueHealth?.turnJobs?.failed || 0) +
+    Number(queueHealth?.rewardedTaskJobs?.failed || 0) +
+    Number(queueHealth?.deepJobs?.failed || 0);
   const deepTabCount = deepMemoryTotal + turnMemoryTotal;
 
   const loadNetworkProfile = useCallback(({ refresh = false } = {}) => {

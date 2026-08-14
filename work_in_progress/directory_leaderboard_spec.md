@@ -79,13 +79,13 @@ Add a routable member‑profile target and have directory rows link to it **only
 
 ---
 
-## 6. Decisions reserved for Alex (do NOT finalize — implement configurable)
+## 6. Configurable product decisions
 
-Task Node is Alex's domain; these are policy, not engineering. Build the mechanism with the stated default and surface the choice — do **not** bake a final policy:
-1. **Public exposure.** A public board ranking named operators by PFT earned + alignment. **Default: list only public+discoverable operators** (respects each operator's existing visibility setting). Flag: if Alex wants all operators (anonymized handles for private ones, or by‑wallet), that's his call.
-2. **Rank formula.** Mock default = `3×networkTasks + personalTasks + rewards/25000 + alignment`. Implement it as a **single named function/constant** (one place to change), used as the default. Flag: the weighting is reputationally meaningful and is Alex's to sign off.
+These are product-policy choices rather than engineering constraints. Build the mechanism with the stated defaults and keep it configurable:
+1. **Public exposure.** A public board ranking named operators by PFT earned + alignment. **Default: list only public+discoverable operators** (respects each operator's existing visibility setting).
+2. **Rank formula.** Mock default = `3×networkTasks + personalTasks + rewards/25000 + alignment`. Implement it as a **single named function/constant** (one place to change), used as the default. The weighting is reputationally meaningful and must remain configurable.
 
-Leave both as a short "OPEN — Alex's call" note in the PR description / report.
+Document both as explicit product defaults in the PR description and report.
 
 ---
 

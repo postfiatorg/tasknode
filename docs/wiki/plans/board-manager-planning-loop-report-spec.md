@@ -124,7 +124,7 @@ Cadence:
 Default model path:
 
 ```txt
-provider: OpenRouter
+provider: Ambient
 model: z-ai/glm-5.2
 reasoning effort: high
 default visible output budget: 14,000 tokens

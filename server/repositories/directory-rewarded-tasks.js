@@ -90,6 +90,22 @@ async function queryRewardedTaskRows({
     `
       WITH visible_accounts AS (
         SELECT unnest($1::text[]) AS account_id
+      ),
+      rewarded_candidates AS (
+        SELECT p.*
+        FROM task_projections p
+        JOIN visible_accounts visible
+          ON visible.account_id = p.account_id
+        WHERE lower(COALESCE(p.task_kind, '')) = $2
+          AND p.status = 'rewarded'
+          AND COALESCE(p.event_count, 0) > 0
+          AND COALESCE(p.last_event_tx_hash, '') <> ''
+          AND COALESCE(p.last_event_cid, '') <> ''
+          AND ${nonFixtureTaskProjectionSql("p")}
+        ORDER BY COALESCE(p.last_event_at, p.updated_at) DESC NULLS LAST,
+                 p.reward_actual_pft DESC,
+                 p.task_id ASC
+        LIMIT $3
       )
       SELECT p.task_id,
              p.account_id,
@@ -121,12 +137,10 @@ async function queryRewardedTaskRows({
              job.offer_cid AS generation_job_offer_cid,
              job.offer_tx_hash AS generation_job_offer_tx_hash,
              job.last_error AS generation_job_last_error,
-             latest_event.source_tx_hash AS latest_event_tx_hash,
-             latest_event.source_cid AS latest_event_cid,
-             latest_event.occurred_at AS latest_event_at
-      FROM task_projections p
-      JOIN visible_accounts visible
-        ON visible.account_id = p.account_id
+             p.last_event_tx_hash AS latest_event_tx_hash,
+             p.last_event_cid AS latest_event_cid,
+             p.last_event_at AS latest_event_at
+      FROM rewarded_candidates p
       LEFT JOIN LATERAL (
         SELECT refs.project_id,
                refs.source,
@@ -163,25 +177,9 @@ async function queryRewardedTaskRows({
                  alloc.id DESC
         LIMIT 1
       ) alloc ON true
-      LEFT JOIN LATERAL (
-        SELECT event.source_tx_hash,
-               event.source_cid,
-               event.occurred_at
-        FROM task_events event
-        WHERE event.task_id = p.task_id
-        ORDER BY event.occurred_at DESC NULLS LAST, event.id DESC
-        LIMIT 1
-      ) latest_event ON true
-      WHERE lower(COALESCE(p.task_kind, '')) = $2
-        AND p.status = 'rewarded'
-        AND COALESCE(p.event_count, 0) > 0
-        AND COALESCE(p.last_event_tx_hash, '') <> ''
-        AND COALESCE(p.last_event_cid, '') <> ''
-        AND ${nonFixtureTaskProjectionSql("p")}
-      ORDER BY COALESCE(latest_event.occurred_at, p.last_event_at, p.updated_at) DESC NULLS LAST,
+      ORDER BY COALESCE(p.last_event_at, p.updated_at) DESC NULLS LAST,
                p.reward_actual_pft DESC,
                p.task_id ASC
-      LIMIT $3
     `,
     [accountIds, taskKind, limit]
   );

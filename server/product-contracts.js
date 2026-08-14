@@ -37,6 +37,7 @@ import {
   resolveWalletInitiationGrantStatus,
   walletInitiationGrantStatus,
 } from "./runtime-store.js";
+import { getDocsAccount } from "./repositories/collaboration.js";
 import {
   authTelegramAuthorize,
   oauthAuthCallback,
@@ -59,6 +60,7 @@ import { loadChatExecutionContext } from "./chat-context-load.js";
 import { normalizeClientChatHistory } from "./chat-client-history.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
 import { isHelpChatMode } from "./chat-help-mode.js";
+import { normalizeChatPersona } from "../shared/chat-personas.js";
 import { metadataWithMachineAgentOrigin } from "./agent-origin.js";
 import { recordAgentActionJournal } from "./agent-quality-gates.js";
 import {
@@ -497,7 +499,7 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0, agentOrigin 
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
   const contextMode = isContextEditPayload(payload) ? contextEditMode : "";
   const requestedMode = typeof payload?.mode === "string" ? payload.mode.trim() : "";
-  const mode = contextMode ? "Frontier Thinking" : requestedMode || effectiveDefaultChatMode();
+  const mode = contextMode ? "Thinking" : requestedMode || effectiveDefaultChatMode();
   const conversationId =
     typeof payload?.conversationId === "string" && payload.conversationId.trim()
       ? payload.conversationId.trim().slice(0, 160)
@@ -505,6 +507,7 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0, agentOrigin 
   const dryRun = payload?.dryRun === true;
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
   const clientHistory = normalizeClientChatHistory(payload?.clientHistory);
+  const persona = contextMode ? "jobs" : normalizeChatPersona(payload?.persona);
   return {
     accountId,
     message,
@@ -515,6 +518,7 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0, agentOrigin 
     dryRun,
     attachments,
     clientHistory,
+    persona,
     userMetadata: chatUserMetadata(payload, agentOrigin),
     source: typeof source === "string" ? source.trim().slice(0, 80) : "",
     providerTimeoutMs: Number(providerTimeoutMs) > 0 ? Number(providerTimeoutMs) : 0,
@@ -548,6 +552,16 @@ function unknownChatModeBody(action = "chat_estimate") {
   };
 }
 
+function unknownChatPersonaBody(action = "chat_estimate") {
+  return {
+    ok: false,
+    error: "unknown_chat_persona",
+    action,
+    message: "The requested chat personality is not available.",
+    actionRequired: "Choose Jobs, ODV, or Trading Coach before sending.",
+  };
+}
+
 export async function chatEstimateStart(payload, accountId = "") {
   const attachmentValidation = validateChatAttachments(payload?.attachments);
   const estimatePayload = {
@@ -563,6 +577,9 @@ export async function chatEstimateStart(payload, accountId = "") {
   } catch (error) {
     if (error?.message === "unknown_chat_mode") {
       return { status: 400, body: unknownChatModeBody("chat_estimate") };
+    }
+    if (error?.message === "unknown_chat_persona") {
+      return { status: 400, body: unknownChatPersonaBody("chat_estimate") };
     }
     throw error;
   }
@@ -597,7 +614,17 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
     };
   }
 
-  estimate = chatEstimate({ ...payload, mode: chat.mode, attachments: chat.attachments });
+  if (!chat.persona) {
+    return {
+      ok: false,
+      status: 400,
+      body: unknownChatPersonaBody(action),
+      chat,
+      estimate,
+    };
+  }
+
+  estimate = chatEstimate({ ...payload, mode: chat.mode, persona: chat.persona, attachments: chat.attachments });
 
   if (method !== "POST") {
     return {
@@ -633,7 +660,7 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
     };
   }
 
-  const signedOutHelp = !chat.accountId && isHelpChatMode(chat.mode) && !chat.contextMode;
+  const signedOutHelp = !chat.accountId && isHelpChatMode(chat.mode) && !chat.contextMode && chat.persona === "jobs";
   if (!chat.accountId && !signedOutHelp) {
     return {
       ok: false,
@@ -653,7 +680,7 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
 
   const attachmentValidation = validateChatAttachments(chat.attachments);
   if (!attachmentValidation.ok) {
-    estimate = chatEstimate({ ...payload, mode: chat.mode, attachments: [] });
+    estimate = chatEstimate({ ...payload, mode: chat.mode, persona: chat.persona, attachments: [] });
     return {
       ok: false,
       status: attachmentValidation.status,
@@ -663,7 +690,7 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
     };
   }
   chat = { ...chat, attachments: attachmentValidation.attachments };
-  const estimatePayload = { ...payload, mode: chat.mode, attachments: chat.attachments };
+  const estimatePayload = { ...payload, mode: chat.mode, persona: chat.persona, attachments: chat.attachments };
   estimate = chatEstimate(estimatePayload, signedOutHelp ? { historyMessages: chat.clientHistory } : undefined);
 
   if (chat.dryRun) {
@@ -843,6 +870,7 @@ export async function chatSend(payload, method, options = {}) {
     contextStatus,
     clientHistory,
     userMetadata,
+    persona,
   } = preflight.chat;
   const { estimate } = preflight;
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
@@ -858,6 +886,7 @@ export async function chatSend(payload, method, options = {}) {
           memoryContext,
           taskContext,
           contextStatus,
+          persona,
           userMetadata,
         })
       : await executeChat({
@@ -874,6 +903,7 @@ export async function chatSend(payload, method, options = {}) {
           ephemeralHistoryMessages: clientHistory,
           source: preflight.chat.source,
           providerTimeoutMs: preflight.chat.providerTimeoutMs,
+          persona,
         });
     const orcWorkJournal = options.agentOrigin
       ? await recordAgentActionJournal({
@@ -885,6 +915,7 @@ export async function chatSend(payload, method, options = {}) {
           conversationId,
           metadata: {
             mode,
+            persona: result.persona || persona,
             provider: result.provider,
             model: result.model,
             userMessageId: result.user?.id || "",
@@ -903,6 +934,7 @@ export async function chatSend(payload, method, options = {}) {
         message: "Chat response generated.",
         conversationId,
         mode,
+        persona: result.persona || persona,
         provider: result.provider,
         model: result.model,
         responseId: result.responseId,
@@ -914,6 +946,12 @@ export async function chatSend(payload, method, options = {}) {
           billingModel: "usage_based",
           currency: "USD",
           inputTokens: result.usage.inputTokens,
+          promptCacheHitTokens: result.usage.promptCacheHitTokens || 0,
+          promptCacheMissTokens: result.usage.promptCacheMissTokens || 0,
+          promptCacheHitRate: result.usage.promptCacheHitRate || 0,
+          cacheUsageReported: result.usage.cacheUsageReported === true,
+          cacheSavingsUsd: result.usage.cacheSavingsUsd || 0,
+          costSource: result.usage.costSource || "",
           outputTokens: result.usage.outputTokens,
           totalTokens: result.usage.totalTokens,
           webSearchCalls: result.usage.webSearchCalls || 0,
@@ -989,6 +1027,7 @@ export async function chatStreamStart(payload, method, options = {}) {
       action: "chat_stream",
       conversationId: preflight.chat.conversationId,
       mode: preflight.chat.mode,
+      persona: preflight.chat.persona,
       provider: preflight.estimate.provider,
       model: preflight.estimate.model,
       estimate: preflight.estimate,
@@ -1011,11 +1050,7 @@ export function chatModes({ signedOut = false } = {}) {
       enabled: loginRequired ? false : status.enabled,
       status: loginRequired ? "login_required" : status.status,
       actionRequired: loginRequired ? "Sign in to use billable chat modes." : undefined,
-      privacy: status.provider === "openrouter"
-        ? "Private provider route"
-        : status.provider === "deepseek"
-          ? "DeepSeek API Direct"
-          : "Frontier provider route",
+      privacy: "Ambient inference route",
       latency: config.reasoningEffort ? "Deep" : "Fast",
     };
   });
@@ -1975,6 +2010,21 @@ export async function walletDelink(payload, method, session = null) {
     });
   }
 
+  const docsAccount = await getDocsAccount({ accountId: session.accountId }).catch(() => null);
+  if (
+    docsAccount?.status === "active" &&
+    docsAccount.envelopeWalletAddress === linkedWallet.address &&
+    payload?.confirmDocsAccessLoss !== true
+  ) {
+    return actionResponse({
+      status: 409,
+      error: "wallet_delink_docs_rekey_required",
+      action: action.id,
+      message: "This wallet is the active encryption recipient for your Docs library.",
+      actionRequired: "Re-wrap or export the Docs root key before delinking, or explicitly confirm permanent Docs access loss.",
+    });
+  }
+
   const result = delinkWalletFromAccount({
     accountId: session.accountId,
     actorSessionId: session.id,
@@ -2804,9 +2854,11 @@ export async function readiness() {
       ].filter(Boolean),
     },
     llm: {
-      openaiConfigured: hasAll(["OPENAI_API_KEY"]),
-      openrouterConfigured: chatProviderConfigured("openrouter"),
-      aiGatewayConfigured: hasAll(["VERCEL_AI_GATEWAY_API_KEY"]),
+      ambientConfigured: chatProviderConfigured("ambient"),
+      profileNftImageConfigured: process.env.TASKNODE_PROFILE_NFT_RENDERER_CONFIGURED === "true",
+      // Compatibility field for older readiness consumers. Ambient is now the
+      // inference gateway; the retired Vercel credential is no longer read.
+      aiGatewayConfigured: chatProviderConfigured("ambient"),
     },
   };
 }

@@ -122,7 +122,7 @@ function terminalChatPayload(payload = {}, session = {}, conversationId = "") {
     ...payload,
     accountId: session.accountId || "",
     conversationId,
-    mode: requestedMode || "Private Thinking",
+    mode: requestedMode || "Thinking",
   };
 }
 
@@ -592,7 +592,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
   if (url.pathname === "/api/terminal/tasknode/chat/modes") {
     json(res, 200, {
       ok: true,
-      defaultMode: "Private Thinking",
+      defaultMode: "Instant",
       modes: chatModes({ signedOut: false }),
     });
     return true;
@@ -704,6 +704,12 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
           billingModel: "usage_based",
           currency: "USD",
           inputTokens: result.usage.inputTokens,
+          promptCacheHitTokens: result.usage.promptCacheHitTokens || 0,
+          promptCacheMissTokens: result.usage.promptCacheMissTokens || 0,
+          promptCacheHitRate: result.usage.promptCacheHitRate || 0,
+          cacheUsageReported: result.usage.cacheUsageReported === true,
+          cacheSavingsUsd: result.usage.cacheSavingsUsd || 0,
+          costSource: result.usage.costSource || "",
           outputTokens: result.usage.outputTokens,
           totalTokens: result.usage.totalTokens,
           webSearchCalls: result.usage.webSearchCalls || 0,

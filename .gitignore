@@ -14,6 +14,7 @@ env_dump.txt
 deathmarch.log
 deathmarch.pid
 deathmarchseed.txt
+.tasknode-evidence-*.tmp
 docs/verification/evidence/
 docs/verification/task_*.md
 node_modules/

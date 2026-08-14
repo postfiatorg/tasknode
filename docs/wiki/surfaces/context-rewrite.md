@@ -42,7 +42,7 @@ The implementation boundary is:
 - `src/features/chat/ChatMessages.jsx`: visible progress trace and artifact card with copy/download actions.
 - `server/context-rewrite-actions.js`: authenticated route handler.
 - `server/context-rewrite-worker.js`: queued job processor.
-- `server/context-rewrite-provider.js`: OpenRouter JSON calls, OpenRouter web-search tool calls, and mock-provider smoke path.
+- `server/context-rewrite-provider.js`: Ambient structured-output and web-search tool calls, plus the mock-provider smoke path. Several internal response-parser helpers retain historical OpenRouter names, but no request leaves for OpenRouter.
 - `server/context-rewrite-source-packet.js`: source packet assembly.
 - `server/context-rewrite-scoring.js`: 15-dimension score normalization and aggregation.
 - `server/context-rewrite-search.js`: privacy-safe query selection.
@@ -107,10 +107,7 @@ Dimensions:
 14. `specificity`
 15. `downstream_task_utility`
 
-Launch scoring uses `CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL`, default `3` and capped at `3`, across:
-
-- GLM 5.2 through OpenRouter, default `z-ai/glm-5.2`;
-- DeepSeek V4 Pro through OpenRouter, default `deepseek/deepseek-v4-pro`.
+Launch scoring uses `CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL`, default `3` and capped at `3`, across two independently labelled scorer lanes. Both lanes default to Ambient `z-ai/glm-5.2` after the provider cutover. `CONTEXT_REWRITE_GLM_MODEL` and `CONTEXT_REWRITE_SECONDARY_MODEL` may select only models supported by the shared Ambient adapter.
 
 The aggregate score is the median per dimension and the average of the 15 medians. It is stored internally on the job. Malformed scorer JSON is treated as a failed scorer packet, not as an all-zero valid score.
 
@@ -127,7 +124,7 @@ Search questions should be complete domain-level questions such as:
 - `What are best practices for goal hierarchy, milestone planning, and implementation intentions in operating plans?`
 - `What are best practices for startup product strategy, focus, tradeoffs, and customer clarity?`
 
-The search calls run concurrently and use `openai/gpt-5.4-mini` by default through OpenRouter with the `openrouter:web_search` server tool. The request body contains only the selected question. Results are stored in `context_rewrite_search_results` and used as general best-practice context, not as facts about the user. Research is optional after scoring: failed query calls are recorded, but successful query calls still feed the rewrite.
+The search calls run concurrently through Ambient `research_text`, defaulting to `z-ai/glm-5.2`, with Ambient's `websearch` tool continuation. The request body contains only the selected question. Results are stored in `context_rewrite_search_results` and used as general best-practice context, not as facts about the user. Research is optional after scoring: failed query calls are recorded, but successful query calls still feed the rewrite.
 
 ## Visible Progress Trace
 
@@ -137,21 +134,21 @@ The visible trace includes:
 
 - `queued`: waiting for the worker;
 - `source_packet`: assembling context sources and Jobs retrieval;
-- `scoring`: concurrent GLM and DeepSeek scorer calls;
-- `research`: two concurrent mini web-search calls;
+- `scoring`: concurrent structured scorer calls through Ambient;
+- `research`: two concurrent Ambient web-search calls;
 - `final_rewrite`: draft GLM rewrite;
 - `polish_rewrite`: second GLM 5.2 `xhigh` polish pass;
 - `completed`: Markdown artifact ready.
 
 `progress_json.events` keeps the recent stage events with timestamps. Public job reads also expose `lastProgressAt`, `elapsedSinceProgressMs`, `staleAfter`, `retryCount`, `attempt`, `stalled`, and `statusMessage` so the app can distinguish a healthy long-running provider call from a stale worker lease.
 
-Provider-level audit is durable in `context_rewrite_provider_calls`, `chat_model_runs`, `context_rewrite_score_runs`, and `context_rewrite_search_results`. A provider-call row is inserted before each OpenRouter dispatch and heartbeated while the call is in flight.
+Provider-level audit is durable in `context_rewrite_provider_calls`, `chat_model_runs`, `context_rewrite_score_runs`, and `context_rewrite_search_results`. A provider-call row is inserted before each Ambient dispatch and heartbeated while the call is in flight.
 
 ## Provider And Billing
 
 Context Rewrite is a billed multi-call pipeline. Route preflight checks available account credit against `CONTEXT_REWRITE_ESTIMATE_USD`, default `$0.50`. Actual billing records provider-reported usage per scorer, research, draft writer, and polish writer call.
 
-Provider calls have bounded defaults so a hung OpenRouter request does not wedge the in-process worker indefinitely:
+Provider calls have bounded defaults so a hung Ambient request does not wedge the in-process worker indefinitely:
 
 - scorer calls: `CONTEXT_REWRITE_SCORE_TIMEOUT_MS`, default 12 minutes;
 - research calls: `CONTEXT_REWRITE_SEARCH_TIMEOUT_MS`, default 5 minutes;
@@ -160,20 +157,7 @@ Provider calls have bounded defaults so a hung OpenRouter request does not wedge
 
 `CONTEXT_REWRITE_PROVIDER_TIMEOUT_MS` can set a shared fallback, and a stage-specific timeout can override it. Production-shaped environments do not allow disabling timeouts with `0`, `none`, `false`, `off`, or `no` unless `CONTEXT_REWRITE_ALLOW_UNSAFE_NO_TIMEOUT=true` is explicitly set.
 
-OpenRouter requests use provider privacy controls:
-
-```json
-{
-  "provider": {
-    "zdr": true,
-    "data_collection": "deny",
-    "require_parameters": true
-  },
-  "usage": {
-    "include": true
-  }
-}
-```
+All calls go through `server/ambient-inference.js`; feature code does not select an alternate transport or pass retired OpenRouter routing fields. Source packets are redacted before dispatch, research receives only selected domain questions, and structured results are schema-validated before persistence.
 
 The user-facing warning is:
 

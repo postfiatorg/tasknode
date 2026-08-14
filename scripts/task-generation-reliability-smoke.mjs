@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 
-process.env.TASKNODE_TASKGEN_PROVIDER = "openai";
-process.env.OPENAI_API_KEY = "taskgen-reliability-smoke-key";
-process.env.TASKNODE_TASKGEN_MODEL = "taskgen-reliability-smoke-model";
+process.env.TASKNODE_TASKGEN_PROVIDER = "ambient";
+process.env.AMBIENT_API_KEY = "taskgen-reliability-smoke-key";
+process.env.AMBIENT_MODEL_STRUCTURED = "taskgen-reliability-smoke-model";
 process.env.TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED = "false";
 process.env.TASKNODE_HIVE_TASK_GENERATION_V2_ENABLED = "false";
 
@@ -84,10 +84,10 @@ async function providerTimeoutSmoke() {
   );
 }
 
-async function openAiRequestBodySmoke() {
+async function ambientRequestBodySmoke() {
   let requestBody = null;
   const responsePayload = {
-    id: "taskgen-reliability-openai-request-smoke",
+    id: "taskgen-reliability-ambient-request-smoke",
     choices: [{
       message: {
         content: JSON.stringify({
@@ -113,9 +113,9 @@ async function openAiRequestBodySmoke() {
       });
     },
   });
-  assert.equal(generated.metadata.provider, "frontier");
+  assert.equal(generated.metadata.provider, "ambient");
   assert.equal(requestBody.model, "taskgen-reliability-smoke-model");
-  assert.equal(requestBody.reasoning_effort, "xhigh");
+  assert.deepEqual(requestBody.reasoning, { effort: "xhigh" });
 }
 
 async function requestRow(id) {
@@ -274,7 +274,7 @@ async function ownershipSmoke() {
   }
 }
 
-await openAiRequestBodySmoke();
+await ambientRequestBodySmoke();
 await providerTimeoutSmoke();
 await ownershipSmoke();
 

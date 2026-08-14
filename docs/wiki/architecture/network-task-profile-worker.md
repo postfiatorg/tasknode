@@ -21,13 +21,10 @@ System Status row: `network_task_profile`
 
 ## Provider Contract
 
-Network Task Profile jobs run inside the memory worker and use the same
-OpenRouter private memory request contract as turn and deep memory:
-`provider.zdr = true`, `provider.data_collection = "deny"`, a provider
-allowlist in both `provider.order` and `provider.only`,
-`provider.require_parameters = true`, `reasoning.effort = "none"`,
-`reasoning.exclude = true`, `response_format.type = "json_object"`, and
-`usage.include = true`.
+Network Task Profile jobs run inside the memory worker through Ambient's pinned
+DeepSeek Flash `fast_text` capability. The request disables hidden reasoning
+and requires JSON output with `reasoning.effort = "none"`,
+`reasoning.exclude = true`, and `response_format.type = "json_object"`.
 
 The default output cap is `TASKNODE_NETWORK_TASK_PROFILE_MAX_TOKENS` or `1800`,
 with a floor of `900`.

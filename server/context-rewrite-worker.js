@@ -107,7 +107,7 @@ function heartbeatIntervalMs() {
 function completedProviderResultFromCall(row = null) {
   if (!row || row.status !== "completed") return null;
   return {
-    provider: row.provider || "openrouter",
+    provider: row.provider || "ambient",
     model: row.model || "",
     responseId: row.response_id || "",
     parsed: row.result_json && typeof row.result_json === "object" ? row.result_json : {},
@@ -133,7 +133,7 @@ async function runAuditedProviderCall({
     job,
     stage,
     callIndex,
-    provider: "openrouter",
+    provider: "ambient",
     model,
     requestDigest: requestDigest({ stage, callIndex, model, request }),
     timeoutMs,
@@ -371,7 +371,7 @@ async function runScoring({ job, sourcePacket }) {
           job,
           modelFamily: task.modelFamily || "unknown",
           runIndex: task.runIndex || index + 1,
-          provider: "openrouter",
+          provider: "ambient",
           model: task.model || "",
           promptDigest: contextRewriteScorePromptSha256,
           parsedScore: {},
@@ -458,7 +458,7 @@ async function runOneResearch({ job, model, queryInfo, index }) {
       queryIndex: index,
       queryText: queryInfo.query,
       attemptId: job.currentAttemptId,
-      provider: "openrouter",
+      provider: "ambient",
       model,
       resultJson: {
         query: queryInfo.query,

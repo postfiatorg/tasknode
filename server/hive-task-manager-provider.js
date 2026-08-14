@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { hiveTaskManagerActions, normalizeTaskManagerOutput } from "./repositories/hive-task-manager.js";
+import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
 
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const taskManagerPrompt = loadPrompt("hive/task_manager_selection_v1.md");
 
 function safeText(value = "", max = 1000) {
@@ -17,16 +17,12 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-function openRouterKey() {
-  return safeText(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER, 10000);
-}
-
 export function hiveTaskManagerProvider() {
-  return "openrouter";
+  return "ambient";
 }
 
 export function hiveTaskManagerModel() {
-  return safeText(process.env.TASKNODE_HIVE_TASK_MANAGER_MODEL || process.env.TASKNODE_BOARD_MANAGER_MODEL || "z-ai/glm-5.2", 160);
+  return safeText(process.env.TASKNODE_HIVE_TASK_MANAGER_MODEL || process.env.TASKNODE_BOARD_MANAGER_MODEL || AMBIENT_MODELS.structured, 160);
 }
 
 export function hiveTaskManagerReasoningEffort() {
@@ -34,7 +30,7 @@ export function hiveTaskManagerReasoningEffort() {
 }
 
 export function hiveTaskManagerProviderConfigured() {
-  return process.env.TASKNODE_HIVE_TASK_MANAGER_PROVIDER_MOCK === "true" || Boolean(openRouterKey());
+  return process.env.TASKNODE_HIVE_TASK_MANAGER_PROVIDER_MOCK === "true" || ambientConfigured();
 }
 
 function providerTimeoutMs() {
@@ -285,36 +281,18 @@ export async function fetchHiveTaskManagerSelection({
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, reasoningTokens: 0, costUsd: 0, latencyMs: 0 },
     };
   }
-  const apiKey = openRouterKey();
-  if (!apiKey) {
-    const error = new Error("hive_task_manager_openrouter_not_configured");
+  if (!ambientConfigured()) {
+    const error = new Error("hive_task_manager_ambient_not_configured");
     error.status = 409;
     throw error;
   }
-  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const controller = new AbortController();
   const timeoutMs = providerTimeoutMs();
-  let timeout = null;
   const startedAt = Date.now();
-  try {
-    const timeoutPromise = new Promise((_, reject) => {
-      timeout = setTimeout(() => {
-        controller.abort();
-        reject(new Error("hive_task_manager_openrouter_timeout"));
-      }, timeoutMs);
-      timeout.unref?.();
-    });
-    const response = await Promise.race([fetchImpl(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknode.postfiat.org",
-        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-      },
-      body: JSON.stringify({
+  const result = await ambientChatCompletion({
+    fetchImpl,
+    capability: "strict_json",
+    timeoutMs,
+    body: {
         model,
         messages: [
           { role: "system", content: taskManagerPrompt },
@@ -330,23 +308,17 @@ export async function fetchHiveTaskManagerSelection({
         ],
         response_format: selectionSchema(),
         reasoning: { effort: reasoningEffort },
-        usage: { include: true },
-        data_collection: "deny",
         temperature: 0.1,
-      }),
-    }), timeoutPromise]);
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(safeText(body?.error?.message || body?.message || `hive_task_manager_openrouter_${response.status}`, 1000));
-      error.status = response.status;
-      throw error;
-    }
+      },
+  });
+  const body = result.body;
+  try {
     const outputText = safeText(body.choices?.[0]?.message?.content || "", 500_000);
     const selection = normalizeTaskManagerOutput(parseJsonOutput(outputText));
     return {
       selection,
       outputText,
-      provider: "openrouter",
+      provider: "ambient",
       model,
       responseId: safeText(body.id, 180),
       promptDigest: promptDigest(taskManagerPrompt),
@@ -355,7 +327,8 @@ export async function fetchHiveTaskManagerSelection({
         latencyMs: Date.now() - startedAt,
       },
     };
-  } finally {
-    if (timeout) clearTimeout(timeout);
+  } catch (error) {
+    if (error?.code === "ambient_timeout") throw new Error("hive_task_manager_ambient_timeout");
+    throw error;
   }
 }

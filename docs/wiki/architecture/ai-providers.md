@@ -1,340 +1,130 @@
 # AI Providers
 
-AI Providers is the architecture boundary that turns a user-facing chat mode into a concrete model request. It decides which external provider is used, which model string is sent, whether reasoning is requested, whether web search is available, how attachments are encoded, and how usage is billed.
-
-The code owner for this boundary is `server/chat-router.js`. The product contract and preflight checks live in `server/product-contracts.js`. The UI reads the mode list from app state and renders it in the composer model picker.
-
-## Mode Matrix
-
-| User-facing mode | Provider | API path | Default model | Reasoning | Web search | Privacy policy |
-| --- | --- | --- | --- | --- | --- | --- |
-| Private Instant | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-flash` | `none`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist, `require_parameters=true` |
-| Private Thinking | OpenRouter | `/api/v1/chat/completions` | `z-ai/glm-5.2` | `xhigh`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, GLM 5.2 ZDR provider allowlist, `require_parameters=true` |
-| Discount Thinking | DeepSeek API Direct | `/chat/completions` | `deepseek-v4-pro` | `high` | Disabled | Direct DeepSeek API route; not OpenRouter ZDR; text-only attachments |
-| Frontier Instant | OpenAI | `/v1/responses` | `chat-latest` | `medium` | Prompt-governed | Direct OpenAI route, `store=false` |
-| Help | DeepSeek API Direct | `/chat/completions` | `deepseek-v4-pro` | `none` | Disabled | Direct DeepSeek API route; not OpenRouter ZDR; product-help prompt with embedded User Guide |
-| Frontier Thinking | OpenAI | `/v1/responses` | `gpt-5.5` | `high` | Prompt-governed | Direct OpenAI route, `store=false` |
-
-## Model Selection
-
-Mode-specific environment variables always win:
-
-- `CHAT_MODEL_PRIVATE_INSTANT`
-- `CHAT_MODEL_PRIVATE_THINKING`
-- `CHAT_MODEL_DISCOUNT_THINKING`
-- `CHAT_MODEL_FRONTIER_INSTANT`
-- `CHAT_MODEL_HELP`
-- `CHAT_MODEL_FRONTIER_THINKING`
-
-For OpenRouter private modes only, `OPENROUTER_MODEL` is the next fallback.
-For DeepSeek direct modes, including Discount Thinking and Help,
-`DEEPSEEK_CHAT_MODEL` is the next fallback. Frontier
-modes intentionally do not use a broad `OPENAI_MODEL` override; they are pinned
-to the explicit defaults unless the mode-specific variable is set.
-
-Unknown mode strings are rejected with `unknown_chat_mode`. On app load, the default mode prefers Frontier Instant when that route is enabled, then falls back to the first enabled configured route.
-
-## OpenAI Route
-
-Frontier modes call OpenAI through the Responses API. Task Node sends:
-
-- `instructions`: the shared Task Node instruction assembly from `server/chat-memory-context.js::taskNodeInstructions`. This includes the base operational prompt and, by default, the Jobs Markdown prompt rendered with the current context document, memory, task state, and pgvector Jobs retrieval context.
-- `input`: recent conversation, the user message, and supported attachments.
-- `reasoning`: `medium` for Frontier Instant and `high` for Frontier Thinking.
-- `store: false`: app history remains in Task Node Postgres instead of provider-hosted state.
-- `tools`: `web_search` for Frontier modes, with use governed by the assistant instructions.
-
-Images are sent as `input_image`. Text attachments are sent as `input_text`. Other files are sent as `input_file` with filename and base64 data URL.
-
-## OpenRouter Route
-
-Private modes call OpenRouter through Chat Completions. Task Node sends:
-
-- `messages`: the same shared instruction assembly as the system message, followed by recent conversation and user content.
-- `provider.zdr=true`: restrict to Zero Data Retention endpoints.
-- `provider.data_collection="deny"`: avoid providers that collect data.
-- `provider.order` and `provider.only`: keep routing inside the mode-specific provider allowlist.
-- `max_tokens=16384` on Private Instant, matching OpenRouter's current `deepseek/deepseek-v4-flash` top-provider completion ceiling.
-- `reasoning.effort="none"` and `reasoning.exclude=true` on Private Instant so fast chat spends its answer budget on visible response text instead of returned reasoning text.
-- `reasoning.effort="xhigh"` on Private Thinking.
-- `reasoning.exclude=true` on Private Thinking so reasoning text is not returned to the UI.
-- `provider.require_parameters=true` when reasoning is controlled, so OpenRouter does not silently ignore the reasoning policy.
-
-Image attachments are sent as `image_url` parts. Text attachments are sent as text parts. File and PDF attachments are sent as file parts. PDFs add the OpenRouter `file-parser` plugin and use `OPENROUTER_PDF_ENGINE` or `cloudflare-ai`.
-
-## DeepSeek API Direct Route
-
-Discount Thinking and Help call DeepSeek directly through the OpenAI-compatible
-Chat Completions API.
-
-Discount Thinking sends:
-
-- `model=deepseek-v4-pro`.
-- `thinking.type="enabled"` and `reasoning_effort="high"`.
-- `max_tokens=4096`.
-- `stream_options.include_usage=true` for streaming calls so the final chunk
-  includes usage.
-- Text attachments are decoded into the user message. Image, PDF, and binary
-  attachments are not sent to DeepSeek API Direct; the request includes a
-  notice naming the omitted attachment instead.
-
-Help sends:
-
-- `model=deepseek-v4-pro`.
-- `thinking.type="disabled"` and no `reasoning_effort`.
-- no hard `max_tokens` cap; billing preflight uses `estimatedOutputTokens=1200`.
-- `prompts/chat/help_mode_v1.md` as the Help wrapper.
-- the normal `server/chat-memory-context.js::taskNodeInstructions` runtime
-  context inside that wrapper, including Context, task state, memory, and Jobs
-  retrieval when available.
-- `docs/wiki/surfaces/user-guide.md` embedded as the product-help source.
-- recent chat history, the current user message, and text attachments as normal
-  chat messages. Image, PDF, and binary attachments are not sent to DeepSeek API
-  Direct.
-
-This route is labeled `DeepSeek API Direct` in user-facing provider/status copy.
-It is not the OpenRouter ZDR route. Discount Thinking exists for lower-cost
-direct DeepSeek V4 Pro reasoning when the user does not need ZDR routing or
-multimodal file inspection. Help exists for plain-English product guidance that
-knows the user's app state.
-
-DeepSeek direct chat has a 120 second default provider budget. Discount
-Thinking needs that budget because direct DeepSeek V4 Pro can spend noticeable
-time in provider-side thinking before visible output. Help inherits the same
-provider family budget unless `CHAT_PROVIDER_HELP_TIMEOUT_MS` is set. If the
-streaming response is terminated before any visible text is emitted, Task Node
-retries that same request through the non-streaming DeepSeek completion path and
-only surfaces an error if that completion also fails.
-
-## Shared Chat Spirit
-
-All chat modes use one prompt assembly boundary for runtime context. `prompts/chat/task_node_instructions_v1.md` remains the operational product-truth prompt. `prompts/chat/jobs_standard_chat_codex_style_draft.md` is then rendered by `server/chat-spirit-context.js` so the model's voice and judgment feel product-led without duplicating provider code. Help wraps that same rendered context with `prompts/chat/help_mode_v1.md` and the User Guide. The current user message, history, and attachments remain provider messages; the Jobs Markdown prompt receives only durable background slots for the context document, task projection, memory context, and pgvector Jobs retrieval. The chat thinking disclosure exposes the rendered Jobs retrieval context for audit.
-
-Frontier Instant also uses `prompts/chat/frontier_instant_response_gate_v1.md`
-with OpenAI Responses structured output. The model must return
-`user_prompted_inquiry`, `full_response`, and `conformant_response`. The server
-displays `full_response` only when the current user explicitly requested
-long-form depth, including a fully thought-out, elaborate, complex, or in-full
-treatment; otherwise it displays `conformant_response`. The stream route uses
-the same gate for Frontier Instant and emits the selected response.
-`conformant_response` should still preserve decision-critical next-step detail;
-it is a plain-language answer, not a lossy summary. The
-complete gate JSON is persisted in assistant thinking metadata and rendered in
-the chat thinking disclosure as `Frontier response JSON`, separate from the
-Jobs source text audit block.
-
-Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.js`, defaulting to `text-embedding-3-small` with 1536 dimensions. That embedding call is internal retrieval infrastructure; it is not a chat completion provider route and does not enable web search on private modes.
-
-## PFTerminal Chat Bridge
-
-PFTerminal uses the GitHub-linked terminal session bridge under
-`/api/terminal/tasknode/chat/*` instead of browser-cookie `/api/chat/*` routes.
-The bridge exposes conversation list, history, search, non-streaming send, and
-SSE streaming send. Terminal chat defaults to `Private Thinking` even when the
-web app's environment default is a faster mode. The stream route emits the same
-`meta`, `delta`, `done`, and `error` event shape as the web chat stream, so the
-terminal can render visible assistant text incrementally while Task Node keeps
-the same context, memory, task-state, billing, and Jobs retrieval preflight.
-
-Terminal chat is text-only in the first bridge. It does not expose provider
-reasoning text: Private Thinking continues to send `reasoning.exclude=true`, so
-the UI receives final assistant text plus audit metadata, not hidden reasoning.
-
-## Hive Board Manager And Planning Workers
-
-Hive planning workers are not user chat modes and are not billed to the user's chat balance. They are async internal coordination jobs.
-
-The target architecture is Board Manager centered. The Board Manager is a leased decision worker that chooses one scoped Hive action per run. It now defaults to OpenRouter `z-ai/glm-5.2` through Chat Completions because that model supports the long source packet and structured JSON output at lower cost than the prior OpenAI Pro route. Hive Secretary, Hive Active Projects, Product Documents, contributor assignment, Network Task assignment, and evidence review should become action handlers behind that manager instead of independent overactive cron loops.
-
-| Worker | Provider | API path | Default model | Reasoning | Output | Privacy policy |
-| --- | --- | --- | --- | --- | --- | --- |
-| Hive Immediate Response | DeepSeek direct API | `/chat/completions` | `deepseek-v4-pro` | `none` by default | Immediate user-facing Hive Chat reply | Not ZDR; receives the latest Hive message, readable attachments, recent Hive Chat history, the requesting user's account-scoped Hive Context source packet, the latest Board Manager Secretary Packet, and a compact live Board Manager source snapshot; system-paid, not user-billed |
-| Board Manager Secretary | DeepSeek direct API | `/chat/completions` | `deepseek-v4-pro` | `high` | Compact Board Triage packet | Not ZDR; internal Hive state only; no raw private chat/context/secrets |
-| Board Manager | OpenRouter | `/api/v1/chat/completions` | `z-ai/glm-5.2` | `high` | One action from registry | `data_collection="deny"`, structured output |
-| Hive Secretary | OpenRouter | `/api/v1/chat/completions` | `z-ai/glm-5.2` | `high` | Structured JSON report | `data_collection="deny"`, provider ordering |
-| Hive Active Projects | OpenRouter | `/api/v1/chat/completions` | `z-ai/glm-5.2` | `high` | Structured JSON project set | `data_collection="deny"`, `require_parameters=true` |
-
-Hive Immediate Response is the synchronous conversational layer for Hive Chat. It runs after the user message is saved into Hive Context, so its prompt sees the updated account-scoped source packet including bounded text paste attachments for the requesting user. It also reads the latest current `board_manager_secretary_packets` row when available, prefers an exact packet for the live source digest, and falls back to the latest compressed packet plus live board facts when the user's new input has made that packet slightly stale. The live board facts are read-only shared board facts and include current action pressure, open follow-ups, projects, tasks, task requests, candidates, and recent Board Manager run summaries. The prompt separately marks which tasks or follow-ups are tied to the requesting `account_id`; otherwise the response must discuss them as shared board state or other contributors' work. This lets Hive acknowledge and clarify immediately, but it cannot mutate board state; durable mutations still require a later Board Manager action. Set `TASKNODE_HIVE_IMMEDIATE_RESPONSE_ENABLED=false` to disable it, `TASKNODE_HIVE_IMMEDIATE_MODEL` to override the model, `TASKNODE_HIVE_IMMEDIATE_MAX_TOKENS` to tune output length, and `TASKNODE_HIVE_IMMEDIATE_REASONING=high` only if the immediate reply should spend reasoning budget. The default output budget is `1600` tokens, with `TASKNODE_HIVE_IMMEDIATE_MAX_TOKENS` clamped between `120` and `4096`.
-
-The Board Manager model default comes from OpenRouter's `z-ai/glm-5.2` route. The model page/API report a 1M context window, structured-output support, and pricing of $1.20 per 1M input tokens and $4.10 per 1M output tokens. Board Manager is OpenRouter-only; the former OpenAI `gpt-5.5-pro` override branch was removed and unsupported providers fail closed.
-
-Before GLM 5.2 runs, the default path now asks the direct DeepSeek API to build a reusable Board Manager Secretary packet when `DEEPSEEK_API_KEY` is present and `TASKNODE_BOARD_MANAGER_SECRETARY_ENABLED` is not `false`. That packet is stored in `board_manager_secretary_packets` and keyed by a semantic source digest. If only generated timestamps, trigger names, freshness age counters, source-text generated lines, or no-op Board Manager runs changed, the stored packet is reused and DeepSeek is not called again. Operators can force the old full-source path with `--no-secretary`.
-
-Hive Project Product Documents are not a separate provider job. When the Board Manager chooses `refresh_project_document`, the Board Manager decision model writes the document in `payload.project_document`; the action hook validates and persists it to `network_project_product_docs`. This keeps core Hive management inside the Board Manager instead of delegating ordinary project-definition work to another model.
-
-Current Hive Secretary and Active Projects workers still exist, but the planning direction is to stop treating them as the decision loop. The Board Manager owns whether a Secretary refresh, project update, product-doc refresh, research action, user follow-up, task allocation, or evidence review should happen.
-
-The Board Manager harness defaults to dry-run for app mutations. `scripts/board-manager-model-exec.mjs` builds the live Hive source packet, calls the configured decision provider with `reasoning.effort="high"` against `schemas/board-manager-action.schema.json`, and records the selected action plus token usage in `board_manager_runs` when Postgres is enabled. The default provider path is OpenRouter Chat Completions with `z-ai/glm-5.2`, `response_format=json_schema`, `provider.data_collection="deny"`, and `usage.include=true`. When run with `--execute`, it dispatches supported hooks through `server/board-manager-actions.js`: `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `restore_project`, `refresh_project_document`, `assign_contributor`, and `initiate_network_task`. `message_user` appends an assistant response to the user's default Hive chat conversation, records `board_manager_user_messages` as delivery audit, and opens a `board_manager_followups` blocker row; it does not bill the user.
-
-`/api/system/status` exposes `boardManagerDailyCost`, a bounded recent-day aggregation of Board Manager and Board Manager Secretary token usage. It prefers provider-reported `usage.cost` and falls back to configured per-model token prices. The Docs System Status page renders this as a collapsed "Board Manager daily token cost" USD toggle, separate from Network Task PFT spend.
-
-Board Manager source packets consume compact user routing profiles from `network_task_profiles`. Those profiles are generated asynchronously by the memory worker through the DeepSeek Flash ZDR route, so the Board Manager does not need raw user context documents, full chat history, or full memory bundles for each decision.
-
-Environment overrides:
-
-- `TASKNODE_HIVE_SECRETARY_MODEL`
-- `TASKNODE_HIVE_SECRETARY_REASONING_EFFORT`
-- `TASKNODE_BOARD_MANAGER_PROVIDER` (`openrouter` only; unsupported providers fail closed)
-- `TASKNODE_BOARD_MANAGER_MODEL`
-- `TASKNODE_BOARD_MANAGER_REASONING_EFFORT`
-- `TASKNODE_BOARD_MANAGER_SECRETARY_ENABLED`
-- `TASKNODE_BOARD_MANAGER_SECRETARY_MODEL`
-- `TASKNODE_BOARD_MANAGER_SECRETARY_REASONING_EFFORT`
-- `TASKNODE_BOARD_MANAGER_SECRETARY_TIMEOUT_MS`
-- `DEEPSEEK_API_KEY` or `DEEPSEEK`
-- `DEEPSEEK_BASE_URL`
-- `TASKNODE_HIVE_PROJECT_MODEL`
-- `TASKNODE_HIVE_PROJECT_REASONING_EFFORT`
-The default reasoning effort is `high`. These workers use structured outputs rather than prompt-only JSON parsing so invalid project shapes fail the job instead of silently changing the UI.
-
-## Recommended Connections Rerank
-
-Recommended connections are not a chat mode and are not billed to the user's chat balance. They are an internal profile discovery job behind the private Profile surface.
-
-The route builds public/discoverable member packets, embeds them with the shared embedding provider, retrieves at most 50 candidate profiles from pgvector, then asks DeepSeek V4 Pro to choose 3-4 useful recommendations. A completed rerank suppresses another normal rerank for the target profile for seven days.
-
-Current behavior:
-
-- Provider: DeepSeek API Direct.
-- API path: `/chat/completions`.
-- Default model: `deepseek-v4-pro`.
-- Prompt: `prompts/profile/recommended_connections_v1.md`.
-- Worker: `server/recommended-connections-worker.js`.
-- Manual route: `POST /api/profile/recommended-connections/refresh`.
-- Privacy check: private or non-discoverable profiles are not embedded, indexed, retrieved, sent to DeepSeek, or included in recommendation output.
-
-Environment overrides:
-
-- `TASKNODE_RECOMMENDED_CONNECTIONS_MODEL`
-- `TASKNODE_RECOMMENDED_CONNECTIONS_WORKER_ENABLED`
-- `TASKNODE_RECOMMENDED_CONNECTIONS_WORKER_INTERVAL_MS`
-- `TASKNODE_RECOMMENDED_CONNECTIONS_PROFILE_INDEX_LIMIT`
-- `TASKNODE_RECOMMENDED_CONNECTIONS_RERANK_LIMIT`
-- `TASKNODE_RECOMMENDED_CONNECTIONS_EMBEDDING_PROVIDER`
-- `TASKNODE_RECOMMENDED_CONNECTIONS_EMBEDDING_MODEL`
-- `DEEPSEEK_API_KEY` or `DEEPSEEK`
-- `DEEPSEEK_BASE_URL`
-
-## Profile NFT Image Generation
-
-Profile NFT image generation is not a chat mode. It is a separate profile action backed by `POST /api/profile/nft/generate`.
-
-Current behavior:
-
-- Provider: OpenAI Image API.
-- Model: `gpt-image-2`.
-- Prompt source: `prompts/profile/profile_nft_image_v1.md`. `PROFILE_NFT_PROMPT_PATH` may explicitly point to a different mounted file for an operator test and takes precedence over stale secret text. `PROFILE_NFT_PROMPT_B64` and `PROFILE_NFT_PROMPT_TEXT` remain supported only as legacy emergency overrides when no prompt path is configured.
-- Dev/test fallback prompt: `prompts/non_production/profile_nft_dev/profile_nft_image.placeholder.md`. Production generation fails closed if it would otherwise fall back to that placeholder.
-- Renderer: `server/profile-nft-prompts.js`.
-- Generator: `server/profile-nft-generation.js`.
-- Persistence: `server/repositories/profile-nfts.js` and `profile_nfts`.
-- Browser result: generated image data URL, IPFS image CID, model metadata, and prompt digests; not the prompt body.
-- Request and prompt caps: the profile NFT generate/mint route reads at most 65,536 request bytes. The browser generate action sends only `size` and `quality`; the server derives prompt inputs from signed-in account state. Context text is capped at 20,000 characters and can come from an explicit request `contextDocument` override or the current app-state context document `html`, `text`, or `body`. Compact NFT user data is capped at 20,000 characters.
-
-The production prompt tells the model to use the full color spectrum and not default to red/black, cyber-noir, monochrome ink, or a fixed brand palette. Red and black are allowed when context calls for them, but they are not the default palette. This matters because profile NFTs are user-facing identity artifacts and repeated red/black output makes different users look artificially identical.
-
-The OpenAI image generation guide says the Image API is the right path for a single image from one prompt, while the Responses API image tool is better for conversational or multi-turn image workflows. Task Node uses the Image API for the first profile NFT generation path. `gpt-image-2` supports square `1024x1024` output and `low`, `medium`, `high`, or `auto` quality; the current route defaults to `1024x1024` and `high` so generated profile NFTs are not silently produced as low-quality launch assets. `gpt-image-2` does not support transparent backgrounds, so profile images should use opaque/light backgrounds.
-
-In `NODE_ENV=production`, profile NFT generation refuses to run from the public placeholder prompt unless `PROFILE_NFT_ALLOW_PLACEHOLDER=true` is explicitly set. This prevents live accounts from minting or saving generic images when the private prompt secret is missing.
-
-After generation, the server pins the image bytes to IPFS and records only public-safe metadata: image CID, image hash, prompt digest, template digest, provider/model, and status. The prompt text is source-controlled, and generated rows store prompt digests rather than the full rendered prompt body.
-
-## Web Search Policy
-
-OpenAI Responses supports a hosted `web_search` tool. Task Node exposes that tool only on Frontier modes and instructs the assistant to use it only when the user asks for current, external, or source-grounded information that is not already available in the conversation, attachments, context document, memory, or task state. There is no keyword router for search intent.
-
-OpenRouter now documents an `openrouter:web_search` server tool, but Task Node does not enable it for private modes. That is a product choice: private modes should stay ZDR, open-source, and predictable. If OpenRouter web search is added later, it should be a separate explicit mode or toggle with billing, citation, and privacy behavior documented before launch.
-
-## Usage And Billing
-
-Provider usage is normalized into the app ledger:
-
-- OpenAI usage reads `input_tokens`, `output_tokens`, `total_tokens`, and counts `web_search_call` output items.
-- OpenRouter usage reads `prompt_tokens`, `completion_tokens`, `total_tokens`, provider `cost`, and any `server_tool_use.web_search_requests`.
-- DeepSeek API Direct usage reads `prompt_tokens`, `completion_tokens`,
-  `prompt_cache_hit_tokens`, `prompt_cache_miss_tokens`, and `total_tokens`;
-  cost is computed from the configured direct DeepSeek prices because DeepSeek
-  returns token usage rather than a USD `cost` field.
-- `chat_model_runs` stores provider, model, mode, response ID, tokens, web-search calls, and cost.
-- `billing_ledger_entries` records the actual debit.
-
-The current configured rates live in `chatModePrices`. They are estimates and
-caps for preflight; provider-returned usage is preferred when available.
-
-Because Frontier requests may use OpenAI-hosted web search, preflight reserves the configured maximum search tool budget for Frontier modes. Actual billing still uses provider-returned token usage plus observed `web_search_call` items.
-
-## Pricing Audit
-
-The Help -> System Status page renders a live Chat Model Pricing section from
-`/api/system/status`. The backend snapshot is built in
-`server/model-pricing-status.js` and includes:
-
-- current chat modes, models, configured rates, max output caps, reasoning
-  policy, provider readiness, and privacy policy;
-- cached live OpenRouter model metadata from
-  `https://openrouter.ai/api/v1/models`;
-- cached OpenRouter endpoint prices for the OpenRouter-backed chat models;
-- direct DeepSeek V4 Pro pricing for Discount Thinking and Help from DeepSeek's official
-  pricing docs, explicitly labeled `DeepSeek API Direct`.
-
-Configured rates and live metadata are intentionally both visible. Configured
-rates drive preflight estimates and confirmation thresholds. OpenRouter live
-metadata explains current market/provider pricing. Actual OpenRouter billing uses
-the provider-returned `usage.cost` field when present.
-
-DeepSeek V4 Pro is available to Discount Thinking and Help through the direct
-DeepSeek API. It is still not the same thing as the Task Node ZDR route. Private
-Thinking now uses OpenRouter GLM 5.2 with `reasoning.effort="xhigh"`,
-`reasoning.exclude=true`, `provider.zdr=true`, `provider.data_collection="deny"`,
-and the GLM 5.2 ZDR provider allowlist (`z-ai`, `wafer`, `fireworks`, `novita`).
-Eligible endpoints are the OpenRouter ZDR/provider-policy-compatible endpoints
-rather than the cheapest public endpoint.
-
-## Diagram
-
-```mermaid
-flowchart LR
-  UI[Model Picker] --> Mode[Selected Mode]
-  Mode --> Status[Provider Readiness]
-  Status --> Preflight[Login Credit Estimate]
-  Preflight --> Router[Chat Router]
-  Router --> OpenAI[OpenAI Responses]
-  Router --> OpenRouter[OpenRouter Chat Completions]
-  Router --> DeepSeek[DeepSeek API Direct]
-  OpenAI --> Ledger[Usage Ledger]
-  OpenRouter --> Ledger
-  DeepSeek --> Ledger
-  Ledger --> Memory[Async Memory Queue]
-```
-
-## External References
-
-- [OpenAI Responses API migration guide](https://developers.openai.com/api/docs/guides/migrate-to-responses)
-- [OpenAI web search tool](https://developers.openai.com/api/docs/guides/tools-web-search)
-- [OpenAI image generation guide](https://developers.openai.com/api/docs/guides/image-generation)
-- [OpenAI images and vision guide](https://developers.openai.com/api/docs/guides/images-vision)
-- [OpenRouter provider routing](https://openrouter.ai/docs/guides/routing/provider-selection)
-- [OpenRouter PDF inputs](https://openrouter.ai/docs/guides/overview/multimodal/pdfs)
-- [OpenRouter web search server tool](https://openrouter.ai/docs/guides/features/server-tools/web-search)
-- [OpenRouter GLM 5.2 model page](https://openrouter.ai/z-ai/glm-5.2)
-- [OpenRouter model metadata API](https://openrouter.ai/api/v1/models)
-- [DeepSeek chat completions](https://api-docs.deepseek.com/api/create-chat-completion)
-- [DeepSeek models and pricing](https://api-docs.deepseek.com/quick_start/pricing)
-
-## Failure Modes
-
-- Missing `OPENAI_API_KEY` disables Frontier modes.
-- Missing `OPENROUTER_API_KEY` or `OPENROUTER` disables Private modes.
-- Missing `DEEPSEEK_API_KEY` or `DEEPSEEK` disables Discount Thinking and Help.
-- `OPENROUTER_CHAT_ENABLED=false` or `TASKNODE_ENABLE_OPENROUTER_CHAT=false` disables OpenRouter chat even when the key exists.
-- `DEEPSEEK_CHAT_ENABLED=false` or `TASKNODE_ENABLE_DEEPSEEK_CHAT=false` disables DeepSeek API Direct chat even when the key exists.
-- Provider timeout returns a provider failure, not a fake assistant answer. The
-  default chat provider timeout is 45 seconds; DeepSeek direct chat uses a
-  120 second default through `CHAT_PROVIDER_DEEPSEEK_TIMEOUT_MS`, with
-  `CHAT_PROVIDER_HELP_TIMEOUT_MS` and
-  `CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS` available as mode-specific
-  overrides. Telegram Discount Thinking uses a Telegram-specific 120 second
-  default through `TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS` or its documented
-  aliases.
-- Empty provider text is treated as an upstream failure.
-- Attachments that cannot be normalized or parsed should fail visibly before or during chat execution.
+Task Node uses Ambient as its single inference boundary. The only external
+exception is profile NFT image output: OpenAI Images acts as a blind renderer
+and receives only an Ambient-approved, enum-backed art prompt.
+
+## Runtime Boundary
+
+`server/ambient-inference.js` owns authentication, model policy, request
+normalization, JSON output, streaming, image input, web search, errors, timeouts,
+catalog caching, and Ambient-only capacity fallback. Feature modules must not
+construct inference provider URLs or read retired provider credentials.
+
+Configuration:
+
+- `AMBIENT_API_KEY`
+- `AMBIENT_BASE_URL`, default `https://api.ambient.xyz/v1`
+- `AMBIENT_MODEL_FAST_TEXT`, default `deepseek/deepseek-v4-flash-0731`
+- `AMBIENT_MODEL_REASONING`, default `z-ai/glm-5.2`
+- `AMBIENT_MODEL_STRUCTURED`, default `z-ai/glm-5.2`
+- `AMBIENT_MODEL_RESEARCH`, default `z-ai/glm-5.2`
+- `AMBIENT_MODEL_VISION`, default `moonshotai/kimi-k2.7-code`
+
+OpenRouter, direct DeepSeek, and general OpenAI inference keys and hosts are
+retired. `npm run provider-egress-check` fails when one reappears in an active
+runtime, operator script, Fly configuration, or Docker configuration.
+
+Some internal functions and historical schema fields still contain names such
+as `executeOpenRouter`, `openRouterMessages`, `fetchOpenRouter`,
+`generateTaskWithOpenAi`, or `callOpenAiJson`. They are compatibility names,
+response parsers, and migration archaeology; their executable dispatch goes
+through `server/ambient-inference.js`. Provider identity is determined by the
+outbound host and persisted run metadata, not by a legacy symbol name.
+
+## Capability Matrix
+
+| Capability | Default Ambient model | Used for |
+| --- | --- | --- |
+| `fast_text` | `deepseek/deepseek-v4-flash-0731` | Instant chat, Help, memory, short narration |
+| `reasoning_text` | `z-ai/glm-5.2` | Thinking chat and high-stakes reasoning |
+| `strict_json` | `z-ai/glm-5.2` | Task generation/review, Hive, profiles, Context Rewrite, economic decisions |
+| `research_text` | `z-ai/glm-5.2` | Prompt-governed web research |
+| `verification_vision` | `moonshotai/kimi-k2.7-code` | Screenshots, rendered PDF pages, DOCX images, NFT privacy review |
+
+The dated DeepSeek route is deliberate: the undated route returned a live
+no-worker response during the 2026-08-12 capability check. Fast-text requests
+may fall back to GLM 5.2 on that specific Ambient capacity error. No fallback
+may leave Ambient, and vision may fall back only after another image-input model
+has a live contract test.
+
+## Chat Modes
+
+The mode API and every picker expose exactly three canonical labels:
+
+| Mode | Capability | Model |
+| --- | --- | --- |
+| Instant | `fast_text` | `deepseek/deepseek-v4-flash-0731` |
+| Thinking | `reasoning_text` | `z-ai/glm-5.2` |
+| Help | `fast_text` plus the Help prompt and user guide | `deepseek/deepseek-v4-flash-0731` |
+
+Historical Private, Discount, and Frontier labels normalize one-way to Instant
+or Thinking so old stored preferences and clients remain usable. They are not
+returned by the mode API, shown in pickers, or eligible for separate provider
+routing. Billing and durable model-run records store `provider=ambient` plus the
+actual returned model ID.
+
+Chat personality is orthogonal to this table. The browser sends an allowlisted
+`persona` enum (`jobs`, `odv`, or `trading-coach`) while the mode continues to
+choose the capability and model. Jobs alone may query the local Jobs pgvector
+corpus. ODV and Trading Coach use their canonical prompts with the normal
+account Context document, memory, tasks, history, and attachments, and the
+router records Jobs retrieval as skipped before any embedding/search call.
+
+## Attachments And Verification
+
+Ambient does not parse arbitrary office or archive files. Task Node decodes and
+extracts them locally in `server/evidence-file-extraction.js` with byte, entry,
+page, and expansion limits.
+
+- Text, Markdown, JSON, CSV, source files: bounded UTF-8 extraction.
+- PDF: bounded text extraction plus rendered page images.
+- DOCX: OOXML text plus bounded embedded images.
+- ZIP, TAR, GZIP: bounded text-file extraction; binary entries are reported and
+  skipped.
+- Images: preserved as image parts.
+
+Chat passes extracted text to its selected text capability and switches to the
+approved vision capability when preserved images are present. Task evidence
+sends every bounded visual page/image through Kimi and combines those
+observations with extracted text for the final GLM verification decision. A
+vision outage fails retryably; it is never converted into a zero score.
+
+## Embeddings
+
+Ambient currently has no embeddings endpoint. Retrieval uses the pinned local
+`deterministic-bag-of-words-v1` provider at 1536 dimensions. Model, dimensions,
+and provider remain part of every corpus row so vectors from different models
+cannot be mixed. Production cutover requires re-running `npm run
+jobs-corpus-ingest` after migration 105 changes the live defaults.
+
+## Profile NFT Exception
+
+The trusted path in `server/profile-nft-generation.js` sends bounded profile,
+activity, memory, and context inputs only to Ambient GLM 5.2. GLM performs an
+abstraction pass and a separate privacy-review pass against an allowlisted art
+schema. Deterministic validation rejects URLs, handles, wallet-like values,
+hashes, monetary details, long identifiers, or private-source overlap.
+
+Only the sanitized rendered prompt and image settings enter the durable
+`profile_nft_render_jobs` queue. `server/profile-nft-image-provider.js` is the
+only allowlisted OpenAI host and the only module that reads
+`PROFILE_NFT_OPENAI_API_KEY`. The dedicated renderer process cannot accept a raw
+source packet. Before IPFS publication, Kimi scans the generated pixels for
+text, numbers, usernames, brands, wallets, QR codes, documents, source code,
+financial symbols, or recognizable people; any violation fails closed.
+
+Fly unsets the renderer credential from every other process command. The
+renderer is the sole process that retains it.
+
+## Operations And Failure Modes
+
+- Missing `AMBIENT_API_KEY` disables inference-backed features explicitly.
+- Missing `PROFILE_NFT_OPENAI_API_KEY` affects only queued NFT rendering.
+- Invalid structured output remains subject to feature-level schema validation
+  and fail-closed behavior.
+- Catalog reads use a short cache and last-known-good result.
+- Logs and optional Ambient metrics include workload/capability, model, request
+  ID, fallback, error class, and latency, never prompt content.
+- Migrations preserve historical provider labels. New defaults use `ambient`
+  and deterministic embeddings.

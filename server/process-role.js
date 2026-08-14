@@ -10,6 +10,7 @@ const workerRoles = new Set([
   "worker:hive",
   "worker:memory-profile",
   "worker:airdrop",
+  "worker:nft-renderer",
 ]);
 
 export function tasknodeProcessRole(env = process.env) {

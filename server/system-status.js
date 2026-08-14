@@ -2468,6 +2468,18 @@ async function categoryItems(tables, nowMs) {
     }),
     await memoryQueueItem({
       tables,
+      id: "rewarded_task_memory",
+      title: "Rewarded Task Memory Worker",
+      description: "Persists each positive rewarded task as durable user memory using DeepSeek Flash.",
+      jobTable: "task_reward_memory_jobs",
+      entryKind: "rewarded_task_memory",
+      enabled: process.env.TASKNODE_MEMORY_ENABLED !== "false",
+      trigger: "canonical positive task reward",
+      cadence: `${intEnv(process.env.TASKNODE_MEMORY_INTERVAL_MS, 15000, { min: 5000 })}ms`,
+      nowMs,
+    }),
+    await memoryQueueItem({
+      tables,
       id: "deep_memory",
       title: "Deep Memory Worker",
       description: "Compresses batches of turn memory into account-level memory.",

@@ -1,5 +1,7 @@
 # Model-default inventory and upgrade matrix
 
+> **Historical baseline — superseded 2026-08-12.** This page records the provider/model state at commit `57f3eac` and must not be used as the current runtime map. The completed system uses Ambient for all inference, exposes only Instant, Thinking, and Help, and retains OpenAI only as the isolated Profile NFT image renderer. See [AI Providers](#docs/ai-providers) and [Ambient Inference Cutover Plan](#docs/ambient-inference-cutover-plan).
+
 **Baseline:** `57f3eace716895b3cdc0e998c20d87375d333cd4` (`57f3eac`).  Every source reference below is against that commit.  This is an inventory and proposal document only; it makes no runtime change and records no credential value.
 
 ## Scope and reading rules
@@ -18,7 +20,7 @@ Status meanings:
 
 Cost deltas are intentionally `unknown/not comparable` unless the cited OpenAI page establishes both sides.  The directed Frontier Thinking comparison uses the current [OpenAI GPT-5.6 Sol model page](https://developers.openai.com/api/docs/models/gpt-5.6-sol): GPT-5.6 Sol is $5/M input, $0.50/M cached input, and $30/M output; the page lists GPT-5.5 at $5/M input and $30/M output.
 
-## Active runtime defaults and proposal matrix
+## Historical runtime defaults and proposal matrix
 
 | Component / surface | Provider / API path | Current model; effort | Directive / proposal | Status | Rationale | Cost delta | Exact baseline references |
 | --- | --- | --- | --- | --- | --- | --- | --- |

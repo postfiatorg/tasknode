@@ -9,7 +9,7 @@ process.env.TASKNODE_STORE_PATH = join(tempDir, "runtime-store.json");
 process.env.TASKNODE_ENV = "development";
 process.env.NODE_ENV = "development";
 process.env.TASKNODE_DEV_AUTH_ENABLED = "true";
-process.env.DEEPSEEK_API_KEY = "agent-chat-origin-smoke-key";
+process.env.AMBIENT_API_KEY = "agent-chat-origin-smoke-key";
 process.env.TASKNODE_JOBS_RETRIEVAL_ENABLED = "false";
 delete process.env.DATABASE_URL;
 delete process.env.TASKNODE_DATABASE_ENABLED;
@@ -20,7 +20,7 @@ globalThis.fetch = async (url, options = {}) => {
   fetchCount += 1;
   assert.match(String(url), /\/chat\/completions$/);
   const body = JSON.parse(String(options.body || "{}"));
-  assert.equal(body.model, "deepseek-v4-pro");
+  assert.equal(body.model, "deepseek/deepseek-v4-flash-0731");
   return new Response(JSON.stringify({
     id: `resp_agent_chat_${fetchCount}`,
     model: "deepseek-v4-pro",

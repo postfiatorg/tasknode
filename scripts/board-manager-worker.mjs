@@ -48,7 +48,7 @@ function usage() {
     "  --execute                   Execute supported action hooks. Default is dry-run.",
     "  --poll-ms <ms>              Delay between polls. Default: 15000",
     "  --max-turns <n>             Stop after n worker turns. Default: unlimited",
-    "  --provider <provider>       Decision provider: openrouter. Default: openrouter",
+    "  --provider <provider>       Decision provider: ambient. Default: ambient",
     "  --model <model>             Provider model. Default: z-ai/glm-5.2",
     "  --reasoning <effort>        Provider reasoning effort. Default: high",
     "  --cadence-seconds <n>       Periodic scope cadence. Default: 300",
@@ -63,9 +63,9 @@ function usage() {
   ].join("\n");
 }
 
-function normalizeProvider(value = "openrouter") {
+function normalizeProvider(value = "ambient") {
   const provider = String(value || "").toLowerCase();
-  if (provider !== "openrouter") throw new Error(`board_manager_provider_unsupported:${provider || "unknown"}`);
+  if (provider !== "ambient") throw new Error(`board_manager_provider_unsupported:${provider || "unknown"}`);
   return provider;
 }
 
@@ -256,7 +256,7 @@ async function processOneJob({ turn }) {
 const config = {
   scope: argValue("--scope", process.env.TASKNODE_BOARD_MANAGER_SCOPE || "global_hive"),
   managerId: argValue("--manager-id", `board_worker_${randomUUID()}`),
-  provider: normalizeProvider(argValue("--provider", process.env.TASKNODE_BOARD_MANAGER_PROVIDER || "openrouter")),
+  provider: normalizeProvider(argValue("--provider", process.env.TASKNODE_BOARD_MANAGER_PROVIDER || "ambient")),
   model: "",
   reasoning: argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT || "high"),
   pollMs: numberArg("--poll-ms", Number(process.env.TASKNODE_BOARD_MANAGER_WORKER_POLL_MS || 15000), { min: 1000 }),

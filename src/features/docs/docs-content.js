@@ -5,12 +5,14 @@ import context from "../../../docs/wiki/surfaces/context.md?raw";
 import contextRewrite from "../../../docs/wiki/surfaces/context-rewrite.md?raw";
 import dailyAirdrop from "../../../docs/wiki/surfaces/daily-airdrop.md?raw";
 import directory from "../../../docs/wiki/surfaces/directory.md?raw";
+import docs from "../../../docs/wiki/surfaces/docs.md?raw";
 import hive from "../../../docs/wiki/surfaces/hive.md?raw";
 import memory from "../../../docs/wiki/surfaces/memory.md?raw";
 import profile from "../../../docs/wiki/surfaces/profile.md?raw";
 import refineContext from "../../../docs/wiki/surfaces/refine-context.md?raw";
 import search from "../../../docs/wiki/surfaces/search.md?raw";
 import tasks from "../../../docs/wiki/surfaces/tasks.md?raw";
+import team from "../../../docs/wiki/surfaces/team.md?raw";
 import userGuide from "../../../docs/wiki/surfaces/user-guide.md?raw";
 import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
 import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
@@ -74,9 +76,11 @@ import taskNodeProductionCutoverPackage from "../../../docs/wiki/plans/task-node
 import taskNodeProductionCutoverExecutionChecklist from "../../../docs/wiki/plans/task-node-production-cutover-execution-checklist-2026-06-10.md?raw";
 import pftasksTransactionShutdownCutoverPlan from "../../../docs/wiki/plans/pftasks-transaction-shutdown-cutover-plan-2026-06-09.md?raw";
 import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
+import ambientInferenceCutoverPlan from "../../../docs/wiki/plans/ambient-inference-cutover-plan-2026-08-12.md?raw";
+import teamMateCoordinationSpec from "../../../docs/wiki/plans/team-mate-coordination-spec-2026-08-12.md?raw";
+import teamMateCoordinationDeployRunbook from "../../../docs/wiki/plans/team-mate-coordination-deploy-runbook-2026-08-12.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import jobsStandardChatPrompt from "../../../prompts/chat/jobs_standard_chat_codex_style_draft.md?raw";
-import frontierInstantResponseGatePrompt from "../../../prompts/chat/frontier_instant_response_gate_v1.md?raw";
 import helpModePrompt from "../../../prompts/chat/help_mode_v1.md?raw";
 import contextEditJobsPrompt from "../../../prompts/context/context_edit_jobs_v1.xml?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
@@ -84,6 +88,7 @@ import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_conte
 import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
 import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
 import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v2.md?raw";
+import rewardedTaskMemoryPrompt from "../../../prompts/memory/rewarded_task_memory_v1.md?raw";
 import boardManagerPrompt from "../../../prompts/hive/board_manager_v1.md?raw";
 import boardManagerSecretaryPrompt from "../../../prompts/hive/board_manager_secretary_v1.md?raw";
 import glmBoardSecretaryPrompt from "../../../prompts/hive/glm_board_secretary_status_memo_v1.md?raw";
@@ -99,8 +104,13 @@ import evidenceScreenshotPrompt from "../../../prompts/task_engine/evidence_scre
 import rewardScoringPrompt from "../../../prompts/task_engine/reward_scoring_v1.md?raw";
 import taskgenNetworkPrompt from "../../../prompts/task_engine/taskgen_network_v1.md?raw";
 import taskgenPersonalPrompt from "../../../prompts/task_engine/taskgen_personal_v1.md?raw";
+import kravisPrompt from "../../../prompts/kravis.md?raw";
 import verificationRequestPrompt from "../../../prompts/task_engine/verification_request_v1.md?raw";
 import profileNftImagePrompt from "../../../prompts/profile/profile_nft_image_v1.md?raw";
+import profileNftPrivacyAbstractionPrompt from "../../../prompts/profile/profile_nft_privacy_abstraction_v1.md?raw";
+import profileNftPrivacyReviewPrompt from "../../../prompts/profile/profile_nft_privacy_review_v1.md?raw";
+import docsOdvPrompt from "../../../prompts/docs/odv_lindy_v1.md?raw";
+import docsTradingCoachPrompt from "../../../prompts/docs/trading_coach_v1.md?raw";
 
 const PROMPT_SOURCES = [
   {
@@ -123,13 +133,30 @@ const PROMPT_SOURCES = [
     family: "Profile",
     title: "Profile NFT Image",
     path: "prompts/profile/profile_nft_image_v1.md",
-    summary: "Live profile NFT image generation prompt. It uses a full color palette and does not default to red/black.",
-    status: "Active for profile NFT generation",
+    summary: "Retired pre-privacy-gateway source prompt, retained for historical fixtures only.",
+    status: "Deprecated; not used by live generation",
     usedBy: [
-      "server/profile-nft-prompts.js::renderProfileNftPrompt",
-      "server/profile-nft-generation.js::profileNftGenerateStart",
+      "server/profile-nft-prompts.js (legacy helper)",
     ],
     content: profileNftImagePrompt,
+  },
+  {
+    family: "Profile",
+    title: "Profile NFT Privacy Abstraction",
+    path: "prompts/profile/profile_nft_privacy_abstraction_v1.md",
+    summary: "Turns private Task Node activity into a high-level enum-backed art brief through Ambient GLM 5.2.",
+    status: "Active: first pass before NFT rendering",
+    usedBy: ["server/profile-nft-privacy-gateway.js::createPrivateProfileNftArtBrief"],
+    content: profileNftPrivacyAbstractionPrompt,
+  },
+  {
+    family: "Profile",
+    title: "Profile NFT Privacy Review",
+    path: "prompts/profile/profile_nft_privacy_review_v1.md",
+    summary: "Reviews and sanitizes the abstract art brief before the isolated OpenAI image renderer receives it.",
+    status: "Active: mandatory second pass before NFT rendering",
+    usedBy: ["server/profile-nft-privacy-gateway.js::createPrivateProfileNftArtBrief"],
+    content: profileNftPrivacyReviewPrompt,
   },
   {
     family: "Profile",
@@ -161,12 +188,11 @@ const PROMPT_SOURCES = [
     family: "Chat",
     title: "Task Node Instructions",
     path: "prompts/chat/task_node_instructions_v1.md",
-    summary: "Base chat system instructions for OpenAI Frontier modes and OpenRouter Private modes.",
+    summary: "Base chat system instructions shared by Instant and Thinking through Ambient.",
     status: "Active",
     usedBy: [
       "server/chat-memory-context.js::taskNodeInstructions",
-      "server/chat-router.js::openRouterMessages",
-      "server/chat-router.js::openAiResponseRequest",
+      "server/chat-router.js::openRouterMessages (legacy-named Ambient request builder)",
     ],
     content: taskNodeInstructionsPrompt,
   },
@@ -179,23 +205,9 @@ const PROMPT_SOURCES = [
     usedBy: [
       "server/chat-spirit-context.js::formatChatSpiritContext",
       "server/chat-memory-context.js::taskNodeInstructions",
-      "server/chat-router.js::openRouterMessages",
-      "server/chat-router.js::openAiResponseRequest",
+      "server/chat-router.js::openRouterMessages (legacy-named Ambient request builder)",
     ],
     content: jobsStandardChatPrompt,
-  },
-  {
-    family: "Chat",
-    title: "Frontier Instant Response Gate",
-    path: "prompts/chat/frontier_instant_response_gate_v1.md",
-    summary: "Structured-output gate for Frontier Instant that returns full_response, conformant_response, and user_prompted_inquiry so short turns display the conformant answer.",
-    status: "Active for Frontier Instant when TASKNODE_FRONTIER_INSTANT_RESPONSE_GATE is not false",
-    usedBy: [
-      "server/chat-router.js::frontierInstantResponseGateInstructionBlock",
-      "server/chat-router.js::frontierInstantResponseGateResponseFormat",
-      "server/chat-router.js::selectFrontierInstantResponseText",
-    ],
-    content: frontierInstantResponseGatePrompt,
   },
   {
     family: "Chat",
@@ -205,8 +217,8 @@ const PROMPT_SOURCES = [
     status: "Active for the Help chat mode",
     usedBy: [
       "server/chat-help-mode.js::helpModeInstructions",
-      "server/chat-router.js::executeDeepSeek",
-      "server/chat-router.js::streamDeepSeek",
+      "server/chat-router.js::executeAmbient",
+      "server/chat-router.js::executeChatStream",
     ],
     content: helpModePrompt,
   },
@@ -275,6 +287,18 @@ const PROMPT_SOURCES = [
   },
   {
     family: "Memory",
+    title: "Rewarded Task Memory",
+    path: "prompts/memory/rewarded_task_memory_v1.md",
+    summary: "Summarizes every canonical positive task reward into durable recent and deep memory.",
+    status: "Active async worker",
+    usedBy: [
+      "server/chat-memory-worker.js::fetchRewardedTaskMemorySummary",
+      "server/repositories/task-reward-memory.js::completeRewardedTaskMemoryJob",
+    ],
+    content: rewardedTaskMemoryPrompt,
+  },
+  {
+    family: "Memory",
     title: "Network Task Profile",
     path: "prompts/memory/network_task_profile_v2.md",
     summary: "Async diagnostic profile prompt over context, memory, profile, and Network Context Inputs.",
@@ -317,8 +341,8 @@ const PROMPT_SOURCES = [
     family: "Hive",
     title: "Board Manager Secretary Packet",
     path: "prompts/hive/board_manager_secretary_v1.md",
-    summary: "Direct DeepSeek V4 Pro prompt that compresses raw Hive board state into compact packets for GLM 5.2 Board Manager decisions.",
-    status: "Historical Board Manager packet path; not used by GLM Board Secretary memos",
+    summary: "Ambient GLM 5.2 prompt that compresses raw Hive board state into compact packets for Board Manager decisions.",
+    status: "Active Board Manager packet path; separate from per-board Project Status memos",
     usedBy: [
       "server/board-manager-secretary-packets.js::fetchBoardManagerSecretaryPacket",
       "server/board-manager-secretary-packets.js::ensureBoardManagerSecretaryPacket",
@@ -397,7 +421,7 @@ const PROMPT_SOURCES = [
     summary: "Generates one concise personal PFTL task from request, context, memory, chat, wallet, policy, and task queue blocks.",
     status: "Active app worker and Python reference for personal task requests",
     usedBy: [
-      "server/task-generation-worker.js::generateTaskWithOpenAi",
+      "server/task-generation-worker.js::generateTaskWithOpenAi (legacy-named Ambient dispatcher)",
       "server/task-generation-worker.js::taskgenPromptForInput",
       "reference_clients/python/tasknode_pftl/taskgen.py::generate_task",
       "reference_clients/python/tasknode_pftl/taskgen.py::taskgen_prompt_for_input",
@@ -413,11 +437,41 @@ const PROMPT_SOURCES = [
     usedBy: [
       "server/network-task-generation-worker.js::createTaskRequestForNetworkJob",
       "server/task-generation-worker.js::taskgenPromptForInput",
-      "server/task-generation-worker.js::generateTaskWithOpenAi",
+      "server/task-generation-worker.js::generateTaskWithOpenAi (legacy-named Ambient dispatcher)",
       "reference_clients/python/tasknode_pftl/taskgen.py::taskgen_prompt_for_input",
       "reference_clients/python/tasknode_pftl/taskgen.py::generate_task",
     ],
     content: taskgenNetworkPrompt,
+  },
+  {
+    family: "Docs",
+    title: "ODV Document Assistant",
+    path: "prompts/docs/odv_lindy_v1.md",
+    summary: "Persona prompt injected when an authorized document-chat message mentions @ODV.",
+    status: "Active when TASKNODE_DOCS_ODV_ENABLED=true",
+    usedBy: ["server/docs-odv.js::buildDocsAssistantRequest"],
+    content: docsOdvPrompt,
+  },
+  {
+    family: "Docs",
+    title: "Trading Coach Document Assistant",
+    path: "prompts/docs/trading_coach_v1.md",
+    summary: "Telegram Trading Coach persona injected when an authorized document-chat message mentions @coach.",
+    status: "Active when TASKNODE_DOCS_ODV_ENABLED=true",
+    usedBy: ["server/docs-odv.js::buildDocsAssistantRequest"],
+    content: docsTradingCoachPrompt,
+  },
+  {
+    family: "Chat",
+    title: "Kravis Personality",
+    path: "prompts/kravis.md",
+    summary: "Downside-first private-equity persona available from the primary chat personality picker.",
+    status: "Active primary chat personality",
+    usedBy: [
+      "server/chat-persona-prompts.js::formatSelectedChatPersona",
+      "shared/chat-personas.js::CHAT_PERSONAS",
+    ],
+    content: kravisPrompt,
   },
   {
     family: "Verification",
@@ -469,6 +523,12 @@ const PROMPT_PAGES = [
     title: "Profile Prompts",
     summary: "Daily airdrop scoring and profile generation prompts.",
     family: "Profile",
+  }),
+  promptFamilyPage({
+    slug: "prompts-docs",
+    title: "Docs Prompts",
+    summary: "Source prompts for explicit @ODV and @coach document-chat assistants.",
+    family: "Docs",
   }),
   promptFamilyPage({
     slug: "prompts-chat",
@@ -658,6 +718,7 @@ export const SYSTEM_STATUS_DOC_LINKS = {
   ethereum_deposit_rpc: { slug: "ethereum-deposit-rpc", label: "Docs: Ethereum Deposits" },
   jobs_pgvector_corpus: { slug: "jobs-pgvector-corpus", label: "Docs: Jobs PGVector Corpus" },
   chat_turn_memory: { slug: "memory", label: "Docs: Memory" },
+  rewarded_task_memory: { slug: "memory", label: "Docs: Memory" },
   deep_memory: { slug: "memory", label: "Docs: Memory" },
   network_task_profile: {
     slug: "profile",
@@ -704,6 +765,8 @@ export const DOC_GROUPS = [
     pages: [
       { slug: "chat", title: "Chat", summary: "The primary work surface.", markdown: chat },
       { slug: "tasks", title: "Tasks", summary: "Portable task lifecycle state.", markdown: tasks },
+      { slug: "docs", title: "Docs", summary: "Wallet-encrypted collaborative documents backed by embedded PFDocs.", markdown: docs },
+      { slug: "team", title: "Team", summary: "Directional teammate task-history grants and read-only task detail popouts.", markdown: team },
       { slug: "hive", title: "Hive", summary: "Network project routing, reward proof visibility, and operator coordination.", markdown: hive },
       { slug: "directory", title: "Directory", summary: "Public discoverable operator leaderboard.", markdown: directory },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, and custody.", markdown: wallet },
@@ -855,7 +918,7 @@ export const DOC_GROUPS = [
       {
         slug: "ai-providers",
         title: "AI Providers",
-        summary: "Mode routing across OpenAI and OpenRouter.",
+        summary: "Capability-based mode routing through Ambient, with the isolated NFT image exception.",
         markdown: aiProviders,
       },
       {
@@ -926,6 +989,24 @@ export const DOC_GROUPS = [
   {
     title: "Plans",
     pages: [
+      {
+        slug: "team-mate-coordination-spec",
+        title: "Docs and Team Coordination Spec",
+        summary: "Wallet-encrypted Docs, embedded PFDocs, title synchronization, and directional Team grants.",
+        markdown: teamMateCoordinationSpec,
+      },
+      {
+        slug: "team-mate-coordination-deploy-runbook",
+        title: "Docs and Team Deployment Runbook",
+        summary: "Production topology, feature flags, security gates, rollout order, and verification commands.",
+        markdown: teamMateCoordinationDeployRunbook,
+      },
+      {
+        slug: "ambient-inference-cutover-plan",
+        title: "Ambient Inference Cutover Plan",
+        summary: "Completed cutover record: Ambient-only inference, retired OpenRouter/direct DeepSeek routes, and the isolated NFT image exception.",
+        markdown: ambientInferenceCutoverPlan,
+      },
       {
         slug: "task-node-production-scope",
         title: "Task Node Production Scope",

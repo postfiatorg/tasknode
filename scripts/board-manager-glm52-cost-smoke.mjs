@@ -17,25 +17,15 @@ const {
   readBoardManagerDailyCost,
 } = await import("../server/system-status.js");
 
-assert.equal(boardManagerModel("openrouter"), "z-ai/glm-5.2");
+assert.equal(boardManagerModel("ambient"), "z-ai/glm-5.2");
 assert.equal(boardManagerModel("unsupported"), "z-ai/glm-5.2");
-process.env.TASKNODE_BOARD_MANAGER_PROVIDER = "openai";
-process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED = "true";
-assert.equal(boardManagerProvider(), "openrouter");
+process.env.TASKNODE_BOARD_MANAGER_PROVIDER = "legacy-provider-value";
+assert.equal(boardManagerProvider(), "ambient");
 assert.equal(boardManagerModel(), "z-ai/glm-5.2");
 delete process.env.TASKNODE_BOARD_MANAGER_PROVIDER;
-delete process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED;
-for (const unsupportedModel of ["gpt-5.5-pro", "openai/gpt-5.5-pro-2026-04-23", "OpenAI/GPT-5.5-Pro-2026-04-23"]) {
-  process.env.TASKNODE_BOARD_MANAGER_MODEL = unsupportedModel;
-  assert.throws(
-    () => boardManagerModel(),
-    (error) => error?.message === `board_manager_model_unsupported:${unsupportedModel}`
-  );
-  delete process.env.TASKNODE_BOARD_MANAGER_MODEL;
-}
-console.log("board-manager provider/model env regressions rejected unsupported OpenAI values before DB/provider work");
+console.log("board-manager provider is pinned to Ambient regardless of legacy environment values");
 process.env.TASKNODE_BOARD_MANAGER_MODEL = "override/model";
-assert.equal(boardManagerModel("openrouter"), "override/model");
+assert.equal(boardManagerModel("ambient"), "override/model");
 delete process.env.TASKNODE_BOARD_MANAGER_MODEL;
 
 assert.equal(boardManagerCostWindowDays(0), 1);
@@ -173,7 +163,7 @@ function workerConfig(env = {}) {
   return JSON.parse(output);
 }
 
-function assertLauncherRejectsModel(scriptName, model) {
+function assertLauncherRejectsRetiredProvider(scriptName) {
   assert.throws(
     () => execFileSync(process.execPath, [`scripts/${scriptName}`, "--provider", "openrouter"], {
       cwd: repoRoot,
@@ -182,23 +172,16 @@ function assertLauncherRejectsModel(scriptName, model) {
         TASKNODE_DATABASE_DISABLED: "true",
         TASKNODE_POSTGRES_DISABLED: "true",
         DATABASE_URL: "",
-        TASKNODE_BOARD_MANAGER_MODEL: model,
       },
       stdio: ["ignore", "pipe", "pipe"],
       encoding: "utf8",
     }),
-    (error) => /board_manager_model_unsupported/.test(`${error?.stdout || ""}${error?.stderr || ""}`)
+    (error) => /board_manager_provider_unsupported:openrouter/.test(`${error?.stdout || ""}${error?.stderr || ""}`)
   );
 }
 
-for (const unsupportedModel of ["gpt-5.5-pro", "openai/gpt-5.5-pro-2026-04-23"]) {
-  assert.throws(
-    () => workerConfig({ TASKNODE_BOARD_MANAGER_MODEL: unsupportedModel }),
-    (error) => /board_manager_model_unsupported/.test(`${error?.stdout || ""}${error?.stderr || ""}`)
-  );
-  for (const scriptName of ["board-manager-model-exec.mjs", "board-manager-loop.mjs", "board-manager-worker.mjs"]) {
-    assertLauncherRejectsModel(scriptName, unsupportedModel);
-  }
+for (const scriptName of ["board-manager-model-exec.mjs", "board-manager-loop.mjs", "board-manager-worker.mjs"]) {
+  assertLauncherRejectsRetiredProvider(scriptName);
 }
 
 const defaultConfig = workerConfig({ TASKNODE_BOARD_MANAGER_CADENCE_SECONDS: "" });

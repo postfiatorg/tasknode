@@ -11,11 +11,11 @@ Implemented in the app:
 - Tasks modal and chat `Request task` mode publish encrypted `pf.task.request.v1` PFTL pointers from the linked browser wallet through `POST /api/tasks/request`.
 - `server/task-request.js` builds the request bundle from the saved context document, last 3 deep memories, last 36 recent memories, recent chats, and current task queue projection.
 - `task_requests` is the durable request receipt and worker claim table.
-- `server/task-generation-worker.js` claims published requests, decrypts the bundle, selects `prompts/task_engine/taskgen_personal_v1.md` for personal requests or `prompts/task_engine/taskgen_network_v1.md` for Network/Alpha routing packets, calls OpenAI `chat-latest`, publishes encrypted `pf.task.offer.v1` pointers from the authority wallet, syncs PFTL, and runs the reducer.
+- `server/task-generation-worker.js` claims published requests, decrypts the bundle, selects `prompts/task_engine/taskgen_personal_v1.md` for personal requests or `prompts/task_engine/taskgen_network_v1.md` for Network/Alpha routing packets, calls Ambient GLM 5.2 with strict structured output, publishes encrypted `pf.task.offer.v1` pointers from the authority wallet, syncs PFTL, and runs the reducer.
 - The Tasks page renders real task cards from `task_projections`, not fabricated local cards.
 - The task detail page publishes user-signed accept, refuse, and cancel transitions through `POST /api/tasks/action`.
 - The Submit tab publishes user-signed initial evidence and verification evidence through `POST /api/tasks/submission`.
-- Evidence packets can contain one or two compact artifacts. Screenshot files are described by the OpenAI vision evidence reader before being included in the encrypted payload.
+- Evidence packets can contain one or two compact artifacts. Screenshot files are described by Ambient's approved verification-vision model before being included in the encrypted payload.
 - `server/task-review-worker.js` claims submitted tasks, generates a follow-up verification request with `verification_request_v1`, publishes a `pf.task.update.v1` pointer, then scores verification responses with `reward_scoring_v1`.
 - Reward scoring publishes exactly one terminal `pf.reward.v1`. Positive and partial rewards use the transaction amount as the economic PFT payout. Zero-reward outcomes use a one-drop carrier transaction while the encrypted payload records `reward_pft: "0.00"`.
 - The Python reference still exists for external agent playback and multi-wallet protocol stress tests, but the app path now uses the JavaScript server modules listed above.

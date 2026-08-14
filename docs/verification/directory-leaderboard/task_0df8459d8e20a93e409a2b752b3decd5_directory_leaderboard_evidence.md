@@ -83,7 +83,7 @@ Local verification data note: the dev database already had rewarded task rows, a
 
 Not verified: production deploy, Fly, push, PR, and commit were intentionally not performed. Final rank weighting and public-exposure policy remain open for Alex.
 
-## Open Decisions
+## Recorded Decisions
 
-- OPEN - Alex's call: final public-exposure policy. Current default lists only public+discoverable operators.
-- OPEN - Alex's call: final rank weighting. Current default is configurable in `directoryLeaderboardScore`.
+- Public-exposure policy: list only public+discoverable operators.
+- Rank weighting: configurable in `directoryLeaderboardScore`.

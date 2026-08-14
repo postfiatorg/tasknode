@@ -48,9 +48,9 @@ function legacyBoardManagerDisabled() {
   return process.env.TASKNODE_LEGACY_BOARD_MANAGER_ENABLED !== "true" && !hasArg("--force-legacy");
 }
 
-function normalizeProvider(value = "openrouter") {
+function normalizeProvider(value = "ambient") {
   const provider = String(value || "").toLowerCase();
-  if (provider !== "openrouter") throw new Error(`board_manager_provider_unsupported:${provider || "unknown"}`);
+  if (provider !== "ambient") throw new Error(`board_manager_provider_unsupported:${provider || "unknown"}`);
   return provider;
 }
 
@@ -61,7 +61,7 @@ function usage() {
     "Options:",
     "  --trigger <name>       Run trigger label. Default: manual_model_exec",
     "  --scope <scope>        Manager scope. Default: global_hive",
-    "  --provider <provider>  Decision provider: openrouter. Default: openrouter",
+    "  --provider <provider>  Decision provider: ambient. Default: ambient",
     "  --model <model>        Provider model. Default: z-ai/glm-5.2",
     "  --reasoning <effort>   Provider reasoning effort. Default: high",
     "  --packet-only          Build and print the source packet without calling the model provider.",
@@ -104,7 +104,7 @@ async function buildDecisionSourcePacket({ rawSourcePacket, scope, noSecretary =
       reused: secretary.reused,
     }),
     secretary,
-    sourceMode: "deepseek_secretary_packet",
+    sourceMode: "ambient_secretary_packet",
   };
 }
 
@@ -197,7 +197,7 @@ async function main() {
           model,
           reasoningEffort,
           dry_run: !execute,
-          engine: "openrouter_chat_completions",
+          engine: "ambient_chat_completions",
           source_mode: decisionSource.sourceMode,
           raw_source_packet_digest: rawSourcePacket.sourcePacketDigest,
           secretary_packet_id: decisionSource.secretary?.packet?.id || "",
@@ -218,9 +218,9 @@ async function main() {
         model,
         reasoningEffort,
         provider,
-        sessionMode: decisionSource.sourceMode === "deepseek_secretary_packet"
-          ? "secretary_openrouter"
-          : "stateless_openrouter_chat",
+        sessionMode: decisionSource.sourceMode === "ambient_secretary_packet"
+          ? "secretary_ambient"
+          : "stateless_ambient_chat",
       });
       run = started.run;
       startHiveBrainRunLive({
@@ -281,7 +281,7 @@ async function main() {
       ok: true,
       dryRun: !execute,
       runId: run?.id || "",
-      engine: "openrouter_chat_completions",
+      engine: "ambient_chat_completions",
       provider: result.provider,
       model: result.model,
       reasoningEffort,

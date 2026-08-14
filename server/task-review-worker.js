@@ -24,6 +24,7 @@ import {
   pendingAgentDecision,
   recordBoardRewardSpend,
 } from "./repositories/bm-decisions.js";
+import { AMBIENT_MODELS, ambientChatCompletion } from "./ambient-inference.js";
 
 const TASK_POINTER_SCHEMA = 1;
 const VERIFICATION_PROMPT_PATH = "task_engine/verification_request_v1.md";
@@ -33,6 +34,8 @@ const REWARD_PROMPT_VERSION = "reward_scoring_v1";
 const PFT_DROPS_PER_PFT = 1_000_000;
 const REWARD_CARRIER_DROPS = "1";
 const URL_EXCERPT_MAX_CHARS = 6000;
+const GIST_EXCERPT_MAX_CHARS = 30_000;
+const GIST_MAX_FILES = 50;
 const URL_FETCH_TIMEOUT_MS = 8000;
 const URL_REDIRECT_MAX_HOPS = 5;
 const TASK_REVIEW_USER_AGENT = "TaskNodeOfficialTaskReview/0.1";
@@ -689,22 +692,45 @@ async function gistApiExcerpt({ id, sourceUrl, fetchImpl, lookupFn }) {
   }
   try {
     const body = JSON.parse(bodyText);
-    const files = Object.values(safeObject(body.files));
-    const excerpt = files
-      .map((file) => {
-        const filename = safeText(file?.filename || "gist-file", 160);
-        const content = safeText(file?.content || "", URL_EXCERPT_MAX_CHARS);
-        return content ? `# ${filename}\n${content}` : "";
-      })
-      .filter(Boolean)
-      .join("\n\n");
+    const allFiles = Object.values(safeObject(body.files))
+      .filter((file) => typeof file?.content === "string")
+      .sort((left, right) => {
+        const priority = (file) => /^(?:readme)(?:\.|$)|\.(?:md|markdown|txt|rst|adoc)$/i.test(file?.filename || "") ? 0 : 1;
+        return priority(left) - priority(right) || String(left?.filename || "").localeCompare(String(right?.filename || ""));
+      });
+    const files = allFiles.slice(0, GIST_MAX_FILES);
+    const minimumPerFile = Math.max(250, Math.floor(GIST_EXCERPT_MAX_CHARS / Math.max(files.length, 1) / 2));
+    const allocations = files.map((file) => Math.min(String(file.content || "").length, minimumPerFile));
+    let remaining = Math.max(0, GIST_EXCERPT_MAX_CHARS - allocations.reduce((total, value) => total + value, 0) - files.length * 40);
+    for (let index = 0; index < files.length && remaining > 0; index += 1) {
+      const available = Math.max(0, String(files[index].content || "").length - allocations[index]);
+      const grant = Math.min(available, remaining);
+      allocations[index] += grant;
+      remaining -= grant;
+    }
+    const sections = files.map((file, index) => {
+      const filename = safeText(file?.filename || "gist-file", 160);
+      const content = String(file?.content || "");
+      const included = allocations[index];
+      return [
+        `FILE: ${filename} | original_chars=${content.length} | included_chars=${included}`,
+        content.slice(0, included),
+        included < content.length ? `[truncated omitted_chars=${content.length - included}]` : "",
+      ].filter(Boolean).join("\n");
+    });
+    const excerpt = [
+      `GIST MANIFEST: ${files.length} text file(s) included${allFiles.length > files.length ? `, ${allFiles.length - files.length} file(s) omitted by safety limit` : ""}`,
+      ...sections,
+    ].join("\n\n");
     return {
       status: "extracted",
       url: fetched.url,
       source_url: sourceUrl,
       http_status: fetched.response.status,
       title: safeText(body.description || `GitHub Gist ${id}`, 300),
-      excerpt: safeText(excerpt, URL_EXCERPT_MAX_CHARS),
+      excerpt: safeText(excerpt, GIST_EXCERPT_MAX_CHARS),
+      file_count: files.length,
+      omitted_file_count: Math.max(0, allFiles.length - files.length),
     };
   } catch (error) {
     return {
@@ -717,6 +743,13 @@ async function gistApiExcerpt({ id, sourceUrl, fetchImpl, lookupFn }) {
 }
 
 async function fetchGistExcerpt({ sourceUrl, gist, fetchImpl, lookupFn }) {
+  let apiResult;
+  try {
+    apiResult = await gistApiExcerpt({ id: gist.id, sourceUrl, fetchImpl, lookupFn });
+  } catch (error) {
+    apiResult = { status: "fetch_failed", source_url: sourceUrl, error: safeText(error?.message || error, 500) };
+  }
+  if (apiResult.status === "extracted" && apiResult.excerpt) return apiResult;
   const rawUrl = `https://gist.githubusercontent.com/${encodeURIComponent(gist.user)}/${encodeURIComponent(gist.id)}/raw`;
   const fetched = await fetchWithSafeRedirects(rawUrl, { fetchImpl, lookupFn });
   if (fetched.status === "fetched") {
@@ -727,12 +760,9 @@ async function fetchGistExcerpt({ sourceUrl, gist, fetchImpl, lookupFn }) {
         title: rawResult.title || `GitHub Gist ${gist.user}/${gist.id}`,
       };
     }
-    return gistApiExcerpt({ id: gist.id, sourceUrl, fetchImpl, lookupFn });
+    return apiResult;
   }
-  if (fetched.status === "http_error" || fetched.status === "fetch_failed") {
-    return gistApiExcerpt({ id: gist.id, sourceUrl, fetchImpl, lookupFn });
-  }
-  return fetched;
+  return apiResult?.status ? apiResult : fetched;
 }
 
 export async function fetchUrlExcerpt(url = "", { fetchImpl = fetch, lookupFn = lookup } = {}) {
@@ -1153,23 +1183,15 @@ async function resolveDiscordAnnouncementEvidenceStatus(input = {}, {
 }
 
 async function callOpenAiJson({ promptPath, promptVersion, responseFormat, input, modelEnv = "TASKNODE_TASK_REVIEW_MODEL" }) {
-  const apiKey = safeText(process.env.OPENAI_API_KEY);
-  if (!apiKey) throw new Error("openai_api_key_missing");
   const systemPrompt = loadPrompt(promptPath);
-  const model = safeText(process.env[modelEnv] || process.env.TASKNODE_TASKGEN_MODEL || "chat-latest", 120);
+  const model = safeText(process.env[modelEnv] || AMBIENT_MODELS.structured, 120);
   const startedAt = Date.now();
   const timeoutMs = Math.max(5000, Number(process.env.TASKNODE_TASK_REVIEW_PROVIDER_TIMEOUT_MS || 45000));
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`${(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
+    const result = await ambientChatCompletion({
+      capability: "strict_json",
+      timeoutMs,
+      body: {
         model,
         messages: [
           { role: "system", content: systemPrompt },
@@ -1179,16 +1201,15 @@ async function callOpenAiJson({ promptPath, promptVersion, responseFormat, input
           },
         ],
         response_format: responseFormat,
-      }),
+        reasoning: { effort: "high" },
+      },
     });
-    const bodyText = await response.text();
-    if (!response.ok) throw new Error(`task_review_openai_http_${response.status}:${bodyText.slice(0, 500)}`);
-    const body = JSON.parse(bodyText);
+    const body = result.body;
     const output = parseJsonObject(body?.choices?.[0]?.message?.content || "");
     return {
       output,
       metadata: {
-        provider: "frontier",
+        provider: "ambient",
         model,
         prompt_version: promptVersion,
         prompt_digest: promptDigest(systemPrompt),
@@ -1196,14 +1217,12 @@ async function callOpenAiJson({ promptPath, promptVersion, responseFormat, input
         output_digest: sha256(output),
         latency_ms: Date.now() - startedAt,
         parse_status: "ok",
-        openai_response_id: body.id || "",
+        provider_response_id: body.id || "",
       },
     };
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("task_review_openai_timeout");
+    if (error?.code === "ambient_timeout") throw new Error("task_review_ambient_timeout");
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

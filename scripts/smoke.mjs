@@ -7,7 +7,7 @@ import {
 } from "../src/wallet-core.js";
 
 const baseUrl = process.env.SMOKE_BASE_URL || "http://127.0.0.1:8080";
-let readyChatMode = process.env.SMOKE_CHAT_MODE || "Private Instant";
+let readyChatMode = process.env.SMOKE_CHAT_MODE || "Instant";
 const smokeConversationId = process.env.SMOKE_CONVERSATION_ID || `smoke-${Date.now()}`;
 const smokeTaskRequestId = `req_smoke_task_${Date.now().toString(36)}`;
 const smokeTaskBundleId = `bundle_smoke_task_${Date.now().toString(36)}`;
@@ -372,7 +372,7 @@ if (devAuth.response.status === 200) {
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({
         message: "Dry run account scoped chat",
-        mode: "Private Instant",
+        mode: "Instant",
         dryRun: true,
       }),
     },
@@ -389,7 +389,7 @@ if (devAuth.response.status === 200) {
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({
         message: "Dry run account scoped streaming chat",
-        mode: "Private Instant",
+        mode: "Instant",
         dryRun: true,
       }),
     },
@@ -528,7 +528,7 @@ await checkRequest(
   {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message: "Estimate this execution", mode: "Private Instant" }),
+    body: JSON.stringify({ message: "Estimate this execution", mode: "Instant" }),
   },
   (response, text) => {
     if (!response.ok) return false;
@@ -544,8 +544,7 @@ await check("/api/chat/modes", (response, text) => {
   if (readyMode && !process.env.SMOKE_CHAT_MODE) readyChatMode = readyMode.label;
   return (
     Array.isArray(body.modes) &&
-    body.modes.some((mode) => mode.label === "Private Instant") &&
-    body.modes.some((mode) => mode.label === "Frontier Instant")
+    body.modes.map((mode) => mode.label).join(",") === "Instant,Thinking,Help"
   );
 });
 

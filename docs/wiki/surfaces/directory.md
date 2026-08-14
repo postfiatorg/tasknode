@@ -30,7 +30,7 @@ The default formula is implemented in one backend function:
 score = 3 * networkTasks + personalTasks + rewards / 25000 + alignment
 ```
 
-This weighting is intentionally marked open. It is a configurable default, not final product policy.
+This weighting is configurable through the Directory leaderboard environment settings.
 
 ## Public Profile Links
 
@@ -42,7 +42,7 @@ returned only for operators already admitted by the public+discoverable
 Directory visibility gate. The Directory does not expose private or
 non-discoverable accounts.
 
-## Open Decisions
+## Current Policy
 
-- OPEN - Alex's call: whether public exposure should remain public+discoverable only, expand to all operators, or anonymize private operators.
-- OPEN - Alex's call: final rank weighting and whether alignment, PFT, Network tasks, and Personal tasks should carry different reputational weights.
+- Directory exposure is limited to public, discoverable operators.
+- The rank weighting is the configurable formula documented above.

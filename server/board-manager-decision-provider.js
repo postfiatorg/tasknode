@@ -6,34 +6,31 @@ import {
   boardManagerPromptVersion,
   normalizeBoardManagerDecision,
 } from "./repositories/board-manager.js";
+import {
+  AMBIENT_MODELS,
+  ambientChatCompletion,
+  ambientChatCompletionStream,
+  ambientConfigured,
+} from "./ambient-inference.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const boardManagerPrompt = loadPrompt("hive/board_manager_v1.md");
 const schemaPath = path.join(repoRoot, "schemas", "board-manager-action.schema.json");
 const boardManagerActionSchema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const unsupportedSchemaKeys = new Set(["$schema", "title", "minLength", "maxLength", "minimum", "maximum"]);
-const unsupportedBoardManagerModelPattern = /(?:^|\/)gpt-5\.5-pro(?![a-z0-9])/i;
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
 }
 
-function openRouterKey() {
-  return safeText(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER, 10000);
-}
-
 export function boardManagerProvider() {
-  return "openrouter";
+  return "ambient";
 }
 
 export function normalizeBoardManagerModel(model = "") {
   const safeModel = safeText(model, 120);
-  if (unsupportedBoardManagerModelPattern.test(safeModel)) {
-    throw new Error(`board_manager_model_unsupported:${safeModel}`);
-  }
-  return safeModel || "z-ai/glm-5.2";
+  return safeModel || AMBIENT_MODELS.reasoningText;
 }
 
 export function boardManagerModel(_provider = boardManagerProvider()) {
@@ -168,7 +165,7 @@ function boardManagerMalformedJsonFallbackDecision({ sourcePacket = {}, parseErr
     decision_basis: {
       source_facts: [
         `source_packet_digest:${safeText(sourcePacket.sourcePacketDigest, 120) || "unknown"}`,
-        "OpenRouter returned malformed Board Manager JSON after one schema-guided repair attempt.",
+        "Ambient returned malformed Board Manager JSON after one schema-guided repair attempt.",
       ],
       tradeoffs: [
         "Skipping this turn preserves board state instead of executing an unvalidated or partially parsed model decision.",
@@ -266,71 +263,63 @@ async function readOpenRouterBoardManagerStream(response, { model = "", onOutput
 
 async function fetchOpenRouterBoardManagerDecision({
   sourcePacket = {},
-  model = boardManagerModel("openrouter"),
+  model = boardManagerModel("ambient"),
   reasoningEffort = boardManagerReasoningEffort(),
   fetchImpl = fetch,
   onOutputDelta = null,
 } = {}) {
-  const apiKey = openRouterKey();
-  if (!apiKey) {
-    const error = new Error("board_manager_openrouter_not_configured");
+  if (!ambientConfigured()) {
+    const error = new Error("board_manager_ambient_not_configured");
     error.status = 409;
     throw error;
   }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs());
   const startedAt = Date.now();
   try {
     const requestDecision = async (messages) => {
       const streamOutput =
         typeof onOutputDelta === "function" &&
         process.env.TASKNODE_BOARD_MANAGER_LIVE_STREAM_DISABLED !== "true";
-      const response = await fetchImpl(`${(process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          "content-type": "application/json",
-          "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-          "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-          "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-        },
-        body: JSON.stringify({
+      const requestBody = {
           model,
           messages,
           reasoning: { effort: reasoningEffort },
           response_format: openRouterResponseFormat(),
-          provider: {
-            data_collection: "deny",
-            require_parameters: true,
-          },
           temperature: 0,
           max_tokens: Math.max(4000, Number(process.env.TASKNODE_BOARD_MANAGER_MAX_OUTPUT_TOKENS || 12000)),
-          stream: streamOutput || undefined,
-          stream_options: streamOutput ? { include_usage: true } : undefined,
-          usage: { include: true },
           metadata: {
             app: "tasknodeofficial",
             worker: "board_manager",
             prompt_version: boardManagerPromptVersion,
             source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),
           },
-        }),
+      };
+      if (streamOutput) {
+        const streamed = await ambientChatCompletionStream({
+          body: requestBody,
+          capability: "strict_json",
+          fetchImpl,
+          timeoutMs: providerTimeoutMs(),
+          onDelta: onOutputDelta,
+        });
+        return {
+          body: {
+            id: streamed.id,
+            model: streamed.model,
+            choices: [{ message: { content: streamed.text } }],
+            usage: streamed.usage,
+          },
+          text: streamed.text,
+        };
+      }
+      const completed = await ambientChatCompletion({
+        body: requestBody,
+        capability: "strict_json",
+        fetchImpl,
+        timeoutMs: providerTimeoutMs(),
       });
-      const contentType = response.headers?.get?.("content-type") || "";
-      if (response.ok && streamOutput && response.body && contentType.includes("text/event-stream")) {
-        return readOpenRouterBoardManagerStream(response, { model, onOutputDelta });
-      }
-      const bodyText = await response.text();
-      const body = bodyText ? JSON.parse(bodyText) : {};
-      if (!response.ok) {
-        const error = new Error(body?.error?.message || body?.message || `OpenRouter Board Manager HTTP ${response.status}`);
-        error.status = response.status;
-        throw error;
-      }
       return {
-        body,
-        text: body?.choices?.[0]?.message?.content || "",
+        body: completed.body,
+        text: completed.text,
       };
     };
 
@@ -377,7 +366,7 @@ async function fetchOpenRouterBoardManagerDecision({
     return {
       decision: normalizeBoardManagerDecision(parsed),
       outputText: response.text,
-      provider: "openrouter",
+      provider: "ambient",
       model: response.body?.model || model,
       responseId: safeText(response.body?.id, 200),
       promptDigest: promptDigest(boardManagerPrompt),
@@ -388,10 +377,8 @@ async function fetchOpenRouterBoardManagerDecision({
       },
     };
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("board_manager_openrouter_timeout");
+    if (error?.code === "ambient_timeout") throw new Error("board_manager_ambient_timeout");
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -403,7 +390,7 @@ export async function fetchBoardManagerDecision({
   fetchImpl = fetch,
   onOutputDelta = null,
 } = {}) {
-  if (provider !== "openrouter") {
+  if (provider !== "ambient") {
     throw new Error(`board_manager_provider_unsupported:${safeText(provider, 40) || "unknown"}`);
   }
   const normalizedModel = normalizeBoardManagerModel(model);

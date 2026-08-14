@@ -25,6 +25,11 @@ import {
   recordTaskgenReplayPublished,
 } from "./repositories/taskgen-replay-cache.js";
 import { fetchAndDecryptTasknodePayload } from "./task-payloads.js";
+import {
+  AMBIENT_MODELS,
+  ambientChatCompletion,
+  resolveAmbientModel,
+} from "./ambient-inference.js";
 
 const TASKGEN_PERSONAL_PROMPT = {
   path: "task_engine/taskgen_personal_v1.md",
@@ -238,23 +243,28 @@ export function taskgenPromptForInput(taskInput = {}) {
 
 export function taskgenProviderForInput(taskInput = {}, env = process.env) {
   if (env.TASKNODE_TASKGEN_PROVIDER_MOCK === "true") return "mock";
-  if (taskInputIsNetwork(taskInput) && networkTaskGenerationV2Enabled(env)) {
-    return safeText(env.TASKNODE_NETWORK_TASKGEN_PROVIDER || env.TASKNODE_HIVE_TASK_GENERATION_PROVIDER || "openai", 80).toLowerCase();
-  }
-  return safeText(env.TASKNODE_TASKGEN_PROVIDER || "openai", 80).toLowerCase();
+  return "ambient";
 }
 
 export function taskgenModelForInput(taskInput = {}, env = process.env) {
+  if (env.TASKNODE_TASKGEN_PROVIDER_MOCK === "true") return "mock-taskgen";
+  let requestedModel = "";
   if (taskInputIsNetwork(taskInput) && networkTaskGenerationV2Enabled(env)) {
-    return safeText(
+    requestedModel = safeText(
       env.TASKNODE_NETWORK_TASKGEN_MODEL ||
         env.TASKNODE_HIVE_TASK_GENERATION_MODEL ||
         env.TASKNODE_TASKGEN_MODEL ||
-        "gpt-5.6-sol",
+        AMBIENT_MODELS.structured,
       160
     );
+  } else {
+    requestedModel = safeText(env.TASKNODE_TASKGEN_MODEL || AMBIENT_MODELS.structured, 160);
   }
-  return safeText(env.TASKNODE_TASKGEN_MODEL || "gpt-5.6-sol", 160);
+  return resolveAmbientModel({
+    model: requestedModel,
+    capability: "strict_json",
+    env,
+  });
 }
 
 export function taskgenReasoningEffort(taskInput = {}, env = process.env) {
@@ -636,8 +646,8 @@ function offerFromReplay(replay = {}) {
   };
 }
 
-function taskgenApiConfig(taskInput = {}) {
-  const provider = taskgenProviderForInput(taskInput);
+export function taskgenApiConfig(taskInput = {}, env = process.env) {
+  const provider = taskgenProviderForInput(taskInput, env);
   if (provider === "mock") {
     return {
       provider,
@@ -647,29 +657,10 @@ function taskgenApiConfig(taskInput = {}) {
       headers: {},
     };
   }
-  if (provider === "openrouter") {
-    const apiKey = safeText(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER, 10000);
-    if (!apiKey) throw new Error("taskgen_openrouter_api_key_missing");
-    return {
-      provider,
-      model: taskgenModelForInput(taskInput),
-      baseUrl: (process.env.OPENROUTER_BASE_URL || "https://api.openrouter.ai/api/v1").replace(/\/+$/, ""),
-      apiKey,
-      headers: {
-        "HTTP-Referer": process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "https://tasknode.postfiat.org",
-        "X-Title": "Task Node task generation",
-      },
-    };
-  }
-  const apiKey = safeText(process.env.OPENAI_API_KEY);
-  if (!apiKey) throw new Error("openai_api_key_missing");
   return {
-    provider: "frontier",
-    model: taskgenModelForInput(taskInput),
-    reasoningEffort: taskgenReasoningEffort(taskInput),
-    baseUrl: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, ""),
-    apiKey,
-    headers: {},
+    provider,
+    model: taskgenModelForInput(taskInput, env),
+    reasoningEffort: taskgenReasoningEffort(taskInput, env),
   };
 }
 
@@ -808,32 +799,29 @@ export async function generateTaskWithProvider(taskInput, {
     const repairInstruction = attempt === 1
       ? ""
       : "\n\nThe previous draft used opaque internal compliance language. Rewrite the task card in plain product language with a concrete object, action, artifact, and evidence. Do not use conformance, compliance, gates, verdict, priority stack, P0 standards, gap note, or exact-edits language.";
-    const response = await fetchWithProviderTimeout(`${apiConfig.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiConfig.apiKey}`,
-        "content-type": "application/json",
-        ...apiConfig.headers,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: `${baseInstruction}${repairInstruction}`,
-          },
-        ],
-        response_format: taskgenResponseFormat,
-        reasoning_effort: apiConfig.reasoningEffort,
-      }),
-    }, {
-      fetchImpl,
-      timeoutMs: providerTimeoutMs,
-    });
-    const bodyText = await response.text();
-    if (!response.ok) throw new Error(`taskgen_openai_http_${response.status}:${bodyText.slice(0, 500)}`);
-    const body = JSON.parse(bodyText);
+    let completion;
+    try {
+      completion = await ambientChatCompletion({
+        fetchImpl,
+        capability: "strict_json",
+        timeoutMs: providerTimeoutMs,
+        body: {
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `${baseInstruction}${repairInstruction}` },
+          ],
+          response_format: taskgenResponseFormat,
+          reasoning: { effort: apiConfig.reasoningEffort },
+        },
+      });
+    } catch (error) {
+      if (error?.code === "ambient_timeout") {
+        throw Object.assign(new Error("taskgen_provider_timeout"), { code: "TASKGEN_PROVIDER_TIMEOUT", timeoutMs: providerTimeoutMs });
+      }
+      throw error;
+    }
+    const body = completion.body;
     try {
       const output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
       return {
@@ -848,7 +836,6 @@ export async function generateTaskWithProvider(taskInput, {
           output_digest: sha256(output),
           latency_ms: Date.now() - startedAt,
           parse_status: "ok",
-          openai_response_id: body.id || "",
           provider_response_id: body.id || "",
           validation_attempts: attempt,
           network_taskgen_v2_gate: gate || null,

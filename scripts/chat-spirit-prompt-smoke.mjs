@@ -4,12 +4,7 @@ process.env.TASKNODE_CHAT_SPIRIT_ENABLED = "true";
 delete process.env.TASKNODE_CHAT_SPIRIT_PROMPT;
 
 const {
-  deepSeekChatRequest,
-  frontierInstantResponseGateInstructionBlock,
-  frontierInstantResponseGateResponseFormat,
-  openAiResponseRequest,
-  openRouterChatRequest,
-  selectFrontierInstantResponseText,
+  ambientChatRequest,
 } = await import("../server/chat-router.js");
 const { chatEstimate } = await import("../server/chat-estimate.js");
 const { chatSpiritMetadata } = await import("../server/chat-spirit-context.js");
@@ -199,85 +194,10 @@ assert.equal(metadata.path, "chat/jobs_standard_chat_codex_style_draft.md", "Job
 assert.match(metadata.digest, /^[a-f0-9]{64}$/);
 
 for (const [mode, model] of [
-  ["Frontier Instant", "chat-latest"],
-  ["Frontier Thinking", "gpt-5.6-sol"],
+  ["Instant", "deepseek/deepseek-v4-flash-0731"],
+  ["Thinking", "z-ai/glm-5.2"],
 ]) {
-  const request = openAiResponseRequest({
-    mode,
-    model,
-    message: userSentinel,
-    conversationId: `jobs-smoke-${mode}`,
-    contextDocument,
-    memoryContext,
-    taskContext,
-    jobsEssence,
-  });
-  assertJobsInstructions(request.instructions, mode);
-  assert.equal(request.input.at(-1)?.content?.[0]?.text?.includes(userSentinel), true);
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(request, "max_output_tokens"),
-    false,
-    `${mode} should not send a hard OpenAI output cap`
-  );
-}
-
-const gatedFrontierRequest = openAiResponseRequest({
-  mode: "Frontier Instant",
-  model: "chat-latest",
-  message: "what do you think?",
-  conversationId: "jobs-smoke-frontier-gate",
-  contextDocument,
-  memoryContext,
-  taskContext,
-  jobsEssence,
-  responseInstructionBlock: frontierInstantResponseGateInstructionBlock(),
-  responseFormat: frontierInstantResponseGateResponseFormat(),
-});
-assert.equal(count(gatedFrontierRequest.instructions, "## Frontier Instant Response Gate"), 1);
-assert.match(gatedFrontierRequest.instructions, /fully thought-out, elaborate, complex/);
-assert.match(gatedFrontierRequest.instructions, /thinking something through in full/);
-assert.match(gatedFrontierRequest.instructions, /preserve the decision-critical details/);
-assert.match(gatedFrontierRequest.instructions, /stay under 10 sentences/);
-assert.equal(gatedFrontierRequest.text.format.type, "json_schema");
-assert.equal(gatedFrontierRequest.text.format.name, "frontier_instant_response_gate");
-assert.equal(gatedFrontierRequest.text.format.strict, true);
-assert.deepEqual(gatedFrontierRequest.text.format.schema.required, [
-  "user_prompted_inquiry",
-  "full_response",
-  "conformant_response",
-]);
-
-const gatedConformant = selectFrontierInstantResponseText(JSON.stringify({
-  user_prompted_inquiry: false,
-  full_response: "This is the long version that should not be shown.",
-  conformant_response: "No. This should stay short.",
-}));
-assert.equal(gatedConformant.text, "No. This should stay short.");
-assert.equal(gatedConformant.responseGate.selectedField, "conformant_response");
-assert.deepEqual(gatedConformant.responseGate.auditJson, {
-  user_prompted_inquiry: false,
-  full_response: "This is the long version that should not be shown.",
-  conformant_response: "No. This should stay short.",
-});
-
-const gatedFull = selectFrontierInstantResponseText(JSON.stringify({
-  user_prompted_inquiry: true,
-  full_response: "This is the detailed analysis requested by the user.",
-  conformant_response: "Short version.",
-}));
-assert.equal(gatedFull.text, "This is the detailed analysis requested by the user.");
-assert.equal(gatedFull.responseGate.selectedField, "full_response");
-assert.deepEqual(gatedFull.responseGate.auditJson, {
-  user_prompted_inquiry: true,
-  full_response: "This is the detailed analysis requested by the user.",
-  conformant_response: "Short version.",
-});
-
-for (const [mode, model] of [
-  ["Private Instant", "deepseek/deepseek-v4-flash"],
-  ["Private Thinking", "z-ai/glm-5.2"],
-]) {
-  const request = openRouterChatRequest({
+  const request = ambientChatRequest({
     mode,
     model,
     message: userSentinel,
@@ -290,23 +210,9 @@ for (const [mode, model] of [
   const instructions = request.messages?.[0]?.content || "";
   assertJobsInstructions(instructions, mode);
   assert.equal(request.messages?.at(-1)?.content, userSentinel);
-  assert.equal(request.tools, undefined, `${mode} should not enable private-mode web search`);
+  assert.equal(request.enabled_tools, undefined, `${mode} should not enable web search`);
+  assert.equal(request.max_tokens, mode === "Instant" ? 16384 : 4096);
 }
-
-const deepSeekRequest = deepSeekChatRequest({
-  mode: "Discount Thinking",
-  model: "deepseek-v4-pro",
-  message: userSentinel,
-  conversationId: "jobs-smoke-Discount Thinking",
-  contextDocument,
-  memoryContext,
-  taskContext,
-  jobsEssence,
-});
-const deepSeekInstructions = deepSeekRequest.messages?.[0]?.content || "";
-assertJobsInstructions(deepSeekInstructions, "Discount Thinking");
-assert.equal(deepSeekRequest.messages?.at(-1)?.content, userSentinel);
-assert.equal(deepSeekRequest.reasoning_effort, "high");
 
 const helpInstructions = helpModeInstructions({
   contextDocument,
@@ -340,9 +246,9 @@ assert.equal(
   "Help instructions should not duplicate the current user message"
 );
 
-const helpRequest = deepSeekChatRequest({
+const helpRequest = ambientChatRequest({
   mode: "Help",
-  model: "deepseek-v4-pro",
+  model: "deepseek/deepseek-v4-flash-0731",
   message: userSentinel,
   conversationId: "jobs-smoke-Help",
   contextDocument,
@@ -354,13 +260,12 @@ const helpRequest = deepSeekChatRequest({
 const requestHelpInstructions = helpRequest.messages?.[0]?.content || "";
 assert.equal(requestHelpInstructions, helpInstructions);
 assert.equal(helpRequest.messages?.at(-1)?.content, userSentinel);
-assert.equal(helpRequest.thinking?.type, "disabled");
-assert.equal(helpRequest.reasoning_effort, undefined);
-assert.equal(Object.prototype.hasOwnProperty.call(helpRequest, "max_tokens"), false);
+assert.equal(helpRequest.reasoning, undefined);
+assert.equal(helpRequest.max_tokens, 1200);
 
 const estimate = chatEstimate(
   {
-    mode: "Frontier Instant",
+    mode: "Instant",
     message: "Estimate the prompt.",
   },
   { contextDocument, memoryContext, taskContext }
@@ -384,18 +289,19 @@ assert.ok(
 );
 
 process.env.TASKNODE_CHAT_SPIRIT_ENABLED = "false";
-const disabledRequest = openAiResponseRequest({
-  mode: "Frontier Instant",
-  model: "chat-latest",
+const disabledRequest = ambientChatRequest({
+  mode: "Instant",
+  model: "deepseek/deepseek-v4-flash-0731",
   message: userSentinel,
   conversationId: "jobs-smoke-disabled",
   contextDocument,
   memoryContext,
   taskContext,
 });
-assert.equal(disabledRequest.instructions.includes("## Experience Promise"), false);
-assert.ok(disabledRequest.instructions.includes("<account_context_document>"));
-assert.ok(disabledRequest.instructions.includes("<account_tasks_context>"));
-assert.ok(disabledRequest.instructions.includes("<deep_memory>"));
+const disabledInstructions = disabledRequest.messages?.[0]?.content || "";
+assert.equal(disabledInstructions.includes("## Experience Promise"), false);
+assert.ok(disabledInstructions.includes("<account_context_document>"));
+assert.ok(disabledInstructions.includes("<account_tasks_context>"));
+assert.ok(disabledInstructions.includes("<deep_memory>"));
 
 console.log("chat spirit prompt smoke ok");

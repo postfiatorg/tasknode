@@ -4,6 +4,7 @@ import {
 } from "./chat-attachment-utils.js";
 import { actualChatCost } from "./chat-router.js";
 import { loadPrompt, promptDigest, renderPromptTemplate } from "./prompt-registry.js";
+import { AMBIENT_MODELS, ambientConfigured, ambientFetchCompatibility } from "./ambient-inference.js";
 import { getChatMessagesForWrite } from "./repositories/chat-billing.js";
 import { buildBoardManagerSourcePacket } from "./repositories/board-manager.js";
 import { buildHiveSecretarySourcePacket } from "./repositories/hive-context.js";
@@ -24,8 +25,7 @@ import {
   formatHiveAccountLiveStateForPrompt,
 } from "./repositories/hive-account-live-state.js";
 
-const defaultDeepSeekBaseUrl = "https://api.deepseek.com";
-const defaultHiveImmediateModel = "deepseek-v4-pro";
+const defaultHiveImmediateModel = AMBIENT_MODELS.fastText;
 const defaultTimeoutMs = 45_000;
 const defaultHiveImmediateMaxTokens = 1600;
 const maxHiveImmediateMaxTokens = 4096;
@@ -267,17 +267,13 @@ function networkTaskRoutingPolicyForPrompt() {
   return hiveNetworkTaskRoutingPolicyPrompt;
 }
 
-function deepSeekKey() {
-  return process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK || "";
-}
-
 export function hiveImmediateResponseStatus() {
-  const configured = Boolean(deepSeekKey());
+  const configured = ambientConfigured();
   const explicitlyDisabled =
     process.env.TASKNODE_HIVE_IMMEDIATE_RESPONSE_ENABLED === "false" ||
     process.env.TASKNODE_ENABLE_HIVE_IMMEDIATE_RESPONSE === "false";
   return {
-    provider: "deepseek",
+    provider: "ambient",
     model: hiveImmediateModel(),
     configured,
     enabled: configured && !explicitlyDisabled,
@@ -287,10 +283,7 @@ export function hiveImmediateResponseStatus() {
 
 function hiveImmediateModel() {
   return safeText(
-    process.env.TASKNODE_HIVE_IMMEDIATE_MODEL ||
-      process.env.DEEPSEEK_HIVE_MODEL ||
-      process.env.DEEPSEEK_CHAT_MODEL ||
-      defaultHiveImmediateModel,
+    process.env.TASKNODE_HIVE_IMMEDIATE_MODEL || defaultHiveImmediateModel,
     120
   );
 }
@@ -326,7 +319,7 @@ function usageFromDeepSeek(body = {}) {
   const totalTokens = Math.max(0, Number(usage.total_tokens || inputTokens + outputTokens));
   const promptCacheHitTokens = Math.max(0, Number(usage.prompt_cache_hit_tokens || 0));
   const promptCacheMissTokens = Math.max(0, Number(usage.prompt_cache_miss_tokens || 0));
-  const providerCostUsd = actualChatCost("Discount Thinking", {
+  const providerCostUsd = actualChatCost("Thinking", {
     inputTokens,
     outputTokens,
     totalTokens,
@@ -860,15 +853,14 @@ export async function executeHiveImmediateResponse({
   );
 
   try {
-    const response = await fetchImpl(`${(process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
+    const response = await ambientFetchCompatibility(fetchImpl, "", {
       method: "POST",
       headers: {
-        authorization: `Bearer ${deepSeekKey()}`,
         "content-type": "application/json",
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal,
-    });
+    }, { capability: "fast_text", timeoutMs: Math.max(1000, Number(process.env.TASKNODE_HIVE_IMMEDIATE_TIMEOUT_MS || defaultTimeoutMs)) });
     const body = await readJsonResponse(response);
     if (!response.ok) {
       const error = new Error(body?.error?.message || body?.message || `Hive DeepSeek HTTP ${response.status}`);
@@ -882,7 +874,7 @@ export async function executeHiveImmediateResponse({
       throw error;
     }
     return {
-      provider: "deepseek",
+      provider: "ambient",
       model: safeText(body?.model || status.model, 120),
       responseId: safeText(body?.id || "", 160),
       text,

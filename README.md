@@ -61,9 +61,10 @@ minimal deployable dev app:
   usage-based chat contract. Estimates are cost-free. Send supports a cost-free
   dry run for smoke tests, while stream renders assistant deltas over SSE and
   persists the completed response plus usage after provider completion.
-  Frontier Instant uses the direct OpenAI API with `chat-latest` by default.
-  Private routes use OpenRouter when `OPENROUTER_API_KEY` is configured, and
-  can be disabled with `OPENROUTER_CHAT_ENABLED=false` if needed.
+  Legacy mode names remain compatible, but all text, reasoning, structured,
+  search, and image-understanding requests route through Ambient. OpenAI is
+  restricted to blind Profile NFT image rendering after a two-pass Ambient GLM
+  5.2 privacy abstraction and deterministic leakage checks.
 - `/api/chat/modes`, `/api/chat/conversations`, and `/api/chat/history` expose
   model-route readiness, server-owned recents, and per-thread history. Chat
   turns and usage debits use the Postgres chat/billing repository when

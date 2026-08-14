@@ -1,114 +1,62 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import {
-  loadProfileNftPrompt,
-  profileNftImagePromptPath,
-  privateProfileNftPromptPath,
-  renderProfileNftPrompt,
-} from "../server/profile-nft-prompts.js";
-import {
-  buildProfileNftUserData,
-  profileNftGenerationContextDocument,
-} from "../server/profile-nft-generation.js";
+import { createPrivateProfileNftArtBrief, validateProfileNftArtBrief } from "../server/profile-nft-privacy-gateway.js";
+import { renderProfileNftImage } from "../server/profile-nft-image-provider.js";
 
-const loaded = loadProfileNftPrompt();
-assert.equal(loaded.metadata.model, "gpt-image-2");
-assert.ok(["tracked", "configured", "legacy_private", "placeholder", "env_secret"].includes(loaded.source));
-assert.equal(loaded.source, "tracked");
-assert.equal(loaded.sourcePath, profileNftImagePromptPath);
-assert.ok(loaded.promptTemplate.includes("Use a full color palette"));
-assert.ok(loaded.promptTemplate.includes("Do not default to red and black"));
-assert.ok(!loaded.promptTemplate.includes("red for aggression"));
+const approvedBrief = {
+  approved: true,
+  privacy_risk: "low",
+  privacy_findings: [],
+  archetype: "builder",
+  activity_themes: ["software_building", "community_coordination"],
+  achievement_band: "established",
+  visual_metaphors: ["bridge", "constellation"],
+  mood: "focused",
+  palette: "deep_space",
+  composition: "central_emblem",
+  style_tags: ["digital_illustration", "geometric"],
+};
 
-const secretPrompt = loadProfileNftPrompt({
-  PROFILE_NFT_PROMPT_B64: Buffer.from([
-    "---",
-    "name: smoke-secret-profile-nft",
-    "model: openai/gpt-image-2",
-    "---",
-    "Secret prompt ___NFT_USER_DATA_REPLACED_HERE___",
-    "Context ___USER_CONTEXT_DOCUMENT_CONTENT_REPLACED_HERE___",
-    "Boot < insert Random String>",
-  ].join("\n")).toString("base64"),
-});
-assert.equal(secretPrompt.source, "env_secret");
-assert.equal(secretPrompt.sourcePath, "PROFILE_NFT_PROMPT_B64");
-assert.equal(secretPrompt.metadata.model, "gpt-image-2");
-assert.ok(secretPrompt.promptTemplate.includes("Secret prompt"));
+const privatePacket = {
+  project: "SecretProjectZephyr9081726354",
+  wallet: "0x1234567890abcdef1234567890abcdef12345678",
+  action: "Acquire 17.25 ETH before the private launch on 2026-08-19",
+};
+let ambientCalls = 0;
+const ambientFetch = async (_url, init) => {
+  ambientCalls += 1;
+  const request = JSON.parse(init.body);
+  assert.equal(request.model, "z-ai/glm-5.2");
+  assert.ok(JSON.stringify(request.messages).includes("SecretProjectZephyr9081726354"));
+  return new Response(JSON.stringify({ id: `ambient_${ambientCalls}`, model: request.model, choices: [{ message: { content: JSON.stringify(approvedBrief) } }] }), { status: 200 });
+};
 
-const configuredPrompt = loadProfileNftPrompt({
-  PROFILE_NFT_PROMPT_PATH: profileNftImagePromptPath,
-  PROFILE_NFT_PROMPT_B64: Buffer.from("Stale prompt").toString("base64"),
-});
-assert.equal(configuredPrompt.source, "tracked");
-assert.equal(configuredPrompt.sourcePath, profileNftImagePromptPath);
-assert.ok(configuredPrompt.promptTemplate.includes("Use a full color palette"));
+const rendered = await createPrivateProfileNftArtBrief({ sourcePacket: privatePacket, env: { AMBIENT_API_KEY: "ambient-test" }, fetchImpl: ambientFetch });
+assert.equal(ambientCalls, 2);
+assert.equal(rendered.source, "ambient_glm52_privacy_gateway");
+assert.equal(rendered.promptDigest.length, 64);
+assert.ok(!rendered.prompt.includes("SecretProjectZephyr"));
+assert.ok(!rendered.prompt.includes("17.25"));
+assert.ok(!rendered.prompt.includes("0x1234"));
 
-const nftUserData = buildProfileNftUserData({
-  session: {
-    accountId: "account_smoke",
-    displayName: "Smoke User",
-    primaryProvider: "github",
-  },
-  state: {
-    wallet: {
-      pftWallet: {
-        status: "linked",
-        address: "rSmokeWallet",
-      },
-    },
-    tasks: {
-      outstanding: [{ title: "Ship profile NFT prompt loader", status: "accepted", rewardPft: "2.5" }],
-      verification: [],
-      refused: [],
-      rewarded: [{ title: "Implement context editor", status: "rewarded", rewardPft: "3.0" }],
-    },
+assert.throws(() => validateProfileNftArtBrief({ ...approvedBrief, privacy_findings: [privatePacket.wallet] }, JSON.stringify(privatePacket)), /privacy_mechanical_leak|privacy_source_overlap/);
+
+let openAiRequest = null;
+await renderProfileNftImage({
+  prompt: rendered.prompt,
+  model: "gpt-image-2",
+  size: "1024x1024",
+  quality: "high",
+  outputFormat: "png",
+  env: { PROFILE_NFT_OPENAI_API_KEY: "renderer-test" },
+  fetchImpl: async (url, init) => {
+    openAiRequest = { url, headers: init.headers, body: JSON.parse(init.body) };
+    return new Response(JSON.stringify({ data: [{ b64_json: "aW1hZ2U=" }] }), { status: 200 });
   },
 });
+assert.equal(openAiRequest.url, "https://api.openai.com/v1/images/generations");
+assert.deepEqual(Object.keys(openAiRequest.body).sort(), ["model", "n", "output_format", "prompt", "quality", "size"]);
+assert.equal(openAiRequest.body.prompt, rendered.prompt);
+assert.ok(!JSON.stringify(openAiRequest.body).includes("SecretProjectZephyr"));
+assert.ok(!JSON.stringify(openAiRequest.body).includes("17.25"));
 
-const rendered = renderProfileNftPrompt({
-  nftUserData,
-  contextDocument: "Task Node is the current product priority. The profile must show credible work identity.",
-  bootString: "smoke_boot_string",
-});
-
-assert.equal(
-  profileNftGenerationContextDocument({
-    state: {
-      context: {
-        document: {
-          body: "Context body from app-state must feed the profile NFT prompt.",
-        },
-      },
-    },
-  }),
-  "Context body from app-state must feed the profile NFT prompt."
-);
-assert.equal(
-  profileNftGenerationContextDocument({
-    payload: {
-      contextDocument: "Explicit payload context wins.",
-    },
-    state: {
-      context: {
-        document: {
-          body: "This should not win.",
-        },
-      },
-    },
-  }),
-  "Explicit payload context wins."
-);
-
-assert.equal(rendered.unresolvedPlaceholders.length, 0);
-assert.ok(rendered.prompt.includes("Smoke User") || rendered.prompt.includes("account_smoke"));
-assert.ok(rendered.prompt.includes("Task Node is the current product priority"));
-assert.ok(rendered.prompt.includes("smoke_boot_string"));
-assert.ok(rendered.promptDigest.length === 64);
-
-console.log(JSON.stringify({
-  ok: true,
-  source: rendered.source,
-  privatePromptPresent: existsSync(privateProfileNftPromptPath),
-  promptDigest: rendered.promptDigest.slice(0, 12),
-}));
+console.log(JSON.stringify({ ok: true, ambientCalls, promptDigest: rendered.promptDigest.slice(0, 12) }));

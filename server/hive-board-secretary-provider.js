@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { hiveBoardSecretaryPromptVersion } from "./repositories/hive-board-secretary.js";
+import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
 
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const boardSecretaryPrompt = loadPrompt("hive/glm_board_secretary_status_memo_v1.md");
 
 function safeText(value = "", max = 1000) {
@@ -13,16 +13,12 @@ function safeObject(value = {}) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-function openRouterKey(env = process.env) {
-  return safeText(env.OPENROUTER_API_KEY || env.OPENROUTER, 10000);
-}
-
 export function hiveBoardSecretaryProvider() {
-  return "openrouter";
+  return "ambient";
 }
 
 export function hiveBoardSecretaryModel(env = process.env) {
-  return safeText(env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || "z-ai/glm-5.2", 180);
+  return safeText(env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || AMBIENT_MODELS.structured, 180);
 }
 
 export function hiveBoardSecretaryPromptDigest() {
@@ -30,7 +26,7 @@ export function hiveBoardSecretaryPromptDigest() {
 }
 
 export function hiveBoardSecretaryProviderConfigured(env = process.env) {
-  return env.TASKNODE_HIVE_BOARD_SECRETARY_PROVIDER_MOCK === "true" || Boolean(openRouterKey(env));
+  return env.TASKNODE_HIVE_BOARD_SECRETARY_PROVIDER_MOCK === "true" || ambientConfigured(env);
 }
 
 function providerTimeoutMs(env = process.env) {
@@ -136,46 +132,25 @@ export async function fetchHiveBoardSecretaryMemo({
     };
   }
 
-  const apiKey = openRouterKey(env);
-  if (!apiKey) {
-    const error = new Error("hive_board_secretary_openrouter_not_configured");
+  if (!ambientConfigured(env)) {
+    const error = new Error("hive_board_secretary_ambient_not_configured");
     error.status = 409;
     throw error;
   }
 
-  const controller = new AbortController();
   const timeoutMs = providerTimeoutMs(env);
-  let timeout = null;
   try {
-    const timeoutPromise = new Promise((_, reject) => {
-      timeout = setTimeout(() => {
-        controller.abort();
-        reject(new Error("hive_board_secretary_openrouter_timeout"));
-      }, timeoutMs);
-      timeout.unref?.();
-    });
-    const baseUrl = (env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-    const response = await Promise.race([fetchImpl(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-        "http-referer": env.OPENROUTER_REFERER || env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-        "x-title": env.OPENROUTER_TITLE || "Task Node Official",
-        "x-openrouter-title": env.OPENROUTER_TITLE || "Task Node Official",
-      },
-      body: JSON.stringify({
+    const result = await ambientChatCompletion({
+      env,
+      fetchImpl,
+      capability: "strict_json",
+      timeoutMs,
+      body: {
         model,
         messages: messagesForPacket(sourcePacket),
         reasoning: { effort: safeText(env.TASKNODE_HIVE_BOARD_SECRETARY_REASONING_EFFORT || "high", 40) },
-        provider: {
-          data_collection: "deny",
-          require_parameters: true,
-        },
         temperature: 0,
         max_tokens: Math.max(2000, Number(env.TASKNODE_HIVE_BOARD_SECRETARY_MAX_TOKENS || 6000)),
-        usage: { include: true },
         metadata: {
           app: "tasknodeofficial",
           worker: "hive_board_secretary",
@@ -183,20 +158,14 @@ export async function fetchHiveBoardSecretaryMemo({
           source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),
           project_id: safeText(sourcePacket.projectId, 180),
         },
-      }),
-    }), timeoutPromise]);
-    const bodyText = await response.text();
-    const body = bodyText ? JSON.parse(bodyText) : {};
-    if (!response.ok) {
-      const error = new Error(body?.error?.message || body?.message || `OpenRouter Hive Board Secretary HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
-    }
-    const memoMarkdown = stripMarkdownFence(body?.choices?.[0]?.message?.content || "");
+      },
+    });
+    const body = result.body;
+    const memoMarkdown = stripMarkdownFence(result.text);
     if (!memoMarkdown) throw new Error("hive_board_secretary_empty_memo");
     return {
       memoMarkdown,
-      provider: "openrouter",
+      provider: "ambient",
       model: safeText(body?.model || model, 180),
       responseId: safeText(body?.id, 200),
       promptVersion: hiveBoardSecretaryPromptVersion,
@@ -207,11 +176,9 @@ export async function fetchHiveBoardSecretaryMemo({
       },
     };
   } catch (error) {
-    if (error?.name === "AbortError" || error?.message === "hive_board_secretary_openrouter_timeout") {
-      throw new Error("hive_board_secretary_openrouter_timeout");
+    if (error?.code === "ambient_timeout") {
+      throw new Error("hive_board_secretary_ambient_timeout");
     }
     throw error;
-  } finally {
-    if (timeout) clearTimeout(timeout);
   }
 }

@@ -39,6 +39,13 @@ Reward display is also projection-derived. A terminal `pf.reward.v1` with `rewar
 
 Evidence packets can include one or two compact artifacts. Screenshot/image evidence is processed into a vision description and digest metadata before the encrypted payload is pinned; raw image bytes should not be embedded in task payload JSON.
 
+File uploads follow the same pre-publication boundary. The browser sends the
+bounded file bytes to `POST /api/tasks/submission` with `phase:
+process_evidence`; the server verifies the digest, extracts readable text, and
+returns only compact text plus parser metadata for the signed task payload.
+Unreadable or unsupported files are rejected before submission instead of
+silently publishing a filename as evidence.
+
 ## Verification Evidence
 
 Verification evidence is portable across the web app, Codex, and wallet-capable
@@ -50,13 +57,22 @@ Supported evidence inputs:
 
 - text evidence;
 - public URL evidence;
-- screenshot/image evidence described by the OpenAI vision evidence reader;
+- screenshot/image evidence described by Ambient's approved verification-vision model;
 - PDF and DOCX file evidence extracted to compact text and metadata;
+- ZIP, TAR, TAR.GZ/TGZ, and GZIP evidence with bounded text/code entries;
 - mixed evidence made from one or two compact artifacts.
+
+Public GitHub gists are resolved through the Gist API so multi-file gists carry
+a bounded manifest and a fair excerpt from every included text file. Binary
+archive members are skipped and reported in parser metadata. Archive entry,
+decompressed-size, page, file-count, and output-character limits prevent an
+evidence upload from expanding without bound.
 
 Implementation references:
 
 - `server/task-evidence-processing.js`
+- `server/evidence-file-extraction.js`
+- `server/task-review-worker.js::fetchUrlExcerpt`
 - `prompts/task_engine/evidence_screenshot_read_v1.md`
 - `reference_clients/python/tasknode_pftl/verification.py`
 - `reference_clients/python/tasknode_pftl/scenarios/verification_evidence_examples.py`

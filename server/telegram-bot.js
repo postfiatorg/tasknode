@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { chatModes, chatSend } from "./product-contracts.js";
 import { effectiveDefaultChatMode } from "./chat-mode-defaults.js";
+import { normalizedChatMode } from "./chat-router.js";
 import { usageSummary } from "./repositories/chat-billing.js";
 import { recordTelegramBotEvent } from "./repositories/telegram-bot-events.js";
 import {
@@ -16,11 +17,9 @@ const telegramTextLimit = 4096;
 const recentUpdateTtlMs = 10 * 60_000;
 const recentUpdateIds = new Map();
 const modeOptions = [
-  { code: "pi", label: "Private Instant" },
-  { code: "pt", label: "Private Thinking" },
-  { code: "dt", label: "Discount Thinking" },
-  { code: "fi", label: "Frontier Instant" },
-  { code: "ft", label: "Frontier Thinking" },
+  { code: "i", label: "Instant" },
+  { code: "t", label: "Thinking" },
+  { code: "h", label: "Help" },
 ];
 const modeByCode = new Map(modeOptions.map((mode) => [mode.code, mode.label]));
 
@@ -194,7 +193,7 @@ function telegramStatusBody() {
 }
 
 function knownModeLabel(mode = "") {
-  const normalized = String(mode || "").trim();
+  const normalized = normalizedChatMode(mode);
   return modeOptions.find((option) => option.label === normalized)?.label || "";
 }
 
@@ -216,7 +215,7 @@ function defaultTelegramMode() {
   return (
     knownModeLabel(telegramChatMode()) ||
     knownModeLabel(effectiveDefaultChatMode()) ||
-    "Private Instant"
+    "Instant"
   );
 }
 
@@ -234,17 +233,12 @@ function fallbackTelegramMode(currentMode = "") {
   };
   if (explicit && enabled(explicit)) return explicit;
 
-  return [
-    "Private Instant",
-    "Frontier Instant",
-    "Private Thinking",
-    "Frontier Thinking",
-  ].find(enabled) || "";
+  return ["Instant", "Thinking", "Help"].find(enabled) || "";
 }
 
 function shouldRetryTelegramChat({ mode = "", result = {} } = {}) {
-  if (mode !== "Discount Thinking" || result?.body?.ok === true) return false;
-  if (result?.body?.estimate?.provider !== "deepseek") return false;
+  if (mode !== "Thinking" || result?.body?.ok === true) return false;
+  if (result?.body?.estimate?.provider !== "ambient") return false;
   const error = result?.body?.error || "";
   const status = Number(result?.body?.providerStatus || result?.status || 0);
   return (

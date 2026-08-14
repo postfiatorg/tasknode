@@ -228,7 +228,7 @@ For each visible chat mode, run the same pattern:
 7. Record the first 200 characters of the response.
 8. Record visible credit/balance after send when shown.
 9. Refresh and confirm the conversation appears in Recents or the active chat.
-10. Repeat for Frontier Instant, Frontier Thinking, Private Instant, Private Thinking, and Discount Thinking / DeepSeek API Direct when visible.
+10. Repeat for `Instant`, `Thinking`, and `Help`. Any visible Frontier, Private, Discount, OpenRouter, or DeepSeek API Direct option is a release defect.
 11. For a safe failure path, use only a visible app-supported error case. Confirm the app shows an actionable error and does not duplicate the user message.
 
 In Beta release QA, every visible chat mode is required. Leaving a visible mode untested is an incomplete Chat run, not an acceptable final report.
@@ -439,11 +439,11 @@ Run only when the browser or app exposes a safe Telegram link/test path:
 | AUTH-04 | X login | Use safe existing-session X login. | Correct X username attached to intended account. | UI identity before/after refresh. |
 | AUTH-05 | Session persistence | Refresh and reopen app after login. | Same account remains signed in; no handle modal loop. | Before/after route captures. |
 | AUTH-06 | Logout | Log out when safe. | Account state clears and private actions are gated. | UI state before/after refresh. |
-| CHAT-01 | Frontier Instant | Send deterministic small prompt. | Response appears, message persists, visible debit recorded when shown. | UI transcript, credit before/after, refresh. |
-| CHAT-02 | Frontier Thinking | Send reasoning-mode prompt. | Response arrives without truncation or wrong mode. | Mode label, transcript, refresh. |
-| CHAT-03 | Private Instant | Send small prompt. | Response arrives through private route with correct label. | Mode label, transcript, refresh. |
-| CHAT-04 | Private Thinking | Send small prompt. | Response arrives through private thinking route. | Mode label, transcript, refresh. |
-| CHAT-05 | Discount Thinking | Select `DeepSeek API Direct` and send prompt. | Direct DeepSeek route is labeled correctly and responds. | Label, transcript, visible usage/credit. |
+| CHAT-01 | Instant | Send deterministic small prompt. | Ambient DeepSeek Flash response appears, persists, and records a visible debit when shown. | UI transcript, credit before/after, refresh. |
+| CHAT-02 | Thinking | Send reasoning-mode prompt. | Ambient GLM 5.2 response arrives without truncation or wrong mode. | Mode label, transcript, refresh. |
+| CHAT-03 | Help | Ask a product-navigation question. | Help uses the product guide and names the correct current surface. | Mode label, transcript, refresh. |
+| CHAT-04 | Deprecated-mode absence | Inspect every model picker at desktop and mobile widths. | No Frontier, Private, Discount, OpenRouter, or Direct DeepSeek option is visible. | Picker captures. |
+| CHAT-05 | Attachment routing | Send an approved text file and image fixture. | Text is locally extracted; visual content is understood through Ambient vision and never converted into an unexplained zero score. | Transcript, attachment state, request/result capture. |
 | CHAT-06 | Error path | Use safe app-supported failure case. | Actionable error; no duplicate user message or visible duplicate charge. | Error UI, transcript, credit before/after. |
 | CHAT-07 | Chat task request | Use `+` -> `Request task`. | Composer enters task-request mode; receipt or wallet blocker is clear. | Placeholder, receipt/blocker, refresh. |
 | CONTEXT-01 | Context read/write | Edit harmless context and save. | Updated content persists. | Before/after text and refresh. |

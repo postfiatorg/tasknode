@@ -111,6 +111,12 @@ const migrations = [
   "102_bm_activity_summaries.sql",
   "103_account_linked_wallets.sql",
   "104_network_task_capacity_limits.sql",
+  "105_ambient_inference_defaults.sql",
+  "106_profile_nft_render_jobs.sql",
+  "107_chat_prompt_cache_accounting.sql",
+  "108_rewarded_task_memory.sql",
+  "109_chat_provider_cost_accounting.sql",
+  "110_docs_team_collaboration.sql",
 ];
 
 let migrated = false;

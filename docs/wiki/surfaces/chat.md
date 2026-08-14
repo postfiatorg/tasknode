@@ -1,16 +1,19 @@
 # Chat
 
-Chat is the primary work surface. Users should be able to speak naturally, attach files, request web search on frontier models, and continue prior conversations without losing state.
+Chat is the primary work surface. Users should be able to speak naturally,
+attach files, choose between fast and deep reasoning, and continue prior
+conversations without losing state.
 
 ## User Flow
 
 1. The user opens a new or recent chat.
 2. Signed-out users start in Help mode. Help is the only enabled signed-out chat mode.
-3. Signed-in users select a mode such as Private Instant, Private Thinking, Frontier Instant, Help, or Frontier Thinking.
-4. The user sends text and optional attachments.
-5. The server routes the request to the correct provider.
-6. The assistant response is streamed back when available.
-7. Signed-in billable usage is billed to the user-facing balance, while background memory writes are not user-billed.
+3. Signed-in users select Instant, Thinking, or Help independently from the Jobs, ODV, Trading Coach, or Kravis personality.
+4. The `+` menu owns personality selection. Jobs is the default and the selected non-default personality appears as a composer chip.
+5. The user sends text and optional attachments.
+6. The server validates both enums, assembles the selected prompt/context packet, and routes the request to Ambient.
+7. The assistant response is streamed back when available.
+8. Signed-in billable usage is billed to the user-facing balance, while background memory writes are not user-billed.
 
 ## Technical Architecture
 
@@ -22,7 +25,9 @@ Memory context is injected by `server/chat-memory-context.js`. The memory worker
 
 Task state is also ported into chat by `server/chat-task-context.js`. This is a read-only projection of the user's cached task state, not a task mutation path.
 
-The chat voice is calibrated by the Jobs Markdown prompt in `prompts/chat/jobs_standard_chat_codex_style_draft.md`. The prompt is loaded once by `server/chat-spirit-context.js` and rendered from the shared `server/chat-memory-context.js::taskNodeInstructions` boundary, so Private Instant, Private Thinking, Discount Thinking, Frontier Instant, and Frontier Thinking all use the same prompt assembly path. The base Task Node operational prompt still comes first; the Jobs Markdown prompt receives the current context document, task context, memory context, and pgvector Jobs retrieval context as runtime slots. The Help mode wraps that same runtime context with `prompts/chat/help_mode_v1.md` and the User Guide from `docs/wiki/surfaces/user-guide.md`, then sends the composed instructions to DeepSeek API Direct. The current user message, prior chat history, and attachments remain normal provider user messages instead of being duplicated into the prompt.
+Chat model mode and personality are separate structured fields. Mode chooses the Ambient capability/model; personality chooses prompt assembly and retrieval policy. `shared/chat-personas.js` owns the allowlisted IDs and aliases, `server/chat-persona-prompts.js` loads the canonical persona prompt, and `server/chat-memory-context.js::taskNodeInstructions` assembles the final system packet. Jobs uses `prompts/chat/jobs_standard_chat_codex_style_draft.md` plus pgvector Jobs retrieval. ODV uses `prompts/docs/odv_lindy_v1.md`; Trading Coach uses `prompts/docs/trading_coach_v1.md`; Kravis uses the system-prompt section of `prompts/kravis.md`. ODV, Trading Coach, and Kravis still receive the account Context document, memory, task projection, conversation history, and attachments, but never the Jobs Markdown prompt or Jobs vector excerpts. The current user message remains a normal provider user message rather than being copied into the system prompt.
+
+The server, not the browser, enforces this boundary. `server/chat-router.js::resolveChatJobsContext` returns a typed skipped result before invoking the retrieval function for ODV, Trading Coach, or Kravis, even when an internal caller supplies a pre-rendered `jobsEssence`. Unknown personality values return `unknown_chat_persona`. Each persisted user/assistant turn and run record stores the validated `chatPersona` for auditability.
 
 When there is no signed-in account, `appState` sets the chat default to Help and marks other chat modes as login-required. The frontend filters the signed-out model picker to Help and disables the `+` menu because Request a task and Context Refine are account actions. Server preflight allows anonymous Help execution only; every other chat mode still returns `chat_login_required`. Anonymous Help sends a bounded `clientHistory` packet containing the recent visible local thread so first-time users can say "sure" or "what do you mean?" without losing continuity. That history is ephemeral transport context only. Anonymous Help responses are not written to chat history, memory, or the billing ledger because there is no account boundary to attach them to.
 
@@ -40,26 +45,6 @@ all available memory or strategy context. Long pasted material, vulnerable
 passages, and explicit long-form requests may receive longer synthesis, but the
 answer should still use complete paragraphs instead of dramatic line stacks.
 
-Frontier Instant has an additional structured response gate in
-`prompts/chat/frontier_instant_response_gate_v1.md`. The OpenAI Responses call
-returns strict JSON with `user_prompted_inquiry`, `full_response`, and
-`conformant_response`. The server displays and persists `full_response` only
-when `user_prompted_inquiry` is true, meaning the current user message explicitly
-asks for a rant, essay, detailed exposition, detailed analysis, full breakdown,
-long news summary, fully thought-out answer, elaborate or complex treatment, or
-help thinking something through in full. Otherwise the server displays and
-persists `conformant_response`, which is required to answer directly in
-plain sentences without bullets, headings, dramatic line breaks, or Reddit-style
-cadence. `conformant_response` is concise but not stripped down: when the user
-asks for judgment or next steps, it should keep the concrete action, blocker,
-tradeoff, and immediate success test instead of reducing the answer to a generic
-principle. The streaming endpoint uses the same gate for Frontier Instant and
-emits the selected response as the visible stream. The assistant thinking
-disclosure stores the complete gate JSON in a separate `Frontier response JSON`
-panel so operators can audit `full_response`, `conformant_response`, and the
-selected field without mixing that audit block into the visible answer or the
-Jobs source text panel.
-
 Chat also has an explicit task-request mode from the `+` menu. That mode is different from ordinary chat. The next send becomes task request detail text and uses the same `POST /api/tasks/request` browser-wallet signing path as the Tasks page modal. It publishes a signed `pf.task.request.v1` pointer, records a durable `task_requests` row, and leaves the actual task card to appear from the PFTL projection after the task-generation worker publishes `pf.task.offer.v1`.
 
 Chat also has a Context Refine mode from the `+` menu. That mode stays in the same chat, changes the composer into `Context Refine`, and sends the next message through the dedicated context-edit route. Context Refine is not a modal and does not require a wallet. The sidebar More tools menu has a `Context Refine` row that opens Chat with the same mode already active; signed-out users are routed to login instead because Context Refine is an account action.
@@ -68,7 +53,18 @@ This page is the current product contract for chat prompt assembly, Jobs
 retrieval, and Context Refine behavior. Historical implementation planning has
 been folded into this surface doc and the single active production scope plan.
 
-The visible tool menus expose file upload, Context Refine, Context Rewrite, Request a task, and More. Motivation, Brainstorming Context, and general Rewrite are intentionally hidden until they have production-quality flows. Context Rewrite is documented in [Context Rewrite](#docs/context-rewrite) as a billed async full-document context pipeline that returns a copyable/downloadable Markdown artifact.
+The visible `+` menu exposes file upload, Context Refine, Context Rewrite, Request a task, Personality, and More. The Personality row expands inline to Jobs, ODV, Trading Coach, and Kravis and closes after selection. Motivation, Brainstorming Context, and general Rewrite are intentionally hidden until they have production-quality flows. Context Rewrite is documented in [Context Rewrite](#docs/context-rewrite) as a billed async full-document context pipeline that returns a copyable/downloadable Markdown artifact.
+
+## Chat Personalities
+
+| Personality | Prompt | Account context | Jobs vector retrieval |
+| --- | --- | --- | --- |
+| Jobs | Jobs standard chat prompt | Context document, tasks, memory, history, attachments | Enabled; up to three chunks |
+| ODV | Canonical ODV Lindy prompt | Context document, tasks, memory, history, attachments | Disabled before retrieval |
+| Trading Coach | Canonical Telegram Trading Coach prompt | Context document, tasks, memory, history, attachments | Disabled before retrieval |
+| Kravis | Canonical Kravis private-equity prompt | Context document, tasks, memory, history, attachments | Disabled before retrieval |
+
+Personality does not select a model. Any personality can run with Instant or Thinking. Jobs remains the default for old clients and stored sessions that omit the field; the browser stores an explicit selection per account. Context Refine remains its own GLM-backed workflow and does not inherit a chat personality.
 
 ## Chat Modes
 
@@ -76,59 +72,46 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 
 | Mode | Provider | Default model | Selection and override rules | Tools and attachments | Intended use |
 | --- | --- | --- | --- | --- | --- |
-| Private Instant | OpenRouter `/chat/completions` | `deepseek/deepseek-v4-flash` | Uses `CHAT_MODEL_PRIVATE_INSTANT` if set, then `OPENROUTER_MODEL`, then the default. Requires `OPENROUTER_API_KEY` or `OPENROUTER`. | Text, image, PDF, and file parts are sent through OpenRouter chat content. PDF parsing uses the `file-parser` plugin with `OPENROUTER_PDF_ENGINE` or `cloudflare-ai`. Sends `max_tokens=16384`, `reasoning.effort="none"`, `reasoning.exclude=true`, and `provider.require_parameters=true` so the fast route spends its answer budget on visible response text. Web search is intentionally disabled. | Fast private open-source chat. |
-| Private Thinking | OpenRouter `/chat/completions` | `z-ai/glm-5.2` | Uses `CHAT_MODEL_PRIVATE_THINKING` if set, then `OPENROUTER_MODEL`, then the default. Requires `OPENROUTER_API_KEY` or `OPENROUTER`. | Same attachment path as Private Instant. Sends `max_tokens=4096`, adds `reasoning.effort="xhigh"`, and uses the GLM 5.2 ZDR provider allowlist (`z-ai`, `wafer`, `fireworks`, `novita`) with `provider.require_parameters=true`. Web search is intentionally disabled. | Slower private open-source reasoning. |
-| Discount Thinking | DeepSeek API Direct `/chat/completions` | `deepseek-v4-pro` | Uses `CHAT_MODEL_DISCOUNT_THINKING` if set, then `DEEPSEEK_CHAT_MODEL`, then the default. Requires `DEEPSEEK_API_KEY` or `DEEPSEEK`. | Sends the shared instruction stack, recent history, the user message, and text attachments as plain chat messages. Image, PDF, and binary attachments are not sent to DeepSeek API Direct; the model receives an attachment notice instead. Adds `thinking.type="enabled"`, `reasoning_effort="high"`, and `max_tokens=4096`. Web search is intentionally disabled. | Lower-cost direct DeepSeek reasoning when ZDR routing and multimodal attachments are not required. |
-| Frontier Instant | OpenAI `/responses` | `chat-latest` | Uses `CHAT_MODEL_FRONTIER_INSTANT` if set, otherwise the pinned default. Does not use `OPENAI_MODEL` as a broad override. Requires `OPENAI_API_KEY`. | Text, image, and file inputs are mapped to Responses API input parts. The OpenAI web search tool is available and prompt-governed. The app does not send a hard `max_output_tokens` cap; preflight only reserves an estimated output budget for billing. | Fast frontier chat with optional web and file understanding. |
-| Help | DeepSeek API Direct `/chat/completions` | `deepseek-v4-pro` | Uses `CHAT_MODEL_HELP` if set, then `DEEPSEEK_CHAT_MODEL`, then the default. Requires `DEEPSEEK_API_KEY` or `DEEPSEEK`. | Sends the Help prompt, the normal account context stack, recent history, the user message, text attachments, and the embedded User Guide. The task context includes the Network Task eligibility block, including routing badge status, verified badge lanes, failed gates, next action, and capacity blockers when available. Image, PDF, and binary attachments are not sent to DeepSeek API Direct; the model receives an attachment notice instead. Sends `thinking.type="disabled"` and no hard `max_tokens` cap. Web search is intentionally disabled. | Plain-English product help for using Task Node with awareness of the user's context, tasks, wallet, Hive, profile, contributor badges, and next app step. Hive onboarding guidance is used only for Hive, Hive Chat, Network Task, wallet-validation, or broad first-session questions. |
-| Frontier Thinking | OpenAI `/responses` | `gpt-5.5` | Uses `CHAT_MODEL_FRONTIER_THINKING` if set, otherwise the pinned default. Requires `OPENAI_API_KEY`. | Same attachment path as Frontier Instant. Adds `reasoning.effort="high"`. The OpenAI web search tool is available and prompt-governed. The app does not send a hard `max_output_tokens` cap; preflight only reserves an estimated output budget for billing. | Deeper frontier reasoning, especially when web or files matter. |
+| Instant | Ambient `/chat/completions` | `deepseek/deepseek-v4-flash-0731` | Pinned by the `fast_text` capability policy. Requires `AMBIENT_API_KEY`. | Local bounded document extraction; Kimi is selected when preserved visual input is present. Reasoning and web search are disabled. | Fast everyday chat. |
+| Thinking | Ambient `/chat/completions` | `z-ai/glm-5.2` | Pinned by the `reasoning_text` capability policy. Requires `AMBIENT_API_KEY`. | Same attachment path as Instant with `xhigh` reasoning. Web search is disabled. | Deeper analysis and Context Refine. |
+| Help | Ambient `/chat/completions` | `deepseek/deepseek-v4-flash-0731` | Uses the `fast_text` policy plus the Help prompt and embedded User Guide. Requires `AMBIENT_API_KEY`. | Same bounded attachment path as Instant with a 1,200-token response cap. | Plain-English Task Node product help. |
 
-Unknown mode strings are rejected with `unknown_chat_mode`. The signed-in app default prefers Frontier Instant when it is enabled; otherwise it chooses the first enabled mode. The signed-out app default is Help.
+Unknown mode strings are rejected with `unknown_chat_mode`. The signed-in app
+default is Instant and the signed-out app default is Help. Historical stored
+labels normalize one-way to Instant or Thinking but are never returned by the
+mode API or shown in a picker.
 
 ## Provider Policies
 
-Private modes use OpenRouter with `provider.zdr=true` and `provider.data_collection="deny"`. They also set `provider.order` and `provider.only` to the code-defined provider allowlist for the selected mode, so private requests do not route through arbitrary cheapest-provider selection. Private Instant explicitly disables reasoning output; Private Thinking explicitly requests GLM 5.2 `xhigh` reasoning and excludes reasoning text from the UI. OpenRouter can support web search through server tools, but Task Node deliberately leaves that off for private modes right now.
-
-Discount Thinking and Help use the direct DeepSeek API. They are labeled `DeepSeek API Direct` in provider/status surfaces. This is not the OpenRouter ZDR route and should not be described as private/ZDR. User billing is calculated from DeepSeek-returned token usage and the configured direct API prices, including DeepSeek cache-hit input pricing when cache-hit tokens are reported. Discount Thinking requests high reasoning for deeper analysis. Help disables provider-side thinking and relies on `prompts/chat/help_mode_v1.md` to answer product-help questions plainly.
-
-Direct DeepSeek reasoning can spend longer in provider-side thinking than the
-fast chat modes. Task Node gives direct DeepSeek chat a 120 second default provider
-budget through `CHAT_PROVIDER_DEEPSEEK_TIMEOUT_MS`, mode-specific
-`CHAT_PROVIDER_HELP_TIMEOUT_MS` or `CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS`,
-or `CHAT_PROVIDER_TIMEOUT_MS`.
-When the direct DeepSeek streaming connection terminates for a recoverable
-transport reason before any visible assistant text is emitted and the user has
-not cancelled, the server retries the same request through the non-streaming
-DeepSeek completion path before returning an error to the user.
-
-Frontier modes use the OpenAI Responses API with `store=false`. Task Node passes durable app history from Postgres instead of relying on OpenAI-hosted conversation state. The server exposes the hosted `web_search` tool to Frontier modes and counts observed search calls in usage billing. Frontier chat requests intentionally omit `max_output_tokens`; the app still estimates an output budget for preflight billing, but that estimate is not a hard response cutoff.
+All chat inference goes through `server/ambient-inference.js`. Instant and Help
+use the dated DeepSeek Flash route; Thinking uses GLM 5.2. No chat mode can call
+OpenRouter, direct DeepSeek, OpenAI, or Vercel AI Gateway. The OpenAI credential
+exception remains isolated to sanitized Profile NFT image rendering.
 
 ## Pricing Visibility
 
 Help -> System Status includes a Chat Model Pricing section. It shows each chat
-mode's configured preflight estimate, live OpenRouter model metadata when
-available, allowed OpenRouter endpoint prices for private modes, and the direct
-DeepSeek V4 Pro prices used by Discount Thinking and Help.
+mode's configured preflight estimate and live Ambient model metadata.
 
 ## Web Search Selection
 
-Web search is prompt-governed. `prompts/chat/task_node_instructions_v1.md` tells Frontier models to use web search only when the user asks for current, external, or source-grounded information that is not already available in the conversation, attachments, context document, memory, or task state. Private modes never add OpenRouter web search.
-
-Preflight reserves the configured maximum OpenAI search tool budget for Frontier requests because the model may choose to call the tool. Actual billing records only observed provider usage and observed `web_search_call` items.
+The three user-facing chat modes do not enable web search. Ambient web tools
+remain available to explicit research workflows outside the chat mode picker.
 
 ## Jobs pgvector Retrieval
 
-Every chat mode can receive up to three retrieved Jobs reference chunks. This is not a public mode switch and the assistant should not mention the retrieval machinery by default. The retrieval layer exists to give the Jobs Markdown prompt concrete source principles to apply, not merely a hidden style hint. The chat thinking disclosure shows the source text passed to the provider so operators can audit which retrieved material should have influenced a response.
+Every model mode can receive up to three retrieved Jobs reference chunks only when the selected personality is Jobs. ODV, Trading Coach, and Kravis report Jobs retrieval as `skipped` and cannot invoke the corpus query. This is not a model-mode switch and the assistant should not mention the retrieval machinery by default. The retrieval layer exists to give the Jobs Markdown prompt concrete source principles to apply, not merely a hidden style hint. The chat thinking disclosure shows the source text passed to the provider so operators can audit which retrieved material should have influenced a Jobs response.
 
 The runtime path is:
 
-1. `scripts/jobs-corpus-ingest.mjs` fetches the pinned Jobs corpus gist or reads a local file, chunks it deterministically, embeds each chunk with `text-embedding-3-small`, and upserts rows into `jobs_corpus_sources` and `jobs_corpus_chunks`.
+1. `scripts/jobs-corpus-ingest.mjs` fetches the pinned Jobs corpus gist or reads a local file, chunks it deterministically, embeds each chunk with `deterministic-bag-of-words-v1`, and upserts rows into `jobs_corpus_sources` and `jobs_corpus_chunks`.
 2. `server/db/migrations/014_jobs_corpus_pgvector.sql` installs `pgvector` and creates the durable corpus tables.
 3. `server/jobs-corpus.js::jobsRetrievalForChat` builds a compact retrieval query from the current user message, context document, memory, and task state.
 4. `server/embedding-provider.js` embeds the retrieval query with the same model and dimensions as the corpus.
 5. `server/jobs-corpus.js::searchJobsCorpus` runs a cosine-distance pgvector query and returns the top three chunks.
-6. `server/chat-router.js::executeChat` and `executeChatStream` pass the rendered retrieval XML into `taskNodeInstructions`.
-7. `server/chat-spirit-context.js::formatChatSpiritContext` places the result in the XML `RELEVANT_JOBS_ESSENCE_FROM_VECTOR_DB` slot.
+6. `server/chat-router.js::resolveChatJobsContext` first checks the validated personality; only Jobs can call the retrieval function.
+7. `server/chat-router.js::executeChat` and `executeChatStream` pass the rendered retrieval XML into `taskNodeInstructions`.
+8. `server/chat-spirit-context.js::formatChatSpiritContext` places the result in the XML `RELEVANT_JOBS_ESSENCE_FROM_VECTOR_DB` slot.
 
 If the database, corpus rows, embeddings provider, or retrieval query fails, chat still runs with an empty retrieval slot. Retrieval has a short timeout so it does not hold the chat surface hostage.
 
@@ -142,7 +125,7 @@ The runtime path is:
 2. `server/chat-account-context.js::chatContextDocumentForAccount` calls `server/repositories/context.js::getContextDocument` for the signed-in account.
 3. `server/chat-account-context.js::formatChatContextDocument` converts stored rich-text HTML into readable text, removes markup, clips the body to `TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS` with a 60,000-character default and ceiling, and renders `prompts/chat/account_context_document_v1.md`.
 4. `server/chat-memory-context.js::taskNodeInstructions` renders the context block into the shared instruction payload.
-5. `server/chat-router.js` sends those instructions to OpenAI Responses API as `instructions` or to OpenRouter Chat Completions as the system message.
+5. `server/chat-router.js` sends those instructions through the shared Ambient adapter.
 
 With the Jobs Markdown layer enabled, step 4 renders the context document into the `CONTEXT_DOCUMENT` runtime slot. Task context and memory context are rendered into `CURRENT_PLATE`. This keeps the user's saved context available to chat without adding duplicate context blocks after the Jobs prompt.
 
@@ -165,10 +148,10 @@ The `+` menu `Context Refine` action activates an explicit internal `context_edi
 Runtime path:
 
 1. `src/main.jsx::ChatSurface` sends the next message to `/api/chat/send` with `contextMode: "context_edit"`.
-2. `server/product-contracts.js::chatPayload` forces Context Refine through Frontier Thinking so the user does not have to choose a model for durable document edits.
+2. `server/product-contracts.js::chatPayload` forces Context Refine through Thinking so the user does not have to choose a model for durable document edits.
 3. `server/context-edit-chat.js::executeContextEditChat` loads chat history, current context, memory, task state, and the active pending proposal for the conversation.
 4. `server/context-edit-prompts.js::renderContextEditPrompt` renders `prompts/context/context_edit_jobs_v1.xml` with the plain context document and a line-numbered copy.
-5. OpenAI Responses API is called with structured output and `store=false`; tools are disabled for Context Refine because editing the current document should not invoke web search.
+5. Ambient GLM 5.2 is called with structured output; tools are disabled for Context Refine because editing the current document should not invoke web search.
 6. A calibration reply or proposal is saved as an ordinary chat turn through `server/repositories/chat-billing.js`.
 7. If a proposal exists, `server/repositories/context-edit.js` stores it in `context_edit_proposals`.
 8. The assistant message renders an inline proposal card. `Accept edit` posts to `/api/context/edit/proposals/:proposalId/apply`.
@@ -189,7 +172,7 @@ The runtime path is:
 3. `server/repositories/tasks.js::listTaskState` reads the `task_projections` cache for that wallet and account. The projection is ordered by most recently updated task and capped at 200 rows at the database read boundary.
 4. `server/chat-task-context.js::formatChatTaskContext` renders the projection through `prompts/chat/account_tasks_context_v1.md`.
 5. `server/chat-memory-context.js::taskNodeInstructions` renders the task block into the shared instruction payload.
-6. `server/chat-router.js` sends those instructions to OpenAI Responses API as `instructions` or to OpenRouter Chat Completions as the system message.
+6. `server/chat-router.js` sends those instructions through the shared Ambient adapter.
 
 With the Jobs Markdown layer enabled, the rendered task block is placed inside the `CURRENT_PLATE` runtime slot alongside memory context. It is still advisory cache context and does not mutate task state.
 
@@ -232,16 +215,9 @@ Server search lives in `searchChatConversations` in `server/repositories/chat-co
 
 ## Billing And Persistence
 
-Before execution, `server/product-contracts.js` checks login, provider readiness, estimated cost, and available chat credit. The estimate includes the current context document, task context, memory context, estimated Jobs retrieval context, message text, and attachments. After execution, `server/repositories/chat-billing.js` persists the user message, assistant message, provider, model, response ID, token usage, web-search calls, model cost, tool cost, and ledger entry. Memory summarization is queued afterward and is not billed to the user.
+Before execution, `server/product-contracts.js` checks login, model mode, personality, provider readiness, estimated cost, and available chat credit. The estimate includes the selected persona prompt, current context document, task context, memory context, message text, and attachments; estimated Jobs retrieval tokens are included only for Jobs. After execution, `server/repositories/chat-billing.js` persists the user message, assistant message, validated personality metadata, provider, model, response ID, token usage, prompt-cache hit/miss tokens, whether the provider reported cache details, estimated cache savings, cost source, web-search calls, model cost, tool cost, and ledger entry. Memory summarization is queued afterward and is not billed to the user.
 
-## External References
-
-- [OpenAI Responses API migration guide](https://developers.openai.com/api/docs/guides/migrate-to-responses)
-- [OpenAI web search tool](https://developers.openai.com/api/docs/guides/tools-web-search)
-- [OpenAI embeddings API](https://developers.openai.com/api/reference/resources/embeddings/methods/create)
-- [OpenAI images and vision guide](https://developers.openai.com/api/docs/guides/images-vision)
-- [OpenRouter provider routing](https://openrouter.ai/docs/guides/routing/provider-selection)
-- [OpenRouter PDF inputs](https://openrouter.ai/docs/guides/overview/multimodal/pdfs)
+Task Node's user tariff is 55% below the prior rates. Thinking costs $0.4725/M uncached input, $0.09/M cache-read input, and $1.98/M output. Instant and Help cost $0.063/M uncached input, $0.0126/M cache-read input, and $0.126/M output. `server/chat-provider-usage.js` always calculates the ledger debit from that cache-aware user tariff. Provider-returned `usage.cost` is retained only as wholesale-cost metadata and cannot override what the user is charged. A response with no cache detail remains explicitly unreported instead of being counted as a cache miss. System Status aggregates reported Ambient chat runs over a seven-day default window and shows reporting coverage, cache-hit percentage, cache-hit tokens, and pricing-derived savings.
 
 ## Data Model
 
@@ -250,7 +226,7 @@ Before execution, `server/product-contracts.js` checks login, provider readiness
 - Extracted attachment text is part of the user interaction record.
 - The current Context document is read from `context_documents` and the current draft row in `context_revisions` for signed-in chat grounding. Native editor saves update this draft row in place; durable context history comes from PFTL/IPFS pointer writes.
 - Context Refine proposals are cached in `context_edit_proposals` until accepted or rejected.
-- Token usage and cost are recorded against the signup identity account.
+- Token usage, prompt-cache accounting, and cost are recorded against the signup identity account.
 - Memory summaries are separate from ordinary chat history.
 - Task state is read from `task_projections`, which is a cache over replayable PFTL task events.
 
@@ -267,7 +243,7 @@ sequenceDiagram
   participant T as Task Projection
   participant M as Memory Worker
   U->>UI: Send text and attachments
-  UI->>API: conversationId, mode, attachments
+  UI->>API: conversationId, mode, persona, attachments
   API->>DB: Load chat history and memory context
   API->>C: Load current saved context document
   API->>T: Load linked-wallet task projection

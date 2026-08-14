@@ -67,8 +67,16 @@ async function publicLookup(hostname) {
 {
   const calls = [];
   const fetchImpl = mockedFetch({
-    "https://gist.githubusercontent.com/alice/abc123/raw": response("Navcoin series evidence\nImplementation notes", {
-      headers: { "content-type": "text/plain; charset=utf-8" },
+    "https://api.github.com/gists/abc123": response(JSON.stringify({
+      description: "Evidence gist",
+      files: {
+        "notes.md": {
+          filename: "notes.md",
+          content: "Navcoin series evidence\nImplementation notes",
+        },
+      },
+    }), {
+      headers: { "content-type": "application/json" },
     }),
   }, calls);
 
@@ -78,10 +86,35 @@ async function publicLookup(hostname) {
   });
 
   assert.equal(result.status, "extracted");
-  assert.equal(result.url, "https://gist.githubusercontent.com/alice/abc123/raw");
+  assert.equal(result.url, "https://api.github.com/gists/abc123");
   assert.equal(result.source_url, "https://gist.github.com/alice/abc123#file-notes-md");
   assert.match(result.excerpt, /Navcoin series evidence/);
-  assert.deepEqual(calls, ["https://gist.githubusercontent.com/alice/abc123/raw"]);
+  assert.deepEqual(calls, ["https://api.github.com/gists/abc123"]);
+}
+
+{
+  const calls = [];
+  const files = Object.fromEntries(Array.from({ length: 18 }, (_, index) => [
+    `part-${String(index + 1).padStart(2, "0")}.md`,
+    {
+      filename: `part-${String(index + 1).padStart(2, "0")}.md`,
+      content: `Unique evidence from file ${index + 1}: ${"detail ".repeat(40)}`,
+    },
+  ]));
+  const fetchImpl = mockedFetch({
+    "https://api.github.com/gists/many1234": response(JSON.stringify({ description: "Multi-file evidence", files }), {
+      headers: { "content-type": "application/json" },
+    }),
+  }, calls);
+
+  const result = await fetchUrlExcerpt("https://gist.github.com/alice/many1234", { fetchImpl, lookupFn: publicLookup });
+
+  assert.equal(result.status, "extracted");
+  assert.equal(result.file_count, 18);
+  assert.match(result.excerpt, /FILE: part-01\.md/);
+  assert.match(result.excerpt, /FILE: part-18\.md/);
+  assert.match(result.excerpt, /Unique evidence from file 18/);
+  assert.deepEqual(calls, ["https://api.github.com/gists/many1234"]);
 }
 
 {
@@ -90,7 +123,9 @@ async function publicLookup(hostname) {
   const result = await fetchUrlExcerpt("https://gist.github.com/alice/abc123", {
     fetchImpl,
     lookupFn: async (hostname) => {
-      if (hostname === "gist.githubusercontent.com") return [{ address: "127.0.0.1", family: 4 }];
+      if (["gist.githubusercontent.com", "api.github.com"].includes(hostname)) {
+        return [{ address: "127.0.0.1", family: 4 }];
+      }
       return publicLookup(hostname);
     },
   });

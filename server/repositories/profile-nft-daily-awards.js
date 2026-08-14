@@ -545,6 +545,60 @@ export async function markDailyProfileNftAwardGenerated({ awardId = "", profileN
   return result.rows[0] ? normalizeAward(result.rows[0]) : null;
 }
 
+export async function confirmDailyProfileNftAwardGenerated({ profileNftId = "" } = {}) {
+  const normalizedProfileNftId = safeText(profileNftId, 180);
+  if (!normalizedProfileNftId) return null;
+  if (!databaseEnabled()) {
+    const award = [...runtimeAwards.values()].find((item) => item.profileNftId === normalizedProfileNftId);
+    return award
+      ? markDailyProfileNftAwardGenerated({ awardId: award.id, profileNftId: normalizedProfileNftId })
+      : null;
+  }
+  const result = await query(
+    `UPDATE profile_nft_daily_awards
+        SET status = 'generated',
+            error = '',
+            error_code = '',
+            retryable = false,
+            next_attempt_at = NULL,
+            completed_at = now(),
+            updated_at = now()
+      WHERE profile_nft_id = $1
+      RETURNING *`,
+    [normalizedProfileNftId]
+  );
+  return result.rows[0] ? normalizeAward(result.rows[0]) : null;
+}
+
+export async function failDailyProfileNftAwardForRender({
+  profileNftId = "",
+  error = "",
+  errorCode = "profile_nft_generation_failed",
+  retryable = true,
+  maxAttempts = 3,
+  retryDelayMs = 5 * 60 * 1000,
+} = {}) {
+  const normalizedProfileNftId = safeText(profileNftId, 180);
+  if (!normalizedProfileNftId) return null;
+  if (!databaseEnabled()) {
+    const award = [...runtimeAwards.values()].find((item) => item.profileNftId === normalizedProfileNftId);
+    return award
+      ? markDailyProfileNftAwardFailed({ awardId: award.id, error, errorCode, retryable, maxAttempts, retryDelayMs })
+      : null;
+  }
+  const result = await query(
+    `SELECT id
+       FROM profile_nft_daily_awards
+      WHERE profile_nft_id = $1
+      LIMIT 1`,
+    [normalizedProfileNftId]
+  );
+  const awardId = result.rows[0]?.id || "";
+  return awardId
+    ? markDailyProfileNftAwardFailed({ awardId, error, errorCode, retryable, maxAttempts, retryDelayMs })
+    : null;
+}
+
 export async function markDailyProfileNftAwardFailed({
   awardId = "",
   error = "",

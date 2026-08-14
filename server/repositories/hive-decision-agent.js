@@ -703,7 +703,7 @@ export async function startHiveDecisionRun({
   scope = "global_hive",
   trigger = "shadow_tick",
   sourcePacket = {},
-  provider = "openrouter",
+  provider = "ambient",
   model = "",
   reasoningEffort = "high",
   shadow = true,

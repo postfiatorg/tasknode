@@ -7,8 +7,8 @@ import {
   normalizeHiveProjectPlanningOutput,
 } from "./repositories/hive-project-planning.js";
 import { databaseEnabled } from "./db/pool.js";
+import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
 
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const hiveProjectPrompt = loadPrompt("hive/hive_active_projects_v1.md");
 const projectTimeoutMs = Math.max(30000, Number(process.env.TASKNODE_HIVE_PROJECT_TIMEOUT_MS || 240000));
 let timer = null;
@@ -19,37 +19,26 @@ function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
 }
 
-function openRouterKey() {
-  return safeText(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER, 10000);
-}
-
-function unsupportedModel(model) {
-  return /(?:^|[/_:])gpt-5\.5-pro(?:[-_.:/]|$)/i.test(safeText(model, 160));
-}
-
-export function normalizeHiveProjectProvider(value = "openrouter") {
-  const provider = safeText(value, 80).toLowerCase() || "openrouter";
-  if (provider !== "openrouter") {
+export function normalizeHiveProjectProvider(value = "ambient") {
+  const provider = safeText(value, 80).toLowerCase() || "ambient";
+  if (provider !== "ambient") {
     throw new Error(`hive_project_provider_unsupported:${provider || "unknown"}`);
   }
   return provider;
 }
 
-export function normalizeHiveProjectModel(value = "z-ai/glm-5.2") {
+export function normalizeHiveProjectModel(value = AMBIENT_MODELS.structured) {
   const rawModel = String(value || "").trim();
-  if (unsupportedModel(rawModel)) {
-    throw new Error(`hive_project_model_unsupported:${safeText(rawModel, 160).toLowerCase()}`);
-  }
-  const model = safeText(rawModel, 160) || "z-ai/glm-5.2";
+  const model = safeText(rawModel, 160) || AMBIENT_MODELS.structured;
   return model;
 }
 
 export function hiveProjectProvider(env = process.env) {
-  return normalizeHiveProjectProvider(env.TASKNODE_HIVE_PROJECT_PROVIDER || "openrouter");
+  return normalizeHiveProjectProvider(env.TASKNODE_HIVE_PROJECT_PROVIDER || "ambient");
 }
 
 export function hiveProjectModel(env = process.env) {
-  return normalizeHiveProjectModel(env.TASKNODE_HIVE_PROJECT_MODEL || "z-ai/glm-5.2");
+  return normalizeHiveProjectModel(env.TASKNODE_HIVE_PROJECT_MODEL || AMBIENT_MODELS.structured);
 }
 
 function hiveProjectReasoningEffort() {
@@ -64,8 +53,8 @@ function hiveProjectEnabled() {
     // retired and must be explicitly opted into for local experiments only.
     process.env.TASKNODE_HIVE_PROJECT_WORKER_ENABLED === "true" &&
     databaseEnabled() &&
-    provider === "openrouter" &&
-    Boolean(openRouterKey())
+    provider === "ambient" &&
+    ambientConfigured()
   );
 }
 
@@ -175,28 +164,21 @@ function projectResponseFormat() {
 export async function fetchHiveActiveProjects(job, { fetchImpl = fetch, provider, model } = {}) {
   const resolvedProvider = normalizeHiveProjectProvider(provider || hiveProjectProvider());
   const resolvedModel = normalizeHiveProjectModel(model || hiveProjectModel());
-  if (resolvedProvider !== "openrouter") {
+  if (resolvedProvider !== "ambient") {
     throw new Error(`hive_project_provider_unsupported:${resolvedProvider}`);
   }
-  if (!openRouterKey()) {
-    const error = new Error("hive_project_openrouter_not_configured");
+  if (!ambientConfigured()) {
+    const error = new Error("hive_project_ambient_not_configured");
     error.status = 409;
     throw error;
   }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), projectTimeoutMs);
   const startedAt = Date.now();
   try {
-    const response = await fetchImpl(`${(process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${openRouterKey()}`,
-        "content-type": "application/json",
-        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-      },
-      body: JSON.stringify({
+    const result = await ambientChatCompletion({
+      fetchImpl,
+      capability: "strict_json",
+      timeoutMs: projectTimeoutMs,
+      body: {
         model: resolvedModel,
         messages: [
           { role: "system", content: hiveProjectPrompt },
@@ -204,27 +186,19 @@ export async function fetchHiveActiveProjects(job, { fetchImpl = fetch, provider
         ],
         reasoning: { effort: hiveProjectReasoningEffort() },
         response_format: projectResponseFormat(),
-        provider: { data_collection: "deny", require_parameters: true },
         temperature: 0,
         max_tokens: Math.max(4000, Number(process.env.TASKNODE_HIVE_PROJECT_MAX_OUTPUT_TOKENS || 12000)),
-        usage: { include: true },
         metadata: {
           app: "tasknodeofficial",
           worker: "hive_active_projects",
           prompt_version: hiveProjectPlanningPromptVersion,
         },
-      }),
+      },
     });
-    const bodyText = await response.text();
-    const body = bodyText ? JSON.parse(bodyText) : {};
-    if (!response.ok) {
-      const error = new Error(body?.error?.message || `OpenRouter Hive project planner HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
-    }
+    const body = result.body;
     return {
       output: parseOutput(body),
-      provider: "openrouter",
+      provider: "ambient",
       model: body?.model || resolvedModel,
       promptDigest: promptDigest(hiveProjectPrompt),
       responseId: safeText(body?.id, 200),
@@ -234,10 +208,8 @@ export async function fetchHiveActiveProjects(job, { fetchImpl = fetch, provider
       },
     };
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("hive_project_openrouter_timeout");
+    if (error?.code === "ambient_timeout") throw new Error("hive_project_ambient_timeout");
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

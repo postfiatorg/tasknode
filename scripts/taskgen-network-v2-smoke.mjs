@@ -6,6 +6,7 @@ process.env.TASKNODE_TASKGEN_PROVIDER_MOCK = "true";
 
 const {
   generateTaskWithProvider,
+  taskgenApiConfig,
   taskgenModelForInput,
   taskgenPromptForInput,
   taskgenProviderForInput,
@@ -80,22 +81,37 @@ const taskInput = {
 
 assert.equal(taskgenPromptForInput(taskInput).version, "taskgen_network_v2");
 assert.equal(taskgenProviderForInput(taskInput), "mock");
-assert.equal(taskgenModelForInput(taskInput), "gpt-5.6-sol");
+assert.equal(taskgenModelForInput(taskInput), "mock-taskgen");
 
 const defaultNetworkEnv = { TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED: "true" };
-assert.equal(taskgenProviderForInput(taskInput, defaultNetworkEnv), "openai");
-assert.equal(taskgenModelForInput(taskInput, defaultNetworkEnv), "gpt-5.6-sol");
+assert.equal(taskgenProviderForInput(taskInput, defaultNetworkEnv), "ambient");
+assert.equal(taskgenModelForInput(taskInput, defaultNetworkEnv), "z-ai/glm-5.2");
 assert.equal(taskgenReasoningEffort(taskInput, defaultNetworkEnv), "xhigh");
 const personalInput = { request: { requestedTaskKind: "personal" }, policy: { task_class: "personal" } };
 const defaultPersonalEnv = {};
-assert.equal(taskgenProviderForInput(personalInput, defaultPersonalEnv), "openai");
-assert.equal(taskgenModelForInput(personalInput, defaultPersonalEnv), "gpt-5.6-sol");
+assert.equal(taskgenProviderForInput(personalInput, defaultPersonalEnv), "ambient");
+assert.equal(taskgenModelForInput(personalInput, defaultPersonalEnv), "z-ai/glm-5.2");
 assert.equal(taskgenReasoningEffort(personalInput, defaultPersonalEnv), "xhigh");
+assert.deepEqual(taskgenApiConfig(personalInput, {
+  TASKNODE_TASKGEN_PROVIDER: "frontier",
+  TASKNODE_TASKGEN_MODEL: "gpt-5.6-sol",
+}), {
+  provider: "ambient",
+  model: "z-ai/glm-5.2",
+  reasoningEffort: "xhigh",
+});
+assert.deepEqual(taskgenApiConfig(taskInput, {
+  TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED: "true",
+  AMBIENT_MODEL_STRUCTURED: "test/structured-model",
+}), {
+  provider: "ambient",
+  model: "test/structured-model",
+  reasoningEffort: "xhigh",
+});
 
 const productionFlyConfig = readFileSync(new URL("../fly.toml", import.meta.url), "utf8");
 for (const [key, value] of [
-  ["TASKNODE_HIVE_TASK_GENERATION_PROVIDER", "openai"],
-  ["TASKNODE_HIVE_TASK_GENERATION_MODEL", "gpt-5.6-sol"],
+  ["TASKNODE_HIVE_TASK_GENERATION_MODEL", "z-ai/glm-5.2"],
   ["TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT", "xhigh"],
 ]) {
   assert.match(
@@ -104,6 +120,7 @@ for (const [key, value] of [
     `fly.toml production task generation pin drifted: ${key}`
   );
 }
+assert.doesNotMatch(productionFlyConfig, /^\s+TASKNODE_HIVE_TASK_GENERATION_PROVIDER\s*=/m);
 
 const identity = taskgenReplayIdentity({
   taskInput,
@@ -117,7 +134,7 @@ const identity = taskgenReplayIdentity({
   requestBundleDigest: "sha256:bundle-v2-smoke",
 });
 assert.equal(identity.prompt_version, "taskgen_network_v2");
-assert.equal(identity.model, "gpt-5.6-sol");
+assert.equal(identity.model, "mock-taskgen");
 
 const generated = await generateTaskWithProvider(taskInput);
 assert.equal(generated.output.schema, "pf.taskgen.output.v1");

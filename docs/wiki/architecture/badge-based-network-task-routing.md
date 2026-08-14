@@ -73,7 +73,7 @@ The initial catalog is:
 | --- | --- | --- | --- | --- |
 | `kol` | `megaphone` | User must link X. The X API follower count must show 5,000 or more followers. | Amplification, narrative distribution, public announcement, article distribution. | 20,000 PFT per X post; 50,000 PFT per Medium article. |
 | `core_contributor` | `git_pull_request` | User must link GitHub and the linked GitHub handle must appear in the Task Node sanctioned Core Contributor list. Repo access should be managed by Post Fiat outside broad user OAuth consent. | Private repo code tasks, production fixes, sanctioned core implementation. | 30,000 PFT per task. |
-| `expert` | `graduation_cap` | User must have at least 20 completed Personal tasks, enter a specific expert topic, and pass a harsh OpenRouter GLM 5.2 review over the latest 20 Personal tasks with a server-enforced score of 80 or higher and no disqualifying concerns. | Domain analysis grounded in verified personal work, expert review, domain-specific contribution bundles. | 30,000 PFT per 5-task bundle. |
+| `expert` | `graduation_cap` | User must have at least 20 completed Personal tasks, enter a specific expert topic, and pass a harsh Ambient GLM 5.2 review over the latest 20 Personal tasks with a server-enforced score of 80 or higher and no disqualifying concerns. | Domain analysis grounded in verified personal work, expert review, domain-specific contribution bundles. | 30,000 PFT per 5-task bundle. |
 | `project_leader` | `crown` | Discretionary backend approval by Hive handle. Initial approved handles: `zoz`, `donravle`, `georgl0nggamma`, `jollydinger`, `nydiokar`, `hitori`, `wizbubba`, `diamond-hand-honcho`, and `goodalexander`. | Define special new projects, including open-source projects, through Hive Chat input. | Discretionary. |
 | `qa_worker` | `bug` | User must link Telegram and Discord, and backend billing must show at least one USDC chat wallet top-up from the user account. QA reports must include screenshots or equivalent repro evidence per task. | Product QA reports, repro packets, workflow friction reports. | 5,000 PFT per QA report. |
 
@@ -180,7 +180,7 @@ Badge-specific identity approval requirements:
 - Expert: requires backend-derived `L3 metric_or_access_verified` evidence from
   completed Task Node Personal work. The private Profile card asks the user for
   the topic they are expert in or want Expert rewards for. The server then sends
-  the latest 20 completed Personal task packets to OpenRouter `z-ai/glm-5.2`
+  the latest 20 completed Personal task packets to Ambient `z-ai/glm-5.2`
   with a harsh grading prompt and structured JSON output. The model returns a
   0-100 score, label, strengths, weaknesses, and disqualifying concerns. The
   server, not the model alone, grants the badge only when the account has 20 or

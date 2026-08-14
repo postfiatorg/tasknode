@@ -13,8 +13,7 @@ process.env.TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED = "true";
 process.env.TASKNODE_TASK_REVIEW_WORKER_ENABLED = "true";
 process.env.TASKNODE_DAILY_AIRDROP_WORKER_ENABLED = "true";
 process.env.TASKNODE_SYSTEM_STATUS_LIVE_PRICING_ENABLED = "false";
-process.env.OPENROUTER_API_KEY = "system-status-openrouter-key";
-process.env.DEEPSEEK_API_KEY = "system-status-deepseek-key";
+process.env.AMBIENT_API_KEY = "system-status-ambient-key";
 process.env.PFTL_RPC_URL = "https://user:pass@rpc.example.test/current?api_key=secret#frag";
 process.env.PFTL_HISTORY_RPC_URL = "https://history.example.test/archive?token=secret";
 process.env.ETH_DEPOSIT_XPUB = "xpub_status_smoke";
@@ -26,7 +25,7 @@ const { routePolicyForPath } = await import("../server/route-policies.js");
 const status = await readSystemStatus();
 assert.equal(status.ok, true);
 assert.equal(status.database.enabled, false);
-assert.equal(status.summary.total, 23);
+assert.equal(status.summary.total, 24);
 assert.equal(status.databasePool.enabled, false);
 assert.equal(status.databasePool.role, "all");
 assert.equal(status.databasePool.max, 6);
@@ -34,6 +33,8 @@ assert.equal(status.databasePool.maxSource, "role_default");
 assert.equal(status.databasePool.waiting, 0);
 assert.equal(status.chatPricing.live.enabled, false);
 assert.equal(status.chatPricing.live.status, "disabled");
+assert.equal(status.chatPricing.cacheEfficiency.enabled, false);
+assert.equal(status.chatPricing.cacheEfficiency.status, "database_disabled");
 assert.equal(status.networkTaskSpendByDay.enabled, false);
 assert.equal(status.networkTaskSpendByDay.windowDays, 30);
 assert.deepEqual(status.networkTaskSpendByDay.totals, { totalPft: 0, taskCount: 0 });
@@ -58,22 +59,25 @@ assert.deepEqual(status.boardManagerDailyCost.totals, {
 });
 
 const pricingModes = new Map(status.chatPricing.modes.map((mode) => [mode.mode, mode]));
-assert.equal(pricingModes.get("Private Instant")?.model, "deepseek/deepseek-v4-flash");
-assert.equal(pricingModes.get("Private Instant")?.maxOutputTokens, 16384);
-assert.equal(pricingModes.get("Private Thinking")?.model, "z-ai/glm-5.2");
-assert.equal(pricingModes.get("Private Thinking")?.reasoning, "xhigh");
-assert.equal(pricingModes.get("Private Thinking")?.providerOrder.includes("z-ai"), true);
-assert.equal(pricingModes.get("Private Thinking")?.providerOrder.includes("novita"), true);
-assert.equal(pricingModes.get("Discount Thinking")?.model, "deepseek-v4-pro");
-assert.equal(pricingModes.get("Discount Thinking")?.providerLabel, "DeepSeek API Direct");
-assert.equal(pricingModes.get("Discount Thinking")?.configuredPricing?.outputUsdPerMillion, 0.87);
-assert.equal(pricingModes.get("Discount Thinking")?.configuredPricing?.inputCacheHitUsdPerMillion, 0.003625);
-assert.match(pricingModes.get("Discount Thinking")?.privacyPolicy || "", /Direct DeepSeek API/);
-assert.equal(pricingModes.get("Help")?.model, "deepseek-v4-pro");
-assert.equal(pricingModes.get("Help")?.providerLabel, "DeepSeek API Direct");
+assert.deepEqual([...pricingModes.keys()], ["Instant", "Thinking", "Help"]);
+assert.equal(pricingModes.get("Instant")?.model, "deepseek/deepseek-v4-flash-0731");
+assert.equal(pricingModes.get("Instant")?.maxOutputTokens, 16384);
+assert.equal(pricingModes.get("Thinking")?.model, "z-ai/glm-5.2");
+assert.equal(pricingModes.get("Thinking")?.reasoning, "xhigh");
+assert.equal(pricingModes.get("Thinking")?.providerLabel, "Ambient");
+assert.equal(pricingModes.get("Thinking")?.configuredPricing?.inputUsdPerMillion, 0.4725);
+assert.equal(pricingModes.get("Thinking")?.configuredPricing?.inputCacheHitUsdPerMillion, 0.09);
+assert.equal(pricingModes.get("Thinking")?.configuredPricing?.outputUsdPerMillion, 1.98);
+assert.deepEqual(pricingModes.get("Thinking")?.providerOrder, []);
+assert.match(pricingModes.get("Thinking")?.privacyPolicy || "", /Ambient inference/);
+assert.equal(pricingModes.get("Help")?.model, "deepseek/deepseek-v4-flash-0731");
+assert.equal(pricingModes.get("Help")?.providerLabel, "Ambient");
 assert.equal(pricingModes.get("Help")?.reasoning, "");
 assert.equal(pricingModes.get("Help")?.estimatedOutputTokens, 1200);
-assert.equal(pricingModes.get("Help")?.maxOutputTokens, null);
+assert.equal(pricingModes.get("Help")?.maxOutputTokens, 1200);
+assert.equal(pricingModes.get("Instant")?.configuredPricing?.inputUsdPerMillion, 0.063);
+assert.equal(pricingModes.get("Instant")?.configuredPricing?.inputCacheHitUsdPerMillion, 0.0126);
+assert.equal(pricingModes.get("Instant")?.configuredPricing?.outputUsdPerMillion, 0.126);
 assert.match(pricingModes.get("Help")?.description || "", /plain-English Task Node product help/);
 
 const categories = new Map(status.categories.map((category) => [category.id, category]));
@@ -94,6 +98,7 @@ for (const id of [
   "ethereum_deposit_rpc",
   "jobs_pgvector_corpus",
   "chat_turn_memory",
+  "rewarded_task_memory",
   "deep_memory",
   "network_task_profile",
   "daily_airdrop_worker",

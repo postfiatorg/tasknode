@@ -122,10 +122,8 @@ Runtime call sites:
 
 Provider policy:
 
-- model: `deepseek/deepseek-v4-pro`;
-- provider: OpenRouter private route;
-- ZDR required;
-- `data_collection: "deny"`;
+- model: Ambient `z-ai/glm-5.2` by default;
+- provider: `ambient` through the shared strict-JSON capability;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.
@@ -266,7 +264,7 @@ Each tick:
 3. checks today plus the previous `TASKNODE_DAILY_AIRDROP_CATCHUP_DAYS` UTC days, defaulting to two catch-up days;
 4. retries `failed_before_submit` issuance rows up to `TASKNODE_DAILY_AIRDROP_MAX_ISSUANCE_ATTEMPTS`;
 5. selects accounts with positive rewarded task work, no same-day in-flight/submitted/cancelled issuance stop row, and no same-day running or completed production scoring row;
-6. runs the existing DeepSeek/OpenRouter daily airdrop scorer in production mode to create a completed account/day scoring row;
+6. runs the Ambient GLM 5.2 daily airdrop scorer in production mode to create a completed account/day scoring row;
 7. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
 8. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.` The audit packet includes `runDatesChecked`, recovered stale rows, and unresolved debt counts. Zero-payout ticks are recorded at most once per UTC day unless there is debt, a failed account, or a submitted payout.
 

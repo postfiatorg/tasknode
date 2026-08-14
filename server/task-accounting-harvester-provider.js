@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
+import { AMBIENT_MODELS, ambientConfigured, ambientFetchCompatibility } from "./ambient-inference.js";
 
 const promptPath = "hive/task_accounting_harvester_v1.md";
 const promptVersion = "task_accounting_harvester_v1";
@@ -33,30 +34,12 @@ function configuredModel() {
   return (
     process.env.TASKNODE_TASK_ACCOUNTING_HARVESTER_MODEL ||
     process.env.TASK_ACCOUNTING_HARVESTER_MODEL ||
-    "deepseek/deepseek-v4-pro"
+    AMBIENT_MODELS.structured
   );
 }
 
-function configuredApiKey() {
-  return (
-    process.env.OPENROUTER_API_KEY ||
-    process.env.OPENROUTER ||
-    process.env.OPEN_ROUTER_API_KEY ||
-    process.env.TASKNODE_OPENROUTER_API_KEY ||
-    ""
-  ).trim();
-}
-
-function configuredBaseUrl() {
-  return (
-    process.env.OPENROUTER_BASE_URL ||
-    process.env.TASKNODE_OPENROUTER_BASE_URL ||
-    "https://openrouter.ai/api/v1"
-  ).replace(/\/+$/, "");
-}
-
 export function taskAccountingHarvesterProviderConfigured() {
-  return boolEnv("TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK", false) || Boolean(configuredApiKey());
+  return boolEnv("TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK", false) || ambientConfigured();
 }
 
 function compactString(value, max = 6000) {
@@ -273,7 +256,7 @@ export async function runTaskAccountingHarvestCall({ sourcePacket, fetchImpl = f
   const prompt = await loadPrompt(promptPath);
   const promptHash = promptDigest(prompt);
   const model = configuredModel();
-  const provider = "openrouter";
+  const provider = "ambient";
   if (boolEnv("TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK", false)) {
     const result = mockHarvest(sourcePacket);
     return {
@@ -288,9 +271,8 @@ export async function runTaskAccountingHarvestCall({ sourcePacket, fetchImpl = f
     };
   }
 
-  const apiKey = configuredApiKey();
-  if (!apiKey) {
-    throw new Error("OPENROUTER_API_KEY is required for task accounting harvester");
+  if (!ambientConfigured()) {
+    throw new Error("AMBIENT_API_KEY is required for task accounting harvester");
   }
 
   const started = Date.now();
@@ -306,10 +288,6 @@ export async function runTaskAccountingHarvestCall({ sourcePacket, fetchImpl = f
       temperature: 0,
       max_tokens: numericEnv("TASKNODE_TASK_ACCOUNTING_HARVESTER_MAX_TOKENS", 2500),
       response_format: responseSchema(),
-      provider: {
-        data_collection: "deny",
-        require_parameters: true,
-      },
       usage: { include: true },
       metadata: {
         app: "tasknodeofficial",
@@ -323,17 +301,12 @@ export async function runTaskAccountingHarvestCall({ sourcePacket, fetchImpl = f
 
     let response;
     try {
-      response = await fetchImpl(`${configuredBaseUrl()}/chat/completions`, {
+      response = await ambientFetchCompatibility(fetchImpl, "", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${apiKey}`,
-          "http-referer": process.env.OPENROUTER_HTTP_REFERER || "https://tasknode.postfiat.org",
-          "x-title": process.env.OPENROUTER_APP_TITLE || "Task Node Task Accounting Harvester",
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
         signal: controller.signal,
-      });
+      }, { capability: "strict_json", timeoutMs });
     } finally {
       clearTimeout(timeout);
     }

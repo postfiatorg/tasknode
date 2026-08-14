@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
+import { AMBIENT_MODELS, ambientChatCompletion } from "./ambient-inference.js";
 import {
   buildPublicProfileSnapshotInput,
   completePublicProfileSnapshot,
@@ -10,7 +11,7 @@ import {
 
 const PROMPT_PATH = "profile/public_profile_snapshot_v1.md";
 const PROMPT_VERSION = "public_profile_snapshot_v1";
-const DEFAULT_MODEL = "deepseek/deepseek-v4-pro";
+const DEFAULT_MODEL = AMBIENT_MODELS.fastText;
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -44,17 +45,6 @@ function parseJsonObject(text = "") {
     if (start >= 0 && end > start) return JSON.parse(raw.slice(start, end + 1));
     throw new Error("public_profile_model_output_not_json");
   }
-}
-
-function openRouterKey(env = process.env) {
-  return safeText(env.OPENROUTER_API_KEY || env.OPENROUTER, 4000);
-}
-
-function providerOrder(env = process.env) {
-  return safeText(env.TASKNODE_PUBLIC_PROFILE_PROVIDER_ORDER || env.TASKNODE_PRIVATE_PROVIDER_ORDER || "", 1000)
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 export function publicProfileResponseFormat() {
@@ -119,20 +109,10 @@ export async function generatePublicProfileWithOpenRouter({
   model,
   env = process.env,
 } = {}) {
-  const apiKey = openRouterKey(env);
-  if (!apiKey) throw new Error("openrouter_api_key_required");
-  const order = providerOrder(env);
-  const baseUrl = safeText(env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1", 400).replace(/\/+$/, "");
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-      "http-referer": env.OPENROUTER_REFERER || env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-      "x-title": env.OPENROUTER_TITLE || "Task Node Official",
-      "x-openrouter-title": env.OPENROUTER_TITLE || "Task Node Official",
-    },
-    body: JSON.stringify({
+  const result = await ambientChatCompletion({
+    env,
+    capability: "strict_json",
+    body: {
       model,
       messages: [
         { role: "system", content: promptText },
@@ -152,12 +132,6 @@ export async function generatePublicProfileWithOpenRouter({
           ),
         },
       ],
-      provider: {
-        zdr: true,
-        data_collection: "deny",
-        require_parameters: true,
-        ...(order.length > 0 ? { order, only: order } : {}),
-      },
       reasoning: {
         effort: "none",
         exclude: true,
@@ -165,19 +139,12 @@ export async function generatePublicProfileWithOpenRouter({
       temperature: 0,
       max_tokens: 1400,
       response_format: publicProfileResponseFormat(),
-      usage: { include: true },
-    }),
+    },
   });
-  const text = await response.text();
-  const body = text ? JSON.parse(text) : {};
-  if (!response.ok) {
-    const error = new Error(body?.error?.message || body?.message || `OpenRouter public profile HTTP ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
-  const content = body?.choices?.[0]?.message?.content || "";
+  const body = result.body;
+  const content = result.text;
   return {
-    provider: "openrouter",
+    provider: "ambient",
     model: body?.model || model,
     responseId: body?.id || null,
     output: parseJsonObject(content),
@@ -220,7 +187,7 @@ export async function runPublicProfileSnapshot({
     accountId,
     inputFingerprint,
     inputSnapshot: packet,
-    provider: "openrouter",
+    provider: "ambient",
     model,
     promptVersion: PROMPT_VERSION,
     promptDigest: digest,

@@ -434,7 +434,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
   const enabledMode = signedOut
     ? modes.find((mode) => mode.label === "Help" && mode.enabled) || modes.find((mode) => mode.enabled)
     : (
-        modes.find((mode) => mode.label === "Frontier Instant" && mode.enabled) ||
+        modes.find((mode) => mode.label === "Instant" && mode.enabled) ||
         modes.find((mode) => mode.enabled)
       );
   const conversationId = conversationIdForSession(session);
@@ -559,7 +559,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       hiveConversation: accountId
         ? await appStateSection("hive_conversation", () => getHiveConversation({ accountId }), null)
         : null,
-      defaultMode: signedOut ? "Help" : enabledMode?.label || "Private Instant",
+      defaultMode: signedOut ? "Help" : enabledMode?.label || "Instant",
       modes,
       seedMessages: accountId
         ? await appStateSection("chat_messages", () => getChatMessages({ accountId, conversationId }), [])

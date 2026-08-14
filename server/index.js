@@ -66,6 +66,7 @@ const [
   { handleProfileRoute },
   { handleProfileNftImageRoute, handleProfileNftPfpRoute },
   { handleMemoryRoute },
+  { handleCollaborationRoute },
   { handleDirectoryRoute },
   { handleHiveRoute },
   { handleCapabilityProfileRoute },
@@ -117,6 +118,7 @@ const [
   import("./profile-routes.js"),
   import("./profile-nft-image-proxy.js"),
   import("./memory-routes.js"),
+  import("./collaboration-routes.js"),
   import("./directory-routes.js"),
   import("./hive-routes.js"),
   import("./capability-profile-routes.js"),
@@ -169,6 +171,14 @@ const contentTypes = new Map([
 ]);
 
 function securityHeaders() {
+  const pfdocsFrameOrigin = (() => {
+    try {
+      const origin = new URL(String(process.env.PFDOCS_PUBLIC_ORIGIN || "")).origin;
+      return /^https:\/\//i.test(origin) ? origin : "";
+    } catch {
+      return "";
+    }
+  })();
   return {
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
@@ -181,6 +191,7 @@ function securityHeaders() {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "connect-src 'self' https://traffic.postfiat.org https://us.posthog.com https://*.posthog.com",
+      `frame-src 'self'${pfdocsFrameOrigin ? ` ${pfdocsFrameOrigin}` : ""}`,
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -235,6 +246,9 @@ async function readJson(req, maxBytes = 16384) {
 function runtimeConfig() {
   const taskLifecycleOffchain = offchainTaskLifecycleEnabled();
   const taskLifecycleDualWrite = offchainTaskLifecycleDualWriteEnabled();
+  const collaborationFlag = (name) => process.env[name] === "true" || (
+    process.env[name] !== "false" && environment !== "production"
+  );
   return {
     appName: "tasknodeofficial",
     buildId,
@@ -246,6 +260,15 @@ function runtimeConfig() {
     posthogHost: process.env.VITE_POSTHOG_HOST || process.env.POSTHOG_UI_HOST || "",
     posthogKeyPresent: Boolean(process.env.POSTHOG_KEY || process.env.VITE_POSTHOG_KEY),
     walletUnlockIdleLockMinutes: process.env.TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES || "",
+    collaboration: {
+      docsEnabled: collaborationFlag("TASKNODE_DOCS_ENABLED"),
+      teamEnabled: collaborationFlag("TASKNODE_TEAM_ENABLED"),
+      pfdocsEditorEnabled: collaborationFlag("TASKNODE_PFDOCS_EDITOR_ENABLED"),
+      docsOdvEnabled: collaborationFlag("TASKNODE_DOCS_ODV_ENABLED"),
+      pfdocsOrigin: process.env.PFDOCS_PUBLIC_ORIGIN || process.env.VITE_PFDOCS_ORIGIN || "",
+      pfdocsBridgePath: process.env.PFDOCS_TASKNODE_BRIDGE_PATH || "/tasknode/",
+      nostrOptional: true,
+    },
     taskLifecycle: {
       offchainEnabled: taskLifecycleOffchain,
       dualWrite: taskLifecycleDualWrite,
@@ -826,6 +849,8 @@ async function routeApi(req, url, res) {
 
   if (await handleMemoryRoute({ json, readJson, req, res, session, url })) return true;
 
+  if (await handleCollaborationRoute({ json, readJson, req, res, session, url })) return true;
+
   if (await handleAccountRoute({
     expiredSessionCookie: () => expiredSessionCookie(req),
     json,
@@ -892,6 +917,7 @@ async function routeApi(req, url, res) {
         message: "Chat response generated.",
         conversationId,
         mode: started.chat.mode,
+        persona: result.persona || started.chat.persona,
         provider: result.provider,
         model: result.model,
         responseId: result.responseId,
@@ -902,6 +928,12 @@ async function routeApi(req, url, res) {
           billingModel: "usage_based",
           currency: "USD",
           inputTokens: result.usage.inputTokens,
+          promptCacheHitTokens: result.usage.promptCacheHitTokens || 0,
+          promptCacheMissTokens: result.usage.promptCacheMissTokens || 0,
+          promptCacheHitRate: result.usage.promptCacheHitRate || 0,
+          cacheUsageReported: result.usage.cacheUsageReported === true,
+          cacheSavingsUsd: result.usage.cacheSavingsUsd || 0,
+          costSource: result.usage.costSource || "",
           outputTokens: result.usage.outputTokens,
           totalTokens: result.usage.totalTokens,
           webSearchCalls: result.usage.webSearchCalls || 0,

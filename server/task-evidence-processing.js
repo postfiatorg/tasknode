@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 import { loadPrompt, promptDigest, renderPromptTemplate } from "./prompt-registry.js";
+import {
+  decodeEvidenceDataUrl,
+  extractEvidenceFileContent,
+  MAX_EVIDENCE_FILE_BYTES,
+} from "./evidence-file-extraction.js";
+import { AMBIENT_MODELS, ambientChatCompletion } from "./ambient-inference.js";
 
 const SCREENSHOT_PROMPT_PATH = "task_engine/evidence_screenshot_read_v1.md";
-const MAX_EVIDENCE_IMAGE_BYTES = 2_500_000;
-const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -39,9 +43,8 @@ function compactFileMetadata(file = {}, parsed = null, buffer = null) {
 function openAiVisionModel(env = process.env) {
   return safeText(
     env.TASKNODE_EVIDENCE_VISION_MODEL ||
-      env.CHAT_MODEL_FRONTIER_INSTANT ||
-      env.OPENAI_MODEL ||
-      "chat-latest",
+      env.AMBIENT_MODEL_VISION ||
+      AMBIENT_MODELS.vision,
     120
   );
 }
@@ -65,13 +68,6 @@ async function describeScreenshotWithOpenAi({
   env = process.env,
   fetchImpl = fetch,
 } = {}) {
-  const apiKey = safeText(env.OPENAI_API_KEY);
-  if (!apiKey) {
-    const error = new Error("openai_api_key_missing");
-    error.status = 409;
-    throw error;
-  }
-
   const prompt = renderPromptTemplate(loadPrompt(SCREENSHOT_PROMPT_PATH), {
     TASK_TITLE: safeText(task?.title, 500),
     TASK_DESCRIPTION: safeText(task?.description, 3000),
@@ -79,53 +75,36 @@ async function describeScreenshotWithOpenAi({
   });
   const model = openAiVisionModel(env);
   const startedAt = Date.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    Math.max(5000, Number(env.TASKNODE_EVIDENCE_VISION_TIMEOUT_MS || 45000))
-  );
-
-  try {
-    const response = await fetchImpl(`${(env.OPENAI_BASE_URL || DEFAULT_OPENAI_BASE_URL).replace(/\/+$/, "")}/responses`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
+  const result = await ambientChatCompletion({
+      env,
+      fetchImpl,
+      capability: "verification_vision",
+      timeoutMs: Math.max(5000, Number(env.TASKNODE_EVIDENCE_VISION_TIMEOUT_MS || 45000)),
+      body: {
         model,
-        input: [
+        messages: [
           {
             role: "user",
             content: [
               {
-                type: "input_text",
+                type: "text",
                 text: `${prompt}\n\nEvidence file: ${safeText(file?.name, 240)}`,
               },
               {
-                type: "input_image",
-                image_url: dataUrl,
-                detail: "high",
+                type: "image_url",
+                image_url: { url: dataUrl },
               },
             ],
           },
         ],
-        max_output_tokens: Number(env.TASKNODE_EVIDENCE_VISION_MAX_TOKENS || 700),
-        store: false,
-      }),
+        max_tokens: Number(env.TASKNODE_EVIDENCE_VISION_MAX_TOKENS || 700),
+      },
     });
-    const bodyText = await response.text();
-    if (!response.ok) {
-      const error = new Error(`evidence_vision_openai_http_${response.status}:${bodyText.slice(0, 500)}`);
-      error.status = response.status;
-      throw error;
-    }
-    const body = JSON.parse(bodyText);
+    const body = result.body;
     return {
-      description: safeText(openAiResponseText(body), 8000),
+      description: safeText(result.text, 8000),
       metadata: {
-        provider: "openai",
+        provider: "ambient",
         model,
         prompt_path: SCREENSHOT_PROMPT_PATH,
         prompt_digest: promptDigest(prompt),
@@ -133,9 +112,6 @@ async function describeScreenshotWithOpenAi({
         response_id: safeText(body?.id, 200),
       },
     };
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 export async function processEvidenceFileForSubmission({
@@ -162,14 +138,14 @@ export async function processEvidenceFileForSubmission({
     };
   }
 
-  const buffer = Buffer.from(parsed.data, "base64");
-  if (buffer.byteLength > MAX_EVIDENCE_IMAGE_BYTES) {
+  const { buffer, mimeType } = decodeEvidenceDataUrl(file.dataUrl || file.data_url || "");
+  if (buffer.byteLength > MAX_EVIDENCE_FILE_BYTES) {
     const error = new Error("evidence_file_too_large");
     error.status = 413;
     throw error;
   }
 
-  const metadata = compactFileMetadata(file, parsed, buffer);
+  const metadata = compactFileMetadata(file, { ...parsed, mimeType }, buffer);
   if (file.sha256 && safeText(file.sha256, 120) !== metadata.sha256) {
     const error = new Error("evidence_file_digest_mismatch");
     error.status = 400;
@@ -177,14 +153,42 @@ export async function processEvidenceFileForSubmission({
   }
 
   if (artifactType !== "screenshot") {
+    let extracted;
+    try {
+      extracted = await extractEvidenceFileContent({
+        buffer,
+        fileName: metadata.name,
+        mimeType: metadata.mime_type,
+      });
+    } catch (error) {
+      if (error?.status) throw error;
+      const unreadable = new Error(`evidence_file_unreadable:${safeText(error?.message || error, 240)}`);
+      unreadable.status = 422;
+      throw unreadable;
+    }
+    const visualDescriptions = [];
+    for (const [index, image] of (extracted.images || []).entries()) {
+      const described = await describeScreenshotWithOpenAi({
+        dataUrl: `data:${image.mimeType};base64,${Buffer.from(image.buffer).toString("base64")}`,
+        file: { ...metadata, name: `${metadata.name}:${image.name || `visual-${index + 1}`}` },
+        task,
+        verificationCriteria,
+        env,
+        fetchImpl,
+      });
+      visualDescriptions.push(`[Visual ${index + 1}] ${described.description}`);
+    }
+    const combinedText = [safeText(extracted.text || file.text || value, 120000), ...visualDescriptions].filter(Boolean).join("\n\n");
     return {
       ok: true,
       artifact_type: artifactType || "file",
       file: metadata,
-      text: safeText(file.text || value, 120000),
+      text: safeText(combinedText, 120000),
       processing: {
-        status: "metadata_only",
-        reason: "non_image_file",
+        status: "extracted",
+        parser: extracted.parser,
+        warnings: extracted.warnings || [],
+        metadata: { ...(extracted.metadata || {}), visual_observation_count: visualDescriptions.length },
       },
     };
   }

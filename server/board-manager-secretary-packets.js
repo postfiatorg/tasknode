@@ -2,8 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "./db/pool.js";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { boardManagerActions } from "./repositories/board-manager.js";
+import { AMBIENT_MODELS, ambientConfigured, ambientFetchCompatibility } from "./ambient-inference.js";
 
-const defaultDeepSeekBaseUrl = "https://api.deepseek.com";
 const promptVersion = "board_manager_secretary_v1";
 const secretaryPrompt = loadPrompt("hive/board_manager_secretary_v1.md");
 
@@ -88,12 +88,8 @@ export function boardManagerSecretarySourceDigest(sourcePacket = {}) {
   return digestJson(stableSecretarySourceValue(safeObject(sourcePacket)));
 }
 
-function deepSeekKey() {
-  return safeText(process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK, 10000);
-}
-
 export function boardManagerSecretaryModel() {
-  return safeText(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MODEL || "deepseek-v4-pro", 120);
+  return safeText(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MODEL || AMBIENT_MODELS.structured, 120);
 }
 
 function secretaryReasoningEffort() {
@@ -109,7 +105,7 @@ export function boardManagerSecretaryEnabled() {
   return (
     process.env.TASKNODE_BOARD_MANAGER_SECRETARY_ENABLED !== "false" &&
     useDatabase() &&
-    Boolean(deepSeekKey())
+    ambientConfigured()
   );
 }
 
@@ -1043,9 +1039,8 @@ export async function fetchBoardManagerSecretaryPacket({
   model = boardManagerSecretaryModel(),
   fetchImpl = fetch,
 } = {}) {
-  const apiKey = deepSeekKey();
-  if (!apiKey) {
-    const error = new Error("board_manager_secretary_deepseek_not_configured");
+  if (!ambientConfigured()) {
+    const error = new Error("board_manager_secretary_ambient_not_configured");
     error.status = 409;
     throw error;
   }
@@ -1054,11 +1049,10 @@ export async function fetchBoardManagerSecretaryPacket({
   const startedAt = Date.now();
   try {
     const requestPacket = async (messages) => {
-      const response = await fetchImpl(`${(process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
+      const response = await ambientFetchCompatibility(fetchImpl, "", {
         method: "POST",
         signal: controller.signal,
         headers: {
-          authorization: `Bearer ${apiKey}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -1071,7 +1065,7 @@ export async function fetchBoardManagerSecretaryPacket({
           max_tokens: Math.max(2500, Number(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MAX_TOKENS || 6000)),
           stream: false,
         }),
-      });
+      }, { capability: "strict_json", timeoutMs: secretaryTimeoutMs() });
       const bodyText = await response.text();
       const body = bodyText ? JSON.parse(bodyText) : {};
       if (!response.ok) {
@@ -1132,7 +1126,7 @@ export async function fetchBoardManagerSecretaryPacket({
       packet,
       outputText: response.outputText,
       packetText: packetText(packet),
-      provider: "deepseek",
+      provider: "ambient",
       model: response.body?.model || model,
       responseId: safeText(response.body?.id, 200),
       promptVersion,
@@ -1285,7 +1279,7 @@ async function insertBoardManagerSecretaryPacket({
         normalizedPacketDigest,
         jsonValue(packet),
         safeText(result.packetText || packetText(packet), 20000),
-        safeText(result.provider || "deepseek", 80),
+        safeText(result.provider || "ambient", 80),
         safeText(result.model || boardManagerSecretaryModel(), 120),
         safeText(result.promptVersion || promptVersion, 120),
         safeText(result.promptDigest || promptDigest(secretaryPrompt), 120),
@@ -1340,7 +1334,7 @@ export function buildBoardManagerSecretaryDecisionPacket({
   const normalizedSecretaryJson = normalizeBoardManagerSecretaryPacket(secretaryPacket.packetJson);
   const packetCore = {
     schema: "pf.hive.board_manager.decision_source.v1",
-    sourceMode: "deepseek_secretary_packet",
+    sourceMode: "ambient_secretary_packet",
     scope: safeText(sourcePacket.scope, 120) || "global_hive",
     trigger: safeText(sourcePacket.trigger, 160),
     generatedAt: new Date().toISOString(),
@@ -1404,7 +1398,7 @@ export function buildBoardManagerSecretaryDecisionPacket({
       sourceDigest: safeText(secretaryPacket.sourceDigest, 120),
       packetDigest: safeText(secretaryPacket.packetDigest, 120),
       reused: Boolean(reused),
-      provider: safeText(secretaryPacket.provider || "deepseek", 80),
+      provider: safeText(secretaryPacket.provider || "ambient", 80),
       model: safeText(secretaryPacket.model || boardManagerSecretaryModel(), 120),
       promptVersion: safeText(secretaryPacket.promptVersion || promptVersion, 120),
       createdAt: secretaryPacket.createdAt || null,

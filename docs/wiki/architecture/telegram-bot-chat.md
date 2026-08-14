@@ -19,37 +19,19 @@ Group chats are rejected with a privacy message. This prevents a linked account 
 
 Telegram exposes the same chat modes as the web chat surface:
 
-- Private Instant
-- Private Thinking
-- Discount Thinking
-- Frontier Instant
-- Frontier Thinking
+- Instant
+- Thinking
+- Help
 
 The bot sends an inline keyboard with these modes. Selecting a mode stores a per-account, per-Telegram-chat preference in the runtime store, then future Telegram messages use that mode.
 
 The bot calls the same `chatSend` path as the web UI. That means model execution is billed against the Task Node account balance, and low-balance requests are rejected before provider execution. `/balance` or the Balance button returns current credit, spend, and available credit.
 
 Telegram marks bot-originated chat requests as `source=telegram_bot` before they
-enter the shared chat route. Discount Thinking uses a longer Telegram-specific
-provider timeout because direct DeepSeek reasoning can take longer than the web
-chat default:
-
-- `TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS`
-- `TELEGRAM_DISCOUNT_THINKING_TIMEOUT_MS`
-- `TASKNODE_TELEGRAM_DISCOUNT_THINKING_TIMEOUT_MS`
-
-If none are set, Telegram Discount Thinking waits up to 120 seconds before Task
-Node aborts the provider request. Web Discount Thinking uses the same 120 second
-default through the shared DeepSeek chat timeout path. Other Telegram modes keep
-the normal chat provider timeout unless their own provider timeout environment
-variable is configured.
-
-If the selected Telegram mode is Discount Thinking and the direct DeepSeek
-provider fails before producing a response, the bot retries once through an
-enabled non-DeepSeek chat mode so the Telegram product surface does not dead-end
-on an upstream DeepSeek account outage. `TELEGRAM_BOT_FALLBACK_CHAT_MODE` can
-pin that retry mode; otherwise the bot prefers Private Instant, Frontier
-Instant, Private Thinking, then Frontier Thinking.
+enter the shared Ambient chat route. Thinking receives the shared 120-second
+reasoning timeout. If it fails before producing a response, the bot may retry
+once through another enabled canonical mode; `TELEGRAM_BOT_FALLBACK_CHAT_MODE`
+can select that mode.
 
 Telegram tone is intentionally product-safe. The prompt can be direct, but it
 must not insult, shame, taunt, or perform contempt. The pressure belongs on the
@@ -61,8 +43,7 @@ decision or artifact, not on the person.
 TELEGRAM_BOT_TOKEN=<telegram bot token>
 TELEGRAM_BOT_WEBHOOK_SECRET=<random webhook secret>
 TELEGRAM_BOT_CHAT_MODE=<optional Task Node chat mode>
-TELEGRAM_BOT_FALLBACK_CHAT_MODE=<optional fallback when Discount Thinking provider fails>
-TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS=<optional; defaults to 120000>
+TELEGRAM_BOT_FALLBACK_CHAT_MODE=<optional canonical fallback mode>
 ```
 
 `TELEGRAM_AUTH_BOT_TOKEN` can be reused instead of `TELEGRAM_BOT_TOKEN` when the login widget and chat bot are the same bot.

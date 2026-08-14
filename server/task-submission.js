@@ -619,14 +619,26 @@ export async function taskSubmissionAction(payload = {}, method = "POST", sessio
     }
     return await taskSubmissionConfig({ payload, session });
   } catch (error) {
+    const evidenceError = phase === "process_evidence" && String(error?.message || "").startsWith("evidence_");
+    const evidenceMessage = String(error?.message || "").startsWith("evidence_file_type_unsupported")
+      ? "Task Node cannot extract readable evidence from this file type. Upload a PDF, DOCX, text/code file, ZIP, TAR, or GZIP archive."
+      : String(error?.message || "").startsWith("evidence_file_no_extractable_text")
+        ? "Task Node could not find readable text in this file. For scanned documents, attach a screenshot or add a text explanation."
+        : String(error?.message || "").startsWith("evidence_archive")
+          ? "Task Node could not safely read this archive. Check that it is a valid ZIP, TAR, or GZIP file with bounded text/code contents."
+          : evidenceError
+            ? "Task Node could not read this evidence file. Check the file and try again."
+            : "";
     return submissionResponse({
       status: error?.status || 502,
       error: error?.code || error?.message || "task_submission_failed",
       message:
         error?.message === "context_ipfs_payload_too_large"
           ? "Task evidence is too large to publish. Process screenshots and files into compact evidence before signing."
-          : error?.message || "Task evidence could not be published to PFT.",
-      actionRequired: "Check wallet unlock state, PFT balance, PFTL connectivity, and IPFS configuration, then retry.",
+          : evidenceMessage || error?.message || "Task evidence could not be published to PFT.",
+      actionRequired: evidenceError
+        ? "Choose a supported readable file or provide the evidence as text, a screenshot, or a public URL."
+        : "Check wallet unlock state, PFT balance, PFTL connectivity, and IPFS configuration, then retry.",
       extra: {
         attempts: Array.isArray(error?.attempts) ? error.attempts : undefined,
       },

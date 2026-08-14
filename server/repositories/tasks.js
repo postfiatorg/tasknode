@@ -17,6 +17,7 @@ import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
 import { getNetworkTaskEligibility, syncNetworkTaskProjection } from "./network-tasks.js";
 import { enqueueNetworkTaskProfileForRewardThreshold } from "./network-task-profile.js";
+import { enqueueRewardedTaskMemory } from "./task-reward-memory.js";
 import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
 import { normalizeTaskStatus, taskLifecycleActions, taskRefreshMetadata, taskStatusInfo, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
 import { formatTaskDeadline, formatTaskTimestamp } from "../../shared/task-time-format.js";
@@ -1503,7 +1504,17 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
   });
 
   await syncNetworkTaskProjection({ taskId: projection.taskId }).catch(() => null);
-  const networkTaskProfile = await maybeQueueNetworkTaskProfileAfterReward(projection);
+  const [networkTaskProfile, rewardedTaskMemory] = await Promise.all([
+    maybeQueueNetworkTaskProfileAfterReward(projection),
+    enqueueRewardedTaskMemory({
+      projection,
+      events: projection.hydratedEvents,
+    }).catch((error) => ({
+      queued: false,
+      reason: "rewarded_task_memory_enqueue_failed",
+      error: safeText(error?.message || error, 1000),
+    })),
+  ]);
 
   return {
     ok: true,
@@ -1514,5 +1525,6 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
     status: projection.status,
     pointerEventCount: projection.hydratedEvents.length,
     networkTaskProfile,
+    rewardedTaskMemory,
   };
 }

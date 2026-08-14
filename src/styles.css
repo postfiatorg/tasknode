@@ -909,6 +909,12 @@ button {
   padding: 3px 16px 0;
 }
 
+@media (min-width: 761px) {
+  .app-shell.view-docs .topbar {
+    display: none;
+  }
+}
+
 h1 {
   margin: 0;
   font-size: 20px;
@@ -2182,10 +2188,19 @@ h1 {
   padding: 8px 0;
 }
 
-.chat-empty .model-menu,
-.chat-empty .plus-menu {
+.plus-menu.has-personas {
+  width: min(320px, calc(100vw - 36px));
+}
+
+.chat-empty .model-menu {
   top: 46px;
   bottom: auto;
+}
+
+.chat-empty .plus-menu {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
 }
 
 .model-menu button {
@@ -2269,6 +2284,96 @@ h1 {
 
 .tool-menu-row span {
   flex: 1;
+}
+
+.personality-menu-current {
+  display: inline-flex;
+  flex: 0 0 auto !important;
+  align-items: center;
+  gap: 5px;
+  color: #77746d;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.personality-menu-current svg {
+  transition: transform 140ms ease;
+}
+
+.personality-menu-current svg.is-open {
+  transform: rotate(90deg);
+}
+
+.personality-menu {
+  display: grid;
+  gap: 2px;
+  width: calc(100% - 12px);
+  margin: 2px 6px 5px;
+  padding: 4px;
+  border: 1px solid #efede7;
+  border-radius: 12px;
+  background: #faf9f6;
+}
+
+.composer .personality-menu-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  width: 100%;
+  height: auto;
+  min-height: 45px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  color: #0d0d0d;
+  text-align: left;
+}
+
+.composer .personality-menu-row:hover,
+.composer .personality-menu-row.selected {
+  background: #efeee9;
+}
+
+.personality-menu-row > svg {
+  margin-top: 2px;
+  color: #77746d;
+}
+
+.personality-menu-row > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.personality-menu-row strong,
+.personality-menu-row small {
+  display: block;
+}
+
+.personality-menu-row strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.personality-menu-row small {
+  color: #77746d;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.chat-persona-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 140px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f2f1ed;
+  color: #5d5a53;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .menu-divider {

@@ -22,8 +22,12 @@ const queryImpl = async (sql, params = []) => {
   assert.deepEqual(params[0], ["acct_public_operator"]);
   assert.match(sql, /FROM task_projections p/);
   assert.match(sql, /JOIN visible_accounts visible/);
+  assert.match(sql, /rewarded_candidates AS/);
+  assert.match(sql, /FROM rewarded_candidates p/);
   assert.match(sql, /network_project_task_refs refs/);
   assert.match(sql, /p.status = 'rewarded'/);
+  assert.doesNotMatch(sql, /FROM task_events event/);
+  assert.ok(sql.indexOf("LIMIT $3") < sql.indexOf("FROM rewarded_candidates p"));
   if (params[1] === "personal") {
     return {
       rows: [{

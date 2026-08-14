@@ -12,6 +12,7 @@ delete process.env.CHAT_MODEL_HELP;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
 process.env.OPENROUTER_API_KEY = "runtime-smoke-openrouter-key";
 process.env.DEEPSEEK_API_KEY = "runtime-smoke-deepseek-key";
+process.env.AMBIENT_API_KEY = "runtime-smoke-ambient-key";
 delete process.env.OPENROUTER_MODEL;
 delete process.env.DEEPSEEK_CHAT_MODEL;
 delete process.env.OPENROUTER_CHAT_ENABLED;
@@ -88,6 +89,27 @@ try {
     signWalletChallenge,
   } = await import("../src/wallet-core.js");
   const { appState } = await import("../server/app-state.js");
+
+  if (modelForMode("Instant") !== "deepseek/deepseek-v4-flash-0731") {
+    throw new Error("Instant must default to Ambient DeepSeek V4 Flash 7/31.");
+  }
+  if (modelForMode("Thinking") !== "z-ai/glm-5.2") {
+    throw new Error("Thinking must default to Ambient GLM 5.2.");
+  }
+  if (modelForMode("Help") !== "deepseek/deepseek-v4-flash-0731") {
+    throw new Error("Help must default to Ambient DeepSeek V4 Flash 7/31.");
+  }
+  if (!chatExecutionStatus("Instant").enabled || !chatExecutionStatus("Thinking").enabled) {
+    throw new Error("Canonical Ambient chat modes should be enabled when Ambient is configured.");
+  }
+  const canonicalModeLabels = chatModes().map((mode) => mode.label);
+  if (canonicalModeLabels.join(",") !== "Instant,Thinking,Help") {
+    throw new Error(`Only canonical chat modes should be exposed: ${canonicalModeLabels.join(", ")}`);
+  }
+
+  // Retained only for opt-in archaeology while historical request-builder
+  // fixtures are migrated out of this general runtime-store smoke.
+  if (process.env.TASKNODE_RUN_RETIRED_CHAT_CONTRACTS === "true") {
 
   if (modelForMode("Frontier Instant") !== "chat-latest") {
     throw new Error("Frontier Instant must default to OpenAI chat-latest.");
@@ -686,6 +708,7 @@ try {
 
   if (openRouterSearchRequest.tools) {
     throw new Error(`Private OpenRouter requests must not carry web search tools: ${JSON.stringify(openRouterSearchRequest)}`);
+  }
   }
 
   const { runEthereumDepositSmoke } = await import("./ethereum-deposit-smoke.mjs");

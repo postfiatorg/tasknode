@@ -47,7 +47,7 @@ If a surface cannot pass its sentence, it does not ship as beta-ready.
 
 | Gate | Acceptance sentence | Current state | Remaining beta work |
 | --- | --- | --- | --- |
-| Telegram | A user sends a message, gets a clarifying response that references their context, and leaves sharper about what to do next. | Implemented and smoke-tested. Telegram can route linked private bot chats through configured chat modes, including Discount Thinking. | Prove at least one non-operator Telegram user can link and get a useful live reply. Keep provider failure messages actionable. |
+| Telegram | A user sends a message, gets a clarifying response that references their context, and leaves sharper about what to do next. | Implemented and smoke-tested. Telegram routes linked private bot chats through the canonical Instant/Thinking/Help mode contract. | Prove at least one non-operator Telegram user can link and get a useful live reply. Keep provider failure messages actionable. |
 | Task generation | A user asks for a task in plain language, sees one task clearly connected to their values and strategy, and knows why it is the right thing to do. | Implemented through signed task request, task generation worker, PFTL/IPFS offer, projection, Tasks UI, and Network Task generation bridge. | Keep generated tasks from mirroring user input without adding judgment. Make task rationale and next action obvious in every path. |
 | Context editing | A user asks the system to review their context, it identifies a specific weakness and proposes a concrete edit, and the user accepts it because it is tighter than what they would produce alone. | Implemented as Context Refine with explicit proposal/apply behavior. Context save/publish boundaries are documented. | Re-run live save/refresh evidence after recent context changes. Ordinary draft refinement must never require wallet signing. |
 | Hive board | A user opens the board, sees what core contributors are working on and why, and can spot the single next task to earn rewards and advance shared goals. | Partially implemented. Hive has live project/task rows, project activity, Board Manager feed, full logs, state-aware message preconditions, and Network Task routing. | Highest-risk gate. Consolidate Task Node boards, prevent stale/opaque board messages, make contributor eligibility visible, and route validation tasks without confusing personal tasks and Network Tasks. |
@@ -63,7 +63,7 @@ the linked docs.
 | Task review and reward | Review, verification request, verification response, and terminal `pf.reward.v1` reward outcome are implemented. Duplicate reward hardening is documented in the task generation architecture. | [Task Generation](#docs/task-generation) |
 | Network Task bridge | Board Manager can initiate project-linked Network Task allocation/generation jobs; the task engine writes the concrete task offer. | [Hive](#docs/hive), [Hive & Board Operations](#docs/hive-operations), [Task Generation](#docs/task-generation) |
 | Board Manager v0 | Leased Board Manager jobs, action registry, user-message delivery, follow-ups, project restore/archive, and action audit feed exist. | [Hive & Board Operations](#docs/hive-operations), [Hive](#docs/hive), [Deployment](#docs/deployment) |
-| Board Manager secretary packets | DeepSeek secretary packet compression exists and is documented as part of the Board Manager path. | [Hive & Board Operations](#docs/hive-operations) |
+| Board Manager secretary packets | Ambient GLM 5.2 secretary packet compression exists and is documented as part of the Board Manager path. | [Hive & Board Operations](#docs/hive-operations) |
 | Hive project professionalism | Hive cards, project details, task/activity rows, live contributor rollups, and agent feed are implemented. | [Hive](#docs/hive), [Hive & Board Operations](#docs/hive-operations) |
 | Hive stale-message guard | Task-action `message_user` decisions require runtime preconditions and are skipped if fresh account state contradicts the message. | [Hive & Board Operations](#docs/hive-operations), [Hive](#docs/hive) |
 | Context Refine | Context editing via proposal/apply flow is implemented. | [Refine Context](#docs/refine-context), [Context](#docs/context), [Chat](#docs/chat) |
@@ -288,7 +288,7 @@ Date: 2026-05-26
 Environment: local deterministic Telegram webhook smoke plus operator-reported Fly dev Telegram behavior
 Surface: Telegram bot
 Status: amber
-Evidence: Telegram bot webhook smoke passed and exercised mode selection for Discount Thinking. Operator reported repeated live Discount Thinking Telegram chats working.
+Evidence: Telegram bot webhook smoke passed. The current regression contract exercises canonical mode normalization and rejects re-exposure of deprecated picker labels.
 Commands: npm run telegram-bot-webhook-smoke
 Live user/account tested: goodalexander linked Telegram account; deterministic smoke account acct_oauth_de97b03526100b281c9c4333
 Remaining blocker: Telegram is not green until at least one non-operator Telegram user links and sends a private live bot message successfully.

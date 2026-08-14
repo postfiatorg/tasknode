@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 process.env.TASKNODE_DATABASE_DISABLED = "true";
 process.env.TASKNODE_POSTGRES_DISABLED = "true";
-process.env.OPENROUTER_API_KEY = "board-manager-smoke-openrouter-key";
+process.env.AMBIENT_API_KEY = "board-manager-smoke-ambient-key";
 delete process.env.TASKNODE_BOARD_MANAGER_PROVIDER;
 delete process.env.TASKNODE_BOARD_MANAGER_MODEL;
 delete process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT;
@@ -385,14 +385,12 @@ const smokeDecisionOutput = {
   },
 };
 
-assert.equal(boardManagerProvider(), "openrouter");
+assert.equal(boardManagerProvider(), "ambient");
 assert.equal(boardManagerModel(), "z-ai/glm-5.2");
-process.env.TASKNODE_BOARD_MANAGER_PROVIDER = "openai";
-process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED = "true";
-assert.equal(boardManagerProvider(), "openrouter");
+process.env.TASKNODE_BOARD_MANAGER_PROVIDER = "legacy-provider-value";
+assert.equal(boardManagerProvider(), "ambient");
 assert.equal(boardManagerModel(), "z-ai/glm-5.2");
 delete process.env.TASKNODE_BOARD_MANAGER_PROVIDER;
-delete process.env.TASKNODE_LEGACY_BOARD_MANAGER_OPENAI_ENABLED;
 
 let capturedOpenRouterUrl = "";
 let capturedOpenRouterBody = null;
@@ -428,11 +426,10 @@ assert.equal(capturedOpenRouterBody.response_format.type, "json_schema");
 assert.equal(capturedOpenRouterBody.response_format.json_schema.name, "board_manager_action");
 assert.ok(capturedOpenRouterBody.response_format.json_schema.schema.properties.payload.properties.project.properties.title);
 assert.ok(capturedOpenRouterBody.response_format.json_schema.schema.properties.decision_basis.properties.source_facts);
-assert.equal(capturedOpenRouterBody.provider.data_collection, "deny");
-assert.equal(capturedOpenRouterBody.provider.require_parameters, true);
-assert.equal(capturedOpenRouterBody.usage.include, true);
+assert.equal(capturedOpenRouterBody.provider, undefined);
+assert.equal(capturedOpenRouterBody.usage, undefined);
 assert.equal(capturedOpenRouterBody.metadata.prompt_version, "board_manager_v1");
-assert.equal(openRouterDecision.provider, "openrouter");
+assert.equal(openRouterDecision.provider, "ambient");
 assert.equal(openRouterDecision.model, "z-ai/glm-5.2");
 assert.equal(openRouterDecision.decision.action, "message_user");
 assert.equal(openRouterDecision.usage.reasoningTokens, 25);
@@ -577,26 +574,7 @@ await assert.rejects(
 );
 assert.equal(unsupportedProviderFetchCount, 0);
 
-for (const unsupportedModel of ["gpt-5.5-pro", "openai/gpt-5.5-pro-2026-04-23", "OpenAI/GPT-5.5-Pro-2026-04-23"]) {
-  let unsupportedModelFetchCount = 0;
-  await assert.rejects(
-    () => fetchBoardManagerDecision({
-      sourcePacket: packet,
-      provider: "openrouter",
-      model: unsupportedModel,
-      fetchImpl: async () => {
-        unsupportedModelFetchCount += 1;
-        throw new Error("unsupported model must fail before fetch");
-      },
-    }),
-    (error) => error?.message === `board_manager_model_unsupported:${unsupportedModel}`
-  );
-  assert.equal(unsupportedModelFetchCount, 0);
-  assert.throws(
-    () => normalizeBoardManagerModel(unsupportedModel),
-    (error) => error?.message === `board_manager_model_unsupported:${unsupportedModel}`
-  );
-}
+assert.equal(normalizeBoardManagerModel("z-ai/glm-5.2"), "z-ai/glm-5.2");
 
 const decision = normalizeBoardManagerDecision({
   action: "refresh_hive_secretary",

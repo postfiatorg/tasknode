@@ -14,9 +14,7 @@ import { jobsRetrievalForChat } from "./jobs-corpus.js";
 import { normalizeClientChatHistory } from "./chat-client-history.js";
 import { taskContextForAccount } from "./chat-task-context.js";
 import {
-  deepSeekUsage,
   fallbackUsage,
-  openAiUsage,
   openRouterUsage,
 } from "./chat-provider-usage.js";
 import { effectiveDefaultChatMode, fallbackChatModeLabel } from "./chat-mode-defaults.js";
@@ -37,99 +35,74 @@ import {
   openRouterMessages,
 } from "./chat-provider-message-builders.js";
 import { helpModeInstructions, isHelpChatMode } from "./chat-help-mode.js";
-import { loadPrompt } from "./prompt-registry.js";
+import {
+  AMBIENT_MODELS,
+  ambientChatCompletion,
+  ambientChatCompletionStream,
+  ambientConfigured,
+  resolveAmbientModel,
+} from "./ambient-inference.js";
+import { prepareAmbientChatAttachments } from "./ambient-attachments.js";
+import {
+  chatPersonaUsesJobsRetrieval,
+  normalizeChatPersona,
+} from "../shared/chat-personas.js";
 export {
   deepSeekMessages,
   openAiInput,
   openRouterMessages,
 } from "./chat-provider-message-builders.js";
 
-const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
-const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
-const defaultDeepSeekBaseUrl = "https://api.deepseek.com";
 const defaultProviderTimeoutMs = 45_000;
-const defaultDeepSeekProviderTimeoutMs = 120_000;
-const telegramDiscountThinkingTimeoutMs = 120_000;
-const frontierInstantResponseGatePromptVersion = "frontier_instant_response_gate_v1";
-const frontierInstantResponseGatePrompt = loadPrompt("chat/frontier_instant_response_gate_v1.md");
-
+const defaultThinkingProviderTimeoutMs = 120_000;
 export const chatModePrices = {
-  "Private Instant": {
-    inputUsdPerMillion: 0.14,
-    outputUsdPerMillion: 0.28,
-    provider: "openrouter",
-    defaultModel: "deepseek/deepseek-v4-flash",
+  Instant: {
+    inputUsdPerMillion: 0.063,
+    inputCacheHitUsdPerMillion: 0.0126,
+    outputUsdPerMillion: 0.126,
+    provider: "ambient",
+    providerLabel: "Ambient",
+    capability: "fast_text",
+    defaultModel: AMBIENT_MODELS.fastText,
     maxOutputTokens: 16384,
     disableReasoning: true,
-    providerOrder: ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"],
   },
-  "Private Thinking": {
-    inputUsdPerMillion: 1.2,
-    outputUsdPerMillion: 4.1,
-    provider: "openrouter",
-    defaultModel: "z-ai/glm-5.2",
+  Thinking: {
+    inputUsdPerMillion: 0.4725,
+    inputCacheHitUsdPerMillion: 0.09,
+    outputUsdPerMillion: 1.98,
+    provider: "ambient",
+    providerLabel: "Ambient",
+    capability: "reasoning_text",
+    defaultModel: AMBIENT_MODELS.reasoningText,
     maxOutputTokens: 4096,
     reasoningEffort: "xhigh",
-    providerOrder: ["z-ai", "wafer", "fireworks", "novita"],
-  },
-  "Discount Thinking": {
-    inputUsdPerMillion: 0.435,
-    inputCacheHitUsdPerMillion: 0.003625,
-    outputUsdPerMillion: 0.87,
-    provider: "deepseek",
-    providerLabel: "DeepSeek API Direct",
-    defaultModel: "deepseek-v4-pro",
-    maxOutputTokens: 4096,
-    reasoningEffort: "high",
-  },
-  "Frontier Instant": {
-    inputUsdPerMillion: 5,
-    outputUsdPerMillion: 30,
-    provider: "openai",
-    defaultModel: "chat-latest",
-    maxOutputTokens: null,
-    estimatedOutputTokens: 4096,
-    reasoningEffort: "medium",
   },
   "Help": {
-    inputUsdPerMillion: 0.435,
-    inputCacheHitUsdPerMillion: 0.003625,
-    outputUsdPerMillion: 0.87,
-    provider: "deepseek",
-    providerLabel: "DeepSeek API Direct",
-    defaultModel: "deepseek-v4-pro",
-    maxOutputTokens: null,
+    inputUsdPerMillion: 0.063,
+    inputCacheHitUsdPerMillion: 0.0126,
+    outputUsdPerMillion: 0.126,
+    provider: "ambient",
+    providerLabel: "Ambient",
+    capability: "fast_text",
+    defaultModel: AMBIENT_MODELS.fastText,
+    maxOutputTokens: 1200,
     estimatedOutputTokens: 1200,
   },
-  "Frontier Thinking": {
-    inputUsdPerMillion: 5,
-    outputUsdPerMillion: 30,
-    provider: "openai",
-    defaultModel: "gpt-5.6-sol",
-    maxOutputTokens: null,
-    estimatedOutputTokens: 4096,
-    reasoningEffort: "xhigh",
-  },
 };
+
+const deprecatedChatModeAliases = Object.freeze({
+  "Private Instant": "Instant",
+  "Frontier Instant": "Instant",
+  "Private Thinking": "Thinking",
+  "Discount Thinking": "Thinking",
+  "Frontier Thinking": "Thinking",
+});
 export { effectiveDefaultChatMode, fallbackChatModeLabel };
 export const defaultChatMode = fallbackChatModeLabel;
 
-function hasOpenAi() {
-  return Boolean(process.env.OPENAI_API_KEY);
-}
-
-function hasOpenRouter() {
-  return Boolean(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER);
-}
-
-function hasDeepSeek() {
-  return Boolean(process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK);
-}
-
 export function chatProviderConfigured(provider) {
-  if (provider === "openai") return hasOpenAi();
-  if (provider === "openrouter") return hasOpenRouter();
-  if (provider === "deepseek") return hasDeepSeek();
+  if (provider === "ambient") return ambientConfigured();
   return false;
 }
 
@@ -145,51 +118,31 @@ function timeoutFromEnv(names = [], fallback = defaultProviderTimeoutMs) {
 
 export function chatProviderTimeoutMs({ mode = "", provider = "", source = "" } = {}) {
   const normalizedMode = normalizedChatMode(mode) || String(mode || "").trim();
-  const normalizedProvider = String(provider || chatModePrices[normalizedMode]?.provider || "").trim();
-  const normalizedSource = String(source || "").trim();
-  if (normalizedSource === "telegram_bot" && normalizedMode === "Discount Thinking") {
-    return timeoutFromEnv(
-      [
-        "TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS",
-        "TELEGRAM_DISCOUNT_THINKING_TIMEOUT_MS",
-        "TASKNODE_TELEGRAM_DISCOUNT_THINKING_TIMEOUT_MS",
-      ],
-      telegramDiscountThinkingTimeoutMs
-    );
-  }
-  if (normalizedMode === "Discount Thinking" || normalizedProvider === "deepseek") {
+  void provider;
+  void source;
+  if (normalizedMode === "Thinking") {
     return timeoutFromEnv(
       [
         normalizedMode === "Help" ? "CHAT_PROVIDER_HELP_TIMEOUT_MS" : "",
-        "CHAT_PROVIDER_DEEPSEEK_TIMEOUT_MS",
-        "CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS",
+        "CHAT_PROVIDER_AMBIENT_THINKING_TIMEOUT_MS",
+        "CHAT_PROVIDER_THINKING_TIMEOUT_MS",
         "CHAT_PROVIDER_TIMEOUT_MS",
       ].filter(Boolean),
-      defaultDeepSeekProviderTimeoutMs
+      defaultThinkingProviderTimeoutMs
     );
   }
   return timeoutFromEnv(["CHAT_PROVIDER_TIMEOUT_MS"], defaultProviderTimeoutMs);
 }
 
 function chatProviderEnabled(provider) {
-  if (provider === "openai") return hasOpenAi();
-  if (provider === "openrouter") {
-    const explicitlyDisabled =
-      process.env.OPENROUTER_CHAT_ENABLED === "false" ||
-      process.env.TASKNODE_ENABLE_OPENROUTER_CHAT === "false";
-    return hasOpenRouter() && !explicitlyDisabled;
-  }
-  if (provider === "deepseek") {
-    const explicitlyDisabled =
-      process.env.DEEPSEEK_CHAT_ENABLED === "false" ||
-      process.env.TASKNODE_ENABLE_DEEPSEEK_CHAT === "false";
-    return hasDeepSeek() && !explicitlyDisabled;
-  }
+  if (provider === "ambient") return ambientConfigured() && process.env.AMBIENT_CHAT_ENABLED !== "false";
   return false;
 }
 
 export function isKnownChatMode(mode) {
-  return Object.hasOwn(chatModePrices, String(mode || "").trim());
+  const normalized = String(mode || "").trim();
+  const canonical = deprecatedChatModeAliases[normalized] || normalized;
+  return Object.hasOwn(chatModePrices, canonical);
 }
 
 function unknownChatModeError(mode) {
@@ -212,27 +165,17 @@ export function chatModeConfig(mode) {
 export function normalizedChatMode(mode) {
   const normalized = String(mode || "").trim();
   if (!normalized) return effectiveDefaultChatMode();
-  return isKnownChatMode(normalized) ? normalized : "";
+  const canonical = deprecatedChatModeAliases[normalized] || normalized;
+  return Object.hasOwn(chatModePrices, canonical) ? canonical : "";
 }
 
 export function modelForMode(mode) {
   const normalizedMode = normalizedChatMode(mode);
   const config = chatModeConfig(normalizedMode);
-  const envPrefix = normalizedMode.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
-  const modeSpecificModel = process.env[`CHAT_MODEL_${envPrefix}`];
-
-  if (modeSpecificModel) return modeSpecificModel;
-  if (normalizedMode === "Frontier Instant" || normalizedMode === "Frontier Thinking") {
-    return config.defaultModel;
-  }
-  if (config.provider === "deepseek") {
-    return process.env.DEEPSEEK_CHAT_MODEL || config.defaultModel;
-  }
-
-  return (
-    (config.provider === "openai" ? process.env.OPENAI_MODEL : process.env.OPENROUTER_MODEL) ||
-    config.defaultModel
-  );
+  return resolveAmbientModel({
+    model: config.defaultModel,
+    capability: config.capability,
+  });
 }
 
 export function chatExecutionStatus(mode) {
@@ -308,19 +251,6 @@ function openRouterReasoningConfig(config = {}) {
   }
 
   return undefined;
-}
-
-function openRouterPlugins(attachments = []) {
-  if (!attachments.some((attachment) => attachment.kind === "pdf")) return undefined;
-
-  return [
-    {
-      id: "file-parser",
-      pdf: {
-        engine: process.env.OPENROUTER_PDF_ENGINE || "cloudflare-ai",
-      },
-    },
-  ];
 }
 
 function safeLogText(value = "", max = 600) {
@@ -437,94 +367,18 @@ function chatDeliveryContext({ accountId = "", mode = "", source = "" } = {}) {
   return Object.keys(context).length > 0 ? context : null;
 }
 
-export function frontierInstantResponseGateEnabled(mode = "") {
-  return (
-    String(process.env.TASKNODE_FRONTIER_INSTANT_RESPONSE_GATE || "true").trim().toLowerCase() !== "false" &&
-    normalizedChatMode(mode) === "Frontier Instant"
-  );
-}
-
-export function frontierInstantResponseGateInstructionBlock() {
-  return frontierInstantResponseGatePrompt;
-}
-
-export function frontierInstantResponseGateResponseFormat() {
-  return {
-    type: "json_schema",
-    name: "frontier_instant_response_gate",
-    strict: true,
-    schema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["user_prompted_inquiry", "full_response", "conformant_response"],
-      properties: {
-        user_prompted_inquiry: {
-          type: "boolean",
-          description: "True only when the current user explicitly asks for long-form depth.",
-        },
-        full_response: {
-          type: "string",
-          description: "The complete long-form answer for explicit long-form requests.",
-        },
-        conformant_response: {
-          type: "string",
-          description: "The concise normal-chat answer in plain complete sentences without bullets or Reddit cadence.",
-        },
-      },
-    },
-  };
-}
-
-function stripJsonFence(text = "") {
-  return String(text || "")
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-}
-
-function parseJsonObject(text = "") {
-  const raw = stripJsonFence(text);
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) throw new Error("frontier_response_gate_invalid_json");
-  const parsed = JSON.parse(raw.slice(start, end + 1));
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("frontier_response_gate_invalid_object");
-  }
-  return parsed;
-}
-
-export function selectFrontierInstantResponseText(rawText = "") {
-  const parsed = parseJsonObject(rawText);
-  const userPromptedInquiry = parsed.user_prompted_inquiry === true;
-  const fullResponse = String(parsed.full_response || "").trim();
-  const conformantResponse = String(parsed.conformant_response || "").trim();
-  const selectedText = userPromptedInquiry ? fullResponse : conformantResponse;
-  if (!selectedText) throw new Error("frontier_response_gate_empty_selected_text");
-  return {
-    text: selectedText,
-    responseGate: {
-      promptVersion: frontierInstantResponseGatePromptVersion,
-      userPromptedInquiry,
-      selectedField: userPromptedInquiry ? "full_response" : "conformant_response",
-      fullResponseLength: fullResponse.length,
-      conformantResponseLength: conformantResponse.length,
-      auditJson: {
-        user_prompted_inquiry: userPromptedInquiry,
-        full_response: fullResponse,
-        conformant_response: conformantResponse,
-      },
-    },
-  };
-}
-
 function loggedUsage(usage = null) {
   if (!usage || typeof usage !== "object") return undefined;
   return {
     promptTokens: Number(usage.prompt_tokens || usage.inputTokens || 0),
     completionTokens: Number(usage.completion_tokens || usage.outputTokens || 0),
     totalTokens: Number(usage.total_tokens || usage.totalTokens || 0),
+    promptCacheHitTokens: Number(
+      usage.prompt_cache_hit_tokens ||
+        usage.prompt_tokens_details?.cached_tokens ||
+        usage.promptCacheHitTokens ||
+        0
+    ),
     reasoningTokens: Number(
       usage.reasoning_tokens ||
         usage.completion_tokens_details?.reasoning_tokens ||
@@ -558,7 +412,9 @@ function chatInstructionsOverride({
   taskContext = null,
   jobsEssence = "",
   deliveryContext = null,
+  persona = "jobs",
 } = {}) {
+  if (!chatPersonaUsesJobsRetrieval(persona)) return "";
   if (!isHelpChatMode(mode)) return "";
   return helpModeInstructions({
     contextDocument,
@@ -588,10 +444,10 @@ export function logChatProviderError(error, context = {}) {
   });
 }
 
-function openRouterEmptyResponseError({
+function providerEmptyResponseError({
   body = null,
-  provider = "openrouter",
-  providerLabel = "OpenRouter",
+  provider = "ambient",
+  providerLabel = "Ambient",
   mode = "",
   model = "",
   responseId = null,
@@ -631,6 +487,7 @@ export function openRouterChatRequest({
   jobsEssence = "",
   deliveryContext = null,
   instructionsOverride = "",
+  persona = "jobs",
 }) {
   const config = chatModeConfig(mode);
   const normalizedAttachments = normalizeChatAttachments(attachments);
@@ -649,6 +506,7 @@ export function openRouterChatRequest({
       jobsEssence,
       deliveryContext,
       instructionsOverride,
+      persona,
     }),
     provider: openRouterProviderPreferences({
       providerOrder: config.providerOrder || [],
@@ -656,7 +514,6 @@ export function openRouterChatRequest({
     }),
     reasoning,
     max_tokens: config.maxOutputTokens,
-    plugins: openRouterPlugins(normalizedAttachments),
     stream: stream || undefined,
     stream_options: stream
       ? {
@@ -688,11 +545,12 @@ export function openAiResponseRequest({
   responseFormat = null,
   toolsEnabled = true,
   deliveryContext = null,
+  persona = "jobs",
 }) {
   const config = chatModeConfig(mode);
   const tools = toolsEnabled ? openAiTools() : [];
   const instructions = [
-    instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext }),
+    instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
     responseInstructionBlock,
   ].filter(Boolean).join("\n\n");
   const request = {
@@ -737,6 +595,7 @@ export function deepSeekChatRequest({
   jobsEssence = "",
   deliveryContext = null,
   instructionsOverride = "",
+  persona = "jobs",
 }) {
   const config = chatModeConfig(mode);
   const request = {
@@ -752,6 +611,7 @@ export function deepSeekChatRequest({
       jobsEssence,
       deliveryContext,
       instructionsOverride,
+      persona,
     }),
     thinking: config.reasoningEffort ? { type: "enabled" } : { type: "disabled" },
     reasoning_effort: config.reasoningEffort || undefined,
@@ -769,157 +629,67 @@ export function deepSeekChatRequest({
   return request;
 }
 
-async function fetchJson(url, options, { timeoutMs = defaultProviderTimeoutMs } = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    const text = await response.text();
-    const body = text ? JSON.parse(text) : null;
-
-    if (!response.ok) {
-      const error = new Error("provider_request_failed");
-      error.status = response.status;
-      error.providerMessage =
-        body?.error?.message || body?.message || `Provider returned HTTP ${response.status}`;
-      throw error;
-    }
-
-    return body;
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      const timeoutError = new Error("provider_timeout");
-      timeoutError.status = 504;
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+function ambientResponseFormat(responseFormat = null) {
+  if (!responseFormat) return undefined;
+  if (responseFormat.type !== "json_schema" || responseFormat.json_schema) return responseFormat;
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: responseFormat.name || "tasknode_chat_output",
+      strict: responseFormat.strict !== false,
+      schema: responseFormat.schema || {},
+    },
+  };
 }
 
-async function fetchEventStream(url, options = {}, { signal, timeoutMs = defaultProviderTimeoutMs } = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  function abortFromParent() {
-    controller.abort();
-  }
-
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    signal.addEventListener("abort", abortFromParent, { once: true });
-  }
-
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      let body = null;
-      try {
-        body = text ? JSON.parse(text) : null;
-      } catch {
-        body = null;
-      }
-      const error = new Error("provider_request_failed");
-      error.status = response.status;
-      error.providerMessage =
-        body?.error?.message || body?.message || text || `Provider returned HTTP ${response.status}`;
-      throw error;
-    }
-
-    if (!response.body) {
-      const error = new Error("provider_stream_unavailable");
-      error.status = 502;
-      throw error;
-    }
-
-    return response.body;
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      const timeoutError = new Error(signal?.aborted ? "client_aborted" : "provider_timeout");
-      timeoutError.status = signal?.aborted ? 499 : 504;
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener("abort", abortFromParent);
-  }
-}
-
-function parseSseBlock(block) {
-  const lines = String(block || "").split(/\r?\n/);
-  let event = "message";
-  const data = [];
-
-  for (const line of lines) {
-    if (!line || line.startsWith(":")) continue;
-    if (line.startsWith("event:")) {
-      event = line.slice("event:".length).trim() || "message";
-    } else if (line.startsWith("data:")) {
-      data.push(line.slice("data:".length).trimStart());
-    }
-  }
-
-  return { event, data: data.join("\n") };
-}
-
-async function readEventStream(stream, onEvent) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const blocks = buffer.split(/\n\n|\r\n\r\n/);
-    buffer = blocks.pop() || "";
-
-    for (const block of blocks) {
-      const parsed = parseSseBlock(block);
-      if (parsed.data) await onEvent(parsed);
-    }
-  }
-
-  buffer += decoder.decode();
-  if (buffer.trim()) {
-    const parsed = parseSseBlock(buffer);
-    if (parsed.data) await onEvent(parsed);
-  }
-}
-
-function outputTextFromOpenAi(body) {
-  if (typeof body?.output_text === "string" && body.output_text.trim()) {
-    return body.output_text.trim();
-  }
-
-  const parts = [];
-  for (const item of body?.output || []) {
-    for (const content of item?.content || []) {
-      if (content?.type === "output_text" && typeof content.text === "string") {
-        parts.push(content.text);
-      }
-    }
-  }
-
-  return parts.join("\n").trim();
-}
-
-function outputTextFromOpenRouter(body) {
-  const content = body?.choices?.[0]?.message?.content;
-  if (typeof content === "string") return content.trim();
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => part?.text || "")
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-  }
-  return "";
+export function ambientChatRequest({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  historyMessages = null,
+  contextDocument = null,
+  memoryContext = null,
+  taskContext = null,
+  jobsEssence = "",
+  deliveryContext = null,
+  instructionsOverride = "",
+  responseInstructionBlock = "",
+  responseFormat = null,
+  toolsEnabled = true,
+  persona = "jobs",
+}) {
+  const config = chatModeConfig(mode);
+  const instructions = [
+    instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
+    responseInstructionBlock,
+  ].filter(Boolean).join("\n\n");
+  const messages = openRouterMessages({
+    conversationId,
+    message,
+    attachments,
+    historyMessages: instructionsOverride ? [] : historyMessages,
+    contextDocument,
+    memoryContext,
+    taskContext,
+    jobsEssence,
+    deliveryContext,
+    instructionsOverride: instructions,
+    persona,
+  });
+  return {
+    model,
+    messages,
+    reasoning: config.reasoningEffort
+      ? { effort: config.reasoningEffort, exclude: true }
+      : config.disableReasoning
+        ? { effort: "none", enabled: false, exclude: true }
+        : undefined,
+    response_format: ambientResponseFormat(responseFormat),
+    enabled_tools: toolsEnabled && config.webSearchEnabled ? ["websearch"] : undefined,
+    max_tokens: config.maxOutputTokens || undefined,
+  };
 }
 
 function enqueueMemoryForTurn({ accountId, conversationId, persisted }) {
@@ -934,7 +704,7 @@ function enqueueMemoryForTurn({ accountId, conversationId, persisted }) {
   });
 }
 
-export async function executeOpenAi({
+export async function executeAmbient({
   mode,
   model,
   message,
@@ -951,14 +721,18 @@ export async function executeOpenAi({
   responseFormat = null,
   toolsEnabled = true,
   timeoutMs = defaultProviderTimeoutMs,
+  persona = "jobs",
 }) {
-  const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
-  const request = {
+  const preparedAttachments = await prepareAmbientChatAttachments(attachments);
+  const capability = preparedAttachments.some((attachment) => attachment.kind === "image")
+    ? "vision_text"
+    : chatModeConfig(mode).capability;
+  const request = ambientChatRequest({
     mode,
     model,
     message,
     conversationId,
-    attachments,
+    attachments: preparedAttachments,
     historyMessages,
     contextDocument,
     memoryContext,
@@ -969,42 +743,22 @@ export async function executeOpenAi({
     responseInstructionBlock,
     responseFormat,
     toolsEnabled,
-  };
-  const body = await fetchJson(
-    `${baseUrl}/responses`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(openAiResponseRequest(request)),
-    },
-    { timeoutMs }
-  );
-  const text = outputTextFromOpenAi(body);
+    persona,
+  });
+  const result = await ambientChatCompletion({ body: request, capability, timeoutMs });
+  if (!result.text) throw providerEmptyResponseError({ body: result.body, provider: "ambient", providerLabel: "Ambient", mode, model });
 
   return {
-    provider: "openai",
-    model: body?.model || model,
-    responseId: body?.id || null,
-    text,
-    usage: openAiUsage(body, mode),
+    provider: "ambient",
+    model: result.model,
+    responseId: result.id,
+    text: result.text,
+    usage: openRouterUsage(result.body, mode),
   };
 }
 
-async function executeOpenAiFrontierInstantResponseGate(request = {}) {
-  const result = await executeOpenAi({
-    ...request,
-    responseInstructionBlock: frontierInstantResponseGateInstructionBlock(),
-    responseFormat: frontierInstantResponseGateResponseFormat(),
-  });
-  const selected = selectFrontierInstantResponseText(result.text);
-  return {
-    ...result,
-    text: selected.text,
-    responseGate: selected.responseGate,
-  };
+export async function executeOpenAi(request = {}) {
+  return executeAmbient(request);
 }
 
 async function streamOpenAi({
@@ -1019,17 +773,21 @@ async function streamOpenAi({
   taskContext = null,
   jobsEssence = "",
   deliveryContext = null,
+  persona = "jobs",
   onDelta,
   signal,
   timeoutMs = defaultProviderTimeoutMs,
 }) {
-  const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
-  const request = {
+  const preparedAttachments = await prepareAmbientChatAttachments(attachments);
+  const capability = preparedAttachments.some((attachment) => attachment.kind === "image")
+    ? "vision_text"
+    : chatModeConfig(mode).capability;
+  const request = ambientChatRequest({
     mode,
     model,
     message,
     conversationId,
-    attachments,
+    attachments: preparedAttachments,
     historyMessages,
     contextDocument,
     memoryContext,
@@ -1043,71 +801,19 @@ async function streamOpenAi({
       taskContext,
       jobsEssence,
       deliveryContext,
+      persona,
     }),
-  };
-  const stream = await fetchEventStream(
-    `${baseUrl}/responses`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "content-type": "application/json",
-        accept: "text/event-stream",
-      },
-      body: JSON.stringify(openAiResponseRequest({ ...request, stream: true })),
-    },
-    { signal, timeoutMs }
-  );
-
-  let text = "";
-  let completedResponse = null;
-  let responseId = null;
-  let responseModel = model;
-
-  await readEventStream(stream, async ({ data }) => {
-    if (!data || data === "[DONE]") return;
-    const event = JSON.parse(data);
-
-    if (event.type === "response.created" || event.type === "response.in_progress") {
-      responseId = event.response?.id || responseId;
-      responseModel = event.response?.model || responseModel;
-      return;
-    }
-
-    if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
-      text += event.delta;
-      await onDelta?.(event.delta);
-      return;
-    }
-
-    if (event.type === "response.output_text.done" && typeof event.text === "string") {
-      text = event.text;
-      return;
-    }
-
-    if (event.type === "response.completed") {
-      completedResponse = event.response || null;
-      responseId = completedResponse?.id || responseId;
-      responseModel = completedResponse?.model || responseModel;
-      return;
-    }
-
-    if (event.type === "response.failed" || event.type === "error") {
-      const error = new Error(event.error?.message || "provider_stream_failed");
-      error.status = 502;
-      throw error;
-    }
+    persona,
   });
-
-  const finalText = outputTextFromOpenAi(completedResponse) || text.trim();
+  const result = await ambientChatCompletionStream({ body: request, capability, signal, timeoutMs, onDelta });
   return {
-    provider: "openai",
-    model: responseModel,
-    responseId,
-    text: finalText,
-    usage: completedResponse?.usage
-      ? openAiUsage(completedResponse, mode)
-      : fallbackUsage({ mode, message, text: finalText }),
+    provider: "ambient",
+    model: result.model,
+    responseId: result.id,
+    text: result.text,
+    usage: result.usage
+      ? openRouterUsage({ usage: result.usage }, mode)
+      : fallbackUsage({ mode, message, text: result.text }),
   };
 }
 
@@ -1123,10 +829,10 @@ async function executeOpenRouter({
   taskContext = null,
   jobsEssence = "",
   deliveryContext = null,
+  persona = "jobs",
   timeoutMs = defaultProviderTimeoutMs,
 }) {
-  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const request = {
+  return executeAmbient({
     mode,
     model,
     message,
@@ -1145,41 +851,11 @@ async function executeOpenRouter({
       taskContext,
       jobsEssence,
       deliveryContext,
+      persona,
     }),
-  };
-  const referer =
-    process.env.OPENROUTER_REFERER ||
-    process.env.TASKNODE_PUBLIC_URL ||
-    process.env.VITE_SITE_ORIGIN ||
-    "https://tasknodeofficial-dev.fly.dev";
-  const title = process.env.OPENROUTER_TITLE || "Task Node Official";
-  const body = await fetchJson(
-    `${baseUrl}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${process.env.OPENROUTER_API_KEY || process.env.OPENROUTER}`,
-        "content-type": "application/json",
-        "http-referer": referer,
-        "x-title": title,
-        "x-openrouter-title": title,
-      },
-      body: JSON.stringify(openRouterChatRequest(request)),
-    },
-    { timeoutMs }
-  );
-  const text = outputTextFromOpenRouter(body);
-  if (!text) {
-    throw openRouterEmptyResponseError({ body, mode, model });
-  }
-
-  return {
-    provider: "openrouter",
-    model: body?.model || model,
-    responseId: body?.id || null,
-    text,
-    usage: openRouterUsage(body, mode),
-  };
+    persona,
+    timeoutMs,
+  });
 }
 
 async function executeDeepSeek({
@@ -1194,10 +870,10 @@ async function executeDeepSeek({
   taskContext = null,
   jobsEssence = "",
   deliveryContext = null,
+  persona = "jobs",
   timeoutMs = defaultProviderTimeoutMs,
 }) {
-  const baseUrl = (process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "");
-  const request = {
+  return executeAmbient({
     mode,
     model,
     message,
@@ -1216,39 +892,11 @@ async function executeDeepSeek({
       taskContext,
       jobsEssence,
       deliveryContext,
+      persona,
     }),
-  };
-  const body = await fetchJson(
-    `${baseUrl}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(deepSeekChatRequest(request)),
-    },
-    { timeoutMs }
-  );
-  const text = outputTextFromOpenRouter(body);
-  if (!text) {
-    throw openRouterEmptyResponseError({
-      body,
-      provider: "deepseek",
-      providerLabel: "DeepSeek",
-      mode,
-      model,
-      responseModel: body?.model || model,
-    });
-  }
-
-  return {
-    provider: "deepseek",
-    model: body?.model || model,
-    responseId: body?.id || null,
-    text,
-    usage: deepSeekUsage(body, mode),
-  };
+    persona,
+    timeoutMs,
+  });
 }
 
 async function streamOpenRouter({
@@ -1263,12 +911,12 @@ async function streamOpenRouter({
   taskContext = null,
   jobsEssence = "",
   deliveryContext = null,
+  persona = "jobs",
   onDelta,
   signal,
   timeoutMs = defaultProviderTimeoutMs,
 }) {
-  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const request = {
+  return streamOpenAi({
     mode,
     model,
     message,
@@ -1280,91 +928,11 @@ async function streamOpenRouter({
     taskContext,
     jobsEssence,
     deliveryContext,
-    instructionsOverride: chatInstructionsOverride({
-      mode,
-      contextDocument,
-      memoryContext,
-      taskContext,
-      jobsEssence,
-      deliveryContext,
-    }),
-  };
-  const referer =
-    process.env.OPENROUTER_REFERER ||
-    process.env.TASKNODE_PUBLIC_URL ||
-    process.env.VITE_SITE_ORIGIN ||
-    "https://tasknodeofficial-dev.fly.dev";
-  const title = process.env.OPENROUTER_TITLE || "Task Node Official";
-  const stream = await fetchEventStream(
-    `${baseUrl}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${process.env.OPENROUTER_API_KEY || process.env.OPENROUTER}`,
-        "content-type": "application/json",
-        accept: "text/event-stream",
-        "http-referer": referer,
-        "x-title": title,
-        "x-openrouter-title": title,
-      },
-      body: JSON.stringify(openRouterChatRequest({ ...request, stream: true })),
-    },
-    { signal, timeoutMs }
-  );
-
-  let text = "";
-  let responseId = null;
-  let responseModel = model;
-  let upstreamProvider = "";
-  let finishReason = "";
-  let usage = null;
-  let rawUsage = null;
-
-  await readEventStream(stream, async ({ data }) => {
-    if (!data || data === "[DONE]") return;
-    const chunk = JSON.parse(data);
-    responseId = chunk.id || responseId;
-    responseModel = chunk.model || responseModel;
-    upstreamProvider = chunk.provider || upstreamProvider;
-    if (chunk.usage) {
-      rawUsage = chunk.usage;
-      usage = openRouterUsage(chunk, mode);
-    }
-
-    const choice = chunk.choices?.[0] || {};
-    finishReason = choice.finish_reason || finishReason;
-    const delta = choice.delta?.content;
-    if (typeof delta === "string" && delta) {
-      text += delta;
-      await onDelta?.(delta);
-    }
-
-    if (chunk.error) {
-      const error = new Error(chunk.error?.message || "provider_stream_failed");
-      error.status = chunk.error?.code || 502;
-      throw error;
-    }
+    persona,
+    onDelta,
+    signal,
+    timeoutMs,
   });
-
-  const finalText = text.trim();
-  if (!finalText) {
-    throw openRouterEmptyResponseError({
-      mode,
-      model,
-      responseId,
-      responseModel,
-      upstreamProvider,
-      finishReason,
-      usage: rawUsage || usage,
-    });
-  }
-  return {
-    provider: "openrouter",
-    model: responseModel,
-    responseId,
-    text: finalText,
-    usage: usage || fallbackUsage({ mode, message, text: finalText }),
-  };
 }
 
 async function streamDeepSeek({
@@ -1379,12 +947,12 @@ async function streamDeepSeek({
   taskContext = null,
   jobsEssence = "",
   deliveryContext = null,
+  persona = "jobs",
   onDelta,
   signal,
   timeoutMs = defaultProviderTimeoutMs,
 }) {
-  const baseUrl = (process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "");
-  const request = {
+  return streamOpenAi({
     mode,
     model,
     message,
@@ -1396,81 +964,41 @@ async function streamDeepSeek({
     taskContext,
     jobsEssence,
     deliveryContext,
-    instructionsOverride: chatInstructionsOverride({
-      mode,
-      contextDocument,
-      memoryContext,
-      taskContext,
-      jobsEssence,
-      deliveryContext,
-    }),
-  };
-  const stream = await fetchEventStream(
-    `${baseUrl}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK}`,
-        "content-type": "application/json",
-        accept: "text/event-stream",
-      },
-      body: JSON.stringify(deepSeekChatRequest({ ...request, stream: true })),
-    },
-    { signal, timeoutMs }
-  );
-
-  let text = "";
-  let responseId = null;
-  let responseModel = model;
-  let finishReason = "";
-  let usage = null;
-  let rawUsage = null;
-
-  await readEventStream(stream, async ({ data }) => {
-    if (!data || data === "[DONE]") return;
-    const chunk = JSON.parse(data);
-    responseId = chunk.id || responseId;
-    responseModel = chunk.model || responseModel;
-    if (chunk.usage) {
-      rawUsage = chunk.usage;
-      usage = deepSeekUsage(chunk, mode);
-    }
-
-    const choice = chunk.choices?.[0] || {};
-    finishReason = choice.finish_reason || finishReason;
-    const delta = choice.delta?.content;
-    if (typeof delta === "string" && delta) {
-      text += delta;
-      await onDelta?.(delta);
-    }
-
-    if (chunk.error) {
-      const error = new Error(chunk.error?.message || "provider_stream_failed");
-      error.status = chunk.error?.code || 502;
-      throw error;
-    }
+    persona,
+    onDelta,
+    signal,
+    timeoutMs,
   });
+}
 
-  const finalText = text.trim();
-  if (!finalText) {
-    throw openRouterEmptyResponseError({
-      provider: "deepseek",
-      providerLabel: "DeepSeek",
-      mode,
-      model,
-      responseId,
-      responseModel,
-      finishReason,
-      usage: rawUsage || usage,
-    });
+export async function resolveChatJobsContext({
+  persona = "jobs",
+  jobsEssence,
+  message = "",
+  contextDocument = null,
+  memoryContext = null,
+  taskContext = null,
+  retrieve = jobsRetrievalForChat,
+} = {}) {
+  const normalizedPersona = normalizeChatPersona(persona);
+  if (!normalizedPersona) {
+    const error = new Error("unknown_chat_persona");
+    error.status = 400;
+    throw error;
   }
-  return {
-    provider: "deepseek",
-    model: responseModel,
-    responseId,
-    text: finalText,
-    usage: usage || fallbackUsage({ mode, message, text: finalText }),
-  };
+  if (!chatPersonaUsesJobsRetrieval(normalizedPersona)) {
+    return {
+      ok: true,
+      text: "",
+      chunks: [],
+      skipped: true,
+      reason: "selected_persona_excludes_jobs_retrieval",
+    };
+  }
+  if (jobsEssence !== undefined) {
+    return { ok: true, text: String(jobsEssence || ""), chunks: [] };
+  }
+  return retrieve({ message, contextDocument, memoryContext, taskContext });
 }
 
 export async function executeChat({
@@ -1489,9 +1017,16 @@ export async function executeChat({
   userMetadata = {},
   source = "",
   providerTimeoutMs = 0,
+  persona = "jobs",
 }) {
   const normalizedMode = normalizedChatMode(mode);
   if (!normalizedMode) throw unknownChatModeError(mode);
+  const normalizedPersona = normalizeChatPersona(persona);
+  if (!normalizedPersona) {
+    const error = new Error("unknown_chat_persona");
+    error.status = 400;
+    throw error;
+  }
   const status = chatExecutionStatus(normalizedMode);
 
   if (!status.enabled) {
@@ -1519,15 +1054,15 @@ export async function executeChat({
     anonymousHelp ? null : memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     anonymousHelp ? null : taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);
-  const jobsResult = jobsEssence === undefined
-    ? await jobsRetrievalForChat({
-        message,
-        contextDocument: resolvedContextDocument,
-        memoryContext: resolvedMemoryContext,
-        taskContext: resolvedTaskContext,
-      })
-    : { ok: true, text: jobsEssence, chunks: [] };
-  const resolvedJobsEssence = jobsEssence === undefined ? jobsResult.text : jobsEssence;
+  const jobsResult = await resolveChatJobsContext({
+    persona: normalizedPersona,
+    jobsEssence,
+    message,
+    contextDocument: resolvedContextDocument,
+    memoryContext: resolvedMemoryContext,
+    taskContext: resolvedTaskContext,
+  });
+  const resolvedJobsEssence = jobsResult.text;
   const resolvedContextStatus = buildChatContextStatus({
     contextDocument: resolvedContextDocument,
     memoryContext: resolvedMemoryContext,
@@ -1541,53 +1076,21 @@ export async function executeChat({
     jobsResult,
     renderedContext: resolvedJobsEssence,
   });
-  const result =
-    status.provider === "openai"
-      ? await (frontierInstantResponseGateEnabled(normalizedMode)
-          ? executeOpenAiFrontierInstantResponseGate
-          : executeOpenAi)({
-          mode: normalizedMode,
-          model: status.model,
-          message,
-          conversationId,
-          attachments,
-          historyMessages,
-          contextDocument: resolvedContextDocument,
-          memoryContext: resolvedMemoryContext,
-          taskContext: resolvedTaskContext,
-          jobsEssence: resolvedJobsEssence,
-          deliveryContext,
-          timeoutMs,
-        })
-      : status.provider === "deepseek"
-        ? await executeDeepSeek({
-            mode: normalizedMode,
-            model: status.model,
-            message,
-            conversationId,
-            attachments,
-            historyMessages,
-            contextDocument: resolvedContextDocument,
-            memoryContext: resolvedMemoryContext,
-            taskContext: resolvedTaskContext,
-            jobsEssence: resolvedJobsEssence,
-            deliveryContext,
-            timeoutMs,
-          })
-        : await executeOpenRouter({
-          mode: normalizedMode,
-          model: status.model,
-          message,
-          conversationId,
-          attachments,
-          historyMessages,
-          contextDocument: resolvedContextDocument,
-          memoryContext: resolvedMemoryContext,
-          taskContext: resolvedTaskContext,
-          jobsEssence: resolvedJobsEssence,
-          deliveryContext,
-          timeoutMs,
-        });
+  const result = await executeAmbient({
+    mode: normalizedMode,
+    model: status.model,
+    message,
+    conversationId,
+    attachments,
+    historyMessages,
+    contextDocument: resolvedContextDocument,
+    memoryContext: resolvedMemoryContext,
+    taskContext: resolvedTaskContext,
+    jobsEssence: resolvedJobsEssence,
+    deliveryContext,
+    persona: normalizedPersona,
+    timeoutMs,
+  });
 
   if (!result.text) {
     const error = new Error("chat_provider_empty_response");
@@ -1611,8 +1114,8 @@ export async function executeChat({
       userMessage: message,
       assistantMessage: result.text,
       attachments,
-      userMetadata,
-      assistantMetadata,
+      userMetadata: { ...userMetadata, chatPersona: normalizedPersona },
+      assistantMetadata: { ...assistantMetadata, chatPersona: normalizedPersona },
     });
     return {
       ...result,
@@ -1622,6 +1125,7 @@ export async function executeChat({
         thinking: assistantThinking,
       },
       contextStatus: resolvedContextStatus,
+      persona: normalizedPersona,
     };
   }
 
@@ -1636,9 +1140,9 @@ export async function executeChat({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
-    userMetadata,
-    assistantMetadata,
-    runMetadata: { contextStatus: resolvedContextStatus },
+    userMetadata: { ...userMetadata, chatPersona: normalizedPersona },
+    assistantMetadata: { ...assistantMetadata, chatPersona: normalizedPersona },
+    runMetadata: { contextStatus: resolvedContextStatus, chatPersona: normalizedPersona },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
 
@@ -1650,6 +1154,7 @@ export async function executeChat({
       thinking: assistantThinking,
     },
     contextStatus: resolvedContextStatus,
+    persona: normalizedPersona,
   };
 }
 
@@ -1671,9 +1176,16 @@ export async function executeChatStream({
   signal,
   source = "",
   providerTimeoutMs = 0,
+  persona = "jobs",
 }) {
   const normalizedMode = normalizedChatMode(mode);
   if (!normalizedMode) throw unknownChatModeError(mode);
+  const normalizedPersona = normalizeChatPersona(persona);
+  if (!normalizedPersona) {
+    const error = new Error("unknown_chat_persona");
+    error.status = 400;
+    throw error;
+  }
   const status = chatExecutionStatus(normalizedMode);
 
   if (!status.enabled) {
@@ -1701,15 +1213,15 @@ export async function executeChatStream({
     anonymousHelp ? null : memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     anonymousHelp ? null : taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);
-  const jobsResult = jobsEssence === undefined
-    ? await jobsRetrievalForChat({
-        message,
-        contextDocument: resolvedContextDocument,
-        memoryContext: resolvedMemoryContext,
-        taskContext: resolvedTaskContext,
-      })
-    : { ok: true, text: jobsEssence, chunks: [] };
-  const resolvedJobsEssence = jobsEssence === undefined ? jobsResult.text : jobsEssence;
+  const jobsResult = await resolveChatJobsContext({
+    persona: normalizedPersona,
+    jobsEssence,
+    message,
+    contextDocument: resolvedContextDocument,
+    memoryContext: resolvedMemoryContext,
+    taskContext: resolvedTaskContext,
+  });
+  const resolvedJobsEssence = jobsResult.text;
   const resolvedContextStatus = buildChatContextStatus({
     contextDocument: resolvedContextDocument,
     memoryContext: resolvedMemoryContext,
@@ -1724,44 +1236,7 @@ export async function executeChatStream({
     renderedContext: resolvedJobsEssence,
   });
   const result =
-    status.provider === "openai"
-      ? await (async () => {
-          if (!frontierInstantResponseGateEnabled(normalizedMode)) {
-            return streamOpenAi({
-              mode: normalizedMode,
-              model: status.model,
-              message,
-              conversationId,
-              attachments,
-              historyMessages,
-              contextDocument: resolvedContextDocument,
-              memoryContext: resolvedMemoryContext,
-              taskContext: resolvedTaskContext,
-              jobsEssence: resolvedJobsEssence,
-              deliveryContext,
-              onDelta,
-              signal,
-              timeoutMs,
-            });
-          }
-          const gatedResult = await executeOpenAiFrontierInstantResponseGate({
-            mode: normalizedMode,
-            model: status.model,
-            message,
-            conversationId,
-            attachments,
-            historyMessages,
-            contextDocument: resolvedContextDocument,
-            memoryContext: resolvedMemoryContext,
-            taskContext: resolvedTaskContext,
-            jobsEssence: resolvedJobsEssence,
-            deliveryContext,
-            timeoutMs,
-          });
-          await onDelta?.(gatedResult.text);
-          return gatedResult;
-        })()
-      : status.provider === "deepseek"
+    status.provider === "deepseek"
         ? await (async () => {
             let emittedVisibleDelta = false;
             const trackDelta = async (delta) => {
@@ -1781,6 +1256,7 @@ export async function executeChatStream({
                 taskContext: resolvedTaskContext,
                 jobsEssence: resolvedJobsEssence,
                 deliveryContext,
+                persona: normalizedPersona,
                 onDelta: trackDelta,
                 signal,
                 timeoutMs,
@@ -1805,6 +1281,7 @@ export async function executeChatStream({
                 taskContext: resolvedTaskContext,
                 jobsEssence: resolvedJobsEssence,
                 deliveryContext,
+                persona: normalizedPersona,
                 timeoutMs,
               });
             }
@@ -1821,6 +1298,7 @@ export async function executeChatStream({
           taskContext: resolvedTaskContext,
           jobsEssence: resolvedJobsEssence,
           deliveryContext,
+          persona: normalizedPersona,
           onDelta,
           signal,
           timeoutMs,
@@ -1848,8 +1326,8 @@ export async function executeChatStream({
       userMessage: message,
       assistantMessage: result.text,
       attachments,
-      userMetadata,
-      assistantMetadata,
+      userMetadata: { ...userMetadata, chatPersona: normalizedPersona },
+      assistantMetadata: { ...assistantMetadata, chatPersona: normalizedPersona },
     });
     return {
       ...result,
@@ -1859,6 +1337,7 @@ export async function executeChatStream({
         thinking: assistantThinking,
       },
       contextStatus: resolvedContextStatus,
+      persona: normalizedPersona,
     };
   }
 
@@ -1873,9 +1352,9 @@ export async function executeChatStream({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
-    userMetadata,
-    assistantMetadata,
-    runMetadata: { contextStatus: resolvedContextStatus },
+    userMetadata: { ...userMetadata, chatPersona: normalizedPersona },
+    assistantMetadata: { ...assistantMetadata, chatPersona: normalizedPersona },
+    runMetadata: { contextStatus: resolvedContextStatus, chatPersona: normalizedPersona },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
 
@@ -1887,5 +1366,6 @@ export async function executeChatStream({
       thinking: assistantThinking,
     },
     contextStatus: resolvedContextStatus,
+    persona: normalizedPersona,
   };
 }

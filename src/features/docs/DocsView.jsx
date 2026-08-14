@@ -130,7 +130,7 @@ function docSlugFromLocation() {
   if (typeof window === "undefined") return DEFAULT_DOC;
   const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
   const parts = hashPath.split("?")[0].split("/").filter(Boolean);
-  const slug = parts[0] === "docs" ? parts[1] || DEFAULT_DOC : DEFAULT_DOC;
+  const slug = ["help", "docs"].includes(parts[0]) ? parts[1] || DEFAULT_DOC : DEFAULT_DOC;
   return DOC_PAGES.some((page) => page.slug === slug) ? slug : DEFAULT_DOC;
 }
 
@@ -138,12 +138,12 @@ function writeDocsLocation(slug) {
   if (typeof window === "undefined") return;
   const normalizedSlug = DOC_PAGES.some((page) => page.slug === slug) ? slug : DEFAULT_DOC;
   const url = new URL(window.location.href);
-  url.hash = normalizedSlug === DEFAULT_DOC ? "docs" : `docs/${normalizedSlug}`;
+  url.hash = normalizedSlug === DEFAULT_DOC ? "help" : `help/${normalizedSlug}`;
 
   const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const nextPath = `${url.pathname}${url.search}${url.hash}`;
   if (currentPath === nextPath) return;
-  window.history.pushState({ tasknodeView: "docs", docsSlug: normalizedSlug }, "", nextPath);
+  window.history.pushState({ tasknodeView: "help", docsSlug: normalizedSlug }, "", nextPath);
 }
 
 function MarkdownArticle({ markdown }) {
@@ -430,13 +430,20 @@ function SystemPricingPanel({ pricing }) {
   const modes = Array.isArray(pricing?.modes) ? pricing.modes : [];
   const references = Array.isArray(pricing?.references) ? pricing.references : [];
   const live = pricing?.live || {};
+  const cacheEfficiency = pricing?.cacheEfficiency || {};
+  const cacheModes = Array.isArray(cacheEfficiency.modes) ? cacheEfficiency.modes : [];
   return (
     <section className="system-pricing-panel" aria-label="Chat model pricing">
       <div className="system-pricing-heading">
         <div>
           <h2>Chat Model Pricing</h2>
           <p>
-            Configured estimates, live OpenRouter metadata, and direct-provider reference prices for the current chat modes.
+            Configured estimates and live Ambient metadata for the current chat modes.{" "}
+            {cacheEfficiency.status === "ok"
+              ? `${cacheEfficiency.cacheHitPercent ?? 0}% cache hit across ${cacheEfficiency.reportedRuns}/${cacheEfficiency.runs} reported runs, saving ${formatUsd(cacheEfficiency.cacheSavingsUsd)} over ${cacheEfficiency.windowDays} days.`
+              : cacheEfficiency.status === "awaiting_reported_usage"
+                ? `Cache telemetry is waiting for a provider response with cache details (${cacheEfficiency.runs || 0} runs in the current window).`
+                : "Cache telemetry is not currently available."}
           </p>
         </div>
         <span className={`system-pricing-source is-${live.status || "unknown"}`}>
@@ -452,7 +459,11 @@ function SystemPricingPanel({ pricing }) {
       {live.error && <p className="system-status-error">{live.error}</p>}
       <div className="system-pricing-grid">
         {modes.map((mode) => (
-          <SystemPricingCard key={mode.mode} mode={mode} />
+          <SystemPricingCard
+            cacheMetrics={cacheModes.find((entry) => entry.mode === mode.mode && entry.model === mode.model)}
+            key={mode.mode}
+            mode={mode}
+          />
         ))}
       </div>
       {references.length > 0 && (
@@ -481,7 +492,7 @@ function SystemPricingPanel({ pricing }) {
   );
 }
 
-function SystemPricingCard({ mode }) {
+function SystemPricingCard({ cacheMetrics = null, mode }) {
   const liveModel = mode.liveModel || {};
   const endpoints = pricingEndpointsForDisplay(mode);
   const maxOutputLabel = liveModel.maxCompletionTokens || mode.maxOutputTokens
@@ -531,6 +542,16 @@ function SystemPricingCard({ mode }) {
         <div>
           <dt>Reasoning</dt>
           <dd>{mode.reasoning || "none"}</dd>
+        </div>
+        <div>
+          <dt>Cache efficiency</dt>
+          <dd>
+            {cacheMetrics?.reportedRuns > 0
+              ? `${cacheMetrics.cacheHitPercent ?? 0}% hit · ${Number(cacheMetrics.promptCacheHitTokens || 0).toLocaleString()} tokens · ${formatUsd(cacheMetrics.cacheSavingsUsd)} saved · ${cacheMetrics.reportedRuns}/${cacheMetrics.runs} runs reported`
+              : cacheMetrics?.runs > 0
+                ? `Awaiting provider cache details · 0/${cacheMetrics.runs} runs reported`
+                : "No runs in telemetry window"}
+          </dd>
         </div>
         <div>
           <dt>Privacy</dt>

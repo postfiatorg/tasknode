@@ -33,7 +33,7 @@ function usage() {
     "Options:",
     "  --scope <scope>             Manager scope. Default: global_hive",
     "  --trigger-prefix <name>     Trigger prefix for each tick. Default: board_manager_loop",
-    "  --provider <provider>       Decision provider: openrouter. Default: openrouter",
+    "  --provider <provider>       Decision provider: ambient. Default: ambient",
     "  --model <model>             Provider model. Default: z-ai/glm-5.2",
     "  --reasoning <effort>        Provider reasoning effort. Default: high",
     "  --idle-delay-ms <ms>        Delay after do_nothing/no board change. Default: 120000",
@@ -45,9 +45,9 @@ function usage() {
   ].join("\n");
 }
 
-function normalizeProvider(value = "openrouter") {
+function normalizeProvider(value = "ambient") {
   const provider = String(value || "").toLowerCase();
-  if (provider !== "openrouter") throw new Error(`board_manager_provider_unsupported:${provider || "unknown"}`);
+  if (provider !== "ambient") throw new Error(`board_manager_provider_unsupported:${provider || "unknown"}`);
   return provider;
 }
 
@@ -136,7 +136,7 @@ async function runOneTurn({ turn, firstTurn }) {
 const config = {
   scope: argValue("--scope", "global_hive"),
   triggerPrefix: argValue("--trigger-prefix", process.env.TASKNODE_BOARD_MANAGER_LOOP_TRIGGER_PREFIX || "board_manager_loop"),
-  provider: normalizeProvider(argValue("--provider", process.env.TASKNODE_BOARD_MANAGER_PROVIDER || "openrouter")),
+  provider: normalizeProvider(argValue("--provider", process.env.TASKNODE_BOARD_MANAGER_PROVIDER || "ambient")),
   model: "",
   reasoning: argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT || "high"),
   idleDelayMs: numberArg("--idle-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_IDLE_DELAY_MS || 120000), { min: 1000 }),

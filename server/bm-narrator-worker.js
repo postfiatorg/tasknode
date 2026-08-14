@@ -10,8 +10,9 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "./db/pool.js";
 import { DETERMINISTIC_BOARD_IDS } from "./board-config.js";
+import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
 
-const defaultModel = "deepseek/deepseek-v4-flash-0731";
+const defaultModel = AMBIENT_MODELS.fastText;
 let timer = null;
 let running = false;
 
@@ -28,7 +29,7 @@ function narratorModel(env = process.env) {
 }
 
 function apiKey(env = process.env) {
-  return safeText(env.OPENROUTER_API_KEY || env.TASKNODE_OPENROUTER_API_KEY || "", 400);
+  return ambientConfigured(env) ? "configured" : "";
 }
 
 // Defense-in-depth scrub applied to model output before storage. The model
@@ -115,10 +116,10 @@ async function summarizeBoard(boardId, { logger = console } = {}) {
   const key = apiKey();
   if (key) {
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-        body: JSON.stringify({
+      const result = await ambientChatCompletion({
+        capability: "fast_text",
+        timeoutMs: 45000,
+        body: {
           model,
           max_tokens: 400,
           messages: [
@@ -128,12 +129,10 @@ async function summarizeBoard(boardId, { logger = console } = {}) {
               content: `Most recent action is the first line; the rest are recent context.\n\n${context}\n\nSummarize the most recent action in plain English.`,
             },
           ],
-        }),
-        signal: AbortSignal.timeout(45000),
+        },
       });
-      const body = await response.json().catch(() => null);
-      summary = scrubNarrative(body?.choices?.[0]?.message?.content || "");
-      if (!response.ok || !summary) throw new Error(`narrator_http_${response.status}`);
+      summary = scrubNarrative(result.text);
+      if (!summary) throw new Error("narrator_empty_response");
     } catch (error) {
       logger.warn?.("bm_narrator_model_failed", { boardId, error: safeText(error?.message, 200) });
       summary = "";

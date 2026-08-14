@@ -136,6 +136,28 @@ function numeric(value) {
   return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : 0;
 }
 
+function cacheUsageFields(usage = {}) {
+  const inputTokens = Math.max(0, Number(usage?.inputTokens || 0));
+  const promptCacheHitTokens = Math.min(
+    inputTokens,
+    Math.max(0, Math.floor(Number(usage?.promptCacheHitTokens || 0)))
+  );
+  const promptCacheMissTokens = Math.min(
+    inputTokens,
+    Math.max(0, Math.floor(Number(usage?.promptCacheMissTokens || 0)))
+  );
+  return {
+    promptCacheHitTokens,
+    promptCacheMissTokens,
+    cacheUsageReported: usage?.cacheUsageReported === true,
+    cacheSavingsUsd: numeric(usage?.cacheSavingsUsd || 0),
+    costSource: String(usage?.costSource || "").trim().slice(0, 80),
+    providerCostUsd: usage?.providerCostUsd === null || usage?.providerCostUsd === undefined
+      ? null
+      : numeric(usage.providerCostUsd),
+  };
+}
+
 function jsonValue(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value;
@@ -229,6 +251,14 @@ function publicLedgerEntry(row, extra = {}) {
     responseId: row.response_id || undefined,
     modelRunId: row.model_run_id || undefined,
     inputTokens: Number(row.input_tokens || 0),
+    promptCacheHitTokens: Number(row.prompt_cache_hit_tokens || 0),
+    promptCacheMissTokens: Number(row.prompt_cache_miss_tokens || 0),
+    cacheUsageReported: row.cache_usage_reported === true,
+    cacheSavingsUsd: numeric(row.cache_savings_usd),
+    costSource: row.cost_source || undefined,
+    providerCostUsd: row.provider_cost_usd === null || row.provider_cost_usd === undefined
+      ? undefined
+      : numeric(row.provider_cost_usd),
     outputTokens: Number(row.output_tokens || 0),
     totalTokens: Number(row.total_tokens || 0),
     webSearchCalls: Number(row.web_search_calls || 0),
@@ -288,6 +318,12 @@ async function insertLedgerEntry(client, {
   mode = "",
   responseId = "",
   inputTokens = 0,
+  promptCacheHitTokens = 0,
+  promptCacheMissTokens = 0,
+  cacheUsageReported = false,
+  cacheSavingsUsd = 0,
+  costSource = "",
+  providerCostUsd = null,
   outputTokens = 0,
   totalTokens = 0,
   webSearchCalls = 0,
@@ -313,6 +349,12 @@ async function insertLedgerEntry(client, {
     mode || null,
     responseId || null,
     Math.max(0, Number(inputTokens || 0)),
+    Math.max(0, Number(promptCacheHitTokens || 0)),
+    Math.max(0, Number(promptCacheMissTokens || 0)),
+    cacheUsageReported === true,
+    numeric(cacheSavingsUsd),
+    String(costSource || "").trim().slice(0, 80),
+    providerCostUsd === null || providerCostUsd === undefined ? null : numeric(providerCostUsd),
     Math.max(0, Number(outputTokens || 0)),
     Math.max(0, Number(totalTokens || 0)),
     Math.max(0, Number(webSearchCalls || 0)),
@@ -345,6 +387,12 @@ async function insertLedgerEntry(client, {
         mode,
         response_id,
         input_tokens,
+        prompt_cache_hit_tokens,
+        prompt_cache_miss_tokens,
+        cache_usage_reported,
+        cache_savings_usd,
+        cost_source,
+        provider_cost_usd,
         output_tokens,
         total_tokens,
         web_search_calls,
@@ -354,7 +402,8 @@ async function insertLedgerEntry(client, {
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+        $21, $22, $23, $24, $25, $26
       )
       ${conflictSql}
       RETURNING *
@@ -576,6 +625,7 @@ export async function appendChatTurn({
     : `msg_${randomUUID()}_assistant`;
   const modelRunId = `run_${randomUUID()}`;
   const costUsd = numeric(usage?.costUsd || 0);
+  const cacheUsage = cacheUsageFields(usage);
   const preview = messagePreview(assistantMessage) || messagePreview(userMessage);
   const status = conversationStatusForInsert(conversationStatus);
 
@@ -713,6 +763,12 @@ export async function appendChatTurn({
             response_id,
             status,
             input_tokens,
+            prompt_cache_hit_tokens,
+            prompt_cache_miss_tokens,
+            cache_usage_reported,
+            cache_savings_usd,
+            cost_source,
+            provider_cost_usd,
             output_tokens,
             total_tokens,
             web_search_calls,
@@ -725,7 +781,8 @@ export async function appendChatTurn({
           )
           VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, 'completed',
-            $10, $11, $12, $13, $14, $15, $16, $17, $17, $18
+            $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+            $20, $21, $22, $23, $23, $24
           )
         `,
         [
@@ -739,6 +796,12 @@ export async function appendChatTurn({
           mode || "",
           responseId || null,
           Math.max(0, Number(usage?.inputTokens || 0)),
+          cacheUsage.promptCacheHitTokens,
+          cacheUsage.promptCacheMissTokens,
+          cacheUsage.cacheUsageReported,
+          cacheUsage.cacheSavingsUsd,
+          cacheUsage.costSource,
+          cacheUsage.providerCostUsd,
           Math.max(0, Number(usage?.outputTokens || 0)),
           Math.max(0, Number(usage?.totalTokens || 0)),
           Math.max(0, Number(usage?.webSearchCalls || 0)),
@@ -765,6 +828,7 @@ export async function appendChatTurn({
           mode,
           responseId,
           inputTokens: usage?.inputTokens || 0,
+          ...cacheUsage,
           outputTokens: usage?.outputTokens || 0,
           totalTokens: usage?.totalTokens || 0,
           webSearchCalls: usage?.webSearchCalls || 0,
@@ -858,6 +922,7 @@ export async function recordBillableModelRun({
   const startedAt = new Date();
   const completedAt = status === "completed" || status === "failed" ? new Date() : null;
   const costUsd = numeric(usage?.costUsd || 0);
+  const cacheUsage = cacheUsageFields(usage);
   const inputTokens = Math.max(0, Number(usage?.inputTokens || 0));
   const outputTokens = Math.max(0, Number(usage?.outputTokens || 0));
   const totalTokens = Math.max(0, Number(usage?.totalTokens || inputTokens + outputTokens || 0));
@@ -888,6 +953,12 @@ export async function recordBillableModelRun({
           response_id,
           status,
           input_tokens,
+          prompt_cache_hit_tokens,
+          prompt_cache_miss_tokens,
+          cache_usage_reported,
+          cache_savings_usd,
+          cost_source,
+          provider_cost_usd,
           output_tokens,
           total_tokens,
           web_search_calls,
@@ -901,7 +972,8 @@ export async function recordBillableModelRun({
         )
         VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-          $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+          $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+          $21, $22, $23, $24, $25, $26, $27
         )
       `,
       [
@@ -916,6 +988,12 @@ export async function recordBillableModelRun({
         responseId || null,
         String(status || "completed").slice(0, 80),
         inputTokens,
+        cacheUsage.promptCacheHitTokens,
+        cacheUsage.promptCacheMissTokens,
+        cacheUsage.cacheUsageReported,
+        cacheUsage.cacheSavingsUsd,
+        cacheUsage.costSource,
+        cacheUsage.providerCostUsd,
         outputTokens,
         totalTokens,
         webSearchCalls,
@@ -945,6 +1023,7 @@ export async function recordBillableModelRun({
         mode,
         responseId,
         inputTokens,
+        ...cacheUsage,
         outputTokens,
         totalTokens,
         webSearchCalls,

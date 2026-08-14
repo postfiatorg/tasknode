@@ -19,6 +19,7 @@ const frameEmail = `frame-smoke-${randomBytes(4).toString("hex")}@tasknode.local
 const testMnemonic = generateMnemonic(wordlist, 256);
 const testWalletAddress = deriveWalletSummary(testMnemonic).address;
 const testVaultPassword = "frame-smoke-vault-pass";
+const personaOnly = process.env.FRAME_PERSONA_ONLY === "true";
 const frameContextCid = "bafybeigdyrztm3j5framecontextpointeraaaa";
 const frameContextDraftText = `Frame saved context draft ${randomBytes(3).toString("hex")}`;
 const chatComposerSelector = 'textarea[aria-label="Ask anything"], input[aria-label="Ask anything"]';
@@ -56,9 +57,34 @@ async function main() {
     await waitForText("Task Node");
 
     await assertText(["Task Node", "New chat", "Tasks", "Wallet", "Context"]);
-    await assertSelector(chatComposerSelector);
+    await waitForSelector(chatComposerSelector);
     await assertSidebarBalances();
     await capture("01-chat");
+
+    if (personaOnly) {
+      const login = await evaluate(`fetch('/api/auth/dev/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: ${JSON.stringify(frameEmail)} })
+      }).then(async (response) => ({ ok: response.ok, body: await response.json() }))`);
+      if (!login?.ok) throw new Error(`Persona frame login failed: ${JSON.stringify(login?.body || login)}`);
+      await cdp.send("Page.reload", { ignoreCache: true });
+      await waitForSelector('button[aria-label="Add"]');
+      const handleDialogOpen = await evaluate("Boolean(document.querySelector('.login-dialog .dialog-close'))");
+      if (handleDialogOpen) await clickSelector(".login-dialog .dialog-close");
+      await clickSelector('button[aria-label="Add"]');
+      await assertText(["Upload photos & files", "Context Refine", "Request a task", "Personality", "More"]);
+      await clickButton("Personality", "document.querySelector('.plus-menu')");
+      await assertText(["ODV", "Trading Coach", "Jobs", "Kravis"]);
+      await capture("02b-personality-menu");
+      await clickButton("Kravis", "document.querySelector('.personality-menu')");
+      await assertSelector(".chat-persona-chip");
+      const selectedPersona = await evaluate("document.querySelector('.chat-persona-chip')?.textContent?.trim()");
+      if (selectedPersona !== "Kravis") throw new Error(`Expected Kravis persona chip, got ${selectedPersona || "nothing"}.`);
+      await capture("02c-personality-selected");
+      console.log("frame persona smoke ok");
+      return;
+    }
 
     await clickSelector('button[aria-label="Add"]');
     await assertText([
@@ -500,6 +526,15 @@ async function clickSelector(selector) {
 async function assertSelector(selector) {
   const exists = await evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
   if (!exists) throw new Error(`Missing selector: ${selector}`);
+}
+
+async function waitForSelector(selector, attempts = 80) {
+  for (let index = 0; index < attempts; index += 1) {
+    const exists = await evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
+    if (exists) return;
+    await sleep(100);
+  }
+  throw new Error(`Timed out waiting for selector: ${selector}`);
 }
 
 async function assertLocationHash(expectedHash) {

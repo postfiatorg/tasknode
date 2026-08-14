@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { migrateDatabase } from "../server/db/migrate.js";
-import { closePool } from "../server/db/pool.js";
+import { closePool, query } from "../server/db/pool.js";
 import {
   appendChatTurn,
   appendUsageCredit,
@@ -17,6 +17,7 @@ import {
   createContextEditProposal,
   markContextEditProposalApplied,
 } from "../server/repositories/context-edit.js";
+import { chatCacheEfficiencyStatus } from "../server/model-pricing-status.js";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required for chat/billing Postgres smoke.");
@@ -88,9 +89,9 @@ if (!exactDepositCredit || wrongDepositCredit) {
 const chat = await appendChatTurn({
   accountId,
   conversationId,
-  mode: "Frontier Instant",
-  provider: "openai",
-  model: "chat-latest",
+  mode: "Thinking",
+  provider: "ambient",
+  model: "z-ai/glm-5.2",
   responseId: `resp_${suffix}`,
   userMessage: "Persist this smoke chat.",
   assistantMessage: "Persisted.",
@@ -118,6 +119,11 @@ const chat = await appendChatTurn({
   ],
   usage: {
     inputTokens: 100,
+    promptCacheHitTokens: 80,
+    promptCacheMissTokens: 20,
+    cacheUsageReported: true,
+    cacheSavingsUsd: 0.000068,
+    costSource: "provider_usage",
     outputTokens: 20,
     totalTokens: 120,
     costUsd: 0.0011,
@@ -151,6 +157,24 @@ await markContextEditProposalApplied({
 const messages = await getChatMessages({ accountId, conversationId });
 const summary = await usageSummary({ accountId });
 const ledger = await usageLedger({ accountId, limit: 10 });
+const modelRunCache = await query(
+  `
+    SELECT
+      prompt_cache_hit_tokens,
+      prompt_cache_miss_tokens,
+      cache_usage_reported,
+      cache_savings_usd,
+      cost_source
+    FROM chat_model_runs
+    WHERE response_id = $1
+    LIMIT 1
+  `,
+  [`resp_${suffix}`]
+);
+const cacheEfficiency = await chatCacheEfficiencyStatus();
+const thinkingCacheEfficiency = cacheEfficiency.modes.find((entry) => (
+  entry.mode === "Thinking" && entry.model === "z-ai/glm-5.2"
+));
 const conversations = await listChatConversations({ accountId });
 const renamed = await renameChatConversation({
   accountId,
@@ -197,6 +221,19 @@ if (
   summary.currentSpendUsd !== 0.0011 ||
   summary.availableCreditUsd !== 11.9989 ||
   ledger.entries.length < 2 ||
+  ledger.entries[0]?.promptCacheHitTokens !== 80 ||
+  ledger.entries[0]?.promptCacheMissTokens !== 20 ||
+  ledger.entries[0]?.cacheUsageReported !== true ||
+  ledger.entries[0]?.cacheSavingsUsd !== 0.000068 ||
+  ledger.entries[0]?.costSource !== "provider_usage" ||
+  Number(modelRunCache.rows[0]?.prompt_cache_hit_tokens || 0) !== 80 ||
+  Number(modelRunCache.rows[0]?.prompt_cache_miss_tokens || 0) !== 20 ||
+  modelRunCache.rows[0]?.cache_usage_reported !== true ||
+  Number(modelRunCache.rows[0]?.cache_savings_usd || 0) !== 0.000068 ||
+  modelRunCache.rows[0]?.cost_source !== "provider_usage" ||
+  cacheEfficiency.status !== "ok" ||
+  Number(thinkingCacheEfficiency?.promptCacheHitTokens || 0) < 80 ||
+  Number(thinkingCacheEfficiency?.cacheSavingsUsd || 0) < 0.000068 ||
   !conversations.some((item) => item.conversationId === conversationId) ||
   !renamed.ok ||
   !deleted.ok ||
@@ -212,6 +249,8 @@ if (
     messages,
     summary,
     ledger,
+    modelRunCache: modelRunCache.rows[0],
+    cacheEfficiency,
     conversations,
     renamed,
     deleted,

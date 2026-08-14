@@ -11,11 +11,10 @@ process.env.TASKNODE_POSTGRES_DISABLED = "true";
 process.env.TELEGRAM_AUTH_BOT_TOKEN = "123456:tasknode-telegram-secret";
 process.env.TELEGRAM_BOT_CHAT_MODE = "Private Instant";
 process.env.CHAT_PROVIDER_TIMEOUT_MS = "45000";
-process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS = "135000";
-process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+process.env.AMBIENT_API_KEY = "test-ambient-key";
 
 try {
-  const { chatProviderTimeoutMs, deepSeekChatRequest } = await import("../server/chat-router.js");
+  const { ambientChatRequest, chatProviderTimeoutMs } = await import("../server/chat-router.js");
   const { getOrCreateProviderAccount } = await import("../server/runtime-store.js");
   const { listTelegramBotEvents } = await import("../server/repositories/telegram-bot-events.js");
   const {
@@ -59,30 +58,19 @@ try {
   };
 
   assert.equal(
-    chatProviderTimeoutMs({ mode: "Discount Thinking", source: "telegram_bot" }),
-    135000
-  );
-  const telegramDiscountTimeout = process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS;
-  delete process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS;
-  assert.equal(
-    chatProviderTimeoutMs({ mode: "Discount Thinking", source: "telegram_bot" }),
-    120000
-  );
-  process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS = telegramDiscountTimeout;
-  const sharedProviderTimeout = process.env.CHAT_PROVIDER_TIMEOUT_MS;
-  assert.equal(
-    chatProviderTimeoutMs({ mode: "Discount Thinking", source: "web" }),
+    chatProviderTimeoutMs({ mode: "Thinking", source: "telegram_bot" }),
     45000
   );
+  const sharedProviderTimeout = process.env.CHAT_PROVIDER_TIMEOUT_MS;
   delete process.env.CHAT_PROVIDER_TIMEOUT_MS;
   assert.equal(
-    chatProviderTimeoutMs({ mode: "Discount Thinking", source: "web" }),
+    chatProviderTimeoutMs({ mode: "Thinking", source: "web" }),
     120000
   );
   process.env.CHAT_PROVIDER_TIMEOUT_MS = sharedProviderTimeout;
-  const telegramPromptRequest = deepSeekChatRequest({
-    mode: "Discount Thinking",
-    model: "deepseek-v4-pro",
+  const telegramPromptRequest = ambientChatRequest({
+    mode: "Thinking",
+    model: "z-ai/glm-5.2",
     conversationId: "telegram-smoke",
     message: "What should I do next?",
     deliveryContext: { source: "telegram_bot" },
@@ -110,7 +98,7 @@ try {
   assert.equal(chatCalls[0].method, "POST");
   assert.equal(chatCalls[0].options.source, "telegram_bot");
   assert.equal(chatCalls[0].payload.accountId, account.id);
-  assert.equal(chatCalls[0].payload.mode, "Private Instant");
+  assert.equal(chatCalls[0].payload.mode, "Instant");
   assert.equal(chatCalls[0].payload.message, "hello from telegram");
   assert.equal(sentChatActions.length, 1);
   assert.deepEqual(sentChatActions.at(-1), { chatId: "12345", action: "typing" });
@@ -170,16 +158,16 @@ try {
         message_id: 13,
         chat: { id: 12345, type: "private" },
       },
-      data: "tn_mode:ft",
+      data: "tn_mode:t",
     },
   }, { answerCallbackQuery, chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(modeSetResult.action, "telegram_bot_mode_set");
-  assert.equal(modeSetResult.mode, "Frontier Thinking");
+  assert.equal(modeSetResult.mode, "Thinking");
   assert.equal(answeredCallbacks.at(-1).callbackQueryId, "callback_1");
-  assert.match(answeredCallbacks.at(-1).text, /Frontier Thinking/);
-  assert.match(sentMessages.at(-1).text, /Current mode: Frontier Thinking/);
-  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => button.text.includes("[x] Frontier Thinking")));
+  assert.match(answeredCallbacks.at(-1).text, /Thinking/);
+  assert.match(sentMessages.at(-1).text, /Current mode: Thinking/);
+  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => button.text.includes("[x] Thinking")));
   assert.equal(chatCalls.length, 1);
 
   const selectedModeResult = await processTelegramBotUpdate({
@@ -193,9 +181,9 @@ try {
   }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(selectedModeResult.action, "telegram_bot_chat");
-  assert.equal(selectedModeResult.mode, "Frontier Thinking");
+  assert.equal(selectedModeResult.mode, "Thinking");
   assert.equal(chatCalls.length, 2);
-  assert.equal(chatCalls[1].payload.mode, "Frontier Thinking");
+  assert.equal(chatCalls[1].payload.mode, "Thinking");
   assert.equal(chatCalls[1].payload.message, "use selected mode");
   assert.equal(sentChatActions.length, 2);
   assert.deepEqual(sentChatActions.at(-1), { chatId: "12345", action: "typing" });
@@ -231,10 +219,16 @@ try {
   }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(bareModeResult.action, "telegram_bot_help");
-  assert.match(sentMessages.at(-1).text, /Current mode: Frontier Thinking/);
-  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => (
-    button.text === "Discount Thinking" &&
-    button.callback_data === "tn_mode:dt"
+  assert.match(sentMessages.at(-1).text, /Current mode: Thinking/);
+  const modeButtons = sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat() || [];
+  assert.deepEqual(
+    modeButtons.filter((button) => button.callback_data?.startsWith("tn_mode:"))
+      .map((button) => button.text.replace(/^\[x\]\s*/, "")),
+    ["Instant", "Thinking", "Help"]
+  );
+  assert.ok(modeButtons.some((button) => (
+    button.text === "Help" &&
+    button.callback_data === "tn_mode:h"
   )));
   assert.equal(chatCalls.length, 2);
 
@@ -253,7 +247,7 @@ try {
   assert.equal(sentMessages.at(-1).replyMarkup, undefined);
   assert.equal(chatCalls.length, 2);
 
-  const discountModeSetResult = await processTelegramBotUpdate({
+  const helpModeSetResult = await processTelegramBotUpdate({
     update_id: 9,
     callback_query: {
       id: "callback_3",
@@ -262,49 +256,63 @@ try {
         message_id: 18,
         chat: { id: 12345, type: "private" },
       },
-      data: "tn_mode:dt",
+      data: "tn_mode:h",
     },
   }, { answerCallbackQuery, chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
-  assert.equal(discountModeSetResult.action, "telegram_bot_mode_set");
-  assert.equal(discountModeSetResult.mode, "Discount Thinking");
+  assert.equal(helpModeSetResult.action, "telegram_bot_mode_set");
+  assert.equal(helpModeSetResult.mode, "Help");
   assert.equal(answeredCallbacks.at(-1).callbackQueryId, "callback_3");
-  assert.match(answeredCallbacks.at(-1).text, /Discount Thinking/);
-  assert.match(sentMessages.at(-1).text, /Current mode: Discount Thinking/);
-  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => button.text.includes("[x] Discount Thinking")));
+  assert.match(answeredCallbacks.at(-1).text, /Help/);
+  assert.match(sentMessages.at(-1).text, /Current mode: Help/);
+  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => button.text.includes("[x] Help")));
   assert.equal(chatCalls.length, 2);
 
-  const selectedDiscountModeResult = await processTelegramBotUpdate({
+  const selectedHelpModeResult = await processTelegramBotUpdate({
     update_id: 10,
     message: {
       message_id: 19,
       from: { id: 12345, is_bot: false, username: "linked_user" },
       chat: { id: 12345, type: "private" },
-      text: "use discount mode",
+      text: "use help mode",
     },
   }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
-  assert.equal(selectedDiscountModeResult.action, "telegram_bot_chat");
-  assert.equal(selectedDiscountModeResult.mode, "Discount Thinking");
+  assert.equal(selectedHelpModeResult.action, "telegram_bot_chat");
+  assert.equal(selectedHelpModeResult.mode, "Help");
   assert.equal(chatCalls.length, 3);
-  assert.equal(chatCalls[2].payload.mode, "Discount Thinking");
-  assert.equal(chatCalls[2].payload.message, "use discount mode");
+  assert.equal(chatCalls[2].payload.mode, "Help");
+  assert.equal(chatCalls[2].payload.message, "use help mode");
   assert.equal(chatCalls[2].options.source, "telegram_bot");
-  assert.equal(sentMessages.at(-1).text, "reply:use discount mode");
+  assert.equal(sentMessages.at(-1).text, "reply:use help mode");
   assert.equal(sentMessages.at(-1).replyMarkup, undefined);
 
+  const thinkingModeReset = await processTelegramBotUpdate({
+    update_id: 11,
+    callback_query: {
+      id: "callback_4",
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      message: {
+        message_id: 20,
+        chat: { id: 12345, type: "private" },
+      },
+      data: "tn_mode:t",
+    },
+  }, { answerCallbackQuery, chatExecutor, sendTelegramChatAction, sendTelegramMessage });
+  assert.equal(thinkingModeReset.mode, "Thinking");
+
   const fallbackChatCalls = [];
-  const discountFallbackExecutor = async (payload, method, options = {}) => {
+  const thinkingFallbackExecutor = async (payload, method, options = {}) => {
     fallbackChatCalls.push({ payload, method, options });
     if (fallbackChatCalls.length === 1) {
       return {
-        status: 402,
+        status: 503,
         body: {
           ok: false,
           error: "provider_request_failed",
-          providerStatus: 402,
-          providerMessage: "Insufficient Balance",
-          estimate: { provider: "deepseek", model: "deepseek-v4-pro" },
+          providerStatus: 503,
+          providerMessage: "Ambient capacity unavailable",
+          estimate: { provider: "ambient", model: "z-ai/glm-5.2" },
         },
       };
     }
@@ -318,26 +326,26 @@ try {
       },
     };
   };
-  const discountFallbackResult = await processTelegramBotUpdate({
-    update_id: 11,
+  const thinkingFallbackResult = await processTelegramBotUpdate({
+    update_id: 12,
     message: {
-      message_id: 20,
+      message_id: 21,
       from: { id: 12345, is_bot: false, username: "linked_user" },
       chat: { id: 12345, type: "private" },
-      text: "discount provider fallback",
+      text: "thinking provider fallback",
     },
-  }, { chatExecutor: discountFallbackExecutor, sendTelegramChatAction, sendTelegramMessage });
+  }, { chatExecutor: thinkingFallbackExecutor, sendTelegramChatAction, sendTelegramMessage });
 
-  assert.equal(discountFallbackResult.action, "telegram_bot_chat");
-  assert.equal(discountFallbackResult.mode, "Discount Thinking");
-  assert.equal(discountFallbackResult.effectiveMode, "Private Instant");
-  assert.equal(discountFallbackResult.fallbackMode, "Private Instant");
-  assert.equal(discountFallbackResult.primaryChatStatus, 402);
+  assert.equal(thinkingFallbackResult.action, "telegram_bot_chat");
+  assert.equal(thinkingFallbackResult.mode, "Thinking");
+  assert.equal(thinkingFallbackResult.effectiveMode, "Instant");
+  assert.equal(thinkingFallbackResult.fallbackMode, "Instant");
+  assert.equal(thinkingFallbackResult.primaryChatStatus, 503);
   assert.equal(fallbackChatCalls.length, 2);
-  assert.equal(fallbackChatCalls[0].payload.mode, "Discount Thinking");
-  assert.equal(fallbackChatCalls[1].payload.mode, "Private Instant");
+  assert.equal(fallbackChatCalls[0].payload.mode, "Thinking");
+  assert.equal(fallbackChatCalls[1].payload.mode, "Instant");
   assert.equal(fallbackChatCalls[1].options.source, "telegram_bot");
-  assert.equal(sentMessages.at(-1).text, "fallback:Private Instant:discount provider fallback");
+  assert.equal(sentMessages.at(-1).text, "fallback:Instant:thinking provider fallback");
   assert.equal(sentMessages.at(-1).replyMarkup, undefined);
 
   const events = await listTelegramBotEvents({

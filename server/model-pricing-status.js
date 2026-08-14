@@ -2,9 +2,10 @@ import {
   chatExecutionStatus,
   chatModePrices,
 } from "./chat-router.js";
+import { ambientBaseUrl, ambientModels } from "./ambient-inference.js";
+import { databaseEnabled, query } from "./db/pool.js";
 
-const openRouterModelsUrl = "https://openrouter.ai/api/v1/models";
-const openRouterApiBaseUrl = "https://openrouter.ai/api/v1";
+const ambientModelsUrl = `${ambientBaseUrl()}/models`;
 const pricingTimeoutMs = Math.min(
   Math.max(Number(process.env.TASKNODE_MODEL_PRICING_TIMEOUT_MS) || 2500, 500),
   8000
@@ -15,33 +16,15 @@ const pricingCacheTtlMs = Math.min(
 );
 
 let pricingCache = null;
+const cacheEfficiencyWindowDays = Math.min(
+  Math.max(Number(process.env.TASKNODE_CHAT_CACHE_METRICS_WINDOW_DAYS) || 7, 1),
+  90
+);
 
 const modeDescriptions = {
-  "Private Instant": "Fast ZDR OpenRouter route using DeepSeek V4 Flash with reasoning disabled.",
-  "Private Thinking": "ZDR OpenRouter route using GLM 5.2 with xhigh private reasoning and an explicit provider allowlist.",
-  "Discount Thinking": "Direct DeepSeek API route using DeepSeek V4 Pro high reasoning at the current direct discount price.",
-  "Frontier Instant": "OpenAI Responses route for fast frontier chat with prompt-governed web search.",
-  Help: "Direct DeepSeek API route for plain-English Task Node product help with account context and the user guide injected.",
-  "Frontier Thinking": "OpenAI Responses route for deeper frontier reasoning and prompt-governed web search.",
-};
-
-const providerSlugAliases = {
-  akashml: "akashml",
-  alibaba: "alibaba",
-  atlascloud: "atlas-cloud",
-  baidu: "baidu",
-  deepinfra: "deepinfra",
-  deepseek: "deepseek",
-  fireworks: "fireworks",
-  gmicloud: "gmicloud",
-  morph: "morph",
-  novita: "novita",
-  parasail: "parasail",
-  siliconflow: "siliconflow",
-  streamlake: "streamlake",
-  together: "together",
-  venice: "venice",
-  zai: "z-ai",
+  Instant: "Fast Ambient inference using DeepSeek V4 Flash 7/31 with reasoning disabled.",
+  Thinking: "Ambient inference using GLM 5.2 with deep reasoning.",
+  Help: "Ambient inference for plain-English Task Node product help with account context and the user guide injected.",
 };
 
 function pricingEnabled() {
@@ -67,32 +50,112 @@ function configuredPricing(config = {}) {
   };
 }
 
-function providerSlug(value = "") {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-  return providerSlugAliases[normalized] || normalized;
-}
-
-function endpointSummary(endpoint = {}, allowedProviders = []) {
-  const slug = providerSlug(endpoint.provider_name || endpoint.provider || endpoint.name);
-  const pricing = endpoint.pricing || {};
+function cacheEfficiencyUnavailable(status, error = "") {
   return {
-    provider: endpoint.provider_name || endpoint.provider || endpoint.name || "",
-    providerSlug: slug,
-    allowed: allowedProviders.includes(slug),
-    inputUsdPerMillion: usdPerMillion(pricing.prompt),
-    outputUsdPerMillion: usdPerMillion(pricing.completion),
-    cacheReadUsdPerMillion: usdPerMillion(pricing.input_cache_read),
-    contextLength: Number(endpoint.context_length || 0) || null,
-    maxCompletionTokens: Number(endpoint.max_completion_tokens || 0) || null,
-    quantization: endpoint.quantization || "",
+    enabled: databaseEnabled(),
+    status,
+    windowDays: cacheEfficiencyWindowDays,
+    runs: 0,
+    reportedRuns: 0,
+    reportingCoveragePercent: null,
+    reportedInputTokens: 0,
+    promptCacheHitTokens: 0,
+    promptCacheMissTokens: 0,
+    cacheHitPercent: null,
+    cacheSavingsUsd: 0,
+    modes: [],
+    error,
   };
 }
 
-function openRouterEndpointUrl(model = "") {
-  return `${openRouterApiBaseUrl}/models/${encodeURI(String(model || "").trim())}/endpoints`;
+function cacheEfficiencyRow(row = {}) {
+  const runs = Number(row.runs || 0);
+  const reportedRuns = Number(row.reported_runs || 0);
+  const reportedInputTokens = Number(row.reported_input_tokens || 0);
+  const promptCacheHitTokens = Number(row.prompt_cache_hit_tokens || 0);
+  const promptCacheMissTokens = Number(row.prompt_cache_miss_tokens || 0);
+  return {
+    mode: row.mode || "",
+    model: row.model || "",
+    runs,
+    reportedRuns,
+    reportingCoveragePercent: runs > 0
+      ? Number(((reportedRuns / runs) * 100).toFixed(1))
+      : null,
+    reportedInputTokens,
+    promptCacheHitTokens,
+    promptCacheMissTokens,
+    cacheHitPercent: reportedInputTokens > 0
+      ? Number(((promptCacheHitTokens / reportedInputTokens) * 100).toFixed(1))
+      : null,
+    cacheSavingsUsd: Number(Number(row.cache_savings_usd || 0).toFixed(6)),
+  };
+}
+
+export async function chatCacheEfficiencyStatus() {
+  if (!databaseEnabled()) return cacheEfficiencyUnavailable("database_disabled");
+  try {
+    const result = await query(
+      `
+        SELECT
+          CASE mode
+            WHEN 'Private Instant' THEN 'Instant'
+            WHEN 'Frontier Instant' THEN 'Instant'
+            WHEN 'Private Thinking' THEN 'Thinking'
+            WHEN 'Discount Thinking' THEN 'Thinking'
+            WHEN 'Frontier Thinking' THEN 'Thinking'
+            ELSE mode
+          END AS mode,
+          model,
+          COUNT(*)::integer AS runs,
+          COUNT(*) FILTER (WHERE cache_usage_reported)::integer AS reported_runs,
+          COALESCE(SUM(input_tokens) FILTER (WHERE cache_usage_reported), 0)::bigint AS reported_input_tokens,
+          COALESCE(SUM(prompt_cache_hit_tokens) FILTER (WHERE cache_usage_reported), 0)::bigint AS prompt_cache_hit_tokens,
+          COALESCE(SUM(prompt_cache_miss_tokens) FILTER (WHERE cache_usage_reported), 0)::bigint AS prompt_cache_miss_tokens,
+          COALESCE(SUM(cache_savings_usd) FILTER (WHERE cache_usage_reported), 0)::numeric AS cache_savings_usd
+        FROM chat_model_runs
+        WHERE provider = 'ambient'
+          AND status = 'completed'
+          AND started_at >= now() - ($1::text || ' days')::interval
+        GROUP BY 1, model
+        ORDER BY 1, model
+      `,
+      [cacheEfficiencyWindowDays]
+    );
+    const modes = result.rows.map(cacheEfficiencyRow);
+    const totals = cacheEfficiencyRow(modes.reduce((total, row) => ({
+      runs: total.runs + row.runs,
+      reported_runs: total.reported_runs + row.reportedRuns,
+      reported_input_tokens: total.reported_input_tokens + row.reportedInputTokens,
+      prompt_cache_hit_tokens: total.prompt_cache_hit_tokens + row.promptCacheHitTokens,
+      prompt_cache_miss_tokens: total.prompt_cache_miss_tokens + row.promptCacheMissTokens,
+      cache_savings_usd: total.cache_savings_usd + row.cacheSavingsUsd,
+    }), {
+      runs: 0,
+      reported_runs: 0,
+      reported_input_tokens: 0,
+      prompt_cache_hit_tokens: 0,
+      prompt_cache_miss_tokens: 0,
+      cache_savings_usd: 0,
+    }));
+    return {
+      enabled: true,
+      status: totals.reportedRuns > 0 ? "ok" : "awaiting_reported_usage",
+      windowDays: cacheEfficiencyWindowDays,
+      runs: totals.runs,
+      reportedRuns: totals.reportedRuns,
+      reportingCoveragePercent: totals.reportingCoveragePercent,
+      reportedInputTokens: totals.reportedInputTokens,
+      promptCacheHitTokens: totals.promptCacheHitTokens,
+      promptCacheMissTokens: totals.promptCacheMissTokens,
+      cacheHitPercent: totals.cacheHitPercent,
+      cacheSavingsUsd: totals.cacheSavingsUsd,
+      modes,
+      error: "",
+    };
+  } catch (error) {
+    return cacheEfficiencyUnavailable("error", error?.message || String(error));
+  }
 }
 
 async function fetchJsonWithTimeout(url, { fetchImpl = fetch, timeoutMs = pricingTimeoutMs } = {}) {
@@ -124,22 +187,7 @@ function modelSummary(model = null) {
     cacheReadUsdPerMillion: usdPerMillion(model.pricing?.input_cache_read),
     contextLength: Number(model.context_length || model.top_provider?.context_length || 0) || null,
     maxCompletionTokens: Number(model.top_provider?.max_completion_tokens || 0) || null,
-    sourceUrl: `https://openrouter.ai/${model.id || ""}`,
-  };
-}
-
-function directProviderModelSummary({ model = "", provider = "", config = {} } = {}) {
-  if (provider !== "deepseek") return null;
-  return {
-    id: model,
-    name: "DeepSeek-V4-Pro",
-    description: "Direct DeepSeek API model. This is not the Task Node private/ZDR provider path.",
-    inputUsdPerMillion: Number(config.inputUsdPerMillion || 0),
-    outputUsdPerMillion: Number(config.outputUsdPerMillion || 0),
-    cacheReadUsdPerMillion: Number(config.inputCacheHitUsdPerMillion || 0) || null,
-    contextLength: 1_000_000,
-    maxCompletionTokens: 384_000,
-    sourceUrl: "https://api-docs.deepseek.com/quick_start/pricing",
+    sourceUrl: ambientModelsUrl,
   };
 }
 
@@ -147,15 +195,7 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
   return Object.keys(chatModePrices).map((mode) => {
     const config = chatModePrices[mode];
     const execution = chatExecutionStatus(mode);
-    const allowedProviders = Array.isArray(config.providerOrder) ? config.providerOrder : [];
-    const endpointRows = (endpointsByModel.get(execution.model) || [])
-      .map((endpoint) => endpointSummary(endpoint, allowedProviders))
-      .sort((left, right) => {
-        if (left.allowed !== right.allowed) return left.allowed ? -1 : 1;
-        return (left.outputUsdPerMillion ?? Infinity) - (right.outputUsdPerMillion ?? Infinity);
-      });
-    const liveModel = modelSummary(liveByModel.get(execution.model)) ||
-      directProviderModelSummary({ model: execution.model, provider: execution.provider, config });
+    const liveModel = modelSummary(liveByModel.get(execution.model));
     return {
       mode,
       provider: execution.provider,
@@ -177,35 +217,24 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
         : config.disableReasoning
           ? "none"
           : "",
-      privacyPolicy: execution.provider === "openrouter"
-        ? "OpenRouter request sets zdr=true, data_collection=deny, and mode-specific provider allowlist."
-        : execution.provider === "deepseek"
-          ? "Direct DeepSeek API route. Not OpenRouter ZDR; no web search; user billing is computed from DeepSeek token usage and configured direct prices."
-          : "OpenAI Responses request sets store=false; Frontier modes may use prompt-governed web search.",
-      providerOrder: allowedProviders,
+      privacyPolicy: "Requests are sent to Ambient inference. The OpenAI exception is isolated to sanitized profile NFT image rendering and is not used for chat.",
+      providerOrder: [],
       liveModel,
-      liveEndpoints: endpointRows,
+      liveEndpoints: endpointsByModel.get(execution.model) || [],
     };
   });
 }
 
-async function fetchLiveOpenRouterPricing({ fetchImpl = fetch } = {}) {
-  const modelsBody = await fetchJsonWithTimeout(openRouterModelsUrl, { fetchImpl });
+async function fetchLiveAmbientPricing({ fetchImpl = fetch } = {}) {
+  const modelsBody = await ambientModels({ fetchImpl, timeoutMs: pricingTimeoutMs });
   const models = Array.isArray(modelsBody?.data) ? modelsBody.data : [];
   const modelIds = [...new Set(Object.keys(chatModePrices)
     .map((mode) => chatExecutionStatus(mode))
-    .filter((status) => status.provider === "openrouter")
+    .filter((status) => status.provider === "ambient")
     .map((status) => status.model)
     .filter(Boolean))];
   const endpointsByModel = new Map();
-  await Promise.all(modelIds.map(async (modelId) => {
-    try {
-      const body = await fetchJsonWithTimeout(openRouterEndpointUrl(modelId), { fetchImpl });
-      endpointsByModel.set(modelId, body?.data?.endpoints || body?.endpoints || []);
-    } catch (error) {
-      endpointsByModel.set(modelId, []);
-    }
-  }));
+  for (const modelId of modelIds) endpointsByModel.set(modelId, []);
 
   return {
     models,
@@ -224,17 +253,16 @@ export async function chatPricingStatus({ fetchImpl = fetch } = {}) {
     fetchedAt: null,
     error: "",
     sourceUrls: [
-      openRouterModelsUrl,
-      "https://api-docs.deepseek.com/quick_start/pricing",
-      "https://openrouter.ai/docs/guides/routing/provider-selection",
+      ambientModelsUrl,
     ],
   };
+  const cacheEfficiencyPromise = chatCacheEfficiencyStatus();
   let liveByModel = new Map();
   let endpointsByModel = new Map();
 
   if (live.enabled) {
     try {
-      const fetched = await fetchLiveOpenRouterPricing({ fetchImpl });
+      const fetched = await fetchLiveAmbientPricing({ fetchImpl });
       liveByModel = fetched.liveByModel;
       endpointsByModel = fetched.endpointsByModel;
       live.status = "ok";
@@ -248,13 +276,12 @@ export async function chatPricingStatus({ fetchImpl = fetch } = {}) {
   const value = {
     generatedAt: new Date().toISOString(),
     live,
+    cacheEfficiency: await cacheEfficiencyPromise,
     modes: baseModeRows(liveByModel, endpointsByModel),
     references: [],
     notes: [
-      "Configured pricing is the preflight estimate in server/chat-router.js; actual OpenRouter billing uses provider-returned usage.cost.",
-      "Direct DeepSeek billing uses the token usage returned by DeepSeek and the configured direct API token prices, including cache-hit pricing when DeepSeek reports cache-hit tokens.",
-      "OpenRouter headline model pricing can refer to the cheapest provider endpoint. Task Node private modes also require zdr=true and data_collection=deny, so the cheapest endpoint may not be eligible.",
-      "Endpoint metadata is public OpenRouter metadata. ZDR eligibility is enforced by the request body at execution time.",
+      "Configured pricing is Task Node's user tariff and is authoritative for both estimates and ledger debits.",
+      "Live model metadata and wholesale pricing come from Ambient inference for comparison; provider-reported cost never overrides the user tariff.",
     ],
   };
   pricingCache = { cachedAtMs: now, value };

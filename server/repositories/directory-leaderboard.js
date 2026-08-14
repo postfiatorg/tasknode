@@ -160,9 +160,13 @@ export async function discoverableMemberProfileIds(accountIds = []) {
   return new Set(result.rows.map((row) => safeText(row.account_id, 180)).filter(Boolean));
 }
 
-async function queryLeaderboardRows(accountIds = []) {
-  if (!accountIds.length || !databaseEnabled()) return [];
-  const result = await query(
+export async function queryDirectoryLeaderboardRows({
+  accountIds = [],
+  queryImpl = query,
+  databaseReady = databaseEnabled(),
+} = {}) {
+  if (!accountIds.length || !databaseReady) return [];
+  const result = await queryImpl(
     `
       WITH candidates AS (
         SELECT unnest($1::text[]) AS account_id
@@ -170,21 +174,19 @@ async function queryLeaderboardRows(accountIds = []) {
       task_stats AS (
         SELECT p.account_id,
                COUNT(*) FILTER (
-                 WHERE ${canonicalRewardedTaskProjectionSql("p")}
-                   AND lower(COALESCE(p.task_kind, '')) = 'network'
+                 WHERE lower(COALESCE(p.task_kind, '')) = 'network'
                )::integer AS network_tasks,
                COUNT(*) FILTER (
-                 WHERE ${canonicalRewardedTaskProjectionSql("p")}
-                   AND lower(COALESCE(p.task_kind, '')) = 'personal'
+                 WHERE lower(COALESCE(p.task_kind, '')) = 'personal'
                )::integer AS personal_tasks,
-               COUNT(*) FILTER (WHERE ${canonicalRewardedTaskProjectionSql("p")})::integer AS tasks_rewarded,
-               COALESCE(SUM(p.reward_actual_pft) FILTER (WHERE ${canonicalRewardedTaskProjectionSql("p")}), 0)::text AS reward_pft,
+               COUNT(*)::integer AS tasks_rewarded,
+               COALESCE(SUM(p.reward_actual_pft), 0)::text AS reward_pft,
                (ARRAY_AGG(p.subject_wallet ORDER BY p.updated_at DESC NULLS LAST, p.task_id DESC)
-                 FILTER (WHERE p.subject_wallet <> '' AND ${canonicalRewardedTaskProjectionSql("p")}))[1] AS latest_wallet
+                 FILTER (WHERE p.subject_wallet <> ''))[1] AS latest_wallet
         FROM task_projections p
         WHERE p.account_id = ANY($1::text[])
           AND p.account_id <> ''
-          AND ${nonFixtureTaskProjectionSql("p")}
+          AND ${canonicalRewardedTaskProjectionSql("p")}
         GROUP BY p.account_id
       ),
       latest_alignment AS (
@@ -208,7 +210,6 @@ async function queryLeaderboardRows(accountIds = []) {
              latest_alignment.alignment_score_7d,
              latest_alignment.alignment_completed_at,
              latest_alignment.alignment_run_date,
-             COALESCE(latest_handle.public_handle, '') AS public_handle,
              ''::text AS identity_display_name,
              '[]'::jsonb AS wallets_json,
              COALESCE(hero_nft.image_cid, '') AS hero_nft_image_cid,
@@ -216,14 +217,6 @@ async function queryLeaderboardRows(accountIds = []) {
       FROM candidates
       LEFT JOIN task_stats ON task_stats.account_id = candidates.account_id
       LEFT JOIN latest_alignment ON latest_alignment.account_id = candidates.account_id
-      LEFT JOIN LATERAL (
-        SELECT event.public_handle
-        FROM user_observability_events event
-        WHERE event.account_id = candidates.account_id
-          AND event.public_handle <> ''
-        ORDER BY event.occurred_at DESC, event.id DESC
-        LIMIT 1
-      ) latest_handle ON true
       LEFT JOIN LATERAL (
         SELECT nft.image_cid, nft.image_gateway_url
         FROM profile_nfts nft
@@ -254,7 +247,7 @@ async function buildBaseDocument() {
   const identityByAccount = publicIdentityMap(identities);
   const accountIds = Array.from(identityByAccount.keys());
   const [rows, profileIds, operatorDisclosures] = await Promise.all([
-    queryLeaderboardRows(accountIds),
+    queryDirectoryLeaderboardRows({ accountIds }),
     discoverableMemberProfileIds(accountIds),
     listMachineOperatorDisclosures({ accountIds }).catch(() => ({})),
   ]);
@@ -317,11 +310,9 @@ async function buildBaseDocument() {
     rankFormula: {
       ...DIRECTORY_LEADERBOARD_RANK_FORMULA,
       label: "3x network tasks + personal tasks + rewards/25000 + alignment",
-      status: "OPEN - Alex's call",
     },
     policy: {
       visibility: "public_discoverable_only",
-      status: "OPEN - Alex's call",
     },
     totals,
     operators: visibleOperators,

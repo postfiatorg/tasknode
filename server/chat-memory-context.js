@@ -4,6 +4,8 @@ import { formatChatContextDocument } from "./chat-account-context.js";
 import { formatChatTaskContext } from "./chat-task-context.js";
 import { formatChatSpiritContext, isChatSpiritEnabled } from "./chat-spirit-context.js";
 import { buildMemoryContextStatus, memoryContextIsEmpty } from "./chat-context-status.js";
+import { formatSelectedChatPersona } from "./chat-persona-prompts.js";
+import { normalizeChatPersona } from "../shared/chat-personas.js";
 
 function boundedEnvInt(value, fallback, min, max) {
   const parsed = Number(value);
@@ -110,11 +112,25 @@ export function taskNodeInstructions({
   taskContext = null,
   jobsEssence = "",
   deliveryContext = null,
+  persona = "jobs",
 } = {}) {
   const formattedContextDocument = formatChatContextDocument(contextDocument);
   const formattedMemory = formatChatMemoryContext(memoryContext);
   const formattedTasks = formatChatTaskContext(taskContext);
   const formattedDelivery = formatDeliveryContext(deliveryContext);
+  const normalizedPersona = normalizeChatPersona(persona);
+  if (!normalizedPersona) throw new Error("unknown_chat_persona");
+  const selectedPersona = formatSelectedChatPersona({
+    persona: normalizedPersona,
+    contextDocumentBlock: formattedContextDocument,
+    memoryBlock: formattedMemory,
+    taskBlock: formattedTasks,
+  });
+  if (selectedPersona) {
+    return [taskNodeInstructionsPrompt, formattedDelivery, selectedPersona]
+      .filter(Boolean)
+      .join("\n\n");
+  }
   if (isChatSpiritEnabled()) {
     return [
       taskNodeInstructionsPrompt,
