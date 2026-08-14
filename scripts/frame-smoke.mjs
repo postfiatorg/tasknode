@@ -117,12 +117,16 @@ async function main() {
         return true;
       })()`);
       await clickButton("Create private chart", "document.querySelector('.i-ching-setup-dialog')");
+      await waitForText("Your I Ching profile is ready");
+      await assertText(["Profile saved", "America/New_York", "True solar time", "Ask your I Ching question"]);
+      await capture("02f-i-ching-saved");
+      await clickButton("Ask your I Ching question", "document.querySelector('.i-ching-setup-dialog')");
       await waitForSelector('textarea[aria-label="What situation or decision do you want the I Ching to read?"]');
       const selectedModality = await evaluate("document.querySelector('.composer-mode-chip span')?.textContent?.trim()");
       if (selectedModality !== "I Ching") throw new Error(`Expected I Ching composer mode, got ${selectedModality || "nothing"}.`);
       const modalityModel = await evaluate("document.querySelector('.model-button')?.textContent?.trim()");
       if (!String(modalityModel).includes("GLM 5.2")) throw new Error(`Expected GLM 5.2 modality model, got ${modalityModel || "nothing"}.`);
-      await capture("02f-i-ching-selected");
+      await capture("02g-i-ching-selected");
       console.log("frame persona smoke ok");
       return;
     }

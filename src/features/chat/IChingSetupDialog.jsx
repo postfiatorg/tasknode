@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Lock, X } from "lucide-react";
+import { CheckCircle2, Lock, X } from "lucide-react";
 import { requestJson } from "../../api";
 
 const EMPTY_FORM = {
@@ -13,16 +13,23 @@ export function IChingSetupDialog({ onCancel, onSaved, open }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savedProfile, setSavedProfile] = useState(null);
 
   useEffect(() => {
     if (!open) return undefined;
     setError("");
     const closeOnEscape = (event) => {
-      if (event.key === "Escape" && !saving) onCancel?.();
+      if (event.key !== "Escape" || saving) return;
+      if (savedProfile) onSaved?.(savedProfile);
+      else onCancel?.();
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [onCancel, open, saving]);
+  }, [onCancel, onSaved, open, savedProfile, saving]);
+
+  useEffect(() => {
+    if (open) setSavedProfile(null);
+  }, [open]);
 
   if (!open) return null;
 
@@ -43,7 +50,7 @@ export function IChingSetupDialog({ onCancel, onSaved, open }) {
       if (!result.ok || !result.body?.exists) {
         throw new Error(result.body?.message || `I Ching setup returned HTTP ${result.status}.`);
       }
-      onSaved?.(result.body.profile);
+      setSavedProfile(result.body.profile || {});
     } catch (saveError) {
       setError(saveError?.message || "The birth chart could not be generated.");
     } finally {
@@ -62,21 +69,46 @@ export function IChingSetupDialog({ onCancel, onSaved, open }) {
         role="dialog"
       >
         <button
-          aria-label="Cancel I Ching setup"
+          aria-label={savedProfile ? "Continue to I Ching" : "Cancel I Ching setup"}
           className="dialog-close"
           disabled={saving}
-          onClick={onCancel}
+          onClick={() => savedProfile ? onSaved?.(savedProfile) : onCancel?.()}
           type="button"
         >
           <X size={19} strokeWidth={1.8} />
         </button>
-        <div className="i-ching-setup-mark" aria-hidden="true">䷀</div>
-        <h2 id="i-ching-setup-title">Set up I Ching</h2>
-        <p>
-          The full reading combines a fresh hexagram with your Bā Zì and Zǐ Wēi chart. Exact birth time
-          and place are required to calculate the correct timezone and true solar time.
-        </p>
-        <form className="i-ching-setup-form" onSubmit={submit}>
+        {savedProfile ? (
+          <div className="i-ching-setup-success" aria-live="polite" role="status">
+            <CheckCircle2 size={48} strokeWidth={1.55} />
+            <span className="i-ching-success-kicker">Profile saved</span>
+            <h2 id="i-ching-setup-title">Your I Ching profile is ready</h2>
+            <p>
+              Your private Bā Zì and Zǐ Wēi chart has been calculated and saved. Your readings can now
+              combine that profile with a fresh hexagram and your current Task Node context.
+            </p>
+            {(savedProfile.timezone || savedProfile.trueSolarTime) && (
+              <div className="i-ching-calculation-summary">
+                {savedProfile.timezone && <span>Timezone <strong>{savedProfile.timezone}</strong></span>}
+                {savedProfile.trueSolarTime && <span>True solar time <strong>{savedProfile.trueSolarTime}</strong></span>}
+              </div>
+            )}
+            <div className="i-ching-private-note">
+              <Lock size={14} strokeWidth={1.9} />
+              <span>Saved privately to your Task Node account.</span>
+            </div>
+            <button className="continue-button" onClick={() => onSaved?.(savedProfile)} type="button">
+              Ask your I Ching question
+            </button>
+          </div>
+        ) : (
+          <>
+          <div className="i-ching-setup-mark" aria-hidden="true">䷀</div>
+          <h2 id="i-ching-setup-title">Set up I Ching</h2>
+          <p>
+            The full reading combines a fresh hexagram with your Bā Zì and Zǐ Wēi chart. Exact birth time
+            and place are required to calculate the correct timezone and true solar time.
+          </p>
+          <form className="i-ching-setup-form" onSubmit={submit}>
           <div className="i-ching-setup-grid">
             <label>
               <span>Birth date</span>
@@ -132,7 +164,9 @@ export function IChingSetupDialog({ onCancel, onSaved, open }) {
               {saving ? "Calculating chart…" : "Create private chart"}
             </button>
           </div>
-        </form>
+          </form>
+          </>
+        )}
       </section>
     </div>
   );
