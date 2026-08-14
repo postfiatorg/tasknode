@@ -51,6 +51,11 @@ export async function handleIChingRoute({ json, readJson, req, res, session, url
     });
   } catch (error) {
     const inputFailure = error?.code === "I_CHING_INPUT";
+    console.warn("i_ching_profile_save_failed", {
+      accountIdPresent: Boolean(session?.accountId),
+      code: error?.code || "I_CHING_PROFILE_FAILED",
+      message: String(error?.message || "unknown_error").slice(0, 240),
+    });
     json(res, inputFailure ? 400 : 500, {
       ok: false,
       error: inputFailure ? "i_ching_profile_invalid" : "i_ching_profile_failed",

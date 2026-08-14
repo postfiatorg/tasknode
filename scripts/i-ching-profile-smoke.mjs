@@ -10,6 +10,22 @@ const { taskNodeInstructions } = await import("../server/chat-memory-context.js"
 const { handleIChingRoute } = await import("../server/i-ching-routes.js");
 
 const accountId = `i-ching-profile-smoke-${Date.now()}`;
+let geocoderInput = null;
+const cityChart = await generateIChingProfile({
+  birthDate: "1988-03-15",
+  birthTime: "14:30",
+  birthLocation: "Philadelphia, United States",
+  gender: "male",
+}, {
+  geocode: async (input) => {
+    geocoderInput = input;
+    return [{ latitude: 39.9526, longitude: -75.1652 }];
+  },
+});
+assert.equal(geocoderInput, "Philadelphia, United States", "the geocoder must receive the city as a string");
+assert.equal(cityChart.input.birth_location, "Philadelphia, United States");
+assert.equal(cityChart.input.timezone, "America/New_York");
+
 const chart = await generateIChingProfile({
   birthDate: "1988-03-15",
   birthTime: "14:30",

@@ -39,12 +39,12 @@ function parseCoordinates(value = "") {
   return { latitude, longitude };
 }
 
-async function geocodeBirthLocation(location = "") {
+async function geocodeBirthLocation(location = "", { geocode = (value) => geocoder.geocode(value) } = {}) {
   const direct = parseCoordinates(location);
   if (direct) return direct;
   let results;
   try {
-    results = await geocoder.geocode({ address: location, email: process.env.I_CHING_GEOCODER_EMAIL || "ops@postfiat.org" });
+    results = await geocode(location);
   } catch {
     throw inputError("Birth location could not be resolved. Enter city and country, or latitude,longitude.");
   }
@@ -144,7 +144,10 @@ function ziweiPayload(dateTime, gender) {
   };
 }
 
-export async function generateIChingProfile({ birthDate = "", birthTime = "", birthLocation = "", gender = "" } = {}) {
+export async function generateIChingProfile(
+  { birthDate = "", birthTime = "", birthLocation = "", gender = "" } = {},
+  { geocode } = {}
+) {
   const normalizedDate = String(birthDate || "").trim();
   const normalizedTime = String(birthTime || "").trim();
   const normalizedLocation = String(birthLocation || "").trim().slice(0, 240);
@@ -152,7 +155,7 @@ export async function generateIChingProfile({ birthDate = "", birthTime = "", bi
   if (!/^\d{2}:\d{2}(?::\d{2})?$/.test(normalizedTime)) throw inputError("Birth time must use 24-hour HH:MM.");
   if (!normalizedLocation) throw inputError("Birth location is required.");
   const genderValue = normalizedGender(gender);
-  const coordinates = await geocodeBirthLocation(normalizedLocation);
+  const coordinates = await geocodeBirthLocation(normalizedLocation, geocode ? { geocode } : undefined);
   const timezone = findTimezone(coordinates.latitude, coordinates.longitude)?.[0];
   if (!timezone) throw inputError("The timezone for that birth location could not be resolved.");
   const localDateTime = DateTime.fromISO(`${normalizedDate}T${normalizedTime}`, { zone: timezone });
