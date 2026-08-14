@@ -116,7 +116,7 @@ export function openRouterMessages({
       role: "system",
       content:
         instructionsOverride ||
-        taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
+        taskNodeInstructions({ message, contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
     },
     ...history,
     { role: "user", content: userContent },
@@ -163,7 +163,7 @@ export function deepSeekMessages({
       role: "system",
       content:
         instructionsOverride ||
-        taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
+        taskNodeInstructions({ message, contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
     },
     ...history,
     { role: "user", content: userContent },

@@ -2190,6 +2190,12 @@ h1 {
 
 .plus-menu.has-personas {
   width: min(320px, calc(100vw - 36px));
+  max-height: min(760px, calc(100dvh - 48px));
+  overflow-y: auto;
+}
+
+.plus-menu.has-modalities {
+  overflow: visible;
 }
 
 .chat-empty .model-menu {
@@ -2313,6 +2319,20 @@ h1 {
   border: 1px solid #efede7;
   border-radius: 12px;
   background: #faf9f6;
+}
+
+.modality-menu {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  width: 320px;
+  max-height: min(680px, calc(100dvh - 48px));
+  margin: 0;
+  overflow-y: auto;
+  transform: translateY(-50%);
+  border-color: #e7e5de;
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.1), 0 2px 7px rgba(0, 0, 0, 0.04);
 }
 
 .composer .personality-menu-row {
@@ -6085,6 +6105,20 @@ h1 {
     left: 12px;
     width: min(300px, calc(100vw - 24px));
     padding: 8px;
+  }
+
+  .plus-menu.has-modalities {
+    overflow-y: auto;
+  }
+
+  .modality-menu {
+    position: static;
+    width: calc(100% - 12px);
+    max-height: none;
+    margin: 2px 6px 5px;
+    overflow: visible;
+    box-shadow: none;
+    transform: none;
   }
 
   .model-menu button {

@@ -82,6 +82,17 @@ async function main() {
       const selectedPersona = await evaluate("document.querySelector('.chat-persona-chip')?.textContent?.trim()");
       if (selectedPersona !== "Kravis") throw new Error(`Expected Kravis persona chip, got ${selectedPersona || "nothing"}.`);
       await capture("02c-personality-selected");
+      await clickSelector('button[aria-label="Add"]');
+      await clickButton("More", "document.querySelector('.plus-menu')");
+      await assertText(["Brainstorm", "Motivation", "Five Mirrors", "I Ching", "Sprint Planner", "Validator", "Post Fiat Q&A", "App Help"]);
+      await capture("02d-modality-menu");
+      await clickButton("I Ching", "document.querySelector('.modality-menu')");
+      await waitForSelector('textarea[aria-label="What situation or decision do you want the I Ching to read?"]');
+      const selectedModality = await evaluate("document.querySelector('.composer-mode-chip span')?.textContent?.trim()");
+      if (selectedModality !== "I Ching") throw new Error(`Expected I Ching composer mode, got ${selectedModality || "nothing"}.`);
+      const modalityModel = await evaluate("document.querySelector('.model-button')?.textContent?.trim()");
+      if (!String(modalityModel).includes("GLM 5.2")) throw new Error(`Expected GLM 5.2 modality model, got ${modalityModel || "nothing"}.`);
+      await capture("02e-i-ching-selected");
       console.log("frame persona smoke ok");
       return;
     }

@@ -1,0 +1,450 @@
+[
+  {
+    "pattern": "111111",
+    "kingwen": 1,
+    "symbol": "䷀",
+    "name_cn": "乾",
+    "name_en": "The Creative (Heaven)"
+  },
+  {
+    "pattern": "000000",
+    "kingwen": 2,
+    "symbol": "䷁",
+    "name_cn": "坤",
+    "name_en": "The Receptive"
+  },
+  {
+    "pattern": "010001",
+    "kingwen": 3,
+    "symbol": "䷂",
+    "name_cn": "屯",
+    "name_en": "Difficulty at the Beginning"
+  },
+  {
+    "pattern": "100010",
+    "kingwen": 4,
+    "symbol": "䷃",
+    "name_cn": "蒙",
+    "name_en": "Youthful Folly"
+  },
+  {
+    "pattern": "010111",
+    "kingwen": 5,
+    "symbol": "䷄",
+    "name_cn": "需",
+    "name_en": "Waiting"
+  },
+  {
+    "pattern": "111010",
+    "kingwen": 6,
+    "symbol": "䷅",
+    "name_cn": "訟",
+    "name_en": "Conflict"
+  },
+  {
+    "pattern": "000010",
+    "kingwen": 7,
+    "symbol": "䷆",
+    "name_cn": "師",
+    "name_en": "The Army"
+  },
+  {
+    "pattern": "010000",
+    "kingwen": 8,
+    "symbol": "䷇",
+    "name_cn": "比",
+    "name_en": "Holding Together"
+  },
+  {
+    "pattern": "110111",
+    "kingwen": 9,
+    "symbol": "䷈",
+    "name_cn": "小畜",
+    "name_en": "Small Taming"
+  },
+  {
+    "pattern": "111011",
+    "kingwen": 10,
+    "symbol": "䷉",
+    "name_cn": "履",
+    "name_en": "Treading"
+  },
+  {
+    "pattern": "000111",
+    "kingwen": 11,
+    "symbol": "䷊",
+    "name_cn": "泰",
+    "name_en": "Peace"
+  },
+  {
+    "pattern": "111000",
+    "kingwen": 12,
+    "symbol": "䷋",
+    "name_cn": "否",
+    "name_en": "Standstill"
+  },
+  {
+    "pattern": "111101",
+    "kingwen": 13,
+    "symbol": "䷌",
+    "name_cn": "同人",
+    "name_en": "Fellowship"
+  },
+  {
+    "pattern": "101111",
+    "kingwen": 14,
+    "symbol": "䷍",
+    "name_cn": "大有",
+    "name_en": "Great Possession"
+  },
+  {
+    "pattern": "000100",
+    "kingwen": 15,
+    "symbol": "䷎",
+    "name_cn": "謙",
+    "name_en": "Modesty"
+  },
+  {
+    "pattern": "001000",
+    "kingwen": 16,
+    "symbol": "䷏",
+    "name_cn": "豫",
+    "name_en": "Enthusiasm"
+  },
+  {
+    "pattern": "011001",
+    "kingwen": 17,
+    "symbol": "䷐",
+    "name_cn": "隨",
+    "name_en": "Following"
+  },
+  {
+    "pattern": "100110",
+    "kingwen": 18,
+    "symbol": "䷑",
+    "name_cn": "蠱",
+    "name_en": "Work on the Decayed"
+  },
+  {
+    "pattern": "000011",
+    "kingwen": 19,
+    "symbol": "䷒",
+    "name_cn": "臨",
+    "name_en": "Approach"
+  },
+  {
+    "pattern": "110000",
+    "kingwen": 20,
+    "symbol": "䷓",
+    "name_cn": "觀",
+    "name_en": "Contemplation"
+  },
+  {
+    "pattern": "101001",
+    "kingwen": 21,
+    "symbol": "䷔",
+    "name_cn": "噬嗑",
+    "name_en": "Biting Through"
+  },
+  {
+    "pattern": "100101",
+    "kingwen": 22,
+    "symbol": "䷕",
+    "name_cn": "賁",
+    "name_en": "Grace"
+  },
+  {
+    "pattern": "100000",
+    "kingwen": 23,
+    "symbol": "䷖",
+    "name_cn": "剝",
+    "name_en": "Splitting Apart"
+  },
+  {
+    "pattern": "000001",
+    "kingwen": 24,
+    "symbol": "䷗",
+    "name_cn": "復",
+    "name_en": "Return"
+  },
+  {
+    "pattern": "111001",
+    "kingwen": 25,
+    "symbol": "䷘",
+    "name_cn": "無妄",
+    "name_en": "Innocence"
+  },
+  {
+    "pattern": "100111",
+    "kingwen": 26,
+    "symbol": "䷙",
+    "name_cn": "大畜",
+    "name_en": "Great Taming"
+  },
+  {
+    "pattern": "100001",
+    "kingwen": 27,
+    "symbol": "䷚",
+    "name_cn": "頤",
+    "name_en": "The Corners of the Mouth"
+  },
+  {
+    "pattern": "011110",
+    "kingwen": 28,
+    "symbol": "䷛",
+    "name_cn": "大過",
+    "name_en": "Great Preponderance"
+  },
+  {
+    "pattern": "010010",
+    "kingwen": 29,
+    "symbol": "䷜",
+    "name_cn": "坎",
+    "name_en": "The Abysmal (Water)"
+  },
+  {
+    "pattern": "101101",
+    "kingwen": 30,
+    "symbol": "䷝",
+    "name_cn": "離",
+    "name_en": "The Clinging (Fire)"
+  },
+  {
+    "pattern": "011100",
+    "kingwen": 31,
+    "symbol": "䷞",
+    "name_cn": "咸",
+    "name_en": "Influence"
+  },
+  {
+    "pattern": "001110",
+    "kingwen": 32,
+    "symbol": "䷟",
+    "name_cn": "恆",
+    "name_en": "Duration"
+  },
+  {
+    "pattern": "111100",
+    "kingwen": 33,
+    "symbol": "䷠",
+    "name_cn": "遯",
+    "name_en": "Retreat"
+  },
+  {
+    "pattern": "001111",
+    "kingwen": 34,
+    "symbol": "䷡",
+    "name_cn": "大壯",
+    "name_en": "Great Power"
+  },
+  {
+    "pattern": "101000",
+    "kingwen": 35,
+    "symbol": "䷢",
+    "name_cn": "晉",
+    "name_en": "Progress"
+  },
+  {
+    "pattern": "000101",
+    "kingwen": 36,
+    "symbol": "䷣",
+    "name_cn": "明夷",
+    "name_en": "Darkening of the Light"
+  },
+  {
+    "pattern": "110101",
+    "kingwen": 37,
+    "symbol": "䷤",
+    "name_cn": "家人",
+    "name_en": "The Family"
+  },
+  {
+    "pattern": "101011",
+    "kingwen": 38,
+    "symbol": "䷥",
+    "name_cn": "睽",
+    "name_en": "Opposition"
+  },
+  {
+    "pattern": "010100",
+    "kingwen": 39,
+    "symbol": "䷦",
+    "name_cn": "蹇",
+    "name_en": "Obstruction"
+  },
+  {
+    "pattern": "001010",
+    "kingwen": 40,
+    "symbol": "䷧",
+    "name_cn": "解",
+    "name_en": "Deliverance"
+  },
+  {
+    "pattern": "100011",
+    "kingwen": 41,
+    "symbol": "䷨",
+    "name_cn": "損",
+    "name_en": "Decrease"
+  },
+  {
+    "pattern": "110001",
+    "kingwen": 42,
+    "symbol": "䷩",
+    "name_cn": "益",
+    "name_en": "Increase"
+  },
+  {
+    "pattern": "011111",
+    "kingwen": 43,
+    "symbol": "䷪",
+    "name_cn": "夬",
+    "name_en": "Breakthrough"
+  },
+  {
+    "pattern": "111110",
+    "kingwen": 44,
+    "symbol": "䷫",
+    "name_cn": "姤",
+    "name_en": "Coming to Meet"
+  },
+  {
+    "pattern": "011000",
+    "kingwen": 45,
+    "symbol": "䷬",
+    "name_cn": "萃",
+    "name_en": "Gathering Together"
+  },
+  {
+    "pattern": "000110",
+    "kingwen": 46,
+    "symbol": "䷭",
+    "name_cn": "升",
+    "name_en": "Pushing Upward"
+  },
+  {
+    "pattern": "011010",
+    "kingwen": 47,
+    "symbol": "䷮",
+    "name_cn": "困",
+    "name_en": "Oppression"
+  },
+  {
+    "pattern": "010110",
+    "kingwen": 48,
+    "symbol": "䷯",
+    "name_cn": "井",
+    "name_en": "The Well"
+  },
+  {
+    "pattern": "011101",
+    "kingwen": 49,
+    "symbol": "䷰",
+    "name_cn": "革",
+    "name_en": "Revolution"
+  },
+  {
+    "pattern": "101110",
+    "kingwen": 50,
+    "symbol": "䷱",
+    "name_cn": "鼎",
+    "name_en": "The Cauldron"
+  },
+  {
+    "pattern": "001001",
+    "kingwen": 51,
+    "symbol": "䷲",
+    "name_cn": "震",
+    "name_en": "The Arousing (Thunder)"
+  },
+  {
+    "pattern": "100100",
+    "kingwen": 52,
+    "symbol": "䷳",
+    "name_cn": "艮",
+    "name_en": "The Still (Mountain)"
+  },
+  {
+    "pattern": "110100",
+    "kingwen": 53,
+    "symbol": "䷴",
+    "name_cn": "漸",
+    "name_en": "Development"
+  },
+  {
+    "pattern": "001011",
+    "kingwen": 54,
+    "symbol": "䷵",
+    "name_cn": "歸妹",
+    "name_en": "The Marrying Maiden"
+  },
+  {
+    "pattern": "001101",
+    "kingwen": 55,
+    "symbol": "䷶",
+    "name_cn": "豐",
+    "name_en": "Abundance"
+  },
+  {
+    "pattern": "101100",
+    "kingwen": 56,
+    "symbol": "䷷",
+    "name_cn": "旅",
+    "name_en": "The Wanderer"
+  },
+  {
+    "pattern": "110110",
+    "kingwen": 57,
+    "symbol": "䷸",
+    "name_cn": "巽",
+    "name_en": "The Gentle (Wind)"
+  },
+  {
+    "pattern": "011011",
+    "kingwen": 58,
+    "symbol": "䷹",
+    "name_cn": "兌",
+    "name_en": "The Joyous (Lake)"
+  },
+  {
+    "pattern": "110010",
+    "kingwen": 59,
+    "symbol": "䷺",
+    "name_cn": "渙",
+    "name_en": "Dispersion"
+  },
+  {
+    "pattern": "010011",
+    "kingwen": 60,
+    "symbol": "䷻",
+    "name_cn": "節",
+    "name_en": "Limitation"
+  },
+  {
+    "pattern": "110011",
+    "kingwen": 61,
+    "symbol": "䷼",
+    "name_cn": "中孚",
+    "name_en": "Inner Truth"
+  },
+  {
+    "pattern": "001100",
+    "kingwen": 62,
+    "symbol": "䷽",
+    "name_cn": "小過",
+    "name_en": "Small Preponderance"
+  },
+  {
+    "pattern": "010101",
+    "kingwen": 63,
+    "symbol": "䷾",
+    "name_cn": "既濟",
+    "name_en": "After Completion"
+  },
+  {
+    "pattern": "101010",
+    "kingwen": 64,
+    "symbol": "䷿",
+    "name_cn": "未濟",
+    "name_en": "Before Completion"
+  }
+]

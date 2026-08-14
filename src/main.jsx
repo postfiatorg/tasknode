@@ -170,9 +170,11 @@ import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "..
 import { contextBodyText, contextLineCount as countContextLines } from "../shared/context-line-map.js";
 import { CONTEXT_DOCUMENT_MAX_CHARS, contextBudgetMetrics, TASKGEN_CONTEXT_MAX_CHARS } from "../shared/context-budget.js";
 import {
+  CHAT_MODALITIES,
   CHAT_PERSONAS,
   DEFAULT_CHAT_PERSONA,
   chatPersonaDefinition,
+  chatPersonaIsModality,
   normalizeChatPersona,
 } from "../shared/chat-personas.js";
 import "./styles.css";
@@ -201,9 +203,18 @@ const CHAT_COMPOSER_MAX_HEIGHT = 220;
 const CHAT_SCROLL_BOTTOM_THRESHOLD = 96;
 const CHAT_PERSONA_ICONS = Object.freeze({
   odv: Sparkles,
+  "odv-lindy": Sparkles,
   "trading-coach": CandlestickChart,
   jobs: Lightbulb,
   kravis: Landmark,
+  brainstorming: Brain,
+  motivation: Trophy,
+  "five-mirrors": Drama,
+  "i-ching": BookOpen,
+  "sprint-planner": ListTodo,
+  validator: Shield,
+  "post-fiat-qa": Network,
+  "app-help": LifeBuoy,
 });
 const TASK_REQUEST_CANONICAL_TEXT =
   "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.";
@@ -2065,6 +2076,7 @@ function ChatSurface({
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [personaMenuOpen, setPersonaMenuOpen] = useState(false);
+  const [modalityMenuOpen, setModalityMenuOpen] = useState(false);
   const [taskRequestMode, setTaskRequestMode] = useState(false);
   const [contextEditMode, setContextEditMode] = useState(false);
   const [contextRewriteMode, setContextRewriteMode] = useState(false);
@@ -2162,6 +2174,7 @@ function ChatSurface({
     setSelectedPersona(DEFAULT_CHAT_PERSONA);
     setPlusMenuOpen(false);
     setPersonaMenuOpen(false);
+    setModalityMenuOpen(false);
     setHistoryLoading(false);
   }, [signedOut]);
 
@@ -2301,6 +2314,7 @@ function ChatSurface({
       if (plusRef.current && !plusRef.current.contains(event.target)) {
         setPlusMenuOpen(false);
         setPersonaMenuOpen(false);
+        setModalityMenuOpen(false);
       }
       if (modelRef.current && !modelRef.current.contains(event.target)) {
         setModelMenuOpen(false);
@@ -2431,6 +2445,12 @@ function ChatSurface({
     if (sending) return;
     const message = input.trim();
     if (!message && attachments.length === 0) return;
+    if (activeModality?.requiresQuestion && !message) {
+      setSendMessage("Ask a specific question before casting the I Ching.");
+      setStatusTone("error");
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+      return;
+    }
 
     clearedChatRef.current = false;
     const startedAt = Date.now();
@@ -2677,7 +2697,7 @@ function ChatSurface({
 
       const chatPayload = {
         message: submittedText,
-        mode: isContextEdit ? "Thinking" : signedOut ? "Help" : selectedMode,
+        mode: isContextEdit || activeModality ? "Thinking" : signedOut ? "Help" : selectedMode,
         persona: isContextEdit ? DEFAULT_CHAT_PERSONA : selectedPersona,
         contextMode: isContextEdit ? CONTEXT_EDIT_MODE : undefined,
         conversationId: requestedConversationId,
@@ -2940,7 +2960,11 @@ function ChatSurface({
 
   const chatTitle = activeChat?.title || titleFromTurns(turns);
   const displayState = chatSurfaceDisplayState({ activeChat, turns, historyLoading });
-  const hasPromptInput = input.trim().length > 0 || attachments.length > 0;
+  const activePersona = chatPersonaDefinition(selectedPersona);
+  const activeModality = chatPersonaIsModality(selectedPersona) ? activePersona : null;
+  const hasPromptInput = activeModality?.requiresQuestion
+    ? input.trim().length > 0
+    : input.trim().length > 0 || attachments.length > 0;
   const composerExpanded = input.length > 0;
   const composerPlaceholder = taskRequestMode
     ? TASK_REQUEST_PLACEHOLDER
@@ -2950,7 +2974,7 @@ function ChatSurface({
       ? CONTEXT_EDIT_PLACEHOLDER
       : isHiveChat
         ? HIVE_CHAT_PLACEHOLDER
-        : "Ask anything";
+        : activeModality?.inputPlaceholder || "Ask anything";
   const composerClassName = [
     "composer",
     composerDragActive ? "is-drag-active" : "",
@@ -2959,8 +2983,7 @@ function ChatSurface({
     contextEditMode ? "is-context-edit" : "",
     isHiveChat ? "is-hive-input" : "",
   ].filter(Boolean).join(" ");
-  const modelPickerDisabled = contextEditMode || contextRewriteMode || isHiveChat;
-  const activePersona = chatPersonaDefinition(selectedPersona);
+  const modelPickerDisabled = contextEditMode || contextRewriteMode || isHiveChat || Boolean(activeModality);
   const ActivePersonaIcon = CHAT_PERSONA_ICONS[activePersona.id] || Lightbulb;
   const modelPickerLabel = contextRewriteMode
     ? "Context Rewrite"
@@ -2968,6 +2991,8 @@ function ChatSurface({
     ? "Thinking carefully"
     : isHiveChat
       ? HIVE_CHAT_TITLE
+      : activeModality
+        ? "GLM 5.2"
       : formatModeLabel(selectedMode);
   const composer = (
     <div className="composer-shell">
@@ -3018,6 +3043,28 @@ function ChatSurface({
             <span>{HIVE_CHAT_TITLE}</span>
           </div>
         )}
+        {activeModality && !isHiveChat && (
+          <div className="composer-mode-chip">
+            <ActivePersonaIcon size={13} strokeWidth={1.9} />
+            <span>{activeModality.name}</span>
+            <button
+              aria-label={`Exit ${activeModality.name}`}
+              onClick={() => {
+                setSelectedPersona(DEFAULT_CHAT_PERSONA);
+                if (chatPersonaStorageKey) {
+                  try {
+                    window.localStorage?.setItem(chatPersonaStorageKey, DEFAULT_CHAT_PERSONA);
+                  } catch {
+                    /* storage unavailable: selection still applies for this session */
+                  }
+                }
+              }}
+              type="button"
+            >
+              <X size={12} strokeWidth={2} />
+            </button>
+          </div>
+        )}
         <div className={composerExpanded ? "composer-grid is-expanded" : "composer-grid is-compact"}>
           <div className="plus-picker composer-plus" ref={plusRef}>
             <button
@@ -3027,7 +3074,10 @@ function ChatSurface({
                 if (signedOut) return;
                 setModelMenuOpen(false);
                 setPlusMenuOpen((open) => {
-                  if (open) setPersonaMenuOpen(false);
+                  if (open) {
+                    setPersonaMenuOpen(false);
+                    setModalityMenuOpen(false);
+                  }
                   return !open;
                 });
               }}
@@ -3037,7 +3087,7 @@ function ChatSurface({
               <Plus size={20} strokeWidth={1.75} />
             </button>
             {plusMenuOpen && (
-              <div className={`plus-menu${personaMenuOpen ? " has-personas" : ""}`}>
+              <div className={`plus-menu${personaMenuOpen ? " has-personas" : ""}${modalityMenuOpen ? " has-modalities" : ""}`}>
                 <ToolMenuRow
                   icon={Paperclip}
                   label="Upload photos & files"
@@ -3089,7 +3139,10 @@ function ChatSurface({
                 <ToolMenuRow
                   icon={Drama}
                   label="Personality"
-                  onClick={() => setPersonaMenuOpen((open) => !open)}
+                  onClick={() => {
+                    setModalityMenuOpen(false);
+                    setPersonaMenuOpen((open) => !open);
+                  }}
                   trailing={(
                     <span className="personality-menu-current">
                       {activePersona.name}
@@ -3144,8 +3197,63 @@ function ChatSurface({
                 <ToolMenuRow
                   icon={MoreHorizontal}
                   label="More"
-                  trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                  onClick={() => {
+                    setPersonaMenuOpen(false);
+                    setModalityMenuOpen((open) => !open);
+                  }}
+                  trailing={(
+                    <span className="personality-menu-current">
+                      {activeModality?.name || "Modes"}
+                      <ChevronRight
+                        className={modalityMenuOpen ? "is-open" : ""}
+                        size={14}
+                        strokeWidth={1.75}
+                      />
+                    </span>
+                  )}
                 />
+                {modalityMenuOpen && (
+                  <div className="personality-menu modality-menu" role="menu" aria-label="Chat modality">
+                    {CHAT_MODALITIES.map((modality) => {
+                      const ModalityIcon = CHAT_PERSONA_ICONS[modality.id] || Sparkles;
+                      const selected = modality.id === selectedPersona;
+                      return (
+                        <button
+                          aria-checked={selected}
+                          className={`personality-menu-row${selected ? " selected" : ""}`}
+                          key={modality.id}
+                          onClick={() => {
+                            setSelectedPersona(modality.id);
+                            if (chatPersonaStorageKey) {
+                              try {
+                                window.localStorage?.setItem(chatPersonaStorageKey, modality.id);
+                              } catch {
+                                /* storage unavailable: selection still applies for this session */
+                              }
+                            }
+                            setTaskRequestMode(false);
+                            setContextEditMode(false);
+                            setContextRewriteMode(false);
+                            setModalityMenuOpen(false);
+                            setPlusMenuOpen(false);
+                            setSendMessage("");
+                            setStatusTone("muted");
+                            window.setTimeout(() => inputRef.current?.focus(), 0);
+                          }}
+                          role="menuitemradio"
+                          type="button"
+                        >
+                          <ModalityIcon size={17} strokeWidth={1.75} />
+                          <span>
+                            <strong>{modality.name}</strong>
+                            <small>{modality.tagline}</small>
+                          </span>
+                          {selected && <Check size={15} strokeWidth={2} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -3167,7 +3275,7 @@ function ChatSurface({
             value={input}
           />
           <div className="composer-tools">
-            {selectedPersona !== DEFAULT_CHAT_PERSONA && !modelPickerDisabled && (
+            {selectedPersona !== DEFAULT_CHAT_PERSONA && !activeModality && !contextEditMode && !contextRewriteMode && !isHiveChat && (
               <span className="chat-persona-chip" title={`Personality: ${activePersona.name}`}>
                 <ActivePersonaIcon size={13} strokeWidth={1.75} />
                 {activePersona.name}
@@ -3181,6 +3289,7 @@ function ChatSurface({
                   if (modelPickerDisabled) return;
                   setPlusMenuOpen(false);
                   setPersonaMenuOpen(false);
+                  setModalityMenuOpen(false);
                   setModelMenuOpen((open) => !open);
                 }}
                 type="button"

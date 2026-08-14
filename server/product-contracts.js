@@ -60,7 +60,7 @@ import { loadChatExecutionContext } from "./chat-context-load.js";
 import { normalizeClientChatHistory } from "./chat-client-history.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
 import { isHelpChatMode } from "./chat-help-mode.js";
-import { normalizeChatPersona } from "../shared/chat-personas.js";
+import { chatPersonaIsModality, normalizeChatPersona } from "../shared/chat-personas.js";
 import { metadataWithMachineAgentOrigin } from "./agent-origin.js";
 import { recordAgentActionJournal } from "./agent-quality-gates.js";
 import {
@@ -498,8 +498,9 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0, agentOrigin 
   const accountId = typeof payload?.accountId === "string" ? payload.accountId.trim().slice(0, 160) : "";
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
   const contextMode = isContextEditPayload(payload) ? contextEditMode : "";
+  const persona = contextMode ? "jobs" : normalizeChatPersona(payload?.persona);
   const requestedMode = typeof payload?.mode === "string" ? payload.mode.trim() : "";
-  const mode = contextMode ? "Thinking" : requestedMode || effectiveDefaultChatMode();
+  const mode = contextMode || chatPersonaIsModality(persona) ? "Thinking" : requestedMode || effectiveDefaultChatMode();
   const conversationId =
     typeof payload?.conversationId === "string" && payload.conversationId.trim()
       ? payload.conversationId.trim().slice(0, 160)
@@ -507,7 +508,6 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0, agentOrigin 
   const dryRun = payload?.dryRun === true;
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
   const clientHistory = normalizeClientChatHistory(payload?.clientHistory);
-  const persona = contextMode ? "jobs" : normalizeChatPersona(payload?.persona);
   return {
     accountId,
     message,
@@ -558,7 +558,7 @@ function unknownChatPersonaBody(action = "chat_estimate") {
     error: "unknown_chat_persona",
     action,
     message: "The requested chat personality is not available.",
-    actionRequired: "Choose Jobs, ODV, or Trading Coach before sending.",
+    actionRequired: "Choose an available chat personality or modality before sending.",
   };
 }
 
@@ -619,6 +619,22 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
       ok: false,
       status: 400,
       body: unknownChatPersonaBody(action),
+      chat,
+      estimate,
+    };
+  }
+
+  if (chat.persona === "i-ching" && !chat.message) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        ok: false,
+        error: "i_ching_question_required",
+        action,
+        message: "I Ching requires a specific written question before casting.",
+        actionRequired: "Type the situation or decision you want the I Ching to read.",
+      },
       chat,
       estimate,
     };

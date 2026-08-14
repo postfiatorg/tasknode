@@ -35,6 +35,7 @@ import {
 import { getActiveContextEditProposal } from "./repositories/context-edit.js";
 import { getChatMessages } from "./repositories/chat-billing.js";
 import {
+  chatPersonaIsModality,
   chatPersonaUsesJobsRetrieval,
   normalizeChatPersona,
 } from "../shared/chat-personas.js";
@@ -45,8 +46,8 @@ function estimatePayload(payload) {
   const mode = requestedMode || defaultChatModeForEstimate();
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 4) : [];
   const contextMode = payload?.contextMode === "context_edit" || mode === "context_edit" ? "context_edit" : "";
-  const effectiveMode = contextMode ? "Thinking" : mode;
   const persona = contextMode ? "jobs" : normalizeChatPersona(payload?.persona);
+  const effectiveMode = contextMode || chatPersonaIsModality(persona) ? "Thinking" : mode;
   if (!isKnownChatMode(effectiveMode)) {
     const error = new Error("unknown_chat_mode");
     error.status = 400;
@@ -101,6 +102,9 @@ export function chatEstimate(
           jobsEssence: estimatedJobsEssence,
         }).length
       : taskNodeInstructions({
+          message: persona === "i-ching" && !message
+            ? "Representative I Ching question for token estimation."
+            : message,
           contextDocument,
           memoryContext,
           taskContext,

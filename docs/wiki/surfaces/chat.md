@@ -9,7 +9,7 @@ conversations without losing state.
 1. The user opens a new or recent chat.
 2. Signed-out users start in Help mode. Help is the only enabled signed-out chat mode.
 3. Signed-in users select Instant, Thinking, or Help independently from the Jobs, ODV, Trading Coach, or Kravis personality.
-4. The `+` menu owns personality selection. Jobs is the default and the selected non-default personality appears as a composer chip.
+4. The `+` menu owns personality selection. Its `More` submenu also exposes the restored Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, Post Fiat Q&A, and App Help modalities.
 5. The user sends text and optional attachments.
 6. The server validates both enums, assembles the selected prompt/context packet, and routes the request to Ambient.
 7. The assistant response is streamed back when available.
@@ -25,7 +25,7 @@ Memory context is injected by `server/chat-memory-context.js`. The memory worker
 
 Task state is also ported into chat by `server/chat-task-context.js`. This is a read-only projection of the user's cached task state, not a task mutation path.
 
-Chat model mode and personality are separate structured fields. Mode chooses the Ambient capability/model; personality chooses prompt assembly and retrieval policy. `shared/chat-personas.js` owns the allowlisted IDs and aliases, `server/chat-persona-prompts.js` loads the canonical persona prompt, and `server/chat-memory-context.js::taskNodeInstructions` assembles the final system packet. Jobs uses `prompts/chat/jobs_standard_chat_codex_style_draft.md` plus pgvector Jobs retrieval. ODV uses `prompts/docs/odv_lindy_v1.md`; Trading Coach uses `prompts/docs/trading_coach_v1.md`; Kravis uses the system-prompt section of `prompts/kravis.md`. ODV, Trading Coach, and Kravis still receive the account Context document, memory, task projection, conversation history, and attachments, but never the Jobs Markdown prompt or Jobs vector excerpts. The current user message remains a normal provider user message rather than being copied into the system prompt.
+Chat model mode and personality are separate structured fields. Mode chooses the Ambient capability/model; personality or modality chooses prompt assembly and retrieval policy. `shared/chat-personas.js` owns the allowlisted IDs and aliases, `server/chat-persona-prompts.js` loads the canonical prompt, and `server/chat-memory-context.js::taskNodeInstructions` assembles the final system packet. Jobs uses `prompts/chat/jobs_standard_chat_codex_style_draft.md` plus pgvector Jobs retrieval. ODV uses `prompts/docs/odv_lindy_v1.md`; Trading Coach uses `prompts/docs/trading_coach_v1.md`; Kravis uses the system-prompt section of `prompts/kravis.md`. Restored modalities use the canonical legacy prompts under `prompts/chat_modules/`. Every non-Jobs selection still receives the account Context document, memory, task projection, conversation history, and attachments, but never the Jobs Markdown prompt or Jobs vector excerpts. The current user message remains a normal provider user message rather than being copied into the system prompt.
 
 The server, not the browser, enforces this boundary. `server/chat-router.js::resolveChatJobsContext` returns a typed skipped result before invoking the retrieval function for ODV, Trading Coach, or Kravis, even when an internal caller supplies a pre-rendered `jobsEssence`. Unknown personality values return `unknown_chat_persona`. Each persisted user/assistant turn and run record stores the validated `chatPersona` for auditability.
 
@@ -53,7 +53,9 @@ This page is the current product contract for chat prompt assembly, Jobs
 retrieval, and Context Refine behavior. Historical implementation planning has
 been folded into this surface doc and the single active production scope plan.
 
-The visible `+` menu exposes file upload, Context Refine, Context Rewrite, Request a task, Personality, and More. The Personality row expands inline to Jobs, ODV, Trading Coach, and Kravis and closes after selection. Motivation, Brainstorming Context, and general Rewrite are intentionally hidden until they have production-quality flows. Context Rewrite is documented in [Context Rewrite](#docs/context-rewrite) as a billed async full-document context pipeline that returns a copyable/downloadable Markdown artifact.
+The visible `+` menu exposes file upload, Context Refine, Context Rewrite, Request a task, Personality, and More. The Personality row expands inline to Jobs, ODV, Trading Coach, and Kravis. More expands inline to the restored chat modalities and closes after selection. A selected modality becomes a visible composer mode chip, supplies its own question placeholder, and forces the request through Thinking (`z-ai/glm-5.2`) so its behavior is stable regardless of the user's ordinary chat-mode preference. Exiting the chip restores Jobs without overwriting the saved ordinary model preference. Context Rewrite remains a separate billed async full-document context pipeline documented in [Context Rewrite](#docs/context-rewrite).
+
+I Ching requires text in the composer; attachment-only sends are disabled for that modality. Each send performs a fresh local three-coin cast in `server/i-ching-cast.js`, resolves the primary and relating figures against the checked-in 64-hexagram dataset, and injects the cast into the canonical legacy reading prompt. Task Node does not invent or imply a stored birth chart when one is unavailable.
 
 ## Chat Personalities
 
@@ -65,6 +67,22 @@ The visible `+` menu exposes file upload, Context Refine, Context Rewrite, Reque
 | Kravis | Canonical Kravis private-equity prompt | Context document, tasks, memory, history, attachments | Disabled before retrieval |
 
 Personality does not select a model. Any personality can run with Instant or Thinking. Jobs remains the default for old clients and stored sessions that omit the field; the browser stores an explicit selection per account. Context Refine remains its own GLM-backed workflow and does not inherit a chat personality.
+
+## Chat Modalities
+
+| Modality | Purpose | Runtime |
+| --- | --- | --- |
+| Brainstorm | Generate and pressure-test useful possibilities | GLM 5.2 |
+| Motivation | Convert friction into a concrete next move | GLM 5.2 |
+| Five Mirrors | Examine one situation through five distinct lenses | GLM 5.2 |
+| I Ching | Answer an explicit question using a fresh three-coin cast | GLM 5.2 |
+| ODV | Apply the canonical ODV Lindy alignment prompt | GLM 5.2 |
+| Sprint Planner | Turn current context into a focused execution sprint | GLM 5.2 |
+| Validator | Stress-test an idea, claim, or plan | GLM 5.2 |
+| Post Fiat Q&A | Explain Post Fiat concepts using the legacy clarity prompt | GLM 5.2 |
+| App Help | Give practical Task Node usage guidance | GLM 5.2 |
+
+Modalities are explicit user selections, not semantic guesses from ordinary chat text. They share the validated chat-persona transport field for backward-compatible persistence and auditing, while `chatPersonaIsModality` supplies the separate UI/model behavior. Conversation history remains provider message history even when a custom prompt is installed; custom prompts no longer turn a continuing thread into an isolated one-shot call.
 
 ## Chat Modes
 

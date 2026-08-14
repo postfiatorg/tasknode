@@ -44,6 +44,7 @@ import {
 } from "./ambient-inference.js";
 import { prepareAmbientChatAttachments } from "./ambient-attachments.js";
 import {
+  chatPersonaIsModality,
   chatPersonaUsesJobsRetrieval,
   normalizeChatPersona,
 } from "../shared/chat-personas.js";
@@ -550,7 +551,7 @@ export function openAiResponseRequest({
   const config = chatModeConfig(mode);
   const tools = toolsEnabled ? openAiTools() : [];
   const instructions = [
-    instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
+    instructionsOverride || taskNodeInstructions({ message, contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
     responseInstructionBlock,
   ].filter(Boolean).join("\n\n");
   const request = {
@@ -560,7 +561,7 @@ export function openAiResponseRequest({
       conversationId,
       message,
       attachments,
-      historyMessages: instructionsOverride ? [] : historyMessages,
+      historyMessages,
     }),
     reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
     text: responseFormat ? { format: responseFormat } : undefined,
@@ -662,14 +663,14 @@ export function ambientChatRequest({
 }) {
   const config = chatModeConfig(mode);
   const instructions = [
-    instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
+    instructionsOverride || taskNodeInstructions({ message, contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
     responseInstructionBlock,
   ].filter(Boolean).join("\n\n");
   const messages = openRouterMessages({
     conversationId,
     message,
     attachments,
-    historyMessages: instructionsOverride ? [] : historyMessages,
+    historyMessages,
     contextDocument,
     memoryContext,
     taskContext,
@@ -1019,14 +1020,14 @@ export async function executeChat({
   providerTimeoutMs = 0,
   persona = "jobs",
 }) {
-  const normalizedMode = normalizedChatMode(mode);
-  if (!normalizedMode) throw unknownChatModeError(mode);
   const normalizedPersona = normalizeChatPersona(persona);
   if (!normalizedPersona) {
     const error = new Error("unknown_chat_persona");
     error.status = 400;
     throw error;
   }
+  const normalizedMode = chatPersonaIsModality(normalizedPersona) ? "Thinking" : normalizedChatMode(mode);
+  if (!normalizedMode) throw unknownChatModeError(mode);
   const status = chatExecutionStatus(normalizedMode);
 
   if (!status.enabled) {
@@ -1178,14 +1179,14 @@ export async function executeChatStream({
   providerTimeoutMs = 0,
   persona = "jobs",
 }) {
-  const normalizedMode = normalizedChatMode(mode);
-  if (!normalizedMode) throw unknownChatModeError(mode);
   const normalizedPersona = normalizeChatPersona(persona);
   if (!normalizedPersona) {
     const error = new Error("unknown_chat_persona");
     error.status = 400;
     throw error;
   }
+  const normalizedMode = chatPersonaIsModality(normalizedPersona) ? "Thinking" : normalizedChatMode(mode);
+  if (!normalizedMode) throw unknownChatModeError(mode);
   const status = chatExecutionStatus(normalizedMode);
 
   if (!status.enabled) {

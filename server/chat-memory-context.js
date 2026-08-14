@@ -107,6 +107,7 @@ export function formatChatMemoryContext(memoryContext = null) {
 }
 
 export function taskNodeInstructions({
+  message = "",
   contextDocument = null,
   memoryContext = null,
   taskContext = null,
@@ -122,6 +123,7 @@ export function taskNodeInstructions({
   if (!normalizedPersona) throw new Error("unknown_chat_persona");
   const selectedPersona = formatSelectedChatPersona({
     persona: normalizedPersona,
+    message,
     contextDocumentBlock: formattedContextDocument,
     memoryBlock: formattedMemory,
     taskBlock: formattedTasks,

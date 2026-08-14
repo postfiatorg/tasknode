@@ -9,6 +9,11 @@ reviewed, versioned, and replayed.
   verification, evidence reading, and reward scoring policy.
 - `chat/`: Chat system instructions plus account context, task, and memory
   injection templates.
+- `chat_modules/`: Canonical prompts restored from the legacy Task Node chat
+  modalities. `scripts/sync-legacy-chat-modalities.mjs` records the mechanical
+  import path from the sibling `pftasks` checkout.
+- `i_ching/`: The canonical 64-hexagram lookup dataset used to resolve fresh
+  three-coin casts before the I Ching prompt runs.
 - `docs/`: Canonical ODV and Trading Coach personality prompts shared by the
   primary chat personality router and PFDocs mentions. Jobs remains in
   `chat/jobs_standard_chat_codex_style_draft.md`; only that personality may

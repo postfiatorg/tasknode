@@ -6,11 +6,14 @@ process.env.AMBIENT_API_KEY = process.env.AMBIENT_API_KEY || "ambient-test-key";
 
 const { taskNodeInstructions } = await import("../server/chat-memory-context.js");
 const { chatEstimate } = await import("../server/chat-estimate.js");
-const { resolveChatJobsContext } = await import("../server/chat-router.js");
+const { ambientChatRequest, resolveChatJobsContext } = await import("../server/chat-router.js");
+const { generateIChingCast } = await import("../server/i-ching-cast.js");
 const { chatEstimateStart, chatSend } = await import("../server/product-contracts.js");
 const {
   CHAT_PERSONAS,
+  CHAT_MODALITIES,
   chatPersonaDefinition,
+  chatPersonaIsModality,
   normalizeChatPersona,
 } = await import("../shared/chat-personas.js");
 
@@ -84,6 +87,70 @@ for (const persona of ["odv", "trading-coach", "kravis"]) {
   assert.equal(result.skipped, true);
   assert.equal(result.text, "");
 }
+
+assert.deepEqual(
+  CHAT_MODALITIES.map((modality) => modality.id),
+  [
+    "brainstorming",
+    "motivation",
+    "five-mirrors",
+    "i-ching",
+    "odv-lindy",
+    "sprint-planner",
+    "validator",
+    "post-fiat-qa",
+    "app-help",
+  ]
+);
+for (const modality of CHAT_MODALITIES) {
+  const instructions = taskNodeInstructions({
+    message: "MODALITY_QUESTION_SENTINEL",
+    persona: modality.id,
+    contextDocument,
+    memoryContext,
+    taskContext,
+    jobsEssence,
+  });
+  assert.equal(chatPersonaIsModality(modality.id), true);
+  assert.match(instructions, /PERSONA_CONTEXT_SENTINEL/);
+  assert.match(instructions, /PERSONA_TASK_SENTINEL/);
+  assert.doesNotMatch(instructions, /JOBS_VECTOR_SENTINEL/);
+  assert.doesNotMatch(instructions, /___[A-Z0-9_]+___/, `${modality.id} left a legacy runtime placeholder unresolved`);
+  const estimate = chatEstimate({
+    message: "Estimate this modality turn",
+    mode: "Instant",
+    persona: modality.id,
+  });
+  assert.equal(estimate.mode, "Thinking", `${modality.id} must be forced through GLM 5.2 Thinking mode`);
+}
+
+const modalityRequest = ambientChatRequest({
+  mode: "Thinking",
+  model: "z-ai/glm-5.2",
+  message: "Current modality question",
+  conversationId: "conversation-modality-smoke",
+  historyMessages: [
+    { role: "user", body: "PRIOR_USER_TURN_SENTINEL" },
+    { role: "assistant", body: "PRIOR_ASSISTANT_TURN_SENTINEL" },
+  ],
+  contextDocument,
+  memoryContext,
+  taskContext,
+  persona: "five-mirrors",
+});
+assert.equal(modalityRequest.model, "z-ai/glm-5.2");
+assert.ok(modalityRequest.messages.some((message) => message.content === "PRIOR_USER_TURN_SENTINEL"));
+assert.ok(modalityRequest.messages.some((message) => message.content === "PRIOR_ASSISTANT_TURN_SENTINEL"));
+
+const deterministicCast = generateIChingCast({
+  question: "Should I proceed?",
+  coin: () => 2,
+});
+assert.deepEqual(deterministicCast.lineValues, [6, 6, 6, 6, 6, 6]);
+assert.deepEqual(deterministicCast.changingLines, [1, 2, 3, 4, 5, 6]);
+assert.equal(deterministicCast.primary.number, 2);
+assert.equal(deterministicCast.relating.number, 1);
+assert.throws(() => generateIChingCast({ question: " " }), /i_ching_question_required/);
 assert.equal(retrievalCalls, 0, "non-Jobs personas must not invoke Jobs retrieval");
 const jobsResult = await resolveChatJobsContext({ persona: "jobs", retrieve });
 assert.equal(retrievalCalls, 1, "Jobs should invoke Jobs retrieval");
@@ -102,6 +169,10 @@ assert.ok(chatEstimate({ message: "Help with product", mode: "Instant", persona:
 assert.equal(normalizeChatPersona("coach"), "trading-coach");
 assert.equal(normalizeChatPersona("steve-jobs"), "jobs");
 assert.equal(normalizeChatPersona("henry-kravis"), "kravis");
+assert.equal(normalizeChatPersona("brainstorm"), "brainstorming");
+assert.equal(normalizeChatPersona("five_mirrors"), "five-mirrors");
+assert.equal(normalizeChatPersona("i_ching"), "i-ching");
+assert.equal(normalizeChatPersona("post-fiat-clarity"), "post-fiat-qa");
 assert.equal(chatPersonaDefinition("kravis").name, "Kravis");
 assert.ok(CHAT_PERSONAS.some((persona) => persona.id === "kravis"));
 const invalid = await chatEstimateStart({ message: "Hello", mode: "Instant", persona: "not-real" });
@@ -113,11 +184,26 @@ const anonymousPersona = await chatSend(
 );
 assert.equal(anonymousPersona.status, 401);
 assert.equal(anonymousPersona.body.error, "chat_login_required");
+const iChingWithoutQuestion = await chatSend(
+  {
+    message: "",
+    mode: "Instant",
+    persona: "i-ching",
+    attachments: [{ name: "question.txt", mimeType: "text/plain", kind: "text", textContent: "attachment only" }],
+    dryRun: true,
+  },
+  "POST"
+);
+assert.equal(iChingWithoutQuestion.status, 400);
+assert.equal(iChingWithoutQuestion.body.error, "i_ching_question_required");
 
 const frontendSource = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
 assert.match(frontendSource, /label="Personality"/);
 assert.match(frontendSource, /persona: isContextEdit \? DEFAULT_CHAT_PERSONA : selectedPersona/);
 assert.match(frontendSource, /CHAT_PERSONAS\.map/);
+assert.match(frontendSource, /CHAT_MODALITIES\.map/);
+assert.match(frontendSource, /mode: isContextEdit \|\| activeModality \? "Thinking"/);
+assert.match(frontendSource, /Ask a specific question before casting the I Ching/);
 assert.match(frontendSource, /kravis: Landmark/);
 
 console.log("chat persona routing smoke ok");
