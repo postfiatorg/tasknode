@@ -43,6 +43,7 @@ import {
   resolveAmbientModel,
 } from "./ambient-inference.js";
 import { prepareAmbientChatAttachments } from "./ambient-attachments.js";
+import { iChingProfilePromptPayload } from "./repositories/i-ching-profile.js";
 import {
   chatPersonaIsModality,
   chatPersonaUsesJobsRetrieval,
@@ -775,6 +776,7 @@ async function streamOpenAi({
   jobsEssence = "",
   deliveryContext = null,
   persona = "jobs",
+  instructionsOverride = "",
   onDelta,
   signal,
   timeoutMs = defaultProviderTimeoutMs,
@@ -795,7 +797,7 @@ async function streamOpenAi({
     taskContext,
     jobsEssence,
     deliveryContext,
-    instructionsOverride: chatInstructionsOverride({
+    instructionsOverride: instructionsOverride || chatInstructionsOverride({
       mode,
       contextDocument,
       memoryContext,
@@ -831,6 +833,7 @@ async function executeOpenRouter({
   jobsEssence = "",
   deliveryContext = null,
   persona = "jobs",
+  instructionsOverride = "",
   timeoutMs = defaultProviderTimeoutMs,
 }) {
   return executeAmbient({
@@ -845,7 +848,7 @@ async function executeOpenRouter({
     taskContext,
     jobsEssence,
     deliveryContext,
-    instructionsOverride: chatInstructionsOverride({
+    instructionsOverride: instructionsOverride || chatInstructionsOverride({
       mode,
       contextDocument,
       memoryContext,
@@ -872,6 +875,7 @@ async function executeDeepSeek({
   jobsEssence = "",
   deliveryContext = null,
   persona = "jobs",
+  instructionsOverride = "",
   timeoutMs = defaultProviderTimeoutMs,
 }) {
   return executeAmbient({
@@ -886,7 +890,7 @@ async function executeDeepSeek({
     taskContext,
     jobsEssence,
     deliveryContext,
-    instructionsOverride: chatInstructionsOverride({
+    instructionsOverride: instructionsOverride || chatInstructionsOverride({
       mode,
       contextDocument,
       memoryContext,
@@ -913,6 +917,7 @@ async function streamOpenRouter({
   jobsEssence = "",
   deliveryContext = null,
   persona = "jobs",
+  instructionsOverride = "",
   onDelta,
   signal,
   timeoutMs = defaultProviderTimeoutMs,
@@ -930,6 +935,7 @@ async function streamOpenRouter({
     jobsEssence,
     deliveryContext,
     persona,
+    instructionsOverride,
     onDelta,
     signal,
     timeoutMs,
@@ -949,6 +955,7 @@ async function streamDeepSeek({
   jobsEssence = "",
   deliveryContext = null,
   persona = "jobs",
+  instructionsOverride = "",
   onDelta,
   signal,
   timeoutMs = defaultProviderTimeoutMs,
@@ -966,6 +973,7 @@ async function streamDeepSeek({
     jobsEssence,
     deliveryContext,
     persona,
+    instructionsOverride,
     onDelta,
     signal,
     timeoutMs,
@@ -1019,6 +1027,7 @@ export async function executeChat({
   source = "",
   providerTimeoutMs = 0,
   persona = "jobs",
+  iChingProfile = null,
 }) {
   const normalizedPersona = normalizeChatPersona(persona);
   if (!normalizedPersona) {
@@ -1077,6 +1086,23 @@ export async function executeChat({
     jobsResult,
     renderedContext: resolvedJobsEssence,
   });
+  if (normalizedPersona === "i-ching" && !iChingProfile?.combined) {
+    const error = new Error("i_ching_profile_required");
+    error.status = 409;
+    throw error;
+  }
+  const personaInstructions = normalizedPersona === "i-ching"
+    ? taskNodeInstructions({
+        message,
+        contextDocument: resolvedContextDocument,
+        memoryContext: resolvedMemoryContext,
+        taskContext: resolvedTaskContext,
+        jobsEssence: resolvedJobsEssence,
+        deliveryContext,
+        persona: normalizedPersona,
+        iChingProfile: iChingProfilePromptPayload(iChingProfile),
+      })
+    : "";
   const result = await executeAmbient({
     mode: normalizedMode,
     model: status.model,
@@ -1090,6 +1116,7 @@ export async function executeChat({
     jobsEssence: resolvedJobsEssence,
     deliveryContext,
     persona: normalizedPersona,
+    instructionsOverride: personaInstructions,
     timeoutMs,
   });
 
@@ -1178,6 +1205,7 @@ export async function executeChatStream({
   source = "",
   providerTimeoutMs = 0,
   persona = "jobs",
+  iChingProfile = null,
 }) {
   const normalizedPersona = normalizeChatPersona(persona);
   if (!normalizedPersona) {
@@ -1236,6 +1264,23 @@ export async function executeChatStream({
     jobsResult,
     renderedContext: resolvedJobsEssence,
   });
+  if (normalizedPersona === "i-ching" && !iChingProfile?.combined) {
+    const error = new Error("i_ching_profile_required");
+    error.status = 409;
+    throw error;
+  }
+  const personaInstructions = normalizedPersona === "i-ching"
+    ? taskNodeInstructions({
+        message,
+        contextDocument: resolvedContextDocument,
+        memoryContext: resolvedMemoryContext,
+        taskContext: resolvedTaskContext,
+        jobsEssence: resolvedJobsEssence,
+        deliveryContext,
+        persona: normalizedPersona,
+        iChingProfile: iChingProfilePromptPayload(iChingProfile),
+      })
+    : "";
   const result =
     status.provider === "deepseek"
         ? await (async () => {
@@ -1258,6 +1303,7 @@ export async function executeChatStream({
                 jobsEssence: resolvedJobsEssence,
                 deliveryContext,
                 persona: normalizedPersona,
+                instructionsOverride: personaInstructions,
                 onDelta: trackDelta,
                 signal,
                 timeoutMs,
@@ -1283,6 +1329,7 @@ export async function executeChatStream({
                 jobsEssence: resolvedJobsEssence,
                 deliveryContext,
                 persona: normalizedPersona,
+                instructionsOverride: personaInstructions,
                 timeoutMs,
               });
             }
@@ -1300,6 +1347,7 @@ export async function executeChatStream({
           jobsEssence: resolvedJobsEssence,
           deliveryContext,
           persona: normalizedPersona,
+          instructionsOverride: personaInstructions,
           onDelta,
           signal,
           timeoutMs,

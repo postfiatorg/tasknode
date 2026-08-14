@@ -76,6 +76,7 @@ import {
   copyText,
   UserMessage,
 } from "./features/chat/ChatMessages.jsx";
+import { IChingSetupDialog } from "./features/chat/IChingSetupDialog.jsx";
 import {
   appendAssistantDelta,
   chatTitleFromPrompt,
@@ -2093,7 +2094,58 @@ function ChatSurface({
   const [editingMsg, setEditingMsg] = useState(null);
   const [editDraft, setEditDraft] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
+  const [iChingSetupOpen, setIChingSetupOpen] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+
+  useEffect(() => {
+    if (signedOut || selectedPersona !== "i-ching") return undefined;
+    let cancelled = false;
+    requestJson("/api/i-ching/profile")
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) throw new Error(result.body?.message || `I Ching setup returned HTTP ${result.status}.`);
+        if (!result.body?.exists) setIChingSetupOpen(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSelectedPersona(DEFAULT_CHAT_PERSONA);
+        if (chatPersonaStorageKey) {
+          try {
+            window.localStorage?.setItem(chatPersonaStorageKey, DEFAULT_CHAT_PERSONA);
+          } catch {
+            /* storage unavailable: selection still applies for this session */
+          }
+        }
+        setSendMessage(error?.message || "I Ching setup is unavailable.");
+        setStatusTone("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chatPersonaStorageKey, selectedPersona, signedOut]);
+
+  function persistChatPersona(personaId) {
+    setSelectedPersona(personaId);
+    if (!chatPersonaStorageKey) return;
+    try {
+      window.localStorage?.setItem(chatPersonaStorageKey, personaId);
+    } catch {
+      /* storage unavailable: selection still applies for this session */
+    }
+  }
+
+  function activateChatModality(modality) {
+    persistChatPersona(modality.id);
+    setTaskRequestMode(false);
+    setContextEditMode(false);
+    setContextRewriteMode(false);
+    setModalityMenuOpen(false);
+    setPlusMenuOpen(false);
+    setSendMessage("");
+    setStatusTone("muted");
+
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
   const taskRequestUnlockPolicy = evaluateTaskRequestUnlockPolicy({
     accountId,
     directOffchain: directOffchainTaskLifecycle,
@@ -2757,6 +2809,7 @@ function ChatSurface({
           result.body?.message ||
           result.body?.actionRequired ||
           `Chat returned HTTP ${result.status}.`;
+        if (result.body?.error === "i_ching_profile_required") setIChingSetupOpen(true);
         setTurns((current) =>
           replaceTurnById(
             current,
@@ -3222,24 +3275,7 @@ function ChatSurface({
                           aria-checked={selected}
                           className={`personality-menu-row${selected ? " selected" : ""}`}
                           key={modality.id}
-                          onClick={() => {
-                            setSelectedPersona(modality.id);
-                            if (chatPersonaStorageKey) {
-                              try {
-                                window.localStorage?.setItem(chatPersonaStorageKey, modality.id);
-                              } catch {
-                                /* storage unavailable: selection still applies for this session */
-                              }
-                            }
-                            setTaskRequestMode(false);
-                            setContextEditMode(false);
-                            setContextRewriteMode(false);
-                            setModalityMenuOpen(false);
-                            setPlusMenuOpen(false);
-                            setSendMessage("");
-                            setStatusTone("muted");
-                            window.setTimeout(() => inputRef.current?.focus(), 0);
-                          }}
+                          onClick={() => void activateChatModality(modality)}
                           role="menuitemradio"
                           type="button"
                         >
@@ -3337,6 +3373,7 @@ function ChatSurface({
   );
 
   return (
+    <>
     <div className={displayState === "empty" ? "chat-surface empty" : `chat-surface ${displayState}`}>
       {displayState === "loading" ? (
         <div className="chat-loading-panel" aria-live="polite">
@@ -3456,6 +3493,20 @@ function ChatSurface({
         />
       )}
     </div>
+    <IChingSetupDialog
+      onCancel={() => {
+        setIChingSetupOpen(false);
+        persistChatPersona(DEFAULT_CHAT_PERSONA);
+      }}
+      onSaved={() => {
+        setIChingSetupOpen(false);
+        setSendMessage("Your private birth chart is ready. Ask a specific question for the reading.");
+        setStatusTone("muted");
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+      }}
+      open={iChingSetupOpen}
+    />
+    </>
   );
 }
 

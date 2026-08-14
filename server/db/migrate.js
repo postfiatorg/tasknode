@@ -117,6 +117,7 @@ const migrations = [
   "108_rewarded_task_memory.sql",
   "109_chat_provider_cost_accounting.sql",
   "110_docs_team_collaboration.sql",
+  "111_i_ching_profiles.sql",
 ];
 
 let migrated = false;

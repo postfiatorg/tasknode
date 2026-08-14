@@ -72,6 +72,23 @@ async function main() {
       await waitForSelector('button[aria-label="Add"]');
       const handleDialogOpen = await evaluate("Boolean(document.querySelector('.login-dialog .dialog-close'))");
       if (handleDialogOpen) await clickSelector(".login-dialog .dialog-close");
+      await evaluate(`(() => {
+        window.__tasknodePersonaOriginalFetch = window.fetch.bind(window);
+        window.fetch = (input, init = {}) => {
+          const url = typeof input === 'string' ? input : input?.url || '';
+          if (String(url).includes('/api/i-ching/profile')) {
+            const saved = String(init.method || 'GET').toUpperCase() === 'POST';
+            return Promise.resolve(new Response(JSON.stringify(saved
+              ? { ok: true, exists: true, profile: { timezone: 'America/New_York', trueSolarTime: '14:20:01' } }
+              : { ok: true, exists: false, profile: null }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' }
+            }));
+          }
+          return window.__tasknodePersonaOriginalFetch(input, init);
+        };
+        return true;
+      })()`);
       await clickSelector('button[aria-label="Add"]');
       await assertText(["Upload photos & files", "Context Refine", "Request a task", "Personality", "More"]);
       await clickButton("Personality", "document.querySelector('.plus-menu')");
@@ -87,12 +104,25 @@ async function main() {
       await assertText(["Brainstorm", "Motivation", "Five Mirrors", "I Ching", "Sprint Planner", "Validator", "Post Fiat Q&A", "App Help"]);
       await capture("02d-modality-menu");
       await clickButton("I Ching", "document.querySelector('.modality-menu')");
+      await waitForText("Set up I Ching");
+      await assertText(["Birth date", "Exact birth time", "Birth city and country", "Private to your Task Node account"]);
+      await capture("02e-i-ching-setup");
+      await setInput('.i-ching-setup-form input[type="date"]', "1988-03-15");
+      await setInput('.i-ching-setup-form input[type="time"]', "14:30");
+      await setInput('.i-ching-setup-form input[type="text"]', "39.9526,-75.1652");
+      await evaluate(`(() => {
+        const select = document.querySelector('.i-ching-setup-form select');
+        select.value = 'male';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })()`);
+      await clickButton("Create private chart", "document.querySelector('.i-ching-setup-dialog')");
       await waitForSelector('textarea[aria-label="What situation or decision do you want the I Ching to read?"]');
       const selectedModality = await evaluate("document.querySelector('.composer-mode-chip span')?.textContent?.trim()");
       if (selectedModality !== "I Ching") throw new Error(`Expected I Ching composer mode, got ${selectedModality || "nothing"}.`);
       const modalityModel = await evaluate("document.querySelector('.model-button')?.textContent?.trim()");
       if (!String(modalityModel).includes("GLM 5.2")) throw new Error(`Expected GLM 5.2 modality model, got ${modalityModel || "nothing"}.`);
-      await capture("02e-i-ching-selected");
+      await capture("02f-i-ching-selected");
       console.log("frame persona smoke ok");
       return;
     }

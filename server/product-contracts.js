@@ -58,6 +58,7 @@ import {
 } from "./repositories/user-observability.js";
 import { loadChatExecutionContext } from "./chat-context-load.js";
 import { normalizeClientChatHistory } from "./chat-client-history.js";
+import { getIChingProfile, iChingProfilePromptPayload } from "./repositories/i-ching-profile.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
 import { isHelpChatMode } from "./chat-help-mode.js";
 import { chatPersonaIsModality, normalizeChatPersona } from "../shared/chat-personas.js";
@@ -694,6 +695,27 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
     };
   }
 
+  if (chat.persona === "i-ching") {
+    const iChingProfile = await getIChingProfile({ accountId: chat.accountId });
+    if (!iChingProfile?.combined) {
+      return {
+        ok: false,
+        status: 409,
+        body: {
+          ok: false,
+          error: "i_ching_profile_required",
+          action,
+          message: "Set up your private birth chart before requesting an I Ching reading.",
+          actionRequired: "Enter birth date, birth time, birth location, and gender in I Ching setup.",
+          setupPath: "/api/i-ching/profile",
+        },
+        chat,
+        estimate,
+      };
+    }
+    chat = { ...chat, iChingProfile };
+  }
+
   const attachmentValidation = validateChatAttachments(chat.attachments);
   if (!attachmentValidation.ok) {
     estimate = chatEstimate({ ...payload, mode: chat.mode, persona: chat.persona, attachments: [] });
@@ -751,6 +773,7 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
       taskContext: executionContext.taskContext,
       historyMessages,
       activeProposal,
+      iChingProfile: iChingProfilePromptPayload(chat.iChingProfile),
     });
     return {
       ok: false,
@@ -829,6 +852,7 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
     taskContext: executionContext.taskContext,
     historyMessages,
     activeProposal,
+    iChingProfile: iChingProfilePromptPayload(chat.iChingProfile),
   });
 
   const usage = await usageSummary({ accountId: chat.accountId, conversationId: chat.conversationId });
@@ -887,6 +911,7 @@ export async function chatSend(payload, method, options = {}) {
     clientHistory,
     userMetadata,
     persona,
+    iChingProfile,
   } = preflight.chat;
   const { estimate } = preflight;
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
@@ -920,6 +945,7 @@ export async function chatSend(payload, method, options = {}) {
           source: preflight.chat.source,
           providerTimeoutMs: preflight.chat.providerTimeoutMs,
           persona,
+          iChingProfile,
         });
     const orcWorkJournal = options.agentOrigin
       ? await recordAgentActionJournal({

@@ -55,7 +55,9 @@ been folded into this surface doc and the single active production scope plan.
 
 The visible `+` menu exposes file upload, Context Refine, Context Rewrite, Request a task, Personality, and More. The Personality row expands inline to Jobs, ODV, Trading Coach, and Kravis. More expands inline to the restored chat modalities and closes after selection. A selected modality becomes a visible composer mode chip, supplies its own question placeholder, and forces the request through Thinking (`z-ai/glm-5.2`) so its behavior is stable regardless of the user's ordinary chat-mode preference. Exiting the chip restores Jobs without overwriting the saved ordinary model preference. Context Rewrite remains a separate billed async full-document context pipeline documented in [Context Rewrite](#docs/context-rewrite).
 
-I Ching requires text in the composer; attachment-only sends are disabled for that modality. Each send performs a fresh local three-coin cast in `server/i-ching-cast.js`, resolves the primary and relating figures against the checked-in 64-hexagram dataset, and injects the cast into the canonical legacy reading prompt. Task Node does not invent or imply a stored birth chart when one is unavailable.
+I Ching requires both a private birth profile and an explicit question. On first selection, the setup dialog collects birth date, exact birth time, birth city/country, and the gender required by the traditional chart calculation. `POST /api/i-ching/profile` geocodes the place, resolves its historical timezone, adjusts the recorded time to true solar time, generates the Bā Zì and Zǐ Wēi Dòu Shù payloads, and stores them in the account-scoped `i_ching_profiles` row. The profile and computed chart are private chat inputs; the public profile API never exposes them. Canceling setup exits the modality, and server preflight returns `i_ching_profile_required` before provider execution or billing if the chart is missing.
+
+After setup, attachment-only sends remain disabled. Each question performs a fresh local three-coin cast in `server/i-ching-cast.js`, resolves the primary and relating figures against the checked-in 64-hexagram dataset, and combines that present-moment cast with the persisted natal charts, current date, account context, memory, conversation history, and task projection in the canonical legacy reading prompt. A standalone hexagram can describe the immediate situation without a birthday, but Task Node must not label that as the full personalized module reading.
 
 ## Chat Personalities
 
@@ -75,7 +77,7 @@ Personality does not select a model. Any personality can run with Instant or Thi
 | Brainstorm | Generate and pressure-test useful possibilities | GLM 5.2 |
 | Motivation | Convert friction into a concrete next move | GLM 5.2 |
 | Five Mirrors | Examine one situation through five distinct lenses | GLM 5.2 |
-| I Ching | Answer an explicit question using a fresh three-coin cast | GLM 5.2 |
+| I Ching | Combine a fresh three-coin cast with the user's private Bā Zì and Zǐ Wēi profile | GLM 5.2 |
 | ODV | Apply the canonical ODV Lindy alignment prompt | GLM 5.2 |
 | Sprint Planner | Turn current context into a focused execution sprint | GLM 5.2 |
 | Validator | Stress-test an idea, claim, or plan | GLM 5.2 |
@@ -247,6 +249,7 @@ Task Node's user tariff is 55% below the prior rates. Thinking costs $0.4725/M u
 - Token usage, prompt-cache accounting, and cost are recorded against the signup identity account.
 - Memory summaries are separate from ordinary chat history.
 - Task state is read from `task_projections`, which is a cache over replayable PFTL task events.
+- Private I Ching birth inputs and computed chart payloads are account-scoped in `i_ching_profiles`; no natal chart is generated or inferred from ordinary chat context.
 
 ## Diagram
 

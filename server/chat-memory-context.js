@@ -114,6 +114,7 @@ export function taskNodeInstructions({
   jobsEssence = "",
   deliveryContext = null,
   persona = "jobs",
+  iChingProfile = null,
 } = {}) {
   const formattedContextDocument = formatChatContextDocument(contextDocument);
   const formattedMemory = formatChatMemoryContext(memoryContext);
@@ -127,6 +128,7 @@ export function taskNodeInstructions({
     contextDocumentBlock: formattedContextDocument,
     memoryBlock: formattedMemory,
     taskBlock: formattedTasks,
+    iChingProfile,
   });
   if (selectedPersona) {
     return [taskNodeInstructionsPrompt, formattedDelivery, selectedPersona]

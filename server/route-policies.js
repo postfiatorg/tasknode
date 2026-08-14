@@ -185,6 +185,13 @@ export const apiRoutePolicies = [
   { id: "chat_conversation", path: "/api/chat/conversation", methods: ["PATCH", "DELETE"], auth: "handler" },
   { id: "chat_history", path: "/api/chat/history", methods: ["GET"], auth: "session" },
   {
+    id: "i_ching_profile",
+    path: "/api/i-ching/profile",
+    methods: ["GET", "POST"],
+    auth: "session",
+    rateLimit: { limit: 10, windowMs: tenMinutes },
+  },
+  {
     id: "chat_search",
     path: "/api/chat/search",
     methods: ["GET"],

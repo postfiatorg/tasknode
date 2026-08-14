@@ -70,6 +70,7 @@ export function chatEstimate(
     taskContext = null,
     historyMessages = null,
     activeProposal = null,
+    iChingProfile = null,
   } = {}
 ) {
   const { message, mode, attachments, contextMode, persona } = estimatePayload(payload);
@@ -110,6 +111,9 @@ export function chatEstimate(
           taskContext,
           jobsEssence: estimatedJobsEssence,
           persona,
+          iChingProfile: persona === "i-ching"
+            ? iChingProfile || { estimate_only: true, note: "Stored Bā Zì and Zǐ Wēi Dòu Shù chart payload." }
+            : null,
         }).length;
   const contextEditLineNumberCharacters = contextMode === "context_edit"
     ? contextDocumentPacket(contextDocument || {}).lineNumberedText.length

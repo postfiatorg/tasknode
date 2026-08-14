@@ -5,6 +5,7 @@ import {
   normalizeChatPersona,
 } from "../shared/chat-personas.js";
 import { generateIChingCast } from "./i-ching-cast.js";
+import { DateTime } from "luxon";
 
 const userMessagePointer =
   "The current user message is supplied separately as the provider user message. Respond to that message; do not quote this marker.";
@@ -122,9 +123,11 @@ function legacyModuleUserPrompt({
   contextDocumentBlock = "",
   memoryBlock = "",
   taskBlock = "",
+  iChingProfile = null,
 } = {}) {
   const historyPointer = "Prior conversation turns are supplied separately to the model as message history.";
   const cast = id === "i-ching" ? generateIChingCast({ question: message }) : null;
+  if (id === "i-ching" && !iChingProfile) throw new Error("i_ching_profile_required");
   const replacements = new Map([
     ["___PORTFOLIO_CONTEXT_REPLACED_HERE___", "No portfolio data was supplied for this conversation."],
     ["___OPTIONAL_BEHAVIOR_SUMMARY_REPLACED_HERE___", memoryBlock || "No account memory is available."],
@@ -140,9 +143,12 @@ function legacyModuleUserPrompt({
     ["___REWARDED_TOTAL_PFT_REPLACED_HERE___", "The current rewarded PFT total was not supplied."],
     ["___LIVE_POSTFIAT_CONTEXT_REPLACED_HERE___", "No live Post Fiat network snapshot was supplied."],
     ["___POST_FIAT_LIVE_NETWORK_CONTEXT_REPLACED_HERE___", "No live Post Fiat network snapshot was supplied."],
-    ["___CURRENT_DATE_REPLACED_HERE___", new Date().toISOString().slice(0, 10)],
+    [
+      "___CURRENT_DATE_REPLACED_HERE___",
+      DateTime.now().setZone(iChingProfile?.input?.timezone || "UTC").toISODate(),
+    ],
     ["___HEXAGRAM_JSON_REPLACED_HERE___", cast ? JSON.stringify(cast, null, 2) : "No hexagram cast is required for this modality."],
-    ["___I_CHING_JSON_REPLACED_HERE___", "No stored birth-chart payload is available. Base the reading on the user's question, Task Node context, and fresh hexagram cast."],
+    ["___I_CHING_JSON_REPLACED_HERE___", iChingProfile ? JSON.stringify(iChingProfile, null, 2) : "{}"],
   ]);
   let rendered = source;
   for (const [marker, value] of replacements) rendered = rendered.replaceAll(marker, value);
@@ -165,6 +171,7 @@ export function formatSelectedChatPersona({
   contextDocumentBlock = "",
   memoryBlock = "",
   taskBlock = "",
+  iChingProfile = null,
 } = {}) {
   const id = normalizeChatPersona(persona);
   if (!id || id === "jobs") return "";
@@ -184,6 +191,7 @@ export function formatSelectedChatPersona({
           contextDocumentBlock,
           memoryBlock,
           taskBlock,
+          iChingProfile,
         });
   return [definition.prompt.system, personaUser, runtimeBoundary(id)].filter(Boolean).join("\n\n");
 }

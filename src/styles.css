@@ -2698,6 +2698,7 @@ h1 {
   place-items: center;
   padding: 24px;
   background: rgba(0, 0, 0, 0.28);
+  z-index: 180;
 }
 
 .login-dialog {
@@ -2775,6 +2776,131 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 10px;
+}
+
+.i-ching-setup-backdrop {
+  background: rgba(12, 10, 7, 0.52);
+  backdrop-filter: blur(8px);
+}
+
+.i-ching-setup-dialog {
+  width: min(570px, 100%);
+  padding: 34px 38px 32px;
+  border: 1px solid rgba(105, 86, 51, 0.2);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% -20%, rgba(210, 176, 107, 0.19), transparent 46%),
+    #fffdf8;
+  box-shadow: 0 30px 90px rgba(18, 14, 8, 0.24);
+}
+
+.i-ching-setup-dialog .i-ching-setup-mark {
+  margin: 0 auto 8px;
+  color: #92713a;
+  font-size: 36px;
+  line-height: 1;
+  text-align: center;
+}
+
+.i-ching-setup-dialog h2 {
+  margin-bottom: 8px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 28px;
+}
+
+.i-ching-setup-dialog > p {
+  max-width: 470px;
+  margin: 0 auto 24px;
+  color: #5d5549;
+  font-size: 14px;
+}
+
+.i-ching-setup-form > label,
+.i-ching-setup-grid label {
+  display: grid;
+  gap: 7px;
+  color: #312b22;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.i-ching-setup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.i-ching-setup-dialog .i-ching-setup-form input,
+.i-ching-setup-dialog .i-ching-setup-form select {
+  width: 100%;
+  min-height: 48px;
+  margin: 0 0 14px;
+  padding: 0 16px;
+  border: 1px solid #cfc5b4;
+  border-radius: 12px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.82);
+  color: #1d1913;
+  font: inherit;
+  font-weight: 400;
+}
+
+.i-ching-setup-dialog .i-ching-setup-form input:focus,
+.i-ching-setup-dialog .i-ching-setup-form select:focus {
+  border-color: #92713a;
+  box-shadow: 0 0 0 3px rgba(146, 113, 58, 0.12);
+}
+
+.i-ching-private-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0 16px;
+  color: #6b6255;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.i-ching-private-note svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.i-ching-setup-error {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #e7b7ad;
+  border-radius: 10px;
+  background: #fff3f0;
+  color: #8e2f21;
+  font-size: 13px;
+}
+
+.i-ching-setup-actions {
+  display: grid;
+  grid-template-columns: 0.7fr 1.3fr;
+  gap: 10px;
+}
+
+.i-ching-setup-dialog .i-ching-setup-actions button:not(.dialog-close) {
+  min-height: 48px;
+  margin: 0;
+  border-radius: 12px;
+}
+
+.i-ching-setup-dialog .i-ching-cancel-button {
+  background: transparent;
+}
+
+@media (max-width: 620px) {
+  .i-ching-setup-dialog {
+    padding: 30px 22px 24px;
+  }
+
+  .i-ching-setup-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 
 .provider-icon {

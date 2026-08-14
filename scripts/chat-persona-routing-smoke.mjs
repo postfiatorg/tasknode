@@ -21,6 +21,12 @@ const contextDocument = { body: "PERSONA_CONTEXT_SENTINEL" };
 const memoryContext = { memories: [{ memoryText: "PERSONA_MEMORY_SENTINEL" }] };
 const taskContext = { outstanding: [{ title: "PERSONA_TASK_SENTINEL", status: "Accepted" }] };
 const jobsEssence = "JOBS_VECTOR_SENTINEL";
+const iChingProfile = {
+  input: { birth_date: "1988-03-15", true_solar_time: "14:20:01", timezone: "America/New_York" },
+  bazi: { day_master: "己", four_pillars: { year: "戊辰", month: "乙卯", day: "己巳", hour: "辛未" } },
+  ziwei: { chart: { palaces: [{ name: "命宫" }] } },
+  warnings: [],
+};
 
 const jobsInstructions = taskNodeInstructions({
   persona: "jobs",
@@ -110,6 +116,7 @@ for (const modality of CHAT_MODALITIES) {
     memoryContext,
     taskContext,
     jobsEssence,
+    iChingProfile: modality.id === "i-ching" ? iChingProfile : null,
   });
   assert.equal(chatPersonaIsModality(modality.id), true);
   assert.match(instructions, /PERSONA_CONTEXT_SENTINEL/);
@@ -196,6 +203,19 @@ const iChingWithoutQuestion = await chatSend(
 );
 assert.equal(iChingWithoutQuestion.status, 400);
 assert.equal(iChingWithoutQuestion.body.error, "i_ching_question_required");
+const iChingWithoutProfile = await chatSend(
+  {
+    accountId: "i-ching-profile-gate-smoke",
+    message: "What should I prioritize next?",
+    mode: "Instant",
+    persona: "i-ching",
+    dryRun: true,
+  },
+  "POST"
+);
+assert.equal(iChingWithoutProfile.status, 409);
+assert.equal(iChingWithoutProfile.body.error, "i_ching_profile_required");
+assert.equal(iChingWithoutProfile.body.setupPath, "/api/i-ching/profile");
 
 const frontendSource = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
 assert.match(frontendSource, /label="Personality"/);
@@ -204,6 +224,7 @@ assert.match(frontendSource, /CHAT_PERSONAS\.map/);
 assert.match(frontendSource, /CHAT_MODALITIES\.map/);
 assert.match(frontendSource, /mode: isContextEdit \|\| activeModality \? "Thinking"/);
 assert.match(frontendSource, /Ask a specific question before casting the I Ching/);
+assert.match(frontendSource, /IChingSetupDialog/);
 assert.match(frontendSource, /kravis: Landmark/);
 
 console.log("chat persona routing smoke ok");

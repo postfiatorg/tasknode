@@ -92,6 +92,7 @@ export function openRouterMessages({
   deliveryContext = null,
   instructionsOverride = "",
   persona = "jobs",
+  iChingProfile = null,
 }) {
   const normalizedAttachments = normalizeChatAttachments(attachments);
   const sourceHistory = Array.isArray(historyMessages)
@@ -116,7 +117,7 @@ export function openRouterMessages({
       role: "system",
       content:
         instructionsOverride ||
-        taskNodeInstructions({ message, contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
+        taskNodeInstructions({ message, contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona, iChingProfile }),
     },
     ...history,
     { role: "user", content: userContent },
@@ -144,6 +145,7 @@ export function deepSeekMessages({
   deliveryContext = null,
   instructionsOverride = "",
   persona = "jobs",
+  iChingProfile = null,
 }) {
   const sourceHistory = Array.isArray(historyMessages)
     ? historyMessages
@@ -163,7 +165,7 @@ export function deepSeekMessages({
       role: "system",
       content:
         instructionsOverride ||
-        taskNodeInstructions({ message, contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
+        taskNodeInstructions({ message, contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona, iChingProfile }),
     },
     ...history,
     { role: "user", content: userContent },

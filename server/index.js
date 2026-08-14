@@ -66,6 +66,7 @@ const [
   { handleProfileRoute },
   { handleProfileNftImageRoute, handleProfileNftPfpRoute },
   { handleMemoryRoute },
+  { handleIChingRoute },
   { handleCollaborationRoute },
   { handleDirectoryRoute },
   { handleHiveRoute },
@@ -118,6 +119,7 @@ const [
   import("./profile-routes.js"),
   import("./profile-nft-image-proxy.js"),
   import("./memory-routes.js"),
+  import("./i-ching-routes.js"),
   import("./collaboration-routes.js"),
   import("./directory-routes.js"),
   import("./hive-routes.js"),
@@ -848,6 +850,8 @@ async function routeApi(req, url, res) {
   }
 
   if (await handleMemoryRoute({ json, readJson, req, res, session, url })) return true;
+
+  if (await handleIChingRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await handleCollaborationRoute({ json, readJson, req, res, session, url })) return true;
 
