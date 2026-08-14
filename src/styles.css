@@ -2195,7 +2195,11 @@ h1 {
 }
 
 .plus-menu.has-modalities {
-  overflow: visible;
+  width: min(340px, calc(100vw - 36px));
+  max-height: min(680px, calc(100dvh - 112px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .chat-empty .model-menu {
@@ -2322,17 +2326,15 @@ h1 {
 }
 
 .modality-menu {
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 8px);
-  width: 320px;
-  max-height: min(680px, calc(100dvh - 48px));
-  margin: 0;
-  overflow-y: auto;
-  transform: translateY(-50%);
+  position: static;
+  width: calc(100% - 12px);
+  max-height: none;
+  margin: 2px 6px 5px;
+  overflow: visible;
   border-color: #e7e5de;
   background: #fff;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.1), 0 2px 7px rgba(0, 0, 0, 0.04);
+  box-shadow: none;
+  transform: none;
 }
 
 .composer .personality-menu-row {

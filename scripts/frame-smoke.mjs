@@ -20,6 +20,8 @@ const testMnemonic = generateMnemonic(wordlist, 256);
 const testWalletAddress = deriveWalletSummary(testMnemonic).address;
 const testVaultPassword = "frame-smoke-vault-pass";
 const personaOnly = process.env.FRAME_PERSONA_ONLY === "true";
+const frameWidth = Number(process.env.FRAME_WIDTH || 1440);
+const frameHeight = Number(process.env.FRAME_HEIGHT || 900);
 const frameContextCid = "bafybeigdyrztm3j5framecontextpointeraaaa";
 const frameContextDraftText = `Frame saved context draft ${randomBytes(3).toString("hex")}`;
 const chatComposerSelector = 'textarea[aria-label="Ask anything"], input[aria-label="Ask anything"]';
@@ -40,7 +42,7 @@ async function main() {
       "--no-sandbox",
       "--disable-gpu",
       "--hide-scrollbars",
-      "--window-size=1440,900",
+      `--window-size=${frameWidth},${frameHeight}`,
       `--user-data-dir=${userDataDir}`,
       `--remote-debugging-port=${debugPort}`,
       baseUrl,
@@ -56,9 +58,9 @@ async function main() {
     await cdp.send("Page.enable");
     await waitForText("Task Node");
 
-    await assertText(["Task Node", "New chat", "Tasks", "Wallet", "Context"]);
+    await assertText(frameWidth <= 760 ? ["Task Node"] : ["Task Node", "New chat", "Tasks", "Wallet", "Context"]);
     await waitForSelector(chatComposerSelector);
-    await assertSidebarBalances();
+    if (frameWidth > 760) await assertSidebarBalances();
     await capture("01-chat");
 
     if (personaOnly) {
@@ -102,6 +104,33 @@ async function main() {
       await clickSelector('button[aria-label="Add"]');
       await clickButton("More", "document.querySelector('.plus-menu')");
       await assertText(["Brainstorm", "Motivation", "Five Mirrors", "I Ching", "Sprint Planner", "Validator", "Post Fiat Q&A", "App Help"]);
+      const modalityMenuLayout = await evaluate(`(() => {
+        const menu = document.querySelector('.plus-menu.has-modalities');
+        const rows = Array.from(document.querySelectorAll('.modality-menu .personality-menu-row'));
+        if (!menu || rows.length === 0) return null;
+        menu.scrollTop = menu.scrollHeight;
+        const menuRect = menu.getBoundingClientRect();
+        const lastRect = rows.at(-1).getBoundingClientRect();
+        return {
+          menuTop: menuRect.top,
+          menuBottom: menuRect.bottom,
+          viewportHeight: window.innerHeight,
+          lastBottom: lastRect.bottom,
+          scrollHeight: menu.scrollHeight,
+          clientHeight: menu.clientHeight,
+          overflowY: getComputedStyle(menu).overflowY,
+        };
+      })()`);
+      if (!modalityMenuLayout) throw new Error("More modalities menu did not render.");
+      if (modalityMenuLayout.menuTop < -1 || modalityMenuLayout.menuBottom > modalityMenuLayout.viewportHeight + 1) {
+        throw new Error(`More modalities menu escaped the viewport: ${JSON.stringify(modalityMenuLayout)}`);
+      }
+      if (modalityMenuLayout.lastBottom > modalityMenuLayout.menuBottom + 1) {
+        throw new Error(`Last More modality is not reachable after scrolling: ${JSON.stringify(modalityMenuLayout)}`);
+      }
+      if (modalityMenuLayout.scrollHeight > modalityMenuLayout.clientHeight && !["auto", "scroll"].includes(modalityMenuLayout.overflowY)) {
+        throw new Error(`Overflowing More modalities menu is not scrollable: ${JSON.stringify(modalityMenuLayout)}`);
+      }
       await capture("02d-modality-menu");
       await clickButton("I Ching", "document.querySelector('.modality-menu')");
       await waitForText("Set up I Ching");
