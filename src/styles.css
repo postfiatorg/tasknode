@@ -2962,6 +2962,18 @@ h1 {
   font-weight: 600;
 }
 
+.composer-mode-chip .i-ching-profile-ready-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+  padding-left: 8px;
+  border-left: 1px solid #d7d4cc;
+  color: #3f7c58;
+  font-size: 11px;
+  font-weight: 650;
+}
+
 @media (max-width: 620px) {
   .i-ching-setup-dialog {
     padding: 30px 22px 24px;

@@ -124,6 +124,7 @@ async function main() {
       await waitForSelector('textarea[aria-label="What situation or decision do you want the I Ching to read?"]');
       const selectedModality = await evaluate("document.querySelector('.composer-mode-chip span')?.textContent?.trim()");
       if (selectedModality !== "I Ching") throw new Error(`Expected I Ching composer mode, got ${selectedModality || "nothing"}.`);
+      await assertText(["Profile ready", "Your private birth chart is ready. Ask a specific question for the reading."]);
       const modalityModel = await evaluate("document.querySelector('.model-button')?.textContent?.trim()");
       if (!String(modalityModel).includes("GLM 5.2")) throw new Error(`Expected GLM 5.2 modality model, got ${modalityModel || "nothing"}.`);
       await capture("02g-i-ching-selected");

@@ -2095,6 +2095,7 @@ function ChatSurface({
   const [editDraft, setEditDraft] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [iChingSetupOpen, setIChingSetupOpen] = useState(false);
+  const [iChingProfileSummary, setIChingProfileSummary] = useState(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   useEffect(() => {
@@ -2104,7 +2105,12 @@ function ChatSurface({
       .then((result) => {
         if (cancelled) return;
         if (!result.ok) throw new Error(result.body?.message || `I Ching setup returned HTTP ${result.status}.`);
-        if (!result.body?.exists) setIChingSetupOpen(true);
+        if (!result.body?.exists) {
+          setIChingProfileSummary(null);
+          setIChingSetupOpen(true);
+        } else {
+          setIChingProfileSummary(result.body.profile || {});
+        }
       })
       .catch((error) => {
         if (cancelled) return;
@@ -3100,6 +3106,12 @@ function ChatSurface({
           <div className="composer-mode-chip">
             <ActivePersonaIcon size={13} strokeWidth={1.9} />
             <span>{activeModality.name}</span>
+            {activeModality.id === "i-ching" && iChingProfileSummary && (
+              <span className="i-ching-profile-ready-chip">
+                <Check size={11} strokeWidth={2.4} />
+                Profile ready
+              </span>
+            )}
             <button
               aria-label={`Exit ${activeModality.name}`}
               onClick={() => {
@@ -3498,7 +3510,8 @@ function ChatSurface({
         setIChingSetupOpen(false);
         persistChatPersona(DEFAULT_CHAT_PERSONA);
       }}
-      onSaved={() => {
+      onSaved={(profile) => {
+        setIChingProfileSummary(profile || {});
         setIChingSetupOpen(false);
         setSendMessage("Your private birth chart is ready. Ask a specific question for the reading.");
         setStatusTone("muted");
