@@ -41,7 +41,8 @@ reviewed, versioned, and replayed.
   tests only. Live generation uses the two-pass
   `prompts/profile/profile_nft_privacy_abstraction_v1.md` and
   `prompts/profile/profile_nft_privacy_review_v1.md` gateway; OpenAI receives
-  only the validated high-level rendered art brief.
+  only the validated high-level summaries hydrated into the canonical
+  `prompts/profile/profile_nft_image_v1.md` Hyperstitional Ink art direction.
 
 Runtime code should record the prompt version and prompt digest whenever a
 prompt output becomes part of a PFTL payload, database cache, or audit trail.

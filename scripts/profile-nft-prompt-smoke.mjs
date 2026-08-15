@@ -59,17 +59,20 @@ assert.equal(
   rendered.templateDigest,
   loadProfileNftPrompt({ PROFILE_NFT_PROMPT_PATH: profileNftImagePromptPath }).digest
 );
+assert.equal(
+  rendered.templateDigest,
+  "8625fb4c149ab228b5cb4ab8b429224a47035bccd2f92bcb1eea15c5a838025d"
+);
 assert.ok(!rendered.prompt.includes("SecretProjectZephyr"));
 assert.ok(!rendered.prompt.includes("17.25"));
 assert.ok(!rendered.prompt.includes("0x1234"));
 assert.ok(!rendered.prompt.includes("THIS REPLACEMENT PROMPT"));
-assert.match(
-  rendered.prompt,
-  /Create a square profile NFT image from the supplied Task Node execution context\./
-);
-assert.match(rendered.prompt, /Create one central avatar, persona, or work figure/);
-assert.match(rendered.prompt, /Use full-spectrum color\./);
-assert.match(rendered.prompt, /Avoid corporate clipart, flat SaaS illustration/);
+assert.match(rendered.prompt, /You are the Hyperstitional Ink artist/);
+assert.match(rendered.prompt, /world class ink drawings on white square backgrounds/);
+assert.match(rendered.prompt, /YOU ALWAYS CHOOSE 2 CORE COLORS/);
+assert.match(rendered.prompt, /intricate ink linework, brutal sci-fi architecture/);
+assert.match(rendered.prompt, /Create a single central avatar\/entity/);
+assert.match(rendered.prompt, /The final image must read as a square, white-background, high-detail ink drawing/);
 assert.match(rendered.prompt, /An experienced software builder and market researcher/);
 assert.match(rendered.prompt, /The requested visual mood is luminous, tactile, and hand-painted/);
 assert.doesNotMatch(rendered.prompt, /___NFT_USER_DATA|___USER_CONTEXT_DOCUMENT|< insert Random String>/);
@@ -84,7 +87,7 @@ const adjacentSummary = {
 const alternate = renderSanitizedProfileNftPrompt(adjacentSummary, {
   PROFILE_NFT_PROMPT_TEXT: "THIS ALSO MUST NEVER BE USED",
 });
-assert.match(alternate.prompt, /Create one central avatar, persona, or work figure/);
+assert.match(alternate.prompt, /Create a single central avatar\/entity/);
 assert.match(alternate.prompt, /A patient educator and community coordinator/);
 assert.ok(!alternate.prompt.includes("THIS ALSO MUST NEVER BE USED"));
 assert.notEqual(alternate.prompt, rendered.prompt);
@@ -164,7 +167,7 @@ await reviewRenderedProfileNftImage({
   env: { AMBIENT_API_KEY: "ambient-test" },
   fetchImpl: approvedReviewFetch,
 });
-assert.ok(JSON.stringify(reviewRequest.messages).includes("Create one central avatar"));
+assert.ok(JSON.stringify(reviewRequest.messages).includes("Create a single central avatar/entity"));
 assert.ok(!JSON.stringify(reviewRequest.messages).includes("SecretProjectZephyr"));
 assert.ok(JSON.stringify(reviewRequest.messages).includes("fictional illustrated central avatar"));
 assert.ok(JSON.stringify(reviewRequest.messages).includes("identifiable_real_person"));
