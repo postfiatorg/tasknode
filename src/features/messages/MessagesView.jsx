@@ -15,6 +15,7 @@ import {
 import { requestJson } from "../../api";
 import { signedCollaborationProof } from "../collaboration/collaboration-client";
 import { ComposerSendButton } from "../chat/ComposerSendButton.jsx";
+import { profileNftImageCandidates } from "../profile/profile-nft-images.js";
 import {
   DEFAULT_MESSAGE_RELAYS,
   createDirectMessageCatchUp,
@@ -25,7 +26,7 @@ import {
   publishDirectMessage,
   subscribeDirectMessages,
 } from "./nostr-messages";
-import { compactPublicKey, conversationThreads, formatMessageTime, mergeMessages } from "./messages-state";
+import { compactPublicKey, conversationThreads, formatMessageTime, mergeMessageContact, mergeMessages } from "./messages-state";
 import "./messages.css";
 
 function resultError(result, fallback) {
@@ -44,6 +45,30 @@ function initials(contact, publicKey) {
 
 function contactLabel(contact, publicKey) {
   return contact?.displayName || (contact?.hiveHandle ? `@${contact.hiveHandle}` : compactPublicKey(publicKey));
+}
+
+function MessagesAvatar({ contact = {}, publicKey = "", size = 37 }) {
+  const candidates = useMemo(
+    () => profileNftImageCandidates(contact?.heroNft || {}, { avatarCssSize: size }),
+    [contact?.heroNft, size]
+  );
+  const imageKey = candidates.join("|");
+  const [imageIndex, setImageIndex] = useState(0);
+  const imageSrc = candidates[imageIndex] || "";
+  const label = contactLabel(contact, publicKey);
+
+  useEffect(() => { setImageIndex(0); }, [imageKey]);
+
+  return <span
+    aria-label={`${label} profile picture`}
+    className={`messages-avatar ${imageSrc ? "has-image" : ""}`}
+    style={{ "--messages-avatar-size": `${size}px` }}
+    title={label}
+  >
+    {imageSrc
+      ? <img alt="" decoding="async" loading="lazy" onError={() => setImageIndex((index) => index + 1)} src={imageSrc} />
+      : initials(contact, publicKey)}
+  </span>;
 }
 
 function contactStorageKey(accountId) {
@@ -118,9 +143,13 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
         const next = { ...current };
         incoming.forEach((message) => {
           const handle = namesByPubkey[message.peerPublicKey];
-          if (handle && !next[message.peerPublicKey]) {
-            next[message.peerPublicKey] = { hiveHandle: handle, displayName: `@${handle}` };
-          }
+          const profile = directory.profiles?.[message.peerPublicKey] || {};
+          if (!handle && !Object.keys(profile).length) return;
+          next[message.peerPublicKey] = mergeMessageContact(next[message.peerPublicKey], {
+            ...profile,
+            hiveHandle: profile.hiveHandle || handle,
+            displayName: profile.displayName || (handle ? `@${handle}` : ""),
+          });
         });
         return next;
       });
@@ -221,6 +250,12 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
 
   const threads = useMemo(() => conversationThreads(messages, contacts), [contacts, messages]);
   const selectedThread = threads.find((thread) => thread.publicKey === selectedPeer) || null;
+  const selfContact = useMemo(() => ({
+    accountId,
+    displayName: bootstrap?.identity?.displayName || (bootstrap?.identity?.nostrName ? `@${bootstrap.identity.nostrName}` : "You"),
+    hiveHandle: bootstrap?.identity?.hiveHandle || bootstrap?.identity?.nostrName || "",
+    heroNft: bootstrap?.identity?.heroNft || null,
+  }), [accountId, bootstrap?.identity]);
 
   async function activateMessages() {
     if (!walletSecret?.mnemonic) return onWalletUnlock?.();
@@ -278,13 +313,14 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
   function startResolvedConversation() {
     if (!resolvedTarget?.nostr?.nostrPubkeyHex) return;
     const pubkey = resolvedTarget.nostr.nostrPubkeyHex;
-    setContacts((current) => ({ ...current, [pubkey]: {
+    setContacts((current) => ({ ...current, [pubkey]: mergeMessageContact(current[pubkey], {
       accountId: resolvedTarget.identity.accountId,
       displayName: resolvedTarget.identity.displayName,
       hiveHandle: resolvedTarget.identity.hiveHandle,
       nip05: resolvedTarget.nostr.nip05,
       preferredRelays: resolvedTarget.nostr.preferredRelays,
-    } }));
+      heroNft: resolvedTarget.identity.heroNft,
+    }) }));
     setSelectedPeer(pubkey);
     setNewMessageOpen(false);
     setTarget("");
@@ -370,7 +406,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
       <div className="messages-identity-strip"><span aria-live="polite"><Circle className={connectionStatus === "live" ? "is-live" : ""} fill="currentColor" size={7} />@{bootstrap.identity.nostrName} · {connectionStatus === "live" ? "Live" : connectionStatus === "connecting" ? "Connecting" : "Reconnecting"}</span><button disabled={busy === "sync"} onClick={() => syncMessages()} title="Manually check relays" type="button"><RefreshCw className={busy === "sync" ? "is-spinning" : ""} size={13} />Retry</button></div>
       <div className="messages-thread-list">
         {threads.map((thread) => <button className={thread.publicKey === selectedPeer ? "active" : ""} key={thread.publicKey} onClick={() => setSelectedPeer(thread.publicKey)} type="button">
-          <span className="messages-avatar">{initials(thread.contact, thread.publicKey)}</span>
+          <MessagesAvatar contact={thread.contact} publicKey={thread.publicKey} />
           <span><strong>{contactLabel(thread.contact, thread.publicKey)}</strong><small>{thread.latest?.content || "New conversation"}</small></span>
           <time>{thread.latest ? formatMessageTime(thread.latest.createdAt) : ""}</time>
         </button>)}
@@ -382,13 +418,20 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
       {selectedThread ? <>
         <header>
           <button className="messages-mobile-back" aria-label="Back to conversations" onClick={() => setSelectedPeer("")} type="button"><ArrowLeft size={19} /></button>
-          <span className="messages-avatar">{initials(selectedThread.contact, selectedPeer)}</span>
+          <MessagesAvatar contact={selectedThread.contact} publicKey={selectedPeer} />
           <div><strong>{contactLabel(selectedThread.contact, selectedPeer)}</strong><small>{selectedThread.contact?.nip05 || compactPublicKey(selectedPeer)}</small></div>
           <span className="messages-verified"><Check size={12} />Task Node identity</span>
         </header>
         <div className="messages-transcript" ref={scrollRef}>
           {!selectedThread.messages.length && <div className="messages-conversation-empty"><LockKeyhole size={22} /><strong>Private conversation</strong><span>Messages are encrypted before they leave this browser.</span></div>}
-          {selectedThread.messages.map((message) => <article className={message.mine ? "mine" : "theirs"} key={message.id}><p>{message.content}</p><time>{formatMessageTime(message.createdAt)}</time></article>)}
+          {selectedThread.messages.map((message) => {
+            const author = message.mine ? selfContact : selectedThread.contact;
+            const authorKey = message.mine ? privateIdentity.publicKeyHex : selectedPeer;
+            return <article className={message.mine ? "mine" : "theirs"} key={message.id}>
+              <MessagesAvatar contact={author} publicKey={authorKey} size={24} />
+              <div className="messages-message-body"><p>{message.content}</p><time>{formatMessageTime(message.createdAt)}</time></div>
+            </article>;
+          })}
         </div>
         <form className="messages-composer" onSubmit={sendMessage}>
           {error && <p className="messages-error">{error}</p>}
@@ -403,7 +446,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
       <label>Exact Task Node handle<div><Search size={16} /><input autoFocus onChange={(event) => { setTarget(event.target.value); setResolvedTarget(null); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void resolveTarget(); } }} placeholder="@handle" value={target} /></div></label>
       <button className="messages-primary" disabled={!target.trim() || busy === "resolve"} onClick={resolveTarget} type="button">{busy === "resolve" ? "Looking…" : "Find member"}</button>
       {error && <p className="messages-error">{error}</p>}
-      {resolvedTarget && <article className="messages-resolved-contact"><span className="messages-avatar">{initials(resolvedTarget.identity, resolvedTarget.nostr.nostrPubkeyHex)}</span><div><strong>{resolvedTarget.identity.displayName}</strong><small>{resolvedTarget.nostr.nip05}</small></div><button onClick={startResolvedConversation} type="button">Message</button></article>}
+      {resolvedTarget && <article className="messages-resolved-contact"><MessagesAvatar contact={resolvedTarget.identity} publicKey={resolvedTarget.nostr.nostrPubkeyHex} /><div><strong>{resolvedTarget.identity.displayName}</strong><small>{resolvedTarget.nostr.nip05}</small></div><button onClick={startResolvedConversation} type="button">Message</button></article>}
     </section></div>}
   </div>;
 }

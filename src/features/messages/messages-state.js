@@ -3,6 +3,26 @@ export function mergeMessages(current = [], incoming = []) {
   return [...byId.values()].sort((a, b) => a.createdAtUnix - b.createdAtUnix);
 }
 
+function nonEmptyProfileValue(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return Object.keys(value).length ? value : null;
+  }
+  return String(value || "").trim() || null;
+}
+
+export function mergeMessageContact(current = {}, incoming = {}) {
+  const next = { ...(current || {}) };
+  for (const key of ["accountId", "displayName", "hiveHandle", "nip05"]) {
+    const value = nonEmptyProfileValue(incoming?.[key]);
+    if (value !== null) next[key] = value;
+  }
+  if (Array.isArray(incoming?.preferredRelays)) next.preferredRelays = incoming.preferredRelays;
+  if (Object.hasOwn(incoming || {}, "heroNft")) {
+    next.heroNft = nonEmptyProfileValue(incoming.heroNft);
+  }
+  return next;
+}
+
 export function conversationThreads(messages = [], contacts = {}) {
   const byPeer = new Map();
   messages.forEach((message) => {

@@ -11,8 +11,9 @@ import {
   subscribeDirectMessages,
   unwrapDirectMessage,
 } from "../src/features/messages/nostr-messages.js";
-import { conversationThreads, mergeMessages } from "../src/features/messages/messages-state.js";
+import { conversationThreads, mergeMessageContact, mergeMessages } from "../src/features/messages/messages-state.js";
 import {
+  buildNostrWellKnownDirectory,
   normalizeNostrRelays,
   taskNodeNostrAddress,
   taskNodeNostrDomain,
@@ -128,10 +129,55 @@ assert.equal(taskNodeNostrName("@Good_Alexander"), "good_alexander");
 assert.equal(taskNodeNostrName("bad handle"), "");
 assert.equal(taskNodeNostrDomain("https://TASKNODE.POSTFIAT.ORG/"), "tasknode.postfiat.org");
 assert.equal(taskNodeNostrAddress("goodalexander", "tasknode.postfiat.org"), "goodalexander@tasknode.postfiat.org");
+const directoryPubkey = "a".repeat(64);
+assert.deepEqual(
+  buildNostrWellKnownDirectory({
+    discoverable: [{ accountId: "account_bob", hiveHandle: "Bob", publicDisplayName: "Bob Builder" }],
+    rows: [{
+      account_id: "account_bob",
+      nostr_pubkey_hex: directoryPubkey,
+      preferred_relays: ["wss://nos.lol"],
+      hero_nft_image_cid: "selected-profile-cid",
+      hero_nft_image_gateway_url: "https://images.example/selected-profile-cid",
+    }],
+  }),
+  {
+    names: { bob: directoryPubkey },
+    relays: { [directoryPubkey]: ["wss://nos.lol"] },
+    profiles: {
+      [directoryPubkey]: {
+        displayName: "Bob Builder",
+        hiveHandle: "bob",
+        heroNft: {
+          imageCid: "selected-profile-cid",
+          imageGatewayUrl: "https://images.example/selected-profile-cid",
+        },
+      },
+    },
+  },
+  "the public Nostr address book should carry each member's canonical profile PFP"
+);
 
 const merged = mergeMessages([senderMessage], [senderMessage, { ...senderMessage, id: "next", createdAtUnix: senderMessage.createdAtUnix + 1 }]);
 assert.equal(merged.length, 2);
 assert.equal(conversationThreads(merged, { [bob.publicKeyHex]: { hiveHandle: "bob" } })[0].contact.hiveHandle, "bob");
+assert.deepEqual(
+  mergeMessageContact(
+    { displayName: "@bob", preferredRelays: ["wss://nos.lol"], heroNft: { imageCid: "old" } },
+    { displayName: "Bob", heroNft: { imageCid: "selected-profile-cid" } }
+  ),
+  {
+    displayName: "Bob",
+    preferredRelays: ["wss://nos.lol"],
+    heroNft: { imageCid: "selected-profile-cid" },
+  },
+  "directory hydration should refresh a cached contact's PFP without losing delivery metadata"
+);
+assert.equal(
+  mergeMessageContact({ heroNft: { imageCid: "stale-profile-cid" } }, { heroNft: null }).heroNft,
+  null,
+  "directory hydration should clear a stale PFP when the profile no longer has a usable public image"
+);
 
 for (const path of ["/api/messages/bootstrap", "/api/messages/identity", "/api/messages/resolve"]) {
   assert.equal(routePolicyForPath(path)?.auth, "session", `${path} must require a signed-in session`);
@@ -147,5 +193,7 @@ assert.match(shell, /<ComposerSendButton/, "chat should use the shared composer 
 const messagesView = await readFile(new URL("../src/features/messages/MessagesView.jsx", import.meta.url), "utf8");
 assert.match(messagesView, /createDirectMessageCatchUp/, "Messages should recover missed relay events without a refresh");
 assert.match(messagesView, /<ComposerSendButton ariaLabel="Send message"/, "Messages should use the shared composer send control");
+assert.match(messagesView, /<MessagesAvatar contact=\{author\}/, "each message row should identify its author with the profile avatar");
+assert.match(messagesView, /profileNftImageCandidates/, "Messages avatars should use the shared profile PFP image resolver");
 
 console.log("nostr messages smoke passed");

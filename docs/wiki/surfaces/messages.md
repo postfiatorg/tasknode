@@ -17,6 +17,8 @@ Select **New message**, enter an exact Task Node handle, and select the resolved
 
 Desktop uses a conversation list and transcript side by side. Mobile shows one pane at a time. The conversation header shows the resolved Task Node identity and NIP-05 address.
 
+Messages uses the same canonical profile picture as Profile, Hive, and Directory: the selected public profile NFT when present, otherwise the newest usable public profile NFT. Compact PFP identifiers appear in the conversation list, conversation header, member lookup result, and beside every sent or received message. Initials are used only when that member has no usable profile image. Cached contacts are refreshed from the public Task Node Nostr directory so changing a profile picture does not leave old conversations permanently stuck on an earlier image.
+
 ## Sending and Syncing
 
 Messages are NIP-17 end-to-end encrypted in the browser and published to the configured Nostr relays. Task Node does not proxy or save message bodies. A send is reported as complete only after at least one relay accepts it.

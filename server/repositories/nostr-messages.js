@@ -8,6 +8,8 @@ import {
   requireTaskHistoryGrant,
   resolveCollaborationIdentity,
 } from "./collaboration.js";
+import { getPublicProfileHeroNft } from "./profile-nfts.js";
+import { nonFixtureProfileNftSql } from "./task-projection-integrity.js";
 
 export const DEFAULT_NOSTR_RELAYS = Object.freeze([
   "wss://relay.primal.net",
@@ -65,6 +67,14 @@ function canonicalNostrIdentityForAccount(accountId = "") {
   const name = taskNodeNostrName(identity.hiveHandle);
   if (!name) return null;
   return { ...identity, nostrName: name, nip05: taskNodeNostrAddress(name) };
+}
+
+function publicProfileAvatar(nft = null) {
+  if (!nft?.imageCid && !nft?.imageGatewayUrl) return null;
+  return {
+    imageCid: safeText(nft.imageCid, 180),
+    imageGatewayUrl: safeText(nft.imageGatewayUrl, 500),
+  };
 }
 
 export async function bindNostrIdentity({
@@ -183,9 +193,10 @@ export async function getNostrIdentity({ accountId = "", viewerAccountId = "" } 
 export async function getNostrMessagingBootstrap({ accountId = "" } = {}) {
   ensureDatabase();
   const identity = canonicalNostrIdentityForAccount(accountId);
+  const heroNft = identity ? publicProfileAvatar(await getPublicProfileHeroNft({ accountId })) : null;
   return {
     ok: true,
-    identity,
+    identity: identity ? { ...identity, heroNft } : null,
     binding: await getNostrIdentity({ accountId, viewerAccountId: accountId }),
     defaultRelays: DEFAULT_NOSTR_RELAYS,
     canActivate: Boolean(identity?.nostrName && identity.discoverable && identity.walletAddress),
@@ -205,37 +216,71 @@ export async function resolveNostrMessagingIdentity({ viewerAccountId = "", inpu
   if (!nostr || nostr.visibility !== "public") {
     return { ok: false, status: 404, error: "nostr_recipient_not_active" };
   }
-  return { ok: true, identity: resolved.identity, nostr };
+  const heroNft = publicProfileAvatar(await getPublicProfileHeroNft({ accountId: resolved.identity.accountId }));
+  return { ok: true, identity: { ...resolved.identity, heroNft }, nostr };
+}
+
+export function buildNostrWellKnownDirectory({ discoverable = [], rows = [] } = {}) {
+  const byAccount = new Map(safeArray(discoverable).map((identity) => [identity.accountId, identity]));
+  const names = {};
+  const relays = {};
+  const profiles = {};
+  safeArray(rows).forEach((row) => {
+    const publicIdentity = byAccount.get(row.account_id) || {};
+    const handle = taskNodeNostrName(publicIdentity.hiveHandle);
+    if (!handle || !/^[0-9a-f]{64}$/.test(row.nostr_pubkey_hex)) return;
+    names[handle] = row.nostr_pubkey_hex;
+    relays[row.nostr_pubkey_hex] = normalizeNostrRelays(row.preferred_relays);
+    profiles[row.nostr_pubkey_hex] = {
+      displayName: safeText(publicIdentity.publicDisplayName || publicIdentity.displayName || `@${handle}`, 120),
+      hiveHandle: handle,
+      heroNft: publicProfileAvatar({
+        imageCid: row.hero_nft_image_cid,
+        imageGatewayUrl: row.hero_nft_image_gateway_url,
+      }),
+    };
+  });
+  return { names, relays, profiles };
 }
 
 export async function getNostrWellKnownDirectory({ name = "" } = {}) {
   ensureDatabase();
   const rawName = safeText(name, 80);
   const requestedName = taskNodeNostrName(rawName);
-  if (rawName && !requestedName) return { names: {}, relays: {} };
+  if (rawName && !requestedName) return { names: {}, relays: {}, profiles: {} };
   const discoverable = listDiscoverableAccountWalletIdentities()
     .filter((identity) => taskNodeNostrName(identity.hiveHandle))
     .filter((identity) => !requestedName || taskNodeNostrName(identity.hiveHandle) === requestedName);
-  if (!discoverable.length) return { names: {}, relays: {} };
+  if (!discoverable.length) return { names: {}, relays: {}, profiles: {} };
   const byAccount = new Map(discoverable.map((identity) => [identity.accountId, identity]));
   const result = await query(
-    `SELECT account_id, nostr_pubkey_hex, preferred_relays
-       FROM account_nostr_identities
-      WHERE account_id = ANY($1::text[])
-        AND status = 'active'
-        AND visibility = 'public'
-        AND expires_at > now()`,
+    `SELECT nostr_identity.account_id, nostr_identity.nostr_pubkey_hex, nostr_identity.preferred_relays,
+            COALESCE(hero_nft.image_cid, '') AS hero_nft_image_cid,
+            COALESCE(hero_nft.image_gateway_url, '') AS hero_nft_image_gateway_url
+       FROM account_nostr_identities nostr_identity
+       LEFT JOIN LATERAL (
+         SELECT nft.image_cid, nft.image_gateway_url
+           FROM profile_nfts nft
+          WHERE nft.account_id = nostr_identity.account_id
+            AND lower(nft.status) IN ('minted', 'prepared', 'generated')
+            AND ${nonFixtureProfileNftSql("nft")}
+            AND (
+              COALESCE(nft.image_gateway_url, '') <> ''
+              OR COALESCE(nft.image_cid, '') <> ''
+            )
+          ORDER BY nft.selected DESC,
+                   nft.created_at DESC NULLS LAST,
+                   nft.updated_at DESC NULLS LAST,
+                   nft.id DESC
+          LIMIT 1
+       ) hero_nft ON true
+      WHERE nostr_identity.account_id = ANY($1::text[])
+        AND nostr_identity.status = 'active'
+        AND nostr_identity.visibility = 'public'
+        AND nostr_identity.expires_at > now()`,
     [[...byAccount.keys()]]
   );
-  const names = {};
-  const relays = {};
-  result.rows.forEach((row) => {
-    const handle = taskNodeNostrName(byAccount.get(row.account_id)?.hiveHandle);
-    if (!handle || !/^[0-9a-f]{64}$/.test(row.nostr_pubkey_hex)) return;
-    names[handle] = row.nostr_pubkey_hex;
-    relays[row.nostr_pubkey_hex] = normalizeNostrRelays(row.preferred_relays);
-  });
-  return { names, relays };
+  return buildNostrWellKnownDirectory({ discoverable, rows: result.rows });
 }
 
 export async function revokeNostrIdentity({ accountId = "", proof = {} } = {}) {
