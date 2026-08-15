@@ -54,6 +54,27 @@ function sensitiveSourceTokens(source = "") {
   );
 }
 
+function escapedPattern(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function sanitizeProfileNftSummaryLiterals(summary = {}, source = "") {
+  const tokens = [...sensitiveSourceTokens(source)].sort((left, right) => right.length - left.length);
+  const sanitize = (value = "") => {
+    let next = String(value || "");
+    for (const token of tokens) {
+      const pattern = new RegExp(`(^|[^a-z0-9_-])${escapedPattern(token)}(?=$|[^a-z0-9_-])`, "gi");
+      next = next.replace(pattern, (_match, prefix) => `${prefix}private reference`);
+    }
+    return next.replace(/\s+/g, " ").trim();
+  };
+  return {
+    ...summary,
+    profile_summary: sanitize(summary.profile_summary),
+    context_summary: sanitize(summary.context_summary),
+  };
+}
+
 export function validateProfileNftSummary(summary = {}, source = "") {
   if (
     !summary.approved ||
@@ -167,7 +188,10 @@ export async function createPrivateProfileNftSummary({
   let reviewed = await review({ candidateSummary: candidate });
   let summary;
   try {
-    summary = validateProfileNftSummary(parse(reviewed.text), source);
+    summary = validateProfileNftSummary(
+      sanitizeProfileNftSummaryLiterals(parse(reviewed.text), source),
+      source
+    );
   } catch (error) {
     // One bounded repair pass lets the reviewer remove an identifier or an
     // accidental imperative instead of turning a safe reroll into a dead end.
@@ -176,7 +200,10 @@ export async function createPrivateProfileNftSummary({
       candidateSummary: parse(reviewed.text),
       validationFailure: String(error?.message || "profile_nft_privacy_validation_failed"),
     });
-    summary = validateProfileNftSummary(parse(reviewed.text), source);
+    summary = validateProfileNftSummary(
+      sanitizeProfileNftSummaryLiterals(parse(reviewed.text), source),
+      source
+    );
   }
   const rendered = renderSanitizedProfileNftPrompt(summary, env);
   return {

@@ -171,11 +171,13 @@ central-persona composition.
 The deterministic overlap guard distinguishes opaque identifiers (account,
 wallet, transaction, and date-like tokens containing digits or separators) from
 ordinary long words that a useful summary may legitimately preserve. If a
-reviewed summary still fails privacy validation, the gateway gives the reviewer
-one bounded repair pass and validates the repaired result again. A final privacy
-failure does not create or replace a draft, and Profile Studio receives a plain
-retry message instead of an internal privacy-rule code; the previously generated
-draft remains available to mint.
+reviewed summary repeats one of those exact opaque identifiers, the gateway
+deterministically replaces it with a generic private-reference phrase before
+validation. If the sanitized result still fails another privacy rule, the
+gateway gives the reviewer one bounded repair pass, sanitizes it again, and
+validates the repaired result. A final privacy failure does not create or replace
+a draft, and Profile Studio receives a plain retry message instead of an internal
+privacy-rule code; the previously generated draft remains available to mint.
 
 The rendered-image review distinguishes an identifiable real person from the
 fictional illustrated avatar required by the canonical prompt. A visible or
