@@ -198,6 +198,20 @@ assert.equal(normalizeChatPersona("app-clarity"), "");
 assert.equal(normalizeChatPersona("app-help"), "");
 assert.equal(chatPersonaDefinition("kravis").name, "Kravis");
 assert.ok(CHAT_PERSONAS.some((persona) => persona.id === "kravis"));
+const validatorDefinition = chatPersonaDefinition("validator");
+assert.equal(validatorDefinition.tagline, "Operate and troubleshoot Post Fiat validators.");
+assert.equal(validatorDefinition.inputPlaceholder, "What validator do you need to run or troubleshoot?");
+const validatorInstructions = taskNodeInstructions({
+  message: "Help me bring a validator online",
+  persona: "validator",
+  contextDocument,
+  memoryContext,
+  taskContext,
+});
+assert.match(validatorInstructions, /validator infrastructure/);
+assert.match(validatorInstructions, /postfiatd operations/);
+assert.match(validatorInstructions, /You are a technical operator/);
+assert.doesNotMatch(validatorInstructions, /Stress-test an idea, claim, or plan/);
 const invalid = await chatEstimateStart({ message: "Hello", mode: "Instant", persona: "not-real" });
 assert.equal(invalid.status, 400);
 assert.equal(invalid.body.error, "unknown_chat_persona");
@@ -234,6 +248,7 @@ assert.equal(iChingWithoutProfile.body.error, "i_ching_profile_required");
 assert.equal(iChingWithoutProfile.body.setupPath, "/api/i-ching/profile");
 
 const frontendSource = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+const chatDocsSource = await readFile(new URL("../docs/wiki/surfaces/chat.md", import.meta.url), "utf8");
 assert.match(frontendSource, /label="Personality"/);
 assert.match(frontendSource, /persona: isContextEdit \? DEFAULT_CHAT_PERSONA : selectedPersona/);
 assert.match(frontendSource, /CHAT_PERSONAS\.map/);
@@ -242,5 +257,7 @@ assert.match(frontendSource, /mode: isContextEdit \|\| activeModality \? "Thinki
 assert.match(frontendSource, /Ask a specific question before casting the I Ching/);
 assert.match(frontendSource, /IChingSetupDialog/);
 assert.match(frontendSource, /kravis: Landmark/);
+assert.match(chatDocsSource, /Validator \| Operate and troubleshoot Post Fiat validators/);
+assert.doesNotMatch(chatDocsSource, /Validator \| Stress-test an idea, claim, or plan/);
 
 console.log("chat persona routing smoke ok");

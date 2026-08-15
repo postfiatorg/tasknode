@@ -84,7 +84,7 @@ Personality does not select a model. Any personality can run with Instant or Thi
 | I Ching | Combine a fresh three-coin cast with the user's private Bā Zì and Zǐ Wēi profile | GLM 5.2 |
 | ODV | Apply the canonical ODV Lindy alignment prompt | GLM 5.2 |
 | Sprint Planner | Turn current context into a focused execution sprint | GLM 5.2 |
-| Validator | Stress-test an idea, claim, or plan | GLM 5.2 |
+| Validator | Operate and troubleshoot Post Fiat validators, including `postfiatd`, UNLs, consensus, deployment, monitoring, and reliability | GLM 5.2 |
 | Post Fiat Q&A | Explain Post Fiat from the canonical L1V2 whitepaper and question-relevant snippets from the complete Post Fiat blog archive | GLM 5.2 |
 
 Modalities are explicit user selections, not semantic guesses from ordinary chat text. They share the validated chat-persona transport field for backward-compatible persistence and auditing, while `chatPersonaIsModality` supplies the separate UI/model behavior. Conversation history remains provider message history even when a custom prompt is installed; custom prompts no longer turn a continuing thread into an isolated one-shot call.

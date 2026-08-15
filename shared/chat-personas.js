@@ -64,8 +64,8 @@ export const CHAT_MODALITIES = Object.freeze([
   Object.freeze({
     id: "validator",
     name: "Validator",
-    tagline: "Stress-test an idea, claim, or plan.",
-    inputPlaceholder: "What should be validated?",
+    tagline: "Operate and troubleshoot Post Fiat validators.",
+    inputPlaceholder: "What validator do you need to run or troubleshoot?",
   }),
   Object.freeze({
     id: "post-fiat-qa",
