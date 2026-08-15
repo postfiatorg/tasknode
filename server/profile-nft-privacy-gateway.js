@@ -44,8 +44,12 @@ function parse(text = "") {
 
 function sensitiveSourceTokens(source = "") {
   return new Set(
-    (String(source).toLowerCase().match(/[a-z0-9][a-z0-9_-]{7,}/g) || []).filter(
-      (token) => /\d/.test(token) || token.length >= 16
+    (String(source).toLowerCase().match(/[a-z0-9][a-z0-9_-]{7,}/g) || []).filter((token) =>
+      // Literal overlap is a last-line identifier guard. Long normal words are
+      // expected to survive a useful abstraction and are not private IDs.
+      // Opaque tokens, on the other hand, nearly always contain digits or
+      // separators (account IDs, wallet fragments, dates, transaction refs).
+      /\d|[_-]/.test(token)
     )
   );
 }
@@ -135,26 +139,45 @@ export async function createPrivateProfileNftSummary({
     },
   });
   const candidate = parse(first.text);
-  const second = await ambientChatCompletion({
-    env,
-    fetchImpl,
-    capability: "strict_json",
-    timeoutMs: 120_000,
-    body: {
-      model: env.PROFILE_NFT_PRIVACY_MODEL || AMBIENT_MODELS.structured,
-      messages: [
-        { role: "system", content: reviewPrompt },
-        {
-          role: "user",
-          content: JSON.stringify({ private_source: sourcePacket, candidate_summary: candidate }),
-        },
-      ],
-      response_format: schema(),
-      reasoning: { effort: "high", exclude: true },
-      temperature: 0,
-    },
-  });
-  const summary = validateProfileNftSummary(parse(second.text), source);
+  const review = async ({ candidateSummary, validationFailure = "" } = {}) =>
+    ambientChatCompletion({
+      env,
+      fetchImpl,
+      capability: "strict_json",
+      timeoutMs: 120_000,
+      body: {
+        model: env.PROFILE_NFT_PRIVACY_MODEL || AMBIENT_MODELS.structured,
+        messages: [
+          { role: "system", content: reviewPrompt },
+          {
+            role: "user",
+            content: JSON.stringify({
+              private_source: sourcePacket,
+              candidate_summary: candidateSummary,
+              ...(validationFailure ? { validation_failure: validationFailure } : {}),
+            }),
+          },
+        ],
+        response_format: schema(),
+        reasoning: { effort: "high", exclude: true },
+        temperature: 0,
+      },
+    });
+
+  let reviewed = await review({ candidateSummary: candidate });
+  let summary;
+  try {
+    summary = validateProfileNftSummary(parse(reviewed.text), source);
+  } catch (error) {
+    // One bounded repair pass lets the reviewer remove an identifier or an
+    // accidental imperative instead of turning a safe reroll into a dead end.
+    // The same deterministic validator still owns the final decision.
+    reviewed = await review({
+      candidateSummary: parse(reviewed.text),
+      validationFailure: String(error?.message || "profile_nft_privacy_validation_failed"),
+    });
+    summary = validateProfileNftSummary(parse(reviewed.text), source);
+  }
   const rendered = renderSanitizedProfileNftPrompt(summary, env);
   return {
     ...rendered,
@@ -162,7 +185,7 @@ export async function createPrivateProfileNftSummary({
     source: "tracked_profile_nft_prompt_with_private_summary",
     metadata: {
       ...rendered.metadata,
-      privacyModel: second.model,
+      privacyModel: reviewed.model,
     },
   };
 }

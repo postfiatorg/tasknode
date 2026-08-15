@@ -1,5 +1,8 @@
 import { createPrivateProfileNftSummary } from "./profile-nft-privacy-gateway.js";
-import { classifyProfileNftGenerationFailure } from "./profile-nft-failures.js";
+import {
+  classifyProfileNftGenerationFailure,
+  publicProfileNftGenerationMessage,
+} from "./profile-nft-failures.js";
 import { enqueueProfileNftRenderJob } from "./repositories/profile-nft-render-jobs.js";
 import {
   createGeneratingProfileNft,
@@ -120,10 +123,24 @@ export async function profileNftGenerateStart({
   const nftUserData =
     safeText(payload?.nftUserData, 20000) ||
     buildProfileNftUserData({ session, state, payload });
-  const rendered = await createPrivateProfileNftSummary({
-    sourcePacket: { profile: parsedProfilePacket(nftUserData), memory_and_context: contextDocument },
-    env,
-  });
+  let rendered;
+  try {
+    rendered = await createPrivateProfileNftSummary({
+      sourcePacket: { profile: parsedProfilePacket(nftUserData), memory_and_context: contextDocument },
+      env,
+    });
+  } catch (error) {
+    const failure = classifyProfileNftGenerationFailure(error);
+    return {
+      status: error?.status || 502,
+      body: {
+        ok: false,
+        error: "profile_nft_generation_failed",
+        message: publicProfileNftGenerationMessage(error),
+        failure,
+      },
+    };
+  }
 
   if (
     rendered.source === "placeholder" &&

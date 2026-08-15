@@ -4,7 +4,10 @@ function safeText(value = "", max = 500) {
 
 export function classifyProfileNftGenerationFailure(error = {}) {
   const status = Number(error?.status || error?.httpStatus || 0);
-  const rawCode = safeText(error?.code || error?.error || "", 160).toLowerCase();
+  const messageCode = /^profile_nft_[a-z0-9_]+$/i.test(String(error?.message || "").trim())
+    ? String(error.message).trim()
+    : "";
+  const rawCode = safeText(error?.code || error?.error || messageCode, 160).toLowerCase();
   const message = safeText(error?.message || error || "Profile NFT generation failed.")
     .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "[redacted_api_key]")
     .replace(/\b(api[_-]?key|access[_-]?token|auth[_-]?token|password|secret)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]");
@@ -17,4 +20,12 @@ export function classifyProfileNftGenerationFailure(error = {}) {
     /timeout|timed out|network|fetch failed|econn|enotfound|temporar/.test(text);
   const code = rawCode || (permanent ? "profile_nft_provider_permanent" : transient ? "profile_nft_provider_transient" : "profile_nft_generation_failed");
   return { code, message, retryable: !permanent };
+}
+
+export function publicProfileNftGenerationMessage(error = {}) {
+  const failure = classifyProfileNftGenerationFailure(error);
+  if (failure.code.startsWith("profile_nft_privacy_")) {
+    return "Your private context could not be safely summarized on this attempt. Nothing was generated; try again.";
+  }
+  return failure.message;
 }

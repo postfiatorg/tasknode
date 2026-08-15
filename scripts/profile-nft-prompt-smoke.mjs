@@ -6,6 +6,7 @@ import {
 } from "../server/profile-nft-privacy-gateway.js";
 import { renderProfileNftImage } from "../server/profile-nft-image-provider.js";
 import { reviewRenderedProfileNftImage } from "../server/profile-nft-image-review.js";
+import { publicProfileNftGenerationMessage } from "../server/profile-nft-failures.js";
 import {
   loadProfileNftPrompt,
   profileNftImagePromptPath,
@@ -100,6 +101,24 @@ assert.throws(
     ),
   /privacy_mechanical_leak|privacy_source_overlap/
 );
+assert.doesNotThrow(() =>
+  validateProfileNftSummary(
+    {
+      ...approvedSummary,
+      profile_summary:
+        "An interdisciplinary builder who combines market judgment with careful technical execution.",
+    },
+    JSON.stringify({ work_identity: "interdisciplinary builder" })
+  )
+);
+assert.throws(
+  () =>
+    validateProfileNftSummary(
+      { ...approvedSummary, context_summary: "The account reference is acct_oauth_9081726354." },
+      JSON.stringify({ account_id: "acct_oauth_9081726354" })
+    ),
+  /privacy_source_overlap/
+);
 assert.throws(
   () =>
     validateProfileNftSummary({
@@ -111,6 +130,37 @@ assert.throws(
 assert.throws(
   () => validateProfileNftSummary({ ...approvedSummary, context_summary: "" }),
   /privacy_summary_invalid/
+);
+
+let repairCalls = 0;
+const repaired = await createPrivateProfileNftSummary({
+  sourcePacket: { account_id: "acct_oauth_9081726354", work_identity: "interdisciplinary builder" },
+  env: { AMBIENT_API_KEY: "ambient-test" },
+  fetchImpl: async (_url, init) => {
+    repairCalls += 1;
+    const request = JSON.parse(init.body);
+    const responseSummary = repairCalls === 2
+      ? { ...approvedSummary, context_summary: "Current work references acct_oauth_9081726354." }
+      : approvedSummary;
+    if (repairCalls === 3) {
+      assert.match(JSON.stringify(request.messages), /profile_nft_privacy_source_overlap/);
+    }
+    return new Response(
+      JSON.stringify({
+        id: `ambient_repair_${repairCalls}`,
+        model: request.model,
+        choices: [{ message: { content: JSON.stringify(responseSummary) } }],
+      }),
+      { status: 200 }
+    );
+  },
+});
+assert.equal(repairCalls, 3);
+assert.match(repaired.prompt, /An experienced software builder and market researcher/);
+assert.doesNotMatch(repaired.prompt, /acct_oauth_9081726354/);
+assert.equal(
+  publicProfileNftGenerationMessage(new Error("profile_nft_privacy_source_overlap")),
+  "Your private context could not be safely summarized on this attempt. Nothing was generated; try again."
 );
 
 let openAiRequest = null;
