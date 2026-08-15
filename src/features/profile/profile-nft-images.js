@@ -21,11 +21,13 @@ export function profileNftImagePath(imageCid = "") {
   return cid ? `/api/profile/nft/image/${encodeURIComponent(cid)}` : "";
 }
 
-export function profileNftPfpPath(imageCid = "", { cssSize = 48, size = null } = {}) {
+export function profileNftPfpPath(imageCid = "", { cssSize = 48, size = null, cachedOnly = false } = {}) {
   const cid = String(imageCid || "").trim();
   if (!cid) return "";
   const thumbnailSize = size ? boundedThumbnailSize(size, 96) : profileNftAvatarSize(cssSize);
-  return `/api/profile/nft/pfp/${encodeURIComponent(cid)}?size=${thumbnailSize}`;
+  const params = new URLSearchParams({ size: String(thumbnailSize) });
+  if (cachedOnly) params.set("cachedOnly", "1");
+  return `/api/profile/nft/pfp/${encodeURIComponent(cid)}?${params.toString()}`;
 }
 
 export function profileNftImageCandidates(nft = {}, { avatarCssSize = 0 } = {}) {
@@ -42,5 +44,18 @@ export function profileNftImageCandidates(nft = {}, { avatarCssSize = 0 } = {}) 
     }
   }
   candidates.push(record.imageGatewayUrl);
+  if (record.imageCid) {
+    const encodedCid = encodeURIComponent(String(record.imageCid).trim());
+    candidates.push(
+      `https://w3s.link/ipfs/${encodedCid}`,
+      `https://nftstorage.link/ipfs/${encodedCid}`,
+      `https://gateway.pinata.cloud/ipfs/${encodedCid}`,
+      `https://dweb.link/ipfs/${encodedCid}`,
+      `https://ipfs.io/ipfs/${encodedCid}`,
+      profileNftPfpPath(record.imageCid, { size: 192, cachedOnly: true }),
+      profileNftPfpPath(record.imageCid, { size: 96, cachedOnly: true }),
+      profileNftPfpPath(record.imageCid, { size: 48, cachedOnly: true })
+    );
+  }
   return uniqueTruthy(candidates);
 }

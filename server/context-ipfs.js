@@ -3,6 +3,8 @@ import { enqueueIpfsReplicationJob } from "./repositories/ipfs-replication-jobs.
 
 const DEFAULT_GATEWAYS = [
   "https://pft-ipfs-testnet-clean.fly.dev/ipfs/",
+  "https://w3s.link/ipfs/",
+  "https://nftstorage.link/ipfs/",
   "https://gateway.pinata.cloud/ipfs/",
   "https://dweb.link/ipfs/",
   "https://ipfs.io/ipfs/",
@@ -183,6 +185,95 @@ function pinataHeaders(env) {
   };
 }
 
+function firstPartyIpfsWriteConfig(env = process.env) {
+  const apiUrl = safeText(env.IPFS_API_URL, 2000).replace(/\/$/, "");
+  const username = safeText(env.IPFS_API_USERNAME || env.IPFS_API_USER, 500);
+  const password = safeText(env.IPFS_API_PASSWORD || env.IPFS_API_PASS, 2000);
+  if (!apiUrl || !username || !password) return null;
+  return { apiUrl, username, password };
+}
+
+async function pinFirstPartyIpfsFile({ buffer, expectedCid, mimeType, safeName, keyvalues, env, fetchImpl }) {
+  const config = firstPartyIpfsWriteConfig(env);
+  if (!config) return { ok: false, skipped: true, reason: "first_party_ipfs_not_configured" };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  try {
+    const formData = new FormData();
+    formData.append("file", new Blob([buffer], { type: mimeType }), safeName);
+    const authorization = Buffer.from(`${config.username}:${config.password}`, "utf8").toString("base64");
+    const response = await fetchImpl(`${config.apiUrl}/api/v0/add?pin=true&cid-version=0&raw-leaves=false`, {
+      method: "POST",
+      headers: { authorization: `Basic ${authorization}` },
+      body: formData,
+      signal: controller.signal,
+    });
+    const text = await response.text().catch(() => "");
+    let result = {};
+    try {
+      result = JSON.parse(text.trim().split("\n").filter(Boolean).at(-1) || "{}");
+    } catch {
+      result = {};
+    }
+    if (!response.ok) {
+      const error = new Error(result?.Message || result?.message || `first_party_ipfs_http_${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    const cid = normalizeContextCid(result?.Hash || result?.Cid || "");
+    if (!cid || cid !== expectedCid) {
+      const error = new Error("first_party_ipfs_cid_mismatch");
+      error.status = 502;
+      throw error;
+    }
+
+    const replicationEndpoint = safeText(env.TASKNODE_IPFS_REPLICATION_PIN_ENDPOINT, 2000);
+    const replicationToken = safeText(env.TASKNODE_IPFS_REPLICATION_PIN_TOKEN, 4000);
+    let clusterReplication = { ok: false, skipped: true, reason: "replication_endpoint_not_configured" };
+    if (replicationEndpoint && replicationToken) {
+      const payloadClass = classifyIpfsPayloadForReplication({ keyvalues, name: safeName, source: "first_party_file" });
+      const configuredReplicas = Number(env.TASKNODE_IPFS_REPLICATION_MIN_REPLICAS || 2);
+      const minReplicas = Number.isFinite(configuredReplicas)
+        ? Math.max(1, Math.min(20, Math.trunc(configuredReplicas)))
+        : 2;
+      const replicationResponse = await fetchImpl(replicationEndpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${replicationToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          cid,
+          payloadClass,
+          source: "first_party_file",
+          sourceRef: replicationSourceRef(safeObject(keyvalues)) || safeName,
+          exactCidRequired: true,
+          minReplicas,
+        }),
+        signal: controller.signal,
+      });
+      const replicationResult = await replicationResponse.json().catch(() => ({}));
+      if (!replicationResponse.ok || replicationResult?.ok === false) {
+        const error = new Error(replicationResult?.error || replicationResult?.message || `first_party_replication_http_${replicationResponse.status}`);
+        error.status = replicationResponse.status;
+        throw error;
+      }
+      clusterReplication = { ok: true, status: safeText(replicationResult?.status, 160) };
+    }
+    return { ok: true, provider: "first_party_ipfs", cid, clusterReplication };
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error("first_party_ipfs_timeout");
+      timeoutError.status = 504;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function safeText(value = "", max = 1000) {
   return String(value ?? "").trim().slice(0, max);
 }
@@ -340,12 +431,23 @@ export async function pinIpfsFile({
     throw error;
   }
 
+  const firstParty = await pinFirstPartyIpfsFile({
+    buffer,
+    expectedCid: cid,
+    mimeType,
+    safeName,
+    keyvalues,
+    env,
+    fetchImpl,
+  });
+
   return {
     ok: true,
     provider: "pinata",
     cid,
     sha256: sha256BytesHex(buffer),
     sizeBytes: buffer.byteLength,
+    firstParty,
     replication: await enqueueReplicationAfterPin({
       cid,
       keyvalues,

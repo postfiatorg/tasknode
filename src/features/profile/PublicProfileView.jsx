@@ -13,6 +13,7 @@ import {
   User,
 } from "lucide-react";
 import { requestJson } from "../../api";
+import { profileNftImageCandidates } from "./profile-nft-images.js";
 
 const C = {
   paper2: "#FBF7EE",
@@ -58,16 +59,7 @@ const badgeIconMap = {
 };
 
 function imageCandidatesForNft(nft = {}) {
-  const candidates = [nft.imageDataUrl];
-  if (nft.imageCid) {
-    candidates.push(`/api/profile/nft/image/${encodeURIComponent(nft.imageCid)}`);
-  } else {
-    candidates.push(nft.imageGatewayUrl);
-  }
-  return candidates
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .filter((value, index, list) => list.indexOf(value) === index);
+  return profileNftImageCandidates(nft);
 }
 
 function SectionHead({ eyebrow, sub }) {

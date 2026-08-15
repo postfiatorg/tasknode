@@ -156,6 +156,8 @@ The app shell account avatar uses the same selected/newest profile NFT image as 
 
 Prompt privacy remains unchanged: the image prompt body is never returned to the browser, never shown in public metadata, and never committed to the public prompt folder.
 
+The private prompt boundary preserves visual direction without forwarding private source text. The structured abstraction selects an allowlisted central work persona, readable action, composition, setting, palette, lighting, materials, and art medium. The resulting sanitized prompt requires a single action-led figure and explicitly rejects badges, central emblems, diagrams, generic avatars, stock art, and glossy 3D-toy rendering. A per-generation non-identifying variation key prevents identical prompt inputs for otherwise similar daily awards. After rendering, the vision review receives only the sanitized prompt and generated image and must approve both privacy and art-direction adherence before the image can be pinned. Missing figures, unclear actions, generic imagery, prompt mismatch, and emblem-led compositions are retryable render failures rather than accepted NFTs.
+
 Private Profile Studio treats the active linked wallet as the primary NFT scope. When a wallet is linked, `/api/profile/nfts` returns current-wallet rows plus walletless drafts and reports `walletScoped=true`; if no wallet is linked, it falls back to account-scoped rows. Imported chain inventory from `promptSource='pftl_chain_inventory'` is gallery history, not the primary Studio draft. The `latest` field prefers the newest native Studio row in the current wallet scope when one exists so large on-chain libraries and previous-wallet rows do not hide the user's current generated, prepared, mint-error, or failed draft. If the scoped rows only contain chain-imported rows, `latest` falls back to the newest chain row.
 
 ### Profile NFT Generation Recovery
@@ -295,15 +297,22 @@ If IPFS metadata cannot be fetched, the inventory still returns the NFT token id
 Profile NFT rendering should not make the browser depend on one public gateway
 for every gallery tile. For rows with an `imageCid`, full-resolution gallery and
 hero images use the same-origin image proxy at `/api/profile/nft/image/:cid`;
-the server validates the CID, fetches through configured IPFS gateways, rejects
+the server validates the CID, races the replication gateway, w3s.link,
+nftstorage.link, Pinata, dweb.link, and ipfs.io with a 20-second per-gateway
+default timeout, cancels losing fetches, rejects
 non-image content, enforces an 8 MB default size limit, and caches successful
 image bytes in memory for 24 hours by default
-(`server/profile-nft-image-proxy.js:218`). Because CIDs are immutable,
+(`server/profile-nft-image-proxy.js`). Because CIDs are immutable,
 successful proxy responses use `Cache-Control: public, max-age=31536000,
 immutable`, an ETag derived from the CID, and conditional `If-None-Match` 304
-handling (`server/profile-nft-image-proxy.js:95`). Concurrent same-CID misses
-share one in-flight gateway fetch. Browser-side public gateway URLs are used
-only for legacy rows that do not have an `imageCid`. Gallery tiles use
+handling. Concurrent same-CID misses share one in-flight gateway fetch. If the
+same-origin proxy fails, private and public profile views try the stored gateway
+URL plus the same public fallbacks directly instead of treating one gateway
+failure as a missing NFT. As a final recovery path for older CIDs whose public
+blocks disappeared, gallery tiles try immutable 192, 96, and 48 pixel
+thumbnails already persisted on the app volume. The cached-only thumbnail route
+returns 404 instead of a warming placeholder when that exact thumbnail is
+absent. Gallery tiles use
 `loading="lazy"` and `decoding="async"` so a profile with many NFTs does not
 eagerly request every full-size IPFS image at once.
 
@@ -325,6 +334,13 @@ format (`server/profile-nft-image-proxy.js:95`,
 `server/profile-nft-image-proxy.js:400`). The source image is fetched once
 through the same gateway-race and single-flight proxy path as the full-size
 image.
+
+New binary image pins are dual-written before the NFT row is marked generated.
+Pinata returns the canonical CID, then Task Node writes the same bytes directly
+to the authenticated first-party Kubo API, rejects any CID mismatch, and calls
+the authenticated replication endpoint to queue the CID across the clean
+cluster. A missing or stale first-party API credential therefore fails the
+render job instead of accepting an NFT whose only copy cannot be retrieved.
 
 The thumbnail generation lane is intentionally bounded. A global generation
 slot count is controlled by

@@ -24,7 +24,7 @@ export async function runProfileNftRenderWorkerOnce({ env = process.env } = {}) 
     const imageBase64 = rendered?.data?.[0]?.b64_json || "";
     if (!imageBase64) throw new Error("profile_nft_image_missing");
     const mimeType = mimeTypeFor(job.outputFormat);
-    await reviewRenderedProfileNftImage({ imageBase64, mimeType, env });
+    await reviewRenderedProfileNftImage({ imageBase64, mimeType, sanitizedPrompt: job.sanitizedPrompt, env });
     const imageBuffer = Buffer.from(imageBase64, "base64");
     const pin = await pinIpfsFile({
       bytes: imageBuffer,

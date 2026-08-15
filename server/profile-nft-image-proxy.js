@@ -6,11 +6,14 @@ import { isValidContextCid, normalizeContextCid } from "./context-ipfs.js";
 
 const DEFAULT_GATEWAYS = [
   "https://pft-ipfs-testnet-clean.fly.dev/ipfs/",
+  "https://w3s.link/ipfs/",
+  "https://nftstorage.link/ipfs/",
+  "https://gateway.pinata.cloud/ipfs/",
   "https://dweb.link/ipfs/",
   "https://ipfs.io/ipfs/",
 ];
 
-const DEFAULT_TIMEOUT_MS = 5000;
+const DEFAULT_TIMEOUT_MS = 20000;
 const DEFAULT_MAX_BYTES = 8_388_608;
 const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60_000;
 const DEFAULT_CACHE_MAX_BYTES = 256 * 1024 * 1024;
@@ -166,8 +169,7 @@ async function responseBytes(response, maxBytes) {
   return bytes;
 }
 
-async function fetchFromGateway({ cid, gateway, fetchImpl, maxBytes, timeoutMs }) {
-  const controller = new AbortController();
+async function fetchFromGateway({ cid, gateway, fetchImpl, maxBytes, timeoutMs, controller = new AbortController() }) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(gatewayUrl(gateway, cid), {
@@ -256,26 +258,35 @@ export async function fetchProfileNftImage({
     const gatewayList = Array.isArray(gateways) && gateways.length ? gateways : profileNftImageGatewayList(env);
     const attempts = [];
 
-    const fetches = gatewayList.map(async (gateway) => {
-      try {
-        return await fetchFromGateway({
-          cid: normalizedCid,
-          gateway,
-          fetchImpl,
-          maxBytes: boundedMaxBytes,
-          timeoutMs: boundedTimeoutMs,
-        });
-      } catch (error) {
-        attempts.push({
-          gateway: safeText(gateway, 160),
-          error: safeText(error?.message || "profile_nft_image_gateway_failed", 120),
-        });
-        throw error;
-      }
+    const gatewayAttempts = gatewayList.map((gateway) => {
+      const controller = new AbortController();
+      const fetchPromise = (async () => {
+        try {
+          return await fetchFromGateway({
+            cid: normalizedCid,
+            gateway,
+            fetchImpl,
+            maxBytes: boundedMaxBytes,
+            timeoutMs: boundedTimeoutMs,
+            controller,
+          });
+        } catch (error) {
+          attempts.push({
+            gateway: safeText(gateway, 160),
+            error: safeText(error?.message || "profile_nft_image_gateway_failed", 120),
+          });
+          throw error;
+        }
+      })();
+      return { controller, fetchPromise };
     });
+    const fetches = gatewayAttempts.map(({ fetchPromise }) => fetchPromise);
 
     try {
       const result = await Promise.any(fetches);
+      for (const { controller } of gatewayAttempts) {
+        if (!controller.signal.aborted) controller.abort();
+      }
       const cachedValue = {
         bytes: result.bytes,
         contentType: result.contentType,
@@ -629,6 +640,17 @@ export async function handleProfileNftPfpRoute({
   const cached = await readThumbnailFromDisk({ cid: normalizedCid, size, format, env });
   if (cached) {
     sendProfileNftPfpResult({ res, result: cached, cacheHeaders });
+    return true;
+  }
+
+  if (url.searchParams.get("cachedOnly") === "1") {
+    json(res, 404, {
+      ok: false,
+      error: "profile_nft_pfp_cached_thumbnail_missing",
+      message: "No cached thumbnail exists for this CID and size.",
+      cid: normalizedCid,
+      size,
+    }, { "cache-control": "no-store, max-age=0" });
     return true;
   }
 

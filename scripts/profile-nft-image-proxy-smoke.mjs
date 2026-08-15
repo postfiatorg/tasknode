@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
+import { profileNftImageCandidates, profileNftPfpPath } from "../src/features/profile/profile-nft-images.js";
 import {
   fetchProfileNftImage,
   fetchProfileNftPfpThumbnail,
@@ -48,6 +49,14 @@ assert.equal(
   profileNftPfpProxyPath(cid, { size: 96 }),
   `/api/profile/nft/pfp/${cid}?size=96`
 );
+assert.equal(
+  profileNftPfpPath(cid, { size: 96, cachedOnly: true }),
+  `/api/profile/nft/pfp/${cid}?size=96&cachedOnly=1`
+);
+const browserCandidates = profileNftImageCandidates({ imageCid: cid, imageGatewayUrl: `https://legacy.example/ipfs/${cid}` });
+assert.ok(browserCandidates.includes(`https://w3s.link/ipfs/${cid}`));
+assert.ok(browserCandidates.includes(`https://nftstorage.link/ipfs/${cid}`));
+assert.ok(browserCandidates.includes(`/api/profile/nft/pfp/${cid}?size=48&cachedOnly=1`));
 
 const gatewayList = profileNftImageGatewayList({
   TASKNODE_PROFILE_NFT_IMAGE_GATEWAYS: "",
@@ -58,6 +67,9 @@ const gatewayList = profileNftImageGatewayList({
 });
 assert.equal(gatewayList[0], "https://fallback.example/ipfs/");
 assert.ok(gatewayList.includes("https://pft-ipfs-testnet-clean.fly.dev/ipfs/"));
+assert.ok(gatewayList.includes("https://w3s.link/ipfs/"));
+assert.ok(gatewayList.includes("https://nftstorage.link/ipfs/"));
+assert.ok(gatewayList.includes("https://gateway.pinata.cloud/ipfs/"));
 assert.ok(gatewayList.includes("https://legacy.example/ipfs/"));
 assert.ok(gatewayList.indexOf("https://pft-ipfs-testnet-clean.fly.dev/ipfs/") < gatewayList.indexOf("https://legacy.example/ipfs/"));
 
@@ -167,6 +179,31 @@ for (const result of concurrent) {
   assert.equal(Buffer.compare(result.bytes, imageBytes), 0);
 }
 
+const abortCid = "bafybeiguzrsynnzxpsm7k2oacvhfqbn6z42ysq3cr43ptwznfwivieshbabort";
+let slowGatewayAborted = false;
+const abortStartedAt = Date.now();
+const firstGatewayWins = await fetchProfileNftImage({
+  cid: abortCid,
+  gateways: ["https://winner.example/ipfs/", "https://slow.example/ipfs/"],
+  cacheTtlMs: 0,
+  fetchImpl: async (url, { signal } = {}) => {
+    if (url.startsWith("https://winner.example/")) {
+      return new Response(imageBytes, { status: 200, headers: { "content-type": "image/png" } });
+    }
+    return await new Promise((resolve, reject) => {
+      const onAbort = () => {
+        slowGatewayAborted = true;
+        reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+      };
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  },
+});
+assert.equal(firstGatewayWins.ok, true);
+assert.equal(slowGatewayAborted, true);
+assert.ok(Date.now() - abortStartedAt < 1000, "winning gateway must cancel slower in-flight gateways");
+
 const sourcePng = await sharp({
   create: {
     width: 512,
@@ -263,6 +300,21 @@ try {
 
   const warmingCacheDir = await mkdtemp(path.join(os.tmpdir(), "tasknode-pfp-warming-"));
   try {
+    const cachedOnlyMissingRes = createResponseCapture();
+    const handledCachedOnlyMissing = await handleProfileNftPfpRoute({
+      json,
+      req: { method: "GET", headers: {} },
+      res: cachedOnlyMissingRes,
+      url: new URL(`http://tasknode.local/api/profile/nft/pfp/${thumbnailCid}cachedonly?size=192&cachedOnly=1`),
+      env: { TASKNODE_PROFILE_NFT_THUMBNAIL_CACHE_DIR: warmingCacheDir },
+      fetchThumbnail: async () => {
+        throw new Error("cached-only thumbnail misses must not fetch or warm the source");
+      },
+    });
+    assert.equal(handledCachedOnlyMissing, true);
+    assert.equal(cachedOnlyMissingRes.statusCode, 404);
+    assert.equal(JSON.parse(cachedOnlyMissingRes.body.toString("utf8")).error, "profile_nft_pfp_cached_thumbnail_missing");
+
     let asyncWarmCalled = false;
     const warmingRouteRes = createResponseCapture();
     const startedAt = Date.now();
