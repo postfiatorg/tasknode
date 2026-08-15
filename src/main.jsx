@@ -77,6 +77,7 @@ import {
   UserMessage,
 } from "./features/chat/ChatMessages.jsx";
 import { IChingSetupDialog } from "./features/chat/IChingSetupDialog.jsx";
+import { ComposerSendButton } from "./features/chat/ComposerSendButton.jsx";
 import {
   appendAssistantDelta,
   chatTitleFromPrompt,
@@ -3386,9 +3387,7 @@ function ChatSurface({
                 </div>
               )}
             </div>
-            <button className="send-button" disabled={!hasPromptInput || sending} type="submit" aria-label="Send">
-              <ArrowUp size={18} strokeWidth={2.25} />
-            </button>
+            <ComposerSendButton disabled={!hasPromptInput || sending} />
           </div>
         </div>
       </form>

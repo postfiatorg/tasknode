@@ -3,8 +3,10 @@ import { readFile } from "node:fs/promises";
 import { generateTaskNodeMnemonic } from "../src/wallet-core.js";
 import {
   buildNostrDerivationMessage,
+  createDirectMessageCatchUp,
   createDirectMessageEvents,
   deriveNostrMessagingIdentity,
+  directMessageCatchUpSince,
   normalizeMessageRelays,
   subscribeDirectMessages,
   unwrapDirectMessage,
@@ -27,6 +29,7 @@ const bob = await deriveNostrMessagingIdentity({ accountId: "account_bob", walle
 assert.equal(alice.publicKeyHex, aliceAgain.publicKeyHex, "wallet derivation must be stable");
 assert.notEqual(alice.publicKeyHex, otherAccount.publicKeyHex, "identity must be account scoped");
 assert.match(buildNostrDerivationMessage({ accountId: "account_alice", walletAddress: alice.walletAddress }), /not a transaction/);
+assert.equal(directMessageCatchUpSince(172800000), -300, "catch-up must cover NIP-17's two-day timestamp privacy window plus clock skew");
 
 const wrapped = createDirectMessageEvents({
   privateKey: alice.privateKey,
@@ -83,6 +86,39 @@ liveInbox.close();
 assert.equal(liveSubscriptionClosed, true);
 assert.equal(livePoolDestroyed, true);
 
+const catchUpTimers = new Map();
+const clearedCatchUpTimers = [];
+let catchUpTimerId = 0;
+let releaseCatchUp;
+let catchUpCalls = 0;
+const catchUp = createDirectMessageCatchUp({
+  intervalMs: 1000,
+  sync() {
+    catchUpCalls += 1;
+    return new Promise((resolve) => { releaseCatchUp = resolve; });
+  },
+  setTimer(callback, delay) {
+    catchUpTimerId += 1;
+    catchUpTimers.set(catchUpTimerId, { callback, delay });
+    return catchUpTimerId;
+  },
+  clearTimer(timerId) {
+    clearedCatchUpTimers.push(timerId);
+    catchUpTimers.delete(timerId);
+  },
+});
+assert.equal(catchUpTimers.get(1)?.delay, 1000, "the inbox should schedule automatic relay catch-up");
+assert.equal(catchUp.runNow(), true, "visibility and online recovery should trigger catch-up immediately");
+assert.deepEqual(clearedCatchUpTimers, [1]);
+await Promise.resolve();
+assert.equal(catchUpCalls, 1);
+assert.equal(catchUp.runNow(), false, "catch-up passes must not overlap while a relay query is running");
+releaseCatchUp();
+await new Promise((resolve) => setImmediate(resolve));
+assert.equal(catchUpTimers.size, 1, "a completed pass should schedule the next automatic catch-up");
+catchUp.close();
+assert.equal(catchUpTimers.size, 0, "closing Messages should stop automatic catch-up");
+
 assert.throws(() => unwrapDirectMessage(tampered, bob.privateKey), /Invalid gift wrap/);
 assert.throws(() => unwrapDirectMessage(wrapped.recipientCopy, alice.privateKey), /another recipient/);
 
@@ -107,5 +143,9 @@ assert.match(routes, /TASKNODE_MESSAGES_ENABLED/);
 const shell = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
 assert.match(shell, /label="Messages"/);
 assert.match(shell, /navigateToView\("messages"\)/);
+assert.match(shell, /<ComposerSendButton/, "chat should use the shared composer send control");
+const messagesView = await readFile(new URL("../src/features/messages/MessagesView.jsx", import.meta.url), "utf8");
+assert.match(messagesView, /createDirectMessageCatchUp/, "Messages should recover missed relay events without a refresh");
+assert.match(messagesView, /<ComposerSendButton ariaLabel="Send message"/, "Messages should use the shared composer send control");
 
 console.log("nostr messages smoke passed");

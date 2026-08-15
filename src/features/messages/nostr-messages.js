@@ -15,6 +15,11 @@ export const DEFAULT_MESSAGE_RELAYS = Object.freeze([
 
 const textEncoder = new TextEncoder();
 const NIP17_GIFT_WRAP_LOOKBACK_SECONDS = (2 * 24 * 60 * 60) + (5 * 60);
+export const MESSAGE_CATCH_UP_INTERVAL_MS = 12_000;
+
+export function directMessageCatchUpSince(nowMs = Date.now()) {
+  return Math.floor(Number(nowMs) / 1000) - NIP17_GIFT_WRAP_LOOKBACK_SECONDS;
+}
 
 function bytesToHex(bytes) {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -181,7 +186,7 @@ export function subscribeDirectMessages({
     "#p": [publicKey],
     // NIP-17 intentionally randomizes gift-wrap timestamps up to two days into the past.
     // The live filter must cover that privacy window or a newly published wrap can look old to relays.
-    since: Number.isInteger(since) ? since : Math.floor(Date.now() / 1000) - NIP17_GIFT_WRAP_LOOKBACK_SECONDS,
+    since: Number.isInteger(since) ? since : directMessageCatchUpSince(),
   }, {
     maxWait: 9000,
     onevent(event) {
@@ -205,6 +210,56 @@ export function subscribeDirectMessages({
       closed = true;
       void subscription.close("Task Node Messages view closed");
       pool.destroy();
+    },
+  };
+}
+
+export function createDirectMessageCatchUp({
+  sync,
+  shouldRun = () => true,
+  intervalMs = MESSAGE_CATCH_UP_INTERVAL_MS,
+  setTimer = globalThis.setTimeout,
+  clearTimer = globalThis.clearTimeout,
+} = {}) {
+  if (typeof sync !== "function") throw new Error("A message catch-up function is required.");
+  const delay = Math.max(1_000, Number(intervalMs) || MESSAGE_CATCH_UP_INTERVAL_MS);
+  let timer = null;
+  let running = false;
+  let closed = false;
+
+  const schedule = () => {
+    if (!closed) timer = setTimer(run, delay);
+  };
+  const run = async () => {
+    timer = null;
+    if (closed) return;
+    if (running || !shouldRun()) {
+      schedule();
+      return;
+    }
+    running = true;
+    try {
+      await sync();
+    } catch {
+      // Live delivery remains active; a later catch-up pass will retry temporary relay failures.
+    } finally {
+      running = false;
+      schedule();
+    }
+  };
+
+  schedule();
+  return {
+    runNow() {
+      if (closed || running) return false;
+      if (timer !== null) clearTimer(timer);
+      void run();
+      return true;
+    },
+    close() {
+      closed = true;
+      if (timer !== null) clearTimer(timer);
+      timer = null;
     },
   };
 }

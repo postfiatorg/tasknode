@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  ArrowUp,
   ArrowUpRight,
   Check,
   ChevronDown,
@@ -13,6 +12,7 @@ import {
 } from "lucide-react";
 import { requestJson } from "../../api";
 import { transactionExplorerHref } from "../../pftl-explorer.js";
+import { ComposerSendButton } from "../chat/ComposerSendButton.jsx";
 import { profileNftImageCandidates } from "../profile/profile-nft-images.js";
 import { parseMarkdownBlocks } from "./hive-report-markdown.js";
 import "./hive.css";
@@ -783,15 +783,12 @@ function ProjectBoardComments({ onCommentSaved, project = {} }) {
               placeholder={`Comment on ${project.name || "this project"}`}
               value={draft}
             />
-            <button
-              aria-label={saving ? "Saving comment" : "Send comment"}
+            <ComposerSendButton
+              ariaLabel={saving ? "Saving comment" : "Send comment"}
               className="hive-project-comment-send"
               disabled={saving || !trimmedDraft}
               title={saving ? "Saving" : "Send comment"}
-              type="submit"
-            >
-              <ArrowUp size={18} strokeWidth={2.5} />
-            </button>
+            />
           </form>
           {status.message && (
             <p className={`hive-project-comment-status ${status.tone ? `is-${status.tone}` : ""}`}>

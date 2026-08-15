@@ -9,15 +9,17 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Send,
   ShieldCheck,
   Wifi,
 } from "lucide-react";
 import { requestJson } from "../../api";
 import { signedCollaborationProof } from "../collaboration/collaboration-client";
+import { ComposerSendButton } from "../chat/ComposerSendButton.jsx";
 import {
   DEFAULT_MESSAGE_RELAYS,
+  createDirectMessageCatchUp,
   deriveNostrMessagingIdentity,
+  directMessageCatchUpSince,
   fetchDirectMessages,
   normalizeMessageRelays,
   publishDirectMessage,
@@ -127,14 +129,14 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
     }
   }, []);
 
-  const syncMessages = useCallback(async (identity = privateIdentity, { silent = false } = {}) => {
+  const syncMessages = useCallback(async (identity = privateIdentity, { silent = false, since } = {}) => {
     if (!identity?.privateKey || !relays.length) return;
     if (!silent) {
       setBusy("sync");
       setError("");
     }
     try {
-      const incoming = await fetchDirectMessages({ privateKey: identity.privateKey, relays });
+      const incoming = await fetchDirectMessages({ privateKey: identity.privateKey, relays, since });
       if (!walletUnlockedRef.current) return;
       setMessages((current) => mergeMessages(current, incoming));
       void hydrateContactLabels(incoming);
@@ -192,9 +194,13 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
         if (walletUnlockedRef.current) setConnectionStatus(status);
       },
     });
+    const catchUp = createDirectMessageCatchUp({
+      sync: () => syncMessages(privateIdentity, { silent: true, since: directMessageCatchUpSince() }),
+      shouldRun: () => document.visibilityState === "visible" && navigator.onLine !== false,
+    });
     const backfillAfterInterruption = () => {
       if (document.visibilityState === "visible" && navigator.onLine !== false) {
-        void syncMessages(privateIdentity, { silent: true });
+        catchUp.runNow();
       }
     };
     window.addEventListener("online", backfillAfterInterruption);
@@ -202,6 +208,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
     return () => {
       window.removeEventListener("online", backfillAfterInterruption);
       document.removeEventListener("visibilitychange", backfillAfterInterruption);
+      catchUp.close();
       subscription.close();
       setConnectionStatus("idle");
     };
@@ -385,7 +392,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
         </div>
         <form className="messages-composer" onSubmit={sendMessage}>
           {error && <p className="messages-error">{error}</p>}
-          <div><textarea aria-label="Message" maxLength={8000} onChange={(event) => setComposer(event.target.value)} placeholder={`Message ${contactLabel(selectedThread.contact, selectedPeer)}`} rows={1} value={composer} /><button aria-label="Send message" disabled={!composer.trim() || busy === "send"} type="submit"><Send size={17} /></button></div>
+          <div><textarea aria-label="Message" maxLength={8000} onChange={(event) => setComposer(event.target.value)} placeholder={`Message ${contactLabel(selectedThread.contact, selectedPeer)}`} rows={1} value={composer} /><ComposerSendButton ariaLabel="Send message" disabled={!composer.trim() || busy === "send"} /></div>
           <small><LockKeyhole size={11} />End-to-end encrypted · delivered by {relays.length} Nostr relays</small>
         </form>
       </> : <div className="messages-conversation-placeholder"><div><MessageCircleMore size={27} /></div><h2>Your private line to Task Node.</h2><p>Choose a conversation or start a new one using a Task Node handle.</p><button className="messages-primary" onClick={() => setNewMessageOpen(true)} type="button"><Plus size={16} />New message</button>{error && <p className="messages-error">{error}</p>}</div>}
