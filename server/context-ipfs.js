@@ -411,13 +411,31 @@ export async function pinIpfsFile({
       keyvalues: keyvalues && typeof keyvalues === "object" ? keyvalues : {},
     })
   );
-
-  const response = await fetchImpl("https://api.pinata.cloud/pinning/pinFileToIPFS", {
-    method: "POST",
-    headers,
-    body: formData,
-  });
-  const result = await response.json().catch(() => null);
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    Math.max(30_000, Number(env.PROFILE_NFT_PINATA_TIMEOUT_MS || 120_000))
+  );
+  let response;
+  let result;
+  try {
+    response = await fetchImpl("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+      method: "POST",
+      headers,
+      body: formData,
+      signal: controller.signal,
+    });
+    result = await response.json().catch(() => null);
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error("pinata_file_timeout");
+      timeoutError.status = 504;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!response.ok) {
     const error = new Error(result?.error || result?.message || `pinata_http_${response.status}`);
     error.status = response.status;

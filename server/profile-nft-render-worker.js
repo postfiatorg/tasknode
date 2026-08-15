@@ -7,7 +7,12 @@ import { confirmDailyProfileNftAwardGenerated, failDailyProfileNftAwardForRender
 import { markProfileNftFailed, markProfileNftGenerated } from "./repositories/profile-nfts.js";
 
 let timer = null;
-let running = false;
+let activeRuns = 0;
+
+export function profileNftRenderConcurrency(env = process.env) {
+  const configured = Number(env.TASKNODE_PROFILE_NFT_RENDER_CONCURRENCY || 3);
+  return Number.isFinite(configured) ? Math.max(1, Math.min(6, Math.trunc(configured))) : 3;
+}
 
 function mimeTypeFor(format = "png") {
   const value = String(format || "png").toLowerCase();
@@ -58,16 +63,31 @@ export async function runProfileNftRenderWorkerOnce({ env = process.env } = {}) 
   }
 }
 
-export function startProfileNftRenderWorker({ env = process.env } = {}) {
+export function startProfileNftRenderWorker({
+  env = process.env,
+  runOnce = runProfileNftRenderWorkerOnce,
+} = {}) {
   if (timer || env.TASKNODE_PROFILE_NFT_RENDER_WORKER_ENABLED === "false") return;
   const intervalMs = Math.max(2000, Number(env.TASKNODE_PROFILE_NFT_RENDER_INTERVAL_MS || 5000));
-  const tick = async () => {
-    if (running) return;
-    running = true;
-    try { await runProfileNftRenderWorkerOnce({ env }); }
-    finally { running = false; }
+  const concurrency = profileNftRenderConcurrency(env);
+  const tick = () => {
+    while (activeRuns < concurrency) {
+      activeRuns += 1;
+      let processed = false;
+      Promise.resolve()
+        .then(() => runOnce({ env }))
+        .then((result) => {
+          processed = Boolean(result?.processed);
+        })
+        .catch((error) => console.error("profile nft render worker failed", error?.message || error))
+        .finally(() => {
+          activeRuns -= 1;
+          if (processed) queueMicrotask(tick);
+        });
+    }
   };
-  timer = setInterval(() => tick().catch((error) => console.error("profile nft render worker failed", error?.message || error)), intervalMs);
+  timer = setInterval(tick, intervalMs);
   timer.unref?.();
-  tick().catch((error) => console.error("profile nft render worker failed", error?.message || error));
+  tick();
+  return { concurrency };
 }

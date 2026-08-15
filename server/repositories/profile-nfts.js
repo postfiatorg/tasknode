@@ -693,7 +693,7 @@ export async function markProfileNftError({ accountId = "", nftId = "", error = 
 }
 
 const generationInterruptedError =
-  "Generation was interrupted: the server restarted while this image was generating. Retry generation.";
+  "Generation was interrupted before it reached the durable render queue. Retry generation.";
 
 function defaultGenerationStaleMinutes(env = process.env) {
   const configured = Number(env.TASKNODE_PROFILE_NFT_GENERATION_STALE_MINUTES || 10);
@@ -741,12 +741,18 @@ export async function failStaleGeneratingProfileNfts({ accountId = "", staleMinu
             error = $1,
             updated_at = now()
       WHERE id IN (
-        SELECT id
-          FROM profile_nfts
-         WHERE status = 'generating'
-           AND ($2::text = '' OR account_id = $2)
-           AND updated_at < now() - ($3::text || ' minutes')::interval
-         ORDER BY updated_at ASC
+        SELECT nft.id
+          FROM profile_nfts nft
+         WHERE nft.status = 'generating'
+           AND ($2::text = '' OR nft.account_id = $2)
+           AND nft.updated_at < now() - ($3::text || ' minutes')::interval
+           AND NOT EXISTS (
+             SELECT 1
+               FROM profile_nft_render_jobs job
+              WHERE job.profile_nft_id = nft.id
+                AND job.status IN ('queued', 'rendering')
+           )
+         ORDER BY nft.updated_at ASC
          LIMIT $4
       )
       RETURNING *`,

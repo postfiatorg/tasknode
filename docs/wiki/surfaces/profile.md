@@ -170,6 +170,15 @@ draft, and the Studio polls `/api/profile/nfts` while it is pending. The user ca
 navigate away, refresh, or close the app; on return, the latest row hydrates the
 Studio back into the same in-progress state.
 
+Queued rendering is durable and cannot be failed by the stale-generation sweep.
+The sweep only fails an old `generating` row when no queued or rendering
+`profile_nft_render_jobs` row exists. Claiming a queued job also restores the NFT
+row to `generating` and clears any obsolete failure label. The dedicated renderer
+runs up to three jobs concurrently so one image's provider or vision-review
+retries do not block the entire queue. Pinata file uploads have a bounded timeout,
+so a stalled storage request becomes retryable work instead of holding a renderer
+slot indefinitely.
+
 When generation and IPFS pinning finish, the same row is updated to
 `status='generated'` with the image CID and becomes mintable. If generation
 fails, the same row becomes `status='failed'` with an error message and remains

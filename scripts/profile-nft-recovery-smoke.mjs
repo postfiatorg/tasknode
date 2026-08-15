@@ -9,9 +9,33 @@ const {
   createGeneratingProfileNft,
   failStaleGeneratingProfileNfts,
   getProfileNft,
+  markProfileNftFailed,
 } = await import("../server/repositories/profile-nfts.js");
+const {
+  claimProfileNftRenderJob,
+  completeProfileNftRenderJob,
+  enqueueProfileNftRenderJob,
+} = await import("../server/repositories/profile-nft-render-jobs.js");
+const {
+  profileNftRenderConcurrency,
+  startProfileNftRenderWorker,
+} = await import("../server/profile-nft-render-worker.js");
 
-const interruptedPattern = /server restarted while this image was generating/;
+assert.equal(profileNftRenderConcurrency({}), 3);
+assert.equal(profileNftRenderConcurrency({ TASKNODE_PROFILE_NFT_RENDER_CONCURRENCY: "99" }), 6);
+let schedulerCalls = 0;
+const scheduler = startProfileNftRenderWorker({
+  env: { TASKNODE_PROFILE_NFT_RENDER_CONCURRENCY: "3", TASKNODE_PROFILE_NFT_RENDER_INTERVAL_MS: "60000" },
+  runOnce: async () => {
+    schedulerCalls += 1;
+    return { ok: true, processed: false };
+  },
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(scheduler.concurrency, 3);
+assert.equal(schedulerCalls, 3, "the scheduler must fill every configured renderer slot");
+
+const interruptedPattern = /interrupted before it reached the durable render queue/;
 const staleIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 const suffix = `${Date.now()}`;
 
@@ -94,12 +118,24 @@ const otherStaleDraft = await createGeneratingProfileNft({
   accountId: otherAccountId,
   title: "Stale generating draft (other account)",
 });
+const queuedDraft = await createGeneratingProfileNft({
+  accountId,
+  title: "Queued generating draft",
+});
+const queuedJob = await enqueueProfileNftRenderJob({
+  profileNftId: queuedDraft.id,
+  sanitizedPrompt: "A privacy-safe queued prompt.",
+  model: "gpt-image-2",
+  size: "1024x1024",
+  quality: "high",
+  outputFormat: "png",
+});
 
 await query(
   `UPDATE profile_nfts
       SET updated_at = now() - interval '1 hour'
     WHERE id = ANY($1::text[])`,
-  [[staleDraft.id, otherStaleDraft.id]]
+  [[staleDraft.id, otherStaleDraft.id, queuedDraft.id]]
 );
 
 const swept = await failStaleGeneratingProfileNfts({ accountId });
@@ -119,6 +155,38 @@ assert.ok(
 const freshAfter = await getProfileNft({ accountId, nftId: freshDraft.id });
 assert.equal(freshAfter.status, "generating", "a fresh in-flight generation must never be swept");
 assert.equal(freshAfter.error, "");
+
+const queuedAfterSweep = await getProfileNft({ accountId, nftId: queuedDraft.id });
+assert.equal(
+  queuedAfterSweep.status,
+  "generating",
+  "a durable queued render must never be mislabeled as interrupted"
+);
+await completeProfileNftRenderJob(queuedJob.id);
+
+const reclaimDraft = await createGeneratingProfileNft({
+  accountId,
+  title: "Failed draft with a retryable render job",
+});
+await enqueueProfileNftRenderJob({
+  profileNftId: reclaimDraft.id,
+  sanitizedPrompt: "A privacy-safe reclaim prompt.",
+  model: "gpt-image-2",
+  size: "1024x1024",
+  quality: "high",
+  outputFormat: "png",
+});
+await markProfileNftFailed({
+  accountId,
+  nftId: reclaimDraft.id,
+  error: "Incorrect stale-state label",
+});
+const claimed = await claimProfileNftRenderJob();
+assert.equal(claimed.profileNftId, reclaimDraft.id);
+const reclaimedNft = await getProfileNft({ accountId, nftId: reclaimDraft.id });
+assert.equal(reclaimedNft.status, "generating", "claiming durable work must restore generating state");
+assert.equal(reclaimedNft.error, "", "claiming durable work must clear an obsolete failure message");
+await completeProfileNftRenderJob(claimed.id);
 
 const otherAfter = await getProfileNft({ accountId: otherAccountId, nftId: otherStaleDraft.id });
 assert.equal(otherAfter.status, "generating", "account-scoped sweep must not touch other accounts");

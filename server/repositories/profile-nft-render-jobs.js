@@ -54,7 +54,15 @@ export async function claimProfileNftRenderJob({ staleMinutes = 15 } = {}) {
        WHERE job.id = candidate.id AND nft.id = job.profile_nft_id
        RETURNING job.*, nft.account_id`,
     );
-    return result.rows[0] ? normalized(result.rows[0]) : null;
+    if (!result.rows[0]) return null;
+    await client.query(
+      `UPDATE profile_nfts
+          SET status = 'generating', error = '', updated_at = now()
+        WHERE id = $1
+          AND status IN ('generating', 'failed')`,
+      [result.rows[0].profile_nft_id]
+    );
+    return normalized(result.rows[0]);
   });
 }
 
