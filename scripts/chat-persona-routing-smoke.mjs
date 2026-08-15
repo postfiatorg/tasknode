@@ -6,7 +6,7 @@ process.env.AMBIENT_API_KEY = process.env.AMBIENT_API_KEY || "ambient-test-key";
 
 const { taskNodeInstructions } = await import("../server/chat-memory-context.js");
 const { chatEstimate } = await import("../server/chat-estimate.js");
-const { ambientChatRequest, resolveChatJobsContext } = await import("../server/chat-router.js");
+const { ambientChatRequest, chatProviderTimeoutMs, resolveChatJobsContext } = await import("../server/chat-router.js");
 const { generateIChingCast } = await import("../server/i-ching-cast.js");
 const { chatEstimateStart, chatSend } = await import("../server/product-contracts.js");
 const {
@@ -27,6 +27,21 @@ const iChingProfile = {
   ziwei: { chart: { palaces: [{ name: "命宫" }] } },
   warnings: [],
 };
+
+const timeoutEnvNames = [
+  "CHAT_PROVIDER_AMBIENT_THINKING_TIMEOUT_MS",
+  "CHAT_PROVIDER_THINKING_TIMEOUT_MS",
+  "CHAT_PROVIDER_TIMEOUT_MS",
+];
+const previousTimeoutEnv = Object.fromEntries(timeoutEnvNames.map((name) => [name, process.env[name]]));
+for (const name of timeoutEnvNames) delete process.env[name];
+assert.equal(chatProviderTimeoutMs({ mode: "Thinking", provider: "ambient" }), 300_000);
+process.env.CHAT_PROVIDER_AMBIENT_THINKING_TIMEOUT_MS = "90000";
+assert.equal(chatProviderTimeoutMs({ mode: "Thinking", provider: "ambient" }), 90_000);
+for (const name of timeoutEnvNames) {
+  if (previousTimeoutEnv[name] === undefined) delete process.env[name];
+  else process.env[name] = previousTimeoutEnv[name];
+}
 
 const jobsInstructions = taskNodeInstructions({
   persona: "jobs",

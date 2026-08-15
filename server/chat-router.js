@@ -56,7 +56,7 @@ export {
 } from "./chat-provider-message-builders.js";
 
 const defaultProviderTimeoutMs = 45_000;
-const defaultThinkingProviderTimeoutMs = 120_000;
+const defaultThinkingProviderTimeoutMs = 300_000;
 export const chatModePrices = {
   Instant: {
     inputUsdPerMillion: 0.063,

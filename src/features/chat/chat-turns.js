@@ -139,6 +139,21 @@ export function appendAssistantDelta(turns, id, delta, startedAt) {
   });
 }
 
+export function updatePendingAssistantProgress(turns, id, elapsedMs, startedAt) {
+  return turns.map((turn) => {
+    if (turn.id !== id || !turn.pending) return turn;
+    return {
+      ...turn,
+      thinking: {
+        ...(turn.thinking || {}),
+        state: "running",
+        startedAt: turn.thinking?.startedAt || startedAt,
+        duration: formatElapsedSeconds(elapsedMs),
+      },
+    };
+  });
+}
+
 export function formatElapsedSeconds(ms) {
   const seconds = Math.max(1, Math.round(Number(ms || 0) / 1000));
   return `${seconds}s`;

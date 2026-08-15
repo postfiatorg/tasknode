@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { authStart, chatModes, chatSend, chatStreamStart } from "./product-contracts.js";
 import { executeChatStream, logChatProviderError } from "./chat-router.js";
+import { startChatStreamHeartbeat } from "./chat-stream-heartbeat.js";
 import { conversationIdForChatWrite, explicitConversationId } from "./chat-conversation-ids.js";
 import { fetchPftBalance } from "./pftl-balance.js";
 import { getContextDocument, saveContextDocument } from "./repositories/context.js";
@@ -677,7 +678,9 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
     writeSse(res, "meta", started.body);
 
     const controller = new AbortController();
+    const heartbeat = startChatStreamHeartbeat(res);
     res.on("close", () => {
+      heartbeat.stop();
       if (!res.writableEnded) controller.abort();
     });
 
@@ -752,6 +755,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
         });
       }
     } finally {
+      heartbeat.stop();
       if (!res.destroyed && !res.writableEnded) res.end();
     }
     return true;

@@ -133,6 +133,23 @@ await assert.rejects(
   (error) => error.code === "ambient_timeout" && error.status === 504
 );
 
+const externalAbort = new AbortController();
+const externallyAbortedStream = ambientChatCompletionStream({
+  env,
+  signal: externalAbort.signal,
+  timeoutMs: 5_000,
+  body: { messages: [{ role: "user", content: "disconnect" }] },
+  fetchImpl: async () => new Response(new ReadableStream({ start() {} }), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  }),
+});
+externalAbort.abort();
+await assert.rejects(
+  () => externallyAbortedStream,
+  (error) => error.code === "ambient_stream_aborted" && error.status === 499
+);
+
 await assert.rejects(
   () => ambientChatCompletion({
     env,

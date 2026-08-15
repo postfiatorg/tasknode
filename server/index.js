@@ -1,4 +1,5 @@
 import { installProcessHardening } from "./process-hardening.js";
+import { startChatStreamHeartbeat } from "./chat-stream-heartbeat.js";
 
 installProcessHardening();
 
@@ -904,7 +905,9 @@ async function routeApi(req, url, res) {
     writeSse(res, "meta", started.body);
 
     const controller = new AbortController();
+    const heartbeat = startChatStreamHeartbeat(res);
     res.on("close", () => {
+      heartbeat.stop();
       if (!res.writableEnded) controller.abort();
     });
 
@@ -980,6 +983,7 @@ async function routeApi(req, url, res) {
         });
       }
     } finally {
+      heartbeat.stop();
       if (!res.destroyed && !res.writableEnded) res.end();
     }
     return true;

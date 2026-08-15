@@ -45,6 +45,7 @@
     "chat-markdown-smoke": "node scripts/chat-markdown-smoke.mjs",
     "chat-spirit-prompt-smoke": "node scripts/chat-spirit-prompt-smoke.mjs",
     "chat-persona-routing-smoke": "node scripts/chat-persona-routing-smoke.mjs",
+    "chat-stream-reliability-smoke": "node scripts/chat-stream-reliability-smoke.mjs",
     "post-fiat-knowledge-smoke": "node scripts/post-fiat-knowledge-smoke.mjs",
     "post-fiat-knowledge-sync": "node scripts/sync-post-fiat-knowledge.mjs",
     "i-ching-profile-smoke": "node scripts/i-ching-profile-smoke.mjs",

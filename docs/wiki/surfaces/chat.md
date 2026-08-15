@@ -12,7 +12,7 @@ conversations without losing state.
 4. The `+` menu owns personality selection. Its `More` submenu also exposes the restored Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A modalities. Product guidance stays in the dedicated Help mode and Help screen.
 5. The user sends text and optional attachments.
 6. The server validates both enums, assembles the selected prompt/context packet, and routes the request to Ambient.
-7. The assistant response is streamed back when available.
+7. The assistant response is streamed back when available. Long Thinking and modality requests send a progress heartbeat every 15 seconds so proxies do not treat a reasoning-only interval as an idle connection; the pending turn shows elapsed time until visible model text arrives.
 8. Signed-in billable usage is billed to the user-facing balance, while background memory writes are not user-billed.
 
 ## Technical Architecture
@@ -281,6 +281,7 @@ sequenceDiagram
 ## Failure Modes
 
 - Provider failure should show an explicit error turn.
+- Thinking has a five-minute provider ceiling. A browser or proxy disconnect is classified separately from a provider failure, and the stream heartbeat keeps healthy long-running requests connected.
 - Billing failure should not silently show stale credit.
 - Attachment parsing failure should be visible before the request is sent.
 - Memory failure should not fail the chat.

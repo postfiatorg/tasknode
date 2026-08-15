@@ -92,6 +92,7 @@ import {
   replaceTurnById,
   titleFromTurns,
   transcriptTextFromThread,
+  updatePendingAssistantProgress,
 } from "./features/chat/chat-turns";
 import { plainTextFromBlocks } from "./features/chat/chat-markdown";
 import { chatSurfaceDisplayState, loginProviderDisplayState } from "./features/chat/chat-ui-state.js";
@@ -2773,6 +2774,10 @@ function ChatSurface({
               if (event === "delta" && body?.delta) {
                 setTurns((current) =>
                   appendAssistantDelta(current, pendingId, body.delta, startedAt)
+                );
+              } else if (event === "progress" && Number.isFinite(Number(body?.elapsedMs))) {
+                setTurns((current) =>
+                  updatePendingAssistantProgress(current, pendingId, Number(body.elapsedMs), startedAt)
                 );
               }
             }

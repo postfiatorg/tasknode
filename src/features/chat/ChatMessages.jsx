@@ -489,7 +489,9 @@ function shortMetaId(value = "") {
 }
 
 function thinkingLabel(thinking) {
-  if (thinking?.state === "running") return "Thinking";
+  if (thinking?.state === "running") {
+    return thinking?.duration ? `Thinking for ${thinking.duration}` : "Thinking";
+  }
   if (thinking?.state === "stopped") return "Stopped thinking";
   return `Thought for ${thinking?.duration || "1s"}`;
 }

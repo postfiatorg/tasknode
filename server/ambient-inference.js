@@ -250,6 +250,9 @@ async function ambientFetch(path, {
     if (linked.timedOut()) {
       throw Object.assign(new Error("ambient_timeout"), { status: 504, code: "ambient_timeout" });
     }
+    if (signal?.aborted) {
+      throw Object.assign(new Error("ambient_stream_aborted"), { status: 499, code: "ambient_stream_aborted" });
+    }
     throw error;
   } finally {
     linked.clear();
@@ -477,6 +480,9 @@ export async function ambientChatCompletionStream({
   } catch (error) {
     if (linked.timedOut()) {
       throw Object.assign(new Error("ambient_timeout"), { status: 504, code: "ambient_timeout" });
+    }
+    if (signal?.aborted) {
+      throw Object.assign(new Error("ambient_stream_aborted"), { status: 499, code: "ambient_stream_aborted" });
     }
     throw error;
   } finally {
