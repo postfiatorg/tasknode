@@ -8,6 +8,7 @@ import directory from "../../../docs/wiki/surfaces/directory.md?raw";
 import docs from "../../../docs/wiki/surfaces/docs.md?raw";
 import hive from "../../../docs/wiki/surfaces/hive.md?raw";
 import memory from "../../../docs/wiki/surfaces/memory.md?raw";
+import messages from "../../../docs/wiki/surfaces/messages.md?raw";
 import profile from "../../../docs/wiki/surfaces/profile.md?raw";
 import refineContext from "../../../docs/wiki/surfaces/refine-context.md?raw";
 import search from "../../../docs/wiki/surfaces/search.md?raw";
@@ -768,6 +769,7 @@ export const DOC_GROUPS = [
       { slug: "tasks", title: "Tasks", summary: "Portable task lifecycle state.", markdown: tasks },
       { slug: "docs", title: "Docs", summary: "Wallet-encrypted collaborative documents backed by embedded PFDocs.", markdown: docs },
       { slug: "team", title: "Team", summary: "Directional teammate task-history grants and read-only task detail popouts.", markdown: team },
+      { slug: "messages", title: "Messages", summary: "Wallet-bound private Nostr messaging addressed by Task Node handle.", markdown: messages },
       { slug: "hive", title: "Hive", summary: "Network project routing, reward proof visibility, and operator coordination.", markdown: hive },
       { slug: "directory", title: "Directory", summary: "Public discoverable operator leaderboard.", markdown: directory },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, and custody.", markdown: wallet },

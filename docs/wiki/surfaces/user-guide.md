@@ -76,6 +76,10 @@ Document chat uses the authenticated Task Node handle or linked wallet identity.
 
 Team lives under More. `Collaborator` grants task-history visibility in both directions. `Manager` and `Direct Report` create one-way visibility from report to manager. The cards state both directions explicitly. `View tasks` opens a read-only history, and selecting a row opens a task-detail side panel on desktop or bottom sheet on mobile. Team access never permits acting on another person's task and never grants document access.
 
+### Messages Screen
+
+Messages lives under More. On first use, unlock the linked wallet and explicitly activate the Task Node handle as a Nostr identity. Enter another user's exact Task Node handle to start an end-to-end encrypted conversation. Task Node does not store message bodies or the Nostr private key; the browser decrypts NIP-17 gift wraps fetched from the configured relays. A Messages identity grants no Team, Docs, task, wallet, Context, or Memory permission.
+
 ### Wallet Screen
 
 Wallet is the PFT identity, signing, custody, transaction, top-up, and local vault surface. It shows the linked PFT address, PFT balance, transaction feed, local seed vault state, top-up credit, initiation gift status, send controls, and seed backup controls.

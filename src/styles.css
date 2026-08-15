@@ -913,6 +913,14 @@ button {
   .app-shell.view-docs .topbar {
     display: none;
   }
+
+  .app-shell.view-messages .topbar {
+    display: none;
+  }
+}
+
+.app-shell.view-messages .workspace {
+  overflow: hidden;
 }
 
 h1 {

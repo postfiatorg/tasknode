@@ -94,6 +94,10 @@ export function docsIdentityForAccount(accountId = "") {
   return identityDocument(accountId);
 }
 
+export async function auditCollaborationEvent(args = {}) {
+  return audit(args);
+}
+
 async function audit({
   accountId,
   eventType,
@@ -186,7 +190,7 @@ export async function createCollaborationChallenge({
   };
 }
 
-async function consumeCollaborationProof({
+export async function consumeCollaborationProof({
   client,
   accountId = "",
   action = "",
@@ -1172,124 +1176,4 @@ export async function teammateWalletAddress(accountId = "") {
     [accountId]
   );
   return safeText(result.rows[0]?.wallet_address, 120) || linkedWalletForAccount(accountId)?.address || "";
-}
-
-export async function bindNostrIdentity({
-  accountId = "",
-  nostrPubkeyHex = "",
-  npub = "",
-  nip05 = "",
-  preferredRelays = [],
-  visibility = "teammates",
-  proof = {},
-} = {}) {
-  ensureDatabase();
-  const pubkey = safeText(nostrPubkeyHex, 64).toLowerCase();
-  const normalizedRelays = safeArray(preferredRelays)
-    .map((relay) => safeText(relay, 500))
-    .filter((relay) => /^wss:\/\//i.test(relay))
-    .slice(0, 5);
-  if (!/^[0-9a-f]{64}$/.test(pubkey) || !safeText(npub, 120).startsWith("npub1")) {
-    return { ok: false, status: 400, error: "nostr_identity_invalid" };
-  }
-  const normalizedVisibility = ["private", "teammates", "public"].includes(visibility) ? visibility : "teammates";
-  const payload = { nostrPubkeyHex: pubkey, npub, nip05, preferredRelays: normalizedRelays, visibility: normalizedVisibility };
-  return transaction(async (client) => {
-    const verified = await consumeCollaborationProof({
-      client,
-      accountId,
-      action: "nostr_bind",
-      resourceId: pubkey,
-      payload,
-      proof,
-    });
-    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60_000);
-    const walletProof = {
-      payload,
-      signature: verified.signature,
-      publicKey: verified.publicKey,
-      walletAddress: verified.walletAddress,
-      signatureHash: verified.signatureHash,
-    };
-    await client.query(
-      `INSERT INTO account_nostr_identities (
-         account_id, nostr_pubkey_hex, npub, nip05, preferred_relays,
-         source_wallet_address, wallet_proof, expires_at, visibility
-       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9)
-       ON CONFLICT (account_id) DO UPDATE SET
-         nostr_pubkey_hex = EXCLUDED.nostr_pubkey_hex,
-         npub = EXCLUDED.npub,
-         nip05 = EXCLUDED.nip05,
-         preferred_relays = EXCLUDED.preferred_relays,
-         source_wallet_address = EXCLUDED.source_wallet_address,
-         wallet_proof = EXCLUDED.wallet_proof,
-         sequence = account_nostr_identities.sequence + 1,
-         expires_at = EXCLUDED.expires_at,
-         visibility = EXCLUDED.visibility,
-         status = 'active', revoked_at = NULL, updated_at = now()`,
-      [accountId, pubkey, safeText(npub, 120), safeText(nip05, 255) || null, JSON.stringify(normalizedRelays), verified.walletAddress, JSON.stringify(walletProof), expiresAt, normalizedVisibility]
-    );
-    return { ok: true, status: "active", expiresAt: expiresAt.toISOString() };
-  });
-}
-
-export async function getNostrIdentity({ accountId = "", viewerAccountId = "" } = {}) {
-  ensureDatabase();
-  const result = await query(
-    `SELECT account_id, nostr_pubkey_hex, npub, nip05, preferred_relays,
-            source_wallet_address, sequence, expires_at, visibility, status, updated_at
-     FROM account_nostr_identities WHERE account_id = $1`,
-    [accountId]
-  );
-  const row = result.rows[0];
-  if (!row || row.status !== "active" || Date.parse(row.expires_at) <= Date.now()) return null;
-  if (accountId !== viewerAccountId && row.visibility === "private") return null;
-  if (accountId !== viewerAccountId && row.visibility === "teammates") {
-    const relationship = await requireTaskHistoryGrant({ subjectAccountId: accountId, viewerAccountId });
-    const reverse = await requireTaskHistoryGrant({ subjectAccountId: viewerAccountId, viewerAccountId: accountId });
-    if (!relationship.ok && !reverse.ok) return null;
-  }
-  return {
-    accountId: row.account_id,
-    nostrPubkeyHex: row.nostr_pubkey_hex,
-    npub: row.npub,
-    nip05: row.nip05 || "",
-    preferredRelays: safeArray(row.preferred_relays),
-    sourceWalletAddress: row.source_wallet_address,
-    sequence: Number(row.sequence || 1),
-    expiresAt: toIso(row.expires_at),
-    visibility: row.visibility,
-    updatedAt: toIso(row.updated_at),
-  };
-}
-
-export async function revokeNostrIdentity({ accountId = "", proof = {} } = {}) {
-  ensureDatabase();
-  const payload = { accountId };
-  return transaction(async (client) => {
-    await consumeCollaborationProof({
-      client,
-      accountId,
-      action: "nostr_revoke",
-      resourceId: accountId,
-      payload,
-      proof,
-    });
-    const result = await client.query(
-      `UPDATE account_nostr_identities
-       SET status = 'revoked', revoked_at = now(), updated_at = now()
-       WHERE account_id = $1 AND status = 'active'
-       RETURNING account_id`,
-      [accountId]
-    );
-    if (!result.rows.length) return { ok: false, status: 404, error: "nostr_identity_not_found" };
-    await audit({
-      accountId,
-      eventType: "nostr.identity_revoked",
-      resourceType: "nostr_identity",
-      resourceId: accountId,
-      client,
-    });
-    return { ok: true, status: "revoked" };
-  });
 }

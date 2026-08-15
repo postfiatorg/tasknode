@@ -241,6 +241,13 @@ export const apiRoutePolicies = [
     auth: "session",
     rateLimit: { limit: 90, windowMs: tenMinutes, extra: "pathname" },
   },
+  {
+    id: "nostr_messages",
+    prefix: "/api/messages",
+    methods: ["GET", "POST", "DELETE"],
+    auth: "session",
+    rateLimit: { limit: 120, windowMs: tenMinutes, extra: "pathname" },
+  },
   { id: "network_task_profile", path: "/api/memory/network-task-profile", methods: ["GET", "POST"], auth: "session" },
   { id: "directory_leaderboard", path: "/api/directory/leaderboard", methods: ["GET"], auth: "optional" },
   { id: "directory_rewarded_tasks", path: "/api/directory/rewarded-tasks", methods: ["GET"], auth: "optional" },

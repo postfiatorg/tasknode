@@ -37,7 +37,7 @@ Invites, acceptance, and revocation use short-lived, single-use wallet challenge
 
 ## Nostr
 
-A user may bind a Nostr public key to the Task Node account with wallet proof. Teammates may retrieve that binding only through the collaboration boundary. Nostr can carry encrypted teammate messages, but Task Node account and wallet grants remain authoritative for task access. Revoking Nostr does not change Team permissions, and revoking Team permissions does not depend on relay delivery.
+Messaging is a separate first-class surface under **More -> Messages**. A user explicitly activates a wallet-bound Nostr identity there, and any discoverable Task Node member with an active public binding can exchange encrypted messages. A Team relationship is not required and does not create the binding. Nostr remains transport only: revoking Messages does not change Team permissions, and revoking Team permissions does not depend on relay delivery.
 
 ## Runtime
 

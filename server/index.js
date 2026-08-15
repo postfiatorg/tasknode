@@ -193,7 +193,7 @@ function securityHeaders() {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://traffic.postfiat.org https://us.posthog.com https://*.posthog.com",
+      "connect-src 'self' https://traffic.postfiat.org https://us.posthog.com https://*.posthog.com wss://relay.primal.net wss://nos.lol wss://relay.damus.io",
       `frame-src 'self'${pfdocsFrameOrigin ? ` ${pfdocsFrameOrigin}` : ""}`,
       "object-src 'none'",
       "base-uri 'self'",
@@ -266,6 +266,7 @@ function runtimeConfig() {
     collaboration: {
       docsEnabled: collaborationFlag("TASKNODE_DOCS_ENABLED"),
       teamEnabled: collaborationFlag("TASKNODE_TEAM_ENABLED"),
+      messagesEnabled: collaborationFlag("TASKNODE_MESSAGES_ENABLED"),
       pfdocsEditorEnabled: collaborationFlag("TASKNODE_PFDOCS_EDITOR_ENABLED"),
       docsOdvEnabled: collaborationFlag("TASKNODE_DOCS_ODV_ENABLED"),
       pfdocsOrigin: process.env.PFDOCS_PUBLIC_ORIGIN || process.env.VITE_PFDOCS_ORIGIN || "",

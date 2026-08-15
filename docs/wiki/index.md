@@ -23,6 +23,7 @@ For a normal user-facing explanation, start with [User Guide](#docs/user-guide).
 - Hive is the network coordination board and Hive Chat is the default conversation for contributing validated network context.
 - Docs is the wallet-encrypted collaborative document library backed by embedded PFDocs.
 - Team is the directional teammate task-history sharing surface under More.
+- Messages is the wallet-bound, NIP-17 encrypted Nostr inbox under More; Task Node handles are its address book.
 - Wallet is identity, rewards, publishing authority, and balance visibility.
 - Memory is lightweight compression of user and assistant turns so future chats can carry continuity.
 - Context Refine is the active specialized chat tool for targeted edits to the current context document. Context Rewrite is the active billed full-document rewrite pipeline that returns copyable/downloadable Markdown without replacing the current document. Motivation, Brainstorming Context, and general Rewrite are not exposed.

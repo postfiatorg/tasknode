@@ -182,7 +182,7 @@ Usage/billing:
 
 - React app shell.
 - ChatGPT-style main frame.
-- App navigation with Chat, Tasks, Hive, Docs, Wallet, Context, Directory, Profile, Memory, Team, Help, and Settings.
+- App navigation with Chat, Tasks, Hive, Docs, Wallet, Context, Directory, Profile, Memory, Messages, Team, Help, and Settings.
 - Chat response toolbar keeps only backed actions: copy response and export the
   visible transcript.
 - Email code login contract and development delivery.
@@ -213,6 +213,7 @@ Usage/billing:
   receives Jobs pgvector retrieval.
 - A first-class Docs library backed by embedded, dedicated-Fly PFDocs, with wallet-unlocked encrypted metadata/capability sharing, bidirectional title synchronization, human document chat, and opt-in Ambient GLM 5.2 `@ODV`/`@coach` assistants.
 - A Team screen under More with signed directional task-history grants, Collaborator/Manager/Direct Report roles, read-only task lists, and accessible task-detail side-panel/bottom-sheet popouts.
+- A Messages screen under More with wallet-derived Nostr identity, Task Node handle/NIP-05 resolution, NIP-17 encrypted direct messages, local decryption, and relay-backed delivery without server-side message storage.
 - Usage ledger and idempotency-keyed admin credit when configured.
 - Account-scoped Ethereum mainnet top-up addresses when `ETH_DEPOSIT_XPUB` is
   configured. The rail accepts ETH, USDC, and USDT without MetaMask signatures,

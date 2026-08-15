@@ -187,6 +187,7 @@ const MemoryView = lazy(() => import("./features/memory/MemoryView").then((modul
 const HelpView = lazy(() => import("./features/docs/DocsView").then((module) => ({ default: module.DocsView })));
 const DocsLibraryView = lazy(() => import("./features/docs-library/DocsLibraryView").then((module) => ({ default: module.DocsLibraryView })));
 const TeamView = lazy(() => import("./features/team/TeamView").then((module) => ({ default: module.TeamView })));
+const MessagesView = lazy(() => import("./features/messages/MessagesView").then((module) => ({ default: module.MessagesView })));
 const HiveView = lazy(() => import("./features/hive/HiveView").then((module) => ({ default: module.HiveView })));
 const HiveBrainView = lazy(() => import("./features/hive/HiveBrainView").then((module) => ({ default: module.HiveBrainView })));
 const ProfilePage = lazy(() => import("./features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
@@ -390,7 +391,7 @@ const SETTINGS_PAGES = [
   { key: "billing", label: "Billing", icon: CreditCard },
 ];
 
-const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "hive", "hive-brain", "directory", "profile", "memory", "docs", "team", "help"]);
+const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "hive", "hive-brain", "directory", "profile", "memory", "docs", "messages", "team", "help"]);
 const EMPTY_WALLET_VAULT_STATUS = {
   available: false,
   unlocked: false,
@@ -1505,7 +1506,7 @@ function App() {
           />
           <div className="sidebar-menu-anchor" ref={moreRef}>
             <SidebarButton
-              active={moreMenuOpen}
+              active={moreMenuOpen || ["messages", "team", "hive-brain", "memory"].includes(view)}
               icon={MoreHorizontal}
               label="More"
               onClick={() => {
@@ -1519,8 +1520,9 @@ function App() {
             />
             {moreMenuOpen && sidebarOpen && (
               <div className="sidebar-popout">
+                {runtimeConfig?.collaboration?.messagesEnabled && <ToolMenuRow icon={MessageSquare} label="Messages" onClick={() => { navigateToView("messages"); if (!signedIn) setLoginOpen(true); }} />}
                 {runtimeConfig?.collaboration?.teamEnabled && <ToolMenuRow icon={Users} label="Team" onClick={() => { navigateToView("team"); if (!signedIn) setLoginOpen(true); }} />}
-                {runtimeConfig?.collaboration?.teamEnabled && <div className="menu-divider" />}
+                {(runtimeConfig?.collaboration?.messagesEnabled || runtimeConfig?.collaboration?.teamEnabled) && <div className="menu-divider" />}
                 <ToolMenuRow icon={Wand2} label="Context Refine" onClick={openContextRefine} />
                 <ToolMenuRow icon={FileText} label="Context Rewrite" onClick={openContextRewrite} />
                 <div className="menu-divider" />
@@ -1926,6 +1928,16 @@ function App() {
             <Suspense fallback={<StatusBanner>Loading team</StatusBanner>}>
               <TeamView
                 accountId={walletAccountId}
+                onWalletUnlock={openWalletVaultControl}
+                walletSecret={walletSecretRef.current}
+              />
+            </Suspense>
+          )}
+          {view === "messages" && (
+            <Suspense fallback={<StatusBanner>Loading messages</StatusBanner>}>
+              <MessagesView
+                accountId={walletAccountId}
+                onOpenProfile={() => navigateToView("profile")}
                 onWalletUnlock={openWalletVaultControl}
                 walletSecret={walletSecretRef.current}
               />

@@ -1,18 +1,15 @@
 import {
   actOnDocumentGrant,
   actOnTeamInvite,
-  bindNostrIdentity,
   createCollaborationChallenge,
   createDocument,
   docsIdentityForAccount,
   createTeamInvite,
-  getNostrIdentity,
   listDocs,
   listTeam,
   recipientEncryptionIdentity,
   requireTaskHistoryGrant,
   resolveCollaborationIdentity,
-  revokeNostrIdentity,
   revokeTaskHistoryGrant,
   setupDocsAccount,
   shareDocument,
@@ -21,6 +18,14 @@ import {
   updateDocument,
   updateDocumentTaskLink,
 } from "./repositories/collaboration.js";
+import {
+  bindNostrIdentity,
+  getNostrIdentity,
+  getNostrMessagingBootstrap,
+  getNostrWellKnownDirectory,
+  resolveNostrMessagingIdentity,
+  revokeNostrIdentity,
+} from "./repositories/nostr-messages.js";
 import { generateDocsAssistantResponse, generateDocsOdvResponse } from "./docs-odv.js";
 import { getTaskDetail, listTaskState } from "./repositories/tasks.js";
 
@@ -45,7 +50,7 @@ function routeResult(json, res, result) {
 function routeFailure(json, res, error) {
   const status = Number(error?.status || 500);
   const candidate = String(error?.code || error?.message || "");
-  const safeError = /^(collaboration|docs|team|nostr)_[a-z0-9_]+$/.test(candidate)
+  const safeError = /^(collaboration|docs|team|nostr|messages)_[a-z0-9_]+$/.test(candidate)
     ? candidate
     : "collaboration_request_failed";
   json(res, status, {
@@ -71,7 +76,21 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
   const pathname = url.pathname;
   const collaborationPath = pathname.startsWith("/api/collaboration/") ||
     pathname.startsWith("/api/docs") ||
-    pathname.startsWith("/api/team");
+    pathname.startsWith("/api/team") ||
+    pathname.startsWith("/api/messages");
+
+  if (pathname === "/.well-known/nostr.json") {
+    if (req.method !== "GET") return routeResult(json, res, methodError("nostr_well_known")), true;
+    if (!featureEnabled("TASKNODE_MESSAGES_ENABLED")) return routeResult(json, res, featureError("messages")), true;
+    try {
+      json(res, 200, await getNostrWellKnownDirectory({ name: url.searchParams.get("name") || "" }), {
+        "access-control-allow-origin": "*",
+      });
+    } catch (error) {
+      routeFailure(json, res, error);
+    }
+    return true;
+  }
 
   if (collaborationPath && !accountId) {
     json(res, 401, {
@@ -124,6 +143,39 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       limit: url.searchParams.get("limit") || 8,
     }));
     return true;
+  }
+
+  if (pathname.startsWith("/api/messages")) {
+    if (!featureEnabled("TASKNODE_MESSAGES_ENABLED")) {
+      routeResult(json, res, featureError("messages"));
+      return true;
+    }
+    if (pathname === "/api/messages/bootstrap") {
+      if (req.method !== "GET") return routeResult(json, res, methodError("messages_bootstrap")), true;
+      await run(json, res, () => getNostrMessagingBootstrap({ accountId }));
+      return true;
+    }
+    if (pathname === "/api/messages/identity") {
+      if (req.method === "POST") {
+        const payload = await readJson(req, 128_000);
+        await run(json, res, () => bindNostrIdentity({ accountId, ...payload }));
+        return true;
+      }
+      if (req.method === "DELETE") {
+        const payload = await readJson(req, 128_000);
+        await run(json, res, () => revokeNostrIdentity({ accountId, proof: payload.proof }));
+        return true;
+      }
+      return routeResult(json, res, methodError("messages_identity")), true;
+    }
+    if (pathname === "/api/messages/resolve") {
+      if (req.method !== "GET") return routeResult(json, res, methodError("messages_resolve")), true;
+      await run(json, res, () => resolveNostrMessagingIdentity({
+        viewerAccountId: accountId,
+        input: url.searchParams.get("q") || "",
+      }));
+      return true;
+    }
   }
 
   if (pathname.startsWith("/api/docs")) {
