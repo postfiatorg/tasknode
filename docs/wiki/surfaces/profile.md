@@ -161,9 +161,18 @@ The private prompt boundary does one job: it converts the raw profile packet and
 The summaries are short declarative descriptions, not prompt fragments. The
 privacy review rejects instructional language and generalizes dashboards,
 interfaces, charts, documents, code, terminals, financial instruments, tickers,
-logos, and brands into broad human capabilities before the canonical prompt is
-hydrated. This prevents private context or literal work-artifact lists from
-competing with the canonical prompt's central-persona composition.
+logos, and brands into non-identifying actions, capabilities, judgment style,
+working posture, tensions, and momentum before the canonical prompt is hydrated.
+It must preserve enough safe contrast to produce a specific portrait instead of
+flattening every person into generic labels. This prevents private context or
+literal work-artifact lists from competing with the canonical prompt's
+central-persona composition.
+
+The rendered-image review distinguishes an identifiable real person from the
+fictional illustrated avatar required by the canonical prompt. A visible or
+detailed fictional face is allowed; resemblance to a specific real individual
+is not. Repeated classifier labels are deduplicated before the rejection is
+logged or surfaced to the retry policy.
 
 Private Profile Studio treats the active linked wallet as the primary NFT scope. When a wallet is linked, `/api/profile/nfts` returns current-wallet rows plus walletless drafts and reports `walletScoped=true`; if no wallet is linked, it falls back to account-scoped rows. Imported chain inventory from `promptSource='pftl_chain_inventory'` is gallery history, not the primary Studio draft. The `latest` field prefers the newest native Studio row in the current wallet scope when one exists so large on-chain libraries and previous-wallet rows do not hide the user's current generated, prepared, mint-error, or failed draft. If the scoped rows only contain chain-imported rows, `latest` falls back to the newest chain row.
 

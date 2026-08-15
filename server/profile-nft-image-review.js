@@ -11,7 +11,7 @@ function imageReviewSchema() {
     properties: {
       approved: { type: "boolean" },
       privacy_violations: { type: "array", maxItems: 8, items: { type: "string", enum: [
-        "text", "numbers", "username", "logo_or_brand", "wallet_or_qr", "document_or_code", "recognizable_person", "financial_symbol", "other_sensitive_detail",
+        "text", "numbers", "username", "logo_or_brand", "wallet_or_qr", "document_or_code", "identifiable_real_person", "financial_symbol", "other_sensitive_detail",
       ] } },
       art_direction_violations: { type: "array", maxItems: 8, items: { type: "string", enum: [
         "prompt_mismatch", "no_readable_central_figure", "no_clear_action", "emblem_or_symbol_as_subject", "collage_or_diagram", "generic_or_stock", "glossy_3d_toy", "weak_profile_silhouette", "low_visual_specificity", "palette_or_style_mismatch",
@@ -26,7 +26,7 @@ export async function reviewRenderedProfileNftImage({ imageBase64, mimeType = "i
   const result = await ambientChatCompletion({ env, fetchImpl, capability: "verification_vision", timeoutMs: 120_000, body: {
     model: env.PROFILE_NFT_PRIVACY_VISION_MODEL || AMBIENT_MODELS.vision,
     messages: [
-      { role: "system", content: "Review this generated profile NFT for both privacy and art-direction compliance. Reject visible text, letters, numbers, usernames, logos, brands, wallet addresses, QR codes, readable or reconstructable documents or source code, account-specific financial details, recognizable branded financial marks, or recognizable real people. Abstract technical tools, abstract market imagery, and non-readable document-like texture are allowed when they reveal no sensitive detail. Also reject a missing central work persona, unclear action, an emblem or symbol used as the main subject, a collage or diagram, generic stock imagery, glossy 3D-toy rendering, weak avatar-size silhouette, low visual specificity, or mismatch with the sanitized render prompt. Return only the required JSON." },
+      { role: "system", content: "Review this generated profile NFT for both privacy and art-direction compliance. Reject visible text, letters, numbers, usernames, logos, brands, wallet addresses, QR codes, readable or reconstructable documents or source code, account-specific financial details, recognizable branded financial marks, or a person identifiable as a specific real individual. A fictional illustrated central avatar or persona, including one with a visible face, is explicitly allowed and is required by the art direction; do not mark a merely visible or detailed fictional face as identifiable_real_person. Abstract technical tools, abstract market imagery, and non-readable document-like texture are allowed when they reveal no sensitive detail. Also reject a missing central work persona, unclear action, an emblem or symbol used as the main subject, a collage or diagram, generic stock imagery, glossy 3D-toy rendering, weak avatar-size silhouette, low visual specificity, or mismatch with the sanitized render prompt. Return only the required JSON." },
       { role: "user", content: [
         { type: "text", text: `Sanitized render prompt:\n${String(sanitizedPrompt || "").slice(0, 8000)}\n\nInspect the image itself. Be conservative: approved is true only when both violation arrays are empty.` },
         { type: "image_url", image_url: { url: `data:${mimeType};base64,${encoded}` } },
@@ -35,8 +35,12 @@ export async function reviewRenderedProfileNftImage({ imageBase64, mimeType = "i
     response_format: imageReviewSchema(), reasoning: { effort: "high", exclude: true }, temperature: 0,
   } });
   const review = parse(result.text);
-  const privacyViolations = Array.isArray(review.privacy_violations) ? review.privacy_violations : ["review_invalid"];
-  const artDirectionViolations = Array.isArray(review.art_direction_violations) ? review.art_direction_violations : ["review_invalid"];
+  const privacyViolations = Array.isArray(review.privacy_violations)
+    ? [...new Set(review.privacy_violations)]
+    : ["review_invalid"];
+  const artDirectionViolations = Array.isArray(review.art_direction_violations)
+    ? [...new Set(review.art_direction_violations)]
+    : ["review_invalid"];
   if (!review.approved || privacyViolations.length || artDirectionViolations.length) {
     const code = privacyViolations.length ? "profile_nft_generated_image_privacy_rejected" : "profile_nft_generated_image_art_direction_rejected";
     throw Object.assign(new Error(code), {

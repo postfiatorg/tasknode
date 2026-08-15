@@ -166,6 +166,8 @@ await reviewRenderedProfileNftImage({
 });
 assert.ok(JSON.stringify(reviewRequest.messages).includes("Create one central avatar"));
 assert.ok(!JSON.stringify(reviewRequest.messages).includes("SecretProjectZephyr"));
+assert.ok(JSON.stringify(reviewRequest.messages).includes("fictional illustrated central avatar"));
+assert.ok(JSON.stringify(reviewRequest.messages).includes("identifiable_real_person"));
 
 await assert.rejects(
   reviewRenderedProfileNftImage({
