@@ -34,6 +34,8 @@ The `More` or thinking disclosure on assistant messages can show the source cont
 
 The `+` menu is where chat becomes an explicit product action.
 
+`Personality` opens Jobs, ODV, Trading Coach, and Kravis. `More` opens Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A. For product guidance, select `Help` from the model picker or open the Help screen; product help is kept in one current source rather than duplicated as an App Help modality.
+
 `Request task` turns the next message into a signed personal task request. It requires a signed-in account, linked wallet, and unlocked wallet vault because the request is published as a wallet-bound task request. The generated task appears later as a proposed task card in Tasks.
 
 `Context Refine` turns the next message into a structured edit request for the user's Context document. It does not require an unlocked wallet because it edits the account-scoped current Context draft. The model returns a proposal card in chat. The user must click `Accept & save`, reject it, or ask for another refine pass. Context Refine is also reachable from the sidebar `More` menu; that entry opens Chat with refine mode already active.

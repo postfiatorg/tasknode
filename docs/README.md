@@ -12,7 +12,7 @@ current product and architecture source of truth. Files under
 ## Read Order
 
 1. `wiki/index.md`
-   App Help wiki index and source-of-truth map.
+   Help wiki index and source-of-truth map.
 
 2. `wiki/architecture/bootup.md`
    Local setup, dev server, smoke tests, guarded Fly deploy, env/secrets, and

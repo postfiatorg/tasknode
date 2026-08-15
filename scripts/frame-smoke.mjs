@@ -103,7 +103,9 @@ async function main() {
       await capture("02c-personality-selected");
       await clickSelector('button[aria-label="Add"]');
       await clickButton("More", "document.querySelector('.plus-menu')");
-      await assertText(["Brainstorm", "Motivation", "Five Mirrors", "I Ching", "Sprint Planner", "Validator", "Post Fiat Q&A", "App Help"]);
+      await assertText(["Brainstorm", "Motivation", "Five Mirrors", "I Ching", "Sprint Planner", "Validator", "Post Fiat Q&A"]);
+      const duplicateAppHelp = await evaluate(`Array.from(document.querySelectorAll('.modality-menu .personality-menu-row')).some((row) => row.textContent?.includes('App Help'))`);
+      if (duplicateAppHelp) throw new Error("App Help must not duplicate the canonical Help mode.");
       const modalityMenuLayout = await evaluate(`(() => {
         const menu = document.querySelector('.plus-menu.has-modalities');
         const rows = Array.from(document.querySelectorAll('.modality-menu .personality-menu-row'));

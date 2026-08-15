@@ -73,12 +73,6 @@ export const CHAT_MODALITIES = Object.freeze([
     tagline: "Get clear answers about Post Fiat concepts.",
     inputPlaceholder: "What do you want to understand about Post Fiat?",
   }),
-  Object.freeze({
-    id: "app-help",
-    name: "App Help",
-    tagline: "Get practical help using Task Node.",
-    inputPlaceholder: "What are you trying to do in Task Node?",
-  }),
 ]);
 
 const chatPersonaDefinitions = Object.freeze([...CHAT_PERSONAS, ...CHAT_MODALITIES]);
@@ -96,7 +90,6 @@ export function normalizeChatPersona(value = "", { fallback = DEFAULT_CHAT_PERSO
   if (normalized === "i_ching") return "i-ching";
   if (normalized === "odv-lindy-alignment") return "odv-lindy";
   if (normalized === "post-fiat" || normalized === "post-fiat-clarity") return "post-fiat-qa";
-  if (normalized === "app-clarity") return "app-help";
   return chatPersonaIds.has(normalized) ? normalized : "";
 }
 

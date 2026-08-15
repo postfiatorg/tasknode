@@ -14,7 +14,6 @@ const promptSources = Object.freeze({
   "sprint_planner.md": "prompts/modules/sprint_planner.md",
   "validator.md": "prompts/modules/validator.md",
   "post_fiat_clarity.md": "prompts/modules/post_fiat_clarity.md",
-  "app_clarity.md": "prompts/modules/app_clarity.md",
 });
 
 await mkdir(destinationRoot, { recursive: true });

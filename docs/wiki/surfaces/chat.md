@@ -9,7 +9,7 @@ conversations without losing state.
 1. The user opens a new or recent chat.
 2. Signed-out users start in Help mode. Help is the only enabled signed-out chat mode.
 3. Signed-in users select Instant, Thinking, or Help independently from the Jobs, ODV, Trading Coach, or Kravis personality.
-4. The `+` menu owns personality selection. Its `More` submenu also exposes the restored Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, Post Fiat Q&A, and App Help modalities.
+4. The `+` menu owns personality selection. Its `More` submenu also exposes the restored Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A modalities. Product guidance stays in the dedicated Help mode and Help screen.
 5. The user sends text and optional attachments.
 6. The server validates both enums, assembles the selected prompt/context packet, and routes the request to Ambient.
 7. The assistant response is streamed back when available.
@@ -86,7 +86,6 @@ Personality does not select a model. Any personality can run with Instant or Thi
 | Sprint Planner | Turn current context into a focused execution sprint | GLM 5.2 |
 | Validator | Stress-test an idea, claim, or plan | GLM 5.2 |
 | Post Fiat Q&A | Explain Post Fiat from the canonical L1V2 whitepaper and question-relevant snippets from the complete Post Fiat blog archive | GLM 5.2 |
-| App Help | Give practical Task Node usage guidance | GLM 5.2 |
 
 Modalities are explicit user selections, not semantic guesses from ordinary chat text. They share the validated chat-persona transport field for backward-compatible persistence and auditing, while `chatPersonaIsModality` supplies the separate UI/model behavior. Conversation history remains provider message history even when a custom prompt is installed; custom prompts no longer turn a continuing thread into an isolated one-shot call.
 

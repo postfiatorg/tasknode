@@ -215,7 +215,6 @@ const CHAT_PERSONA_ICONS = Object.freeze({
   "sprint-planner": ListTodo,
   validator: Shield,
   "post-fiat-qa": Network,
-  "app-help": LifeBuoy,
 });
 const TASK_REQUEST_CANONICAL_TEXT =
   "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.";

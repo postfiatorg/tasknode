@@ -105,7 +105,6 @@ assert.deepEqual(
     "sprint-planner",
     "validator",
     "post-fiat-qa",
-    "app-help",
   ]
 );
 for (const modality of CHAT_MODALITIES) {
@@ -180,6 +179,8 @@ assert.equal(normalizeChatPersona("brainstorm"), "brainstorming");
 assert.equal(normalizeChatPersona("five_mirrors"), "five-mirrors");
 assert.equal(normalizeChatPersona("i_ching"), "i-ching");
 assert.equal(normalizeChatPersona("post-fiat-clarity"), "post-fiat-qa");
+assert.equal(normalizeChatPersona("app-clarity"), "");
+assert.equal(normalizeChatPersona("app-help"), "");
 assert.equal(chatPersonaDefinition("kravis").name, "Kravis");
 assert.ok(CHAT_PERSONAS.some((persona) => persona.id === "kravis"));
 const invalid = await chatEstimateStart({ message: "Hello", mode: "Instant", persona: "not-real" });

@@ -83,10 +83,6 @@ const promptDefinitions = Object.freeze({
     path: "chat_modules/post_fiat_clarity.md",
     prompt: promptSections("chat_modules/post_fiat_clarity.md"),
   }),
-  "app-help": Object.freeze({
-    path: "chat_modules/app_clarity.md",
-    prompt: promptSections("chat_modules/app_clarity.md"),
-  }),
 });
 
 function personaContext({ contextDocumentBlock = "", memoryBlock = "", taskBlock = "" } = {}) {
