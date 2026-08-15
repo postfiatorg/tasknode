@@ -21,6 +21,7 @@ import {
   fetchDirectMessages,
   normalizeMessageRelays,
   publishDirectMessage,
+  subscribeDirectMessages,
 } from "./nostr-messages";
 import { compactPublicKey, conversationThreads, formatMessageTime, mergeMessages } from "./messages-state";
 import "./messages.css";
@@ -76,7 +77,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
   const [composer, setComposer] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [lastSynced, setLastSynced] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState("idle");
   const scrollRef = useRef(null);
   const walletUnlockedRef = useRef(Boolean(walletSecret?.mnemonic));
 
@@ -104,42 +105,52 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
     ...(bootstrap?.defaultRelays || DEFAULT_MESSAGE_RELAYS),
   ]), [bootstrap]);
 
-  const syncMessages = useCallback(async (identity = privateIdentity) => {
+  const hydrateContactLabels = useCallback(async (incoming) => {
+    if (!incoming.length) return;
+    try {
+      const directoryResponse = await fetch("/.well-known/nostr.json", { cache: "no-store" });
+      if (!directoryResponse.ok) return;
+      const directory = await directoryResponse.json();
+      const namesByPubkey = Object.fromEntries(Object.entries(directory.names || {}).map(([name, pubkey]) => [pubkey, name]));
+      setContacts((current) => {
+        const next = { ...current };
+        incoming.forEach((message) => {
+          const handle = namesByPubkey[message.peerPublicKey];
+          if (handle && !next[message.peerPublicKey]) {
+            next[message.peerPublicKey] = { hiveHandle: handle, displayName: `@${handle}` };
+          }
+        });
+        return next;
+      });
+    } catch {
+      // The encrypted message can still render by public key if the handle directory is temporarily unavailable.
+    }
+  }, []);
+
+  const syncMessages = useCallback(async (identity = privateIdentity, { silent = false } = {}) => {
     if (!identity?.privateKey || !relays.length) return;
-    setBusy("sync");
-    setError("");
+    if (!silent) {
+      setBusy("sync");
+      setError("");
+    }
     try {
       const incoming = await fetchDirectMessages({ privateKey: identity.privateKey, relays });
       if (!walletUnlockedRef.current) return;
       setMessages((current) => mergeMessages(current, incoming));
-      setLastSynced(new Date().toISOString());
-      const directoryResponse = await fetch("/.well-known/nostr.json", { cache: "no-store" });
-      if (directoryResponse.ok) {
-        const directory = await directoryResponse.json();
-        const namesByPubkey = Object.fromEntries(Object.entries(directory.names || {}).map(([name, pubkey]) => [pubkey, name]));
-        setContacts((current) => {
-          const next = { ...current };
-          incoming.forEach((message) => {
-            const handle = namesByPubkey[message.peerPublicKey];
-            if (handle && !next[message.peerPublicKey]) {
-              next[message.peerPublicKey] = { hiveHandle: handle, displayName: `@${handle}` };
-            }
-          });
-          return next;
-        });
-      }
+      void hydrateContactLabels(incoming);
     } catch (syncError) {
-      setError(syncError.message || "Could not reach Nostr relays.");
+      if (!silent) setError(syncError.message || "Could not reach Nostr relays.");
     } finally {
-      setBusy("");
+      if (!silent) setBusy("");
     }
-  }, [privateIdentity, relays]);
+  }, [hydrateContactLabels, privateIdentity, relays]);
 
   useEffect(() => {
     walletUnlockedRef.current = Boolean(walletSecret?.mnemonic);
     if (!walletSecret?.mnemonic) {
       setMessages([]);
       setComposer("");
+      setConnectionStatus("idle");
     }
   }, [walletSecret?.mnemonic]);
 
@@ -166,6 +177,35 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
     void unlockIdentity();
     return () => { cancelled = true; };
   }, [accountId, bootstrap?.binding, walletSecret?.mnemonic]);
+
+  useEffect(() => {
+    if (!privateIdentity?.privateKey || !relays.length) return undefined;
+    const subscription = subscribeDirectMessages({
+      privateKey: privateIdentity.privateKey,
+      relays,
+      onMessage(message) {
+        if (!walletUnlockedRef.current) return;
+        setMessages((current) => mergeMessages(current, [message]));
+        void hydrateContactLabels([message]);
+      },
+      onStatus({ status }) {
+        if (walletUnlockedRef.current) setConnectionStatus(status);
+      },
+    });
+    const backfillAfterInterruption = () => {
+      if (document.visibilityState === "visible" && navigator.onLine !== false) {
+        void syncMessages(privateIdentity, { silent: true });
+      }
+    };
+    window.addEventListener("online", backfillAfterInterruption);
+    document.addEventListener("visibilitychange", backfillAfterInterruption);
+    return () => {
+      window.removeEventListener("online", backfillAfterInterruption);
+      document.removeEventListener("visibilitychange", backfillAfterInterruption);
+      subscription.close();
+      setConnectionStatus("idle");
+    };
+  }, [hydrateContactLabels, privateIdentity, relays, syncMessages]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -320,7 +360,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
         <div><span>Encrypted over Nostr</span><h1>Messages</h1></div>
         <button aria-label="New message" onClick={() => setNewMessageOpen(true)} type="button"><Plus size={19} /></button>
       </header>
-      <div className="messages-identity-strip"><span><Circle fill="currentColor" size={7} />@{bootstrap.identity.nostrName}</span><button disabled={busy === "sync"} onClick={() => syncMessages()} type="button"><RefreshCw className={busy === "sync" ? "is-spinning" : ""} size={13} />{lastSynced ? "Sync" : "Connect"}</button></div>
+      <div className="messages-identity-strip"><span aria-live="polite"><Circle className={connectionStatus === "live" ? "is-live" : ""} fill="currentColor" size={7} />@{bootstrap.identity.nostrName} · {connectionStatus === "live" ? "Live" : connectionStatus === "connecting" ? "Connecting" : "Reconnecting"}</span><button disabled={busy === "sync"} onClick={() => syncMessages()} title="Manually check relays" type="button"><RefreshCw className={busy === "sync" ? "is-spinning" : ""} size={13} />Retry</button></div>
       <div className="messages-thread-list">
         {threads.map((thread) => <button className={thread.publicKey === selectedPeer ? "active" : ""} key={thread.publicKey} onClick={() => setSelectedPeer(thread.publicKey)} type="button">
           <span className="messages-avatar">{initials(thread.contact, thread.publicKey)}</span>

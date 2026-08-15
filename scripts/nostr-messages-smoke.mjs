@@ -6,6 +6,7 @@ import {
   createDirectMessageEvents,
   deriveNostrMessagingIdentity,
   normalizeMessageRelays,
+  subscribeDirectMessages,
   unwrapDirectMessage,
 } from "../src/features/messages/nostr-messages.js";
 import { conversationThreads, mergeMessages } from "../src/features/messages/messages-state.js";
@@ -42,8 +43,46 @@ assert.equal(recipientMessage.content, "Private hello");
 assert.equal(recipientMessage.mine, false);
 assert.equal(recipientMessage.peerPublicKey, alice.publicKeyHex);
 assert.notEqual(recipientMessage.wrapId, senderMessage.wrapId, "sender and recipient must receive separate gift wraps");
-
 const tampered = { ...wrapped.recipientCopy, content: `${wrapped.recipientCopy.content.slice(0, -2)}aa` };
+
+let livePoolOptions = null;
+let liveSubscription = null;
+let liveSubscriptionClosed = false;
+let livePoolDestroyed = false;
+const liveMessages = [];
+const liveStatuses = [];
+const liveInbox = subscribeDirectMessages({
+  privateKey: bob.privateKey,
+  relays: ["wss://nos.lol"],
+  since: 1234,
+  onMessage: (message) => liveMessages.push(message),
+  onStatus: ({ status }) => liveStatuses.push(status),
+  poolFactory(options) {
+    livePoolOptions = options;
+    return {
+      subscribeMany(relays, filter, callbacks) {
+        liveSubscription = { relays, filter, callbacks };
+        return { close() { liveSubscriptionClosed = true; } };
+      },
+      destroy() { livePoolDestroyed = true; },
+    };
+  },
+});
+assert.deepEqual(livePoolOptions, { enableReconnect: true }, "live inbox should reconnect relay sockets automatically");
+assert.deepEqual(liveSubscription.relays, ["wss://nos.lol"]);
+assert.deepEqual(liveSubscription.filter, { kinds: [1059], "#p": [bob.publicKeyHex], since: 1234 });
+assert.equal(liveSubscription.callbacks.maxWait, 9000);
+liveSubscription.callbacks.oneose();
+liveSubscription.callbacks.onevent(wrapped.recipientCopy);
+assert.equal(liveMessages.length, 1, "the recipient wallet should receive a published gift wrap without manual sync");
+assert.equal(liveMessages[0].content, "Private hello");
+assert.deepEqual(liveStatuses, ["connecting", "live"]);
+liveSubscription.callbacks.onevent(tampered);
+assert.equal(liveMessages.length, 1, "a malformed live event should be ignored without stopping delivery");
+liveInbox.close();
+assert.equal(liveSubscriptionClosed, true);
+assert.equal(livePoolDestroyed, true);
+
 assert.throws(() => unwrapDirectMessage(tampered, bob.privateKey), /Invalid gift wrap/);
 assert.throws(() => unwrapDirectMessage(wrapped.recipientCopy, alice.privateKey), /another recipient/);
 

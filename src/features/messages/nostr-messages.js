@@ -14,6 +14,7 @@ export const DEFAULT_MESSAGE_RELAYS = Object.freeze([
 ]);
 
 const textEncoder = new TextEncoder();
+const NIP17_GIFT_WRAP_LOOKBACK_SECONDS = (2 * 24 * 60 * 60) + (5 * 60);
 
 function bytesToHex(bytes) {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -158,6 +159,54 @@ export async function fetchDirectMessages({ privateKey, relays, since, limit = 5
   } finally {
     pool.destroy();
   }
+}
+
+export function subscribeDirectMessages({
+  privateKey,
+  relays,
+  since,
+  onMessage,
+  onStatus,
+  poolFactory = (options) => new SimplePool(options),
+} = {}) {
+  const relayUrls = normalizeMessageRelays(relays);
+  if (!privateKey) throw new Error("Unlock your wallet to receive Messages.");
+  if (!relayUrls.length) throw new Error("No Nostr relays are available.");
+  const publicKey = getPublicKey(privateKey);
+  const pool = poolFactory({ enableReconnect: true });
+  let closed = false;
+  onStatus?.({ status: "connecting", relays: relayUrls });
+  const subscription = pool.subscribeMany(relayUrls, {
+    kinds: [1059],
+    "#p": [publicKey],
+    // NIP-17 intentionally randomizes gift-wrap timestamps up to two days into the past.
+    // The live filter must cover that privacy window or a newly published wrap can look old to relays.
+    since: Number.isInteger(since) ? since : Math.floor(Date.now() / 1000) - NIP17_GIFT_WRAP_LOOKBACK_SECONDS,
+  }, {
+    maxWait: 9000,
+    onevent(event) {
+      if (closed) return;
+      try {
+        onMessage?.(unwrapDirectMessage(event, privateKey));
+      } catch {
+        // Ignore malformed, forged, or unrelated relay events without interrupting the inbox.
+      }
+    },
+    oneose() {
+      if (!closed) onStatus?.({ status: "live", relays: relayUrls });
+    },
+    onclose(reasons) {
+      if (!closed) onStatus?.({ status: "disconnected", relays: relayUrls, reasons });
+    },
+  });
+  return {
+    close() {
+      if (closed) return;
+      closed = true;
+      void subscription.close("Task Node Messages view closed");
+      pool.destroy();
+    },
+  };
 }
 
 export async function publishDirectMessage({ privateKey, recipientPublicKey, recipientRelays, relays, message } = {}) {

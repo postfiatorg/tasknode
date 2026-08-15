@@ -21,7 +21,9 @@ Desktop uses a conversation list and transcript side by side. Mobile shows one p
 
 Messages are NIP-17 end-to-end encrypted in the browser and published to the configured Nostr relays. Task Node does not proxy or save message bodies. A send is reported as complete only after at least one relay accepts it.
 
-**Sync** requests encrypted inbox events from the relays and decrypts them locally. Because relay retention and availability vary, Nostr is a messaging transport rather than a guaranteed permanent archive. Unlocking the wallet is required after a browser restart or lock before history can be read.
+While Messages is open and the wallet is unlocked, the browser maintains a live encrypted relay subscription. New gift-wrapped messages render as they arrive; the recipient does not need to select a sync control. Returning to the tab or regaining network connectivity automatically backfills retained relay events in case the live connection was interrupted.
+
+**Retry** is a manual recovery control that requests encrypted inbox events from the relays and decrypts them locally. It is not part of the normal send/receive workflow. Because relay retention and availability vary, Nostr is a messaging transport rather than a guaranteed permanent archive. Unlocking the wallet is required after a browser restart or lock before history can be read.
 
 ## Privacy and Permissions
 
