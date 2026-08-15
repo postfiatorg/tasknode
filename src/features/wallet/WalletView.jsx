@@ -74,6 +74,18 @@ export function verifyBackupWord({ normalizedMnemonic = "", index = 0, input = "
   return String(input || "").trim().toLowerCase() === words[wordIndex - 1];
 }
 
+export function numberedRecoveryWords({ normalizedMnemonic = "", verifyIndex = 0 } = {}) {
+  const targetIndex = Number(verifyIndex);
+  return normalizeSeedInput(normalizedMnemonic)
+    .split(" ")
+    .filter(Boolean)
+    .map((word, index) => ({
+      index: index + 1,
+      word,
+      verificationTarget: Number.isInteger(targetIndex) && targetIndex === index + 1,
+    }));
+}
+
 function randomWordIndex(wordCount) {
   const count = Number(wordCount) || 0;
   if (!Number.isInteger(count) || count < 1) return 0;
@@ -1355,6 +1367,10 @@ function WalletLinkModal({
   const normalized = walletCore?.normalizeMnemonic?.(mnemonic) || normalizeSeedInput(mnemonic);
   const wordCount = walletCore?.mnemonicWordCount?.(mnemonic) || seedWordCount(mnemonic);
   const valid = walletCore?.isValidTaskNodeMnemonic?.(mnemonic) || false;
+  const recoveryWords = numberedRecoveryWords({
+    normalizedMnemonic: normalized,
+    verifyIndex: verifyWordIndex,
+  });
   const backupWordVerified = !isCreate || verifyBackupWord({
     normalizedMnemonic: normalized,
     index: verifyWordIndex,
@@ -1573,32 +1589,60 @@ function WalletLinkModal({
             <X size={18} strokeWidth={1.75} />
           </button>
         </header>
-        <label className="wallet-seed-field">
-          <span>24-word recovery phrase</span>
-          <textarea
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect="off"
-            onChange={(event) => {
-              if (isCreate) return;
-              setMnemonic(event.target.value);
-              setMessage("");
-            }}
-            placeholder="word one word two ..."
-            readOnly={isCreate}
-            spellCheck={false}
-            value={mnemonic}
-          />
-        </label>
+        {isCreate ? (
+          <section className="wallet-seed-backup-panel wallet-create-seed-panel" aria-label="Numbered recovery phrase">
+            <div className="wallet-seed-backup-head">
+              <div>
+                <strong>Save these 24 words in order</strong>
+                <small>Each word is numbered so you can verify the right position.</small>
+              </div>
+              <button className="wallet-mini-action" disabled={!walletCore || linking} onClick={regenerateMnemonic} type="button">
+                <RefreshCw size={13} strokeWidth={1.8} />
+                Regenerate
+              </button>
+            </div>
+            <div className="wallet-seed-word-grid wallet-create-word-grid">
+              {recoveryWords.map((item) => (
+                <span
+                  aria-label={`Recovery phrase word ${item.index}: ${item.word}${item.verificationTarget ? ", verify this word" : ""}`}
+                  className={item.verificationTarget ? "is-verification-target" : undefined}
+                  key={`${item.word}-${item.index}`}
+                >
+                  <em>{item.index}</em>
+                  {item.word}
+                  {item.verificationTarget && <small>Check</small>}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <label className="wallet-seed-field">
+            <span>24-word recovery phrase</span>
+            <textarea
+              autoCapitalize="none"
+              autoComplete="off"
+              autoCorrect="off"
+              onChange={(event) => {
+                setMnemonic(event.target.value);
+                setMessage("");
+              }}
+              placeholder="word one word two ..."
+              spellCheck={false}
+              value={mnemonic}
+            />
+          </label>
+        )}
         {isCreate && (
-          <div className="wallet-create-controls">
-            <button className="light-pill" disabled={!walletCore || linking} onClick={regenerateMnemonic} type="button">
-              <RefreshCw size={13} strokeWidth={1.8} />
-              Regenerate
-            </button>
+          <div className={`wallet-backup-confirmation${backupWordVerified ? " is-verified" : ""}`}>
+            <div className="wallet-backup-confirmation-copy">
+              <span>Backup check · word #{verifyWordIndex || "—"}</span>
+              <strong>{backupWordVerified ? "Recovery word confirmed" : "Type the highlighted word"}</strong>
+              <small>Find the numbered tile marked “Check” above, then enter that word here.</small>
+            </div>
             <label className="wallet-seed-field compact wallet-backup-word-field">
-              <span>To confirm you saved it, type word #{verifyWordIndex || "—"} from your recovery phrase.</span>
+              <span>Word #{verifyWordIndex || "—"}</span>
               <input
+                aria-label={`Confirm recovery phrase word ${verifyWordIndex || ""}`.trim()}
                 autoCapitalize="none"
                 autoComplete="off"
                 autoCorrect="off"
@@ -1609,11 +1653,13 @@ function WalletLinkModal({
                 onBlur={() => {
                   if (verifyWord && !backupWordVerified) setMessage(backupWordMismatchMessage());
                 }}
+                placeholder={`Type word #${verifyWordIndex || "—"}`}
                 spellCheck={false}
                 type="text"
                 value={verifyWord}
               />
             </label>
+            {backupWordVerified && <Check aria-hidden="true" className="wallet-backup-confirmation-check" size={18} strokeWidth={2} />}
           </div>
         )}
         <div className="wallet-password-grid">

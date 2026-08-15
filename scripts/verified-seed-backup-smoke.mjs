@@ -8,9 +8,10 @@ const server = await createServer({
   server: { middlewareMode: true },
 });
 
+let numberedRecoveryWords;
 let verifyBackupWord;
 try {
-  ({ verifyBackupWord } = await server.ssrLoadModule("/src/features/wallet/WalletView.jsx"));
+  ({ numberedRecoveryWords, verifyBackupWord } = await server.ssrLoadModule("/src/features/wallet/WalletView.jsx"));
 } finally {
   await server.close();
 }
@@ -62,6 +63,34 @@ assert.equal(
   verifyBackupWord({ normalizedMnemonic: "", index: 1, input: "abandon" }),
   false,
   "an empty mnemonic should fail"
+);
+
+for (const verifyIndex of [1, 18, 24]) {
+  const words = numberedRecoveryWords({ normalizedMnemonic: mnemonic, verifyIndex });
+  assert.equal(words.length, 24, "all recovery words should receive a visible position");
+  assert.deepEqual(
+    words.map(({ index }) => index),
+    Array.from({ length: 24 }, (_, index) => index + 1),
+    "recovery word positions should be sequential and one-based"
+  );
+  assert.deepEqual(
+    words.filter(({ verificationTarget }) => verificationTarget).map(({ index }) => index),
+    [verifyIndex],
+    `word ${verifyIndex} should be the only highlighted verification target`
+  );
+}
+
+const eighteenthWord = numberedRecoveryWords({ normalizedMnemonic: mnemonic, verifyIndex: 18 })[17];
+assert.deepEqual(
+  eighteenthWord,
+  { index: 18, word: "acquire", verificationTarget: true },
+  "a high-numbered verification word should remain directly identifiable"
+);
+
+assert.equal(
+  numberedRecoveryWords({ normalizedMnemonic: mnemonic, verifyIndex: 25 }).some(({ verificationTarget }) => verificationTarget),
+  false,
+  "an invalid verification position should not highlight a misleading word"
 );
 
 console.log("verified seed backup smoke ok");

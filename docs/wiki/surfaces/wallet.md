@@ -4,7 +4,7 @@ Wallet is the identity and value surface. It shows PFT balance, local seed vault
 
 ## User Flow
 
-1. The user links an existing PFT wallet or creates a new local wallet.
+1. The user links an existing PFT wallet or creates a new local wallet. During creation, the recovery phrase is shown as 24 individually numbered tiles; the randomly selected backup-check position is visibly highlighted before the user types that word.
 2. The local seed vault is encrypted in the browser with the user's password.
 3. The user can unlock, lock, back up, delink, or relink the wallet.
 4. Wallet activity is fetched from PFTL and displayed without exposing RPC details in the UX.
