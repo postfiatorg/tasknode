@@ -5,6 +5,7 @@ import {
   normalizeChatPersona,
 } from "../shared/chat-personas.js";
 import { generateIChingCast } from "./i-ching-cast.js";
+import { formatPostFiatKnowledgeContext } from "./post-fiat-knowledge.js";
 import { DateTime } from "luxon";
 
 const userMessagePointer =
@@ -143,6 +144,10 @@ function legacyModuleUserPrompt({
     ["___REWARDED_TOTAL_PFT_REPLACED_HERE___", "The current rewarded PFT total was not supplied."],
     ["___LIVE_POSTFIAT_CONTEXT_REPLACED_HERE___", "No live Post Fiat network snapshot was supplied."],
     ["___POST_FIAT_LIVE_NETWORK_CONTEXT_REPLACED_HERE___", "No live Post Fiat network snapshot was supplied."],
+    [
+      "___POST_FIAT_KNOWLEDGE_CONTEXT_REPLACED_HERE___",
+      id === "post-fiat-qa" ? formatPostFiatKnowledgeContext({ message }) : "No Post Fiat knowledge context is required.",
+    ],
     [
       "___CURRENT_DATE_REPLACED_HERE___",
       DateTime.now().setZone(iChingProfile?.input?.timezone || "UTC").toISODate(),
