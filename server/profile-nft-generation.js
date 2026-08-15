@@ -1,4 +1,4 @@
-import { createPrivateProfileNftArtBrief } from "./profile-nft-privacy-gateway.js";
+import { createPrivateProfileNftSummary } from "./profile-nft-privacy-gateway.js";
 import { classifyProfileNftGenerationFailure } from "./profile-nft-failures.js";
 import { enqueueProfileNftRenderJob } from "./repositories/profile-nft-render-jobs.js";
 import {
@@ -120,7 +120,7 @@ export async function profileNftGenerateStart({
   const nftUserData =
     safeText(payload?.nftUserData, 20000) ||
     buildProfileNftUserData({ session, state, payload });
-  const rendered = await createPrivateProfileNftArtBrief({
+  const rendered = await createPrivateProfileNftSummary({
     sourcePacket: { profile: parsedProfilePacket(nftUserData), memory_and_context: contextDocument },
     env,
   });
