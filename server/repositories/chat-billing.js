@@ -859,6 +859,24 @@ export async function appendChatTurn({
     }).catch(() => {});
     return persisted;
   } catch (error) {
+    if (error?.code === "23505" && userMessageId && assistantMessageId) {
+      const existingMessages = await getChatMessages({
+        accountId: normalizedAccountId,
+        conversationId: normalizedConversationId,
+        limit: 30,
+      }).catch(() => []);
+      const user = existingMessages.find((message) => message.id === userMessageId && message.role === "user");
+      const assistant = existingMessages.find((message) => message.id === assistantMessageId && message.role === "assistant");
+      if (user && assistant) {
+        return {
+          user,
+          assistant,
+          ledgerEntry: null,
+          modelRunId: "",
+          idempotentReplay: true,
+        };
+      }
+    }
     if (process.env.TASKNODE_POSTGRES_STRICT === "false") {
       const persisted = appendRuntimeChatTurn({
         accountId,

@@ -310,6 +310,47 @@ function assistantChatMetadata({ thinking = {}, responseGate = null } = {}) {
   };
 }
 
+export function completedChatTurnReplay({
+  messages = [],
+  userMessageId = "",
+  assistantMessageId = "",
+  contextStatus = null,
+  persona = "jobs",
+} = {}) {
+  if (!userMessageId || !assistantMessageId) return null;
+  const user = messages.find((message) => message?.id === userMessageId && message.role === "user");
+  const assistant = messages.find((message) => message?.id === assistantMessageId && message.role === "assistant");
+  if (!user || !assistant) return null;
+  return {
+    text: String(assistant.body || ""),
+    provider: assistant.provider || "",
+    model: assistant.model || "",
+    responseId: assistant.responseId || "",
+    usage: {
+      inputTokens: 0,
+      promptCacheHitTokens: 0,
+      promptCacheMissTokens: 0,
+      promptCacheHitRate: 0,
+      cacheUsageReported: false,
+      cacheSavingsUsd: 0,
+      costSource: "idempotent_replay",
+      outputTokens: 0,
+      totalTokens: 0,
+      webSearchCalls: 0,
+      toolCostUsd: 0,
+      costUsd: 0,
+    },
+    user,
+    assistant: {
+      ...assistant,
+      thinking: assistant.thinking || assistant.metadata?.thinking,
+    },
+    contextStatus,
+    persona: normalizeChatPersona(persona) || "jobs",
+    replayed: true,
+  };
+}
+
 function transientChatTurn({
   conversationId = "dev",
   mode = "",
@@ -1028,6 +1069,8 @@ export async function executeChat({
   providerTimeoutMs = 0,
   persona = "jobs",
   iChingProfile = null,
+  userMessageId = "",
+  assistantMessageId = "",
 }) {
   const normalizedPersona = normalizeChatPersona(persona);
   if (!normalizedPersona) {
@@ -1082,6 +1125,14 @@ export async function executeChat({
     taskStatus: contextStatus?.tasks,
     jobsRetrieval: jobsResult,
   });
+  const replay = completedChatTurnReplay({
+    messages: historyMessages,
+    userMessageId,
+    assistantMessageId,
+    contextStatus: resolvedContextStatus,
+    persona: normalizedPersona,
+  });
+  if (replay) return replay;
   const thinking = chatThinkingForJobsRetrieval({
     jobsResult,
     renderedContext: resolvedJobsEssence,
@@ -1171,6 +1222,8 @@ export async function executeChat({
     userMetadata: { ...userMetadata, chatPersona: normalizedPersona },
     assistantMetadata: { ...assistantMetadata, chatPersona: normalizedPersona },
     runMetadata: { contextStatus: resolvedContextStatus, chatPersona: normalizedPersona },
+    userMessageId,
+    assistantMessageId,
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
 
@@ -1206,6 +1259,8 @@ export async function executeChatStream({
   providerTimeoutMs = 0,
   persona = "jobs",
   iChingProfile = null,
+  userMessageId = "",
+  assistantMessageId = "",
 }) {
   const normalizedPersona = normalizeChatPersona(persona);
   if (!normalizedPersona) {
@@ -1260,6 +1315,14 @@ export async function executeChatStream({
     taskStatus: contextStatus?.tasks,
     jobsRetrieval: jobsResult,
   });
+  const replay = completedChatTurnReplay({
+    messages: historyMessages,
+    userMessageId,
+    assistantMessageId,
+    contextStatus: resolvedContextStatus,
+    persona: normalizedPersona,
+  });
+  if (replay) return replay;
   const thinking = chatThinkingForJobsRetrieval({
     jobsResult,
     renderedContext: resolvedJobsEssence,
@@ -1404,6 +1467,8 @@ export async function executeChatStream({
     userMetadata: { ...userMetadata, chatPersona: normalizedPersona },
     assistantMetadata: { ...assistantMetadata, chatPersona: normalizedPersona },
     runMetadata: { contextStatus: resolvedContextStatus, chatPersona: normalizedPersona },
+    userMessageId,
+    assistantMessageId,
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
 

@@ -56,8 +56,19 @@ async function readSseStream(stream, onEvent) {
   }
 }
 
-export async function requestEventStream(path, options = {}, onEvent = () => {}) {
-  const response = await fetch(path, { cache: "no-store", ...options });
+function retryableStreamError(message, cause) {
+  const error = new Error(message, cause ? { cause } : undefined);
+  error.retryableStream = true;
+  return error;
+}
+
+async function requestEventStreamOnce(path, options, onEvent) {
+  let response;
+  try {
+    response = await fetch(path, { cache: "no-store", ...options });
+  } catch (error) {
+    throw retryableStreamError(error?.message || "Chat connection failed.", error);
+  }
   const contentType = response.headers.get("content-type") || "";
 
   if (!response.ok || !response.body || !contentType.includes("text/event-stream")) {
@@ -66,10 +77,18 @@ export async function requestEventStream(path, options = {}, onEvent = () => {})
   }
 
   let finalBody = null;
-  await readSseStream(response.body, async ({ event, body }) => {
-    if (event === "done" || event === "error") finalBody = body;
-    await onEvent({ event, body });
-  });
+  try {
+    await readSseStream(response.body, async ({ event, body }) => {
+      if (event === "done" || event === "error") finalBody = body;
+      await onEvent({ event, body });
+    });
+  } catch (error) {
+    throw retryableStreamError(error?.message || "Chat stream was interrupted.", error);
+  }
+
+  if (!finalBody) {
+    throw retryableStreamError("Chat stream ended before the response completed.");
+  }
 
   return {
     ok: Boolean(finalBody?.ok),
@@ -77,6 +96,36 @@ export async function requestEventStream(path, options = {}, onEvent = () => {})
     body: finalBody,
     streamed: true,
   };
+}
+
+function waitForStreamRetry(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+export async function requestEventStream(
+  path,
+  options = {},
+  onEvent = () => {},
+  {
+    retryDelaysMs = [750, 2_000, 5_000],
+    onRetry = () => {},
+    wait = waitForStreamRetry,
+  } = {}
+) {
+  const delays = (Array.isArray(retryDelaysMs) ? retryDelaysMs : [])
+    .map((delay) => Math.max(0, Number(delay) || 0));
+  let retryCount = 0;
+
+  while (true) {
+    try {
+      return await requestEventStreamOnce(path, options, onEvent);
+    } catch (error) {
+      if (!error?.retryableStream || options?.signal?.aborted || retryCount >= delays.length) throw error;
+      retryCount += 1;
+      await onRetry({ error, retryCount, maxRetries: delays.length });
+      await wait(delays[retryCount - 1]);
+    }
+  }
 }
 
 export async function fetchJson(path) {

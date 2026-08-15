@@ -2537,7 +2537,12 @@ function ChatSurface({
     const contextRewriteMessageId = isContextRewrite ? `msg_${newClientCorrelationId("ctxrw")}_user`.slice(0, 180) : "";
     const hiveContextMessageId = isHiveContext ? `msg_${newClientCorrelationId("hive")}_user`.slice(0, 180) : "";
     const hiveContextAssistantId = isHiveContext ? `${hiveContextMessageId}_assistant`.slice(0, 180) : "";
-    const pendingId = taskRequestAssistantId || hiveContextAssistantId || `assistant-pending-${startedAt}`;
+    const chatRequestId = !isTaskRequest && !isContextRewrite && !isHiveContext
+      ? newClientCorrelationId("chatreq")
+      : "";
+    const chatUserMessageId = chatRequestId ? `msg_${chatRequestId}_user`.slice(0, 180) : "";
+    const chatAssistantMessageId = chatRequestId ? `msg_${chatRequestId}_assistant`.slice(0, 180) : "";
+    const pendingId = taskRequestAssistantId || hiveContextAssistantId || chatAssistantMessageId || `assistant-pending-${startedAt}`;
     const submittedAttachments = attachments;
     const fallbackPrompt = promptForAttachments(submittedAttachments);
     const submittedText = message || fallbackPrompt;
@@ -2596,7 +2601,7 @@ function ChatSurface({
     setAttachments([]);
     const submittedUserTurn = createUserTurn(
         submittedText,
-        taskRequestMessageId || contextRewriteMessageId || hiveContextMessageId || `user-local-${startedAt}`,
+        taskRequestMessageId || contextRewriteMessageId || hiveContextMessageId || chatUserMessageId || `user-local-${startedAt}`,
         submittedAttachments,
         turnMetadata
       );
@@ -2772,6 +2777,9 @@ function ChatSurface({
         persona: isContextEdit ? DEFAULT_CHAT_PERSONA : selectedPersona,
         contextMode: isContextEdit ? CONTEXT_EDIT_MODE : undefined,
         conversationId: requestedConversationId,
+        clientRequestId: chatRequestId,
+        userMessageId: chatUserMessageId,
+        assistantMessageId: chatAssistantMessageId,
         attachments: serializeChatAttachments(submittedAttachments),
         clientHistory: signedOut && !isContextEdit ? clientHistoryPayloadFromTurns(turns) : undefined,
       };
@@ -2793,6 +2801,17 @@ function ChatSurface({
                   updatePendingAssistantProgress(current, pendingId, Number(body.elapsedMs), startedAt)
                 );
               }
+            },
+            {
+              onRetry: ({ retryCount, maxRetries }) => {
+                setTurns((current) => replaceTurnById(
+                  current,
+                  pendingId,
+                  createPendingAssistantTurn(pendingId, startedAt, turnMetadata)
+                ));
+                setSendMessage(`Connection interrupted. Reconnecting ${retryCount}/${maxRetries}…`);
+                setStatusTone("muted");
+              },
             }
           )
         : await requestJson(usage?.chatSendPath || "/api/chat/send", {
@@ -2854,10 +2873,8 @@ function ChatSurface({
           createErrorAssistantTurn(pendingId, failureMessage, startedAt)
         )
       );
-      if (isTaskRequest || isContextEdit || isContextRewrite || isHiveContext) {
-        setInput(message);
-        setAttachments(submittedAttachments);
-      }
+      setInput(message);
+      setAttachments(submittedAttachments);
       setSendMessage(failureMessage);
       setStatusTone("error");
     } finally {

@@ -4,6 +4,90 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { startChatStreamHeartbeat } from "../server/chat-stream-heartbeat.js";
+import { completedChatTurnReplay } from "../server/chat-router.js";
+import { requestEventStream } from "../src/api.js";
+
+function sseResponse(blocks = []) {
+  return new Response(blocks.join(""), {
+    status: 200,
+    headers: { "content-type": "text/event-stream; charset=utf-8" },
+  });
+}
+
+const originalFetch = globalThis.fetch;
+try {
+  const retryEvents = [];
+  const waitDelays = [];
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    if (fetchCalls === 1) throw new TypeError("network error");
+    return sseResponse([
+      'event: delta\ndata: {"delta":"Recovered"}\n\n',
+      'event: done\ndata: {"ok":true,"assistant":{"body":"Recovered"}}\n\n',
+    ]);
+  };
+  const recovered = await requestEventStream(
+    "/api/chat/stream",
+    { method: "POST" },
+    ({ event }) => retryEvents.push(event),
+    {
+      retryDelaysMs: [750],
+      onRetry: ({ retryCount, maxRetries }) => retryEvents.push(`retry:${retryCount}/${maxRetries}`),
+      wait: async (delay) => { waitDelays.push(delay); },
+    }
+  );
+  assert.equal(fetchCalls, 2, "a pre-response network interruption should retry automatically");
+  assert.deepEqual(waitDelays, [750]);
+  assert.deepEqual(retryEvents, ["retry:1/1", "delta", "done"]);
+  assert.equal(recovered.ok, true);
+
+  fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    if (fetchCalls === 1) return sseResponse(['event: progress\ndata: {"elapsedMs":15000}\n\n']);
+    return sseResponse(['event: done\ndata: {"ok":true,"assistant":{"body":"Recovered after restart"}}\n\n']);
+  };
+  const recoveredPrematureEnd = await requestEventStream(
+    "/api/chat/stream",
+    { method: "POST" },
+    () => {},
+    { retryDelaysMs: [0], wait: async () => {} }
+  );
+  assert.equal(fetchCalls, 2, "a stream that closes without done/error should reconnect automatically");
+  assert.equal(recoveredPrematureEnd.body.assistant.body, "Recovered after restart");
+
+  fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    return sseResponse(['event: error\ndata: {"ok":false,"message":"Provider rejected the request"}\n\n']);
+  };
+  const providerFailure = await requestEventStream(
+    "/api/chat/stream",
+    { method: "POST" },
+    () => {},
+    { retryDelaysMs: [0, 0], wait: async () => {} }
+  );
+  assert.equal(fetchCalls, 1, "a completed provider error is not a network interruption and must not retry");
+  assert.equal(providerFailure.ok, false);
+  assert.equal(providerFailure.body.message, "Provider rejected the request");
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+const replay = completedChatTurnReplay({
+  messages: [
+    { id: "msg_request_user", role: "user", body: "Should I move?" },
+    { id: "msg_request_assistant", role: "assistant", body: "Compare the decision carefully.", provider: "ambient", model: "reasoning" },
+  ],
+  userMessageId: "msg_request_user",
+  assistantMessageId: "msg_request_assistant",
+  persona: "jobs",
+});
+assert.equal(replay.replayed, true);
+assert.equal(replay.assistant.body, "Compare the decision carefully.");
+assert.equal(replay.usage.costSource, "idempotent_replay");
+assert.equal(completedChatTurnReplay({ messages: [], userMessageId: "user", assistantMessageId: "assistant" }), null);
 
 const writes = [];
 let intervalTick = null;
@@ -70,5 +154,8 @@ const frontendSource = await readFile(new URL("../src/main.jsx", import.meta.url
 assert.match(indexSource, /startChatStreamHeartbeat\(res\)/);
 assert.match(terminalSource, /startChatStreamHeartbeat\(res\)/);
 assert.match(frontendSource, /event === "progress"/);
+assert.match(frontendSource, /Connection interrupted\. Reconnecting/);
+assert.match(frontendSource, /setInput\(message\)/, "an exhausted recovery should restore the user's draft");
+assert.match(frontendSource, /clientRequestId: chatRequestId/, "network retries must reuse a stable client request identity");
 
 console.log("chat stream reliability smoke ok");

@@ -509,6 +509,9 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0, agentOrigin 
   const dryRun = payload?.dryRun === true;
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
   const clientHistory = normalizeClientChatHistory(payload?.clientHistory);
+  const clientRequestId = typeof payload?.clientRequestId === "string" ? payload.clientRequestId.trim().slice(0, 180) : "";
+  const userMessageId = typeof payload?.userMessageId === "string" ? payload.userMessageId.trim().slice(0, 180) : "";
+  const assistantMessageId = typeof payload?.assistantMessageId === "string" ? payload.assistantMessageId.trim().slice(0, 180) : "";
   return {
     accountId,
     message,
@@ -519,6 +522,9 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0, agentOrigin 
     dryRun,
     attachments,
     clientHistory,
+    clientRequestId,
+    userMessageId,
+    assistantMessageId,
     persona,
     userMetadata: chatUserMetadata(payload, agentOrigin),
     source: typeof source === "string" ? source.trim().slice(0, 80) : "",
@@ -912,6 +918,8 @@ export async function chatSend(payload, method, options = {}) {
     userMetadata,
     persona,
     iChingProfile,
+    userMessageId,
+    assistantMessageId,
   } = preflight.chat;
   const { estimate } = preflight;
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
@@ -946,6 +954,8 @@ export async function chatSend(payload, method, options = {}) {
           providerTimeoutMs: preflight.chat.providerTimeoutMs,
           persona,
           iChingProfile,
+          userMessageId,
+          assistantMessageId,
         });
     const orcWorkJournal = options.agentOrigin
       ? await recordAgentActionJournal({
