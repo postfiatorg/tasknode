@@ -14,10 +14,20 @@ function schema() {
       schema: {
         type: "object",
         additionalProperties: false,
-        required: ["approved", "privacy_risk", "privacy_findings", "profile_summary", "context_summary"],
+        required: [
+          "approved",
+          "privacy_risk",
+          "instruction_risk",
+          "literal_artifact_risk",
+          "privacy_findings",
+          "profile_summary",
+          "context_summary",
+        ],
         properties: {
           approved: { type: "boolean" },
           privacy_risk: { type: "string", enum: ["low", "high"] },
+          instruction_risk: { type: "string", enum: ["low", "high"] },
+          literal_artifact_risk: { type: "string", enum: ["low", "high"] },
           privacy_findings: { type: "array", maxItems: 5, items: { type: "string" } },
           profile_summary: { type: "string" },
           context_summary: { type: "string" },
@@ -41,7 +51,12 @@ function sensitiveSourceTokens(source = "") {
 }
 
 export function validateProfileNftSummary(summary = {}, source = "") {
-  if (!summary.approved || summary.privacy_risk !== "low") {
+  if (
+    !summary.approved ||
+    summary.privacy_risk !== "low" ||
+    summary.instruction_risk !== "low" ||
+    summary.literal_artifact_risk !== "low"
+  ) {
     throw new Error("profile_nft_privacy_not_approved");
   }
 
@@ -49,6 +64,18 @@ export function validateProfileNftSummary(summary = {}, source = "") {
   const contextSummary = String(summary.context_summary || "").trim();
   if (!profileSummary || !contextSummary || profileSummary.length > 2_000 || contextSummary.length > 4_000) {
     throw new Error("profile_nft_privacy_summary_invalid");
+  }
+
+  const profileWords = profileSummary.split(/\s+/).filter(Boolean).length;
+  const contextWords = contextSummary.split(/\s+/).filter(Boolean).length;
+  if (profileWords > 90 || contextWords > 70) {
+    throw new Error("profile_nft_privacy_summary_too_detailed");
+  }
+
+  const imperativePattern =
+    /(?:^|[.!?]\s+)(?:please\s+)?(?:create|draw|show|depict|render|include|use|make|avoid|display|feature|place|add|remove|do not|must|should)\b/i;
+  if (imperativePattern.test(`${profileSummary} ${contextSummary}`)) {
+    throw new Error("profile_nft_privacy_instruction_leak");
   }
 
   const rendered = `${profileSummary}\n${contextSummary}`.toLowerCase();

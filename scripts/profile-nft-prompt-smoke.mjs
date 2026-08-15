@@ -14,6 +14,8 @@ import {
 const approvedSummary = {
   approved: true,
   privacy_risk: "low",
+  instruction_risk: "low",
+  literal_artifact_risk: "low",
   privacy_findings: [],
   profile_summary:
     "An experienced software builder and market researcher whose work emphasizes careful analysis, system reliability, and decisive execution.",
@@ -94,6 +96,14 @@ assert.throws(
       JSON.stringify(privatePacket)
     ),
   /privacy_mechanical_leak|privacy_source_overlap/
+);
+assert.throws(
+  () =>
+    validateProfileNftSummary({
+      ...approvedSummary,
+      context_summary: "Create a dashboard showing market charts and source code.",
+    }),
+  /instruction_leak/
 );
 assert.throws(
   () => validateProfileNftSummary({ ...approvedSummary, context_summary: "" }),

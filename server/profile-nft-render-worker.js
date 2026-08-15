@@ -49,6 +49,14 @@ export async function runProfileNftRenderWorkerOnce({ env = process.env } = {}) 
     return { ok: true, processed: true, jobId: job.id, profileNftId: job.profileNftId };
   } catch (error) {
     const failure = classifyProfileNftGenerationFailure(error);
+    if (error?.privacyViolations?.length || error?.artDirectionViolations?.length) {
+      console.warn("profile_nft_render_review_rejected", {
+        jobId: job.id,
+        profileNftId: job.profileNftId,
+        privacyViolations: error.privacyViolations || [],
+        artDirectionViolations: error.artDirectionViolations || [],
+      });
+    }
     await failProfileNftRenderJob({ jobId: job.id, error: failure.message, retryable: failure.retryable, attemptCount: job.attemptCount });
     if (!failure.retryable || job.attemptCount >= 3) {
       await markProfileNftFailed({ accountId: job.accountId, nftId: job.profileNftId, error: failure.message });

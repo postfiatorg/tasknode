@@ -158,6 +158,13 @@ The hydrated image prompt is never returned to the browser or shown in public me
 
 The private prompt boundary does one job: it converts the raw profile packet and context document into two privacy-preserving prose summaries. A second privacy pass compares those summaries with the private source and removes details that could identify the person or reconstruct their actions. The gateway then inserts those summaries into the canonical prompt's `NFT_CONTEXT_HYDRATION` and `USER_CONTEXT_DOCUMENT_DIRECT` blocks. It does not select a replacement persona, composition, palette, setting, symbol set, or art style. The isolated OpenAI image renderer and the subsequent vision review receive the canonical prompt plus sanitized summaries, never the raw information packet. The vision review must approve both privacy and adherence to the canonical prompt before the image can be pinned; privacy leaks, generic imagery, missing figures, unclear actions, and prompt mismatch are retryable render failures.
 
+The summaries are short declarative descriptions, not prompt fragments. The
+privacy review rejects instructional language and generalizes dashboards,
+interfaces, charts, documents, code, terminals, financial instruments, tickers,
+logos, and brands into broad human capabilities before the canonical prompt is
+hydrated. This prevents private context or literal work-artifact lists from
+competing with the canonical prompt's central-persona composition.
+
 Private Profile Studio treats the active linked wallet as the primary NFT scope. When a wallet is linked, `/api/profile/nfts` returns current-wallet rows plus walletless drafts and reports `walletScoped=true`; if no wallet is linked, it falls back to account-scoped rows. Imported chain inventory from `promptSource='pftl_chain_inventory'` is gallery history, not the primary Studio draft. The `latest` field prefers the newest native Studio row in the current wallet scope when one exists so large on-chain libraries and previous-wallet rows do not hide the user's current generated, prepared, mint-error, or failed draft. If the scoped rows only contain chain-imported rows, `latest` falls back to the newest chain row.
 
 ### Profile NFT Generation Recovery
