@@ -1,19 +1,20 @@
 # Open-Source Readiness
 
-Status: **MIT-licensed source committed and protected; final release run in progress**
+Status: **open-source release completed and verified**
 
 Review date: 2026-08-16
-Source commit under review: `488a3dbad59fb6f31703e53d06918d4310cef6bc`
+Released source commit: `182dfc266e63b5099a1e4b48584ccf5b17cf187b`
 Release unit: the exact output of `scripts/export-public-candidate.mjs`, not the private operator working tree
 
 ## Decision
 
 The application-level release blockers identified by the original review have
 been repaired and exercised against an independently exported candidate. The
-source is now under the permissive MIT License, committed cleanly, pushed to
-GitHub, and protected by required checks. The hosted `public-release` workflow
-is generating the final artifact from that exact commit without dirty or
-unlicensed overrides.
+repository is public under the permissive MIT License. `main` and `v*` tags are
+protected, and the hosted `public-release` workflow completed against the clean
+protected commit without dirty or unlicensed overrides. It emitted the source
+archive, checksums, CycloneDX/SPDX SBOMs, source-provenance attestation, and SBOM
+attestation.
 
 Production deployment authority remains private and is not part of, or a
 prerequisite for, distributing the sanitized source candidate.
@@ -42,9 +43,9 @@ prerequisite for, distributing the sanitized source candidate.
 
 ## Exact Candidate Evidence
 
-The latest local verification exported 843 files: 842 digest-inventoried
-candidate files plus `PUBLICATION.json`. It used the
-unlicensed/dirty test overrides, then exercised the emitted tree independently:
+The completed hosted release exported 844 files: 843 digest-inventoried
+candidate files plus `PUBLICATION.json`. It exercised the emitted tree
+independently:
 
 - `npm ci && npm run check`: pass.
 - File-size gate: pass with zero active exceptions and no file over its normal configured limit.
@@ -63,15 +64,20 @@ unlicensed/dirty test overrides, then exercised the emitted tree independently:
 - Candidate images: UID 1000; npm, npx, Vite, and Codex absent.
 - Runtime role boundary: independently derived web and worker code/dependency graphs; web 278 files/16 packages, worker 204 files/6 packages.
 - Pinned Trivy image scans: zero fixed HIGH/CRITICAL findings in both role-specific images.
-- Pristine-candidate reproducibility: two independent exports had publication
-  inventory digest
-  `68075d9ce1467e38799d31bac4db2e03aa8febbae62dbb99064e517bf5a96b38`;
-  their normalized source archives had identical SHA-256
-  `e54838a7925f5067a3a10308988aad07eeee673473765dfda08eb74d60c25f79`.
+- Pristine-candidate reproducibility: the checked and artifact exports had the
+  same publication inventory digest
+  `5fad05f5e04b6bce00182733591d4a3531a95503eb7b43349b86b61dee9c8de4`;
+  the normalized source archive has SHA-256
+  `c41098b39ac5b0801214de169697e4b7116ce3ba02e81185628716833717bd69`.
+- Downloaded artifact checksums passed for the source archive and both SBOMs.
+- GitHub stores two attestations for the source archive digest: build
+  provenance and the CycloneDX SBOM attestation.
 
-This evidence must be regenerated from the final licensed, clean, protected
-commit. Temporary local candidate paths and locally built image tags are not
-release artifacts.
+The permanent GitHub release is `v0.1.0`, targeting
+`182dfc266e63b5099a1e4b48584ccf5b17cf187b`. Its source archive, both SBOMs,
+and checksum manifest were promoted from the successful GitHub Actions run
+`31920798001`. Temporary local candidate paths and locally built image tags are
+not release artifacts.
 
 ## Accurate Data and Privacy Boundary
 
@@ -120,7 +126,7 @@ Release-state gates:
 - [x] Full history and exact candidate pass the reviewed secret-scan policy.
 - [x] Private production operations are excluded from the publication boundary.
 - [x] Branch/tag protection, required checks, CODEOWNERS routing, and release-ref restrictions are configured.
-- [ ] Final hosted release run completes against the clean protected commit.
+- [x] Final hosted release run completes against the clean protected commit.
 
 ## Reproduce the Engineering Evidence
 
