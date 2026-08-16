@@ -6,9 +6,9 @@ commit and the MIT `LICENSE` exists. `--allow-dirty` and `--allow-unlicensed`
 exist only for testing incomplete local candidates; the protected release
 workflow never uses either override.
 
-The `public-release` GitHub environment must require accountable approval. A
-release tag is accepted only when its commit is contained in `origin/main`.
-The workflow then:
+The `public-release` GitHub environment permits only the protected `main`
+branch and `v*` release tags. A release tag is accepted only when its commit is
+contained in `origin/main`. The workflow then:
 
 1. runs the canonical source check;
 2. exports the exact public candidate and scans that clean filesystem with
@@ -25,11 +25,13 @@ The workflow then:
 7. uploads checksums and the evidence bundle without deploying any official
    service.
 
-Repository rules must require `repository-check`, `supply-chain`, `container`,
-and `recovery` on `main`; protect release tags; disallow force pushes; require
-review of CODEOWNERS paths; and require approval on the `public-release`
-environment. Those hosted settings cannot be proven by files in this clone and
-must be recorded in the release approval record.
+Repository rules require the `check`, `supply-chain`, `container`, and
+`recovery` GitHub Actions checks on `main`, enforce linear history, resolve
+conversations, and disallow force pushes and branch deletion. Release tags are
+protected against deletion and rewriting. `CODEOWNERS` routes review requests
+without creating a single-maintainer approval deadlock. The `public-release`
+environment accepts only `main` and `v*` refs. These hosted settings should be
+rechecked through the GitHub API when cutting a release.
 
 Verify downloaded release artifacts with GitHub CLI:
 
