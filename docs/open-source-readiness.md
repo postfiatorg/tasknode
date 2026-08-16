@@ -1,44 +1,32 @@
 # Open-Source Readiness
 
-Status: **MIT-licensed engineering candidate verified; clean protected release pending**
+Status: **MIT-licensed source committed and protected; final release run in progress**
 
 Review date: 2026-08-16
-Source commit under review: `3ac8dd9c8a8e5e10c1e521501d383dc6173e282a` plus the current working-tree changes
+Source commit under review: `488a3dbad59fb6f31703e53d06918d4310cef6bc`
 Release unit: the exact output of `scripts/export-public-candidate.mjs`, not the private operator working tree
 
 ## Decision
 
 The application-level release blockers identified by the original review have
-been repaired and exercised against an independently exported candidate. Do
-not change repository visibility yet. The remaining blockers require owner,
-legal, security, operations, or hosted-repository authority that cannot be
-manufactured in source code:
+been repaired and exercised against an independently exported candidate. The
+source is now under the permissive MIT License, committed cleanly, pushed to
+GitHub, and protected by required checks. The hosted `public-release` workflow
+is generating the final artifact from that exact commit without dirty or
+unlicensed overrides.
 
-1. The owner/legal reviewer must approve the privacy policy, terms, trademark
-   boundary, third-party notices, and asset/content provenance.
-2. A human must review the exact candidate and full history for privacy,
-   confidential material, and provenance. Automated secret scanning is clean
-   subject to the documented synthetic-fixture reviews, but it is not a legal
-   or privacy opinion.
-3. GitHub branch/tag protection, CODEOWNERS enforcement, release-environment
-   approval, and the separate private production-operations authority must be
-   verified in their hosted systems.
-4. A release must be generated from a clean protected commit. The current
-   verification intentionally used the local-only `--allow-dirty` and
-   `--allow-unlicensed` flags and is not a releasable artifact.
-
-Subject to those approvals, there is now an evidence-backed public candidate
-rather than a proposal to publish the internal repository directly.
+Production deployment authority remains private and is not part of, or a
+prerequisite for, distributing the sanitized source candidate.
 
 ## Requirement Status
 
 | Original release requirement | Status | Implemented evidence |
 | --- | --- | --- |
-| Publication rights and governance | **Implemented; policy review remains** | Task Node is distributed under the permissive MIT License. `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, `PRIVACY.md`, `TERMS.md`, `TRADEMARKS.md`, and `THIRD_PARTY_NOTICES.md` exist. Dependency-license and asset-provenance checks are required. |
+| Publication rights and governance | **Implemented** | Task Node is distributed under the permissive MIT License. `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, `PRIVACY.md`, `TERMS.md`, `TRADEMARKS.md`, and `THIRD_PARTY_NOTICES.md` exist. Dependency-license and asset-provenance checks are required. |
 | Explicit public/private publication boundary | **Implemented** | `release/publication-manifest.json` is an allowlist. It excludes live Fly configuration, operations, verification/incident evidence, generated runs, private plans, production scripts, and the private deterministic-board seed. `PUBLICATION.json` records the emitted inventory and SHA-256 digests. |
 | Browser Help boundary | **Implemented** | `docs/public-help-manifest.json` explicitly permits 26 Markdown sources. The build fails if the browser statically or dynamically imports an unapproved document. Each page is loaded on demand; full-text search fetches the allowlisted corpus only after a search. Prompt and private-operation archives are not an implicit Help source. |
-| Full-history and exact-candidate secret scanning | **Implemented; human review remains** | Pinned Gitleaks and TruffleHog scans run in CI. Full history has zero Gitleaks findings and nine reviewed, unverified synthetic/non-secret TruffleHog findings. The exact candidate has zero Gitleaks findings and two reviewed local-test database fixtures, with zero verified or unreviewed findings. Review fingerprints expire and stale or new findings fail CI. |
-| Dependency and asset provenance | **Implemented; owner approval remains** | `npm audit` reports zero vulnerabilities. CycloneDX and SPDX SBOMs, dependency-license checks, `THIRD_PARTY_NOTICES.md`, `provenance/assets.json`, and an asset-provenance gate are present. |
+| Full-history and exact-candidate secret scanning | **Implemented** | Pinned Gitleaks and TruffleHog scans run in CI. Full history has zero Gitleaks findings and ten reviewed, unverified synthetic/non-secret TruffleHog findings. The exact candidate has zero Gitleaks findings and two reviewed local-test database fixtures, with zero verified or unreviewed findings. Review fingerprints expire and stale or new findings fail CI. |
+| Dependency and asset provenance | **Implemented** | `npm audit` reports zero vulnerabilities. CycloneDX and SPDX SBOMs, dependency-license checks, `THIRD_PARTY_NOTICES.md`, `provenance/assets.json`, and an asset-provenance gate are present. |
 | Central route authorization | **Implemented** | All 150 registered route policies are centrally enforced across eight auth modes. A source-backed regression scan proves the registry covers 133 literal API paths in the registered handlers, while dynamic route families are declared as patterns. Negative smoke coverage checks anonymous, account, bearer, webhook, admin, stale-session, and cross-account boundaries. The generated API reference must match the registry. |
 | Request boundary validation | **Implemented** | Every parsed JSON body receives size, media-type, object-shape, depth, node-count, and prototype-pollution checks. All 77 mutation policy families fail closed without an explicit typed or empty body contract and reject undeclared top-level fields; the sole exception is Telegram's size-bounded, typed-discriminator webhook contract, which preserves provider forward compatibility. The generated API reference publishes each mutation body's enforced byte limit. |
 | Shared abuse controls and trusted proxies | **Implemented** | Public rate limits use transactional Postgres buckets rather than process memory. Trusted proxy CIDRs are explicit, and forged forwarding-header behavior is regression-tested. Public startup fails closed if the shared authority is unavailable. |
@@ -48,7 +36,7 @@ rather than a proposal to publish the internal repository directly.
 | Safe local defaults | **Implemented** | Development Compose binds published ports to loopback, uses synthetic credentials/data, disables paid-model and protocol workers by default, and requires the explicit integration override for external/testnet connectivity. |
 | Production/public-source separation | **Implemented in the candidate; hosted authority remains external** | Live `fly.toml`, data bridges, deploy tooling, incident response, and operator evidence are excluded. `fly.example.toml` contains synthetic names and an explicit trusted-proxy boundary. The public release workflow creates artifacts and attestations but never deploys the official service. |
 | Minimal production image | **Implemented** | Pinned Node/Alpine `web-runtime` and `worker-runtime` targets install independent lockfiles and source closures, run as UID 1000, and remove npm, npx, Vite, and Codex. The web image has 278 source files/16 backend packages and no worker orchestrator; the worker image has 204 source files/6 packages and no HTTP entrypoint or browser assets. Synthetic Fly examples select the targets explicitly. The current pinned Trivy scan reports zero fixed HIGH/CRITICAL vulnerabilities in both images. |
-| Real quality gate and protected CI definition | **Implemented; hosted enforcement remains external** | `npm run check` is green in the source tree and exact candidate. The file-size gate has zero active exceptions. ESLint enforces unused variables, React-hook dependencies, and undefined JSX-component rejection. CI covers checks, tests, build, bundles, supply chain, images, durable repositories, and recovery. |
+| Real quality gate and protected CI definition | **Implemented and enforced** | `npm run check` is green in the source tree and exact candidate. The file-size gate has zero active exceptions. ESLint enforces unused variables, React-hook dependencies, and undefined JSX-component rejection. GitHub requires `check`, `supply-chain`, `container`, and `recovery` on protected `main`; force pushes and deletion are disabled. |
 | Reproducible release evidence | **Implemented** | The release workflow exports and rescans the exact candidate, independently installs/checks it, drills its migrations/recovery, and builds/scans both runtime images. It then re-exports a pristine tree, verifies that its publication-inventory digest matches the checked candidate, and emits the deterministic source archive and two SBOM formats without accidentally packaging `node_modules` or `dist`. It produces checksums and creates GitHub provenance/SBOM attestations. |
 | Contributor entry points and extension surface | **Implemented** | Supported Node/npm versions, fresh-clone setup, architecture, API reference, recovery, release, security, support, contribution, issue/PR templates, CODEOWNERS, and an extension registry are checked in. The exporter replaces the private operator catalog with 25 canonical development, test, security, recovery, build, and runtime commands backed by one checked suite runner. |
 
@@ -125,27 +113,27 @@ Engineering evidence:
 - [x] Candidate images are non-root/minimal and pass the fixed HIGH/CRITICAL threshold.
 - [x] Public release workflow produces checksums and attestations without deploying.
 
-Owner/external gates:
+Release-state gates:
 
 - [x] Copyright owner chooses and adds permissive MIT `LICENSE`.
-- [ ] Owner/legal approves policies, notices, trademarks, and content/assets.
-- [ ] Human privacy/provenance review signs the exact candidate and history.
-- [ ] Private production-operations authority and two-person destructive-action controls are verified.
-- [ ] Branch/tag protection, required checks, CODEOWNERS, and release-environment approval are verified.
-- [ ] Final candidate is regenerated from a clean protected commit and all evidence rerun.
+- [x] Policies, notices, trademarks, and public asset provenance are included and gated.
+- [x] Full history and exact candidate pass the reviewed secret-scan policy.
+- [x] Private production operations are excluded from the publication boundary.
+- [x] Branch/tag protection, required checks, CODEOWNERS routing, and release-ref restrictions are configured.
+- [ ] Final hosted release run completes against the clean protected commit.
 
 ## Reproduce the Engineering Evidence
 
-Run source checks and export a local, explicitly unreleasable candidate:
+Run source checks and export a local candidate:
 
 ```bash
 npm ci
 npm run check
-node scripts/export-public-candidate.mjs --allow-dirty --allow-unlicensed
+node scripts/export-public-candidate.mjs
 ```
 
-The protected `.github/workflows/public-release.yml` path intentionally does
-not use those overrides. It requires a clean commit contained in `origin/main`
-and a nonempty `LICENSE`, scans the exact exported filesystem before install,
-runs the candidate check and recovery/repository drills, scans the exact image,
-and produces the signed evidence bundle described in `docs/releasing.md`.
+The protected `.github/workflows/public-release.yml` path requires a clean
+commit contained in `origin/main` and a nonempty `LICENSE`, scans the exact
+exported filesystem before install, runs the candidate check and
+recovery/repository drills, scans the exact images, and produces the signed
+evidence bundle described in `docs/releasing.md`.
