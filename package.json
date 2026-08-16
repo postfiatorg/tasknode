@@ -375,7 +375,7 @@
     "luxon": "^3.7.2",
     "node-geocoder": "^4.4.1",
     "nostr-tools": "^2.24.1",
-    "pdfjs-dist": "^4.10.38",
+    "pdfjs-dist": "^6.2.108",
     "pg": "^8.20.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
