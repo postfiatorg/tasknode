@@ -3,16 +3,20 @@
 Status: **open-source release completed and verified**
 
 Review date: 2026-08-16
-Released source commit: `182dfc266e63b5099a1e4b48584ccf5b17cf187b`
+Public repository: [`postfiatorg/tasknode`](https://github.com/postfiatorg/tasknode)
+Released source commit: `7bdb45509fc716ab0158afe0ea0f26e9822ea108`
 Release unit: the exact output of `scripts/export-public-candidate.mjs`, not the private operator working tree
 
 ## Decision
 
 The application-level release blockers identified by the original review have
 been repaired and exercised against an independently exported candidate. The
-repository is public under the permissive MIT License. `main` and `v*` tags are
-protected, and the hosted `public-release` workflow completed against the clean
-protected commit without dirty or unlicensed overrides. It emitted the source
+sanitized application repository is public under the permissive MIT License.
+The operator repository remains private because it contains deployment and
+operations material outside the publication allowlist. In the public
+repository, `main` and `v*` tags are protected, and the hosted
+`public-release` workflow completed against the clean protected commit without
+dirty or unlicensed overrides. It emitted the source
 archive, checksums, CycloneDX/SPDX SBOMs, source-provenance attestation, and SBOM
 attestation.
 
@@ -26,7 +30,7 @@ prerequisite for, distributing the sanitized source candidate.
 | Publication rights and governance | **Implemented** | Task Node is distributed under the permissive MIT License. `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, `PRIVACY.md`, `TERMS.md`, `TRADEMARKS.md`, and `THIRD_PARTY_NOTICES.md` exist. Dependency-license and asset-provenance checks are required. |
 | Explicit public/private publication boundary | **Implemented** | `release/publication-manifest.json` is an allowlist. It excludes live Fly configuration, operations, verification/incident evidence, generated runs, private plans, production scripts, and the private deterministic-board seed. `PUBLICATION.json` records the emitted inventory and SHA-256 digests. |
 | Browser Help boundary | **Implemented** | `docs/public-help-manifest.json` explicitly permits 26 Markdown sources. The build fails if the browser statically or dynamically imports an unapproved document. Each page is loaded on demand; full-text search fetches the allowlisted corpus only after a search. Prompt and private-operation archives are not an implicit Help source. |
-| Full-history and exact-candidate secret scanning | **Implemented** | Pinned Gitleaks and TruffleHog scans run in CI. Full history has zero Gitleaks findings and ten reviewed, unverified synthetic/non-secret TruffleHog findings. The exact candidate has zero Gitleaks findings and two reviewed local-test database fixtures, with zero verified or unreviewed findings. Review fingerprints expire and stale or new findings fail CI. |
+| Full-history and exact-candidate secret scanning | **Implemented** | Pinned Gitleaks and TruffleHog scans run in CI. The public history has zero Gitleaks findings and two reviewed, unverified synthetic local-test database fixtures. The exact candidate has the same two reviewed fixtures, with zero verified or unreviewed findings. Review fingerprints expire and stale or new findings fail CI. |
 | Dependency and asset provenance | **Implemented** | `npm audit` reports zero vulnerabilities. CycloneDX and SPDX SBOMs, dependency-license checks, `THIRD_PARTY_NOTICES.md`, `provenance/assets.json`, and an asset-provenance gate are present. |
 | Central route authorization | **Implemented** | All 150 registered route policies are centrally enforced across eight auth modes. A source-backed regression scan proves the registry covers 133 literal API paths in the registered handlers, while dynamic route families are declared as patterns. Negative smoke coverage checks anonymous, account, bearer, webhook, admin, stale-session, and cross-account boundaries. The generated API reference must match the registry. |
 | Request boundary validation | **Implemented** | Every parsed JSON body receives size, media-type, object-shape, depth, node-count, and prototype-pollution checks. All 77 mutation policy families fail closed without an explicit typed or empty body contract and reject undeclared top-level fields; the sole exception is Telegram's size-bounded, typed-discriminator webhook contract, which preserves provider forward compatibility. The generated API reference publishes each mutation body's enforced byte limit. |
@@ -66,18 +70,22 @@ independently:
 - Pinned Trivy image scans: zero fixed HIGH/CRITICAL findings in both role-specific images.
 - Pristine-candidate reproducibility: the checked and artifact exports had the
   same publication inventory digest
-  `5fad05f5e04b6bce00182733591d4a3531a95503eb7b43349b86b61dee9c8de4`;
+  `bd0fbeb9ef17402ef16adcc864be831288b822059ed9a892979515363c9ca2f2`;
   the normalized source archive has SHA-256
-  `c41098b39ac5b0801214de169697e4b7116ce3ba02e81185628716833717bd69`.
+  `aeaf60e9bfa0990e50efffa3a4f2e292e0fc5629705421641ff033931660ea28`.
 - Downloaded artifact checksums passed for the source archive and both SBOMs.
 - GitHub stores two attestations for the source archive digest: build
   provenance and the CycloneDX SBOM attestation.
 
-The permanent GitHub release is `v0.1.0`, targeting
-`182dfc266e63b5099a1e4b48584ccf5b17cf187b`. Its source archive, both SBOMs,
-and checksum manifest were promoted from the successful GitHub Actions run
-`31920798001`. Temporary local candidate paths and locally built image tags are
-not release artifacts.
+The permanent public GitHub release is
+[`v0.1.0`](https://github.com/postfiatorg/tasknode/releases/tag/v0.1.0),
+targeting `7bdb45509fc716ab0158afe0ea0f26e9822ea108`. Its source archive,
+both SBOMs, and checksum manifest were promoted from successful GitHub Actions
+run `31921501086` (attempt 2). A follow-up protected change,
+`d78b92ff21c108b134180160afba48e4780de05d`, pins the Chrome executable in
+both release test passes after the first attempt exposed browser
+auto-discovery as flaky. Temporary local candidate paths and locally built
+image tags are not release artifacts.
 
 ## Accurate Data and Privacy Boundary
 
