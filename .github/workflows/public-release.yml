@@ -93,11 +93,11 @@ jobs:
           (cd "$RUNNER_TEMP/public-artifact-candidate" && npm run --silent sbom:spdx) > release-artifacts/sbom.spdx.json
           (cd release-artifacts && sha256sum tasknode-public-source.tar.gz sbom.cdx.json sbom.spdx.json > SHA256SUMS)
       - name: Attest source provenance
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: release-artifacts/tasknode-public-source.tar.gz
       - name: Attest CycloneDX SBOM
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: release-artifacts/tasknode-public-source.tar.gz
           sbom-path: release-artifacts/sbom.cdx.json
