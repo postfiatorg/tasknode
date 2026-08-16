@@ -9,14 +9,16 @@ import {
 import {
   completeWalletInitiationGrant,
   failWalletInitiationGrant,
-  getEthereumDepositAccount,
-  getLinkedWallet,
-  getOrCreateEthereumDepositAccount,
-  retireEthereumDepositAccount,
   reserveWalletInitiationGrant,
-  updateEthereumDepositSync,
   resolveWalletInitiationGrantStatus,
 } from "./runtime-store.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
+import {
+  getEthereumDepositAccount,
+  getOrCreateEthereumDepositAccount,
+  retireEthereumDepositAccount,
+  updateEthereumDepositSync,
+} from "./repositories/ethereum-deposit-accounts.js";
 import {
   appendUsageCredit,
   hasUsageCreditForSource,
@@ -122,7 +124,7 @@ export function deriveEthereumDepositAddress(index) {
   };
 }
 
-export function getOrCreateEthereumTopUpAccount({ accountId = "" } = {}) {
+export async function getOrCreateEthereumTopUpAccount({ accountId = "" } = {}) {
   const status = ethereumDepositConfigStatus();
   if (!accountId) {
     return { ok: false, status: 401, error: "deposit_login_required" };
@@ -131,7 +133,7 @@ export function getOrCreateEthereumTopUpAccount({ accountId = "" } = {}) {
     return { ok: false, status: 409, error: "eth_deposit_not_configured", config: status };
   }
 
-  const result = getOrCreateEthereumDepositAccount({
+  const result = await getOrCreateEthereumDepositAccount({
     accountId,
     deriveAddress: deriveEthereumDepositAddress,
     assets: ethereumDepositAssets.map(({ symbol }) => symbol),
@@ -159,10 +161,10 @@ export async function getOrCreateVerifiedEthereumTopUpAccount({ accountId = "" }
   }
 
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const result = getOrCreateEthereumTopUpAccount({ accountId });
+    const result = await getOrCreateEthereumTopUpAccount({ accountId });
     if (!result.ok) return result;
 
-    const account = getEthereumDepositAccount({ accountId });
+    const account = await getEthereumDepositAccount({ accountId });
     const hasDepositCredit = await accountHasDepositCredit(account);
     const syncedBefore = Boolean(account?.lastSyncAt || Object.keys(account?.observedBalances || {}).length > 0);
     const baselineOnly = syncedBefore && hasStoredPositiveBalance(account) && !hasDepositCredit;
@@ -184,7 +186,7 @@ export async function getOrCreateVerifiedEthereumTopUpAccount({ accountId = "" }
       const symbols = probe.positiveSymbols.length > 0
         ? probe.positiveSymbols.join(",")
         : positiveBalanceSymbols(account?.observedBalances).join(",");
-      retireEthereumDepositAccount({
+      await retireEthereumDepositAccount({
         accountId,
         status: "retired_prefunded",
         reason: `prefunded_before_assignment:${symbols || "unknown"}`,
@@ -192,7 +194,7 @@ export async function getOrCreateVerifiedEthereumTopUpAccount({ accountId = "" }
       continue;
     }
 
-    const updated = updateEthereumDepositSync({
+    const updated = await updateEthereumDepositSync({
       accountId,
       observedBalances: probe.observedBalances,
       pendingBalances: Object.fromEntries(ethereumDepositAssets.map((asset) => [asset.symbol, null])),
@@ -438,7 +440,7 @@ function usdcCreditedUsdFromDepositAccount(account) {
 }
 
 async function totalUsdcDepositCreditUsd({ accountId = "", depositAccount = null } = {}) {
-  const account = depositAccount || getEthereumDepositAccount({ accountId });
+  const account = depositAccount || await getEthereumDepositAccount({ accountId });
   const normalizedAccountId = String(account?.accountId || accountId || "").trim();
   if (!normalizedAccountId) return 0;
 
@@ -565,13 +567,13 @@ function usdcTopUpGrantProgressMessage({ account = null, pftGrant = null } = {})
 }
 
 async function claimUsdcTopUpInitiationGift({ account = null, entry = null, accountId = "" } = {}) {
-  const depositAccount = account || getEthereumDepositAccount({ accountId });
+  const depositAccount = account || await getEthereumDepositAccount({ accountId });
   if (!depositAccount?.accountId) return null;
 
   const qualification = await resolveUsdcTopUpGrantQualification({ account: depositAccount, entry });
   if (!qualification) return null;
 
-  const linkedWallet = getLinkedWallet({ accountId: depositAccount.accountId });
+  const linkedWallet = await getLinkedWallet({ accountId: depositAccount.accountId });
   if (linkedWallet.status !== "linked" || !linkedWallet.address) return null;
   if (!linkedWallet.walletCreatedInAccount) return null;
 
@@ -675,13 +677,13 @@ async function claimUsdcTopUpInitiationGift({ account = null, entry = null, acco
 }
 
 async function resolveUsdcTopUpInitiationGiftStatus({ account = null, entry = null, accountId = "" } = {}) {
-  const depositAccount = account || getEthereumDepositAccount({ accountId });
+  const depositAccount = account || await getEthereumDepositAccount({ accountId });
   if (!depositAccount?.accountId) return null;
 
   const qualification = await resolveUsdcTopUpGrantQualification({ account: depositAccount, entry });
   if (!qualification) return null;
 
-  const linkedWallet = getLinkedWallet({ accountId: depositAccount.accountId });
+  const linkedWallet = await getLinkedWallet({ accountId: depositAccount.accountId });
   if (linkedWallet.status !== "linked" || !linkedWallet.address) return null;
   if (!linkedWallet.walletCreatedInAccount) return null;
 
@@ -740,7 +742,7 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
   const setup = await getOrCreateVerifiedEthereumTopUpAccount({ accountId });
   if (!setup.ok) return setup;
 
-  const account = getEthereumDepositAccount({ accountId });
+  const account = await getEthereumDepositAccount({ accountId });
   const observedBalances = {};
   const pendingBalances = {};
   const creditedBalances = {};
@@ -804,7 +806,7 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
       throw new Error(syncErrors.join("; "));
     }
 
-    const updated = updateEthereumDepositSync({
+    const updated = await updateEthereumDepositSync({
       accountId,
       observedBalances,
       pendingBalances,
@@ -850,7 +852,7 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
       },
     };
   } catch (error) {
-    const updated = updateEthereumDepositSync({
+    const updated = await updateEthereumDepositSync({
       accountId,
       observedBalances,
       pendingBalances,

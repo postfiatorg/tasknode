@@ -1,0 +1,33 @@
+name: Defect report
+description: Report a reproducible product or source defect without private data.
+title: "[defect] "
+labels: ["defect"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include credentials, wallet secrets, personal data, production logs, or security vulnerabilities. Use SECURITY.md for vulnerabilities."
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Observed outcome
+      description: What happened, and what should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal synthetic reproduction
+      description: Include adjacent/paraphrased cases when intent or routing is involved.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or release
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Browser/OS, safe logs, and focused test output.

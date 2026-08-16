@@ -1,7 +1,7 @@
 # Database Architecture
 
-Status: proposed target architecture
-Last updated: 2026-05-17
+Status: implemented architecture with remaining compatibility-cache cleanup
+Last updated: 2026-08-15
 
 Implementation status:
 
@@ -11,20 +11,26 @@ Implementation status:
   context pointer caches.
 - Database use is guarded by `TASKNODE_DATABASE_ENABLED=true`; this is
   intentionally stricter than merely detecting `DATABASE_URL`.
-- Still JSON-backed: account/session auth records, wallet links, and Ethereum
-  deposit account records. Context keeps JSON fallback during migration.
-  Public startup now refuses runtime-store auth state unless a durable store is
-  explicitly declared or a reviewed override is set, but the target remains
-  moving these auth/account models to Postgres.
+- Postgres is now authoritative for app accounts, unique email and OAuth
+  identities, profile handles and visibility, web sessions, OAuth/email/wallet
+  challenges, terminal handoffs and bearer sessions, linked wallets, Ethereum
+  deposit allocation and balance checkpoints, context, chat, and billing.
+- The JSON runtime store remains an explicit no-database development adapter
+  and a synchronized compatibility cache for older read-only worker/display
+  paths. Public startup rejects it as authority for accounts, auth state,
+  wallets, deposits, or terminal sessions.
+- Startup runs idempotent, transaction-first imports for legacy account, auth,
+  wallet, deposit, and terminal records. Raw bearer/challenge values are never
+  copied into Postgres payload JSON; source security state is cleared only
+  after the import transaction commits.
 - Next cutovers should keep using repository modules rather than importing raw
   SQL from handlers.
 
 ## Purpose
 
-Task Node Official currently keeps application state in a JSON runtime store.
-That was acceptable for rapid UI and protocol iteration, but it is not
-acceptable for durable accounts, chat restore, context editing, usage billing,
-deposit credits, or task projections.
+Task Node Official began with application state in a JSON runtime store. The
+production authority described here is now Postgres; JSON is retained only for
+local no-database development and temporary compatibility reads.
 
 The target database architecture is Postgres-first for app state, while keeping
 PFTL pointer events plus encrypted IPFS payloads as the canonical task protocol.
@@ -89,8 +95,8 @@ Recommended local services:
 - `DATABASE_URL=postgres://tasknodeofficial:...@db:5432/tasknodeofficial`
 - migration command executed before API startup or as an explicit dev command
 
-The existing JSON file at `/data/runtime-store.json` becomes migration input
-only.
+An existing JSON file at `/data/runtime-store.json` is migration input and a
+compatibility cache, never production authorization authority.
 
 ### Fly
 
@@ -769,25 +775,28 @@ accounts
   -> app_accounts
 
 accountEmails
-  -> account_identities(provider = email)
+  -> account_email_identities
 
 accountIdentities
-  -> account_identities(provider = github/x/telegram/discord/etc.)
+  -> account_provider_identities
 
 sessions
-  -> account_sessions
+  -> auth_sessions (SHA-256 token lookup)
 
 oauthStates
-  -> oauth_states if unexpired, otherwise drop
+  -> auth_challenges(kind = oauth_state, SHA-256 id lookup)
 
 emailChallenges
-  -> email_challenges if unexpired, otherwise drop
+  -> auth_challenges(kind = email_code, hashed id and code)
 
 accountWallets
-  -> pft_wallet_links
+  -> account_linked_wallets
 
 walletChallenges
-  -> wallet_challenges if unexpired, otherwise drop
+  -> auth_challenges(kind = wallet proof/login, hashed id)
+
+terminalAuthRequests / terminalSessions
+  -> terminal_auth_requests / terminal_sessions (hashed lookup secrets)
 
 walletInitiationGrants
   -> wallet_initiation_grants
@@ -819,14 +828,15 @@ contextHistorySnapshots
 
 Migration procedure:
 
-1. Stop writes or put the app in maintenance mode.
-2. Snapshot the JSON file and record its SHA-256.
-3. Apply Postgres migrations.
-4. Run an idempotent importer from JSON to Postgres.
-5. Validate row counts and representative account restores.
-6. Start the API in Postgres-read mode.
-7. Keep the JSON snapshot read-only for rollback inspection.
-8. Remove JSON writes after one clean deploy cycle.
+1. Snapshot the JSON file and record its SHA-256 before rollout.
+2. Apply Postgres migrations discovered from `server/db/migrations`.
+3. On HTTP startup, run the idempotent legacy import under database
+   transactions before accepting traffic.
+4. Commit durable rows and the migration marker together.
+5. Clear legacy security/deposit/terminal source state only after commit.
+6. Validate the repository drills and representative account restores.
+7. Retain the original operator snapshot only under the backup retention
+   policy; do not resume JSON authority during rollback.
 
 Importer requirements:
 
@@ -839,30 +849,26 @@ Importer requirements:
 
 ## Implementation Phases
 
-### Phase 1: Database Foundation
+### Completed: Database Foundation And Authority Cutover
 
-- Add Postgres and pgvector to local Docker.
-- Add `server/db` pool and migration runner.
-- Add initial schema for accounts, sessions, wallet links, context, chat, and
-  billing.
-- Add repository modules.
-- Keep JSON runtime store as fallback only during migration.
+- Postgres/pgvector, migration discovery, and repository modules are present.
+- Accounts, sessions, challenges, wallet links, terminal auth, deposits,
+  context, chat, and billing use durable repositories.
+- Real-Postgres drills cover hashed secrets, one-time exchange, uniqueness,
+  concurrent wallet/deposit allocation, legacy import, revoke, and retirement.
 
-### Phase 2: Account, Context, Chat, Billing Cutover
+### Remaining: Compatibility Cache Removal
 
-- Move account/session reads and writes to Postgres.
-- Move native context reads and saves to the Postgres current-draft cache.
-- Move chat conversations/messages/model runs to Postgres.
-- Move usage ledger and Ethereum deposit records to Postgres.
-- Add smoke tests for restart persistence.
+- Convert remaining non-authoritative background/display identity reads to the
+  account profile repository, then delete their runtime-cache dependencies.
+- Remove legacy JSON account/wallet/deposit mutation helpers after the
+  supported no-database adapter is split into its own package boundary.
 
-### Phase 3: JSON Importer
+### Completed: Transactional Legacy Importers
 
-- Build `scripts/import-runtime-store-to-postgres.mjs`.
-- Support dry-run and execute modes.
-- Import local Docker JSON state.
-- Import Fly JSON state only if a valid snapshot exists.
-- Confirm no duplicate account identity, wallet grant, or billing ledger rows.
+- Startup importers use durable migration markers and idempotent inserts.
+- Repository smoke tests exercise isolated legacy JSON sources against real
+  Postgres and prove source clearing happens only after commit.
 
 ### Phase 4: Task Projection Store
 

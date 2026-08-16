@@ -1,214 +1,164 @@
 # Task Node Official
 
-Official product workspace for Task Node GPT: a ChatGPT-style execution app
-integrated with personal tasks, context documents, PFT wallet operations, and
-crypto-funded usage.
+Task Node is Post Fiat's account-first work application. It combines AI chat,
+personal and network tasks, context and memory, wallet-backed identity, PFTL
+task replay, encrypted documents, profiles, Hive coordination, and private
+Nostr messaging.
 
-## Current Status
+Production is served at `https://tasknode.postfiat.org`. The Fly application
+retains the historical internal name `tasknodeofficial-dev`; that name does not
+mean the deployment is a development environment.
 
-This repository is initialized with early product/interface artifacts and a
-minimal deployable dev app:
+## Publication Status
 
-- `docs/wiki/index.md` is the source-of-truth Help wiki index.
-- `docs/wiki/architecture/bootup.md` explains local setup, smoke tests,
-  runtime persistence, and common failure checks.
-- `docs/wiki/architecture/deployment.md` covers local Docker, Fly release
-  deployments, background process groups, secrets, and operational checks.
-- `docs/wiki/architecture/current-system.md` maps the current app, API contracts, enabled
-  surfaces, disabled surfaces, and near-term build path.
-- Product and architecture truth lives in `docs/wiki/` (start at `docs/wiki/index.md`) and the in-app **Docs** surface.
-- Historical root briefs/mocks were moved to `docs/archive/root-specs/` (`product_spec.md`, `full_spec.md`, `auth_account_spec.md`, `whip_context.md`, `jsx_mock.jsx`) and are **not** primary inputs.
-- `login.jsx` contains a standalone login/sign-up modal mock with Telegram, Discord, X, GitHub, and email entry options.
-- `src/` and `server/` contain the first thin React shell and Node static server.
-- `fly.toml` deploys the dev app to `tasknodeofficial-dev` on Fly.io.
-- `/api/app-state` is the first server-owned product contract for session,
-  chat modes, tasks, wallet, usage billing, and context sources. It is fixture
-  backed for development so live PFTL and app-store integrations can replace it
-  behind a stable boundary.
-- `/api/auth/providers` and `/api/readiness` expose non-secret integration
-  readiness. Email code login and GitHub OAuth are implemented as the first
-  account paths; Telegram, Discord, and X remain disabled until callbacks,
-  account merge rules, and wallet custody boundaries are implemented.
-- `/api/auth/email/start` and `/api/auth/email/verify` implement one-time email
-  code login. Codes are hashed server-side, expire quickly, are single-use, and
-  issue httpOnly cookie sessions after verification. Local/dev environments can
-  use development delivery for smoke testing; production should configure
-  `TASKNODE_AUTH_SECRET` and a transactional email provider.
-- `/api/auth/start/:provider` and `/api/auth/callback/:provider` are present as
-  contract endpoints. GitHub starts a real OAuth flow when configured and links
-  to the current signed-in account when launched from an existing session.
-  Other providers return structured disabled or unimplemented responses until
-  their callbacks are reviewed and enabled.
-- `/api/auth/dev/start`, `/api/auth/logout`, and `/api/session` provide the
-  first cookie-backed account session boundary for development environments.
-  This is not a production auth provider; it exists so the account-first app can
-  be exercised before OAuth and bot callbacks are enabled.
-- Settings > Security exposes the first connected-accounts surface for provider
-  status and account-link actions.
-- `/api/wallet/link/start` and `/api/wallet/link/verify` implement the first
-  seed-wallet proof boundary. The browser validates a 24-word BIP39 recovery
-  phrase, derives the PFTL classic address using the XRPL-compatible PFDocs
-  path, signs a server challenge locally, and sends only address, public key,
-  and signature to the server. The browser can now save an encrypted local seed
-  vault with WebCrypto AES-GCM/PBKDF2 and unlock it for the current session.
-  The unlocked vault can decrypt imported historical context CIDs in the
-  browser. PFTL transaction signing, delink, and relink remain disabled until
-  their custody rules are implemented.
-- PFTL is its own Post Fiat L1. The app may use XRPL-compatible libraries and
-  classic-address primitives because PFTL is an XRPL fork, but PFT balances and
-  transactions are not XRP mainnet/testnet balances or transactions.
-- `/api/chat/estimate`, `/api/chat/send`, and `/api/chat/stream` define the
-  usage-based chat contract. Estimates are cost-free. Send supports a cost-free
-  dry run for smoke tests, while stream renders assistant deltas over SSE and
-  persists the completed response plus usage after provider completion.
-  Legacy mode names remain compatible, but all text, reasoning, structured,
-  search, and image-understanding requests route through Ambient. OpenAI is
-  restricted to blind Profile NFT image rendering after a two-pass Ambient GLM
-  5.2 privacy abstraction and deterministic leakage checks.
-- `/api/chat/modes`, `/api/chat/conversations`, and `/api/chat/history` expose
-  model-route readiness, server-owned recents, and per-thread history. Chat
-  turns and usage debits use the Postgres chat/billing repository when
-  `DATABASE_URL` is configured and `TASKNODE_DATABASE_ENABLED=true`, with the
-  JSON runtime store retained as a no-database development fallback.
-- The chat shell keeps usage accounting visible without crowding the thread:
-  PFT and USD chat credit sit together in the sidebar balance area, while
-  sub-cent USD credit and per-response billing feedback are shown without
-  rounding active usage down to a static-looking `$5.00`. The response
-  toolbar exposes only backed behavior today: copy response and copy the visible
-  transcript.
-- `/api/usage/ledger` exposes the current append-only usage ledger so chat
-  spend and account credits can be audited. The Billing settings surface reads
-  this ledger directly; local Docker now stores it in Postgres.
-- `/api/usage/actions`, `/api/usage/top-up/start`, and
-  `/api/usage/credit/admin` define the first usage-credit contract. Crypto
-  top-up is still disabled while the safest rail is selected; admin credit is
-  enabled only when `TASKNODE_ADMIN_CREDIT_TOKEN` is configured and requires a
-  caller-supplied idempotency key.
-- Eligible provider login can grant an idempotent initial chat credit through
-  the same usage ledger. Email-only login is excluded.
-- `/api/context` and `/api/context/edit/save` expose the first native
-  account-scoped context document. Everyone can view the default context shape;
-  signed-in users can save edits without wallet unlock.
-- `/api/context/history` and `/api/context/history/indexed` expose the first
-  PFDocs-compatible history bridge. Signed-in accounts can import indexed
-  context/task rows as sanitized pointer metadata. `/api/context/history/ipfs/:cid`
-  fetches encrypted JSON only for imported pointer CIDs, and the browser
-  decrypts the latest context payload with the locally unlocked seed vault.
-  Shared URL imports remain disabled until their trust boundary is implemented.
-  Explicit, user-initiated PFTL manifest ink is implemented and config-gated: the
-  browser signs the pointer transaction while the server only pins the encrypted
-  payload and submits the signed blob, scoped to a signed-in account with a linked
-  wallet, and is off in environments without IPFS/PFTL/encryption-key configuration.
+Task Node is licensed under the permissive MIT License. The public release is
+generated from a reviewed publication allowlist so production operations,
+credentials, private evidence, and internal-only material do not enter the
+distributed source archive.
 
-Dev URL: https://tasknodeofficial-dev.fly.dev
+The evidence and release gates are in
+[`docs/open-source-readiness.md`](docs/open-source-readiness.md). Generate a
+release only from a clean protected commit that passes the documented gates.
 
-## New Engineer Start Here
+## Current Product
 
-Read these in order:
+The implemented application includes:
 
-1. `docs/wiki/index.md`
-2. `docs/wiki/architecture/current-system.md`
-3. `docs/wiki/architecture/bootup.md`
-4. `docs/wiki/architecture/deployment.md`
-5. `docs/wiki/` (authoritative) and the in-app Docs surface
-6. `docs/archive/root-specs/` historical snapshots only (`full_spec.md`, `auth_account_spec.md`, `whip_context.md`, etc.)
-7. Live `src/`/`server/` implementation when docs and code must be compared
+- Ambient-backed AI chat with streaming, account-scoped conversation history,
+  attachments, usage billing, Context and Memory, and selectable personas and
+  modalities;
+- email, GitHub, Telegram, Discord, and X account paths, each enabled only when
+  its environment-specific callback and credential configuration is complete;
+- browser-created PFTL wallets, local encrypted seed vaults, wallet ownership
+  proofs, transfers, activity, balances, relink/delink, and explicit signing
+  confirmations for wallet-bound actions;
+- personal and network task generation, acceptance, submission, verification,
+  reward processing, Postgres projections, and PFTL/IPFS replay boundaries;
+- native Context editing plus encrypted historical context restore;
+- a PFDocs-backed encrypted Docs library, Team task-history grants, Directory,
+  Profile/NFT, Memory, Hive, Help, and System Status surfaces;
+- wallet-derived Nostr identities and NIP-17 user-to-user Messages addressed by
+  Task Node handle; and
+- split production workers for PFTL caching, task generation/review, Context
+  rewrite, Hive, memory/profile work, airdrops, NFT rendering, and the Hive
+  board secretary.
 
-## Development
+The system is production software, not an early interface mock or thin shell.
+The implementation in `src/`, `server/`, `scripts/`, migrations, and `fly.toml`
+is authoritative when a document disagrees with code.
 
-Fast local Docker dev:
+## Data Boundaries
+
+- AI Chat message bodies are stored in Task Node Postgres and sent to the
+  configured inference provider. Attachments and derived Memory may also be
+  persisted.
+- More -> Messages is different: message text is encrypted in the browser and
+  sent directly to independent Nostr relays. Task Node stores the public
+  identity/handle binding and relay preferences, not message bodies or the
+  Nostr private key.
+- Wallet recovery phrases and decrypted private keys are browser-side secrets.
+  The server receives public addresses, public keys, signed proofs, and signed
+  transactions where required, never the recovery phrase.
+- Native Context is server-side account data. Historical PFTL/IPFS context
+  payloads remain encrypted until the unlocked browser decrypts them.
+
+These statements describe the implementation; they are not a substitute for
+the privacy policy and retention inventory required before public release.
+
+## Repository Map
+
+```text
+src/                         React application
+server/                      API, repositories, workers, and runtime services
+server/db/migrations/        Ordered Postgres migrations
+shared/                      Shared product and protocol contracts
+reference_clients/           External client implementations and tests
+scripts/                     Focused smoke, operator, migration, and release tools
+prompts/                     Source-controlled runtime prompts
+docs/wiki/                   Current user, product, and architecture documentation
+docs/archive/                Historical material; not current authority
+docs/verification/           Internal evidence pending public-release classification
+fly.toml                     Current official production topology (pending extraction)
+docker-compose.dev.yml       Local development stack
+```
+
+The in-app Help surface imports an explicit set of wiki pages and prompts from
+`src/features/docs/docs-content.js`. Today that set includes internal material;
+creating a reviewed public allowlist is a P0 open-source release requirement.
+
+## Local Development
+
+Requirements:
+
+- Node 20;
+- npm with the checked-in lockfile; and
+- Docker for the normal full-stack workflow.
+
+Install and build:
+
+```bash
+npm ci
+npm run build
+PORT=8080 npm start
+```
+
+Open `http://127.0.0.1:8080`.
+
+Docker development:
 
 ```bash
 npm run docker:dev -- -d
 ```
 
-Open:
+Open `http://localhost:5174`.
 
-```text
-http://localhost:5174
-```
+Important: the current Compose file publishes Postgres, API, and Vite ports on
+the host, enables development auth, and has external PFTL/testnet defaults. Use
+it only on a trusted development machine. Loopback-only, synthetic,
+network-minimal defaults are a P0 requirement before broad public onboarding.
 
-Install and run locally:
+Frontend-only iteration is available with:
 
 ```bash
-npm ci
+npm run dev
+```
+
+## Verification
+
+Run the smallest focused check for the boundary being changed. Useful common
+commands are:
+
+```bash
+npm run format-check
+npm run lint
 npm run build
 npm run runtime-smoke
-PORT=8080 npm start
-SMOKE_BASE_URL=http://127.0.0.1:8080 npm run smoke
-FRAME_BASE_URL=http://127.0.0.1:8080 npm run frame-smoke
+git diff --check
 ```
 
-Deploy the dev app:
+`npm run file-size-check`, and therefore the aggregate `quality` and `check`
+commands, is known to fail at the reviewed baseline. Do not describe the
+repository as green until the checker and violations are repaired and the
+fresh-clone CI gate passes.
 
-```bash
-npm run fly:deploy
-SMOKE_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run smoke
-FRAME_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run frame-smoke
-npm run fly:background-guard
-```
+There are hundreds of specialized npm aliases and focused smoke scripts. They
+are current engineering tools, but the command surface must be consolidated
+before broad external contribution.
 
-Do not use raw `fly deploy` as the normal release command. Task Node has
-non-HTTP Fly process groups, and Fly's `http_service.min_machines_running`
-setting only keeps the public `app` process alive. `npm run fly:deploy` deploys
-and then verifies `worker` and `board-manager` machines are started with
-`restart=always`. The worker guard also verifies task generation, Network Task
-generation, and task review are enabled, because a running worker process with
-those flags missing will leave queued task rows unprocessed.
+## Documentation
 
-The project npm policy disables lifecycle scripts, audit, funding prompts, and
-high-concurrency registry fetches by default. That keeps the current dependency
-surface small and reduces npm supply-chain exposure while this app is still
-being bootstrapped.
+Start here:
 
-## Product Direction
+1. [`docs/README.md`](docs/README.md) — documentation authority and audiences;
+2. [`docs/wiki/index.md`](docs/wiki/index.md) — user/product Help index;
+3. [`docs/wiki/architecture/current-system.md`](docs/wiki/architecture/current-system.md)
+   — current runtime and trust boundaries;
+4. [`docs/wiki/architecture/bootup.md`](docs/wiki/architecture/bootup.md) — local
+   startup and focused checks;
+5. [`docs/open-source-readiness.md`](docs/open-source-readiness.md) — publication
+   blockers and release checklist.
 
-Task Node Official is the current product surface. The intended
-product is "ChatGPT except designed to make you more productive," with a clean
-chat-first interface and product-specific execution surfaces.
-
-Core requirements from the initial spec:
-
-- Account authentication replaces wallet authentication for normal app access.
-- Wallet authentication remains only for wallet-bound actions: sending PFT,
-  signing PFT verifications, and saving context document manifests through PFTL
-  pointers.
-- Users can use the product without a Post Fiat wallet, but paid usage is
-  required in that path.
-- Chat spend is tracked per query, and users can top up with crypto.
-- Task completion should top up user chat balances.
-- The app supports personal task requests; network and alpha tasks move to a
-  routed network task board rather than user-requested flows.
-- Context documents start as native account-scoped documents. Share-link based
-  sources such as Google Docs and a researched Notion path are deferred until
-  the trust, cache, and confirmation boundaries are designed, while cacheable
-  PFT context portability remains a later explicit manifest flow.
-- Telegram and Discord chat surfaces should consolidate into this app with clear
-  account linkage and bot integration documentation.
-- Nostr should be used for messaging-style integration instead of treating PFT as
-  the messaging layer.
-- Dev and production deployments should target Fly.io.
-- Prompts should be open source except private NFT/profile-picture prompts.
-- The codebase should stay small, modular, security-conscious, and easy for LLMs
-  and humans to audit.
-
-## Interface Model
-
-The current mock keeps Task Node close to ChatGPT while exposing:
-
-- `Tasks` for personal execution work.
-- `Wallet` for PFT balance, transfers, and activity.
-- `Context` for a native account document first, then historical PFT context and
-  explicit external sources after their trust boundaries are implemented.
-- `Profile` for private and pseudonymous public identity surfaces.
-- Settings for security, billing, model/data controls, and connected wallets.
-
-## Open Decisions
-
-- Finalize the PFTL Snap/server-side seed-cache approach and unlock transaction
-  boundaries.
-- Define the scalable message storage architecture.
-- Decide whether the network board is refactored or eliminated.
-- Complete context hydration and later Notion/document import
-  research.
-- Prefer `docs/wiki/` plans/surfaces for milestones and acceptance criteria; root product_spec is archival only.
+Production deployment instructions are operator-only until official operations
+are extracted from the candidate public repository. Do not run the Fly deploy
+scripts from an untrusted checkout or against credentials whose target has not
+been independently verified.

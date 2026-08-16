@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { Wallet } from "xrpl";
 import { pinContextIpfsJson } from "./context-ipfs.js";
 import { resolveTasknodeEncryptionKey } from "./context-publish.js";
@@ -11,39 +10,29 @@ import { query, transaction } from "./db/pool.js";
 import { moneySeedFromEnv } from "./production-guards.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
+import {
+  dailyAirdropDate as dateOnly,
+  dailyAirdropIssuanceRetryable,
+  normalizeDailyAirdropIssuance as normalizeIssuance,
+  normalizeDailyAirdropIssuanceStatus,
+} from "./profile-daily-airdrop-issuance-state.js";
+import {
+  buildDailyAirdropPayload as airdropPayload,
+  dailyAirdropDigest as sha256,
+  dailyAirdropPftToDrops as pftToDrops,
+  stableDailyAirdropJson as stableJson,
+} from "./profile-daily-airdrop-payload.js";
+
+export {
+  dailyAirdropIssuanceBlocksRetry,
+  dailyAirdropIssuanceRetryable,
+  normalizeDailyAirdropIssuanceStatus,
+} from "./profile-daily-airdrop-issuance-state.js";
 
 const AIRDROP_POINTER_SCHEMA = 1;
-const PFT_DROPS_PER_PFT = 1_000_000;
-const RETRYABLE_ISSUANCE_STATUSES = new Set(["pending", "failed_before_submit"]);
-const BLOCKING_ISSUANCE_STATUSES = new Set([
-  "processing",
-  "processing_pre_submit",
-  "submitting",
-  "submit_unknown",
-  "submitted",
-  "cancelled",
-]);
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
-}
-
-function stableJson(value) {
-  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function sha256(value = "") {
-  return createHash("sha256").update(typeof value === "string" ? value : stableJson(value), "utf8").digest("hex");
-}
-
-function pftToDrops(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return "0";
-  return String(Math.round(parsed * PFT_DROPS_PER_PFT));
 }
 
 function errorCode(error) {
@@ -56,30 +45,6 @@ function errorCode(error) {
       "daily_airdrop_issuance_failed",
     160
   ).replace(/\s+/g, "_").toLowerCase();
-}
-
-export function normalizeDailyAirdropIssuanceStatus(rowOrStatus = {}) {
-  const row = typeof rowOrStatus === "string" ? { status: rowOrStatus } : rowOrStatus || {};
-  const status = safeText(row.status, 80);
-  if (
-    status === "failed" &&
-    !safeText(row.tx_hash || row.txHash, 120) &&
-    !(row.submitted_at || row.submittedAt)
-  ) {
-    return "failed_before_submit";
-  }
-  if (status === "processing") {
-    return row.submission_attempted_at || row.submissionAttemptedAt ? "submit_unknown" : "processing_pre_submit";
-  }
-  return status || "pending";
-}
-
-export function dailyAirdropIssuanceRetryable(rowOrStatus = {}) {
-  return RETRYABLE_ISSUANCE_STATUSES.has(normalizeDailyAirdropIssuanceStatus(rowOrStatus));
-}
-
-export function dailyAirdropIssuanceBlocksRetry(rowOrStatus = {}) {
-  return BLOCKING_ISSUANCE_STATUSES.has(normalizeDailyAirdropIssuanceStatus(rowOrStatus));
 }
 
 function rewardSeed(env = process.env) {
@@ -100,81 +65,6 @@ function rewardSeed(env = process.env) {
 function walletFromSeed(seed, code) {
   if (!seed) throw new Error(code);
   return Wallet.fromSeed(seed);
-}
-
-function dateOnly(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
-  return date.toISOString().slice(0, 10);
-}
-
-function normalizeIssuance(row = null) {
-  if (!row) return null;
-  const status = normalizeDailyAirdropIssuanceStatus(row);
-  return {
-    id: row.id || "",
-    accountId: row.account_id || "",
-    runId: row.run_id || "",
-    runDate: row.run_date ? dateOnly(row.run_date) : "",
-    sourceWallet: row.source_wallet || "",
-    recipientWallet: row.recipient_wallet || "",
-    amountPft: Number(row.amount_pft || 0),
-    amountDrops: row.amount_drops || "",
-    status,
-    rawStatus: row.status || status,
-    sourceCid: row.source_cid || "",
-    txHash: row.tx_hash || "",
-    ledgerIndex: row.ledger_index || null,
-    payloadDigest: row.payload_digest || "",
-    errorMessage: row.error_message || "",
-    attemptCount: Number(row.attempt_count || 0),
-    lastAttemptAt: row.last_attempt_at ? new Date(row.last_attempt_at).toISOString() : null,
-    lastErrorCode: row.last_error_code || "",
-    lastErrorMessage: row.last_error_message || "",
-    submissionAttemptedAt: row.submission_attempted_at ? new Date(row.submission_attempted_at).toISOString() : null,
-    signedTxHash: row.signed_tx_hash || "",
-    reconciliation: row.reconciliation_json || {},
-    reconciledAt: row.reconciled_at ? new Date(row.reconciled_at).toISOString() : null,
-    cancelledAt: row.cancelled_at ? new Date(row.cancelled_at).toISOString() : null,
-    retryable: dailyAirdropIssuanceRetryable(row),
-    blocksRetry: dailyAirdropIssuanceBlocksRetry(row),
-    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
-    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
-    submittedAt: row.submitted_at ? new Date(row.submitted_at).toISOString() : null,
-    completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null,
-  };
-}
-
-function airdropPayload({ run, issuance, sourceWallet, recipientWallet, amountPft }) {
-  const now = new Date().toISOString();
-  return {
-    schema: "pf.daily_airdrop.v1",
-    protocol: "tasknode.pftl",
-    created_at: now,
-    chain: process.env.TASKNODE_PFTL_CHAIN_NAME || "pftl-testnet",
-    run_id: run.id,
-    issuance_id: issuance.id,
-    event_id: `evt_${sha256({ runId: run.id, recipientWallet, amountPft }).slice(0, 24)}`,
-    account_id: run.account_id,
-    actor_wallet: sourceWallet,
-    authority_wallet: sourceWallet,
-    allocation_wallet: sourceWallet,
-    recipient_wallet_address: recipientWallet,
-    reward_pft: Number(amountPft).toFixed(6),
-    reward_tier: "daily_airdrop",
-    reward_summary: run.what_raised_today || "",
-    retention_value_score: Number(run.retention_value_score || 0),
-    what_raised_today: run.what_raised_today || "",
-    what_kept_it_lower: run.what_kept_it_lower || "",
-    to_improve_tomorrow: run.to_improve_tomorrow || "",
-    alignment_score_7d: Number(run.alignment_score_7d || 0),
-    actual_airdrop_pft_7d: Number(run.actual_airdrop_pft_7d || 0),
-    max_possible_airdrop_pft_7d: Number(run.max_possible_airdrop_pft_7d || 0),
-    run_date: dateOnly(run.run_date),
-    prompt_version: run.prompt_version || "",
-    prompt_digest: run.prompt_digest || "",
-    input_hash: run.input_hash || "",
-  };
 }
 
 export async function claimDailyAirdropIssuanceForPublish({

@@ -17,6 +17,7 @@ import { startProfileNftRenderWorker } from "./profile-nft-render-worker.js";
 import { startPublicProfileSnapshotWorker } from "./public-profile-snapshot-worker.js";
 import { startRecommendedConnectionsWorker } from "./recommended-connections-worker.js";
 import { startContextRewriteWorker } from "./context-rewrite-worker.js";
+import { startDataRetentionWorker } from "./data-retention.js";
 import { startTaskGenerationWorker } from "./task-generation-worker.js";
 import { startTaskReviewWorker } from "./task-review-worker.js";
 import { isMonolithWorkerRole, tasknodeProcessRole } from "./process-role.js";
@@ -60,6 +61,7 @@ function startHiveWorkers(startOne) {
 }
 
 function startMemoryProfileWorkers(startOne) {
+  startOne("data_retention", startDataRetentionWorker);
   startOne("chat_memory", startMemoryWorker);
   startOne("public_profile_snapshot", startPublicProfileSnapshotWorker);
   startOne("recommended_connections", startRecommendedConnectionsWorker);

@@ -50,36 +50,5 @@
       "maxLines": 2000
     }
   ],
-  "exceptions": {
-    "login.jsx": {
-      "maxLines": 5000,
-      "owner": "ux-mock-process",
-      "removeBy": "2026-06-15",
-      "reason": "Canonical root login UX mock retained as product/design input; excluded from app-code modularity limits."
-    },
-    "src/main.jsx": {
-      "maxLines": 4750,
-      "owner": "frontend-refactor",
-      "removeBy": "2026-06-15",
-      "reason": "Legacy app shell is being split into feature modules; no growth above current size is allowed."
-    },
-    "src/styles.css": {
-      "maxLines": 4800,
-      "owner": "frontend-refactor",
-      "removeBy": "2026-06-15",
-      "reason": "Legacy global stylesheet is being split by feature; no growth above current size is allowed."
-    },
-    "server/product-contracts.js": {
-      "maxLines": 2790,
-      "owner": "server-contracts-refactor",
-      "removeBy": "2026-06-15",
-      "reason": "Legacy copy, readiness, and runtime contracts need separation into smaller contract modules."
-    },
-    "server/runtime-store.js": {
-      "maxLines": 1920,
-      "owner": "runtime-store-refactor",
-      "removeBy": "2026-06-15",
-      "reason": "Runtime persistence facade is being replaced with scoped repositories and service modules."
-    }
-  }
+  "exceptions": {}
 }

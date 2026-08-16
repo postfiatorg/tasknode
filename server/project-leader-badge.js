@@ -1,15 +1,3 @@
-const defaultProjectLeaderHiveHandles = Object.freeze([
-  "zoz",
-  "donravle",
-  "georgl0nggamma",
-  "jollydinger",
-  "nydiokar",
-  "hitori",
-  "wizbubba",
-  "diamond-hand-honcho",
-  "goodalexander",
-]);
-
 function normalizeHandle(value = "") {
   return String(value || "")
     .trim()
@@ -26,8 +14,7 @@ export function configuredProjectLeaderHiveHandles() {
     .split(",")
     .map(normalizeHandle)
     .filter(Boolean);
-  const handles = configured.length ? configured : defaultProjectLeaderHiveHandles;
-  return [...new Set(handles.map(normalizeHandle).filter(Boolean))];
+  return [...new Set(configured)];
 }
 
 export function projectLeaderAccessForHandle(handle = "") {

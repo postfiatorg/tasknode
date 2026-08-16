@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   ArrowUp,
   ChevronDown,
@@ -517,7 +517,7 @@ function thinkingSteps(message) {
   return ["Read the prompt", "Checked available context", "Composed the response"];
 }
 
-function BlockRenderer({ block }) {
+export function BlockRenderer({ block }) {
   if (!block) return null;
 
   switch (block.type) {

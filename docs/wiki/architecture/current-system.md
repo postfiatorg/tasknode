@@ -1,324 +1,235 @@
-# Current System Map
+# Current System
 
-This document describes what exists in the repo today. It is not the final
-architecture.
+This page describes the implemented Task Node Official runtime as of
+2026-08-15. It is a production system, not an early mock or a thin frontend
+shell.
 
 ## Product Boundary
 
-Task Node Official is the clean, account-first app. PFTasks and PFDocs are
-reference systems.
+Task Node is an account-first work application with optional wallet-backed
+authority. A user can sign in, chat, and maintain native Context without a PFTL
+wallet. Wallet proof and an unlocked local vault are required only for actions
+that need wallet identity, signing, decryption, or protocol publication.
 
-Current product rules:
+The product currently combines:
 
-- Copy the provided JSX mocks where they exist.
-- When a mock is incomplete, copy current ChatGPT patterns.
-- Normal app access is account-based.
-- Wallet proof is required only for wallet-bound actions.
-- Usage is billing-based, not arbitrary rate-limit based.
-- Users may receive network and alpha tasks, but they cannot request them from
-  the normal task request path.
-- Native context editing should fit the new Task Node Official shell.
-- Context history is read from the PFTL cache projection in Postgres.
+- AI Chat, server-owned conversations, attachments, personas/modalities,
+  Context, Memory, search, and usage billing;
+- personal and network Tasks with generation, acceptance, submission,
+  verification, reward, projection, and replay paths;
+- PFTL wallet creation/linking, a browser-encrypted seed vault, balances,
+  activity, transfers, and explicit signing boundaries;
+- Hive projects/chat/coordination, Directory, Profile/NFT, daily airdrops, and
+  System Status;
+- a PFDocs-backed Docs library and directional Team task-history grants; and
+- NIP-17 encrypted user-to-user Messages addressed by Task Node handle.
 
-## Repo Layout
+PFTasks is legacy migration material. PFDocs is a separately deployed service
+integrated by the Docs surface. Neither is the executable runtime for this
+repository.
+
+## Trust and Data Boundaries
+
+### Browser
+
+The browser owns recovery-phrase entry, wallet derivation, encrypted local-vault
+storage, wallet signing, reconstruction of the wallet-derived Nostr key, NIP-17
+message encryption/decryption, and decryption of supported historical encrypted
+payloads. An unlocked recovery phrase may exist in page/session memory while
+the wallet is unlocked; it is not sent to the Task Node API.
+
+### Task Node web/API process
+
+The web process serves the React build and API. It handles sessions, linked
+identity metadata, wallet ownership proofs, chat/provider orchestration,
+billing, Context, Tasks, Hive, profiles, collaboration metadata, and worker
+control/read models. AI Chat and native Context are not end-to-end encrypted
+from the Task Node service.
+
+### Postgres and runtime-store JSON
+
+Postgres stores chat bodies, attachments/metadata, billing, Context revisions,
+Memory, Tasks and projections, Hive, profiles, collaboration state, PFTL cache
+rows, and worker queues.
+
+The durable JSON runtime store remains a production dependency for account,
+session, connected-identity, wallet-link, OAuth/email challenge, and related
+state that has not moved to Postgres. Production mounts it at
+`/data/runtime-store.json`; a `/tmp` fallback is development-only and not
+durable.
+
+### External systems
+
+- Ambient handles general inference. The Profile NFT renderer is an isolated
+  OpenAI image-generation exception after privacy abstraction/review.
+- PFTL endpoints provide balance, transaction, pointer, and replay data; IPFS
+  stores applicable encrypted or public payloads.
+- The separately deployed PFDocs service owns its document runtime.
+- Independent Nostr relays store encrypted NIP-17 gift wraps. Task Node stores
+  the public handle/key binding and relay preferences but does not proxy or save
+  message bodies or the Nostr private key.
+- OAuth/email providers, Ethereum RPC services, and configured analytics are
+  subprocessors or external dependencies with their own data boundaries.
+
+These boundaries require a complete public privacy/retention inventory before
+open-source release.
+
+## Repository Layout
 
 ```text
-.
-├── README.md                  # root project overview and quick commands
-├── docs/wiki/                 # source Markdown for in-app Help
-│   └── architecture/          # source pages that Help groups by function
-├── docs/wiki/                 # authoritative product/architecture docs
-├── docs/archive/root-specs/   # historical root briefs/mocks only
-├── login.jsx                  # canonical login modal mock
-├── mocks/                     # newer UX mocks from product iteration
-├── prompts/                   # prompt research/input artifacts
-├── src/                       # React app shell
-├── server/                    # Node API/static server
-├── scripts/                   # smoke and frame-smoke tests
-├── Dockerfile                 # Fly build image
-├── fly.toml                   # tasknodeofficial-dev Fly config
-└── package.json               # npm scripts and deps
+src/                         React application and browser cryptography
+server/                      HTTP routes, services, repositories, workers
+server/db/migrations/        Ordered Postgres migrations
+shared/                      Shared contracts
+reference_clients/           External client implementations/tests
+scripts/                     Smoke, migration, operator, and release tooling
+prompts/                     Source-controlled runtime prompts
+docs/wiki/                   User/product and architecture documentation
+docs/archive/                Historical material
+docs/verification/           Internal evidence pending publication review
+docker-compose.dev.yml       Current local stack
+fly.toml                     Current official production topology
 ```
 
-## Runtime Surfaces
+Large central files remain a known maintainability problem; the presence of a
+feature directory does not imply that its whole boundary has been extracted
+from `src/main.jsx`, `server/product-contracts.js`, or other central modules.
 
-Frontend:
+## Runtime Processes
 
-- `src/main.jsx`: React app, shell, navigation, chat frame, task/wallet/context
-  surfaces, settings, login modal, and current UX wiring.
-- `src/styles.css`: app styling.
-- `src/api.js`: small fetch helpers.
+The current Fly process map is defined by `fly.toml`:
 
-Server:
+| Process | Responsibility |
+| --- | --- |
+| `app` | Public web/API process |
+| `worker-pftl` | PFTL cache, watcher, archive, reducer, retention, and replication loops |
+| `worker-taskgen` | Personal and network task generation |
+| `worker-task-review` | Verification, review, and reward transitions |
+| `worker-context-rewrite` | Asynchronous full-document Context rewrites |
+| `worker-hive` | Hive task manager, secretary/project/report/accounting work |
+| `worker-memory-profile` | Chat memory and profile/recommendation work |
+| `worker-airdrop` | Daily airdrop work |
+| `worker-nft-renderer` | Isolated Profile NFT image rendering |
+| `board-secretary` | Hive board-secretary loop |
 
-- `server/index.js`: static file server, runtime config, API routing, cookies.
-- `server/product-contracts.js`: product action contracts for auth, chat,
-  wallet, context, usage, provider readiness, and disabled actions.
-- `server/runtime-store.js`: JSON-backed sessions, accounts, identities, email
-  challenges, OAuth state, wallet links, context documents, and remaining
-  non-migrated runtime state.
-- `server/db/`: Postgres pool and migration runner.
-- `server/repositories/chat-billing.js`: Postgres-backed chat history and
-  usage billing repository with JSON fallback when `DATABASE_URL` is absent.
-- `server/chat-router.js`: canonical Instant, Thinking, and Help mode config,
-  Ambient readiness, cost estimates, and execution. Instant and Help use
-  `deepseek/deepseek-v4-flash-0731`; Thinking uses `z-ai/glm-5.2`. Its validated
-  personality router keeps Jobs, ODV, and Trading Coach prompt selection
-  independent from model selection and prevents non-Jobs personas from calling
-  the Jobs vector corpus.
-- `server/app-state.js`: server-owned UI read model for session, chat, tasks,
-  wallet, usage, context, and readiness.
+`start:board-manager` remains only as a deliberately disabled legacy command.
+Documentation or operations that expect a live `board-manager` Fly process are
+obsolete.
 
-Tests:
+## Authentication and Identity
 
-- `scripts/smoke.mjs`: API/product contract smoke test.
-- `scripts/runtime-store-smoke.mjs`: local runtime store invariant smoke test.
-- `scripts/chat-billing-postgres-smoke.mjs`: live Postgres smoke for chat
-  history, conversation rename/delete, idempotent credits, and usage ledger
-  projection.
-- `scripts/frame-smoke.mjs`: headless browser frame test with screenshots.
+Email, GitHub, Telegram, Discord, and X start/callback implementations exist.
+Each provider is live only when its environment credentials, callback URL, and
+provider-side configuration are correct. Development auth is permitted outside
+production and is rejected by public-production startup guards.
 
-## Current API Contracts
+Sessions use an HttpOnly, SameSite=Lax cookie. Connected providers resolve into
+an account identity cloud. Wallet linkage is a separate signed proof; local
+wallet unlock is not application login.
 
-Health/config:
+The route inventory and declared auth classes live in
+`server/route-policies.js`, with handlers spread across `server/index.js` and
+route modules. The central policy function currently enforces methods and rate
+limits, not the declared `auth` field. Until authorization is centralized or a
+complete route-by-route negative audit exists, the route registry is
+documentation metadata rather than an authorization guarantee.
 
-- `GET /health`
-- `GET /api/health`
-- `GET /runtime-config.js`
-- `GET /runtime-config.json`
-- `GET /api/readiness`
+## Product Surfaces
 
-Session/auth:
+### Chat, Context, and Memory
 
-- `GET /api/session`
-- `GET /api/auth/providers`
-- `POST /api/auth/dev/start`
-- `POST /api/auth/email/start`
-- `POST /api/auth/email/verify`
-- `POST /api/auth/logout`
-- `GET /api/auth/start/:provider`
-- `GET /api/auth/callback/:provider`
+Chat streaming, server-side recents/history, search, attachments, usage debits,
+personas/modalities, and retry/recovery behavior are implemented. Chat bodies
+are plaintext application data in Postgres and request packets are sent to the
+configured inference provider. Context and Memory are account-scoped inputs to
+eligible chats.
 
-Product state:
+Native Context is editable without wallet unlock after account login. Historical
+PFTL/IPFS context restore uses cached pointer metadata and browser-side
+decryption after wallet unlock. Context Refine and billed asynchronous Context
+Rewrite are separate implemented paths.
 
-- `GET /api/app-state`
-- `GET /api/tasks`
-- `GET /api/wallet`
-- `GET /api/wallet/balance`
-- `GET /api/wallet/transactions`
-- `GET /api/context`
-- `GET /api/usage`
+### Tasks, Hive, and rewards
 
-Chat:
+Task request/generation, network routing, acceptance, evidence submission,
+verification requests, review decisions, reward transitions, recovery, and
+Postgres projections are implemented. The deployed configuration uses the
+off-chain task-lifecycle path and multiple background workers while retaining
+PFTL/IPFS replay and pointer boundaries where configured. Documentation must
+state which record is canonical for each event rather than claiming every row
+is already chain-native.
 
-- `GET /api/chat/modes`
-- `GET /api/chat/conversations`
-- `GET /api/chat/history`
-- `POST /api/chat/estimate`
-- `POST /api/chat/send`
-- `POST /api/chat/stream`
+Hive includes projects, Hive Chat, network-task routing, task management,
+secretary/reporting work, contributor accounting, and the board-secretary
+process. The legacy autonomous Board Manager execution flags are disabled in
+the current Fly configuration.
 
-Wallet actions:
+### Wallet and top-up
 
-- `GET /api/wallet/actions`
-- `POST /api/wallet/link/start`
-- `POST /api/wallet/link/verify`
-- `POST /api/wallet/unlock/start`
-- `POST /api/wallet/delink` detaches the active account wallet, records an
-  audit event, and relies on the browser to clear the local encrypted vault.
-- `POST /api/wallet/relink/start` starts a fresh wallet proof challenge with
-  `wallet_relink` purpose and reuses `/api/wallet/link/verify`.
-- A fresh valid wallet signature is authoritative for wallet ownership. If the
-  same wallet is still marked linked on stale local accounts, successful
-  link/relink detaches those stale links with audit events instead of blocking
-  the current proof.
+Browser wallet creation, link/relink/delink proofs, local encrypted seed-vault
+storage, session unlock, balance/activity reads, transfers, and explicit
+wallet-bound signing flows exist. The server must never receive a recovery
+phrase or decrypted private key.
 
-Wallet balance reads:
+Account-scoped Ethereum mainnet deposit addresses and balance sync are
+configuration-gated by the xpub/RPC setup. Custody/sweep keys are not part of
+the web application.
 
-- `GET /api/wallet/balance` requires the account session cookie and reads only
-  the wallet already linked to that account.
-- The server reads PFTL native drops with `account_info` on the validated
-  ledger, using WSS first and JSON-RPC fallback. PFTL is the Post Fiat L1;
-  XRPL-compatible client libraries are only the transport/signing
-  compatibility layer.
-- Local Docker defaults to the same rapid PFTL host PFTasks uses on this
-  machine: `wss://178.156.143.199:6005` with local self-signed TLS allowed and
-  `http://178.156.143.199:5005`, with public PFTL testnet fallbacks. This node
-  is for current balance reads and transaction submission, not historical
-  pulls. Fly currently uses the same rapid WSS endpoint through explicit
-  environment/secrets and keeps historical pulls on the archive endpoints.
-- `GET /api/wallet/transactions` requires the same account session and linked
-  wallet boundary. It scans full-history PFTL `account_tx`, normalizes native
-  payment rows involving the linked wallet, labels recognized `pf.ptr/v4`
-  pointer kinds such as task rewards and task submissions, and returns bounded
-  cached rows for the wallet activity feed.
+### Docs, Team, and Messages
 
-Context actions:
+Docs embeds a dedicated PFDocs deployment and stores the metadata/capabilities
+needed for wallet-encrypted collaboration. Team grants directional read-only
+task-history access and does not grant wallet, Docs, Context, Memory, or message
+access.
 
-- `GET /api/context/actions`
-- `GET /api/context/history`
-- `POST /api/context/import/start`
-- `POST /api/context/edit/save`
-- `GET /api/context/history/ipfs/:cid`
-- `POST /api/context/manifest/ink`
+Messages activation binds a discoverable Task Node handle to a wallet-derived
+Nostr public key. The browser encrypts/decrypts NIP-17 events and talks directly
+to configured relays. Contact labels may be cached in browser local storage;
+message bodies and private keys are not written there by the Messages feature.
 
-Historical context restore reads the PFTL cache projection. Cache workers store
-linked-wallet `account_tx` rows in Postgres, reducer events project `pf.ptr` /
-`v4` `CONTENT_KIND.CONTEXT` pointers, and the browser fetches/decrypts selected
-CID payloads only after local vault unlock. Native current context is
-account-scoped; cached PFTL historical pointers are keyed by account plus wallet
-address and are hidden when no wallet is linked or a different wallet is linked.
+## Configuration-Gated and Intentionally Disabled Areas
 
-Usage/billing:
+Configuration-gated behavior includes provider login, inference, email
+delivery, PFDocs/Docs assistants, Nostr messaging, Ethereum deposits, PFTL/IPFS
+publication, analytics, and the background worker families. A route existing in
+source does not prove its external provider or worker is healthy.
 
-- `GET /api/usage/actions`
-- `GET /api/usage/ledger` requires a signed-in session and returns only the
-  caller account's ledger rows.
-- `POST /api/usage/top-up/start`
-- `POST /api/usage/top-up/sync`
-- `POST /api/usage/credit/admin`
+Current intentional limits include:
 
-## Enabled Today
+- legacy autonomous Board Manager execution is disabled; `board-secretary` is
+  the active process;
+- the deployed task-pointer reducer and task-accounting harvester flags are
+  disabled;
+- automatic/background Context manifest publication is not the default;
+- MetaMask/Phantom funding and Notion/Google Docs Context imports are not live;
+- Nostr relay retention is not a guaranteed permanent message archive; and
+- the official deployment currently uses Post Fiat testnet endpoints named in
+  `fly.toml`.
 
-- React app shell.
-- ChatGPT-style main frame.
-- App navigation with Chat, Tasks, Hive, Docs, Wallet, Context, Directory, Profile, Memory, Messages, Team, Help, and Settings.
-- Chat response toolbar keeps only backed actions: copy response and export the
-  visible transcript.
-- Email code login contract and development delivery.
-- GitHub OAuth start/callback when configured.
-- Dev auth outside production.
-- Cookie-backed sessions.
-- Auth/wallet boundary guardrails: signed-out wallet linking routes to login,
-  wallet proof links a wallet to an account session, and local vault unlock is
-  not treated as app login.
-- Session/account read model.
-- Browser-only 24-word seed wallet proof for account linking. The app validates
-  and signs locally; the server receives only address, public key, and
-  signature.
-- Chat estimate, non-streaming chat send, and SSE chat streaming.
-- Server-owned Postgres chat conversations, per-account recents, and history
-  hydration, with JSON fallback when database use is disabled.
-- Native account-scoped context document load/save in Postgres revisions, with
-  JSON fallback during migration. Context can be viewed before login, saved
-  after account login, and does not require wallet unlock.
-- PFTL cache projection for historical context metadata. The app stores
-  CIDs/provenance/counts, not decrypted context or evidence plaintext, and the
-  projection is scoped to the active linked wallet.
-- Ambient execution and streaming when configured, gated by signed-in account
-  and available usage credit before provider calls. The canonical picker is
-  Instant, Thinking, and Help; image/PDF/text attachments are preprocessed
-  locally and visual inputs use the approved Ambient vision capability. The
-  composer `+` menu separately selects Jobs, ODV, or Trading Coach; only Jobs
-  receives Jobs pgvector retrieval.
-- A first-class Docs library backed by embedded, dedicated-Fly PFDocs, with wallet-unlocked encrypted metadata/capability sharing, bidirectional title synchronization, human document chat, and opt-in Ambient GLM 5.2 `@ODV`/`@coach` assistants.
-- A Team screen under More with signed directional task-history grants, Collaborator/Manager/Direct Report roles, read-only task lists, and accessible task-detail side-panel/bottom-sheet popouts.
-- A Messages screen under More with wallet-derived Nostr identity, Task Node handle/NIP-05 resolution, NIP-17 encrypted direct messages, local decryption, and relay-backed delivery without server-side message storage.
-- Usage ledger and idempotency-keyed admin credit when configured.
-- Account-scoped Ethereum mainnet top-up addresses when `ETH_DEPOSIT_XPUB` is
-  configured. The rail accepts ETH, USDC, and USDT without MetaMask signatures,
-  and credits positive configured-balance deltas through `/api/usage/top-up/sync`.
-- Idempotent initial provider credit ledger contract for eligible registrar
-  accounts.
-- Public startup guard disables public dev auth and refuses default `/tmp`
-  runtime-store auth state for public origins.
-- API security headers and focused route rate limits for auth, chat, wallet,
-  usage, admin credit, and context manifest ink.
-- Explicit, user-initiated PFTL context manifest ink
-  (`POST /api/context/manifest/ink`) when IPFS pinning, PFTL submit, and the
-  Task Node service encryption key are configured. The browser signs the pointer
-  transaction; the server only pins the already-encrypted payload and submits the
-  signed blob, gated on a linked wallet and scoped to the signed-in account. It
-  returns a configured/disabled contract response when those dependencies are not
-  set, so it is effectively off in environments without IPFS/PFTL/encryption-key
-  configuration.
-- Runtime, API, and frame-smoke coverage.
-- Fly production deployment (`https://tasknode.postfiat.org`, promoted
-  `tasknodeofficial-dev` app) through `npm run fly:deploy` /
-  `npm run fly:deploy:prod`, which includes the post-deploy background guard
-  for the non-HTTP `worker` and `board-manager` process groups.
+Use `/api/readiness`, `/api/system/status`, queue/database evidence, and
+provider-specific checks to distinguish configured code from working runtime.
 
-## Wired But Not Fully Live
+## API and Test Sources of Truth
 
-- Telegram login.
-- Discord login.
-- X login.
-- PFTL transaction signing.
-- Wallet delink/relink behavior.
-- Production sweep service for Ethereum deposit addresses.
-- Context import into the Postgres cache.
-- Additional attachment-heavy Ambient production fixtures.
-- Formal Postgres-backed context cache backfill in production.
-- Initial eligible-provider credit for Telegram, Discord, and X callback paths.
-- Durable summaries/caches for decrypted historical context.
+Do not maintain another hand-copied endpoint list on this page. The executable
+route/auth inventory is `server/route-policies.js`, and route ownership is in
+`server/index.js` plus the route modules it dispatches to. A generated public
+API/auth reference is an open-source readiness requirement.
 
-## Intentional Deferrals
+Focused regression coverage is primarily under `scripts/` and
+`reference_clients/`. The repository currently has hundreds of npm aliases and
+smoke scripts rather than a conventional discoverable JavaScript test suite,
+and no checked-in CI runs the aggregate gate. `npm run file-size-check` is
+currently failing, so `npm run quality` and `npm run check` are not green.
 
-- MetaMask/Phantom funding until the safest rail is selected.
-- Notion and Google Docs context imports.
-- Network/alpha task request UX.
-- Full task verification/reward payout.
-- Automatic/background PFTL manifest inking by default (the explicit,
-  user-initiated ink flow is live; only default/automatic inking is deferred).
-- Rebuilding old PFTasks surfaces wholesale.
+## Documentation and Publication Boundary
 
-## Near-Term Build Path
+`src/features/docs/docs-content.js` imports wiki pages and complete prompt files
+into the frontend. Imported content is public to production browsers. Dated
+plans, production operations, incident evidence, and unapproved prompts must be
+removed from that graph before a public release.
 
-P0 production chat:
-
-1. Done: replace fake sidebar recents with server-owned conversations/messages
-   in the JSON runtime store.
-2. Done: add real recents and per-thread history hydration from the app server.
-3. Done: add Ambient streaming through `/api/chat/stream`.
-4. Done: render user messages immediately and stream assistant deltas.
-5. Done: persist final assistant output and usage on completion.
-6. Done: remove unbacked chat toolbar controls and fake source/activity panels.
-
-P0 account credit:
-
-1. Done: make the initial provider credit ledger grant idempotent.
-2. Done: grant initial usage balance during GitHub callback/account linking.
-3. Exclude email-only accounts.
-4. Wire the same grant into X, Telegram, and Discord after their callback
-   verification paths exist.
-
-P1 seed login:
-
-1. Done: reuse PFTasks/PFDocs 24-word mnemonic primitives.
-2. Done: validate and derive wallet in the browser.
-3. Done: sign server challenge locally.
-4. Done: never send seed or private key to the server.
-5. Done: persist an encrypted local seed vault in the browser with WebCrypto
-   AES-GCM/PBKDF2.
-6. Done: add local vault unlock/lock UX and keep the decrypted seed in memory
-   plus same-tab `sessionStorage` only for the current browser session. Lock,
-   logout, local-vault removal, account mismatch, or wallet mismatch clears the
-   unlocked session entry.
-7. Done: use the unlocked local vault to decrypt the latest cached encrypted
-   context CID in the browser. The server only fetches encrypted JSON for CIDs
-   already present in the account's cached pointer metadata.
-8. Implement PFTL signing confirmation boundaries.
-9. Use wallet proof to claim/link legacy wallet identity.
-
-P1 context:
-
-1. Done: build native account-scoped context save/load.
-2. Done: replace the placeholder connector picker with a native context editor
-   that fits the app shell.
-3. Done: project PFTL cache pointer memos into context/task read models.
-4. Done: hydrate the latest encrypted historical context CID only after local
-   wallet unlock, without server-side plaintext storage.
-5. Done: remove user-triggered context history mutation endpoints from the product path.
-
-## Maintainability Rules
-
-- Keep files small and modular.
-- Prefer server-owned product contracts over frontend-only fake state.
-- Keep disabled actions as explicit contracts with clear `actionRequired`.
-- Do not leak secrets into docs, logs, prompts, or commits.
-- Do not read or print real seed phrases.
-- Add regression tests for behavior classes, not just literal examples.
-- Treat user examples as evidence of a failed boundary, not as special cases.
-- Before expanding scope, update the relevant `docs/wiki/` page and this map.
-- If the whip causes scope drift or unsafe automation, pause it using
-  `docs/archive/root-specs/whip_context.md` (historical only).
+The implementation wins when a dated plan or historical page disagrees with
+current code. `docs/open-source-readiness.md` tracks the work required to create
+a safe public-source, contributor, security, and production-operations
+boundary.

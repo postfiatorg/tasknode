@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: tasknodeofficial
       POSTGRES_DB: tasknodeofficial
     ports:
-      - "${TASKNODE_POSTGRES_PORT:-5436}:5432"
+      - "127.0.0.1:${TASKNODE_POSTGRES_PORT:-5436}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,10 +24,11 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - path: .env.tasknodeofficial-dev
+      - path: .env.tasknode.local
         required: false
     environment:
       PORT: "8080"
+      TASKNODE_BIND_HOST: "0.0.0.0"
       NODE_ENV: development
       TASKNODE_ENV: development
       TASKNODE_PROCESS_ROLE: web
@@ -43,30 +44,30 @@ services:
       DATABASE_URL: ${TASKNODE_DATABASE_URL:-postgres://tasknodeofficial:tasknodeofficial@db:5432/tasknodeofficial}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-      # Current-balance node on this machine. It is intentionally not the
-      # canonical historical pull endpoint.
-      PFTL_WSS_URL: ${PFTL_WSS_URL:-wss://172.17.0.1:6005}
-      PFTL_WSS_URL_FALLBACKS: ${PFTL_WSS_URL_FALLBACKS:-wss://ws.testnet.postfiat.org}
-      PFTL_WSS_REJECT_UNAUTHORIZED: ${PFTL_WSS_REJECT_UNAUTHORIZED:-false}
-      TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS: ${TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS:-true}
-      PFTL_RPC_URL: ${PFTL_RPC_URL:-http://178.156.143.199:5005}
-      PFTL_RPC_URL_FALLBACKS: ${PFTL_RPC_URL_FALLBACKS:-https://rpc.testnet.postfiat.org}
+      # The default stack is synthetic and network-minimal. Use the explicit
+      # integration override when testing against Post Fiat testnet services.
+      PFTL_WSS_URL: ${PFTL_WSS_URL:-}
+      PFTL_WSS_URL_FALLBACKS: ${PFTL_WSS_URL_FALLBACKS:-}
+      PFTL_WSS_REJECT_UNAUTHORIZED: ${PFTL_WSS_REJECT_UNAUTHORIZED:-true}
+      TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS: ${TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS:-false}
+      PFTL_RPC_URL: ${PFTL_RPC_URL:-}
+      PFTL_RPC_URL_FALLBACKS: ${PFTL_RPC_URL_FALLBACKS:-}
       PFTL_RPC_API_KEY: ${PFTL_RPC_API_KEY:-}
-      PFTL_HISTORY_WSS_URL: ${PFTL_HISTORY_WSS_URL:-wss://ws-archive.testnet.postfiat.org}
+      PFTL_HISTORY_WSS_URL: ${PFTL_HISTORY_WSS_URL:-}
       PFTL_HISTORY_WSS_URL_FALLBACKS: ${PFTL_HISTORY_WSS_URL_FALLBACKS:-}
-      PFTL_HISTORY_RPC_URL: ${PFTL_HISTORY_RPC_URL:-https://rpc.testnet.postfiat.org:5006/}
+      PFTL_HISTORY_RPC_URL: ${PFTL_HISTORY_RPC_URL:-}
       PFTL_HISTORY_RPC_URL_FALLBACKS: ${PFTL_HISTORY_RPC_URL_FALLBACKS:-}
       PFTL_HISTORY_RPC_API_KEY: ${PFTL_HISTORY_RPC_API_KEY:-}
       PFTL_HISTORY_ACCOUNT_TX_LIMIT: ${PFTL_HISTORY_ACCOUNT_TX_LIMIT:-200}
       PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES: ${PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES:-8}
-      PFTL_CACHE_WSS_WATCHER_ENABLED: ${PFTL_CACHE_WSS_WATCHER_ENABLED:-true}
-      PFTL_CACHE_WORKER_ENABLED: ${PFTL_CACHE_WORKER_ENABLED:-true}
-      PFTL_CACHE_REDUCER_WORKER_ENABLED: ${PFTL_CACHE_REDUCER_WORKER_ENABLED:-true}
-      PFTL_CACHE_ARCHIVE_WORKER_ENABLED: ${PFTL_CACHE_ARCHIVE_WORKER_ENABLED:-true}
+      PFTL_CACHE_WSS_WATCHER_ENABLED: ${PFTL_CACHE_WSS_WATCHER_ENABLED:-false}
+      PFTL_CACHE_WORKER_ENABLED: ${PFTL_CACHE_WORKER_ENABLED:-false}
+      PFTL_CACHE_REDUCER_WORKER_ENABLED: ${PFTL_CACHE_REDUCER_WORKER_ENABLED:-false}
+      PFTL_CACHE_ARCHIVE_WORKER_ENABLED: ${PFTL_CACHE_ARCHIVE_WORKER_ENABLED:-false}
       PFTL_CACHE_ARCHIVE_WORKER_INTERVAL_MS: ${PFTL_CACHE_ARCHIVE_WORKER_INTERVAL_MS:-300000}
       PFTL_CACHE_ARCHIVE_BATCH_LIMIT: ${PFTL_CACHE_ARCHIVE_BATCH_LIMIT:-1}
       PFTL_CACHE_ARCHIVE_MAX_PAGES: ${PFTL_CACHE_ARCHIVE_MAX_PAGES:-1}
-      PFTL_CACHE_RETENTION_WORKER_ENABLED: ${PFTL_CACHE_RETENTION_WORKER_ENABLED:-true}
+      PFTL_CACHE_RETENTION_WORKER_ENABLED: ${PFTL_CACHE_RETENTION_WORKER_ENABLED:-false}
       PFTL_CACHE_RETENTION_COMPLETED_REDUCER_DAYS: ${PFTL_CACHE_RETENTION_COMPLETED_REDUCER_DAYS:-14}
       PFTL_CACHE_RETENTION_RAW_TX_ENABLED: ${PFTL_CACHE_RETENTION_RAW_TX_ENABLED:-false}
       TASKNODE_TASK_GENERATION_WORKER_ENABLED: "false"
@@ -84,7 +85,7 @@ services:
       TASKNODE_DAILY_AIRDROP_INITIAL_DELAY_MS: ${TASKNODE_DAILY_AIRDROP_INITIAL_DELAY_MS:-30000}
       TASKNODE_DAILY_AIRDROP_WORKER_BATCH_LIMIT: ${TASKNODE_DAILY_AIRDROP_WORKER_BATCH_LIMIT:-10}
       # Local development must never inherit paid-model credentials or schedule
-      # autonomous provider work from .env.tasknodeofficial-dev.
+      # autonomous provider work from a local environment file.
       AMBIENT_API_KEY: ""
       VERCEL_AI_GATEWAY_API_KEY: ""
       TASKNODE_HIVE_IMMEDIATE_RESPONSE_ENABLED: "false"
@@ -116,13 +117,11 @@ services:
       TASKNODE_TASK_REVIEW_MODEL: ${TASKNODE_TASK_REVIEW_MODEL:-chat-latest}
       ETH_DEPOSIT_XPUB: ${ETH_DEPOSIT_XPUB:-}
       ETH_DEPOSIT_START_INDEX: ${ETH_DEPOSIT_START_INDEX:-1}
-      ETH_DEPOSIT_RPC_URL: ${ETH_DEPOSIT_RPC_URL:-https://ethereum.publicnode.com}
+      ETH_DEPOSIT_RPC_URL: ${ETH_DEPOSIT_RPC_URL:-}
       ETH_DEPOSIT_BALANCE_BLOCK_TAG: ${ETH_DEPOSIT_BALANCE_BLOCK_TAG:-latest}
       ETH_DEPOSIT_ETH_USD_PRICE: ${ETH_DEPOSIT_ETH_USD_PRICE:-}
     ports:
-      - "8080:8080"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "127.0.0.1:${TASKNODE_API_PORT:-8080}:8080"
     volumes:
       - .:/app
       - api_node_modules:/app/node_modules
@@ -138,7 +137,7 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - path: .env.tasknodeofficial-dev
+      - path: .env.tasknode.local
         required: false
     environment:
       NODE_ENV: development
@@ -154,7 +153,6 @@ services:
       TASKNODE_HIVE_DECISION_AGENT_RUN_IN_WORKER: "false"
       TASKNODE_DATABASE_ENABLED: "true"
       DATABASE_URL: ${TASKNODE_DATABASE_URL:-postgres://tasknodeofficial:tasknodeofficial@db:5432/tasknodeofficial}
-      HOME: /tmp/tasknode-board-manager-home
       TASKNODE_PUBLIC_URL: http://localhost:5174
       VITE_SITE_ORIGIN: http://localhost:5174
       TASKNODE_BOARD_MANAGER_WORKER_POLL_MS: ${TASKNODE_BOARD_MANAGER_WORKER_POLL_MS:-15000}
@@ -169,8 +167,6 @@ services:
       AMBIENT_API_KEY: ""
       VERCEL_AI_GATEWAY_API_KEY: ""
     user: "${TASKNODE_DOCKER_UID:-1001}:${TASKNODE_DOCKER_GID:-1001}"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - .:/app
       - board_manager_node_modules:/app/node_modules
@@ -191,7 +187,7 @@ services:
       VITE_DEBUG_MODE: "true"
       CHOKIDAR_USEPOLLING: "true"
     ports:
-      - "5174:5174"
+      - "127.0.0.1:${TASKNODE_WEB_PORT:-5174}:5174"
     volumes:
       - .:/app
       - web_node_modules:/app/node_modules

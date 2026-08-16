@@ -8,7 +8,7 @@ process.env.TASKNODE_STORE_PATH = join(tempDir, "runtime-store.json");
 process.env.TASKNODE_ENV = "production";
 process.env.NODE_ENV = "production";
 delete process.env.TASKNODE_DEV_AUTH_ENABLED;
-process.env.OPENAI_API_KEY = "security-smoke-openai-key";
+process.env.AMBIENT_API_KEY = "security-smoke-ambient-key";
 process.env.TASKNODE_ADMIN_CREDIT_TOKEN = "security-smoke-admin-token";
 delete process.env.DATABASE_URL;
 delete process.env.TASKNODE_DATABASE_ENABLED;
@@ -32,7 +32,7 @@ try {
   const { checkRateLimit, resetRateLimitsForTests } = await import("../server/rate-limit.js");
   const { sanitizeContextHtml } = await import("../shared/context-html.js");
 
-  const devAuth = authDevStart(
+  const devAuth = await authDevStart(
     { email: "security-smoke@tasknode.local" },
     "POST"
   );
@@ -106,33 +106,31 @@ try {
   assert.equal(invalidAttachmentStream.status, 400);
   assert.equal(invalidAttachmentStream.body.error, "chat_attachment_invalid");
 
-  const lowCreditAccount = "acct_security_web_search_low_credit";
+  const lowCreditAccount = "acct_security_low_credit";
   const lowCreditGrant = await usageAdminCredit(
     {
       accountId: lowCreditAccount,
-      amountUsd: 0.03,
-      note: "low web search credit",
-      idempotencyKey: "security-web-search-low-credit",
+      amountUsd: 0.000001,
+      note: "insufficient chat credit",
+      idempotencyKey: "security-low-credit",
     },
     "POST",
     "Bearer security-smoke-admin-token"
   );
   assert.equal(lowCreditGrant.status, 200);
 
-  const lowCreditWebSearchChat = await chatSend(
+  const lowCreditChat = await chatSend(
     {
       accountId: lowCreditAccount,
-      message: "Search latest public health news.",
+      message: "This must be rejected before provider execution.",
       mode: "Frontier Instant",
       conversationId: `account_${lowCreditAccount}_default`,
     },
     "POST"
   );
-  assert.equal(lowCreditWebSearchChat.status, 402);
-  assert.equal(lowCreditWebSearchChat.body.error, "chat_credit_required");
-  assert.equal(lowCreditWebSearchChat.body.estimate.estimatedWebSearchCalls, 4);
-  assert.equal(lowCreditWebSearchChat.body.estimate.estimatedToolCostUsd, 0.04);
-  assert.equal(lowCreditWebSearchChat.body.usage.availableCreditUsd, 0.03);
+  assert.equal(lowCreditChat.status, 402);
+  assert.equal(lowCreditChat.body.error, "chat_credit_required");
+  assert.equal(lowCreditChat.body.usage.availableCreditUsd, 0.000001);
 
   const signedOutTaskRequest = await taskRequestIntentStart(
     {

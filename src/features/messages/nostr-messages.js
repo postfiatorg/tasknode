@@ -21,10 +21,6 @@ export function directMessageCatchUpSince(nowMs = Date.now()) {
   return Math.floor(Number(nowMs) / 1000) - NIP17_GIFT_WRAP_LOOKBACK_SECONDS;
 }
 
-function bytesToHex(bytes) {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (value && typeof value === "object") {

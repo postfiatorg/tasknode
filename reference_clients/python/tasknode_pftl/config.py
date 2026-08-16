@@ -7,14 +7,11 @@ from typing import Iterable
 
 
 TASKNODE_REPO_ROOT = Path(__file__).resolve().parents[3]
-WORKSPACE_ROOT = TASKNODE_REPO_ROOT.parent
 
-# Later files win. PFTasks envs are legacy reference inputs; Task Node-local
-# env files and the user-provided workspace dump must be able to override them.
+# Later files win. The reference client reads only repository-local developer
+# files and explicit process environment; it never searches sibling projects
+# or workspace-wide credential dumps.
 DEFAULT_ENV_FILES = [
-    WORKSPACE_ROOT / "pftasks/worker/.env",
-    WORKSPACE_ROOT / "pftasks/api/.env",
-    WORKSPACE_ROOT / "env_dump.txt",
     TASKNODE_REPO_ROOT / ".env",
     TASKNODE_REPO_ROOT / ".env.local",
 ]
@@ -58,15 +55,15 @@ def _rpc_from_wss(value: str | None) -> str | None:
         return None
     if raw.startswith("ws://"):
         return raw.replace("ws://", "http://", 1).replace(":6005", ":5005")
-    if raw.startswith("wss://") and "178.156.143.199:6005" in raw:
-        return "http://178.156.143.199:5005"
+    if raw == "wss://ws.testnet.postfiat.org":
+        return "https://rpc.testnet.postfiat.org"
     return None
 
 
 @dataclass
 class PftlConfig:
     network_name: str = "pftl-testnet"
-    rpc_url: str = "http://178.156.143.199:5005"
+    rpc_url: str = "https://rpc.testnet.postfiat.org"
     archive_wss_url: str = "wss://ws-archive.testnet.postfiat.org"
     faucet_seed: str | None = None
     reward_wallet_seeds: list[str] = field(default_factory=list)
@@ -94,7 +91,7 @@ class PftlConfig:
             env.get("PFTL_RPC_URL")
             or env.get("PFTL_JSON_RPC_URL")
             or _rpc_from_wss(env.get("PFTL_WSS_URL"))
-            or "http://178.156.143.199:5005"
+            or "https://rpc.testnet.postfiat.org"
         )
         gateways = ["https://gateway.pinata.cloud/ipfs/"]
         gateways.extend(_csv(env.get("IPFS_GATEWAY_FALLBACKS")))

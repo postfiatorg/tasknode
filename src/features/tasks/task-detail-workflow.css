@@ -1,0 +1,546 @@
+.task-submit-panel,
+.task-forensics-panel {
+  display: grid;
+  gap: 24px;
+  margin-top: 0;
+}
+
+.task-submit-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 24px;
+  border: 0;
+  border-bottom: 0.5px solid #e4e0d4;
+  border-radius: 0;
+  background: transparent;
+}
+
+.task-submit-head h3,
+.task-forensics-section h3 {
+  margin: 0;
+  color: #1b1b19;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.task-submit-head p {
+  margin: 7px 0 0;
+  color: #3a3936;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.task-submit-head small {
+  display: block;
+  margin-top: 8px;
+  color: #7a7160;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.task-submit-state {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid #e2ded3;
+  border-radius: 999px;
+  color: #5f5d58;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.task-submit-state.is-open {
+  border-color: rgba(74, 89, 52, 0.24);
+  background: rgba(74, 89, 52, 0.08);
+  color: #4a5934;
+}
+
+.task-workflow-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0 18px;
+  border-bottom: 0.5px solid #e4e0d4;
+  color: #1b1b19;
+}
+
+.task-workflow-notice-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(74, 89, 52, 0.12);
+  color: #4a5934;
+}
+
+.task-workflow-notice.is-syncing .task-workflow-notice-icon {
+  background: rgba(91, 75, 138, 0.12);
+  color: #5b4b8a;
+}
+
+.task-workflow-notice strong {
+  display: block;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.task-workflow-notice p {
+  margin: 4px 0 0;
+  color: #3a3936;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.task-workflow-notice small {
+  display: block;
+  margin-top: 4px;
+  color: #6e6b62;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.task-workflow-notice .dark-pill {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.task-workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 24px;
+  border-bottom: 0.5px solid #e4e0d4;
+  list-style: none;
+}
+
+.task-workflow-steps li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 0;
+  color: #8e8b81;
+}
+
+.task-workflow-step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #e1dccf;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #8e8b81;
+}
+
+.task-workflow-steps li.is-complete,
+.task-workflow-steps li.is-current {
+  color: #1b1b19;
+}
+
+.task-workflow-steps li.is-complete .task-workflow-step-dot {
+  border-color: rgba(74, 89, 52, 0.22);
+  background: rgba(74, 89, 52, 0.12);
+  color: #4a5934;
+}
+
+.task-workflow-steps li.is-current .task-workflow-step-dot {
+  border-color: #1b1b19;
+  box-shadow: inset 0 0 0 5px #ffffff;
+  background: #1b1b19;
+}
+
+.task-workflow-step-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.task-workflow-step-copy strong,
+.task-workflow-step-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-workflow-step-copy strong {
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.task-workflow-step-copy small {
+  color: inherit;
+  font-size: 11.5px;
+}
+
+.task-lifecycle-action {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  z-index: 80;
+  padding: 16px;
+  border: 1px solid rgba(124, 60, 46, 0.18);
+  border-radius: 14px;
+  background: rgba(124, 60, 46, 0.04);
+  pointer-events: auto;
+}
+
+.task-lifecycle-action h4 {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.task-lifecycle-action p {
+  margin: 6px 0 0;
+  color: #5f5d58;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.task-lifecycle-action label {
+  display: grid;
+  gap: 8px;
+  color: #3d3d38;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.task-lifecycle-action textarea {
+  width: 100%;
+  min-height: 74px;
+  resize: vertical;
+  padding: 11px 12px;
+  border: 1px solid #dedbd2;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0d0d0d;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.task-lifecycle-buttons {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  z-index: 81;
+}
+
+.task-lifecycle-buttons .dark-pill,
+.task-lifecycle-buttons .light-pill {
+  position: relative;
+  z-index: 82;
+  min-height: 38px;
+  pointer-events: auto;
+}
+
+/* Stop actions (refuse/cancel) stay available but read as secondary so the
+   expected next action (accept or submit evidence) carries the visual weight. */
+.task-lifecycle-buttons .light-pill {
+  border-color: transparent;
+  background: transparent;
+  color: #6e6b62;
+}
+
+.task-lifecycle-buttons .light-pill:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+  color: #0d0d0d;
+}
+
+.task-action-message {
+  margin: 0 !important;
+  color: #4a5934 !important;
+  font-size: 12.5px !important;
+}
+
+.task-action-message.is-error {
+  color: #7c2d12 !important;
+}
+
+.task-submission-history {
+  display: grid;
+  gap: 10px;
+  padding: 0 0 20px;
+  border: 0;
+  border-bottom: 0.5px solid #e4e0d4;
+  border-radius: 0;
+  background: transparent;
+}
+
+.task-submission-history h4 {
+  margin: 0;
+  color: #6b6b66;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.task-submission-history p {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  color: #5f5d58;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.task-submission-history strong {
+  color: #0d0d0d;
+  font-size: 12.5px;
+}
+
+.task-submit-request {
+  padding-bottom: 28px;
+  border-bottom: 0.5px solid #e4e0d4;
+}
+
+.task-submit-request p {
+  margin: 0;
+  color: #3a3936;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.task-submit-request small {
+  display: block;
+  margin-top: 10px;
+  color: #6e6b62;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.task-evidence-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-left: -10px;
+}
+
+.task-evidence-list {
+  display: grid;
+  gap: 24px;
+}
+
+.task-evidence-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-evidence-card-head strong {
+  color: #6e6b62;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.task-evidence-remove {
+  display: inline-flex;
+  align-items: center;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8e8b81;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.task-evidence-remove:hover {
+  color: #1b1b19;
+  background: transparent;
+}
+
+.task-evidence-methods button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8e8b81;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.task-evidence-methods button.active {
+  background: #f4f3ee;
+  color: #1b1b19;
+  font-weight: 500;
+}
+
+.task-evidence-card {
+  display: grid;
+  gap: 14px;
+  padding: 0 0 24px;
+  border: 0;
+  border-bottom: 0.5px solid #e4e0d4;
+  border-radius: 0;
+  background: transparent;
+}
+
+.task-evidence-card label,
+.task-file-drop label,
+.task-submit-confirm {
+  display: grid;
+  gap: 8px;
+  color: #6e6b62;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.task-evidence-card input,
+.task-evidence-card textarea {
+  width: 100%;
+  border: 0.5px solid #e8e6df;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1b1b19;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.task-evidence-card input {
+  min-height: 42px;
+  padding: 0 12px;
+}
+
+.task-evidence-card textarea {
+  resize: vertical;
+  min-height: 84px;
+  padding: 12px;
+  line-height: 1.45;
+}
+
+.task-code-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 12.5px !important;
+}
+
+.task-file-drop {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border: 0.5px dashed #e8e6df;
+  border-radius: 8px;
+  background: #fbfaf7;
+}
+
+.task-file-drop .task-file-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0.5px solid #e8e6df;
+  border-radius: 999px;
+  background: transparent;
+  color: #1b1b19;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.task-file-drop .task-file-picker:hover {
+  background: #f4f3ee;
+}
+
+.task-file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.task-file-drop span {
+  overflow: hidden;
+  color: #8e8b81;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-file-drop .task-file-picker span {
+  grid-column: auto;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.task-evidence-processed {
+  grid-column: 2 / 3;
+  max-height: 96px;
+  margin: -2px 0 0;
+  overflow: auto;
+  color: #3d3d38;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.task-evidence-notes {
+  margin-top: 4px;
+}
+
+.task-submit-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #1b1b19;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.task-submit-confirm input {
+  margin-top: 2px;
+}
+
+.task-inline-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e8e6df;
+  border-radius: 12px;
+  background: #fbfaf7;
+  color: #6e6b62;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.task-submit-button {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 18px;
+}
+
+.task-add-evidence {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+  border: 0.5px dashed #d8d3c3;
+  border-radius: 8px;
+  background: transparent;
+}

@@ -2,16 +2,19 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   appendChatTurn as appendRuntimeChatTurn,
   appendUsageCredit as appendRuntimeUsageCredit,
-  getChatMessages as getRuntimeChatMessages,
   usageLedger as runtimeUsageLedger,
-  usageSummary as runtimeUsageSummary,
 } from "../runtime-store.js";
 import {
   decodeTextDataUrl,
   normalizeChatAttachments,
 } from "../chat-attachment-utils.js";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
-import { hydrateContextEditProposalMetadata } from "./context-edit-chat-metadata.js";
+import {
+  publicBillingLedgerEntry as publicLedgerEntry,
+  publicChatAttachment as publicAttachment,
+  publicChatMessage as publicMessage,
+} from "./chat-billing-projections.js";
+import { getChatMessages } from "./chat-billing-read.js";
 import {
   recordBillingCreditAppliedEvent,
   recordChatTurnObservability,
@@ -27,10 +30,15 @@ export {
   renameChatConversation,
   searchChatConversations,
 } from "./chat-conversations.js";
+export {
+  getChatMessages,
+  getChatMessagesForWrite,
+  usageLedger,
+  usageSummary,
+} from "./chat-billing-read.js";
 
 const creditKinds = new Set(["account_credit", "top_up_credit", "reward_credit", "refund_credit"]);
 const maxLedgerLimit = 200;
-const maxMessageLimit = 200;
 
 function useDatabase() {
   return databaseEnabled();
@@ -51,22 +59,6 @@ function safeConversationAccountId(accountId = "") {
     .slice(0, 80);
 }
 
-function chatMessagesArgs(input = "dev", options = {}) {
-  if (typeof input === "string") {
-    return {
-      accountId: options.accountId || "",
-      conversationId: input,
-      limit: options.limit,
-    };
-  }
-
-  return {
-    accountId: input?.accountId || "",
-    conversationId: input?.conversationId || "dev",
-    limit: input?.limit,
-  };
-}
-
 function chatConversationNotFound() {
   const error = new Error("chat_conversation_not_found");
   error.status = 404;
@@ -85,51 +77,11 @@ function assertConversationIdAccountBoundary({ accountId = "", conversationId = 
   }
 }
 
-async function assertChatConversationReadable({ accountId = "", conversationId = "" } = {}) {
-  const normalizedAccountId = safeAccountId(accountId);
-  const normalizedConversationId = safeConversationId(conversationId);
-  assertConversationIdAccountBoundary({ accountId: normalizedAccountId, conversationId: normalizedConversationId });
-
-  const conversation = await query(
-    "SELECT account_id, status FROM chat_conversations WHERE id = $1",
-    [normalizedConversationId]
-  );
-  const row = conversation.rows[0];
-  if (!row) return;
-  if (row.status !== "active" || (row.account_id || "") !== normalizedAccountId) {
-    throw chatConversationNotFound();
-  }
-}
-
-async function chatConversationHistoryReadableForWrite({ accountId = "", conversationId = "" } = {}) {
-  const normalizedAccountId = safeAccountId(accountId);
-  const normalizedConversationId = safeConversationId(conversationId);
-  assertConversationIdAccountBoundary({ accountId: normalizedAccountId, conversationId: normalizedConversationId });
-
-  const conversation = await query(
-    "SELECT account_id, status FROM chat_conversations WHERE id = $1",
-    [normalizedConversationId]
-  );
-  const row = conversation.rows[0];
-  if (!row) return true;
-  if ((row.account_id || "") !== normalizedAccountId) {
-    throw chatConversationNotFound();
-  }
-  return row.status === "active";
-}
-
 const cleanTitle = (title = "") => String(title || "").trim().replace(/\s+/g, " ").slice(0, 80);
 const titleFromPrompt = (prompt = "") => cleanTitle(prompt).slice(0, 64) || "New chat";
 const messagePreview = (message = "") => String(message || "").trim().replace(/\s+/g, " ").slice(0, 140);
 const conversationStatusForInsert = (status = "active") =>
   String(status || "active").trim().toLowerCase().slice(0, 40) === "task_request" ? "task_request" : "active";
-
-function toIso(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value.toISOString();
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : String(value);
-}
 
 function numeric(value) {
   const parsed = Number(value || 0);
@@ -190,84 +142,6 @@ function attachmentRowsForInsert({ attachments = [], accountId, conversationId, 
       metadata: {},
     };
   });
-}
-
-function publicMessage(row, attachments = []) {
-  const metadata = row.metadata_json && typeof row.metadata_json === "object"
-    ? row.metadata_json
-    : row.metadata && typeof row.metadata === "object"
-      ? row.metadata
-      : {};
-  const message = {
-    id: row.id,
-    role: row.role,
-    body: row.body,
-    createdAt: toIso(row.created_at || row.createdAt),
-    mode: row.mode || undefined,
-    provider: row.provider || undefined,
-    model: row.model || undefined,
-    responseId: row.response_id || row.responseId || undefined,
-  };
-  if (attachments.length > 0) message.attachments = attachments;
-  if (Object.keys(metadata).length > 0) message.metadata = metadata;
-  if (metadata.thinking && typeof metadata.thinking === "object") message.thinking = metadata.thinking;
-  return message;
-}
-
-function publicAttachment(row) {
-  const attachment = {
-    id: row.id,
-    name: row.name,
-    mimeType: row.mime_type || undefined,
-    kind: row.kind || undefined,
-    source: row.source || undefined,
-    size: Number(row.size_bytes || 0),
-    sha256: row.sha256 || undefined,
-    textExcerpt: row.text_excerpt || undefined,
-    storageUri: row.storage_uri || undefined,
-    createdAt: toIso(row.created_at),
-  };
-  if (typeof row.text_content === "string" && row.text_content.length > 0) {
-    attachment.textContent = row.text_content;
-  }
-  return attachment;
-}
-
-function publicLedgerEntry(row, extra = {}) {
-  if (!row) return null;
-  const metadata = row.metadata_json && typeof row.metadata_json === "object" ? row.metadata_json : {};
-  return {
-    id: row.id,
-    kind: row.kind,
-    accountId: row.account_id || "",
-    conversationId: row.conversation_id || undefined,
-    source: row.source || undefined,
-    amountUsd: numeric(row.amount_usd),
-    note: row.note || undefined,
-    createdBy: row.created_by || undefined,
-    provider: row.provider || undefined,
-    model: row.model || undefined,
-    mode: row.mode || undefined,
-    responseId: row.response_id || undefined,
-    modelRunId: row.model_run_id || undefined,
-    inputTokens: Number(row.input_tokens || 0),
-    promptCacheHitTokens: Number(row.prompt_cache_hit_tokens || 0),
-    promptCacheMissTokens: Number(row.prompt_cache_miss_tokens || 0),
-    cacheUsageReported: row.cache_usage_reported === true,
-    cacheSavingsUsd: numeric(row.cache_savings_usd),
-    costSource: row.cost_source || undefined,
-    providerCostUsd: row.provider_cost_usd === null || row.provider_cost_usd === undefined
-      ? undefined
-      : numeric(row.provider_cost_usd),
-    outputTokens: Number(row.output_tokens || 0),
-    totalTokens: Number(row.total_tokens || 0),
-    webSearchCalls: Number(row.web_search_calls || 0),
-    toolCostUsd: numeric(row.tool_cost_usd),
-    uniqueKey: row.idempotency_key || undefined,
-    metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-    createdAt: toIso(row.created_at),
-    ...extra,
-  };
 }
 
 function ledgerDeltas(kind, amountUsd) {
@@ -1060,262 +934,4 @@ export async function recordBillableModelRun({
   });
 
   return persisted;
-}
-
-export async function getChatMessages(input = "dev", options = {}) {
-  const { accountId, conversationId, limit = 30 } = chatMessagesArgs(input, options);
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 30, 1), maxMessageLimit);
-  const normalizedAccountId = safeAccountId(accountId);
-  const normalizedConversationId = safeConversationId(conversationId);
-  assertConversationIdAccountBoundary({
-    accountId: normalizedAccountId,
-    conversationId: normalizedConversationId,
-  });
-  if (!useDatabase()) return getRuntimeChatMessages(normalizedConversationId).slice(-normalizedLimit);
-
-  try {
-    await assertChatConversationReadable({
-      accountId: normalizedAccountId,
-      conversationId: normalizedConversationId,
-    });
-
-    const rows = await query(
-      `
-        SELECT *
-        FROM chat_messages
-        WHERE conversation_id = $1
-          AND account_id = $3
-        ORDER BY message_order DESC
-        LIMIT $2
-      `,
-      [normalizedConversationId, normalizedLimit, normalizedAccountId]
-    );
-    const orderedMessages = await hydrateContextEditProposalMetadata(
-      rows.rows.reverse(),
-      normalizedAccountId
-    );
-    const messageIds = orderedMessages.map((row) => row.id);
-    const attachmentsByMessage = new Map();
-    if (messageIds.length > 0) {
-      const attachmentRows = await query(
-        `
-          SELECT *
-          FROM chat_attachments
-          WHERE message_id = ANY($1::text[])
-          ORDER BY message_id ASC, ordinal ASC
-        `,
-        [messageIds]
-      );
-      for (const row of attachmentRows.rows) {
-        const existing = attachmentsByMessage.get(row.message_id) || [];
-        existing.push(publicAttachment(row));
-        attachmentsByMessage.set(row.message_id, existing);
-      }
-    }
-    return orderedMessages.map((row) => publicMessage(row, attachmentsByMessage.get(row.id) || []));
-  } catch (error) {
-    if (error?.message === "chat_conversation_not_found") throw error;
-    if (process.env.TASKNODE_POSTGRES_STRICT === "false") {
-      return getRuntimeChatMessages(normalizedConversationId).slice(-normalizedLimit);
-    }
-    throw error;
-  }
-}
-
-export async function getChatMessagesForWrite(input = "dev", options = {}) {
-  const { accountId, conversationId, limit = 30 } = chatMessagesArgs(input, options);
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 30, 1), maxMessageLimit);
-  const normalizedAccountId = safeAccountId(accountId);
-  const normalizedConversationId = safeConversationId(conversationId);
-  assertConversationIdAccountBoundary({
-    accountId: normalizedAccountId,
-    conversationId: normalizedConversationId,
-  });
-  if (!useDatabase()) return getRuntimeChatMessages(normalizedConversationId).slice(-normalizedLimit);
-
-  try {
-    const readable = await chatConversationHistoryReadableForWrite({
-      accountId: normalizedAccountId,
-      conversationId: normalizedConversationId,
-    });
-    if (!readable) return [];
-
-    const rows = await query(
-      `
-        SELECT *
-        FROM chat_messages
-        WHERE conversation_id = $1
-          AND account_id = $3
-        ORDER BY message_order DESC
-        LIMIT $2
-      `,
-      [normalizedConversationId, normalizedLimit, normalizedAccountId]
-    );
-    const orderedMessages = await hydrateContextEditProposalMetadata(
-      rows.rows.reverse(),
-      normalizedAccountId
-    );
-    const messageIds = orderedMessages.map((row) => row.id);
-    const attachmentsByMessage = new Map();
-    if (messageIds.length > 0) {
-      const attachmentRows = await query(
-        `
-          SELECT *
-          FROM chat_attachments
-          WHERE message_id = ANY($1::text[])
-          ORDER BY message_id ASC, ordinal ASC
-        `,
-        [messageIds]
-      );
-      for (const row of attachmentRows.rows) {
-        const existing = attachmentsByMessage.get(row.message_id) || [];
-        existing.push(publicAttachment(row));
-        attachmentsByMessage.set(row.message_id, existing);
-      }
-    }
-    return orderedMessages.map((row) => publicMessage(row, attachmentsByMessage.get(row.id) || []));
-  } catch (error) {
-    if (error?.message === "chat_conversation_not_found") throw error;
-    if (process.env.TASKNODE_POSTGRES_STRICT === "false") {
-      return getRuntimeChatMessages(normalizedConversationId).slice(-normalizedLimit);
-    }
-    throw error;
-  }
-}
-
-async function aggregateUsage({ accountId = "", conversationId = "" } = {}) {
-  const normalizedAccountId = safeAccountId(accountId);
-  const normalizedConversationId = conversationId ? safeConversationId(conversationId) : "";
-  let where = "";
-  let params = [];
-
-  if (normalizedAccountId) {
-    where = "WHERE account_id = $1";
-    params = [normalizedAccountId];
-  } else if (normalizedConversationId) {
-    where = "WHERE conversation_id = $1";
-    params = [normalizedConversationId];
-  }
-
-  const result = await query(
-    `
-      SELECT
-        COALESCE(SUM(CASE WHEN kind = 'chat_debit' THEN amount_usd ELSE 0 END), 0) AS spend,
-        COALESCE(SUM(CASE
-          WHEN kind IN ('account_credit', 'top_up_credit', 'reward_credit', 'refund_credit')
-            THEN amount_usd
-          WHEN kind = 'admin_adjustment' AND amount_usd > 0
-            THEN amount_usd
-          ELSE 0
-        END), 0) AS credit,
-        COUNT(*)::integer AS count
-      FROM billing_ledger_entries
-      ${where}
-    `,
-    params
-  );
-  const row = result.rows[0] || {};
-  return {
-    currentSpendUsd: numeric(row.spend),
-    currentCreditUsd: numeric(row.credit),
-    ledgerEntryCount: Number(row.count || 0),
-  };
-}
-
-export async function usageSummary(scope = {}) {
-  if (!useDatabase()) return runtimeUsageSummary(scope);
-
-  const normalizedAccountId = safeAccountId(scope.accountId);
-  if (normalizedAccountId) {
-    const result = await query(
-      "SELECT * FROM billing_accounts WHERE account_id = $1 LIMIT 1",
-      [normalizedAccountId]
-    );
-    const row = result.rows[0];
-    if (row) {
-      const currentSpendUsd = numeric(row.current_spend_usd);
-      const currentCreditUsd = numeric(row.current_credit_usd);
-      return {
-        currentSpendUsd,
-        currentCreditUsd,
-        availableCreditUsd: Number(Math.max(0, currentCreditUsd - currentSpendUsd).toFixed(6)),
-        ledgerEntryCount: Number(row.ledger_entry_count || 0),
-        durable: true,
-        storePath: "postgres",
-      };
-    }
-    return {
-      currentSpendUsd: 0,
-      currentCreditUsd: 0,
-      availableCreditUsd: 0,
-      ledgerEntryCount: 0,
-      durable: true,
-      storePath: "postgres",
-    };
-  }
-
-  const aggregate = await aggregateUsage(scope);
-  return {
-    ...aggregate,
-    availableCreditUsd: Number(Math.max(0, aggregate.currentCreditUsd - aggregate.currentSpendUsd).toFixed(6)),
-    durable: true,
-    storePath: "postgres",
-  };
-}
-
-export async function usageLedger({ accountId, conversationId, limit = 50 } = {}) {
-  if (!useDatabase()) return runtimeUsageLedger({ accountId, conversationId, limit });
-
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 50, 1), maxLedgerLimit);
-  const normalizedAccountId = safeAccountId(accountId);
-  const normalizedConversationId = conversationId ? safeConversationId(conversationId) : "";
-  if (!normalizedAccountId && !normalizedConversationId) {
-    return {
-      billingModel: "usage_based",
-      currency: "USD",
-      accountId: null,
-      conversationId: null,
-      currentSpendUsd: 0,
-      currentCreditUsd: 0,
-      availableCreditUsd: 0,
-      ledgerEntryCount: 0,
-      durable: true,
-      entries: [],
-    };
-  }
-  let where = "";
-  let params = [];
-
-  if (normalizedAccountId) {
-    where = "WHERE account_id = $1";
-    params = [normalizedAccountId, normalizedLimit];
-  } else if (normalizedConversationId) {
-    where = "WHERE conversation_id = $1";
-    params = [normalizedConversationId, normalizedLimit];
-  }
-
-  const rows = await query(
-    `
-      SELECT *
-      FROM billing_ledger_entries
-      ${where}
-      ORDER BY created_at DESC, id DESC
-      LIMIT $${params.length}
-    `,
-    params
-  );
-  const summary = await usageSummary({ accountId: normalizedAccountId, conversationId: normalizedConversationId });
-
-  return {
-    billingModel: "usage_based",
-    currency: "USD",
-    accountId: normalizedAccountId || null,
-    conversationId: normalizedConversationId || null,
-    currentSpendUsd: summary.currentSpendUsd,
-    currentCreditUsd: summary.currentCreditUsd,
-    availableCreditUsd: summary.availableCreditUsd,
-    ledgerEntryCount: summary.ledgerEntryCount,
-    durable: summary.durable,
-    entries: rows.rows.map(publicLedgerEntry),
-  };
 }

@@ -8,24 +8,8 @@ import {
 } from "./repositories/chat-billing.js";
 import { scheduleHiveSecretaryQueue } from "./hive-secretary-worker.js";
 import { getBoardManagerAgentFeed, getBoardManagerUserMessages } from "./repositories/board-manager.js";
-import {
-  getHiveBrainLive,
-  getHiveBrainRunDetail,
-  listHiveBrainTaskGenerationHistory,
-  listHiveBrainRuns,
-} from "./repositories/hive-brain.js";
 import { requestHiveReportRerun } from "./hive-reports-worker.js";
-import { getHiveLiveTaskPacket } from "./repositories/hive-live-task-packet.js";
 import { getHiveReport, listHiveReports } from "./repositories/hive-reports.js";
-import {
-  accountCanResolveCheckedOutTaskAccountingHarvest,
-  checkoutTaskAccountingHarvest,
-  getLatestTaskAccountingHarvestReport,
-  getTaskAccountingCheckoutAccess,
-  listTaskAccountingHarvestCheckouts,
-  listTaskAccountingHarvests,
-  resolveTaskAccountingHarvest,
-} from "./repositories/task-accounting-harvester.js";
 import { getHiveDecisionRun, listHiveDecisionRuns } from "./repositories/hive-decision-agent.js";
 import { getDirectoryLeaderboardDocument } from "./repositories/directory-leaderboard.js";
 import {
@@ -41,7 +25,7 @@ import {
   normalizeHiveProjectCommentMetadata,
   saveHiveContextEntry,
 } from "./repositories/hive-context.js";
-import { getAccountIdentityProfile } from "./runtime-store.js";
+import { getAccountIdentityProfile } from "./repositories/account-profiles.js";
 import { decodeTextDataUrl, normalizeChatAttachments } from "./chat-attachment-utils.js";
 import { executeHiveImmediateResponse } from "./hive-immediate-response.js";
 import {
@@ -55,7 +39,12 @@ import {
   resetAgentRateLimitBucketsForTests,
 } from "./repositories/agent-rate-limits.js";
 import { recordAgentHiveChatWorkJournal } from "./repositories/orc-work-journal.js";
-import { subscribeHiveBrainLive } from "./hive-brain-live.js";
+import { handleHiveBrainRoute } from "./hive-brain-routes.js";
+import {
+  hiveBrainOperatorAccess,
+  hiveReportRerunAccess,
+  wantsRawAuditPacket,
+} from "./hive-operator-access.js";
 
 const maxHiveAttachmentTextLength = 12_000;
 const maxHiveAttachmentExcerptLength = 800;
@@ -103,11 +92,11 @@ function timeoutValue(ms, value) {
   });
 }
 
-function hiveProjectsViewerContext({ getLinkedWallet, session } = {}) {
+async function hiveProjectsViewerContext({ getLinkedWallet, session } = {}) {
   const accountId = safeText(session?.accountId, 180);
   if (!accountId) return { accountId: "", walletAddress: "" };
   const linkedWallet = typeof getLinkedWallet === "function"
-    ? getLinkedWallet({ accountId })
+    ? await getLinkedWallet({ accountId })
     : null;
   return {
     accountId,
@@ -198,7 +187,7 @@ function readSharedHiveProjectsBody({ pathname }) {
 }
 
 async function readHiveProjectsBody({ getLinkedWallet, pathname, session }) {
-  const viewer = hiveProjectsViewerContext({ getLinkedWallet, session });
+  const viewer = await hiveProjectsViewerContext({ getLinkedWallet, session });
   const body = await readSharedHiveProjectsBody({ pathname });
   return hiveProjectsBodyForViewer(body, viewer);
 }
@@ -266,10 +255,10 @@ function hiveContextAttachmentSummaries(items = []) {
   });
 }
 
-function linkedWalletForSession({ getLinkedWallet, session }) {
+async function linkedWalletForSession({ getLinkedWallet, session }) {
   if (!session?.accountId || typeof getLinkedWallet !== "function") return null;
   try {
-    const wallet = getLinkedWallet({ accountId: session.accountId });
+    const wallet = await getLinkedWallet({ accountId: session.accountId });
     if (wallet?.status === "linked" && wallet?.address) return wallet;
   } catch {
     return null;
@@ -330,8 +319,8 @@ async function saveHiveChatMessage({
   );
   const attachments = safeAttachments(payload?.attachments || []);
   const hiveContextAttachments = hiveContextAttachmentSummaries(attachments);
-  const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
-  const identityProfile = getAccountIdentityProfile({ accountId: session.accountId }) || {};
+  const linkedWallet = await linkedWalletForSession({ getLinkedWallet, session });
+  const identityProfile = await getAccountIdentityProfile({ accountId: session.accountId }) || {};
   const trustedAgentMetadata = agentOrigin
     ? metadataWithMachineAgentOrigin(payload, agentOrigin)
     : metadataWithMachineAgentOrigin({}, null);
@@ -534,441 +523,9 @@ async function saveHiveChatMessage({
   };
 }
 
-function normalizedList(value = "") {
-  return String(value || "")
-    .split(",")
-    .map((item) => item.trim().replace(/^@+/, "").toLowerCase())
-    .filter(Boolean);
-}
-
-function wantsRawAuditPacket(url = null) {
-  const value = String(url?.searchParams?.get("includeRaw") || url?.searchParams?.get("includeSourcePacket") || "")
-    .trim()
-    .toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
-}
-
-function hiveBrainOperatorAccess(session = null) {
-  if (!session?.accountId) {
-    return { ok: false, status: 401, error: "hive_brain_login_required", message: "Sign in before opening Hive Brain." };
-  }
-  const profile = getAccountIdentityProfile({ accountId: session.accountId }) || {};
-  const allowedAccounts = new Set(normalizedList(process.env.TASKNODE_HIVE_BRAIN_OPERATOR_ACCOUNT_IDS || ""));
-  if (allowedAccounts.has(String(session.accountId || "").trim().toLowerCase())) {
-    return { ok: true, profile };
-  }
-  const allowedHandles = new Set(normalizedList(
-    process.env.TASKNODE_HIVE_BRAIN_OPERATOR_HANDLES || "goodalexander,grashnuk,tasknodeorc"
-  ));
-  const candidateHandles = [
-    profile.hiveHandle,
-    profile.handle,
-    profile.publicDisplayName,
-    profile.displayName,
-    session.hiveHandle,
-    session.displayName,
-  ]
-    .map((value) => String(value || "").trim().replace(/^@+/, "").toLowerCase())
-    .filter(Boolean);
-  if (candidateHandles.some((handle) => allowedHandles.has(handle))) {
-    return { ok: true, profile };
-  }
-  return {
-    ok: false,
-    status: 403,
-    error: "hive_brain_operator_required",
-    message: "Hive Brain is restricted to operator accounts.",
-  };
-}
-
-function hiveReportRerunAccess(session = null) {
-  if (!session?.accountId) {
-    return { ok: false, status: 401, error: "hive_report_rerun_login_required", message: "Sign in before rerunning Hive reports." };
-  }
-  const profile = getAccountIdentityProfile({ accountId: session.accountId }) || {};
-  const allowedAccounts = new Set(normalizedList(
-    process.env.TASKNODE_HIVE_REPORT_RERUN_ACCOUNT_IDS ||
-      "acct_oauth_3c70e69ab7b8ef1fad3df508"
-  ));
-  const allowedHandles = new Set(normalizedList(
-    process.env.TASKNODE_HIVE_REPORT_RERUN_HANDLES || "goodalexander"
-  ));
-  const accountId = String(session.accountId || "").trim().toLowerCase();
-  const handleCandidates = [
-    profile.hiveHandle,
-    profile.handle,
-    profile.publicDisplayName,
-    profile.displayName,
-    session.hiveHandle,
-    session.displayName,
-  ].map((value) => String(value || "").trim().replace(/^@+/, "").toLowerCase()).filter(Boolean);
-  if (allowedAccounts.has(accountId) || handleCandidates.some((handle) => allowedHandles.has(handle))) {
-    return { ok: true, profile };
-  }
-  return {
-    ok: false,
-    status: 403,
-    error: "hive_report_rerun_goodalexander_required",
-    message: "Only goodalexander can rerun Hive reports from the UI.",
-  };
-}
-
-function canResolveTaskAccountingHarvest({ session = null, profile = {}, linkedWallet = null } = {}) {
-  const allowedAccounts = new Set(normalizedList(
-    process.env.TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_ACCOUNT_IDS ||
-      "acct_oauth_3c70e69ab7b8ef1fad3df508"
-  ));
-  const allowedHandles = new Set(normalizedList(
-    process.env.TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_HANDLES || "goodalexander"
-  ));
-  const allowedWallets = new Set(normalizedList(
-    process.env.TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_WALLETS ||
-      "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx"
-  ));
-  const accountId = String(session?.accountId || "").trim();
-  const handleCandidates = [
-    profile.hiveHandle,
-    profile.handle,
-    profile.publicDisplayName,
-    profile.displayName,
-    session?.hiveHandle,
-    session?.displayName,
-  ].map((value) => String(value || "").trim().replace(/^@+/, "").toLowerCase()).filter(Boolean);
-  const wallet = String(linkedWallet?.address || linkedWallet?.walletAddress || "").trim();
-  return (
-    allowedAccounts.has(accountId.toLowerCase()) ||
-    handleCandidates.some((handle) => allowedHandles.has(handle)) ||
-    (wallet && allowedWallets.has(wallet.toLowerCase()))
-  );
-}
-
-async function taskAccountingCheckoutPermissions({ getLinkedWallet, session = null } = {}) {
-  const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
-  const walletAddress = safeText(linkedWallet?.address || linkedWallet?.walletAddress || "", 120);
-  const access = await getTaskAccountingCheckoutAccess({
-    accountId: session?.accountId || "",
-    walletAddress,
-  }).catch(() => false);
-  const canCheckout = typeof access === "object" ? Boolean(access.canCheckout) : Boolean(access);
-  const hasCoreContributorBadge = typeof access === "object" ? Boolean(access.hasCoreContributorBadge) : Boolean(access);
-  const hasActiveOrcAgent = typeof access === "object" ? Boolean(access.hasActiveOrcAgent) : false;
-  const reason = !canCheckout
-    ? "core_contributor_or_active_orc_required"
-    : !walletAddress
-      ? "linked_wallet_required"
-      : "";
-  return {
-    canCheckout: Boolean(canCheckout && walletAddress),
-    hasCoreContributorBadge,
-    hasActiveOrcAgent,
-    walletAddress,
-    accountId: safeText(session?.accountId || "", 180),
-    reason,
-  };
-}
-
-function sendSse(res, event = "message", payload = {}) {
-  if (res.writableEnded) return;
-  res.write(`event: ${event}\n`);
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
-}
-
-async function streamHiveBrainLive({ req, res }) {
-  res.writeHead(200, {
-    "content-type": "text/event-stream; charset=utf-8",
-    "cache-control": "no-store",
-    connection: "keep-alive",
-    "x-accel-buffering": "no",
-  });
-  let closed = false;
-  let lastRunId = "";
-  let lastOutputText = "";
-  let lastStatus = "";
-  const pushDurableSnapshot = async () => {
-    if (closed || res.writableEnded) return;
-    const live = await getHiveBrainLive().catch((error) => ({
-      ok: false,
-      error: error?.message || "hive_brain_live_failed",
-      run: null,
-    }));
-    const run = live?.run || {};
-    const outputText = String(run.outputText || "");
-    const runId = String(run.id || run.runId || "");
-    if (runId !== lastRunId) {
-      lastRunId = runId;
-      lastOutputText = "";
-      lastStatus = "";
-      sendSse(res, "snapshot", live);
-    }
-    if (outputText.length > lastOutputText.length && outputText.startsWith(lastOutputText)) {
-      sendSse(res, "output_delta", {
-        runId,
-        delta: outputText.slice(lastOutputText.length),
-        outputBytes: Buffer.byteLength(outputText),
-        updatedAt: run.updatedAt || new Date().toISOString(),
-      });
-      lastOutputText = outputText;
-    } else if (outputText !== lastOutputText) {
-      sendSse(res, "snapshot", live);
-      lastOutputText = outputText;
-    }
-    if ((run.status || "") !== lastStatus) {
-      lastStatus = run.status || "";
-      sendSse(res, "run_status", live);
-    }
-  };
-  const unsubscribe = subscribeHiveBrainLive((event, payload) => {
-    if (!closed) sendSse(res, event, payload);
-  });
-  await pushDurableSnapshot();
-  const poll = setInterval(() => {
-    pushDurableSnapshot().catch(() => null);
-  }, 1000);
-  const heartbeat = setInterval(() => {
-    if (!closed && !res.writableEnded) res.write(": heartbeat\n\n");
-  }, 15000);
-  const cleanup = () => {
-    closed = true;
-    clearInterval(poll);
-    clearInterval(heartbeat);
-    unsubscribe();
-  };
-  req.on("close", cleanup);
-}
-
-async function handleHiveBrainRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
-  if (!url.pathname.startsWith("/api/hive/brain")) return false;
-  const access = hiveBrainOperatorAccess(session);
-  if (!access.ok) {
-    json(res, access.status || 403, {
-      ok: false,
-      error: access.error,
-      message: access.message,
-    });
-    return true;
-  }
-  const resolvePrefix = "/api/hive/brain/harvests/";
-  const resolveSuffix = "/resolve";
-  const checkoutSuffix = "/checkout";
-  if (url.pathname.startsWith(resolvePrefix) && url.pathname.endsWith(checkoutSuffix)) {
-    if (req.method !== "POST") {
-      json(res, 405, {
-        ok: false,
-        error: "task_accounting_harvest_checkout_method_not_allowed",
-        message: "Task Accounting harvest checkout requires POST.",
-      });
-      return true;
-    }
-    const permissions = await taskAccountingCheckoutPermissions({ getLinkedWallet, session });
-    if (!permissions.canCheckout && !permissions.walletAddress) {
-      json(res, 409, {
-        ok: false,
-        error: "task_accounting_harvest_checkout_wallet_required",
-        message: "Link a wallet before checking out a harvest row.",
-        permissions,
-      });
-      return true;
-    }
-    if (!permissions.canCheckout) {
-      json(res, 403, {
-        ok: false,
-        error: "task_accounting_harvest_checkout_core_contributor_or_orc_required",
-        message: "Only verified Core Contributors or active Orc agents can check out harvest rows.",
-        permissions,
-      });
-      return true;
-    }
-    if (!permissions.walletAddress) {
-      json(res, 409, {
-        ok: false,
-        error: "task_accounting_harvest_checkout_wallet_required",
-        message: "Link a wallet before checking out a harvest row.",
-        permissions,
-      });
-      return true;
-    }
-    const taskId = decodeURIComponent(url.pathname.slice(resolvePrefix.length, -checkoutSuffix.length));
-    const body = await checkoutTaskAccountingHarvest({
-      taskId,
-      accountId: session.accountId,
-      walletAddress: permissions.walletAddress,
-      metadata: {
-        source: "hive_brain",
-        route: "/api/hive/brain/harvests/:taskId/checkout",
-      },
-    });
-    json(res, body.ok ? 200 : body.status || 400, {
-      ...body,
-      permissions,
-    });
-    return true;
-  }
-  if (url.pathname.startsWith(resolvePrefix) && url.pathname.endsWith(resolveSuffix)) {
-    if (req.method !== "POST") {
-      json(res, 405, {
-        ok: false,
-        error: "task_accounting_harvest_resolve_method_not_allowed",
-        message: "Task Accounting harvest resolution requires POST.",
-      });
-      return true;
-    }
-    const linkedWallet = typeof getLinkedWallet === "function"
-      ? getLinkedWallet({ accountId: session.accountId })
-      : null;
-    const taskId = decodeURIComponent(url.pathname.slice(resolvePrefix.length, -resolveSuffix.length));
-    const canResolveAsOperator = canResolveTaskAccountingHarvest({ session, profile: access.profile, linkedWallet });
-    const canResolveAsCheckoutOwner = canResolveAsOperator ? false : await accountCanResolveCheckedOutTaskAccountingHarvest({
-      taskId,
-      accountId: session.accountId,
-      walletAddress: safeText(linkedWallet?.address || linkedWallet?.walletAddress || "", 120),
-    });
-    if (!canResolveAsOperator && !canResolveAsCheckoutOwner) {
-      json(res, 403, {
-        ok: false,
-        error: "task_accounting_harvest_resolver_required",
-        message: "Only authorized Task Accounting operators or the eligible checkout owner can resolve harvest rows.",
-      });
-      return true;
-    }
-    const payload = typeof readJson === "function" ? await readJson(req, 8192) : {};
-    const body = await resolveTaskAccountingHarvest({
-      taskId,
-      resolvedByAccountId: session.accountId,
-      outcome: payload?.outcome || payload?.resolutionOutcome || "",
-      note: payload?.note || payload?.resolutionNote || "",
-    });
-    json(res, body.ok ? 200 : body.status || 404, body);
-    return true;
-  }
-  if (url.pathname === "/api/hive/brain/harvest-checkouts") {
-    if (req.method !== "GET") {
-      json(res, 405, {
-        ok: false,
-        error: "task_accounting_harvest_checkouts_method_not_allowed",
-        message: "Task Accounting harvest checkout log supports GET.",
-      });
-      return true;
-    }
-    const [body, permissions] = await Promise.all([
-      listTaskAccountingHarvestCheckouts({
-        includeResolved: ["1", "true", "yes"].includes(String(url.searchParams.get("includeResolved") || "").toLowerCase()),
-        limit: url.searchParams.get("limit") || 80,
-        page: url.searchParams.get("page") || 1,
-      }),
-      taskAccountingCheckoutPermissions({ getLinkedWallet, session }),
-    ]);
-    json(res, 200, { ...body, permissions });
-    return true;
-  }
-  if (url.pathname === "/api/hive/brain/harvest-report") {
-    if (req.method !== "GET") {
-      json(res, 405, {
-        ok: false,
-        error: "task_accounting_harvest_report_method_not_allowed",
-        message: "Harvest Report supports GET.",
-      });
-      return true;
-    }
-    const body = await getLatestTaskAccountingHarvestReport({
-      generate: !["0", "false", "no"].includes(String(url.searchParams.get("generate") || "true").toLowerCase()),
-    });
-    json(res, body.ok ? 200 : body.status || 500, body);
-    return true;
-  }
-  if (url.pathname === "/api/hive/brain/harvests") {
-    if (req.method !== "GET") {
-      json(res, 405, {
-        ok: false,
-        error: "task_accounting_harvests_method_not_allowed",
-        message: "Task Accounting harvests supports GET.",
-      });
-      return true;
-    }
-    const [body, permissions] = await Promise.all([
-      listTaskAccountingHarvests({
-        status: url.searchParams.get("status") || "",
-        classification: url.searchParams.get("classification") || "",
-        requiresAction: url.searchParams.get("requiresAction") || "",
-        resolved: url.searchParams.get("resolved") || "",
-        includeResolved: ["1", "true", "yes"].includes(String(url.searchParams.get("includeResolved") || "").toLowerCase()),
-        limit: url.searchParams.get("limit") || 80,
-        page: url.searchParams.get("page") || 1,
-      }),
-      taskAccountingCheckoutPermissions({ getLinkedWallet, session }),
-    ]);
-    json(res, 200, { ...body, permissions });
-    return true;
-  }
-  if (url.pathname === "/api/hive/brain/live-task-packet") {
-    if (req.method !== "GET") {
-      json(res, 405, {
-        ok: false,
-        error: "hive_live_task_packet_method_not_allowed",
-        message: "Live Task Packet supports GET.",
-      });
-      return true;
-    }
-    const body = await getHiveLiveTaskPacket({
-      limit: url.searchParams.get("limit") || 24,
-    });
-    json(res, body.ok ? 200 : body.status || 500, body);
-    return true;
-  }
-  if (url.pathname === "/api/hive/brain/runs") {
-    if (req.method !== "GET") {
-      json(res, 405, { ok: false, error: "hive_brain_runs_method_not_allowed", message: "Hive Brain runs supports GET." });
-      return true;
-    }
-    const body = await listHiveBrainRuns({
-      limit: url.searchParams.get("limit") || 20,
-      page: url.searchParams.get("page") || 1,
-      action: url.searchParams.get("action") || "all",
-      queryText: url.searchParams.get("q") || "",
-    });
-    json(res, 200, body);
-    return true;
-  }
-  if (url.pathname === "/api/hive/brain/task-generation-history") {
-    if (req.method !== "GET") {
-      json(res, 405, {
-        ok: false,
-        error: "hive_brain_task_generation_history_method_not_allowed",
-        message: "Hive Brain task generation history supports GET.",
-      });
-      return true;
-    }
-    const body = await listHiveBrainTaskGenerationHistory({
-      limit: url.searchParams.get("limit") || 24,
-      page: url.searchParams.get("page") || 1,
-    });
-    json(res, 200, body);
-    return true;
-  }
-  if (url.pathname.startsWith("/api/hive/brain/run/")) {
-    if (req.method !== "GET") {
-      json(res, 405, { ok: false, error: "hive_brain_run_method_not_allowed", message: "Hive Brain run detail supports GET." });
-      return true;
-    }
-    const runId = decodeURIComponent(url.pathname.slice("/api/hive/brain/run/".length));
-    const body = await getHiveBrainRunDetail({ runId, includeSourcePacket: wantsRawAuditPacket(url) });
-    json(res, body.ok ? 200 : body.status || 404, body);
-    return true;
-  }
-  if (url.pathname === "/api/hive/brain/live") {
-    if (req.method !== "GET") {
-      json(res, 405, { ok: false, error: "hive_brain_live_method_not_allowed", message: "Hive Brain live supports GET." });
-      return true;
-    }
-    await streamHiveBrainLive({ req, res });
-    return true;
-  }
-  json(res, 404, { ok: false, error: "hive_brain_route_not_found" });
-  return true;
-}
-
 async function handleHiveReportsRoute({ json, readJson, req, res, session, url }) {
   if (!url.pathname.startsWith("/api/hive/reports")) return false;
-  const access = hiveBrainOperatorAccess(session);
+  const access = await hiveBrainOperatorAccess(session);
   if (!access.ok) {
     json(res, access.status || 403, {
       ok: false,
@@ -995,7 +552,7 @@ async function handleHiveReportsRoute({ json, readJson, req, res, session, url }
     });
     body.permissions = {
       ...(body.permissions || {}),
-      canRerun: hiveReportRerunAccess(session).ok,
+      canRerun: (await hiveReportRerunAccess(session)).ok,
     };
     json(res, 200, body);
     return true;
@@ -1009,7 +566,7 @@ async function handleHiveReportsRoute({ json, readJson, req, res, session, url }
       });
       return true;
     }
-    const rerunAccess = hiveReportRerunAccess(session);
+    const rerunAccess = await hiveReportRerunAccess(session);
     if (!rerunAccess.ok) {
       json(res, rerunAccess.status || 403, {
         ok: false,
@@ -1050,7 +607,7 @@ async function handleHiveReportsRoute({ json, readJson, req, res, session, url }
 
 async function handleHiveDecisionRoute({ json, req, res, session, url }) {
   if (!url.pathname.startsWith("/api/hive/decision")) return false;
-  const access = hiveBrainOperatorAccess(session);
+  const access = await hiveBrainOperatorAccess(session);
   if (!access.ok) {
     json(res, access.status || 403, {
       ok: false,
@@ -1187,7 +744,7 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       json(res, result.ok ? 200 : result.status || 400, result);
       return true;
     }
-    const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
+    const linkedWallet = await linkedWalletForSession({ getLinkedWallet, session });
     const agentOrigin = agentOriginForWalletSession(session, payload, linkedWallet?.address || "");
     const rateLimit = await checkAgentHiveChatRateLimit(agentOrigin);
     if (!rateLimit.ok) {
@@ -1213,7 +770,7 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
   if (req.method === "GET") {
     const accountId = session?.accountId || "";
     const includeAgentLogs = Boolean(accountId) && url.searchParams.get("agentLogs") === "full";
-    const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
+    const linkedWallet = await linkedWalletForSession({ getLinkedWallet, session });
     if (accountId && linkedWallet?.address) {
       const validated = await markHiveContextEntriesWalletValidated({
         accountId,

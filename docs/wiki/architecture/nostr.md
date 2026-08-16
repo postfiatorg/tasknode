@@ -12,7 +12,7 @@ Messages activation is explicit and wallet-authorized:
 4. The browser submits the Nostr public key, `npub`, relay preferences, and a separate short-lived Task Node wallet authorization proof.
 5. The server verifies that `npub` decodes to the submitted public key and binds it to the authenticated account.
 
-The server derives the NIP-05 address from the canonical Task Node handle. It never trusts a client-supplied address. For example, Task Node handle `goodalexander` becomes `goodalexander@tasknode.postfiat.org`.
+The server derives the NIP-05 address from the canonical Task Node handle. It never trusts a client-supplied address. For example, Task Node handle `alice` becomes `alice@tasknode.example` on a self-hosted deployment configured for that domain.
 
 `GET /.well-known/nostr.json?name=<handle>` exposes active, public, unexpired bindings for discoverable profiles. This makes Task Node handles valid NIP-05 identities. The same handle remains the user-facing address inside Messages.
 

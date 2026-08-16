@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { databaseEnabled, query } from "../db/pool.js";
 import { expertAccessFromTaskState } from "../expert-badge.js";
-import { getAccountIdentityProfile } from "../runtime-store.js";
+import { getAccountIdentityProfile } from "./account-profiles.js";
 import { hasUsageCreditForSource } from "./chat-billing.js";
 import { approveNetworkBadge, manualBadgeApprovalRecords } from "./identity-approvals.js";
 import { listTaskState } from "./tasks.js";
@@ -17,10 +17,6 @@ function safeText(value = "", max = 1000) {
 
 function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
-function safeArray(value) {
-  return Array.isArray(value) ? value : [];
 }
 
 function numeric(value, fallback = 0) {
@@ -288,7 +284,7 @@ async function resolveJob(job = {}, { fetchImpl = fetch } = {}) {
   }
   if (job.verifierType === "qa_worker_access") {
     const accountId = safeText(job.accountId || input.accountId || input.account_id, 180);
-    const identityProfile = accountId ? getAccountIdentityProfile({ accountId }) || {} : {};
+    const identityProfile = accountId ? await getAccountIdentityProfile({ accountId }) || {} : {};
     const aliases = Array.isArray(identityProfile.aliases) ? identityProfile.aliases : [];
     const aliasFor = (provider = "") => aliases.find((alias) => safeText(alias.provider, 80).toLowerCase() === provider);
     const telegram = aliasFor("telegram");
@@ -330,7 +326,7 @@ async function resolveJob(job = {}, { fetchImpl = fetch } = {}) {
     const taskState = Object.keys(taskStateInput).length
       ? taskStateInput
       : await listTaskState({ accountId, walletAddress });
-    const expertAccess = expertAccessFromTaskState({ accountId, taskState });
+    const expertAccess = await expertAccessFromTaskState({ accountId, taskState });
     const result = {
       schema: "pf.task_node.expert_access_verifier.v1",
       checkedAt: new Date().toISOString(),

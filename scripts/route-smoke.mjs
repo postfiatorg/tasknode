@@ -6,7 +6,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 import WebSocket from "ws";
 
 const defaultPort = Number(process.env.ROUTE_SMOKE_PORT || 5194);
+const apiPort = Number(process.env.ROUTE_SMOKE_API_PORT || defaultPort + 1);
 const baseUrl = process.env.ROUTE_SMOKE_BASE_URL || `http://127.0.0.1:${defaultPort}`;
+const apiUrl = `http://127.0.0.1:${apiPort}`;
 const chromeBin = process.env.CHROME_BIN || "google-chrome";
 const chromePort = Number(process.env.ROUTE_SMOKE_CHROME_PORT || 9331);
 const startServer = process.env.ROUTE_SMOKE_USE_EXISTING !== "1";
@@ -21,7 +23,7 @@ const routes = [
   { hash: "#profile", labels: ["Today's airdrop", "Profile Studio", "PFT generation"] },
   { hash: "#memory", labels: ["Memory"] },
   {
-    hash: "#docs",
+    hash: "#help",
     labels: [
       "Task Node Docs",
       "Product and architecture wiki",
@@ -29,48 +31,85 @@ const routes = [
       "Live Status",
       "Database:",
       "Daily Airdrop",
-      "AI Providers",
-      "User Observability Logging",
+      "Security & Architecture",
+      "Contributing",
     ],
   },
   {
-    hash: "#docs/wallet",
+    hash: "#help/wallet",
     labels: [
       "Task Node Docs",
       "Product and architecture wiki",
       "Wallet",
-      "Identity, balances, and custody",
+      "Identity, balances, activity, custody, and signing",
       "Account deletion audit",
     ],
     selectors: [".docs-rendered-diagram svg"],
   },
 ];
 
-let server;
+let apiServer;
+let viteServer;
 let chrome;
 let cdp;
 
 async function main() {
   const userDataDir = mkdtempSync(join(tmpdir(), "tasknodeofficial-route-smoke-"));
-  const serverOutput = [];
+  const apiOutput = [];
+  const viteOutput = [];
 
   try {
     if (startServer) {
-      server = spawn(
+      apiServer = spawn(
+        process.execPath,
+        ["server/index.js"],
+        {
+          detached: true,
+          env: {
+            ...process.env,
+            PORT: String(apiPort),
+            NODE_ENV: "development",
+            TASKNODE_ENV: "development",
+            TASKNODE_BIND_HOST: "127.0.0.1",
+            TASKNODE_PROCESS_ROLE: "web",
+            TASKNODE_DATABASE_DISABLED: "true",
+            TASKNODE_DATABASE_ENABLED: "false",
+            TASKNODE_DEV_AUTH_ENABLED: "true",
+            TASKNODE_AUTH_SECRET: "route-smoke-auth-secret",
+            TASKNODE_EMAIL_DEV_DELIVERY: "true",
+            TASKNODE_STORE_PATH: join(userDataDir, "runtime-store.json"),
+            TASKNODE_PUBLIC_URL: baseUrl,
+            VITE_SITE_ORIGIN: baseUrl,
+            AMBIENT_API_KEY: "",
+            VERCEL_AI_GATEWAY_API_KEY: "",
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        }
+      );
+      apiServer.killProcessGroup = true;
+      collectOutput(apiServer.stdout, apiOutput);
+      collectOutput(apiServer.stderr, apiOutput);
+      await waitForHttp(`${apiUrl}/health`, 20000, apiOutput, apiServer);
+
+      viteServer = spawn(
         "./node_modules/.bin/vite",
         ["--host", "127.0.0.1", "--port", String(defaultPort), "--strictPort"],
         {
           detached: true,
-          env: { ...process.env, VITE_DEV_PORT: String(defaultPort) },
+          env: {
+            ...process.env,
+            VITE_DEV_PORT: String(defaultPort),
+            TASKNODE_API_ORIGIN: apiUrl,
+          },
           stdio: ["ignore", "pipe", "pipe"],
         }
       );
-      server.killProcessGroup = true;
-      collectOutput(server.stdout, serverOutput);
-      collectOutput(server.stderr, serverOutput);
+      viteServer.killProcessGroup = true;
+      collectOutput(viteServer.stdout, viteOutput);
+      collectOutput(viteServer.stderr, viteOutput);
     }
 
-    await waitForHttp(baseUrl, 20000, serverOutput);
+    await waitForHttp(baseUrl, 20000, viteOutput, viteServer);
 
     chrome = spawn(
       chromeBin,
@@ -93,13 +132,23 @@ async function main() {
     await cdp.send("Page.enable");
 
     const runtimeExceptions = [];
+    const consoleErrors = [];
     cdp.on("Runtime.exceptionThrown", (event) => {
       const details = event?.exceptionDetails;
       runtimeExceptions.push(details?.exception?.description || details?.text || "Unknown runtime exception");
     });
+    cdp.on("Runtime.consoleAPICalled", (event) => {
+      if (event?.type !== "error") return;
+      const message = (event.args || [])
+        .map((argument) => argument?.description || argument?.value || argument?.unserializableValue || "")
+        .filter(Boolean)
+        .join(" ");
+      if (message) consoleErrors.push(message);
+    });
 
     for (const route of routes) {
       runtimeExceptions.length = 0;
+      consoleErrors.length = 0;
       const url = `${baseUrl}/${route.hash}`;
       const pageLoad = waitForPageLoad();
       await cdp.send("Page.navigate", { url });
@@ -119,7 +168,8 @@ async function main() {
       const missing = route.labels.filter((label) => !visibleText.toLowerCase().includes(label.toLowerCase()));
       if (missing.length > 0) {
         throw new Error(
-          `Route ${route.hash || "/"} rendered without expected text: ${missing.join(", ")}\nVisible text:\n${visibleText.slice(0, 1200)}`
+          `Route ${route.hash || "/"} rendered without expected text: ${missing.join(", ")}\nVisible text:\n${visibleText.slice(0, 1200)}` +
+          (consoleErrors.length ? `\nConsole errors:\n${consoleErrors.join("\n")}` : "")
         );
       }
       for (const selector of route.selectors || []) {
@@ -141,7 +191,8 @@ async function main() {
   } finally {
     cdp?.close();
     await stopProcess(chrome);
-    await stopProcess(server);
+    await stopProcess(viteServer);
+    await stopProcess(apiServer);
     try {
       rmSync(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 });
     } catch (error) {
@@ -176,7 +227,7 @@ function signalProcess(child, signal) {
   }
 }
 
-async function waitForHttp(url, timeoutMs, serverOutput) {
+async function waitForHttp(url, timeoutMs, serverOutput, child) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     try {
@@ -185,8 +236,8 @@ async function waitForHttp(url, timeoutMs, serverOutput) {
     } catch {
       // Retry until Vite starts accepting HTTP connections.
     }
-    if (server?.exitCode !== null) {
-      throw new Error(`Vite exited before route smoke could start.\n${serverOutput.join("")}`);
+    if (child?.exitCode !== null) {
+      throw new Error(`Route smoke process exited before ${url} was ready.\n${serverOutput.join("")}`);
     }
     await sleep(150);
   }

@@ -20,10 +20,6 @@ function safeText(value = "", max = 1000) {
   return String(value ?? "").trim().slice(0, max);
 }
 
-function safeObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
 function boolEnv(value) {
   return String(value || "").trim().toLowerCase() === "true";
 }

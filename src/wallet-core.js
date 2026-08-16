@@ -1,8 +1,7 @@
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import sodium from "libsodium-wrappers";
 import * as keypairs from "ripple-keypairs";
-import { Wallet } from "xrpl";
+import { Wallet } from "xrpl/dist/npm/Wallet/index.js";
 
 export const TASKNODE_DERIVATION_PATH = "m/44'/144'/0'/0/0";
 export const TASKNODE_VAULT_VERSION = 1;
@@ -15,6 +14,7 @@ export const TASKNODE_ENC_SUITE = "ENC_X25519_XCHACHA20P1305";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+let sodiumModulePromise = null;
 
 export function normalizeMnemonic(mnemonic) {
   return String(mnemonic || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -168,8 +168,19 @@ async function sha256Bytes(bytes) {
 }
 
 async function getSodium() {
-  await sodium.ready;
-  return sodium;
+  if (!sodiumModulePromise) {
+    sodiumModulePromise = import("libsodium-wrappers")
+      .then(async (module) => {
+        const sodium = module.default;
+        await sodium.ready;
+        return sodium;
+      })
+      .catch((error) => {
+        sodiumModulePromise = null;
+        throw error;
+      });
+  }
+  return sodiumModulePromise;
 }
 
 async function deriveTaskNodeSeedBytes(mnemonic) {

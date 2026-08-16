@@ -139,7 +139,6 @@ function suppressionReason(contributor) {
 }
 
 function buildEntry(contributor, report, expiresAt) {
-  const rules = violationRules(contributor);
   const contributorKey = safeText(contributor.contributorKey || contributor.walletAddress || contributor.accountId || contributor.handle);
   return {
     contributorKey,

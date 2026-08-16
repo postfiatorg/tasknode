@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { requestJson } from "../../api";
 import { compactWallet, formatCompactPft } from "../hive/HiveView.jsx";

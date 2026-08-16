@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   appendChatTurn,
-  getChatMessages,
   getChatMessagesForWrite,
 } from "./repositories/chat-billing.js";
 import { enqueueChatMemoryJob } from "./repositories/chat-memory.js";
@@ -17,30 +16,17 @@ import {
   fallbackUsage,
   openRouterUsage,
 } from "./chat-provider-usage.js";
-import { effectiveDefaultChatMode, fallbackChatModeLabel } from "./chat-mode-defaults.js";
-import {
-  maxOpenAiWebSearchToolCalls,
-  openAiTools,
-  webSearchUsdPerCall,
-} from "./chat-search-tools.js";
 export {
   chatInputCharacterEstimate,
   normalizeChatAttachments,
 } from "./chat-attachment-utils.js";
 import { normalizeChatAttachments } from "./chat-attachment-utils.js";
 import { buildChatContextStatus } from "./chat-context-status.js";
-import {
-  deepSeekMessages,
-  openAiInput,
-  openRouterMessages,
-} from "./chat-provider-message-builders.js";
+import { openRouterMessages } from "./chat-provider-message-builders.js";
 import { helpModeInstructions, isHelpChatMode } from "./chat-help-mode.js";
 import {
-  AMBIENT_MODELS,
   ambientChatCompletion,
   ambientChatCompletionStream,
-  ambientConfigured,
-  resolveAmbientModel,
 } from "./ambient-inference.js";
 import { prepareAmbientChatAttachments } from "./ambient-attachments.js";
 import { iChingProfilePromptPayload } from "./repositories/i-ching-profile.js";
@@ -49,211 +35,22 @@ import {
   chatPersonaUsesJobsRetrieval,
   normalizeChatPersona,
 } from "../shared/chat-personas.js";
+import {
+  chatExecutionStatus,
+  chatModeConfig,
+  chatProviderTimeoutMs,
+  defaultProviderTimeoutMs,
+  normalizedChatMode,
+  unknownChatModeError,
+} from "./chat-mode-runtime.js";
+export * from "./chat-mode-runtime.js";
 export {
   deepSeekMessages,
   openAiInput,
   openRouterMessages,
 } from "./chat-provider-message-builders.js";
 
-const defaultProviderTimeoutMs = 45_000;
-const defaultThinkingProviderTimeoutMs = 300_000;
-export const chatModePrices = {
-  Instant: {
-    inputUsdPerMillion: 0.063,
-    inputCacheHitUsdPerMillion: 0.0126,
-    outputUsdPerMillion: 0.126,
-    provider: "ambient",
-    providerLabel: "Ambient",
-    capability: "fast_text",
-    defaultModel: AMBIENT_MODELS.fastText,
-    maxOutputTokens: 16384,
-    disableReasoning: true,
-  },
-  Thinking: {
-    inputUsdPerMillion: 0.4725,
-    inputCacheHitUsdPerMillion: 0.09,
-    outputUsdPerMillion: 1.98,
-    provider: "ambient",
-    providerLabel: "Ambient",
-    capability: "reasoning_text",
-    defaultModel: AMBIENT_MODELS.reasoningText,
-    maxOutputTokens: 4096,
-    reasoningEffort: "xhigh",
-  },
-  "Help": {
-    inputUsdPerMillion: 0.063,
-    inputCacheHitUsdPerMillion: 0.0126,
-    outputUsdPerMillion: 0.126,
-    provider: "ambient",
-    providerLabel: "Ambient",
-    capability: "fast_text",
-    defaultModel: AMBIENT_MODELS.fastText,
-    maxOutputTokens: 1200,
-    estimatedOutputTokens: 1200,
-  },
-};
 
-const deprecatedChatModeAliases = Object.freeze({
-  "Private Instant": "Instant",
-  "Frontier Instant": "Instant",
-  "Private Thinking": "Thinking",
-  "Discount Thinking": "Thinking",
-  "Frontier Thinking": "Thinking",
-});
-export { effectiveDefaultChatMode, fallbackChatModeLabel };
-export const defaultChatMode = fallbackChatModeLabel;
-
-export function chatProviderConfigured(provider) {
-  if (provider === "ambient") return ambientConfigured();
-  return false;
-}
-
-function timeoutFromEnv(names = [], fallback = defaultProviderTimeoutMs) {
-  for (const name of names) {
-    const parsed = Number(process.env[name]);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.min(Math.max(Math.floor(parsed), 5_000), 300_000);
-    }
-  }
-  return Math.min(Math.max(Math.floor(Number(fallback) || defaultProviderTimeoutMs), 5_000), 300_000);
-}
-
-export function chatProviderTimeoutMs({ mode = "", provider = "", source = "" } = {}) {
-  const normalizedMode = normalizedChatMode(mode) || String(mode || "").trim();
-  void provider;
-  void source;
-  if (normalizedMode === "Thinking") {
-    return timeoutFromEnv(
-      [
-        normalizedMode === "Help" ? "CHAT_PROVIDER_HELP_TIMEOUT_MS" : "",
-        "CHAT_PROVIDER_AMBIENT_THINKING_TIMEOUT_MS",
-        "CHAT_PROVIDER_THINKING_TIMEOUT_MS",
-        "CHAT_PROVIDER_TIMEOUT_MS",
-      ].filter(Boolean),
-      defaultThinkingProviderTimeoutMs
-    );
-  }
-  return timeoutFromEnv(["CHAT_PROVIDER_TIMEOUT_MS"], defaultProviderTimeoutMs);
-}
-
-function chatProviderEnabled(provider) {
-  if (provider === "ambient") return ambientConfigured() && process.env.AMBIENT_CHAT_ENABLED !== "false";
-  return false;
-}
-
-export function isKnownChatMode(mode) {
-  const normalized = String(mode || "").trim();
-  const canonical = deprecatedChatModeAliases[normalized] || normalized;
-  return Object.hasOwn(chatModePrices, canonical);
-}
-
-function unknownChatModeError(mode) {
-  const error = new Error("unknown_chat_mode");
-  error.status = 400;
-  error.mode = mode;
-  return error;
-}
-
-export function anyChatProviderEnabled() {
-  return Object.values(chatModePrices).some((mode) => chatProviderEnabled(mode.provider));
-}
-
-export function chatModeConfig(mode) {
-  const normalizedMode = normalizedChatMode(mode);
-  if (!normalizedMode) throw unknownChatModeError(mode);
-  return chatModePrices[normalizedMode];
-}
-
-export function normalizedChatMode(mode) {
-  const normalized = String(mode || "").trim();
-  if (!normalized) return effectiveDefaultChatMode();
-  const canonical = deprecatedChatModeAliases[normalized] || normalized;
-  return Object.hasOwn(chatModePrices, canonical) ? canonical : "";
-}
-
-export function modelForMode(mode) {
-  const normalizedMode = normalizedChatMode(mode);
-  const config = chatModeConfig(normalizedMode);
-  return resolveAmbientModel({
-    model: config.defaultModel,
-    capability: config.capability,
-  });
-}
-
-export function chatExecutionStatus(mode) {
-  const normalizedMode = normalizedChatMode(mode);
-  const config = chatModeConfig(normalizedMode);
-  const configured = chatProviderConfigured(config.provider);
-  const enabled = chatProviderEnabled(config.provider);
-
-  return {
-    mode: normalizedMode,
-    provider: config.provider,
-    providerLabel: config.providerLabel || config.provider,
-    model: modelForMode(normalizedMode),
-    configured,
-    enabled,
-    status: enabled ? "ready" : configured ? "disabled" : "missing_config",
-  };
-}
-
-export function actualChatCost(mode, usage) {
-  const config = chatModeConfig(mode);
-  const inputTokens = Number(usage?.inputTokens || 0);
-  const outputTokens = Number(usage?.outputTokens || 0);
-  const promptCacheHitTokens = Math.max(0, Number(usage?.promptCacheHitTokens || 0));
-  const promptCacheMissTokens = Math.max(
-    0,
-    Number(
-      usage?.promptCacheMissTokens ||
-        (promptCacheHitTokens > 0 ? Math.max(0, inputTokens - promptCacheHitTokens) : 0)
-    )
-  );
-  const uncachedInputTokens = promptCacheHitTokens || promptCacheMissTokens
-    ? promptCacheMissTokens
-    : inputTokens;
-  const cachedInputCostUsd = promptCacheHitTokens && config.inputCacheHitUsdPerMillion
-    ? (promptCacheHitTokens * config.inputCacheHitUsdPerMillion) / 1_000_000
-    : 0;
-  const costUsd =
-    (uncachedInputTokens * config.inputUsdPerMillion) / 1_000_000 +
-    cachedInputCostUsd +
-    (outputTokens * config.outputUsdPerMillion) / 1_000_000;
-
-  return Number(costUsd.toFixed(6));
-}
-
-function openRouterProviderPreferences({ providerOrder = [], requireParameters = false } = {}) {
-  const provider = {
-    zdr: true,
-    data_collection: "deny",
-  };
-
-  if (requireParameters) provider.require_parameters = true;
-  if (providerOrder.length > 0) {
-    provider.order = providerOrder;
-    provider.only = providerOrder;
-  }
-  return provider;
-}
-
-function openRouterReasoningConfig(config = {}) {
-  if (config.reasoningEffort) {
-    return {
-      effort: config.reasoningEffort,
-      exclude: true,
-    };
-  }
-
-  if (config.disableReasoning) {
-    return {
-      effort: "none",
-      exclude: true,
-    };
-  }
-
-  return undefined;
-}
 
 function safeLogText(value = "", max = 600) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -433,21 +230,6 @@ function loggedUsage(usage = null) {
   };
 }
 
-function isRecoverableStreamTermination(error) {
-  const message = String(error?.message || "").toLowerCase();
-  const causeCode = String(error?.cause?.code || error?.code || "").toLowerCase();
-  return (
-    !error?.status &&
-    (
-      message === "terminated" ||
-      message === "fetch failed" ||
-      message.includes("socket") ||
-      message.includes("premature close") ||
-      causeCode.includes("und_err_socket")
-    )
-  );
-}
-
 function chatInstructionsOverride({
   mode,
   contextDocument = null,
@@ -514,162 +296,6 @@ function providerEmptyResponseError({
     error.finishReason ? ` with finish_reason=${error.finishReason}` : ""
   }.`;
   return error;
-}
-
-export function openRouterChatRequest({
-  mode,
-  model,
-  message,
-  conversationId,
-  attachments = [],
-  stream = false,
-  historyMessages = null,
-  contextDocument = null,
-  memoryContext = null,
-  taskContext = null,
-  jobsEssence = "",
-  deliveryContext = null,
-  instructionsOverride = "",
-  persona = "jobs",
-}) {
-  const config = chatModeConfig(mode);
-  const normalizedAttachments = normalizeChatAttachments(attachments);
-  const reasoning = openRouterReasoningConfig(config);
-
-  return {
-    model,
-    messages: openRouterMessages({
-      conversationId,
-      message,
-      attachments: normalizedAttachments,
-      historyMessages,
-      contextDocument,
-      memoryContext,
-      taskContext,
-      jobsEssence,
-      deliveryContext,
-      instructionsOverride,
-      persona,
-    }),
-    provider: openRouterProviderPreferences({
-      providerOrder: config.providerOrder || [],
-      requireParameters: Boolean(reasoning),
-    }),
-    reasoning,
-    max_tokens: config.maxOutputTokens,
-    stream: stream || undefined,
-    stream_options: stream
-      ? {
-          include_usage: true,
-        }
-      : undefined,
-    usage: stream
-      ? undefined
-      : {
-          include: true,
-        },
-  };
-}
-
-export function openAiResponseRequest({
-  mode,
-  model,
-  message,
-  conversationId,
-  attachments = [],
-  stream = false,
-  historyMessages = null,
-  contextDocument = null,
-  memoryContext = null,
-  taskContext = null,
-  jobsEssence = "",
-  instructionsOverride = "",
-  responseInstructionBlock = "",
-  responseFormat = null,
-  toolsEnabled = true,
-  deliveryContext = null,
-  persona = "jobs",
-}) {
-  const config = chatModeConfig(mode);
-  const tools = toolsEnabled ? openAiTools() : [];
-  const instructions = [
-    instructionsOverride || taskNodeInstructions({ message, contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext, persona }),
-    responseInstructionBlock,
-  ].filter(Boolean).join("\n\n");
-  const request = {
-    model,
-    instructions,
-    input: openAiInput({
-      conversationId,
-      message,
-      attachments,
-      historyMessages,
-    }),
-    reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
-    text: responseFormat ? { format: responseFormat } : undefined,
-    stream: stream || undefined,
-    store: false,
-    tool_choice: tools.length > 0 ? "auto" : undefined,
-    tools,
-    max_tool_calls: tools.length > 0 ? maxOpenAiWebSearchToolCalls : undefined,
-    metadata: {
-      app: "tasknodeofficial",
-      mode,
-    },
-  };
-  const maxOutputTokens = Number(config.maxOutputTokens || 0);
-  if (Number.isFinite(maxOutputTokens) && maxOutputTokens > 0) {
-    request.max_output_tokens = maxOutputTokens;
-  }
-  return request;
-}
-
-export function deepSeekChatRequest({
-  mode,
-  model,
-  message,
-  conversationId,
-  attachments = [],
-  stream = false,
-  historyMessages = null,
-  contextDocument = null,
-  memoryContext = null,
-  taskContext = null,
-  jobsEssence = "",
-  deliveryContext = null,
-  instructionsOverride = "",
-  persona = "jobs",
-}) {
-  const config = chatModeConfig(mode);
-  const request = {
-    model,
-    messages: deepSeekMessages({
-      conversationId,
-      message,
-      attachments,
-      historyMessages,
-      contextDocument,
-      memoryContext,
-      taskContext,
-      jobsEssence,
-      deliveryContext,
-      instructionsOverride,
-      persona,
-    }),
-    thinking: config.reasoningEffort ? { type: "enabled" } : { type: "disabled" },
-    reasoning_effort: config.reasoningEffort || undefined,
-    stream: stream || undefined,
-    stream_options: stream
-      ? {
-          include_usage: true,
-        }
-      : undefined,
-  };
-  const maxOutputTokens = Number(config.maxOutputTokens || 0);
-  if (Number.isFinite(maxOutputTokens) && maxOutputTokens > 0) {
-    request.max_tokens = maxOutputTokens;
-  }
-  return request;
 }
 
 function ambientResponseFormat(responseFormat = null) {
@@ -804,7 +430,7 @@ export async function executeOpenAi(request = {}) {
   return executeAmbient(request);
 }
 
-async function streamOpenAi({
+async function streamAmbient({
   mode,
   model,
   message,
@@ -859,166 +485,6 @@ async function streamOpenAi({
       ? openRouterUsage({ usage: result.usage }, mode)
       : fallbackUsage({ mode, message, text: result.text }),
   };
-}
-
-async function executeOpenRouter({
-  mode,
-  model,
-  message,
-  conversationId,
-  attachments = [],
-  historyMessages = [],
-  memoryContext = null,
-  contextDocument = null,
-  taskContext = null,
-  jobsEssence = "",
-  deliveryContext = null,
-  persona = "jobs",
-  instructionsOverride = "",
-  timeoutMs = defaultProviderTimeoutMs,
-}) {
-  return executeAmbient({
-    mode,
-    model,
-    message,
-    conversationId,
-    attachments,
-    historyMessages,
-    contextDocument,
-    memoryContext,
-    taskContext,
-    jobsEssence,
-    deliveryContext,
-    instructionsOverride: instructionsOverride || chatInstructionsOverride({
-      mode,
-      contextDocument,
-      memoryContext,
-      taskContext,
-      jobsEssence,
-      deliveryContext,
-      persona,
-    }),
-    persona,
-    timeoutMs,
-  });
-}
-
-async function executeDeepSeek({
-  mode,
-  model,
-  message,
-  conversationId,
-  attachments = [],
-  historyMessages = [],
-  memoryContext = null,
-  contextDocument = null,
-  taskContext = null,
-  jobsEssence = "",
-  deliveryContext = null,
-  persona = "jobs",
-  instructionsOverride = "",
-  timeoutMs = defaultProviderTimeoutMs,
-}) {
-  return executeAmbient({
-    mode,
-    model,
-    message,
-    conversationId,
-    attachments,
-    historyMessages,
-    contextDocument,
-    memoryContext,
-    taskContext,
-    jobsEssence,
-    deliveryContext,
-    instructionsOverride: instructionsOverride || chatInstructionsOverride({
-      mode,
-      contextDocument,
-      memoryContext,
-      taskContext,
-      jobsEssence,
-      deliveryContext,
-      persona,
-    }),
-    persona,
-    timeoutMs,
-  });
-}
-
-async function streamOpenRouter({
-  mode,
-  model,
-  message,
-  conversationId,
-  attachments = [],
-  historyMessages = [],
-  memoryContext = null,
-  contextDocument = null,
-  taskContext = null,
-  jobsEssence = "",
-  deliveryContext = null,
-  persona = "jobs",
-  instructionsOverride = "",
-  onDelta,
-  signal,
-  timeoutMs = defaultProviderTimeoutMs,
-}) {
-  return streamOpenAi({
-    mode,
-    model,
-    message,
-    conversationId,
-    attachments,
-    historyMessages,
-    contextDocument,
-    memoryContext,
-    taskContext,
-    jobsEssence,
-    deliveryContext,
-    persona,
-    instructionsOverride,
-    onDelta,
-    signal,
-    timeoutMs,
-  });
-}
-
-async function streamDeepSeek({
-  mode,
-  model,
-  message,
-  conversationId,
-  attachments = [],
-  historyMessages = [],
-  memoryContext = null,
-  contextDocument = null,
-  taskContext = null,
-  jobsEssence = "",
-  deliveryContext = null,
-  persona = "jobs",
-  instructionsOverride = "",
-  onDelta,
-  signal,
-  timeoutMs = defaultProviderTimeoutMs,
-}) {
-  return streamOpenAi({
-    mode,
-    model,
-    message,
-    conversationId,
-    attachments,
-    historyMessages,
-    contextDocument,
-    memoryContext,
-    taskContext,
-    jobsEssence,
-    deliveryContext,
-    persona,
-    instructionsOverride,
-    onDelta,
-    signal,
-    timeoutMs,
-  });
 }
 
 export async function resolveChatJobsContext({
@@ -1344,77 +810,24 @@ export async function executeChatStream({
         iChingProfile: iChingProfilePromptPayload(iChingProfile),
       })
     : "";
-  const result =
-    status.provider === "deepseek"
-        ? await (async () => {
-            let emittedVisibleDelta = false;
-            const trackDelta = async (delta) => {
-              emittedVisibleDelta = emittedVisibleDelta || Boolean(String(delta || ""));
-              await onDelta?.(delta);
-            };
-            try {
-              return await streamDeepSeek({
-                mode: normalizedMode,
-                model: status.model,
-                message,
-                conversationId,
-                attachments,
-                historyMessages,
-                contextDocument: resolvedContextDocument,
-                memoryContext: resolvedMemoryContext,
-                taskContext: resolvedTaskContext,
-                jobsEssence: resolvedJobsEssence,
-                deliveryContext,
-                persona: normalizedPersona,
-                instructionsOverride: personaInstructions,
-                onDelta: trackDelta,
-                signal,
-                timeoutMs,
-              });
-            } catch (error) {
-              if (emittedVisibleDelta || signal?.aborted || !isRecoverableStreamTermination(error)) throw error;
-              console.warn("chat_provider_stream_fallback", {
-                mode: normalizedMode,
-                provider: status.provider,
-                model: status.model,
-                error: safeLogText(error?.message || "stream_terminated", 160),
-              });
-              return executeDeepSeek({
-                mode: normalizedMode,
-                model: status.model,
-                message,
-                conversationId,
-                attachments,
-                historyMessages,
-                contextDocument: resolvedContextDocument,
-                memoryContext: resolvedMemoryContext,
-                taskContext: resolvedTaskContext,
-                jobsEssence: resolvedJobsEssence,
-                deliveryContext,
-                persona: normalizedPersona,
-                instructionsOverride: personaInstructions,
-                timeoutMs,
-              });
-            }
-          })()
-        : await streamOpenRouter({
-          mode: normalizedMode,
-          model: status.model,
-          message,
-          conversationId,
-          attachments,
-          historyMessages,
-          contextDocument: resolvedContextDocument,
-          memoryContext: resolvedMemoryContext,
-          taskContext: resolvedTaskContext,
-          jobsEssence: resolvedJobsEssence,
-          deliveryContext,
-          persona: normalizedPersona,
-          instructionsOverride: personaInstructions,
-          onDelta,
-          signal,
-          timeoutMs,
-        });
+  const result = await streamAmbient({
+    mode: normalizedMode,
+    model: status.model,
+    message,
+    conversationId,
+    attachments,
+    historyMessages,
+    contextDocument: resolvedContextDocument,
+    memoryContext: resolvedMemoryContext,
+    taskContext: resolvedTaskContext,
+    jobsEssence: resolvedJobsEssence,
+    deliveryContext,
+    persona: normalizedPersona,
+    instructionsOverride: personaInstructions,
+    onDelta,
+    signal,
+    timeoutMs,
+  });
 
   if (!result.text) {
     const error = new Error("chat_provider_empty_response");

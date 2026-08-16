@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "../db/pool.js";
-import { getAccountIdentityProfile } from "../runtime-store.js";
+import { listAccountIdentityProfiles } from "./account-profiles.js";
 import { getHiveProjectsDocument } from "./hive-projects.js";
 import { hiveReportTypeIds, latestHiveReport } from "./hive-reports.js";
 import { buildBadgeEligibilityForCandidates } from "./network-badges.js";
@@ -100,8 +100,8 @@ function normalizeKey(value = "", max = 260) {
     .trim();
 }
 
-function identitySummary(accountId = "", fallback = {}) {
-  const profile = accountId ? getAccountIdentityProfile({ accountId }) || {} : {};
+function identitySummary(accountId = "", fallback = {}, identityByAccount = new Map()) {
+  const profile = accountId ? identityByAccount.get(accountId) || {} : {};
   const hiveHandle = safeText(profile.hiveHandle || profile.handle || fallback.hiveHandle || fallback.handle, 120).replace(/^@+/, "");
   const displayName = safeText(
     profile.publicDisplayName || profile.displayName || fallback.displayName || (hiveHandle ? `@${hiveHandle}` : "") || accountId,
@@ -212,13 +212,13 @@ function compactTaskMetadata(value = {}) {
   };
 }
 
-function taskRow(row = {}) {
+function taskRow(row = {}, identityByAccount = new Map()) {
   return {
     taskId: safeText(row.task_id, 180),
     requestId: safeText(row.request_id, 180),
     accountId: safeText(row.account_id, 180),
     walletAddress: safeText(row.subject_wallet, 120),
-    operator: identitySummary(row.account_id),
+    operator: identitySummary(row.account_id, {}, identityByAccount),
     status: safeText(row.status, 80),
     title: safeText(row.title, 260),
     description: safeText(row.description, 1200),
@@ -231,12 +231,12 @@ function taskRow(row = {}) {
   };
 }
 
-function discussionRow(row = {}) {
+function discussionRow(row = {}, identityByAccount = new Map()) {
   const body = boundedText(row.body || "", discussionBodyMaxChars);
   return {
     id: safeText(row.id, 180),
     accountId: safeText(row.account_id, 180),
-    speaker: identitySummary(row.account_id, { displayName: row.display_name }),
+    speaker: identitySummary(row.account_id, { displayName: row.display_name }, identityByAccount),
     displayName: safeText(row.display_name, 160),
     body: body.text,
     bodyTruncated: body.truncated,
@@ -247,13 +247,13 @@ function discussionRow(row = {}) {
   };
 }
 
-function compactCandidate(candidate = {}, capacity = null, badge = null) {
+function compactCandidate(candidate = {}, capacity = null, badge = null, identityByAccount = new Map()) {
   const accountId = safeText(candidate.accountId || candidate.account_id, 180);
   const walletAddress = safeText(candidate.walletAddress || candidate.wallet_address, 120);
   return {
     accountId,
     walletAddress,
-    identity: identitySummary(accountId),
+    identity: identitySummary(accountId, {}, identityByAccount),
     availableForNetworkTask: capacity ? capacity.availableForNetworkTask === true : false,
     blockers: safeArray(capacity?.blockers).slice(0, 5),
     verifiedBadges: safeArray(badge?.verifiedBadges).map((item) => safeText(item, 80)).filter(Boolean),
@@ -277,7 +277,7 @@ async function latestReports() {
   return Object.fromEntries(entries.map(([type, report]) => [type, reportInput(report)]));
 }
 
-async function liveTaskRows() {
+async function liveTaskRows(identityByAccount) {
   const [outstanding, recentTerminal, generationJobs] = await Promise.all([
     query(
       `
@@ -314,8 +314,8 @@ async function liveTaskRows() {
     ).catch(() => ({ rows: [] })),
   ]);
   return {
-    outstandingNetworkTasks: outstanding.rows.map(taskRow),
-    recentTerminalNetworkTasks: recentTerminal.rows.map(taskRow),
+    outstandingNetworkTasks: outstanding.rows.map((row) => taskRow(row, identityByAccount)),
+    recentTerminalNetworkTasks: recentTerminal.rows.map((row) => taskRow(row, identityByAccount)),
     pendingGenerationJobs: generationJobs.rows.map((row) => ({
       id: safeText(row.id, 180),
       projectId: safeText(row.project_id, 180),
@@ -337,7 +337,7 @@ async function liveTaskRows() {
   };
 }
 
-async function boardDiscussions() {
+async function boardDiscussions(identityByAccount) {
   const result = await query(
     `
       SELECT entry.*
@@ -360,7 +360,7 @@ async function boardDiscussions() {
       LIMIT 80
     `
   ).catch(() => ({ rows: [] }));
-  return result.rows.map(discussionRow);
+  return result.rows.map((row) => discussionRow(row, identityByAccount));
 }
 
 async function projectSnapshot() {
@@ -372,7 +372,7 @@ async function projectSnapshot() {
   };
 }
 
-async function candidateSnapshot() {
+async function candidateSnapshot(identityByAccount) {
   const candidates = await listEligibleNetworkTaskCandidates({ limit: 40 }).catch(() => []);
   const [badgeEligibility, capacityChecks] = await Promise.all([
     buildBadgeEligibilityForCandidates(candidates).catch(() => ({ candidates: [] })),
@@ -382,7 +382,7 @@ async function candidateSnapshot() {
   const capacityByAccount = new Map(safeArray(capacityChecks).map((item) => [safeText(item.accountId, 180), item]));
   const rows = candidates.map((candidate) => {
     const accountId = safeText(candidate.accountId || candidate.account_id, 180);
-    return compactCandidate(candidate, capacityByAccount.get(accountId), badgeByAccount.get(accountId));
+    return compactCandidate(candidate, capacityByAccount.get(accountId), badgeByAccount.get(accountId), identityByAccount);
   });
   return {
     candidates: rows,
@@ -443,6 +443,9 @@ export async function buildHiveDecisionSourcePacket({
   now = new Date(),
   phase = "shadow",
 } = {}) {
+  const identityByAccount = new Map(
+    (await listAccountIdentityProfiles()).map((profile) => [safeText(profile.accountId, 180), profile])
+  );
   const [
     reports,
     taskState,
@@ -451,10 +454,10 @@ export async function buildHiveDecisionSourcePacket({
     candidateState,
   ] = await Promise.all([
     latestReports(),
-    liveTaskRows(),
-    boardDiscussions(),
+    liveTaskRows(identityByAccount),
+    boardDiscussions(identityByAccount),
     projectSnapshot(),
-    candidateSnapshot(),
+    candidateSnapshot(identityByAccount),
   ]);
   const packet = {
     schema: "pf.hive.decision_agent.source.v1",

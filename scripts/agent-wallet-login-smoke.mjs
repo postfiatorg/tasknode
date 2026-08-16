@@ -61,7 +61,7 @@ try {
 
   const wallet = Wallet.generate();
   const address = walletAddress(wallet);
-  const start = authWalletStart({ address }, "POST");
+  const start = await authWalletStart({ address }, "POST");
   assert.equal(start.status, 200);
   assert.equal(start.body.ok, true);
   assert.equal(start.body.verifyPath, "/api/auth/wallet/verify");
@@ -97,7 +97,7 @@ try {
 
   const wrongSigWallet = Wallet.generate();
   const wrongSigAddress = walletAddress(wrongSigWallet);
-  const wrongSigStart = authWalletStart({ address: wrongSigAddress }, "POST");
+  const wrongSigStart = await authWalletStart({ address: wrongSigAddress }, "POST");
   const wrongSigProof = walletProof(wrongSigWallet, wrongSigStart.body.challenge.message);
   const wrongSig = await authWalletVerify({
     challengeId: wrongSigStart.body.challenge.id,
@@ -114,11 +114,11 @@ try {
   const startDeniedWallet = Wallet.generate();
   const startDeniedAddress = walletAddress(startDeniedWallet);
   process.env.TASKNODE_AGENT_WALLET_ALLOWLIST = walletAddress(Wallet.generate());
-  const startDenied = authWalletStart({ address: startDeniedAddress }, "POST");
+  const startDenied = await authWalletStart({ address: startDeniedAddress }, "POST");
   assert.equal(startDenied.status, 403);
   assert.equal(startDenied.body.error, "wallet_login_not_allowed");
   process.env.TASKNODE_AGENT_WALLET_ALLOWLIST = startDeniedAddress;
-  const startAllowed = authWalletStart({ address: startDeniedAddress }, "POST");
+  const startAllowed = await authWalletStart({ address: startDeniedAddress }, "POST");
   assert.equal(startAllowed.status, 200);
   const startAllowedVerify = await verifyChallenge(startDeniedWallet, startAllowed.body.challenge);
   assert.equal(startAllowedVerify.status, 200);
@@ -126,7 +126,7 @@ try {
 
   const mismatchWallet = Wallet.generate();
   const mismatchSigner = Wallet.generate();
-  const mismatchStart = authWalletStart({ address: walletAddress(mismatchWallet) }, "POST");
+  const mismatchStart = await authWalletStart({ address: walletAddress(mismatchWallet) }, "POST");
   const mismatchProof = walletProof(mismatchSigner, mismatchStart.body.challenge.message);
   const mismatch = await authWalletVerify({
     challengeId: mismatchStart.body.challenge.id,
@@ -139,7 +139,7 @@ try {
 
   const deniedWallet = Wallet.generate();
   const deniedAddress = walletAddress(deniedWallet);
-  const deniedStart = authWalletStart({ address: deniedAddress }, "POST");
+  const deniedStart = await authWalletStart({ address: deniedAddress }, "POST");
   process.env.TASKNODE_AGENT_WALLET_ALLOWLIST = walletAddress(Wallet.generate());
   const denied = await verifyChallenge(deniedWallet, deniedStart.body.challenge);
   assert.equal(denied.status, 403);
@@ -150,26 +150,25 @@ try {
   assert.equal(allowedAfterDeny.body.address, deniedAddress);
   delete process.env.TASKNODE_AGENT_WALLET_ALLOWLIST;
 
-  const secondStart = authWalletStart({ address }, "POST");
+  const secondStart = await authWalletStart({ address }, "POST");
   const secondVerify = await verifyChallenge(wallet, secondStart.body.challenge);
   assert.equal(secondVerify.status, 200);
   assert.equal(secondVerify.body.accountId, firstVerify.body.accountId);
 
   const newWallet = Wallet.generate();
-  const newStart = authWalletStart({ address: walletAddress(newWallet) }, "POST");
+  const newStart = await authWalletStart({ address: walletAddress(newWallet) }, "POST");
   const newVerify = await verifyChallenge(newWallet, newStart.body.challenge);
   assert.equal(newVerify.status, 200);
   assert.notEqual(newVerify.body.accountId, firstVerify.body.accountId);
   assert.equal(getLinkedWallet({ accountId: newVerify.body.accountId }).address, walletAddress(newWallet));
 
   const capWallets = [Wallet.generate(), Wallet.generate(), Wallet.generate(), Wallet.generate()];
-  const capStarts = capWallets.map((capWallet) => authWalletStart({ address: walletAddress(capWallet) }, "POST"));
+  const capStarts = await Promise.all(capWallets.map((capWallet) => authWalletStart({ address: walletAddress(capWallet) }, "POST")));
   for (const capStart of capStarts) assert.equal(capStart.status, 200);
-  const evictedOldest = await verifyChallenge(capWallets[0], capStarts[0].body.challenge);
-  assert.equal(evictedOldest.status, 400);
-  assert.equal(evictedOldest.body.error, "invalid_or_expired_challenge");
-  const retainedNewest = await verifyChallenge(capWallets[3], capStarts[3].body.challenge);
-  assert.equal(retainedNewest.status, 200);
+  const capVerifications = await Promise.all(capWallets.map((capWallet, index) =>
+    verifyChallenge(capWallet, capStarts[index].body.challenge)));
+  assert.equal(capVerifications.filter((result) => result.status === 400 && result.body.error === "invalid_or_expired_challenge").length, 1);
+  assert.equal(capVerifications.filter((result) => result.status === 200).length, 3);
 
   console.log("agent wallet login smoke ok");
 } finally {

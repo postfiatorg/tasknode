@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { databaseEnabled, query, transaction } from "./pool.js";
@@ -7,118 +7,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(__dirname, "migrations");
 const migrationsTable = "tasknode_schema_migrations";
 
-const migrations = [
-  "001_chat_billing.sql",
-  "002_chat_attachments.sql",
-  "003_context_cache.sql",
-  "004_chat_memory.sql",
-  "005_deep_chat_memory.sql",
-  "006_task_projections.sql",
-  "007_pftl_transaction_cache.sql",
-  "008_pftl_cache_watcher.sql",
-  "009_pftl_cache_reducer_dedupe_key.sql",
-  "010_pftl_cache_operations.sql",
-  "011_context_history_projection_source.sql",
-  "012_task_requests.sql",
-  "013_deep_memory_snapshots.sql",
-  "014_jobs_corpus_pgvector.sql",
-  "015_context_edit_proposals.sql",
-  "016_context_current_draft_only.sql",
-  "017_context_prune_non_current_drafts.sql",
-  "018_profile_nfts.sql",
-  "019_profile_daily_airdrop.sql",
-  "020_profile_daily_airdrop_issuance.sql",
-  "021_profile_public_snapshots.sql",
-  "022_profile_public_snapshot_prompt_uniqueness.sql",
-  "023_pftl_pointer_observations.sql",
-  "024_network_task_profiles.sql",
-  "025_prune_orphan_task_projection_garbage.sql",
-  "026_network_task_profile_prompt_v2_default.sql",
-  "027_hive_context_entries.sql",
-  "028_hive_secretary_reports.sql",
-  "029_hive_network_projects.sql",
-  "030_hive_project_seed_cleanup.sql",
-  "031_hive_project_planning.sql",
-  "032_archive_rejected_hive_scoping_projects.sql",
-  "033_board_manager_v0.sql",
-  "034_lock_operator_archived_hive_projects.sql",
-  "035_board_manager_action_hooks.sql",
-  "036_board_manager_persistent_sessions.sql",
-  "037_hive_input_ack_copy.sql",
-  "038_network_project_product_docs.sql",
-  "039_network_task_allocations.sql",
-  "040_network_task_idempotency_and_status.sql",
-  "041_board_manager_run_micro_summaries.sql",
-  "042_board_manager_scheduler.sql",
-  "043_board_manager_secretary_packets.sql",
-  "044_board_manager_action_budget.sql",
-  "045_profile_daily_airdrop_processing_status.sql",
-  "046_wallet_initiation_grants.sql",
-  "047_telegram_bot_events.sql",
-  "048_account_deletion_audit.sql",
-  "049_board_manager_message_dedupe_index.sql",
-  "050_board_manager_state_guardrails.sql",
-  "051_task_review_publication_locks.sql",
-  "052_taskgen_split_prompt_versions.sql",
-  "053_recommended_connections.sql",
-  "054_ipfs_replication_jobs.sql",
-  "055_user_observability_events.sql",
-  "056_user_identity_vectors.sql",
-  "057_profile_daily_airdrop_remediation.sql",
-  "058_board_manager_capability_profiles.sql",
-  "059_board_manager_evidence_evaluation_packets.sql",
-  "060_taskgen_replay_cache.sql",
-  "061_projection_fixture_cleanup.sql",
-  "062_orc_agents_and_activity.sql",
-  "063_orc_task_reviews.sql",
-  "064_orc_review_queue_public_items.sql",
-  "065_network_task_status_packets.sql",
-  "066_orc_work_journal.sql",
-  "067_orc_review_rollups.sql",
-  "068_orc_runtime_directives.sql",
-  "069_board_manager_run_usage.sql",
-  "070_agent_rate_limit_buckets.sql",
-  "071_sybil_review_flags.sql",
-  "072_network_badges_identity_approvals.sql",
-  "073_network_badge_verifier_jobs.sql",
-  "074_drop_identity_approval_requests.sql",
-  "075_task_event_write_source.sql",
-  "076_task_forensics_signatures.sql",
-  "078_context_rewrite_jobs.sql",
-  "079_hive_reports.sql",
-  "080_hive_decision_runs.sql",
-  "081_context_rewrite_reliability.sql",
-  "082_task_generation_worker_ownership.sql",
-  "083_task_accounting_harvester.sql",
-  "084_task_accounting_harvest_resolution.sql",
-  "085_task_accounting_harvest_checkout.sql",
-  "086_task_accounting_harvest_resolution_outcome.sql",
-  "087_release_resolved_harvest_checkouts.sql",
-  "088_hive_project_comments.sql",
-  "089_hive_project_latency_indexes.sql",
-  "090_hive_live_task_packet_indexes.sql",
-  "091_hive_board_secretary_memos.sql",
-  "092_task_accounting_harvest_reports.sql",
-  "093_hive_intelligence_report_type.sql",
-  "094_board_manager_planning_report_type.sql",
-  "095_profile_nft_daily_awards.sql",
-  "096_task_review_pre_submit_retry.sql",
-  "097_profile_nft_daily_worker_hardening.sql",
-  "098_deterministic_boards.sql",
-  "099_board_manager_v2_decisions.sql",
-  "100_board_manager_transcripts.sql",
-  "101_pin_deterministic_boards.sql",
-  "102_bm_activity_summaries.sql",
-  "103_account_linked_wallets.sql",
-  "104_network_task_capacity_limits.sql",
-  "105_ambient_inference_defaults.sql",
-  "106_profile_nft_render_jobs.sql",
-  "107_chat_prompt_cache_accounting.sql",
-  "108_rewarded_task_memory.sql",
-  "109_chat_provider_cost_accounting.sql",
-  "110_docs_team_collaboration.sql",
-  "111_i_ching_profiles.sql",
-];
+export async function discoverMigrationNames() {
+  const names = (await readdir(migrationsDir))
+    .filter((name) => /^\d{3}_[a-z0-9_]+\.sql$/.test(name))
+    .sort((left, right) => left.localeCompare(right));
+  const prefixes = names.map((name) => name.slice(0, 3));
+  if (new Set(prefixes).size !== prefixes.length) throw new Error("duplicate_database_migration_prefix");
+  return names;
+}
 
 let migrated = false;
 
@@ -141,7 +37,7 @@ export async function migrateDatabase({ force = false } = {}) {
   const appliedNames = new Set(applied.rows.map((row) => row.name));
   const appliedNow = [];
 
-  for (const name of migrations) {
+  for (const name of await discoverMigrationNames()) {
     if (appliedNames.has(name)) continue;
     const sql = await readFile(path.join(migrationsDir, name), "utf8");
     await transaction(async (client) => {

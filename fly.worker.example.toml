@@ -1,0 +1,25 @@
+# Example only. Deploy this worker image separately from the public web/API
+# image so it has no HTTP entrypoint, static assets, or web-only dependencies.
+app = "replace-with-your-worker-app-name"
+primary_region = "replace-with-your-region"
+
+[build]
+  dockerfile = "Dockerfile"
+  target = "worker-runtime"
+
+[processes]
+  worker-pftl = "env TASKNODE_PROCESS_ROLE=worker:pftl node server/worker-entry.js"
+  worker-taskgen = "env TASKNODE_PROCESS_ROLE=worker:taskgen node server/worker-entry.js"
+  worker-task-review = "env TASKNODE_PROCESS_ROLE=worker:task-review node server/worker-entry.js"
+  worker-context-rewrite = "env TASKNODE_PROCESS_ROLE=worker:context-rewrite node server/worker-entry.js"
+  worker-hive = "env TASKNODE_PROCESS_ROLE=worker:hive node server/worker-entry.js"
+  worker-memory-profile = "env TASKNODE_PROCESS_ROLE=worker:memory-profile node server/worker-entry.js"
+  worker-airdrop = "env TASKNODE_PROCESS_ROLE=worker:airdrop node server/worker-entry.js"
+  worker-nft-renderer = "env TASKNODE_PROCESS_ROLE=worker:nft-renderer node server/worker-entry.js"
+  board-secretary = "env TASKNODE_PROCESS_ROLE=board-secretary node scripts/hive-board-secretary-worker.mjs"
+
+[env]
+  NODE_ENV = "production"
+  TASKNODE_ENV = "production"
+  TASKNODE_DATABASE_ENABLED = "true"
+  TASKNODE_ALLOW_MONOLITH_WORKER = "false"

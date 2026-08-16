@@ -1,5 +1,5 @@
 import { databaseEnabled, query } from "../db/pool.js";
-import { listDiscoverableAccountWalletIdentities } from "../runtime-store.js";
+import { listDiscoverableAccountWalletIdentities } from "./account-profiles.js";
 import { listEvidenceEvaluationPackets } from "./evidence-evaluation-packets.js";
 import { deriveNetworkTaskStatusPacketFromRow } from "./network-task-status.js";
 import { nonFixtureTaskProjectionSql } from "./task-projection-integrity.js";
@@ -204,7 +204,7 @@ export async function getDirectoryRewardedTasksDocument({
     };
   }
   const normalizedLimit = directoryRewardedTasksLimit(limit);
-  const identities = typeof identityProvider === "function" ? identityProvider() : identityProvider;
+  const identities = await Promise.resolve(typeof identityProvider === "function" ? identityProvider() : identityProvider);
   const identityByAccount = publicIdentityMap(Array.isArray(identities) ? identities : []);
   const accountIds = Array.from(identityByAccount.keys());
   const rows = await queryRewardedTaskRows({

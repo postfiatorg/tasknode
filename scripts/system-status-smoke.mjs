@@ -317,7 +317,9 @@ assert.equal(permanentFromSnake.workerState, "failing");
 assert.equal(permanentFromSnake.lastErrorCode, "openai_not_configured");
 
 // Dynamic-column regression: exact query must not request nonexistent generic columns.
-const source = await import("node:fs").then((fs) => fs.readFileSync(new URL("../server/system-status.js", import.meta.url), "utf8"));
+const source = await import("node:fs").then((fs) => (
+  fs.readFileSync(new URL("../server/system-status-aux-workers.js", import.meta.url), "utf8")
+));
 assert.match(source, /FROM profile_nft_daily_worker_heartbeats/);
 assert.match(source, /WHERE worker_key = \$1/);
 assert.doesNotMatch(source, /profile_nft_daily_worker_runs/);

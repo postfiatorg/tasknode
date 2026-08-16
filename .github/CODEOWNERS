@@ -1,0 +1,18 @@
+# Default review owner
+* @goodalexander
+
+# Trust and release boundaries require explicit owner review.
+/.github/ @goodalexander
+/server/db/migrations/ @goodalexander
+/server/route-auth.js @goodalexander
+/server/route-policies.js @goodalexander
+/server/wallet* @goodalexander
+/src/wallet-core.js @goodalexander
+/Dockerfile @goodalexander
+/docker-compose*.yml @goodalexander
+/SECURITY.md @goodalexander
+/PRIVACY.md @goodalexander
+/TERMS.md @goodalexander
+/TRADEMARKS.md @goodalexander
+/provenance/ @goodalexander
+/release/ @goodalexander

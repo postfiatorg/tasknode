@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { requestJson } from "../../api";
 import { formatCreditUsd, formatUsageUsd } from "../../formatters";
 import { EthereumTopUpModal, useEthereumTopUpSync } from "./ethereum-top-up";

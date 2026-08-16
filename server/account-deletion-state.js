@@ -104,7 +104,8 @@ export function deleteRuntimeAccountDataForState({
     if (!matches) continue;
     grant.accountId = effectiveArchiveId;
     if (activeGrantStatuses.has(grant.status)) grant.status = "failed";
-    grant.error = grant.error || `account deleted: ${reason}`;
+    grant.trigger = null;
+    grant.error = "account deleted";
     grant.updatedAt = new Date().toISOString();
     removed.walletInitiationGrants += 1;
   }

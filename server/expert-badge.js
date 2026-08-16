@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getAccountExpertReview, setAccountExpertReview } from "./runtime-store.js";
+import { getAccountExpertReview, setAccountExpertReview } from "./repositories/account-profiles.js";
 import { listTaskState } from "./repositories/tasks.js";
 import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
 
@@ -114,13 +114,13 @@ function sameTaskIds(left = [], right = []) {
   return left.every((item, index) => item === right[index]);
 }
 
-export function expertAccessFromTaskState({ accountId = "", taskState = {} } = {}) {
+export async function expertAccessFromTaskState({ accountId = "", taskState = {} } = {}) {
   const completedPersonalTasks = completedPersonalTasksFromTaskState(taskState);
   const latestTaskIds = completedPersonalTasks
     .slice(0, expertRequiredPersonalTaskCount)
     .map((task) => safeText(task.taskId || task.fullId || task.id, 180))
     .filter(Boolean);
-  const review = getAccountExpertReview({ accountId });
+  const review = await getAccountExpertReview({ accountId });
   const reviewedTaskIds = Array.isArray(review.reviewedTaskIds) ? review.reviewedTaskIds : [];
   const reviewCurrent = Boolean(review.reviewedAt) && sameTaskIds(reviewedTaskIds, latestTaskIds);
   const score = clampScore(review.score);
@@ -319,7 +319,7 @@ export async function evaluateExpertBadge({
   });
   const completedPersonalTasks = completedPersonalTasksFromTaskState(resolvedTaskState);
   if (completedPersonalTasks.length < expertRequiredPersonalTaskCount) {
-    const access = expertAccessFromTaskState({ accountId: normalizedAccountId, taskState: resolvedTaskState });
+    const access = await expertAccessFromTaskState({ accountId: normalizedAccountId, taskState: resolvedTaskState });
     return {
       ok: false,
       status: 409,
@@ -367,7 +367,7 @@ export async function evaluateExpertBadge({
     promptVersion: modelResult.promptVersion,
     usage: modelResult.usage,
   };
-  const saved = setAccountExpertReview({
+  const saved = await setAccountExpertReview({
     accountId: normalizedAccountId,
     review,
   });
@@ -377,7 +377,7 @@ export async function evaluateExpertBadge({
     throw error;
   }
 
-  const access = expertAccessFromTaskState({
+  const access = await expertAccessFromTaskState({
     accountId: normalizedAccountId,
     taskState: resolvedTaskState,
   });

@@ -1,10 +1,8 @@
 import { sessionCookieName, sessionTtlSeconds } from "./runtime-store.js";
+import { requestIsSecure } from "./trusted-proxy.js";
 
 function secureCookie(req) {
-  return (
-    req.headers["x-forwarded-proto"] === "https" ||
-    (process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "").startsWith("https://")
-  );
+  return requestIsSecure(req);
 }
 
 function sessionCookie(req, sessionId) {

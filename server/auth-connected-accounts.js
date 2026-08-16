@@ -1,13 +1,11 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
-  consumeOAuthState,
-  completeTerminalAuthRequest,
-  createAccountSession,
-  createOAuthState,
-  getOrCreateProviderAccount,
-  linkProviderToAccount,
   recordAuthEvent,
 } from "./runtime-store.js";
+import { getOrCreateProviderAccount, linkProviderToAccount } from "./repositories/accounts.js";
+import { completeTerminalAuthRequest } from "./repositories/terminal-auth.js";
+import { createAccountSession } from "./repositories/auth-sessions.js";
+import { consumeOAuthState, createOAuthState } from "./repositories/auth-challenges.js";
 import { appendUsageCredit } from "./repositories/chat-billing.js";
 import { refreshIdentityApprovalsAfterSignal } from "./repositories/identity-approvals.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
@@ -17,6 +15,16 @@ import {
   providerRedirectUri,
   publicOrigin,
 } from "./auth-url-policy.js";
+import {
+  telegramAuthorizeErrorHtml,
+  telegramAuthorizePage,
+} from "./auth-telegram-pages.js";
+import {
+  telegramDisplayName,
+  verifyTelegramLoginPayload,
+} from "./auth-telegram-verification.js";
+
+export { telegramAuthHeaders } from "./auth-telegram-pages.js";
 
 function hasAll(keys) {
   return keys.every((key) => Boolean(process.env[key]));
@@ -131,15 +139,6 @@ function telegramCallbackUrl(requestMeta = {}, stateId = "") {
   return new URL(path, origin).toString();
 }
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function selectGithubEmail(emails) {
   if (!Array.isArray(emails) || emails.length === 0) return null;
   const sorted = [...emails]
@@ -230,22 +229,12 @@ async function fetchGithubEmails(accessToken) {
   return body;
 }
 
-const defaultCoreContributorGithubHandles = [
-  "0xpostfiat",
-  "dravlic",
-  "goodalexander",
-  "iridiummaster",
-  "pleometric",
-  "postfiat-agent",
-];
-
 function configuredCoreContributorGithubHandles() {
   const configured = String(process.env.TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES || "")
     .split(",")
     .map((handle) => handle.trim().toLowerCase())
     .filter(Boolean);
-  const handles = configured.length ? configured : defaultCoreContributorGithubHandles;
-  return [...new Set(handles.map((handle) => String(handle || "").trim().toLowerCase()).filter(Boolean))];
+  return [...new Set(configured)];
 }
 
 function githubProofIntent(value = "") {
@@ -425,70 +414,6 @@ function readScalar(value) {
   return String(raw ?? "").trim();
 }
 
-function authError(message, code, status = 400) {
-  const error = new Error(message);
-  error.code = code;
-  error.status = status;
-  return error;
-}
-
-function timingSafeHexEqual(actual, expected) {
-  if (!actual || !expected || actual.length !== expected.length) return false;
-  try {
-    return timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
-  } catch {
-    return false;
-  }
-}
-
-function verifyTelegramLoginPayload(rawPayload, botToken, options = {}) {
-  const token = String(botToken || "").trim();
-  if (!token) throw authError("Telegram auth is not configured.", "telegram_auth_not_configured", 503);
-  const hash = readScalar(rawPayload?.hash).toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(hash)) {
-    throw authError("Missing or invalid Telegram auth hash.", "telegram_auth_hash_invalid");
-  }
-  const data = {};
-  for (const key of ["id", "first_name", "last_name", "username", "photo_url", "auth_date"]) {
-    const value = readScalar(rawPayload?.[key]);
-    if (value) data[key] = value;
-  }
-  if (!/^\d+$/.test(data.id || "")) {
-    throw authError("Missing or invalid Telegram user id.", "telegram_auth_user_invalid");
-  }
-  if (!/^\d+$/.test(data.auth_date || "")) {
-    throw authError("Missing or invalid Telegram auth date.", "telegram_auth_date_invalid");
-  }
-  const dataCheckString = Object.keys(data).sort().map((key) => `${key}=${data[key]}`).join("\n");
-  const secretKey = createHash("sha256").update(token).digest();
-  const expected = createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
-  if (!timingSafeHexEqual(hash, expected)) {
-    throw authError("Telegram auth signature failed.", "telegram_auth_signature_invalid", 401);
-  }
-  const maxAuthAgeSec = Number.isFinite(Number(options.maxAuthAgeSec))
-    ? Number(options.maxAuthAgeSec)
-    : 900;
-  const nowMs = Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : Date.now();
-  if (maxAuthAgeSec > 0 && Math.abs(nowMs - Number(data.auth_date) * 1000) > maxAuthAgeSec * 1000) {
-    throw authError("Telegram auth payload is expired.", "telegram_auth_expired", 401);
-  }
-  return {
-    id: data.id,
-    username: data.username || "",
-    firstName: data.first_name || "",
-    lastName: data.last_name || "",
-    photoUrl: data.photo_url || "",
-    authDate: Number(data.auth_date),
-  };
-}
-
-function telegramDisplayName(profile) {
-  const username = readScalar(profile?.username);
-  if (username) return username;
-  const fullName = [profile?.firstName, profile?.lastName].map(readScalar).filter(Boolean).join(" ").trim();
-  return fullName || `telegram:${readScalar(profile?.id)}`;
-}
-
 const initialProviderCreditProviders = new Set(["github", "x", "telegram", "discord"]);
 
 function initialProviderCreditUsd() {
@@ -596,7 +521,7 @@ async function completeProviderAuth({
   metadata = {},
 } = {}) {
   const linkedResult = stateRow.linkAccountId
-    ? linkProviderToAccount({ accountId: stateRow.linkAccountId, provider: providerId, providerUserId, username, displayName, profileUrl, emailInfo, metadata })
+    ? await linkProviderToAccount({ accountId: stateRow.linkAccountId, provider: providerId, providerUserId, username, displayName, profileUrl, emailInfo, metadata })
     : null;
   if (linkedResult && !linkedResult.ok) {
     const conflict = linkedResult.error === "provider_identity_conflict" || linkedResult.error === "provider_email_conflict";
@@ -616,7 +541,7 @@ async function completeProviderAuth({
       actionRequired: conflict ? "Sign in with the existing linked account or contact support before attempting an account merge." : `Start ${label} linking again from Settings.`,
     });
   }
-  const account = linkedResult?.account || getOrCreateProviderAccount({ provider: providerId, providerUserId, username, displayName, profileUrl, emailInfo, metadata });
+  const account = linkedResult?.account || await getOrCreateProviderAccount({ provider: providerId, providerUserId, username, displayName, profileUrl, emailInfo, metadata });
   if (!account?.id) {
     return actionResponse({
       status: 500,
@@ -627,9 +552,9 @@ async function completeProviderAuth({
     });
   }
   const initialCredit = await grantInitialProviderCredit(account, providerId);
-  const created = createAccountSession(account, { provider: providerId, assurance });
+  const created = await createAccountSession(account, { provider: providerId, assurance });
   const terminalAuth = stateRow.metadata?.terminalRequestId
-    ? completeTerminalAuthRequest({
+    ? await completeTerminalAuthRequest({
         requestId: stateRow.metadata.terminalRequestId,
         accountId: account.id,
         provider: providerId,
@@ -751,7 +676,7 @@ function unconfiguredProviderResponse(providerItem) {
   };
 }
 
-export function oauthAuthStart(providerId, requestMeta = {}) {
+export async function oauthAuthStart(providerId, requestMeta = {}) {
   const providerItem = oauthProviderById(providerId);
   if (!providerItem) {
     return { status: 404, body: { ok: false, error: "unknown_auth_provider", provider: providerId, message: "Unknown auth provider." } };
@@ -773,14 +698,14 @@ export function oauthAuthStart(providerId, requestMeta = {}) {
   };
 }
 
-function startGithubAuth(requestMeta = {}) {
+async function startGithubAuth(requestMeta = {}) {
   const redirectUri = providerRedirectUri("github", requestMeta, "GITHUB_REDIRECT_URI");
   if (!redirectUri) {
     return actionResponse({ status: 409, error: "auth_redirect_origin_missing", action: "github_auth_start", message: "GitHub login needs a public Task Node origin.", actionRequired: "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin." });
   }
   const proofIntent = githubProofIntent(requestMeta.proof);
   const terminalRequestId = String(requestMeta.terminalRequestId || "").trim();
-  const stateRow = createOAuthState({
+  const stateRow = await createOAuthState({
     provider: "github",
     redirectPath: safeRedirectPath(requestMeta.redirectPath),
     redirectUri,
@@ -801,12 +726,12 @@ function startGithubAuth(requestMeta = {}) {
   return oauthStartResponse({ providerId: "github", stateRow, linkingAccount, redirectUrl: authorizeUrl.toString(), redirectUri });
 }
 
-function startDiscordAuth(requestMeta = {}) {
+async function startDiscordAuth(requestMeta = {}) {
   const redirectUri = providerRedirectUri("discord", requestMeta, "DISCORD_REDIRECT_URI");
   if (!redirectUri) {
     return actionResponse({ status: 409, error: "auth_redirect_origin_missing", action: "discord_auth_start", message: "Discord login needs a Task Node origin.", actionRequired: "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin." });
   }
-  const stateRow = createOAuthState({ provider: "discord", redirectPath: safeRedirectPath(requestMeta.redirectPath), redirectUri, linkAccountId: requestMeta.session?.accountId || "", expiresInSeconds: 600 });
+  const stateRow = await createOAuthState({ provider: "discord", redirectPath: safeRedirectPath(requestMeta.redirectPath), redirectUri, linkAccountId: requestMeta.session?.accountId || "", expiresInSeconds: 600 });
   const linkingAccount = Boolean(requestMeta.session?.accountId);
   const authorizeUrl = new URL("https://discord.com/oauth2/authorize");
   authorizeUrl.searchParams.set("response_type", "code");
@@ -818,13 +743,13 @@ function startDiscordAuth(requestMeta = {}) {
   return oauthStartResponse({ providerId: "discord", stateRow, linkingAccount, redirectUrl: authorizeUrl.toString(), redirectUri });
 }
 
-function startXAuth(requestMeta = {}) {
+async function startXAuth(requestMeta = {}) {
   const redirectUri = providerRedirectUri("x", requestMeta, "X_REDIRECT_URI");
   if (!redirectUri) {
     return actionResponse({ status: 409, error: "auth_redirect_origin_missing", action: "x_auth_start", message: "X login needs a Task Node origin.", actionRequired: "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin." });
   }
   const codeVerifier = base64Url(randomBytes(32));
-  const stateRow = createOAuthState({
+  const stateRow = await createOAuthState({
     provider: "x",
     redirectPath: safeRedirectPath(requestMeta.redirectPath),
     redirectUri,
@@ -844,7 +769,7 @@ function startXAuth(requestMeta = {}) {
   return oauthStartResponse({ providerId: "x", stateRow, linkingAccount, redirectUrl: authorizeUrl.toString(), redirectUri });
 }
 
-function startTelegramAuth(requestMeta = {}) {
+async function startTelegramAuth(requestMeta = {}) {
   const domainCheck = telegramDomainCheck(requestMeta);
   if (!domainCheck.ok) {
     return actionResponse({
@@ -855,7 +780,7 @@ function startTelegramAuth(requestMeta = {}) {
       actionRequired: domainCheck.actionRequired,
     });
   }
-  const stateRow = createOAuthState({ provider: "telegram", redirectPath: safeRedirectPath(requestMeta.redirectPath), redirectUri: "", linkAccountId: requestMeta.session?.accountId || "", expiresInSeconds: 600 });
+  const stateRow = await createOAuthState({ provider: "telegram", redirectPath: safeRedirectPath(requestMeta.redirectPath), redirectUri: "", linkAccountId: requestMeta.session?.accountId || "", expiresInSeconds: 600 });
   const linkingAccount = Boolean(requestMeta.session?.accountId);
   return oauthStartResponse({
     providerId: "telegram",
@@ -895,7 +820,7 @@ export async function oauthAuthCallback(providerId, query = {}, requestMeta = {}
   return { status: 501, body: { ok: false, error: "auth_callback_not_implemented", provider: providerItem.id, message: `${providerItem.label} callback handling is not implemented yet.`, actionRequired: "Implement callback verification, account merge rules, and session issuance before enabling login." } };
 }
 
-function consumeCallbackState(providerId, query, requestMeta) {
+async function consumeCallbackState(providerId, query, requestMeta) {
   const stateId = String(query?.state || "").trim();
   const callbackCookieState = String(requestMeta.oauthState || "").trim();
   if (!stateId || !callbackCookieState || stateId !== callbackCookieState) return null;
@@ -910,7 +835,7 @@ async function completeGithubCallback(query = {}, requestMeta = {}) {
   const code = String(query?.code || "").trim();
   if (query?.error) return actionResponse({ status: 400, error: "github_auth_denied", action: "github_auth_callback", message: String(query.error_description || query.error || "GitHub authorization failed."), actionRequired: "Start GitHub login again if you intended to authorize Task Node." });
   if (!code) return invalidOAuthState("github", "GitHub");
-  const stateRow = consumeCallbackState("github", query, requestMeta);
+  const stateRow = await consumeCallbackState("github", query, requestMeta);
   if (!stateRow) return invalidOAuthState("github", "GitHub");
   try {
     const accessToken = await fetchGithubToken({ code, state: String(query.state || ""), redirectUri: stateRow.redirectUri });
@@ -939,7 +864,7 @@ async function completeDiscordCallback(query = {}, requestMeta = {}) {
   const code = String(query?.code || "").trim();
   if (query?.error) return actionResponse({ status: 400, error: "discord_auth_denied", action: "discord_auth_callback", message: String(query.error_description || query.error || "Discord authorization failed."), actionRequired: "Start Discord login again if you intended to authorize Task Node." });
   if (!code) return invalidOAuthState("discord", "Discord");
-  const stateRow = consumeCallbackState("discord", query, requestMeta);
+  const stateRow = await consumeCallbackState("discord", query, requestMeta);
   if (!stateRow) return invalidOAuthState("discord", "Discord");
   try {
     const accessToken = await fetchDiscordToken({ code, redirectUri: stateRow.redirectUri });
@@ -956,7 +881,7 @@ async function completeXCallback(query = {}, requestMeta = {}) {
   const code = String(query?.code || "").trim();
   if (query?.error) return actionResponse({ status: 400, error: "x_auth_denied", action: "x_auth_callback", message: String(query.error_description || query.error || "X authorization failed."), actionRequired: "Start X login again if you intended to authorize Task Node." });
   if (!code) return invalidOAuthState("x", "X");
-  const stateRow = consumeCallbackState("x", query, requestMeta);
+  const stateRow = await consumeCallbackState("x", query, requestMeta);
   if (!stateRow) return invalidOAuthState("x", "X");
   const codeVerifier = String(stateRow.metadata?.codeVerifier || "").trim();
   if (!codeVerifier) return invalidOAuthState("x", "X");
@@ -1004,7 +929,7 @@ async function completeXCallback(query = {}, requestMeta = {}) {
 }
 
 async function completeTelegramCallback(query = {}, requestMeta = {}) {
-  const stateRow = consumeCallbackState("telegram", query, requestMeta);
+  const stateRow = await consumeCallbackState("telegram", query, requestMeta);
   if (!stateRow) return invalidOAuthState("telegram", "Telegram");
   try {
     const profile = verifyTelegramLoginPayload(query, process.env.TELEGRAM_AUTH_BOT_TOKEN, {
@@ -1029,13 +954,13 @@ function invalidTelegramAuthorizeStateResponse() {
   };
 }
 
-export function authTelegramAuthorize(query = {}, requestMeta = {}) {
+export async function authTelegramAuthorize(query = {}, requestMeta = {}) {
   const stateId = readScalar(query?.state);
   const callbackCookieState = String(requestMeta.oauthState || "").trim();
   if (!/^[A-Za-z0-9._~-]{8,200}$/.test(stateId)) {
     return { status: 400, body: "Invalid Telegram auth state." };
   }
-  if (!callbackCookieState || stateId !== callbackCookieState || !consumeOAuthState({ provider: "telegram", stateId, peek: true })) {
+  if (!callbackCookieState || stateId !== callbackCookieState || !await consumeOAuthState({ provider: "telegram", stateId, peek: true })) {
     return invalidTelegramAuthorizeStateResponse();
   }
   const botUsername = telegramBotUsername();
@@ -1057,97 +982,6 @@ export function authTelegramAuthorize(query = {}, requestMeta = {}) {
   const botDeepLink = `https://t.me/${encodeURIComponent(botUsername)}?start=${encodeURIComponent(`tasknode_${stateId}`)}`;
   return {
     status: 200,
-    body: `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Task Node Telegram Sign In</title>
-  <style>
-    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f7f6f2; color: #151512; }
-    main { width: min(520px, calc(100vw - 32px)); padding: 36px 30px; background: #fff; border: 1px solid #e5e1d8; border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,.08); }
-    h1 { margin: 0 0 12px; font-size: 26px; line-height: 1.15; letter-spacing: 0; }
-    p { margin: 0 0 16px; color: #5f5b52; font-size: 15px; line-height: 1.55; }
-    .step { margin-top: 14px; padding: 14px 16px; border: 1px solid #ece8df; border-radius: 8px; background: #fbfaf7; }
-    .button { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 6px; color: #fff; background: #111; text-decoration: none; font-weight: 650; }
-    .telegram-widget { min-height: 46px; margin-top: 14px; }
-    .muted { margin-top: 18px; font-size: 13px; color: #777267; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Telegram Sign In</h1>
-    <p>Authorize Telegram to sign in or connect this Telegram identity to your current Task Node account.</p>
-    <div class="step">
-      <p>Open the Task Node Telegram bot if you want bot-side messaging continuity.</p>
-      <a class="button" href="${escapeHtml(botDeepLink)}" target="_blank" rel="noopener noreferrer">Open Telegram bot</a>
-    </div>
-    <div class="step">
-      <p>Then authorize the same Telegram account.</p>
-      <div class="telegram-widget">
-        <script async src="https://telegram.org/js/telegram-widget.js?22"
-          data-telegram-login="${escapeHtml(botUsername)}"
-          data-size="large"
-          data-userpic="false"
-          data-auth-url="${escapeHtml(callbackUrl)}"
-          data-request-access="write"></script>
-      </div>
-    </div>
-    <p class="muted">The server verifies Telegram's signed payload before issuing or linking an account session.</p>
-  </main>
-</body>
-</html>`,
-  };
-}
-
-function telegramAuthorizeErrorHtml({ title, message, actionRequired }) {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)}</title>
-  <style>
-    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f7f6f2; color: #151512; }
-    main { width: min(540px, calc(100vw - 32px)); padding: 34px 30px; background: #fff; border: 1px solid #e5e1d8; border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,.08); }
-    h1 { margin: 0 0 12px; font-size: 24px; line-height: 1.18; letter-spacing: 0; }
-    p { margin: 0 0 14px; color: #5f5b52; font-size: 15px; line-height: 1.55; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: #f2eee7; border-radius: 4px; padding: 2px 4px; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>${escapeHtml(title)}</h1>
-    <p>${escapeHtml(message)}</p>
-    <p>${escapeHtml(actionRequired)}</p>
-    <p>After updating the domain, restart the Task Node API process and start Telegram linking again.</p>
-  </main>
-</body>
-</html>`;
-}
-
-export function telegramAuthHeaders() {
-  return {
-    "x-content-type-options": "nosniff",
-    "x-frame-options": "DENY",
-    "referrer-policy": "strict-origin-when-cross-origin",
-    "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
-    "content-type": "text/html; charset=utf-8",
-    "cache-control": "no-store",
-    "content-security-policy": [
-      "default-src 'self'",
-      "script-src 'self' https://telegram.org",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https:",
-      "font-src 'self' data:",
-      "frame-src https://oauth.telegram.org https://telegram.org",
-      "connect-src 'self' https://telegram.org https://oauth.telegram.org",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self' https://oauth.telegram.org https://telegram.org",
-      "frame-ancestors 'none'",
-    ].join("; "),
+    body: telegramAuthorizePage({ botUsername, callbackUrl, botDeepLink }),
   };
 }

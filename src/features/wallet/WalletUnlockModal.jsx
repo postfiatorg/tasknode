@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { walletUnlockIdleLockMinutes } from "./wallet-unlocked-session";
 import "./wallet-unlock.css";

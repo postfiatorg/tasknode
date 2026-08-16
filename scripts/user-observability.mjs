@@ -41,10 +41,6 @@ function printUsage() {
   ].join("\n"));
 }
 
-function safeText(value = "", max = 4000) {
-  return String(value || "").trim().slice(0, max);
-}
-
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "policy": "project-brand-only",
+  "reviewedAt": "2026-08-15",
+  "assets": [
+    { "path": "public/apple-touch-icon.png", "sha256": "bee439e1e0805efd42c3be4f562bed974ef0f7ff0ec02d9232595f575706d1cb", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
+    { "path": "public/favicon-16x16.png", "sha256": "82612e4bbe573550ee2e497a7b1976c38e8101a5d8ba473cf335d18457175a1d", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
+    { "path": "public/favicon-32x32.png", "sha256": "15a6d1ffb5930719c48961b704bf4839249873bb206e3f8ca70033e040b29e03", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
+    { "path": "public/favicon.ico", "sha256": "ffc0282b2eaa81ff26bf6b8d460ee6eb7bc62bef5031d4ceffcbe82dd1f32f6c", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
+    { "path": "public/favicon.svg", "sha256": "11692b637e18c75741d6cb11102877b3d32f88f9878fd7bb5bea91cd14993ea9", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
+    { "path": "public/icon-192.png", "sha256": "c405002a4642b84c4c6341cfaae707c60873e4e9c56c8598788779a3ff6cf07e", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
+    { "path": "public/icon-512.png", "sha256": "0a3c98beb3b33cbe4c96b0bcce8b713303a8073803d7fb572e69b34e98c1c680", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
+    { "path": "public/og-image.png", "sha256": "8b367029a0599d8f47d015110a273cc3c5caf218ad64841a8c2652dfafc264e4", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
+    { "path": "public/post-fiat-logo.svg", "sha256": "7438da8294110584da37a76eb728bb1b7f02a31a75dfb9f8083e7da591361723", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
+    { "path": "public/telegram-app-icon.png", "sha256": "0a3c98beb3b33cbe4c96b0bcce8b713303a8073803d7fb572e69b34e98c1c680", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" }
+  ]
+}

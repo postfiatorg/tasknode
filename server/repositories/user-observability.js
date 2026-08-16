@@ -1,14 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { databaseEnabled, query } from "../db/pool.js";
+import { accountWalletCloudFacts } from "../runtime-store.js";
+import { getAccount } from "./accounts.js";
 import {
-  accountWalletCloudFacts,
-  getAccount,
   getAccountIdentityProfile,
-  getLinkedWallet,
   listAccountIdentityProfiles,
   listPublicAccountWalletIdentities,
-} from "../runtime-store.js";
+} from "./account-profiles.js";
+import { getLinkedWallet } from "./account-wallets.js";
 import {
   nonFixtureRecommendedProfileSql,
   nonFixtureTaskProjectionSql,
@@ -95,9 +95,9 @@ function providerSnapshots(identityProfile = {}) {
   }));
 }
 
-function identityProfileSnapshot(accountId = "") {
-  const profile = getAccountIdentityProfile({ accountId }) || null;
-  const account = getAccount(accountId) || null;
+async function identityProfileSnapshot(accountId = "") {
+  const profile = await getAccountIdentityProfile({ accountId }) || null;
+  const account = await getAccount(accountId) || null;
   return {
     accountId: safeText(accountId, 180),
     publicHandle: safeText(profile?.hiveHandle, 120),
@@ -108,11 +108,11 @@ function identityProfileSnapshot(accountId = "") {
   };
 }
 
-function runtimeWalletsForAccount(accountId = "") {
+async function runtimeWalletsForAccount(accountId = "") {
   const normalizedAccountId = safeText(accountId, 180);
   if (!normalizedAccountId) return [];
   const rows = [];
-  const activeWallet = getLinkedWallet({ accountId: normalizedAccountId });
+  const activeWallet = await getLinkedWallet({ accountId: normalizedAccountId });
   if (activeWallet?.address) {
     rows.push({
       walletAddress: safeText(activeWallet.address, 120),
@@ -237,12 +237,16 @@ function mergeWalletRows(rows = []) {
   });
 }
 
-function identityMatchCandidates({ handle = "", provider = "", providerUsername = "" } = {}) {
+async function identityMatchCandidates({ handle = "", provider = "", providerUsername = "" } = {}) {
   const needle = normalizeHandle(handle || providerUsername);
   const normalizedProvider = safeText(provider, 80).toLowerCase();
   if (!needle) return [];
   const matches = [];
-  for (const profile of listAccountIdentityProfiles()) {
+  const [profiles, walletIdentities] = await Promise.all([
+    listAccountIdentityProfiles(),
+    listPublicAccountWalletIdentities(),
+  ]);
+  for (const profile of profiles) {
     const values = [
       profile.accountId,
       profile.hiveHandle,
@@ -259,11 +263,11 @@ function identityMatchCandidates({ handle = "", provider = "", providerUsername 
         hiveHandle: safeText(profile.hiveHandle, 120),
         displayName: safeText(profile.displayName, 180),
         publicDisplayName: safeText(profile.publicDisplayName, 180),
-        source: "runtime-store.accounts",
+        source: "app_accounts",
       });
     }
   }
-  for (const identity of listPublicAccountWalletIdentities()) {
+  for (const identity of walletIdentities) {
     const values = [
       identity.accountId,
       identity.walletAddress,
@@ -279,7 +283,7 @@ function identityMatchCandidates({ handle = "", provider = "", providerUsername 
         hiveHandle: safeText(identity.hiveHandle, 120),
         displayName: safeText(identity.displayName, 180),
         publicDisplayName: safeText(identity.publicDisplayName, 180),
-        source: "runtime-store.accountWallets",
+        source: "account_linked_wallets",
       });
     }
   }
@@ -363,11 +367,11 @@ export async function resolveUserIdentityVector({
 } = {}) {
   const normalizedAccountId = safeText(accountId, 180);
   const normalizedWallet = safeText(walletAddress, 120);
-  const runtimeMatches = identityMatchCandidates({ handle, provider, providerUsername });
+  const repositoryMatches = await identityMatchCandidates({ handle, provider, providerUsername });
   const postgresMatches = await postgresAccountMatches({ walletAddress: normalizedWallet, handle: handle || providerUsername });
   const candidateAccountIds = new Set();
   if (normalizedAccountId) candidateAccountIds.add(normalizedAccountId);
-  for (const match of [...runtimeMatches, ...postgresMatches]) {
+  for (const match of [...repositoryMatches, ...postgresMatches]) {
     if (match.accountId) candidateAccountIds.add(match.accountId);
   }
 
@@ -381,13 +385,13 @@ export async function resolveUserIdentityVector({
       ok: false,
       error: "identity_ambiguous",
       selector: { handle: safeText(handle, 120), accountId: normalizedAccountId, walletAddress: normalizedWallet, provider: safeText(provider, 80), providerUsername: safeText(providerUsername, 180) },
-      matches: [...runtimeMatches, ...postgresMatches],
+      matches: [...repositoryMatches, ...postgresMatches],
       identity: null,
     };
   }
 
   if (!resolvedAccountId && !normalizedWallet) {
-    const matches = [...runtimeMatches, ...postgresMatches];
+    const matches = [...repositoryMatches, ...postgresMatches];
     return {
       ok: false,
       error: "identity_not_resolved",
@@ -414,14 +418,14 @@ export async function resolveUserIdentityVector({
       ok: true,
       warning: "wallet_scoped_identity_only",
       selector: { handle: safeText(handle, 120), accountId: "", walletAddress: normalizedWallet },
-      matches: [...runtimeMatches, ...postgresMatches],
+      matches: [...repositoryMatches, ...postgresMatches],
       identity: walletOnly,
     };
   }
 
-  const profile = identityProfileSnapshot(resolvedAccountId);
+  const profile = await identityProfileSnapshot(resolvedAccountId);
   const wallets = mergeWalletRows([
-    ...runtimeWalletsForAccount(resolvedAccountId),
+    ...await runtimeWalletsForAccount(resolvedAccountId),
     ...await postgresWalletsForAccount({ accountId: resolvedAccountId, walletAddress: normalizedWallet }),
     normalizedWallet ? { walletAddress: normalizedWallet, role: "user", status: "unknown", source: "selector.wallet" } : null,
   ].filter(Boolean));
@@ -435,7 +439,7 @@ export async function resolveUserIdentityVector({
       provider: safeText(provider, 80),
       providerUsername: safeText(providerUsername, 180),
     },
-    matches: [...runtimeMatches, ...postgresMatches],
+    matches: [...repositoryMatches, ...postgresMatches],
     identity: {
       ...profile,
       wallets,
@@ -474,7 +478,7 @@ export async function recordUserObservabilityEvent(event = {}, { bestEffort = tr
 
   const accountId = safeText(event.accountId || event.account_id, 180);
   const walletAddress = safeText(event.walletAddress || event.wallet_address, 120);
-  const profile = accountId ? identityProfileSnapshot(accountId) : {};
+  const profile = accountId ? await identityProfileSnapshot(accountId) : {};
   const publicHandle = safeText(event.publicHandle || event.public_handle || profile.publicHandle, 120);
   const identitySnapshot = safeObject(event.identitySnapshot || event.identity_snapshot_json);
   const row = {

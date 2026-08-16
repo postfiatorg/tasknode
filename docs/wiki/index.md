@@ -1,114 +1,131 @@
 # Task Node Wiki
 
-Task Node is a chat-first work system that connects human context, model assistance, wallet identity, and PFTL task playback. The app should feel simple at the surface: chat about work, maintain context, receive or create tasks, and understand wallet state. Underneath, the system separates fast product caches from canonical chain-verifiable records.
-
-The most important distinction is canonical state versus convenience state. Postgres exists so the product is fast and recoverable. PFTL pointers, encrypted IPFS payloads, wallet events, and task lifecycle messages are the replayable protocol layer.
-
-For a normal user-facing explanation, start with [User Guide](#docs/user-guide).
-
-
+Task Node is a chat-first work system connecting account context, model
+assistance, tasks, wallet identity, collaborative documents, network
+coordination, and PFTL replay. Start with the [User Guide](#docs/user-guide) for
+normal product use.
 
 ## Documentation Authority
 
-1. **`docs/wiki/` is authoritative** for current product, operator, and architecture behavior.
-2. The in-app **Help** surface renders this wiki (via `src/features/docs/docs-content.js`). The first-class **Docs** screen is the encrypted PFDocs-backed document library, not the wiki.
-3. Files under **`docs/archive/root-specs/`** are historical reference only (early product briefs and UI mocks). They are not live authority.
-4. External/legacy task products and runtimes are migration archaeology, not this application's runtime.
+Documentation authority is scoped, not directory-wide:
+
+1. Current implementation, migrations, deployment configuration, and
+   executable tests define actual behavior.
+2. Current pages under **Product Surfaces** explain supported user behavior and
+   limits.
+3. Current architecture pages explain trust boundaries and operator-visible
+   state. They must be corrected when code changes.
+4. Dated plans are proposals or historical execution records unless explicitly
+   designated as the one active plan. Completed plans do not override code.
+5. `docs/archive/` is historical reference only. Legacy PFTasks is not this
+   repository's runtime; PFDocs is a separate service used by Docs.
+
+The in-app Help frontend imports Markdown and complete prompt files at build
+time. Imported content is public to every production browser. The current import
+set still includes material that must be classified or removed before the
+repository is open sourced; see `docs/open-source-readiness.md`.
 
 ## Product Map
 
-- Chat is where users work.
-- Context is the durable profile of what the user is building and what matters.
-- Tasks are portable work objects that request, accept, submit, verify, and reward through PFTL/IPFS while Postgres provides the fast read model.
-- Hive is the network coordination board and Hive Chat is the default conversation for contributing validated network context.
-- Docs is the wallet-encrypted collaborative document library backed by embedded PFDocs.
-- Team is the directional teammate task-history sharing surface under More.
-- Messages is the wallet-bound, NIP-17 encrypted Nostr inbox under More; Task Node handles are its address book.
-- Wallet is identity, rewards, publishing authority, and balance visibility.
-- Memory is lightweight compression of user and assistant turns so future chats can carry continuity.
-- Context Refine is the active specialized chat tool for targeted edits to the current context document. Context Rewrite is the active billed full-document rewrite pipeline that returns copyable/downloadable Markdown without replacing the current document. Motivation, Brainstorming Context, and general Rewrite are not exposed.
+- **Chat** is the main AI work surface. Its message bodies are stored by Task
+  Node and sent to the configured inference provider.
+- **Context** is the durable account profile used to ground eligible work.
+- **Memory** is an inspectable compression of prior Chat and rewarded work.
+- **Tasks** handles personal and network work from generation through evidence,
+  verification, reward, projection, and replay.
+- **Hive** coordinates network projects, Hive Chat, routing, and contributor
+  work.
+- **Docs** is the wallet-encrypted collaborative document library backed by a
+  separate embedded PFDocs deployment.
+- **Team** grants directional read-only task-history access; it does not grant
+  wallet, Context, Docs, Memory, or Messages access.
+- **Messages** is the wallet-bound NIP-17 inbox addressed by Task Node handle.
+  Task Node stores its public identity binding, not message bodies or private
+  keys; independent relays retain encrypted gift wraps.
+- **Wallet** provides PFTL identity, balance/activity, transfers, signing,
+  rewards, and applicable publication authority.
+- **Directory** and **Profile** expose opted-in identity, contribution, badge,
+  NFT, and connection information.
+- **System Status** reports many worker, queue, provider, and protocol signals;
+  a green HTTP process alone is not full-system health.
 
-## System Diagram
+## System Boundary
 
 ```mermaid
 flowchart LR
-  User[User] --> UI[Task Node UX]
-  UI --> Chat[Chat Runtime]
-  UI --> Context[Context Editor]
-  UI --> Wallet[Wallet Surface]
-  Chat --> Memory[Async Memory Worker]
-  Chat --> Billing[Usage Billing Cache]
-  Context --> ContextCache[Postgres Context Cache]
-  Context --> PFTL[PFTL Pointer]
-  PFTL --> IPFS[Encrypted IPFS Payload]
-  Tasks[Task Engine] --> PFTL
-  Tasks --> TaskCache[Task Projection Cache]
-  PFTL --> Replay[Replay From Chain]
+  Browser[Browser: wallet keys, signing, Nostr crypto] --> API[Task Node web/API]
+  API --> PG[(Postgres)]
+  API --> Store[(Runtime-store JSON)]
+  API --> Ambient[Ambient inference]
+  API --> Workers[Task, Hive, Memory, Airdrop workers]
+  Browser --> Relays[Nostr relays: encrypted gift wraps]
+  Browser --> PFDocs[PFDocs service]
+  API --> PFTL[PFTL RPC/cache]
+  API --> IPFS[IPFS payloads]
+  Workers --> PG
+  Workers --> PFTL
 ```
 
-## Canonical Rules
+Important rules:
 
-- A user can have context without a linked wallet.
-- Tasks require a wallet because task state and rewards must be attributable.
-- Caches should make the product fast, but not become the protocol source of truth.
-- Encrypted payloads should be recoverable by intended wallet identities and unreadable by outsiders.
-- Any new surface should name its database cache, canonical protocol record, and failure behavior.
-- Deployment is documented under Architecture -> Deployment. Production is `https://tasknode.postfiat.org`, served by the promoted `tasknodeofficial-dev` Fly app (the app keeps its original Fly name); local Docker can either use isolated local data or the Fly data bridge for QA against the same Postgres rows. Fly releases must use `npm run fly:deploy` (or `npm run fly:deploy:prod` for the explicit production confirmation) so the non-HTTP `worker` process group is started and guarded after deploy.
-- Scheduler, worker, and RPC audit state is documented under Architecture -> System Status and rendered live in Help from `/api/system/status`.
-- Browser-control release testing is documented under Architecture -> [Browser-Control QA](#docs/codex-computer-control-qa).
-- The single active beta plan is documented under Plans -> [Task Node Production Scope](#docs/task-node-production-scope). That page now consolidates production scope, beta acceptance gates, completed implementation areas, contributor trust/reward policy, and the remaining P0/P1 beta work. Remaining onboarding and wallet-friction recommendations are tracked in Plans -> [Onboarding Wallet Friction Memo](#docs/onboarding-wallet-friction-memo). The production domain migration package is tracked in Plans -> [Task Node Production Cutover Package](#docs/task-node-production-cutover-package).
+- application login, wallet linkage, and local wallet unlock are different
+  states;
+- recovery phrases/private keys remain browser-side;
+- AI Chat and native Context are server-side product data, not end-to-end
+  encrypted from Task Node;
+- Nostr Messages are encrypted/decrypted in the browser and bypass the Task
+  Node message database;
+- Postgres is the fast application/projection store, while the canonical
+  protocol record varies by event type and must be named explicitly; and
+- implemented code can still be configuration-disabled or externally unhealthy.
 
-## Canonical Wiki Locations
+## Primary Help Pages
 
-Root-level legacy runbooks are not the app Help source of truth. Use these wiki
-locations instead:
-
-| Topic | Canonical Help page |
+| Need | Page |
 | --- | --- |
-| Plain-English app walkthrough and feature catalogue | [User Guide](#docs/user-guide) |
-| Full-document context rewrite pipeline | [Context Rewrite](#docs/context-rewrite) |
-| Fresh checkout, local setup, smoke checks, first failure triage | [Bootup](#docs/bootup) |
-| Current product boundary, route map, enabled surfaces, and deferrals | [Current System](#docs/current-system) |
-| Account auth, wallet proof, local vault unlock, and seed custody | [Identity & Wallets](#docs/identity-wallets), [Wallet](#docs/wallet) |
-| Docker, Fly deploys, secrets, process groups, production pause/restart | [Deployment](#docs/deployment) |
-| User-specific support, wallet-scoped eligibility, rewards, memory, profile, Hive, Telegram, and usage logging | [User Observability Logging](#docs/user-observability-logging) |
-| Hive Chat first-run onboarding, wallet validation, Network Tasks, and onboarding friction | [Hive](#docs/hive) |
-| Badge-based Network Task eligibility, profile badge rendering, capacity gating, and Board Manager routing enforcement | [Hive & Board Operations](#docs/hive-operations) |
-| PFTasks to Task Node Official account, wallet, context, task, NFT, and URL cutover | [Task Node Production Cutover Package](#docs/task-node-production-cutover-package), [PFTasks Cutover](#docs/pftasks-cutover) |
-| PFTasks production transaction shutdown before cutover | [PFTasks Transaction Shutdown Cutover Plan](#docs/pftasks-transaction-shutdown-cutover-plan) |
-| Postgres schema target and context history restore | [Database](#docs/database), [PFTL](#docs/pftl) |
-| Ethereum deposit addresses, xpub custody, balance sync, sweep boundary | [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Wallet](#docs/wallet), [Database](#docs/database) |
-| PFTL task protocol, async task engine, lifecycle replay, evidence and rewards | [Task Generation](#docs/task-generation), [PFTL](#docs/pftl), [Tasks](#docs/tasks) |
-| Orc operators, Nazgul oversight, shared review state, triage labels, evidence rules, Sybil review flags, and guardrails | [Orc Operator Runtime](#docs/orc-operator-runtime), [Orc Army And On-Chain Agent Overview](#docs/orc-army-overview), [Grashnuk On-Chain Agent](#docs/grashnuk-on-chain-agent), [Sybil Review Detection](#docs/sybil-review-detection), [Agents](#docs/agents) |
-| IPFS payload standards, gateway order, first-party IPFS rebuild, fresh CID replication, and legacy NFT CID migration | [IPFS](#docs/ipfs), [IPFS Infrastructure Rebuild](#docs/ipfs-infrastructure-rebuild), [IPFS New Write Replication](#docs/ipfs-new-write-replication), [Profile](#docs/profile), [PFTasks Cutover](#docs/pftasks-cutover) |
-| Local Discord task-event posting harness | [Deathmarch Local Harness](#docs/deathmarch) |
-| Generalized defect repair rule for concrete bug reports | [Defect Repair Rule](#docs/defect-repair-rule) |
+| Normal product walkthrough | [User Guide](#docs/user-guide) |
+| Implemented runtime and data boundaries | [Current System](#docs/current-system) |
+| Local checkout/startup and focused checks | [Bootup](#docs/bootup) |
+| Account auth and wallet custody | [Identity & Wallets](#docs/identity-wallets), [Wallet](#docs/wallet) |
+| Chat, persistence, personas, and recovery | [Chat](#docs/chat) |
+| Context and rewrite behavior | [Context](#docs/context), [Context Rewrite](#docs/context-rewrite) |
+| Task lifecycle and replay | [Task Generation](#docs/task-generation), [PFTL](#docs/pftl), [Tasks](#docs/tasks) |
+| Hive and network routing | [Hive](#docs/hive), [Hive & Board Operations](#docs/hive-operations) |
+| Docs and Team permissions | [Docs](#docs/docs), [Team](#docs/team) |
+| Private user-to-user transport | [Messages](#docs/messages) |
+| Worker/provider state | [System Status](#docs/system-status-home) |
+| User-specific support investigations | [User Observability Logging](#docs/user-observability-logging) |
+| General defect-repair rule | [Defect Repair Rule](#docs/defect-repair-rule) |
 
-## Documentation Review Policy
+The current Deployment page is an accuracy record and extraction warning, not
+a public authorization to operate the official service. Production runbooks,
+incident response, credential ownership, and remote-data mutation procedures
+must live privately before open-source release.
 
-The wiki is the source of truth for the app, not an unfinished review queue.
-Pages should describe current behavior, current limits, operator commands, and
-verified checks. Do not add generic `Reviewer To Do List` sections or
-placeholder checklists that ask an unnamed reviewer to inspect the page later.
+## Documentation Policy
 
-If a document needs active verification, use one of these explicit forms:
-
-- `Verification Checklist` for checks that operators should run when changing a
-  specific surface;
-- `Current Limits` for known incomplete or constrained behavior;
-- `Deprecated` or `Not Exposed` when a surface or workflow is no longer live;
-- a dated evidence note with commands, task IDs, transaction hashes, CIDs,
-  screenshots, or links when a review was actually performed.
+- Describe behavior as implemented, configuration-gated, intentionally
+  disabled, deprecated, or proposed.
+- Do not publish secrets, credential suffixes, incident narratives, recovery
+  phrases, private user data, or machine-specific paths.
+- Do not treat public-chain identity linkages as non-sensitive merely because
+  the individual transactions are public.
+- Keep dated plans and verification evidence out of current product authority.
+- Do not append generic reviewer checklists. Use a focused verification section
+  with runnable checks when necessary.
+- Prefer generated API, process, environment, and prompt inventories over copied
+  lists that drift.
 
 ## Primary Code References
 
-- `src/main.jsx`
-- `src/features/wallet/WalletView.jsx`
-- `src/features/memory/MemoryView.jsx`
-- `src/features/context/context-publish.js`
-- `server/index.js`
-- `server/chat-router.js`
-- `server/repositories/chat-billing.js`
-- `server/repositories/context.js`
-- `server/repositories/chat-memory.js`
-- `reference_clients/python/tasknode_pftl/`
+- `src/main.jsx` and `src/features/`
+- `server/index.js` and route modules under `server/`
+- `server/route-policies.js`
+- `server/repositories/`
+- `server/db/migrations/`
+- `scripts/`
+- `fly.toml`
+- `src/features/docs/docs-content.js`
+
+Open-source publication blockers and objective exit gates are maintained in
+`docs/open-source-readiness.md`.

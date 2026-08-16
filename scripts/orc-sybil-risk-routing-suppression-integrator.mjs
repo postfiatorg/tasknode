@@ -311,7 +311,6 @@ function buildArtifacts(riskMatrix, suppressionConfig, options) {
   const expiresAt = expiryTimestamp(options, runGeneratedAt);
   const generatedBy = normalizeHandle(options["generated-by"] || "grashnuk") || "grashnuk";
 
-  const existingByKey = new Map(existingEntries.map((entry) => [entryKey(entry), entry]));
   const nextByKey = new Map(existingEntries.map((entry) => [entryKey(entry), { ...entry }]));
   const qualifyingRows = rows
     .filter((row) => riskWallet(row))

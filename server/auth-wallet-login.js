@@ -1,11 +1,11 @@
 import { isValidClassicAddress } from "xrpl";
 import {
-  consumeWalletLoginChallenge,
-  createAccountSession,
-  createWalletLoginChallenge,
   recordAuthEvent,
-  resolveOrCreateWalletLoginAccount,
 } from "./runtime-store.js";
+import { resolveOrCreateWalletLoginAccount } from "./repositories/wallet-accounts.js";
+import { createAccountSession } from "./repositories/auth-sessions.js";
+import { consumeWalletLoginChallenge, createWalletLoginChallenge } from "./repositories/auth-challenges.js";
+import { accountWalletStorageStatus, linkWalletToAccount } from "./repositories/account-wallets.js";
 import { bestEffortRegisterPftlSyncWallet } from "./pftl-cache-sync.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { verifyWalletSignature } from "./wallet-proof.js";
@@ -50,7 +50,7 @@ export function agentWalletAllowed(address = "") {
   return allowlist.addresses.has(String(address || "").trim());
 }
 
-export function authWalletStart(payload = {}, method = "POST", { expiresInSeconds = walletLoginChallengeTtlSeconds } = {}) {
+export async function authWalletStart(payload = {}, method = "POST", { expiresInSeconds = walletLoginChallengeTtlSeconds } = {}) {
   if (method !== "POST") {
     return actionResponse({
       status: 405,
@@ -86,7 +86,7 @@ export function authWalletStart(payload = {}, method = "POST", { expiresInSecond
     });
   }
 
-  const result = createWalletLoginChallenge({ address, publicKey, expiresInSeconds });
+  const result = await createWalletLoginChallenge({ address, publicKey, expiresInSeconds });
   if (!result.ok) {
     return actionResponse({
       status: result.status || 400,
@@ -149,7 +149,7 @@ export async function authWalletVerify(payload = {}, method = "POST") {
     });
   }
 
-  const consumed = consumeWalletLoginChallenge({ challengeId, address });
+  const consumed = await consumeWalletLoginChallenge({ challengeId, address });
   if (!consumed.ok) {
     recordAuthEvent({
       eventType: "wallet_login_challenge_failed",
@@ -190,7 +190,7 @@ export async function authWalletVerify(payload = {}, method = "POST") {
     });
   }
 
-  const resolved = resolveOrCreateWalletLoginAccount({
+  const resolved = await resolveOrCreateWalletLoginAccount({
     address,
     publicKey,
     challengeId: consumed.challenge.id,
@@ -211,13 +211,32 @@ export async function authWalletVerify(payload = {}, method = "POST") {
     });
   }
 
+  const durableWallet = accountWalletStorageStatus().adapter === "runtime"
+    ? { ok: true, wallet: resolved.wallet, reclaimedWalletCount: resolved.reclaimedWalletCount }
+    : await linkWalletToAccount({
+        accountId: resolved.account.id,
+        address,
+        publicKey,
+        challengeId: consumed.challenge.id,
+        signature,
+        proofPurpose: "wallet_login",
+      });
+  if (!durableWallet.ok) {
+    return actionResponse({
+      status: durableWallet.status || 503,
+      error: durableWallet.error || "wallet_login_persistence_failed",
+      message: "Wallet login could not save its durable wallet binding.",
+      actionRequired: "Start wallet login again after durable account storage is available.",
+    });
+  }
+
   await bestEffortRegisterPftlSyncWallet({
     accountId: resolved.account.id,
     walletAddress: address,
     reason: "wallet_login",
   });
 
-  const created = createAccountSession(resolved.account, { provider: "wallet", assurance: "high" });
+  const created = await createAccountSession(resolved.account, { provider: "wallet", assurance: "high" });
   recordAuthEvent({
     accountId: resolved.account.id,
     eventType: "wallet_login_verified",
@@ -228,7 +247,7 @@ export async function authWalletVerify(payload = {}, method = "POST") {
       challengeId: consumed.challenge.id,
       createdAccount: Boolean(resolved.created),
       linkedWallet: Boolean(resolved.linked),
-      reclaimedWalletCount: Number(resolved.reclaimedWalletCount || 0),
+      reclaimedWalletCount: Math.max(Number(resolved.reclaimedWalletCount || 0), Number(durableWallet.reclaimedWalletCount || 0)),
     },
   });
   await Promise.allSettled([

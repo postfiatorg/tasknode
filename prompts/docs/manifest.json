@@ -2,14 +2,14 @@
   "prompts": [
     {
       "id": "odv",
-      "source": "/home/pfrpc/repos/pftasks/prompts/odv/odv_lindy.md",
+      "source": "upstream:pftasks/prompts/odv/odv_lindy.md",
       "destination": "prompts/docs/odv_lindy_v1.md",
       "sha256": "bc47d5b8a0d6260039789e69e9a5cacd6c07702d9ab3f0baf293e07f67501513",
       "bytes": 4776
     },
     {
       "id": "coach",
-      "source": "/home/pfrpc/repos/pft-telegram-trading-coach/prompts/trading_coach.md",
+      "source": "upstream:pft-telegram-trading-coach/prompts/trading_coach.md",
       "destination": "prompts/docs/trading_coach_v1.md",
       "sha256": "92c7e5035181d1b1dda3628dd5440f47b670bac06a7b1f7f66d7f716b1092855",
       "bytes": 40327

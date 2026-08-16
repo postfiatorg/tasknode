@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +41,9 @@ from tasknode_pftl.tx_queue import WalletTxQueue
 from tasknode_pftl.wallets import ProtocolWallet, create_protocol_wallet, fund_wallets, wallet_from_seed
 
 
-DEFAULT_USER_SEED_FILE = Path("/home/pfrpc/repos/ga_seed2.txt")
+DEFAULT_USER_SEED_FILE = Path(
+    os.environ.get("TASKNODE_USER_SEED_FILE", ".secrets/tasknode-user-seed.txt")
+).expanduser()
 
 
 def read_seed_file(path: Path) -> str:

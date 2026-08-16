@@ -174,7 +174,7 @@ const processed = [];
 const concurrent = await processIpfsReplicationJobsOnce({
   env: { TASKNODE_IPFS_REPLICATION_CONCURRENCY: "3" },
   claimJobs: async () => ({ ok: true, jobs }),
-  fetchImpl: async (job) => {
+  fetchImpl: async (_job) => {
     inFlight += 1;
     maxInFlight = Math.max(maxInFlight, inFlight);
     await new Promise((resolve) => setTimeout(resolve, 10));

@@ -19,7 +19,7 @@ const repoRoot = path.resolve(__dirname, "..");
 
 function parseArgs(argv) {
   const args = {
-    envFile: ".env.tasknodeofficial-dev",
+    envFile: ".env.tasknode.local",
     seedFile: process.env.TASKNODE_HIVE_STATE_SMOKE_SEED_FILE || "",
   };
   for (let index = 0; index < argv.length; index += 1) {

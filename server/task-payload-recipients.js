@@ -1,5 +1,5 @@
 import { accountMessageKey, normalizePublicKeyBase64, publicKeyBase64FromMessageKey } from "./context-publish.js";
-import { getLinkedWallet } from "./runtime-store.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -29,7 +29,7 @@ export async function taskPayloadRecipientPublicKeys({
     addRecipientPublicKey(recipients, key);
   }
 
-  const wallet = getLinkedWallet({ accountId });
+  const wallet = await getLinkedWallet({ accountId });
   if (
     wallet?.status === "linked" &&
     safeText(wallet.address, 120) === safeText(walletAddress, 120)

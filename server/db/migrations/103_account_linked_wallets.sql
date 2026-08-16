@@ -1,10 +1,6 @@
--- Durable mirror of account wallet links. The runtime store on the Fly app
--- volume is the write path for wallet linking, but worker machines have no
--- volume, so routing decisions (network task generation) could not see the
--- current linked wallet and offered tasks to stale wallets. This table is
--- the cross-process source of truth for "which wallet does this account
--- currently follow"; it is written on every link/delink and backfilled from
--- the app machine's store.
+-- Durable account wallet links. Migration 115 adds proof and encryption-key
+-- metadata; production reads and writes this table transactionally. The JSON
+-- runtime implementation remains only as the no-database development adapter.
 
 CREATE TABLE IF NOT EXISTS account_linked_wallets (
   account_id text PRIMARY KEY,

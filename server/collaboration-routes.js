@@ -212,7 +212,7 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       if (!featureEnabled("TASKNODE_DOCS_ODV_ENABLED")) return routeResult(json, res, featureError("docs_odv")), true;
       if (req.method !== "POST") return routeResult(json, res, methodError("docs_odv")), true;
       const payload = await readJson(req, 128_000);
-      await run(json, res, () => generateDocsOdvResponse({
+      await run(json, res, async () => generateDocsOdvResponse({
         accountId,
         documentId: odvMatch[1],
         channelHash: payload.channelHash,
@@ -220,7 +220,7 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
         documentTitle: payload.documentTitle,
         documentContent: payload.documentContent,
         recentMessages: payload.recentMessages,
-        identity: docsIdentityForAccount(accountId),
+        identity: await docsIdentityForAccount(accountId),
       }));
       return true;
     }
@@ -229,7 +229,7 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       if (!featureEnabled("TASKNODE_DOCS_ODV_ENABLED")) return routeResult(json, res, featureError("docs_assistant")), true;
       if (req.method !== "POST") return routeResult(json, res, methodError("docs_assistant")), true;
       const payload = await readJson(req, 128_000);
-      await run(json, res, () => generateDocsAssistantResponse({
+      await run(json, res, async () => generateDocsAssistantResponse({
         accountId,
         documentId: assistantMatch[1],
         channelHash: payload.channelHash,
@@ -239,7 +239,7 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
         documentTitle: payload.documentTitle,
         documentContent: payload.documentContent,
         recentMessages: payload.recentMessages,
-        identity: docsIdentityForAccount(accountId),
+        identity: await docsIdentityForAccount(accountId),
       }));
       return true;
     }

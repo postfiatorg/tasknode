@@ -1,0 +1,526 @@
+.settings-modal {
+  display: flex;
+  width: min(820px, 100%);
+  min-height: min(560px, 80vh);
+  max-height: 88vh;
+  overflow: hidden;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+}
+
+.settings-rail {
+  width: 200px;
+  flex: 0 0 auto;
+  padding: 12px 8px;
+  border-right: 1px solid #e8e6df;
+}
+
+.settings-close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: 0 0 8px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.settings-close:hover,
+.settings-rail nav button:hover,
+.settings-rail nav button.active,
+.static-button:hover,
+.small-pill:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.settings-rail nav {
+  display: grid;
+  gap: 2px;
+}
+
+.settings-rail nav button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #0d0d0d;
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.settings-content {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.settings-content header {
+  display: flex;
+  align-items: center;
+  min-height: 58px;
+  padding: 0 28px;
+  border-bottom: 1px solid #e8e6df;
+}
+
+.settings-content h2 {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 18px;
+}
+
+.settings-page {
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 28px;
+}
+
+.mfa-callout {
+  position: relative;
+  margin-bottom: 20px;
+  padding: 20px;
+  border-radius: 16px;
+  background: #f4f3ee;
+}
+
+.mfa-callout > span {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.mfa-callout i {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #0d0d0d;
+  color: #ffffff;
+}
+
+.mfa-callout strong {
+  display: block;
+  margin-top: 12px;
+  color: #0d0d0d;
+  font-size: 14.5px;
+}
+
+.mfa-callout p {
+  margin: 4px 0 12px;
+  color: #6b6b66;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.mfa-callout button {
+  min-height: 31px;
+  padding: 0 14px;
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0d0d0d;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.connected-accounts {
+  margin-bottom: 20px;
+  border-top: 1px solid #e8e6df;
+}
+
+.connected-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+
+.connected-heading strong {
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.connected-heading span {
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.connected-account-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  border-top: 1px solid #e8e6df;
+}
+
+.connected-provider-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+}
+
+.connected-provider-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.connected-account-row div {
+  display: grid;
+  min-width: 0;
+  margin-right: auto;
+  gap: 2px;
+}
+
+.connected-account-row strong {
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.connected-account-row small {
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.connected-unlink-confirm {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.connected-account-row button,
+.connected-account-row em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.connected-account-row button {
+  border: 1px solid #e8e6df;
+  background: #ffffff;
+  color: #0d0d0d;
+}
+
+.connected-account-row button:disabled {
+  color: #9a9a93;
+  cursor: default;
+}
+
+.connected-account-row em {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.settings-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid #e8e6df;
+}
+
+.settings-line:first-of-type {
+  border-top: 0;
+}
+
+.settings-line strong {
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.settings-line.danger strong,
+.small-pill.danger {
+  color: #b42318;
+}
+
+.settings-line p {
+  margin: 3px 0 0;
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.static-button,
+.small-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #0d0d0d;
+  font-size: 13px;
+}
+
+.small-pill {
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: #d6d2c4;
+}
+
+.toggle-switch.on {
+  background: #0d0d0d;
+}
+
+.toggle-switch span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: left 0.15s ease;
+}
+
+.toggle-switch.on span {
+  left: 20px;
+}
+
+.billing-settings {
+  display: grid;
+  gap: 20px;
+}
+
+.billing-settings > section {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #e8e6df;
+  border-radius: 16px;
+  background: #f4f3ee;
+}
+
+.billing-settings small {
+  color: #6b6b66;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.billing-settings strong {
+  display: block;
+  margin-top: 6px;
+  color: #0d0d0d;
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-settings strong span {
+  color: #6b6b66;
+  font-size: 13px;
+}
+
+.billing-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.billing-heading h3,
+.billing-settings h3 {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 14px;
+}
+
+.billing-heading button {
+  border: 0;
+  background: transparent;
+  color: #6b6b66;
+  font-size: 12.5px;
+}
+
+.payment-methods {
+  overflow: hidden;
+  margin-top: 12px;
+  border: 1px solid #e8e6df;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.crypto-method {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-top: 1px solid #e8e6df;
+}
+
+.crypto-method:first-child {
+  border-top: 0;
+}
+
+.crypto-method > span {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.crypto-method div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.crypto-method strong {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.crypto-method small {
+  overflow: hidden;
+  color: #6b6b66;
+  font-size: 11.5px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.crypto-method button {
+  min-height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #0d0d0d;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.empty-billing {
+  margin-top: 8px;
+  padding: 24px;
+  border: 1px solid #e8e6df;
+  border-radius: 16px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.empty-billing strong {
+  margin: 0;
+  font-size: 13px;
+}
+
+.billing-ledger {
+  overflow: hidden;
+  margin-top: 8px;
+  border: 1px solid #e8e6df;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.ledger-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-top: 1px solid #e8e6df;
+}
+
+.ledger-row:first-child {
+  border-top: 0;
+}
+
+.ledger-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #6b6b66;
+}
+
+.ledger-dot.credit {
+  background: #16a34a;
+}
+
+.ledger-dot.debit {
+  background: #0d0d0d;
+}
+
+.ledger-row div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.ledger-row strong {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.ledger-row small {
+  overflow: hidden;
+  color: #6b6b66;
+  font-size: 11.5px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.ledger-row em {
+  color: #0d0d0d;
+  font-size: 12.5px;
+  font-style: normal;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-row em.credit {
+  color: #16a34a;
+}
+
+.ledger-row em.debit {
+  color: #0d0d0d;
+}

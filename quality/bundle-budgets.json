@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    { "name": "main application", "pattern": "^index-.*\\.js$", "maxBytes": 320000, "maxGzipBytes": 90000 },
+    { "name": "wallet application code", "pattern": "^wallet-core-.*\\.js$", "maxBytes": 15000, "maxGzipBytes": 5000 },
+    { "name": "wallet XRPL encoding", "pattern": "^wallet-encoding-.*\\.js$", "maxBytes": 455000, "maxGzipBytes": 130000 },
+    { "name": "deferred document cryptography", "pattern": "^libsodium-wrappers-.*\\.js$", "maxBytes": 435000, "maxGzipBytes": 153000 },
+    { "name": "React runtime", "pattern": "^react-runtime-.*\\.js$", "maxBytes": 195000, "maxGzipBytes": 61000 },
+    { "name": "browser Help shell", "pattern": "^DocsView-.*\\.js$", "maxBytes": 40000, "maxGzipBytes": 12000 },
+    { "name": "application CSS", "pattern": "^index-.*\\.css$", "maxBytes": 170000, "maxGzipBytes": 30000 }
+  ],
+  "defaults": {
+    "javascriptMaxBytes": 110000,
+    "javascriptMaxGzipBytes": 40000,
+    "cssMaxBytes": 100000,
+    "cssMaxGzipBytes": 18000
+  }
+}

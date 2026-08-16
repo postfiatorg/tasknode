@@ -173,7 +173,7 @@ function conversationScanRepair({ record, repair }) {
   };
 }
 
-function idempotentRepostRepair({ record, repair }) {
+function idempotentRepostRepair({ record: _record, repair }) {
   const fallback = repair.fallbackPost || {};
   const attempts = asArray(fallback.postAttempts || fallback.attempts);
   if (!attempts.length) {

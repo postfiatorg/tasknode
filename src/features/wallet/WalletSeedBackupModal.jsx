@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff, X } from "lucide-react";
 
 function shortWalletAddress(address) {

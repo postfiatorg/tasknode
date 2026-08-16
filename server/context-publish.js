@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import sodium from "libsodium-wrappers";
 import { Wallet } from "xrpl";
-import { getLinkedWallet } from "./runtime-store.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { getContextDocument, saveContextHistoryProjection } from "./repositories/context.js";
 import { contextIpfsPinStatus, pinContextIpfsJson } from "./context-ipfs.js";
 import { buildPftPointerMemo, CONTENT_KIND, POINTER_FLAGS } from "./pftl-pointer.js";
@@ -295,7 +295,7 @@ async function requireSessionWallet(session) {
     };
   }
 
-  const wallet = getLinkedWallet({ accountId: session.accountId });
+  const wallet = await getLinkedWallet({ accountId: session.accountId });
   if (wallet.status !== "linked" || !wallet.address) {
     return {
       error: actionResponse({

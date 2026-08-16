@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const checkedExtensions = new Set([
@@ -20,11 +20,28 @@ const ignoredPathPrefixes = [
   "work_in_progress/",
 ];
 
-const ignoredFiles = new Set(["package-lock.json", "login.jsx"]);
+const ignoredFiles = new Set(["package-lock.json", "PUBLICATION.json", "login.jsx"]);
 
 function trackedFiles() {
-  return execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
-    .split(/\r?\n/)
+  let candidates = [];
+  try {
+    candidates = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).split(/\r?\n/);
+  } catch {
+    const walk = (directory = ".", prefix = "") => readdirSync(directory, { withFileTypes: true })
+      .flatMap((entry) => {
+        const file = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          if ([".git", "dist", "node_modules"].includes(entry.name)) return [];
+          return walk(path.join(directory, entry.name), file);
+        }
+        return entry.isFile() ? [file] : [];
+      });
+    candidates = walk();
+  }
+  return candidates
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((file) => existsSync(file))

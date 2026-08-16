@@ -1,4 +1,4 @@
-import { getLinkedWallet } from "./runtime-store.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { listTaskState } from "./repositories/tasks.js";
 import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
 import { buildTaskContextStatus, taskContextIsEmpty } from "./chat-context-status.js";
@@ -180,7 +180,7 @@ export async function chatTaskContextLoadForAccount(accountId = "") {
   }
 
   const contextPromise = (async () => {
-    const linkedWallet = getLinkedWallet({ accountId });
+    const linkedWallet = await getLinkedWallet({ accountId });
     return listTaskState({
       accountId,
       walletAddress: linkedWallet.status === "linked" ? linkedWallet.address || "" : "",

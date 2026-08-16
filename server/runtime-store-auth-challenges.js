@@ -1,0 +1,166 @@
+import { randomUUID, timingSafeEqual } from "node:crypto";
+
+function hashEquals(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""));
+  const rightBuffer = Buffer.from(String(right || ""));
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+export function createRuntimeAuthChallengeStore({ state, saveState } = {}) {
+  function pruneExpiredEmailChallenges() {
+    const now = Date.now();
+    let changed = false;
+    for (const [challengeId, challenge] of Object.entries(state.emailChallenges)) {
+      const expiredLongAgo = challenge?.expiresAt && Date.parse(challenge.expiresAt) <= now - (60 * 60 * 1000);
+      if (!challenge || challenge.consumedAt || challenge.replacedAt || expiredLongAgo) {
+        delete state.emailChallenges[challengeId];
+        changed = true;
+      }
+    }
+    if (changed) saveState();
+  }
+
+  function pruneExpiredOAuthStates() {
+    const now = Date.now();
+    let changed = false;
+    for (const [stateId, stateRow] of Object.entries(state.oauthStates)) {
+      if (!stateRow?.expiresAt || Date.parse(stateRow.expiresAt) <= now) {
+        delete state.oauthStates[stateId];
+        changed = true;
+      }
+    }
+    if (changed) saveState();
+  }
+
+  function createOAuthState(options = {}) {
+    pruneExpiredOAuthStates();
+    const id = randomUUID();
+    const now = new Date();
+    const legacyContext = options.context && typeof options.context === "object" && !Array.isArray(options.context)
+      ? options.context
+      : {};
+    const explicitMetadata = options.metadata && typeof options.metadata === "object" && !Array.isArray(options.metadata)
+      ? options.metadata
+      : {};
+    const metadata = {
+      ...legacyContext,
+      ...explicitMetadata,
+      ...(options.codeVerifier && !explicitMetadata.codeVerifier ? { codeVerifier: options.codeVerifier } : {}),
+    };
+    delete metadata.linkAccountId;
+    const redirectPath = String(options.redirectPath || options.returnTo || "/app");
+    const ttlSeconds = Number(options.expiresInSeconds ?? options.ttlSeconds) || 600;
+    const row = {
+      id,
+      provider: String(options.provider || "").trim().toLowerCase(),
+      redirectPath: redirectPath.startsWith("/") ? redirectPath : "/app",
+      redirectUri: String(options.redirectUri || ""),
+      linkAccountId: String(options.linkAccountId || legacyContext.linkAccountId || "").trim(),
+      metadata,
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + Math.max(60, Math.min(Number(ttlSeconds) || 600, 1800)) * 1000).toISOString(),
+    };
+    state.oauthStates[id] = row;
+    saveState();
+    return { ...row };
+  }
+
+  function consumeOAuthState({ provider, stateId, peek = false }) {
+    pruneExpiredOAuthStates();
+    const row = state.oauthStates[stateId];
+    if (!row || row.provider !== provider) return null;
+    if (!peek) {
+      delete state.oauthStates[stateId];
+      saveState();
+    }
+    return row;
+  }
+
+  function createEmailChallenge({
+    email, canonicalEmail, maskedEmail, codeHash, tokenHash: challengeTokenHash,
+    purpose = "login", ttlSeconds = 600, requestedIp = "", userAgent = "",
+  }) {
+    pruneExpiredEmailChallenges();
+    const now = new Date();
+    for (const challenge of Object.values(state.emailChallenges)) {
+      if (!challenge || challenge.canonicalEmail !== canonicalEmail || challenge.consumedAt || challenge.replacedAt) continue;
+      challenge.replacedAt = now.toISOString();
+    }
+    const challenge = {
+      id: randomUUID(), email, canonicalEmail, maskedEmail, codeHash,
+      tokenHash: challengeTokenHash, purpose, status: "pending", attemptCount: 0,
+      requestedIp: String(requestedIp || "").slice(0, 120),
+      userAgent: String(userAgent || "").slice(0, 500),
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + Math.max(60, Math.min(Number(ttlSeconds) || 600, 3600)) * 1000).toISOString(),
+    };
+    state.emailChallenges[challenge.id] = challenge;
+    saveState();
+    return challenge;
+  }
+
+  function getEmailChallenge(challengeId) {
+    pruneExpiredEmailChallenges();
+    const challenge = state.emailChallenges[challengeId];
+    if (!challenge) return null;
+    return {
+      id: challenge.id, email: challenge.email, canonicalEmail: challenge.canonicalEmail,
+      maskedEmail: challenge.maskedEmail, purpose: challenge.purpose, status: challenge.status,
+      attemptCount: challenge.attemptCount || 0, createdAt: challenge.createdAt,
+      expiresAt: challenge.expiresAt, consumedAt: challenge.consumedAt || null,
+      replacedAt: challenge.replacedAt || null,
+    };
+  }
+
+  function consumeEmailChallenge({ challengeId, codeHash }) {
+    pruneExpiredEmailChallenges();
+    const challenge = state.emailChallenges[challengeId];
+    if (!challenge || challenge.replacedAt || challenge.consumedAt) return { ok: false, error: "challenge_expired" };
+    if (Date.parse(challenge.expiresAt) <= Date.now()) return { ok: false, error: "challenge_expired" };
+    challenge.attemptCount = Number(challenge.attemptCount || 0) + 1;
+    if (challenge.attemptCount > 8) {
+      challenge.status = "locked";
+      saveState();
+      return { ok: false, error: "challenge_locked" };
+    }
+    if (!hashEquals(challenge.codeHash, codeHash)) {
+      challenge.status = "failed";
+      saveState();
+      return { ok: false, error: "challenge_invalid" };
+    }
+    challenge.status = "consumed";
+    challenge.consumedAt = new Date().toISOString();
+    saveState();
+    return { ok: true, challenge: { ...challenge, codeHash: undefined, tokenHash: undefined } };
+  }
+
+  function recordAuthEvent({ eventType, accountId = "", provider = "", email = "", decision = "", metadata = {} }) {
+    state.authEvents.push({
+      id: randomUUID(), eventType, accountId, provider, email, decision,
+      metadata: metadata && typeof metadata === "object" ? metadata : {},
+      createdAt: new Date().toISOString(),
+    });
+    if (state.authEvents.length > 1000) state.authEvents = state.authEvents.slice(-1000);
+    saveState();
+  }
+
+  function destroySession(sessionId) {
+    if (!sessionId || !state.sessions[sessionId]) return false;
+    delete state.sessions[sessionId];
+    saveState();
+    return true;
+  }
+
+  return {
+    consumeEmailChallenge,
+    consumeOAuthState,
+    createEmailChallenge,
+    createOAuthState,
+    destroySession,
+    getEmailChallenge,
+    pruneExpiredEmailChallenges,
+    pruneExpiredOAuthStates,
+    recordAuthEvent,
+  };
+}

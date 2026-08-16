@@ -143,7 +143,7 @@ async function fetchOpenRouter(body, { timeoutMs = defaultTimeoutMs } = {}) {
 
 function commonRequest({
   model,
-  modelFamily = "",
+  modelFamily: _modelFamily = "",
   system,
   user,
   maxTokens,

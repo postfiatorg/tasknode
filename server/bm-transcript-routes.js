@@ -99,32 +99,3 @@ export async function handleBmFeedRoute({ json, req, res, url }) {
   });
   return true;
 }
-
-// RETIRED from public serving (operator security ruling 2026-08-06): raw
-// terminal output is a prompt-injection and secret-exposure surface. The
-// mirror table remains for internal forensics; the public feed serves
-// narrator summaries instead. Kept exported for potential admin tooling,
-// but no longer registered as a route.
-export async function handleBmTranscriptRoute({ json, req, res, url }) {
-  if (url.pathname !== "/api/hive/bm-transcript" || req.method !== "GET") return false;
-  if (!databaseEnabled()) {
-    json(res, 503, { ok: false, error: "database_not_configured" });
-    return true;
-  }
-  const boardId = String(url.searchParams.get("board") || "").trim();
-  if (!isDeterministicBoardId(boardId)) {
-    json(res, 400, { ok: false, error: "unknown_board", boards: DETERMINISTIC_BOARD_IDS });
-    return true;
-  }
-  const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") || 1)));
-  const result = await query(
-    `SELECT id, board_id, session_name, seq, content, captured_at
-     FROM board_manager_transcripts
-     WHERE board_id = $1
-     ORDER BY seq DESC
-     LIMIT $2`,
-    [boardId, limit]
-  );
-  json(res, 200, { ok: true, boardId, snapshots: result.rows });
-  return true;
-}

@@ -1,0 +1,958 @@
+@media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    position: relative;
+  }
+
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 90;
+    display: flex;
+    width: min(286px, calc(100vw - 52px));
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+    background: #ffffff;
+    box-shadow: 10px 0 28px rgba(0, 0, 0, 0.12);
+    transform: translateX(0);
+    transition: transform 220ms ease;
+    will-change: transform;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar {
+    overflow: hidden;
+    transform: translateX(-105%);
+  }
+
+  .mobile-sidebar-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+    background: rgba(0, 0, 0, 0.12);
+    padding: 0;
+  }
+
+  .sidebar-header {
+    min-height: 58px;
+    padding: 12px 14px 8px;
+  }
+
+  .sidebar-brand {
+    min-height: 40px;
+    font-size: 19px;
+    font-weight: 700;
+  }
+
+  .sidebar-brand .post-fiat-logo {
+    width: 24px;
+    height: 24px;
+  }
+
+  .sidebar-toggle {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+
+  .desktop-sidebar-toggle-icon {
+    display: none;
+  }
+
+  .mobile-sidebar-close-icon {
+    display: block;
+  }
+
+  .nav-list {
+    padding: 6px 8px 0;
+  }
+
+  .nav-list button,
+  .recent-chat-open,
+  .profile-button {
+    min-height: 42px;
+    border-radius: 14px;
+    font-size: 15px;
+  }
+
+  .sidebar-popout {
+    position: static;
+    width: auto;
+    margin: 4px 0 2px 34px;
+    border-radius: 14px;
+    box-shadow: none;
+  }
+
+  .recents {
+    margin-top: 12px;
+    padding-bottom: 10px;
+  }
+
+  .sidebar-footer {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .workspace {
+    min-height: 100dvh;
+    padding-bottom: 0;
+  }
+
+  .mobile-route-nav {
+    display: none;
+  }
+
+  .topbar {
+    height: 58px;
+    padding: 8px 16px;
+    background: #ffffff;
+  }
+
+  .topbar-new-chat {
+    display: none;
+  }
+
+  .mobile-brand-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 42px;
+    max-width: calc(100vw - 150px);
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: #0d0d0d;
+    padding: 0 4px;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .mobile-brand-button .post-fiat-logo {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mobile-brand-button span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .status-banner,
+  .view-surface {
+    width: calc(100% - 32px);
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+
+  .message-list {
+    padding: 24px 16px 12px;
+  }
+
+  .chat-thread-shell {
+    width: 100%;
+    padding: 0;
+  }
+
+  .chat-empty h1 {
+    max-width: 280px;
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  .model-picker {
+    display: none;
+  }
+
+  .composer-shell {
+    width: calc(100vw - 32px);
+    max-width: none;
+  }
+
+  .assistant-message,
+  .user-message {
+    font-size: 15px;
+  }
+
+  .user-bubble,
+  .user-edit-card {
+    max-width: 88%;
+  }
+
+  .share-modal {
+    border-radius: 16px;
+  }
+
+  .share-targets {
+    gap: 12px;
+  }
+
+  .activity-panel {
+    width: 100vw;
+  }
+
+  .mode-strip,
+  .summary-band,
+  .item-list,
+  .split-panel,
+  .action-grid,
+    .context-history-grid,
+    .wallet-password-grid,
+    .wallet-proof-summary,
+  .wallet-config-strip,
+  .mini-note-grid,
+  .nft-grid,
+  .public-stats,
+  .alignment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tasks-view,
+  .wallet-view,
+  .context-view,
+  .profile-view {
+    padding: 28px 16px 44px;
+  }
+
+  .wallet-page-head,
+  .wallet-balance-top,
+  .wallet-activity-head,
+  .wallet-activity-foot,
+  .wallet-credit-note {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .wallet-balance-inner {
+    padding: 24px 20px 22px;
+  }
+
+  .wallet-management-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .eth-topup-asset {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .eth-topup-asset em {
+    grid-column: 2 / 3;
+    justify-self: start;
+  }
+
+  .wallet-tx-row {
+    align-items: flex-start;
+  }
+
+  .wallet-tx-copy strong,
+  .wallet-tx-copy small {
+    white-space: normal;
+  }
+
+  .wallet-tx-amount {
+    min-width: 0;
+  }
+
+  .context-view.context-wireframe {
+    padding: 12px 16px 16px;
+  }
+
+  .ctx-card {
+    min-height: calc(100vh - 24px);
+  }
+
+  .ctx-writing-surface {
+    padding: 22px 22px 28px;
+  }
+
+  .ctx-card-foot {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .ctx-foot-actions {
+    justify-content: space-between;
+  }
+
+  .ctx-version-cid {
+    max-width: 160px;
+  }
+
+  .ctx-restore-overlay {
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  .ctx-restore-dialog {
+    max-height: calc(100vh - 24px);
+  }
+
+  .ctx-restore-head,
+  .ctx-restore-foot {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ctx-restore-actions {
+    justify-content: space-between;
+  }
+
+  .ctx-restore-warning,
+  .ctx-restore-state,
+  .ctx-restore-preview {
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+
+  .ctx-restore-preview {
+    min-height: 220px;
+    max-height: 45vh;
+  }
+
+  .route-heading,
+  .profile-tabs-bar,
+  .billing-settings > section,
+  .task-row,
+  .public-wallet-header,
+  .sybil-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .task-reward,
+  .activity-amount {
+    align-self: flex-start;
+    justify-items: start;
+  }
+
+  .task-entry-open {
+    width: 100%;
+  }
+
+  .wallet-balance span {
+    font-size: 42px;
+  }
+
+  .profile-studio {
+    flex-direction: column;
+  }
+
+  .settings-modal {
+    min-height: 0;
+    max-height: 92vh;
+    flex-direction: column;
+  }
+
+  .settings-rail {
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid #e8e6df;
+  }
+
+  .settings-rail nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .settings-rail nav button {
+    justify-content: center;
+    padding: 0 6px;
+  }
+
+  .settings-rail nav button span,
+  .settings-rail nav button:not(.active) {
+    font-size: 0;
+  }
+
+  .app-shell {
+    height: 100dvh;
+    background: #ffffff;
+  }
+
+  .app-shell.view-chat .workspace {
+    background: #ffffff;
+  }
+
+  .app-shell.view-tasks .workspace {
+    background: #f7f5f0;
+  }
+
+  .app-shell.view-hive .workspace {
+    background: #f4efe3;
+  }
+
+  .app-shell.view-chat .topbar {
+    background: #ffffff;
+  }
+
+  .app-shell.view-tasks .topbar {
+    background: #f7f5f0;
+  }
+
+  .app-shell.view-hive .topbar {
+    background: #f4efe3;
+  }
+
+  .sidebar {
+    width: min(286px, calc(100vw - 52px));
+    max-width: 286px;
+    box-sizing: border-box;
+    border-right: 0;
+    background: #ffffff;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.08);
+  }
+
+  .sidebar-header,
+  .app-shell.sidebar-collapsed .sidebar-header {
+    justify-content: space-between;
+    min-height: 64px;
+    padding: 12px 16px 6px;
+  }
+
+  .sidebar-brand {
+    gap: 10px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 14px;
+    font-size: 19px;
+    font-weight: 700;
+  }
+
+  .sidebar-brand:hover,
+  .icon-button:hover {
+    background: transparent;
+  }
+
+  .sidebar-brand .post-fiat-logo,
+  .mobile-brand-button .post-fiat-logo {
+    width: 24px;
+    height: 24px;
+  }
+
+  .sidebar-toggle {
+    width: 40px;
+    height: 40px;
+    color: rgba(13, 13, 13, 0.7);
+  }
+
+  .nav-list {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 1px;
+    padding: 6px 8px 0;
+  }
+
+  .nav-list button,
+  .recent-chat-open,
+  .profile-button {
+    min-height: auto;
+    border-radius: 14px;
+  }
+
+  .nav-list button {
+    gap: 13px;
+    padding: 11px 12px;
+    font-size: 15.5px;
+    line-height: 1.1;
+  }
+
+  .nav-list button svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .nav-list button span {
+    font-size: 15.5px;
+    font-weight: 400;
+  }
+
+  .nav-list button.active {
+    background: #e7f4ec;
+    color: #0e7a43;
+  }
+
+  .nav-list button.active span {
+    color: #0e7a43;
+    font-weight: 600;
+  }
+
+  .nav-list button small {
+    min-width: 20px;
+    padding: 3px 9px;
+    background: #0d0d0d;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .nav-list button small.nav-live-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0;
+    background: transparent;
+    color: #0e7a43;
+    font-size: 13px;
+  }
+
+  .nav-list button small.nav-live-state::before {
+    width: 7px;
+    height: 7px;
+    margin-right: 0;
+  }
+
+  .nav-list button small.nav-vault-state,
+  .balance-vault-state,
+  .telegram-menu-status.linked {
+    border-color: #0e7a43;
+    background: transparent;
+    color: #0e7a43;
+  }
+
+  .nav-list button small.nav-vault-state {
+    padding: 3px 9px;
+    font-size: 12.5px;
+  }
+
+  .recents {
+    flex: 1 1 0;
+    min-height: 0;
+    margin-top: 10px;
+    overflow-y: auto;
+    padding: 0 8px;
+  }
+
+  .section-label {
+    padding: 10px 20px 4px;
+    color: rgba(0, 0, 0, 0.5);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .recent-chat-row {
+    border-radius: 14px;
+  }
+
+  .recent-chat-open {
+    gap: 10px;
+    padding: 11px 12px;
+    font-size: 15.5px;
+  }
+
+  .recent-chat-open span {
+    font-size: 15.5px;
+  }
+
+  .recent-chat-row.active,
+  .recent-chat-row.is-hive.active,
+  .recent-chat-row.is-hive:hover {
+    border-color: transparent;
+    background: #e7f4ec;
+  }
+
+  .recent-chat-row.active .recent-chat-open,
+  .recent-chat-row.is-hive.active .recent-chat-open {
+    color: #0e7a43;
+    font-weight: 600;
+  }
+
+  .recent-chat-more {
+    flex-basis: 28px;
+    width: 28px;
+    margin: 5px 6px 5px 0;
+    opacity: 1;
+  }
+
+  .sidebar-footer {
+    flex: 0 0 auto;
+    gap: 0;
+    padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: #ffffff;
+  }
+
+  .balance-pill {
+    min-height: auto;
+    margin: 0 10px 6px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.45);
+  }
+
+  .balance-pill:hover {
+    background: transparent;
+  }
+
+  .balance-stack {
+    gap: 5px;
+    width: 100%;
+  }
+
+  .balance-row {
+    gap: 9px;
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 14.5px;
+  }
+
+  .balance-row strong {
+    font-size: 14.5px;
+    font-weight: 700;
+  }
+
+  .balance-row span {
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 14.5px;
+    text-transform: none;
+  }
+
+  .balance-vault-state {
+    min-height: 22px;
+    margin-top: 3px;
+    padding: 2px 9px;
+    font-size: 12.5px;
+  }
+
+  .balance-pill > svg {
+    display: none;
+  }
+
+  .profile-button {
+    gap: 12px;
+    width: calc(100% - 16px);
+    min-height: 52px;
+    margin: 6px 8px 0;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: #ffffff;
+  }
+
+  .profile-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .profile-copy strong {
+    font-size: 15.5px;
+    font-weight: 600;
+  }
+
+  .profile-copy small {
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 13px;
+  }
+
+  .profile-state-icon {
+    width: 20px;
+    height: 20px;
+    color: #0e7a43;
+  }
+
+  .profile-menu {
+    position: fixed;
+    right: auto;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    left: 12px;
+    z-index: 110;
+    width: min(300px, calc(100vw - 24px));
+    max-height: min(600px, calc(100dvh - 24px));
+    overflow-y: auto;
+    padding: 8px;
+    border-color: rgba(0, 0, 0, 0.06);
+    border-radius: 20px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
+  }
+
+  .profile-menu-header {
+    min-height: 54px;
+    padding: 10px 12px;
+  }
+
+  .profile-session-state {
+    margin: 4px 14px 10px;
+    color: #0e7a43;
+    font-size: 14.5px;
+    font-weight: 600;
+  }
+
+  .telegram-menu-row {
+    min-height: 52px;
+    padding: 9px 12px;
+    border-radius: 14px;
+  }
+
+  .telegram-menu-copy strong {
+    font-size: 15.5px;
+    font-weight: 600;
+  }
+
+  .telegram-menu-copy small {
+    font-size: 13px;
+  }
+
+  .topbar {
+    height: 62px;
+    padding: 10px 18px;
+  }
+
+  .mobile-brand-button {
+    gap: 12px;
+    min-height: 42px;
+    max-width: calc(100vw - 96px);
+    padding: 0;
+    border-radius: 14px;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .mobile-topbar-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .thread-actions button {
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 0 0 10px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .chat-surface.empty {
+    justify-content: center;
+    padding: 0 18px;
+  }
+
+  .chat-empty {
+    margin-top: -34px;
+  }
+
+  .chat-empty h1 {
+    max-width: 280px;
+    margin-bottom: 22px;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .chat-thread-shell {
+    width: 100%;
+    padding: 0 18px;
+  }
+
+  .message-list {
+    padding: 8px 0 12px;
+  }
+
+  .composer-dock {
+    padding: 0 0 10px;
+  }
+
+  .composer-shell,
+  .chat-thread-shell .composer-shell {
+    width: 100%;
+    max-width: none;
+  }
+
+  .composer {
+    padding: 10px 12px 10px 16px;
+    border-color: rgba(0, 0, 0, 0.12);
+    border-radius: 28px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .model-picker {
+    display: block;
+  }
+
+  .composer .model-button {
+    padding: 0;
+    color: rgba(0, 0, 0, 0.6);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .composer .send-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .model-menu,
+  .plus-menu {
+    position: fixed;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    z-index: 115;
+    max-height: min(520px, calc(100dvh - 130px));
+    overflow-y: auto;
+    border-color: rgba(0, 0, 0, 0.06);
+    border-radius: 22px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
+  }
+
+  .model-menu {
+    right: 12px;
+    width: min(320px, calc(100vw - 24px));
+    padding: 8px;
+  }
+
+  .plus-menu {
+    left: 12px;
+    width: min(300px, calc(100vw - 24px));
+    padding: 8px;
+  }
+
+  .plus-menu.has-modalities {
+    overflow-y: auto;
+  }
+
+  .modality-menu {
+    position: static;
+    width: calc(100% - 12px);
+    max-height: none;
+    margin: 2px 6px 5px;
+    overflow: visible;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .model-menu button {
+    min-height: 58px;
+    padding: 12px 14px;
+    border-radius: 16px;
+  }
+
+  .model-option strong {
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  .model-menu small {
+    font-size: 14.5px;
+  }
+
+  .tasks-view,
+  .wallet-view,
+  .context-view,
+  .profile-view {
+    padding: 16px 16px 96px;
+  }
+
+  .view-surface {
+    width: calc(100% - 32px);
+    margin-top: 16px;
+    margin-bottom: 96px;
+  }
+
+  .app-shell,
+  .workspace,
+  .topbar,
+  .chat-surface,
+  .chat-thread-shell,
+  .message-list,
+  .composer-dock,
+  .composer-shell,
+  .composer,
+  .assistant-message,
+  .user-message {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .app-shell {
+    width: 100vw;
+    max-width: 100vw;
+    overflow: hidden;
+  }
+
+  .workspace {
+    width: 100%;
+    max-width: 100vw;
+    overflow: hidden;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 70;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .topbar-left {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .mobile-brand-button {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .thread-actions,
+  .mobile-topbar-action {
+    flex: 0 0 auto;
+  }
+
+  .thread-actions button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .chat-surface {
+    overflow: hidden;
+  }
+
+  .chat-thread-shell {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .message-list {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .assistant-body,
+  .assistant-body p,
+  .assistant-body li,
+  .user-bubble,
+  .user-edit-card {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .assistant-table-wrap,
+  .thinking-vector-panel,
+  .thinking-source-block {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

@@ -9,8 +9,7 @@ import {
   jobsEmbeddingProvider,
 } from "./embedding-provider.js";
 
-export const defaultJobsCorpusUrl =
-  "https://gist.githubusercontent.com/goodalexander/3246640dcf10db350fbae9fab8e6a473/raw/bd144a47532fbcba8dd4e8a6f81b605a034c4d16/jobs.md";
+export const defaultJobsCorpusUrl = "";
 
 const maxChunkChars = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_CHUNK_MAX_CHARS) || 1600, 600), 3200);
 const chunkOverlapChars = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_CHUNK_OVERLAP_CHARS) || 180, 0), 500);
@@ -172,6 +171,11 @@ export async function loadJobsCorpusSource({ filePath = "", sourceUrl = "" } = {
   }
 
   const url = sourceUrl || process.env.TASKNODE_JOBS_CORPUS_URL || defaultJobsCorpusUrl;
+  if (!url) {
+    const error = new Error("jobs_corpus_source_not_configured");
+    error.status = 503;
+    throw error;
+  }
   const response = await fetch(url);
   if (!response.ok) {
     const error = new Error("jobs_corpus_fetch_failed");

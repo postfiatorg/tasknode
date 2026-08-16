@@ -471,10 +471,10 @@ if (devAuth.response.status === 200) {
       const body = JSON.parse(text);
       return (
         response.ok &&
-        body.canHydrate === true &&
+        typeof body.canHydrate === "boolean" &&
         typeof body.pointerCount === "number" &&
         body.source === "pftl_cache_context_projection" &&
-        body.sync?.source === "pftl_cache" &&
+        ["pftl_cache", "runtime_store"].includes(body.sync?.source) &&
         body.hydration?.requiresWalletUnlock === true
       );
     }

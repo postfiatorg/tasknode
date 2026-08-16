@@ -1,0 +1,46 @@
+# Example only. Official service identity, process enablement, secrets, volumes,
+# and deploy authorization are maintained in a separate private operations
+# package. Copy this file and choose your own app/region before deploying a fork.
+app = "replace-with-your-app-name"
+primary_region = "replace-with-your-region"
+
+[build]
+  dockerfile = "Dockerfile"
+  target = "web-runtime"
+
+[processes]
+  app = "env TASKNODE_PROCESS_ROLE=web node server/index.js"
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+  TASKNODE_ENV = "production"
+  TASKNODE_DEV_AUTH_ENABLED = "false"
+  TASKNODE_DATABASE_ENABLED = "true"
+  TASKNODE_APP_NAME = "replace-with-your-app-name"
+  TASKNODE_PUBLIC_URL = "https://replace-with-your-domain.example"
+  TASKNODE_TRUSTED_PROXY_CIDRS = "replace-with-your-platform-proxy-cidrs"
+  TASKNODE_TASK_GENERATION_WORKER_ENABLED = "false"
+  TASKNODE_TASK_REVIEW_WORKER_ENABLED = "false"
+  TASKNODE_DAILY_AIRDROP_WORKER_ENABLED = "false"
+  TASKNODE_PROFILE_NFT_DAILY_WORKER_ENABLED = "false"
+  TASKNODE_CONTEXT_REWRITE_WORKER_ENABLED = "false"
+  TASKNODE_HIVE_TASK_MANAGER_ENABLED = "false"
+  TASKNODE_HIVE_BOARD_SECRETARY_ENABLED = "false"
+  TASKNODE_IPFS_REPLICATION_WORKER_ENABLED = "false"
+  VITE_ANALYTICS_ENABLED = "false"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"

@@ -64,14 +64,14 @@ fallback content.
 Run unit tests:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd path/to/tasknodeofficial/reference_clients/python
 python3 -m unittest discover -s tests
 ```
 
 Run the minimal deterministic Network Task lifecycle fixture:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial
+cd path/to/tasknodeofficial
 PYTHONPATH=reference_clients/python \
 python3 -m tasknode_pftl.scenarios.network_task_replay_fixture
 ```
@@ -85,17 +85,17 @@ changes.
 Run the live lifecycle:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd path/to/tasknodeofficial/reference_clients/python
 python3 -m tasknode_pftl.scenarios.full_lifecycle
 ```
 
 Run the app-data lifecycle from the latest `task_sample` request intent:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd path/to/tasknodeofficial/reference_clients/python
 python3 -m tasknode_pftl.scenarios.app_request_lifecycle \
   --chat-title task_sample \
-  --user-seed-file /home/pfrpc/repos/ga_seed2.txt
+  --user-seed-file .secrets/tasknode-user-seed.txt
 ```
 
 This loads the verified request intent from Task Node Postgres, builds a
@@ -108,7 +108,7 @@ are replayable from PFTL pointers and encrypted IPFS payloads.
 Run the live N=1 task engine speedrun from the latest `task_sample` app bundle:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd path/to/tasknodeofficial/reference_clients/python
 python3 -m tasknode_pftl.scenarios.task_engine_speedrun \
   --stage n1 \
   --provider frontier \
@@ -129,7 +129,7 @@ the app; screenshot evidence still uses OpenAI vision in v1.
 Import a public receipt into the Postgres task projection cache:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial
+cd path/to/tasknodeofficial
 DATABASE_URL='postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5436/tasknodeofficial' \
 TASKNODE_DATABASE_ENABLED=true \
 node scripts/import-task-replay-receipts.mjs \
@@ -139,7 +139,7 @@ node scripts/import-task-replay-receipts.mjs \
 Run the canonical 10-wallet live task engine speedrun:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd path/to/tasknodeofficial/reference_clients/python
 python3 -m tasknode_pftl.scenarios.task_engine_speedrun \
   --stage n10 \
   --provider frontier \
@@ -157,7 +157,7 @@ PFTL pointers and encrypted IPFS payloads.
 Run with an explicit RPC endpoint:
 
 ```bash
-PFTL_RPC_URL=http://178.156.143.199:5005 \
+PFTL_RPC_URL=https://rpc.testnet.postfiat.org \
 python3 -m tasknode_pftl.scenarios.full_lifecycle
 ```
 
@@ -191,7 +191,7 @@ reference for wallet encryption key onboarding:
 Run it:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd path/to/tasknodeofficial/reference_clients/python
 python3 -m tasknode_pftl.scenarios.encryption_pubkey_demo
 ```
 
@@ -231,7 +231,7 @@ database:
 Run all four example readers:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd path/to/tasknodeofficial/reference_clients/python
 python3 -m tasknode_pftl.scenarios.verification_evidence_examples
 ```
 

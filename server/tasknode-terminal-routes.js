@@ -14,16 +14,17 @@ import {
 import { contextBodyText, contextLineCount } from "../shared/context-line-map.js";
 import { listTaskRequests } from "./repositories/task-requests.js";
 import {
-  accountHasLinkedProvider,
+  conversationIdForSession,
+} from "./runtime-store.js";
+import { getLinkedProviderForAccount } from "./repositories/accounts.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
+import {
   consumeTerminalAuthRequestSession,
   createTerminalAuthRequest,
-  getLinkedProviderForAccount,
-  getLinkedWallet,
   getTerminalAuthRequest,
   getTerminalSessionByToken,
-  conversationIdForSession,
   revokeTerminalSessionByToken,
-} from "./runtime-store.js";
+} from "./repositories/terminal-auth.js";
 import {
   getChatMessages,
   listChatConversations,
@@ -78,9 +79,9 @@ function githubNotLinked(origin = "") {
   };
 }
 
-function terminalSession(req, origin = "") {
+async function terminalSession(req, origin = "") {
   const token = bearerToken(req);
-  const session = token ? getTerminalSessionByToken(token) : null;
+  const session = token ? await getTerminalSessionByToken(token) : null;
   if (!session?.accountId) {
     return {
       error: {
@@ -93,7 +94,7 @@ function terminalSession(req, origin = "") {
       },
     };
   }
-  if (!accountHasLinkedProvider({ accountId: session.accountId, provider: "github" })) {
+  if (!(await getLinkedProviderForAccount({ accountId: session.accountId, provider: "github" }))) {
     return {
       error: {
         status: 409,
@@ -127,8 +128,8 @@ function terminalChatPayload(payload = {}, session = {}, conversationId = "") {
   };
 }
 
-function linkedWalletForSession(session = {}) {
-  const linkedWallet = getLinkedWallet({ accountId: session.accountId || "" });
+async function linkedWalletForSession(session = {}) {
+  const linkedWallet = await getLinkedWallet({ accountId: session.accountId || "" });
   return linkedWallet.status === "linked" && linkedWallet.address
     ? linkedWallet
     : { status: linkedWallet.status || "not_linked", address: "" };
@@ -366,7 +367,7 @@ async function handleTerminalAuthRoute({
 }) {
   if (url.pathname === "/api/auth/terminal/start/github") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
-    const request = createTerminalAuthRequest({
+    const request = await createTerminalAuthRequest({
       provider: "github",
       origin,
       userAgent: req.headers["user-agent"] || "",
@@ -390,7 +391,7 @@ async function handleTerminalAuthRoute({
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] === "api" && parts[1] === "auth" && parts[2] === "terminal" && parts[3] === "github" && parts[4]) {
     const requestId = safeText(decodeURIComponent(parts[4]), 180);
-    const request = getTerminalAuthRequest({ requestId });
+    const request = await getTerminalAuthRequest({ requestId });
     if (!request) {
       json(res, 404, {
         ok: false,
@@ -399,7 +400,7 @@ async function handleTerminalAuthRoute({
       });
       return true;
     }
-    const result = authStart("github", {
+    const result = await authStart("github", {
       origin,
       redirectPath: `/api/auth/terminal/complete?requestId=${encodeURIComponent(requestId)}`,
       terminalRequestId: requestId,
@@ -426,7 +427,7 @@ async function handleTerminalAuthRoute({
   if (url.pathname === "/api/auth/terminal/session") {
     const requestId = url.searchParams.get("requestId") || "";
     const pollToken = url.searchParams.get("pollToken") || req.headers["x-tasknode-terminal-poll-token"] || "";
-    const result = consumeTerminalAuthRequestSession({ requestId, pollToken });
+    const result = await consumeTerminalAuthRequestSession({ requestId, pollToken });
     if (!result.ok) {
       json(res, result.status, {
         ok: false,
@@ -451,7 +452,7 @@ async function handleTerminalAuthRoute({
 
   if (url.pathname === "/api/auth/terminal/revoke") {
     const token = bearerToken(req);
-    revokeTerminalSessionByToken(token);
+    await revokeTerminalSessionByToken(token);
     json(res, 200, {
       ok: true,
       action: "terminal_session_revoked",
@@ -464,7 +465,7 @@ async function handleTerminalAuthRoute({
 
 async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, origin }) {
   if (!url.pathname.startsWith("/api/terminal/tasknode")) return false;
-  const resolved = terminalSession(req, origin);
+  const resolved = await terminalSession(req, origin);
   if (resolved.error) {
     json(res, resolved.error.status, resolved.error.body);
     return true;
@@ -472,12 +473,12 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
   const session = resolved.session;
 
   if (url.pathname === "/api/terminal/tasknode/status") {
-    const wallet = linkedWalletForSession(session);
+    const wallet = await linkedWalletForSession(session);
     const projection = await listTaskProjectionCounts({
       accountId: session.accountId,
       walletAddress: wallet.address || "",
     });
-    const github = getLinkedProviderForAccount({ accountId: session.accountId, provider: "github" });
+    const github = await getLinkedProviderForAccount({ accountId: session.accountId, provider: "github" });
     json(res, 200, {
       ok: true,
       accountId: session.accountId,
@@ -763,7 +764,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
 
   if (url.pathname === "/api/terminal/tasknode/tasks") {
     const tab = safeText(url.searchParams.get("tab") || "outstanding", 40);
-    const wallet = linkedWalletForSession(session);
+    const wallet = await linkedWalletForSession(session);
     const state = await listTaskProjectionTasks({
       accountId: session.accountId,
       walletAddress: wallet.address || "",
@@ -781,7 +782,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
   }
 
   if (url.pathname === "/api/terminal/tasknode/requests") {
-    const wallet = linkedWalletForSession(session);
+    const wallet = await linkedWalletForSession(session);
     if (req.method === "GET") {
       const requests = await listTaskRequests({
         accountId: session.accountId,
@@ -829,7 +830,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
   }
 
   if (url.pathname === "/api/terminal/tasknode/balance") {
-    const wallet = linkedWalletForSession(session);
+    const wallet = await linkedWalletForSession(session);
     if (wallet.status !== "linked" || !wallet.address) {
       json(res, 409, {
         ok: false,
@@ -847,7 +848,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
 
   if (url.pathname === "/api/terminal/tasknode/rewards") {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 10), 1), 50);
-    const wallet = linkedWalletForSession(session);
+    const wallet = await linkedWalletForSession(session);
     const projection = await listTaskProjectionRewards({
       accountId: session.accountId,
       walletAddress: wallet.address || "",
@@ -863,7 +864,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
 
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[3] === "requests" && parts[4] && req.method === "GET") {
-    const wallet = linkedWalletForSession(session);
+    const wallet = await linkedWalletForSession(session);
     const requests = await listTaskRequests({
       accountId: session.accountId,
       walletAddress: wallet.address || "",
@@ -889,7 +890,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
 
   const taskId = parts[3] === "tasks" && parts[4] ? decodeURIComponent(parts[4]) : "";
   if (taskId && parts.length === 5 && req.method === "GET") {
-    const wallet = linkedWalletForSession(session);
+    const wallet = await linkedWalletForSession(session);
     const detail = wallet.address
       ? await getTerminalTaskProjectionDetail({
           accountId: session.accountId,

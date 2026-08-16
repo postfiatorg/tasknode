@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquare, Network, Search, X } from "lucide-react";
 import { requestJson } from "../../api";
 import "./chat-search.css";

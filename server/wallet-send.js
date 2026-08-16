@@ -2,7 +2,7 @@ import {
   preparePftPaymentTransaction,
   submitSignedPftTransaction,
 } from "./pftl-submit.js";
-import { getLinkedWallet } from "./runtime-store.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
 
 function normalizeText(value = "", max = 240) {
   return String(value || "").trim().slice(0, max);
@@ -21,7 +21,7 @@ function actionResponse({ status = 400, error = "", message = "", actionRequired
   };
 }
 
-function requireLinkedWallet(session = null) {
+async function requireLinkedWallet(session = null) {
   if (!session?.accountId) {
     return {
       ok: false,
@@ -34,7 +34,7 @@ function requireLinkedWallet(session = null) {
     };
   }
 
-  const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+  const linkedWallet = await getLinkedWallet({ accountId: session.accountId });
   if (linkedWallet.status !== "linked" || !linkedWallet.address) {
     return {
       ok: false,
@@ -59,7 +59,7 @@ export async function walletSendPrepare(payload = {}, method = "GET", session = 
     });
   }
 
-  const boundary = requireLinkedWallet(session);
+  const boundary = await requireLinkedWallet(session);
   if (!boundary.ok) return boundary.response;
 
   try {
@@ -103,7 +103,7 @@ export async function walletSendSubmit(payload = {}, method = "GET", session = n
     });
   }
 
-  const boundary = requireLinkedWallet(session);
+  const boundary = await requireLinkedWallet(session);
   if (!boundary.ok) return boundary.response;
 
   try {

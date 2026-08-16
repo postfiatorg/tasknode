@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
 import { compactProjectLeaderAuthority } from "../project-leader-badge.js";
-import { getAccountIdentityProfile } from "../runtime-store.js";
+import { getAccountIdentityProfile } from "./account-profiles.js";
 import { markBoardManagerFollowupsAnsweredForHiveEntry } from "./board-manager-state.js";
 
 const maxBodyLength = 24_000;
@@ -147,11 +147,11 @@ function sourceAttachment(attachment = {}) {
   };
 }
 
-function authorityBadgesForAccount(accountId = "") {
+async function authorityBadgesForAccount(accountId = "") {
   const normalizedAccountId = safeAccountId(accountId);
   if (!normalizedAccountId) return [];
   try {
-    const identityProfile = getAccountIdentityProfile({ accountId: normalizedAccountId }) || {};
+    const identityProfile = await getAccountIdentityProfile({ accountId: normalizedAccountId }) || {};
     const projectLeaderAuthority = compactProjectLeaderAuthority(identityProfile.projectLeaderAccess);
     return projectLeaderAuthority ? [projectLeaderAuthority] : [];
   } catch {
@@ -171,11 +171,11 @@ function attachmentSourceText(attachments = []) {
   ].join("\n");
 }
 
-function publicEntry(row = {}) {
+async function publicEntry(row = {}) {
   const attachments = row.attachments_json || row.attachments || [];
   const metadata = row.metadata_json || row.metadata || {};
   const accountId = row.account_id || row.accountId || "";
-  const authorityBadges = authorityBadgesForAccount(accountId);
+  const authorityBadges = await authorityBadgesForAccount(accountId);
   return {
     id: row.id,
     accountId,
@@ -206,8 +206,8 @@ function displayHandle(value = "") {
   return normalized.startsWith("@") ? normalized : normalized;
 }
 
-function publicProjectComment(row = {}) {
-  const entry = publicEntry(row);
+async function publicProjectComment(row = {}) {
+  const entry = await publicEntry(row);
   const metadata = projectCommentMetadata(entry.metadata);
   return {
     id: entry.id,
@@ -225,9 +225,9 @@ function publicProjectComment(row = {}) {
   };
 }
 
-function groupedDocument(entries = []) {
+async function groupedDocument(entries = []) {
   const groupsByKey = new Map();
-  for (const entry of entries.map(publicEntry)) {
+  for (const entry of await Promise.all(entries.map(publicEntry))) {
     const key = entry.accountId || entry.displayName;
     const existing = groupsByKey.get(key) || {
       accountId: entry.accountId,
@@ -359,7 +359,7 @@ export async function saveHiveContextEntry({
       now,
     ]
   );
-  const saved = publicEntry(result.rows[0]);
+  const saved = await publicEntry(result.rows[0]);
   await markBoardManagerFollowupsAnsweredForHiveEntry({
     accountId: saved.accountId,
     hiveContextEntryId: saved.id,
@@ -503,8 +503,8 @@ export function formatHiveSecretaryReport(output = {}) {
   ].filter(Boolean).join("\n\n");
 }
 
-function sourceEntry(row = {}) {
-  const entry = publicEntry(row);
+async function sourceEntry(row = {}) {
+  const entry = await publicEntry(row);
   const attachments = jsonArray(row.attachments_json || row.attachments).map(sourceAttachment);
   return {
     id: entry.id,
@@ -521,8 +521,8 @@ function sourceEntry(row = {}) {
   };
 }
 
-function secretarySourcePacketFromEntries(entries = []) {
-  const normalized = entries.map(sourceEntry);
+async function secretarySourcePacketFromEntries(entries = []) {
+  const normalized = await Promise.all(entries.map(sourceEntry));
   const groupsByAccount = new Map();
   for (const entry of normalized) {
     const key = entry.accountId || entry.displayName || entry.walletAddress || entry.id;
@@ -922,21 +922,21 @@ export async function listHiveProjectComments({
   const commentsByProject = Object.fromEntries(normalizedProjectIds.map((id) => [id, []]));
   if (!normalizedProjectIds.length) return commentsByProject;
 
-  const pushComment = (row) => {
-    const comment = publicProjectComment(row);
+  const pushComment = async (row) => {
+    const comment = await publicProjectComment(row);
     if (!comment.projectId || !commentsByProject[comment.projectId]) return;
     if (commentsByProject[comment.projectId].length >= normalizedLimit) return;
     commentsByProject[comment.projectId].push(comment);
   };
 
   if (!useDatabase()) {
-    fallbackEntries
+    const rows = fallbackEntries
       .slice()
       .sort((left, right) =>
         String(right.createdAt || right.created_at || "").localeCompare(String(left.createdAt || left.created_at || "")) ||
         String(right.id || "").localeCompare(String(left.id || ""))
-      )
-      .forEach(pushComment);
+      );
+    for (const row of rows) await pushComment(row);
     return commentsByProject;
   }
 
@@ -956,6 +956,6 @@ export async function listHiveProjectComments({
     `,
     [normalizedProjectIds, normalizedProjectIds.length * normalizedLimit]
   );
-  result.rows.forEach(pushComment);
+  for (const row of result.rows) await pushComment(row);
   return commentsByProject;
 }

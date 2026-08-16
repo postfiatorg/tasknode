@@ -761,7 +761,7 @@ The snapshot uniqueness boundary is one completed row per account and input fing
 
 ### Current Goodalexander Dry Run
 
-The latest verified local dry run used account `acct_oauth_3c70e69ab7b8ef1fad3df508`.
+The example dry run uses a synthetic account such as `acct_example_operator`.
 
 Observed packet:
 

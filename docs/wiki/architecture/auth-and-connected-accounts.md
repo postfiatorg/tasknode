@@ -15,8 +15,8 @@ Email login is implemented as an 8-digit code flow:
 
 1. `POST /api/auth/email/start` creates an email challenge.
 2. Resend is used whenever `EMAIL_DELIVERY_PROVIDER=resend`, `EMAIL_FROM`, and
-   `RESEND_API_KEY` are configured — including local Docker with
-   `.env.tasknodeofficial-dev`.
+   `RESEND_API_KEY` are configured. The default local Docker stack deliberately
+   does not load provider credentials.
 3. Development code delivery is used only when Resend is not configured and the
    environment is non-production, or when `TASKNODE_EMAIL_DEV_DELIVERY=true`
    explicitly forces it.
@@ -87,7 +87,10 @@ GitHub remains implemented through the same start/callback contract.
 
 ## Linking Rules
 
-The account link boundary is `server/runtime-store.js::linkProviderToAccount`.
+The production account link boundary is
+`server/repositories/accounts.js::linkProviderToAccount`. Postgres unique
+constraints own email and provider-identity assignment; the runtime-store
+implementation is the explicit no-database test/development adapter.
 
 The rules are:
 
@@ -150,22 +153,15 @@ X_OAUTH_SCOPES optional; defaults to users.read tweet.read
 X_OAUTH_CLIENT_TYPE optional; defaults to confidential, set to public only if the X App type is Native App or Single Page App
 ```
 
-The X App callback currently registered (and set in the app env as
-`X_REDIRECT_URI`) is the legacy host:
+The X App callback must match the canonical public origin:
 
 ```text
-https://tasknodeofficial-dev.fly.dev/api/auth/callback/x
+https://tasknode.postfiat.org/api/auth/callback/x
 ```
 
-This works in production through the legacy-host redirect bridge: the old
-hostname 301-redirects GET requests (including OAuth callbacks, with `code`
-and `state` preserved) to `tasknode.postfiat.org`, and the production startup
-origin guard explicitly allows redirect URIs whose host is in
-`TASKNODE_LEGACY_REDIRECT_HOSTS`. Live `/api/auth/start/x` therefore reports
-the legacy redirect URI by design. To migrate X off the bridge, change the X
-developer-portal callback and `X_REDIRECT_URI` to
-`https://tasknode.postfiat.org/api/auth/callback/x` together in one step;
-changing either side alone breaks X login.
+Change the provider portal and `X_REDIRECT_URI` together; a mismatch fails
+closed. Private operations documentation owns any temporary legacy redirect
+bridge and its removal schedule.
 
 Email requires one of:
 
@@ -248,7 +244,10 @@ The script is intentionally part of `npm run quality` so future auth changes can
 - `server/product-contracts.js`: auth provider route contracts.
 - `server/auth-connected-accounts.js`: auth provider readiness, start routes, callback verification, Telegram HMAC verification, Discord OAuth exchange, and X OAuth2 PKCE exchange.
 - `server/index.js`: HTTP auth routes, session cookies, Telegram authorize page headers.
-- `server/runtime-store.js`: account/session store, linked provider rules, OAuth state rows.
+- `server/repositories/accounts.js`: durable account and linked-provider ownership.
+- `server/repositories/auth-sessions.js`: hashed, revocable web sessions.
+- `server/repositories/auth-challenges.js`: one-time OAuth, email, and wallet challenges.
+- `server/runtime-store.js`: no-database adapter and compatibility cache only.
 - `src/main.jsx`: Login dialog and Settings -> Connected accounts UI.
 - `scripts/auth-login-state-fixture.mjs`: deterministic replay fixture.
 

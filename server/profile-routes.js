@@ -24,14 +24,13 @@ import {
 } from "./repositories/recommended-connections.js";
 import {
   checkHiveHandleAvailability,
-  getLinkedWallet,
-  getAccountProfileVisibility,
   getAccountIdentityProfile,
   setAccountAliasVisibility,
   setAccountHiveHandle,
   setAccountProfileVisibility,
   suggestHiveHandles,
-} from "./runtime-store.js";
+} from "./repositories/account-profiles.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { evaluateExpertBadge } from "./expert-badge.js";
 
@@ -43,6 +42,11 @@ function promptDigest(text = "") {
 
 function safeEventText(value = "", max = 500) {
   return String(value || "").trim().slice(0, max);
+}
+
+async function accountProfileVisibility(accountId = "") {
+  const profile = await getAccountIdentityProfile({ accountId });
+  return { visibility: profile?.profileVisibility === "private" ? "private" : "public", discoverable: profile?.profileDiscoverable !== false };
 }
 
 export function latestProfileStudioNft(nfts = [], { walletAddress = "" } = {}) {
@@ -127,7 +131,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
     }
     json(res, 200, {
       ok: true,
-      identityProfile: getAccountIdentityProfile({ accountId: session.accountId }),
+      identityProfile: await getAccountIdentityProfile({ accountId: session.accountId }),
     });
     return true;
   }
@@ -174,7 +178,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       });
       return true;
     }
-    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const linkedWallet = await getLinkedWallet({ accountId: session.accountId });
     const result = await refreshIdentityApprovalsFromProjection({
       accountId: session.accountId,
       walletAddress: linkedWallet?.address || "",
@@ -260,7 +264,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       return true;
     }
     const payload = await readJson(req, 8192);
-    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const linkedWallet = await getLinkedWallet({ accountId: session.accountId });
     const result = await evaluateExpertBadge({
       accountId: session.accountId,
       walletAddress: linkedWallet?.address || "",
@@ -321,13 +325,13 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       return true;
     }
     const handle = url.searchParams.get("handle") || "";
-    const availability = checkHiveHandleAvailability({ handle, accountId: session.accountId });
+    const availability = await checkHiveHandleAvailability({ handle, accountId: session.accountId });
     json(res, 200, {
       ok: true,
       availability,
       suggestions: availability.available
         ? []
-        : suggestHiveHandles({ accountId: session.accountId, base: handle }),
+        : await suggestHiveHandles({ accountId: session.accountId, base: handle }),
     });
     return true;
   }
@@ -350,7 +354,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       return true;
     }
     const payload = await readJson(req, 8192);
-    const result = setAccountHiveHandle({
+    const result = await setAccountHiveHandle({
       accountId: session.accountId,
       handle: payload.handle,
       displayName: payload.displayName,
@@ -391,7 +395,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       return true;
     }
     const payload = await readJson(req, 8192);
-    const result = setAccountAliasVisibility({
+    const result = await setAccountAliasVisibility({
       accountId: session.accountId,
       provider: payload.provider,
       visibility: payload.visibility,
@@ -430,8 +434,8 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
     if (req.method === "GET") {
       json(res, 200, {
         ok: true,
-        visibility: getAccountProfileVisibility({ accountId: session.accountId }),
-        identityProfile: getAccountIdentityProfile({ accountId: session.accountId }),
+        visibility: await accountProfileVisibility(session.accountId),
+        identityProfile: await getAccountIdentityProfile({ accountId: session.accountId }),
       });
       return true;
     }
@@ -444,7 +448,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       return true;
     }
     const payload = await readJson(req, 8192);
-    const result = setAccountProfileVisibility({
+    const result = await setAccountProfileVisibility({
       accountId: session.accountId,
       visibility: payload.visibility,
     });
@@ -455,7 +459,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
     json(res, result.ok ? 200 : result.status || 400, {
       ok: result.ok,
       ...result,
-      visibility: getAccountProfileVisibility({ accountId: session.accountId }),
+      visibility: await accountProfileVisibility(session.accountId),
     });
     return true;
   }
@@ -536,7 +540,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       });
       return true;
     }
-    const visibility = getAccountProfileVisibility({ accountId: targetAccountId });
+    const visibility = await accountProfileVisibility(targetAccountId);
     const indexed = await recommendedConnectionProfileIsDiscoverable({ accountId: targetAccountId });
     if (visibility.visibility !== "public" || visibility.discoverable === false || !indexed) {
       json(res, 404, {
@@ -777,7 +781,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       console.warn(`profile nft stale generation sweep failed: ${error?.message || error}`);
     });
     const requestedLimit = Number(url.searchParams.get("limit") || 240);
-    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const linkedWallet = await getLinkedWallet({ accountId: session.accountId });
     const walletAddress = linkedWallet?.status === "linked" ? linkedWallet.address || "" : "";
     const nfts = await listProfileNfts({
       accountId: session.accountId,

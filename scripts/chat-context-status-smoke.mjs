@@ -52,7 +52,7 @@ try {
   assert.equal(blockedStatus.memory.state, "timeout");
   assert.equal(blockedStatus.jobsRetrieval.state, "skipped");
 
-  const devAuth = authDevStart({ email: "chat-context-status@tasknode.local" }, "POST");
+  const devAuth = await authDevStart({ email: "chat-context-status@tasknode.local" }, "POST");
   assert.equal(devAuth.status, 200);
   const accountId = devAuth.body.session.accountId;
 

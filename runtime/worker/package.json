@@ -1,0 +1,14 @@
+{
+  "name": "tasknodeofficial-worker-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "libsodium-wrappers": "^0.8.4",
+    "luxon": "^3.7.2",
+    "pg": "^8.20.0",
+    "ripple-keypairs": "^2.0.0",
+    "ws": "^8.21.3",
+    "xrpl": "^4.6.0"
+  }
+}

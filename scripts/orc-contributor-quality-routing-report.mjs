@@ -290,7 +290,7 @@ function evaluateContributor(contributorKey, records, thresholds, generatedAt) {
     },
     violations,
     supportingTaskIds: sortedRecords.map((record) => record.taskId).filter(Boolean),
-    records: sortedRecords.map(({ identity, ...record }) => record),
+    records: sortedRecords.map(({ identity: _identity, ...record }) => record),
   };
 }
 

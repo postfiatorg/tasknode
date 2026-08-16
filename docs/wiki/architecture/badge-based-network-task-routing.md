@@ -74,7 +74,7 @@ The initial catalog is:
 | `kol` | `megaphone` | User must link X. The X API follower count must show 5,000 or more followers. | Amplification, narrative distribution, public announcement, article distribution. | 20,000 PFT per X post; 50,000 PFT per Medium article. |
 | `core_contributor` | `git_pull_request` | User must link GitHub and the linked GitHub handle must appear in the Task Node sanctioned Core Contributor list. Repo access should be managed by Post Fiat outside broad user OAuth consent. | Private repo code tasks, production fixes, sanctioned core implementation. | 30,000 PFT per task. |
 | `expert` | `graduation_cap` | User must have at least 20 completed Personal tasks, enter a specific expert topic, and pass a harsh Ambient GLM 5.2 review over the latest 20 Personal tasks with a server-enforced score of 80 or higher and no disqualifying concerns. | Domain analysis grounded in verified personal work, expert review, domain-specific contribution bundles. | 30,000 PFT per 5-task bundle. |
-| `project_leader` | `crown` | Discretionary backend approval by Hive handle. Initial approved handles: `zoz`, `donravle`, `georgl0nggamma`, `jollydinger`, `nydiokar`, `hitori`, `wizbubba`, `diamond-hand-honcho`, and `goodalexander`. | Define special new projects, including open-source projects, through Hive Chat input. | Discretionary. |
+| `project_leader` | `crown` | Discretionary backend approval through the deployment-owned Hive-handle allowlist. Source defaults to no approved handles. | Define special new projects, including open-source projects, through Hive Chat input. | Discretionary. |
 | `qa_worker` | `bug` | User must link Telegram and Discord, and backend billing must show at least one USDC chat wallet top-up from the user account. QA reports must include screenshots or equivalent repro evidence per task. | Product QA reports, repro packets, workflow friction reports. | 5,000 PFT per QA report. |
 
 The symbol keys should map to UI icons. The frontend can use lucide icons where
@@ -166,14 +166,10 @@ Badge-specific identity approval requirements:
   sanctioning for that GitHub handle. The proof refresh must keep GitHub OAuth
   at normal identity scope (`user:email`) and must not request `repo`,
   `read:org`, or private repository inventory. Task Node compares the OAuth-
-  verified GitHub login to a configured sanctioned handle list, initially
-  configured by `TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES` with `goodalexander`
-  as the development/default seed. Store GitHub user id, login, checked
-  timestamp, proof method, and matched handle in `metrics_json`. The current
-  default seed mirrors the Post Fiat GitHub contributor surface visible to the
-  operator token: `0xpostfiat`, `DRavlic`, `goodalexander`, `IridiumMaster`,
-  `Pleometric`, and `postfiat-agent`. Production can override the list with
-  `TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES`. Actual repository access should be
+  verified GitHub login to the deployment-owned
+  `TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES` list. Source defaults to no
+  sanctioned handles. Store GitHub user id, login, checked timestamp, proof
+  method, and matched handle in `metrics_json`. Actual repository access should be
   granted and audited in GitHub/Post Fiat admin surfaces, not through a broad
   Task Node user OAuth prompt. The verified approval can later create or satisfy
   a scoped `repo_pr_access` capability row from that internal state.
@@ -187,9 +183,9 @@ Badge-specific identity approval requirements:
   more completed Personal tasks, the review covers the current latest-20 task
   set, the score is at least 80, and disqualifying concerns are empty.
 - Project Leader: requires `L4 operator_sanctioned` discretionary approval.
-  The current implementation is a backend Hive-handle allowlist in
-  `server/project-leader-badge.js`, overridable by
-  `TASKNODE_PROJECT_LEADER_HIVE_HANDLES`. Project Leader inputs are added to
+  The current implementation is a deployment-owned Hive-handle allowlist set by
+  `TASKNODE_PROJECT_LEADER_HIVE_HANDLES`; source defaults to no approved
+  handles. Project Leader inputs are added to
   Hive source packets and Board Manager decision packets as `projectLeaderInputs`
   before the manager chooses an action. When the Board Manager creates a project
   from that authority, the action hook records `project_leader_authority` in the

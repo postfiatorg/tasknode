@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getLinkedWallet } from "./runtime-store.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { pinContextIpfsJson } from "./context-ipfs.js";
 import {
   encryptedPayloadHasRecipient,
@@ -81,7 +81,7 @@ async function requireSessionTask({ payload = {}, session = null } = {}) {
     };
   }
 
-  const wallet = getLinkedWallet({ accountId: session.accountId });
+  const wallet = await getLinkedWallet({ accountId: session.accountId });
   if (wallet.status !== "linked" || !wallet.address) {
     return {
       error: actionResponse({

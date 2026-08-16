@@ -1,6 +1,6 @@
 import { readPftlCacheOperatorHealth } from "./pftl-cache-maintenance.js";
 import { readCachedAccountTx } from "./pftl-cache-sync.js";
-import { getLinkedWallet } from "./runtime-store.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
 
 export async function handlePftlCacheRoute({ url, res, session, json }) {
   if (url.pathname === "/api/pftl/cache/health") {
@@ -35,7 +35,7 @@ export async function handlePftlCacheRoute({ url, res, session, json }) {
     return true;
   }
 
-  const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+  const linkedWallet = await getLinkedWallet({ accountId: session.accountId });
   if (linkedWallet.status !== "linked" || !linkedWallet.address) {
     json(res, 409, {
       ok: false,

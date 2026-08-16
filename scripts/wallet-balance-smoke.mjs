@@ -99,21 +99,21 @@ async function testConfigurationAndValidationErrors() {
 function testPftlTlsPolicy() {
   assert.equal(pftlWssRejectUnauthorized({
     env: { PFTL_WSS_REJECT_UNAUTHORIZED: "false" },
-    url: "wss://178.156.143.199:6005",
+    url: "wss://203.0.113.10:6005",
   }), true);
   assert.equal(pftlWssRejectUnauthorized({
     env: {
       PFTL_WSS_REJECT_UNAUTHORIZED: "false",
       TASKNODE_ALLOW_INSECURE_PFTL_TLS: "true",
-      PFTL_WSS_URL: "wss://178.156.143.199:6005",
+      PFTL_WSS_URL: "wss://203.0.113.10:6005",
     },
-    url: "wss://178.156.143.199:6005",
+    url: "wss://203.0.113.10:6005",
   }), false);
   assert.equal(pftlWssRejectUnauthorized({
     env: {
       PFTL_WSS_REJECT_UNAUTHORIZED: "false",
       TASKNODE_ALLOW_INSECURE_PFTL_TLS: "true",
-      PFTL_WSS_URL: "wss://178.156.143.199:6005",
+      PFTL_WSS_URL: "wss://203.0.113.10:6005",
     },
     url: "wss://ws.testnet.postfiat.org",
   }), true);

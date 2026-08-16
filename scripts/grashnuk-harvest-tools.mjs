@@ -37,10 +37,6 @@ function argValue(name, fallback = "") {
   return index >= 0 ? process.argv[index + 1] || fallback : fallback;
 }
 
-function hasArg(name) {
-  return process.argv.includes(name);
-}
-
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
 }

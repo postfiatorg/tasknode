@@ -3,7 +3,6 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 
 import {
-  createCrashIsolatingTickRunner,
   installProcessHardening,
 } from "../server/process-hardening.js";
 import { startBackgroundWorkers } from "../server/background-workers.js";

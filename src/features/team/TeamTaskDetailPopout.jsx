@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Clipboard, Clock3, Flag, LoaderCircle, X } from "lucide-react";
 import { requestJson } from "../../api";
 import { taskStatusColor, taskStatusLabel } from "../../../shared/task-lifecycle";

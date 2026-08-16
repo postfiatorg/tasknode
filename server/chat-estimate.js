@@ -3,7 +3,6 @@ import {
   chatExecutionStatus,
   chatInputCharacterEstimate,
   chatModeConfig,
-  effectiveDefaultChatMode,
   isKnownChatMode,
   normalizedChatMode,
 } from "./chat-router.js";

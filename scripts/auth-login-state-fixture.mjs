@@ -22,6 +22,8 @@ process.env.GITHUB_CLIENT_ID = "github-fixture-client";
 process.env.GITHUB_CLIENT_SECRET = "github-fixture-secret";
 process.env.X_CLIENT_ID = "x-fixture-client:1:ci";
 process.env.X_CLIENT_SECRET = "x-fixture-secret";
+process.env.TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES = "dravlic";
+process.env.TASKNODE_PROJECT_LEADER_HIVE_HANDLES = "goodalexander";
 
 const product = await import("../server/product-contracts.js");
 const runtime = await import("../server/runtime-store.js");
@@ -234,7 +236,7 @@ record("email.challenge_started", {
   deliveryMode: delivery.mode,
 });
 
-const invalidEmail = authEmailVerify({ challengeId, code: "00000000" }, "POST");
+const invalidEmail = await authEmailVerify({ challengeId, code: "00000000" }, "POST");
 assert.equal(invalidEmail.status, 400);
 assert.equal(invalidEmail.body.error, "email_code_invalid");
 record("email.invalid_code_rejected", {
@@ -242,7 +244,7 @@ record("email.invalid_code_rejected", {
   error: invalidEmail.body.error,
 });
 
-const emailVerified = authEmailVerify({ challengeId, code: delivery.devCode }, "POST");
+const emailVerified = await authEmailVerify({ challengeId, code: delivery.devCode }, "POST");
 assert.equal(emailVerified.status, 200);
 assertOk(emailVerified.sessionId, "email verification should issue a session id");
 const emailSession = emailVerified.body.session;
@@ -261,7 +263,7 @@ const emailReplacementStart = await authEmailStart({ email: "FIXTURE.USER@exampl
   userAgent: "auth-login-state-fixture",
 });
 assert.equal(emailReplacementStart.status, 200);
-const replacedEmail = authEmailVerify({
+const replacedEmail = await authEmailVerify({
   challengeId: emailReplaceStart.body.challengeId,
   code: emailReplaceStart.body.delivery.devCode,
 }, "POST");
@@ -272,7 +274,7 @@ record("email.replaced_challenge_rejected", {
   error: replacedEmail.body.error,
 });
 
-const emailReconnect = authEmailVerify({
+const emailReconnect = await authEmailVerify({
   challengeId: emailReplacementStart.body.challengeId,
   code: emailReplacementStart.body.delivery.devCode,
 }, "POST");
@@ -283,13 +285,13 @@ record("email.reconnect_same_account", {
   linkedProviders: linkedProviderIds(emailReconnect.body.session),
 });
 
-const telegramStart = authStart("telegram", { origin, redirectPath: "/settings", session: null });
+const telegramStart = await authStart("telegram", { origin, redirectPath: "/settings", session: null });
 const telegramState = stateFromStart(telegramStart);
 assertOk(telegramStart.body.redirectUrl.includes("/api/auth/telegram/authorize"), "telegram start should use authorize page");
-const telegramAuthorize = authTelegramAuthorize({ state: telegramState }, { origin, oauthState: telegramState });
+const telegramAuthorize = await authTelegramAuthorize({ state: telegramState }, { origin, oauthState: telegramState });
 assert.equal(telegramAuthorize.status, 200);
 assertOk(String(telegramAuthorize.body).includes("data-telegram-login=\"TaskNodeFixtureBot\""), "telegram authorize should render configured bot username");
-const telegramAuthorizeStale = authTelegramAuthorize({ state: telegramState }, { origin, oauthState: "different-state" });
+const telegramAuthorizeStale = await authTelegramAuthorize({ state: telegramState }, { origin, oauthState: "different-state" });
 assert.equal(telegramAuthorizeStale.status, 400);
 assertOk(String(telegramAuthorizeStale.body).includes("Telegram Sign In Expired"), "telegram authorize should reject stale oauth cookie");
 const telegramPayload = signedTelegramPayload({
@@ -310,7 +312,7 @@ record("telegram.success", {
   linkedProviders: linkedProviderIds(telegramCallback.body.session),
 });
 
-const telegramReconnectStart = authStart("telegram", { origin, redirectPath: "/", session: null });
+const telegramReconnectStart = await authStart("telegram", { origin, redirectPath: "/", session: null });
 const telegramReconnectState = stateFromStart(telegramReconnectStart);
 const telegramReconnect = await authCallback("telegram", {
   ...signedTelegramPayload({
@@ -330,7 +332,7 @@ record("telegram.reconnect_same_account", {
   accountId: telegramReconnect.body.session.accountId,
 });
 
-const telegramInvalidStart = authStart("telegram", { origin, redirectPath: "/", session: null });
+const telegramInvalidStart = await authStart("telegram", { origin, redirectPath: "/", session: null });
 const telegramInvalidState = stateFromStart(telegramInvalidStart);
 const telegramInvalid = await authCallback("telegram", {
   ...signedTelegramPayload({
@@ -351,7 +353,7 @@ record("telegram.invalid_signature_rejected", {
   error: telegramInvalid.body.error,
 });
 
-const telegramExpiredStart = authStart("telegram", { origin, redirectPath: "/", session: null });
+const telegramExpiredStart = await authStart("telegram", { origin, redirectPath: "/", session: null });
 const telegramExpiredState = stateFromStart(telegramExpiredStart);
 const telegramExpired = await authCallback("telegram", {
   ...signedTelegramPayload({
@@ -371,7 +373,7 @@ record("telegram.expired_payload_rejected", {
   error: telegramExpired.body.error,
 });
 
-const telegramLinkStart = authStart("telegram", { origin, redirectPath: "/settings", session: emailSession });
+const telegramLinkStart = await authStart("telegram", { origin, redirectPath: "/settings", session: emailSession });
 const telegramLinkState = stateFromStart(telegramLinkStart);
 assert.equal(telegramLinkStart.body.mode, "account_link");
 const telegramLinked = await authCallback("telegram", {
@@ -396,7 +398,7 @@ record("telegram.linked_to_email_account", {
 
 const restoreFetch = installDiscordFetchMock();
 try {
-  const discordStart = authStart("discord", { origin, redirectPath: "/settings", session: telegramLinked.body.session });
+  const discordStart = await authStart("discord", { origin, redirectPath: "/settings", session: telegramLinked.body.session });
   const discordState = stateFromStart(discordStart);
   assert.equal(discordStart.body.mode, "account_link");
   const discordLinked = await authCallback("discord", { code: "discord-oauth-code", state: discordState }, {
@@ -417,7 +419,7 @@ try {
 const restoreGithubFetch = installGithubFetchMock();
 let githubLinkedSession = null;
 try {
-  const githubStart = authStart("github", {
+  const githubStart = await authStart("github", {
     origin,
     redirectPath: "/settings",
     session: telegramLinked.body.session,
@@ -453,17 +455,17 @@ try {
   const previousPublicUrl = process.env.TASKNODE_PUBLIC_URL;
   try {
     process.env.X_REDIRECT_URI = "http://localhost:3001/auth/x/callback";
-    process.env.TASKNODE_PUBLIC_URL = "https://tasknodeofficial-dev.fly.dev";
-    const publicXStart = authStart("x", {
-      origin: "https://tasknodeofficial-dev.fly.dev",
+    process.env.TASKNODE_PUBLIC_URL = "https://tasknode.example";
+    const publicXStart = await authStart("x", {
+      origin: "https://tasknode.example",
       redirectPath: "/",
     });
     const publicXAuthorizeUrl = new URL(publicXStart.body.redirectUrl);
     assert.equal(publicXStart.status, 200);
-    assert.equal(publicXStart.body.redirectUri, "https://tasknodeofficial-dev.fly.dev/api/auth/callback/x");
+    assert.equal(publicXStart.body.redirectUri, "https://tasknode.example/api/auth/callback/x");
     assert.equal(
       publicXAuthorizeUrl.searchParams.get("redirect_uri"),
-      "https://tasknodeofficial-dev.fly.dev/api/auth/callback/x"
+      "https://tasknode.example/api/auth/callback/x"
     );
     record("x.public_origin_ignores_local_redirect_override", {
       redirectUri: publicXStart.body.redirectUri,
@@ -477,7 +479,7 @@ try {
     process.env.TASKNODE_PUBLIC_URL = previousPublicUrl;
   }
 
-  const xStart = authStart("x", { origin, redirectPath: "/settings", session: telegramLinked.body.session });
+  const xStart = await authStart("x", { origin, redirectPath: "/settings", session: telegramLinked.body.session });
   const xState = stateFromStart(xStart);
   const xAuthorizeUrl = new URL(xStart.body.redirectUrl);
   assert.equal(xAuthorizeUrl.origin + xAuthorizeUrl.pathname, "https://x.com/i/oauth2/authorize");

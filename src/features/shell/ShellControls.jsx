@@ -1,4 +1,3 @@
-import React from "react";
 
 export function SidebarButton({ active, badge, icon: Icon, label, onClick, sidebarOpen, tooltip, trailing }) {
   return (

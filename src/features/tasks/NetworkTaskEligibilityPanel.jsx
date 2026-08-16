@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { networkTaskEligibilityView } from "./network-task-eligibility-state.js";
 import "./network-task-eligibility.css";

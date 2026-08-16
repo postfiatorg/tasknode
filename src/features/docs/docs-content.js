@@ -1,616 +1,35 @@
-import startHere from "../../../docs/wiki/index.md?raw";
-import agents from "../../../docs/wiki/surfaces/agents.md?raw";
-import chat from "../../../docs/wiki/surfaces/chat.md?raw";
-import context from "../../../docs/wiki/surfaces/context.md?raw";
-import contextRewrite from "../../../docs/wiki/surfaces/context-rewrite.md?raw";
-import dailyAirdrop from "../../../docs/wiki/surfaces/daily-airdrop.md?raw";
-import directory from "../../../docs/wiki/surfaces/directory.md?raw";
-import docs from "../../../docs/wiki/surfaces/docs.md?raw";
-import hive from "../../../docs/wiki/surfaces/hive.md?raw";
-import memory from "../../../docs/wiki/surfaces/memory.md?raw";
-import messages from "../../../docs/wiki/surfaces/messages.md?raw";
-import profile from "../../../docs/wiki/surfaces/profile.md?raw";
-import refineContext from "../../../docs/wiki/surfaces/refine-context.md?raw";
-import search from "../../../docs/wiki/surfaces/search.md?raw";
-import tasks from "../../../docs/wiki/surfaces/tasks.md?raw";
-import team from "../../../docs/wiki/surfaces/team.md?raw";
-import userGuide from "../../../docs/wiki/surfaces/user-guide.md?raw";
-import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
-import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
-import authAndConnectedAccounts from "../../../docs/wiki/architecture/auth-and-connected-accounts.md?raw";
-import authWalletBoundary from "../../../docs/wiki/architecture/auth-wallet-boundary.md?raw";
-import bootup from "../../../docs/wiki/architecture/bootup.md?raw";
-import boardManagerArchitecture from "../../../docs/wiki/architecture/board-manager.md?raw";
-import boardManagerSecretaryPacket from "../../../docs/wiki/architecture/board-manager-secretary-packet.md?raw";
-import badgeAwareRoutingCapacityPlan from "../../../docs/wiki/architecture/badge-aware-routing-capacity-plan.md?raw";
-import badgeBasedNetworkTaskRouting from "../../../docs/wiki/architecture/badge-based-network-task-routing.md?raw";
-import contextHistoryRestore from "../../../docs/wiki/architecture/context-history-restore.md?raw";
-import codexComputerControlQa from "../../../docs/wiki/architecture/codex-computer-control-qa.md?raw";
-import currentSystem from "../../../docs/wiki/architecture/current-system.md?raw";
-import database from "../../../docs/wiki/architecture/database.md?raw";
-import databaseArchitecture from "../../../docs/wiki/architecture/database-architecture.md?raw";
-import dailyAirdropWorker from "../../../docs/wiki/architecture/daily-airdrop-worker.md?raw";
-import defectRepairRule from "../../../docs/wiki/architecture/defect-repair-rule.md?raw";
-import deathmarch from "../../../docs/wiki/architecture/deathmarch.md?raw";
-import deepMemoryWorker from "../../../docs/wiki/architecture/deep-memory-worker.md?raw";
-import deployment from "../../../docs/wiki/architecture/deployment.md?raw";
-import encryption from "../../../docs/wiki/architecture/encryption.md?raw";
-import ethereumDepositRpc from "../../../docs/wiki/architecture/ethereum-deposit-rpc.md?raw";
-import hiveActiveProjectsHelper from "../../../docs/wiki/architecture/hive-active-projects-helper.md?raw";
-import hiveSecretaryWorker from "../../../docs/wiki/architecture/hive-secretary-worker.md?raw";
-import executionMandate from "../../../docs/wiki/architecture/execution-mandate.md?raw";
-import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
-import ipfsInfrastructureRebuild from "../../../docs/wiki/architecture/ipfs-infrastructure-rebuild.md?raw";
-import ipfsNewWriteReplication from "../../../docs/wiki/architecture/ipfs-new-write-replication.md?raw";
-import jobsPgvectorCorpus from "../../../docs/wiki/architecture/jobs-pgvector-corpus.md?raw";
-import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
-import networkTaskRecovery from "../../../docs/wiki/architecture/network-task-recovery.md?raw";
-import networkTaskGenerationWorker from "../../../docs/wiki/architecture/network-task-generation-worker.md?raw";
-import networkTaskProfileWorker from "../../../docs/wiki/architecture/network-task-profile-worker.md?raw";
-import grashnukAutonomousNetworkActorSpec from "../../../docs/wiki/architecture/grashnuk-autonomous-network-actor-spec.md?raw";
-import orcArmyOverview from "../../../docs/wiki/architecture/orc-army-overview.md?raw";
-import orcOperatorRuntime from "../../../docs/wiki/architecture/orc-operator-runtime.md?raw";
-import sybilReviewDetection from "../../../docs/wiki/architecture/sybil-review-detection.md?raw";
-import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
-import pftlArchiveWalletSync from "../../../docs/wiki/architecture/pftl-archive-wallet-sync.md?raw";
-import pftlCacheReducer from "../../../docs/wiki/architecture/pftl-cache-reducer.md?raw";
-import pftlCacheRetention from "../../../docs/wiki/architecture/pftl-cache-retention.md?raw";
-import pftlCurrentRpcAndWss from "../../../docs/wiki/architecture/pftl-current-rpc-and-wss.md?raw";
-import pftlHistoryRpcAndArchiveWss from "../../../docs/wiki/architecture/pftl-history-rpc-and-archive-wss.md?raw";
-import pftlHotWalletSync from "../../../docs/wiki/architecture/pftl-hot-wallet-sync.md?raw";
-import pftlLiveTaskReplay from "../../../docs/wiki/architecture/pftl-live-task-replay.md?raw";
-import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
-import pftlWssWatcher from "../../../docs/wiki/architecture/pftl-wss-watcher.md?raw";
-import pftasksCutover from "../../../docs/wiki/architecture/pftasks-cutover.md?raw";
-import resettableSignupTesting from "../../../docs/wiki/architecture/resettable-signup-testing.md?raw";
-import styleGuide from "../../../docs/wiki/architecture/style-guide.md?raw";
-import systemStatus from "../../../docs/wiki/architecture/system-status.md?raw";
-import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
-import taskGenerationWorker from "../../../docs/wiki/architecture/task-generation-worker.md?raw";
-import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
-import taskReviewRewardWorker from "../../../docs/wiki/architecture/task-review-reward-worker.md?raw";
-import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
-import turnMemoryWorker from "../../../docs/wiki/architecture/turn-memory-worker.md?raw";
-import userObservabilityLogging from "../../../docs/wiki/architecture/user-observability-logging.md?raw";
-import onboardingWalletFrictionMemo from "../../../docs/wiki/plans/onboarding-wallet-friction-memo-2026-06-08.md?raw";
-import taskNodeProductionCutoverPackage from "../../../docs/wiki/plans/task-node-production-cutover-package-2026-06-09.md?raw";
-import taskNodeProductionCutoverExecutionChecklist from "../../../docs/wiki/plans/task-node-production-cutover-execution-checklist-2026-06-10.md?raw";
-import pftasksTransactionShutdownCutoverPlan from "../../../docs/wiki/plans/pftasks-transaction-shutdown-cutover-plan-2026-06-09.md?raw";
-import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
-import ambientInferenceCutoverPlan from "../../../docs/wiki/plans/ambient-inference-cutover-plan-2026-08-12.md?raw";
-import teamMateCoordinationSpec from "../../../docs/wiki/plans/team-mate-coordination-spec-2026-08-12.md?raw";
-import teamMateCoordinationDeployRunbook from "../../../docs/wiki/plans/team-mate-coordination-deploy-runbook-2026-08-12.md?raw";
-import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
-import jobsStandardChatPrompt from "../../../prompts/chat/jobs_standard_chat_codex_style_draft.md?raw";
-import helpModePrompt from "../../../prompts/chat/help_mode_v1.md?raw";
-import contextEditJobsPrompt from "../../../prompts/context/context_edit_jobs_v1.xml?raw";
-import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
-import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
-import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
-import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
-import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v2.md?raw";
-import rewardedTaskMemoryPrompt from "../../../prompts/memory/rewarded_task_memory_v1.md?raw";
-import boardManagerPrompt from "../../../prompts/hive/board_manager_v1.md?raw";
-import boardManagerSecretaryPrompt from "../../../prompts/hive/board_manager_secretary_v1.md?raw";
-import glmBoardSecretaryPrompt from "../../../prompts/hive/glm_board_secretary_status_memo_v1.md?raw";
-import hiveImmediateResponsePrompt from "../../../prompts/hive/hive_immediate_response_v1.md?raw";
-import hiveNetworkTaskRoutingPolicyPrompt from "../../../prompts/hive/hive_network_task_routing_policy_v1.md?raw";
-import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
-import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
-import taskAccountingHarvesterPrompt from "../../../prompts/hive/task_accounting_harvester_v1.md?raw";
-import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
-import publicProfileSnapshotPrompt from "../../../prompts/profile/public_profile_snapshot_v1.md?raw";
-import recommendedConnectionsPrompt from "../../../prompts/profile/recommended_connections_v1.md?raw";
-import evidenceScreenshotPrompt from "../../../prompts/task_engine/evidence_screenshot_read_v1.md?raw";
-import rewardScoringPrompt from "../../../prompts/task_engine/reward_scoring_v1.md?raw";
-import taskgenNetworkPrompt from "../../../prompts/task_engine/taskgen_network_v1.md?raw";
-import taskgenPersonalPrompt from "../../../prompts/task_engine/taskgen_personal_v1.md?raw";
-import kravisPrompt from "../../../prompts/kravis.md?raw";
-import verificationRequestPrompt from "../../../prompts/task_engine/verification_request_v1.md?raw";
-import profileNftImagePrompt from "../../../prompts/profile/profile_nft_image_v1.md?raw";
-import profileNftPrivacyAbstractionPrompt from "../../../prompts/profile/profile_nft_privacy_abstraction_v1.md?raw";
-import profileNftPrivacyReviewPrompt from "../../../prompts/profile/profile_nft_privacy_review_v1.md?raw";
-import docsOdvPrompt from "../../../prompts/docs/odv_lindy_v1.md?raw";
-import docsTradingCoachPrompt from "../../../prompts/docs/trading_coach_v1.md?raw";
-
-const PROMPT_SOURCES = [
-  {
-    family: "Profile",
-    title: "Daily Airdrop Scoring",
-    path: "prompts/profile/daily_airdrop_v1.md",
-    summary: "Scores the recent positive-reward task packet into the daily PFT airdrop amount and explanatory bullets.",
-    status: "Active for scoring and operator-triggered live issuance",
-    usedBy: [
-      "server/profile-daily-airdrop.js::runDailyAirdropScore",
-      "scripts/profile-daily-airdrop-score.mjs",
-      "scripts/profile-daily-airdrop-issue.mjs",
-      "scripts/profile-daily-airdrop-debt.mjs",
-      "scripts/profile-daily-airdrop-reconcile.mjs",
-      "GET /api/profile/daily-airdrop",
-    ],
-    content: dailyAirdropPrompt,
-  },
-  {
-    family: "Profile",
-    title: "Profile NFT Image",
-    path: "prompts/profile/profile_nft_image_v1.md",
-    summary: "Canonical image-generation prompt. Live generation hydrates its two context blocks with privacy-preserving summaries instead of raw user data.",
-    status: "Active for all live Profile NFT image generation",
-    usedBy: [
-      "server/profile-nft-privacy-gateway.js::createPrivateProfileNftSummary",
-      "server/profile-nft-prompts.js::renderProfileNftPrompt",
-    ],
-    content: profileNftImagePrompt,
-  },
-  {
-    family: "Profile",
-    title: "Profile NFT Privacy Abstraction",
-    path: "prompts/profile/profile_nft_privacy_abstraction_v1.md",
-    summary: "Summarizes private profile and context inputs into two non-identifying prose blocks through Ambient GLM 5.2; it does not replace or direct the canonical image prompt.",
-    status: "Active: first pass before NFT rendering",
-    usedBy: ["server/profile-nft-privacy-gateway.js::createPrivateProfileNftSummary"],
-    content: profileNftPrivacyAbstractionPrompt,
-  },
-  {
-    family: "Profile",
-    title: "Profile NFT Privacy Review",
-    path: "prompts/profile/profile_nft_privacy_review_v1.md",
-    summary: "Reviews and repairs the two privacy-preserving summaries before the canonical image prompt is hydrated and sent to the isolated renderer.",
-    status: "Active: mandatory second pass before NFT rendering",
-    usedBy: ["server/profile-nft-privacy-gateway.js::createPrivateProfileNftSummary"],
-    content: profileNftPrivacyReviewPrompt,
-  },
-  {
-    family: "Profile",
-    title: "Public Profile Snapshot",
-    path: "prompts/profile/public_profile_snapshot_v1.md",
-    summary: "Generates role title, role summary, skills, and archetype from deterministic public profile metrics.",
-    status: "Active for public profile snapshot regeneration",
-    usedBy: [
-      "server/profile-public-snapshot.js::runPublicProfileSnapshot",
-      "scripts/profile-public-snapshot.mjs",
-      "POST /api/profile/public/regenerate",
-    ],
-    content: publicProfileSnapshotPrompt,
-  },
-  {
-    family: "Profile",
-    title: "Recommended Connections",
-    path: "prompts/profile/recommended_connections_v1.md",
-    summary: "Reranks the top 50 discoverable member profiles into 3-4 useful recommended connections with plain-English reasons.",
-    status: "Active for private profile recommendations and the weekly recommendation worker",
-    usedBy: [
-      "server/repositories/recommended-connections.js::refreshRecommendedConnections",
-      "server/recommended-connections-worker.js::startRecommendedConnectionsWorker",
-      "POST /api/profile/recommended-connections/refresh",
-    ],
-    content: recommendedConnectionsPrompt,
-  },
-  {
-    family: "Chat",
-    title: "Task Node Instructions",
-    path: "prompts/chat/task_node_instructions_v1.md",
-    summary: "Base chat system instructions shared by Instant and Thinking through Ambient.",
-    status: "Active",
-    usedBy: [
-      "server/chat-memory-context.js::taskNodeInstructions",
-      "server/chat-router.js::openRouterMessages (legacy-named Ambient request builder)",
-    ],
-    content: taskNodeInstructionsPrompt,
-  },
-  {
-    family: "Chat",
-    title: "Jobs Chat Spirit",
-    path: "prompts/chat/jobs_standard_chat_codex_style_draft.md",
-    summary: "Shared Markdown operating prompt that gives all exposed chat modes the Jobs-calibrated product voice while preserving Task Node context, memory, task awareness, and pgvector Jobs retrieval.",
-    status: "Active by default; disabled only when TASKNODE_CHAT_SPIRIT_ENABLED=false",
-    usedBy: [
-      "server/chat-spirit-context.js::formatChatSpiritContext",
-      "server/chat-memory-context.js::taskNodeInstructions",
-      "server/chat-router.js::openRouterMessages (legacy-named Ambient request builder)",
-    ],
-    content: jobsStandardChatPrompt,
-  },
-  {
-    family: "Chat",
-    title: "Help Mode",
-    path: "prompts/chat/help_mode_v1.md",
-    summary: "Product-help prompt that wraps the standard Task Node runtime context and embedded User Guide for the Help chat mode.",
-    status: "Active for the Help chat mode",
-    usedBy: [
-      "server/chat-help-mode.js::helpModeInstructions",
-      "server/chat-router.js::executeAmbient",
-      "server/chat-router.js::executeChatStream",
-    ],
-    content: helpModePrompt,
-  },
-  {
-    family: "Chat",
-    title: "Context Refine Jobs",
-    path: "prompts/context/context_edit_jobs_v1.xml",
-    summary: "Dedicated structured-output prompt for Chat Context Refine mode.",
-    status: "Active for Context Refine",
-    usedBy: [
-      "server/context-edit-prompts.js::renderContextEditPrompt",
-      "server/context-edit-chat.js::executeContextEditChat",
-    ],
-    content: contextEditJobsPrompt,
-  },
-  {
-    family: "Chat",
-    title: "Account Memory Context",
-    path: "prompts/chat/account_memory_context_v1.md",
-    summary: "Template around deep memory and recent memory injected into chat instructions.",
-    status: "Active when memory exists",
-    usedBy: [
-      "server/chat-memory-context.js::formatChatMemoryContext",
-      "server/chat-memory-context.js::taskNodeInstructions",
-    ],
-    content: accountMemoryContextPrompt,
-  },
-  {
-    family: "Chat",
-    title: "Account Tasks Context",
-    path: "prompts/chat/account_tasks_context_v1.md",
-    summary: "Task projection context grouped as Outstanding, Pending Verification, Refused, and Rewarded.",
-    status: "Active when account task state exists",
-    usedBy: [
-      "server/chat-task-context.js::formatChatTaskContext",
-      "server/chat-task-context.js::taskContextForAccount",
-      "server/chat-memory-context.js::taskNodeInstructions",
-    ],
-    content: accountTasksContextPrompt,
-  },
-  {
-    family: "Memory",
-    title: "Turn Memory Summary",
-    path: "prompts/memory/chat_memory_v1.md",
-    summary: "Async summary prompt for one user/assistant exchange.",
-    status: "Active async worker",
-    usedBy: [
-      "server/chat-memory-worker.js::memorySystemPrompt",
-      "server/chat-memory-worker.js::fetchMemorySummary",
-      "server/repositories/chat-memory.js::completeChatMemoryJob",
-    ],
-    content: chatMemoryPrompt,
-  },
-  {
-    family: "Memory",
-    title: "Deep Memory Summary",
-    path: "prompts/memory/deep_memory_v1.md",
-    summary: "Async summary prompt that compresses 36 turn memories into account-level memory.",
-    status: "Active async worker",
-    usedBy: [
-      "server/chat-memory-worker.js::deepMemorySystemPrompt",
-      "server/chat-memory-worker.js::fetchDeepMemorySummary",
-      "server/repositories/chat-memory.js::completeDeepMemoryJob",
-    ],
-    content: deepMemoryPrompt,
-  },
-  {
-    family: "Memory",
-    title: "Rewarded Task Memory",
-    path: "prompts/memory/rewarded_task_memory_v1.md",
-    summary: "Summarizes every canonical positive task reward into durable recent and deep memory.",
-    status: "Active async worker",
-    usedBy: [
-      "server/chat-memory-worker.js::fetchRewardedTaskMemorySummary",
-      "server/repositories/task-reward-memory.js::completeRewardedTaskMemoryJob",
-    ],
-    content: rewardedTaskMemoryPrompt,
-  },
-  {
-    family: "Memory",
-    title: "Network Task Profile",
-    path: "prompts/memory/network_task_profile_v2.md",
-    summary: "Async diagnostic profile prompt over context, memory, profile, and Network Context Inputs.",
-    status: "Active async worker",
-    usedBy: [
-      "server/chat-memory-worker.js::fetchNetworkTaskProfile",
-      "server/repositories/network-task-profile.js::completeNetworkTaskProfileJob",
-      "GET /api/memory/network-task-profile",
-    ],
-    content: networkTaskProfilePrompt,
-  },
-  {
-    family: "Hive",
-    title: "Board Manager",
-    path: "prompts/hive/board_manager_v1.md",
-    summary: "Legacy operating prompt for the retired leased Board Manager action registry.",
-    status: "Retired by default; GLM Board Secretary writes advisory Project Status memos instead",
-    usedBy: [
-      "docs/wiki/architecture/board-manager.md",
-      "scripts/board-manager-codex-exec.mjs",
-      "server/repositories/board-manager.js::formatBoardManagerCodexPrompt",
-      "server/board-manager-actions.js::executeBoardManagerDecision",
-    ],
-    content: boardManagerPrompt,
-  },
-  {
-    family: "Hive",
-    title: "GLM Board Secretary",
-    path: "prompts/hive/glm_board_secretary_status_memo_v1.md",
-    summary: "Writes advisory per-board Project Status Markdown from deterministic board packets.",
-    status: "Active for board-secretary Project Status memos",
-    usedBy: [
-      "server/hive-board-secretary-provider.js::fetchHiveBoardSecretaryMemo",
-      "server/hive-board-secretary-worker.js::runHiveBoardSecretaryOnce",
-      "server/repositories/hive-board-secretary.js::buildHiveBoardSecretarySourcePacket",
-    ],
-    content: glmBoardSecretaryPrompt,
-  },
-  {
-    family: "Hive",
-    title: "Board Manager Secretary Packet",
-    path: "prompts/hive/board_manager_secretary_v1.md",
-    summary: "Ambient GLM 5.2 prompt that compresses raw Hive board state into compact packets for Board Manager decisions.",
-    status: "Active Board Manager packet path; separate from per-board Project Status memos",
-    usedBy: [
-      "server/board-manager-secretary-packets.js::fetchBoardManagerSecretaryPacket",
-      "server/board-manager-secretary-packets.js::ensureBoardManagerSecretaryPacket",
-      "scripts/board-manager-model-exec.mjs",
-    ],
-    content: boardManagerSecretaryPrompt,
-  },
-  {
-    family: "Hive",
-    title: "Hive Immediate Response",
-    path: "prompts/hive/hive_immediate_response_v1.md",
-    summary: "Replies in Hive Chat after saving the user's message and uses reports, live board facts, account state, and scoped Hive Context to ask useful clarifying questions.",
-    status: "Active Hive Chat immediate response",
-    usedBy: [
-      "server/hive-immediate-response.js::hiveSystemPrompt",
-      "server/hive-routes.js::saveHiveChatMessage",
-      "POST /api/hive/chat",
-    ],
-    content: hiveImmediateResponsePrompt,
-  },
-  {
-    family: "Hive",
-    title: "Hive Network Task Routing Policy",
-    path: "prompts/hive/hive_network_task_routing_policy_v1.md",
-    summary: "Authoritative routing-policy block injected into Hive Chat so it does not invent Network Task assignment or eligibility flows.",
-    status: "Active Hive Chat subprompt",
-    usedBy: [
-      "server/hive-immediate-response.js::networkTaskRoutingPolicyForPrompt",
-      "prompts/hive/hive_immediate_response_v1.md",
-    ],
-    content: hiveNetworkTaskRoutingPolicyPrompt,
-  },
-  {
-    family: "Hive",
-    title: "Hive Secretary",
-    path: "prompts/hive/hive_secretary_v1.md",
-    summary: "Updates the network context report from validated-wallet Hive chat entries.",
-    status: "Active async worker",
-    usedBy: [
-      "server/hive-secretary-worker.js::fetchHiveSecretaryReport",
-      "server/repositories/hive-context.js::completeHiveSecretaryJob",
-      "GET /api/hive/context",
-    ],
-    content: hiveSecretaryPrompt,
-  },
-  {
-    family: "Hive",
-    title: "Hive Active Projects",
-    path: "prompts/hive/hive_active_projects_v1.md",
-    summary: "Determines the active network project set from the latest Hive Secretary report and current project registry.",
-    status: "Active async worker",
-    usedBy: [
-      "server/hive-project-worker.js::fetchHiveActiveProjects",
-      "server/repositories/hive-project-planning.js::completeHiveProjectPlanningJob",
-      "GET /api/hive/projects",
-    ],
-    content: hiveActiveProjectsPrompt,
-  },
-  {
-    family: "Hive",
-    title: "Task Accounting Harvester",
-    path: "prompts/hive/task_accounting_harvester_v1.md",
-    summary: "Classifies each rewarded Network Task after reward as no-action or requires-action accounting follow-up.",
-    status: "Active async worker",
-    usedBy: [
-      "server/task-accounting-harvester-worker.js::runTaskAccountingHarvesterOnce",
-      "server/task-accounting-harvester-provider.js::runTaskAccountingHarvestCall",
-      "GET /api/hive/brain/harvests",
-    ],
-    content: taskAccountingHarvesterPrompt,
-  },
-  {
-    family: "Task Engine",
-    title: "Task Generation Personal",
-    path: "prompts/task_engine/taskgen_personal_v1.md",
-    summary: "Generates one concise personal PFTL task from request, context, memory, chat, wallet, policy, and task queue blocks.",
-    status: "Active app worker and Python reference for personal task requests",
-    usedBy: [
-      "server/task-generation-worker.js::generateTaskWithOpenAi (legacy-named Ambient dispatcher)",
-      "server/task-generation-worker.js::taskgenPromptForInput",
-      "reference_clients/python/tasknode_pftl/taskgen.py::generate_task",
-      "reference_clients/python/tasknode_pftl/taskgen.py::taskgen_prompt_for_input",
-    ],
-    content: taskgenPersonalPrompt,
-  },
-  {
-    family: "Task Engine",
-    title: "Task Generation Network",
-    path: "prompts/task_engine/taskgen_network_v1.md",
-    summary: "Generates one concrete Network or Alpha Task from structured Board Manager routing context.",
-    status: "Active app worker, Network Task worker handoff, and Python reference",
-    usedBy: [
-      "server/network-task-generation-worker.js::createTaskRequestForNetworkJob",
-      "server/task-generation-worker.js::taskgenPromptForInput",
-      "server/task-generation-worker.js::generateTaskWithOpenAi (legacy-named Ambient dispatcher)",
-      "reference_clients/python/tasknode_pftl/taskgen.py::taskgen_prompt_for_input",
-      "reference_clients/python/tasknode_pftl/taskgen.py::generate_task",
-    ],
-    content: taskgenNetworkPrompt,
-  },
-  {
-    family: "Docs",
-    title: "ODV Document Assistant",
-    path: "prompts/docs/odv_lindy_v1.md",
-    summary: "Persona prompt injected when an authorized document-chat message mentions @ODV.",
-    status: "Active when TASKNODE_DOCS_ODV_ENABLED=true",
-    usedBy: ["server/docs-odv.js::buildDocsAssistantRequest"],
-    content: docsOdvPrompt,
-  },
-  {
-    family: "Docs",
-    title: "Trading Coach Document Assistant",
-    path: "prompts/docs/trading_coach_v1.md",
-    summary: "Telegram Trading Coach persona injected when an authorized document-chat message mentions @coach.",
-    status: "Active when TASKNODE_DOCS_ODV_ENABLED=true",
-    usedBy: ["server/docs-odv.js::buildDocsAssistantRequest"],
-    content: docsTradingCoachPrompt,
-  },
-  {
-    family: "Chat",
-    title: "Kravis Personality",
-    path: "prompts/kravis.md",
-    summary: "Downside-first private-equity persona available from the primary chat personality picker.",
-    status: "Active primary chat personality",
-    usedBy: [
-      "server/chat-persona-prompts.js::formatSelectedChatPersona",
-      "shared/chat-personas.js::CHAT_PERSONAS",
-    ],
-    content: kravisPrompt,
-  },
-  {
-    family: "Verification",
-    title: "Verification Request",
-    path: "prompts/task_engine/verification_request_v1.md",
-    summary: "Policy for a single follow-up verification ask after initial task submission.",
-    status: "Active app worker and Python reference",
-    usedBy: [
-      "server/task-review-worker.js::processSubmittedTask",
-      "reference_clients/python/tasknode_pftl/engine/scoring.py::build_verification_request",
-    ],
-    content: verificationRequestPrompt,
-  },
-  {
-    family: "Verification",
-    title: "Screenshot Evidence Read",
-    path: "prompts/task_engine/evidence_screenshot_read_v1.md",
-    summary: "Vision prompt for describing screenshot evidence without inventing hidden state.",
-    status: "Active",
-    usedBy: [
-      "server/task-evidence-processing.js::processEvidenceFileForSubmission",
-      "reference_clients/python/tasknode_pftl/verification.py::describe_screenshot_with_openai",
-    ],
-    content: evidenceScreenshotPrompt,
-  },
-  {
-    family: "Reward",
-    title: "Reward Scoring",
-    path: "prompts/task_engine/reward_scoring_v1.md",
-    summary: "Scores verification evidence and produces reward, partial reward, or zero-reward outcomes.",
-    status: "Active app worker and Python reference",
-    usedBy: [
-      "server/task-review-worker.js::processVerificationResponse",
-      "reference_clients/python/tasknode_pftl/engine/scoring.py::score_reward",
-    ],
-    content: rewardScoringPrompt,
-  },
-];
-
-const PROMPT_PAGES = [
-  {
-    slug: "prompts-index",
-    title: "Prompt Index",
-    summary: "Source-controlled prompts and runtime call sites.",
-    markdown: promptIndexMarkdown(),
-  },
-  promptFamilyPage({
-    slug: "prompts-profile",
-    title: "Profile Prompts",
-    summary: "Daily airdrop scoring and profile generation prompts.",
-    family: "Profile",
-  }),
-  promptFamilyPage({
-    slug: "prompts-docs",
-    title: "Docs Prompts",
-    summary: "Source prompts for explicit @ODV and @coach document-chat assistants.",
-    family: "Docs",
-  }),
-  promptFamilyPage({
-    slug: "prompts-chat",
-    title: "Chat Prompts",
-    summary: "System instructions and account memory context used by chat.",
-    family: "Chat",
-  }),
-  promptFamilyPage({
-    slug: "prompts-memory",
-    title: "Memory Prompts",
-    summary: "Async memory compression prompts.",
-    family: "Memory",
-  }),
-  promptFamilyPage({
-    slug: "prompts-hive",
-    title: "Hive Prompts",
-    summary: "Network context synthesis prompts.",
-    family: "Hive",
-  }),
-  promptFamilyPage({
-    slug: "prompts-task-engine",
-    title: "Task Engine Prompts",
-    summary: "Task generation and input block prompt contracts.",
-    family: "Task Engine",
-  }),
-  promptFamilyPage({
-    slug: "prompts-verification",
-    title: "Verification Prompts",
-    summary: "Follow-up verification and evidence reading prompts.",
-    family: "Verification",
-  }),
-  promptFamilyPage({
-    slug: "prompts-reward",
-    title: "Reward Prompts",
-    summary: "Reward scoring prompt policy.",
-    family: "Reward",
-  }),
-];
-
-function promptIndexMarkdown() {
-  const entries = PROMPT_SOURCES.flatMap((source) => [
-    `### ${source.family}: ${source.title}`,
-    `- Prompt file: \`${source.path}\``,
-    `- Status: ${source.status}`,
-    `- Summary: ${source.summary}`,
-    `- Used by: ${source.usedBy.map((item) => `\`${item}\``).join(", ")}`,
-  ]).join("\n\n");
-  return [
-    "# Prompt Index",
-    "Prompt text shown in this Help section is imported directly from files under `prompts/` using Vite raw imports. Do not paste prompt text into docs by hand; update the prompt file and this page will change on the next build.",
-    "Runtime code should record prompt version and prompt digest whenever prompt output becomes part of a PFTL payload, database cache, or audit trail.",
-    "## Runtime Map",
-    entries,
-  ].join("\n\n");
-}
-
-function promptFamilyPage({ slug, title, summary, family }) {
-  const sources = PROMPT_SOURCES.filter((source) => source.family === family);
-  return {
-    slug,
-    title,
-    summary,
-    markdown: [
-      `# ${title}`,
-      summary,
-      "These prompt blocks are rendered from the source files listed below. Editing a prompt file changes the Help rendering on the next frontend build.",
-      ...sources.flatMap((source) => promptSourceSections(source)),
-    ].join("\n\n"),
-  };
-}
-
-function promptSourceSections(source) {
-  return [
-    `## ${source.title}`,
-    `Source file: \`${source.path}\``,
-    `Runtime status: ${source.status}`,
-    ["Used by:", ...source.usedBy.map((item) => `- \`${item}\``)].join("\n"),
-    ["Prompt text:", "```text", source.content.trim(), "```"].join("\n"),
-  ];
-}
+// Every Markdown loader in this module must also appear in
+// docs/public-help-manifest.json. `npm run public-help-check` enforces the
+// boundary so private operations, verification evidence, plans, and prompts do
+// not silently become production browser assets.
+const HELP_MARKDOWN_LOADERS = {
+  start: () => import("../../../docs/wiki/index.md?raw").then((module) => module.default),
+  agents: () => import("../../../docs/wiki/surfaces/agents.md?raw").then((module) => module.default),
+  chat: () => import("../../../docs/wiki/surfaces/chat.md?raw").then((module) => module.default),
+  context: () => import("../../../docs/wiki/surfaces/context.md?raw").then((module) => module.default),
+  contextRewrite: () => import("../../../docs/wiki/surfaces/context-rewrite.md?raw").then((module) => module.default),
+  dailyAirdrop: () => import("../../../docs/wiki/surfaces/daily-airdrop.md?raw").then((module) => module.default),
+  directory: () => import("../../../docs/wiki/surfaces/directory.md?raw").then((module) => module.default),
+  docs: () => import("../../../docs/wiki/surfaces/docs.md?raw").then((module) => module.default),
+  hive: () => import("../../../docs/wiki/surfaces/hive.md?raw").then((module) => module.default),
+  memory: () => import("../../../docs/wiki/surfaces/memory.md?raw").then((module) => module.default),
+  messages: () => import("../../../docs/wiki/surfaces/messages.md?raw").then((module) => module.default),
+  profile: () => import("../../../docs/wiki/surfaces/profile.md?raw").then((module) => module.default),
+  refineContext: () => import("../../../docs/wiki/surfaces/refine-context.md?raw").then((module) => module.default),
+  search: () => import("../../../docs/wiki/surfaces/search.md?raw").then((module) => module.default),
+  tasks: () => import("../../../docs/wiki/surfaces/tasks.md?raw").then((module) => module.default),
+  team: () => import("../../../docs/wiki/surfaces/team.md?raw").then((module) => module.default),
+  userGuide: () => import("../../../docs/wiki/surfaces/user-guide.md?raw").then((module) => module.default),
+  wallet: () => import("../../../docs/wiki/surfaces/wallet.md?raw").then((module) => module.default),
+  aiProviders: () => import("../../../docs/wiki/architecture/ai-providers.md?raw").then((module) => module.default),
+  authAndConnectedAccounts: () => import("../../../docs/wiki/architecture/auth-and-connected-accounts.md?raw").then((module) => module.default),
+  authWalletBoundary: () => import("../../../docs/wiki/architecture/auth-wallet-boundary.md?raw").then((module) => module.default),
+  bootup: () => import("../../../docs/wiki/architecture/bootup.md?raw").then((module) => module.default),
+  currentSystem: () => import("../../../docs/wiki/architecture/current-system.md?raw").then((module) => module.default),
+  defectRepairRule: () => import("../../../docs/wiki/architecture/defect-repair-rule.md?raw").then((module) => module.default),
+  encryption: () => import("../../../docs/wiki/architecture/encryption.md?raw").then((module) => module.default),
+  styleGuide: () => import("../../../docs/wiki/architecture/style-guide.md?raw").then((module) => module.default),
+};
 
 function docBody(markdown = "") {
   return String(markdown || "")
@@ -623,118 +42,62 @@ function docSection(title, markdown) {
   return [`## ${title}`, body].filter(Boolean).join("\n\n");
 }
 
-function combinedDoc(title, intro, sections) {
-  return [`# ${title}`, intro.trim(), ...sections.map(([sectionTitle, markdown]) => docSection(sectionTitle, markdown))]
-    .filter(Boolean)
-    .join("\n\n");
-}
-
 function movedDoc(title, canonicalSlug, canonicalTitle) {
   return [
     `# ${title}`,
-    `This old Help page has been consolidated into [${canonicalTitle}](#docs/${canonicalSlug}).`,
-    "Use the canonical page for current status, repair commands, and product boundaries.",
+    `This old Help location is no longer part of the public documentation set. See [${canonicalTitle}](#docs/${canonicalSlug}).`,
   ].join("\n\n");
 }
 
-const identityAndWalletsDoc = combinedDoc(
-  "Identity & Wallets",
-  "One canonical account page for login, connected providers, wallet proof, local vault unlock, custody boundaries, balance reads, and seed-safety rules.",
-  [
-    ["Login And Connected Accounts", authAndConnectedAccounts],
-    ["Wallet Proof, Vault, And Custody Boundary", authWalletBoundary],
-  ]
-);
+async function loadIdentityAndWallets() {
+  const [authAndConnectedAccounts, authWalletBoundary] = await Promise.all([
+    HELP_MARKDOWN_LOADERS.authAndConnectedAccounts(),
+    HELP_MARKDOWN_LOADERS.authWalletBoundary(),
+  ]);
+  return [
+    "# Identity & Wallets",
+    "Account login, connected providers, wallet proof, local vault unlock, and custody are separate security states.",
+    docSection("Login And Connected Accounts", authAndConnectedAccounts),
+    docSection("Wallet Proof And Local Vault", authWalletBoundary),
+  ].join("\n\n");
+}
 
-const hiveOperationsDoc = combinedDoc(
-  "Hive & Board Operations",
-  "One canonical architecture page for the Hive coordination loop: Board Manager decisions, secretary packets, network context reports, active projects, and recovery when Hive-routed work stalls.",
-  [
-    ["Board Manager", boardManagerArchitecture],
-    ["Badge-Based Network Task Routing", badgeBasedNetworkTaskRouting],
-    ["Badge-Aware Routing Capacity Plan", badgeAwareRoutingCapacityPlan],
-    ["Board Manager Secretary Packet", boardManagerSecretaryPacket],
-    ["Hive Secretary Report", hiveSecretaryWorker],
-    ["Hive Active Projects", hiveActiveProjectsHelper],
-    ["Network Task Recovery", networkTaskRecovery],
-  ]
-);
-
-const taskGenerationDoc = combinedDoc(
-  "Task Generation",
-  "One canonical architecture page for the task engine from signed request to generated offer, review, verification, reward, and replay.",
-  [
-    ["Async Request Engine", taskAsyncEngine],
-    ["Personal And Network Task Generation", taskGenerationWorker],
-    ["Network Allocation Handoff", networkTaskGenerationWorker],
-    ["Review, Verification, And Rewards", taskReviewRewardWorker],
-    ["Task Lifecycle", taskLifecycle],
-  ]
-);
-
-const pftlOperationsDoc = combinedDoc(
-  "PFTL",
-  "One canonical architecture page for Post Fiat chain usage, wallet sync, WSS/RPC endpoints, pointer replay, cache reduction, context history, and reward/task protocol reads.",
-  [
-    ["PFTL Usage", pftl],
-    ["Transaction Cache", pftlTransactionCache],
-    ["Hot Wallet Sync", pftlHotWalletSync],
-    ["Archive Wallet Sync", pftlArchiveWalletSync],
-    ["WSS Watcher", pftlWssWatcher],
-    ["Cache Reducer", pftlCacheReducer],
-    ["Cache Retention", pftlCacheRetention],
-    ["Current RPC And WSS", pftlCurrentRpcAndWss],
-    ["History RPC And Archive WSS", pftlHistoryRpcAndArchiveWss],
-    ["Live Task Replay", pftlLiveTaskReplay],
-    ["Context History Restore", contextHistoryRestore],
-  ]
-);
-
-
-
+const systemStatusIntro = [
+  "# System Status",
+  "This page renders live status returned by Task Node. A healthy web process does not prove that background workers, queues, providers, protocol endpoints, or dependent services are healthy.",
+  "Status links lead only to the public product and architecture documentation allowlist.",
+].join("\n\n");
 
 export const SYSTEM_STATUS_DOC_LINKS = {
-  board_manager: { slug: "hive-operations", label: "Docs: Hive & Board Operations" },
-  board_manager_secretary_packets: {
-    slug: "hive-operations",
-    label: "Docs: Hive & Board Operations",
-  },
-  hive_secretary: { slug: "hive-operations", label: "Docs: Hive & Board Operations" },
-  hive_active_projects: { slug: "hive-operations", label: "Docs: Hive & Board Operations" },
-  network_task_generation: {
-    slug: "task-generation",
-    label: "Docs: Task Generation",
-  },
-  task_generation: { slug: "task-generation", label: "Docs: Task Generation" },
-  task_review: { slug: "task-generation", label: "Docs: Task Generation" },
-  pftl_hot_sync: { slug: "pftl", label: "Docs: PFTL" },
-  pftl_archive_sync: { slug: "pftl", label: "Docs: PFTL" },
-  pftl_wss_watcher: { slug: "pftl", label: "Docs: PFTL" },
-  pftl_cache_reducer: { slug: "pftl", label: "Docs: PFTL" },
-  pftl_cache_retention: { slug: "pftl", label: "Docs: PFTL" },
-  pftl_current_rpc: { slug: "pftl", label: "Docs: PFTL" },
-  pftl_history_rpc: {
-    slug: "pftl",
-    label: "Docs: PFTL",
-  },
-  ethereum_deposit_rpc: { slug: "ethereum-deposit-rpc", label: "Docs: Ethereum Deposits" },
-  jobs_pgvector_corpus: { slug: "jobs-pgvector-corpus", label: "Docs: Jobs PGVector Corpus" },
+  board_manager: { slug: "hive", label: "Docs: Hive" },
+  board_manager_secretary_packets: { slug: "hive", label: "Docs: Hive" },
+  hive_secretary: { slug: "hive", label: "Docs: Hive" },
+  hive_active_projects: { slug: "hive", label: "Docs: Hive" },
+  network_task_generation: { slug: "tasks", label: "Docs: Tasks" },
+  task_generation: { slug: "tasks", label: "Docs: Tasks" },
+  task_review: { slug: "tasks", label: "Docs: Tasks" },
+  pftl_hot_sync: { slug: "wallet", label: "Docs: Wallet" },
+  pftl_archive_sync: { slug: "current-system", label: "Docs: Current System" },
+  pftl_wss_watcher: { slug: "current-system", label: "Docs: Current System" },
+  pftl_cache_reducer: { slug: "current-system", label: "Docs: Current System" },
+  pftl_cache_retention: { slug: "current-system", label: "Docs: Current System" },
+  pftl_current_rpc: { slug: "wallet", label: "Docs: Wallet" },
+  pftl_history_rpc: { slug: "current-system", label: "Docs: Current System" },
+  ethereum_deposit_rpc: { slug: "wallet", label: "Docs: Wallet" },
+  jobs_pgvector_corpus: { slug: "chat", label: "Docs: Chat" },
   chat_turn_memory: { slug: "memory", label: "Docs: Memory" },
   rewarded_task_memory: { slug: "memory", label: "Docs: Memory" },
   deep_memory: { slug: "memory", label: "Docs: Memory" },
-  network_task_profile: {
-    slug: "profile",
-    label: "Docs: Profile",
-  },
+  network_task_profile: { slug: "profile", label: "Docs: Profile" },
   daily_airdrop_worker: { slug: "daily-airdrop", label: "Docs: Daily Airdrop" },
-  agent_activity: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
-  orc_agents: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
-  orc_activity: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
-  orc_runtime_directives: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
-  orc_review_queue: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
-  orc_task_review_queue: { slug: "orc-operator-runtime", label: "Docs: Orc Operator Runtime" },
-  sybil_review_flags: { slug: "sybil-review-detection", label: "Docs: Sybil Review Detection" },
-  sybil_detection: { slug: "sybil-review-detection", label: "Docs: Sybil Review Detection" },
+  agent_activity: { slug: "agents", label: "Docs: Agents" },
+  orc_agents: { slug: "agents", label: "Docs: Agents" },
+  orc_activity: { slug: "agents", label: "Docs: Agents" },
+  orc_runtime_directives: { slug: "agents", label: "Docs: Agents" },
+  orc_review_queue: { slug: "agents", label: "Docs: Agents" },
+  orc_task_review_queue: { slug: "agents", label: "Docs: Agents" },
+  sybil_review_flags: { slug: "agents", label: "Docs: Agents" },
+  sybil_detection: { slug: "agents", label: "Docs: Agents" },
 };
 
 export const DOC_GROUPS = [
@@ -742,341 +105,111 @@ export const DOC_GROUPS = [
     title: "Start",
     pages: [
       {
+        slug: "system-status-home",
+        title: "System Status",
+        summary: "Live worker, queue, provider, and protocol status.",
+        markdown: systemStatusIntro,
+        component: "system-status",
+      },
+      {
         slug: "user-guide",
         title: "User Guide",
-        summary: "Plain-English feature guide for normal Task Node users.",
-        markdown: userGuide,
+        summary: "Plain-English guide to the current application.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.userGuide,
       },
       {
         slug: "start",
         title: "Start Here",
-        summary: "docs/wiki is the authoritative product and architecture source; body includes Documentation Authority.",
-        markdown: startHere,
-      },
-      {
-        slug: "system-status-home",
-        title: "System Status",
-        summary: "Live audit view for schedulers, workers, RPC dependencies, and Orc agent activity.",
-        markdown: systemStatus,
-        component: "system-status",
+        summary: "Product map, trust boundaries, and documentation authority.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.start,
       },
     ],
   },
   {
-    title: "Product Surfaces",
+    title: "Product",
     pages: [
-      { slug: "chat", title: "Chat", summary: "The primary work surface.", markdown: chat },
-      { slug: "tasks", title: "Tasks", summary: "Portable task lifecycle state.", markdown: tasks },
-      { slug: "docs", title: "Docs", summary: "Wallet-encrypted collaborative documents backed by embedded PFDocs.", markdown: docs },
-      { slug: "team", title: "Team", summary: "Directional teammate task-history grants and read-only task detail popouts.", markdown: team },
-      { slug: "messages", title: "Messages", summary: "Wallet-bound private Nostr messaging addressed by Task Node handle.", markdown: messages },
-      { slug: "hive", title: "Hive", summary: "Network project routing, reward proof visibility, and operator coordination.", markdown: hive },
-      { slug: "directory", title: "Directory", summary: "Public discoverable operator leaderboard.", markdown: directory },
-      { slug: "wallet", title: "Wallet", summary: "Identity, balances, and custody.", markdown: wallet },
-      { slug: "profile", title: "Profile", summary: "Member trust surface and daily airdrop state.", markdown: profile },
-      { slug: "context", title: "Context", summary: "Durable working profile.", markdown: context },
-      { slug: "memory", title: "Memory", summary: "Inspectable chat compression.", markdown: memory },
-      { slug: "search", title: "Search", summary: "Retrieval across cached work.", markdown: search },
-      {
-        slug: "daily-airdrop",
-        title: "Daily Airdrop",
-        summary: "Account-level contributor scoring and identity-cloud recipient selection.",
-        markdown: dailyAirdrop,
-      },
-      {
-        slug: "refine-context",
-        title: "Refine Context",
-        summary: "Clean up context without changing meaning.",
-        markdown: refineContext,
-      },
-      {
-        slug: "context-rewrite",
-        title: "Context Rewrite",
-        summary: "Billed async full-document rewrite pipeline for context documents.",
-        markdown: contextRewrite,
-      },
-      { slug: "agents", title: "Agents", summary: "External wallet-native workers.", markdown: agents },
+      { slug: "chat", title: "Chat", summary: "AI work, persistence, billing, and recovery.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
+      { slug: "tasks", title: "Tasks", summary: "Personal and network task lifecycle.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
+      { slug: "hive", title: "Hive", summary: "Network projects, routing, and coordination.", loadMarkdown: HELP_MARKDOWN_LOADERS.hive },
+      { slug: "docs", title: "Docs", summary: "Wallet-encrypted PFDocs collaboration.", loadMarkdown: HELP_MARKDOWN_LOADERS.docs },
+      { slug: "team", title: "Team", summary: "Directional task-history permissions.", loadMarkdown: HELP_MARKDOWN_LOADERS.team },
+      { slug: "messages", title: "Messages", summary: "Wallet-bound NIP-17 private messaging.", loadMarkdown: HELP_MARKDOWN_LOADERS.messages },
+      { slug: "wallet", title: "Wallet", summary: "Identity, balances, activity, custody, and signing.", loadMarkdown: HELP_MARKDOWN_LOADERS.wallet },
+      { slug: "context", title: "Context", summary: "Durable account working context.", loadMarkdown: HELP_MARKDOWN_LOADERS.context },
+      { slug: "memory", title: "Memory", summary: "Inspectable chat and work compression.", loadMarkdown: HELP_MARKDOWN_LOADERS.memory },
+      { slug: "profile", title: "Profile", summary: "Public identity, contribution, and NFT state.", loadMarkdown: HELP_MARKDOWN_LOADERS.profile },
+      { slug: "directory", title: "Directory", summary: "Discoverable public member profiles.", loadMarkdown: HELP_MARKDOWN_LOADERS.directory },
+      { slug: "search", title: "Search", summary: "Account-scoped chat retrieval.", loadMarkdown: HELP_MARKDOWN_LOADERS.search },
+      { slug: "daily-airdrop", title: "Daily Airdrop", summary: "Contributor scoring and issuance state.", loadMarkdown: HELP_MARKDOWN_LOADERS.dailyAirdrop },
+      { slug: "refine-context", title: "Refine Context", summary: "Targeted Context editing.", loadMarkdown: HELP_MARKDOWN_LOADERS.refineContext },
+      { slug: "context-rewrite", title: "Context Rewrite", summary: "Asynchronous full-document rewrite.", loadMarkdown: HELP_MARKDOWN_LOADERS.contextRewrite },
+      { slug: "agents", title: "Agents", summary: "External wallet-native workers.", loadMarkdown: HELP_MARKDOWN_LOADERS.agents },
     ],
   },
   {
-    title: "Identity & Access",
+    title: "Security & Architecture",
     pages: [
       {
         slug: "identity-wallets",
         title: "Identity & Wallets",
-        summary: "Login, connected accounts, wallet proof, local vault unlock, and custody boundaries.",
-        markdown: identityAndWalletsDoc,
-      },
-      {
-        slug: "resettable-signup-testing",
-        title: "Resettable Signup Testing",
-        summary: "QA reset workflow for reusable email signup and funded wallet tests.",
-        markdown: resettableSignupTesting,
-      },
-      {
-        slug: "telegram-bot-chat",
-        title: "Telegram Bot Chat",
-        summary: "Linked Telegram identity webhook chat path.",
-        markdown: telegramBotChat,
-      },
-      {
-        slug: "encryption",
-        title: "Encryption",
-        summary: "MessageKey and encrypted payloads.",
-        markdown: encryption,
-      },
-    ],
-  },
-  {
-    title: "Tasks & Hive",
-    pages: [
-      {
-        slug: "task-generation",
-        title: "Task Generation",
-        summary: "Requests, generated offers, review, verification, rewards, and replay.",
-        markdown: taskGenerationDoc,
-      },
-      {
-        slug: "hive-operations",
-        title: "Hive & Board Operations",
-        summary: "Board Manager, secretary packets, active projects, routing, and network-task recovery.",
-        markdown: hiveOperationsDoc,
-      },
-      {
-        slug: "orc-operator-runtime",
-        title: "Orc Operator Runtime",
-        summary: "Codex Orc operators, Nazgul oversight, shared review state, triage labels, evidence rules, and guardrails.",
-        markdown: orcOperatorRuntime,
-      },
-      {
-        slug: "orc-army-overview",
-        title: "Orc Army And On-Chain Agent Overview",
-        summary: "Full Orc, Nazgul, on-chain agent, runtime queue, Board Manager, and observability architecture map.",
-        markdown: orcArmyOverview,
-      },
-      {
-        slug: "grashnuk-on-chain-agent",
-        title: "Grashnuk On-Chain Agent",
-        summary: "Reference wallet-native agent flow, harvest follow-up loop, and independent review requirements.",
-        markdown: grashnukAutonomousNetworkActorSpec,
-      },
-      {
-        slug: "sybil-review-detection",
-        title: "Sybil Review Detection",
-        summary: "Recommend-only Sybil review flags for Network Task velocity, partial rewards, text-only evidence, and identity risk.",
-        markdown: sybilReviewDetection,
-      },
-    ],
-  },
-  {
-    title: "PFTL & Payments",
-    pages: [
-      {
-        slug: "pftl",
-        title: "PFTL",
-        summary: "Chain usage, wallet sync, WSS/RPC endpoints, cache replay, and task pointers.",
-        markdown: pftlOperationsDoc,
-      },
-      {
-        slug: "ethereum-deposit-rpc",
-        title: "Ethereum Deposits",
-        summary: "Deposit top-up RPC configuration and request-time status.",
-        markdown: ethereumDepositRpc,
-      },
-      {
-        slug: "pftasks-cutover",
-        title: "PFTasks Cutover",
-        summary: "Old PFTasks account shutdown and Task Node Official migration runbook.",
-        markdown: pftasksCutover,
-      },
-    ],
-  },
-  {
-    title: "Data, IPFS & AI",
-    pages: [
-      {
-        slug: "database",
-        title: "Database",
-        summary: "Postgres cache architecture and schema target.",
-        markdown: `${database}\n\n${docSection("Database Architecture", databaseArchitecture)}`,
-      },
-      {
-        slug: "ipfs",
-        title: "IPFS",
-        summary: "CID-backed payload standards, gateway order, and profile NFT image proxy.",
-        markdown: ipfs,
-      },
-      {
-        slug: "ipfs-infrastructure-rebuild",
-        title: "IPFS Infrastructure",
-        summary: "Clean first-party gateway, CID migration, and legacy recovery boundary.",
-        markdown: ipfsInfrastructureRebuild,
-      },
-      {
-        slug: "ipfs-new-write-replication",
-        title: "IPFS New Write Replication",
-        summary: "Fresh CID replication queue, clean-cluster pinning, and verification target state.",
-        markdown: ipfsNewWriteReplication,
-      },
-      {
-        slug: "ai-providers",
-        title: "AI Providers",
-        summary: "Capability-based mode routing through Ambient, with the isolated NFT image exception.",
-        markdown: aiProviders,
-      },
-      {
-        slug: "jobs-pgvector-corpus",
-        title: "Jobs PGVector Corpus",
-        summary: "Postgres pgvector retrieval corpus, Fly shape, and repair path.",
-        markdown: jobsPgvectorCorpus,
-      },
-    ],
-  },
-  {
-    title: "Operations",
-    pages: [
-      {
-        slug: "deployment",
-        title: "Deployment",
-        summary: "Fly dev, Docker, data stores, secrets, auth, top-up, and verification commands.",
-        markdown: deployment,
-      },
-      {
-        slug: "bootup",
-        title: "Bootup",
-        summary: "Local setup, smoke checks, startup guards, and first failure triage.",
-        markdown: bootup,
+        summary: "Login, provider linkage, wallet proof, vault, and custody boundaries.",
+        loadMarkdown: loadIdentityAndWallets,
       },
       {
         slug: "current-system",
         title: "Current System",
-        summary: "Current product boundary, routes, enabled surfaces, deferrals, and near-term build path.",
-        markdown: currentSystem,
+        summary: "Implemented trust, process, persistence, and privacy boundaries.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.currentSystem,
       },
       {
-        slug: "codex-computer-control-qa",
-        title: "Browser-Control QA Protocol",
-        summary: "Browser automation QA protocol for beta release verification.",
-        markdown: codexComputerControlQa,
+        slug: "encryption",
+        title: "Encryption",
+        summary: "Encryption formats and browser/server responsibilities.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.encryption,
       },
       {
-        slug: "execution-mandate",
-        title: "Execution Mandate",
-        summary: "Verification rules for repo work and claims of completion.",
-        markdown: executionMandate,
-      },
-      {
-        slug: "user-observability-logging",
-        title: "User Observability Logging",
-        summary: "Identity-vector logging spec for user, wallet, task, reward, memory, Hive, Telegram, and usage investigations.",
-        markdown: userObservabilityLogging,
-      },
-      {
-        slug: "defect-repair-rule",
-        title: "Defect Repair Rule",
-        summary: "Generalized repair rule for concrete user-reported app failures.",
-        markdown: defectRepairRule,
-      },
-      {
-        slug: "style-guide",
-        title: "Style Guide",
-        summary: "Visual system, colors, typography, and surface-level UX rules.",
-        markdown: styleGuide,
+        slug: "ai-providers",
+        title: "AI Providers",
+        summary: "Inference-provider and isolated image-renderer boundaries.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.aiProviders,
       },
     ],
   },
   {
-    title: "Prompts",
-    pages: PROMPT_PAGES,
-  },
-  {
-    title: "Plans",
+    title: "Contributing",
     pages: [
       {
-        slug: "team-mate-coordination-spec",
-        title: "Docs and Team Coordination Spec",
-        summary: "Wallet-encrypted Docs, embedded PFDocs, title synchronization, and directional Team grants.",
-        markdown: teamMateCoordinationSpec,
+        slug: "bootup",
+        title: "Local Bootup",
+        summary: "Safe local startup and focused verification.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.bootup,
       },
       {
-        slug: "team-mate-coordination-deploy-runbook",
-        title: "Docs and Team Deployment Runbook",
-        summary: "Production topology, feature flags, security gates, rollout order, and verification commands.",
-        markdown: teamMateCoordinationDeployRunbook,
+        slug: "defect-repair-rule",
+        title: "Defect Repair Rule",
+        summary: "Fix failed boundaries rather than literal examples.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.defectRepairRule,
       },
       {
-        slug: "ambient-inference-cutover-plan",
-        title: "Ambient Inference Cutover Plan",
-        summary: "Completed cutover record: Ambient-only inference, retired OpenRouter/direct DeepSeek routes, and the isolated NFT image exception.",
-        markdown: ambientInferenceCutoverPlan,
-      },
-      {
-        slug: "task-node-production-scope",
-        title: "Task Node Production Scope",
-        summary: "Single active beta plan: acceptance gates, completed work, and remaining P0/P1 launch scope.",
-        markdown: taskNodeProductionScope,
-      },
-      {
-        slug: "onboarding-wallet-friction-memo",
-        title: "Onboarding Wallet Friction Memo",
-        summary: "QA memo for remaining onboarding, task-loading, and multi-wallet capacity friction.",
-        markdown: onboardingWalletFrictionMemo,
-      },
-      {
-        slug: "task-node-production-cutover-package",
-        title: "Task Node Production Cutover Package",
-        summary: "Concrete production cutover package for moving tasknode.postfiat.org to Task Node Official and retiring PFTasks task-side authority.",
-        markdown: taskNodeProductionCutoverPackage,
-      },
-      {
-        slug: "task-node-production-cutover-execution-checklist",
-        title: "Task Node Production Cutover Execution Checklist",
-        summary: "Step-by-step production cutover checklist with live evidence for each executed gate.",
-        markdown: taskNodeProductionCutoverExecutionChecklist,
-      },
-      {
-        slug: "pftasks-transaction-shutdown-cutover-plan",
-        title: "PFTasks Transaction Shutdown Cutover Plan",
-        summary: "Production gate for disabling legacy PFTasks task, reward, airdrop, NFT, bot, and worker writers while keeping wallet sends and seed backups.",
-        markdown: pftasksTransactionShutdownCutoverPlan,
+        slug: "style-guide",
+        title: "Style Guide",
+        summary: "Visual system and interaction rules.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.styleGuide,
       },
     ],
   },
 ];
 
-const LEGACY_DOC_PAGES = [
-  ["auth-and-connected-accounts", "Auth And Connected Accounts", "identity-wallets", "Identity & Wallets"],
-  ["auth-wallet-boundary", "Auth And Wallet Boundary", "identity-wallets", "Identity & Wallets"],
-  ["board-manager-architecture", "Board Manager", "hive-operations", "Hive & Board Operations"],
-  ["board-manager-secretary-packet", "Board Manager Secretary Packet", "hive-operations", "Hive & Board Operations"],
-  ["badge-aware-routing-capacity-plan", "Badge-Aware Routing Capacity Plan", "hive-operations", "Hive & Board Operations"],
-  ["badge-based-network-task-routing", "Badge-Based Network Task Routing", "hive-operations", "Hive & Board Operations"],
-  ["hive-secretary-worker", "Hive Secretary Worker", "hive-operations", "Hive & Board Operations"],
-  ["hive-active-projects-helper", "Hive Active Projects Helper", "hive-operations", "Hive & Board Operations"],
-  ["network-task-recovery", "Network Task Recovery", "hive-operations", "Hive & Board Operations"],
-  ["network-task-generation-worker", "Network Task Generation Worker", "task-generation", "Task Generation"],
-  ["task-generation-worker", "Task Generation Worker", "task-generation", "Task Generation"],
-  ["task-review-reward-worker", "Task Review And Reward Worker", "task-generation", "Task Generation"],
-  ["task-async-engine", "Task Async Engine", "task-generation", "Task Generation"],
-  ["task-lifecycle", "Task Lifecycle", "task-generation", "Task Generation"],
-  ["pftl-transaction-cache", "PFTL Transaction Cache", "pftl", "PFTL"],
-  ["pftl-hot-wallet-sync", "PFTL Hot Wallet Sync", "pftl", "PFTL"],
-  ["pftl-archive-wallet-sync", "PFTL Archive Wallet Sync", "pftl", "PFTL"],
-  ["pftl-wss-watcher", "PFTL WSS Watcher", "pftl", "PFTL"],
-  ["pftl-cache-reducer", "PFTL Cache Reducer", "pftl", "PFTL"],
-  ["pftl-cache-retention", "PFTL Cache Retention", "pftl", "PFTL"],
-  ["pftl-current-rpc-and-wss", "PFTL Current RPC And WSS", "pftl", "PFTL"],
-  ["pftl-history-rpc-and-archive-wss", "PFTL History RPC And Archive WSS", "pftl", "PFTL"],
-  ["pftl-live-task-replay", "PFTL Live Task Replay", "pftl", "PFTL"],
-  ["context-history-restore", "Context History Restore", "pftl", "PFTL"],
-  ["database-architecture", "Database Architecture", "database", "Database"],
-  ["turn-memory-worker", "Turn Memory Worker", "memory", "Memory"],
-  ["deep-memory-worker", "Deep Memory Worker", "memory", "Memory"],
-  ["network-task-profile-worker", "Network Task Profile Worker", "profile", "Profile"],
-  ["daily-airdrop-worker", "Daily Airdrop Worker", "daily-airdrop", "Daily Airdrop"],
+const LEGACY_REDIRECTS = [
+  ["deployment", "Deployment", "current-system", "Current System"],
+  ["pftl", "PFTL", "wallet", "Wallet"],
+  ["ethereum-deposit-rpc", "Ethereum Deposits", "wallet", "Wallet"],
+  ["task-generation", "Task Generation", "tasks", "Tasks"],
+  ["hive-operations", "Hive Operations", "hive", "Hive"],
+  ["orc-operator-runtime", "Agent Operations", "agents", "Agents"],
+  ["jobs-pgvector-corpus", "Jobs Corpus", "chat", "Chat"],
+  ["telegram-bot-chat", "Telegram Chat", "identity-wallets", "Identity & Wallets"],
   ["system-status", "System Status", "system-status-home", "System Status"],
-  ["deathmarch", "Deathmarch Local Harness", "deployment", "Deployment"],
-  ["nostr", "Nostr TBD", "current-system", "Current System"],
 ].map(([slug, title, canonicalSlug, canonicalTitle]) => ({
   slug,
   title,
@@ -1087,5 +220,31 @@ const LEGACY_DOC_PAGES = [
 
 export const DOC_PAGES = [
   ...DOC_GROUPS.flatMap((group) => group.pages.map((page) => ({ ...page, group: group.title }))),
-  ...LEGACY_DOC_PAGES,
+  ...LEGACY_REDIRECTS,
 ];
+
+const markdownCache = new Map();
+
+export async function loadDocMarkdown(pageOrSlug) {
+  const page = typeof pageOrSlug === "string"
+    ? DOC_PAGES.find((candidate) => candidate.slug === pageOrSlug)
+    : pageOrSlug;
+  if (!page) throw new Error("Unknown Help page.");
+  if (typeof page.markdown === "string") return page.markdown;
+  if (typeof page.loadMarkdown !== "function") return "";
+  if (markdownCache.has(page.slug)) return markdownCache.get(page.slug);
+
+  const pending = Promise.resolve(page.loadMarkdown())
+    .then((markdown) => String(markdown || ""))
+    .catch((error) => {
+      markdownCache.delete(page.slug);
+      throw error;
+    });
+  markdownCache.set(page.slug, pending);
+  return pending;
+}
+
+export async function loadDocSearchIndex() {
+  const entries = await Promise.all(DOC_PAGES.map(async (page) => [page.slug, await loadDocMarkdown(page)]));
+  return Object.fromEntries(entries);
+}

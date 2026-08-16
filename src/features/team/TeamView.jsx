@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, ChevronRight, Eye, EyeOff, RefreshCw, ShieldCheck, UserPlus2, Users } from "lucide-react";
 import { requestJson } from "../../api";
 import { newUuid, signedCollaborationProof } from "../collaboration/collaboration-client";

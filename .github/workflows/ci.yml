@@ -1,0 +1,112 @@
+name: repository-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+        env:
+          CHROME_BIN: google-chrome
+
+  supply-chain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: node scripts/dependency-license-check.mjs
+      - run: node scripts/asset-provenance-check.mjs
+      - name: Scan full history for secrets
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f git /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
+      - name: Scan full history with independent detectors
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" trufflesecurity/trufflehog@sha256:ff4c95e9df7d645daf2140e3ca1039031c63106268d5fbb25feb43ceca1bcc33 git file:///repo --json --no-update --no-verification --results=unverified,unknown,verified --fail-on-scan-errors > trufflehog.jsonl
+          node scripts/secret-scan-review.mjs trufflehog.jsonl
+      - name: Generate release SBOMs
+        run: |
+          mkdir -p release-artifacts
+          npm run --silent sbom:cyclonedx > release-artifacts/sbom.cdx.json
+          npm run --silent sbom:spdx > release-artifacts/sbom.spdx.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sbom-${{ github.sha }}
+          path: release-artifacts/
+          if-no-files-found: error
+
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build exact role-specific production images
+        run: |
+          docker build --target web-runtime --tag tasknodeofficial-web:${{ github.sha }} .
+          docker build --target worker-runtime --tag tasknodeofficial-worker:${{ github.sha }} .
+      - name: Verify runtime privilege, tools, and role boundaries
+        run: |
+          docker run --rm --entrypoint sh tasknodeofficial-web:${{ github.sha }} -lc 'test "$(id -u)" = 1000 && ! command -v npm && ! command -v npx && ! command -v codex && ! command -v vite && test -f server/index.js && test ! -f server/background-workers.js && test -d dist && test ! -e prompts/non_production'
+          docker run --rm --entrypoint sh tasknodeofficial-worker:${{ github.sha }} -lc 'test "$(id -u)" = 1000 && ! command -v npm && ! command -v npx && ! command -v codex && ! command -v vite && test -f server/worker-entry.js && test ! -f server/index.js && test ! -d dist && test ! -e prompts/non_production'
+      - name: Reject fixed high or critical vulnerabilities
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check --exit-code 1 tasknodeofficial-web:${{ github.sha }}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check --exit-code 1 tasknodeofficial-worker:${{ github.sha }}
+
+  recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector@sha256:0a07c4114ba6d1d04effcce3385e9f5ce305eb02e56a3d35948a415a52f193ec
+        env:
+          POSTGRES_USER: tasknodeofficial
+          POSTGRES_PASSWORD: tasknodeofficial
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tasknodeofficial -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Drill Postgres, runtime-store, and migration rollback
+        run: npm run data-recovery-drill
+        env:
+          TASKNODE_RECOVERY_ADMIN_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres
+      - name: Verify durable runtime identity and authentication authority
+        run: node scripts/migrate-db.mjs && node scripts/account-repository-smoke.mjs && node scripts/auth-session-repository-smoke.mjs && node scripts/auth-challenge-repository-smoke.mjs && node scripts/auth-state-migration-smoke.mjs && node scripts/account-wallet-repository-smoke.mjs && node scripts/ethereum-deposit-repository-smoke.mjs && node scripts/terminal-auth-repository-smoke.mjs
+        env:
+          DATABASE_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres
+          TASKNODE_DATABASE_ENABLED: "true"

@@ -41,8 +41,8 @@ function taskMutationSubmitted(payload = {}, result = {}) {
   return phase === "submit" || Boolean(payload?.signedTxBlob || payload?.signed_tx_blob);
 }
 
-function linkedWalletAddressForEvent(getLinkedWallet, session) {
-  const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
+async function linkedWalletAddressForEvent(getLinkedWallet, session) {
+  const linkedWallet = await getLinkedWallet({ accountId: session?.accountId || "" });
   return linkedWallet.status === "linked" ? linkedWallet.address || "" : "";
 }
 
@@ -57,7 +57,7 @@ async function recordTaskRouteEvent({
   const body = result?.body || {};
   const taskAction = normalizeTaskAction(payload?.taskAction || payload?.task_action);
   const phase = safeText(payload?.phase || body.phase || "", 80);
-  const walletAddress = linkedWalletAddressForEvent(getLinkedWallet, session);
+  const walletAddress = await linkedWalletAddressForEvent(getLinkedWallet, session);
   await recordUserObservabilityEvent({
     eventType,
     accountId: session?.accountId || body.accountId || "",
@@ -93,7 +93,7 @@ async function recordTaskRouteEvent({
 
 export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
   if (url.pathname === "/api/tasks") {
-    const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
+    const linkedWallet = await getLinkedWallet({ accountId: session?.accountId || "" });
     const walletAddress = linkedWallet.status === "linked" ? linkedWallet.address || "" : "";
     if (url.searchParams.get("refreshProjection") === "1" && walletAddress) {
       scheduleLinkedWalletTaskProjectionRefresh({
@@ -110,7 +110,7 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
   }
 
   if (url.pathname === "/api/tasks/requests") {
-    const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
+    const linkedWallet = await getLinkedWallet({ accountId: session?.accountId || "" });
     json(res, 200, await listTaskRequests({
       accountId: session?.accountId || "",
       walletAddress: linkedWallet.status === "linked" ? linkedWallet.address || "" : "",
@@ -119,7 +119,7 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
   }
 
   if (url.pathname === "/api/tasks/detail") {
-    const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
+    const linkedWallet = await getLinkedWallet({ accountId: session?.accountId || "" });
     const walletAddress = linkedWallet.status === "linked" ? linkedWallet.address || "" : "";
     const taskId = url.searchParams.get("taskId") || "";
     if (!taskId.trim()) {

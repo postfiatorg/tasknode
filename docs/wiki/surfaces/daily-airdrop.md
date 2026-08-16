@@ -234,7 +234,7 @@ Legacy `failed` rows with empty `tx_hash` and null `submitted_at` are treated as
 
 ### Historical Goodalexander Dry Run
 
-The historical local dry run used account `acct_oauth_3c70e69ab7b8ef1fad3df508`.
+The example dry run uses a synthetic account such as `acct_example_operator`.
 This example is retained as an old evidence packet shape, not as current live
 eligibility truth.
 
@@ -272,63 +272,10 @@ Each tick:
 
 A worker crash between completing a positive production scoring run and claiming the issuance row leaves the run with no issuance row at all. Those runs are surfaced as `issuance_missing` debt by `profile-daily-airdrop-debt` and by the system-status airdrop row, and the worker re-claims them through the same fail-closed path on its next tick, so the crash window cannot silently strand an owed payout.
 
-The manual operator command remains available:
-
-```bash
-npm run profile-daily-airdrop-worker -- --json
-npm run profile-daily-airdrop-debt -- --json
-npm run profile-daily-airdrop-reconcile -- --run-id=<run_id> --json
-```
-
-The older direct commands remain useful for diagnosis:
-
-```bash
-npm run profile-daily-airdrop-score -- --account-id <account_id> --run-mode dry_run
-npm run profile-daily-airdrop-issue -- --account-id=<account_id> --run-id=<run_id>
-```
-
-`profile-daily-airdrop-issue` requires `--run-id`; it pays the exact scoring
-run, never an implicit latest completed run. Claiming an issuance refuses
-non-production runs with `daily_airdrop_dry_run_promotion_blocked`; paying a
-`dry_run` run requires the explicit `--allow-dry-run-promotion` flag. The
-recurring worker only auto-issues runs it scored in `production` mode.
-
-### Same-Day Repair
-
-Use this only when a same-day production run is provably bad before payment, such
-as a completed zero run caused by an empty worker wallet cloud. Do not delete the
-bad row. Demote it out of the production uniqueness boundary with an audit
-message, then create and issue one fresh production run.
-
-Required preconditions:
-
-- the bad run has `daily_airdrop_pft = 0`;
-- its `input_snapshot.identity_cloud.eligible_wallet_count` is `0`;
-- its `input_snapshot.reward_totals.rewarded_task_count` is `0`;
-- it has no issuance row;
-- a fresh packet smoke or packet query proves the account now has a DB-backed
-  wallet cloud and positive rewarded tasks.
-
-Operator sequence:
-
-```bash
-# 1. Demote only the guarded bad zero run.
-fly ssh console -a tasknodeofficial-dev --process-group worker -C \
-  'npm run profile-daily-airdrop-repair-zero-run -- --account-id=<account_id> --run-date=<yyyy-mm-dd>'
-
-# 2. Score one replacement production run.
-fly ssh console -a tasknodeofficial-dev --process-group worker -C \
-  'node scripts/profile-daily-airdrop-score.mjs --account-id <account_id> --run-mode production --scenario-id operator_repair_<yyyymmdd> --json'
-
-# 3. Issue that exact run id if the amount is positive.
-fly ssh console -a tasknodeofficial-dev --process-group worker -C \
-  'node scripts/profile-daily-airdrop-issue.mjs --account-id=<account_id> --run-id=<run_id>'
-```
-
-The repair must result in exactly one canonical production run and exactly one
-submitted issuance for that account/day. The issuance recipient is the single
-deterministic `airdrop_recipient.wallet_address`, not every wallet in the
-identity cloud.
+Manual issuance and same-day production repair are privileged operations. Their
+target checks, approval receipts, and exact commands live only in the private
+operations package. The public source retains deterministic packet and
+idempotency tests, not a route to the official worker fleet.
 
 Packet boundary regression:
 

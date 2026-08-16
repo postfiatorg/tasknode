@@ -1,12 +1,11 @@
 import { databaseEnabled, query } from "../db/pool.js";
-import { listDiscoverableAccountWalletIdentities } from "../runtime-store.js";
+import { listDiscoverableAccountWalletIdentities } from "./account-profiles.js";
 import { listMachineOperatorDisclosures } from "./capability-profiles.js";
 import {
   canonicalRewardedTaskProjectionSql,
   nonFixtureAirdropRunSql,
   nonFixtureProfileNftSql,
   nonFixtureRecommendedProfileSql,
-  nonFixtureTaskProjectionSql,
 } from "./task-projection-integrity.js";
 
 const leaderboardLimit = Math.max(1, Number(process.env.DIRECTORY_LEADERBOARD_LIMIT || 200));
@@ -243,7 +242,7 @@ export async function queryDirectoryLeaderboardRows({
 }
 
 async function buildBaseDocument() {
-  const identities = listDiscoverableAccountWalletIdentities();
+  const identities = await listDiscoverableAccountWalletIdentities();
   const identityByAccount = publicIdentityMap(identities);
   const accountIds = Array.from(identityByAccount.keys());
   const [rows, profileIds, operatorDisclosures] = await Promise.all([

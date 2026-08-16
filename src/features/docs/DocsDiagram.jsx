@@ -1,4 +1,3 @@
-import React from "react";
 
 const NODE_WIDTH = 180;
 const NODE_HEIGHT = 72;

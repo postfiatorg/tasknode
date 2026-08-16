@@ -83,7 +83,7 @@ function parseJsonOutput(stdout = "") {
   }
 }
 
-async function runOneTurn({ turn, firstTurn }) {
+async function runOneTurn({ turn, firstTurn: _firstTurn }) {
   const trigger = `${config.triggerPrefix}_${String(turn).padStart(4, "0")}_${Date.now()}`;
   const args = [
     path.join(repoRoot, "scripts", "board-manager-model-exec.mjs"),

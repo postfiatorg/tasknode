@@ -13,10 +13,6 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function safeObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
 export function hiveTaskManagerProvider() {
   return "ambient";
 }
@@ -246,7 +242,7 @@ function mockSelection(sourcePacket = {}) {
       dedup_basis: "Mock mode uses the source dedup index and guardrails after selection.",
       action_output: "Submit the concrete artifact and proof that it was delivered to the named surface.",
       delivery_surface: "task_node",
-      recipient_or_reviewer: "@goodalexander or the current project lead",
+      recipient_or_reviewer: "the configured operator or current project lead",
       escalation_stage: "normal",
       reward_min_pft: Math.min(100, rewardMax),
       reward_max_pft: rewardMax,

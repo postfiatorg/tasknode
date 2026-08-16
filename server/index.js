@@ -1,29 +1,36 @@
 import { installProcessHardening } from "./process-hardening.js";
 import { startChatStreamHeartbeat } from "./chat-stream-heartbeat.js";
-
+import { readValidatedJson as readJson } from "./request-validation.js";
+import * as trustedProxy from "./trusted-proxy.js";
+import {
+  assertStartupSecurity,
+  cookieValue,
+  enforceRateLimit,
+  enforceRoutePolicy,
+  expiredSessionCookie,
+  json,
+  requestIp,
+  requestOrigin,
+  runtimeConfig,
+  runtimeConfigScript,
+  securityHeaders,
+  serveStatic,
+  sessionCookie,
+  writeSse,
+} from "./server-http-boundary.js";
 installProcessHardening();
 
 const [
-  { createReadStream, existsSync },
-  { readFile },
   { createServer },
-  { default: path },
-  { fileURLToPath },
-  { getCachedAppState },
-  { startBackgroundWorkers },
-  {
-    isProductionEnvironment,
-    legacyHostRedirectTarget,
-    moneySeedStartupIssues,
-    productionOriginIssues,
-  },
+  { getCachedAppState, invalidateCachedAppState },
+  { legacyHostRedirectTarget },
   { fetchPftBalance },
   { handlePftlCacheRoute },
   { fetchWalletTransactions },
   {
     authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart, authTelegramAuthorize, chatEstimateStart,
     chatModes, chatSend, chatStreamStart, contextActionStart, contextActions, contextEditSave,
-    contextManifestInk, contextHistoryIpfsFetch, devAuthStatus, readiness, taskRequestIntentStart,
+    contextManifestInk, contextHistoryIpfsFetch, readiness, taskRequestIntentStart,
     usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, userObservabilityClientEvent, walletActionStart, walletActions,
     walletLinkStart, walletLinkVerify,
   },
@@ -31,13 +38,11 @@ const [
   { conversationIdForChatWrite, explicitConversationId },
   {
     conversationIdForSession,
-    destroySession,
-    getLinkedWallet,
-    getSession,
-    runtimeStoreStatus,
     sessionCookieName,
-    sessionTtlSeconds,
   },
+  { destroySession, getSession },
+  { migrateLegacyRuntimeAuthority },
+  { getLinkedWallet },
   {
     deleteChatConversation,
     getChatMessages,
@@ -49,12 +54,6 @@ const [
   { recordChatFailureObservability },
   { chatConversationExistsForAccount },
   { migrateDatabase },
-  {
-    offchainTaskLifecycleDualWriteEnabled,
-    offchainTaskLifecycleEnabled,
-  },
-  { checkRateLimit },
-  { routePolicyForPath, routePolicyRateLimitExtra },
   { observeApiRoute },
   { authWalletStart, authWalletVerify },
   { oauthStateCookieName, responseHeadersForAuthResult },
@@ -81,18 +80,10 @@ const [
   { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole },
   { startRealtimeNotificationListener, subscribeRealtimeEvents },
   { agentOriginForWalletSession },
-  {
-    backgroundWorkerLivenessSelfCheck,
-    startBackgroundWorkerKeepalive,
-  },
+  { startBackgroundWorkerKeepalive },
 ] = await Promise.all([
-  import("node:fs"),
-  import("node:fs/promises"),
   import("node:http"),
-  import("node:path"),
-  import("node:url"),
   import("./app-state.js"),
-  import("./background-workers.js"),
   import("./production-guards.js"),
   import("./pftl-balance.js"),
   import("./pftl-cache-route.js"),
@@ -101,13 +92,13 @@ const [
   import("./chat-router.js"),
   import("./chat-conversation-ids.js"),
   import("./runtime-store.js"),
+  import("./repositories/auth-sessions.js"),
+  import("./repositories/runtime-authority.js"),
+  import("./repositories/account-wallets.js"),
   import("./repositories/chat-billing.js"),
   import("./repositories/user-observability.js"),
   import("./repositories/chat-conversation-lookup.js"),
   import("./db/migrate.js"),
-  import("./offchain-task-lifecycle.js"),
-  import("./rate-limit.js"),
-  import("./route-policies.js"),
   import("./route-observability.js"),
   import("./auth-wallet-login.js"),
   import("./auth-oauth-http.js"),
@@ -137,9 +128,6 @@ const [
   import("./background-worker-liveness.js"),
 ]);
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, "..");
-const distDir = path.join(rootDir, "dist");
 const port = Number(process.env.PORT || 8080);
 const buildId = process.env.VITE_BUILD_ID || process.env.BUILD_ID || "dev";
 const environment = process.env.TASKNODE_ENV || process.env.NODE_ENV || "development";
@@ -153,394 +141,20 @@ function resolveChatWriteConversationId(session, requestedId = "") {
   });
 }
 
-function agentOriginForCurrentWalletSession(session = null, payload = {}) {
-  const linkedWallet = session?.accountId ? getLinkedWallet({ accountId: session.accountId }) : null;
+async function agentOriginForCurrentWalletSession(session = null, payload = {}) {
+  const linkedWallet = session?.accountId ? await getLinkedWallet({ accountId: session.accountId }) : null;
   const walletAddress = linkedWallet?.status === "linked" ? linkedWallet.address || "" : "";
   return agentOriginForWalletSession(session, payload, walletAddress);
 }
 
-const contentTypes = new Map([
-  [".html", "text/html; charset=utf-8"],
-  [".js", "text/javascript; charset=utf-8"],
-  [".css", "text/css; charset=utf-8"],
-  [".json", "application/json; charset=utf-8"],
-  [".svg", "image/svg+xml"],
-  [".ico", "image/x-icon"],
-  [".png", "image/png"],
-  [".jpg", "image/jpeg"],
-  [".jpeg", "image/jpeg"],
-  [".webp", "image/webp"],
-  [".woff2", "font/woff2"],
-]);
-
-function securityHeaders() {
-  const pfdocsFrameOrigin = (() => {
-    try {
-      const origin = new URL(String(process.env.PFDOCS_PUBLIC_ORIGIN || "")).origin;
-      return /^https:\/\//i.test(origin) ? origin : "";
-    } catch {
-      return "";
-    }
-  })();
-  return {
-    "x-content-type-options": "nosniff",
-    "x-frame-options": "DENY",
-    "referrer-policy": "strict-origin-when-cross-origin",
-    "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
-    "content-security-policy": [
-      "default-src 'self'",
-      "script-src 'self' 'wasm-unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
-      "connect-src 'self' https://traffic.postfiat.org https://us.posthog.com https://*.posthog.com wss://relay.primal.net wss://nos.lol wss://relay.damus.io",
-      `frame-src 'self'${pfdocsFrameOrigin ? ` ${pfdocsFrameOrigin}` : ""}`,
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'none'",
-    ].join("; "),
-  };
-}
-
-function json(res, status, body, headers = {}) {
-  const text = JSON.stringify(body);
-  res.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
-    ...securityHeaders(),
-    ...headers,
-  });
-  res.end(text);
-}
-
-function writeSse(res, event, data) {
-  if (res.destroyed || res.writableEnded) return false;
-  res.write(`event: ${event}\n`);
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
-  return true;
-}
-
-async function readJson(req, maxBytes = 16384) {
-  const chunks = [];
-  let total = 0;
-
-  for await (const chunk of req) {
-    total += chunk.length;
-    if (total > maxBytes) {
-      const error = new Error("request_too_large");
-      error.status = 413;
-      throw error;
-    }
-    chunks.push(chunk);
-  }
-
-  if (chunks.length === 0) return {};
-
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch (error) {
-    const parseError = new Error("invalid_json");
-    parseError.status = 400;
-    throw parseError;
-  }
-}
-
-function runtimeConfig() {
-  const taskLifecycleOffchain = offchainTaskLifecycleEnabled();
-  const taskLifecycleDualWrite = offchainTaskLifecycleDualWriteEnabled();
-  const collaborationFlag = (name) => process.env[name] === "true" || (
-    process.env[name] !== "false" && environment !== "production"
-  );
-  return {
-    appName: "tasknodeofficial",
-    buildId,
-    environment,
-    siteOrigin: process.env.VITE_SITE_ORIGIN || process.env.TASKNODE_PUBLIC_URL || "",
-    pftlExplorerUrl: process.env.VITE_PFTL_EXPLORER_URL || process.env.PFTL_EXPLORER_URL || "",
-    pftlWssUrl: process.env.VITE_PFTL_WSS_URL || "",
-    analyticsEnabled: process.env.VITE_ANALYTICS_ENABLED !== "false",
-    posthogHost: process.env.VITE_POSTHOG_HOST || process.env.POSTHOG_UI_HOST || "",
-    posthogKeyPresent: Boolean(process.env.POSTHOG_KEY || process.env.VITE_POSTHOG_KEY),
-    walletUnlockIdleLockMinutes: process.env.TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES || "",
-    collaboration: {
-      docsEnabled: collaborationFlag("TASKNODE_DOCS_ENABLED"),
-      teamEnabled: collaborationFlag("TASKNODE_TEAM_ENABLED"),
-      messagesEnabled: collaborationFlag("TASKNODE_MESSAGES_ENABLED"),
-      pfdocsEditorEnabled: collaborationFlag("TASKNODE_PFDOCS_EDITOR_ENABLED"),
-      docsOdvEnabled: collaborationFlag("TASKNODE_DOCS_ODV_ENABLED"),
-      pfdocsOrigin: process.env.PFDOCS_PUBLIC_ORIGIN || process.env.VITE_PFDOCS_ORIGIN || "",
-      pfdocsBridgePath: process.env.PFDOCS_TASKNODE_BRIDGE_PATH || "/tasknode/",
-      nostrOptional: true,
-    },
-    taskLifecycle: {
-      offchainEnabled: taskLifecycleOffchain,
-      dualWrite: taskLifecycleDualWrite,
-      directOffchain: taskLifecycleOffchain && !taskLifecycleDualWrite,
-      writeSource: taskLifecycleOffchain
-        ? taskLifecycleDualWrite
-          ? "direct_write+pftl_pointer"
-          : "direct_write"
-        : "pftl_pointer",
-    },
-  };
-}
-
-function runtimeConfigScript(res) {
-  const script = `window.__TASKNODE_CONFIG__ = ${JSON.stringify(runtimeConfig())};\n`;
-  res.writeHead(200, {
-    "content-type": "text/javascript; charset=utf-8",
-    "cache-control": "no-store",
-    ...securityHeaders(),
-  });
-  res.end(script);
-}
-
-function cookieValue(req, name) {
-  const cookieHeader = req.headers.cookie || "";
-  const pairs = cookieHeader.split(";").map((item) => item.trim()).filter(Boolean);
-
-  for (const pair of pairs) {
-    const index = pair.indexOf("=");
-    if (index === -1) continue;
-    const key = pair.slice(0, index);
-    if (key !== name) continue;
-    try {
-      return decodeURIComponent(pair.slice(index + 1));
-    } catch {
-      return "";
-    }
-  }
-
-  return "";
-}
-
-function currentSession(req) {
-  return getSession(cookieValue(req, sessionCookieName));
-}
-
-function secureCookie(req) {
-  return (
-    req.headers["x-forwarded-proto"] === "https" ||
-    (process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "").startsWith("https://")
-  );
-}
-
-function requestIp(req) {
-  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  const raw = forwarded || req.socket?.remoteAddress || "";
-  return raw.startsWith("::ffff:") ? raw.slice("::ffff:".length) : raw;
-}
-
-function rateLimitKey(req, route, session = null, extra = "") {
-  return [
-    route,
-    session?.accountId || "signed_out",
-    requestIp(req) || "unknown_ip",
-    String(extra || "").slice(0, 120),
-  ].join(":");
-}
-
-function enforceRateLimit(req, res, { route, session = null, extra = "", limit, windowMs }) {
-  const result = checkRateLimit({
-    key: rateLimitKey(req, route, session, extra),
-    limit,
-    windowMs,
-  });
-  if (result.allowed) return false;
-
-  json(
-    res,
-    429,
-    {
-      ok: false,
-      error: "rate_limited",
-      route,
-      message: "Too many requests. Try again after the retry window.",
-      retryAfterSeconds: result.retryAfterSeconds,
-    },
-    {
-      "retry-after": String(result.retryAfterSeconds),
-      "x-ratelimit-limit": String(result.limit),
-      "x-ratelimit-remaining": String(result.remaining),
-    }
-  );
-  return true;
-}
-
-function enforceRoutePolicy(req, url, res, session) {
-  const policy = routePolicyForPath(url.pathname);
-  if (!policy) return false;
-
-  if (!policy.methods.includes(req.method)) {
-    json(res, 405, {
-      ok: false,
-      error: `${policy.id}_method_not_allowed`,
-      route: policy.id,
-      allowedMethods: policy.methods,
-      message: `${policy.id} accepts ${policy.methods.join(" or ")} requests.`,
-    }, { allow: policy.methods.join(", ") });
-    return true;
-  }
-
-  if (policy.rateLimit) {
-    return enforceRateLimit(req, res, {
-      route: policy.id,
-      session,
-      extra: routePolicyRateLimitExtra(policy, url.pathname),
-      limit: policy.rateLimit.limit,
-      windowMs: policy.rateLimit.windowMs,
-    });
-  }
-
-  return false;
-}
-
-function sessionCookie(req, sessionId) {
-  const secure = secureCookie(req) ? "; Secure" : "";
-  return `${sessionCookieName}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${sessionTtlSeconds}${secure}`;
-}
-
-function expiredSessionCookie(req) {
-  const secure = secureCookie(req) ? "; Secure" : "";
-  return `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
-}
-
-function requestOrigin(req) {
-  const forwardedHost = req.headers["x-forwarded-host"];
-  const host = forwardedHost || req.headers.host;
-  const proto = req.headers["x-forwarded-proto"] || (secureCookie(req) ? "https" : "http");
-  if (!host) return "";
-  return `${proto}://${host}`;
-}
-
-function isLocalHostname(hostname = "") {
-  const normalized = String(hostname || "").toLowerCase();
-  return (
-    normalized === "localhost" ||
-    normalized === "127.0.0.1" ||
-    normalized === "::1" ||
-    normalized.endsWith(".localhost")
-  );
-}
-
-function configuredPublicOrigin() {
-  return process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "";
-}
-
-function isPublicOrigin(value = "") {
-  if (!value) return false;
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol === "https:") return true;
-    return !isLocalHostname(parsed.hostname);
-  } catch {
-    return false;
-  }
-}
-
-function assertStartupSecurity() {
-  const publicOrigin = configuredPublicOrigin();
-  if (!isPublicOrigin(publicOrigin)) return;
-
-  const devAuth = devAuthStatus();
-  if (devAuth.enabled) {
-    throw new Error(
-      "refusing_public_startup_with_dev_auth_enabled: set TASKNODE_ENV=production and TASKNODE_DEV_AUTH_ENABLED=false"
-    );
-  }
-
-  const store = runtimeStoreStatus();
-  const durableStoreDeclared = process.env.TASKNODE_RUNTIME_STORE_DURABLE === "true";
-  if (
-    (!store.explicit || store.ephemeralDefault || !durableStoreDeclared) &&
-    process.env.TASKNODE_ALLOW_PUBLIC_EPHEMERAL_STORE !== "true"
-  ) {
-    throw new Error(
-      "refusing_public_startup_with_ephemeral_runtime_store: configure durable auth/account storage and TASKNODE_RUNTIME_STORE_DURABLE=true, or set an explicit reviewed override"
-    );
-  }
-
-  const originIssues = productionOriginIssues();
-  if (originIssues.length > 0) {
-    const summary = originIssues.map((issue) => issue.code).join(",");
-    if (isProductionEnvironment()) {
-      throw new Error(
-        `refusing_public_startup_with_origin_mismatch: ${summary}. ${originIssues.map((issue) => issue.detail).join("; ")}`
-      );
-    }
-    for (const issue of originIssues) {
-      console.warn(`[startup] origin config mismatch: ${issue.code}: ${issue.detail}`);
-    }
-  }
-
-  for (const issue of moneySeedStartupIssues()) {
-    console.warn(`[startup] money seed config: ${issue.code}: ${issue.detail}`);
-  }
-}
-
-function isInsideDist(filePath) {
-  const relative = path.relative(distDir, filePath);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
-function isStaticAssetRequest(pathname = "") {
-  if (pathname.startsWith("/assets/")) return true;
-  return Boolean(path.extname(pathname));
-}
-
-function staticNotFound(res, pathname = "") {
-  res.writeHead(404, {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
-    ...securityHeaders(),
-  });
-  res.end(JSON.stringify({
-    ok: false,
-    error: "static_asset_not_found",
-    path: pathname,
-  }));
-}
-
-async function serveStatic(url, res) {
-  const requestPath = url.pathname;
-  const decoded = decodeURIComponent(requestPath);
-  const relative = decoded === "/" ? "/index.html" : decoded;
-  const filePath = path.normalize(path.join(distDir, relative));
-
-  if (!isInsideDist(filePath) || !existsSync(filePath)) {
-    if (!isInsideDist(filePath) || isStaticAssetRequest(url.pathname)) {
-      staticNotFound(res, url.pathname);
-      return;
-    }
-
-    const fallback = path.join(distDir, "index.html");
-    if (!existsSync(fallback)) {
-      json(res, 404, { ok: false, error: "build_not_found" });
-      return;
-    }
-    const html = await readFile(fallback);
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      ...securityHeaders(),
-    });
-    res.end(html);
-    return;
-  }
-
-  const ext = path.extname(filePath);
-  res.writeHead(200, {
-    "content-type": contentTypes.get(ext) || "application/octet-stream",
-    "cache-control": ext === ".html" ? "no-store" : "public, max-age=31536000, immutable",
-    ...securityHeaders(),
-  });
-  createReadStream(filePath).pipe(res);
-}
-
 async function routeApi(req, url, res) {
   const sessionId = cookieValue(req, sessionCookieName);
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    res.once("finish", () => {
+      if (res.statusCode < 400) invalidateCachedAppState(session);
+    });
+  }
   observeApiRoute({ req, res, url, session });
   let statePromise = null;
   const getState = () => {
@@ -551,7 +165,7 @@ async function routeApi(req, url, res) {
     return statePromise;
   };
   const parts = url.pathname.split("/").filter(Boolean);
-  if (enforceRoutePolicy(req, url, res, session)) return true;
+  if (await enforceRoutePolicy(req, url, res, session)) return true;
 
   if (url.pathname === "/api/app-state") {
     json(res, 200, await getState());
@@ -573,7 +187,7 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/auth/dev/start") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
-    const result = authDevStart(payload, req.method);
+    const result = await authDevStart(payload, req.method);
     const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
     json(res, result.status, result.body, headers);
     return true;
@@ -591,7 +205,7 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/auth/email/verify") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
-    const result = authEmailVerify(payload, req.method);
+    const result = await authEmailVerify(payload, req.method);
     const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
     json(res, result.status, result.body, headers);
     return true;
@@ -600,14 +214,14 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/auth/wallet/start") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const address = String(payload?.address || "").trim();
-    if (enforceRateLimit(req, res, {
+    if (await enforceRateLimit(req, res, {
       route: "auth_wallet_start_address",
       session: null,
       extra: address || "missing_address",
       limit: 5,
       windowMs: 10 * 60_000,
     })) return true;
-    const result = authWalletStart(payload, req.method);
+    const result = await authWalletStart(payload, req.method);
     json(res, result.status, result.body);
     return true;
   }
@@ -615,7 +229,7 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/auth/wallet/verify") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const address = String(payload?.address || "").trim();
-    if (enforceRateLimit(req, res, {
+    if (await enforceRateLimit(req, res, {
       route: "auth_wallet_verify_address",
       session: null,
       extra: address || "missing_address",
@@ -639,7 +253,7 @@ async function routeApi(req, url, res) {
       return true;
     }
 
-    destroySession(cookieValue(req, sessionCookieName));
+    await destroySession(cookieValue(req, sessionCookieName));
     json(
       res,
       200,
@@ -674,7 +288,7 @@ async function routeApi(req, url, res) {
       return true;
     }
 
-    const result = authTelegramAuthorize(Object.fromEntries(url.searchParams.entries()), {
+    const result = await authTelegramAuthorize(Object.fromEntries(url.searchParams.entries()), {
       origin: requestOrigin(req),
       oauthState: cookieValue(req, oauthStateCookieName("telegram")),
     });
@@ -684,7 +298,7 @@ async function routeApi(req, url, res) {
   }
 
   if (parts[0] === "api" && parts[1] === "auth" && parts[2] === "start" && parts[3]) {
-    const result = authStart(parts[3], {
+    const result = await authStart(parts[3], {
       origin: requestOrigin(req),
       redirectPath: url.searchParams.get("redirect") || "/",
       proof: url.searchParams.get("proof") || "",
@@ -719,7 +333,7 @@ async function routeApi(req, url, res) {
   }
 
   if (parts[0] === "api" && parts[1] === "auth" && parts[3] === "start") {
-    const result = authStart(parts[2], {
+    const result = await authStart(parts[2], {
       origin: requestOrigin(req),
       redirectPath: url.searchParams.get("redirect") || "/",
       proof: url.searchParams.get("proof") || "",
@@ -888,7 +502,7 @@ async function routeApi(req, url, res) {
     const started = await chatStreamStart(
       { ...payload, accountId: session?.accountId || "", conversationId },
       req.method,
-      { agentOrigin: agentOriginForCurrentWalletSession(session, payload) }
+      { agentOrigin: await agentOriginForCurrentWalletSession(session, payload) }
     );
 
     if (!started.stream) {
@@ -996,7 +610,7 @@ async function routeApi(req, url, res) {
     const result = await chatSend(
       { ...payload, accountId: session?.accountId || "", conversationId },
       req.method,
-      { agentOrigin: agentOriginForCurrentWalletSession(session, payload) }
+      { agentOrigin: await agentOriginForCurrentWalletSession(session, payload) }
     );
     json(res, result.status, result.body);
     return true;
@@ -1029,7 +643,7 @@ async function routeApi(req, url, res) {
       return true;
     }
 
-    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const linkedWallet = await getLinkedWallet({ accountId: session.accountId });
     if (linkedWallet.status !== "linked" || !linkedWallet.address) {
       json(res, 409, {
         ok: false,
@@ -1056,7 +670,7 @@ async function routeApi(req, url, res) {
       return true;
     }
 
-    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const linkedWallet = await getLinkedWallet({ accountId: session.accountId });
     if (linkedWallet.status !== "linked" || !linkedWallet.address) {
       json(res, 409, {
         ok: false,
@@ -1080,7 +694,7 @@ async function routeApi(req, url, res) {
       json(res, 405, { ok: false, error: "method_not_allowed" });
       return true;
     }
-    const linkedWallet = session?.accountId ? getLinkedWallet({ accountId: session.accountId }) : null;
+    const linkedWallet = session?.accountId ? await getLinkedWallet({ accountId: session.accountId }) : null;
     const subscribed = subscribeRealtimeEvents({
       req,
       res,
@@ -1119,7 +733,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/wallet/link/start") {
-    const result = walletLinkStart(req.method, session);
+    const result = await walletLinkStart(req.method, session);
     json(res, result.status, result.body);
     return true;
   }
@@ -1264,7 +878,7 @@ const server = createServer((req, res) => {
   }
 
   const legacyRedirect = legacyHostRedirectTarget({
-    host: req.headers["x-forwarded-host"] || req.headers.host || "",
+    host: trustedProxy.requestHost(req),
     method: req.method,
     pathname: url.pathname,
     search: url.search,
@@ -1317,9 +931,17 @@ const processRole = tasknodeProcessRole();
 const httpEnabled = shouldStartHttpServer(processRole);
 const backgroundWorkersEnabled = shouldStartBackgroundWorkers(processRole);
 
+if (backgroundWorkersEnabled) {
+  throw new Error(`web_entry_rejects_worker_role:${processRole}. Use server/worker-entry.js for background workers.`);
+}
+if (!httpEnabled) {
+  throw new Error(`web_entry_requires_web_role:${processRole}`);
+}
+
 if (httpEnabled) assertStartupSecurity();
 try {
   await migrateDatabase();
+  if (httpEnabled) await migrateLegacyRuntimeAuthority();
 } catch (error) {
   if (process.env.TASKNODE_FLY_DEV_DATA_BRIDGE === "true") {
     throw new Error(
@@ -1328,15 +950,7 @@ try {
   }
   throw error;
 }
-const backgroundStartup = backgroundWorkersEnabled ? startBackgroundWorkers() : null;
-const liveness = startBackgroundWorkerKeepalive();
-if (backgroundWorkersEnabled && !httpEnabled) {
-  console.log("background_worker_liveness_self_check", JSON.stringify(backgroundWorkerLivenessSelfCheck({
-    role: processRole,
-    startup: backgroundStartup,
-    liveness,
-  })));
-}
+startBackgroundWorkerKeepalive();
 if (httpEnabled) {
   startRealtimeNotificationListener().catch((error) => {
     console.warn("realtime_notification_listener_start_failed", { error: error?.message || String(error) });
@@ -1344,8 +958,10 @@ if (httpEnabled) {
 }
 
 if (httpEnabled) {
-  server.listen(port, "0.0.0.0", () => {
-    console.log(`tasknodeofficial listening on :${port} role=${processRole}`);
+  const bindHost = process.env.TASKNODE_BIND_HOST
+    || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
+  server.listen(port, bindHost, () => {
+    console.log(`tasknodeofficial listening on ${bindHost}:${port} role=${processRole}`);
   });
 } else {
   console.log(`tasknodeofficial background process started role=${processRole}`);

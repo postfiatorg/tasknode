@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, isUniqueViolation, query } from "../db/pool.js";
 import { getAccountWalletCloud } from "../account-wallet-cloud.js";
-import { getAccountIdentityProfile } from "../runtime-store.js";
+import { getAccountIdentityProfile } from "./account-profiles.js";
 import { listMachineOperatorDisclosures } from "./capability-profiles.js";
 import { publicNetworkBadgesForAccount } from "./network-badges.js";
 import { countProfileNfts, getPublicProfileHeroNft, listProfileNfts } from "./profile-nfts.js";
@@ -435,6 +435,7 @@ export function publicProfileFromParts({
   accountId = "",
   input = null,
   heroNft = null,
+  identityProfile = null,
   snapshot = null,
   nfts = [],
   nftTotal = null,
@@ -455,22 +456,22 @@ export function publicProfileFromParts({
     ? [profileHeroNft, ...nftRows.slice(0, 239)]
     : nftRows;
   const identityAccountId = safeText(accountId || packet.account_id, 180);
-  const identityProfile = getAccountIdentityProfile({ accountId: identityAccountId }) || {};
-  const publicAliases = Array.isArray(identityProfile.publicAliases)
-    ? identityProfile.publicAliases
+  const resolvedIdentityProfile = identityProfile || {};
+  const publicAliases = Array.isArray(resolvedIdentityProfile.publicAliases)
+    ? resolvedIdentityProfile.publicAliases
     : Array.isArray(packet.identity?.public_aliases)
       ? packet.identity.public_aliases
       : [];
-  const publicTrustBadges = Array.isArray(identityProfile.publicTrustBadges)
-    ? identityProfile.publicTrustBadges
+  const publicTrustBadges = Array.isArray(resolvedIdentityProfile.publicTrustBadges)
+    ? resolvedIdentityProfile.publicTrustBadges
     : Array.isArray(packet.identity?.public_trust_badges)
       ? packet.identity.public_trust_badges
       : [];
   return {
     identity: {
       accountId: identityAccountId,
-      hiveHandle: safeText(identityProfile.hiveHandle || packet.identity?.hive_handle, 80),
-      displayName: safeText(identityProfile.displayName || packet.identity?.display_name, 120),
+      hiveHandle: safeText(resolvedIdentityProfile.hiveHandle || packet.identity?.hive_handle, 80),
+      displayName: safeText(resolvedIdentityProfile.displayName || packet.identity?.display_name, 120),
       publicAliases: publicAliases.map((alias) => ({
         provider: safeText(alias.provider, 40),
         label: safeText(alias.label, 80),
@@ -611,7 +612,7 @@ export async function getCompletedPublicProfileSnapshotByFingerprint({
 export async function getPublicProfile({ accountId } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("profile_public_account_required");
-  const [input, snapshot, nfts, nftTotal, heroNft, networkBadgeState] = await Promise.all([
+  const [input, snapshot, nfts, nftTotal, heroNft, networkBadgeState, identityProfile] = await Promise.all([
     buildPublicProfileSnapshotInput({ accountId: normalizedAccount }),
     getLatestPublicProfileSnapshot({ accountId: normalizedAccount }),
     listProfileNfts({
@@ -622,12 +623,14 @@ export async function getPublicProfile({ accountId } = {}) {
     countProfileNfts({ accountId: normalizedAccount, publicOnly: true }),
     getPublicProfileHeroNft({ accountId: normalizedAccount }),
     publicNetworkBadgesForAccount({ accountId: normalizedAccount }).catch(() => ({ badges: [] })),
+    getAccountIdentityProfile({ accountId: normalizedAccount }),
   ]);
   const operatorDisclosures = await listMachineOperatorDisclosures({ accountIds: [normalizedAccount] }).catch(() => ({}));
   return publicProfileFromParts({
     accountId: normalizedAccount,
     input,
     heroNft,
+    identityProfile,
     nftTotal,
     snapshot,
     nfts,

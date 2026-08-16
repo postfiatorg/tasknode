@@ -7,7 +7,7 @@ const promptPath = "hive/task_accounting_harvester_v1.md";
 const promptVersion = "task_accounting_harvester_v1";
 const allowedActionStartPattern = /^(Open|Create|Add|Update|Implement|Publish|Write|Run|Configure|Remove|Merge|File|Investigate)\b/;
 const forbiddenHandoffPattern =
-  /\b(route|send|share|escalate)\b.{0,40}\b(to|with|owner|team|personnel|operator|project lead|goodalexander)\b/i;
+  /\b(route|send|share|escalate)\b.{0,40}\b(to|with|owner|team|personnel|operator|project lead)\b/i;
 const vagueReferencePattern =
   /\b(the|this) (report|memo|submission|friction report|stress test summary)\b|\b(reported|documented|submitted|proposed) (issues|gaps|findings|fixes|states|changes)\b|\b(three|3|two|2|2-5|2 to 5) (issues|gaps|fixes|changes|states)\b/i;
 const evidenceChasePattern =

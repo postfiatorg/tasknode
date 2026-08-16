@@ -1,12 +1,13 @@
 import { deleteAccountDatabaseData } from "./account-deletion-db.js";
+import { exportAccountDatabaseData } from "./account-export.js";
 import { deletedAccountArchiveId } from "./account-deletion-state.js";
 import {
   deleteAccountRuntimeData,
-  getAccountDeletionAuditSnapshot,
-  getEthereumDepositAccount,
-  getLinkedWallet,
-  unlinkProviderFromAccount,
+  exportAccountRuntimeData,
 } from "./runtime-store.js";
+import { getAccountDeletionAuditSnapshot, unlinkProviderFromAccount } from "./repositories/accounts.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
+import { getEthereumDepositAccount } from "./repositories/ethereum-deposit-accounts.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 
 function safeText(value = "", max = 500) {
@@ -81,7 +82,7 @@ export async function handleAccountRoute({
       });
       return true;
     }
-    const result = unlinkProviderFromAccount({ accountId: session.accountId, provider });
+    const result = await unlinkProviderFromAccount({ accountId: session.accountId, provider });
     if (!result.ok) {
       const messages = {
         provider_unlink_unsupported: "This account type cannot be unlinked here.",
@@ -116,6 +117,30 @@ export async function handleAccountRoute({
     return true;
   }
 
+  if (url.pathname === "/api/account/export") {
+    if (req.method !== "GET") {
+      json(res, 405, { ok: false, error: "account_export_method_not_allowed", message: "Account export requires GET." });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, { ok: false, error: "account_export_login_required", message: "Sign in before exporting account data." });
+      return true;
+    }
+    const generatedAt = new Date().toISOString();
+    const database = await exportAccountDatabaseData({ accountId: session.accountId });
+    const runtime = exportAccountRuntimeData({ accountId: session.accountId });
+    json(res, 200, {
+      schema: "tasknode.account-export.v1",
+      generatedAt,
+      accountId: session.accountId,
+      runtime,
+      database,
+    }, {
+      "content-disposition": `attachment; filename="tasknode-export-${generatedAt.slice(0, 10)}.json"`,
+    });
+    return true;
+  }
+
   if (url.pathname !== "/api/account/delete") return false;
 
   if (req.method !== "POST") {
@@ -146,13 +171,13 @@ export async function handleAccountRoute({
   }
 
   const accountId = session.accountId;
-  const linkedWallet = getLinkedWallet({ accountId });
-  const depositAccount = getEthereumDepositAccount({ accountId });
+  const linkedWallet = await getLinkedWallet({ accountId });
+  const depositAccount = await getEthereumDepositAccount({ accountId });
   const walletAddress = linkedWallet?.address || "";
   const ethereumDepositAddress = depositAccount?.address || "";
-  const accountSnapshot = getAccountDeletionAuditSnapshot({ accountId });
+  const accountSnapshot = await getAccountDeletionAuditSnapshot({ accountId });
   const archiveId = deletedAccountArchiveId(accountId);
-  const reason = String(payload?.reason || "user_requested_account_delete").slice(0, 240);
+  const reason = "user_requested_account_delete";
 
   try {
     const database = await deleteAccountDatabaseData({
@@ -185,7 +210,6 @@ export async function handleAccountRoute({
         ok: true,
         action: "account_delete",
         message: "Account deleted.",
-        accountId,
         archiveId,
         removed: runtime.removed,
         database,

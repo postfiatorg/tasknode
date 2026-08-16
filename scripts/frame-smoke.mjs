@@ -14,7 +14,7 @@ const debugPort = Number(process.env.FRAME_CHROME_PORT || 9321);
 const screenshotDir =
   process.env.FRAME_SCREENSHOT_DIR === "0"
     ? ""
-    : process.env.FRAME_SCREENSHOT_DIR || "/tmp/tasknodeofficial-frame-smoke";
+    : process.env.FRAME_SCREENSHOT_DIR || join(tmpdir(), "tasknodeofficial-frame-smoke");
 const frameEmail = `frame-smoke-${randomBytes(4).toString("hex")}@tasknode.local`;
 const testMnemonic = generateMnemonic(wordlist, 256);
 const testWalletAddress = deriveWalletSummary(testMnemonic).address;

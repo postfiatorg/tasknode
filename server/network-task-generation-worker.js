@@ -6,7 +6,7 @@ import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 import { buildRequestBundle } from "./task-request.js";
 import { scheduleTaskGenerationQueue } from "./task-generation-worker.js";
 import { getTaskRequestByRequestId, upsertTaskRequest } from "./repositories/task-requests.js";
-import { getLinkedWallet } from "./runtime-store.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { query } from "./db/pool.js";
 import {
   claimNetworkTaskGenerationJobs,
@@ -128,25 +128,9 @@ export async function createTaskRequestForNetworkJob(job = {}) {
   // Route to the candidate's CURRENT linked wallet. Candidate rows can carry
   // stale wallets from historic profile data; a task offered to a wallet the
   // user no longer follows is invisible in their wallet-scoped task UI.
-  // Resolution order: durable Postgres mirror (visible on every machine),
-  // then the local runtime store (authoritative on the app machine only —
-  // worker machines have no volume, which is why the mirror exists).
-  let linkedWallet = null;
-  try {
-    const mirror = await query(
-      `SELECT wallet_address FROM account_linked_wallets WHERE account_id = $1 AND status = 'linked'`,
-      [safeText(job.candidate_account_id, 180)]
-    );
-    if (mirror.rows[0]?.wallet_address) {
-      linkedWallet = { status: "linked", address: mirror.rows[0].wallet_address };
-    }
-  } catch {
-    linkedWallet = null;
-  }
-  if (!linkedWallet) {
-    const local = getLinkedWallet({ accountId: job.candidate_account_id });
-    if (local?.status === "linked" && local.address) linkedWallet = local;
-  }
+  // Production resolution is the durable wallet repository shared by every
+  // process; the repository itself supplies the explicit no-database adapter.
+  const linkedWallet = await getLinkedWallet({ accountId: job.candidate_account_id });
   if (
     linkedWallet?.status === "linked" &&
     linkedWallet.address &&

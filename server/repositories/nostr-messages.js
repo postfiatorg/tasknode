@@ -1,6 +1,6 @@
 import { decode as decodeNip19 } from "nostr-tools/nip19";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
-import { listDiscoverableAccountWalletIdentities } from "../runtime-store.js";
+import { listDiscoverableAccountWalletIdentities } from "./account-profiles.js";
 import {
   auditCollaborationEvent,
   consumeCollaborationProof,
@@ -62,8 +62,8 @@ export function normalizeNostrRelays(relays = []) {
     .slice(0, 5);
 }
 
-function canonicalNostrIdentityForAccount(accountId = "") {
-  const identity = docsIdentityForAccount(accountId);
+async function canonicalNostrIdentityForAccount(accountId = "") {
+  const identity = await docsIdentityForAccount(accountId);
   const name = taskNodeNostrName(identity.hiveHandle);
   if (!name) return null;
   return { ...identity, nostrName: name, nip05: taskNodeNostrAddress(name) };
@@ -89,7 +89,7 @@ export async function bindNostrIdentity({
   const pubkey = safeText(nostrPubkeyHex, 64).toLowerCase();
   const normalizedNpub = safeText(npub, 120).toLowerCase();
   const normalizedRelays = normalizeNostrRelays(preferredRelays);
-  const taskNodeIdentity = canonicalNostrIdentityForAccount(accountId);
+  const taskNodeIdentity = await canonicalNostrIdentityForAccount(accountId);
   if (!taskNodeIdentity) return { ok: false, status: 409, error: "nostr_tasknode_handle_required" };
   if (!taskNodeIdentity.discoverable) {
     return { ok: false, status: 409, error: "nostr_discoverable_profile_required" };
@@ -192,7 +192,7 @@ export async function getNostrIdentity({ accountId = "", viewerAccountId = "" } 
 
 export async function getNostrMessagingBootstrap({ accountId = "" } = {}) {
   ensureDatabase();
-  const identity = canonicalNostrIdentityForAccount(accountId);
+  const identity = await canonicalNostrIdentityForAccount(accountId);
   const heroNft = identity ? publicProfileAvatar(await getPublicProfileHeroNft({ accountId })) : null;
   return {
     ok: true,
@@ -248,7 +248,7 @@ export async function getNostrWellKnownDirectory({ name = "" } = {}) {
   const rawName = safeText(name, 80);
   const requestedName = taskNodeNostrName(rawName);
   if (rawName && !requestedName) return { names: {}, relays: {}, profiles: {} };
-  const discoverable = listDiscoverableAccountWalletIdentities()
+  const discoverable = (await listDiscoverableAccountWalletIdentities())
     .filter((identity) => taskNodeNostrName(identity.hiveHandle))
     .filter((identity) => !requestedName || taskNodeNostrName(identity.hiveHandle) === requestedName);
   if (!discoverable.length) return { names: {}, relays: {}, profiles: {} };

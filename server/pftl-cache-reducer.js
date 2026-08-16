@@ -5,7 +5,6 @@ import { importTaskReplayReceipt } from "./repositories/tasks.js";
 import { databaseEnabled, query, transaction } from "./db/pool.js";
 import {
   decryptTasknodeServicePayload,
-  tasknodeServiceIdentityFromEnv,
 } from "./task-payloads.js";
 import { taskIsTerminal } from "../shared/task-lifecycle.js";
 

@@ -125,17 +125,6 @@ function identityKeys(record) {
   ].filter(Boolean);
 }
 
-function entryKey(entry) {
-  return safeText(entry.walletAddress || entry.accountId || entry.contributorKey || entry.handle).toLowerCase();
-}
-
-function contributorLabel(entry) {
-  if (entry.handle) return `@${entry.handle}`;
-  if (entry.walletAddress) return entry.walletAddress;
-  if (entry.accountId) return entry.accountId;
-  return entry.contributorKey;
-}
-
 function allocationStatus(allocation) {
   return normalizeKey(allocation.status || allocation.routingDecision || allocation.state, "unknown");
 }

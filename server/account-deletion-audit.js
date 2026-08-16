@@ -41,6 +41,16 @@ export function accountDeletionActorHash(actorSessionId = "") {
   return value ? `session_${digest(value).slice(0, 24)}` : "";
 }
 
+export function accountDeletionAccountHash(accountId = "") {
+  const value = String(accountId || "").trim();
+  return value ? stableId(`account:${value}`, "identity") : "";
+}
+
+export function accountDeletionWalletHash(walletAddress = "") {
+  const value = normalizedWallet(walletAddress).toLowerCase();
+  return value ? stableId(`wallet:${value}`, "identity") : "";
+}
+
 export function accountDeletionFaucetGuardEnabled(env = process.env) {
   const raw = String(env.TASKNODE_DELETION_FAUCET_GUARD_ENABLED ?? "true").trim().toLowerCase();
   return !["0", "false", "off", "disabled", "no"].includes(raw);
@@ -138,18 +148,24 @@ export function buildAccountDeletionAuditRecord({
     : accountDeletionAuditSnapshot(account);
   return {
     id: `acct_delete_${randomUUID()}`,
-    accountId: String(accountId || "").trim(),
+    accountId: accountDeletionAccountHash(accountId),
     archiveId: String(archiveId || "").trim(),
-    reason: String(reason || "user_requested_account_delete").slice(0, 240),
+    reason: String(reason || "").trim() === "operator_requested_account_delete"
+      ? "operator_requested_account_delete"
+      : "user_requested_account_delete",
     deletedAt: now,
-    walletAddress: normalizedWallet(walletAddress),
-    ethereumDepositAddress: normalizedWallet(ethereumDepositAddress),
+    walletAddress: accountDeletionWalletHash(walletAddress),
+    ethereumDepositAddress: accountDeletionWalletHash(ethereumDepositAddress),
     providerIdentityHashes: snapshot.providerIdentityHashes,
-    providers: snapshot.providers,
+    providers: snapshot.providers.map((provider) => ({
+      provider: String(provider?.provider || "").trim().toLowerCase(),
+      providerUserIdHash: String(provider?.providerUserIdHash || "").trim(),
+    })),
     primaryEmailHash: snapshot.primaryEmailHash,
     actorSessionHash: accountDeletionActorHash(actorSessionId),
     metadata: {
-      profile: snapshot.profile,
+      schemaVersion: 2,
+      retainedPurpose: "fraud_prevention_and_financial_record_integrity",
     },
   };
 }
@@ -159,8 +175,12 @@ export function publicAccountDeletionAudit(row = null, input = {}) {
   const providerIdentityHashes = textArray(row.provider_identity_hashes || row.providerIdentityHashes);
   const inputHashes = new Set(textArray(input.providerIdentityHashes));
   const wallet = normalizedWallet(input.walletAddress);
+  const walletHash = accountDeletionWalletHash(wallet);
   let matchReason = "account_deleted";
-  if (wallet && [row.wallet_address, row.ethereum_deposit_address, row.walletAddress, row.ethereumDepositAddress].some((item) => normalizedWallet(item).toLowerCase() === wallet.toLowerCase())) {
+  if (wallet && [row.wallet_address, row.ethereum_deposit_address, row.walletAddress, row.ethereumDepositAddress].some((item) => {
+    const stored = normalizedWallet(item);
+    return stored === walletHash || stored.toLowerCase() === wallet.toLowerCase();
+  })) {
     matchReason = "wallet_deleted";
   } else if (providerIdentityHashes.some((hash) => inputHashes.has(hash))) {
     matchReason = "provider_identity_deleted";
@@ -169,7 +189,6 @@ export function publicAccountDeletionAudit(row = null, input = {}) {
   }
   return {
     id: row.id,
-    accountId: row.account_id || row.accountId || "",
     archiveId: row.archive_id || row.archiveId || "",
     deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : row.deletedAt || null,
     reason: row.reason || "",
@@ -183,12 +202,17 @@ export function findRuntimeBlockingAccountDeletionAudit({ state = {}, accountId 
 
   const rows = Array.isArray(state.accountDeletionAudit) ? state.accountDeletionAudit : [];
   const wallet = normalizedWallet(walletAddress).toLowerCase();
+  const walletHash = accountDeletionWalletHash(wallet);
+  const accountHash = accountDeletionAccountHash(accountId);
   const identitySet = new Set(textArray(providerIdentityHashes));
   return rows
     .filter((row) => {
       if (!row) return false;
-      if (accountId && row.accountId === accountId) return true;
-      if (wallet && [row.walletAddress, row.ethereumDepositAddress].some((item) => normalizedWallet(item).toLowerCase() === wallet)) return true;
+      if (accountId && (row.accountId === accountId || row.accountId === accountHash)) return true;
+      if (wallet && [row.walletAddress, row.ethereumDepositAddress].some((item) => {
+        const stored = normalizedWallet(item);
+        return stored === walletHash || stored.toLowerCase() === wallet;
+      })) return true;
       if (emailHash && row.primaryEmailHash === emailHash) return true;
       return textArray(row.providerIdentityHashes).some((hash) => identitySet.has(hash));
     })
@@ -243,12 +267,12 @@ export async function findBlockingAccountDeletionFaucetAudit({
   const filters = [];
   const params = [];
   if (accountId) {
-    params.push(accountId);
+    params.push(accountDeletionAccountHash(accountId));
     filters.push(`account_id = $${params.length}`);
   }
   if (walletAddress) {
-    params.push(normalizedWallet(walletAddress));
-    filters.push(`(wallet_address = $${params.length} OR ethereum_deposit_address = $${params.length})`);
+    params.push([normalizedWallet(walletAddress), accountDeletionWalletHash(walletAddress)]);
+    filters.push(`(wallet_address = ANY($${params.length}::text[]) OR ethereum_deposit_address = ANY($${params.length}::text[]))`);
   }
   if (hashes.length > 0) {
     params.push(hashes);

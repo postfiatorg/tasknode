@@ -1,7 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, ChevronRight, RefreshCw, Search } from "lucide-react";
 import { requestJson } from "../../api";
-import { DOC_GROUPS, DOC_PAGES, SYSTEM_STATUS_DOC_LINKS } from "./docs-content";
+import {
+  DOC_GROUPS,
+  DOC_PAGES,
+  SYSTEM_STATUS_DOC_LINKS,
+  loadDocMarkdown,
+  loadDocSearchIndex,
+} from "./docs-content";
 import { DocsDiagram } from "./DocsDiagram";
 import "./docs.css";
 
@@ -11,10 +17,13 @@ export function DocsView() {
   const [selectedSlug, setSelectedSlug] = useState(() => docSlugFromLocation());
   const [pendingAnchor, setPendingAnchor] = useState("");
   const [query, setQuery] = useState("");
+  const [markdownState, setMarkdownState] = useState({ slug: "", markdown: "", loading: true, error: "" });
+  const [searchIndex, setSearchIndex] = useState(null);
+  const [contentReload, setContentReload] = useState(0);
   const activeNavButtonRef = useRef(null);
   const contentRef = useRef(null);
   const selectedPage = DOC_PAGES.find((page) => page.slug === selectedSlug) || DOC_PAGES[0];
-  const filteredGroups = useMemo(() => filterGroups(DOC_GROUPS, query), [query]);
+  const filteredGroups = useMemo(() => filterGroups(DOC_GROUPS, query, searchIndex), [query, searchIndex]);
 
   function openDocsPage(slug, anchor = "") {
     const nextSlug = DOC_PAGES.some((page) => page.slug === slug) ? slug : DEFAULT_DOC;
@@ -25,13 +34,55 @@ export function DocsView() {
   }
 
   useEffect(() => {
-    if (!pendingAnchor || typeof window === "undefined") return;
+    if (
+      !pendingAnchor ||
+      markdownState.loading ||
+      markdownState.slug !== selectedPage.slug ||
+      typeof window === "undefined"
+    ) return;
     const anchor = pendingAnchor;
     window.requestAnimationFrame(() => {
       document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     setPendingAnchor("");
-  }, [pendingAnchor]);
+  }, [markdownState.loading, markdownState.slug, pendingAnchor, selectedPage.slug]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMarkdownState({ slug: selectedPage.slug, markdown: "", loading: true, error: "" });
+    loadDocMarkdown(selectedPage)
+      .then((markdown) => {
+        if (!cancelled) setMarkdownState({ slug: selectedPage.slug, markdown, loading: false, error: "" });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setMarkdownState({
+            slug: selectedPage.slug,
+            markdown: "",
+            loading: false,
+            error: error?.message || "This Help page could not be loaded.",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contentReload, selectedPage]);
+
+  useEffect(() => {
+    if (!query.trim() || searchIndex) return undefined;
+    let cancelled = false;
+    loadDocSearchIndex()
+      .then((index) => {
+        if (!cancelled) setSearchIndex(index);
+      })
+      .catch(() => {
+        // Metadata search remains available if one of the deferred documents fails.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [query, searchIndex]);
 
   useEffect(() => {
     if (pendingAnchor) return;
@@ -105,14 +156,21 @@ export function DocsView() {
           <h1 id="docs-page-title">{selectedPage.title}</h1>
           <p>{selectedPage.summary}</p>
         </header>
-        <MarkdownArticle markdown={selectedPage.markdown} />
+        {markdownState.loading && <div className="docs-content-state" role="status">Loading page…</div>}
+        {!markdownState.loading && markdownState.error && (
+          <div className="docs-content-state is-error" role="alert">
+            <p>{markdownState.error}</p>
+            <button onClick={() => setContentReload((value) => value + 1)} type="button">Retry</button>
+          </div>
+        )}
+        {!markdownState.loading && !markdownState.error && <MarkdownArticle markdown={markdownState.markdown} />}
         {selectedPage.component === "system-status" && <SystemStatusPage onOpenDocPage={openDocsPage} />}
       </article>
     </div>
   );
 }
 
-function filterGroups(groups, query) {
+function filterGroups(groups, query, searchIndex = null) {
   const needle = query.trim().toLowerCase();
   if (!needle) return groups;
 
@@ -120,7 +178,9 @@ function filterGroups(groups, query) {
     .map((group) => ({
       ...group,
       pages: group.pages.filter((page) =>
-        `${page.title} ${page.summary} ${page.markdown}`.toLowerCase().includes(needle)
+        `${page.title} ${page.summary} ${page.markdown || ""} ${searchIndex?.[page.slug] || ""}`
+          .toLowerCase()
+          .includes(needle)
       ),
     }))
     .filter((group) => group.pages.length > 0);

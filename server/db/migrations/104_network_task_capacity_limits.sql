@@ -10,11 +10,6 @@ CREATE TABLE IF NOT EXISTS network_task_capacity_limits (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-INSERT INTO network_task_capacity_limits (account_id, max_live_allocations, note)
-VALUES
-  ('acct_oauth_3c70e69ab7b8ef1fad3df508', 4, 'operator directive 2026-08-06: goodalexander capacity 4'),
-  ('acct_oauth_fa3af2fecd900ec5fec47cb6', 4, 'operator directive 2026-08-06: DRavlic capacity 4')
-ON CONFLICT (account_id) DO UPDATE SET
-  max_live_allocations = EXCLUDED.max_live_allocations,
-  note = EXCLUDED.note,
-  updated_at = now();
+-- Account-specific capacity grants are production operations data. They are
+-- applied through the private operator path, never seeded by a public schema
+-- migration.

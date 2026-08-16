@@ -170,6 +170,40 @@
   line-height: 1.68;
 }
 
+.docs-content-state {
+  width: 100%;
+  max-width: 860px;
+  box-sizing: border-box;
+  margin-top: 18px;
+  border: 1px solid #e8e6df;
+  border-radius: 10px;
+  padding: 16px 18px;
+  color: #77736a;
+  font-size: 13px;
+}
+
+.docs-content-state.is-error {
+  border-color: #efc8c1;
+  background: #fff7f5;
+  color: #8f3e35;
+}
+
+.docs-content-state p {
+  margin: 0;
+}
+
+.docs-content-state button {
+  margin-top: 10px;
+  border: 1px solid #d8d6cf;
+  border-radius: 8px;
+  background: #fff;
+  padding: 7px 11px;
+  color: #393630;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
 .docs-markdown h2 {
   margin: 32px 0 10px;
   font-size: 21px;

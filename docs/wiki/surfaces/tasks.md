@@ -221,63 +221,6 @@ after the image rollout. If request receipts remain queued, offers do not
 appear, or submitted tasks do not advance to `Verification requested`, verify
 the active Fly `worker` is `started` before treating task data as corrupt.
 
-## Operator Query: User Task Pipeline
-
-When a user says a requested task is missing, do not wait for the UI or infer
-from chat state. Query the request/projection pipeline immediately. The fastest
-production command is:
-
-```bash
-fly ssh console -a tasknodeofficial-dev --process-group app -C 'node scripts/query-user-tasks.mjs --handle goodalexander'
-```
-
-Use `--handle`, `--account-id`, or `--wallet`. The script resolves the runtime
-account and linked wallet, then reads:
-
-- `task_requests`: signed request receipt and task-generation worker status;
-- `task_projections`: visible task cards backing `GET /api/tasks`;
-- `pftl_pointer_observations`: cached PFTL task pointers seen by tracked wallets;
-- `pftl_cache_reducer_events`: pending, completed, or failed projection work;
-- `pftl_task_sync_runs`: recent wallet sync/replay diagnostics.
-
-Interpretation:
-
-| Script field | Meaning |
-| --- | --- |
-| `latestRequestStatus` | Request worker state. `published` or `queued` means waiting for the task-generation worker; `generating` means claimed; `proposed` means the worker published an offer. |
-| `generatedTaskId` | The concrete task ID created by `server/task-generation-worker.js`. |
-| `visibleProjection` | Whether `task_projections` already has the generated task. If true, the Tasks UI should be able to show it after refresh. |
-| `pendingReducerCount` / `failedReducerCount` | Whether cached pointer projection work is still pending or failed. |
-| `lastError` | The request worker or reducer error to inspect first. |
-
-Network Task allocation repairs can leave a `task_requests` receipt for audit, but those rows should be marked with `metadata_json.operator_repair.public_visibility='hidden'` and should not be returned by `GET /api/tasks/requests`. The failed allocation/job is the operator-facing source of truth; the user-facing surface should show the replacement Network Task or no active request strip.
-
-For manual SQL, first resolve the account/wallet from the app runtime store, then
-query by `account_id` or `subject_wallet`:
-
-```sql
-SELECT request_id, status, generated_task_id, request_bundle_cid,
-       request_tx_hash, worker_attempt_count, worker_claimed_at,
-       worker_completed_at, last_error, updated_at
-FROM task_requests
-WHERE account_id = '<account_id>' OR subject_wallet = '<wallet_address>'
-ORDER BY updated_at DESC
-LIMIT 20;
-
-SELECT task_id, status, title, request_id, last_event_tx_hash,
-       last_event_cid, updated_at
-FROM task_projections
-WHERE account_id = '<account_id>' OR subject_wallet = '<wallet_address>'
-ORDER BY updated_at DESC
-LIMIT 20;
-```
-
-If `task_requests.status='proposed'` has a `generated_task_id` but
-`task_projections` does not contain that task, the failure is projection/indexing,
-not task generation. Use the forensics guidance below or
-`npm run task-replay-repair -- --task-id=<task_id> --apply`. Do not hand-edit
-`task_projections`.
-
 ## Task Generation Contract
 
 Generated offers must match the browser UX. The task-generation prompts in

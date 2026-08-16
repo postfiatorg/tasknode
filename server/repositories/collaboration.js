@@ -3,17 +3,24 @@ import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
   getAccountIdentityProfile,
   getAccountProfileVisibility,
-  getLinkedWallet,
   listDiscoverableAccountWalletIdentities,
-} from "../runtime-store.js";
+} from "./account-profiles.js";
+import { getLinkedWallet as getDurableLinkedWallet } from "./account-wallets.js";
 import { accountMessageKey, publicKeyBase64FromMessageKey } from "../context-publish.js";
-import { verifyWalletSignature } from "../wallet-proof.js";
 import { nonFixtureTaskProjectionSql } from "./task-projection-integrity.js";
+import { consumeCollaborationProof } from "./collaboration-proofs.js";
+import { buildCollaborationIdentitySuggestions } from "./collaboration-identity-suggestions.js";
 
-const challengeTtlMs = 5 * 60_000;
+export {
+  collaborationChallengePayload,
+  consumeCollaborationProof,
+  createCollaborationChallenge,
+  stableCollaborationJson,
+} from "./collaboration-proofs.js";
+export { buildCollaborationIdentitySuggestions } from "./collaboration-identity-suggestions.js";
+
 const inviteTtlMs = 14 * 24 * 60 * 60_000;
 const defaultDocsStorageLimit = 50 * 1024 * 1024;
-
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
 }
@@ -33,19 +40,6 @@ function toIso(value) {
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 
-function stableValue(value) {
-  if (Array.isArray(value)) return value.map(stableValue);
-  if (!value || typeof value !== "object") return value;
-  return Object.keys(value).sort().reduce((output, key) => {
-    if (value[key] !== undefined) output[key] = stableValue(value[key]);
-    return output;
-  }, {});
-}
-
-export function stableCollaborationJson(value) {
-  return JSON.stringify(stableValue(value));
-}
-
 function sha256(value = "") {
   return createHash("sha256").update(String(value || ""), "utf8").digest("hex");
 }
@@ -58,14 +52,16 @@ function ensureDatabase() {
   throw error;
 }
 
-function linkedWalletForAccount(accountId = "") {
-  const wallet = getLinkedWallet({ accountId: safeText(accountId, 180) });
+async function linkedWalletForAccount(accountId = "") {
+  const wallet = await getDurableLinkedWallet({ accountId: safeText(accountId, 180) });
   return wallet?.status === "linked" ? wallet : null;
 }
 
-function publicIdentity(accountId = "") {
-  const identity = getAccountIdentityProfile({ accountId }) || {};
-  const visibility = getAccountProfileVisibility({ accountId });
+async function publicIdentity(accountId = "") {
+  const [resolvedIdentity, visibility] = await Promise.all(
+    [getAccountIdentityProfile({ accountId }), getAccountProfileVisibility({ accountId })]
+  );
+  const identity = resolvedIdentity || {};
   return {
     accountId,
     hiveHandle: safeText(identity.hiveHandle, 80),
@@ -80,17 +76,16 @@ function publicIdentity(accountId = "") {
     discoverable: visibility.discoverable === true && visibility.visibility !== "private",
   };
 }
-
-function identityDocument(accountId = "", { includeWallet = true } = {}) {
-  const identity = publicIdentity(accountId);
-  const wallet = includeWallet ? linkedWalletForAccount(accountId) : null;
+async function identityDocument(accountId = "", { includeWallet = true } = {}) {
+  const identity = await publicIdentity(accountId);
+  const wallet = includeWallet ? await linkedWalletForAccount(accountId) : null;
   return {
     ...identity,
     walletAddress: wallet?.address || "",
   };
 }
 
-export function docsIdentityForAccount(accountId = "") {
+export async function docsIdentityForAccount(accountId = "") {
   return identityDocument(accountId);
 }
 
@@ -127,144 +122,11 @@ async function audit({
   );
 }
 
-export function collaborationChallengePayload({
-  action = "",
-  resourceId = "",
-  payload = {},
-} = {}) {
-  return {
-    action: safeText(action, 80),
-    resourceId: safeText(resourceId, 240),
-    payload: stableValue(safeObject(payload)),
-  };
-}
-
-export async function createCollaborationChallenge({
-  accountId = "",
-  action = "",
-  resourceId = "",
-  payload = {},
-  now = new Date(),
-} = {}) {
-  ensureDatabase();
-  const wallet = linkedWalletForAccount(accountId);
-  if (!wallet?.address) {
-    return { ok: false, status: 409, error: "collaboration_wallet_required" };
-  }
-  const challengeId = randomUUID();
-  const canonical = collaborationChallengePayload({ action, resourceId, payload });
-  if (!canonical.action) {
-    return { ok: false, status: 400, error: "collaboration_action_required" };
-  }
-  const payloadDigest = sha256(stableCollaborationJson(canonical));
-  const expiresAt = new Date(now.getTime() + challengeTtlMs);
-  const nonce = randomBytes(18).toString("base64url");
-  const message = [
-    "Task Node collaboration authorization",
-    `Action: ${canonical.action}`,
-    `Resource: ${canonical.resourceId || "new"}`,
-    `Account: ${accountId}`,
-    `Wallet: ${wallet.address}`,
-    `Payload SHA-256: ${payloadDigest}`,
-    `Nonce: ${nonce}`,
-    `Expires: ${expiresAt.toISOString()}`,
-  ].join("\n");
-  await query(
-    `INSERT INTO collaboration_wallet_challenges (
-       challenge_id, account_id, wallet_address, action, resource_id,
-       payload_digest, message, expires_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [challengeId, accountId, wallet.address, canonical.action, canonical.resourceId, payloadDigest, message, expiresAt]
-  );
-  return {
-    ok: true,
-    challenge: {
-      id: challengeId,
-      message,
-      action: canonical.action,
-      resourceId: canonical.resourceId,
-      payloadDigest,
-      walletAddress: wallet.address,
-      expiresAt: expiresAt.toISOString(),
-    },
-  };
-}
-
-export async function consumeCollaborationProof({
-  client,
-  accountId = "",
-  action = "",
-  resourceId = "",
-  payload = {},
-  proof = {},
-} = {}) {
-  const challengeId = safeText(proof.challengeId || proof.challenge_id, 180);
-  const signature = safeText(proof.signature, 1000);
-  const publicKey = safeText(proof.publicKey || proof.public_key, 240);
-  if (!challengeId || !signature || !publicKey) {
-    const error = new Error("collaboration_wallet_proof_required");
-    error.code = "collaboration_wallet_proof_required";
-    error.status = 400;
-    throw error;
-  }
-  const selected = await client.query(
-    `SELECT * FROM collaboration_wallet_challenges
-     WHERE challenge_id = $1 AND account_id = $2
-     FOR UPDATE`,
-    [challengeId, accountId]
-  );
-  const challenge = selected.rows[0];
-  const canonical = collaborationChallengePayload({ action, resourceId, payload });
-  const expectedDigest = sha256(stableCollaborationJson(canonical));
-  if (
-    !challenge ||
-    challenge.consumed_at ||
-    Date.parse(challenge.expires_at) <= Date.now() ||
-    challenge.action !== canonical.action ||
-    challenge.resource_id !== canonical.resourceId ||
-    challenge.payload_digest !== expectedDigest
-  ) {
-    const error = new Error("collaboration_challenge_invalid");
-    error.code = "collaboration_challenge_invalid";
-    error.status = 400;
-    throw error;
-  }
-  const linkedWallet = linkedWalletForAccount(accountId);
-  if (!linkedWallet?.address || linkedWallet.address !== challenge.wallet_address) {
-    const error = new Error("collaboration_wallet_changed");
-    error.code = "collaboration_wallet_changed";
-    error.status = 409;
-    throw error;
-  }
-  if (!verifyWalletSignature({
-    message: challenge.message,
-    signature,
-    publicKey,
-    address: challenge.wallet_address,
-  })) {
-    const error = new Error("collaboration_wallet_signature_invalid");
-    error.code = "collaboration_wallet_signature_invalid";
-    error.status = 401;
-    throw error;
-  }
-  await client.query(
-    `UPDATE collaboration_wallet_challenges SET consumed_at = now() WHERE challenge_id = $1`,
-    [challengeId]
-  );
-  return {
-    canonical,
-    signature,
-    publicKey,
-    walletAddress: challenge.wallet_address,
-    signatureHash: sha256(signature),
-  };
-}
-
 export async function resolveCollaborationIdentity({ viewerAccountId = "", input = "" } = {}) {
   const needle = safeText(input, 180);
   if (!needle) return { ok: false, status: 400, error: "collaboration_identity_required" };
   const normalizedHandle = needle.replace(/^@+/, "").toLowerCase();
-  const identities = listDiscoverableAccountWalletIdentities();
+  const identities = await listDiscoverableAccountWalletIdentities();
   let match = identities.find((entry) => safeText(entry.hiveHandle, 80).toLowerCase() === normalizedHandle);
   if (!match && /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(needle)) {
     match = identities.find((entry) => entry.walletAddress === needle);
@@ -274,59 +136,8 @@ export async function resolveCollaborationIdentity({ viewerAccountId = "", input
   }
   return {
     ok: true,
-    identity: identityDocument(match.accountId),
+    identity: await identityDocument(match.accountId),
   };
-}
-
-export function buildCollaborationIdentitySuggestions({
-  identities = [],
-  input = "",
-  limit = 8,
-  recentAccountIds = [],
-  viewerAccountId = "",
-} = {}) {
-  const needle = safeText(input, 180).replace(/^@+/, "").toLowerCase();
-  const recentRank = new Map(
-    safeArray(recentAccountIds).map((accountId, index) => [safeText(accountId, 180), index])
-  );
-  const candidates = safeArray(identities)
-    .filter((identity) => identity?.accountId && identity.accountId !== viewerAccountId)
-    .map((identity) => {
-      const hiveHandle = safeText(identity.hiveHandle, 80).replace(/^@+/, "");
-      const displayName = safeText(identity.displayName || identity.publicDisplayName, 120);
-      const walletAddress = safeText(identity.walletAddress, 120);
-      const aliases = safeArray(identity.publicAliases)
-        .map((alias) => safeText(alias?.handle || alias, 120).replace(/^@+/, ""))
-        .filter(Boolean);
-      const searchable = [hiveHandle, displayName, walletAddress, ...aliases]
-        .map((value) => value.toLowerCase());
-      const matches = !needle || searchable.some((value) => value.includes(needle));
-      const prefixMatch = needle && searchable.some((value) => value.startsWith(needle));
-      return {
-        accountId: safeText(identity.accountId, 180),
-        displayName: displayName || (hiveHandle ? `@${hiveHandle}` : walletAddress || "Task Node member"),
-        hiveHandle,
-        walletAddress,
-        recentlyShared: recentRank.has(identity.accountId),
-        recentRank: recentRank.get(identity.accountId) ?? Number.MAX_SAFE_INTEGER,
-        prefixMatch: Boolean(prefixMatch),
-        matches,
-      };
-    })
-    .filter((identity) => identity.matches)
-    .sort((a, b) => (
-      Number(b.prefixMatch) - Number(a.prefixMatch) ||
-      a.recentRank - b.recentRank ||
-      a.displayName.localeCompare(b.displayName)
-    ));
-
-  return candidates.slice(0, Math.max(1, Math.min(20, Number(limit) || 8))).map((identity) => ({
-    accountId: identity.accountId,
-    displayName: identity.displayName,
-    hiveHandle: identity.hiveHandle,
-    walletAddress: identity.walletAddress,
-    recentlyShared: identity.recentlyShared,
-  }));
 }
 
 export async function suggestCollaborationIdentities({ viewerAccountId = "", input = "", limit = 8 } = {}) {
@@ -343,7 +154,7 @@ export async function suggestCollaborationIdentities({ viewerAccountId = "", inp
   return {
     ok: true,
     suggestions: buildCollaborationIdentitySuggestions({
-      identities: listDiscoverableAccountWalletIdentities(),
+      identities: await listDiscoverableAccountWalletIdentities(),
       input,
       limit,
       recentAccountIds: recent.rows.map((row) => row.recipient_account_id),
@@ -353,7 +164,7 @@ export async function suggestCollaborationIdentities({ viewerAccountId = "", inp
 }
 
 export async function recipientEncryptionIdentity({ accountId = "" } = {}) {
-  const wallet = linkedWalletForAccount(accountId);
+  const wallet = await getDurableLinkedWallet({ accountId });
   if (!wallet?.address) return { ok: false, status: 409, error: "recipient_wallet_required" };
   let publicKey = safeText(wallet.tasknodeEncryptionPubkey, 500);
   if (!publicKey) {
@@ -366,7 +177,7 @@ export async function recipientEncryptionIdentity({ accountId = "" } = {}) {
     accountId,
     walletAddress: wallet.address,
     encryptionPublicKey: publicKey,
-    identity: identityDocument(accountId),
+    identity: await identityDocument(accountId),
   };
 }
 
@@ -431,13 +242,13 @@ export async function setupDocsAccount({ accountId = "", encryptedRootKeyEnvelop
   });
 }
 
-function documentRow(row, viewerAccountId) {
+async function documentRow(row, viewerAccountId) {
   const owned = row.owner_account_id === viewerAccountId;
   return {
     documentId: row.document_id,
     channelHash: row.pfdocs_channel_hash,
     ownerAccountId: row.owner_account_id,
-    owner: identityDocument(row.owner_account_id),
+    owner: await identityDocument(row.owner_account_id),
     owned,
     documentType: row.document_type,
     status: row.status,
@@ -501,7 +312,7 @@ export async function listDocs({ accountId = "" } = {}) {
     current.push({
       grantId: row.grant_id,
       recipientAccountId: row.recipient_account_id,
-      recipient: identityDocument(row.recipient_account_id),
+      recipient: await identityDocument(row.recipient_account_id),
       accessRole: row.access_role,
       status: row.status,
       createdAt: toIso(row.created_at),
@@ -509,25 +320,25 @@ export async function listDocs({ accountId = "" } = {}) {
     });
     outgoingSharesByDocument.set(row.document_id, current);
   }
-  const documents = documentsResult.rows.map((row) => {
-    const document = documentRow(row, accountId);
+  const documents = await Promise.all(documentsResult.rows.map(async (row) => {
+    const document = await documentRow(row, accountId);
     return {
       ...document,
       shares: document.owned ? outgoingSharesByDocument.get(document.documentId) || [] : [],
     };
-  });
-  const pendingShares = pendingResult.rows.map((row) => ({
+  }));
+  const pendingShares = await Promise.all(pendingResult.rows.map(async (row) => ({
     grantId: row.grant_id,
     documentId: row.document_id,
     ownerAccountId: row.owner_account_id,
-    owner: identityDocument(row.owner_account_id),
+    owner: await identityDocument(row.owner_account_id),
     accessRole: row.access_role,
     encryptedCapabilityEnvelope: row.encrypted_capability_envelope,
     createdAt: toIso(row.created_at),
-  }));
+  })));
   return {
     ok: true,
-    identity: identityDocument(accountId),
+    identity: await identityDocument(accountId),
     account: docsAccountDocument(accountResult.rows[0]),
     documents,
     pendingShares,
@@ -567,7 +378,7 @@ export async function requireDocumentAccess({ accountId = "", documentId = "", c
     [accountId, normalizedDocumentId, normalizedChannelHash]
   );
   if (!result.rows.length) return { ok: false, status: 404, error: "docs_document_not_found" };
-  return { ok: true, document: documentRow(result.rows[0], accountId) };
+  return { ok: true, document: await documentRow(result.rows[0], accountId) };
 }
 
 export async function createDocument({
@@ -627,7 +438,7 @@ export async function createDocument({
       resourceId: normalizedId,
       client,
     });
-    return { ok: true, document: documentRow(inserted.rows[0], accountId) };
+    return { ok: true, document: await documentRow(inserted.rows[0], accountId) };
   });
 }
 
@@ -657,7 +468,7 @@ export async function updateDocument({ accountId = "", documentId = "", encrypte
     values
   );
   if (!result.rows.length) return { ok: false, status: 404, error: "docs_document_not_found" };
-  return { ok: true, document: documentRow(result.rows[0], accountId) };
+  return { ok: true, document: await documentRow(result.rows[0], accountId) };
 }
 
 export async function updateDocumentTaskLink({ accountId = "", documentId = "", taskId = "", action = "link" } = {}) {
@@ -732,7 +543,7 @@ export async function shareDocument({
       [documentId, accountId]
     );
     if (!document.rows.length) return { ok: false, status: 404, error: "docs_document_not_found" };
-    const recipient = linkedWalletForAccount(recipientAccountId);
+    const recipient = await getDurableLinkedWallet({ accountId: recipientAccountId });
     if (!recipient?.address || recipient.address !== recipientWalletAddress || recipientAccountId === accountId) {
       return { ok: false, status: 409, error: "docs_share_recipient_changed" };
     }
@@ -1130,7 +941,7 @@ export async function listTeam({ accountId = "" } = {}) {
     const seesTheirs = Boolean(item.incomingGrant);
     members.push({
       accountId: item.otherAccountId,
-      identity: identityDocument(item.otherAccountId),
+      identity: await identityDocument(item.otherAccountId),
       relationship: teamRelationshipFromDirections({
         outgoing: Boolean(item.outgoingGrant),
         incoming: Boolean(item.incomingGrant),
@@ -1142,7 +953,7 @@ export async function listTeam({ accountId = "" } = {}) {
       summary: seesTheirs ? await teammateTaskSummary(item.otherAccountId) : null,
     });
   }
-  const invites = invitesResult.rows.map((row) => {
+  const invites = await Promise.all(invitesResult.rows.map(async (row) => {
     const incoming = row.invitee_account_id === accountId;
     const otherAccountId = incoming ? row.inviter_account_id : row.invitee_account_id;
     return {
@@ -1150,11 +961,11 @@ export async function listTeam({ accountId = "" } = {}) {
       direction: incoming ? "incoming" : "sent",
       relationship: row.requested_relationship,
       otherAccountId,
-      identity: identityDocument(otherAccountId),
+      identity: await identityDocument(otherAccountId),
       expiresAt: toIso(row.expires_at),
       createdAt: toIso(row.created_at),
     };
-  });
+  }));
   return {
     ok: true,
     members: members.sort((a, b) => a.relationship.localeCompare(b.relationship) || a.identity.displayName.localeCompare(b.identity.displayName)),
@@ -1175,5 +986,5 @@ export async function teammateWalletAddress(accountId = "") {
      WHERE account_id = $1 AND status = 'linked' LIMIT 1`,
     [accountId]
   );
-  return safeText(result.rows[0]?.wallet_address, 120) || linkedWalletForAccount(accountId)?.address || "";
+  return safeText(result.rows[0]?.wallet_address, 120) || (await getDurableLinkedWallet({ accountId }))?.address || "";
 }

@@ -305,8 +305,8 @@ await assert.rejects(
     anonymity: 3,
     classification: { level: 3, category: "public protocol work" },
     env: {
-      DEEPSEEK_API_KEY: "test",
-      DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+      AMBIENT_API_KEY: "test",
+      AMBIENT_BASE_URL: "https://ambient.invalid",
     },
     fetchImpl: async () => ({
       ok: false,
@@ -314,7 +314,7 @@ await assert.rejects(
       text: async () => JSON.stringify({ error: { message: "provider unavailable" } }),
     }),
   }),
-  /deepseek_api_error:503:provider unavailable/
+  /ambient_http_503:provider unavailable/
 );
 
 let deepseekRequestBody = null;
@@ -323,8 +323,8 @@ const deterministicFallback = await callDeepSeekSummary({
   anonymity: 3,
   classification: { level: 3, category: "public protocol work" },
   env: {
-    DEEPSEEK_API_KEY: "test",
-    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    AMBIENT_API_KEY: "test",
+    AMBIENT_BASE_URL: "https://ambient.invalid",
   },
   fetchImpl: async (url, options) => {
     deepseekRequestBody = JSON.parse(options.body);
@@ -353,12 +353,12 @@ const result = await processDeathmarchEvents({
   dryRun: false,
   noState: true,
   env: {
-    DEEPSEEK_API_KEY: "test",
-    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    AMBIENT_API_KEY: "test",
+    AMBIENT_BASE_URL: "https://ambient.invalid",
     DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
   },
   fetchImpl: async (url, options) => {
-    if (String(url).includes("deepseek")) {
+    if (String(url).includes("ambient")) {
       const body = JSON.parse(options.body);
       deepseekBodies.push(body);
       return deepseekBodies.length === 1
@@ -420,12 +420,12 @@ const publicResult = await processDeathmarchEvents({
   dryRun: false,
   noState: true,
   env: {
-    DEEPSEEK_API_KEY: "test",
-    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    AMBIENT_API_KEY: "test",
+    AMBIENT_BASE_URL: "https://ambient.invalid",
     DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
   },
   fetchImpl: async (url, options) => {
-    if (String(url).includes("deepseek")) {
+    if (String(url).includes("ambient")) {
       const body = JSON.parse(options.body);
       publicDeepseekBodies.push(body);
       return publicDeepseekBodies.length === 1
@@ -450,12 +450,12 @@ const failedClassifierResult = await processDeathmarchEvents({
   dryRun: false,
   noState: true,
   env: {
-    DEEPSEEK_API_KEY: "test",
-    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    AMBIENT_API_KEY: "test",
+    AMBIENT_BASE_URL: "https://ambient.invalid",
     DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
   },
   fetchImpl: async (url, options) => {
-    if (String(url).includes("deepseek")) {
+    if (String(url).includes("ambient")) {
       const body = JSON.parse(options.body);
       failedClassifierBodies.push(body);
       return failedClassifierBodies.length === 1
@@ -478,8 +478,8 @@ assert.equal(failedClassifierPosts[0].content.includes("confidential task"), tru
 const classifiedDirect = await classifyEventAnonymity({
   event: publicProtocolEvent,
   env: {
-    DEEPSEEK_API_KEY: "test",
-    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    AMBIENT_API_KEY: "test",
+    AMBIENT_BASE_URL: "https://ambient.invalid",
   },
   fetchImpl: async () => deepseekClassifierResponse({ level: 3, category: "public protocol work" }),
 });
@@ -493,8 +493,8 @@ assert.deepEqual(classifiedDirect, {
 const classifiedNamedEntities = await classifyEventAnonymity({
   event: investorEvent,
   env: {
-    DEEPSEEK_API_KEY: "test",
-    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    AMBIENT_API_KEY: "test",
+    AMBIENT_BASE_URL: "https://ambient.invalid",
   },
   fetchImpl: async () => deepseekClassifierResponse({
     level: 2,
@@ -522,12 +522,12 @@ const continuedAfterEventFailure = await processDeathmarchEvents({
   dryRun: false,
   noState: true,
   env: {
-    DEEPSEEK_API_KEY: "test",
-    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    AMBIENT_API_KEY: "test",
+    AMBIENT_BASE_URL: "https://ambient.invalid",
     DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
   },
   fetchImpl: async (url, options) => {
-    if (String(url).includes("deepseek")) {
+    if (String(url).includes("ambient")) {
       deepseekCalls += 1;
       if (deepseekCalls === 1) return deepseekClassifierResponse({ level: 1, category: "confidential task" });
       if (deepseekCalls === 2) throw new Error("deepseek_api_timeout");
@@ -629,7 +629,7 @@ const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "deathmarch-smoke-"));
 const seedFile = path.join(tempDir, "deathmarchseed.txt");
 await fs.writeFile(seedFile, "sTestDeathmarchSeed\n", "utf8");
 const fileSeedEnv = await deathmarchEnvWithSeedFile({
-  env: { DEEPSEEK_API_KEY: "test" },
+  env: { AMBIENT_API_KEY: "test" },
   seedFile,
   explicitSeedFile: true,
 });

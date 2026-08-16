@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { databaseEnabled, query } from "../db/pool.js";
-import { getAccountExpertReview, getAccountIdentityProfile } from "../runtime-store.js";
+import { getAccountExpertReview, getAccountIdentityProfile } from "./account-profiles.js";
 import { normalizeCapabilityType } from "./capability-profiles.js";
 import { hasUsageCreditForSource } from "./chat-billing.js";
 
@@ -23,10 +23,6 @@ function numeric(value, fallback = 0) {
 
 function stableDigest(value = "") {
   return createHash("sha256").update(String(value || ""), "utf8").digest("hex");
-}
-
-function normalizedKey(value = "", max = 180) {
-  return safeText(value, max).toLowerCase();
 }
 
 function useDatabase() {
@@ -566,7 +562,7 @@ export async function networkBadgeProjectionForAccount({
       });
     }
   }
-  const identityProfile = normalizedAccountId ? getAccountIdentityProfile({ accountId: normalizedAccountId }) || {} : {};
+  const identityProfile = normalizedAccountId ? await getAccountIdentityProfile({ accountId: normalizedAccountId }) || {} : {};
   const badges = [];
 
   const xAlias = aliasForProvider(identityProfile, "x");
@@ -605,7 +601,7 @@ export async function networkBadgeProjectionForAccount({
     }));
   }
 
-  const expertReview = normalizedAccountId ? getAccountExpertReview({ accountId: normalizedAccountId }) || {} : {};
+  const expertReview = normalizedAccountId ? await getAccountExpertReview({ accountId: normalizedAccountId }) || {} : {};
   const expertPersonalTasks = await completedPersonalTaskCount(normalizedAccountId);
   const expertScore = Number(expertReview.score || 0);
   if (

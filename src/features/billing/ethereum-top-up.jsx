@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, RefreshCw, X } from "lucide-react";
 import { requestJson } from "../../api";
 import "../wallet/wallet.css";

@@ -140,7 +140,7 @@ The validation proved:
 The live Docker post-purge dry run for `run1066@protonmail.com` showed a clean reusable account id:
 
 ```text
-accountId: acct_email_316a21ca09d931a4d562418e
+accountId: acct_example_email
 found: false
 activeDeposit: null
 billing entryCount: 0

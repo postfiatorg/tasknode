@@ -549,6 +549,7 @@ async function main() {
       confidence: 1,
       payload: payload({
         message_text: "Board Manager action hook smoke message.",
+        followup_required: false,
       }),
     },
   });
@@ -565,6 +566,7 @@ async function main() {
       confidence: 1,
       payload: payload({
         message_text: "This duplicate Hive Context response should be skipped.",
+        followup_required: false,
       }),
     },
   });

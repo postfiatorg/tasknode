@@ -13,13 +13,16 @@ CREATE TABLE IF NOT EXISTS board_reward_budgets (
 );
 
 INSERT INTO board_reward_budgets (board_id)
-VALUES
-  ('board_community_promotion'),
-  ('board_pf_terminal'),
-  ('board_postfiat_l1v2'),
-  ('board_ai_l1_governance'),
-  ('board_tasknode_fixes'),
-  ('board_capital_markets')
+SELECT id
+FROM network_projects
+WHERE id IN (
+  'board_community_promotion',
+  'board_pf_terminal',
+  'board_postfiat_l1v2',
+  'board_ai_l1_governance',
+  'board_tasknode_fixes',
+  'board_capital_markets'
+)
 ON CONFLICT (board_id) DO NOTHING;
 
 -- Spend ledger: one row per published network-task reward decided by the

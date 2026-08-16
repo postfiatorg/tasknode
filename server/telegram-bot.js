@@ -6,10 +6,10 @@ import { usageSummary } from "./repositories/chat-billing.js";
 import { recordTelegramBotEvent } from "./repositories/telegram-bot-events.js";
 import {
   conversationIdForSession,
-  findAccountByIdentity,
   getTelegramBotPreferences,
   setTelegramBotModePreference,
 } from "./runtime-store.js";
+import { findAccountByIdentity } from "./repositories/accounts.js";
 
 const webhookPath = "/api/integrations/telegram/webhook";
 const statusPath = "/api/integrations/telegram/status";
@@ -650,7 +650,7 @@ export async function processTelegramBotUpdate(update = {}, {
       return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "non_private_callback" });
     }
 
-    const account = accountResolver("telegram", callback.fromId);
+    const account = await accountResolver("telegram", callback.fromId);
     const linked = account?.id && account.status !== "deleted";
     if (!linked) {
       auditContext.action = "telegram_bot_link_required";
@@ -749,7 +749,7 @@ export async function processTelegramBotUpdate(update = {}, {
     return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "non_private_chat" });
   }
 
-  const account = accountResolver("telegram", message.fromId);
+  const account = await accountResolver("telegram", message.fromId);
   const linked = account?.id && account.status !== "deleted";
 
   if (!linked) {

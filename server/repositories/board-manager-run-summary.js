@@ -272,6 +272,7 @@ export function compactBoardManagerRunForSourcePacket(run = {}) {
     summary: safeText(micro.summary, 700),
     result: safeText(micro.result, 500),
     reason: safeText(micro.reason, 700),
+    microSummaryText: safeText(run.microSummaryText || fallback.text, 1800),
     nextSteps: safeArray(micro.nextSteps).slice(0, 3).map((item) => safeText(item, 240)).filter(Boolean),
     sourcePacketDigest: safeText(run.sourcePacketDigest, 120),
     sessionMode: safeText(run.sessionMode, 80),

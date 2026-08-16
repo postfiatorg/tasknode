@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -93,6 +93,7 @@ function writeContacts(accountId, contacts) {
 }
 
 export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletSecret }) {
+  const walletMnemonic = walletSecret?.mnemonic || "";
   const [bootstrap, setBootstrap] = useState(null);
   const [privateIdentity, setPrivateIdentity] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -158,7 +159,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
     }
   }, []);
 
-  const syncMessages = useCallback(async (identity = privateIdentity, { silent = false, since } = {}) => {
+  const syncMessages = useCallback(async (identity, { silent = false, since } = {}) => {
     if (!identity?.privateKey || !relays.length) return;
     if (!silent) {
       setBusy("sync");
@@ -174,26 +175,26 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
     } finally {
       if (!silent) setBusy("");
     }
-  }, [hydrateContactLabels, privateIdentity, relays]);
+  }, [hydrateContactLabels, relays]);
 
   useEffect(() => {
-    walletUnlockedRef.current = Boolean(walletSecret?.mnemonic);
-    if (!walletSecret?.mnemonic) {
+    walletUnlockedRef.current = Boolean(walletMnemonic);
+    if (!walletMnemonic) {
       setMessages([]);
       setComposer("");
       setConnectionStatus("idle");
     }
-  }, [walletSecret?.mnemonic]);
+  }, [walletMnemonic]);
 
   useEffect(() => {
     let cancelled = false;
     async function unlockIdentity() {
-      if (!bootstrap?.binding || !walletSecret?.mnemonic) {
+      if (!bootstrap?.binding || !walletMnemonic) {
         setPrivateIdentity(null);
         return;
       }
       try {
-        const identity = await deriveNostrMessagingIdentity({ accountId, walletSecret });
+        const identity = await deriveNostrMessagingIdentity({ accountId, walletSecret: { mnemonic: walletMnemonic } });
         if (identity.publicKeyHex !== bootstrap.binding.nostrPubkeyHex) {
           throw new Error("This wallet does not match the activated Messages identity.");
         }
@@ -207,7 +208,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
     }
     void unlockIdentity();
     return () => { cancelled = true; };
-  }, [accountId, bootstrap?.binding, walletSecret?.mnemonic]);
+  }, [accountId, bootstrap?.binding, syncMessages, walletMnemonic]);
 
   useEffect(() => {
     if (!privateIdentity?.privateKey || !relays.length) return undefined;
@@ -403,7 +404,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
         <div><span>Encrypted over Nostr</span><h1>Messages</h1></div>
         <button aria-label="New message" onClick={() => setNewMessageOpen(true)} type="button"><Plus size={19} /></button>
       </header>
-      <div className="messages-identity-strip"><span aria-live="polite"><Circle className={connectionStatus === "live" ? "is-live" : ""} fill="currentColor" size={7} />@{bootstrap.identity.nostrName} · {connectionStatus === "live" ? "Live" : connectionStatus === "connecting" ? "Connecting" : "Reconnecting"}</span><button disabled={busy === "sync"} onClick={() => syncMessages()} title="Manually check relays" type="button"><RefreshCw className={busy === "sync" ? "is-spinning" : ""} size={13} />Retry</button></div>
+      <div className="messages-identity-strip"><span aria-live="polite"><Circle className={connectionStatus === "live" ? "is-live" : ""} fill="currentColor" size={7} />@{bootstrap.identity.nostrName} · {connectionStatus === "live" ? "Live" : connectionStatus === "connecting" ? "Connecting" : "Reconnecting"}</span><button disabled={busy === "sync"} onClick={() => syncMessages(privateIdentity)} title="Manually check relays" type="button"><RefreshCw className={busy === "sync" ? "is-spinning" : ""} size={13} />Retry</button></div>
       <div className="messages-thread-list">
         {threads.map((thread) => <button className={thread.publicKey === selectedPeer ? "active" : ""} key={thread.publicKey} onClick={() => setSelectedPeer(thread.publicKey)} type="button">
           <MessagesAvatar contact={thread.contact} publicKey={thread.publicKey} />

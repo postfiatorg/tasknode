@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/postfiatorg/tasknodeofficial/security/advisories/new
+    about: Report vulnerabilities privately.
+  - name: Product support
+    url: https://postfiat.org/community/
+    about: Ask product and account-support questions in the official community.

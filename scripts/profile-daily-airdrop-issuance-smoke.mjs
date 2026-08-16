@@ -4,8 +4,15 @@ import { closePool, databaseEnabled, query } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
 import {
   claimDailyAirdropIssuanceForPublish,
+  dailyAirdropIssuanceBlocksRetry,
+  dailyAirdropIssuanceRetryable,
   markDailyAirdropIssuancePublishFailure,
+  normalizeDailyAirdropIssuanceStatus,
 } from "../server/profile-daily-airdrop-issuance.js";
+import {
+  buildDailyAirdropPayload,
+  dailyAirdropPftToDrops,
+} from "../server/profile-daily-airdrop-payload.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
@@ -53,6 +60,25 @@ async function insertCompletedRun({ id = runId, account = accountId } = {}) {
 }
 
 async function main() {
+  assert.equal(normalizeDailyAirdropIssuanceStatus({ status: "processing" }), "processing_pre_submit");
+  assert.equal(
+    normalizeDailyAirdropIssuanceStatus({ status: "processing", submission_attempted_at: new Date() }),
+    "submit_unknown"
+  );
+  assert.equal(dailyAirdropIssuanceRetryable("failed_before_submit"), true);
+  assert.equal(dailyAirdropIssuanceBlocksRetry("submit_unknown"), true);
+  assert.equal(dailyAirdropPftToDrops(1.25), "1250000");
+  const payload = buildDailyAirdropPayload({
+    run: { id: "run-pure", account_id: "acct-pure", run_date: "2026-08-15", daily_airdrop_pft: 1.25 },
+    issuance: { id: "issuance-pure" },
+    sourceWallet: "rSource",
+    recipientWallet: "rRecipient",
+    amountPft: 1.25,
+  });
+  assert.equal(payload.schema, "pf.daily_airdrop.v1");
+  assert.equal(payload.run_date, "2026-08-15");
+  assert.match(payload.event_id, /^evt_[0-9a-f]{24}$/);
+
   if (!databaseEnabled()) {
     console.log("profile daily airdrop issuance smoke skipped: database not configured");
     return;

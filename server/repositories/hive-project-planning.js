@@ -39,11 +39,6 @@ export function projectHasOperatorArchiveLock(row = {}) {
   return Boolean(metadata.operator_archived === true || metadata.archive_lock_source || metadata.archive_lock_applied_at);
 }
 
-function numberValue(value, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : fallback;
-}
-
 function intValue(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : fallback;

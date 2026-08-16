@@ -49,17 +49,6 @@ function openAiVisionModel(env = process.env) {
   );
 }
 
-function openAiResponseText(body = {}) {
-  if (typeof body.output_text === "string") return body.output_text;
-  const output = Array.isArray(body.output) ? body.output : [];
-  return output
-    .flatMap((item) => Array.isArray(item?.content) ? item.content : [])
-    .map((part) => part?.text || "")
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-}
-
 async function describeScreenshotWithOpenAi({
   dataUrl,
   file,

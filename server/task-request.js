@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { getLinkedWallet } from "./runtime-store.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { getContextDocument } from "./repositories/context.js";
 import { getChatMemoryContext } from "./repositories/chat-memory.js";
 import { getChatMessages, listChatConversations } from "./repositories/chat-billing.js";
@@ -27,6 +27,11 @@ import {
 import { encryptTasknodePayload } from "./task-payloads.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 import {
+  buildMinimalTaskRequestBundle,
+  NO_TASK_ACCEPT_WINDOW_HOURS,
+  taskRequestBundleDigest,
+} from "./task-request-terminal-bundle.js";
+import {
   agentDisclosureMetadata,
   agentOriginForTaskSession,
   enforceAgentActionRateLimit,
@@ -38,7 +43,7 @@ const TASK_POINTER_SCHEMA = 1;
 // Tasks never die by clock: no server-default accept window. Stale offers
 // are retired deliberately (board manager cancel / user refuse), not by
 // timestamp pressure. Kept as 0 so bundle shapes stay stable.
-const DEFAULT_TASK_ACCEPT_WINDOW_HOURS = 0;
+const DEFAULT_TASK_ACCEPT_WINDOW_HOURS = NO_TASK_ACCEPT_WINDOW_HOURS;
 
 function actionResponse({ status, error, message, actionRequired, extra = {} }) {
   return {
@@ -67,18 +72,6 @@ function okResponse(body, status = 200) {
 
 function sha256(value = "") {
   return createHash("sha256").update(String(value || ""), "utf8").digest("hex");
-}
-
-function stableJson(value) {
-  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function sha256Json(value) {
-  return sha256(stableJson(value));
 }
 
 function safeText(value = "", max = 4000) {
@@ -128,90 +121,6 @@ function requestInputForSession(payload = {}, session = null, walletAddress = ""
   return { request, agentOrigin };
 }
 
-function minimalRequestBundle({ accountId = "", walletAddress = "", request = {} } = {}) {
-  const createdAt = new Date();
-  const createdAtIso = createdAt.toISOString();
-  const acceptByIso = null; // no accept window (see DEFAULT_TASK_ACCEPT_WINDOW_HOURS)
-  return {
-    schema: "pf.task.request_bundle.v1",
-    bundle_id: request.bundleId,
-    subject_wallet: walletAddress,
-    subject_encryption_pubkey: request.subjectEncryptionPubkey || "",
-    created_at: createdAtIso,
-    client: {
-      name: "pfterminal",
-      version: "0.1.0",
-      source_app: "pfterminal",
-      account_id: accountId,
-      conversation_id: request.conversationId || null,
-      conversation_title: request.sourceConversationTitle,
-    },
-    request: {
-      request_id: request.requestId,
-      request_text: request.requestText,
-      user_detail_text: request.userDetailText,
-      requested_task_kind: request.requestedTaskKind,
-      source: request.source,
-      source_conversation_title: request.sourceConversationTitle,
-      attachments: request.attachments.map((attachment) => ({
-        name: safeText(attachment?.name, 240),
-        mime_type: safeText(attachment?.mimeType, 120),
-        size: Number(attachment?.size || 0),
-        source: safeText(attachment?.source, 80),
-      })),
-    },
-    recent_chat: {
-      conversations: [],
-      summary: "",
-    },
-    memory: {
-      deep_memory: [],
-      recent_memory: [],
-    },
-    relevant_history: {
-      strategy: "terminal_fast_request_minimal_bundle",
-      items: [],
-    },
-    context: {
-      primary_context_doc: {
-        context_id: `ctx_${sha256(accountId).slice(0, 24)}`,
-        cid: null,
-        digest: "",
-        summary: "",
-        revision: 0,
-        word_count: 0,
-      },
-      additional_refs: [],
-    },
-    task_queue: {
-      counts: {},
-      recent: [],
-    },
-    policy: {
-      task_policy_version: "task-policy-minimal-v1",
-      reward_policy_version: "reward-policy-minimal-v1",
-      generation_policy_version: "taskgen-policy-minimal-v1",
-      deadline: {
-        accept_by: acceptByIso,
-        deadline_at: null,
-        accept_window_hours: DEFAULT_TASK_ACCEPT_WINDOW_HOURS,
-        source: "no_accept_window",
-      },
-    },
-    wallet: {
-      subject_wallet: walletAddress,
-      subject_encryption_pubkey: request.subjectEncryptionPubkey || "",
-      authority_wallet: "",
-      authority_hint: "",
-      allocation_wallet: "",
-    },
-    encryption: {
-      subject_public_key: request.subjectEncryptionPubkey || "",
-      tasknode_service_required: false,
-    },
-  };
-}
-
 async function requireSessionWallet(session = null) {
   if (!session?.accountId) {
     return {
@@ -224,7 +133,7 @@ async function requireSessionWallet(session = null) {
     };
   }
 
-  const wallet = getLinkedWallet({ accountId: session.accountId });
+  const wallet = await getLinkedWallet({ accountId: session.accountId });
   if (wallet.status !== "linked" || !wallet.address) {
     return {
       error: actionResponse({
@@ -959,12 +868,12 @@ export async function terminalTaskRequestAction(payload = {}, method = "POST", s
       });
     }
 
-    const requestBundle = minimalRequestBundle({
+    const requestBundle = buildMinimalTaskRequestBundle({
       accountId: resolved.accountId,
       walletAddress: resolved.wallet.address,
       request,
     });
-    const requestBundleDigest = `sha256:${sha256Json(requestBundle)}`;
+    const requestBundleDigest = taskRequestBundleDigest(requestBundle);
     const requestBundleCid = `postgres:${request.requestId}`;
     const requestEventCid = `postgres:${request.requestId}`;
     const txHash = `offchain:${request.requestId}`;

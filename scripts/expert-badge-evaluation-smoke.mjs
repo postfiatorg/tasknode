@@ -117,14 +117,14 @@ assert.equal(requestBody.provider, undefined);
 assert.match(JSON.stringify(requestBody.messages), /market structure/);
 assert.match(JSON.stringify(requestBody.messages), /task_personal_20/);
 
-const currentAccess = expertAccessFromTaskState({
+const currentAccess = await expertAccessFromTaskState({
   accountId: account.id,
   taskState: taskState(expertRequiredPersonalTaskCount),
 });
 assert.equal(currentAccess.status, "verified");
 assert.equal(currentAccess.reviewCurrent, true);
 
-const staleAccess = expertAccessFromTaskState({
+const staleAccess = await expertAccessFromTaskState({
   accountId: account.id,
   taskState: {
     ...taskState(expertRequiredPersonalTaskCount),

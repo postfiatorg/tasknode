@@ -158,24 +158,6 @@ export async function chatCacheEfficiencyStatus() {
   }
 }
 
-async function fetchJsonWithTimeout(url, { fetchImpl = fetch, timeoutMs = pricingTimeoutMs } = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, { signal: controller.signal });
-    const text = await response.text();
-    const body = text ? JSON.parse(text) : null;
-    if (!response.ok) {
-      const error = new Error(body?.error?.message || body?.message || `pricing_http_${response.status}`);
-      error.status = response.status;
-      throw error;
-    }
-    return body;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 function modelSummary(model = null) {
   if (!model) return null;
   return {

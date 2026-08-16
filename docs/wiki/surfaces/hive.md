@@ -621,12 +621,9 @@ The local continuous runner is `npm run board-manager:loop -- --execute`. It cal
 
 The production target is a Fly-managed `board-manager` process group with a Postgres-backed job queue and lease. The first implementation is now in place. Web/API instances can enqueue Board Manager jobs but do not run background workers when started with `TASKNODE_PROCESS_ROLE=web`. The dedicated Board Manager worker claims one due job, calls the one-shot decision path, claims the scope lease inside that one-shot run, executes at most one validated action, writes the run/action/micro-summary audit rows, and schedules follow-up work when the action mutates state. Multiple Fly machines can exist for failover, but only claimed jobs and the Board Manager lease holder can act. Current repair instructions live in `Architecture -> Board Manager`.
 
-Fly releases must use `npm run fly:deploy`, which runs `npm run
-fly:background-guard` after deploy. The guard starts the active
-`board-manager` machine and sets it to `restart=always` alongside the normal
-`worker` process. If the Hive Mind Agent feed stops updating, first run
-`npm run fly:background-guard` and verify `fly status -a tasknodeofficial-dev`
-shows `board-manager` as `started`.
+Official worker deployment and recovery commands live only in the private
+operations package. Public contributors can exercise the same lease and queue
+contracts against the synthetic local stack without an official cloud target.
 
 Allowed actions include:
 

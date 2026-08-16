@@ -14,11 +14,11 @@ import {
 } from "./ethereum-deposits.js";
 import {
   conversationIdForSession,
-  getEthereumDepositAccount,
-  getAccountIdentityProfile,
-  getLinkedWallet,
   resolveWalletInitiationGrantStatus,
 } from "./runtime-store.js";
+import { getAccountIdentityProfile } from "./repositories/account-profiles.js";
+import { getLinkedWallet } from "./repositories/account-wallets.js";
+import { getEthereumDepositAccount } from "./repositories/ethereum-deposit-accounts.js";
 import {
   getHiveConversation,
   getChatMessages,
@@ -50,6 +50,8 @@ const DEFAULT_APP_STATE_CACHE_TTL_MS = 3000;
 const DEFAULT_APP_STATE_CACHE_MAX_ENTRIES = 1000;
 const ANON_APP_STATE_CACHE_KEY = "anon";
 const appStateCache = new Map();
+const appStateCacheGenerations = new Map();
+let appStateCacheEpoch = 0;
 
 let appStateComputeForCache = (...args) => appState(...args);
 
@@ -146,16 +148,20 @@ async function computeAndStoreAppState(key, session, options, entry, { allowOver
     expiresAt: 0,
     refreshPromise: null,
   };
+  const generationAtStart = appStateCacheGenerations.get(key) || 0;
+  const epochAtStart = appStateCacheEpoch;
   let refreshPromise;
   refreshPromise = (async () => {
     try {
       const value = await appStateComputeForCache(session, options);
-      if (shouldCacheAppState(key, value)) {
+      const cacheStillCurrent = epochAtStart === appStateCacheEpoch &&
+        generationAtStart === (appStateCacheGenerations.get(key) || 0);
+      if (cacheStillCurrent && shouldCacheAppState(key, value)) {
         targetEntry.value = value;
         targetEntry.expiresAt = Date.now() + appStateCacheTtlMs();
         touchCacheEntry(key, targetEntry);
         trimAppStateCache();
-      } else {
+      } else if (cacheStillCurrent) {
         appStateCache.delete(key);
       }
       return value;
@@ -237,10 +243,13 @@ export async function getCachedAppState(session = null, { refreshTaskProjection 
 
 export function invalidateCachedAppState(session = null) {
   const key = appStateCacheKey(session);
+  appStateCacheGenerations.set(key, (appStateCacheGenerations.get(key) || 0) + 1);
   appStateCache.delete(key);
 }
 
 export function __resetAppStateCacheForTests() {
+  appStateCacheEpoch += 1;
+  appStateCacheGenerations.clear();
   appStateCache.clear();
   appStateComputeForCache = (...args) => appState(...args);
   __resetAppStateGateForTests();
@@ -445,9 +454,9 @@ export async function appState(session = null, { refreshTaskProjection = false }
         signedOutUsageSummary
       )
     : signedOutUsageSummary;
-  const linkedWallet = getLinkedWallet({ accountId });
+  const linkedWallet = await getLinkedWallet({ accountId });
   const ethDepositStatus = ethereumDepositConfigStatus();
-  const ethDepositAccount = getEthereumDepositAccount({ accountId });
+  const ethDepositAccount = await getEthereumDepositAccount({ accountId });
   const usdcGrantThresholdUsd = usdcTopUpGrantThresholdUsd();
   const creditedUsdcUsd = Number(ethDepositAccount?.creditedBalances?.USDC?.amount || 0);
   const walletLinked = linkedWallet.status === "linked" && Boolean(linkedWallet.address);
@@ -537,11 +546,11 @@ export async function appState(session = null, { refreshTaskProjection = false }
       syncKind: "task_list_refresh",
     });
   }
-  const baseIdentityProfile = accountId ? getAccountIdentityProfile({ accountId }) : null;
+  const baseIdentityProfile = accountId ? await getAccountIdentityProfile({ accountId }) : null;
   const identityProfile = baseIdentityProfile
     ? {
         ...baseIdentityProfile,
-        expertAccess: expertAccessFromTaskState({ accountId, taskState: tasks }),
+        expertAccess: await expertAccessFromTaskState({ accountId, taskState: tasks }),
         qaWorkerAccess: await qaWorkerAccessForAccount(accountId),
       }
     : null;

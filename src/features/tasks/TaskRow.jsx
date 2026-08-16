@@ -1,4 +1,3 @@
-import React from "react";
 import { statusSlug, taskStatusColor } from "../../../shared/task-lifecycle";
 
 function TaskStatusGlyph({ task }) {

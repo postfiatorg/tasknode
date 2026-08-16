@@ -1,6 +1,7 @@
 # Defect Repair Rule
 
-This page mirrors the workspace-level rule in `/home/pfrpc/repos/AGENTS.md`.
+This page mirrors the workspace-level rule in the parent workspace's
+`AGENTS.md`.
 Use it when fixing reported app behavior, especially when the user gives one
 concrete broken example.
 
