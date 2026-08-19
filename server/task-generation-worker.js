@@ -5,6 +5,7 @@ import {
   markTaskRequestFailed,
   markTaskRequestProposed,
   reclaimStaleTaskGenerationRequests,
+  retryTaskGenerationRequest,
 } from "./repositories/task-requests.js";
 import {
   completeNetworkTaskOfferFromTaskRequest,
@@ -64,6 +65,38 @@ function positiveInteger(value, fallback, { min = 1, max = 1_200_000 } = {}) {
 
 function taskGenerationMaxAttempts(env = process.env) {
   return positiveInteger(env.TASKNODE_TASK_GENERATION_MAX_ATTEMPTS, 3, { min: 1, max: 25 });
+}
+
+export function taskGenerationRetryDelayMs(attemptCount = 1, env = process.env) {
+  const baseMs = positiveInteger(env.TASKNODE_TASK_GENERATION_RETRY_BASE_MS, 15_000, {
+    min: 1_000,
+    max: 15 * 60 * 1000,
+  });
+  const maxMs = positiveInteger(env.TASKNODE_TASK_GENERATION_RETRY_MAX_MS, 120_000, {
+    min: baseMs,
+    max: 15 * 60 * 1000,
+  });
+  const exponent = Math.max(0, Math.min(10, Number(attemptCount || 1) - 1));
+  return Math.min(maxMs, baseMs * (2 ** exponent));
+}
+
+export function isRetryableTaskGenerationError(error = {}) {
+  const cause = error?.cause && typeof error.cause === "object" ? error.cause : {};
+  const code = safeText(error?.code || cause.code, 120).toLowerCase();
+  const status = Number(error?.status || error?.statusCode || cause.status || cause.statusCode || 0);
+  if (status === 429 || status >= 500) return true;
+  return new Set([
+    "taskgen_provider_timeout",
+    "ambient_timeout",
+    "ambient_rate_limited",
+    "ambient_no_workers",
+    "econnreset",
+    "econnrefused",
+    "etimedout",
+    "und_err_connect_timeout",
+    "und_err_headers_timeout",
+    "und_err_socket",
+  ]).has(code);
 }
 
 function taskGenerationStaleSeconds(env = process.env) {
@@ -468,6 +501,59 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
       }
       if (replayIdentity?.replay_key) {
         await markTaskgenReplayFailed({ replayKey: replayIdentity.replay_key, error: message }).catch(() => null);
+      }
+      const maxAttempts = taskGenerationMaxAttempts();
+      if (isRetryableTaskGenerationError(error) && request.workerAttemptCount < maxAttempts) {
+        const retryDelayMs = taskGenerationRetryDelayMs(request.workerAttemptCount);
+        const retry = await retryTaskGenerationRequest({
+          requestId: request.requestId,
+          error: message,
+          retryDelayMs,
+          workerAttemptId: request.workerAttemptId,
+          workerId: request.workerId,
+          metadata: {
+            lastProviderFailure: {
+              code: safeText(error?.code, 120),
+              status: Number(error?.status || error?.statusCode || 0) || null,
+              attempt: request.workerAttemptCount,
+              maxAttempts,
+            },
+          },
+        }).catch((retryError) => ({
+          ok: false,
+          reason: retryError?.message || "task_generation_retry_schedule_failed",
+        }));
+        if (retry.ok) {
+          logger.warn?.("task_generation_request_retry_scheduled", {
+            requestId: request.requestId,
+            error: message,
+            attempt: request.workerAttemptCount,
+            maxAttempts,
+            retryDelayMs,
+          });
+          results.push({
+            ok: false,
+            retrying: true,
+            requestId: request.requestId,
+            error: message,
+            retryDelayMs,
+          });
+          continue;
+        }
+        if (retry.stale || retry.reason === "task_request_not_owned_by_attempt") {
+          logger.warn?.("task_generation_stale_retry_suppressed", {
+            requestId: request.requestId,
+            reason: retry.reason,
+            error: message,
+          });
+          results.push({ ok: false, stale: true, requestId: request.requestId, error: message });
+          continue;
+        }
+        logger.warn?.("task_generation_retry_schedule_failed", {
+          requestId: request.requestId,
+          reason: retry.reason,
+          error: message,
+        });
       }
       const failure = await markGenerationFailure({ request, message, logger });
       logger.warn?.("task_generation_request_failed", {
