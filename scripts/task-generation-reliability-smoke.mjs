@@ -8,6 +8,9 @@ process.env.TASKNODE_HIVE_TASK_GENERATION_V2_ENABLED = "false";
 
 const {
   generateTaskWithProvider,
+  isRetryableTaskGenerationError,
+  taskGenerationProviderTimeoutMs,
+  taskGenerationRetryDelayMs,
 } = await import("../server/task-generation-worker.js");
 const {
   closePool,
@@ -21,10 +24,12 @@ const {
   markTaskRequestFailed,
   markTaskRequestProposed,
   reclaimStaleTaskGenerationRequests,
+  retryTaskGenerationRequest,
 } = await import("../server/repositories/task-requests.js");
 
 const suffix = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 const requestId = `req_taskgen_reliability_${suffix}`;
+const retryRequestId = `req_taskgen_provider_retry_${suffix}`;
 const exhaustedRequestId = `req_taskgen_exhausted_${suffix}`;
 const accountId = `acct_taskgen_reliability_${suffix}`;
 const wallet = `rTaskgenReliability${suffix.slice(-12)}`;
@@ -84,6 +89,21 @@ async function providerTimeoutSmoke() {
   );
 }
 
+function providerRetryPolicySmoke() {
+  assert.equal(taskGenerationProviderTimeoutMs({}), 240_000);
+  assert.equal(taskGenerationRetryDelayMs(1, {}), 15_000);
+  assert.equal(taskGenerationRetryDelayMs(2, {}), 30_000);
+  assert.equal(taskGenerationRetryDelayMs(5, {}), 120_000);
+
+  assert.equal(isRetryableTaskGenerationError({ code: "TASKGEN_PROVIDER_TIMEOUT" }), true);
+  assert.equal(isRetryableTaskGenerationError({ code: "ambient_rate_limited", status: 429 }), true);
+  assert.equal(isRetryableTaskGenerationError({ code: "ambient_http_503", status: 503 }), true);
+  assert.equal(isRetryableTaskGenerationError({ code: "UND_ERR_SOCKET" }), true);
+  assert.equal(isRetryableTaskGenerationError({ cause: { code: "ECONNRESET" } }), true);
+  assert.equal(isRetryableTaskGenerationError({ code: "taskgen_output_schema_invalid", status: 400 }), false);
+  assert.equal(isRetryableTaskGenerationError({ code: "network_taskgen_v2_badge_mismatch" }), false);
+}
+
 async function ambientRequestBodySmoke() {
   let requestBody = null;
   const responsePayload = {
@@ -125,8 +145,82 @@ async function requestRow(id) {
 
 async function cleanup() {
   await query("DELETE FROM task_requests WHERE request_id = ANY($1::text[])", [
-    [requestId, exhaustedRequestId],
+    [requestId, retryRequestId, exhaustedRequestId],
   ]);
+}
+
+async function providerRetryPersistenceSmoke() {
+  await query(
+    `
+      INSERT INTO task_requests (
+        request_id, account_id, subject_wallet, source, request_text,
+        requested_task_kind, request_bundle_cid, bundle_id, status
+      )
+      VALUES ($1, $2, $3, 'task_interface', 'Provider retry persistence smoke',
+        'personal', $4, $5, 'queued')
+    `,
+    [retryRequestId, accountId, wallet, `QmTaskgenProviderRetry${suffix}`, `bundle_${retryRequestId}`]
+  );
+
+  const [claimA] = await claimTaskGenerationRequests({
+    limit: 1,
+    workerId: "taskgen_provider_retry_worker_a",
+    maxAttempts: 3,
+  });
+  assert.equal(claimA.requestId, retryRequestId);
+  assert.equal(claimA.workerAttemptCount, 1);
+
+  const retry = await retryTaskGenerationRequest({
+    requestId: retryRequestId,
+    error: "taskgen_provider_timeout",
+    retryDelayMs: 60_000,
+    workerAttemptId: claimA.workerAttemptId,
+    workerId: claimA.workerId,
+    metadata: { smoke: "provider_retry" },
+  });
+  assert.equal(retry.ok, true);
+  assert.equal(retry.request.status, "queued");
+  assert.equal(retry.request.workerId, "");
+  assert.equal(retry.request.workerAttemptId, "");
+  assert.ok(Date.parse(retry.request.workerRetryAfter) > Date.now());
+
+  const prematureClaim = await claimTaskGenerationRequests({
+    limit: 1,
+    workerId: "taskgen_provider_retry_worker_b",
+    maxAttempts: 3,
+  });
+  assert.equal(prematureClaim.length, 0);
+
+  const staleRetry = await retryTaskGenerationRequest({
+    requestId: retryRequestId,
+    error: "stale_attempt_must_not_reschedule",
+    retryDelayMs: 1_000,
+    workerAttemptId: claimA.workerAttemptId,
+    workerId: claimA.workerId,
+  });
+  assert.equal(staleRetry.ok, false);
+  assert.equal(staleRetry.stale, true);
+
+  await query("UPDATE task_requests SET worker_retry_after = now() - interval '1 second' WHERE request_id = $1", [
+    retryRequestId,
+  ]);
+  const [claimB] = await claimTaskGenerationRequests({
+    limit: 1,
+    workerId: "taskgen_provider_retry_worker_b",
+    maxAttempts: 3,
+  });
+  assert.equal(claimB.requestId, retryRequestId);
+  assert.equal(claimB.workerAttemptCount, 2);
+  assert.equal(claimB.workerRetryAfter, null);
+
+  const completed = await markTaskRequestProposed({
+    requestId: retryRequestId,
+    generatedTaskId: "task_provider_retry_succeeded",
+    subjectWallet: wallet,
+    workerAttemptId: claimB.workerAttemptId,
+    workerId: claimB.workerId,
+  });
+  assert.equal(completed.ok, true);
 }
 
 async function insertQueuedRequest() {
@@ -168,6 +262,7 @@ async function ownershipSmoke() {
   await migrateDatabase();
   await cleanup();
   try {
+    await providerRetryPersistenceSmoke();
     await insertQueuedRequest();
     await insertExhaustedGeneratingRequest();
 
@@ -276,6 +371,7 @@ async function ownershipSmoke() {
 
 await ambientRequestBodySmoke();
 await providerTimeoutSmoke();
+providerRetryPolicySmoke();
 await ownershipSmoke();
 
 console.log("task generation reliability smoke ok");

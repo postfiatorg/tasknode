@@ -149,6 +149,7 @@ export function publicTaskRequest(row = {}) {
     workerClaimedAt: toIso(row.worker_claimed_at),
     workerHeartbeatAt: toIso(row.worker_heartbeat_at),
     workerCompletedAt: toIso(row.worker_completed_at),
+    workerRetryAfter: toIso(row.worker_retry_after),
     lastError: operatorAuditOnly ? "" : row.last_error || "",
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -286,6 +287,7 @@ export async function reclaimStaleTaskGenerationRequests({
         worker_attempt_id = '',
         worker_claimed_at = NULL,
         worker_heartbeat_at = NULL,
+        worker_retry_after = NULL,
         last_error = 'task_generation_stale_reclaimed_for_retry',
         metadata_json = metadata_json || jsonb_build_object(
           'lastStaleReclaimAt', now(),
@@ -320,6 +322,7 @@ export async function reclaimStaleTaskGenerationRequests({
           worker_id = '',
           worker_attempt_id = '',
           worker_heartbeat_at = NULL,
+          worker_retry_after = NULL,
           last_error = 'task_generation_stale_attempts_exhausted',
           metadata_json = metadata_json || jsonb_build_object(
             'lastStaleReclaimAt', now(),
@@ -358,6 +361,7 @@ export async function claimTaskGenerationRequests({
           AND request_bundle_cid <> ''
           AND generated_task_id = ''
           AND worker_attempt_count < $2
+          AND (worker_retry_after IS NULL OR worker_retry_after <= now())
         ORDER BY updated_at ASC, created_at ASC, request_id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT $1
@@ -370,6 +374,7 @@ export async function claimTaskGenerationRequests({
         worker_claimed_at = now(),
         worker_heartbeat_at = now(),
         worker_completed_at = NULL,
+        worker_retry_after = NULL,
         worker_attempt_count = tr.worker_attempt_count + 1,
         last_error = '',
         updated_at = now()
@@ -500,6 +505,7 @@ export async function markTaskRequestFailed({
         status = 'failed',
         worker_completed_at = now(),
         worker_heartbeat_at = now(),
+        worker_retry_after = NULL,
         last_error = $2,
         metadata_json = metadata_json || $3::jsonb,
         updated_at = now()
@@ -529,6 +535,60 @@ export async function markTaskRequestFailed({
   return result.rows[0]
     ? { ok: true, request: publicTaskRequest(result.rows[0]) }
     : { ok: false, stale: Boolean(attemptGuard), reason: "task_request_not_owned_by_attempt" };
+}
+
+export async function retryTaskGenerationRequest({
+  requestId = "",
+  error = "",
+  retryDelayMs = 0,
+  metadata = {},
+  workerAttemptId = "",
+  workerId = "",
+} = {}) {
+  if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const attemptGuard = safeText(workerAttemptId, 180);
+  const workerGuard = safeText(workerId, 180);
+  if (!attemptGuard) return { ok: false, reason: "task_generation_attempt_required" };
+  const safeRetryDelayMs = positiveInteger(retryDelayMs, 15_000, { min: 1_000, max: 15 * 60 * 1000 });
+  const result = await query(
+    `
+      UPDATE task_requests
+      SET
+        status = 'queued',
+        worker_id = '',
+        worker_attempt_id = '',
+        worker_claimed_at = NULL,
+        worker_heartbeat_at = NULL,
+        worker_completed_at = NULL,
+        worker_retry_after = now() + ($3::text || ' milliseconds')::interval,
+        last_error = $2,
+        metadata_json = metadata_json || $4::jsonb,
+        updated_at = now()
+      WHERE request_id = $1
+        AND status = 'generating'
+        AND worker_attempt_id = $5
+        AND ($6::text = '' OR worker_id = $6)
+      RETURNING *
+    `,
+    [
+      safeText(requestId, 180),
+      safeText(error, 1000),
+      safeRetryDelayMs,
+      JSON.stringify({
+        workerRetry: {
+          error: safeText(error, 1000),
+          delayMs: safeRetryDelayMs,
+          scheduledAt: new Date().toISOString(),
+        },
+        ...metadata,
+      }),
+      attemptGuard,
+      workerGuard,
+    ]
+  );
+  return result.rows[0]
+    ? { ok: true, request: publicTaskRequest(result.rows[0]) }
+    : { ok: false, stale: true, reason: "task_request_not_owned_by_attempt" };
 }
 
 export async function listTaskRequests({ accountId = "", walletAddress = "", limit = 40 } = {}) {

@@ -246,6 +246,14 @@ labeled as a model different from the outbound request.
 
 Taskgen retries are replay-guarded. `server/task-generation-worker.js` builds a replay key from the request bundle CID/digest, source payload digest, taskgen input digest, prompt digest, model, task class, and reward/deadline policy versions. Once a request produces normalized taskgen output, `taskgen_replay_cache` stores that output and task id before the worker publishes the offer. A retry with the same replay key reuses the stored output instead of calling the model again; a retry after a recorded offer reuses the stored offer CID/tx hash instead of publishing another live `pf.task.offer.v1`. A changed source packet, prompt/model, request bundle, or policy version intentionally gets a different replay key.
 
+Ambient task generation has a 240-second per-call deadline by default. Provider
+timeouts, rate limits, HTTP 5xx responses, and recognized transport failures are
+requeued durably with bounded exponential backoff until the configured worker
+attempt limit is reached. Invalid task output, policy violations, and other
+non-transient failures remain terminal immediately. The retry timestamp lives on
+the request row, so a worker restart or machine replacement cannot discard the
+delay or the remaining attempt count.
+
 Network Tasks and Alpha Tasks use the separate network taskgen prompt. The Hive Task Manager now performs the normal two-step selection every 5 minutes: first it narrows the choice to one active board and one idle badge-eligible operator, then it queues the existing network-task generation path with the board packet, operator packet, task state, refusal history, rewarded history, and user memory. The network-task generation worker injects a `network_task` block into the request bundle with project id, task class, routing reason, diagnostic profile digest, reward band, Task Manager selection, board packet, and operator packet. The Task Manager does not author the concrete task. `server/task-generation-worker.js` still generates the title, steps, submission requirement, and verification policy.
 
 The network prompt treats generated tasks as coordination units for contributors

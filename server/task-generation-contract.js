@@ -109,7 +109,7 @@ function positiveInteger(value, fallback, { min = 1, max = 1_200_000 } = {}) {
 }
 
 export function taskGenerationProviderTimeoutMs(env = process.env) {
-  return positiveInteger(env.TASKNODE_TASK_GENERATION_PROVIDER_TIMEOUT_MS, 90_000, {
+  return positiveInteger(env.TASKNODE_TASK_GENERATION_PROVIDER_TIMEOUT_MS, 240_000, {
     min: 5_000,
     max: 20 * 60 * 1000,
   });
