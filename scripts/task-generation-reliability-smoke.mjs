@@ -9,6 +9,7 @@ process.env.TASKNODE_HIVE_TASK_GENERATION_V2_ENABLED = "false";
 const {
   generateTaskWithProvider,
   isRetryableTaskGenerationError,
+  projectTaskgenInput,
   taskGenerationProviderTimeoutMs,
   taskGenerationRetryDelayMs,
 } = await import("../server/task-generation-worker.js");
@@ -100,8 +101,47 @@ function providerRetryPolicySmoke() {
   assert.equal(isRetryableTaskGenerationError({ code: "ambient_http_503", status: 503 }), true);
   assert.equal(isRetryableTaskGenerationError({ code: "UND_ERR_SOCKET" }), true);
   assert.equal(isRetryableTaskGenerationError({ cause: { code: "ECONNRESET" } }), true);
+  assert.equal(isRetryableTaskGenerationError(new Error("context_ipfs_fetch_failed")), true);
   assert.equal(isRetryableTaskGenerationError({ code: "taskgen_output_schema_invalid", status: 400 }), false);
   assert.equal(isRetryableTaskGenerationError({ code: "network_taskgen_v2_badge_mismatch" }), false);
+}
+
+function taskgenInputBudgetSmoke() {
+  const longText = "x".repeat(10_000);
+  const input = projectTaskgenInput({
+    request: { requestText: "Keep the requested task intact.", userDetailText: "Specific user detail." },
+    context: { primary_context_doc: { cid: "QmContext", digest: "sha256:context", summary: longText } },
+    recent_chat: {
+      summary: longText,
+      conversations: [{
+        messages: Array.from({ length: 20 }, (_, index) => ({
+          role: index % 2 ? "assistant" : "user",
+          content: `${index}:${longText}`,
+          created_at: `2026-08-20T00:${String(index).padStart(2, "0")}:00.000Z`,
+        })),
+      }],
+    },
+    relevant_history: {
+      items: Array.from({ length: 30 }, (_, index) => ({ summary: `${index}:${longText}` })),
+    },
+    memory: {
+      deep_memory: Array.from({ length: 8 }, (_, index) => ({ memory_text: `${index}:${longText}` })),
+      recent_memory: Array.from({ length: 20 }, (_, index) => ({ memory_text: `${index}:${longText}` })),
+    },
+    task_queue: {
+      outstanding: Array.from({ length: 20 }, (_, index) => ({ task_id: `task_${index}`, title: longText })),
+      refused: Array.from({ length: 20 }, (_, index) => ({ task_id: `refused_${index}`, title: longText })),
+      rewarded: Array.from({ length: 20 }, (_, index) => ({ task_id: `rewarded_${index}`, title: longText })),
+      summary: longText,
+    },
+  });
+
+  assert.equal(input.request.requestText, "Keep the requested task intact.");
+  assert.equal(input.chat.recent_messages.length, 8);
+  assert.equal(input.memory.deep_memory.length, 3);
+  assert.equal(input.memory.recent_memory.length, 4);
+  assert.equal(input.task_queue.outstanding.length, 6);
+  assert.ok(Buffer.byteLength(JSON.stringify(input)) < 45_000);
 }
 
 async function ambientRequestBodySmoke() {
@@ -372,6 +412,7 @@ async function ownershipSmoke() {
 await ambientRequestBodySmoke();
 await providerTimeoutSmoke();
 providerRetryPolicySmoke();
+taskgenInputBudgetSmoke();
 await ownershipSmoke();
 
 console.log("task generation reliability smoke ok");

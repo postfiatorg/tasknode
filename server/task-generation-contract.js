@@ -223,15 +223,57 @@ function recentMessages(bundle = {}) {
   return conversations.flatMap((conversation) => {
     return (Array.isArray(conversation.messages) ? conversation.messages : []).map((message) => ({
       role: message.role === "assistant" ? "assistant" : "user",
-      content: safeText(message.content || message.body || "", 1600),
+      content: safeText(message.content || message.body || "", 800),
       created_at: message.created_at || null,
     }));
-  }).filter((message) => message.content).slice(-16);
+  }).filter((message) => message.content).slice(-8);
+}
+
+function relevantHistorySummary(bundle = {}) {
+  const items = Array.isArray(bundle.relevant_history?.items) ? bundle.relevant_history.items : [];
+  return safeText(
+    items
+      .slice(0, 8)
+      .map((item) => safeText(item?.summary, 500))
+      .filter(Boolean)
+      .join("; "),
+    4_000
+  );
+}
+
+function projectedMemoryEntries(entries = [], limit = 0) {
+  return safeArray(entries)
+    .slice(-limit)
+    .map((entry) => ({
+      kind: safeText(entry?.kind, 80),
+      digest: safeText(entry?.digest, 180),
+      conversation_title: safeText(entry?.conversation_title, 240),
+      memory_text: safeText(entry?.memory_text, 1_200),
+      created_at: entry?.created_at || null,
+    }))
+    .filter((entry) => entry.memory_text);
+}
+
+function projectedTaskQueue(queue = {}) {
+  const source = safeObject(queue);
+  const taskItems = (value) => safeArray(value).slice(0, 6).map((item) => ({
+    task_id: safeText(item?.task_id, 180),
+    title: safeText(item?.title, 240),
+    status: safeText(item?.status, 80),
+    reward_pft: item?.reward_pft ?? null,
+    updated_at: item?.updated_at || null,
+  }));
+  return {
+    outstanding: taskItems(source.outstanding),
+    verification: taskItems(source.verification),
+    refused: taskItems(source.refused),
+    rewarded: taskItems(source.rewarded),
+    summary: safeText(source.summary, 1_000),
+  };
 }
 
 export function projectTaskgenInput(bundle = {}, { bundleCid = "", bundleDigest = "" } = {}) {
   const contextDoc = safeObject(bundle.context?.primary_context_doc);
-  const relevantHistory = Array.isArray(bundle.relevant_history?.items) ? bundle.relevant_history.items : [];
   const networkTask = safeObject(bundle.network_task);
   const taskLineage = safeObject(networkTask.task_lineage);
   return {
@@ -245,19 +287,19 @@ export function projectTaskgenInput(bundle = {}, { bundleCid = "", bundleDigest 
     context: {
       context_cid: contextDoc.cid || null,
       context_digest: contextDoc.digest || "",
-      summary: contextDoc.summary || "",
+      summary: safeText(contextDoc.summary, 3_000),
     },
     chat: {
-      recent_chat_summary: bundle.recent_chat?.summary || "",
-      relevant_history_summary: relevantHistory.map((item) => item.summary).filter(Boolean).join("; "),
+      recent_chat_summary: safeText(bundle.recent_chat?.summary, 2_400),
+      relevant_history_summary: relevantHistorySummary(bundle),
       recent_messages: recentMessages(bundle),
-      summary: bundle.recent_chat?.summary || "",
+      summary: safeText(bundle.recent_chat?.summary, 2_400),
     },
     memory: {
-      deep_memory: Array.isArray(bundle.memory?.deep_memory) ? bundle.memory.deep_memory : [],
-      recent_memory: Array.isArray(bundle.memory?.recent_memory) ? bundle.memory.recent_memory : [],
+      deep_memory: projectedMemoryEntries(bundle.memory?.deep_memory, 3),
+      recent_memory: projectedMemoryEntries(bundle.memory?.recent_memory, 4),
     },
-    task_queue: bundle.task_queue || {},
+    task_queue: projectedTaskQueue(bundle.task_queue),
     network_task: bundle.network_task || null,
     hive_policy: {
       operator_standing_policy: safeArray(networkTask.operator_standing_policy),

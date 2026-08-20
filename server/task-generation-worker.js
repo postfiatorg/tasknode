@@ -82,7 +82,7 @@ export function taskGenerationRetryDelayMs(attemptCount = 1, env = process.env) 
 
 export function isRetryableTaskGenerationError(error = {}) {
   const cause = error?.cause && typeof error.cause === "object" ? error.cause : {};
-  const code = safeText(error?.code || cause.code, 120).toLowerCase();
+  const code = safeText(error?.code || cause.code || error?.message || cause.message, 120).toLowerCase();
   const status = Number(error?.status || error?.statusCode || cause.status || cause.statusCode || 0);
   if (status === 429 || status >= 500) return true;
   return new Set([
@@ -90,6 +90,7 @@ export function isRetryableTaskGenerationError(error = {}) {
     "ambient_timeout",
     "ambient_rate_limited",
     "ambient_no_workers",
+    "context_ipfs_fetch_failed",
     "econnreset",
     "econnrefused",
     "etimedout",
