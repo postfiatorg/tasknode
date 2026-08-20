@@ -188,9 +188,11 @@ export async function getOrCreateProviderAccount(options = {}) {
     if (email && (!emailOwner.rows[0] || emailOwner.rows[0].account_id === accountId) && (!account.primaryEmailCanonical || account.primaryEmailCanonical === email)) {
       account.primaryEmailOriginal = options.emailInfo.email; account.primaryEmailCanonical = email; account.primaryEmailVerified = true;
       account.emailProvider ||= provider; account.emailLastSeenAt = now;
-      await client.query("INSERT INTO account_email_identities (email_canonical, account_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [email, accountId]);
     }
     await saveAccount(client, account);
+    if (email && (!emailOwner.rows[0] || emailOwner.rows[0].account_id === accountId) && account.primaryEmailCanonical === email) {
+      await client.query("INSERT INTO account_email_identities (email_canonical, account_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [email, accountId]);
+    }
     await client.query(
       `INSERT INTO account_provider_identities (provider, provider_user_id, account_id, identity_json)
        VALUES ($1,$2,$3,$4::jsonb) ON CONFLICT (provider, provider_user_id) DO UPDATE SET identity_json = EXCLUDED.identity_json, updated_at = now()`,

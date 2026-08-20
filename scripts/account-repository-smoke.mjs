@@ -65,6 +65,14 @@ try {
   assert.equal(new Set(oauthAccounts.map((account) => account.id)).size, 1, "provider identity ownership must serialize");
   accountIds.push(oauthAccounts[0].id);
 
+  const oauthEmail = `oauth-${suffix}@example.test`;
+  const oauthEmailAccount = await getOrCreateProviderAccount({
+    provider: "github", providerUserId: `github-email-${suffix}`, username: `github-email-${suffix}`,
+    emailInfo: { email: oauthEmail, verified: true },
+  });
+  assert.equal((await findAccountByEmail(oauthEmail)).id, oauthEmailAccount.id, "new OAuth accounts must exist before their verified email identity is linked");
+  accountIds.push(oauthEmailAccount.id);
+
   const conflict = await linkProviderToAccount({
     accountId: emailAccounts[0].id,
     provider: "discord",
