@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GrashnukHarvestCodexResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ok",
+    "harvestTaskId",
+    "outcome",
+    "personalTaskId",
+    "requestId",
+    "rewardPft",
+    "rewardTxHash",
+    "rewardCid",
+    "commit",
+    "deployed",
+    "summary",
+    "proof",
+    "blockers",
+    "secretPrinted"
+  ],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "harvestTaskId": { "type": "string" },
+    "outcome": {
+      "type": "string",
+      "enum": ["fixed", "already_fixed", "not_a_bug", "duplicate", "blocked", "not_resolved"]
+    },
+    "personalTaskId": { "type": ["string", "null"] },
+    "requestId": { "type": ["string", "null"] },
+    "rewardPft": { "type": ["string", "number", "null"] },
+    "rewardTxHash": { "type": ["string", "null"] },
+    "rewardCid": { "type": ["string", "null"] },
+    "commit": { "type": ["string", "null"] },
+    "deployed": { "type": ["boolean", "null"] },
+    "summary": { "type": "string" },
+    "proof": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "secretPrinted": { "type": "boolean", "const": false }
+  }
+}

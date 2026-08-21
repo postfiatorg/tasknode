@@ -1,0 +1,22 @@
+{
+  "stage": "accepted",
+  "payload": {
+    "schema": "pf.task.update.v1",
+    "event_id": "evt_net_replay_accept_0001",
+    "task_id": "task_net_replay_000000000000000000000001",
+    "transition": "accepted",
+    "status_after": "accepted",
+    "actor_wallet": "rNetReplayUser111111111111111111111",
+    "subject_wallet": "rNetReplayUser111111111111111111111",
+    "authority_wallet": "rNetReplayAuthority11111111111111",
+    "created_at": "2026-05-24T00:01:00Z"
+  },
+  "pointer": {
+    "kind": "TASK_UPDATE",
+    "cid": "cid_network_lifecycle_accept_001",
+    "task_id": "task_net_replay_000000000000000000000001",
+    "tx_hash": "TX_NET_REPLAY_ACCEPT_0001",
+    "ledger_index": 5100002,
+    "memo_index": 0
+  }
+}

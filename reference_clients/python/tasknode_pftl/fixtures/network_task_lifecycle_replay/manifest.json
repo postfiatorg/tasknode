@@ -1,0 +1,21 @@
+{
+  "schema": "pf.task.network_lifecycle_fixture.manifest.v1",
+  "fixture_id": "network_task_lifecycle_replay_v1",
+  "task_id": "task_net_replay_000000000000000000000001",
+  "description": "Canonical minimal Network Task lifecycle fixture from offer through review outcome and reward payment.",
+  "events": [
+    "event_00_offer.json",
+    "event_01_accept.json",
+    "event_02_submission.json",
+    "event_03_review_decision.json",
+    "event_04_reward_paid.json"
+  ],
+  "expected_transition_path": [
+    "proposed",
+    "accepted",
+    "submitted",
+    "reward_decided",
+    "rewarded"
+  ],
+  "expected_projection": "expected_projection.json"
+}

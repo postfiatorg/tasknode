@@ -1,0 +1,23 @@
+{
+  "stage": "rewarded",
+  "payload": {
+    "schema": "pf.reward.v1",
+    "event_id": "evt_net_replay_reward_0001",
+    "task_id": "task_net_replay_000000000000000000000001",
+    "reward_pft": "12000",
+    "reward_tier": "network_fixture",
+    "reward_summary": "Reward payment closes the deterministic Network Task fixture.",
+    "actor_wallet": "rNetReplayReward111111111111111",
+    "subject_wallet": "rNetReplayUser111111111111111111111",
+    "authority_wallet": "rNetReplayAuthority11111111111111",
+    "created_at": "2026-05-24T00:04:00Z"
+  },
+  "pointer": {
+    "kind": "REWARD",
+    "cid": "cid_network_lifecycle_reward_001",
+    "task_id": "task_net_replay_000000000000000000000001",
+    "tx_hash": "TX_NET_REPLAY_REWARD_0001",
+    "ledger_index": 5100005,
+    "memo_index": 0
+  }
+}

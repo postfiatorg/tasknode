@@ -1,0 +1,184 @@
+app = "tasknodeofficial-dev"
+primary_region = "ewr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  app = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=web node server/index.js"
+  worker-pftl = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:pftl node server/worker-entry.js"
+  worker-taskgen = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:taskgen node server/worker-entry.js"
+  worker-task-review = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:task-review node server/worker-entry.js"
+  worker-context-rewrite = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:context-rewrite node server/worker-entry.js"
+  worker-hive = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:hive node server/worker-entry.js"
+  worker-memory-profile = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:memory-profile node server/worker-entry.js"
+  worker-airdrop = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:airdrop node server/worker-entry.js"
+  worker-nft-renderer = "env TASKNODE_PROCESS_ROLE=worker:nft-renderer node server/worker-entry.js"
+  board-secretary = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=board-secretary node scripts/hive-board-secretary-worker.mjs"
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+  TASKNODE_ENV = "production"
+  TASKNODE_DEV_AUTH_ENABLED = "false"
+  TASKNODE_DATABASE_ENABLED = "true"
+  TASKNODE_APP_NAME = "tasknodeofficial-dev"
+  TASKNODE_PUBLIC_URL = "https://tasknode.postfiat.org"
+  # Fly Proxy connects to Machines from the platform-only RFC1918 range.
+  # Forwarded client/proto/host headers are ignored outside this boundary.
+  TASKNODE_TRUSTED_PROXY_CIDRS = "172.16.0.0/12"
+  VITE_SITE_ORIGIN = "https://tasknode.postfiat.org"
+  TELEGRAM_AUTH_WIDGET_DOMAIN = "tasknode.postfiat.org"
+  DISCORD_REDIRECT_URI = "https://tasknode.postfiat.org/api/auth/discord/callback"
+  X_REDIRECT_URI = "https://tasknodeofficial-dev.fly.dev/api/auth/callback/x"
+  GITHUB_REDIRECT_URI = "https://tasknodeofficial-dev.fly.dev/api/auth/callback/github"
+  TASKNODE_LEGACY_REDIRECT_HOSTS = "tasknodeofficial-dev.fly.dev"
+  TASKNODE_STORE_PATH = "/data/runtime-store.json"
+  TASKNODE_RUNTIME_STORE_DURABLE = "true"
+  VITE_BUILD_ID = "prod"
+  VITE_DEBUG_MODE = "false"
+  TASKNODE_DOCS_ENABLED = "true"
+  TASKNODE_TEAM_ENABLED = "true"
+  TASKNODE_MESSAGES_ENABLED = "true"
+  TASKNODE_NOSTR_NIP05_DOMAIN = "tasknode.postfiat.org"
+  TASKNODE_PFDOCS_EDITOR_ENABLED = "true"
+  TASKNODE_DOCS_ODV_ENABLED = "true"
+  PFDOCS_PUBLIC_ORIGIN = "https://tasknode-pfdocs.fly.dev"
+  PFDOCS_TASKNODE_BRIDGE_PATH = "/tasknode/"
+  VITE_PFTL_EXPLORER_URL = "https://explorer.testnet.postfiat.org"
+  VITE_PFTL_WSS_URL = "wss://ws.testnet.postfiat.org"
+  PFTL_WSS_URL = "wss://ws.testnet.postfiat.org"
+  PFTL_RPC_URL = "https://rpc.testnet.postfiat.org"
+  PFTL_HISTORY_WSS_URL = "wss://ws-archive.testnet.postfiat.org"
+  PFTL_HISTORY_RPC_URL = "https://rpc.testnet.postfiat.org:5006/"
+  PFTL_HISTORY_ACCOUNT_TX_LIMIT = "200"
+  PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES = "8"
+  PFTL_CACHE_WSS_WATCHER_ENABLED = "true"
+  PFTL_CACHE_WORKER_ENABLED = "true"
+  PFTL_CACHE_REDUCER_WORKER_ENABLED = "true"
+  PFTL_CACHE_ARCHIVE_WORKER_ENABLED = "true"
+  PFTL_CACHE_ARCHIVE_WORKER_INTERVAL_MS = "300000"
+  PFTL_CACHE_ARCHIVE_BATCH_LIMIT = "1"
+  PFTL_CACHE_ARCHIVE_MAX_PAGES = "1"
+  PFTL_CACHE_RETENTION_WORKER_ENABLED = "true"
+  PFTL_CACHE_RETENTION_COMPLETED_REDUCER_DAYS = "14"
+  PFTL_CACHE_RETENTION_RAW_TX_ENABLED = "false"
+  TASKNODE_OFFCHAIN_TASK_LIFECYCLE = "true"
+  TASKNODE_OFFCHAIN_TASK_LIFECYCLE_DUAL_WRITE = "false"
+  TASKNODE_TASK_POINTER_REDUCER_ENABLED = "false"
+  TASKNODE_TASK_GENERATION_WORKER_ENABLED = "true"
+  TASKNODE_TASK_GENERATION_WORKER_INTERVAL_MS = "5000"
+  TASKNODE_TASK_GENERATION_WORKER_BATCH_LIMIT = "1"
+  TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED = "true"
+  TASKNODE_NETWORK_TASK_GENERATION_WORKER_INTERVAL_MS = "5000"
+  TASKNODE_NETWORK_TASK_GENERATION_WORKER_BATCH_LIMIT = "1"
+  TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED = "true"
+  TASKNODE_HIVE_TASK_GENERATION_MODEL = "z-ai/glm-5.2"
+  TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT = "xhigh"
+  TASKNODE_TASK_ACCOUNTING_HARVESTER_ENABLED = "false"
+  TASKNODE_TASK_ACCOUNTING_HARVESTER_INTERVAL_MS = "60000"
+  TASKNODE_TASK_ACCOUNTING_HARVESTER_BATCH_LIMIT = "3"
+  TASKNODE_TASK_ACCOUNTING_HARVESTER_CONCURRENCY = "1"
+  TASKNODE_TASK_ACCOUNTING_HARVESTER_ENQUEUE_LIMIT = "3"
+  TASKNODE_TASK_ACCOUNTING_HARVESTER_MODEL = "z-ai/glm-5.2"
+  TASKNODE_HIVE_TASK_MANAGER_ENABLED = "true"
+  TASKNODE_HIVE_TASK_MANAGER_ACTIVE = "true"
+  TASKNODE_HIVE_TASK_MANAGER_CADENCE_SECONDS = "300"
+  TASKNODE_HIVE_TASK_MANAGER_MODEL = "z-ai/glm-5.2"
+  TASKNODE_HIVE_TASK_MANAGER_REASONING_EFFORT = "high"
+  TASKNODE_HIVE_SECRETARY_PROVIDER = "ambient"
+  TASKNODE_HIVE_SECRETARY_MODEL = "z-ai/glm-5.2"
+  TASKNODE_HIVE_SECRETARY_REASONING_EFFORT = "high"
+  TASKNODE_HIVE_PROJECT_PROVIDER = "ambient"
+  TASKNODE_HIVE_PROJECT_MODEL = "z-ai/glm-5.2"
+  TASKNODE_HIVE_PROJECT_REASONING_EFFORT = "high"
+  # Production authority allowlists live only in this private operations config.
+  TASKNODE_HIVE_BRAIN_OPERATOR_HANDLES = "goodalexander,grashnuk,tasknodeorc"
+  TASKNODE_HIVE_REPORT_RERUN_ACCOUNT_IDS = "acct_oauth_3c70e69ab7b8ef1fad3df508"
+  TASKNODE_HIVE_REPORT_RERUN_HANDLES = "goodalexander"
+  TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_ACCOUNT_IDS = "acct_oauth_3c70e69ab7b8ef1fad3df508"
+  TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_HANDLES = "goodalexander"
+  TASKNODE_TASK_ACCOUNTING_HARVEST_RESOLVER_WALLETS = "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx"
+  TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES = "0xpostfiat,dravlic,goodalexander,iridiummaster,pleometric,postfiat-agent"
+  TASKNODE_PROJECT_LEADER_HIVE_HANDLES = "zoz,donravle,georgl0nggamma,jollydinger,nydiokar,hitori,wizbubba,diamond-hand-honcho,goodalexander"
+  TASKNODE_JOBS_CORPUS_URL = "https://gist.githubusercontent.com/goodalexander/3246640dcf10db350fbae9fab8e6a473/raw/bd144a47532fbcba8dd4e8a6f81b605a034c4d16/jobs.md"
+  TASKNODE_BOARD_MANAGER_ENABLED = "false"
+  TASKNODE_BOARD_MANAGER_EXECUTION_ENABLED = "false"
+  TASKNODE_LEGACY_BOARD_MANAGER_ENABLED = "false"
+  TASKNODE_BOARD_MANAGER_CADENCE_SECONDS = "300"
+  TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR = "60"
+  TASKNODE_HIVE_BOARD_SECRETARY_ENABLED = "true"
+  TASKNODE_HIVE_BOARD_SECRETARY_MODEL = "z-ai/glm-5.2"
+  TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS = "900"
+  TASKNODE_HIVE_BOARD_SECRETARY_PROJECT_LIMIT = "100"
+  TASKNODE_HIVE_BOARD_SECRETARY_DB_STATEMENT_TIMEOUT_MS = "60000"
+  TASKNODE_TASK_REVIEW_WORKER_ENABLED = "true"
+  TASKNODE_TASK_REVIEW_AGENT_DECISIONS = "true"
+  DATABASE_STATEMENT_TIMEOUT_MS = "10000"
+  TASKNODE_BM_NARRATOR_ENABLED = "true"
+  TASKNODE_BM_NARRATOR_MODEL = "deepseek/deepseek-v4-flash-0731"
+  TASKNODE_BM_NARRATOR_INTERVAL_MS = "180000"
+  TASKNODE_TASK_REVIEW_WORKER_INTERVAL_MS = "5000"
+  TASKNODE_TASK_REVIEW_WORKER_BATCH_LIMIT = "1"
+  TASKNODE_TASK_WORKER_CLAIM_STALE_SECONDS = "900"
+  TASKNODE_DAILY_AIRDROP_WORKER_ENABLED = "true"
+  TASKNODE_DAILY_AIRDROP_WORKER_RUN_MODE = "production"
+  TASKNODE_DAILY_AIRDROP_CATCHUP_DAYS = "0"
+  TASKNODE_PROFILE_NFT_DAILY_WORKER_ENABLED = "true"
+  TASKNODE_PROFILE_NFT_DAILY_BATCH_LIMIT = "3"
+  TASKNODE_PROFILE_NFT_DAILY_INTERVAL_MS = "600000"
+  TASKNODE_PROFILE_NFT_DAILY_MAX_ATTEMPTS = "3"
+  TASKNODE_PROFILE_NFT_DAILY_STALE_RUNNING_MS = "600000"
+  TASKNODE_PROFILE_NFT_DAILY_DRY_RUN = "false"
+  TASKNODE_PROFILE_NFT_DAILY_FORWARD_ENABLED = "true"
+  TASKNODE_PROFILE_NFT_DAILY_BACKFILL_ENABLED = "false"
+  TASKNODE_PROFILE_NFT_RENDERER_CONFIGURED = "true"
+  TASKNODE_PROFILE_NFT_RENDER_CONCURRENCY = "3"
+  PFT_BALANCE_CACHE_TTL_MS = "15000"
+  PFT_BALANCE_TIMEOUT_MS = "8000"
+  APP_STATE_CACHE_TTL_MS = "15000"
+  VITE_ANALYTICS_ENABLED = "true"
+  VITE_ANALYTICS_DEBUG = "false"
+  VITE_POSTHOG_HOST = "https://traffic.postfiat.org"
+  VITE_POSTHOG_UI_HOST = "https://us.posthog.com"
+  VITE_POSTHOG_REPLAY_ENABLED = "false"
+
+[[restart]]
+  policy = "always"
+  processes = ["app", "board-secretary", "worker-pftl", "worker-taskgen", "worker-task-review", "worker-context-rewrite", "worker-hive", "worker-memory-profile", "worker-airdrop", "worker-nft-renderer"]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 120
+    soft_limit = 90
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 1024
+  processes = ["app"]
+
+[mounts]
+  source = "tasknodeofficial_data"
+  destination = "/data"
+  processes = ["app"]

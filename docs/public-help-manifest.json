@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "description": "Explicit Markdown source allowlist for the production browser Help bundle.",
+  "sources": [
+    "docs/wiki/index.md",
+    "docs/wiki/surfaces/agents.md",
+    "docs/wiki/surfaces/chat.md",
+    "docs/wiki/surfaces/context-rewrite.md",
+    "docs/wiki/surfaces/context.md",
+    "docs/wiki/surfaces/daily-airdrop.md",
+    "docs/wiki/surfaces/directory.md",
+    "docs/wiki/surfaces/docs.md",
+    "docs/wiki/surfaces/hive.md",
+    "docs/wiki/surfaces/memory.md",
+    "docs/wiki/surfaces/messages.md",
+    "docs/wiki/surfaces/profile.md",
+    "docs/wiki/surfaces/refine-context.md",
+    "docs/wiki/surfaces/search.md",
+    "docs/wiki/surfaces/tasks.md",
+    "docs/wiki/surfaces/team.md",
+    "docs/wiki/surfaces/user-guide.md",
+    "docs/wiki/surfaces/wallet.md",
+    "docs/wiki/architecture/ai-providers.md",
+    "docs/wiki/architecture/auth-and-connected-accounts.md",
+    "docs/wiki/architecture/auth-wallet-boundary.md",
+    "docs/wiki/architecture/bootup.md",
+    "docs/wiki/architecture/current-system.md",
+    "docs/wiki/architecture/defect-repair-rule.md",
+    "docs/wiki/architecture/encryption.md",
+    "docs/wiki/architecture/style-guide.md"
+  ]
+}

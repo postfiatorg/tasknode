@@ -1,0 +1,534 @@
+.directory-route {
+  --directory-cream: #f1ede2;
+  --directory-ink: #1c1910;
+  --directory-ink-soft: #332f24;
+  --directory-muted: #8b8576;
+  --directory-faint: #b3ac9c;
+  --directory-rule: rgba(28, 25, 16, 0.1);
+  --directory-rule-soft: rgba(28, 25, 16, 0.06);
+  --directory-green: #2f8a46;
+  --directory-green-soft: rgba(47, 138, 70, 0.07);
+  --directory-amber: #b06a14;
+  --directory-red: #b3402e;
+  background: var(--directory-cream);
+  color: var(--directory-ink);
+}
+
+.directory-shell {
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-width: 1020px;
+  min-height: 100%;
+  padding: 40px 24px 96px;
+  width: 100%;
+}
+
+.directory-header {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--directory-rule);
+  display: flex;
+  gap: 28px;
+  justify-content: space-between;
+  padding-bottom: 28px;
+}
+
+.directory-header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.directory-header p {
+  color: var(--directory-muted);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+  max-width: 500px;
+}
+
+.directory-live-kicker {
+  align-items: center;
+  color: var(--directory-muted);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 7px;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+.directory-live-kicker span {
+  background: var(--directory-faint);
+  border-radius: 50%;
+  height: 7px;
+  width: 7px;
+}
+
+.directory-live-kicker.is-live {
+  color: var(--directory-green);
+}
+
+.directory-live-kicker.is-live span {
+  background: var(--directory-green);
+}
+
+.directory-header-actions {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.directory-stats {
+  display: flex;
+  gap: 34px;
+}
+
+.directory-stat {
+  min-width: 96px;
+  text-align: right;
+}
+
+.directory-stat strong {
+  color: var(--directory-green);
+  display: block;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.directory-stat strong.is-accent {
+  color: var(--directory-green);
+}
+
+.directory-stat span {
+  color: var(--directory-muted);
+  display: block;
+  font-size: 11.5px;
+  margin-top: 5px;
+}
+
+.directory-refresh {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--directory-rule);
+  border-radius: 8px;
+  color: var(--directory-ink-soft);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12.5px;
+  gap: 7px;
+  height: 34px;
+  padding: 0 11px;
+}
+
+.directory-refresh:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.directory-board {
+  margin-top: 30px;
+}
+
+.directory-board-title {
+  align-items: flex-end;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.directory-board-title h2 {
+  color: var(--directory-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.directory-board-title p,
+.directory-board-title small {
+  color: var(--directory-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin: 6px 0 0;
+}
+
+.directory-board-title small {
+  max-width: 320px;
+  text-align: right;
+}
+
+.directory-row {
+  align-items: center;
+  border-bottom: 1px solid var(--directory-rule-soft);
+  box-sizing: border-box;
+  color: inherit;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 36px minmax(0, 2.2fr) repeat(5, minmax(0, 1fr));
+  min-height: 66px;
+  padding: 14px 8px;
+  text-decoration: none;
+}
+
+.directory-row.is-link {
+  cursor: pointer;
+}
+
+.directory-row.is-link:hover,
+.directory-row.is-link:focus-visible {
+  background: rgba(255, 255, 255, 0.34);
+  outline: none;
+}
+
+.directory-row.is-you {
+  background: var(--directory-green-soft);
+}
+
+.directory-row-head {
+  background: var(--directory-cream);
+  border-bottom-color: var(--directory-rule);
+  color: var(--directory-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  min-height: auto;
+  padding-bottom: 10px;
+  padding-top: 10px;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+.directory-row-head button {
+  all: unset;
+  color: var(--directory-muted);
+  cursor: pointer;
+  justify-self: end;
+  text-align: right;
+}
+
+.directory-row-head button.is-active {
+  box-shadow: inset 0 -2px 0 var(--directory-green);
+  color: var(--directory-ink);
+  padding-bottom: 2px;
+}
+
+.directory-rank {
+  color: var(--directory-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.directory-rank.is-top {
+  color: var(--directory-green);
+}
+
+.directory-operator {
+  align-items: center;
+  display: flex;
+  gap: 11px;
+  min-width: 0;
+}
+
+.directory-avatar {
+  align-items: center;
+  background: var(--directory-ink);
+  border-radius: 8px;
+  color: #f5f1e7;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  height: 36px;
+  justify-content: center;
+  overflow: hidden;
+  width: 36px;
+}
+
+.directory-avatar img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.directory-operator-copy {
+  display: block;
+  min-width: 0;
+}
+
+.directory-operator-copy strong,
+.directory-operator-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-operator-copy strong {
+  color: var(--directory-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.directory-operator-copy strong em {
+  border: 1px solid var(--directory-green);
+  border-radius: 999px;
+  color: var(--directory-green);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin-left: 8px;
+  padding: 1px 7px;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.directory-operator-copy small {
+  color: var(--directory-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.directory-machine-badge {
+  border: 0.5px solid rgba(75, 111, 79, 0.34);
+  border-radius: 999px;
+  color: var(--directory-green);
+  display: inline-flex;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-row-stats {
+  display: contents;
+}
+
+.directory-stat-cell,
+.directory-alignment {
+  justify-self: end;
+  text-align: right;
+}
+
+.directory-stat-cell {
+  font-feature-settings: "tnum";
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.directory-stat-cell.is-score {
+  font-weight: 600;
+}
+
+.directory-stat-cell small,
+.directory-alignment > small:last-child {
+  color: var(--directory-muted);
+  display: none;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  margin-top: 3px;
+  text-transform: uppercase;
+}
+
+.directory-alignment > span {
+  font-feature-settings: "tnum";
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.directory-alignment > small {
+  color: var(--directory-faint);
+  font-size: 11px;
+}
+
+.directory-alignment i {
+  background: var(--directory-rule-soft);
+  border-radius: 999px;
+  display: block;
+  height: 3px;
+  margin-left: auto;
+  margin-top: 6px;
+  overflow: hidden;
+  width: 58px;
+}
+
+.directory-alignment b {
+  display: block;
+  height: 100%;
+}
+
+.directory-alignment .tone-high b,
+.directory-alignment i.tone-high b {
+  background: var(--directory-green);
+}
+
+.directory-alignment .tone-medium b,
+.directory-alignment i.tone-medium b {
+  background: var(--directory-amber);
+}
+
+.directory-alignment .tone-low b,
+.directory-alignment i.tone-low b {
+  background: var(--directory-red);
+}
+
+.directory-empty {
+  border-bottom: 1px solid var(--directory-rule-soft);
+  color: var(--directory-muted);
+  font-size: 13.5px;
+  padding: 26px 8px;
+}
+
+.directory-empty.is-error {
+  align-items: center;
+  color: var(--directory-red);
+  display: flex;
+  gap: 14px;
+}
+
+.directory-empty button {
+  background: transparent;
+  border: 1px solid var(--directory-rule);
+  border-radius: 8px;
+  color: var(--directory-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+}
+
+.directory-note {
+  color: var(--directory-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .directory-shell {
+    padding: 28px 24px 84px;
+  }
+
+  .directory-header,
+  .directory-board-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .directory-header-actions {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .directory-stats {
+    gap: 22px;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .directory-stat {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .directory-board-title small {
+    max-width: none;
+    text-align: left;
+  }
+}
+
+@media (max-width: 720px) {
+  .directory-row-head {
+    display: none;
+  }
+
+  .directory-row {
+    gap: 9px 12px;
+    grid-template-columns: 30px minmax(0, 1fr);
+    grid-template-areas:
+      "rank operator"
+      ". stats";
+    min-height: auto;
+    padding: 13px 0;
+  }
+
+  .directory-rank {
+    grid-area: rank;
+  }
+
+  .directory-operator {
+    grid-area: operator;
+  }
+
+  .directory-row-stats {
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 22px;
+    grid-area: stats;
+  }
+
+  .directory-stat-cell,
+  .directory-alignment {
+    flex: 0 1 70px;
+    text-align: left;
+  }
+
+  .directory-alignment {
+    flex-basis: 86px;
+  }
+
+  .directory-stat-cell.is-score {
+    flex-basis: 64px;
+  }
+
+  .directory-stat-cell small,
+  .directory-alignment > small:last-child {
+    display: block;
+  }
+
+  .directory-alignment i {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .directory-shell {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .directory-stats {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .directory-stat strong {
+    font-size: 20px;
+  }
+
+  .directory-header h1 {
+    font-size: 30px;
+  }
+}

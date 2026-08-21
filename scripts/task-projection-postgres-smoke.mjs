@@ -1,0 +1,287 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { migrateDatabase } from "../server/db/migrate.js";
+import { closePool, query } from "../server/db/pool.js";
+import { getTaskDetail, importTaskReplayReceipt, listTaskState } from "../server/repositories/tasks.js";
+import { upsertTaskRequest } from "../server/repositories/task-requests.js";
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required for task projection Postgres smoke.");
+}
+if (!process.env.TASKNODE_DATABASE_ENABLED) {
+  process.env.TASKNODE_DATABASE_ENABLED = "true";
+}
+
+await migrateDatabase();
+
+const suffix = randomUUID().slice(0, 8);
+const accountId = `acct_task_pg_smoke_${suffix}`;
+const walletAddress = `rTaskSmoke${suffix}`;
+const taskId = `task_smoke_${suffix}`;
+const requestId = `req_smoke_${suffix}`;
+const receipt = {
+  run_id: `task_projection_smoke_${suffix}`,
+  task_id: taskId,
+  fixture: {
+    account_id: accountId,
+    request_id: requestId,
+  },
+  wallets: [
+    { role: "user", address: walletAddress },
+    { role: "task_authority", address: `rAuthoritySmoke${suffix}` },
+    { role: "allocation_reward", address: `rAllocationSmoke${suffix}` },
+  ],
+  cids: {
+    context_doc: `QmContextSmoke${suffix}`,
+    request_bundle: `QmBundleSmoke${suffix}`,
+    offer: `QmOfferSmoke${suffix}`,
+    reward: `QmRewardSmoke${suffix}`,
+  },
+  txs: {
+    reward: { tx_hash: `REWARD_TX_${suffix}` },
+  },
+  taskgen: {
+    model: "chat-latest",
+    openai_response_id: `resp_smoke_${suffix}`,
+  },
+  generated_task: {
+    title: "Smoke projected PFTL task",
+    description: "Verify task projections can be imported and listed from Postgres.",
+    task_kind: "engineering",
+    steps: [
+      "Import a replay receipt with generated task steps.",
+      "List the projected task state from Postgres.",
+      "Open task detail and confirm audit fields are present.",
+    ],
+    reward_offer: { amount_estimate_pft: "3.00" },
+    submission_requirement: {
+      type: "text",
+      criteria: "Submit smoke evidence.",
+    },
+    verification_policy: { mode: "manual_review" },
+    deadline: {
+      accept_by: "2026-05-25T00:00:00Z",
+      deadline_at: "2026-05-28T00:00:00Z",
+    },
+  },
+  hydrated_events: [
+    {
+      schema: "pf.task.offer.v1",
+      task_id: taskId,
+      tx_hash: `OFFER_TX_${suffix}`,
+      cid: `QmOfferSmoke${suffix}`,
+      payload: {
+        schema: "pf.task.offer.v1",
+        task_id: taskId,
+        event_id: `evt_offer_${suffix}`,
+        title: "Smoke projected PFTL task",
+        task_kind: "engineering",
+        reward_offer: { amount_estimate_pft: "3.00" },
+      },
+    },
+    {
+      schema: "pf.reward.v1",
+      task_id: taskId,
+      tx_hash: `REWARD_TX_${suffix}`,
+      cid: `QmRewardSmoke${suffix}`,
+      payload: {
+        schema: "pf.reward.v1",
+        task_id: taskId,
+        event_id: `evt_reward_${suffix}`,
+        reward_pft: "3.00",
+        reward_tier: "accepted",
+        reward_score: 100,
+        evidence_refs: [
+          {
+            artifact_cid: `QmEvidenceSmoke${suffix}`,
+            artifact_type: "url",
+            artifact_digest: `sha256:evidence${suffix}`,
+          },
+        ],
+        processed_evidence: {
+          artifacts: [
+            {
+              artifact_type: "url",
+              status: "extracted",
+              source: { url: "https://example.com/task-evidence" },
+              excerpt: "Smoke evidence excerpt.",
+            },
+          ],
+        },
+      },
+    },
+  ],
+  projection: {
+    [taskId]: {
+      status: "rewarded",
+      title: "Smoke projected PFTL task",
+      task_kind: "engineering",
+      reward_offer_pft: "3.00",
+      reward_actual_pft: "3.00",
+      request_bundle_cid: `QmBundleSmoke${suffix}`,
+      events: [{}, {}],
+    },
+  },
+};
+
+const imported = await importTaskReplayReceipt(receipt, {
+  source: "task_projection_smoke",
+  sourceRef: "task-projection-postgres-smoke",
+});
+assert.equal(imported.ok, true);
+assert.equal(imported.taskId, taskId);
+
+const state = await listTaskState({ accountId, walletAddress });
+assert.equal(state.sync.status, "ready");
+assert.equal(state.sync.projectionCount, 1);
+assert.equal(state.rewarded.length, 1);
+assert.equal(state.rewarded[0].taskId, taskId);
+assert.equal(state.rewarded[0].title, "Smoke projected PFTL task");
+assert.equal(state.rewarded[0].pft, 3);
+assert.deepEqual(state.rewarded[0].steps, receipt.generated_task.steps);
+
+const detail = await getTaskDetail({ accountId, walletAddress, taskId });
+assert.equal(detail.ok, true);
+assert.equal(detail.task.taskId, taskId);
+assert.deepEqual(detail.task.steps, receipt.generated_task.steps);
+assert.equal(detail.forensics.timeline.length, 2);
+assert.equal(detail.forensics.timeline[0].cid, `QmOfferSmoke${suffix}`);
+assert.equal(detail.forensics.timeline[0].details.some((entry) => entry.label === "Title"), true);
+assert.equal(detail.forensics.timeline[0].details.some((entry) => entry.label === "Event ID"), true);
+assert.equal(detail.forensics.timeline[1].details.some((entry) => entry.label === "Evidence refs"), true);
+assert.equal(detail.forensics.timeline[1].details.some((entry) => entry.label === "Processed artifacts"), true);
+assert.equal(detail.forensics.transactions.some((entry) => entry.txHash === `OFFER_TX_${suffix}`), true);
+assert.equal(detail.forensics.transactions.some((entry) => entry.txHash === `REWARD_TX_${suffix}`), true);
+assert.equal(detail.forensics.cids.some((entry) => entry.cid === `QmBundleSmoke${suffix}`), true);
+assert.equal(detail.forensics.cids.some((entry) => entry.cid === `QmOfferSmoke${suffix}`), true);
+
+console.log(`task projection postgres smoke ok: ${taskId}`);
+
+const ownerTaskId = `task_owner_smoke_${suffix}`;
+const ownerRequestId = `req_owner_smoke_${suffix}`;
+const ownerAccountId = `acct_owner_smoke_${suffix}`;
+const staleAccountId = `acct_stale_authority_${suffix}`;
+const ownerWallet = `rOwnerSmoke${suffix}`;
+await upsertTaskRequest({
+  requestId: ownerRequestId,
+  accountId: ownerAccountId,
+  subjectWallet: ownerWallet,
+  requestText: "Verify durable task ownership.",
+  requestBundleCid: `QmOwnerBundle${suffix}`,
+  requestEventCid: `QmOwnerRequest${suffix}`,
+  requestTxHash: `OWNER_REQUEST_TX_${suffix}`,
+  status: "proposed",
+  generatedTaskId: ownerTaskId,
+});
+await importTaskReplayReceipt({
+  run_id: `task_projection_owner_smoke_${suffix}`,
+  task_id: ownerTaskId,
+  fixture: { account_id: staleAccountId, request_id: ownerRequestId },
+  wallets: [
+    { role: "user", address: ownerWallet },
+    { role: "task_authority", address: `rOwnerAuthority${suffix}` },
+  ],
+  cids: { request_bundle: `QmOwnerBundle${suffix}` },
+  generated_task: {
+    title: "Keep projection on durable request owner",
+    description: "Authority replay must not steal task ownership.",
+    task_kind: "personal",
+    reward_offer: { amount_estimate_pft: "1.00" },
+    submission_requirement: { type: "text", criteria: "Submit owner smoke evidence." },
+    verification_policy: { mode: "manual_review" },
+  },
+  hydrated_events: [{
+    schema: "pf.task.offer.v1",
+    task_id: ownerTaskId,
+    tx_hash: `OWNER_OFFER_TX_${suffix}`,
+    cid: `QmOwnerOffer${suffix}`,
+    payload: {
+      schema: "pf.task.offer.v1",
+      task_id: ownerTaskId,
+      request_id: ownerRequestId,
+      subject_wallet: ownerWallet,
+      title: "Keep projection on durable request owner",
+    },
+  }],
+  projection: {
+    [ownerTaskId]: {
+      status: "proposed",
+      title: "Keep projection on durable request owner",
+      task_kind: "personal",
+      reward_offer_pft: "1.00",
+      request_bundle_cid: `QmOwnerBundle${suffix}`,
+      events: [{}],
+    },
+  },
+}, {
+  source: "task_projection_owner_smoke",
+  sourceRef: "authority-replay-owner-smoke",
+});
+const ownerState = await listTaskState({ accountId: ownerAccountId, walletAddress: ownerWallet });
+assert.equal(ownerState.outstanding.some((task) => task.taskId === ownerTaskId), true);
+const hiddenFromStale = await listTaskState({ accountId: staleAccountId, walletAddress: ownerWallet });
+assert.equal(hiddenFromStale.outstanding.some((task) => task.taskId === ownerTaskId), false);
+const ownerRow = await query("SELECT account_id, subject_wallet, metadata_json FROM task_projections WHERE task_id = $1", [ownerTaskId]);
+assert.equal(ownerRow.rows[0]?.account_id, ownerAccountId);
+assert.equal(ownerRow.rows[0]?.subject_wallet, ownerWallet);
+assert.equal(ownerRow.rows[0]?.metadata_json?.fixture?.account_id, ownerAccountId);
+console.log(`task projection owner smoke ok: ${ownerTaskId}`);
+
+const acceptedNoDeadlineTaskId = `task_accepted_no_deadline_${suffix}`;
+const acceptedNoDeadlineWallet = `rAcceptedNoDeadline${suffix}`;
+const acceptedNoDeadlineAccountId = `acct_accepted_no_deadline_${suffix}`;
+await importTaskReplayReceipt({
+  run_id: `task_projection_accepted_no_deadline_${suffix}`,
+  task_id: acceptedNoDeadlineTaskId,
+  fixture: { account_id: acceptedNoDeadlineAccountId },
+  wallets: [
+    { role: "user", address: acceptedNoDeadlineWallet },
+    { role: "task_authority", address: `rAcceptedNoDeadlineAuthority${suffix}` },
+  ],
+  generated_task: {
+    title: "Keep accepted task deadline honest",
+    description: "Accepted tasks should not display accept-by as a work deadline.",
+    task_kind: "personal",
+    reward_offer: { amount_estimate_pft: "1.00" },
+    submission_requirement: { type: "text", criteria: "Submit deadline smoke evidence." },
+    verification_policy: { mode: "manual_review" },
+    deadline: {
+      accept_by: "2026-05-25T21:14:00Z",
+      deadline_at: null,
+    },
+  },
+  hydrated_events: [{
+    schema: "pf.task.offer.v1",
+    task_id: acceptedNoDeadlineTaskId,
+    tx_hash: `ACCEPTED_NO_DEADLINE_OFFER_TX_${suffix}`,
+    cid: `QmAcceptedNoDeadlineOffer${suffix}`,
+    payload: {
+      schema: "pf.task.offer.v1",
+      task_id: acceptedNoDeadlineTaskId,
+      title: "Keep accepted task deadline honest",
+    },
+  }],
+  projection: {
+    [acceptedNoDeadlineTaskId]: {
+      status: "accepted",
+      title: "Keep accepted task deadline honest",
+      task_kind: "personal",
+      reward_offer_pft: "1.00",
+      events: [{}],
+    },
+  },
+}, {
+  source: "task_projection_deadline_smoke",
+  sourceRef: "accepted-no-deadline-smoke",
+});
+const acceptedNoDeadlineState = await listTaskState({
+  accountId: acceptedNoDeadlineAccountId,
+  walletAddress: acceptedNoDeadlineWallet,
+});
+const acceptedNoDeadlineTask = acceptedNoDeadlineState.outstanding.find((task) => task.taskId === acceptedNoDeadlineTaskId);
+assert.equal(acceptedNoDeadlineTask?.statusKey, "accepted");
+assert.equal(acceptedNoDeadlineTask?.dueLabel, "Deadline");
+assert.equal(acceptedNoDeadlineTask?.fullDue, "No deadline");
+assert.equal(acceptedNoDeadlineTask?.acceptBy, "2026-05-25T21:14:00.000Z");
+console.log(`task projection accepted no-deadline smoke ok: ${acceptedNoDeadlineTaskId}`);
+await closePool();

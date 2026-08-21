@@ -1,0 +1,54 @@
+{
+  "defaults": {
+    "maxLines": 1200
+  },
+  "extensions": {
+    ".md": {
+      "maxLines": 2000
+    },
+    ".css": {
+      "maxLines": 1500
+    },
+    ".sql": {
+      "maxLines": 1200
+    },
+    ".py": {
+      "maxLines": 1000
+    }
+  },
+  "prefixes": [
+    {
+      "prefix": "src/",
+      "maxLines": 1500
+    },
+    {
+      "prefix": "server/",
+      "maxLines": 1000
+    },
+    {
+      "prefix": "scripts/",
+      "maxLines": 1000
+    },
+    {
+      "prefix": "docs/",
+      "maxLines": 2000
+    },
+    {
+      "prefix": "prompts/",
+      "maxLines": 1000
+    },
+    {
+      "prefix": "reference_clients/",
+      "maxLines": 1000
+    },
+    {
+      "prefix": "mocks/",
+      "maxLines": 5000
+    },
+    {
+      "prefix": "work_in_progress/",
+      "maxLines": 2000
+    }
+  ],
+  "exceptions": {}
+}

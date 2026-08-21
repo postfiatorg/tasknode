@@ -1,0 +1,39 @@
+[project]
+name = "tasknode-pftl-reference"
+version = "0.1.0"
+description = "PFTL-native Task Node reference client and replay harness"
+requires-python = ">=3.11"
+dependencies = [
+  "xrpl-py",
+  "requests",
+  "PyNaCl",
+  "base58",
+  "cryptography",
+  "mnemonic",
+  "Pillow",
+  "pypdf",
+]
+
+[project.scripts]
+orc-request-task = "orc_tooling.cli:main"
+orc-review-payloads = "orc_tooling.review_cli:main"
+orc-review-state = "orc_tooling.review_state_cli:main"
+orc-task-payload = "orc_tooling.payload_cli:main"
+orc-tasks = "orc_tooling.tasks_cli:main"
+orc-hive-followup = "orc_tooling.hive_followup_cli:main"
+orc-hive-signal = "orc_tooling.hive_signal_cli:main"
+orc-classify-network = "orc_tooling.glm_review_classifier:main"
+orc-reward-monitor = "orc_tooling.reward_monitor_cli:main"
+orcctl = "orc_tooling.orcctl:main"
+nazgul = "orc_tooling.nazgul:main"
+orc-runtime = "orc_tooling.runtime_cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["orc_tooling*", "tasknode_pftl*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

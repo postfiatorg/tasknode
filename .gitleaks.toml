@@ -1,0 +1,26 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Private verification artifacts are excluded from every public candidate and scanned in the private evidence system"
+paths = ['''^docs/verification/''']
+
+[[allowlists]]
+description = "Synthetic Discord snowflakes used by the idempotency regression"
+regexTarget = "secret"
+regexes = [
+  '''123456789012345678''',
+  '''223456789012345678''',
+  '''323456789012345678''',
+  '''999999999999999999'''
+]
+
+[[allowlists]]
+description = "Synthetic XRPL NFT token identifier used by the profile flow regression"
+regexTarget = "secret"
+regexes = ['''000B013A95F14B0044F78A264E41713C64B5F89242540EE2''']
+
+[[allowlists]]
+description = "Published protocol verification key embedded in the public Post Fiat knowledge corpus"
+regexTarget = "secret"
+regexes = ['''0x004d1cd3f36e6ea60662af428edbea9d3aba45f04fe496da909d6bbe9fbf9258''']

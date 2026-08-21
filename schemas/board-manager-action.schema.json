@@ -1,0 +1,633 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task Node Board Manager Action",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "target_type", "target_id", "reason", "confidence", "decision_basis", "payload"],
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "do_nothing",
+        "refresh_hive_secretary",
+        "message_user",
+        "create_project",
+        "archive_project",
+        "restore_project",
+        "refresh_project_document",
+        "assign_contributor",
+        "initiate_network_task",
+        "cancel_network_task"
+      ]
+    },
+    "target_type": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "target_id": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "decision_basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_facts", "tradeoffs", "rejected_actions", "risk_notes", "next_check"],
+      "properties": {
+        "source_facts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "tradeoffs": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "rejected_actions": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["action", "reason"],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "do_nothing",
+                  "refresh_hive_secretary",
+                  "message_user",
+                  "create_project",
+                  "archive_project",
+                  "restore_project",
+                  "refresh_project_document",
+                  "assign_contributor",
+                  "initiate_network_task",
+                  "cancel_network_task"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 500
+              }
+            }
+          }
+        },
+        "risk_notes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "next_check": {
+          "type": "string",
+          "maxLength": 700
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "next_steps",
+        "message_text",
+        "archive_reason",
+        "project",
+        "project_document",
+        "contributor",
+        "network_task",
+        "message_precondition",
+        "cancel_target"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "next_steps": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "message_text": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "archive_reason": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "project": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "type",
+            "title",
+            "summary",
+            "objective",
+            "about",
+            "priority",
+            "phase_label",
+            "phase_current",
+            "phase_total",
+            "pft_routed",
+            "task_count",
+            "contributor_count"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "",
+                "protocol_marketing",
+                "protocol_development",
+                "alpha_generation",
+                "protocol_applications",
+                "network_validation"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 600
+            },
+            "objective": {
+              "type": "string",
+              "maxLength": 900
+            },
+            "about": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "priority": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "phase_label": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "phase_current": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "phase_total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "pft_routed": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000000
+            },
+            "task_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "contributor_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          }
+        },
+        "project_document": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "summary",
+            "project_status",
+            "key_points",
+            "blocked_or_unclear",
+            "next_actions"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 1200
+            },
+            "project_status": {
+              "type": "string",
+              "maxLength": 1800
+            },
+            "key_points": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "maxLength": 700
+              }
+            },
+            "blocked_or_unclear": {
+              "type": "array",
+              "maxItems": 6,
+              "items": {
+                "type": "string",
+                "maxLength": 700
+              }
+            },
+            "next_actions": {
+              "type": "array",
+              "maxItems": 6,
+              "items": {
+                "type": "string",
+                "maxLength": 700
+              }
+            }
+          }
+        },
+        "contributor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "project_id",
+            "account_id",
+            "wallet_address",
+            "codename",
+            "archetype",
+            "role_label",
+            "status",
+            "allotted",
+            "cap",
+            "load",
+            "sort_order"
+          ],
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "account_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "wallet_address": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "codename": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "archetype": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "role_label": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "status": {
+              "type": "string",
+              "enum": ["", "active", "paused", "blocked"]
+            },
+            "allotted": {
+              "type": "boolean"
+            },
+            "cap": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "load": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "sort_order": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          }
+        },
+        "network_task": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "task_work_type",
+            "required_badge_id",
+            "operating_badge_id",
+            "badge_work_type",
+            "badge_reason",
+            "badge_reward_cap_pft",
+            "badge_evidence_requirements",
+            "discord_evidence_required",
+            "task_class",
+            "candidate_account_id",
+            "candidate_wallet_address",
+            "project_need_summary",
+            "routing_reason",
+            "cadence_reason",
+            "action_output",
+            "delivery_surface",
+            "recipient_or_reviewer",
+            "escalation_stage",
+            "lineage_task_ids",
+            "referenced_outputs",
+            "deduped_against",
+            "why_not_duplicate",
+            "reward_min_pft",
+            "reward_max_pft",
+            "accept_window_hours",
+            "allow_over_capacity"
+          ],
+          "properties": {
+            "task_work_type": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "required_badge_id": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "operating_badge_id": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "badge_work_type": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "badge_reason": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "badge_reward_cap_pft": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "badge_evidence_requirements": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "maxLength": 500
+              }
+            },
+            "discord_evidence_required": {
+              "type": "boolean"
+            },
+            "task_class": {
+              "type": "string",
+              "enum": ["", "network", "alpha"]
+            },
+            "candidate_account_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "candidate_wallet_address": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "project_need_summary": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "routing_reason": {
+              "type": "string",
+              "maxLength": 1800
+            },
+            "cadence_reason": {
+              "type": "string",
+              "maxLength": 700
+            },
+            "action_output": {
+              "type": "string",
+              "maxLength": 1200
+            },
+            "delivery_surface": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "recipient_or_reviewer": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "escalation_stage": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "lineage_task_ids": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "string",
+                "maxLength": 180
+              }
+            },
+            "referenced_outputs": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["task_id", "cid", "tx_hash", "summary", "how_used"],
+                "properties": {
+                  "task_id": {
+                    "type": "string",
+                    "maxLength": 180
+                  },
+                  "cid": {
+                    "type": "string",
+                    "maxLength": 240
+                  },
+                  "tx_hash": {
+                    "type": "string",
+                    "maxLength": 180
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 700
+                  },
+                  "how_used": {
+                    "type": "string",
+                    "maxLength": 700
+                  }
+                }
+              }
+            },
+            "deduped_against": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["task_id", "theme", "reason_not_repeated"],
+                "properties": {
+                  "task_id": {
+                    "type": "string",
+                    "maxLength": 180
+                  },
+                  "theme": {
+                    "type": "string",
+                    "maxLength": 240
+                  },
+                  "reason_not_repeated": {
+                    "type": "string",
+                    "maxLength": 700
+                  }
+                }
+              }
+            },
+            "why_not_duplicate": {
+              "type": "string",
+              "maxLength": 1200
+            },
+            "reward_min_pft": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50000
+            },
+            "reward_max_pft": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 50000
+            },
+            "accept_window_hours": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 336
+            },
+            "allow_over_capacity": {
+              "type": "boolean"
+            }
+          }
+        },
+        "message_precondition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "intent",
+            "project_id",
+            "related_task_id",
+            "related_allocation_id",
+            "expected_task_status",
+            "expected_allocation_status",
+            "expected_followup_status",
+            "expected_min_reward_pft",
+            "allow_terminal_task"
+          ],
+          "properties": {
+            "intent": {
+              "type": "string",
+              "enum": [
+                "",
+                "task_acceptance_nudge",
+                "task_verification_nudge",
+                "task_status_clarification",
+                "routing_status",
+                "project_followup",
+                "account_followup"
+              ]
+            },
+            "project_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "related_task_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "related_allocation_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "expected_task_status": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "expected_allocation_status": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "expected_followup_status": {
+              "type": "string",
+              "enum": ["", "none_open", "open"]
+            },
+            "expected_min_reward_pft": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "allow_terminal_task": {
+              "type": "boolean"
+            }
+          }
+        },
+        "cancel_target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task_id", "reason", "referenced_task_ids"],
+          "properties": {
+            "task_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "referenced_task_ids": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "string",
+                "maxLength": 180
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

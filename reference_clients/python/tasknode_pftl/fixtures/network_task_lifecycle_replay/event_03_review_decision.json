@@ -1,0 +1,29 @@
+{
+  "stage": "reviewed",
+  "payload": {
+    "schema": "pf.task.reward_decision.v1",
+    "event_id": "evt_net_replay_review_0001",
+    "task_id": "task_net_replay_000000000000000000000001",
+    "status_after": "reward_decided",
+    "score": {
+      "decision": "reward",
+      "reward_pft": "12000",
+      "completion": 100,
+      "evidence_quality": 96,
+      "reason": "The fixture includes deterministic lifecycle inputs, expected outputs, and a runnable replay verifier.",
+      "user_feedback": "Replay fixture validates the expected Network Task state path."
+    },
+    "actor_wallet": "rNetReplayAuthority11111111111111",
+    "subject_wallet": "rNetReplayUser111111111111111111111",
+    "allocation_wallet": "rNetReplayReward111111111111111",
+    "created_at": "2026-05-24T00:03:00Z"
+  },
+  "pointer": {
+    "kind": "TASK_UPDATE",
+    "cid": "cid_network_lifecycle_review_001",
+    "task_id": "task_net_replay_000000000000000000000001",
+    "tx_hash": "TX_NET_REPLAY_REVIEW_0001",
+    "ledger_index": 5100004,
+    "memo_index": 0
+  }
+}

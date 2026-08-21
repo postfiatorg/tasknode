@@ -1,0 +1,124 @@
+{
+  "artifact_id": "artifact_2933c8e2a9369d0b65fe5016",
+  "final_status": "rewarded",
+  "receipt_id": "receipt_4de6c2e01efd8d87388281fb",
+  "rejected_transition_count": 2,
+  "rejected_transitions": [
+    {
+      "allowed_to_statuses": [
+        "accepted",
+        "refused"
+      ],
+      "event_type": "artifact_submitted",
+      "from_status": "proposed",
+      "reason": "invalid_task_state_transition",
+      "to_status": "submitted"
+    },
+    {
+      "allowed_to_statuses": [
+        "cancelled",
+        "submitted"
+      ],
+      "event_type": "reputation_updated",
+      "from_status": "accepted",
+      "reason": "invalid_task_state_transition",
+      "to_status": "rewarded"
+    }
+  ],
+  "reputation_after": {
+    "approved_submissions": 3,
+    "completed_tasks": 3,
+    "last_updated_at": "2026-05-18T00:00:00Z",
+    "rejected_submissions": 0,
+    "reputation_points": 50,
+    "schema": "pf.task.local_json_loop.v1.reputation",
+    "user_id": "user_goodalexander_demo"
+  },
+  "reputation_before": {
+    "approved_submissions": 2,
+    "completed_tasks": 2,
+    "last_updated_at": "2026-05-18T00:00:00Z",
+    "rejected_submissions": 0,
+    "reputation_points": 42,
+    "schema": "pf.task.local_json_loop.v1.reputation",
+    "user_id": "user_goodalexander_demo"
+  },
+  "request_id": "req_b74e4b510002f2055c802747",
+  "run_id": "local_json_task_loop_demo_v1",
+  "schema": "pf.task.local_json_loop.v1",
+  "state_digest": "sha256:138b98f79cc5b82effba4ce22f948e524b4ff165e961c05d08c28b9247efd0d5",
+  "state_machine": {
+    "accepted": {
+      "cancelled": [
+        "task_cancelled"
+      ],
+      "submitted": [
+        "artifact_submitted"
+      ]
+    },
+    "cancelled": {},
+    "none": {
+      "proposed": [
+        "task_generated"
+      ]
+    },
+    "proposed": {
+      "accepted": [
+        "task_accepted"
+      ],
+      "refused": [
+        "task_refused"
+      ]
+    },
+    "refused": {},
+    "rejected": {},
+    "reviewed": {
+      "rejected": [
+        "reputation_updated"
+      ],
+      "rewarded": [
+        "reputation_updated"
+      ]
+    },
+    "rewarded": {},
+    "submitted": {
+      "reviewed": [
+        "submission_reviewed"
+      ]
+    }
+  },
+  "task_id": "task_56e4026772be18750692279d",
+  "transition_count": 5,
+  "transitions": [
+    {
+      "event_id": "evt_afcce5fca31da369bf6a8f8d",
+      "event_type": "task_generated",
+      "from": "none",
+      "to": "proposed"
+    },
+    {
+      "event_id": "evt_c7f3ed3789238a375de4767e",
+      "event_type": "task_accepted",
+      "from": "proposed",
+      "to": "accepted"
+    },
+    {
+      "event_id": "evt_e60df420a3e59e56100ed4ec",
+      "event_type": "artifact_submitted",
+      "from": "accepted",
+      "to": "submitted"
+    },
+    {
+      "event_id": "evt_3fcda19326dcd0375171a626",
+      "event_type": "submission_reviewed",
+      "from": "submitted",
+      "to": "reviewed"
+    },
+    {
+      "event_id": "evt_97649edddc26bf2d624d8fe6",
+      "event_type": "reputation_updated",
+      "from": "reviewed",
+      "to": "rewarded"
+    }
+  ]
+}

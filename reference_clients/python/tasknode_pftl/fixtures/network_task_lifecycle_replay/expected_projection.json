@@ -1,0 +1,19 @@
+{
+  "schema": "pf.task.network_lifecycle_fixture.expected_projection.v1",
+  "task_id": "task_net_replay_000000000000000000000001",
+  "status": "rewarded",
+  "title": "Build deterministic network task replay fixture",
+  "description": "Create one minimal replayable fixture that proves a Network Task moves deterministically from offer through review outcome.",
+  "task_kind": "network",
+  "reward_offer_pft": "12000",
+  "reward_actual_pft": "12000",
+  "request_bundle_cid": "cid_request_bundle_network_fixture_001",
+  "event_count": 5,
+  "expected_transition_path": [
+    "proposed",
+    "accepted",
+    "submitted",
+    "reward_decided",
+    "rewarded"
+  ]
+}

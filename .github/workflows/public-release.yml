@@ -1,0 +1,97 @@
+name: public-release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: public-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    services:
+      postgres:
+        image: pgvector/pgvector@sha256:0a07c4114ba6d1d04effcce3385e9f5ce305eb02e56a3d35948a415a52f193ec
+        env:
+          POSTGRES_USER: tasknodeofficial
+          POSTGRES_PASSWORD: tasknodeofficial
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tasknodeofficial -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Require a clean protected-main release commit and approved license
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD origin/main
+          test -z "$(git status --short)"
+          test -s LICENSE
+      - name: Scan the exact repository source for secrets
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f dir /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
+          docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" trufflesecurity/trufflehog@sha256:ff4c95e9df7d645daf2140e3ca1039031c63106268d5fbb25feb43ceca1bcc33 filesystem /repo --json --no-update --no-verification --results=unverified,unknown,verified --fail-on-scan-errors > "$RUNNER_TEMP/source-trufflehog.jsonl"
+          node scripts/secret-scan-review.mjs "$RUNNER_TEMP/source-trufflehog.jsonl" --scope=filesystem
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Drill repository recovery and migration rollback
+        run: npm run data-recovery-drill
+        env:
+          TASKNODE_RECOVERY_ADMIN_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres
+      - name: Verify durable runtime authority
+        run: node scripts/migrate-db.mjs && node scripts/account-repository-smoke.mjs && node scripts/auth-session-repository-smoke.mjs && node scripts/auth-challenge-repository-smoke.mjs && node scripts/auth-state-migration-smoke.mjs && node scripts/account-wallet-repository-smoke.mjs && node scripts/ethereum-deposit-repository-smoke.mjs && node scripts/terminal-auth-repository-smoke.mjs
+        env:
+          DATABASE_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres
+          TASKNODE_DATABASE_ENABLED: "true"
+      - name: Build and scan role-specific production images
+        run: |
+          docker build --target web-runtime --tag tasknode-public-web:${GITHUB_SHA} .
+          docker build --target worker-runtime --tag tasknode-public-worker:${GITHUB_SHA} .
+          docker run --rm --entrypoint sh tasknode-public-web:${GITHUB_SHA} -lc 'test "$(id -u)" = 1000 && ! command -v npm && ! command -v npx && ! command -v codex && ! command -v vite && test -f server/index.js && test ! -f server/background-workers.js && test -d dist && test ! -e prompts/non_production'
+          docker run --rm --entrypoint sh tasknode-public-worker:${GITHUB_SHA} -lc 'test "$(id -u)" = 1000 && ! command -v npm && ! command -v npx && ! command -v codex && ! command -v vite && test -f server/worker-entry.js && test ! -f server/index.js && test ! -d dist && test ! -e prompts/non_production'
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check --exit-code 1 tasknode-public-web:${GITHUB_SHA}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check --exit-code 1 tasknode-public-worker:${GITHUB_SHA}
+      - name: Build source archive and SBOMs from the production commit
+        env:
+          SOURCE_DATE_EPOCH: ${{ github.event.repository.updated_at }}
+        run: |
+          mkdir -p release-artifacts
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          git archive --format=tar HEAD | gzip -n > release-artifacts/tasknode-public-source.tar.gz
+          npm run --silent sbom:cyclonedx > release-artifacts/sbom.cdx.json
+          npm run --silent sbom:spdx > release-artifacts/sbom.spdx.json
+          (cd release-artifacts && sha256sum tasknode-public-source.tar.gz sbom.cdx.json sbom.spdx.json > SHA256SUMS)
+      - name: Attest source provenance
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d
+        with:
+          subject-path: release-artifacts/tasknode-public-source.tar.gz
+      - name: Attest CycloneDX SBOM
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d
+        with:
+          subject-path: release-artifacts/tasknode-public-source.tar.gz
+          sbom-path: release-artifacts/sbom.cdx.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-release-${{ github.sha }}
+          path: release-artifacts/
+          if-no-files-found: error
+          retention-days: 30
