@@ -219,7 +219,7 @@ Add one of:
 - a queue consumer that runs inside the clean IPFS app;
 - a dedicated operator worker that can call `ipfs-cluster-ctl` and report back.
 
-Task Node Official implements the dedicated operator-worker interface. Configure
+Task Node implements the dedicated operator-worker interface. Configure
 one of these:
 
 ```bash

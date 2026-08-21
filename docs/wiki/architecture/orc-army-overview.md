@@ -76,7 +76,7 @@ edit code, run tests, open PRs, and report blockers.
 Key commands:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 
 uv run nazgul status
 uv run nazgul watch grashnuk
@@ -108,7 +108,7 @@ The default is dry-run. It prints the selected item and planned action without
 mutating review state or publishing signed transactions.
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 
 uv run orcctl self-cycle --heuristic-only
 uv run orcctl self-cycle --execute --heuristic-only
@@ -134,7 +134,7 @@ still a future graduation step.
 Key commands:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 
 uv run nazgul dispatch-runtime grashnuk
 uv run orc-runtime status --orc grashnuk
@@ -337,7 +337,7 @@ status.
 ## Common Commands
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 
 # One Orc inventory.
 uv run orcctl status

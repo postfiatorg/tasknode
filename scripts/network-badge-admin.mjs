@@ -49,7 +49,7 @@ Usage:
   node scripts/network-badge-admin.mjs expire --account-id <account> --badge-id <badge> --reason <reason> --operator <name> --submit
   node scripts/network-badge-admin.mjs default --account-id <account> --badge-id <badge> --submit
   node scripts/network-badge-admin.mjs resolve-x --username <handle>
-  node scripts/network-badge-admin.mjs resolve-github-collab --owner postfiatorg --repo tasknodeofficial --username <handle>
+  node scripts/network-badge-admin.mjs resolve-github-collab --owner postfiatorg --repo tasknode --username <handle>
   node scripts/network-badge-admin.mjs list-verifier-jobs [--account-id <account>] [--badge-id <badge>] [--status queued]
   node scripts/network-badge-admin.mjs enqueue-verifier-job --account-id <account> --verifier-type <type> [--badge-id <badge>] [--username <handle>] [--submit]
       verifier types: x_user_metrics, github_collaborator_permission, qa_worker_access, expert_access

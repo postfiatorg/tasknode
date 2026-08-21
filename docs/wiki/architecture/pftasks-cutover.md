@@ -1,18 +1,18 @@
 # PFTasks Cutover
 
-This runbook moves a user from the old PFTasks app into Task Node Official without losing custody boundaries or leaving both apps able to issue work for the same wallet.
+This runbook moves a user from the old PFTasks app into Task Node without losing custody boundaries or leaving both apps able to issue work for the same wallet.
 
-The product-level cutover executed on 2026-06-10: `https://tasknode.postfiat.org` serves Task Node Official and old PFTasks task-side authority is shut down (see the [Production Cutover Execution Checklist](#docs/task-node-production-cutover-execution-checklist)). This page remains the per-account migration procedure for moving an individual user's wallet, context, and NFT state.
+The product-level cutover executed on 2026-06-10: `https://tasknode.postfiat.org` serves Task Node and old PFTasks task-side authority is shut down (see the [Production Cutover Execution Checklist](#docs/task-node-production-cutover-execution-checklist)). This page remains the per-account migration procedure for moving an individual user's wallet, context, and NFT state.
 
-The rule is simple: first make the old app stop acting for the wallet, then link or restore the wallet in the new app, then import only the state that Task Node Official can actually use.
+The rule is simple: first make the old app stop acting for the wallet, then link or restore the wallet in the new app, then import only the state that Task Node can actually use.
 
 ## Scope
 
-Use this for an account-level PFTasks to Task Node Official migration.
+Use this for an account-level PFTasks to Task Node migration.
 
 The old PFTasks app owns old database rows for users, tasks, profile settings, old chat history, old context CIDs, old wallet sync targets, and old NFT cache rows.
 
-Task Node Official owns the new account, billing, chat, memory, current context draft, profile NFTs, recommended connections, PFTL task projections, and Hive routing.
+Task Node owns the new account, billing, chat, memory, current context draft, profile NFTs, recommended connections, PFTL task projections, and Hive routing.
 
 PFT and NFT ownership remain wallet-owned on-chain. The cutover does not move coins, seeds, or NFTs. The user keeps the wallet only if they still control the seed or can sign a wallet proof in the new app.
 
@@ -112,10 +112,10 @@ const q = (sql, params = []) => client.query(sql, params).then((r) => r.rows);
 NODE
 ```
 
-Run Task Node Official inventory from the Fly app machine, because the new app still keeps auth and linked-wallet state in the runtime store.
+Run Task Node inventory from the Fly app machine, because the new app still keeps auth and linked-wallet state in the runtime store.
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial
+cd /home/pfrpc/repos/tasknode
 fly ssh console -a tasknodeofficial-dev --process-group app -C \
   "sh -lc 'cd /app && node scripts/query-user-tasks.mjs --handle goodalexander'"
 ```
@@ -143,17 +143,17 @@ The `deleted` status is intentional for old PFTasks. Old auth code blocks delete
 
 ## New App Port
 
-The new app cannot silently take custody of the old wallet. The user must link or restore the old wallet in Task Node Official by signing a wallet proof from the browser. If the old wallet is not linked, Task Node Official can still keep the new account running on its current linked wallet, but old wallet history will not automatically become the active task wallet.
+The new app cannot silently take custody of the old wallet. The user must link or restore the old wallet in Task Node by signing a wallet proof from the browser. If the old wallet is not linked, Task Node can still keep the new account running on its current linked wallet, but old wallet history will not automatically become the active task wallet.
 
 Context has two paths:
 
-- Current context draft is account-scoped in Task Node Official. Import the old current context only after the user has selected the old context version they want to restore.
+- Current context draft is account-scoped in Task Node. Import the old current context only after the user has selected the old context version they want to restore.
 - Historical context pointers are wallet-scoped. After the old wallet is linked and synced, the Context page can show old encrypted context CIDs and the browser can decrypt previews with the local wallet vault.
 
 NFTs have two paths:
 
 - Minted NFTs remain on-chain with the old wallet. They do not move during cutover.
-- Task Node Official profile NFT rows can be imported from old `nft_mints` metadata only as cache records. The on-chain token id, mint tx hash, metadata CID, image CID, owner wallet, and mint status must be preserved.
+- Task Node profile NFT rows can be imported from old `nft_mints` metadata only as cache records. The on-chain token id, mint tx hash, metadata CID, image CID, owner wallet, and mint status must be preserved.
 
 Prefer chain inventory for the canonical import path:
 
@@ -171,13 +171,13 @@ npm run wallet-nft-inventory -- \
 
 That command queries PFTL `account_nfts`, decodes each on-chain NFT metadata URI, fetches IPFS metadata, extracts the image CID, and upserts renderable `profile_nfts` cache rows. It does not depend on the old PFTasks database.
 
-Use `npm run profile-nft-import-pftasks` only as a historical bootstrap or audit shortcut. It accepts old PFTasks `nft_mints` rows as JSON, filters to `status = 'minted'` and the requested owner wallet, then upserts Task Node Official `profile_nfts` rows with stable ids of the form `nft_pftasks_<old_mint_id>`. The import is cache-only: it does not move NFTs, sign transactions, change custody, or alter the old PFTasks rows.
+Use `npm run profile-nft-import-pftasks` only as a historical bootstrap or audit shortcut. It accepts old PFTasks `nft_mints` rows as JSON, filters to `status = 'minted'` and the requested owner wallet, then upserts Task Node `profile_nfts` rows with stable ids of the form `nft_pftasks_<old_mint_id>`. The import is cache-only: it does not move NFTs, sign transactions, change custody, or alter the old PFTasks rows.
 
 Example operator flow:
 
 ```bash
 # 1. Query old PFTasks nft_mints for the wallet from the old PFTasks API app.
-# 2. Dry-run the import against Task Node Official.
+# 2. Dry-run the import against Task Node.
 npm run profile-nft-import-pftasks -- \
   --account-id acct_oauth_... \
   --wallet r... \
@@ -234,9 +234,9 @@ https://ipfs-testnet.postfiat.org/ipfs/,
 https://pft-ipfs-testnet-node-1.fly.dev/ipfs/
 ```
 
-After import, the current Task Node Official profile NFT gallery can render those IPFS image CIDs because `/api/profile/nfts`, public profile, Hive, and recommended-connections avatars all read current-wallet `profile_nfts` cache rows.
+After import, the current Task Node profile NFT gallery can render those IPFS image CIDs because `/api/profile/nfts`, public profile, Hive, and recommended-connections avatars all read current-wallet `profile_nfts` cache rows.
 
-Old PFTasks tasks should not be imported as live new Task Node tasks. Treat them as historical evidence unless a separate replay importer proves that the old event stream maps cleanly into Task Node Official `task_projections`.
+Old PFTasks tasks should not be imported as live new Task Node tasks. Treat them as historical evidence unless a separate replay importer proves that the old event stream maps cleanly into Task Node `task_projections`.
 
 ## URL Cutover
 
@@ -246,8 +246,8 @@ When ready:
 
 1. Put old PFTasks in read-only or blocked mode.
 2. Stop old worker/task processors.
-3. Verify Task Node Official `app`, `worker`, and `board-manager` Fly process groups are running.
-4. Update Task Node Official public URL settings and OAuth callback domains.
+3. Verify Task Node `app`, `worker`, and `board-manager` Fly process groups are running.
+4. Update Task Node public URL settings and OAuth callback domains.
 5. Redirect the old URL to the new app with clear deprecation copy.
 6. Keep the old database available for audit and rollback inspection.
 
@@ -255,4 +255,4 @@ When ready:
 
 Rollback is possible only if old rows were preserved.
 
-To roll back an account-level cutover, restore the old `users.status`, restore old wallet active flags, restore required `wallet_sync_targets`, and clear the old task cancellation only for tasks that were cancelled by the cutover transaction. Do not roll back chain transactions, reward payouts, minted NFTs, or Task Node Official rows by hand.
+To roll back an account-level cutover, restore the old `users.status`, restore old wallet active flags, restore required `wallet_sync_targets`, and clear the old task cancellation only for tasks that were cancelled by the cutover transaction. Do not roll back chain transactions, reward payouts, minted NFTs, or Task Node rows by hand.

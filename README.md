@@ -1,4 +1,4 @@
-# Task Node Official
+# Task Node
 
 Task Node is Post Fiat's account-first work application. It combines AI chat,
 personal and network tasks, context and memory, wallet-backed identity, PFTL

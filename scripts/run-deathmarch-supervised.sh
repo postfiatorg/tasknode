@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_dir="/home/pfrpc/repos/tasknodeofficial"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_dir="$(cd -- "$script_dir/.." && pwd)"
 fly_bin="${FLY_BIN:-/home/pfrpc/.fly/bin/fly}"
 app_name="${DEATHMARCH_FLY_APP:-tasknodeofficial-dev}"
 local_port="${DEATHMARCH_MPG_LOCAL_PORT:-16433}"

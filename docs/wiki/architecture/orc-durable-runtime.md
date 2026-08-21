@@ -86,7 +86,7 @@ Default local mailbox:
 Commands:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 
 uv run nazgul dispatch-runtime grashnuk
 uv run orc-runtime status --orc grashnuk
@@ -178,7 +178,7 @@ status, the source task can be dispatched again if a new review pass is needed.
 Focused tests:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run python -m unittest tests/test_orc_tooling.py
 uv run --with ruff ruff check orc_tooling tests/test_orc_tooling.py
 ```

@@ -1,6 +1,6 @@
 # IPFS Infrastructure Rebuild
 
-This page describes the implemented IPFS operating state for Task Node Official and the migration path from the old mixed Pinata/Fly/legacy-gateway setup to reliable first-party infrastructure.
+This page describes the implemented IPFS operating state for Task Node and the migration path from the old mixed Pinata/Fly/legacy-gateway setup to reliable first-party infrastructure.
 
 The goal is simple: every PFTL pointer and profile NFT that Task Node renders must resolve quickly, repeatably, and from infrastructure we can reason about. Users should not see random missing images, stalled task indexing, or gateway timeouts because an old node happens to be down.
 
@@ -120,9 +120,9 @@ Cutover requires:
 
 ## Current State
 
-As of June 6, 2026, Task Node Official has two different IPFS realities.
+As of June 6, 2026, Task Node has two different IPFS realities.
 
-New Task Node Official writes use Pinata credentials in `server/context-ipfs.js`. JSON pins use `pinContextIpfsJson`, profile NFT image bytes use `pinIpfsFile`, and legacy exact-CID repair uses `pinIpfsCidByHash`. The deployed app has Pinata configured and can publish new task, context, reward, daily-airdrop, and profile NFT payloads through that path.
+New Task Node writes use Pinata credentials in `server/context-ipfs.js`. JSON pins use `pinContextIpfsJson`, profile NFT image bytes use `pinIpfsFile`, and legacy exact-CID repair uses `pinIpfsCidByHash`. The deployed app has Pinata configured and can publish new task, context, reward, daily-airdrop, and profile NFT payloads through that path.
 
 The old first-party Fly IPFS app still exists:
 
@@ -154,7 +154,7 @@ There is now a clean first-party testnet gateway built from fresh volumes:
 
 As of June 6, 2026 at 18:43 UTC, both clean machines pass the production two-replica health gate. The public `/health` endpoint reports `ok: true`, `cluster_peers.peerCount: 2`, `cluster_canary.allocationCount: 2`, and `cluster_canary.pinnedPeerCount: 2`. The generated canary CID `bafkreih37zbprs76fv4rj65qsdutdkp3737bx335nuu43bmlpo6suvs7pi` is served publicly and returns `postfiat-ipfs-health-v1`.
 
-Task Node Official now prefers the clean first-party gateway for app reads. Pinata remains the current write backend, public gateways remain resilience fallbacks, and the old Fly/PFTasks gateways are not default read dependencies. Keep old gateways available only as explicit legacy recovery inputs. Profile galleries keep an explicit unavailable-image state for future CID failures instead of replacing unresolved minted artifacts with unrelated generated art.
+Task Node now prefers the clean first-party gateway for app reads. Pinata remains the current write backend, public gateways remain resilience fallbacks, and the old Fly/PFTasks gateways are not default read dependencies. Keep old gateways available only as explicit legacy recovery inputs. Profile galleries keep an explicit unavailable-image state for future CID failures instead of replacing unresolved minted artifacts with unrelated generated art.
 
 ## Non-Negotiable Requirements
 
@@ -261,13 +261,13 @@ Use these statuses consistently:
 
 ### Phase 1: Stop Depending On Broken Gateways
 
-Keep the Task Node Official fallback patch that places `https://pft-ipfs-testnet-clean.fly.dev/ipfs/` first, then public fallbacks. Do not use the old Fly/PFTasks gateways as default app reads. They remain historical recovery inputs only.
+Keep the Task Node fallback patch that places `https://pft-ipfs-testnet-clean.fly.dev/ipfs/` first, then public fallbacks. Do not use the old Fly/PFTasks gateways as default app reads. They remain historical recovery inputs only.
 
 Add or keep smoke tests that prove gateway order and one known CID read path.
 
 ### Phase 2: Build The CID Inventory
 
-Export all known CIDs from Task Node Official and PFTasks. Deduplicate them. Classify them by payload type and exact-CID requirement.
+Export all known CIDs from Task Node and PFTasks. Deduplicate them. Classify them by payload type and exact-CID requirement.
 
 For each CID, run bounded gateway checks against:
 
@@ -279,7 +279,7 @@ For each CID, run bounded gateway checks against:
 
 The output should be a durable JSON or table-backed report, not terminal-only output.
 
-Task Node Official implements the durable JSON report path with `npm run ipfs-cid-inventory`. The script reads current Task Node tables, optional PFTasks/export JSON, or stdin. It dedupes by CID, records sample refs, labels public/encrypted payloads, labels exact-CID requirements, can run bounded current-vs-legacy gateway checks, and can optionally check Pinata pin-list status with `--check-pinata`.
+Task Node implements the durable JSON report path with `npm run ipfs-cid-inventory`. The script reads current Task Node tables, optional PFTasks/export JSON, or stdin. It dedupes by CID, records sample refs, labels public/encrypted payloads, labels exact-CID requirements, can run bounded current-vs-legacy gateway checks, and can optionally check Pinata pin-list status with `--check-pinata`.
 
 ### Phase 3: Stand Up Clean First-Party Infra
 
@@ -417,7 +417,7 @@ The profile NFT public set is green: all 79 public profile NFT metadata, thumbna
 
 ### Phase 7: Switch App Config
 
-Task Node Official config should remain:
+Task Node config should remain:
 
 - current first-party gateway is ahead of public fallback gateways;
 - old Fly/PFTasks gateway is absent from default app reads;
@@ -615,7 +615,7 @@ fly ssh console -a pft-ipfs-testnet-node-1 --machine <machine-id> \
   -C "sh -lc 'curl -sS -m 5 -X POST http://127.0.0.1:5001/api/v0/version && df -h /data'"
 ```
 
-Local pin status check from Task Node Official:
+Local pin status check from Task Node:
 
 ```bash
 npm run context-ipfs-gateway-smoke

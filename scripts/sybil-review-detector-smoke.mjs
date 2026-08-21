@@ -48,7 +48,7 @@ await writeJson(inputPath, {
             text:
               "Implemented on branch fix/projection-repair in commit 4a9f1c2d3e4f5a67890123456789012345678901. " +
               "Changed files: server/repositories/tasks.js and scripts/task-projection-smoke.mjs. " +
-              "Commands run: npm run task-projection-smoke && npm run lint. PR: https://github.com/postfiatorg/tasknodeofficial/pull/999",
+              "Commands run: npm run task-projection-smoke && npm run lint. PR: https://github.com/postfiatorg/tasknode/pull/999",
           },
         },
       ],

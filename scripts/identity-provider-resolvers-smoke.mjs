@@ -55,7 +55,7 @@ await assert.rejects(
 
 const collabResult = await resolveGithubCollaboratorPermission({
   owner: "postfiatorg",
-  repo: "tasknodeofficial",
+  repo: "tasknode",
   username: "goodalexander",
   token: "gh-token",
   fetchImpl: async (url, options = {}) => {
@@ -66,7 +66,7 @@ const collabResult = await resolveGithubCollaboratorPermission({
     });
   },
 });
-assert.match(lastRequest.url, /\/repos\/postfiatorg\/tasknodeofficial\/collaborators\/goodalexander\/permission$/);
+assert.match(lastRequest.url, /\/repos\/postfiatorg\/tasknode\/collaborators\/goodalexander\/permission$/);
 assert.equal(lastRequest.headers.authorization, "Bearer gh-token");
 assert.equal(collabResult.permission, "write");
 assert.equal(collabResult.writeAccess, true);
@@ -75,7 +75,7 @@ assert.equal(collabResult.proofMethod, "github_collaborator_permission_api");
 await assert.rejects(
   () => resolveGithubCollaboratorPermission({
     owner: "postfiatorg",
-    repo: "tasknodeofficial",
+    repo: "tasknode",
     username: "goodalexander",
     fetchImpl: async () => jsonResponse({ permission: "write" }),
   }),

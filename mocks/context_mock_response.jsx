@@ -11,7 +11,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 const INITIAL_HTML = `
   <h2>Stable operating context</h2>
   <ul>
-    <li>Prioritize production Task Node Official work over old PFTasks UI cleanup.</li>
+    <li>Prioritize production Task Node work over old PFTasks UI cleanup.</li>
     <li>Keep normal app access account-based. Wallet unlock is only for wallet-bound actions.</li>
     <li>Prefer concrete execution tasks and concise status notes.</li>
   </ul>
@@ -36,7 +36,7 @@ const INITIAL_VERSIONS = [
     at: "2026-05-16T10:32:00.000Z",
     note: null,
     preview:
-      "Stable operating context. Prioritize production Task Node Official work over old PFTasks UI cleanup; keep normal app access account-based.",
+      "Stable operating context. Prioritize production Task Node work over old PFTasks UI cleanup; keep normal app access account-based.",
     words: 487,
   },
   {
@@ -72,7 +72,7 @@ const INITIAL_VERSIONS = [
     at: "2026-05-09T11:14:00.000Z",
     note: "Initial published context",
     preview:
-      "Initial published context. Prioritize production Task Node Official work over old PFTasks UI cleanup; demote secondary product work.",
+      "Initial published context. Prioritize production Task Node work over old PFTasks UI cleanup; demote secondary product work.",
     words: 184,
   },
 ];

@@ -50,7 +50,7 @@ reject and say exactly what proof is needed.
 Run every command as:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial && node scripts/bm.mjs <command>
+cd /home/pfrpc/repos/tasknode && node scripts/bm.mjs <command>
 ```
 
 Reads:
@@ -333,7 +333,7 @@ When a CLI command fails or reports unexpected state:
 
 - Never echo secrets, seeds, API keys, or `DATABASE_URL` into the
   terminal; your session transcript is publicly mirrored.
-- Never edit budget tables, worker code, or the `tasknodeofficial` repo
+- Never edit budget tables, worker code, or the `tasknode` repo
   itself. You operate the product; you do not modify it. Product defects
   belong on the Task Node Fixes board.
 - Stay inside your board — with one operator-granted exception: **while you

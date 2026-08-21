@@ -1069,7 +1069,7 @@ def signal_user(
     *,
     message: str,
     execute: bool = False,
-    tasknode_repo: str = "/home/pfrpc/repos/tasknodeofficial",
+    tasknode_repo: str = "/home/pfrpc/repos/tasknode",
     account_id: str = "",
     conversation_id: str = "",
     reviewer_handle: str = "",
@@ -2446,7 +2446,7 @@ def build_parser() -> argparse.ArgumentParser:
     signal_parser.add_argument("--reason", default="")
     signal_parser.add_argument("--metadata-json", type=_load_json_object, default={})
     signal_parser.add_argument("--execute", action="store_true")
-    signal_parser.add_argument("--tasknode-repo", default="/home/pfrpc/repos/tasknodeofficial")
+    signal_parser.add_argument("--tasknode-repo", default="/home/pfrpc/repos/tasknode")
 
     agent_parser = subparsers.add_parser("agent", help="Manage Orc agent registry records.")
     agent_sub = agent_parser.add_subparsers(dest="agent_command", required=True)

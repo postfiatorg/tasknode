@@ -1,14 +1,14 @@
 {
-  "name": "tasknodeofficial",
+  "name": "tasknode",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/postfiatorg/tasknodeofficial.git"
+    "url": "git+https://github.com/postfiatorg/tasknode.git"
   },
   "bugs": {
-    "url": "https://github.com/postfiatorg/tasknodeofficial/issues"
+    "url": "https://github.com/postfiatorg/tasknode/issues"
   },
   "homepage": "https://postfiat.org/task-node/",
   "engines": {

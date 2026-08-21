@@ -1,6 +1,6 @@
 # Context History Restore
 
-Task Node Official restores historical context documents from the PFTL cache.
+Task Node restores historical context documents from the PFTL cache.
 There is no user-triggered history import endpoint. Wallet sync stores PFTL
 transactions in Postgres, reducer events project context pointers, and the UI
 reads the projection.

@@ -64,14 +64,14 @@ fallback content.
 Run unit tests:
 
 ```bash
-cd path/to/tasknodeofficial/reference_clients/python
+cd path/to/tasknode/reference_clients/python
 python3 -m unittest discover -s tests
 ```
 
 Run the minimal deterministic Network Task lifecycle fixture:
 
 ```bash
-cd path/to/tasknodeofficial
+cd path/to/tasknode
 PYTHONPATH=reference_clients/python \
 python3 -m tasknode_pftl.scenarios.network_task_replay_fixture
 ```
@@ -85,14 +85,14 @@ changes.
 Run the live lifecycle:
 
 ```bash
-cd path/to/tasknodeofficial/reference_clients/python
+cd path/to/tasknode/reference_clients/python
 python3 -m tasknode_pftl.scenarios.full_lifecycle
 ```
 
 Run the app-data lifecycle from the latest `task_sample` request intent:
 
 ```bash
-cd path/to/tasknodeofficial/reference_clients/python
+cd path/to/tasknode/reference_clients/python
 python3 -m tasknode_pftl.scenarios.app_request_lifecycle \
   --chat-title task_sample \
   --user-seed-file .secrets/tasknode-user-seed.txt
@@ -108,7 +108,7 @@ are replayable from PFTL pointers and encrypted IPFS payloads.
 Run the live N=1 task engine speedrun from the latest `task_sample` app bundle:
 
 ```bash
-cd path/to/tasknodeofficial/reference_clients/python
+cd path/to/tasknode/reference_clients/python
 python3 -m tasknode_pftl.scenarios.task_engine_speedrun \
   --stage n1 \
   --provider frontier \
@@ -129,7 +129,7 @@ the app; screenshot evidence still uses OpenAI vision in v1.
 Import a public receipt into the Postgres task projection cache:
 
 ```bash
-cd path/to/tasknodeofficial
+cd path/to/tasknode
 DATABASE_URL='postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5436/tasknodeofficial' \
 TASKNODE_DATABASE_ENABLED=true \
 node scripts/import-task-replay-receipts.mjs \
@@ -139,7 +139,7 @@ node scripts/import-task-replay-receipts.mjs \
 Run the canonical 10-wallet live task engine speedrun:
 
 ```bash
-cd path/to/tasknodeofficial/reference_clients/python
+cd path/to/tasknode/reference_clients/python
 python3 -m tasknode_pftl.scenarios.task_engine_speedrun \
   --stage n10 \
   --provider frontier \
@@ -191,7 +191,7 @@ reference for wallet encryption key onboarding:
 Run it:
 
 ```bash
-cd path/to/tasknodeofficial/reference_clients/python
+cd path/to/tasknode/reference_clients/python
 python3 -m tasknode_pftl.scenarios.encryption_pubkey_demo
 ```
 
@@ -231,7 +231,7 @@ database:
 Run all four example readers:
 
 ```bash
-cd path/to/tasknodeofficial/reference_clients/python
+cd path/to/tasknode/reference_clients/python
 python3 -m tasknode_pftl.scenarios.verification_evidence_examples
 ```
 

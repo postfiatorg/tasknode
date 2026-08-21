@@ -251,7 +251,7 @@ Allowed `account_network_badges.status` values:
 Badge state should also project into existing capability state when useful. For
 example, `core_contributor` should create or depend on a scoped verified
 `board_manager_capability_profiles` row with `capability_type = repo_pr_access`
-and a scope digest for `github:postfiatorg/tasknodeofficial` or another
+and a scope digest for `github:postfiatorg/tasknode` or another
 sanctioned repo. The public badge is the visible credential. The capability row
 is the scoped access proof.
 

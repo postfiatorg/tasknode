@@ -55,7 +55,7 @@ If handle resolution fails, do not infer identity from similar names. Use
 ## Query
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-review-payloads --handle goodalexander --limit 5
 uv run orc-review-payloads --wallet r... --limit 5
 uv run orc-review-payloads --task-id task_... --raw-events
@@ -79,7 +79,7 @@ Secret-shaped fields are redacted. The command is read-only.
 Initialize the table and queue view:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-review-state init
 ```
 

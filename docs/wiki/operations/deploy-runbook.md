@@ -44,7 +44,7 @@ failure is therefore a deploy failure, even if the Docker image built cleanly.
 Normal production deploy:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial
+cd /home/pfrpc/repos/tasknode
 npm run fly:deploy:prod
 ```
 

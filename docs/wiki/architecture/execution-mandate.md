@@ -1,6 +1,6 @@
 # Execution Mandate
 
-This document is the operating contract for Task Node Official development.
+This document is the operating contract for Task Node development.
 
 ## Core Rule
 
@@ -10,7 +10,7 @@ If a Python demo, smoke test, unit test, or script proves only a reference path,
 
 ## Repository Boundary
 
-- Primary repo: `/home/pfrpc/repos/tasknodeofficial`
+- Primary repo: `/home/pfrpc/repos/tasknode`
 - Local app URL: `http://localhost:5174`
 - API container: `tasknodeofficial-api-1`
 - Web container: `tasknodeofficial-web-1`

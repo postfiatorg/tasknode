@@ -5,7 +5,7 @@ engine. The prompts are source controlled so task behavior can be reviewed,
 replayed, and audited without relying on hidden database state.
 
 Earlier task engines may be useful as historical prior art, but their prompt
-sets are intentionally not copied here. The Task Node Official prompt contract
+sets are intentionally not copied here. The Task Node prompt contract
 is split by task source:
 
 - `taskgen_personal_v1.md` generates user-requested personal tasks.

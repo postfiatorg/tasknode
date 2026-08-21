@@ -1,5 +1,5 @@
 {
-  "name": "tasknodeofficial-worker-runtime",
+  "name": "tasknode-worker-runtime",
   "version": "0.1.0",
   "private": true,
   "type": "module",
