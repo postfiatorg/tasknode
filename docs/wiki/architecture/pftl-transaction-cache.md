@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The PFTL transaction cache is a Postgres mirror of wallet activity used by Task Node Official. PFTL remains canonical. Postgres exists so Wallet, Context, Tasks, and operator tooling can read transaction and pointer state quickly without doing request-time ledger scans.
+The PFTL transaction cache is a Postgres mirror of wallet activity used by Task Node. PFTL remains canonical. Postgres exists so Wallet, Context, Tasks, and operator tooling can read transaction and pointer state quickly without doing request-time ledger scans.
 
 The cache stores enough transaction identity to rebuild app projections from PFTL and IPFS:
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 /**
- * Current Task Node Official Context page.
+ * Current Task Node Context page.
  *
  * This is a design request artifact: it intentionally captures the current
  * production Context page shape so design can replace it. Do not treat this as
@@ -17,7 +17,7 @@ const MOCK_CONTEXT = {
     updatedAt: "2026-05-16T10:32:00.000Z",
     body:
       "Stable operating context:\n\n" +
-      "- Prioritize production Task Node Official work over old PFTasks UI cleanup.\n" +
+      "- Prioritize production Task Node work over old PFTasks UI cleanup.\n" +
       "- Keep normal app access account-based. Wallet unlock is only for wallet-bound actions.\n" +
       "- Prefer concrete execution tasks and concise status notes.\n\n" +
       "Active projects:\n\n" +

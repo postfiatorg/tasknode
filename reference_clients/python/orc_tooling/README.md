@@ -15,7 +15,7 @@ lifecycle actions, writes shared review state/history rows, and separates
 Personal follow-up work from Network task capacity.
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 
 uv run orcctl status
 uv run orcctl review next
@@ -171,7 +171,7 @@ tmux capture/injection and shared Orc state so the manager does not rely on
 ad-hoc pane scraping.
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 
 uv run nazgul status
 uv run nazgul watch orc-alpha
@@ -245,7 +245,7 @@ Rank everyone's unreviewed rewarded Network Task submissions before choosing
 the next Orc review:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orcctl prioritize-network
 ```
 
@@ -292,14 +292,14 @@ uv run orcctl prioritize-network --heuristic-only
 Preview the signed request without publishing:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-request-task "verify zoz work"
 ```
 
 Publish the request pointer:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-request-task --submit "verify zoz work"
 ```
 
@@ -325,7 +325,7 @@ identifiers such as request id, CIDs, transaction hash, and engine result.
 ## List Outstanding Task Briefs
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-tasks
 ```
 
@@ -335,7 +335,7 @@ steps, verification policy, and submission requirements.
 ## Inspect Executable Task Payloads
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-task-payload task_c02d7a3048277e6cdd424bc67dbe9795
 ```
 
@@ -354,7 +354,7 @@ secret-shaped fields.
 ## Review Other Contributors' Rewarded Network Tasks
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-review-payloads --handle goodalexander --limit 5
 uv run orc-review-payloads --wallet r... --limit 5
 uv run orc-review-payloads --task-id task_... --raw-events
@@ -369,7 +369,7 @@ private provider identity JSON. See `ONTOLOGY.md` for the entity model.
 ## Persist Shared Review State
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-review-state init
 uv run orc-review-state queue --disposition not_reviewed --limit 20
 uv run orc-review-state set task_... \
@@ -400,7 +400,7 @@ submitted request later.
 Preview an audited Board Manager message to the owner of a task:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-hive-followup send \
   --task-id task_d2527276782f04a30ce1bbe19bc5c188 \
   --message "Following up on the rewarded task..."
@@ -412,7 +412,7 @@ Send the duplicate-reward reconciliation follow-up:
 uv run orc-hive-followup duplicate-reward --execute
 ```
 
-The wrapper calls `/home/pfrpc/repos/tasknodeofficial/scripts/orc-hive-followup.mjs`,
+The wrapper calls `/home/pfrpc/repos/tasknode/scripts/orc-hive-followup.mjs`,
 which resolves the task owner, routes delivery through the app's Board Manager
 `message_user` action hook, writes chat/audit rows, and defaults to dry-run
 unless `--execute` is provided. Duplicate-reward follow-ups are informational
@@ -433,7 +433,7 @@ Use direct signals for Orc review notices that should appear in Hive Chat but
 should not become Board Manager actions or follow-up blockers:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 uv run orc-hive-signal \
   --task-id task_8f8ff4b94792842a9b54a63769710afd \
   --message "Reviewed and closed..." \
@@ -441,7 +441,7 @@ uv run orc-hive-signal \
   --execute
 ```
 
-This calls `/home/pfrpc/repos/tasknodeofficial/scripts/orc-hive-signal.mjs`,
+This calls `/home/pfrpc/repos/tasknode/scripts/orc-hive-signal.mjs`,
 ensures the task owner's Hive conversation exists, and appends an assistant
 chat message with `kind=orc_hive_signal` metadata. After verified delivery, the
 Node script appends an idempotent `hive_signal` row to `orc_work_journal` so

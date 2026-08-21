@@ -1,0 +1,19 @@
+[Unit]
+Description=Task Node Deathmarch Discord poller
+After=network-online.target tasknode-mpg-proxy.service
+Wants=network-online.target
+Requires=tasknode-mpg-proxy.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pfrpc/repos/tasknode
+Environment=HOME=/home/pfrpc
+Environment=PATH=/home/pfrpc/.fly/bin:/usr/local/bin:/usr/bin:/bin
+Environment=DEATHMARCH_MPG_LOCAL_PORT=16433
+ExecStart=/home/pfrpc/repos/tasknode/scripts/run-deathmarch-supervised.sh --poll
+Restart=always
+RestartSec=15
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

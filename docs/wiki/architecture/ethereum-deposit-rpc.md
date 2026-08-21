@@ -56,7 +56,7 @@ For custody recovery, verify the operator mnemonic, receive xprv, or child
 private key through hidden stdin:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial
+cd /home/pfrpc/repos/tasknode
 npm run eth-deposit-verify -- --index <deposit-index>
 ```
 

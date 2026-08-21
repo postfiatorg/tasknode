@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,31 +11,41 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
-const fixtureDir = path.join(
-  repoRoot,
-  "docs/verification/orc_evidence_packet_generator_task_54ba32ac2d263a130f2a2dfb3150e910"
-);
 const outDir = await mkdtemp(path.join(os.tmpdir(), "orc-evidence-packet-generator-"));
+const { stdout: rootCommitStdout } = await execFileAsync("git", ["rev-list", "--max-parents=0", "HEAD"], {
+  cwd: repoRoot,
+});
+const rootCommit = rootCommitStdout.trim();
+const commandsPath = path.join(outDir, "fixture_commands.json");
+const excerptsPath = path.join(outDir, "fixture_json_excerpts.json");
+await writeFile(
+  commandsPath,
+  JSON.stringify([{ label: "repository check", command: "npm run check", status: "passed", output: "all gates passed" }])
+);
+await writeFile(
+  excerptsPath,
+  JSON.stringify([{ label: "package identity", file: "package.json", path: "$.name", excerpt: "tasknode" }])
+);
 
 const { stdout } = await execFileAsync(process.execPath, [
   path.join(repoRoot, "scripts/orc-evidence-packet-generator.mjs"),
   "generate",
   "--task-id",
-  "task_914927149f7f301950b5457ef91d6d59",
+  "task_public_fixture",
   "--title",
-  "Repair Hive Chat Delivery Failure Path",
+  "Verify Public Task Node Evidence Packet",
   "--pr-url",
-  "https://github.com/postfiatorg/tasknodeofficial/pull/162",
+  "https://github.com/postfiatorg/tasknode/pull/1",
   "--commit",
-  "8b00e39",
+  rootCommit,
   "--artifact",
-  "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/repair_report.json",
+  "package.json",
   "--artifact",
-  "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/execution_summary.md",
+  "README.md",
   "--commands",
-  path.join(fixtureDir, "fixture_commands.json"),
+  commandsPath,
   "--json-excerpts",
-  path.join(fixtureDir, "fixture_json_excerpts.json"),
+  excerptsPath,
   "--out",
   outDir,
   "--repo-root",
@@ -47,20 +57,19 @@ assert.equal(commandOutput.ok, true);
 assert.equal(commandOutput.checklistPassed, commandOutput.checklistTotal);
 assert.ok(commandOutput.changedFileCount >= 2);
 assert.equal(commandOutput.artifactCount, 2);
-assert.equal(commandOutput.commandCount, 3);
-assert.equal(commandOutput.excerptCount, 2);
+assert.equal(commandOutput.commandCount, 1);
+assert.equal(commandOutput.excerptCount, 1);
 
 const markdown = await readFile(path.join(outDir, "evidence_packet.md"), "utf8");
-assert.match(markdown, /https:\/\/github\.com\/postfiatorg\/tasknodeofficial\/pull\/162/);
-assert.match(markdown, /https:\/\/github\.com\/postfiatorg\/tasknodeofficial\/commit\/8b00e39/);
-assert.match(markdown, /scripts\/orc-hive-delivery-repair\.mjs/);
-assert.match(markdown, /orc-hive-delivery-repair-smoke ok/);
-assert.match(markdown, /direct_message_retrieval_read_path_missing_index_after_successful_post/);
+assert.match(markdown, /https:\/\/github\.com\/postfiatorg\/tasknode\/pull\/1/);
+assert.match(markdown, new RegExp(`https://github\\.com/postfiatorg/tasknode/commit/${rootCommit}`));
+assert.match(markdown, /npm run check/);
+assert.match(markdown, /package identity/);
 assert.match(markdown, /Reviewer Checklist/);
 
 const summary = JSON.parse(await readFile(path.join(outDir, "submission_summary.json"), "utf8"));
 assert.equal(summary.ok, true);
-assert.equal(summary.publicLinks.prUrl, "https://github.com/postfiatorg/tasknodeofficial/pull/162");
+assert.equal(summary.publicLinks.prUrl, "https://github.com/postfiatorg/tasknode/pull/1");
 assert.ok(summary.reviewerChecklist.every((item) => item.ok));
 
 console.log("orc-evidence-packet-generator-smoke ok");

@@ -1,5 +1,5 @@
 [Unit]
-Description=Task Node Official local Fly MPG proxy
+Description=Task Node local Fly MPG proxy
 After=network-online.target
 Wants=network-online.target
 

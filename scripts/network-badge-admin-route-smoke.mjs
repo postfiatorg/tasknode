@@ -112,7 +112,7 @@ result = await invoke({
     workType: "code_task",
     badgeId: "core_contributor",
     capabilityType: "repo_pr_access",
-    scopeLabel: "postfiatorg/tasknodeofficial",
+    scopeLabel: "postfiatorg/tasknode",
     scopeDigest: "scope_demo",
     maxPayoutOverridePft: 30000,
     operator: "nazgul",
@@ -215,12 +215,12 @@ result = await invoke({
   body: {
     action: "resolve_github_collab",
     owner: "postfiatorg",
-    repo: "tasknodeofficial",
+    repo: "tasknode",
     username: "goodalexander",
     providerToken: "gh-token",
   },
   fetchImpl: async (url, options = {}) => {
-    assert.match(String(url), /\/repos\/postfiatorg\/tasknodeofficial\/collaborators\/goodalexander\/permission$/);
+    assert.match(String(url), /\/repos\/postfiatorg\/tasknode\/collaborators\/goodalexander\/permission$/);
     assert.equal(options.headers.authorization, "Bearer gh-token");
     return new Response(JSON.stringify({ permission: "write" }), { status: 200 });
   },

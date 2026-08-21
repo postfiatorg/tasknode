@@ -19,7 +19,7 @@ DEFAULT_EXPORT = "/tmp/live-directory-rewarded-tasks-v2.json"
 DEFAULT_CACHE_ROOT = Path(__file__).resolve().parents[1] / "runs" / "orc_network_glm52_review"
 DEFAULT_ENV_FILES = (
     Path("/home/pfrpc/.hermes/.env"),
-    Path("/home/pfrpc/repos/tasknodeofficial/.env.tasknodeofficial-dev"),
+    Path("/home/pfrpc/repos/tasknode/.env.tasknodeofficial-dev"),
 )
 
 CATEGORIES = (

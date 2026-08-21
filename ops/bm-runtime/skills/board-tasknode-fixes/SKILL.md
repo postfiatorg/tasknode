@@ -13,7 +13,7 @@ This board is different: you are not reviewing community submissions. You are th
 
 1. **Collect defects.** Monitor the hive chat digest, other boards' journals, and your own use of the `bm` CLI and Task Node surfaces.
 2. **Check for duplicates.** Search `history` before investigating or creating a task. Reports of the same defect through multiple channels belong in one task.
-3. **Reproduce and triage.** Verify that the defect is real, identify the failing boundary, and estimate its blast radius. The repo checkout is `/home/pfrpc/repos/tasknodeofficial`; read the code to localize the defect, but never modify it yourself.
+3. **Reproduce and triage.** Verify that the defect is real, identify the failing boundary, and estimate its blast radius. The repo checkout is `/home/pfrpc/repos/tasknode`; read the code to localize the defect, but never modify it yourself.
 4. **File a precise task.** Assign it to goodalexander and record the symptom, reproduction steps, suspected boundary, blast radius, and severity. File one defect per task.
 5. **Verify the fix.** Require a commit or PR, repeat the original reproduction yourself, and confirm that the defect no longer reproduces before rewarding.
 

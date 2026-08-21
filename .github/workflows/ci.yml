@@ -66,16 +66,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Build exact role-specific production images
         run: |
-          docker build --target web-runtime --tag tasknodeofficial-web:${{ github.sha }} .
-          docker build --target worker-runtime --tag tasknodeofficial-worker:${{ github.sha }} .
+          docker build --target web-runtime --tag tasknode-web:${{ github.sha }} .
+          docker build --target worker-runtime --tag tasknode-worker:${{ github.sha }} .
       - name: Verify runtime privilege, tools, and role boundaries
         run: |
-          docker run --rm --entrypoint sh tasknodeofficial-web:${{ github.sha }} -lc 'test "$(id -u)" = 1000 && ! command -v npm && ! command -v npx && ! command -v codex && ! command -v vite && test -f server/index.js && test ! -f server/background-workers.js && test -d dist && test ! -e prompts/non_production'
-          docker run --rm --entrypoint sh tasknodeofficial-worker:${{ github.sha }} -lc 'test "$(id -u)" = 1000 && ! command -v npm && ! command -v npx && ! command -v codex && ! command -v vite && test -f server/worker-entry.js && test ! -f server/index.js && test ! -d dist && test ! -e prompts/non_production'
+          docker run --rm --entrypoint sh tasknode-web:${{ github.sha }} -lc 'test "$(id -u)" = 1000 && ! command -v npm && ! command -v npx && ! command -v codex && ! command -v vite && test -f server/index.js && test ! -f server/background-workers.js && test -d dist && test ! -e prompts/non_production'
+          docker run --rm --entrypoint sh tasknode-worker:${{ github.sha }} -lc 'test "$(id -u)" = 1000 && ! command -v npm && ! command -v npx && ! command -v codex && ! command -v vite && test -f server/worker-entry.js && test ! -f server/index.js && test ! -d dist && test ! -e prompts/non_production'
       - name: Reject fixed high or critical vulnerabilities
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check --exit-code 1 tasknodeofficial-web:${{ github.sha }}
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check --exit-code 1 tasknodeofficial-worker:${{ github.sha }}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check --exit-code 1 tasknode-web:${{ github.sha }}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --skip-version-check --exit-code 1 tasknode-worker:${{ github.sha }}
 
   recovery:
     runs-on: ubuntu-24.04

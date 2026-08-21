@@ -39,7 +39,7 @@ Profile NFT image rendering uses `/api/profile/nft/image/:cid` for rows with an 
 
 ## Exact-CID Repin For Legacy Public Assets
 
-Public NFT assets are different from encrypted task/context payloads because the CID is part of the public on-chain artifact. If an old NFT metadata URI says `ipfs://<metadataCid>` and that metadata says `image: "ipfs://<imageCid>"`, Task Node Official must preserve those exact CIDs. Re-uploading bytes and rendering a different CID is not a valid repair for the existing token.
+Public NFT assets are different from encrypted task/context payloads because the CID is part of the public on-chain artifact. If an old NFT metadata URI says `ipfs://<metadataCid>` and that metadata says `image: "ipfs://<imageCid>"`, Task Node must preserve those exact CIDs. Re-uploading bytes and rendering a different CID is not a valid repair for the existing token.
 
 The preferred recovery path is exact-CID repinning:
 

@@ -66,7 +66,7 @@ If encrypted task payloads need to be decrypted, the local environment also need
 export TASKNODE_SERVICE_SEED=...
 ```
 
-As a local-only convenience, `deathmarch` also auto-loads `deathmarchseed.txt` from the current repo directory when no service seed env var is already configured. When using the npm script from `tasknodeofficial`, it also checks one directory above the repo, which covers `/home/pfrpc/repos/deathmarchseed.txt`. The file is gitignored. You can point at a different file with:
+As a local-only convenience, `deathmarch` also auto-loads `deathmarchseed.txt` from the current repo directory when no service seed env var is already configured. When using the npm script from `tasknode`, it also checks one directory above the repo, which covers `/home/pfrpc/repos/deathmarchseed.txt`. The file is gitignored. You can point at a different file with:
 
 ```bash
 npm run deathmarch -- --poll --seed-file /path/to/deathmarchseed.txt
@@ -153,17 +153,17 @@ through a WAN proxy; both remain overrideable with the existing
 Repository units:
 
 ```text
-ops/systemd/tasknodeofficial-mpg-proxy.service
-ops/systemd/tasknodeofficial-deathmarch.service
+ops/systemd/tasknode-mpg-proxy.service
+ops/systemd/tasknode-deathmarch.service
 ```
 
 Install or refresh them with symlinks in `~/.config/systemd/user/`, then run:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now tasknodeofficial-mpg-proxy.service
-systemctl --user enable --now tasknodeofficial-deathmarch.service
-systemctl --user status tasknodeofficial-deathmarch.service
+systemctl --user enable --now tasknode-mpg-proxy.service
+systemctl --user enable --now tasknode-deathmarch.service
+systemctl --user status tasknode-deathmarch.service
 ```
 
 Both units use `Restart=always`. An idle Postgres client disconnect is also

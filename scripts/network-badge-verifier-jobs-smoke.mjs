@@ -159,7 +159,7 @@ const coreJob = networkBadgeVerifierJobRecord({
   verifierType: "github_collab",
   input: {
     owner: "postfiatorg",
-    repo: "tasknodeofficial",
+    repo: "tasknode",
     username: "goodalexander",
   },
 });
@@ -167,7 +167,7 @@ assert.equal(coreJob.badgeId, "core_contributor");
 process.env.GITHUB_TOKEN = "gh-smoke-token";
 const coreRun = await runNetworkBadgeVerifierJobRecord(coreJob, {
   fetchImpl: async (url, options = {}) => {
-    assert.match(String(url), /\/repos\/postfiatorg\/tasknodeofficial\/collaborators\/goodalexander\/permission$/);
+    assert.match(String(url), /\/repos\/postfiatorg\/tasknode\/collaborators\/goodalexander\/permission$/);
     assert.equal(options.headers.authorization, "Bearer gh-smoke-token");
     return new Response(JSON.stringify({ permission: "write" }), { status: 200 });
   },

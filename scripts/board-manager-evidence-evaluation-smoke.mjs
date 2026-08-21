@@ -29,7 +29,7 @@ const eventRows = [
       evidence_items: [
         {
           artifact_type: "url",
-          value: "https://github.com/postfiatorg/tasknodeofficial/pull/123",
+          value: "https://github.com/postfiatorg/tasknode/pull/123",
         },
         {
           artifact_type: "url",

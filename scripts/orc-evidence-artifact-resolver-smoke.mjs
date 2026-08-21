@@ -13,9 +13,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const outDir = await mkdtemp(path.join(os.tmpdir(), "orc-evidence-artifact-resolver-"));
 const scriptPath = path.join(repoRoot, "scripts/orc-evidence-artifact-resolver.mjs");
-
-const artifactBase =
-  "docs/verification/submission_ingestion_accounting_tracker_task_9bbe896c161e52fd23a14556e68b82f2";
+const { stdout: rootCommitStdout } = await execFileAsync("git", ["rev-list", "--max-parents=0", "HEAD"], {
+  cwd: repoRoot,
+});
+const rootCommit = rootCommitStdout.trim();
 
 const { stdout: helpOutput } = await execFileAsync(process.execPath, [scriptPath, "--help"]);
 assert.match(helpOutput, /artifact resolution packet/);
@@ -25,15 +26,15 @@ const { stdout } = await execFileAsync(process.execPath, [
   scriptPath,
   "resolve",
   "--pr-url",
-  "https://github.com/postfiatorg/tasknodeofficial/pull/169",
+  "https://github.com/postfiatorg/tasknode/pull/1",
   "--commit",
-  "ba3b732669c7d98c0dd9dac67b3faeb6ec32e05a",
+  rootCommit,
   "--artifact",
-  `${artifactBase}/outputs/status_dashboard.json`,
+  "package.json",
   "--artifact",
-  `${artifactBase}/outputs/accounting_ledger.json`,
+  "README.md",
   "--artifact",
-  "scripts/orc-submission-ingestion-tracker.mjs",
+  "scripts/orc-evidence-artifact-resolver.mjs",
   "--out",
   outDir,
   "--repo-root",
@@ -47,9 +48,9 @@ await assert.rejects(
     scriptPath,
     "resolve",
     "--pr-url",
-    "https://github.com/postfiatorg/tasknodeofficial/pull/169",
+    "https://github.com/postfiatorg/tasknode/pull/1",
     "--commit",
-    "ba3b732669c7d98c0dd9dac67b3faeb6ec32e05a",
+    rootCommit,
     "--artifact",
     "../package.json",
     "--out",
@@ -67,23 +68,22 @@ assert.equal(output.checklistPassed, output.checklistTotal);
 
 const packet = JSON.parse(await readFile(path.join(outDir, "artifact_resolution_packet.json"), "utf8"));
 assert.equal(packet.ok, true);
-assert.equal(packet.publicLinks.prUrl, "https://github.com/postfiatorg/tasknodeofficial/pull/169");
-assert.match(packet.publicLinks.commitUrl, /https:\/\/github\.com\/postfiatorg\/tasknodeofficial\/commit\/ba3b732/);
+assert.equal(packet.publicLinks.prUrl, "https://github.com/postfiatorg/tasknode/pull/1");
+assert.equal(packet.publicLinks.commitUrl, `https://github.com/postfiatorg/tasknode/commit/${rootCommit}`);
 assert.equal(packet.artifacts.length, 3);
 assert.ok(packet.artifacts.every((artifact) => artifact.localExists));
 assert.ok(packet.artifacts.every((artifact) => artifact.committedExists));
 assert.ok(packet.artifacts.every((artifact) => artifact.changedInCommit));
-assert.ok(packet.artifacts.every((artifact) => artifact.blobUrl.includes("/blob/ba3b732669c7d98c0dd9dac67b3faeb6ec32e05a/")));
-assert.ok(packet.artifacts.every((artifact) => artifact.rawUrl.includes("/ba3b732669c7d98c0dd9dac67b3faeb6ec32e05a/")));
+assert.ok(packet.artifacts.every((artifact) => artifact.blobUrl.includes(`/blob/${rootCommit}/`)));
+assert.ok(packet.artifacts.every((artifact) => artifact.rawUrl.includes(`/${rootCommit}/`)));
 
-const dashboardArtifact = packet.artifacts.find((artifact) => artifact.path.endsWith("status_dashboard.json"));
-assert.equal(dashboardArtifact.excerpt.type, "json");
-assert.equal(dashboardArtifact.excerpt.excerpt.summary.totalRecords, 10);
-assert.equal(dashboardArtifact.excerpt.excerpt.summary.byState.accounted_for, 10);
+const packageArtifact = packet.artifacts.find((artifact) => artifact.path === "package.json");
+assert.equal(packageArtifact.excerpt.type, "json");
+assert.ok(packageArtifact.excerpt.excerpt.topLevelKeys.includes("name"));
 
-const ledgerArtifact = packet.artifacts.find((artifact) => artifact.path.endsWith("accounting_ledger.json"));
-assert.equal(ledgerArtifact.excerpt.excerpt.recordsCount, 10);
-assert.equal(ledgerArtifact.excerpt.excerpt.firstRecord.state, "accounted_for");
+const readmeArtifact = packet.artifacts.find((artifact) => artifact.path === "README.md");
+assert.equal(readmeArtifact.excerpt.type, "text");
+assert.match(readmeArtifact.excerpt.text, /Task Node/);
 
 const markdown = await readFile(path.join(outDir, "artifact_resolution_packet.md"), "utf8");
 assert.match(markdown, /Artifact Checks/);

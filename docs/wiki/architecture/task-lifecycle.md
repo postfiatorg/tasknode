@@ -80,7 +80,7 @@ Implementation references:
 Example reference command:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 python3 -m tasknode_pftl.scenarios.verification_evidence_examples
 ```
 

@@ -1,6 +1,6 @@
 # Current System
 
-This page describes the implemented Task Node Official runtime as of
+This page describes the implemented Task Node runtime as of
 2026-08-15. It is a production system, not an early mock or a thin frontend
 shell.
 

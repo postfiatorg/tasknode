@@ -2701,10 +2701,10 @@ class OrcToolingTests(unittest.TestCase):
         command = build_hive_followup_command(
             task_id="task_test",
             message="Follow-up note.",
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
         )
 
-        self.assertEqual(command[:2], ["node", "/repo/tasknodeofficial/scripts/orc-hive-followup.mjs"])
+        self.assertEqual(command[:2], ["node", "/repo/tasknode/scripts/orc-hive-followup.mjs"])
         self.assertIn("--json", command)
         self.assertNotIn("--execute", command)
 
@@ -2734,7 +2734,7 @@ class OrcToolingTests(unittest.TestCase):
         result = run_hive_followup(
             task_id="task_test",
             message="Follow-up note.",
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2750,7 +2750,7 @@ class OrcToolingTests(unittest.TestCase):
         result = run_hive_followup(
             task_id="task_test",
             message="Follow-up note.",
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2767,7 +2767,7 @@ class OrcToolingTests(unittest.TestCase):
         result = run_hive_followup(
             task_id="task_test",
             message="Follow-up note.",
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2784,7 +2784,7 @@ class OrcToolingTests(unittest.TestCase):
         result = run_hive_followup(
             task_id="task_test",
             message="Follow-up note.",
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2806,7 +2806,7 @@ class OrcToolingTests(unittest.TestCase):
             task_id="task_test",
             message="Follow-up note.",
             execute=True,
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2832,7 +2832,7 @@ class OrcToolingTests(unittest.TestCase):
             task_id="task_test",
             message="Follow-up note.",
             execute=True,
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2848,10 +2848,10 @@ class OrcToolingTests(unittest.TestCase):
             reviewer_handle="orc-alpha",
             reviewer_wallet="rReviewer",
             metadata={"reviewState": "reviewed_follow_up_completed"},
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
         )
 
-        self.assertEqual(command[:2], ["node", "/repo/tasknodeofficial/scripts/orc-hive-signal.mjs"])
+        self.assertEqual(command[:2], ["node", "/repo/tasknode/scripts/orc-hive-signal.mjs"])
         self.assertIn("--execute", command)
         self.assertIn("--reviewer-handle", command)
         self.assertIn("orc-alpha", command)
@@ -2868,7 +2868,7 @@ class OrcToolingTests(unittest.TestCase):
         result = run_hive_signal(
             task_id="task_test",
             message="Direct note.",
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2889,7 +2889,7 @@ class OrcToolingTests(unittest.TestCase):
             task_id="task_test",
             message="Direct note.",
             execute=True,
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2916,7 +2916,7 @@ class OrcToolingTests(unittest.TestCase):
             task_id="task_test",
             message="Direct note.",
             execute=True,
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2932,7 +2932,7 @@ class OrcToolingTests(unittest.TestCase):
         result = run_hive_signal(
             task_id="task_test",
             message="Direct note.",
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2949,7 +2949,7 @@ class OrcToolingTests(unittest.TestCase):
         result = run_hive_signal(
             task_id="task_test",
             message="Direct note.",
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 
@@ -2966,7 +2966,7 @@ class OrcToolingTests(unittest.TestCase):
         result = run_hive_signal(
             task_id="task_test",
             message="Direct note.",
-            tasknode_repo="/repo/tasknodeofficial",
+            tasknode_repo="/repo/tasknode",
             runner=fake_runner,
         )
 

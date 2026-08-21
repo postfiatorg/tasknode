@@ -459,7 +459,7 @@ The output packet should include:
 11. recent user-visible blockers and failed actions;
 12. exact source rows or event IDs used for the conclusion.
 
-Task Node Official skill rule for user-specific work:
+Task Node skill rule for user-specific work:
 
 - when a task names a user handle, provider username, account id, or wallet,
   resolve the identity vector first;

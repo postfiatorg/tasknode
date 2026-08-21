@@ -158,7 +158,7 @@ const networkDetail = await getPublicHiveTaskDetail({
               artifact_type: "github_pr",
               resolver: "github_pr",
               status: "verified",
-              label: "postfiatorg/tasknodeofficial#1",
+              label: "postfiatorg/tasknode#1",
               reason: "Public GitHub artifact resolved.",
               event_cid: "bafybeihiveclickablesubmission",
               event_tx_hash: "ABC123SUBMIT",
@@ -221,8 +221,8 @@ const networkDetail = await getPublicHiveTaskDetail({
               encrypted_payload: "private-ciphertext-redacted",
               evidence_items: [{
                 artifact_type: "github_pr",
-                label: "postfiatorg/tasknodeofficial#1",
-                url: "https://github.com/postfiatorg/tasknodeofficial/pull/1",
+                label: "postfiatorg/tasknode#1",
+                url: "https://github.com/postfiatorg/tasknode/pull/1",
                 cid: "bafybeihiveclickableartifact",
               }],
             },
@@ -291,7 +291,7 @@ assert.equal(networkDetail.review.submissions[0].summary, "Submitted a concise p
 assert.equal(networkDetail.review.evidence.length, 2);
 assert.equal(networkDetail.review.evidence[0].type, "Submission");
 assert.equal(networkDetail.review.evidence[0].excerpt, "Submitted a public GitHub proof and a compact execution note.");
-assert.equal(networkDetail.review.evidence[0].artifactRefs[0].url, "https://github.com/postfiatorg/tasknodeofficial/pull/1");
+assert.equal(networkDetail.review.evidence[0].artifactRefs[0].url, "https://github.com/postfiatorg/tasknode/pull/1");
 assert.equal(networkDetail.review.evidence[0].artifactRefs[0].cid, "bafybeihiveclickableartifact");
 assert.equal(networkDetail.review.evidence[0].artifactRefs.at(-1).txHash, "ABC123SUBMIT");
 assert.equal(networkDetail.review.evidence[0].privateContentHidden, true);

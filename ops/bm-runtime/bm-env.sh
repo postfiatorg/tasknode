@@ -9,7 +9,7 @@ set -u
 # interactive shell.
 export PATH="$HOME/.local/bin:$HOME/.fly/bin:/usr/local/bin:$PATH"
 
-export BM_REPO="${BM_REPO:-/home/pfrpc/repos/tasknodeofficial}"
+export BM_REPO="${BM_REPO:-/home/pfrpc/repos/tasknode}"
 export BM_HOME="${BM_HOME:-$HOME/pf-boards}"
 export BM_STATE_DIR="$BM_HOME/state"
 export BM_JOURNAL_DIR="${BM_JOURNAL_DIR:-$BM_HOME/journal}"

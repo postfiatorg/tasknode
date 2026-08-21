@@ -93,7 +93,7 @@ The task-generation evidence contract is intentionally the same contract exposed
 Run it:
 
 ```bash
-cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+cd /home/pfrpc/repos/tasknode/reference_clients/python
 python3 -m tasknode_pftl.scenarios.task_engine_speedrun --stage n10 --provider frontier --taskgen-model chat-latest
 ```
 

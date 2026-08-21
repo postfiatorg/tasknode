@@ -29,13 +29,13 @@ const context = buildRewardEvidenceEvaluationContext({
       {
         artifact_type: "url",
         status: "provided",
-        source: { url: "https://github.com/postfiatorg/tasknodeofficial/pull/123" },
-        excerpt: "https://github.com/postfiatorg/tasknodeofficial/pull/123",
+        source: { url: "https://github.com/postfiatorg/tasknode/pull/123" },
+        excerpt: "https://github.com/postfiatorg/tasknode/pull/123",
       },
       {
         artifact_type: "url",
         status: "extracted",
-        url: "https://github.com/postfiatorg/tasknodeofficial/pull/123",
+        url: "https://github.com/postfiatorg/tasknode/pull/123",
         title: "Pull request 123",
         excerpt: "Public PR excerpt.",
       },

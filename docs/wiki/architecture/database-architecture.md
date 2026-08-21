@@ -28,7 +28,7 @@ Implementation status:
 
 ## Purpose
 
-Task Node Official began with application state in a JSON runtime store. The
+Task Node began with application state in a JSON runtime store. The
 production authority described here is now Postgres; JSON is retained only for
 local no-database development and temporary compatibility reads.
 

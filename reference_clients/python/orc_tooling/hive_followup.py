@@ -8,7 +8,7 @@ from typing import Any, Callable
 from tasknode_pftl.app_data import tasknode_database_url
 
 
-DEFAULT_TASKNODE_REPO = "/home/pfrpc/repos/tasknodeofficial"
+DEFAULT_TASKNODE_REPO = "/home/pfrpc/repos/tasknode"
 DEFAULT_DUPLICATE_REWARD_TASK_ID = "task_d2527276782f04a30ce1bbe19bc5c188"
 
 

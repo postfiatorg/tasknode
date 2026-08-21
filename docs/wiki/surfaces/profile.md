@@ -154,7 +154,7 @@ Private and public NFT galleries render 10 NFT tiles per page. Pagination is cli
 
 The app shell account avatar uses the same selected/newest profile NFT image as the public profile hero when one exists. If the account has no usable profile NFT image, the shell falls back to account initials.
 
-The hydrated image prompt is never returned to the browser or shown in public metadata. The tracked `prompts/profile/profile_nft_image_v1.md` prompt is the canonical art-direction prompt for every live generation. It preserves the final Task Node Official Hyperstitional Ink direction that previously lived only in the ignored `private_prompts/profile_nft_image.md` file and a Fly secret: white-square ink drawings, a single bionic central entity, obsessive linework and cross-hatching, and exactly two context-selected accent colors. The tracked source is authoritative so deleting a deployment secret cannot silently replace that visual identity again.
+The hydrated image prompt is never returned to the browser or shown in public metadata. The tracked `prompts/profile/profile_nft_image_v1.md` prompt is the canonical art-direction prompt for every live generation. It preserves the final Task Node Hyperstitional Ink direction that previously lived only in the ignored `private_prompts/profile_nft_image.md` file and a Fly secret: white-square ink drawings, a single bionic central entity, obsessive linework and cross-hatching, and exactly two context-selected accent colors. The tracked source is authoritative so deleting a deployment secret cannot silently replace that visual identity again.
 
 The private prompt boundary does one job: it converts the raw profile packet and context document into two privacy-preserving prose summaries. A second privacy pass compares those summaries with the private source and removes details that could identify the person or reconstruct their actions. The gateway then inserts those summaries into the canonical prompt's `NFT_CONTEXT_HYDRATION` and `USER_CONTEXT_DOCUMENT_DIRECT` blocks. It does not select a replacement persona, composition, palette, setting, symbol set, or art style. The isolated OpenAI image renderer and the subsequent vision review receive the canonical prompt plus sanitized summaries, never the raw information packet. The vision review must approve both privacy and adherence to the canonical prompt before the image can be pinned; privacy leaks, generic imagery, missing figures, unclear actions, and prompt mismatch are retryable render failures.
 
@@ -288,7 +288,7 @@ the linked wallet to sign before the NFT becomes chain-minted.
 
 ### Wallet NFT Inventory From Chain
 
-The durable NFT source of truth is the PFTL wallet, not the old PFTasks database and not Task Node Official's `profile_nfts` cache.
+The durable NFT source of truth is the PFTL wallet, not the old PFTasks database and not Task Node's `profile_nfts` cache.
 
 To discover NFTs for any wallet:
 
@@ -415,7 +415,7 @@ Without `--execute` it prints the planned CID/thumbnail count only
 (`scripts/profile-nft-thumbnail-warm.mjs:31`,
 `scripts/profile-nft-thumbnail-warm.mjs:89`).
 
-Cache import for a linked Task Node Official account:
+Cache import for a linked Task Node account:
 
 ```bash
 npm run wallet-nft-inventory -- \
@@ -449,7 +449,7 @@ for (const nft of inventory.nfts) {
 
 ### Legacy NFT CID Repin
 
-Old PFTasks profile NFTs can only be trusted if their original CIDs remain resolvable. The minted token points at an IPFS metadata CID, and that metadata points at an image CID. Those CIDs are content addresses. Task Node Official must not silently replace them with new CIDs because that would make the app render something different from the on-chain NFT.
+Old PFTasks profile NFTs can only be trusted if their original CIDs remain resolvable. The minted token points at an IPFS metadata CID, and that metadata points at an image CID. Those CIDs are content addresses. Task Node must not silently replace them with new CIDs because that would make the app render something different from the on-chain NFT.
 
 The temporary production bridge is `TASKNODE_PROFILE_NFT_IMAGE_GATEWAYS`, which may include old PFTasks gateways so users can see their historical images during cutover. That bridge is not the final state. The final state is: every old metadata, image, and thumbnail CID resolves from current IPFS infrastructure, then the old PFTasks gateways can be removed from the profile image proxy config.
 

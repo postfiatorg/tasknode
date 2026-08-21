@@ -14,7 +14,7 @@ const {
 const projectId = "task_node_core_product";
 const accountId = "acct_capability_smoke";
 const walletAddress = "rCapabilitySmoke";
-const privateRepoScope = "github:private/postfiatorg/tasknodeofficial";
+const privateRepoScope = "github:private/postfiatorg/tasknode";
 const scopeDigest = capabilityScopeDigest(privateRepoScope);
 
 const projectRegistry = [
