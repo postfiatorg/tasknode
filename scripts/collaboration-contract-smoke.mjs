@@ -19,6 +19,7 @@ import {
 import {
   docsActiveTaskOptions,
   filterDocsTaskOptions,
+  pfdocsReadOnlyShareUrl,
   shareTargetInput,
   validSelectedShareTarget,
 } from "../src/features/docs-library/docs-library-options.js";
@@ -72,6 +73,22 @@ assert.equal(filterDocsTaskOptions(docsTasks, "task_alpha")[0].title, "Ship docs
 assert.equal(shareTargetInput(identitySuggestions[0]), "@carol");
 assert.equal(validSelectedShareTarget(identitySuggestions[0], "@carol"), true);
 assert.equal(validSelectedShareTarget(identitySuggestions[0], "@someone-else"), false);
+const readOnlyCapability = "/pad/#/2/pad/view/AbCdEf0123456789_-=/";
+assert.equal(
+  pfdocsReadOnlyShareUrl({
+    href: readOnlyCapability,
+    origin: "https://tasknode-pfdocs.fly.dev",
+  }),
+  `https://tasknode-pfdocs.fly.dev${readOnlyCapability}`
+);
+assert.equal(pfdocsReadOnlyShareUrl({
+  href: "/pad/#/2/pad/edit/AbCdEf0123456789_-=/",
+  origin: "https://tasknode-pfdocs.fly.dev",
+}), "");
+assert.equal(pfdocsReadOnlyShareUrl({
+  href: "https://attacker.example/pad/#/2/pad/view/AbCdEf0123456789_-=/",
+  origin: "https://tasknode-pfdocs.fly.dev",
+}), "");
 
 const canonicalA = collaborationChallengePayload({
   action: "team_invite",
@@ -242,6 +259,10 @@ assert.match(docsView, /sendEditorCommand\("set-title", \{ title \}\)/);
 assert.match(docsView, /z-ai\/glm-5\.2/);
 assert.match(docsView, /Select a valid Task Node member from the suggestions/);
 assert.match(docsView, /People with access/);
+assert.match(docsView, /Share with a link/);
+assert.match(docsView, /This link contains the document’s decryption key/);
+assert.match(docsView, /Copy read-only link/);
+assert.match(docsView, /navigator\.clipboard\.writeText\(shareUrl\)/);
 assert.match(docsView, /Link an active task/);
 assert.match(docsView, /Opening encrypted document/);
 assert.doesNotMatch(docsView, /window\.prompt\("Task ID to link"/);

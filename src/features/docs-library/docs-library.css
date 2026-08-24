@@ -41,7 +41,22 @@
 .docs-combobox-menu button em,.docs-task-options button em{flex:0 0 auto;border-radius:999px;background:#f0fdf4;padding:3px 6px;color:#067647;font-size:10px;font-style:normal}
 .docs-combobox-state,.docs-task-options>small{display:block;padding:12px;color:#78716c;text-align:center}
 .docs-field-error{display:block;margin:-7px 0 8px}
+.docs-external-share{margin:18px 0 0;border:1px solid #e7d7ae;border-radius:12px;background:#fffcf2;padding:14px}
+.docs-external-share-heading{display:flex;align-items:flex-start;gap:10px}
+.docs-external-share-heading>span{display:grid;width:30px;height:30px;flex:0 0 30px;place-items:center;border:1px solid #dfcfaa;border-radius:9px;background:#fff;color:#6f561c}
+.docs-external-share-heading h3{margin:0;color:#292524;font-size:14px}
+.docs-external-share-heading p{margin:3px 0 0;color:#6b6256;font-size:12px;line-height:1.45}
+.docs-capability-warning{display:flex;flex-direction:column;gap:3px;margin:12px 0;border-left:3px solid #b7791f;background:#fff7e2;padding:9px 11px;color:#5f4717;font-size:12px;line-height:1.45}
+.docs-capability-warning strong{color:#46340f}
+.docs-copy-share-link{display:inline-flex;min-height:42px;align-items:center;justify-content:center;gap:8px;border:1px solid #292524;border-radius:9px;background:#292524;padding:9px 13px;color:#fff;font-weight:650;cursor:pointer}
+.docs-copy-share-link:hover{background:#111}
+.docs-copy-share-link:focus-visible{outline:3px solid #d69e2e;outline-offset:2px}
+.docs-share-link-feedback{display:block;min-height:17px;margin-top:6px;color:#a33;font-size:11px}
+.collab-dialog>.docs-share-divider{display:flex;align-items:center;justify-content:center;margin:17px 0 2px;color:#8a8177;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.docs-share-divider:before,.docs-share-divider:after{height:1px;flex:1;background:#e7e5e4;content:""}
+.docs-share-divider span{padding:0 9px}
 .collab-dialog>.docs-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+@media(max-width:520px){.docs-copy-share-link{width:100%}}
 .docs-task-options{min-height:80px;margin-top:8px}
 .docs-editor-workspace{position:relative}
 .docs-editor-import-input{position:fixed;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);opacity:0}

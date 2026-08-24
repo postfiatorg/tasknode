@@ -45,3 +45,15 @@ export function validSelectedShareTarget(identity, input = "") {
   if (!identity?.accountId) return false;
   return shareTargetInput(identity).toLowerCase() === safeText(input, 180).toLowerCase();
 }
+
+export function pfdocsReadOnlyShareUrl({ href = "", origin = "" } = {}) {
+  try {
+    const expectedOrigin = new URL(origin).origin;
+    const capabilityUrl = new URL(href, expectedOrigin);
+    if (capabilityUrl.origin !== expectedOrigin || capabilityUrl.pathname !== "/pad/") return "";
+    if (!/^#\/[0-9]+\/pad\/view\/[A-Za-z0-9+/_=-]+\/$/.test(capabilityUrl.hash)) return "";
+    return capabilityUrl.toString();
+  } catch {
+    return "";
+  }
+}
