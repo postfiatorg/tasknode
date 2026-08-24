@@ -12,6 +12,7 @@ import { createDocsRootKey, decryptDocsMetadata, encryptDocsMetadata } from "./d
 import {
   docsActiveTaskOptions,
   filterDocsTaskOptions,
+  pfdocsReadOnlyShareUrl,
   shareTargetInput,
   validSelectedShareTarget,
 } from "./docs-library-options";
@@ -62,6 +63,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
   const [shareSuggestionsLoading, setShareSuggestionsLoading] = useState(false);
   const [selectedShareTarget, setSelectedShareTarget] = useState(null);
   const [shareRole, setShareRole] = useState("viewer");
+  const [shareLinkState, setShareLinkState] = useState({ copied: false, error: "" });
   const [taskLinkDocument, setTaskLinkDocument] = useState(null);
   const [taskQuery, setTaskQuery] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -566,6 +568,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     setShareTargetError("");
     setShareSuggestions([]);
     setShareRole("viewer");
+    setShareLinkState({ copied: false, error: "" });
   }
 
   function closeShareDialog() {
@@ -574,6 +577,33 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     setSelectedShareTarget(null);
     setShareTargetError("");
     setShareSuggestions([]);
+    setShareLinkState({ copied: false, error: "" });
+  }
+
+  async function copyReadOnlyShareLink() {
+    if (!walletSecret?.mnemonic) return onWalletUnlock?.();
+    const href = decrypted[share?.documentId]?.viewHref;
+    const shareUrl = pfdocsReadOnlyShareUrl({
+      href,
+      origin: collaboration.pfdocsOrigin,
+    });
+    if (!shareUrl) {
+      setShareLinkState({ copied: false, error: "This document does not have a valid read-only PFDocs link." });
+      return;
+    }
+    if (!navigator.clipboard?.writeText) {
+      setShareLinkState({ copied: false, error: "Clipboard access is unavailable in this browser." });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareLinkState({ copied: true, error: "" });
+      window.setTimeout(() => {
+        setShareLinkState((current) => current.copied ? { copied: false, error: "" } : current);
+      }, 1800);
+    } catch {
+      setShareLinkState({ copied: false, error: "Could not copy the link. Check this browser's clipboard permission." });
+    }
   }
 
   function chooseShareTarget(identity) {
@@ -675,6 +705,27 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       <section className="collab-dialog docs-share-dialog" onMouseDown={(event) => event.stopPropagation()}>
         <h2>Share document</h2>
         <p>Send an encrypted capability through Task Node. The server never receives the PFDocs link in plaintext.</p>
+        <section aria-labelledby="docs-external-share-title" className="docs-external-share">
+          <div className="docs-external-share-heading">
+            <span aria-hidden="true"><Link2 size={16} /></span>
+            <div>
+              <h3 id="docs-external-share-title">Share with a link</h3>
+              <p>Open this encrypted document in PFDocs without a Task Node account.</p>
+            </div>
+          </div>
+          <div className="docs-capability-warning" role="note">
+            <strong>This link contains the document’s decryption key.</strong>
+            <span>Anyone who receives it can keep viewing the document. Revoking Task Node access will not revoke a copied link.</span>
+          </div>
+          <button className="docs-copy-share-link" onClick={copyReadOnlyShareLink} type="button">
+            {shareLinkState.copied ? <CheckCircle2 aria-hidden="true" size={16} /> : <Link2 aria-hidden="true" size={16} />}
+            {shareLinkState.copied ? "Read-only link copied" : "Copy read-only link"}
+          </button>
+          <span aria-live="polite" className="docs-share-link-feedback">
+            {shareLinkState.error}
+          </span>
+        </section>
+        <div className="docs-share-divider"><span>or share securely in Task Node</span></div>
         {(share.shares || []).length > 0 && (
           <section className="docs-current-access">
             <h3>People with access</h3>
