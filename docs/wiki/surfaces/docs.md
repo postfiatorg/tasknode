@@ -9,7 +9,7 @@ Docs is a first-class Task Node screen for wallet-encrypted collaborative rich-t
 3. Create or open a rich-text document inside the embedded editor. The editor stays in the Task Node shell; it does not open a disruptive popup.
 4. Rename from Task Node or PFDocs. The owner browser synchronizes the canonical title in both directions and stores only encrypted title metadata in Task Node.
 5. Share with a validated Task Node member selected from the handle/wallet suggestions as viewer or editor. Recent recipients sort first and the most recently used valid recipient is selected when the dialog opens. A recipient must accept the encrypted capability grant.
-6. To open the document outside Task Node, use **Share document → Share with a link → Copy read-only link**. The unlocked browser copies the PFDocs view capability directly to the clipboard; Task Node never receives the plaintext link.
+6. To open the document outside Task Node, use **Share document → Link access**, then copy either the view link or edit link. The unlocked browser copies the selected PFDocs capability directly to the clipboard; Task Node never receives the plaintext link.
 7. Use the document chat for human discussion. `@ODV` and `@coach` are explicit Ambient GLM 5.2 actions.
 
 Each owned document card lists the parties with an active or pending grant, including role and acceptance state. The Access/Share dialog repeats the complete current-access list before a new capability is sent. Task links are selected from an auto-filtered list of the user's current outstanding and verification tasks; arbitrary task IDs are not accepted by the UI.
@@ -20,7 +20,7 @@ The durable library owner is the Task Node `account_id`. The current linked wall
 
 Document content remains in PFDocs/CryptPad's end-to-end encrypted channel. Task Node Postgres stores opaque channel hashes, encrypted metadata, encrypted capability grants, state, and audit timestamps. Human chat identity is derived from the authenticated Task Node handle, falling back to the linked wallet. Nostr is optional transport identity and never grants document access.
 
-CryptPad links are bearer capabilities. The Share Document dialog exposes only the read-only PFDocs capability and warns before copying it. Anyone who receives that link can retain and forward document access. Revoking a Task Node grant removes normal library delivery but cannot erase a capability that a recipient already copied. Rotate the PFDocs capability/password and re-share when a link may be compromised.
+CryptPad links are bearer capabilities. The Share Document dialog exposes separate view and edit PFDocs capabilities and warns that both links contain the document decryption key. Anyone who receives a link can retain and forward its access; an edit link also permits document changes. Revoking a Task Node grant removes normal library delivery but cannot erase a capability that a recipient already copied. Rotate the PFDocs capability/password and re-share when a link may be compromised.
 
 ## Embedded Editor And Titles
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FileText, FileUp, History, Link2, LockKeyhole, MessageSquare, Pencil, RefreshCw, Share2, Users } from "lucide-react";
+import { Archive, ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, Eye, FilePlus2, FileText, FileUp, History, Link2, LockKeyhole, MessageSquare, Pencil, RefreshCw, Share2, Users } from "lucide-react";
 import { requestJson } from "../../api";
 import {
   decryptFromTaskNodeWallet,
@@ -12,7 +12,7 @@ import { createDocsRootKey, decryptDocsMetadata, encryptDocsMetadata } from "./d
 import {
   docsActiveTaskOptions,
   filterDocsTaskOptions,
-  pfdocsReadOnlyShareUrl,
+  pfdocsShareUrl,
   shareTargetInput,
   validSelectedShareTarget,
 } from "./docs-library-options";
@@ -63,7 +63,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
   const [shareSuggestionsLoading, setShareSuggestionsLoading] = useState(false);
   const [selectedShareTarget, setSelectedShareTarget] = useState(null);
   const [shareRole, setShareRole] = useState("viewer");
-  const [shareLinkState, setShareLinkState] = useState({ copied: false, error: "" });
+  const [shareLinkState, setShareLinkState] = useState({ copied: "", error: "" });
   const [taskLinkDocument, setTaskLinkDocument] = useState(null);
   const [taskQuery, setTaskQuery] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -568,7 +568,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     setShareTargetError("");
     setShareSuggestions([]);
     setShareRole("viewer");
-    setShareLinkState({ copied: false, error: "" });
+    setShareLinkState({ copied: "", error: "" });
   }
 
   function closeShareDialog() {
@@ -577,32 +577,35 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     setSelectedShareTarget(null);
     setShareTargetError("");
     setShareSuggestions([]);
-    setShareLinkState({ copied: false, error: "" });
+    setShareLinkState({ copied: "", error: "" });
   }
 
-  async function copyReadOnlyShareLink() {
+  async function copyDocumentShareLink(access) {
     if (!walletSecret?.mnemonic) return onWalletUnlock?.();
-    const href = decrypted[share?.documentId]?.viewHref;
-    const shareUrl = pfdocsReadOnlyShareUrl({
+    const href = access === "edit"
+      ? decrypted[share?.documentId]?.editHref
+      : decrypted[share?.documentId]?.viewHref;
+    const shareUrl = pfdocsShareUrl({
+      access,
       href,
       origin: collaboration.pfdocsOrigin,
     });
     if (!shareUrl) {
-      setShareLinkState({ copied: false, error: "This document does not have a valid read-only PFDocs link." });
+      setShareLinkState({ copied: "", error: `This document does not have a valid ${access} link.` });
       return;
     }
     if (!navigator.clipboard?.writeText) {
-      setShareLinkState({ copied: false, error: "Clipboard access is unavailable in this browser." });
+      setShareLinkState({ copied: "", error: "Clipboard access is unavailable in this browser." });
       return;
     }
     try {
       await navigator.clipboard.writeText(shareUrl);
-      setShareLinkState({ copied: true, error: "" });
+      setShareLinkState({ copied: access, error: "" });
       window.setTimeout(() => {
-        setShareLinkState((current) => current.copied ? { copied: false, error: "" } : current);
+        setShareLinkState((current) => current.copied === access ? { copied: "", error: "" } : current);
       }, 1800);
     } catch {
-      setShareLinkState({ copied: false, error: "Could not copy the link. Check this browser's clipboard permission." });
+      setShareLinkState({ copied: "", error: "Could not copy the link. Check this browser's clipboard permission." });
     }
   }
 
@@ -704,28 +707,33 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     <div className="collab-dialog-backdrop" onMouseDown={closeShareDialog}>
       <section className="collab-dialog docs-share-dialog" onMouseDown={(event) => event.stopPropagation()}>
         <h2>Share document</h2>
-        <p>Send an encrypted capability through Task Node. The server never receives the PFDocs link in plaintext.</p>
-        <section aria-labelledby="docs-external-share-title" className="docs-external-share">
-          <div className="docs-external-share-heading">
-            <span aria-hidden="true"><Link2 size={16} /></span>
+        <p>Choose link access or share securely with a Task Node member.</p>
+        <section aria-labelledby="docs-link-access-title" className="docs-link-share">
+          <header className="docs-link-share-heading">
             <div>
-              <h3 id="docs-external-share-title">Share with a link</h3>
-              <p>Open this encrypted document in PFDocs without a Task Node account.</p>
+              <h3 id="docs-link-access-title">Link access</h3>
+              <p>For people outside Task Node</p>
             </div>
+          </header>
+          <div aria-label="Document link access" className="docs-link-actions" role="group">
+            <button onClick={() => copyDocumentShareLink("view")} type="button">
+              {shareLinkState.copied === "view" ? <CheckCircle2 aria-hidden="true" size={16} /> : <Eye aria-hidden="true" size={16} />}
+              <span><strong>{shareLinkState.copied === "view" ? "View link copied" : "Copy view link"}</strong><small>Can read</small></span>
+            </button>
+            <button onClick={() => copyDocumentShareLink("edit")} type="button">
+              {shareLinkState.copied === "edit" ? <CheckCircle2 aria-hidden="true" size={16} /> : <Pencil aria-hidden="true" size={16} />}
+              <span><strong>{shareLinkState.copied === "edit" ? "Edit link copied" : "Copy edit link"}</strong><small>Can make changes</small></span>
+            </button>
           </div>
-          <div className="docs-capability-warning" role="note">
-            <strong>This link contains the document’s decryption key.</strong>
-            <span>Anyone who receives it can keep viewing the document. Revoking Task Node access will not revoke a copied link.</span>
-          </div>
-          <button className="docs-copy-share-link" onClick={copyReadOnlyShareLink} type="button">
-            {shareLinkState.copied ? <CheckCircle2 aria-hidden="true" size={16} /> : <Link2 aria-hidden="true" size={16} />}
-            {shareLinkState.copied ? "Read-only link copied" : "Copy read-only link"}
-          </button>
+          <p className="docs-capability-note" role="note">
+            <LockKeyhole aria-hidden="true" size={14} />
+            <span><strong>Links include the document’s decryption key.</strong> Anyone with a link can keep or forward its access, and Task Node cannot revoke it.</span>
+          </p>
           <span aria-live="polite" className="docs-share-link-feedback">
             {shareLinkState.error}
           </span>
         </section>
-        <div className="docs-share-divider"><span>or share securely in Task Node</span></div>
+        <h3 className="docs-member-share-title">Task Node access</h3>
         {(share.shares || []).length > 0 && (
           <section className="docs-current-access">
             <h3>People with access</h3>
