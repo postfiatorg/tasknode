@@ -152,6 +152,42 @@ export async function readPftlAccountPreviousTxnId({
   };
 }
 
+export async function validatePftlSyncWalletForWorker(
+  { walletAddress = "" } = {},
+  { deactivateImpl = markPftlSyncWalletInactive, logger = console } = {}
+) {
+  const wallet = normalizeText(walletAddress);
+  if (isValidClassicAddress(wallet)) return { ok: true, valid: true, walletAddress: wallet };
+
+  const reason = "invalid_wallet_address";
+  try {
+    const deactivated = await deactivateImpl({ walletAddress: wallet, reason });
+    logger.warn?.("pftl_invalid_sync_wallet_deactivated", {
+      wallet,
+      deactivated: deactivated?.ok === true,
+      reason,
+    });
+    return {
+      ok: deactivated?.ok === true,
+      valid: false,
+      walletAddress: wallet,
+      reason,
+    };
+  } catch (error) {
+    logger.warn?.("pftl_invalid_sync_wallet_deactivation_failed", {
+      wallet,
+      error: error?.message || String(error),
+    });
+    return {
+      ok: false,
+      valid: false,
+      walletAddress: wallet,
+      reason,
+      error: error?.message || String(error),
+    };
+  }
+}
+
 export async function bestEffortRegisterPftlSyncWallet({ accountId, walletAddress, reason }) {
   try {
     const result = await registerPftlSyncWallet({
@@ -517,6 +553,11 @@ export function startPftlCacheWorker({
     try {
       const due = await listPftlWalletsDueForHotSync({ limit: safeBatch, staleMs });
       for (const wallet of due) {
+        const validation = await validatePftlSyncWalletForWorker(
+          { walletAddress: wallet.wallet_address },
+          { logger }
+        );
+        if (!validation.valid) continue;
         const previous = await previousTxnReader({ walletAddress: wallet.wallet_address });
         if (
           previous.ok &&
@@ -588,6 +629,11 @@ export function startPftlArchiveWorker({
         staleMs: safeStaleMs,
       });
       for (const wallet of due) {
+        const validation = await validatePftlSyncWalletForWorker(
+          { walletAddress: wallet.wallet_address },
+          { logger }
+        );
+        if (!validation.valid) continue;
         const result = await syncPftlWalletArchive({
           walletAddress: wallet.wallet_address,
           accountId: wallet.account_id || "",
