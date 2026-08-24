@@ -46,12 +46,17 @@ export function validSelectedShareTarget(identity, input = "") {
   return shareTargetInput(identity).toLowerCase() === safeText(input, 180).toLowerCase();
 }
 
-export function pfdocsReadOnlyShareUrl({ href = "", origin = "" } = {}) {
+export function pfdocsShareUrl({ access = "", href = "", origin = "" } = {}) {
   try {
     const expectedOrigin = new URL(origin).origin;
     const capabilityUrl = new URL(href, expectedOrigin);
     if (capabilityUrl.origin !== expectedOrigin || capabilityUrl.pathname !== "/pad/") return "";
-    if (!/^#\/[0-9]+\/pad\/view\/[A-Za-z0-9+/_=-]+\/$/.test(capabilityUrl.hash)) return "";
+    const capabilityPattern = access === "view"
+      ? /^#\/[0-9]+\/pad\/view\/[A-Za-z0-9+/_=-]+\/$/
+      : access === "edit"
+        ? /^#\/[0-9]+\/pad\/edit\/[A-Za-z0-9+/_=-]+\/$/
+        : null;
+    if (!capabilityPattern?.test(capabilityUrl.hash)) return "";
     return capabilityUrl.toString();
   } catch {
     return "";
