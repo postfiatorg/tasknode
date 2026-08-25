@@ -131,7 +131,7 @@ export const DOC_GROUPS = [
       { slug: "chat", title: "Chat", summary: "AI work, persistence, billing, and recovery.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
       { slug: "tasks", title: "Tasks", summary: "Personal and network task lifecycle.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
       { slug: "hive", title: "Hive", summary: "Network projects, routing, and coordination.", loadMarkdown: HELP_MARKDOWN_LOADERS.hive },
-      { slug: "docs", title: "Docs", summary: "Wallet-encrypted PFDocs collaboration.", loadMarkdown: HELP_MARKDOWN_LOADERS.docs },
+      { slug: "docs", title: "Docs", summary: "Wallet-encrypted documents and on-demand document chat.", loadMarkdown: HELP_MARKDOWN_LOADERS.docs },
       { slug: "team", title: "Team", summary: "Directional task-history permissions.", loadMarkdown: HELP_MARKDOWN_LOADERS.team },
       { slug: "messages", title: "Messages", summary: "Wallet-bound NIP-17 private messaging.", loadMarkdown: HELP_MARKDOWN_LOADERS.messages },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, activity, custody, and signing.", loadMarkdown: HELP_MARKDOWN_LOADERS.wallet },
