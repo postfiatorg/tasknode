@@ -142,38 +142,29 @@ assert.equal(generated.output.task_kind, "network");
 assert.match(generated.output.submission_requirement.criteria, /Discord announcement proof/i);
 assert.equal(generated.metadata.provider, "mock");
 assert.equal(generated.metadata.prompt_version, "taskgen_network_v2");
-assert.equal(generated.metadata.network_taskgen_v2_gate.requiredBadge, "core_contributor");
-assert.deepEqual(generated.metadata.network_taskgen_v2_gate.reportIds, [
-  "hiverep_development_smoke",
-  "hiverep_operative_smoke",
-]);
 
-await assert.rejects(
-  () => generateTaskWithProvider({
-    ...taskInput,
-    network_task: {
-      ...taskInput.network_task,
-      required_badge_id: "",
-      operating_badge_id: "",
-    },
-    policy: {
-      ...taskInput.policy,
-      required_badge_id: "",
-      operating_badge_id: "",
-    },
-  }),
-  /network_taskgen_v2_required_badge_missing/
-);
+const generatedWithoutBadges = await generateTaskWithProvider({
+  ...taskInput,
+  network_task: {
+    ...taskInput.network_task,
+    required_badge_id: "",
+    operating_badge_id: "",
+  },
+  policy: {
+    ...taskInput.policy,
+    required_badge_id: "",
+    operating_badge_id: "",
+  },
+});
+assert.equal(generatedWithoutBadges.output.task_kind, "network");
 
-await assert.rejects(
-  () => generateTaskWithProvider({
-    ...taskInput,
-    policy: {
-      ...taskInput.policy,
-      reward_offer_max_pft: 50000,
-    },
-  }),
-  /network_taskgen_v2_reward_cap_violation/
-);
+const generatedAboveFormerCap = await generateTaskWithProvider({
+  ...taskInput,
+  policy: {
+    ...taskInput.policy,
+    reward_offer_max_pft: 50000,
+  },
+});
+assert.equal(generatedAboveFormerCap.output.task_kind, "network");
 
 console.log("taskgen-network-v2-smoke ok");

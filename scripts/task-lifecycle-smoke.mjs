@@ -60,16 +60,14 @@ const policyDeadline = validateTaskgenOutput({
 }).deadline;
 assert.equal(policyDeadline.accept_by, "2026-05-26T20:47:04.186Z");
 assert.equal(policyDeadline.deadline_at, null);
-assert.throws(
-  () => validateTaskgenOutput({
-    ...taskgenBase,
-    title: "Create Compliance Verdict For Priority Gates",
-    description: "Compare the context document against the priority stack and write a conformance verdict.",
-    steps: ["Copy the Active P0 section.", "Write the exact edits needed."],
-    submission_requirement: { type: "text", criteria: "Submit the gap note and final verdict." },
-  }),
-  /taskgen_plain_speech_violation:/,
-);
+const domainLanguageTask = validateTaskgenOutput({
+  ...taskgenBase,
+  title: "Update the compliance page and acceptance gates",
+  description: "Change the named compliance page and document the final verdict.",
+  steps: ["Update the compliance page.", "Run its acceptance gates."],
+  submission_requirement: { type: "text", criteria: "Submit the exact edits and final verdict." },
+});
+assert.equal(domainLanguageTask.title, "Update the compliance page and acceptance gates");
 assert.deepEqual(taskgenPromptForInput({ request: { requestText: "Build a personal task" } }), {
   path: "task_engine/taskgen_personal_v1.md",
   version: "taskgen_personal_v1",
