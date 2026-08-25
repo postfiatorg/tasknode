@@ -113,10 +113,12 @@ const taskProperties = {
   taskAction: text(80),
   task_action: text(80),
   action: text(80),
+  mode: text(80),
+  reason: text(8000),
   requestId: text(100),
   bundleId: text(100),
-  // Corbanu Terminal 0.1.35 sends this retry token in the JSON body.
-  // It is part of the terminal request contract, not an unknown client field.
+  // Corbanu Terminal 0.1.35 sends this retry token in mutation JSON bodies.
+  // It is part of the terminal contract, not an unknown client field.
   idempotencyKey: text(240),
   requestText: text(8000),
   userDetailText: text(8000),
@@ -192,7 +194,7 @@ export const observabilityBody = strictBody(8192, {
 
 export const chatBody = strictBody(8 * MiB, chatProperties);
 export const terminalContextBody = strictBody(256 * KiB, {
-  revision: integer(0), title: text(120), body: text(250_000),
+  revision: integer(0), title: text(120), body: text(250_000), source: text(80),
 }, { required: ["body"] });
 export const chatConversationPatchBody = strictBody(16 * KiB, {
   conversationId: text(180), id: text(180), title: text(200),

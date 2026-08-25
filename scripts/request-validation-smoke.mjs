@@ -140,24 +140,65 @@ for (const route of apiRoutePolicies) {
   }
 }
 
-const terminalTaskRequestRoute = apiRoutePolicies.find((route) => route.id === "terminal_tasknode_requests");
-const terminalTaskRequestContract = routeBodyPolicyForRequest(
-  terminalTaskRequestRoute,
-  "POST",
-  "/api/terminal/tasknode/requests"
-);
-const corbanuTerminalTaskRequest = {
-  userDetailText: "Generate one bounded task.",
-  requestedTaskKind: "personal",
-  source: "pfterminal",
-  sourceConversationTitle: "Corbanu Terminal",
-  idempotencyKey: "pfterminal-request:00000000-0000-4000-8000-000000000000",
-};
-assert.deepEqual(
-  validateJsonDocument(corbanuTerminalTaskRequest, terminalTaskRequestContract.schema),
-  corbanuTerminalTaskRequest,
-  "terminal task requests must accept the Corbanu 0.1.35 request contract"
-);
+const corbanuMutationFixtures = [
+  {
+    routeId: "terminal_tasknode_chat_send",
+    path: "/api/terminal/tasknode/chat/send",
+    body: { conversationId: "chat_contract_smoke", message: "Answer this.", mode: "Instant", dryRun: false },
+  },
+  {
+    routeId: "terminal_tasknode_chat_stream",
+    path: "/api/terminal/tasknode/chat/stream",
+    body: { conversationId: "chat_contract_smoke", message: "Answer this.", mode: "Thinking", dryRun: false },
+  },
+  {
+    routeId: "terminal_tasknode_context",
+    path: "/api/terminal/tasknode/context",
+    body: { body: "Current context.", revision: 1, title: "Context", source: "pfterminal-cli" },
+  },
+  {
+    routeId: "terminal_tasknode_requests",
+    path: "/api/terminal/tasknode/requests",
+    body: {
+      userDetailText: "Generate one bounded task.",
+      requestedTaskKind: "personal",
+      source: "pfterminal-cli",
+      sourceConversationTitle: "Corbanu Terminal",
+      idempotencyKey: "pfterminal-request:00000000-0000-4000-8000-000000000000",
+    },
+  },
+  {
+    routeId: "terminal_tasknode_task_action",
+    path: "/api/terminal/tasknode/tasks/task_contract_smoke/action",
+    body: {
+      action: "refuse",
+      reason: "This task does not fit the current work.",
+      source: "pfterminal-cli",
+      idempotencyKey: "pfterminal-refuse:00000000-0000-4000-8000-000000000000",
+    },
+  },
+  ...["initial_submission", "verification_response"].map((mode) => ({
+    routeId: "terminal_tasknode_task_evidence",
+    path: "/api/terminal/tasknode/tasks/task_contract_smoke/evidence",
+    body: {
+      mode,
+      summary: `${mode} evidence.`,
+      evidence: [{ type: "text", value: `${mode} evidence.` }],
+      source: "pfterminal-cli",
+      idempotencyKey: `pfterminal-${mode}:00000000-0000-4000-8000-000000000000`,
+    },
+  })),
+];
+
+for (const fixture of corbanuMutationFixtures) {
+  const route = apiRoutePolicies.find((candidate) => candidate.id === fixture.routeId);
+  const contract = routeBodyPolicyForRequest(route, "POST", fixture.path);
+  assert.deepEqual(
+    validateJsonDocument(fixture.body, contract.schema),
+    fixture.body,
+    `${fixture.routeId} must accept the Corbanu 0.1.35 mutation contract`
+  );
+}
 
 for (const routeId of [
   "auth_email_start",
