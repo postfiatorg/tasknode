@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { accountIdentityProfile, providerAliasDefaults } from "../account-identity.js";
 import { accountDeletionAuditSnapshot } from "../account-deletion-audit.js";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
@@ -263,6 +263,423 @@ export async function unlinkProviderFromAccount(options = {}) {
     return { ok: true, provider, unlinkedUsername: target.username || null, remainingLoginMethods: (emailSurvives ? 1 : 0) + remainingOauth.length, account: publicAccount(account) };
   });
   await refreshRuntimeCache(); return result;
+}
+
+function accountRecoveryError(code, detail = "") {
+  const error = new Error(detail ? `${code}: ${detail}` : code);
+  error.code = code;
+  return error;
+}
+
+function quoteSqlIdentifier(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+async function unexpectedAccountOwnershipRows(client, sourceAccountId) {
+  const allowed = new Set([
+    "app_accounts.account_id",
+    "account_provider_identities.account_id",
+    "account_email_identities.account_id",
+    "account_linked_wallets.account_id",
+    "pftl_sync_wallets.account_id",
+    "pftl_pointer_observations.account_id",
+    "auth_sessions.account_id",
+    "billing_accounts.account_id",
+    "billing_ledger_entries.account_id",
+    "user_observability_events.account_id",
+    "account_merge_events.source_account_id",
+    "account_merge_events.target_account_id",
+    "account_merge_events.actor_account_id",
+  ]);
+  const ownershipColumns = await client.query(
+    `SELECT columns.table_name, columns.column_name
+       FROM information_schema.columns columns
+       JOIN information_schema.tables tables
+         ON tables.table_schema = columns.table_schema
+        AND tables.table_name = columns.table_name
+      WHERE columns.table_schema = 'public'
+        AND tables.table_type = 'BASE TABLE'
+        AND (columns.column_name = 'account_id' OR columns.column_name LIKE '%\\_account\\_id' ESCAPE '\\')
+      ORDER BY columns.table_name, columns.column_name`
+  );
+  const unexpected = [];
+  for (const row of ownershipColumns.rows) {
+    if (allowed.has(`${row.table_name}.${row.column_name}`)) continue;
+    const count = await client.query(
+      `SELECT count(*)::integer AS count FROM ${quoteSqlIdentifier(row.table_name)}
+        WHERE ${quoteSqlIdentifier(row.column_name)} = $1`,
+      [sourceAccountId]
+    );
+    const rowCount = Number(count.rows[0]?.count || 0);
+    if (rowCount > 0) unexpected.push({ table: row.table_name, column: row.column_name, count: rowCount });
+  }
+  return unexpected;
+}
+
+export async function recoverSplitProviderAccount(options = {}) {
+  if (!databaseEnabled()) throw accountRecoveryError("account_recovery_database_required");
+  const sourceAccountId = String(options.sourceAccountId || "").trim();
+  const targetAccountId = String(options.targetAccountId || "").trim();
+  const provider = String(options.provider || "").trim().toLowerCase();
+  const providerUserId = String(options.providerUserId || "").trim();
+  const expectedWalletAddress = String(options.expectedWalletAddress || "").trim();
+  const actorAccountId = String(options.actorAccountId || "").trim();
+  const actorOperator = String(options.actorOperator || "").trim();
+  const reason = String(options.reason || "").trim();
+  const dryRun = options.dryRun === true;
+  const expectedTargetTaskCount = Number.isInteger(options.expectedTargetTaskCount)
+    ? options.expectedTargetTaskCount
+    : null;
+  const expectedTargetVerifiedBadgeCount = Number.isInteger(options.expectedTargetVerifiedBadgeCount)
+    ? options.expectedTargetVerifiedBadgeCount
+    : null;
+
+  if (!sourceAccountId || !targetAccountId || sourceAccountId === targetAccountId) {
+    throw accountRecoveryError("account_recovery_ids_invalid");
+  }
+  if (!provider || !providerUserId) throw accountRecoveryError("account_recovery_provider_identity_required");
+  if (!expectedWalletAddress) throw accountRecoveryError("account_recovery_wallet_required");
+  if (!actorOperator) throw accountRecoveryError("account_recovery_operator_required");
+  if (!reason) throw accountRecoveryError("account_recovery_reason_required");
+  if (stableId(identityKey(provider, providerUserId), "acct_oauth") !== targetAccountId) {
+    throw accountRecoveryError("account_recovery_target_identity_mismatch");
+  }
+
+  const result = await transaction(async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`account-recovery:${sourceAccountId}`]);
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`account-recovery:${targetAccountId}`]);
+
+    const priorMerge = await client.query(
+      `SELECT id, created_at FROM account_merge_events
+        WHERE source_account_id = $1 AND target_account_id = $2
+        LIMIT 1`,
+      [sourceAccountId, targetAccountId]
+    );
+    if (priorMerge.rows[0]) {
+      return {
+        ok: true,
+        dryRun: false,
+        alreadyMerged: true,
+        mergeEventId: priorMerge.rows[0].id,
+        mergedAt: priorMerge.rows[0].created_at,
+        sourceAccountId,
+        targetAccountId,
+      };
+    }
+
+    const source = await lookupAccount(client, sourceAccountId);
+    const target = await lookupAccount(client, targetAccountId);
+    if (!source) throw accountRecoveryError("account_recovery_source_not_found");
+    if (!target) throw accountRecoveryError("account_recovery_target_not_found");
+    if (source.status !== "active") throw accountRecoveryError("account_recovery_source_not_active", source.status || "unknown");
+    if (target.status !== "active") throw accountRecoveryError("account_recovery_target_not_active", target.status || "unknown");
+    if (target.recoverySource !== "durable_profile_census") {
+      throw accountRecoveryError("account_recovery_target_not_recovered");
+    }
+
+    const providerIdentities = await client.query(
+      `SELECT provider, provider_user_id, identity_json
+         FROM account_provider_identities
+        WHERE account_id = $1
+        ORDER BY provider, provider_user_id
+        FOR UPDATE`,
+      [sourceAccountId]
+    );
+    if (
+      providerIdentities.rows.length !== 1
+      || providerIdentities.rows[0].provider !== provider
+      || providerIdentities.rows[0].provider_user_id !== providerUserId
+    ) {
+      throw accountRecoveryError("account_recovery_source_identity_mismatch");
+    }
+    const targetProviderIdentity = await client.query(
+      `SELECT account_id FROM account_provider_identities
+        WHERE provider = $1 AND provider_user_id = $2
+        FOR UPDATE`,
+      [provider, providerUserId]
+    );
+    if (targetProviderIdentity.rows[0]?.account_id !== sourceAccountId) {
+      throw accountRecoveryError("account_recovery_identity_owner_changed");
+    }
+
+    const emailIdentities = await client.query(
+      "SELECT email_canonical FROM account_email_identities WHERE account_id = $1 FOR UPDATE",
+      [sourceAccountId]
+    );
+    const sourceWallets = await client.query(
+      "SELECT wallet_address, status FROM account_linked_wallets WHERE account_id = $1 FOR UPDATE",
+      [sourceAccountId]
+    );
+    const targetWallets = await client.query(
+      "SELECT wallet_address, status FROM account_linked_wallets WHERE account_id = $1 FOR UPDATE",
+      [targetAccountId]
+    );
+    if (
+      sourceWallets.rows.length !== 1
+      || sourceWallets.rows[0].wallet_address !== expectedWalletAddress
+      || sourceWallets.rows[0].status !== "linked"
+    ) {
+      throw accountRecoveryError("account_recovery_source_wallet_mismatch");
+    }
+    if (targetWallets.rows.length !== 0) {
+      throw accountRecoveryError("account_recovery_target_wallet_conflict");
+    }
+
+    const syncWallets = await client.query(
+      "SELECT wallet_address FROM pftl_sync_wallets WHERE account_id = $1 FOR UPDATE",
+      [sourceAccountId]
+    );
+    if (
+      syncWallets.rows.length !== 1
+      || syncWallets.rows[0].wallet_address !== expectedWalletAddress
+    ) {
+      throw accountRecoveryError("account_recovery_sync_wallet_mismatch");
+    }
+    const pointerWalletMismatch = await client.query(
+      `SELECT count(*)::integer AS count FROM pftl_pointer_observations
+        WHERE account_id = $1 AND wallet_address <> $2`,
+      [sourceAccountId, expectedWalletAddress]
+    );
+    if (Number(pointerWalletMismatch.rows[0]?.count || 0) > 0) {
+      throw accountRecoveryError("account_recovery_pointer_wallet_mismatch");
+    }
+
+    const sourceBilling = await client.query(
+      `SELECT status, current_spend_usd, current_credit_usd, ledger_entry_count
+         FROM billing_accounts WHERE account_id = $1 FOR UPDATE`,
+      [sourceAccountId]
+    );
+    const sourceLedger = await client.query(
+      `SELECT kind, amount_usd, source FROM billing_ledger_entries
+        WHERE account_id = $1 ORDER BY created_at FOR UPDATE`,
+      [sourceAccountId]
+    );
+    if (
+      sourceBilling.rows.length !== 1
+      || sourceBilling.rows[0].status !== "active"
+      || Number(sourceBilling.rows[0].current_spend_usd) !== 0
+      || Number(sourceBilling.rows[0].current_credit_usd) !== 5
+      || Number(sourceBilling.rows[0].ledger_entry_count) !== 1
+      || sourceLedger.rows.length !== 1
+      || sourceLedger.rows[0].kind !== "account_credit"
+      || Number(sourceLedger.rows[0].amount_usd) !== 5
+      || sourceLedger.rows[0].source !== "initial_provider_credit"
+    ) {
+      throw accountRecoveryError("account_recovery_source_billing_not_pristine");
+    }
+
+    const unexpectedOwnership = await unexpectedAccountOwnershipRows(client, sourceAccountId);
+    if (unexpectedOwnership.length > 0) {
+      throw accountRecoveryError("account_recovery_source_has_durable_activity", JSON.stringify(unexpectedOwnership));
+    }
+
+    const targetCounts = await client.query(
+      `SELECT
+         (SELECT count(*)::integer FROM task_projections WHERE account_id = $1) AS task_count,
+         (SELECT count(*)::integer FROM account_network_badges WHERE account_id = $1 AND status = 'verified') AS verified_badge_count,
+         (SELECT count(*)::integer FROM task_projections
+           WHERE account_id = $1 AND subject_wallet <> '' AND subject_wallet <> $2) AS mismatched_task_wallet_count`,
+      [targetAccountId, expectedWalletAddress]
+    );
+    const targetTaskCount = Number(targetCounts.rows[0]?.task_count || 0);
+    const targetVerifiedBadgeCount = Number(targetCounts.rows[0]?.verified_badge_count || 0);
+    if (Number(targetCounts.rows[0]?.mismatched_task_wallet_count || 0) > 0) {
+      throw accountRecoveryError("account_recovery_target_task_wallet_mismatch");
+    }
+    if (expectedTargetTaskCount !== null && targetTaskCount !== expectedTargetTaskCount) {
+      throw accountRecoveryError("account_recovery_target_task_count_changed", String(targetTaskCount));
+    }
+    if (
+      expectedTargetVerifiedBadgeCount !== null
+      && targetVerifiedBadgeCount !== expectedTargetVerifiedBadgeCount
+    ) {
+      throw accountRecoveryError("account_recovery_target_badge_count_changed", String(targetVerifiedBadgeCount));
+    }
+
+    const preview = {
+      ok: true,
+      dryRun,
+      alreadyMerged: false,
+      sourceAccountId,
+      targetAccountId,
+      provider,
+      walletAddress: expectedWalletAddress,
+      targetTaskCount,
+      targetVerifiedBadgeCount,
+      emailIdentityCount: emailIdentities.rows.length,
+      pointerObservationCount: Number((
+        await client.query(
+          "SELECT count(*)::integer AS count FROM pftl_pointer_observations WHERE account_id = $1",
+          [sourceAccountId]
+        )
+      ).rows[0]?.count || 0),
+      activeSessionCount: Number((
+        await client.query(
+          `SELECT count(*)::integer AS count FROM auth_sessions
+            WHERE account_id = $1 AND revoked_at IS NULL AND expires_at > now()`,
+          [sourceAccountId]
+        )
+      ).rows[0]?.count || 0),
+    };
+    if (dryRun) return preview;
+
+    const now = new Date().toISOString();
+    const sourceHandle = String(source.hiveHandle || "").trim();
+    const archivedSource = {
+      ...source,
+      status: "merged",
+      displayName: "Merged account",
+      hiveHandle: "",
+      publicDisplayName: "",
+      profileDiscoverable: false,
+      linkedProviders: [],
+      primaryProvider: "merged",
+      mergedIntoAccountId: targetAccountId,
+      mergedAt: now,
+      mergeReason: reason,
+      updatedAt: now,
+    };
+    for (const key of [
+      "primaryEmailOriginal",
+      "primaryEmailCanonical",
+      "primaryEmailVerified",
+      "emailProvider",
+      "emailLastSeenAt",
+      "lastProviderLoginAt",
+      "lastProviderLinkAt",
+    ]) delete archivedSource[key];
+    await client.query(
+      `UPDATE app_accounts
+          SET account_json = $2::jsonb, hive_handle = NULL, status = 'merged', updated_at = $3
+        WHERE account_id = $1`,
+      [sourceAccountId, JSON.stringify(archivedSource), now]
+    );
+
+    for (const incoming of Array.isArray(source.linkedProviders) ? source.linkedProviders : []) {
+      mergeProvider(target, incoming);
+    }
+    if (!target.hiveHandle && sourceHandle) target.hiveHandle = sourceHandle;
+    target.primaryProvider = source.primaryProvider || target.primaryProvider || provider;
+    target.assurance = target.assurance === "high" || source.assurance === "high" ? "high" : "medium";
+    for (const key of [
+      "primaryEmailOriginal",
+      "primaryEmailCanonical",
+      "primaryEmailVerified",
+      "emailProvider",
+      "emailLastSeenAt",
+      "lastProviderLoginAt",
+    ]) {
+      if (source[key] !== undefined && source[key] !== null && source[key] !== "") target[key] = source[key];
+    }
+    target.status = "active";
+    target.updatedAt = now;
+    target.recoveredFromSplitAccountId = sourceAccountId;
+    target.recoveredFromSplitAt = now;
+    delete target.recoverySource;
+    await saveAccount(client, target);
+
+    const providerMove = await client.query(
+      "UPDATE account_provider_identities SET account_id = $2, updated_at = now() WHERE account_id = $1",
+      [sourceAccountId, targetAccountId]
+    );
+    const emailMove = await client.query(
+      "UPDATE account_email_identities SET account_id = $2, updated_at = now() WHERE account_id = $1",
+      [sourceAccountId, targetAccountId]
+    );
+    const walletMove = await client.query(
+      "UPDATE account_linked_wallets SET account_id = $2, updated_at = now() WHERE account_id = $1",
+      [sourceAccountId, targetAccountId]
+    );
+    const syncWalletMove = await client.query(
+      "UPDATE pftl_sync_wallets SET account_id = $2, updated_at = now() WHERE account_id = $1",
+      [sourceAccountId, targetAccountId]
+    );
+    const pointerMove = await client.query(
+      "UPDATE pftl_pointer_observations SET account_id = $2, updated_at = now() WHERE account_id = $1",
+      [sourceAccountId, targetAccountId]
+    );
+    const sessionPayload = publicAccount(target);
+    const sessionMove = await client.query(
+      `UPDATE auth_sessions
+          SET account_id = $2,
+              primary_provider = $3,
+              assurance = $4,
+              session_json = session_json || $5::jsonb
+        WHERE account_id = $1`,
+      [sourceAccountId, targetAccountId, target.primaryProvider || provider, target.assurance || "medium", JSON.stringify({
+        accountId: targetAccountId,
+        displayName: sessionPayload.displayName,
+        hiveHandle: sessionPayload.hiveHandle,
+        publicDisplayName: sessionPayload.publicDisplayName,
+        profileVisibility: sessionPayload.profileVisibility,
+        primaryProvider: sessionPayload.primaryProvider,
+        linkedProviders: sessionPayload.linkedProviders,
+      })]
+    );
+    await client.query(
+      "UPDATE billing_accounts SET status = 'merged', updated_at = now() WHERE account_id = $1",
+      [sourceAccountId]
+    );
+
+    const mergeEventId = `merge_${randomUUID()}`;
+    const metadata = {
+      provider,
+      walletAddress: expectedWalletAddress,
+      targetTaskCount,
+      targetVerifiedBadgeCount,
+      moved: {
+        providerIdentities: providerMove.rowCount,
+        emailIdentities: emailMove.rowCount,
+        linkedWallets: walletMove.rowCount,
+        syncWallets: syncWalletMove.rowCount,
+        pointerObservations: pointerMove.rowCount,
+        sessions: sessionMove.rowCount,
+      },
+      duplicateSignupCreditRetainedOnArchivedSourceUsd: 5,
+    };
+    await client.query(
+      `INSERT INTO account_merge_events (
+         id, source_account_id, target_account_id, actor_account_id, actor_operator,
+         reason, status, metadata_json, created_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,'completed',$7::jsonb,$8)`,
+      [
+        mergeEventId,
+        sourceAccountId,
+        targetAccountId,
+        actorAccountId,
+        actorOperator,
+        reason,
+        JSON.stringify(metadata),
+        now,
+      ]
+    );
+    for (const [eventType, accountId, publicHandle] of [
+      ["user.account.merged", sourceAccountId, ""],
+      ["user.account.recovered", targetAccountId, target.hiveHandle || ""],
+    ]) {
+      await client.query(
+        `INSERT INTO user_observability_events (
+           id, occurred_at, received_at, event_type, account_id, public_handle,
+           wallet_address, provider, source_surface, result_status, reason_code,
+           metadata_json, privacy_class
+         ) VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'operator_account_recovery','success',
+                   'split_provider_account_repaired',$8::jsonb,'security')`,
+        [
+          `uobs_${randomUUID()}`,
+          now,
+          eventType,
+          accountId,
+          publicHandle,
+          expectedWalletAddress,
+          provider,
+          JSON.stringify({ mergeEventId, sourceAccountId, targetAccountId, actorOperator }),
+        ]
+      );
+    }
+    return { ...preview, dryRun: false, mergeEventId, moved: metadata.moved };
+  });
+  if (!dryRun && !result.alreadyMerged) await refreshRuntimeCache();
+  return result;
 }
 
 export async function migrateLegacyAccounts() {

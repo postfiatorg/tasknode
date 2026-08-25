@@ -182,7 +182,9 @@ account_merge_events
   source_account_id
   target_account_id
   actor_account_id
+  actor_operator
   reason
+  status
   created_at
   metadata_json
 ```
@@ -196,6 +198,10 @@ Rules:
 - Future GitHub/X/Telegram/Discord linking should use this same identity table,
   not provider-specific one-off columns.
 - Account merge is an audited operation, not an implicit side effect.
+- A recovered-account repair must first pass the operator dry run. The repair
+  refuses a duplicate account that owns tasks, badges, chat, documents,
+  profile history, or any other durable user work; those cases require a
+  separately reviewed merge plan.
 
 ## Sessions And Auth Challenges
 

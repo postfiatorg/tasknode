@@ -26,6 +26,7 @@ const {
   getOrCreateProviderAccount,
   linkProviderToAccount,
   migrateLegacyAccounts,
+  recoverSplitProviderAccount,
   unlinkProviderFromAccount,
 } = await import("../server/repositories/accounts.js");
 const {
@@ -43,6 +44,7 @@ const { linkWalletToAccount } = await import("../server/repositories/account-wal
 const { resolveOrCreateWalletLoginAccount } = await import("../server/repositories/wallet-accounts.js");
 
 const accountIds = [legacy.id];
+const recoveryWallets = [];
 try {
   assert.equal(accountStorageStatus().adapter, "postgres");
   await query("DELETE FROM runtime_state_migrations WHERE name = 'app_accounts_to_postgres_v1'");
@@ -120,6 +122,94 @@ try {
   assert.equal((await getAccountIdentityProfile({ accountId: recoveredAccountId })).handleRequired, false, "the recovered login must not ask the member to choose their handle again");
   assert.equal((await query("SELECT account_json->>'recoverySource' AS source FROM app_accounts WHERE account_id = $1", [recoveredAccountId])).rows[0].source, null);
 
+  const splitProviderUserId = `github-split-${suffix}`;
+  const splitTargetId = `acct_oauth_${createHash("sha256").update(`github:${splitProviderUserId}`).digest("hex").slice(0, 24)}`;
+  const splitSourceId = `acct_oauth_${createHash("sha256").update(`github:${splitProviderUserId}:refound:${suffix}`).digest("hex").slice(0, 24)}`;
+  const splitEmail = `split-${suffix}@example.test`;
+  const splitHandle = `split-${Math.random().toString(36).slice(2, 10)}`;
+  const splitWallet = `rAccountRecovery${suffix}`;
+  const splitAt = new Date().toISOString();
+  accountIds.push(splitSourceId, splitTargetId);
+  recoveryWallets.push(splitWallet);
+  await query(
+    `INSERT INTO app_accounts (account_id, account_json, hive_handle, status, created_at, updated_at)
+     VALUES
+       ($1, $2::jsonb, $3, 'active', $4, $4),
+       ($5, $6::jsonb, NULL, 'active', $4, $4)`,
+    [
+      splitSourceId,
+      JSON.stringify({
+        id: splitSourceId, status: "active", displayName: "Split Login", hiveHandle: splitHandle,
+        primaryProvider: "github", primaryEmailCanonical: splitEmail, primaryEmailVerified: true,
+        assurance: "medium", profileVisibility: "public", linkedProviders: [{
+          id: "github", kind: "oauth", status: "linked", providerUserId: splitProviderUserId,
+          username: `split-${suffix}`, email: splitEmail, emailVerified: true,
+        }], createdAt: splitAt, updatedAt: splitAt,
+      }),
+      splitHandle,
+      splitAt,
+      splitTargetId,
+      JSON.stringify({
+        id: splitTargetId, status: "active", displayName: "Recovered Work", hiveHandle: "",
+        assurance: "low", profileVisibility: "public", linkedProviders: [],
+        recoverySource: "durable_profile_census", createdAt: splitAt, updatedAt: splitAt,
+      }),
+    ]
+  );
+  await query(
+    `INSERT INTO account_provider_identities (provider, provider_user_id, account_id, identity_json)
+     VALUES ('github', $1, $2, $3::jsonb)`,
+    [splitProviderUserId, splitSourceId, JSON.stringify({ username: `split-${suffix}` })]
+  );
+  await query("INSERT INTO account_email_identities (email_canonical, account_id) VALUES ($1,$2)", [splitEmail, splitSourceId]);
+  await query(
+    "INSERT INTO account_linked_wallets (account_id, wallet_address, status, linked_at) VALUES ($1,$2,'linked',now())",
+    [splitSourceId, splitWallet]
+  );
+  await query("INSERT INTO pftl_sync_wallets (wallet_address, account_id) VALUES ($1,$2)", [splitWallet, splitSourceId]);
+  await query(
+    `INSERT INTO billing_accounts (account_id, current_credit_usd, ledger_entry_count)
+     VALUES ($1,5,1)`,
+    [splitSourceId]
+  );
+  await query(
+    `INSERT INTO billing_ledger_entries (
+       id, account_id, kind, amount_usd, source, note, idempotency_key
+     ) VALUES ($1,$2,'account_credit',5,'initial_provider_credit','Initial Task Node chat credit.',$3)`,
+    [`ledger_${suffix}_split_credit`, splitSourceId, `initial_provider_credit:${splitSourceId}`]
+  );
+  await query(
+    `INSERT INTO auth_sessions (token_hash, account_id, primary_provider, assurance, session_json, expires_at)
+     VALUES ($1,$2,'github','medium',$3::jsonb,now() + interval '1 hour')`,
+    [`split_session_${suffix}`, splitSourceId, JSON.stringify({ accountId: splitSourceId })]
+  );
+  const recoveryOptions = {
+    sourceAccountId: splitSourceId,
+    targetAccountId: splitTargetId,
+    provider: "github",
+    providerUserId: splitProviderUserId,
+    expectedWalletAddress: splitWallet,
+    actorOperator: "account-repository-smoke",
+    reason: "verify audited split-account recovery",
+    expectedTargetTaskCount: 0,
+    expectedTargetVerifiedBadgeCount: 0,
+  };
+  const recoveryPreview = await recoverSplitProviderAccount({ ...recoveryOptions, dryRun: true });
+  assert.equal(recoveryPreview.dryRun, true);
+  assert.equal((await findAccountByIdentity("github", splitProviderUserId)).id, splitSourceId, "dry-run must not move identity ownership");
+  const recovery = await recoverSplitProviderAccount(recoveryOptions);
+  assert.equal(recovery.ok, true);
+  assert.equal(recovery.alreadyMerged, false);
+  assert.equal((await findAccountByIdentity("github", splitProviderUserId)).id, splitTargetId);
+  assert.equal((await findAccountByEmail(splitEmail)).id, splitTargetId);
+  assert.equal((await query("SELECT account_id FROM account_linked_wallets WHERE wallet_address = $1", [splitWallet])).rows[0].account_id, splitTargetId);
+  assert.equal((await query("SELECT account_id FROM pftl_sync_wallets WHERE wallet_address = $1", [splitWallet])).rows[0].account_id, splitTargetId);
+  assert.equal((await query("SELECT account_id FROM auth_sessions WHERE token_hash = $1", [`split_session_${suffix}`])).rows[0].account_id, splitTargetId);
+  assert.equal((await query("SELECT status FROM app_accounts WHERE account_id = $1", [splitSourceId])).rows[0].status, "merged");
+  assert.equal((await query("SELECT hive_handle FROM app_accounts WHERE account_id = $1", [splitTargetId])).rows[0].hive_handle, splitHandle);
+  assert.equal((await query("SELECT status FROM billing_accounts WHERE account_id = $1", [splitSourceId])).rows[0].status, "merged");
+  assert.equal((await recoverSplitProviderAccount(recoveryOptions)).alreadyMerged, true, "recovery must be idempotent");
+
   const conflict = await linkProviderToAccount({
     accountId: emailAccounts[0].id,
     provider: "discord",
@@ -164,8 +254,14 @@ try {
   assert.ok(!(await listDiscoverableAccountWalletIdentities()).some((identity) => identity.accountId === walletAccount.account.id));
   assert.equal((await setAccountExpertReview({ accountId: walletAccount.account.id, review: { topic: "protocol safety", score: 92 } })).ok, true);
   assert.deepEqual(await getAccountExpertReview({ accountId: walletAccount.account.id }), { topic: "protocol safety", score: 92 });
-  console.log("account repository smoke ok: lossless import, unique identity ownership, durable public/discoverable profiles, conflict and lockout guards");
+  console.log("account repository smoke ok: lossless import, unique identity ownership, audited split-account recovery, durable public/discoverable profiles, conflict and lockout guards");
 } finally {
+  await query("DELETE FROM account_merge_events WHERE source_account_id = ANY($1::text[]) OR target_account_id = ANY($1::text[])", [accountIds]).catch(() => {});
+  await query("DELETE FROM user_observability_events WHERE account_id = ANY($1::text[])", [accountIds]).catch(() => {});
+  await query("DELETE FROM auth_sessions WHERE account_id = ANY($1::text[]) OR token_hash = $2", [accountIds, `split_session_${suffix}`]).catch(() => {});
+  await query("DELETE FROM billing_ledger_entries WHERE account_id = ANY($1::text[])", [accountIds]).catch(() => {});
+  await query("DELETE FROM billing_accounts WHERE account_id = ANY($1::text[])", [accountIds]).catch(() => {});
+  await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = ANY($1::text[])", [recoveryWallets]).catch(() => {});
   await query("DELETE FROM account_linked_wallets WHERE account_id = ANY($1::text[])", [accountIds]).catch(() => {});
   await query("DELETE FROM app_accounts WHERE account_id = ANY($1::text[])", [accountIds]).catch(() => {});
   await query("DELETE FROM runtime_state_migrations WHERE name = 'app_accounts_to_postgres_v1'").catch(() => {});
