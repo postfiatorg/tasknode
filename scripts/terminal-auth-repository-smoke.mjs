@@ -21,6 +21,7 @@ const legacySessionRequest = runtime.createTerminalAuthRequest({ provider: "gith
 assert.equal(runtime.completeTerminalAuthRequest({ requestId: legacySessionRequest.requestId, accountId: account.id, provider: "github" }).ok, true);
 const legacySession = runtime.consumeTerminalAuthRequestSession({ requestId: legacySessionRequest.requestId, pollToken: legacySessionRequest.pollToken });
 assert.equal(legacySession.ok, true);
+assert.equal(legacySession.session.expiresAt, null);
 const pendingRequest = runtime.createTerminalAuthRequest({ provider: "github", origin: "https://tasknode.example" });
 
 delete process.env.TASKNODE_DATABASE_DISABLED;
@@ -67,7 +68,13 @@ try {
   assert.equal((await consumeTerminalAuthRequestSession({ requestId: pendingRequest.requestId, pollToken: "wrong" })).status, 401);
   const issued = await consumeTerminalAuthRequestSession({ requestId: pendingRequest.requestId, pollToken: pendingRequest.pollToken });
   assert.equal(issued.ok, true);
+  assert.equal(issued.session.expiresAt, null);
   cleanupHashes.push(hashes(issued.terminalToken));
+  const storedSession = await query(
+    "SELECT expires_at FROM terminal_sessions WHERE token_hash = $1",
+    [hashes(issued.terminalToken)]
+  );
+  assert.equal(storedSession.rows[0].expires_at, null);
   assert.equal((await consumeTerminalAuthRequestSession({ requestId: pendingRequest.requestId, pollToken: pendingRequest.pollToken })).status, 404);
   assert.equal((await getTerminalSessionByToken(issued.terminalToken)).accountId, account.id);
   assert.equal(await revokeTerminalSessionByToken(issued.terminalToken), true);
@@ -76,7 +83,7 @@ try {
   const direct = await createTerminalAuthRequest({ provider: "github", origin: "https://tasknode.example" });
   cleanupHashes.push(hashes(direct.requestId));
   assert.equal((await getTerminalAuthRequest({ requestId: direct.requestId })).status, "pending");
-  console.log("terminal auth repository smoke ok: hashed secrets, lossless import, one-time exchange, durable revoke");
+  console.log("terminal auth repository smoke ok: persistent sessions, hashed secrets, lossless import, one-time exchange, durable revoke");
 } finally {
   await query("DELETE FROM terminal_auth_requests WHERE account_id = $1 OR request_hash = ANY($2::text[])", [account.id, [hashes(pendingRequest.requestId), ...cleanupHashes]]).catch(() => {});
   await query("DELETE FROM terminal_sessions WHERE account_id = $1", [account.id]).catch(() => {});

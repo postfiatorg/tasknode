@@ -768,7 +768,7 @@ Initial jobs:
 - hydrate IPFS payload metadata;
 - reconcile PFTL task pointer history;
 - generate chat/context embeddings;
-- expire sessions and auth challenges;
+- expire browser sessions and auth challenges while retaining terminal sessions until explicit revocation;
 - retry wallet initiation payout;
 - replay task projections.
 
@@ -803,6 +803,12 @@ walletChallenges
 
 terminalAuthRequests / terminalSessions
   -> terminal_auth_requests / terminal_sessions (hashed lookup secrets)
+
+Terminal authorization requests remain short-lived and one-time. A successfully
+issued terminal session has no automatic expiry; its bearer token remains valid
+until the user revokes it or unlinks the provider identity that authorized it.
+Historical sessions that already expired stay invalid, while active sessions are
+upgraded to the persistent-until-revoked lifecycle.
 
 walletInitiationGrants
   -> wallet_initiation_grants

@@ -1,10 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-function terminalSessionTtlSeconds() {
-  const parsed = Number(process.env.TASKNODE_TERMINAL_SESSION_TTL_SECONDS || 60 * 60 * 24);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, 60 * 60 * 24 * 30) : 60 * 60 * 24;
-}
-
 function terminalAuthRequestTtlSeconds() {
   const parsed = Number(process.env.TASKNODE_TERMINAL_AUTH_TTL_SECONDS || 600);
   return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, 60 * 60) : 600;
@@ -52,9 +47,15 @@ export function createRuntimeTerminalAuthStore({
     const now = Date.now();
     let changed = false;
     for (const [sessionId, session] of Object.entries(state.terminalSessions || {})) {
-      const expiresAt = Date.parse(session?.expiresAt || "");
-      if (!Number.isFinite(expiresAt) || expiresAt <= now || session?.revokedAt) {
+      const expiryText = String(session?.expiresAt || "").trim();
+      const expiresAt = Date.parse(expiryText);
+      const invalidExpiry = Boolean(expiryText) && !Number.isFinite(expiresAt);
+      const expired = Number.isFinite(expiresAt) && expiresAt <= now;
+      if (invalidExpiry || expired || session?.revokedAt) {
         delete state.terminalSessions[sessionId];
+        changed = true;
+      } else if (expiryText) {
+        session.expiresAt = null;
         changed = true;
       }
     }
@@ -141,7 +142,6 @@ export function createRuntimeTerminalAuthStore({
     const now = new Date();
     const sessionId = randomToken("tnsess", 18);
     const token = randomToken("tns", 32);
-    const expiresAt = new Date(now.getTime() + terminalSessionTtlSeconds() * 1000).toISOString();
     state.terminalSessions[sessionId] = {
       id: sessionId,
       tokenHash: tokenHash(token),
@@ -150,7 +150,7 @@ export function createRuntimeTerminalAuthStore({
       providerUsername: linkedProvider.username || "",
       scopes: ["tasknode:read", "tasknode:tasks:write", "tasknode:balance:read"],
       createdAt: now.toISOString(),
-      expiresAt,
+      expiresAt: null,
     };
     saveState();
     return { ok: true, token, session: terminalSessionPayload(state.terminalSessions[sessionId]) };
