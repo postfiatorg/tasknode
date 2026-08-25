@@ -81,7 +81,7 @@ export async function runDataRetention({
     )).rowCount;
     database.terminalSessionsExpired = (await client.query(
       `DELETE FROM terminal_sessions
-        WHERE expires_at <= $1::timestamptz
+        WHERE (expires_at IS NOT NULL AND expires_at <= $1::timestamptz)
            OR revoked_at < $1::timestamptz - interval '7 days'`,
       [new Date(now).toISOString()]
     )).rowCount;

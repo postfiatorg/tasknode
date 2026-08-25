@@ -18,10 +18,6 @@ function requestTtlSeconds() {
   const value = Number(process.env.TASKNODE_TERMINAL_AUTH_TTL_SECONDS || 600);
   return Number.isSafeInteger(value) && value > 0 ? Math.min(value, 3600) : 600;
 }
-function sessionTtlSeconds() {
-  const value = Number(process.env.TASKNODE_TERMINAL_SESSION_TTL_SECONDS || 86_400);
-  return Number.isSafeInteger(value) && value > 0 ? Math.min(value, 2_592_000) : 86_400;
-}
 function userCode() {
   return randomBytes(5).toString("base64url").replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 8).replace(/^(.{4})(.+)$/, "$1-$2");
 }
@@ -40,7 +36,7 @@ function terminalSessionPayload(row = null) {
     githubUsername: row.provider_username || payload.githubUsername || "",
     scopes: Array.isArray(row.scopes_json) ? row.scopes_json : [],
     createdAt: new Date(row.created_at).toISOString(),
-    expiresAt: new Date(row.expires_at).toISOString(),
+    expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
   };
 }
 
@@ -143,7 +139,7 @@ export async function consumeTerminalAuthRequestSession({ requestId = "", pollTo
     const linked = await getLinkedProviderForAccount({ accountId: request.account_id, provider: request.provider });
     if (!linked) return { ok: false, status: 409, error: "github_not_linked" };
     const token = randomToken("tns", 32); const sessionId = randomToken("tnsess", 18);
-    const now = new Date(); const expiresAt = new Date(now.getTime() + sessionTtlSeconds() * 1000);
+    const now = new Date();
     const scopes = ["tasknode:read", "tasknode:tasks:write", "tasknode:balance:read"];
     const payload = { githubUsername: linked.username || "", account: await getAccount(request.account_id) };
     const inserted = await client.query(
@@ -152,7 +148,7 @@ export async function consumeTerminalAuthRequestSession({ requestId = "", pollTo
          scopes_json, session_json, created_at, expires_at
        ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9)
        RETURNING *`,
-      [hash(token), sessionId, request.account_id, request.provider, linked.username || "", JSON.stringify(scopes), JSON.stringify(payload), now.toISOString(), expiresAt.toISOString()]
+      [hash(token), sessionId, request.account_id, request.provider, linked.username || "", JSON.stringify(scopes), JSON.stringify(payload), now.toISOString(), null]
     );
     await client.query("UPDATE terminal_auth_requests SET consumed_at = now() WHERE request_hash = $1", [hash(requestId)]);
     return { ok: true, status: 200, terminalToken: token, session: terminalSessionPayload(inserted.rows[0]) };
@@ -164,7 +160,9 @@ export async function getTerminalSessionByToken(token = "") {
   if (!token) return null;
   const result = await query(
     `SELECT * FROM terminal_sessions WHERE token_hash = $1
-      AND revoked_at IS NULL AND expires_at > now() LIMIT 1`,
+      AND revoked_at IS NULL
+      AND (expires_at IS NULL OR expires_at > now())
+      LIMIT 1`,
     [hash(token)]
   );
   const session = terminalSessionPayload(result.rows[0]);
@@ -202,7 +200,7 @@ export async function migrateLegacyTerminalAuth() {
       ); requests += 1;
     }
     for (const [sessionId, session] of Object.entries(snapshot.sessions || {})) {
-      if (!session?.tokenHash || !session?.accountId || !session?.expiresAt) continue;
+      if (!session?.tokenHash || !session?.accountId) continue;
       const scopes = Array.isArray(session.scopes) ? session.scopes : [];
       await client.query(
         `INSERT INTO terminal_sessions (
