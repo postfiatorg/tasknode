@@ -140,6 +140,25 @@ for (const route of apiRoutePolicies) {
   }
 }
 
+const terminalTaskRequestRoute = apiRoutePolicies.find((route) => route.id === "terminal_tasknode_requests");
+const terminalTaskRequestContract = routeBodyPolicyForRequest(
+  terminalTaskRequestRoute,
+  "POST",
+  "/api/terminal/tasknode/requests"
+);
+const corbanuTerminalTaskRequest = {
+  userDetailText: "Generate one bounded task.",
+  requestedTaskKind: "personal",
+  source: "pfterminal",
+  sourceConversationTitle: "Corbanu Terminal",
+  idempotencyKey: "pfterminal-request:00000000-0000-4000-8000-000000000000",
+};
+assert.deepEqual(
+  validateJsonDocument(corbanuTerminalTaskRequest, terminalTaskRequestContract.schema),
+  corbanuTerminalTaskRequest,
+  "terminal task requests must accept the Corbanu 0.1.35 request contract"
+);
+
 for (const routeId of [
   "auth_email_start",
   "auth_email_verify",

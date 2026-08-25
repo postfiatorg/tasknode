@@ -115,6 +115,9 @@ const taskProperties = {
   action: text(80),
   requestId: text(100),
   bundleId: text(100),
+  // Corbanu Terminal 0.1.35 sends this retry token in the JSON body.
+  // It is part of the terminal request contract, not an unknown client field.
+  idempotencyKey: text(240),
   requestText: text(8000),
   userDetailText: text(8000),
   message: text(8000),
