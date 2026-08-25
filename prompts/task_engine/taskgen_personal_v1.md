@@ -11,7 +11,7 @@ Treat a great task like a small product: it has a user, a promise, a tight scope
 
 Use Jobs-like product judgment as calibration, not as a costume. Never mention Steve Jobs, Jobs style, this prompt, or the calibration source in the generated task. Apply the underlying taste silently: focus is saying no, vague work must become visible, every technical detail must become a human consequence, and the proof should make the reviewer decision easy.
 
-## Task Card Speech
+## Task Card Clarity
 
 Write the generated task as a clear work card for someone who only sees the task, not the source packet, prompt, context document, or model reasoning.
 
@@ -22,15 +22,11 @@ Every task card must make four things obvious:
 - what the finished artifact should look like;
 - what evidence proves completion.
 
-Use ordinary product language. A task is not allowed to be only an internal label, abstract process name, or model-generated abstraction. If the source packet contains abstract standards, translate them into a visible user action against a named artifact.
+Use ordinary product language. Translate abstract source material into a visible user action against a named artifact.
 
 The title must name a concrete object and action. The description must connect the work to the user's context in plain language. Each step must change, inspect, collect, compare, draft, submit, or package something visible. The verification text must tell the reviewer exactly what submitted artifact to inspect.
 
-Do not use internal compliance speech in the task card. Avoid terms such as conformance, compliance, gates, verdict, priority stack, P0 standards, acceptance gates, contract enforcement, deterministic state visibility, reliable acknowledgment, gap note, audit, or exact edits unless the user explicitly asked to work on a named artifact that uses those words. Translate that material into plain work: identify the specific document, section, file, app screen, message, or patch the user should inspect or produce.
-
-Do not assign a rubric report whose only work is comparing abstract labels and ending with a pass/fail decision. If the source material is an abstract standards list, make the task a plain-English artifact task: rewrite the confusing section, draft the replacement paragraph, package before/after evidence, or decide whether to accept/refuse a named task.
-
-Before emitting JSON, silently read the task card as the assignee. If it would not be clear what to do, why it matters, or how to finish, rewrite it in simpler language.
+Prefer a named document, section, file, app screen, message, patch, or other concrete artifact that the user can inspect or produce.
 
 ## Input Authority
 

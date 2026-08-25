@@ -94,15 +94,11 @@ export async function activeBoardStatesForBoardManagerPlanning() {
                  COALESCE(
                    projection.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
                    projection.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
-                   projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,requiredBadge}',
-                   projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,requiredBadge}',
                    ''
                  ) AS required_badge_id,
                  COALESCE(
                    projection.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
                    projection.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
-                   projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,operatingBadge}',
-                   projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,operatingBadge}',
                    ''
                  ) AS operating_badge_id
           FROM network_project_task_refs refs
@@ -281,15 +277,11 @@ export async function liveTaskFeedForBoardManagerPlanning() {
                COALESCE(
                  projection.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
                  projection.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
-                 projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,requiredBadge}',
-                 projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,requiredBadge}',
                  ''
                ) AS required_badge_id,
                COALESCE(
                  projection.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
                  projection.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
-                 projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,operatingBadge}',
-                 projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,operatingBadge}',
                  ''
                ) AS operating_badge_id
         FROM task_projections projection
@@ -312,15 +304,11 @@ export async function liveTaskFeedForBoardManagerPlanning() {
                COALESCE(
                  projection.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
                  projection.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
-                 projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,requiredBadge}',
-                 projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,requiredBadge}',
                  ''
                ) AS required_badge_id,
                COALESCE(
                  projection.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
                  projection.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
-                 projection.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,operatingBadge}',
-                 projection.metadata_json #>> '{taskgen,network_taskgen_v2_gate,operatingBadge}',
                  ''
                ) AS operating_badge_id
         FROM task_projections projection
@@ -680,8 +668,6 @@ export async function taskRoutingConstraintsForHiveIntelligence({ limit = 80 } =
                COALESCE(
                  tp.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
                  tp.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
-                 tp.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,requiredBadge}',
-                 tp.metadata_json #>> '{taskgen,network_taskgen_v2_gate,requiredBadge}',
                  tp.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
                  tp.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
                  ''
@@ -689,8 +675,6 @@ export async function taskRoutingConstraintsForHiveIntelligence({ limit = 80 } =
                COALESCE(
                  tp.metadata_json #>> '{generatedTask,network_task,operating_badge_id}',
                  tp.metadata_json #>> '{generatedTask,network_task,operatingBadgeId}',
-                 tp.metadata_json #>> '{generatedTask,generation,network_taskgen_v2_gate,operatingBadge}',
-                 tp.metadata_json #>> '{taskgen,network_taskgen_v2_gate,operatingBadge}',
                  tp.metadata_json #>> '{generatedTask,network_task,required_badge_id}',
                  tp.metadata_json #>> '{generatedTask,network_task,requiredBadgeId}',
                  ''

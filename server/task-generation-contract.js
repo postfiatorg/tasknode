@@ -359,54 +359,6 @@ function normalizeTaskKind(value = "", policy = {}) {
   return "personal";
 }
 
-const opaqueTaskSpeechPatterns = Object.freeze([
-  ["acceptance gates", /\bacceptance\s+gates?\b/i],
-  ["decision-ready", /\bdecision[- ]ready\b/i],
-  ["routing directive", /\brouting\s+directive\b/i],
-  ["routing limitation", /\brouting\s+limitation\b/i],
-  ["single-contributor dependency", /\bsingle[- ]contributor\s+dependency\b/i],
-  ["operational constraints", /\boperational\s+constraints?\b/i],
-  ["board manager cycle", /\bboard\s+manager[- ]?cycle\b/i],
-  ["follow-up owner", /\bfollow[- ]?up\s+owner\b/i],
-  ["fallback owner", /\bfallback\s+owner\b/i],
-  ["sanctioned eligibility", /\bsanctioned\s+eligibility\b/i],
-  ["sanitized handoff", /\bsanitized\s+hand[- ]?off\b/i],
-  ["stakeholder", /\bstakeholders?\b/i],
-  ["workstream", /\bworkstreams?\b/i],
-  ["capacity predicate", /\bcapacity\s+predicates?\b/i],
-  ["source packet", /\bsource\s+packets?\b/i],
-  ["active p0", /\bactive\s+p0\b/i],
-  ["chat contract enforcement", /\bchat\s+contract\s+enforcement\b/i],
-  ["compliance", /\bcompliance\b/i],
-  ["conformance", /\bconformance\b/i],
-  ["contract enforcement", /\bcontract\s+enforcement\b/i],
-  ["deterministic state visibility", /\bdeterministic\s+state\s+visibility\b/i],
-  ["exact edits", /\bexact\s+edits?\b/i],
-  ["gap note", /\bgap\s+note\b/i],
-  ["gates", /\bgates?\b/i],
-  ["p0 standards", /\bp0\s+standards?\b/i],
-  ["priority stack", /\bpriority\s+stack\b/i],
-  ["reliable acknowledgment", /\breliable\s+(user\s+)?acknowledg(e)?ment\b/i],
-  ["verdict", /\bverdict\b/i],
-]);
-
-function taskCardSpeechText(output = {}) {
-  const requirement = safeObject(output.submission_requirement);
-  return [
-    output.title,
-    output.description,
-    ...(Array.isArray(output.steps) ? output.steps : []),
-    requirement.criteria,
-  ].map((value) => safeText(value, 4000)).filter(Boolean).join("\n");
-}
-
-function assertPlainTaskCardSpeech(output = {}) {
-  const text = taskCardSpeechText(output);
-  for (const [label, pattern] of opaqueTaskSpeechPatterns) {
-    if (pattern.test(text)) throw new Error(`taskgen_plain_speech_violation:${label}`);
-  }
-}
-
 export function validateTaskgenOutput(output = {}, policy = {}) {
   const required = ["title", "description", "task_kind", "submission_requirement", "verification_policy", "reward_offer", "deadline"];
   const missing = required.filter((key) => output[key] === undefined || output[key] === null);
@@ -452,7 +404,6 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
       deadline_at: policyDeadlineAt.present ? normalizedPolicyDeadlineAt : normalizedOutputDeadlineAt,
     },
   };
-  assertPlainTaskCardSpeech(normalized);
   return normalized;
 }
 
@@ -659,39 +610,10 @@ function mockTaskgenOutput(taskInput = {}) {
   }, policy);
 }
 
-function assertNetworkTaskgenV2Input(taskInput = {}) {
-  if (!taskInputIsNetwork(taskInput) || !networkTaskGenerationV2Enabled()) return null;
-  const networkTask = safeObject(taskInput.network_task);
-  const policy = safeObject(taskInput.policy);
-  const taskWorkType = safeText(networkTask.task_work_type || networkTask.taskWorkType || policy.task_work_type || policy.taskWorkType, 120);
-  const requiredBadge = safeText(networkTask.required_badge_id || networkTask.requiredBadgeId || policy.required_badge_id || policy.requiredBadgeId, 80);
-  const operatingBadge = safeText(networkTask.operating_badge_id || networkTask.operatingBadgeId || policy.operating_badge_id || policy.operatingBadgeId, 80);
-  const cap = Number(networkTask.badge_reward_cap_pft || networkTask.badgeRewardCapPft || policy.badge_reward_cap_pft || policy.badgeRewardCapPft || 0);
-  const isCapabilityGate = taskWorkType === "capability_gating_task";
-  if (!requiredBadge && !isCapabilityGate) throw new Error("network_taskgen_v2_required_badge_missing");
-  if (!operatingBadge && !isCapabilityGate) throw new Error("network_taskgen_v2_operating_badge_missing");
-  if (requiredBadge && operatingBadge && requiredBadge !== operatingBadge) {
-    throw new Error("network_taskgen_v2_badge_mismatch");
-  }
-  if (!taskWorkType) throw new Error("network_taskgen_v2_task_work_type_missing");
-  if (Number.isFinite(cap) && cap > 0) {
-    const max = Number(policy.reward_offer_max_pft ?? policy.rewardOfferMaxPft ?? networkTask.reward_band_pft?.max ?? 0);
-    if (Number.isFinite(max) && max > cap) throw new Error("network_taskgen_v2_reward_cap_violation");
-  }
-  return {
-    requiredBadge,
-    operatingBadge,
-    taskWorkType,
-    badgeRewardCapPft: Number.isFinite(cap) ? cap : 0,
-    reportIds: safeArray(networkTask.hive_reports?.report_ids || networkTask.hiveReports?.reportIds),
-  };
-}
-
 export async function generateTaskWithProvider(taskInput, {
   fetchImpl = fetch,
   providerTimeoutMs = taskGenerationProviderTimeoutMs(),
 } = {}) {
-  const gate = assertNetworkTaskgenV2Input(taskInput);
   const taskgenPrompt = taskgenPromptForInput(taskInput);
   const systemPrompt = loadPrompt(taskgenPrompt.path);
   const apiConfig = taskgenApiConfig(taskInput);
@@ -713,61 +635,47 @@ export async function generateTaskWithProvider(taskInput, {
         latency_ms: Date.now() - startedAt,
         parse_status: "ok",
         validation_attempts: 1,
-        network_taskgen_v2_gate: gate || null,
       },
     };
   }
-  let lastError = null;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const repairInstruction = attempt === 1
-      ? ""
-      : "\n\nThe previous draft used opaque internal compliance language. Rewrite the task card in plain product language with a concrete object, action, artifact, and evidence. Do not use conformance, compliance, gates, verdict, priority stack, P0 standards, gap note, or exact-edits language.";
-    let completion;
-    try {
-      completion = await ambientChatCompletion({
-        fetchImpl,
-        capability: "strict_json",
-        timeoutMs: providerTimeoutMs,
-        body: {
-          model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `${baseInstruction}${repairInstruction}` },
-          ],
-          response_format: taskgenResponseFormat,
-          reasoning: { effort: apiConfig.reasoningEffort },
-        },
-      });
-    } catch (error) {
-      if (error?.code === "ambient_timeout") {
-        throw Object.assign(new Error("taskgen_provider_timeout"), { code: "TASKGEN_PROVIDER_TIMEOUT", timeoutMs: providerTimeoutMs });
-      }
-      throw error;
+  let completion;
+  try {
+    completion = await ambientChatCompletion({
+      fetchImpl,
+      capability: "strict_json",
+      timeoutMs: providerTimeoutMs,
+      body: {
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: baseInstruction },
+        ],
+        response_format: taskgenResponseFormat,
+        reasoning: { effort: apiConfig.reasoningEffort },
+      },
+    });
+  } catch (error) {
+    if (error?.code === "ambient_timeout") {
+      throw Object.assign(new Error("taskgen_provider_timeout"), { code: "TASKGEN_PROVIDER_TIMEOUT", timeoutMs: providerTimeoutMs });
     }
-    const body = completion.body;
-    try {
-      const output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
-      return {
-        output,
-        metadata: {
-          provider: apiConfig.provider,
-          model,
-          prompt_version: taskgenPrompt.version,
-          prompt_path: taskgenPrompt.path,
-          prompt_digest: promptDigest(systemPrompt),
-          input_packet_digest: sha256(taskInput),
-          output_digest: sha256(output),
-          latency_ms: Date.now() - startedAt,
-          parse_status: "ok",
-          provider_response_id: body.id || "",
-          validation_attempts: attempt,
-          network_taskgen_v2_gate: gate || null,
-        },
-      };
-    } catch (error) {
-      lastError = error;
-      if (!String(error?.message || "").startsWith("taskgen_plain_speech_violation:") || attempt >= 2) throw error;
-    }
+    throw error;
   }
-  throw lastError || new Error("taskgen_failed");
+  const body = completion.body;
+  const output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
+  return {
+    output,
+    metadata: {
+      provider: apiConfig.provider,
+      model,
+      prompt_version: taskgenPrompt.version,
+      prompt_path: taskgenPrompt.path,
+      prompt_digest: promptDigest(systemPrompt),
+      input_packet_digest: sha256(taskInput),
+      output_digest: sha256(output),
+      latency_ms: Date.now() - startedAt,
+      parse_status: "ok",
+      provider_response_id: body.id || "",
+      validation_attempts: 1,
+    },
+  };
 }

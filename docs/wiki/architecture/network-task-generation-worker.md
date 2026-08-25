@@ -20,18 +20,17 @@ System Status row: `network_task_generation`
 Board Manager owns routing, not final task prose. Its
 `payload.network_task.project_need_summary` still has to be concrete enough for a
 contributor: name the app surface, document, code path, data state, or artifact
-to inspect and the output to produce. Internal shorthand such as P0 standards,
-acceptance gates, contract enforcement, deterministic state visibility,
-acknowledgment requirements, compliance audit, product priority audit, or
-canonical context alignment is not a valid task need by itself.
+to inspect and the output to produce. The prompt asks the model to translate
+abstract project language into a named artifact and action that the contributor
+can understand.
 
 The Network Task Generation worker forwards the current project document as
 structured `network_task.project_document` context. It must not inject taskgen
 instructions or contributor-facing prompt prose in code. The network task
-generator prompt in `prompts/task_engine/taskgen_network_v1.md` owns the
-language rules: translate routing shorthand into plain-English contributor work,
-and if the need is still broad, produce a bounded diagnostic artifact rather
-than an abstract governance audit.
+generator prompt in `prompts/task_engine/taskgen_network_v1.md` provides
+language guidance. Generated wording is never rejected by a server-side content
+rule; once the provider returns mechanically valid task JSON, generation
+continues to publication.
 
 Network tasks are also a conformance surface for collaboration. They coordinate
 contributors who may not know each other across machine-maintained projects.

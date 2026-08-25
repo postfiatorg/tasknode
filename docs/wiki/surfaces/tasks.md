@@ -239,7 +239,7 @@ labeled as a model different from the outbound request.
 | Unsupported evidence | Video, screen recording, audio, live calls, calendar invites, or any other proof type the app cannot submit must not be requested. Before/after proof should use screenshots plus text, code excerpt, URL, or file evidence. |
 | Step count | New generated tasks must contain 2 to 5 concrete steps. One-step and zero-step generated tasks fail worker validation. |
 | Public repository proof | `github_commit` should be used only when the user explicitly provides or requests a public commit or repository evidence path. Private/local work should use screenshot, text, file, or mixed evidence. |
-| Plain task speech | Generated task cards must not expose internal compliance shorthand such as conformance, gates, verdicts, priority stacks, or exact-edits rubrics. The worker rejects those cards and retries once with a plain-language repair instruction before failing the request. |
+| Task card wording | Generated prose never blocks task creation. The model is prompted for a concrete title, steps, artifact, and evidence, while the worker validates only the mechanical output needed to publish the task. |
 | URL evidence safety | The review worker may extract public URL evidence, but it does not fetch unsupported schemes, credentialed URLs, localhost, private IP ranges, metadata IPs, or DNS names that resolve to private addresses. Redirects are not followed during evidence extraction. |
 | Context document input | `server/task-request.js` converts the saved rich-text Context document into readable text and includes up to 60,000 compacted characters in `context.primary_context_doc.summary`. The request bundle keeps digest, revision, and word count provenance, but does not include UI budget percentages or clipping telemetry. |
 | Canonical source | The generated task is written into the encrypted `pf.task.offer.v1` IPFS payload and anchored by the authority wallet PFTL pointer. Postgres only projects it for fast reads. |
@@ -249,8 +249,9 @@ Taskgen retries are replay-guarded. `server/task-generation-worker.js` builds a 
 Ambient task generation has a 240-second per-call deadline by default. Provider
 timeouts, rate limits, HTTP 5xx responses, and recognized transport failures are
 requeued durably with bounded exponential backoff until the configured worker
-attempt limit is reached. Invalid task output, policy violations, and other
-non-transient failures remain terminal immediately. The retry timestamp lives on
+attempt limit is reached. Malformed provider JSON and missing required protocol
+fields remain terminal immediately; generated wording and routing metadata do
+not block task creation. The retry timestamp lives on
 the request row, so a worker restart or machine replacement cannot discard the
 delay or the remaining attempt count.
 
