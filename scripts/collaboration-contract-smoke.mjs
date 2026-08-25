@@ -75,6 +75,8 @@ assert.equal(validSelectedShareTarget(identitySuggestions[0], "@carol"), true);
 assert.equal(validSelectedShareTarget(identitySuggestions[0], "@someone-else"), false);
 const viewCapability = "/pad/#/2/pad/view/AbCdEf0123456789_-=/";
 const editCapability = "/pad/#/2/pad/edit/ZyXwVu9876543210_-=/";
+const sheetViewCapability = "/sheet/#/2/sheet/view/AbCdEf0123456789_-=/";
+const sheetEditCapability = "/sheet/#/2/sheet/edit/ZyXwVu9876543210_-=/";
 assert.equal(
   pfdocsShareUrl({
     access: "view",
@@ -83,6 +85,8 @@ assert.equal(
   }),
   `https://tasknode-pfdocs.fly.dev${viewCapability}`
 );
+assert.equal(pfdocsShareUrl({ access: "view", href: sheetViewCapability, origin: "https://tasknode-pfdocs.fly.dev" }), `https://tasknode-pfdocs.fly.dev${sheetViewCapability}`);
+assert.equal(pfdocsShareUrl({ access: "edit", href: sheetEditCapability, origin: "https://tasknode-pfdocs.fly.dev" }), `https://tasknode-pfdocs.fly.dev${sheetEditCapability}`);
 assert.equal(
   pfdocsShareUrl({
     access: "edit",
@@ -251,6 +255,9 @@ assert.doesNotMatch(appShell, /ToolMenuRow icon=\{FileText\} label="Docs"/);
 
 const docsView = await readFile(new URL("../src/features/docs-library/DocsLibraryView.jsx", import.meta.url), "utf8");
 assert.match(docsView, /collaboration\.pfdocsEditorEnabled/);
+assert.match(docsView, /New spreadsheet/);
+assert.match(docsView, /createDocument\("sheet"\)/);
+assert.match(docsView, /documentType/);
 assert.match(docsView, /Encrypted editor temporarily unavailable/);
 assert.match(docsView, /\^\[0-9a-f\]\{32\}\$/i);
 assert.match(docsView, /if \(!signedIn\)/);

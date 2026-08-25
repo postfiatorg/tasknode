@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, Eye, FilePlus2, FileText, FileUp, History, Link2, LockKeyhole, MessageSquare, Pencil, RefreshCw, Share2, Users } from "lucide-react";
+import { Archive, ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, Eye, FilePlus2, FileText, FileUp, History, Link2, LockKeyhole, MessageSquare, Pencil, RefreshCw, Share2, Table2, Users } from "lucide-react";
 import { requestJson } from "../../api";
 import {
   decryptFromTaskNodeWallet,
@@ -22,9 +22,10 @@ function errorText(result, fallback) {
   return result?.body?.error || fallback;
 }
 
-function pfdocsBridgeUrl({ action, href = "", origin, bridgePath, requestId }) {
+function pfdocsBridgeUrl({ action, documentType = "pad", href = "", origin, bridgePath, requestId }) {
   const target = new URL(bridgePath || "/tasknode/", origin);
   target.searchParams.set("action", action);
+  target.searchParams.set("documentType", documentType === "sheet" ? "sheet" : "pad");
   target.searchParams.set("requestId", requestId);
   target.searchParams.set("returnOrigin", window.location.origin);
   if (href) target.hash = new URL(href, origin).hash;
@@ -364,7 +365,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     } finally { setBusy(""); }
   }
 
-  async function createDocument() {
+  async function createDocument(documentType = "pad") {
     if (!walletSecret?.mnemonic) return onWalletUnlock?.();
     if (!editorReady) {
       setState((current) => ({ ...current, error: "The encrypted PFDocs editor is temporarily unavailable. Your Task Node Docs library remains available." }));
@@ -377,6 +378,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       const requestId = newUuid();
       const url = pfdocsBridgeUrl({
         action: "create",
+        documentType,
         origin: collaboration.pfdocsOrigin,
         bridgePath: collaboration.pfdocsBridgePath,
         requestId,
@@ -390,10 +392,16 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       });
       setEditorFullContext(false);
       setEditorLoading(true);
-      setEditor({ documentId, requestId, title: "Creating encrypted document…", url });
+      setEditor({
+        documentId,
+        documentType,
+        requestId,
+        title: documentType === "sheet" ? "Creating encrypted spreadsheet…" : "Creating encrypted document…",
+        url,
+      });
       const capability = await capabilityPromise;
-      const title = `Untitled document ${new Date().toLocaleDateString()}`;
-      const metadata = { title, editHref: capability.editHref, viewHref: capability.viewHref, createdAt: new Date().toISOString() };
+      const title = `${documentType === "sheet" ? "Untitled spreadsheet" : "Untitled document"} ${new Date().toLocaleDateString()}`;
+      const metadata = { title, documentType, editHref: capability.editHref, viewHref: capability.viewHref, createdAt: new Date().toISOString() };
       const encryptedMetadata = await encryptDocsMetadata(metadata, rootKeyRef.current);
       const payload = { documentId, channelHash: capability.channelHash, encryptedMetadata };
       const proof = await signedCollaborationProof({ action: "docs_create", resourceId: documentId, payload, walletSecret });
@@ -401,7 +409,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...payload, proof }),
       });
       if (!result.ok) throw new Error(errorText(result, "Could not save document metadata."));
-      setEditor((current) => current?.requestId === requestId ? { ...current, channelHash: capability.channelHash, title } : current);
+      setEditor((current) => current?.requestId === requestId ? { ...current, channelHash: capability.channelHash, documentType, title } : current);
       await load();
     } catch (error) {
       setState((current) => ({ ...current, error: error.message }));
@@ -422,16 +430,19 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       return setState((current) => ({ ...current, error: "Blocked an invalid PFDocs capability URL." }));
     }
     const requestId = newUuid();
+    const documentType = capabilityUrl.pathname === "/sheet/" ? "sheet" : "pad";
     setState((current) => ({ ...current, error: "" }));
     setEditorFullContext(false);
     setEditorLoading(true);
     setEditor({
       channelHash: document.channelHash,
       documentId: document.documentId,
+      documentType,
       requestId,
       title: metadata?.title || "Encrypted document",
       url: pfdocsBridgeUrl({
         action: "open",
+        documentType,
         href: capabilityUrl.toString(),
         origin: collaboration.pfdocsOrigin,
         bridgePath: collaboration.pfdocsBridgePath,
@@ -862,22 +873,22 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
           </div>
         </div>
         <div className="docs-editor-actions">
-          <div className="docs-editor-menu">
+          {editor.documentType !== "sheet" && <div className="docs-editor-menu">
             <button aria-expanded={editorMenu === "file"} onClick={() => setEditorMenu((current) => current === "file" ? "" : "file")} type="button"><FileText size={14} />File<ChevronDown size={12} /></button>
             {editorMenu === "file" && <div className="docs-editor-menu-popover">
               <button onClick={chooseEditorImportFile} type="button"><FileUp size={15} /><span>Import</span><small>.md, .txt, .html</small></button>
               <button onClick={() => sendEditorCommand("export")} type="button"><Download size={15} /><span>Export</span></button>
               <button onClick={() => sendEditorCommand("history")} type="button"><History size={15} /><span>Version history</span></button>
             </div>}
-          </div>
+          </div>}
           {activeDocument?.owned && <button className="docs-editor-access" onClick={() => openShareDialog(activeDocument)} type="button"><LockKeyhole size={14} />Access</button>}
           {activeDocument?.owned && <button className="docs-editor-share" onClick={() => openShareDialog(activeDocument)} type="button"><Share2 size={14} />Share</button>}
-          <span className="docs-editor-divider" />
-          <label className="docs-editor-context-toggle" title="Include your Task Node context, memory, and recent tasks in @ODV and @coach requests">
+          {editor.documentType !== "sheet" && <span className="docs-editor-divider" />}
+          {editor.documentType !== "sheet" && <label className="docs-editor-context-toggle" title="Include your Task Node context, memory, and recent tasks in @ODV and @coach requests">
             <input checked={editorFullContext} onChange={(event) => setEditorFullContext(event.target.checked)} type="checkbox" />
             <span>Full context</span>
-          </label>
-          <button className="docs-editor-chat" onClick={() => sendEditorCommand("chat-toggle")} type="button"><MessageSquare size={14} />Chat</button>
+          </label>}
+          {editor.documentType !== "sheet" && <button className="docs-editor-chat" onClick={() => sendEditorCommand("chat-toggle")} type="button"><MessageSquare size={14} />Chat</button>}
         </div>
       </header>
       {state.error && <p className="collab-error docs-editor-error">{state.error}</p>}
@@ -898,7 +909,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     <div className="collab-page docs-library-page">
       <header className="collab-page-header">
         <div><span>{editorReady ? "PFDocs · end-to-end encrypted" : "Task Node Docs · encrypted library"}</span><h1>Docs</h1><p>Your documents and capabilities are linked to your Task Node wallet.</p></div>
-        <div className="docs-header-actions"><button onClick={exportRecoveryPackage} type="button"><Download size={16} />Export recovery</button><button className="collab-primary" disabled={Boolean(busy) || !editorReady} onClick={createDocument} title={editorReady ? "Create an encrypted document" : "Encrypted editor temporarily unavailable"} type="button"><FilePlus2 size={16} />New document</button></div>
+        <div className="docs-header-actions"><button onClick={exportRecoveryPackage} type="button"><Download size={16} />Export recovery</button><button disabled={Boolean(busy) || !editorReady} onClick={() => createDocument("sheet")} title={editorReady ? "Create an encrypted spreadsheet" : "Encrypted editor temporarily unavailable"} type="button"><Table2 size={16} />New spreadsheet</button><button className="collab-primary" disabled={Boolean(busy) || !editorReady} onClick={() => createDocument("pad")} title={editorReady ? "Create an encrypted document" : "Encrypted editor temporarily unavailable"} type="button"><FilePlus2 size={16} />New document</button></div>
       </header>
       {!editorReady && <section className="collab-degraded"><strong>Encrypted editor temporarily unavailable</strong><span>You can access the native Docs screen and wallet-bound library now. Creating and opening document bodies will activate when the isolated PFDocs editor connection is healthy.</span></section>}
       <div className="collab-toolbar">
@@ -912,7 +923,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
         {documents.map((document) => {
           const metadata = decrypted[document.documentId];
           return <article className="doc-card" key={document.documentId}>
-            <button className="doc-card-open" disabled={Boolean(decryption.failures[document.documentId])} onClick={() => openDocument(document)} type="button"><FileText size={22} /><span><strong>{metadata?.title || (decryption.loading ? "Unlocking document…" : walletSecret?.mnemonic ? "Encrypted document" : "Unlock to decrypt")}</strong><small>{document.owned ? "Owned by you" : `Shared by ${document.owner.displayName}`} · {document.accessRole}</small></span><ChevronRight size={15} /></button>
+            <button className="doc-card-open" disabled={Boolean(decryption.failures[document.documentId])} onClick={() => openDocument(document)} type="button">{metadata?.documentType === "sheet" ? <Table2 size={22} /> : <FileText size={22} />}<span><strong>{metadata?.title || (decryption.loading ? "Unlocking document…" : walletSecret?.mnemonic ? "Encrypted document" : "Unlock to decrypt")}</strong><small>{document.owned ? "Owned by you" : `Shared by ${document.owner.displayName}`} · {document.accessRole}</small></span><ChevronRight size={15} /></button>
             {document.owned && document.shares?.length > 0 && <div className="doc-shared-with"><span>Shared with</span>{document.shares.map((grant) => <button key={grant.grantId} onClick={() => openShareDialog(document)} title={`${grant.recipient.displayName} · ${grant.accessRole} · ${grant.status}`} type="button">{grant.recipient.displayName}<small>{grant.status === "pending" ? "Pending" : grant.accessRole}</small></button>)}</div>}
             {document.taskIds?.length > 0 && <div className="doc-task-links">{document.taskIds.map((taskId) => <button key={taskId} onClick={() => document.owned && updateTaskLink(document, "unlink", taskId)} title={document.owned ? "Remove task link" : taskId} type="button"><Link2 size={11} />{taskId}</button>)}</div>}
             <footer><span><Users size={13} />{document.collaboratorCount || (document.owned ? 0 : 1)}</span>{document.owned && <span><button onClick={() => openTaskLinkDialog(document)} type="button"><Link2 size={13} />Task</button><button onClick={() => renameDocument(document)} type="button"><Pencil size={13} />Rename</button><button onClick={() => openShareDialog(document)} type="button"><Share2 size={13} />Share</button><button disabled={busy === document.documentId} onClick={() => archiveDocument(document)} type="button"><Archive size={13} />{document.status === "archived" ? "Restore" : "Archive"}</button></span>}</footer>

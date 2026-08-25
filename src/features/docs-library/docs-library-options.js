@@ -50,11 +50,12 @@ export function pfdocsShareUrl({ access = "", href = "", origin = "" } = {}) {
   try {
     const expectedOrigin = new URL(origin).origin;
     const capabilityUrl = new URL(href, expectedOrigin);
-    if (capabilityUrl.origin !== expectedOrigin || capabilityUrl.pathname !== "/pad/") return "";
+    const documentType = capabilityUrl.pathname === "/sheet/" ? "sheet" : capabilityUrl.pathname === "/pad/" ? "pad" : "";
+    if (capabilityUrl.origin !== expectedOrigin || !documentType) return "";
     const capabilityPattern = access === "view"
-      ? /^#\/[0-9]+\/pad\/view\/[A-Za-z0-9+/_=-]+\/$/
+      ? new RegExp(`^#\\/[0-9]+\\/${documentType}\\/view\\/[A-Za-z0-9+/_=-]+\\/$`)
       : access === "edit"
-        ? /^#\/[0-9]+\/pad\/edit\/[A-Za-z0-9+/_=-]+\/$/
+        ? new RegExp(`^#\\/[0-9]+\\/${documentType}\\/edit\\/[A-Za-z0-9+/_=-]+\\/$`)
         : null;
     if (!capabilityPattern?.test(capabilityUrl.hash)) return "";
     return capabilityUrl.toString();
