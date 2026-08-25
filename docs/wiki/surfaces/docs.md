@@ -6,7 +6,7 @@ Docs is a first-class Task Node screen for wallet-encrypted collaborative rich-t
 
 1. Open **Docs** from the primary sidebar and unlock the linked PFT wallet.
 2. Complete one-time Docs setup. The browser creates a random Docs root key and wraps it to the wallet-derived encryption key.
-3. Create or open a rich-text document inside the embedded editor. The editor stays in the Task Node shell; it does not open a disruptive popup.
+3. Create or open a rich-text document or spreadsheet inside the embedded PFDocs editor. The editor stays in the Task Node shell; it does not open a disruptive popup.
 4. Rename from Task Node or PFDocs. The owner browser synchronizes the canonical title in both directions and stores only encrypted title metadata in Task Node.
 5. Share with a validated Task Node member selected from the handle/wallet suggestions as viewer or editor. Recent recipients sort first and the most recently used valid recipient is selected when the dialog opens. A recipient must accept the encrypted capability grant.
 6. To open the document outside Task Node, use **Share document → Link access**, then copy either the view link or edit link. The unlocked browser copies the selected PFDocs capability directly to the clipboard; Task Node never receives the plaintext link.
