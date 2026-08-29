@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -55,6 +55,27 @@ try {
   assert.deepEqual(runtime.legacyTerminalAuthSnapshotForMigration(), { requests: {}, sessions: {} });
   assert.equal((await migrateLegacyTerminalAuth()).migrated, false);
 
+  // Regression: migration 124 only restored credentials whose legacy expiry
+  // was still in the future. Every unrevoked historical credential must be
+  // revived, including one whose old timestamp has already passed.
+  const historicalToken = `historical-terminal-${suffix}`;
+  cleanupHashes.push(hashes(historicalToken));
+  await query(
+    `INSERT INTO terminal_sessions (
+       token_hash, session_id, account_id, provider, provider_username,
+       scopes_json, session_json, created_at, expires_at, revoked_at
+     ) VALUES ($1, $2, $3, 'github', $4, '[]'::jsonb, '{}'::jsonb,
+       now() - interval '2 days', now() - interval '1 day', NULL)`,
+    [hashes(historicalToken), `historical-${suffix}`, account.id, `terminal-smoke-${suffix}`]
+  );
+  assert.equal(await getTerminalSessionByToken(historicalToken), null);
+  const restoreMigration = readFileSync(
+    new URL("../server/db/migrations/129_restore_all_unrevoked_terminal_sessions.sql", import.meta.url),
+    "utf8"
+  );
+  await query(restoreMigration);
+  assert.equal((await getTerminalSessionByToken(historicalToken)).accountId, account.id);
+
   const stored = await query(
     "SELECT request_hash, poll_token_hash, request_json::text AS payload FROM terminal_auth_requests WHERE request_hash = $1",
     [hashes(pendingRequest.requestId)]
@@ -83,7 +104,7 @@ try {
   const direct = await createTerminalAuthRequest({ provider: "github", origin: "https://tasknode.example" });
   cleanupHashes.push(hashes(direct.requestId));
   assert.equal((await getTerminalAuthRequest({ requestId: direct.requestId })).status, "pending");
-  console.log("terminal auth repository smoke ok: persistent sessions, hashed secrets, lossless import, one-time exchange, durable revoke");
+  console.log("terminal auth repository smoke ok: all unrevoked historical and new sessions persist, hashed secrets, lossless import, one-time exchange, durable revoke");
 } finally {
   await query("DELETE FROM terminal_auth_requests WHERE account_id = $1 OR request_hash = ANY($2::text[])", [account.id, [hashes(pendingRequest.requestId), ...cleanupHashes]]).catch(() => {});
   await query("DELETE FROM terminal_sessions WHERE account_id = $1", [account.id]).catch(() => {});
