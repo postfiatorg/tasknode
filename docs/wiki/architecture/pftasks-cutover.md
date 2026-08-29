@@ -4,7 +4,7 @@ This runbook moves a user from the old PFTasks app into Task Node without losing
 
 The product-level cutover executed on 2026-06-10: `https://tasknode.postfiat.org` serves Task Node and old PFTasks task-side authority is shut down (see the [Production Cutover Execution Checklist](#docs/task-node-production-cutover-execution-checklist)). This page remains the per-account migration procedure for moving an individual user's wallet, context, and NFT state.
 
-The rule is simple: first make the old app stop acting for the wallet, then link or restore the wallet in the new app, then import only the state that Task Node can actually use.
+The rule is simple: first make the old app stop acting for the wallet, then link or restore the wallet in the new app, then import active state and read-only history through separate boundaries.
 
 ## Scope
 
@@ -150,6 +150,35 @@ Context has two paths:
 - Current context draft is account-scoped in Task Node. Import the old current context only after the user has selected the old context version they want to restore.
 - Historical context pointers are wallet-scoped. After the old wallet is linked and synced, the Context page can show old encrypted context CIDs and the browser can decrypt previews with the local wallet vault.
 
+Chat and task history use a wallet-owned archive path. They are not copied into active task projections or writable chat tables. A linked-wallet proof authorizes reads of the corresponding legacy archive rows, so relinking the same wallet restores the history without an account merge or a per-user ownership rewrite.
+
+Import the preserved source database with the idempotent history importer. Dry-run first:
+
+```bash
+cd /home/pfrpc/repos/tasknode
+set -a
+source .env.tasknodeofficial-fly-dev-data
+set +a
+export DATABASE_URL="$TASKNODE_DATABASE_URL"
+export TASKNODE_DATABASE_ENABLED=true
+
+npm run history-import-pftasks -- \
+  --source-env /home/pfrpc/repos/pftasks/api/.env
+
+npm run history-import-pftasks -- \
+  --source-env /home/pfrpc/repos/pftasks/api/.env \
+  --execute
+```
+
+Use `--wallet <classic-address>` for a bounded recovery. Without `--wallet`, the importer archives every source row that has an attributable wallet. Re-running it updates source rows in place and never duplicates messages, tasks, or context revisions.
+
+The imported boundaries are deliberate:
+
+- legacy conversations are visible and searchable as read-only history;
+- legacy tasks render as terminal historical records and never enter `task_projections`, queues, routing, rewards, or worker capacity;
+- legacy context revisions merge into wallet history by immutable CID, with duplicate CIDs suppressed;
+- access is always checked against the account's currently linked wallet.
+
 NFTs have two paths:
 
 - Minted NFTs remain on-chain with the old wallet. They do not move during cutover.
@@ -236,7 +265,7 @@ https://pft-ipfs-testnet-node-1.fly.dev/ipfs/
 
 After import, the current Task Node profile NFT gallery can render those IPFS image CIDs because `/api/profile/nfts`, public profile, Hive, and recommended-connections avatars all read current-wallet `profile_nfts` cache rows.
 
-Old PFTasks tasks should not be imported as live new Task Node tasks. Treat them as historical evidence unless a separate replay importer proves that the old event stream maps cleanly into Task Node `task_projections`.
+Old PFTasks tasks must not be imported as live new Task Node tasks. The history importer stores them in `legacy_pftasks_tasks`; they are read-only evidence and never enter `task_projections`.
 
 ## URL Cutover
 

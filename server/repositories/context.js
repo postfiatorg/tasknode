@@ -9,6 +9,7 @@ import {
 } from "../runtime-store.js";
 import { CONTEXT_DOCUMENT_MAX_CHARS } from "../../shared/context-budget.js";
 import { normalizeContextBodyForStorage } from "../../shared/context-html.js";
+import { listLegacyContextRows } from "./legacy-pftasks-history.js";
 
 const maxContextBodyLength = CONTEXT_DOCUMENT_MAX_CHARS;
 const maxContextTitleLength = 120;
@@ -542,11 +543,9 @@ export async function getContextHistory({ accountId = "", walletAddress = "" } =
     acc[row.pointer_type || "task_event"] = Number(row.count || 0);
     return acc;
   }, {});
-  const totalContextUpdates = Number(pointerCounts.context || 0);
   const totalTaskEvents = Object.entries(pointerCounts)
     .filter(([type]) => type !== "context")
     .reduce((sum, [, count]) => sum + Number(count || 0), 0);
-  const totalPointers = totalContextUpdates + totalTaskEvents;
 
   const contextPointerRows = await query(
     `
@@ -582,6 +581,27 @@ export async function getContextHistory({ accountId = "", walletAddress = "" } =
     [normalizedAccountId, normalizedWalletAddress, maxTaskEvents]
   );
 
+  const legacyContextRows = await listLegacyContextRows({
+    accountId: normalizedAccountId,
+    walletAddress: normalizedWalletAddress,
+    limit: maxContextUpdates,
+  });
+  const contextRows = [...contextPointerRows.rows, ...legacyContextRows]
+    .sort((left, right) => (
+      Date.parse(right.pointer_created_at || right.created_at || "") - Date.parse(left.pointer_created_at || left.created_at || "")
+      || String(right.id || "").localeCompare(String(left.id || ""))
+    ));
+  const uniqueContextRows = [];
+  const seenContextArtifacts = new Set();
+  for (const row of contextRows) {
+    const identity = String(row.cid || row.tx_hash || row.id || "");
+    if (identity && seenContextArtifacts.has(identity)) continue;
+    if (identity) seenContextArtifacts.add(identity);
+    uniqueContextRows.push(row);
+  }
+  const totalContextUpdates = uniqueContextRows.length;
+  const totalPointers = totalContextUpdates + totalTaskEvents;
+
   if (totalPointers === 0) {
     return emptyContextHistory({
       accountId: normalizedAccountId,
@@ -593,7 +613,7 @@ export async function getContextHistory({ accountId = "", walletAddress = "" } =
 
   const contextUpdates = [];
   const taskEvents = [];
-  for (const row of contextPointerRows.rows) {
+  for (const row of uniqueContextRows.slice(0, maxContextUpdates)) {
     contextUpdates.push(publicPointer(row));
   }
   for (const row of taskPointerRows.rows) {

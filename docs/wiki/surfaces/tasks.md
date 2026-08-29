@@ -96,7 +96,7 @@ Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`, `scripts/task-a
 
 When the task list and task detail disagree, first identify which state boundary is stale. Do not repair the literal task row until the boundary is known.
 
-The canonical read model is `task_projections`. `server/repositories/tasks.js::listTaskState` reads it for `GET /api/tasks`; `server/repositories/tasks.js::getTaskDetail` reads it for `GET /api/tasks/detail`; `server/task-routes.js` can force targeted projection work when either endpoint is called with `refreshProjection=1`. If `task_projections.status` is already terminal, such as `rewarded`, but an open browser tab still renders `Awaiting review`, the reducer is not the immediate failure. The browser is holding stale app state.
+The canonical active read model is `task_projections`. `server/repositories/tasks.js::listTaskState` reads it for `GET /api/tasks`; `server/repositories/tasks.js::getTaskDetail` reads it for `GET /api/tasks/detail`; `server/task-routes.js` can force targeted projection work when either endpoint is called with `refreshProjection=1`. Pre-cutover PFTasks rows are a separate wallet-owned, read-only archive in `legacy_pftasks_tasks`. They can render terminal historical cards and details, but never enter active projections, routing, rewards, polling pressure, or capacity. If `task_projections.status` is already terminal, such as `rewarded`, but an open browser tab still renders `Awaiting review`, the reducer is not the immediate failure. The browser is holding stale app state.
 
 The browser convergence path is:
 

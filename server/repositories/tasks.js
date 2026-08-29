@@ -15,6 +15,7 @@ import { currentVerificationRequest } from "../task-verification-view.js";
 import { getNetworkTaskEligibility } from "./network-tasks.js";
 import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
 import { taskRefreshMetadata, taskStatusTab } from "../../shared/task-lifecycle.js";
+import { getLegacyTaskDetail, listLegacyTasks } from "./legacy-pftasks-history.js";
 
 import {
   countTaskProjectionRows,
@@ -492,7 +493,8 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
       },
     };
   });
-  const grouped = groupTasks(taskItems);
+  const legacyTasks = await listLegacyTasks({ accountId, walletAddress }).catch(() => []);
+  const grouped = groupTasks([...taskItems, ...legacyTasks]);
   const lastSyncedAt = rows[0]?.updated_at ? toIso(rows[0].updated_at) : null;
   const handoff = taskRequestHandoffState({ requests, taskItems });
   const handoffProjectionPending = handoff.requestHandoffState === "generated_projection_pending";
@@ -534,6 +536,7 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
       status: syncStatus,
       walletAddress,
       projectionCount: rows.length,
+      legacyHistoryCount: legacyTasks.length,
       lastSyncedAt,
       pendingReducerCount: integrity.totals.pendingReducerCount,
       processingReducerCount: integrity.totals.processingReducerCount,
@@ -570,7 +573,9 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
     [normalizedTaskId, walletAddress, accountId || ""]
   );
   const row = taskResult.rows[0];
-  if (!row) return null;
+  if (!row) {
+    return getLegacyTaskDetail({ accountId, walletAddress, taskId: normalizedTaskId });
+  }
 
   const [pointerResult, reducerResult, reducerHealthResult, cachedPointerResult] = await Promise.all([
     query(

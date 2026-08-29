@@ -310,6 +310,12 @@ export function TasksView({
                   <span>{tasks.sync.projectionCount} task records synced</span>
                 </>
               )}
+              {tasks?.sync?.legacyHistoryCount > 0 && (
+                <>
+                  <span aria-hidden="true">.</span>
+                  <span>{tasks.sync.legacyHistoryCount} historical records restored</span>
+                </>
+              )}
               {processingRequests.length > 0 && (
                 <>
                   <span aria-hidden="true">.</span>
