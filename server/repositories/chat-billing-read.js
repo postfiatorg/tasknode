@@ -10,6 +10,10 @@ import {
   publicChatAttachment,
   publicChatMessage,
 } from "./chat-billing-projections.js";
+import {
+  getLegacyChatMessages,
+  legacyConversationReadable,
+} from "./legacy-pftasks-history.js";
 
 const maxLedgerLimit = 200;
 const maxMessageLimit = 200;
@@ -62,10 +66,16 @@ async function assertChatConversationReadable({ accountId = "", conversationId =
     [normalizedConversationId]
   );
   const row = conversation.rows[0];
-  if (!row) return;
+  if (!row) {
+    return (await legacyConversationReadable({
+      accountId: normalizedAccountId,
+      conversationId: normalizedConversationId,
+    })) ? "legacy" : "new";
+  }
   if (row.status !== "active" || (row.account_id || "") !== normalizedAccountId) {
     throw chatConversationNotFound();
   }
+  return "current";
 }
 
 async function chatConversationHistoryReadableForWrite({ accountId = "", conversationId = "" } = {}) {
@@ -77,7 +87,17 @@ async function chatConversationHistoryReadableForWrite({ accountId = "", convers
     [normalizedConversationId]
   );
   const row = conversation.rows[0];
-  if (!row) return true;
+  if (!row) {
+    if (await legacyConversationReadable({
+      accountId: normalizedAccountId,
+      conversationId: normalizedConversationId,
+    })) {
+      const error = new Error("chat_conversation_read_only");
+      error.status = 409;
+      throw error;
+    }
+    return true;
+  }
   if ((row.account_id || "") !== normalizedAccountId) throw chatConversationNotFound();
   return row.status === "active";
 }
@@ -123,10 +143,17 @@ async function getMessages(input, options, { forWrite = false } = {}) {
       });
       if (!readable) return [];
     } else {
-      await assertChatConversationReadable({
+      const source = await assertChatConversationReadable({
         accountId: normalizedAccountId,
         conversationId: normalizedConversationId,
       });
+      if (source === "legacy") {
+        return getLegacyChatMessages({
+          accountId: normalizedAccountId,
+          conversationId: normalizedConversationId,
+          limit: normalizedLimit,
+        });
+      }
     }
     return await hydratedMessages({ normalizedAccountId, normalizedConversationId, normalizedLimit });
   } catch (error) {

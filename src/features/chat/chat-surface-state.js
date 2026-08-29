@@ -1,4 +1,4 @@
-import { formatUsageUsd } from "../../formatters";
+import { formatUsageUsd } from "../../formatters.js";
 
 function slugify(value) {
   return String(value || "")
@@ -47,7 +47,8 @@ export function buildRecentChats(serverRecents) {
       conversationId: conversationId || "",
       kind: recent.kind || "",
       virtual: Boolean(recent.virtual),
-      source: "server",
+      source: recent.source || "server",
+      readOnly: recent.readOnly === true,
       title,
       lastMessagePreview: recent.lastMessagePreview || "",
       messageCount: recent.messageCount || 0,

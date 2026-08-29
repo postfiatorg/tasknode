@@ -11,6 +11,10 @@ import {
   normalizeChatAttachments,
 } from "../chat-attachment-utils.js";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
+import {
+  listLegacyChatConversations,
+  searchLegacyChatConversations,
+} from "./legacy-pftasks-history.js";
 
 const maxConversationLimit = 100;
 const maxSearchLimit = 50;
@@ -412,9 +416,20 @@ export async function listChatConversations({ accountId = "", limit = 30 } = {})
     `,
     [normalizedAccountId, normalizedLimit, hiveId || "__no_hive__"]
   );
+  const legacyConversations = await listLegacyChatConversations({
+    accountId: normalizedAccountId,
+    limit: normalizedLimit,
+  });
+  const ordinaryConversations = [
+    ...rows.rows.map(publicConversation),
+    ...legacyConversations,
+  ].sort((left, right) => (
+    Date.parse(right.updatedAt || right.lastMessageAt || "") - Date.parse(left.updatedAt || left.lastMessageAt || "")
+    || String(right.conversationId || right.id || "").localeCompare(String(left.conversationId || left.id || ""))
+  ));
   return [
     ...(hiveConversation ? [hiveConversation] : []),
-    ...rows.rows.map(publicConversation),
+    ...ordinaryConversations,
   ].slice(0, normalizedLimit);
 }
 
@@ -533,8 +548,14 @@ export async function searchChatConversations({ accountId = "", query: searchQue
     `,
     [normalizedAccountId, pattern, normalizedLimit]
   );
+  const legacyRows = await searchLegacyChatConversations({
+    accountId: normalizedAccountId,
+    searchText: normalizedQuery,
+    limit: normalizedLimit,
+  });
 
   const byConversationId = new Map();
+  for (const row of legacyRows) byConversationId.set(row.conversationId, row);
   for (const row of messageRows.rows) {
     byConversationId.set(row.conversation_id, searchResultRow({
       accountId: normalizedAccountId,
