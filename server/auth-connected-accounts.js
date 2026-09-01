@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { githubCoreContributorAccess } from "./core-contributor-authorization.js";
 import {
   recordAuthEvent,
 } from "./runtime-store.js";
@@ -229,14 +230,6 @@ async function fetchGithubEmails(accessToken) {
   return body;
 }
 
-function configuredCoreContributorGithubHandles() {
-  const configured = String(process.env.TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES || "")
-    .split(",")
-    .map((handle) => handle.trim().toLowerCase())
-    .filter(Boolean);
-  return [...new Set(configured)];
-}
-
 function githubProofIntent(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   return normalized === "core_contributor" || normalized === "core-contributor"
@@ -246,26 +239,6 @@ function githubProofIntent(value = "") {
 
 function githubAuthScope() {
   return "user:email";
-}
-
-function githubCoreContributorAccess(username = "") {
-  const checkedAt = new Date().toISOString();
-  const normalizedUsername = String(username || "").trim().toLowerCase();
-  const sanctionedHandles = configuredCoreContributorGithubHandles();
-  const sanctioned = Boolean(normalizedUsername && sanctionedHandles.includes(normalizedUsername));
-  return {
-    checkedAt,
-    username: String(username || "").trim(),
-    sanctioned,
-    matchedHandle: sanctioned ? normalizedUsername : "",
-    sanctionedHandles,
-    accessCount: sanctioned ? 1 : 0,
-    writeAccess: sanctioned,
-    scopeRecorded: sanctioned,
-    repositories: [],
-    proofMethod: "github_handle_allowlist",
-    oauthScope: "user:email",
-  };
 }
 
 async function fetchDiscordToken({ code, redirectUri }) {
@@ -442,6 +415,17 @@ function oauthAction(providerId, suffix, linked = false) {
   if (suffix === "callback") return `${providerId}_auth_callback`;
   if (suffix === "link") return `${providerId}_account_link`;
   return `${providerId}_${suffix}`;
+}
+
+function linkAccountIdForRequest(requestMeta = {}) {
+  return requestMeta.authIntent === "add_account" ? "" : requestMeta.session?.accountId || "";
+}
+
+function oauthStateMetadata(requestMeta = {}, metadata = {}) {
+  return {
+    ...metadata,
+    authIntent: requestMeta.authIntent === "add_account" ? "add_account" : requestMeta.session?.accountId ? "link_provider" : "sign_in",
+  };
 }
 
 function recordOAuthSuccessObservability({
@@ -709,14 +693,14 @@ async function startGithubAuth(requestMeta = {}) {
     provider: "github",
     redirectPath: safeRedirectPath(requestMeta.redirectPath),
     redirectUri,
-    linkAccountId: requestMeta.session?.accountId || "",
+    linkAccountId: linkAccountIdForRequest(requestMeta),
     expiresInSeconds: 600,
-    metadata: {
+    metadata: oauthStateMetadata(requestMeta, {
       ...(proofIntent ? { proofIntent } : {}),
       ...(terminalRequestId ? { terminalRequestId } : {}),
-    },
+    }),
   });
-  const linkingAccount = Boolean(requestMeta.session?.accountId);
+  const linkingAccount = Boolean(linkAccountIdForRequest(requestMeta));
   const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
   authorizeUrl.searchParams.set("client_id", process.env.GITHUB_CLIENT_ID);
   authorizeUrl.searchParams.set("redirect_uri", redirectUri);
@@ -731,8 +715,8 @@ async function startDiscordAuth(requestMeta = {}) {
   if (!redirectUri) {
     return actionResponse({ status: 409, error: "auth_redirect_origin_missing", action: "discord_auth_start", message: "Discord login needs a Task Node origin.", actionRequired: "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin." });
   }
-  const stateRow = await createOAuthState({ provider: "discord", redirectPath: safeRedirectPath(requestMeta.redirectPath), redirectUri, linkAccountId: requestMeta.session?.accountId || "", expiresInSeconds: 600 });
-  const linkingAccount = Boolean(requestMeta.session?.accountId);
+  const stateRow = await createOAuthState({ provider: "discord", redirectPath: safeRedirectPath(requestMeta.redirectPath), redirectUri, linkAccountId: linkAccountIdForRequest(requestMeta), expiresInSeconds: 600, metadata: oauthStateMetadata(requestMeta) });
+  const linkingAccount = Boolean(linkAccountIdForRequest(requestMeta));
   const authorizeUrl = new URL("https://discord.com/oauth2/authorize");
   authorizeUrl.searchParams.set("response_type", "code");
   authorizeUrl.searchParams.set("client_id", process.env.DISCORD_CLIENT_ID);
@@ -753,11 +737,11 @@ async function startXAuth(requestMeta = {}) {
     provider: "x",
     redirectPath: safeRedirectPath(requestMeta.redirectPath),
     redirectUri,
-    linkAccountId: requestMeta.session?.accountId || "",
+    linkAccountId: linkAccountIdForRequest(requestMeta),
     expiresInSeconds: 600,
-    metadata: { codeVerifier },
+    metadata: oauthStateMetadata(requestMeta, { codeVerifier }),
   });
-  const linkingAccount = Boolean(requestMeta.session?.accountId);
+  const linkingAccount = Boolean(linkAccountIdForRequest(requestMeta));
   const authorizeUrl = new URL(String(process.env.X_AUTHORIZE_URL || "https://x.com/i/oauth2/authorize"));
   authorizeUrl.searchParams.set("response_type", "code");
   authorizeUrl.searchParams.set("client_id", process.env.X_CLIENT_ID);
@@ -780,8 +764,8 @@ async function startTelegramAuth(requestMeta = {}) {
       actionRequired: domainCheck.actionRequired,
     });
   }
-  const stateRow = await createOAuthState({ provider: "telegram", redirectPath: safeRedirectPath(requestMeta.redirectPath), redirectUri: "", linkAccountId: requestMeta.session?.accountId || "", expiresInSeconds: 600 });
-  const linkingAccount = Boolean(requestMeta.session?.accountId);
+  const stateRow = await createOAuthState({ provider: "telegram", redirectPath: safeRedirectPath(requestMeta.redirectPath), redirectUri: "", linkAccountId: linkAccountIdForRequest(requestMeta), expiresInSeconds: 600, metadata: oauthStateMetadata(requestMeta) });
+  const linkingAccount = Boolean(linkAccountIdForRequest(requestMeta));
   return oauthStartResponse({
     providerId: "telegram",
     stateRow,

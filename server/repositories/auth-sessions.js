@@ -6,6 +6,7 @@ import {
   createDevSession as createRuntimeDevSession,
   destroySession as destroyRuntimeSession,
   getSession as getRuntimeSession,
+  revokeRuntimeSessionsForAccount,
   sessionTtlSeconds,
 } from "../runtime-store.js";
 
@@ -13,7 +14,13 @@ function tokenHash(token = "") {
   return createHash("sha256").update(String(token || ""), "utf8").digest("hex");
 }
 
-function sessionForAccount(account, { provider = "email", assurance = "low", sessionId, createdAt, expiresAt } = {}) {
+function publicSession(session = null) {
+  if (!session) return null;
+  const { id: _sessionToken, deviceAccountSetId: _deviceAccountSetId, ...payload } = session;
+  return payload;
+}
+
+function sessionForAccount(account, { provider = "email", assurance = "low", deviceAccountSetId = "", sessionId, createdAt, expiresAt } = {}) {
   const profile = accountIdentityProfile(account) || {};
   return {
     id: sessionId,
@@ -26,6 +33,7 @@ function sessionForAccount(account, { provider = "email", assurance = "low", ses
     primaryProvider: provider,
     linkedProviders: Array.isArray(account.linkedProviders) ? account.linkedProviders : [],
     assurance,
+    deviceAccountSetId: deviceAccountSetId || null,
     createdAt,
     expiresAt,
   };
@@ -41,6 +49,7 @@ function rowSession(row, sessionId = "") {
     authenticated: true,
     primaryProvider: row.primary_provider || payload.primaryProvider || "",
     assurance: row.assurance || payload.assurance || "low",
+    deviceAccountSetId: row.device_account_set_id || payload.deviceAccountSetId || null,
     createdAt: new Date(row.created_at).toISOString(),
     expiresAt: new Date(row.expires_at).toISOString(),
   };
@@ -51,23 +60,28 @@ async function persistSession({ sessionId, session }) {
   delete storedSession.id;
   await query(
     `INSERT INTO auth_sessions (
-       token_hash, account_id, primary_provider, assurance, session_json, created_at, expires_at
-     ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+       token_hash, account_id, primary_provider, assurance, session_json,
+       device_account_set_id, created_at, expires_at
+     ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)`,
     [
       tokenHash(sessionId),
       session.accountId,
       session.primaryProvider || "",
       session.assurance || "low",
       JSON.stringify(storedSession),
+      session.deviceAccountSetId || null,
       session.createdAt,
       session.expiresAt,
     ]
   );
-  return { sessionId, session };
+  return { sessionId, session: publicSession(session) };
 }
 
 export async function createAccountSession(account, options = {}) {
-  if (!databaseEnabled()) return createRuntimeAccountSession(account, options);
+  if (!databaseEnabled()) {
+    const created = createRuntimeAccountSession(account, options);
+    return { ...created, session: publicSession(created.session) };
+  }
   if (!account?.id) throw new Error("session_account_required");
   const sessionId = randomUUID();
   const createdAt = new Date().toISOString();
@@ -78,17 +92,17 @@ export async function createAccountSession(account, options = {}) {
 
 export async function createDevSession(options = {}) {
   const created = createRuntimeDevSession(options);
-  if (!databaseEnabled()) return created;
+  if (!databaseEnabled()) return { ...created, session: publicSession(created.session) };
   await persistSession(created);
   destroyRuntimeSession(created.sessionId);
-  return created;
+  return { ...created, session: publicSession(created.session) };
 }
 
 export async function getSession(sessionId = "") {
   if (!sessionId) return null;
   if (!databaseEnabled()) return getRuntimeSession(sessionId);
   const result = await query(
-    `SELECT account_id, primary_provider, assurance, session_json, created_at, expires_at
+    `SELECT account_id, primary_provider, assurance, session_json, device_account_set_id, created_at, expires_at
        FROM auth_sessions
       WHERE token_hash = $1
         AND revoked_at IS NULL
@@ -110,6 +124,22 @@ export async function destroySession(sessionId = "") {
     [tokenHash(sessionId)]
   );
   return result.rowCount > 0;
+}
+
+export async function revokeSessionsForAccount({ accountId = "", exceptSessionId = "" } = {}) {
+  const normalized = String(accountId || "").trim();
+  if (!normalized) return { revoked: 0 };
+  if (!databaseEnabled()) {
+    return { ...revokeRuntimeSessionsForAccount({ accountId: normalized, exceptSessionId }), adapter: "runtime" };
+  }
+  const exceptHash = exceptSessionId ? tokenHash(exceptSessionId) : "";
+  const result = await query(
+    `UPDATE auth_sessions SET revoked_at = now()
+      WHERE account_id = $1 AND revoked_at IS NULL
+        AND ($2 = '' OR token_hash <> $2)`,
+    [normalized, exceptHash]
+  );
+  return { revoked: result.rowCount, adapter: "postgres" };
 }
 
 export async function deleteExpiredSessions() {

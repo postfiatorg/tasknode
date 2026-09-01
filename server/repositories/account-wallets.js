@@ -71,15 +71,21 @@ export async function linkWalletToAccount(options = {}) {
   if (!address) return { ok: false, status: 400, error: "wallet_address_required" };
   const result = await transaction(async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wallet:${address}`]);
+    const owner = await client.query(
+      `SELECT ${selectColumns} FROM account_linked_wallets
+        WHERE wallet_address = $1 AND account_id <> $2 AND status = 'linked'
+        LIMIT 1 FOR UPDATE`,
+      [address, accountId]
+    );
+    if (owner.rows[0]) {
+      return {
+        conflict: true,
+        ownerAccountId: owner.rows[0].account_id,
+      };
+    }
     const prior = await client.query(
       `SELECT ${selectColumns} FROM account_linked_wallets WHERE account_id = $1 FOR UPDATE`,
       [accountId]
-    );
-    const reclaimed = await client.query(
-      `DELETE FROM account_linked_wallets
-        WHERE wallet_address = $1 AND account_id <> $2 AND status = 'linked'
-        RETURNING account_id`,
-      [address, accountId]
     );
     const previous = walletFromRow(prior.rows[0]);
     const linkedAt = previous.address ? previous.linkedAt : new Date().toISOString();
@@ -103,10 +109,13 @@ export async function linkWalletToAccount(options = {}) {
         proofPurpose, proofPurpose === "wallet_create", JSON.stringify(proof), linkedAt,
       ]
     );
-    return { wallet: walletFromRow(saved.rows[0]), reclaimedAccountIds: reclaimed.rows.map((row) => row.account_id) };
+    return { wallet: walletFromRow(saved.rows[0]) };
   });
+  if (result.conflict) {
+    return { ok: false, status: 409, error: "wallet_owned_by_other_account" };
+  }
   try { linkRuntimeWallet({ ...options, databaseMirror: false }); } catch { /* Postgres remains authoritative. */ }
-  return { ok: true, wallet: result.wallet, reclaimedWalletCount: result.reclaimedAccountIds.length };
+  return { ok: true, wallet: result.wallet, reclaimedWalletCount: 0 };
 }
 
 export async function delinkWalletFromAccount(options = {}) {

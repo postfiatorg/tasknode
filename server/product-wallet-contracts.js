@@ -190,6 +190,7 @@ export async function walletLinkStart(method, session = null) {
       message: "Sign this challenge locally to link your wallet.",
       challenge: {
         id: result.challenge.id,
+        accountId: result.challenge.accountId,
         purpose: result.challenge.purpose,
         message: result.challenge.message,
         expiresAt: result.challenge.expiresAt,
@@ -247,6 +248,7 @@ export async function walletCreateStart(method, session = null) {
       message: "Sign this challenge locally to create and link your wallet.",
       challenge: {
         id: result.challenge.id,
+        accountId: result.challenge.accountId,
         purpose: result.challenge.purpose,
         message: result.challenge.message,
         expiresAt: result.challenge.expiresAt,
@@ -523,17 +525,29 @@ export async function walletLinkVerify(payload, method, session = null) {
   });
 
   if (!result.ok) {
+    if (result.error === "wallet_owned_by_other_account") {
+      await recordUserObservabilityEvent({
+        eventType: "user.wallet.ownership_conflict",
+        accountId: session.accountId,
+        walletAddress: address,
+        walletScope: "active",
+        sourceSurface: "wallet",
+        sourceRoute: "server/product-wallet-contracts.js::walletLinkVerify",
+        resultStatus: "rejected",
+        reasonCode: result.error,
+      }).catch(() => null);
+    }
     return actionResponse({
       status: result.status || 400,
       error: result.error || "wallet_link_failed",
       action: "wallet_link_verify",
       message:
-        result.error === "wallet_already_linked_to_account"
+        result.error === "wallet_owned_by_other_account"
           ? "That wallet is already linked to a different account."
           : "Wallet link could not be saved.",
       actionRequired:
-        result.error === "wallet_already_linked_to_account"
-          ? "Sign in with the account that owns this wallet, or resolve the account conflict before relinking."
+        result.error === "wallet_owned_by_other_account"
+          ? "Use the distinct wallet belonging to this account. Wallet ownership is not moved by linking."
           : "Start wallet linking again and sign a fresh challenge.",
     });
   }
@@ -565,7 +579,7 @@ export async function walletLinkVerify(payload, method, session = null) {
       reasonCode: challengeResult.challenge.purpose,
       metadata: {
         proofPurpose: challengeResult.challenge.purpose,
-        reclaimedWalletCount: Number(result.reclaimedWalletCount || 0),
+        reclaimedWalletCount: 0,
         publicKeyPresent: Boolean(publicKey),
         encryptionPublicKeyPresent: Boolean(tasknodeEncryptionPubkey),
       },
@@ -585,7 +599,7 @@ export async function walletLinkVerify(payload, method, session = null) {
     }),
   ]);
 
-  const reclaimedWalletCount = Number(result.reclaimedWalletCount || 0);
+  const reclaimedWalletCount = 0;
   const isCreate = challengeResult.challenge.purpose === "wallet_create";
   const initiationGift = isCreate
     ? await walletCreateGrantPendingVault({
@@ -595,9 +609,7 @@ export async function walletLinkVerify(payload, method, session = null) {
     : null;
   const message = isCreate
     ? "Seed wallet created. Save the local vault to send the PFT initiation gift."
-    : reclaimedWalletCount
-      ? "Seed wallet linked. Prior stale links for this wallet were detached."
-      : "Seed wallet linked.";
+    : "Seed wallet linked.";
   return {
     status: 200,
     body: {
@@ -657,6 +669,7 @@ export async function walletRelinkStart(method, session = null) {
       message: "Sign this challenge locally to relink your wallet.",
       challenge: {
         id: result.challenge.id,
+        accountId: result.challenge.accountId,
         purpose: result.challenge.purpose,
         message: result.challenge.message,
         expiresAt: result.challenge.expiresAt,

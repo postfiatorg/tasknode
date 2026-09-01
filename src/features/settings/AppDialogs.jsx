@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, Github, Lock, Shield, X } from "lucide-react";
 import { requestJson } from "../../api";
 import { BillingSettings } from "../billing/BillingSettings";
@@ -9,7 +9,7 @@ import { loginProviderDisplayState } from "../chat/chat-ui-state.js";
 import { isSignedInSession } from "../../session";
 import { SETTINGS_PAGES } from "../../app/app-shell-shared.jsx";
 
-export function SettingsModal({ chat, onAppStateChange, onClose, session, setTheme, theme }) {
+export function SettingsModal({ chat, linkedWallet, onAppStateChange, onClose, onWalletUnlock, session, setTheme, theme, walletSecret, walletVault }) {
   const [page, setPage] = useState("general");
   const activePage = SETTINGS_PAGES.find((item) => item.key === page) || SETTINGS_PAGES[0];
 
@@ -43,7 +43,16 @@ export function SettingsModal({ chat, onAppStateChange, onClose, session, setThe
           </header>
           <div className="settings-page">
             {page === "general" && <GeneralSettings setTheme={setTheme} theme={theme} />}
-            {page === "security" && <SecuritySettings onAppStateChange={onAppStateChange} session={session} />}
+            {page === "security" && (
+              <SecuritySettings
+                linkedWallet={linkedWallet}
+                onAppStateChange={onAppStateChange}
+                onWalletUnlock={onWalletUnlock}
+                session={session}
+                walletSecret={walletSecret}
+                walletVault={walletVault}
+              />
+            )}
             {page === "data" && <DataSettings chat={chat} onAccountDeleted={onClose} onAppStateChange={onAppStateChange} session={session} />}
             {page === "billing" && <BillingSettings onAppStateChange={onAppStateChange} />}
           </div>
@@ -65,7 +74,7 @@ export function GeneralSettings({ setTheme, theme }) {
   );
 }
 
-export function SecuritySettings({ onAppStateChange, session }) {
+export function SecuritySettings({ linkedWallet, onAppStateChange, onWalletUnlock, session, walletSecret, walletVault }) {
   const signedIn = isSignedInSession(session);
   const linkedProviders = session?.linkedProviders || [];
   const providers = (session?.accountLinks || []).filter((provider) =>
@@ -134,6 +143,15 @@ export function SecuritySettings({ onAppStateChange, session }) {
     <>
       <MfaCallout />
       <IdentitySettings onAppStateChange={onAppStateChange} session={session} />
+      <PasswordSecurity
+        linkedWallet={linkedWallet}
+        onSessionChange={onAppStateChange}
+        onWalletUnlock={onWalletUnlock}
+        session={session}
+        signedIn={signedIn}
+        walletSecret={walletSecret}
+        walletVault={walletVault}
+      />
       {providers.length > 0 && (
         <section className="connected-accounts">
           <div className="connected-heading">
@@ -161,6 +179,174 @@ export function SecuritySettings({ onAppStateChange, session }) {
       <SettingsLine desc="2 devices currently signed in." label="Active sessions" right={<SmallPill>Manage</SmallPill>} />
       <SettingsLine desc="Send a security or product report." label="Report issue" right={<SmallPill>Report</SmallPill>} />
     </>
+  );
+}
+
+function PasswordSecurity({ linkedWallet, onSessionChange, onWalletUnlock, session, signedIn, walletSecret, walletVault }) {
+  const [status, setStatus] = useState(null);
+  const [mode, setMode] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const loadStatus = useCallback(async () => {
+    if (!signedIn) return;
+    const result = await requestJson("/api/account/password");
+    if (result.ok) setStatus(result.body?.password || null);
+  }, [signedIn]);
+
+  useEffect(() => {
+    loadStatus().catch(() => setMessage("Password settings are unavailable."));
+  }, [loadStatus]);
+
+  function resetForm(nextMode = "") {
+    setMode(nextMode);
+    setCurrentPassword("");
+    setPassword("");
+    setConfirmPassword("");
+    setMessage("");
+  }
+
+  const walletReady = Boolean(
+    walletVault?.unlocked
+    && walletSecret?.mnemonic
+    && walletSecret?.accountId === session?.accountId
+    && walletSecret?.address === linkedWallet?.address
+  );
+
+  function beginEnable() {
+    if (!linkedWallet?.address) {
+      setMessage("Link a wallet to this account before enabling password login.");
+      onWalletUnlock?.();
+      return;
+    }
+    if (!walletReady) {
+      setMessage("Unlock the linked wallet before enabling password login.");
+      onWalletUnlock?.();
+      return;
+    }
+    resetForm("enable");
+  }
+
+  async function submitCredential() {
+    if (mode !== "disable" && password !== confirmPassword) {
+      setMessage("The new passwords do not match.");
+      return;
+    }
+    setPending(true);
+    setMessage("");
+    try {
+      let result;
+      if (mode === "enable") {
+        if (!walletReady) {
+          setMessage("Unlock the linked wallet before enabling password login.");
+          onWalletUnlock?.();
+          return;
+        }
+        const start = await requestJson("/api/account/password/enable/start", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+        if (!start.ok || !start.body?.challenge?.message) {
+          setMessage(start.body?.message || "Wallet verification could not start.");
+          return;
+        }
+        const walletCore = await import("../../wallet-core");
+        const proof = walletCore.signWalletChallenge(walletSecret.mnemonic, start.body.challenge.message);
+        if (proof.address !== linkedWallet.address) {
+          setMessage("The unlocked wallet does not match the wallet linked to this account.");
+          return;
+        }
+        result = await requestJson("/api/account/password/enable/verify", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            challengeId: start.body.challenge.id,
+            address: proof.address,
+            publicKey: proof.publicKey,
+            signature: proof.signature,
+            password,
+          }),
+        });
+      } else {
+        const path = mode === "change"
+          ? "/api/account/password/change"
+          : "/api/account/password/disable";
+        const body = mode === "change"
+          ? { currentPassword, newPassword: password }
+          : { currentPassword };
+        result = await requestJson(path, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
+      setMessage(result.body?.message || (result.ok ? "Password settings updated." : "Password settings could not be updated."));
+      if (!result.ok) return;
+      resetForm("");
+      await loadStatus();
+      await onSessionChange?.();
+    } catch (error) {
+      setMessage(error?.message || "Password settings could not be updated.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const enabled = status?.enabled === true;
+  return (
+    <section className="connected-accounts password-security">
+      <div className="connected-heading">
+        <strong>Account password</strong>
+        <span>{enabled ? "Enabled" : "Disabled"}</span>
+      </div>
+      <p className="password-security-copy">
+        {!status?.walletLinked
+          ? "Link and unlock a wallet before enabling password login."
+          : enabled
+            ? `Password login is enabled${status?.maskedEmail ? ` with recovery at ${status.maskedEmail}` : ""}.`
+            : walletReady
+              ? "The linked wallet is unlocked and ready to authorize a password."
+              : "Unlock the linked wallet to authorize a password."}
+      </p>
+      {!mode && (
+        <div className="password-security-actions">
+          {enabled ? (
+            <>
+              <SmallPill onClick={() => resetForm("change")}>Change</SmallPill>
+              <SmallPill danger onClick={() => resetForm("disable")}>Disable</SmallPill>
+            </>
+          ) : (
+            <SmallPill disabled={!status || pending} onClick={beginEnable}>
+              {!status?.walletLinked ? "Open wallet" : walletReady ? "Enable" : "Unlock wallet"}
+            </SmallPill>
+          )}
+        </div>
+      )}
+      {mode && (
+        <div className="password-security-form">
+          {(mode === "change" || mode === "disable") && (
+            <input autoComplete="current-password" onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Current password" type="password" value={currentPassword} />
+          )}
+          {mode !== "disable" && (
+            <>
+              <input autoComplete="new-password" minLength={12} onChange={(event) => setPassword(event.target.value)} placeholder="New password (12+ characters)" type="password" value={password} />
+              <input autoComplete="new-password" minLength={12} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm new password" type="password" value={confirmPassword} />
+            </>
+          )}
+          <div className="password-security-actions">
+            <SmallPill disabled={pending} onClick={() => resetForm("")}>Cancel</SmallPill>
+            <SmallPill danger={mode === "disable"} disabled={pending} onClick={submitCredential}>
+              {pending ? "Saving" : mode === "disable" ? "Disable" : "Save password"}
+            </SmallPill>
+          </div>
+        </div>
+      )}
+      {message && <div className="inline-message">{message}</div>}
+    </section>
   );
 }
 
@@ -327,7 +513,7 @@ export function themeLabel(theme) {
   return theme[0].toUpperCase() + theme.slice(1);
 }
 
-export function LoginDialog({ authLoading = false, session, onClose, onSessionChange }) {
+export function LoginDialog({ authLoading = false, session, onClose, onSessionChange, reloadOnSuccess = false }) {
   const providers = (session?.accountLinks || []).filter((provider) =>
     ["telegram", "discord", "x", "github"].includes(provider.id) && provider.enabled
   );
@@ -340,6 +526,19 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
   const [challenge, setChallenge] = useState(null);
   const [message, setMessage] = useState("");
   const [pendingProvider, setPendingProvider] = useState("");
+  const [loginMethod, setLoginMethod] = useState("code");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordStep, setPasswordStep] = useState("login");
+
+  async function completeAuthentication() {
+    if (reloadOnSuccess) {
+      window.location.reload();
+      return;
+    }
+    await onSessionChange?.();
+    onClose();
+  }
 
   async function startProvider(provider) {
     setPendingProvider(provider.id);
@@ -418,8 +617,7 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
       });
 
       if (result.ok) {
-        await onSessionChange?.();
-        onClose();
+        await completeAuthentication();
       } else {
         setMessage(
           result.body?.message ||
@@ -460,8 +658,7 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
       });
 
       if (result.ok) {
-        await onSessionChange?.();
-        onClose();
+        await completeAuthentication();
       } else {
         setMessage(
           result.body?.message ||
@@ -481,6 +678,71 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
     setCode("");
     setChallenge(null);
     setMessage("");
+  }
+
+  async function submitPasswordLogin() {
+    if (!email.trim() || !password) {
+      setMessage("Enter your verified email or Hive handle and account password.");
+      return;
+    }
+    setPendingProvider("password");
+    setMessage("");
+    try {
+      const result = await requestJson("/api/auth/password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identifier: email.trim(), password }),
+      });
+      if (result.ok) return completeAuthentication();
+      setMessage(result.body?.message || "Email, handle, or account password is incorrect.");
+    } finally {
+      setPendingProvider("");
+    }
+  }
+
+  async function startPasswordReset() {
+    if (!email.trim() || !email.includes("@")) {
+      setMessage("Enter the verified email address for this account to reset its password.");
+      return;
+    }
+    setPendingProvider("password");
+    setMessage("");
+    try {
+      const result = await requestJson("/api/auth/password/reset/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      if (!result.ok) return setMessage(result.body?.message || "A reset code could not be sent.");
+      setChallenge(result.body);
+      setPasswordStep("reset");
+      setCode("");
+      setPassword("");
+      setConfirmPassword("");
+      setMessage(result.body?.message || "Enter the reset code and a new password.");
+    } finally {
+      setPendingProvider("");
+    }
+  }
+
+  async function verifyPasswordReset() {
+    if (!code.trim() || password.length < 12 || password !== confirmPassword) {
+      setMessage(password !== confirmPassword ? "The new passwords do not match." : "Enter the code and a password of at least 12 characters.");
+      return;
+    }
+    setPendingProvider("password");
+    setMessage("");
+    try {
+      const result = await requestJson("/api/auth/password/reset/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ challengeId: challenge?.challengeId, code: code.trim(), password }),
+      });
+      if (result.ok) return completeAuthentication();
+      setMessage(result.body?.message || "That reset request is invalid or expired.");
+    } finally {
+      setPendingProvider("");
+    }
   }
 
   const devCode = challenge?.delivery?.devCode || "";
@@ -511,7 +773,11 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
             ))}
             {message && <div className="dialog-message">{message}</div>}
             <div className="divider">OR</div>
-            {emailStep === "email" ? (
+            <div className="login-method-switch">
+              <button className={loginMethod === "code" ? "active" : ""} onClick={() => { setLoginMethod("code"); setMessage(""); }} type="button">Email code</button>
+              <button className={loginMethod === "password" ? "active" : ""} onClick={() => { setLoginMethod("password"); setMessage(""); }} type="button">Password</button>
+            </div>
+            {loginMethod === "code" && (emailStep === "email" ? (
               <>
                 <input
                   type="email"
@@ -561,6 +827,25 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
                 >
                   {pendingProvider === "email" ? "Checking" : "Continue"}
                 </button>
+              </div>
+            ))}
+            {loginMethod === "password" && passwordStep === "login" && (
+              <div className="email-code-step">
+                <div className="password-login-note">Use a verified email or Hive handle. Enable password login first under Settings → Security after signing in with a connected provider.</div>
+                <input type="text" autoComplete="username" placeholder="Verified email or Hive handle" aria-label="Verified email or Hive handle" onChange={(event) => setEmail(event.target.value)} value={email} />
+                <input type="password" autoComplete="current-password" placeholder="Account password" aria-label="Account password" onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitPasswordLogin(); }} value={password} />
+                <button className="continue-button" disabled={pendingProvider === "password"} onClick={submitPasswordLogin} type="button">{pendingProvider === "password" ? "Checking" : "Continue"}</button>
+                <button className="login-text-button" onClick={startPasswordReset} type="button">Forgot password?</button>
+              </div>
+            )}
+            {loginMethod === "password" && passwordStep === "reset" && (
+              <div className="email-code-step">
+                <div className="email-code-target"><span>{challenge?.maskedEmail || email}</span><button onClick={() => setPasswordStep("login")} type="button">Cancel</button></div>
+                {challenge?.delivery?.devCode && <div className="dev-code-note">Development code: <strong>{challenge.delivery.devCode}</strong></div>}
+                <input autoComplete="one-time-code" inputMode="numeric" onChange={(event) => setCode(event.target.value)} placeholder="Reset code" value={code} />
+                <input autoComplete="new-password" minLength={12} onChange={(event) => setPassword(event.target.value)} placeholder="New password (12+ characters)" type="password" value={password} />
+                <input autoComplete="new-password" minLength={12} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm new password" type="password" value={confirmPassword} />
+                <button className="continue-button" disabled={pendingProvider === "password"} onClick={verifyPasswordReset} type="button">{pendingProvider === "password" ? "Saving" : "Reset password"}</button>
               </div>
             )}
           </>

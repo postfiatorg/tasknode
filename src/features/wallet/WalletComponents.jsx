@@ -13,6 +13,8 @@ import {
   formatWalletTransactionAmount,
   formatWalletTransactionTime,
   truncateWalletNote,
+  walletVaultPersistenceDecision,
+  walletRestoreAddressDecision,
 } from "./wallet-state";
 
 export function shortWalletAddress(address) {
@@ -523,6 +525,14 @@ export function WalletLinkModal({
       setMessage("Wallet passwords do not match.");
       return;
     }
+    const restoreDecision = walletRestoreAddressDecision({
+      derivedAddress: walletSummary.address,
+      expectedAddress: action?.expectedWalletAddress || "",
+    });
+    if (!restoreDecision.ok) {
+      setMessage("That recovery phrase belongs to a different wallet. The selected account was not changed.");
+      return;
+    }
 
     setLinking(true);
     setMessage(isCreate ? "Creating wallet and preparing the local seed vault." : "");
@@ -533,6 +543,17 @@ export function WalletLinkModal({
       });
       if (!start.ok || !start.body?.challenge?.message) {
         setMessage(start.body?.message || start.body?.actionRequired || "Wallet link could not start.");
+        setLinking(false);
+        return;
+      }
+      const challengeAccountId = String(start.body.challenge.accountId || "").trim();
+      if (!challengeAccountId) {
+        setMessage("Wallet verification could not confirm the selected account. Refresh and try again.");
+        setLinking(false);
+        return;
+      }
+      if (challengeAccountId !== activeSession.accountId) {
+        setMessage("The selected account changed. Close this wallet flow and try again.");
         setLinking(false);
         return;
       }
@@ -554,6 +575,23 @@ export function WalletLinkModal({
 
       if (!verify.ok) {
         setMessage(verify.body?.message || verify.body?.actionRequired || "Wallet proof did not verify.");
+        setLinking(false);
+        return;
+      }
+
+      const verifiedAccountId = String(verify.body?.wallet?.accountId || "").trim();
+      const currentSessionResult = await requestJson("/api/session");
+      const currentAccountId = String(currentSessionResult.body?.accountId || "").trim();
+      const persistenceDecision = walletVaultPersistenceDecision({
+        challengeAccountId: start.body.challenge.accountId,
+        capturedAccountId: activeSession.accountId,
+        derivedAddress: walletSummary.address,
+        liveAccountId: currentSessionResult.ok ? currentAccountId : "",
+        responseAccountId: verifiedAccountId,
+        responseAddress: verify.body?.wallet?.address || "",
+      });
+      if (!persistenceDecision.ok) {
+        setMessage("The selected account or wallet changed. The local vault was not saved.");
         setLinking(false);
         return;
       }

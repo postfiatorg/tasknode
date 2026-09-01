@@ -581,7 +581,7 @@ export function NetworkBadgesPanel({ session = null } = {}) {
                     </button>
                     {!githubAccessPresent && githubAlias && (
                       <div style={{ color: C.ink4, fontSize: 12, lineHeight: 1.45 }}>
-                        Reconnect GitHub once to verify your handle against the sanctioned Core Contributor list.
+                        Task Node checks the linked GitHub handle against the current sanctioned list automatically.
                       </div>
                     )}
                     {githubAccess.checkedAt && !githubAccess.sanctioned && (

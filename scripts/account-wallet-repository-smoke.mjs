@@ -33,6 +33,7 @@ const {
   linkWalletToAccount,
   migrateLegacyAccountWallets,
 } = await import("../server/repositories/account-wallets.js");
+const { registerPftlSyncWallet } = await import("../server/repositories/pftl-cache.js");
 
 const suffix = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 const firstAccount = `acct_wallet_smoke_first_${suffix}`;
@@ -61,7 +62,7 @@ try {
   assert.equal(first.wallet.walletCreatedInAccount, true);
   assert.equal((await getLinkedWallet({ accountId: firstAccount })).tasknodeEncryptionPubkey, "encryption-first");
 
-  const reclaimed = await linkWalletToAccount({
+  const ownershipConflict = await linkWalletToAccount({
     accountId: secondAccount,
     address: firstAddress,
     publicKey: "EDPUBLICSECOND",
@@ -69,9 +70,14 @@ try {
     signature: "signature-second",
     proofPurpose: "wallet_link",
   });
-  assert.equal(reclaimed.reclaimedWalletCount, 1);
-  assert.equal((await getLinkedWallet({ accountId: firstAccount })).status, "not_linked");
-  assert.equal((await findLinkedWalletOwner({ address: firstAddress })).accountId, secondAccount);
+  assert.equal(ownershipConflict.ok, false);
+  assert.equal(ownershipConflict.status, 409);
+  assert.equal(ownershipConflict.error, "wallet_owned_by_other_account");
+  assert.equal((await getLinkedWallet({ accountId: firstAccount })).status, "linked");
+  assert.equal((await findLinkedWalletOwner({ address: firstAddress })).accountId, firstAccount);
+  const syncConflict = await registerPftlSyncWallet({ walletAddress: firstAddress, accountId: secondAccount });
+  assert.equal(syncConflict.error, "wallet_sync_account_conflict");
+  assert.equal((await registerPftlSyncWallet({ walletAddress: firstAddress, accountId: firstAccount })).ok, true);
 
   const relinked = await linkWalletToAccount({
     accountId: secondAccount,
@@ -90,8 +96,9 @@ try {
   assert.equal(delinked.ok, true);
   assert.equal((await getLinkedWallet({ accountId: secondAccount })).status, "not_linked");
   assert.equal(await findLinkedWalletOwner({ address: secondAddress }), null);
-  console.log("account wallet repository smoke ok: durable metadata, serialized reclaim, relink, delink");
+  console.log("account wallet repository smoke ok: durable metadata, ownership conflict, relink, delink");
 } finally {
+  await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = ANY($1::text[])", [[firstAddress, secondAddress]]).catch(() => {});
   await query("DELETE FROM account_linked_wallets WHERE account_id = ANY($1::text[])", [[firstAccount, secondAccount, legacyAccount]]).catch(() => {});
   await query("DELETE FROM runtime_state_migrations WHERE name = 'account_wallets_to_postgres_v1'").catch(() => {});
   await closePool();

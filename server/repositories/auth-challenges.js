@@ -26,6 +26,8 @@ function payload(row) {
   return row?.payload_json && typeof row.payload_json === "object" ? row.payload_json : {};
 }
 
+const runtimeAddAccountIntents = new Map();
+
 function walletLoginChallengeCap() {
   const parsed = Number(process.env.TASKNODE_WALLET_LOGIN_CHALLENGE_CAP || 3000);
   return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, 10_000) : 3000;
@@ -103,10 +105,76 @@ export async function consumeOAuthState({ provider = "", stateId = "", peek = fa
   });
 }
 
+export async function createAddAccountIntent({ accountId = "", setId = "", expiresInSeconds = 600 } = {}) {
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + Math.min(Math.max(Number(expiresInSeconds) || 600, 60), 900) * 1000).toISOString();
+  const intent = {
+    id,
+    kind: "add_account",
+    accountId: String(accountId || "").trim(),
+    setId: String(setId || "").trim(),
+    createdAt,
+    expiresAt,
+  };
+  if (!databaseEnabled()) {
+    runtimeAddAccountIntents.set(id, intent);
+    return intent;
+  }
+  await query(
+    `INSERT INTO auth_challenges (
+       challenge_hash, kind, subject_key, payload_json, max_attempts, created_at, expires_at
+     ) VALUES ($1, 'account_add_intent', $2, $3::jsonb, 10, $4, $5)`,
+    [challengeHash(id), intent.accountId, JSON.stringify(intent), createdAt, expiresAt]
+  );
+  return intent;
+}
+
+export async function getAddAccountIntent(intentId = "") {
+  const id = String(intentId || "").trim();
+  if (!id) return null;
+  if (!databaseEnabled()) {
+    const intent = runtimeAddAccountIntents.get(id) || null;
+    if (!intent || Date.parse(intent.expiresAt) <= Date.now()) {
+      runtimeAddAccountIntents.delete(id);
+      return null;
+    }
+    return { ...intent };
+  }
+  const result = await query(
+    `SELECT payload_json, created_at, expires_at FROM auth_challenges
+      WHERE challenge_hash = $1 AND kind = 'account_add_intent'
+        AND consumed_at IS NULL AND replaced_at IS NULL AND expires_at > now()`,
+    [challengeHash(id)]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    ...payload(row),
+    id,
+    createdAt: new Date(row.created_at).toISOString(),
+    expiresAt: new Date(row.expires_at).toISOString(),
+  };
+}
+
+export async function consumeAddAccountIntent(intentId = "") {
+  const id = String(intentId || "").trim();
+  if (!id) return false;
+  if (!databaseEnabled()) return runtimeAddAccountIntents.delete(id);
+  const result = await query(
+    `UPDATE auth_challenges SET consumed_at = now()
+      WHERE challenge_hash = $1 AND kind = 'account_add_intent'
+        AND consumed_at IS NULL AND replaced_at IS NULL AND expires_at > now()`,
+    [challengeHash(id)]
+  );
+  return result.rowCount > 0;
+}
+
 export async function createEmailChallenge(options = {}) {
   if (!databaseEnabled()) return createRuntimeEmailChallenge(options);
   const id = options.id || randomUUID();
   const canonicalEmail = String(options.canonicalEmail || "").trim();
+  const purpose = String(options.purpose || "login");
   const createdAt = new Date().toISOString();
   const value = {
     email: options.email,
@@ -115,13 +183,16 @@ export async function createEmailChallenge(options = {}) {
     deliveryMode: options.deliveryMode,
     requestIp: String(options.requestIp || "").slice(0, 80),
     userAgent: String(options.userAgent || "").slice(0, 240),
+    purpose,
+    expectedAccountId: String(options.expectedAccountId || "").trim(),
   };
   await transaction(async (client) => {
     await client.query(
       `UPDATE auth_challenges SET replaced_at = now()
         WHERE kind = 'email_login' AND subject_key = $1
+          AND COALESCE(payload_json->>'purpose', 'login') = $2
           AND consumed_at IS NULL AND replaced_at IS NULL`,
-      [canonicalEmail]
+      [canonicalEmail, purpose]
     );
     await client.query(
       `INSERT INTO auth_challenges (
@@ -157,8 +228,8 @@ export async function getEmailChallenge(challengeId = "") {
   };
 }
 
-export async function consumeEmailChallenge({ challengeId = "", codeHash = "" } = {}) {
-  if (!databaseEnabled()) return consumeRuntimeEmailChallenge({ challengeId, codeHash });
+export async function consumeEmailChallenge({ challengeId = "", codeHash = "", purpose = "", expectedAccountId = "" } = {}) {
+  if (!databaseEnabled()) return consumeRuntimeEmailChallenge({ challengeId, codeHash, purpose, expectedAccountId });
   return transaction(async (client) => {
     const result = await client.query(
       `SELECT secret_hash, payload_json, attempts, max_attempts
@@ -170,6 +241,11 @@ export async function consumeEmailChallenge({ challengeId = "", codeHash = "" } 
     );
     const row = result.rows[0];
     if (!row) return { ok: false, error: "email_challenge_invalid" };
+    const value = payload(row);
+    if (purpose && value.purpose !== purpose) return { ok: false, error: "email_challenge_invalid" };
+    if (expectedAccountId && value.expectedAccountId !== expectedAccountId) {
+      return { ok: false, error: "email_challenge_invalid" };
+    }
     if (Number(row.attempts || 0) >= Number(row.max_attempts || 6)) {
       return { ok: false, error: "email_challenge_attempts_exceeded" };
     }
@@ -179,7 +255,7 @@ export async function consumeEmailChallenge({ challengeId = "", codeHash = "" } 
     }
     const consumedAt = new Date().toISOString();
     await client.query("UPDATE auth_challenges SET consumed_at = $2 WHERE challenge_hash = $1", [challengeHash(challengeId), consumedAt]);
-    return { ok: true, challenge: { id: challengeId, ...payload(row), consumedAt } };
+    return { ok: true, challenge: { id: challengeId, ...value, consumedAt } };
   });
 }
 

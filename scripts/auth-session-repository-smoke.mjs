@@ -26,6 +26,7 @@ try {
   sessionId = created.sessionId;
   assert.match(sessionId, /^[0-9a-f-]{36}$/i);
   assert.equal(created.session.accountId, accountId);
+  assert.equal("id" in created.session, false, "the bearer token must not be returned in the public session payload");
   assert.equal(authSessionStorageStatus().adapter, "postgres");
 
   const expectedHash = createHash("sha256").update(sessionId).digest("hex");
