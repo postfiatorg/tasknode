@@ -63,6 +63,7 @@ const [
   { handleAccountRoute },
   { contextEditProposalAction },
   { handleContextRewriteRoute },
+  { handleDeepResearchRoute },
   { handleProfileRoute },
   { handleProfileNftImageRoute, handleProfileNftPfpRoute },
   { handleMemoryRoute },
@@ -108,6 +109,7 @@ const [
   import("./account-routes.js"),
   import("./context-edit-actions.js"),
   import("./context-rewrite-actions.js"),
+  import("./deep-research-routes.js"),
   import("./profile-routes.js"),
   import("./profile-nft-image-proxy.js"),
   import("./memory-routes.js"),
@@ -796,6 +798,7 @@ async function routeApi(req, url, res) {
   }
 
   if (await handleContextRewriteRoute({ json, readJson, req, res, session, url })) return true;
+  if (await handleDeepResearchRoute({ json, readJson, req, res, session, url })) return true;
 
   if (url.pathname.startsWith("/api/context/edit/proposals/")) {
     const parts = url.pathname.split("/").filter(Boolean);

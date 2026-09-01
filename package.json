@@ -118,6 +118,7 @@
     "context-edit-smoke": "node scripts/context-edit-smoke.mjs",
     "context-rewrite-sample-smoke": "node scripts/context-rewrite-sample-smoke.mjs",
     "context-rewrite-live-smoke": "node scripts/context-rewrite-live-smoke.mjs",
+    "deep-research-boundary-smoke": "node scripts/deep-research-boundary-smoke.mjs",
     "ipfs-cid-inventory": "node scripts/ipfs-cid-inventory.mjs",
     "ipfs-cid-inventory-smoke": "node scripts/ipfs-cid-inventory-smoke.mjs",
     "ipfs-active-replay-window": "node scripts/ipfs-active-replay-window.mjs",

@@ -472,6 +472,145 @@
   line-height: 1.35;
 }
 
+.assistant-message.is-deep-research .assistant-source-label {
+  border-color: #cbd5e3;
+  background: #f1f5fa;
+  color: #294665;
+}
+
+.deep-research-card {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 620px);
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #dce3ec;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.deep-research-card-head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.deep-research-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #dce3ec;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #294665;
+}
+
+.deep-research-card-head strong,
+.deep-research-card-head small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.deep-research-card-head strong {
+  color: #202f42;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.deep-research-card-head small,
+.deep-research-privacy {
+  color: #647387;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.deep-research-card-head small {
+  margin-top: 2px;
+}
+
+.deep-research-privacy {
+  padding-top: 2px;
+  border-top: 1px solid #edf0f4;
+}
+
+.deep-research-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.deep-research-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid #d4dde8;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #294665;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.deep-research-card-actions button:hover {
+  border-color: #aebdd0;
+  background: #f4f7fb;
+}
+
+.deep-research-trace {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.deep-research-trace li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: #59697c;
+}
+
+.deep-research-trace-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border: 1px solid #cbd5e3;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.deep-research-trace li.is-running .deep-research-trace-dot {
+  border-color: #365f89;
+  background: #365f89;
+  box-shadow: 0 0 0 3px rgba(54, 95, 137, 0.12);
+}
+
+.deep-research-trace li.is-completed .deep-research-trace-dot {
+  border-color: #6d8ca9;
+  background: #6d8ca9;
+}
+
+.deep-research-trace li.is-failed .deep-research-trace-dot,
+.deep-research-trace li.is-cancelled .deep-research-trace-dot {
+  border-color: #ad4f4f;
+  background: #ad4f4f;
+}
+
+.deep-research-trace strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #28394c;
+  font-size: 12.5px;
+  line-height: 1.25;
+}
+
 .hive-context-status-message {
   align-self: center;
   max-width: min(620px, 88%);

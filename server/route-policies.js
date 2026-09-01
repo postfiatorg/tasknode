@@ -699,6 +699,22 @@ export const apiRoutePolicies = [
   { id: "context_edit_save", path: "/api/context/edit/save", methods: ["POST"], auth: "handler", body: requestBodies.contextSaveBody },
   { id: "context_edit_proposal", prefix: "/api/context/edit/proposals/", methods: ["POST"], auth: "handler", body: requestBodies.emptyRequestBody },
   {
+    id: "deep_research_create",
+    path: "/api/deep-research/jobs",
+    methods: ["POST"],
+    auth: "session",
+    rateLimit: { limit: 6, windowMs: tenMinutes },
+    body: requestBodies.deepResearchBody,
+  },
+  {
+    id: "deep_research_jobs",
+    prefix: "/api/deep-research/jobs/",
+    methods: ["GET", "POST"],
+    auth: "session",
+    rateLimit: { limit: 120, windowMs: tenMinutes },
+    bodies: { POST: requestBodies.emptyRequestBody },
+  },
+  {
     id: "context_rewrite_create",
     path: "/api/context/rewrite/jobs",
     methods: ["POST"],

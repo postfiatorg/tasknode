@@ -8,6 +8,7 @@ import {
   FileText,
   Paperclip,
   Pencil,
+  Search,
   X,
 } from "lucide-react";
 import { formatFileSize } from "../../chat-attachments";
@@ -205,6 +206,7 @@ export function AssistantMessage({
   const showToolbar = !message.pending && !message.error && !isHiveInputAck && !isHiveContextStatus;
   const proposal = message.metadata?.contextEdit?.proposal || null;
   const contextRewrite = message.metadata?.contextRewrite || null;
+  const deepResearch = message.metadata?.deepResearch || null;
 
   if (isHiveInputAck) return null;
 
@@ -268,6 +270,7 @@ export function AssistantMessage({
         saving={contextEditSavingId === proposal?.id}
       />
       <ContextRewriteArtifactCard contextRewrite={contextRewrite} />
+      <DeepResearchArtifactCard deepResearch={deepResearch} />
       {message.error && <div className="assistant-error">Response failed</div>}
       {showToolbar && (
         <MessageToolbar
@@ -276,6 +279,74 @@ export function AssistantMessage({
         />
       )}
     </article>
+  );
+}
+
+function DeepResearchArtifactCard({ deepResearch = null }) {
+  if (!deepResearch) return null;
+  const status = String(deepResearch.status || "").trim().toLowerCase();
+  const stage = String(deepResearch.stage || status || "running").replaceAll("_", " ");
+  const markdown = String(deepResearch.markdown || "");
+  const title = String(deepResearch.title || "Deep Research").trim() || "Deep Research";
+  const filename = String(deepResearch.filename || "deep-research-report.md").trim() || "deep-research-report.md";
+  const tasks = Array.isArray(deepResearch.progress?.tasks)
+    ? deepResearch.progress.tasks
+        .map((task, index) => ({
+          key: String(task?.step || index),
+          label: String(task?.step || "").trim(),
+          status: String(task?.status || "queued").trim().toLowerCase(),
+        }))
+        .filter((task) => task.label)
+    : [];
+  const usage = deepResearch.usage && typeof deepResearch.usage === "object" ? deepResearch.usage : {};
+  const cost = Number(usage.total_cost_usd);
+  const hasArtifact = status === "completed" && Boolean(markdown);
+  const lineCount = markdown ? markdown.split("\n").length : 0;
+  const subtitle = hasArtifact
+    ? `${lineCount} Markdown lines ready${Number.isFinite(cost) ? ` · $${cost.toFixed(4)}` : ""}`
+    : status === "failed"
+      ? deepResearch.error || "Research did not complete."
+      : status === "cancelled"
+        ? "Research cancelled."
+        : `Research ${stage} · safe to leave and return`;
+
+  return (
+    <div className={`deep-research-card is-${status || "running"}`}>
+      <div className="deep-research-card-head">
+        <span className="deep-research-icon">
+          <Search size={16} strokeWidth={1.8} />
+        </span>
+        <div>
+          <strong>{title}</strong>
+          <small>{subtitle}</small>
+        </div>
+      </div>
+      {tasks.length > 0 && (
+        <ol className="deep-research-trace">
+          {tasks.map((task) => (
+            <li className={`is-${task.status}`} key={task.key}>
+              <span className="deep-research-trace-dot" aria-hidden="true" />
+              <span><strong>{task.label}</strong></span>
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="deep-research-privacy">
+        {String(deepResearch.privacy || "Provider-backed web research")}
+      </div>
+      {hasArtifact && (
+        <div className="deep-research-card-actions">
+          <button onClick={() => copyText(markdown)} type="button">
+            <Copy size={14} strokeWidth={1.8} />
+            Copy Markdown
+          </button>
+          <button onClick={() => downloadTextFile({ filename, text: markdown })} type="button">
+            <Download size={14} strokeWidth={1.8} />
+            Download .md
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -470,6 +541,15 @@ function assistantSourceLabel(metadata = {}) {
       title: metadata.taskId ? `Orc signal for ${metadata.taskId}` : "Orc agent Hive signal",
     };
   }
+  if (metadata?.kind === "deep_research") {
+    const research = metadata.deepResearch || {};
+    return {
+      kind: "deep-research",
+      label: "Deep Research",
+      meta: research.status ? String(research.status).replaceAll("_", " ") : "",
+      title: "Private Corbanu deep research job",
+    };
+  }
   if (metadata?.kind === "context_rewrite") {
     const rewrite = metadata.contextRewrite || {};
     return {
@@ -502,6 +582,14 @@ function thinkingSteps(message) {
   }
   if (message.pending && message.metadata?.kind === "context_edit") {
     return ["Reading your context document", "Locating the edit", "Preparing a proposal"];
+  }
+  if (message.pending && message.metadata?.kind === "deep_research") {
+    const tasks = message.metadata?.deepResearch?.progress?.tasks;
+    if (Array.isArray(tasks) && tasks.length > 0) {
+      return tasks
+        .map((task) => `${String(task?.step || "Research step")}: ${String(task?.status || "queued").replaceAll("_", " ")}`);
+    }
+    return ["Planning research", "Searching primary sources", "Reading evidence", "Synthesizing findings", "Preparing citations"];
   }
   if (message.pending && message.metadata?.kind === "context_rewrite") {
     const trace = contextRewriteTrace(message.metadata?.contextRewrite);
