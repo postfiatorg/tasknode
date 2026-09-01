@@ -382,9 +382,10 @@ function sessionState(session, providers, runtimeReadiness, linkedWallet, identi
     };
   }
 
+  const { id: _sessionToken, deviceAccountSetId: _deviceAccountSetId, ...publicSession } = session;
   return {
     ...base,
-    ...session,
+    ...publicSession,
     status: "signed_in",
     displayName: identityProfile?.displayName || session.displayName,
     hiveHandle: identityProfile?.hiveHandle || session.hiveHandle || "",

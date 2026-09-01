@@ -16,6 +16,7 @@ import {
   claimNetworkTaskProfileJobs,
   completeNetworkTaskProfileJob,
   enqueueNetworkTaskProfilesForRewardedAccounts,
+  enqueueNetworkTaskProfilesForRoutingAccounts,
   failNetworkTaskProfileJob,
   networkTaskProfilePromptVersion,
 } from "./repositories/network-task-profile.js";
@@ -444,16 +445,31 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
       Math.max(Number(process.env.TASKNODE_NETWORK_TASK_PROFILE_AUTO_QUEUE_LIMIT || 2), 1),
       10
     );
-    const seedResult = await enqueueNetworkTaskProfilesForRewardedAccounts({
+    const routingSeedResult = await enqueueNetworkTaskProfilesForRoutingAccounts({
       limit: seedLimit,
-      reason: "rewarded_task_threshold_worker",
+      reason: "routing_account_worker",
     }).catch((error) => ({
       queuedCount: 0,
       failedCount: 1,
       error: error?.message || String(error),
     }));
-    networkProfileSeeded = Number(seedResult.queuedCount || 0);
-    networkProfileSeedFailed = Number(seedResult.failedCount || 0);
+    const rewardedSeedLimit = Math.max(0, seedLimit - Number(routingSeedResult.queuedCount || 0));
+    const rewardedSeedResult = rewardedSeedLimit > 0
+      ? await enqueueNetworkTaskProfilesForRewardedAccounts({
+        limit: rewardedSeedLimit,
+        reason: "rewarded_task_threshold_worker",
+      }).catch((error) => ({
+        queuedCount: 0,
+        failedCount: 1,
+        error: error?.message || String(error),
+      }))
+      : { queuedCount: 0, failedCount: 0 };
+    networkProfileSeeded =
+      Number(routingSeedResult.queuedCount || 0) +
+      Number(rewardedSeedResult.queuedCount || 0);
+    networkProfileSeedFailed =
+      Number(routingSeedResult.failedCount || 0) +
+      Number(rewardedSeedResult.failedCount || 0);
 
     const networkJobs = await claimNetworkTaskProfileJobs({ limit: 1 });
     networkProfileClaimed = networkJobs.length;

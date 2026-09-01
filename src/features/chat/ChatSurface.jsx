@@ -24,12 +24,17 @@ export function ChatSurface({
   walletSecret = null, walletUnlockPending = false, walletVault = {},
 }) {
   const signedOut = !accountId;
+  const activeRequestAbortRef = useRef(null);
   const allModes = chat?.modes || [];
   const modes = signedOut ? allModes.filter((mode) => mode.label === "Help") : allModes;
   const messages = useMemo(() => chat?.seedMessages || [], [chat?.seedMessages]);
   const defaultMode = signedOut
     ? modes.find((mode) => mode.label === "Help" && mode.enabled)?.label || "Help"
     : chat?.defaultMode || "Instant";
+  useEffect(() => () => {
+    activeRequestAbortRef.current?.abort();
+    activeRequestAbortRef.current = null;
+  }, []);
   const isHiveChat = activeChat?.kind === "hive";
   const [turns, setTurns] = useState(() => normalizeChatMessages(messages));
   // The user's chosen chat mode is a preference, not view state. It must
@@ -453,6 +458,11 @@ export function ChatSurface({
   async function submitMessage(event) {
     event.preventDefault();
     if (sending) return;
+    if (activeChat?.readOnly) {
+      setSendMessage("Historical conversations are read-only. Start a new chat to continue.");
+      setStatusTone("muted");
+      return;
+    }
     const message = input.trim();
     if (!message && attachments.length === 0) return;
     if (activeModality?.requiresQuestion && !message) {
@@ -709,6 +719,9 @@ export function ChatSurface({
         attachments: serializeChatAttachments(submittedAttachments),
         clientHistory: signedOut && !isContextEdit ? clientHistoryPayloadFromTurns(turns) : undefined,
       };
+      const requestController = new AbortController();
+      activeRequestAbortRef.current?.abort();
+      activeRequestAbortRef.current = requestController;
       const result = usage?.chatStreamPath && !isContextEdit
         ? await requestEventStream(
             usage.chatStreamPath,
@@ -716,6 +729,7 @@ export function ChatSurface({
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify(chatPayload),
+              signal: requestController.signal,
             },
             ({ event, body }) => {
               if (event === "delta" && body?.delta) {
@@ -744,6 +758,7 @@ export function ChatSurface({
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(chatPayload),
+            signal: requestController.signal,
           });
       setActualUsage(result.body?.usage || null);
       if (result.ok && result.body?.assistant) {
@@ -790,6 +805,7 @@ export function ChatSurface({
         setStatusTone("error");
       }
     } catch (error) {
+      if (error?.name === "AbortError" || activeRequestAbortRef.current?.signal?.aborted) return;
       const failureMessage = error?.message || "Chat execution is unavailable.";
       setTurns((current) =>
         replaceTurnById(
@@ -803,6 +819,7 @@ export function ChatSurface({
       setSendMessage(failureMessage);
       setStatusTone("error");
     } finally {
+      activeRequestAbortRef.current = null;
       setSending(false);
     }
   }
@@ -960,11 +977,14 @@ export function ChatSurface({
   const displayState = chatSurfaceDisplayState({ activeChat, turns, historyLoading });
   const activePersona = chatPersonaDefinition(selectedPersona);
   const activeModality = chatPersonaIsModality(selectedPersona) ? activePersona : null;
+  const historicalReadOnly = Boolean(activeChat?.readOnly);
   const hasPromptInput = activeModality?.requiresQuestion
     ? input.trim().length > 0
     : input.trim().length > 0 || attachments.length > 0;
   const composerExpanded = input.length > 0;
-  const composerPlaceholder = taskRequestMode
+  const composerPlaceholder = historicalReadOnly
+    ? "Historical conversation is read-only"
+    : taskRequestMode
     ? TASK_REQUEST_PLACEHOLDER
     : contextRewriteMode
       ? CONTEXT_REWRITE_PLACEHOLDER
@@ -1073,7 +1093,7 @@ export function ChatSurface({
           <div className="plus-picker composer-plus" ref={plusRef}>
             <button
               className="composer-icon"
-              disabled={signedOut}
+              disabled={signedOut || historicalReadOnly}
               onClick={() => {
                 if (signedOut) return;
                 setModelMenuOpen(false);
@@ -1248,6 +1268,7 @@ export function ChatSurface({
             ref={inputRef}
             aria-label={composerPlaceholder}
             className="composer-input"
+            disabled={historicalReadOnly}
             onChange={(event) => setInput(event.target.value)}
             onPaste={handleComposerPaste}
             onKeyDown={(event) => {
@@ -1309,7 +1330,7 @@ export function ChatSurface({
                 </div>
               )}
             </div>
-            <ComposerSendButton disabled={!hasPromptInput || sending} />
+            <ComposerSendButton disabled={historicalReadOnly || !hasPromptInput || sending} />
           </div>
         </div>
       </form>

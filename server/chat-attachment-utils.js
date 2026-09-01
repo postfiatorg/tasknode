@@ -1,5 +1,12 @@
-export const maxChatAttachments = 4;
-export const maxAttachmentDataUrlBytes = 6 * 1024 * 1024;
+import {
+  CHAT_ATTACHMENT_MAX_COUNT,
+  CHAT_ATTACHMENT_MAX_DATA_URL_BYTES,
+  CHAT_ATTACHMENT_MAX_FILE_BYTES,
+} from "../shared/chat-attachment-policy.js";
+
+export const maxChatAttachments = CHAT_ATTACHMENT_MAX_COUNT;
+export const maxAttachmentDataUrlBytes = CHAT_ATTACHMENT_MAX_DATA_URL_BYTES;
+export const maxChatAttachmentFileBytes = CHAT_ATTACHMENT_MAX_FILE_BYTES;
 export const maxTextAttachmentCharacters = 40_000;
 
 function dataUrlParts(dataUrl = "") {
@@ -58,6 +65,13 @@ function attachmentError({ attachment, code, index, message }) {
 function hasValidBase64Body(body = "") {
   const normalized = String(body || "").replace(/\s+/g, "");
   return /^[A-Za-z0-9+/]*={0,2}$/.test(normalized);
+}
+
+function decodedDataUrlByteLength(parts) {
+  if (parts.metadata.includes(";base64")) {
+    return Buffer.from(parts.body, "base64").byteLength;
+  }
+  return Buffer.byteLength(decodeURIComponent(parts.body), "utf8");
 }
 
 export function validateChatAttachments(attachments = []) {
@@ -136,6 +150,25 @@ export function validateChatAttachments(attachments = []) {
         code: "text_attachment_unreadable",
         index,
         message: `${name} could not be read as text.`,
+      }));
+      continue;
+    }
+
+    try {
+      if (decodedDataUrlByteLength(parts) > maxChatAttachmentFileBytes) {
+        errors.push(attachmentError({
+          attachment,
+          code: "attachment_too_large",
+          index,
+          message: `${name} is larger than the chat attachment limit.`,
+        }));
+      }
+    } catch {
+      errors.push(attachmentError({
+        attachment,
+        code: "invalid_data_url",
+        index,
+        message: `${name} is not a valid attachment payload.`,
       }));
     }
   }

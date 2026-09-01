@@ -212,6 +212,37 @@ for (const routeId of [
   assert.ok(route?.body?.schema?.required?.length, `${routeId} must retain a typed body contract`);
 }
 
+const passwordEnableStartPolicy = apiRoutePolicies.find((candidate) => candidate.id === "account_password_enable_start");
+assert.deepEqual(validateJsonDocument({}, passwordEnableStartPolicy.body.schema), {});
+assert.throws(
+  () => validateJsonDocument({ email: "must-not-be-required@example.com" }, passwordEnableStartPolicy.body.schema),
+  /request_body_field_unknown/,
+  "password enable start must not accept an email dependency"
+);
+const passwordEnableVerifyPolicy = apiRoutePolicies.find((candidate) => candidate.id === "account_password_enable_verify");
+const walletAuthorizedPassword = {
+  challengeId: "challenge",
+  address: "rLinkedWallet",
+  publicKey: "EDPublicKey",
+  signature: "wallet-signature",
+  password: "account-password",
+};
+assert.deepEqual(
+  validateJsonDocument(walletAuthorizedPassword, passwordEnableVerifyPolicy.body.schema),
+  walletAuthorizedPassword
+);
+assert.throws(
+  () => validateJsonDocument({ challengeId: "challenge", code: "12345678", password: "account-password" }, passwordEnableVerifyPolicy.body.schema),
+  /request_body_field_required/,
+  "an email code must not authorize password enablement"
+);
+const passwordResetVerifyPolicy = apiRoutePolicies.find((candidate) => candidate.id === "auth_password_reset_verify");
+assert.deepEqual(
+  validateJsonDocument({ challengeId: "challenge", code: "12345678", password: "account-password" }, passwordResetVerifyPolicy.body.schema),
+  { challengeId: "challenge", code: "12345678", password: "account-password" },
+  "optional email recovery must retain its separate schema"
+);
+
 for (const routeId of ["task_action", "task_submission"]) {
   const route = apiRoutePolicies.find((candidate) => candidate.id === routeId);
   const contract = routeBodyPolicyForRequest(route, "POST", route.path);

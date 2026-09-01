@@ -492,8 +492,8 @@ assert.match(deepSeekRequestSerialized, /Request task button creates user-reques
 assert.match(deepSeekRequestSerialized, /Do not tell a user that completing personal or engineering tasks is required/);
 assert.match(deepSeekRequestSerialized, /generated automatically by the Memory worker/);
 assert.match(deepSeekRequestSerialized, /Never tell a user to find, request, or apply for a Network Diagnostic Report/);
-assert.match(deepSeekRequestSerialized, /queued automatically after the account's second positively rewarded task/);
-assert.match(deepSeekRequestSerialized, /opening Memory generates the same report without any task history/);
+assert.match(deepSeekRequestSerialized, /queued automatically for signed-in accounts with an active linked PFT wallet/);
+assert.match(deepSeekRequestSerialized, /never needs to open Memory or refresh a tab/);
 assert.match(deepSeekRequestSerialized, /network_task_eligibility/);
 assert.match(deepSeekRequestSerialized, /Do not offer to generate a personal task as a fallback/);
 assert.match(deepSeekRequestSerialized, /another contributor's outstanding Network Task globally prevents this user/);

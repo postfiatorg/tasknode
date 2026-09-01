@@ -75,6 +75,7 @@ try {
     walletCreateStart,
     walletLinkStart,
     walletLinkVerify,
+    walletRelinkStart,
     usageTopUpStart,
     usageTopUpSync,
   } = await import("../server/product-contracts.js");
@@ -166,6 +167,7 @@ try {
   const createLinkedWallet = getLinkedWallet({ accountId: createFlowAccount.id });
   if (
     createStart.status !== 200 ||
+    createStart.body.challenge.accountId !== createFlowAccount.id ||
     createStart.body.challenge.purpose !== "wallet_create" ||
     createVerify.status !== 200 ||
     createLinkedWallet.status !== "linked" ||
@@ -204,8 +206,12 @@ try {
   const linkProof = signWalletChallenge(generateTaskNodeMnemonic(), linkStart.body.challenge.message);
   const linkVerify = await walletLinkVerify({ challengeId: linkStart.body.challenge.id, address: linkProof.address, publicKey: linkProof.publicKey, signature: linkProof.signature }, "POST", linkFlowSession.session);
   const linkLinkedWallet = getLinkedWallet({ accountId: linkFlowAccount.id });
-  if (linkStart.status !== 200 || linkStart.body.challenge.purpose !== "wallet_link" || linkVerify.status !== 200 || linkLinkedWallet.status !== "linked" || linkLinkedWallet.address !== linkProof.address) {
+  if (linkStart.status !== 200 || linkStart.body.challenge.accountId !== linkFlowAccount.id || linkStart.body.challenge.purpose !== "wallet_link" || linkVerify.status !== 200 || linkLinkedWallet.status !== "linked" || linkLinkedWallet.address !== linkProof.address) {
     throw new Error(`Link wallet flow did not persist linked proof: ${JSON.stringify({ linkStart, linkVerify, linkLinkedWallet })}`);
+  }
+  const relinkStart = await walletRelinkStart("POST", linkFlowSession.session);
+  if (relinkStart.status !== 200 || relinkStart.body.challenge.accountId !== linkFlowAccount.id || relinkStart.body.challenge.purpose !== "wallet_relink") {
+    throw new Error(`Relink wallet challenge lost its account binding: ${JSON.stringify(relinkStart)}`);
   }
   const retryAfterLink = await walletActionStart("/api/wallet/initiation/retry", "POST", linkFlowSession.session, { localVaultConfirmed: true });
   if (retryAfterLink.status !== 409 || retryAfterLink.body?.initiationGift?.reason !== "wallet_create_proof_required") {

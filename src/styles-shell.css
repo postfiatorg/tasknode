@@ -790,6 +790,91 @@ button {
   font-weight: 500;
 }
 
+.profile-account-list {
+  display: grid;
+  max-height: 188px;
+  overflow-y: auto;
+  border-top: 1px solid #f0eee8;
+  border-bottom: 1px solid #f0eee8;
+}
+
+.profile-account-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.profile-account-row > button:first-child {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: #0d0d0d;
+  text-align: left;
+}
+
+.profile-account-row > button:first-child:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.profile-account-row > button:first-child:disabled {
+  color: inherit;
+  cursor: default;
+}
+
+.profile-account-row > button:first-child > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.profile-account-row strong,
+.profile-account-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-account-row strong {
+  font-size: 12.5px;
+  font-weight: 550;
+}
+
+.profile-account-row small {
+  color: #77736b;
+  font-size: 10.5px;
+}
+
+.profile-account-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #eceae4;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.profile-account-row.selected {
+  background: #f7f6f2;
+}
+
+.profile-account-remove {
+  width: 34px;
+  border: 0;
+  background: transparent;
+  color: #9b2c2c;
+}
+
+.profile-account-remove:hover:not(:disabled) {
+  background: #fff1f1;
+}
+
 .menu-count {
   display: inline-flex;
   align-items: center;
@@ -913,6 +998,18 @@ button {
   min-width: 0;
   min-height: 0;
   background: #faf9f6;
+}
+
+.account-transition-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: rgba(250, 249, 246, 0.94);
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .mobile-route-nav {

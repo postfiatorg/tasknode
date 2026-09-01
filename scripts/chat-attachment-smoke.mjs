@@ -6,8 +6,14 @@ import {
 } from "../server/chat-router.js";
 import {
   maxAttachmentDataUrlBytes,
+  maxChatAttachmentFileBytes,
   validateChatAttachments,
 } from "../server/chat-attachment-utils.js";
+import { prepareAmbientChatAttachments } from "../server/ambient-attachments.js";
+import {
+  decodeEvidenceDataUrl,
+  MAX_EVIDENCE_FILE_BYTES,
+} from "../server/evidence-file-extraction.js";
 
 const longText = Array.from(
   { length: 12 },
@@ -78,6 +84,43 @@ const unreadableTextAttachment = validateChatAttachments([
 assert.equal(unreadableTextAttachment.ok, false);
 assert.equal(unreadableTextAttachment.status, 400);
 assert.equal(unreadableTextAttachment.errors[0].code, "text_attachment_unreadable");
+
+const chatLimitDocumentBytes = Buffer.alloc(maxChatAttachmentFileBytes, "a");
+const chatLimitDocument = {
+  name: "four-megabyte-notes.md",
+  mimeType: "application/octet-stream",
+  size: chatLimitDocumentBytes.byteLength,
+  dataUrl: `data:application/octet-stream;base64,${chatLimitDocumentBytes.toString("base64")}`,
+};
+assert.equal(
+  maxChatAttachmentFileBytes > MAX_EVIDENCE_FILE_BYTES,
+  true,
+  "Chat files should no longer inherit the smaller task-evidence limit"
+);
+assert.equal(
+  validateChatAttachments([chatLimitDocument]).ok,
+  true,
+  "Chat preflight should accept a decoded file at the advertised 4 MB limit"
+);
+const preparedChatLimitDocument = await prepareAmbientChatAttachments([chatLimitDocument]);
+assert.equal(preparedChatLimitDocument[0]?.kind, "text");
+assert.equal(preparedChatLimitDocument[0]?.extraction?.parser, "utf8_text");
+assert.throws(
+  () => decodeEvidenceDataUrl(chatLimitDocument.dataUrl),
+  (error) => error?.message === "evidence_file_too_large" && error?.status === 413,
+  "Task evidence should retain its independent 2.5 MB limit"
+);
+
+const aboveChatLimitBytes = Buffer.alloc(maxChatAttachmentFileBytes + 1, "a");
+const aboveChatLimit = validateChatAttachments([{
+  ...chatLimitDocument,
+  name: "over-four-megabytes.md",
+  size: aboveChatLimitBytes.byteLength,
+  dataUrl: `data:application/octet-stream;base64,${aboveChatLimitBytes.toString("base64")}`,
+}]);
+assert.equal(aboveChatLimit.ok, false);
+assert.equal(aboveChatLimit.status, 413);
+assert.equal(aboveChatLimit.errors[0].code, "attachment_too_large");
 
 const openAiTextInput = openAiInput({
   conversationId: "chat-attachment-smoke",

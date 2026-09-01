@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import { transaction } from "./db/pool.js";
 import { enqueueRewardedTaskMemoryForTask } from "./repositories/task-reward-memory.js";
+import { enqueueTeamContextReportsForRewardedAccount } from "./repositories/team-context.js";
 import {
   syncNetworkTaskAllocationMirrors,
   terminalNetworkTaskStatuses,
@@ -782,6 +783,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
   return {
     ok: true,
     source: DIRECT_WRITE_SOURCE,
+    accountId: safeText(accountId, 180),
     transition: normalizedTransition,
     eventInserted,
     terminalPreserved: projectionUpdate.rows[0]?.terminal_preserved === true,
@@ -796,13 +798,24 @@ export async function applyOffchainTaskTransition(input = {}) {
     result = await applyOffchainTaskTransitionWithClient(client, input);
   });
   if (safeText(input.transition, 80).toLowerCase() === "rewarded") {
-    result.rewardedTaskMemory = await enqueueRewardedTaskMemoryForTask({
-      taskId: safeText(input.task?.task_id || input.task?.taskId, 180),
-    }).catch((error) => ({
-      queued: false,
-      reason: "rewarded_task_memory_enqueue_failed",
-      error: safeText(error?.message || error, 1000),
-    }));
+    const [rewardedTaskMemory, teamContext] = await Promise.all([
+      enqueueRewardedTaskMemoryForTask({
+        taskId: safeText(input.task?.task_id || input.task?.taskId, 180),
+      }).catch((error) => ({
+        queued: false,
+        reason: "rewarded_task_memory_enqueue_failed",
+        error: safeText(error?.message || error, 1000),
+      })),
+      enqueueTeamContextReportsForRewardedAccount({
+        subjectAccountId: safeText(result.accountId || input.task?.account_id || input.task?.accountId, 180),
+      }).catch((error) => ({
+        queuedCount: 0,
+        reason: "team_context_enqueue_failed",
+        error: safeText(error?.message || error, 1000),
+      })),
+    ]);
+    result.rewardedTaskMemory = rewardedTaskMemory;
+    result.teamContext = teamContext;
   }
   return result;
 }

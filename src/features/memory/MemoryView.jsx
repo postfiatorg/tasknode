@@ -238,7 +238,7 @@ export function MemoryView({ session }) {
           <strong>{activeTab === "memory" ? "No diagnostic report yet" : "No deep memory yet"}</strong>
           <p>
             {activeTab === "memory"
-              ? "Open Memory or refresh to queue the first generated report."
+              ? "Task Node queues the first report automatically. Refresh only checks the latest status."
               : "Completed chat responses will appear here after background compression."}
           </p>
         </section>
@@ -425,7 +425,7 @@ function NetworkTaskProfilePanel({
             <p className="memory-muted">
               {pending
                 ? "A diagnostic report generation job is queued. The live inputs below are already current."
-                : "Open Memory or refresh to queue the first generated report."}
+                : "Task Node queues the first report automatically. Refresh only checks the latest status."}
             </p>
           </div>
         )}

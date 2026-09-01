@@ -47,9 +47,9 @@ const PLAIN_STATUS = {
     explanation: "An active Network Task is already consuming this account's Network Task capacity.",
   },
   profile_required: {
-    label: "Needs more task history",
-    tone: "action",
-    explanation: "Your Network Diagnostic Report has not been generated yet; it is queued automatically after your second positively rewarded task, or immediately when you open Memory.",
+    label: "Report queueing",
+    tone: "pending",
+    explanation: "Your Network Diagnostic Report has not been generated yet. Task Node queues it automatically; no tab visit or manual refresh is required.",
   },
   badge_required: {
     label: "Capacity blocked",
@@ -57,14 +57,14 @@ const PLAIN_STATUS = {
     explanation: "Network Task routing needs a verified operating badge. Open Profile to qualify for KOL, Core Contributor, QA Worker, Expert, or Project Leader.",
   },
   profile_pending: {
-    label: "Needs more task history",
+    label: "Report processing",
     tone: "pending",
     explanation: "Your Network Diagnostic Report is queued or processing; routing resumes evaluation when it completes.",
   },
   profile_failed: {
-    label: "Needs more task history",
-    tone: "action",
-    explanation: "The last Network Diagnostic Report job failed, so Board Manager has no routing profile for this account.",
+    label: "Report retrying",
+    tone: "pending",
+    explanation: "The last Network Diagnostic Report job failed. Task Node retries it automatically; no tab visit or manual refresh is required.",
   },
   wallet_sync_pending: {
     label: "Wallet sync in progress",

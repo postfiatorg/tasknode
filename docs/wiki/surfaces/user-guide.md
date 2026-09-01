@@ -429,7 +429,7 @@ Contributor badges are the routing lanes for Network Tasks. They are not just pr
 
 If the eligibility panel or Help says `Network Task badge required`, the user is not being routed because no verified operating badge is available for the account. The next step is Profile: qualify or verify at least one routing badge. Having a good profile, a linked wallet, or prior rewarded personal tasks does not by itself route a Network Task if the required badge lane is missing.
 
-The Network Diagnostic Report is generated automatically; there is no way to request it from Hive, Board Manager, or a person. The app queues it after the user's second positively rewarded task (rewarded personal tasks count), and opening the Memory page also queues it right away when the user does not have one yet. If routing looks stuck, the usual fix is: link a PFT wallet, wait for the wallet to finish syncing, then open Memory so the report generates. Do not tell the user that completing personal tasks is required for Network Tasks; rewarded tasks only trigger the report automatically, and opening Memory produces the same report without any task history.
+The Network Diagnostic Report is generated automatically; there is no way to request it from Hive, Board Manager, or a person. Task Node queues it for signed-in accounts with an active linked PFT wallet, and eligibility reads self-heal a missing report server-side. Users do not need to open Memory or refresh a tab. If routing looks stuck, link a PFT wallet, wait for wallet sync, qualify an operating badge on Profile, and let the report worker finish. Personal task history can improve or refresh routing context, but completing personal tasks is not required for Network Task eligibility.
 
 ### How To Explain It
 

@@ -541,7 +541,7 @@ const eligibilityPromptText = formatHiveAccountLiveStateForPrompt({
   networkTaskEligibility: {
     status: "profile_required",
     label: "Network profile required",
-    nextAction: "Open Memory and refresh the Network Diagnostic Report.",
+    nextAction: "No action is required. Task Node queues the Network Diagnostic Report automatically.",
     walletLinked: true,
     walletSynced: true,
     diagnosticReportStatus: "missing",
@@ -554,7 +554,7 @@ const eligibilityPromptText = formatHiveAccountLiveStateForPrompt({
 assert.match(eligibilityPromptText, /network_task_eligibility: status=profile_required/);
 assert.match(eligibilityPromptText, /wallet_linked=yes \| wallet_synced=yes \| diagnostic_report=missing .*capacity_available=yes/);
 assert.match(eligibilityPromptText, /rewarded_tasks=1\/2 toward automatic Network Diagnostic Report generation/);
-assert.match(eligibilityPromptText, /blocked gates: routing_profile=action_required \| next_action=Open Memory and refresh the Network Diagnostic Report\./);
+assert.match(eligibilityPromptText, /blocked gates: routing_profile=action_required \| next_action=No action is required\. Task Node queues the Network Diagnostic Report automatically\./);
 assert.match(eligibilityPromptText, /Answer Network Task eligibility questions from the network_task_eligibility lines above/);
 
 const routableEligibilityPromptText = formatHiveAccountLiveStateForPrompt({

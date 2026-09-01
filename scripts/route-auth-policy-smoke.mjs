@@ -7,6 +7,7 @@ import { apiRoutePolicies, routePolicyForPath } from "../server/route-policies.j
 
 const registeredRouteHandlerFiles = [
   "../server/index.js",
+  "../server/account-auth-routes.js",
   "../server/task-routes.js",
   "../server/tasknode-terminal-routes.js",
   "../server/account-routes.js",

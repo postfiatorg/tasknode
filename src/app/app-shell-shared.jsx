@@ -10,8 +10,10 @@ export function taskLifecycleDirectOffchain(config = {}) {
   return Boolean(config?.taskLifecycle?.offchainEnabled && !config?.taskLifecycle?.dualWrite);
 }
 
-export const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
-export const CHAT_ATTACHMENT_MAX_COUNT = 4;
+export {
+  CHAT_ATTACHMENT_MAX_COUNT,
+  CHAT_ATTACHMENT_MAX_FILE_BYTES as CHAT_ATTACHMENT_MAX_BYTES,
+} from "../../shared/chat-attachment-policy.js";
 export const CHAT_PASTE_ATTACHMENT_THRESHOLD = 200;
 export const CHAT_COMPOSER_MAX_HEIGHT = 220;
 export const CHAT_SCROLL_BOTTOM_THRESHOLD = 96;

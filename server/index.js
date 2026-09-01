@@ -15,7 +15,6 @@ import {
   runtimeConfigScript,
   securityHeaders,
   serveStatic,
-  sessionCookie,
   writeSse,
 } from "./server-http-boundary.js";
 installProcessHardening();
@@ -40,7 +39,7 @@ const [
     conversationIdForSession,
     sessionCookieName,
   },
-  { destroySession, getSession },
+  { getSession },
   { migrateLegacyRuntimeAuthority },
   { getLinkedWallet },
   {
@@ -81,6 +80,7 @@ const [
   { startRealtimeNotificationListener, subscribeRealtimeEvents },
   { agentOriginForWalletSession },
   { startBackgroundWorkerKeepalive },
+  { authResultHeaders, currentAuthIntent, handleAccountAuthRoutes },
 ] = await Promise.all([
   import("node:http"),
   import("./app-state.js"),
@@ -126,6 +126,7 @@ const [
   import("./app-realtime.js"),
   import("./agent-origin.js"),
   import("./background-worker-liveness.js"),
+  import("./account-auth-routes.js"),
 ]);
 
 const port = Number(process.env.PORT || 8080);
@@ -188,7 +189,7 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/auth/dev/start") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = await authDevStart(payload, req.method);
-    const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
+    const headers = await authResultHeaders(req, result, { clearAccountAddIntent: Boolean(result.sessionId) });
     json(res, result.status, result.body, headers);
     return true;
   }
@@ -206,10 +207,12 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/auth/email/verify") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = await authEmailVerify(payload, req.method);
-    const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
+    const headers = await authResultHeaders(req, result, { clearAccountAddIntent: Boolean(result.sessionId) });
     json(res, result.status, result.body, headers);
     return true;
   }
+
+  if (await handleAccountAuthRoutes({ req, res, url, session, sessionId })) return true;
 
   if (url.pathname === "/api/auth/wallet/start") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
@@ -237,33 +240,8 @@ async function routeApi(req, url, res) {
       windowMs: 10 * 60_000,
     })) return true;
     const result = await authWalletVerify(payload, req.method);
-    const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
+    const headers = await authResultHeaders(req, result, { clearAccountAddIntent: Boolean(result.sessionId) });
     json(res, result.status, result.body, headers);
-    return true;
-  }
-
-  if (url.pathname === "/api/auth/logout") {
-    if (req.method !== "POST") {
-      json(res, 405, {
-        ok: false,
-        error: "auth_logout_method_not_allowed",
-        message: "Logout requires POST.",
-        actionRequired: "Send logout requests with POST.",
-      });
-      return true;
-    }
-
-    await destroySession(cookieValue(req, sessionCookieName));
-    json(
-      res,
-      200,
-      {
-        ok: true,
-        action: "auth_logout",
-        message: "Signed out.",
-      },
-      { "set-cookie": expiredSessionCookie(req) }
-    );
     return true;
   }
 
@@ -298,11 +276,13 @@ async function routeApi(req, url, res) {
   }
 
   if (parts[0] === "api" && parts[1] === "auth" && parts[2] === "start" && parts[3]) {
+    const authIntent = await currentAuthIntent(req);
     const result = await authStart(parts[3], {
       origin: requestOrigin(req),
       redirectPath: url.searchParams.get("redirect") || "/",
       proof: url.searchParams.get("proof") || "",
-      session,
+      session: authIntent === "add_account" ? null : session,
+      authIntent,
     });
     json(res, result.status, result.body, responseHeadersForAuthResult(req, result));
     return true;
@@ -318,7 +298,7 @@ async function routeApi(req, url, res) {
         oauthState: cookieValue(req, oauthStateCookieName(providerId)),
       }
     );
-    const headers = responseHeadersForAuthResult(req, result);
+    const headers = await authResultHeaders(req, result, { clearAccountAddIntent: Boolean(result.sessionId) });
     if (result.status >= 300 && result.status < 400 && result.redirectLocation) {
       res.writeHead(result.status, {
         "cache-control": "no-store",
@@ -333,11 +313,13 @@ async function routeApi(req, url, res) {
   }
 
   if (parts[0] === "api" && parts[1] === "auth" && parts[3] === "start") {
+    const authIntent = await currentAuthIntent(req);
     const result = await authStart(parts[2], {
       origin: requestOrigin(req),
       redirectPath: url.searchParams.get("redirect") || "/",
       proof: url.searchParams.get("proof") || "",
-      session,
+      session: authIntent === "add_account" ? null : session,
+      authIntent,
     });
     json(res, result.status, result.body, responseHeadersForAuthResult(req, result));
     return true;
@@ -353,7 +335,7 @@ async function routeApi(req, url, res) {
         oauthState: cookieValue(req, oauthStateCookieName(providerId)),
       }
     );
-    const headers = responseHeadersForAuthResult(req, result);
+    const headers = await authResultHeaders(req, result, { clearAccountAddIntent: Boolean(result.sessionId) });
     if (result.status >= 300 && result.status < 400 && result.redirectLocation) {
       res.writeHead(result.status, {
         "cache-control": "no-store",

@@ -20,6 +20,7 @@ import {
   sessionCookieName,
   sessionTtlSeconds,
 } from "./runtime-store.js";
+import { deviceAccountSetTtlSeconds } from "./repositories/device-account-sets.js";
 import { assertDurableRuntimeAuthority } from "./repositories/runtime-authority.js";
 import { routeBodyPolicyForRequest, routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
 import { routeAuthenticationFailure } from "./route-auth.js";
@@ -273,6 +274,29 @@ export async function enforceRoutePolicy(req, url, res, session) {
 export function sessionCookie(req, sessionId) {
   const secure = secureCookie(req) ? "; Secure" : "";
   return `${sessionCookieName}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${sessionTtlSeconds}${secure}`;
+}
+
+export const accountSetCookieName = "tasknode_account_set";
+export const accountAddIntentCookieName = "tasknode_account_add_intent";
+
+export function accountSetCookie(req, token) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `${accountSetCookieName}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${deviceAccountSetTtlSeconds}${secure}`;
+}
+
+export function expiredAccountSetCookie(req) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `${accountSetCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
+}
+
+export function accountAddIntentCookie(req, intentId, maxAgeSeconds = 600) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `${accountAddIntentCookieName}=${encodeURIComponent(intentId)}; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=${maxAgeSeconds}${secure}`;
+}
+
+export function expiredAccountAddIntentCookie(req) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `${accountAddIntentCookieName}=; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=0${secure}`;
 }
 
 export function expiredSessionCookie(req) {

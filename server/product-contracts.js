@@ -148,6 +148,32 @@ function emailCodeHash({ challengeId, canonicalEmail, code }) {
   return authHmac(`email-code:${challengeId}:${canonicalEmail}:${String(code || "").trim()}`);
 }
 
+export async function consumeVerifiedEmailCode({ challengeId = "", code = "", purpose = "", expectedAccountId = "" } = {}) {
+  const normalizedChallengeId = String(challengeId || "").trim();
+  const normalizedCode = String(code || "").trim().replace(/\s+/g, "");
+  if (!normalizedChallengeId || !/^[0-9A-Za-z]{6,12}$/.test(normalizedCode)) {
+    return { ok: false, error: "email_code_invalid" };
+  }
+  const challenge = await getEmailChallenge(normalizedChallengeId);
+  if (!challenge) return { ok: false, error: "email_code_invalid" };
+  if (purpose && challenge.purpose !== purpose) return { ok: false, error: "email_code_invalid" };
+  if (expectedAccountId && challenge.expectedAccountId !== expectedAccountId) {
+    return { ok: false, error: "email_code_invalid" };
+  }
+  const codeHash = emailCodeHash({
+    challengeId: normalizedChallengeId,
+    canonicalEmail: challenge.canonicalEmail,
+    code: normalizedCode,
+  });
+  const consumed = await consumeEmailChallenge({
+    challengeId: normalizedChallengeId,
+    codeHash,
+    purpose,
+    expectedAccountId,
+  });
+  return consumed.ok ? consumed : { ok: false, error: "email_code_invalid" };
+}
+
 function emailDeliveryProvider() {
   return String(process.env.EMAIL_DELIVERY_PROVIDER || "").trim().toLowerCase();
 }
@@ -457,6 +483,8 @@ export async function authEmailStart(payload, method, requestMeta = {}) {
     deliveryMode: delivery.mode,
     requestIp: requestMeta.ip,
     userAgent: requestMeta.userAgent,
+    purpose: requestMeta.emailPurpose || "login",
+    expectedAccountId: requestMeta.expectedAccountId || "",
   });
 
   const existingAccount = await findAccountByEmail(normalized.canonicalEmail);
@@ -536,12 +564,7 @@ export async function authEmailVerify(payload, method) {
     });
   }
 
-  const codeHash = emailCodeHash({
-    challengeId,
-    canonicalEmail: challenge.canonicalEmail,
-    code,
-  });
-  const consumed = await consumeEmailChallenge({ challengeId, codeHash });
+  const consumed = await consumeVerifiedEmailCode({ challengeId, code });
 
   if (!consumed.ok) {
     recordAuthEvent({
