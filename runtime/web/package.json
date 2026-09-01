@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65",
+    "@node-rs/argon2": "2.1.0",
     "ethers": "^6.17.0",
     "fflate": "^0.8.3",
     "geo-tz": "^8.1.8",
