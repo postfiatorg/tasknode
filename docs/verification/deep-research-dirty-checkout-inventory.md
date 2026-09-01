@@ -6,6 +6,19 @@ Base commit before reconciliation: `6707d1a`
 
 No file in this inventory was discarded. Existing changes were grouped into reviewable preservation commits before the isolated Deep Research commit was integrated.
 
+## Committed versus stashed
+
+The dirty checkout shown below was committed, not stashed:
+
+- `d5e9add` preserves board-manager and network-policy work.
+- `b7fed69` preserves multi-account authentication and wallet isolation.
+- `0e5aebc` preserves Team Context report work.
+- `62b4760` preserves shared product integration work.
+- `7c091a2` adds the isolated Deep Research workflow.
+- `4252cac` aligns the wallet runtime smoke with the ownership-isolation contract.
+
+No new stash was created during this reconciliation. The repository still contains 16 older named stashes dated before this work; they were neither applied nor deleted because they are separate recoverable user history. The working tree and index are clean.
+
 ## Categories
 
 - **Multi-account authentication and wallet isolation:** password login, account switching, challenge/session binding, device account sets, wallet ownership, migration 128, related UI and verification.
