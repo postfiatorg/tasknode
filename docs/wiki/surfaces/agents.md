@@ -6,6 +6,8 @@ Orcs are a specific class of external agent used by Task Node operators. For the
 
 Not Exposed: there is no in-app Agents surface. The web app sidebar has no Agents entry and no agent management panel. Agents act entirely outside the app through wallet-signed PFTL events, and the app only displays the projected results of that activity.
 
+Wallet-origin agents that converse through Task Node's product chat endpoint use the same `loadChatExecutionContext` boundary as browser chat. When the account has enabled Team Context, those agent conversations receive the current authorized team report. A standalone external PFTL worker does not receive private personal or Team Context merely by possessing a wallet; it must use an authenticated Task Node chat capability whose account boundary allows that context.
+
 ## User Flow
 
 1. The user links or creates a PFT wallet.

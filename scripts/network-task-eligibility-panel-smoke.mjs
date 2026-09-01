@@ -22,10 +22,10 @@ import {
 const expectedLabels = {
   available_for_routing: "Eligible",
   at_capacity: "Capacity blocked",
-  profile_required: "Needs more task history",
+  profile_required: "Report queueing",
   badge_required: "Capacity blocked",
-  profile_pending: "Needs more task history",
-  profile_failed: "Needs more task history",
+  profile_pending: "Report processing",
+  profile_failed: "Report retrying",
   wallet_sync_pending: "Wallet sync in progress",
   setup_required: "Wallet link needed",
   sign_in_required: "Sign in required",
@@ -100,13 +100,13 @@ assert.equal(titleFallbackBlocker.kindLabel, "Proposed task");
 const gates = [
   { id: "wallet", label: "Linked PFT wallet", status: "complete", detail: "linked", action: "" },
   { id: "wallet_sync", label: "Wallet indexed by Task Node", status: "complete", detail: "synced", action: "" },
-  { id: "routing_profile", label: "Network Diagnostic Report", status: "action_required", detail: "missing", action: "Open Memory and refresh the Network Diagnostic Report" },
+  { id: "routing_profile", label: "Network Diagnostic Report", status: "action_required", detail: "missing", action: "No action required; Task Node queues this report automatically" },
   { id: "capacity", label: "Network Task capacity", status: "complete", detail: "free", action: "" },
   { id: "board_routing", label: "Hive Board Manager routing", status: "blocked", detail: "waits on gates", action: "" },
 ];
 const failing = firstFailingGate(gates);
 assert.equal(failing.id, "routing_profile");
-assert.equal(failing.action, "Open Memory and refresh the Network Diagnostic Report");
+assert.equal(failing.action, "No action required; Task Node queues this report automatically");
 assert.equal(eligibilityGateView(gates[0]).passed, true);
 assert.equal(eligibilityGateView({ status: "waiting" }).waiting, true);
 assert.equal(eligibilityGateView({ status: "waiting" }).failing, false);
@@ -137,15 +137,15 @@ assert.equal(coreBadge.hasNonAnonOperatingBadge, true);
 const blockedView = networkTaskEligibilityView({
   status: "profile_required",
   walletAddress: "rNetCapCurrent1765432100000",
-  nextAction: "Open Memory and refresh the Network Diagnostic Report.",
+  nextAction: "No action is required. Task Node queues the Network Diagnostic Report automatically.",
   gates,
   capacity: { available: true, blockers: [] },
 });
 assert.equal(blockedView.eligible, false);
 assert.equal(blockedView.expandedByDefault, true);
-assert.equal(blockedView.plainLabel, "Needs more task history");
+assert.equal(blockedView.plainLabel, "Report queueing");
 assert.equal(blockedView.walletLabel, "rNetCapC...100000");
-assert.equal(blockedView.nextAction, "Open Memory and refresh the Network Diagnostic Report");
+assert.equal(blockedView.nextAction, "No action required; Task Node queues this report automatically");
 
 // 6. Eligible view stays compact.
 const eligibleView = networkTaskEligibilityView({

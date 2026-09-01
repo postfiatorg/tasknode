@@ -29,7 +29,7 @@ if [ ! -f "$AGENTS_FILE" ]; then
     for pair in $BM_BOARDS_LIST; do
       if [ "${pair%%:*}" = "$ALIAS" ]; then echo "$ALIAS: ${pair##*:}" >> "$BM_STATE_DIR/agents.generated"; fi
     done
-  done < "$AGENTS_FILE"
+  done < "$ENABLED_FILE"
   AGENTS_FILE="$BM_STATE_DIR/agents.generated"
 fi
 
@@ -45,13 +45,14 @@ while IFS= read -r AGENT_LINE; do
   [ -n "$ALIAS" ] && [ -n "$BOARDS_CSV" ] || { bm_log "whip: bad agents line: $AGENT_LINE"; continue; }
   SESSION="bm-$ALIAS"
 
-  # 1. Liveness. A session whose pane no longer has a live pfterminal
+  # 1. Liveness. A session whose pane no longer has a live terminal
   # process (crashed, or exited into the keep-alive sleep) is dead even
   # though tmux still reports the session; inspect the pane's children.
+  # Accept both Corbanu (corbanu*) and legacy pfterminal process names.
   AGENT_ALIVE=false
   if tmux has-session -t "$SESSION" 2>/dev/null; then
     PANE_PID="$(tmux list-panes -t "$SESSION" -F '#{pane_pid}' 2>/dev/null | head -1 || true)"
-    if [ -n "$PANE_PID" ] && ps --ppid "$PANE_PID" -o comm= 2>/dev/null | grep -q "^pfterminal"; then
+    if [ -n "$PANE_PID" ] && ps --ppid "$PANE_PID" -o comm= 2>/dev/null | grep -qE "^(pfterminal|corbanu)"; then
       AGENT_ALIVE=true
     fi
   fi
@@ -75,7 +76,7 @@ while IFS= read -r AGENT_LINE; do
   # safe point (no pending unacknowledged wake) so session state always
   # matches the installed contract. The round file below also embeds the
   # full current contract every round regardless.
-  CURRENT_SKILL_HASH="$(cat "$HOME/.pfterminal/skills/board-manager/SKILL.md" "$HOME/.pfterminal/skills/board-"*"/SKILL.md" 2>/dev/null | sha256sum | awk '{print $1}')"
+  CURRENT_SKILL_HASH="$(cat "$BM_SKILLS_DIR/board-manager/SKILL.md" "$BM_SKILLS_DIR"/board-*/SKILL.md 2>/dev/null | sha256sum | awk '{print $1}')"
   SESSION_SKILL_HASH="$(cat "$BM_STATE_DIR/$ALIAS.skillhash" 2>/dev/null || true)"
   if [ -n "$CURRENT_SKILL_HASH" ] && [ "$CURRENT_SKILL_HASH" != "$SESSION_SKILL_HASH" ] && [ ! -f "$BM_STATE_DIR/$ALIAS.pending" ]; then
     bm_log "whip: $ALIAS contract changed on disk; rotating session to load it"
@@ -148,7 +149,7 @@ while IFS= read -r AGENT_LINE; do
     echo "## Operating contract (current, full text — this supersedes the skill"
     echo "version loaded at your session start and anything in your journal)"
     echo
-    cat "$HOME/.pfterminal/skills/board-manager/SKILL.md" 2>/dev/null
+    cat "$BM_SKILLS_DIR/board-manager/SKILL.md" 2>/dev/null
     echo
     echo "Rules: complete every numbered duty in order, or journal exactly why a"
     echo "specific duty cannot be completed this round. Use: cd $BM_REPO && node scripts/bm.mjs <command>."

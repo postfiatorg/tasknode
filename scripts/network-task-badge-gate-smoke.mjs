@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 process.env.TASKNODE_DATABASE_ENABLED = "false";
+process.env.TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES = "goodalexander,secondfmaster";
 process.env.TASKNODE_STORE_PATH = join(mkdtempSync(join(tmpdir(), "tasknode-badge-gate-")), "store.json");
 
 const { getOrCreateProviderAccount } = await import("../server/runtime-store.js");
@@ -32,6 +33,25 @@ const coreAccount = getOrCreateProviderAccount({
   },
 });
 
+const newlyAuthorizedAccount = getOrCreateProviderAccount({
+  provider: "github",
+  providerUserId: "badge-gate-newly-authorized-gh",
+  username: "secondfmaster",
+  displayName: "Second F Master",
+  profileUrl: "https://github.com/secondfmaster",
+  metadata: {
+    proofIntent: "core_contributor",
+    coreContributorAccess: {
+      sanctioned: false,
+      scopeRecorded: false,
+      username: "secondfmaster",
+      matchedHandle: "",
+      proofMethod: "github_handle_allowlist",
+      oauthScope: "user:email",
+    },
+  },
+});
+
 const unbadgedAccount = getOrCreateProviderAccount({
   provider: "email",
   providerUserId: "badge-gate-unbadged-email",
@@ -45,6 +65,15 @@ const coreProjection = await networkBadgeProjectionForAccount({
 });
 assert.ok(coreProjection.verifiedBadgeIds.includes("core_contributor"));
 assert.ok(coreProjection.allowedWorkTypes.includes("code_task"));
+
+const newlyAuthorizedProjection = await networkBadgeProjectionForAccount({
+  accountId: newlyAuthorizedAccount.id,
+  walletAddress: "rNewlyAuthorizedBadgeGateSmoke",
+});
+assert.ok(
+  newlyAuthorizedProjection.verifiedBadgeIds.includes("core_contributor"),
+  "current allowlist authorization must grant the badge without another GitHub OAuth callback"
+);
 
 const coreDecision = await assertNetworkTaskBadgeEligibility({
   accountId: coreAccount.id,

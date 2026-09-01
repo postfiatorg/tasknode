@@ -12,7 +12,7 @@ Telegram, and Task Node.
 
 ## Sources to read before generating tasks
 
-- Repo checkout: `/home/pfrpc/repos/PfTerminal`.
+- Repo checkout: `/home/pfrpc/repos/CorbanuTerminal` (the Corbanu rebrand of the historical PfTerminal repository).
 - Confirm the checkout is available and current before using it. If it is
   missing or its freshness cannot be established, stop task generation and
   report the board as blocked.
@@ -21,7 +21,7 @@ Telegram, and Task Node.
   - `README.md`
   - Open TODOs: `rg -n "TODO|FIXME" --glob '!node_modules'`
   - Recent commits: `git log --oneline -20`
-  - Open PRs: `gh pr list -R postfiatorg/PfTerminal`
+  - Open PRs: `gh pr list -R CorbanuCore/CorbanuTerminal`
 - Check open PRs before creating a task so work already in progress is not
   duplicated.
 
@@ -120,7 +120,7 @@ Use this review checklist:
 
 ## Scope and unresolved board policy
 
-- Checkout freshness: read-only `git -C /home/pfrpc/repos/PfTerminal fetch origin` then compare `git log origin/HEAD -1`; never mutate the checkout (it is a shared working tree).
+- Checkout freshness: read-only `git -C /home/pfrpc/repos/CorbanuTerminal fetch origin` then compare the checkout and its upstream; never mutate the checkout (it is a shared working tree).
 - TypeScript commands: whatever the touched package's `package.json` declares; absence of declared tests is itself review feedback.
 - Cadence: at most 3 open tasks on this board at once.
 - Reward tiers and task-sizing thresholds beyond rejecting

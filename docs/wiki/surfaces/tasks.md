@@ -38,7 +38,7 @@ The user-facing routing gates are:
 
 Personal, engineering, proposed, refused, and rewarded non-network tasks can inform routing judgment, but they do not hard-block Network Task eligibility. When these gates are satisfied, the user is ready to receive a Network Task but still waits for Board Manager to choose them for a live project need.
 
-Once an account has at least two positive task rewards, Task Node automatically queues the Network Diagnostic Report job from the task projection/reward path and from the memory worker backfill. Opening Memory also queues the report immediately when the account has none, and the Memory refresh control forces a rebuild. The user should not need to open Memory or click refresh for the report to be generated, and there is no flow for requesting the report from Hive, Board Manager, or an operator.
+Task Node automatically queues a missing Network Diagnostic Report for signed-in accounts with an active linked PFT wallet. The memory worker sweeps those accounts, and eligibility reads also self-heal a missing report server-side. Rewarded task history can trigger a refresh when routing context changes, and the Memory refresh control still forces an explicit rebuild. The user does not need to open Memory or click refresh for the report to be generated, and there is no flow for requesting the report from Hive, Board Manager, or an operator.
 
 ## Network Task Eligibility Panel
 
@@ -54,7 +54,7 @@ The header always shows the routing wallet prefix being evaluated and the overal
 | --- | --- |
 | `available_for_routing` | Eligible |
 | `at_capacity` | Capacity blocked |
-| `profile_required`, `profile_pending`, `profile_failed` | Needs more task history |
+| `profile_required`, `profile_pending`, `profile_failed` | Report queueing, processing, or retrying |
 | `wallet_sync_pending` | Wallet sync in progress |
 | `setup_required` | Wallet link needed |
 | `sign_in_required` | Sign in required |
@@ -62,7 +62,7 @@ The header always shows the routing wallet prefix being evaluated and the overal
 
 `validation task needed` and `operator hold` are reserved production-scope labels with no server status yet, so the panel must not synthesize them. `no suitable task right now` is the explanation attached to the Eligible state: an eligible contributor still waits for Hive Board Manager to route work when an active project needs it.
 
-The expanded body shows the gate checklist in routing order with pass/fail marks, the server `detail` copy per gate, and the server `action` copy for the first failing gate as the explicit next step (for the routing-profile gate that is `Open Memory and refresh the Network Diagnostic Report`). Capacity blockers render with the task title (task ID fallback), lifecycle state, blocker kind (allocation, generation job, or proposed task), and the owning wallet prefix or `account-wide` when the blocker has no candidate wallet yet, so multi-wallet contributors can tell wallet-bound blockers from account-scoped ones.
+The expanded body shows the gate checklist in routing order with pass/fail marks, the server `detail` copy per gate, and the server `action` copy for the first failing gate as the explicit next step. The routing-profile gate explicitly says that no action is required because Task Node queues the report automatically. Capacity blockers render with the task title (task ID fallback), lifecycle state, blocker kind (allocation, generation job, or proposed task), and the owning wallet prefix or `account-wide` when the blocker has no candidate wallet yet, so multi-wallet contributors can tell wallet-bound blockers from account-scoped ones.
 
 The panel is expanded by default whenever the user is not eligible and the verdict is readable; it collapses to a one-line status when eligible, while loading and `unavailable` states also start collapsed. The user can toggle it either way. If eligibility data is missing or the server reports `unavailable` (signed out before load, database error), the panel says so plainly instead of guessing a checklist.
 
