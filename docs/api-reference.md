@@ -181,6 +181,8 @@ resource membership, or other context beyond a generic identity class.
 | `context_manifest_ink` | `/api/context/manifest/ink` | `POST` | `handler` | strict JSON ≤ 1200000 bytes | 20 / 600s |
 | `context_edit_save` | `/api/context/edit/save` | `POST` | `handler` | strict JSON ≤ 65536 bytes | — |
 | `context_edit_proposal` | `/api/context/edit/proposals//…` | `POST` | `handler` | strict JSON ≤ 1024 bytes | — |
+| `deep_research_create` | `/api/deep-research/jobs` | `POST` | `session` | strict JSON ≤ 131072 bytes | 6 / 600s |
+| `deep_research_jobs` | `/api/deep-research/jobs//…` | `GET` `POST` | `session` | POST: strict JSON ≤ 1024 bytes | 120 / 600s |
 | `context_rewrite_create` | `/api/context/rewrite/jobs` | `POST` | `session` | strict JSON ≤ 1200000 bytes | — |
 | `context_rewrite_cancel` | `/^\/api\/context\/rewrite\/jobs\/[^/]+\/cancel$/` | `POST` | `session` | strict JSON ≤ 1024 bytes | — |
 | `context_rewrite_read` | `/api/context/rewrite/jobs//…` | `GET` | `session` | — | — |
@@ -191,4 +193,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **165 route policies** and **8 authentication modes**.
+Total: **167 route policies** and **8 authentication modes**.
