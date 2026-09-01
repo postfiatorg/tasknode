@@ -17,9 +17,11 @@ conversations without losing state.
 
 ## Technical Architecture
 
-The chat composer and thread live in `ChatSurface` in `src/main.jsx`. Provider routing is handled by `server/chat-router.js`. Billing and conversation persistence flow through `server/repositories/chat-billing.js` and migration `server/db/migrations/001_chat_billing.sql`. Attachment text extraction is handled by `server/chat-attachment-utils.js` and migration `server/db/migrations/002_chat_attachments.sql`.
+The chat composer and thread live in `ChatSurface` in `src/main.jsx`. Provider routing is handled by `server/chat-router.js`. Billing and conversation persistence flow through `server/repositories/chat-billing.js` and migration `server/db/migrations/001_chat_billing.sql`. Attachment text extraction is handled by `server/chat-attachment-utils.js` and migration `server/db/migrations/002_chat_attachments.sql`. Chat accepts up to four attachments of 4 MB each; this chat-specific decoded-file limit is independent from task-evidence processing limits and is enforced during preflight before provider execution.
 
 The current account context document is injected by `server/chat-account-context.js`. It reads the saved Context document from `server/repositories/context.js` and renders it through `prompts/chat/account_context_document_v1.md`.
+
+If the user enabled **Include Team Context in personal context** on the Team page, `server/chat-context-load.js` also injects the current generated team report into that same execution-context boundary. This makes it available to every normal browser chat personality and to wallet-origin agent chat that uses the product chat execution path. A pending, failed, stale, disabled, or no-longer-authorized report is not injected.
 
 Memory context is injected by `server/chat-memory-context.js`. The memory worker runs after a successful assistant response and must not block the user response.
 
@@ -142,6 +144,8 @@ If the database, corpus rows, embeddings provider, or retrieval query fails, cha
 
 Every chat mode receives the user's current saved Context document as durable background when the user is signed in. This does not require a linked wallet, an unlocked seed vault, or publishing to PFT. Publishing to PFT creates an encrypted IPFS/PFTL pointer for portable history; ordinary chat grounding reads the current Postgres-backed account context.
 
+An opted-in Team Context block is composed beside the saved document before this shared path runs. It is labeled as generated reference data rather than instructions, carries deterministic 24-hour and 7-day rewarded-task counts, and is removed immediately from prompt assembly when its task-history authorization is no longer current.
+
 The runtime path is:
 
 1. `server/product-contracts.js::chatExecutionPreflight`, `server/chat-router.js::executeChat`, and `server/chat-router.js::executeChatStream` load the current context document alongside chat history, memory context, and task context.
@@ -234,7 +238,7 @@ card appears, check `npm run fly:worker-guard` before editing request rows.
 
 The sidebar `Search chats` button opens a search overlay (`src/features/chat/ChatSearchModal.jsx`). While the user types, the overlay instantly filters the already-loaded recents by title, and a debounced request to `GET /api/chat/search?q=` searches conversation titles and message content server-side. The route requires a signed-in session, is rate limited, and returns an empty result set for queries shorter than two characters.
 
-Server search lives in `searchChatConversations` in `server/repositories/chat-conversations.js`. Every query is scoped to the session account and includes only `status = 'active'` conversations, so deleted conversations and other accounts' chats are never returned. The Hive conversation is searchable once it exists as a real row in `chat_conversations`. Results return one row per conversation ordered by most recent update, with a short excerpt centered on the matched message text, or the last-message preview for title-only matches. ILIKE wildcards in the user query (`%`, `_`, `\`) are escaped and treated literally. When the database is disabled, search degrades to runtime-store conversation titles plus the recent message window. Selecting a result opens the conversation through the same recents path as the sidebar. Coverage: `scripts/chat-search-smoke.mjs`.
+Server search lives in `searchChatConversations` in `server/repositories/chat-conversations.js`. Current queries are scoped to the session account and include only `status = 'active'` conversations, so deleted conversations and other accounts' chats are never returned. Read-only PFTasks archive queries are separately authorized through the account's currently linked wallet. The Hive conversation is searchable once it exists as a real row in `chat_conversations`. Results return one row per conversation ordered by most recent update, with a short excerpt centered on the matched message text, or the last-message preview for title-only matches. ILIKE wildcards in current-chat queries (`%`, `_`, `\`) are escaped and treated literally; legacy archive search uses literal substring matching. When the database is disabled, search degrades to runtime-store conversation titles plus the recent message window. Selecting a result opens the conversation through the same recents path as the sidebar. Historical conversations are read-only and must be continued in a new chat. Coverage: `scripts/chat-search-smoke.mjs` and `scripts/legacy-pftasks-history-smoke.mjs`.
 
 ## Billing And Persistence
 

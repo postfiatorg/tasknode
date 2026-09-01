@@ -1,8 +1,9 @@
 # AI Providers
 
-Task Node uses Ambient as its single inference boundary. The only external
-exception is profile NFT image output: OpenAI Images acts as a blind renderer
-and receives only an Ambient-approved, enum-backed art prompt.
+Task Node uses Ambient as its default inference boundary. There are two scoped
+external exceptions: profile NFT image output uses OpenAI Images as a blind
+renderer, and Team Context generation uses Vercel AI Gateway with the exact
+`zai/glm-5.3-flash` model. Neither exception is a general chat-routing path.
 
 ## Runtime Boundary
 
@@ -24,6 +25,14 @@ Configuration:
 OpenRouter, direct DeepSeek, and general OpenAI inference keys and hosts are
 retired. `npm run provider-egress-check` fails when one reappears in an active
 runtime, operator script, Fly configuration, or Docker configuration.
+
+`server/vercel-inference.js` is the narrow Vercel adapter. It reads
+`VERCEL_AI_GATEWAY_API_KEY` (or the gateway-compatible `AI_GATEWAY_API_KEY`),
+uses the OpenAI-compatible chat-completions endpoint, requests a JSON object,
+and permits no model substitution. `server/team-context-worker.js` is its only
+feature consumer. It sends task titles/descriptions and reward metadata that
+the viewer is already authorized to read; deterministic day/week counts remain
+local and are not delegated to the provider.
 
 Some internal functions and historical schema fields still contain names such
 as `executeOpenRouter`, `openRouterMessages`, `fetchOpenRouter`,
@@ -120,6 +129,7 @@ renderer is the sole process that retains it.
 ## Operations And Failure Modes
 
 - Missing `AMBIENT_API_KEY` disables inference-backed features explicitly.
+- Missing `VERCEL_AI_GATEWAY_API_KEY` leaves Team Context jobs pending and does not affect ordinary chat.
 - Missing `PROFILE_NFT_OPENAI_API_KEY` affects only queued NFT rendering.
 - Invalid structured output remains subject to feature-level schema validation
   and fail-closed behavior.

@@ -225,8 +225,27 @@ export async function registerPftlSyncWallet({
   const wallet = normalizeText(walletAddress);
   if (!wallet || !databaseEnabled()) return { ok: false, skipped: true };
 
-  await query(
-    `
+  return transaction(async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`pftl-sync-wallet:${wallet}`]);
+    const normalizedAccount = normalizeText(accountId);
+    if (normalizedAccount) {
+      const linkedOwner = await client.query(
+        `SELECT account_id FROM account_linked_wallets
+          WHERE wallet_address = $1 AND status = 'linked' FOR UPDATE`,
+        [wallet]
+      );
+      if (linkedOwner.rows[0] && linkedOwner.rows[0].account_id !== normalizedAccount) {
+        return {
+          ok: false,
+          status: 409,
+          error: "wallet_sync_account_conflict",
+          walletAddress: wallet,
+        };
+      }
+    }
+
+    await client.query(
+      `
       INSERT INTO pftl_sync_wallets (
         wallet_address,
         account_id,
@@ -253,16 +272,17 @@ export async function registerPftlSyncWallet({
     `,
     [
       wallet,
-      normalizeText(accountId),
+      normalizedAccount,
       normalizeText(role) || "user",
       normalizeText(ownerWalletAddress),
       intOrNull(priority) ?? 100,
       normalizeText(status) || "active",
       safeJson(metadata),
     ]
-  );
+    );
 
-  return { ok: true, walletAddress: wallet };
+    return { ok: true, walletAddress: wallet };
+  });
 }
 
 export async function markPftlSyncWalletInactive({ walletAddress = "", reason = "" } = {}) {

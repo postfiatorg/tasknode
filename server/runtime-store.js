@@ -5,6 +5,7 @@ import {
   applyAccountHiveHandle,
   applyAccountProfileVisibility,
   checkHiveHandleAvailability as checkHiveHandleAvailabilityForAccounts,
+  normalizeHiveHandle,
   providerAliasDefaults,
   suggestHiveHandles as suggestHiveHandlesForAccounts,
 } from "./account-identity.js";
@@ -28,6 +29,8 @@ import { createRuntimeChatContextStore } from "./runtime-store-chat-context.js";
 import { createRuntimeWalletStore } from "./runtime-store-wallet.js";
 import { createRuntimeAuthChallengeStore } from "./runtime-store-auth-challenges.js";
 import { createRuntimeWalletGrantStore } from "./runtime-store-wallet-grants.js";
+import { createRuntimeAccountLoginStore } from "./runtime-store-account-login.js";
+import { runtimePasswordCredentialEnabled } from "./repositories/account-passwords.js";
 import {
   normalizeAccountProfileVisibility,
   saveState,
@@ -53,6 +56,7 @@ const configuredWalletLoginChallengeCap = Number(process.env.TASKNODE_WALLET_LOG
 const walletLoginChallengeMaxActive = Number.isSafeInteger(configuredWalletLoginChallengeCap) && configuredWalletLoginChallengeCap > 0 ? configuredWalletLoginChallengeCap : 3000;
 const authChallengeStore = createRuntimeAuthChallengeStore({ state, saveState });
 export const consumeEmailChallenge = authChallengeStore.consumeEmailChallenge;
+export const attachRuntimeSessionToDeviceAccountSet = authChallengeStore.attachSessionToDeviceAccountSet;
 export const consumeOAuthState = authChallengeStore.consumeOAuthState;
 export const createEmailChallenge = authChallengeStore.createEmailChallenge;
 export const createOAuthState = authChallengeStore.createOAuthState;
@@ -61,6 +65,8 @@ export const getEmailChallenge = authChallengeStore.getEmailChallenge;
 export const pruneExpiredEmailChallenges = authChallengeStore.pruneExpiredEmailChallenges;
 export const pruneExpiredOAuthStates = authChallengeStore.pruneExpiredOAuthStates;
 export const recordAuthEvent = authChallengeStore.recordAuthEvent;
+export const revokeRuntimeSessionsForAccount = authChallengeStore.revokeSessionsForAccount;
+export const revokeRuntimeSessionsForDeviceAccountSet = authChallengeStore.revokeSessionsForDeviceAccountSet;
 
 function safeId(value, fallback) {
   const normalized =
@@ -137,6 +143,7 @@ function sessionPayload(session) {
     profileDiscoverable: identityProfile?.profileDiscoverable !== false,
     identityProfile,
     primaryProvider: session.primaryProvider,
+    deviceAccountSetId: session.deviceAccountSetId || null,
     linkedProviders: session.linkedProviders || [],
     assurance: session.assurance || "low",
     createdAt: session.createdAt,
@@ -194,6 +201,7 @@ function accountPayload(account) {
     profileDiscoverable: identityProfile?.profileDiscoverable !== false,
     primaryProvider: account.primaryProvider || "email",
     primaryEmailCanonical: account.primaryEmailCanonical || "",
+    primaryEmailVerified: account.primaryEmailVerified === true,
     emailProvider: account.emailProvider || "",
     linkedProviders: account.linkedProviders || [],
     assurance: account.assurance || "low",
@@ -358,6 +366,13 @@ function syncAccountSessions(account) {
   }
 }
 
+const accountLoginStore = createRuntimeAccountLoginStore({
+  state,
+  accountPayload,
+  normalizeHiveHandle,
+});
+export const findAccountByEmail = accountLoginStore.findAccountByEmail;
+export const findAccountByHandle = accountLoginStore.findAccountByHandle;
 const UNLINKABLE_OAUTH_PROVIDERS = new Set(["github", "telegram", "x", "discord"]);
 
 function hasVerifiedEmailLogin(account, canonicalEmail = "") {
@@ -402,11 +417,12 @@ export function unlinkProviderFromAccount({ accountId = "", provider = "" } = {}
       )
     : null;
   const emailSurvives = hasVerifiedEmailLogin(account, emailCanonical);
+  const passwordSurvives = runtimePasswordCredentialEnabled(normalizedAccountId);
 
   // Lockout guard: the account must keep at least one way to sign back in.
   // Sign-in methods are a surviving verified email or another linked OAuth
   // provider; wallets are identity/custody, not login.
-  if (!emailSurvives && remainingOauth.length === 0) {
+  if (!emailSurvives && !passwordSurvives && remainingOauth.length === 0) {
     return { ok: false, error: "provider_unlink_last_login_method" };
   }
 
@@ -444,7 +460,7 @@ export function unlinkProviderFromAccount({ accountId = "", provider = "" } = {}
     ok: true,
     provider: normalizedProvider,
     unlinkedUsername: target.username || null,
-    remainingLoginMethods: (emailSurvives ? 1 : 0) + remainingOauth.length,
+    remainingLoginMethods: (emailSurvives ? 1 : 0) + (passwordSurvives ? 1 : 0) + remainingOauth.length,
     account: accountPayload(account),
   };
 }
@@ -649,11 +665,6 @@ export function recordRuntimeTelegramBotEvent(event = {}) {
 
 export function listRuntimeTelegramBotEvents(options = {}) {
   return listRuntimeTelegramBotEventsForState({ state, ...options });
-}
-
-export function findAccountByEmail(canonicalEmail) {
-  const accountId = state.accountEmails[String(canonicalEmail || "")];
-  return accountPayload(accountId ? state.accounts[accountId] : null);
 }
 
 export function findAccountByIdentity(provider, providerUserId) {
@@ -866,7 +877,7 @@ export function linkProviderToAccount({
   return { ok: true, account: accountPayload(account) };
 }
 
-export function createAccountSession(account, { provider = "email", assurance = "low" } = {}) {
+export function createAccountSession(account, { provider = "email", assurance = "low", deviceAccountSetId = "" } = {}) {
   pruneExpiredSessions();
 
   const now = new Date();
@@ -882,6 +893,7 @@ export function createAccountSession(account, { provider = "email", assurance = 
     primaryProvider: provider,
     linkedProviders: account.linkedProviders || [],
     assurance,
+    deviceAccountSetId: deviceAccountSetId || null,
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + sessionTtlSeconds * 1000).toISOString(),
   };

@@ -131,6 +131,8 @@ for (const path of [
   "/api/docs/documents/00000000-0000-4000-8000-000000000000/odv",
   "/api/docs/documents/00000000-0000-4000-8000-000000000000/assistant",
   "/api/team",
+  "/api/team/context",
+  "/api/team/context/preference",
   "/api/team/account_bob/tasks",
   "/api/team/account_bob/tasks/task_123",
 ]) {
@@ -138,6 +140,7 @@ for (const path of [
 }
 assert.equal(routePolicyForPath("/api/docs/documents/00000000-0000-4000-8000-000000000000/odv")?.id, "docs_odv");
 assert.equal(routePolicyForPath("/api/docs/documents/00000000-0000-4000-8000-000000000000/assistant")?.id, "docs_assistant");
+assert.equal(routePolicyForPath("/api/team/context/preference")?.id, "team_context_preference");
 
 const migration = await readFile(new URL("../server/db/migrations/110_docs_team_collaboration.sql", import.meta.url), "utf8");
 assert.match(migration, /CREATE TABLE IF NOT EXISTS docs_access_grants/);

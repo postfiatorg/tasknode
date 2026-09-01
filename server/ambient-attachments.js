@@ -3,6 +3,7 @@ import {
   extractEvidenceFileContent,
 } from "./evidence-file-extraction.js";
 import { normalizeChatAttachments } from "./chat-attachment-utils.js";
+import { CHAT_ATTACHMENT_MAX_FILE_BYTES } from "../shared/chat-attachment-policy.js";
 
 function textDataUrl(value = "") {
   return `data:text/plain;base64,${Buffer.from(String(value || ""), "utf8").toString("base64")}`;
@@ -16,7 +17,10 @@ export async function prepareAmbientChatAttachments(attachments = []) {
       continue;
     }
 
-    const decoded = decodeEvidenceDataUrl(attachment.dataUrl);
+    const decoded = decodeEvidenceDataUrl(attachment.dataUrl, {
+      maxBytes: CHAT_ATTACHMENT_MAX_FILE_BYTES,
+      tooLargeError: "chat_attachment_too_large",
+    });
     const extracted = await extractEvidenceFileContent({
       buffer: decoded.buffer,
       fileName: attachment.name,

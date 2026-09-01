@@ -56,7 +56,7 @@ async function loadIdentityAndWallets() {
   ]);
   return [
     "# Identity & Wallets",
-    "Account login, connected providers, wallet proof, local vault unlock, and custody are separate security states.",
+    "Account login, retained-account selection, connected providers, wallet proof, local vault unlock, and custody are separate security states.",
     docSection("Login And Connected Accounts", authAndConnectedAccounts),
     docSection("Wallet Proof And Local Vault", authWalletBoundary),
   ].join("\n\n");
@@ -152,7 +152,7 @@ export const DOC_GROUPS = [
       {
         slug: "identity-wallets",
         title: "Identity & Wallets",
-        summary: "Login, provider linkage, wallet proof, vault, and custody boundaries.",
+        summary: "Password login, account switching, provider linkage, wallet proof, vault, and custody boundaries.",
         loadMarkdown: loadIdentityAndWallets,
       },
       {

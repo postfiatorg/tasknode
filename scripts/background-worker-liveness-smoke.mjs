@@ -23,9 +23,18 @@ assert.deepEqual(hive.startedWorkerGroups, [
   "hive_reports",
   "hive_task_manager",
   "task_accounting_harvester",
+  "bm_narrator",
 ]);
 const taskgen = startBackgroundWorkers({ role: "worker:taskgen", runWorker: noOpWorker });
 assert.deepEqual(taskgen.startedWorkerGroups, ["network_task_generation", "task_generation"]);
+const memoryProfile = startBackgroundWorkers({ role: "worker:memory-profile", runWorker: noOpWorker });
+assert.deepEqual(memoryProfile.startedWorkerGroups, [
+  "data_retention",
+  "chat_memory",
+  "team_context",
+  "public_profile_snapshot",
+  "recommended_connections",
+]);
 
 let clearCount = 0;
 const fakeHandle = { constructor: { name: "FakeInterval" }, hasRef: () => true };

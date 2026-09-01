@@ -34,7 +34,21 @@ resource membership, or other context beyond a generic identity class.
 | `auth_wallet_start` | `/api/auth/wallet/start` | `POST` | `none` | strict JSON ≤ 4096 bytes | 10 / 600s |
 | `auth_wallet_verify` | `/api/auth/wallet/verify` | `POST` | `none` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `auth_logout` | `/api/auth/logout` | `POST` | `optional` | strict JSON ≤ 1024 bytes | — |
+| `auth_password_login` | `/api/auth/password` | `POST` | `none` | strict JSON ≤ 4096 bytes | 10 / 600s |
+| `auth_password_reset_start` | `/api/auth/password/reset/start` | `POST` | `none` | strict JSON ≤ 4096 bytes | 5 / 600s |
+| `auth_password_reset_verify` | `/api/auth/password/reset/verify` | `POST` | `none` | strict JSON ≤ 4096 bytes | 10 / 600s |
 | `auth_providers` | `/api/auth/providers` | `GET` | `none` | — | — |
+| `auth_accounts_list` | `/api/auth/accounts` | `GET` | `session` | — | — |
+| `auth_accounts_add_start` | `/api/auth/accounts/add/start` | `POST` | `session` | strict JSON ≤ 1024 bytes | 10 / 600s |
+| `auth_accounts_add_cancel` | `/api/auth/accounts/add/cancel` | `POST` | `session` | strict JSON ≤ 1024 bytes | 20 / 600s |
+| `auth_accounts_switch` | `/api/auth/accounts/switch` | `POST` | `session` | strict JSON ≤ 2048 bytes | 30 / 600s |
+| `auth_accounts_remove` | `/api/auth/accounts/remove` | `POST` | `session` | strict JSON ≤ 2048 bytes | 20 / 600s |
+| `auth_logout_all` | `/api/auth/logout-all` | `POST` | `optional` | strict JSON ≤ 1024 bytes | 10 / 600s |
+| `account_password_status` | `/api/account/password` | `GET` | `session` | — | — |
+| `account_password_enable_start` | `/api/account/password/enable/start` | `POST` | `session` | strict JSON ≤ 1024 bytes | 5 / 600s |
+| `account_password_enable_verify` | `/api/account/password/enable/verify` | `POST` | `session` | strict JSON ≤ 4096 bytes | 10 / 600s |
+| `account_password_change` | `/api/account/password/change` | `POST` | `session` | strict JSON ≤ 4096 bytes | 5 / 600s |
+| `account_password_disable` | `/api/account/password/disable` | `POST` | `session` | strict JSON ≤ 2048 bytes | 5 / 600s |
 | `account_delete` | `/api/account/delete` | `POST` | `session` | strict JSON ≤ 8192 bytes | 3 / 600s |
 | `account_export` | `/api/account/export` | `GET` | `session` | — | 3 / 600s |
 | `account_unlink_provider` | `/api/account/unlink-provider` | `POST` | `session` | strict JSON ≤ 16384 bytes | 5 / 600s |
@@ -102,6 +116,7 @@ resource membership, or other context beyond a generic identity class.
 | `team_invite_action` | `/^\/api\/team\/invites\/[0-9a-f-]{36}\/action$/i` | `POST` | `session` | strict JSON ≤ 131072 bytes | — |
 | `team_grant_revoke` | `/^\/api\/team\/grants\/[0-9a-f-]{36}\/revoke$/i` | `POST` | `session` | strict JSON ≤ 131072 bytes | — |
 | `team_nostr` | `/api/team/nostr` | `GET` `POST` `DELETE` | `session` | POST: strict JSON ≤ 131072 bytes<br>DELETE: strict JSON ≤ 131072 bytes | — |
+| `team_context_preference` | `/api/team/context/preference` | `PATCH` | `session` | strict JSON ≤ 4096 bytes | 60 / 600s |
 | `team_collaboration` | `/api/team/…` | `GET` | `session` | — | 90 / 600s |
 | `nostr_messages_identity` | `/api/messages/identity` | `POST` `DELETE` | `session` | POST: strict JSON ≤ 131072 bytes<br>DELETE: strict JSON ≤ 131072 bytes | 120 / 600s |
 | `nostr_messages` | `/api/messages/…` | `GET` | `session` | — | 120 / 600s |
@@ -176,4 +191,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **150 route policies** and **8 authentication modes**.
+Total: **165 route policies** and **8 authentication modes**.

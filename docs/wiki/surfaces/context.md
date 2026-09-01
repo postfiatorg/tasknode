@@ -2,6 +2,8 @@
 
 Context is the user's durable working profile. It is the structured background that helps Task Node understand goals, constraints, projects, and current direction. Context must work even when the user has no wallet.
 
+The Team page can also add a generated Team Context block to model-facing personal context. This is an account preference, not an edit to the saved Context document: the editable document remains user-owned, while `server/chat-context-load.js` composes the currently authorized team report into the execution packet. The block is included only when the Team-page checkmark is enabled and the report fingerprint matches the current grants and rewarded-task set.
+
 ## User Flow
 
 1. The user edits the current context document.
@@ -38,6 +40,7 @@ Line numbers are generated from the same normalized HTML-to-text idea used by `s
 - Restore preview: encrypted IPFS payload fetched by CID and decrypted in the browser only after the local wallet vault is unlocked. The readable preview is a session cache, not durable Postgres state.
 - Published context: encrypted IPFS document referenced by PFTL memo pointer.
 - Context edit proposal: account-scoped pending/applied/rejected proposal tied to a chat conversation and assistant message.
+- Team Context preference/report: account-scoped generated collaborator background assembled at execution time; it never becomes a context revision or published PFTL context pointer.
 
 ## Diagram
 

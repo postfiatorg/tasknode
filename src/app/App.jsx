@@ -16,13 +16,16 @@ import { appendTaskActionReceipt, loadTaskActionReceipts, saveTaskActionReceipts
 import { findTaskById, mergeTaskStateWithActionReceipts, reconcileTaskVisibleState } from "../features/tasks/task-visible-state.js";
 import { mergeAppStateWithMonotonicTasks } from "../features/tasks/task-app-state-refresh.js";
 import { LoginDialog, SettingsModal, TelegramProfileMenuRow, accountLinkProvider, linkedProviderById } from "../features/settings/AppDialogs.jsx";
+import { ProfileAccountSwitcher } from "../features/settings/ProfileAccountSwitcher.jsx";
+import { createAccountSwitcherActions } from "../features/settings/account-switch-client.js";
+import { acceptAccountBoundaryResponse, accountBoundaryCaptureIsCurrent, beginAccountBoundaryTransition, cancelAccountBoundaryTransition, initialAccountBoundary } from "../features/settings/account-transition-boundary.js";
 import { applyWalletBalanceError, applyWalletBalanceResult, formatPftBalance, markWalletBalanceChecking, mergeAppStateWithClientWalletBalance, walletVaultDisplayState } from "../features/wallet/wallet-state";
 import { clearAllUnlockedWalletSessions, clearOtherUnlockedWalletSessions, clearUnlockedWalletSession, readUnlockedWalletSession, saveUnlockedWalletSession, touchWalletUnlockActivity, walletUnlockIdleLockMs, walletUnlockIdleRemainingMs } from "../features/wallet/wallet-unlocked-session.js";
 import { WalletUnlockModal } from "../features/wallet/WalletUnlockModal";
 import { formatCreditUsd } from "../formatters";
 import { isSignedInSession } from "../session";
 import { appExtensionRegistry, ExtensionSurface } from "../extensions/index.js";
-import { APP_VIEWS, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, HIVE_CHAT_NOTIFICATION_REFRESH_MS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, clearAuthSessionHint, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
+import { APP_VIEWS, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, HIVE_CHAT_NOTIFICATION_REFRESH_MS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
 
 const WalletView = lazy(() => import("../features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
 const HelpView = lazy(() => import("../features/docs/DocsView").then((module) => ({ default: module.DocsView })));
@@ -36,7 +39,12 @@ export function App() {
   const [view, setView] = useState(() => viewFromLocation());
   const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [addingAccount, setAddingAccount] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [retainedAccounts, setRetainedAccounts] = useState([]);
+  const [accountMenuPending, setAccountMenuPending] = useState("");
+  const [accountTransitioning, setAccountTransitioning] = useState(false);
+  const [managingAccounts, setManagingAccounts] = useState(false);
   const [logoutConfirming, setLogoutConfirming] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -73,13 +81,15 @@ export function App() {
   const walletSecretRef = useRef(null);
   const refreshAppStateRef = useRef(null);
   const taskRefreshSequenceRef = useRef({ applied: 0, started: 0 });
+  const accountBoundaryRef = useRef(initialAccountBoundary());
   useEffect(() => {
     let active = true;
+    const accountCapture = { ...accountBoundaryRef.current };
     Promise.all([fetchRuntimeConfig(), fetchAppStateWithSessionRetry()])
       .then(([config, state]) => {
         if (!active) return;
         setRuntimeConfig(config);
-        applyFetchedAppState(state);
+        applyFetchedAppState(state, accountCapture);
       })
       .catch((error) => {
         if (active) setLoadError(error?.message || "Failed to load app state");
@@ -179,6 +189,21 @@ export function App() {
   const identityHandleRequired = signedIn && session?.identityProfile?.handleRequired === true;
   const telegramProvider = accountLinkProvider(session, "telegram");
   const linkedTelegramProvider = linkedProviderById(session, "telegram");
+  const loadRetainedAccounts = useCallback(async () => {
+    if (!signedIn) {
+      setRetainedAccounts([]);
+      return [];
+    }
+    const accountCapture = { ...accountBoundaryRef.current };
+    const result = await requestJson("/api/auth/accounts");
+    if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return [];
+    const accounts = result.ok && Array.isArray(result.body?.accounts) ? result.body.accounts : [];
+    setRetainedAccounts(accounts);
+    return accounts;
+  }, [signedIn]);
+  useEffect(() => {
+    loadRetainedAccounts().catch(() => setRetainedAccounts([]));
+  }, [loadRetainedAccounts, session?.accountId]);
   useEffect(() => {
     if (view !== "tasks") return;
     const taskId = taskIdFromLocation();
@@ -222,6 +247,7 @@ export function App() {
   }, []);
   const refreshWalletVaultStatus = useCallback(
     async ({ preserveUnlock = false, accountId = "" } = {}) => {
+      const accountCapture = { ...accountBoundaryRef.current };
       const effectiveAccountId = accountId || walletAccountId;
       if (!effectiveAccountId) {
         walletSecretRef.current = null;
@@ -245,6 +271,7 @@ export function App() {
           ...nextStatus,
           persistence: nextStatus?.persistence && nextStatus.persistence !== "unknown" ? nextStatus.persistence : persistence,
         };
+        if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return null;
         const currentSecret = walletSecretRef.current;
         const canRestoreUnlock = Boolean(preserveUnlock && nextStatusWithPersistence?.available && nextStatusWithPersistence?.address);
         const inMemorySecretMatches =
@@ -274,6 +301,7 @@ export function App() {
         }));
         return nextStatusWithPersistence;
       } catch {
+        if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return null;
         walletSecretRef.current = null;
         clearUnlockedWalletSession({ accountId: effectiveAccountId });
         setWalletVaultStatus({
@@ -522,12 +550,15 @@ export function App() {
   const refreshWalletBalance = useCallback(
     async ({ force = false, address = linkedWalletAddress } = {}) => {
       if (!signedIn || !address) return null;
+      const accountCapture = { ...accountBoundaryRef.current };
       setAppState((current) => markWalletBalanceChecking(current, address));
       try {
         const result = await requestJson(`/api/wallet/balance${force ? "?force=1" : ""}`);
+        if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return null;
         setAppState((current) => applyWalletBalanceResult(current, address, result));
         return result;
       } catch (error) {
+        if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return null;
         setAppState((current) =>
           applyWalletBalanceError(current, address, error?.message || "Balance read failed.")
         );
@@ -631,6 +662,7 @@ export function App() {
     errorMessage = "Failed to load app state",
     taskProjectionRefresh = false,
   } = {}) {
+    const accountCapture = { ...accountBoundaryRef.current };
     const taskRefreshSequence = taskProjectionRefresh
       ? taskRefreshSequenceRef.current.started + 1
       : 0;
@@ -653,7 +685,7 @@ export function App() {
       ) {
         return state;
       }
-      applyFetchedAppState(state);
+      if (!applyFetchedAppState(state, accountCapture)) return state;
       if (taskProjectionRefresh) {
         taskRefreshSequenceRef.current.applied = Math.max(
           taskRefreshSequenceRef.current.applied,
@@ -670,7 +702,11 @@ export function App() {
     }
   }
   refreshAppStateRef.current = refreshAppState;
-  function applyFetchedAppState(state) {
+  function applyFetchedAppState(state, accountCapture = { ...accountBoundaryRef.current }) {
+    const nextAccountId = isSignedInSession(state?.session) ? state.session.accountId || "" : "";
+    const accepted = acceptAccountBoundaryResponse(accountBoundaryRef.current, accountCapture, nextAccountId);
+    if (!accepted.ok) return false;
+    accountBoundaryRef.current = accepted.boundary;
     const storage = typeof window === "undefined" ? null : window.sessionStorage;
     if (isSignedInSession(state?.session)) {
       writeAuthSessionHint(storage, state.session);
@@ -680,6 +716,7 @@ export function App() {
         mergeBase: mergeAppStateWithClientWalletBalance,
       })
     );
+    return true;
   }
   const recordTaskActionReceipt = useCallback((receipt) => {
     if (!receipt?.taskId || !receipt?.expectedStatusKey) return;
@@ -708,13 +745,23 @@ export function App() {
       };
     });
   }, [linkedWalletAddress, taskActionReceipts, walletAccountId]);
-  async function logOut() {
-    lockWalletVault();
-    await requestJson("/api/auth/logout", { method: "POST" });
-    clearAuthSessionHint(typeof window === "undefined" ? null : window.sessionStorage);
-    await refreshAppState({ allowSignedOutSession: true });
-    setProfileMenuOpen(false);
-  }
+  const { addAccount, closeAccountLogin, logOut, logOutAllAccounts, removeRetainedAccount, switchAccount } = createAccountSwitcherActions({
+    addingAccount,
+    loadRetainedAccounts,
+    lockWalletVault,
+    onAddLoginClose: () => { setLoginOpen(false); setAddingAccount(false); },
+    onAddLoginOpen: () => { setAddingAccount(true); setLoginOpen(true); setProfileMenuOpen(false); },
+    onMessage: setProfileAuthMessage,
+    onPendingChange: setAccountMenuPending,
+    onTransitionChange: (transitioning) => {
+      accountBoundaryRef.current = transitioning
+        ? beginAccountBoundaryTransition(accountBoundaryRef.current)
+        : cancelAccountBoundaryTransition(accountBoundaryRef.current);
+      setAccountTransitioning(transitioning);
+    },
+    prepareTransition: () => { setSettingsOpen(false); setSelectedTask(null); setChatActionMenu(null); },
+    selectedAccountId: session?.accountId || "",
+  });
   async function startTelegramLinkFromProfileMenu() {
     if (!signedIn) {
       setLoginOpen(true);
@@ -996,25 +1043,27 @@ export function App() {
                         </small>
                       )}
                     </button>
-                    <button
-                      aria-label={`Chat actions for ${item.title}`}
-                      className="recent-chat-more"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setChatActionMenu(
-                          menuOpen
-                            ? null
-                            : {
-                                ...item,
-                                menuPosition: chatActionMenuPosition(event.currentTarget),
-                              }
-                        );
-                      }}
-                      title="Chat actions"
-                      type="button"
-                    >
-                      <MoreHorizontal size={16} strokeWidth={1.75} />
-                    </button>
+                    {!item.readOnly && (
+                      <button
+                        aria-label={`Chat actions for ${item.title}`}
+                        className="recent-chat-more"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setChatActionMenu(
+                            menuOpen
+                              ? null
+                              : {
+                                  ...item,
+                                  menuPosition: chatActionMenuPosition(event.currentTarget),
+                                }
+                          );
+                        }}
+                        title="Chat actions"
+                        type="button"
+                      >
+                        <MoreHorizontal size={16} strokeWidth={1.75} />
+                      </button>
+                    )}
                   </div>
                 );
               })
@@ -1054,6 +1103,7 @@ export function App() {
                 onClick={() => {
                   if (appStateLoading) return;
                   setProfileMenuOpen((open) => !open);
+                  if (!profileMenuOpen && signedIn) loadRetainedAccounts().catch(() => null);
                 }}
                 type="button"
               >
@@ -1096,6 +1146,18 @@ export function App() {
                       <Check size={13} strokeWidth={2} />
                       <span>Signed in</span>
                     </div>
+                  )}
+                  {signedIn && (
+                    <ProfileAccountSwitcher
+                      accounts={retainedAccounts}
+                      managing={managingAccounts}
+                      onAdd={addAccount}
+                      onManagingChange={setManagingAccounts}
+                      onRemove={removeRetainedAccount}
+                      onSwitch={switchAccount}
+                      pending={accountMenuPending}
+                      selectedAccountId={session?.accountId || ""}
+                    />
                   )}
                   {signedIn && linkedWalletAddress && (
                     <ToolMenuRow
@@ -1150,13 +1212,14 @@ export function App() {
                               Cancel
                             </button>
                             <button className="pill-button dark" onClick={logOut} type="button">
-                              Log out
+                              Log out this account
                             </button>
                           </div>
                         </div>
                       ) : (
-                        <ToolMenuRow icon={LogOut} label="Log out" onClick={() => setLogoutConfirming(true)} />
+                        <ToolMenuRow icon={LogOut} label="Log out this account" onClick={() => setLogoutConfirming(true)} />
                       )}
+                      <ToolMenuRow icon={LogOut} label="Log out all accounts" onClick={logOutAllAccounts} />
                     </>
                   ) : (
                     <>
@@ -1214,7 +1277,7 @@ export function App() {
         </header>
         {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
         {appStateLoading && <StatusBanner>Loading product state</StatusBanner>}
-        {canRenderWorkspaceContent && (
+        {canRenderWorkspaceContent && !accountTransitioning && (
         <RouteErrorBoundary resetKey={view}>
           {view === "chat" && (
             <ChatSurface
@@ -1339,22 +1402,24 @@ export function App() {
         </RouteErrorBoundary>
         )}
       </section>
+      {accountTransitioning && <div className="account-transition-overlay" role="status">Switching accounts securely…</div>}
       {loginOpen && (
         <LoginDialog
           authLoading={appStateLoading}
           onSessionChange={refreshAppState}
           session={session}
-          onClose={() => setLoginOpen(false)}
+          reloadOnSuccess={addingAccount}
+          onClose={closeAccountLogin}
         />
       )}
       {settingsOpen && (
         <SettingsModal
-          chat={appState?.chat}
+          chat={appState?.chat} linkedWallet={linkedWallet}
           onAppStateChange={refreshAppState}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => setSettingsOpen(false)} onWalletUnlock={openWalletVaultControl}
           session={session}
           setTheme={setTheme}
-          theme={theme}
+          theme={theme} walletSecret={walletSecretRef.current} walletVault={walletVaultStatus}
         />
       )}
       {identityHandleRequired && !identityPromptDismissed && !loginOpen && (

@@ -236,8 +236,8 @@ assert.ok(helpInstructions.includes("The Network Diagnostic Report is generated 
 assert.ok(helpInstructions.includes("Contributor badges are Network Task routing permissions"));
 assert.ok(helpInstructions.includes("KOL`, `Core Contributor`, `QA Worker`, `Expert`, and `Project Leader"));
 assert.ok(helpInstructions.includes("If the runtime context says `badge_required`"));
-assert.ok(helpInstructions.includes("Never tell the user to find, request, or apply for a Network Diagnostic Report; there is no request flow."));
-assert.ok(helpInstructions.includes("opening the Memory page also queues it immediately when none exists"));
+assert.ok(helpInstructions.includes("find, request, or apply for a Network Diagnostic Report; there is no manual flow."));
+assert.ok(helpInstructions.includes("Never tell the user to open Memory, refresh a tab"));
 assert.ok(helpInstructions.includes("there is no way to request it from Hive, Board Manager, or a person"));
 assertJobsInstructions(helpInstructions, "Help");
 assert.equal(

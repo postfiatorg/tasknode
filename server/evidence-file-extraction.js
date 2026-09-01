@@ -256,17 +256,24 @@ async function extractPdf(buffer) {
   };
 }
 
-export function decodeEvidenceDataUrl(dataUrl = "") {
-  const match = /^data:([^,]*),(.*)$/is.exec(String(dataUrl || ""));
-  if (!match) throw Object.assign(new Error("evidence_file_invalid_data_url"), { status: 400 });
-  const metadata = match[1] || "";
+export function decodeEvidenceDataUrl(
+  dataUrl = "",
+  { maxBytes = MAX_EVIDENCE_FILE_BYTES, tooLargeError = "evidence_file_too_large" } = {}
+) {
+  const value = String(dataUrl || "");
+  const commaIndex = value.indexOf(",");
+  if (!value.startsWith("data:") || commaIndex < 5) {
+    throw Object.assign(new Error("evidence_file_invalid_data_url"), { status: 400 });
+  }
+  const metadata = value.slice(5, commaIndex);
+  const encodedBody = value.slice(commaIndex + 1);
   const mimeType = metadata.split(";", 1)[0].trim().toLowerCase() || "application/octet-stream";
   try {
     const buffer = metadata.toLowerCase().split(";").includes("base64")
-      ? Buffer.from(match[2].replace(/\s+/g, ""), "base64")
-      : Buffer.from(decodeURIComponent(match[2]), "utf8");
-    if (buffer.byteLength > MAX_EVIDENCE_FILE_BYTES) {
-      throw Object.assign(new Error("evidence_file_too_large"), { status: 413 });
+      ? Buffer.from(encodedBody, "base64")
+      : Buffer.from(decodeURIComponent(encodedBody), "utf8");
+    if (buffer.byteLength > maxBytes) {
+      throw Object.assign(new Error(tooLargeError), { status: 413 });
     }
     return { buffer, mimeType };
   } catch (error) {

@@ -175,6 +175,36 @@ function strictBody(maxBytes, properties = {}, options = {}) {
 
 export const emptyRequestBody = strictBody(KiB);
 export const authDevBody = strictBody(4096, { email: text(320) });
+export const passwordLoginBody = strictBody(4096, {
+  identifier: text(320, 3),
+  email: text(320, 3),
+  password: text(1024, 1),
+}, { required: ["password"], requiredAny: [["identifier", "email"]] });
+export const passwordResetStartBody = strictBody(4096, {
+  email: text(320, 3),
+}, { required: ["email"] });
+export const passwordEnableVerifyBody = strictBody(4096, {
+  challengeId: text(180, 1),
+  address: text(120, 1),
+  publicKey: text(240, 1),
+  signature: text(1000, 1),
+  password: text(1024, 1),
+}, { required: ["challengeId", "address", "publicKey", "signature", "password"] });
+export const passwordResetVerifyBody = strictBody(4096, {
+  challengeId: text(180, 1),
+  code: text(32, 6),
+  password: text(1024, 1),
+}, { required: ["challengeId", "code", "password"] });
+export const passwordChangeBody = strictBody(4096, {
+  currentPassword: text(1024, 1),
+  newPassword: text(1024, 1),
+}, { required: ["currentPassword", "newPassword"] });
+export const passwordDisableBody = strictBody(2048, {
+  currentPassword: text(1024, 1),
+}, { required: ["currentPassword"] });
+export const accountTargetBody = strictBody(2048, {
+  targetAccountId: text(180, 1),
+}, { required: ["targetAccountId"] });
 export const terminalAuthStartBody = strictBody(4096, { pollIntervalMs: integer(250, 60_000) });
 export const observabilityBody = strictBody(8192, {
   eventType: text(160), event_type: text(160),
@@ -326,6 +356,10 @@ export const contextManifestBody = strictBody(1_200_000, {
   pointer: opaqueObject, transaction: opaqueObject, context: opaqueObject,
   title: text(120), body: text(1_000_000), wordCount: integer(0), revision: integer(0),
 });
+
+export const teamContextPreferenceBody = strictBody(4096, {
+  includeInPersonalContext: boolean,
+}, { required: ["includeInPersonalContext"] });
 
 export const usageAdminCreditBody = strictBody(4096, {
   amountUsd: number(0.01, 10_000), accountId: text(180, 1), idempotencyKey: text(240), note: text(1000), actor: text(180),
