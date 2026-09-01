@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { githubCoreContributorAccess } from "./core-contributor-authorization.js";
 import { projectLeaderAccessForHandle } from "./project-leader-badge.js";
 
 const hiveHandleMinLength = 3;
@@ -165,22 +166,14 @@ function safeProviderMetrics(provider = {}) {
     const coreContributorAccess = metadata.coreContributorAccess && typeof metadata.coreContributorAccess === "object" && !Array.isArray(metadata.coreContributorAccess)
       ? metadata.coreContributorAccess
       : {};
-    const sanctionedHandles = Array.isArray(coreContributorAccess.sanctionedHandles)
-      ? coreContributorAccess.sanctionedHandles.map((handle) => String(handle || "").trim()).filter(Boolean)
-      : [];
+    const currentAccess = githubCoreContributorAccess(
+      coreContributorAccess.username ||
+        coreContributorAccess.matchedHandle ||
+        provider.username ||
+        ""
+    );
     return {
-      coreContributorAccess: {
-        checkedAt: String(coreContributorAccess.checkedAt || "").trim() || null,
-        username: String(coreContributorAccess.username || provider.username || "").trim(),
-        sanctioned: coreContributorAccess.sanctioned === true,
-        matchedHandle: String(coreContributorAccess.matchedHandle || "").trim(),
-        sanctionedHandles,
-        accessCount: coreContributorAccess.sanctioned === true ? 1 : 0,
-        writeAccess: coreContributorAccess.sanctioned === true,
-        scopeRecorded: coreContributorAccess.sanctioned === true,
-        proofMethod: String(coreContributorAccess.proofMethod || "").trim() || null,
-        oauthScope: String(coreContributorAccess.oauthScope || "").trim() || null,
-      },
+      coreContributorAccess: currentAccess,
     };
   }
 

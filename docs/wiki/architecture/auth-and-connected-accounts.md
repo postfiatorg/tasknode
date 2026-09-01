@@ -1,10 +1,21 @@
 # Auth And Connected Accounts
 
-Task Node has one account cloud per user. Email, GitHub, Telegram, X, wallets, and future providers should attach to that account cloud instead of creating isolated identities. Discord OAuth is implemented and currently enabled in production (`/api/auth/providers` reports it configured and ready), but it is a non-core surface: it is not a launch-blocking dependency and carries no production support promise until the product scope explicitly promotes it.
+Each app account has one account cloud. Email, GitHub, Telegram, X, wallets,
+and future providers attach to that selected account instead of creating
+isolated identities. A browser may retain several independently authenticated
+accounts, but retaining or selecting one never links identities or wallets
+between them. Discord OAuth is implemented and currently enabled in production
+(`/api/auth/providers` reports it configured and ready), but it is a non-core
+surface: it is not a launch-blocking dependency and carries no production
+support promise until the product scope explicitly promotes it.
 
 The current UI surfaces are:
 
 - profile menu -> Telegram Chat, immediately below Directory, for the primary Telegram bot/chat link path;
+- profile menu -> retained accounts, Add account, Manage accounts, and scoped
+  logout actions;
+- Settings -> Security -> Account password, for password enable, change, and
+  disable; and
 - Settings -> Security -> Connected accounts, for the full provider list.
 
 The backend contract is `authProviders`, `authStart`, and `authCallback` in `server/product-contracts.js`.
@@ -22,6 +33,17 @@ Email login is implemented as an 8-digit code flow:
    explicitly forces it.
 4. `POST /api/auth/email/verify` consumes the challenge and issues a Task Node session.
 5. Email accounts are low assurance. They do not prove wallet or legacy provider ownership.
+
+Password login is an optional credential for an existing account. It uses
+Argon2id hashes and never creates a new account or decrypts a wallet. Enabling
+it requires a fresh, single-use challenge signed locally by the unlocked wallet
+already linked to the selected account. Email is not required. Login accepts
+the account's unique Hive handle or its verified email when one exists. The
+current password is required to change or disable the credential, and sessions
+rotate after credential mutation. Email reset is available only to accounts
+that independently have a verified email. Public login and reset routes return
+generic failures for unknown identifiers, disabled credentials, and incorrect
+passwords.
 
 Telegram login and linking are implemented through Telegram Login Widget:
 
@@ -47,8 +69,9 @@ Unlink rules:
 
 - Lockout guard: the request is refused (`provider_unlink_last_login_method`)
   when removing the provider would leave the account with no way to sign back
-  in. Sign-in methods are a verified email that survives the unlink or another
-  linked OAuth provider; wallets are identity/custody, not login.
+  in. Sign-in methods are an enabled account password, a verified email that
+  survives the unlink, or another linked OAuth provider; wallets are
+  identity/custody, not login.
 - Verified email-code login is independent from provider provenance. If the
   account still owns a verified `primaryEmailCanonical` mapping, that email
   counts as a surviving sign-in method even when the provider being unlinked
@@ -99,6 +122,9 @@ The rules are:
 3. Link attempts from the profile menu Telegram row or Settings include the current session account id in the OAuth state row.
 4. Callback handlers do not trust query parameters for account ownership; they consume the state row and state cookie.
 5. A successful provider link issues a fresh session whose `linkedProviders` list reflects the updated account cloud.
+6. Provider auth started from Add account carries a server-side `add_account`
+   intent and must authenticate independently. Provider auth started from
+   Security retains the `link_provider` behavior for the selected account.
 
 This is now the boundary Telegram bot chat uses: Telegram proves the sender with `message.from.id`, and Task Node only runs account-scoped chat when that Telegram identity is already attached to a Task Node account.
 
@@ -118,6 +144,15 @@ Provider aliases are attached by the auth linking flow but remain private unless
 This means X, GitHub, Telegram, email, wallet identity, and any explicitly enabled future provider can be used for login, recovery, anti-sybil signals, and operator trust without forcing public correlation. Discord should not be presented as a production launch promise: it is currently enabled but remains a non-core surface without a support commitment. A user who wants public continuity can still choose a matching Hive handle and disclose the verified provider alias.
 
 The current identity product contract is split between this architecture page and `Surfaces -> Profile`.
+
+## Password And Retained Accounts
+
+Password login, retained browser accounts, profile-dropdown switching, and the
+required distinct-wallet isolation boundary are specified in
+[`multi-account-password-wallet-spec.md`](./multi-account-password-wallet-spec.md).
+The repository implements that contract. Deployment remains conditional on the
+target environment passing the active-wallet and sync-assignment ownership
+audit; the rollout must never select or move an owner automatically.
 
 ## Provider Configuration
 
@@ -227,6 +262,9 @@ Run:
 
 ```bash
 npm run auth-login-state-fixture
+npm run multi-account-password-wallet-smoke
+npm run account-wallet-repository-smoke
+DATABASE_URL=... npm run wallet-account-isolation-audit
 ```
 
 The fixture uses a temporary runtime store and mocked Discord and X API responses. It does not call external providers.
@@ -247,8 +285,12 @@ The script is intentionally part of `npm run quality` so future auth changes can
 - `server/repositories/accounts.js`: durable account and linked-provider ownership.
 - `server/repositories/auth-sessions.js`: hashed, revocable web sessions.
 - `server/repositories/auth-challenges.js`: one-time OAuth, email, and wallet challenges.
+- `server/repositories/account-passwords.js`: versioned Argon2id credentials.
+- `server/repositories/device-account-sets.js`: server-backed retained accounts.
+- `server/account-switching.js`: account selection and scoped logout behavior.
 - `server/runtime-store.js`: no-database adapter and compatibility cache only.
-- `src/main.jsx`: Login dialog and Settings -> Connected accounts UI.
+- `src/features/settings/AppDialogs.jsx`: password login and Security controls.
+- `src/app/App.jsx`: retained-account dropdown and reload-based selection.
 - `scripts/auth-login-state-fixture.mjs`: deterministic replay fixture.
 
 ## Historical Reference

@@ -417,7 +417,7 @@ try {
 }
 
 const restoreGithubFetch = installGithubFetchMock();
-let githubLinkedSession = null;
+let githubLinkedSessionId = "";
 try {
   const githubStart = await authStart("github", {
     origin,
@@ -439,7 +439,7 @@ try {
   assert.equal(githubLinked.status, 302, JSON.stringify(githubLinked.body));
   assert.equal(githubLinked.body.session.accountId, emailSession.accountId);
   assertOk(linkedProviderIds(githubLinked.body.session).includes("github"), "email account should link github");
-  githubLinkedSession = githubLinked.body.session;
+  githubLinkedSessionId = githubLinked.sessionId;
   record("github.linked_to_email_account", {
     accountId: githubLinked.body.session.accountId,
     linkedProviders: linkedProviderIds(githubLinked.body.session),
@@ -449,7 +449,7 @@ try {
 }
 
 const restoreXFetch = installXFetchMock();
-let xLinkedSession = null;
+let xLinkedSessionId = "";
 try {
   const previousXRedirectUri = process.env.X_REDIRECT_URI;
   const previousPublicUrl = process.env.TASKNODE_PUBLIC_URL;
@@ -494,7 +494,7 @@ try {
   assert.equal(xLinked.status, 302);
   assert.equal(xLinked.body.session.accountId, emailSession.accountId);
   assertOk(linkedProviderIds(xLinked.body.session).includes("x"), "email account should link x");
-  xLinkedSession = xLinked.body.session;
+  xLinkedSessionId = xLinked.sessionId;
   record("x.linked_to_email_account", {
     accountId: xLinked.body.session.accountId,
     linkedProviders: linkedProviderIds(xLinked.body.session),
@@ -550,8 +550,8 @@ const aliasPublished = setAccountAliasVisibility({
 assert.equal(aliasPublished.ok, true);
 assert.equal(aliasPublished.identityProfile.publicAliases[0]?.handle, "x_fixture");
 assert.equal(getSession(emailVerified.sessionId)?.identityProfile?.hiveHandle, "x_fixture");
-assert.equal(getSession(xLinkedSession?.id)?.identityProfile?.publicAliases[0]?.handle, "x_fixture");
-assert.equal(getSession(githubLinkedSession?.id)?.identityProfile?.aliases?.find((alias) => alias.provider === "github")?.metrics?.coreContributorAccess?.sanctioned, true);
+assert.equal(getSession(xLinkedSessionId)?.identityProfile?.publicAliases[0]?.handle, "x_fixture");
+assert.equal(getSession(githubLinkedSessionId)?.identityProfile?.aliases?.find((alias) => alias.provider === "github")?.metrics?.coreContributorAccess?.sanctioned, true);
 const projectLeaderHandleSaved = setAccountHiveHandle({
   accountId: emailSession.accountId,
   handle: "goodalexander",

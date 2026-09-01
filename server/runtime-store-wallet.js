@@ -223,22 +223,11 @@ export function createRuntimeWalletStore({
     const normalizedAccountId = safeId(accountId, "account");
     const normalizedAddress = String(address || "").trim();
     if (!normalizedAddress) return { ok: false, status: 400, error: "wallet_address_required" };
-    const now = new Date().toISOString();
-    const reclaimedOwners = activeWalletAccountsForAddress(normalizedAddress, normalizedAccountId);
-    for (const [ownerAccountId, ownerWallet] of reclaimedOwners) {
-      delete state.accountWallets[ownerAccountId];
-      state.authEvents.push({
-        id: randomUUID(), accountId: ownerAccountId, eventType: "wallet_reclaimed_from_account", provider: "wallet",
-        email: null, decision: "superseded",
-        metadata: {
-          walletAddress: ownerWallet.address, publicKey: ownerWallet.publicKey || null,
-          tasknodeEncryptionPubkey: ownerWallet.tasknodeEncryptionPubkey || null,
-          custody: ownerWallet.custody || "local_seed_required", linkedAt: ownerWallet.linkedAt || null,
-          reclaimedByAccountId: normalizedAccountId, proofPurpose, challengeId,
-        },
-        createdAt: now,
-      });
+    const conflictingOwners = activeWalletAccountsForAddress(normalizedAddress, normalizedAccountId);
+    if (conflictingOwners.length > 0) {
+      return { ok: false, status: 409, error: "wallet_owned_by_other_account" };
     }
+    const now = new Date().toISOString();
     const previousWallet = state.accountWallets[normalizedAccountId] || null;
     const walletCreatedInAccount = walletCreatedInAccountForRecord(normalizedAccountId, {
       ...(previousWallet || {}), address: normalizedAddress, proof: { purpose: proofPurpose },
@@ -258,7 +247,7 @@ export function createRuntimeWalletStore({
       metadata: {
         walletAddress: wallet.address, previousWalletAddress: previousWallet?.address || null,
         tasknodeEncryptionPubkey: wallet.tasknodeEncryptionPubkey || null, proofPurpose, challengeId,
-        signatureHash: wallet.proof.signatureHash, reclaimedWalletCount: reclaimedOwners.length,
+        signatureHash: wallet.proof.signatureHash, reclaimedWalletCount: 0,
       },
       createdAt: now,
     });
@@ -266,9 +255,9 @@ export function createRuntimeWalletStore({
     saveState();
     if (databaseMirror) mirrorLinkedWalletToDatabase({
       accountId: normalizedAccountId, walletAddress: wallet.address, linkedAt: wallet.linkedAt,
-      reclaimedAccountIds: reclaimedOwners.map(([ownerAccountId]) => ownerAccountId),
+      reclaimedAccountIds: [],
     });
-    return { ok: true, wallet, reclaimedWalletCount: reclaimedOwners.length };
+    return { ok: true, wallet, reclaimedWalletCount: 0 };
   }
 
   function resolveOrCreateWalletLoginAccount({ address = "", publicKey = "", challengeId = "", signature = "" } = {}) {

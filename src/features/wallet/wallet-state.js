@@ -28,6 +28,38 @@ export function walletVaultDisplayState(walletVault = {}, linkedWalletAddress = 
   };
 }
 
+export function walletVaultPersistenceDecision({
+  challengeAccountId = "",
+  capturedAccountId = "",
+  derivedAddress = "",
+  liveAccountId = "",
+  responseAccountId = "",
+  responseAddress = "",
+} = {}) {
+  const captured = String(capturedAccountId || "").trim();
+  if (!captured || String(challengeAccountId || "").trim() !== captured) {
+    return { ok: false, error: "wallet_account_changed" };
+  }
+  if (
+    String(responseAccountId || "").trim() !== captured
+    || String(liveAccountId || "").trim() !== captured
+  ) {
+    return { ok: false, error: "wallet_vault_account_mismatch" };
+  }
+  if (!derivedAddress || responseAddress !== derivedAddress) {
+    return { ok: false, error: "wallet_vault_address_mismatch" };
+  }
+  return { ok: true };
+}
+
+export function walletRestoreAddressDecision({ derivedAddress = "", expectedAddress = "" } = {}) {
+  const expected = String(expectedAddress || "").trim();
+  const derived = String(derivedAddress || "").trim();
+  return expected && derived !== expected
+    ? { ok: false, error: "wallet_vault_address_mismatch" }
+    : { ok: true };
+}
+
 function linkedWalletAddressFromState(state) {
   const wallet = state?.wallet?.pftWallet || {};
   return wallet.status === "linked" ? wallet.address || "" : "";

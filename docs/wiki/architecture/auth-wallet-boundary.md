@@ -15,8 +15,11 @@ Account authentication and wallet proof are separate boundaries.
 - A local encrypted seed vault is never a login session.
 
 Normal app access, chat, native context editing, task viewing, billing views,
-and settings use the account session. Wallet proof is required only for actions
-that need wallet ownership or wallet signing.
+and ordinary settings use the account session. Wallet proof is required only
+for actions that need wallet ownership or wallet signing. Enabling an account
+password is intentionally one of those actions: the unlocked wallet signs a
+fresh `password_enable` challenge, while the server receives no seed or vault
+password.
 
 ## Current Required Flow
 
@@ -104,6 +107,8 @@ offers a retry without creating or relinking another wallet.
 
 - `/api/wallet/link/start` requires an authenticated account session.
 - Wallet challenges are short-lived, single-purpose, and single-use.
+- Wallet challenge responses include the session-bound `accountId`; the browser
+  rejects missing or mismatched bindings before signing or saving a vault.
 - `/api/wallet/link/verify` consumes the challenge before linking.
 - The server stores wallet address, public key, status, timestamps, and proof
   metadata. It does not store mnemonic, private key, wallet password, or
@@ -245,4 +250,5 @@ Do not reintroduce these patterns:
 - auto-linking or auto-merging provider, email, and wallet identities;
 - logging seed phrases, private keys, signatures with raw challenge text, or
   wallet passwords;
-- adding wallet unlock gates to non-wallet product surfaces.
+- adding wallet unlock gates to other non-wallet product surfaces; password
+  enablement is the explicit credential-provisioning exception above.

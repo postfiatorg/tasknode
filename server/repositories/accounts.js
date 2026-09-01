@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { accountIdentityProfile, providerAliasDefaults } from "../account-identity.js";
+import { accountIdentityProfile, normalizeHiveHandle, providerAliasDefaults } from "../account-identity.js";
 import { accountDeletionAuditSnapshot } from "../account-deletion-audit.js";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
   findAccountByEmail as findRuntimeByEmail,
+  findAccountByHandle as findRuntimeByHandle,
   findAccountByIdentity as findRuntimeByIdentity,
   getAccount as getRuntimeAccount,
   getLinkedProviderForAccount as getRuntimeLinkedProvider,
@@ -33,6 +34,7 @@ function publicAccount(account = null) {
     hiveHandle: profile?.hiveHandle || "", publicDisplayName: profile?.publicDisplayName || "",
     profileVisibility: profile?.profileVisibility || "public", profileDiscoverable: profile?.profileDiscoverable !== false,
     primaryProvider: account.primaryProvider || "email", primaryEmailCanonical: account.primaryEmailCanonical || "",
+    primaryEmailVerified: account.primaryEmailVerified === true,
     emailProvider: account.emailProvider || "", linkedProviders: account.linkedProviders || [],
     assurance: account.assurance || "low", createdAt: account.createdAt, updatedAt: account.updatedAt,
   };
@@ -115,6 +117,18 @@ export async function findAccountByEmail(email = "") {
     `SELECT accounts.account_json FROM account_email_identities identities
       JOIN app_accounts accounts ON accounts.account_id = identities.account_id
       WHERE identities.email_canonical = $1`, [String(email || "").trim().toLowerCase()]
+  );
+  return publicAccount(accountFromRow(result.rows[0]));
+}
+export async function findAccountByHandle(handle = "") {
+  if (!databaseEnabled()) return findRuntimeByHandle(handle);
+  const normalized = normalizeHiveHandle(handle);
+  if (!normalized) return null;
+  const result = await query(
+    `SELECT account_json FROM app_accounts
+      WHERE lower(hive_handle) = $1 AND status <> 'merged'
+      LIMIT 1`,
+    [normalized]
   );
   return publicAccount(accountFromRow(result.rows[0]));
 }
@@ -254,13 +268,18 @@ export async function unlinkProviderFromAccount(options = {}) {
     const remaining = providers.filter((item) => item?.id !== provider); const remainingOauth = remaining.filter((item) => oauthProviders.has(item?.id));
     const email = account.primaryEmailCanonical || ""; const emailOwner = email ? await client.query("SELECT account_id FROM account_email_identities WHERE email_canonical = $1", [email]) : { rows: [] };
     const emailSurvives = Boolean(email && account.primaryEmailVerified && emailOwner.rows[0]?.account_id === accountId);
-    if (!emailSurvives && remainingOauth.length === 0) return { ok: false, error: "provider_unlink_last_login_method" };
+    const passwordCredential = await client.query(
+      "SELECT 1 FROM account_password_credentials WHERE account_id = $1 AND disabled_at IS NULL",
+      [accountId]
+    );
+    const passwordSurvives = Boolean(passwordCredential.rows[0]);
+    if (!emailSurvives && !passwordSurvives && remainingOauth.length === 0) return { ok: false, error: "provider_unlink_last_login_method" };
     account.linkedProviders = remaining; if (account.primaryProvider === provider) account.primaryProvider = remainingOauth[0]?.id || "email";
     if (account.emailProvider === provider && emailSurvives) account.emailProvider = remaining.find((item) => item?.emailVerified && String(item.email || "").toLowerCase() === email)?.id || "email";
     account.updatedAt = new Date().toISOString(); account.lastProviderUnlinkAt = account.updatedAt;
     await saveAccount(client, account);
     await client.query("DELETE FROM account_provider_identities WHERE provider = $1 AND account_id = $2", [provider, accountId]);
-    return { ok: true, provider, unlinkedUsername: target.username || null, remainingLoginMethods: (emailSurvives ? 1 : 0) + remainingOauth.length, account: publicAccount(account) };
+    return { ok: true, provider, unlinkedUsername: target.username || null, remainingLoginMethods: (emailSurvives ? 1 : 0) + (passwordSurvives ? 1 : 0) + remainingOauth.length, account: publicAccount(account) };
   });
   await refreshRuntimeCache(); return result;
 }

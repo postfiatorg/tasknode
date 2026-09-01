@@ -80,19 +80,25 @@ export function createRuntimeAuthChallengeStore({ state, saveState } = {}) {
   function createEmailChallenge({
     id,
     email, canonicalEmail, maskedEmail, codeHash, tokenHash: challengeTokenHash,
-    purpose = "login", ttlSeconds = 600, expiresAt = "", requestIp = "", requestedIp = "", userAgent = "",
+    purpose = "login", expectedAccountId = "", ttlSeconds = 600, expiresAt = "", requestIp = "", requestedIp = "", userAgent = "",
   }) {
     pruneExpiredEmailChallenges();
     const now = new Date();
     for (const challenge of Object.values(state.emailChallenges)) {
-      if (!challenge || challenge.canonicalEmail !== canonicalEmail || challenge.consumedAt || challenge.replacedAt) continue;
+      if (
+        !challenge
+        || challenge.canonicalEmail !== canonicalEmail
+        || (challenge.purpose || "login") !== purpose
+        || challenge.consumedAt
+        || challenge.replacedAt
+      ) continue;
       challenge.replacedAt = now.toISOString();
     }
     const challengeId = String(id || "").trim() || randomUUID();
     const requestedExpiresAt = Date.parse(expiresAt);
     const challenge = {
       id: challengeId, email, canonicalEmail, maskedEmail, codeHash,
-      tokenHash: challengeTokenHash, purpose, status: "pending", attemptCount: 0,
+      tokenHash: challengeTokenHash, purpose, expectedAccountId: String(expectedAccountId || "").trim(), status: "pending", attemptCount: 0,
       requestedIp: String(requestIp || requestedIp || "").slice(0, 120),
       userAgent: String(userAgent || "").slice(0, 500),
       createdAt: now.toISOString(),
@@ -111,18 +117,22 @@ export function createRuntimeAuthChallengeStore({ state, saveState } = {}) {
     if (!challenge) return null;
     return {
       id: challenge.id, email: challenge.email, canonicalEmail: challenge.canonicalEmail,
-      maskedEmail: challenge.maskedEmail, purpose: challenge.purpose, status: challenge.status,
+      maskedEmail: challenge.maskedEmail, purpose: challenge.purpose, expectedAccountId: challenge.expectedAccountId || "", status: challenge.status,
       attemptCount: challenge.attemptCount || 0, createdAt: challenge.createdAt,
       expiresAt: challenge.expiresAt, consumedAt: challenge.consumedAt || null,
       replacedAt: challenge.replacedAt || null,
     };
   }
 
-  function consumeEmailChallenge({ challengeId, codeHash }) {
+  function consumeEmailChallenge({ challengeId, codeHash, purpose = "", expectedAccountId = "" }) {
     pruneExpiredEmailChallenges();
     const challenge = state.emailChallenges[challengeId];
     if (!challenge || challenge.replacedAt || challenge.consumedAt) return { ok: false, error: "challenge_expired" };
     if (Date.parse(challenge.expiresAt) <= Date.now()) return { ok: false, error: "challenge_expired" };
+    if (purpose && challenge.purpose !== purpose) return { ok: false, error: "challenge_invalid" };
+    if (expectedAccountId && challenge.expectedAccountId !== expectedAccountId) {
+      return { ok: false, error: "challenge_invalid" };
+    }
     challenge.attemptCount = Number(challenge.attemptCount || 0) + 1;
     if (challenge.attemptCount > 8) {
       challenge.status = "locked";
@@ -157,6 +167,39 @@ export function createRuntimeAuthChallengeStore({ state, saveState } = {}) {
     return true;
   }
 
+  function attachSessionToDeviceAccountSet({ sessionId = "", setId = "" } = {}) {
+    const session = state.sessions[sessionId];
+    if (!session || !setId) return { attached: false };
+    session.deviceAccountSetId = setId;
+    saveState();
+    return { attached: true };
+  }
+
+  function revokeSessionsForDeviceAccountSet({ setId = "", accountId = "" } = {}) {
+    if (!setId) return { revoked: 0 };
+    let revoked = 0;
+    for (const [sessionId, session] of Object.entries(state.sessions)) {
+      if (session?.deviceAccountSetId !== setId) continue;
+      if (accountId && session.accountId !== accountId) continue;
+      delete state.sessions[sessionId];
+      revoked += 1;
+    }
+    if (revoked) saveState();
+    return { revoked };
+  }
+
+  function revokeSessionsForAccount({ accountId = "", exceptSessionId = "" } = {}) {
+    if (!accountId) return { revoked: 0 };
+    let revoked = 0;
+    for (const [sessionId, session] of Object.entries(state.sessions)) {
+      if (session?.accountId !== accountId || sessionId === exceptSessionId) continue;
+      delete state.sessions[sessionId];
+      revoked += 1;
+    }
+    if (revoked) saveState();
+    return { revoked };
+  }
+
   return {
     consumeEmailChallenge,
     consumeOAuthState,
@@ -167,5 +210,8 @@ export function createRuntimeAuthChallengeStore({ state, saveState } = {}) {
     pruneExpiredEmailChallenges,
     pruneExpiredOAuthStates,
     recordAuthEvent,
+    attachSessionToDeviceAccountSet,
+    revokeSessionsForAccount,
+    revokeSessionsForDeviceAccountSet,
   };
 }

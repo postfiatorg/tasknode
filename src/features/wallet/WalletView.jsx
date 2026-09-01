@@ -238,6 +238,13 @@ export function WalletView({
     return false;
   }
 
+  function restoreWalletAction() {
+    const action = relinkAction || linkAction;
+    return walletLinked && linkedWallet.address
+      ? { ...action, expectedWalletAddress: linkedWallet.address }
+      : action;
+  }
+
   function openVaultControl() {
     if (vaultUnlocked) {
       onWalletVaultLock?.();
@@ -249,7 +256,7 @@ export function WalletView({
     }
     if (requireSignedInForWalletLink()) {
       setMessage("");
-      setWalletProofAction(walletLinked ? relinkAction || linkAction : linkAction);
+      setWalletProofAction(walletLinked ? restoreWalletAction() : linkAction);
       setLinkOpen(true);
     }
   }
@@ -316,7 +323,7 @@ export function WalletView({
     }
     if (!vaultAvailable) {
       setMessage("Save the matching local seed vault before sending PFT.");
-      setWalletProofAction(relinkAction || linkAction);
+      setWalletProofAction(restoreWalletAction());
       setLinkOpen(true);
       return;
     }
@@ -444,7 +451,7 @@ export function WalletView({
         setWalletProofAction(linkAction);
         setLinkOpen(true);
       } else if (!vaultAvailable) {
-        setWalletProofAction(relinkAction || linkAction);
+        setWalletProofAction(restoreWalletAction());
         setLinkOpen(true);
       } else if (vaultUnlocked) {
         onWalletVaultLock?.();
