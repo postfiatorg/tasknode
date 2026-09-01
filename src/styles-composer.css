@@ -156,6 +156,12 @@
   box-shadow: 0 0 0 3px rgba(43, 93, 72, 0.06);
 }
 
+.composer.is-deep-research {
+  border-color: #9eabc0;
+  background: #fbfcfe;
+  box-shadow: 0 0 0 3px rgba(47, 72, 112, 0.06);
+}
+
 .composer.is-hive-input {
   border-color: #b8b4aa;
   background: #fffdf8;
@@ -493,6 +499,12 @@
 
 .tool-menu-row:hover {
   background: rgba(0, 0, 0, 0.04);
+}
+
+.tool-menu-row:disabled {
+  cursor: not-allowed;
+  color: #9a9891;
+  background: transparent;
 }
 
 .tool-menu-row span {

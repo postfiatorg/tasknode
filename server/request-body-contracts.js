@@ -347,6 +347,16 @@ export const walletDelinkBody = strictBody(8192, {
 export const contextRewriteBody = strictBody(1_200_000, {
   message: text(12_000), instruction: text(12_000), instructions: text(12_000), conversationId: text(180),
 }, { requiredAny: [["message", "instruction", "instructions"]] });
+export const deepResearchBody = strictBody(128 * KiB, {
+  question: text(50_000, 1),
+  message: text(50_000, 1),
+  title: text(500),
+  conversationId: text(180, 1),
+  requestId: text(180, 1),
+}, {
+  required: ["conversationId", "requestId"],
+  requiredAny: [["question", "message"]],
+});
 export const contextSaveBody = strictBody(64 * KiB, {
   title: text(120), body: text(60_000), revision: integer(0),
 }, { required: ["body"] });
