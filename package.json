@@ -373,7 +373,7 @@
     "account-unlink-provider-smoke": "node scripts/account-unlink-provider-smoke.mjs"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^0.1.65",
+    "@napi-rs/canvas": "^1.0.8",
     "@node-rs/argon2": "2.1.0",
     "@scure/bip39": "^2.2.0",
     "ethers": "^6.17.0",
