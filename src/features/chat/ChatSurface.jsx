@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Check, ChevronDown, ChevronRight, Drama, FileText, Lightbulb, ListPlus, MoreHorizontal, Network, Paperclip, Plus, Sparkles, Wand2, X } from "lucide-react";
+import { ArrowDown, Check, ChevronDown, ChevronRight, Drama, FileText, Lightbulb, ListPlus, MoreHorizontal, Network, Paperclip, Plus, Search, Sparkles, Wand2, X } from "lucide-react";
 import { requestEventStream, requestJson } from "../../api";
 import { byteSize, createPastedTextAttachment, formatFileSize, mimeTypeFromFilename, promptForAttachments, readFileAsDataUrl, textFromAttachment } from "../../chat-attachments";
 import { AgentMessage, AssistantMessage, AttachmentTray, UserMessage } from "./ChatMessages.jsx";
@@ -10,7 +10,10 @@ import { chatSurfaceDisplayState } from "./chat-ui-state.js";
 import { ModelOption, ShareModal, formatModeLabel } from "./AppChatDialogs.jsx";
 import { chatComposerStatus } from "./chat-surface-state.js";
 import { applyContextEditProposal, CONTEXT_EDIT_MODE, CONTEXT_EDIT_PLACEHOLDER, patchContextEditProposalTurn, rejectContextEditProposal } from "../context/context-edit-client";
-import { CONTEXT_REWRITE_MODE, CONTEXT_REWRITE_PLACEHOLDER, contextRewriteIsTerminal, createContextRewriteJob, fetchContextRewriteJob } from "../context/context-rewrite-client";
+import { CONTEXT_REWRITE_MODE, CONTEXT_REWRITE_PLACEHOLDER, createContextRewriteJob } from "../context/context-rewrite-client";
+import { useContextRewritePolling } from "../context/use-context-rewrite-polling.js";
+import { DEEP_RESEARCH_MODE, DEEP_RESEARCH_PLACEHOLDER, createDeepResearchJob } from "./deep-research-client.js";
+import { useDeepResearchPolling } from "./use-deep-research-polling.js";
 import { ToolMenuRow } from "../shell/ShellControls";
 import { publishTaskRequest } from "../tasks/task-request-actions.js";
 import { evaluateTaskRequestUnlockPolicy } from "../tasks/task-request-unlock-policy.js";
@@ -68,6 +71,7 @@ export function ChatSurface({
   const [taskRequestMode, setTaskRequestMode] = useState(false);
   const [contextEditMode, setContextEditMode] = useState(false);
   const [contextRewriteMode, setContextRewriteMode] = useState(false);
+  const [deepResearchMode, setDeepResearchMode] = useState(false);
   const [contextEditSavingId, setContextEditSavingId] = useState("");
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
@@ -129,6 +133,7 @@ export function ChatSurface({
     setTaskRequestMode(false);
     setContextEditMode(false);
     setContextRewriteMode(false);
+    setDeepResearchMode(false);
     setModalityMenuOpen(false);
     setPlusMenuOpen(false);
     setSendMessage("");
@@ -150,11 +155,16 @@ export function ChatSurface({
   const fileInputRef = useRef(null);
   const composerDragDepthRef = useRef(0);
   const messageListRef = useRef(null);
-  const contextRewritePollsRef = useRef(new Map());
   const resetSeenRef = useRef(0);
   const shareSeenRef = useRef(chatShareRequestKey);
   const clearedChatRef = useRef(false);
   const scrollNearBottomRef = useRef(true);
+  const { pollContextRewriteJob, replaceContextRewriteAssistant } = useContextRewritePolling({
+    onChatSettled, setSendMessage, setStatusTone, setTurns,
+  });
+  const { pollDeepResearchJob } = useDeepResearchPolling({
+    onChatSettled, setSendMessage, setStatusTone, setTurns, turns,
+  });
   const updateScrollBottomVisibility = useCallback(() => {
     const list = messageListRef.current;
     if (!list) {
@@ -208,6 +218,7 @@ export function ChatSurface({
     setTaskRequestMode(false);
     setContextEditMode(false);
     setContextRewriteMode(false);
+    setDeepResearchMode(false);
     setSelectedMode("Help");
     setSelectedPersona(DEFAULT_CHAT_PERSONA);
     setPlusMenuOpen(false);
@@ -231,6 +242,7 @@ export function ChatSurface({
     setTaskRequestMode(false);
     setContextEditMode(false);
     setContextRewriteMode(false);
+    setDeepResearchMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -249,6 +261,7 @@ export function ChatSurface({
     setTaskRequestMode(false);
     setContextEditMode(false);
     setContextRewriteMode(false);
+    setDeepResearchMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -291,6 +304,7 @@ export function ChatSurface({
     if (signedOut) return;
     setTaskRequestMode(false);
     setContextRewriteMode(false);
+    setDeepResearchMode(false);
     setContextEditMode(true);
     setSendMessage("");
     setStatusTone("muted");
@@ -302,20 +316,12 @@ export function ChatSurface({
     if (signedOut) return;
     setTaskRequestMode(false);
     setContextEditMode(false);
+    setDeepResearchMode(false);
     setContextRewriteMode(true);
     setSendMessage("Context Rewrite uses multiple model calls and web research, so the charge may be higher than a normal chat call.");
     setStatusTone("muted");
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [contextRewritePending, onContextRewriteHandled, signedOut]);
-  useEffect(() => {
-    const activePolls = contextRewritePollsRef.current;
-    return () => {
-      for (const timerId of activePolls.values()) {
-        window.clearInterval(timerId);
-      }
-      activePolls.clear();
-    };
-  }, []);
   useEffect(() => {
     const textarea = inputRef.current;
     if (!textarea) return;
@@ -365,96 +371,6 @@ export function ChatSurface({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [turns, input, sending, updateScrollBottomVisibility]);
-  function replaceContextRewriteAssistant(pendingId, assistant, startedAt, { pending = false } = {}) {
-    const assistantTurn = normalizeChatMessage(
-      {
-        ...assistant,
-        thinking: {
-          state: pending ? "running" : "finished",
-          duration: pending ? undefined : formatElapsedSeconds(Date.now() - startedAt),
-          ...(assistant?.metadata?.thinking || {}),
-          ...(assistant?.thinking || {}),
-        },
-      },
-      pendingId
-    );
-    if (!assistantTurn) return;
-    setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId, pending }));
-  }
-  function contextRewriteAssistantWithJobProgress(assistant, job) {
-    if (!assistant || !job) return assistant;
-    const metadata = assistant.metadata && typeof assistant.metadata === "object" ? assistant.metadata : {};
-    const rewrite = metadata.contextRewrite && typeof metadata.contextRewrite === "object" ? metadata.contextRewrite : {};
-    const progress = job.progress && typeof job.progress === "object" ? job.progress : rewrite.progress;
-    return {
-      ...assistant,
-      metadata: {
-        ...metadata,
-        kind: "context_rewrite",
-        contextRewrite: {
-          ...rewrite,
-          jobId: job.id || rewrite.jobId,
-          status: job.status || rewrite.status,
-          stage: job.currentStage || rewrite.stage,
-          actualCostUsd: job.actualCostUsd ?? rewrite.actualCostUsd,
-          maxCostUsd: job.maxCostUsd ?? rewrite.maxCostUsd,
-          retryCount: job.retryCount ?? rewrite.retryCount,
-          attempt: job.attempt ?? rewrite.attempt,
-          stalled: job.stalled === true,
-          staleAfter: job.staleAfter || rewrite.staleAfter,
-          lastProgressAt: job.lastProgressAt || rewrite.lastProgressAt,
-          elapsedSinceProgressMs: job.elapsedSinceProgressMs ?? rewrite.elapsedSinceProgressMs,
-          statusMessage: job.statusMessage || rewrite.statusMessage,
-          progress,
-          trace: Array.isArray(progress?.trace) ? progress.trace : rewrite.trace,
-        },
-      },
-    };
-  }
-  async function pollContextRewriteJob(jobId, pendingId, startedAt) {
-    if (!jobId || contextRewritePollsRef.current.has(jobId)) return;
-    async function tick() {
-      try {
-        const result = await fetchContextRewriteJob(jobId);
-        if (!result.ok || !result.body?.job) {
-          throw new Error(result.body?.message || `Context Rewrite returned HTTP ${result.status}.`);
-        }
-        const job = result.body.job;
-        const stage = job.currentStage || job.status || "running";
-        if (job.status === "failed" || job.status === "cancelled") {
-          const failureMessage = job.error || result.body?.assistant?.body || "Context Rewrite did not complete.";
-          setTurns((current) =>
-            replaceTurnById(current, pendingId, createErrorAssistantTurn(pendingId, failureMessage, startedAt))
-          );
-          setSendMessage(failureMessage);
-          setStatusTone("error");
-        } else if (result.body.assistant) {
-          replaceContextRewriteAssistant(pendingId, contextRewriteAssistantWithJobProgress(result.body.assistant, job), startedAt, {
-            pending: !contextRewriteIsTerminal(job.status),
-          });
-          setSendMessage(
-            job.status === "completed"
-              ? "Context Rewrite ready."
-              : job.statusMessage || job.progress?.message || `Context Rewrite ${stage.replaceAll("_", " ")}. Check back in this tab.`
-          );
-          setStatusTone("muted");
-        }
-        if (contextRewriteIsTerminal(job.status)) {
-          const timerId = contextRewritePollsRef.current.get(jobId);
-          if (timerId) window.clearInterval(timerId);
-          contextRewritePollsRef.current.delete(jobId);
-          await onChatSettled?.();
-        }
-      } catch (error) {
-        const failureMessage = error?.message || "Context Rewrite status is unavailable.";
-        setSendMessage(failureMessage);
-        setStatusTone("error");
-      }
-    }
-    const timerId = window.setInterval(tick, 4000);
-    contextRewritePollsRef.current.set(jobId, timerId);
-    await tick();
-  }
   async function submitMessage(event) {
     event.preventDefault();
     if (sending) return;
@@ -475,22 +391,26 @@ export function ChatSurface({
     const startedAt = Date.now();
     const requestedConversationId = activeChat?.conversationId || activeChat?.id || draftConversationId;
     const isTaskRequest = taskRequestMode;
-    const isContextRewrite = contextRewriteMode && !isTaskRequest;
-    const isContextEdit = contextEditMode && !isTaskRequest && !isContextRewrite;
-    const isHiveContext = isHiveChat && !isTaskRequest && !isContextEdit && !isContextRewrite;
+    const isDeepResearch = deepResearchMode && !isTaskRequest;
+    const isContextRewrite = contextRewriteMode && !isTaskRequest && !isDeepResearch;
+    const isContextEdit = contextEditMode && !isTaskRequest && !isDeepResearch && !isContextRewrite;
+    const isHiveContext = isHiveChat && !isTaskRequest && !isDeepResearch && !isContextEdit && !isContextRewrite;
     const requestId = isTaskRequest ? newClientCorrelationId("req") : "";
+    const deepResearchRequestId = isDeepResearch ? newClientCorrelationId("deepresearch") : "";
     const bundleId = isTaskRequest ? newClientCorrelationId("bundle") : "";
     const taskRequestMessageId = requestId ? `msg_${requestId}_request_user`.slice(0, 180) : "";
     const taskRequestAssistantId = requestId ? `msg_${requestId}_request_assistant`.slice(0, 180) : "";
     const contextRewriteMessageId = isContextRewrite ? `msg_${newClientCorrelationId("ctxrw")}_user`.slice(0, 180) : "";
+    const deepResearchMessageId = isDeepResearch ? `msg_${deepResearchRequestId}_user`.slice(0, 180) : "";
+    const deepResearchAssistantId = isDeepResearch ? `msg_${deepResearchRequestId}_assistant`.slice(0, 180) : "";
     const hiveContextMessageId = isHiveContext ? `msg_${newClientCorrelationId("hive")}_user`.slice(0, 180) : "";
     const hiveContextAssistantId = isHiveContext ? `${hiveContextMessageId}_assistant`.slice(0, 180) : "";
-    const chatRequestId = !isTaskRequest && !isContextRewrite && !isHiveContext
+    const chatRequestId = !isTaskRequest && !isDeepResearch && !isContextRewrite && !isHiveContext
       ? newClientCorrelationId("chatreq")
       : "";
     const chatUserMessageId = chatRequestId ? `msg_${chatRequestId}_user`.slice(0, 180) : "";
     const chatAssistantMessageId = chatRequestId ? `msg_${chatRequestId}_assistant`.slice(0, 180) : "";
-    const pendingId = taskRequestAssistantId || hiveContextAssistantId || chatAssistantMessageId || `assistant-pending-${startedAt}`;
+    const pendingId = taskRequestAssistantId || deepResearchAssistantId || hiveContextAssistantId || chatAssistantMessageId || `assistant-pending-${startedAt}`;
     const submittedAttachments = attachments;
     const fallbackPrompt = promptForAttachments(submittedAttachments);
     const submittedText = message || fallbackPrompt;
@@ -521,6 +441,17 @@ export function ChatSurface({
           },
         }
       : undefined;
+    const deepResearchMetadata = isDeepResearch
+      ? {
+          kind: DEEP_RESEARCH_MODE,
+          deepResearch: {
+            status: "starting",
+            stage: "starting",
+            title: "Deep Research",
+            privacy: "Runs through the private Corbanu research service.",
+          },
+        }
+      : undefined;
     const hiveContextMetadata = isHiveContext
       ? {
           kind: "hive_context_entry",
@@ -529,10 +460,10 @@ export function ChatSurface({
           sourceConversationTitle: HIVE_CHAT_TITLE,
       }
       : undefined;
-    const personaMetadata = !isTaskRequest && !isContextRewrite && !isContextEdit && !isHiveContext
+    const personaMetadata = !isTaskRequest && !isDeepResearch && !isContextRewrite && !isContextEdit && !isHiveContext
       ? { chatPersona: selectedPersona }
       : undefined;
-    const turnMetadata = taskRequestMetadata || contextRewriteMetadata || contextEditMetadata || hiveContextMetadata || personaMetadata;
+    const turnMetadata = taskRequestMetadata || deepResearchMetadata || contextRewriteMetadata || contextEditMetadata || hiveContextMetadata || personaMetadata;
     if (isTaskRequest && !walletReady) {
       if (["unlock", "open_wallet"].includes(taskRequestUnlockPolicy.action)) onWalletUnlock?.();
       setSendMessage(taskRequestUnlockPolicy.message);
@@ -547,7 +478,7 @@ export function ChatSurface({
     setAttachments([]);
     const submittedUserTurn = createUserTurn(
         submittedText,
-        taskRequestMessageId || contextRewriteMessageId || hiveContextMessageId || chatUserMessageId || `user-local-${startedAt}`,
+        taskRequestMessageId || deepResearchMessageId || contextRewriteMessageId || hiveContextMessageId || chatUserMessageId || `user-local-${startedAt}`,
         submittedAttachments,
         turnMetadata
       );
@@ -560,7 +491,7 @@ export function ChatSurface({
         conversationId: requestedConversationId,
         source: "live",
         kind: isHiveContext ? "hive" : undefined,
-        title: isTaskRequest ? "Task request" : isContextRewrite ? "Context Rewrite" : isHiveContext ? HIVE_CHAT_TITLE : chatTitleFromPrompt(message),
+        title: isTaskRequest ? "Task request" : isDeepResearch ? "Deep Research" : isContextRewrite ? "Context Rewrite" : isHiveContext ? HIVE_CHAT_TITLE : chatTitleFromPrompt(message),
       });
     }
     try {
@@ -614,6 +545,48 @@ export function ChatSurface({
           title: activeChat?.title || "Task request",
         });
         await onChatSettled?.({ taskProjectionRefresh: true });
+        return;
+      }
+      if (isDeepResearch) {
+        const result = await createDeepResearchJob({
+          question: submittedText,
+          conversationId: requestedConversationId,
+          requestId: deepResearchRequestId,
+          title: chatTitleFromPrompt(submittedText),
+        });
+        if (!result.ok || !result.body?.job) {
+          throw new Error(result.body?.message || `Deep Research returned HTTP ${result.status}.`);
+        }
+        if (result.body.user) {
+          const userTurn = normalizeChatMessage(result.body.user, 0);
+          if (userTurn) setTurns((current) => replaceTurnById(current, deepResearchMessageId, userTurn));
+        }
+        if (result.body.assistant) {
+          const assistantTurn = normalizeChatMessage({
+            ...result.body.assistant,
+            thinking: { state: "running", ...(result.body.assistant.thinking || {}) },
+          }, pendingId);
+          if (assistantTurn) {
+            setTurns((current) => replaceTurnById(
+              current,
+              pendingId,
+              { ...assistantTurn, id: pendingId, pending: true },
+            ));
+          }
+        }
+        setDeepResearchMode(false);
+        setSendMessage(result.body.message || "Deep Research queued. You can leave and return to this chat.");
+        setStatusTone("muted");
+        const settledConversationId = result.body?.job?.conversationId || requestedConversationId;
+        setDraftConversationId(settledConversationId);
+        onActiveChatChange?.({
+          id: settledConversationId,
+          conversationId: settledConversationId,
+          source: "live",
+          title: activeChat?.title || "Deep Research",
+        });
+        await onChatSettled?.();
+        void pollDeepResearchJob(result.body.job.id, pendingId, startedAt);
         return;
       }
       if (isContextRewrite) {
@@ -959,6 +932,7 @@ export function ChatSurface({
   }
   function handleContextEditRevise(proposal) {
     setContextRewriteMode(false);
+    setDeepResearchMode(false);
     setContextEditMode(true);
     setInput(`Revise this context edit: ${proposal?.rationale || ""}`.trim());
     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -986,6 +960,8 @@ export function ChatSurface({
     ? "Historical conversation is read-only"
     : taskRequestMode
     ? TASK_REQUEST_PLACEHOLDER
+    : deepResearchMode
+      ? DEEP_RESEARCH_PLACEHOLDER
     : contextRewriteMode
       ? CONTEXT_REWRITE_PLACEHOLDER
       : contextEditMode
@@ -997,13 +973,16 @@ export function ChatSurface({
     "composer",
     composerDragActive ? "is-drag-active" : "",
     taskRequestMode ? "is-task-request" : "",
+    deepResearchMode ? "is-deep-research" : "",
     contextRewriteMode ? "is-context-rewrite" : "",
     contextEditMode ? "is-context-edit" : "",
     isHiveChat ? "is-hive-input" : "",
   ].filter(Boolean).join(" ");
-  const modelPickerDisabled = contextEditMode || contextRewriteMode || isHiveChat || Boolean(activeModality);
+  const modelPickerDisabled = contextEditMode || contextRewriteMode || deepResearchMode || isHiveChat || Boolean(activeModality);
   const ActivePersonaIcon = CHAT_PERSONA_ICONS[activePersona.id] || Lightbulb;
-  const modelPickerLabel = contextRewriteMode
+  const modelPickerLabel = deepResearchMode
+    ? "Deep Research"
+    : contextRewriteMode
     ? "Context Rewrite"
     : contextEditMode
     ? "Thinking carefully"
@@ -1042,6 +1021,15 @@ export function ChatSurface({
             <Wand2 size={13} strokeWidth={1.9} />
             <span>Context Refine</span>
             <button aria-label="Exit Context Refine" onClick={() => setContextEditMode(false)} type="button">
+              <X size={12} strokeWidth={2} />
+            </button>
+          </div>
+        )}
+        {deepResearchMode && (
+          <div className="composer-mode-chip">
+            <Search size={13} strokeWidth={1.9} />
+            <span>Deep Research</span>
+            <button aria-label="Exit Deep Research" onClick={() => setDeepResearchMode(false)} type="button">
               <X size={12} strokeWidth={2} />
             </button>
           </div>
@@ -1128,6 +1116,7 @@ export function ChatSurface({
                     setPlusMenuOpen(false);
                     setTaskRequestMode(false);
                     setContextRewriteMode(false);
+                    setDeepResearchMode(false);
                     setContextEditMode(true);
                     setSendMessage("");
                     setStatusTone("muted");
@@ -1141,8 +1130,24 @@ export function ChatSurface({
                     setPlusMenuOpen(false);
                     setTaskRequestMode(false);
                     setContextEditMode(false);
+                    setDeepResearchMode(false);
                     setContextRewriteMode(true);
                     setSendMessage("Context Rewrite uses multiple model calls and web research, so the charge may be higher than a normal chat call.");
+                    setStatusTone("muted");
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                />
+                <ToolMenuRow
+                  disabled={chat?.deepResearchAvailable !== true}
+                  icon={Search}
+                  label={chat?.deepResearchAvailable === true ? "Deep Research" : "Deep Research · Canary"}
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    setTaskRequestMode(false);
+                    setContextEditMode(false);
+                    setContextRewriteMode(false);
+                    setDeepResearchMode(true);
+                    setSendMessage("Deep Research runs privately through Corbanu and can take several minutes. You can leave and return to the chat.");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}
@@ -1155,6 +1160,7 @@ export function ChatSurface({
                     setTaskRequestMode(true);
                     setContextEditMode(false);
                     setContextRewriteMode(false);
+                    setDeepResearchMode(false);
                     setSendMessage("");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1200,6 +1206,7 @@ export function ChatSurface({
                             setTaskRequestMode(false);
                             setContextEditMode(false);
                             setContextRewriteMode(false);
+                            setDeepResearchMode(false);
                             setPersonaMenuOpen(false);
                             setPlusMenuOpen(false);
                             window.setTimeout(() => inputRef.current?.focus(), 0);

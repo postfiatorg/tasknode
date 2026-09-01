@@ -38,6 +38,7 @@ import {
 import { listTaskState } from "./repositories/tasks.js";
 import { scheduleLinkedWalletTaskProjectionRefresh } from "./task-projection-refresh.js";
 import { expertAccessFromTaskState } from "./expert-badge.js";
+import { deepResearchAvailable } from "./corbanu-deep-research.js";
 
 const signedOutUsageSummary = Object.freeze({
   currentSpendUsd: 0,
@@ -570,6 +571,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
         ? await appStateSection("hive_conversation", () => getHiveConversation({ accountId }), null)
         : null,
       defaultMode: signedOut ? "Help" : enabledMode?.label || "Instant",
+      deepResearchAvailable: deepResearchAvailable({ accountId }),
       modes,
       seedMessages: accountId
         ? await appStateSection("chat_messages", () => getChatMessages({ accountId, conversationId }), [])

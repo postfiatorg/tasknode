@@ -45,9 +45,9 @@ export function PostFiatLogo() {
   );
 }
 
-export function ToolMenuRow({ icon: Icon, label, onClick, trailing }) {
+export function ToolMenuRow({ disabled = false, icon: Icon, label, onClick, trailing }) {
   return (
-    <button className="tool-menu-row" onClick={onClick} type="button">
+    <button className="tool-menu-row" disabled={disabled} onClick={onClick} type="button">
       <Icon size={16} strokeWidth={1.75} />
       <span>{label}</span>
       {trailing}
