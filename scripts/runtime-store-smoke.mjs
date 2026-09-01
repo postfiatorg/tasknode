@@ -555,19 +555,19 @@ try {
 
   if (
     !firstOwner.ok ||
-    !reclaimed.ok ||
-    reclaimed.reclaimedWalletCount !== 1 ||
-    firstOwnerWallet.status !== "not_linked" ||
-    secondOwnerWallet.status !== "linked" ||
-    secondOwnerWallet.address !== reclaimAddress
+    reclaimed.ok ||
+    reclaimed.error !== "wallet_owned_by_other_account" ||
+    firstOwnerWallet.status !== "linked" ||
+    firstOwnerWallet.address !== reclaimAddress ||
+    secondOwnerWallet.status !== "not_linked"
   ) {
     throw new Error(
-      `Wallet reclaim boundary failed: ${JSON.stringify({ firstOwner, reclaimed, firstOwnerWallet, secondOwnerWallet })}`
+      `Wallet ownership conflict boundary failed: ${JSON.stringify({ firstOwner, reclaimed, firstOwnerWallet, secondOwnerWallet })}`
     );
   }
-  const reclaimedCloud = getAccountWalletCloud({ accountId: "acct_reclaim_owner_a" });
-  if (reclaimedCloud.wallets.some((wallet) => wallet.address === reclaimAddress)) {
-    throw new Error(`Reclaimed wallet stayed in old owner cloud: ${JSON.stringify(reclaimedCloud)}`);
+  const firstOwnerCloud = getAccountWalletCloud({ accountId: "acct_reclaim_owner_a" });
+  if (!firstOwnerCloud.wallets.some((wallet) => wallet.address === reclaimAddress)) {
+    throw new Error(`Rejected wallet transfer altered the owner cloud: ${JSON.stringify(firstOwnerCloud)}`);
   }
 
   if (!history.latestContextPointer?.cid || history.latestContextPointer.cid !== "bafyContextSmoke") {
