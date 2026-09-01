@@ -7,6 +7,8 @@ const WebSocket = require("ws");
 const cdpPort = Number(process.env.CDP_PORT || 9340);
 const appOrigin = process.env.TASKNODE_APP_ORIGIN || "http://localhost:5175";
 const screenshotPath = process.env.SCREENSHOT_PATH || "";
+const viewportWidth = Number(process.env.VIEWPORT_WIDTH || 1440);
+const viewportHeight = Number(process.env.VIEWPORT_HEIGHT || 900);
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const member = {
@@ -48,6 +50,23 @@ const appState = {
   context: {},
 };
 const runtimeConfig = { collaboration: { teamEnabled: true }, auth: { providers: [] } };
+const teamContext = {
+  ok: true,
+  status: "current",
+  includeInPersonalContext: false,
+  overview: "The team has recently focused on making execution reviews more deterministic.",
+  generatedAt: "2026-08-31T08:00:00.000Z",
+  members: [{
+    accountId: member.accountId,
+    displayName: member.identity.displayName,
+    hiveHandle: member.identity.hiveHandle,
+    taskHistoryVisible: true,
+    tasksPastDay: 1,
+    tasksPastWeek: 4,
+    recentWork: "Built and documented a deterministic trading review checklist.",
+  }],
+};
+let teamContextPreferenceRequest = null;
 
 const targets = await fetch(`http://127.0.0.1:${cdpPort}/json/list`).then((response) => response.json());
 const target = targets.find((entry) => entry.type === "page");
@@ -94,6 +113,12 @@ socket.on("message", (raw) => {
     fulfill(requestId, appState);
   } else if (url.pathname === "/api/team") {
     fulfill(requestId, { ok: true, counts: { collaborators: 0, managers: 0, directReports: 1 }, invites: [], members: [member] });
+  } else if (url.pathname === "/api/team/context" && request.method === "GET") {
+    fulfill(requestId, teamContext);
+  } else if (url.pathname === "/api/team/context/preference" && request.method === "PATCH") {
+    teamContextPreferenceRequest = JSON.parse(request.postData || "{}");
+    teamContext.includeInPersonalContext = teamContextPreferenceRequest.includeInPersonalContext === true;
+    fulfill(requestId, { ok: true, includeInPersonalContext: teamContext.includeInPersonalContext });
   } else if (url.pathname === `/api/team/${member.accountId}/tasks`) {
     fulfill(requestId, { ok: true, tasks: { outstanding: [], verification: [task], refused: [], rewarded: [] } });
   } else if (url.pathname === `/api/team/${member.accountId}/tasks/${task.taskId}`) {
@@ -114,7 +139,12 @@ socket.on("message", (raw) => {
 await command("Page.enable");
 await command("Runtime.enable");
 await command("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
-await command("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+await command("Emulation.setDeviceMetricsOverride", {
+  width: viewportWidth,
+  height: viewportHeight,
+  deviceScaleFactor: 1,
+  mobile: viewportWidth <= 720,
+});
 await command("Page.navigate", { url: `${appOrigin}/?teamSmoke=${Date.now()}#team` });
 
 async function evaluate(expression) {
@@ -132,6 +162,23 @@ async function waitFor(expression, message, attempts = 80) {
 }
 
 await waitFor(`document.querySelector('.team-card footer button')?.textContent.includes('View tasks')`, "Team member card did not render");
+const contextRendered = await waitFor(`(() => {
+  const report = document.querySelector('.team-context-report');
+  if (!report || !report.textContent.includes('deterministic trading review checklist')) return null;
+  return {
+    pastDay: report.textContent.includes('24 hours') && report.textContent.includes('1'),
+    pastWeek: report.textContent.includes('7 days') && report.textContent.includes('4'),
+    toggleLabel: report.querySelector('.team-context-toggle')?.textContent,
+    pressed: report.querySelector('.team-context-toggle')?.getAttribute('aria-pressed'),
+  };
+})()`, "Team Context report did not render");
+assert.equal(contextRendered.pastDay, true);
+assert.equal(contextRendered.pastWeek, true);
+assert.match(contextRendered.toggleLabel, /Use in personal context/);
+assert.equal(contextRendered.pressed, "false");
+await evaluate(`document.querySelector('.team-context-toggle').click()`);
+await waitFor(`document.querySelector('.team-context-toggle')?.getAttribute('aria-pressed') === 'true'`, "Team Context checkmark did not persist");
+assert.deepEqual(teamContextPreferenceRequest, { includeInPersonalContext: true });
 await evaluate(`document.querySelector('.team-card footer button').click()`);
 await waitFor(`document.querySelector('.team-task-row')?.textContent.includes('trading review checklist')`, "Clickable task row did not render");
 await evaluate(`(() => { const row = document.querySelector('.team-task-row'); row.focus(); row.click(); })()`);
