@@ -28,6 +28,10 @@ import {
 } from "./repositories/nostr-messages.js";
 import { generateDocsAssistantResponse, generateDocsOdvResponse } from "./docs-odv.js";
 import { getTaskDetail, listTaskState } from "./repositories/tasks.js";
+import {
+  getTeamContextState,
+  setTeamContextPreference,
+} from "./repositories/team-context.js";
 
 function methodError(name) {
   return { ok: false, status: 405, error: `${name}_method_not_allowed` };
@@ -279,6 +283,20 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
     if (pathname === "/api/team") {
       if (req.method !== "GET") return routeResult(json, res, methodError("team")), true;
       await run(json, res, () => listTeam({ accountId }));
+      return true;
+    }
+    if (pathname === "/api/team/context") {
+      if (req.method !== "GET") return routeResult(json, res, methodError("team_context")), true;
+      await run(json, res, () => getTeamContextState({ accountId }));
+      return true;
+    }
+    if (pathname === "/api/team/context/preference") {
+      if (req.method !== "PATCH") return routeResult(json, res, methodError("team_context_preference")), true;
+      const payload = await readJson(req, 4096);
+      await run(json, res, () => setTeamContextPreference({
+        accountId,
+        include: payload.includeInPersonalContext === true,
+      }));
       return true;
     }
     if (pathname === "/api/team/invites") {

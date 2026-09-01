@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, ChevronRight, Eye, EyeOff, RefreshCw, ShieldCheck, UserPlus2, Users } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronRight, Eye, EyeOff, RefreshCw, ShieldCheck, UserPlus2, Users } from "lucide-react";
 import { requestJson } from "../../api";
 import { newUuid, signedCollaborationProof } from "../collaboration/collaboration-client";
 import { TeamTaskDetailPopout } from "./TeamTaskDetailPopout";
+import {
+  shouldRefreshTeamContext,
+  teamContextStatusLabel,
+  TEAM_CONTEXT_REFRESH_DELAY_MS,
+} from "./team-context-refresh";
 import "./team.css";
 
 const ROLE_COPY = {
@@ -22,6 +27,14 @@ function requestedGrants(relationship, inviterAccountId, inviteeAccountId) {
 
 function resultError(result, fallback) { return result?.body?.error || fallback; }
 
+function teamContextPreview(value = "", maxLength = 360) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) return text;
+  const wordBoundary = text.lastIndexOf(" ", maxLength);
+  const end = wordBoundary > Math.floor(maxLength * 0.72) ? wordBoundary : maxLength;
+  return `${text.slice(0, end).trim()}…`;
+}
+
 export function TeamView({ accountId, onWalletUnlock, walletSecret }) {
   const [state, setState] = useState({ loading: true, data: null, error: "" });
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -30,13 +43,44 @@ export function TeamView({ accountId, onWalletUnlock, walletSecret }) {
   const [busy, setBusy] = useState("");
   const [taskState, setTaskState] = useState({});
   const [selectedTask, setSelectedTask] = useState(null);
+  const [contextState, setContextState] = useState({ loading: true, data: null, error: "" });
+  const [expandedContextMembers, setExpandedContextMembers] = useState({});
 
   const load = useCallback(async () => {
-    const result = await requestJson("/api/team");
+    const [result, contextResult] = await Promise.all([
+      requestJson("/api/team"),
+      requestJson("/api/team/context"),
+    ]);
     if (!result.ok) setState({ loading: false, data: null, error: resultError(result, "Could not load team.") });
     else setState({ loading: false, data: result.body, error: "" });
+    if (!contextResult.ok) setContextState({ loading: false, data: null, error: resultError(contextResult, "Could not load Team Context.") });
+    else setContextState({ loading: false, data: contextResult.body, error: "" });
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!shouldRefreshTeamContext(contextState.data?.status)) return undefined;
+    let cancelled = false;
+    let timeout;
+    const poll = async () => {
+      const result = await requestJson("/api/team/context");
+      if (cancelled) return;
+      if (result.ok) {
+        setContextState({ loading: false, data: result.body, error: "" });
+        if (!shouldRefreshTeamContext(result.body?.status)) return;
+      } else {
+        setContextState((current) => ({
+          ...current,
+          error: resultError(result, "Could not refresh Team Context."),
+        }));
+      }
+      timeout = setTimeout(poll, TEAM_CONTEXT_REFRESH_DELAY_MS);
+    };
+    timeout = setTimeout(poll, TEAM_CONTEXT_REFRESH_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [contextState.data?.status]);
 
   async function sendInvite() {
     if (!walletSecret?.mnemonic) return onWalletUnlock?.();
@@ -113,6 +157,34 @@ export function TeamView({ accountId, onWalletUnlock, walletSecret }) {
     } }));
   }
 
+  function toggleContextMember(accountId) {
+    setExpandedContextMembers((current) => ({
+      ...current,
+      [accountId]: current[accountId] !== true,
+    }));
+  }
+
+  async function toggleContextInclusion() {
+    const includeInPersonalContext = contextState.data?.includeInPersonalContext !== true;
+    setBusy("team-context-preference");
+    const result = await requestJson("/api/team/context/preference", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ includeInPersonalContext }),
+    });
+    if (!result.ok) {
+      setContextState((current) => ({ ...current, error: resultError(result, "Could not update Team Context.") }));
+    } else {
+      setContextState((current) => ({
+        ...current,
+        data: { ...(current.data || {}), includeInPersonalContext },
+        error: "",
+      }));
+      await load();
+    }
+    setBusy("");
+  }
+
   const grouped = useMemo(() => {
     const members = state.data?.members || [];
     return {
@@ -126,6 +198,64 @@ export function TeamView({ accountId, onWalletUnlock, walletSecret }) {
   return <div className="collab-page team-page">
     <header className="collab-page-header"><div><span>Directional, wallet-authorized access</span><h1>Team</h1><p>Coordinate with people you trust without making task history public.</p></div><button className="collab-primary" onClick={() => setInviteOpen(true)} type="button"><UserPlus2 size={16} />Invite teammate</button></header>
     <div className="team-stats"><div><strong>{state.data?.counts?.collaborators || 0}</strong><span>Collaborators</span></div><div><strong>{state.data?.counts?.managers || 0}</strong><span>Managers</span></div><div><strong>{state.data?.counts?.directReports || 0}</strong><span>Direct reports</span></div><button onClick={load} type="button"><RefreshCw size={15} />Refresh</button></div>
+    <section className="team-context-report" aria-labelledby="team-context-title">
+      <header className="team-context-heading">
+        <div className="team-context-intro">
+          <span>Generated from rewarded work</span>
+          <h2 id="team-context-title">Team Context</h2>
+          <p>A concise briefing on what changed, why it matters, and who moved it forward.</p>
+        </div>
+        <div className="team-context-controls">
+          {contextState.data && <div className="team-context-meta" aria-live="polite">
+            <span className={`team-context-status status-${contextState.data.status}`}><i aria-hidden="true" />{teamContextStatusLabel(contextState.data)}</span>
+            {contextState.data.generatedAt && <time dateTime={contextState.data.generatedAt}>Updated {new Date(contextState.data.generatedAt).toLocaleString()}</time>}
+          </div>}
+          <button
+            aria-pressed={contextState.data?.includeInPersonalContext === true}
+            className={contextState.data?.includeInPersonalContext === true ? "team-context-toggle active" : "team-context-toggle"}
+            disabled={busy === "team-context-preference"}
+            onClick={toggleContextInclusion}
+            type="button"
+          ><span className="team-context-check"><Check size={14} /></span><span><strong>Use in personal context</strong><small>Available to your chats and agents</small></span></button>
+        </div>
+      </header>
+      {contextState.error && <p className="collab-error">{contextState.error}</p>}
+      {contextState.loading ? <p className="team-context-state">Loading Team Context…</p> :
+        contextState.data?.members?.length ? <>
+          {contextState.data.showingPreviousReport && <div className="team-context-freshness" role="status">
+            <RefreshCw aria-hidden="true" size={14} />
+            <span>Refreshing now. Showing the last completed report{contextState.data.generatedAt ? <> from <time dateTime={contextState.data.generatedAt}>{new Date(contextState.data.generatedAt).toLocaleString()}</time></> : ""}.</span>
+          </div>}
+          {contextState.data.overview && <div className="team-context-overview"><span>Current workstreams</span><p>{contextState.data.overview}</p></div>}
+          <div className="team-context-members" role="list">{contextState.data.members.map((member, index) => {
+            const expanded = expandedContextMembers[member.accountId] === true;
+            const recentWork = String(member.recentWork || "");
+            const canExpand = recentWork.length > 420;
+            const updateId = `team-context-update-${index + 1}`;
+            return <article className={expanded ? "team-context-member is-expanded" : "team-context-member"} key={member.accountId} role="listitem">
+              <header className="team-context-member-head">
+                <div className="team-context-member-avatar" aria-hidden="true">{(member.hiveHandle || member.displayName || "?").slice(0, 1).toUpperCase()}</div>
+                <div className="team-context-member-identity"><strong>{member.displayName}</strong><small>{member.hiveHandle ? `@${member.hiveHandle}` : "Task Node member"}</small></div>
+                <dl className="team-context-member-metrics">
+                  <div><dd>{member.tasksPastDay == null ? "—" : member.tasksPastDay}</dd><dt>24 hours</dt></div>
+                  <div><dd>{member.tasksPastWeek == null ? "—" : member.tasksPastWeek}</dd><dt>7 days</dt></div>
+                </dl>
+              </header>
+              <div className="team-context-member-update">
+                <span>Recent rewarded work</span>
+                <p id={updateId}>{expanded || !canExpand ? recentWork : teamContextPreview(recentWork)}</p>
+                {canExpand && <button
+                  aria-controls={updateId}
+                  aria-expanded={expanded}
+                  data-team-context-expand
+                  onClick={() => toggleContextMember(member.accountId)}
+                  type="button"
+                >{expanded ? "Show less" : "Read full update"}<ChevronDown aria-hidden="true" size={15} /></button>}
+              </div>
+            </article>;
+          })}</div>
+        </> : <p className="team-context-state">Add a teammate to create Team Context.</p>}
+    </section>
     {state.error && <p className="collab-error">{state.error}</p>}
     {(state.data?.invites || []).length > 0 && <section className="team-invites"><h2>Pending invites</h2>{state.data.invites.map((invite) => <article key={invite.inviteId}><span><Users size={18} /><span><strong>{invite.identity.displayName}</strong><small>{invite.direction === "incoming" ? "invited you as" : "invited as"} {ROLE_COPY[invite.relationship].label}</small></span></span><span>{invite.direction === "incoming" ? <><button onClick={() => actOnInvite(invite, "decline")} type="button">Decline</button><button className="collab-primary" disabled={busy === invite.inviteId} onClick={() => actOnInvite(invite, "accept")} type="button">Accept</button></> : <button onClick={() => actOnInvite(invite, "cancel")} type="button">Cancel</button>}</span></article>)}</section>}
     {Object.entries(grouped).map(([role, members]) => members.length > 0 && <section className="team-group" key={role}><h2>{role === "manager" ? "Your manager" : role === "direct_report" ? "Direct reports" : "Collaborators"}<small>{ROLE_COPY[role].detail}</small></h2><div className="team-card-list">{members.map((member) => {
