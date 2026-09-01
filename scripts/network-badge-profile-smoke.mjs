@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 process.env.TASKNODE_DATABASE_ENABLED = "false";
+process.env.TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES = "goodalexander";
 process.env.TASKNODE_STORE_PATH = join(mkdtempSync(join(tmpdir(), "tasknode-badge-profile-")), "store.json");
 
 const { getOrCreateProviderAccount } = await import("../server/runtime-store.js");

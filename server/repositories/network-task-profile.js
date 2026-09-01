@@ -246,6 +246,51 @@ export async function positiveRewardStats({ accountId = "" } = {}) {
   };
 }
 
+export async function enqueueNetworkTaskProfileForAccount({
+  accountId = "",
+  reason = "automatic_routing_profile",
+} = {}) {
+  if (!useDatabase()) return { queued: false, reason: "database_not_configured" };
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!normalizedAccountId) return { queued: false, reason: "missing_account_id" };
+
+  const source = await buildNetworkTaskProfileSource({ accountId: normalizedAccountId });
+  const [latest, activeJob] = await Promise.all([
+    getLatestNetworkTaskProfile({ accountId: normalizedAccountId }),
+    getLatestNetworkTaskProfileJob({ accountId: normalizedAccountId }),
+  ]);
+  const currentCompletedProfile = Boolean(
+    latest?.sourcePacketDigest === source.sourcePacketDigest &&
+      latest?.promptVersion === networkTaskProfilePromptVersion
+  );
+  if (currentCompletedProfile) {
+    return {
+      queued: false,
+      reason: "network_task_profile_current",
+      sourcePacketDigest: source.sourcePacketDigest,
+    };
+  }
+  if (activeJob?.sourcePacketDigest === source.sourcePacketDigest) {
+    return {
+      queued: false,
+      reason: "network_task_profile_job_already_active",
+      job: activeJob,
+      sourcePacketDigest: source.sourcePacketDigest,
+    };
+  }
+
+  const queued = await enqueueNetworkTaskProfileJob({
+    accountId: normalizedAccountId,
+    sourcePacket: source,
+    reason,
+  });
+  return {
+    ...queued,
+    reason: queued.reason || reason,
+    sourcePacketDigest: source.sourcePacketDigest,
+  };
+}
+
 export async function enqueueNetworkTaskProfileForRewardThreshold({
   accountId = "",
   reason = "rewarded_task_threshold",
@@ -306,6 +351,87 @@ export async function enqueueNetworkTaskProfileForRewardThreshold({
     minRewardedTasks: threshold,
     sourcePacketDigest: source.sourcePacketDigest,
     ...stats,
+  };
+}
+
+export async function enqueueNetworkTaskProfilesForRoutingAccounts({
+  limit = 2,
+  reason = "routing_account_backfill",
+  failedRetryMinutes = 60,
+} = {}) {
+  if (!useDatabase()) return { ok: true, skipped: true, reason: "database_not_configured" };
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 1, 1), 10);
+  const normalizedRetryMinutes = Math.min(Math.max(Number(failedRetryMinutes) || 1, 1), 1440);
+  const result = await query(
+    `
+      WITH latest_profiles AS (
+        SELECT DISTINCT ON (account_id)
+               account_id
+        FROM network_task_profiles
+        WHERE status = 'completed'
+          AND superseded_at IS NULL
+        ORDER BY account_id, completed_at DESC NULLS LAST, created_at DESC, id DESC
+      ),
+      latest_jobs AS (
+        SELECT DISTINCT ON (account_id)
+               account_id,
+               status,
+               updated_at
+        FROM network_task_profile_jobs
+        ORDER BY account_id, updated_at DESC, id DESC
+      )
+      SELECT wallets.account_id
+      FROM pftl_sync_wallets wallets
+      JOIN app_accounts accounts
+        ON accounts.account_id = wallets.account_id
+       AND accounts.status = 'active'
+      LEFT JOIN latest_profiles
+        ON latest_profiles.account_id = wallets.account_id
+      LEFT JOIN latest_jobs
+        ON latest_jobs.account_id = wallets.account_id
+      WHERE wallets.account_id IS NOT NULL
+        AND wallets.account_id <> ''
+        AND wallets.role = 'user'
+        AND wallets.status = 'active'
+        AND latest_profiles.account_id IS NULL
+        AND (
+          latest_jobs.account_id IS NULL
+          OR latest_jobs.status NOT IN ('pending', 'processing', 'failed')
+          OR (
+            latest_jobs.status = 'failed'
+            AND latest_jobs.updated_at <= now() - ($2::text || ' minutes')::interval
+          )
+        )
+      GROUP BY wallets.account_id
+      ORDER BY MIN(wallets.created_at) ASC, wallets.account_id ASC
+      LIMIT $1
+    `,
+    [normalizedLimit, normalizedRetryMinutes]
+  );
+
+  const results = [];
+  for (const row of result.rows) {
+    try {
+      results.push(await enqueueNetworkTaskProfileForAccount({
+        accountId: row.account_id,
+        reason,
+      }));
+    } catch (error) {
+      results.push({
+        queued: false,
+        reason: "routing_account_enqueue_failed",
+        accountId: safeAccountId(row.account_id),
+        error: safeText(error?.message || error, 1000),
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    scanned: result.rows.length,
+    queuedCount: results.filter((item) => item.queued).length,
+    failedCount: results.filter((item) => item.reason === "routing_account_enqueue_failed").length,
+    results,
   };
 }
 

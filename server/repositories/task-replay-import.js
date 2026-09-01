@@ -4,6 +4,7 @@ import { canonicalReceiptProjection } from "../task-receipt-projection.js";
 import { syncNetworkTaskProjection } from "./network-tasks.js";
 import { enqueueNetworkTaskProfileForRewardThreshold } from "./network-task-profile.js";
 import { enqueueRewardedTaskMemory } from "./task-reward-memory.js";
+import { enqueueTeamContextReportsForRewardedAccount } from "./team-context.js";
 import { normalizeTaskStatus, taskStatusTab } from "../../shared/task-lifecycle.js";
 import {
   numeric,
@@ -372,7 +373,7 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
   });
 
   await syncNetworkTaskProjection({ taskId: projection.taskId }).catch(() => null);
-  const [networkTaskProfile, rewardedTaskMemory] = await Promise.all([
+  const [networkTaskProfile, rewardedTaskMemory, teamContext] = await Promise.all([
     maybeQueueNetworkTaskProfileAfterReward(projection),
     enqueueRewardedTaskMemory({
       projection,
@@ -380,6 +381,13 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
     }).catch((error) => ({
       queued: false,
       reason: "rewarded_task_memory_enqueue_failed",
+      error: safeText(error?.message || error, 1000),
+    })),
+    enqueueTeamContextReportsForRewardedAccount({
+      subjectAccountId: projection.accountId,
+    }).catch((error) => ({
+      queuedCount: 0,
+      reason: "team_context_enqueue_failed",
       error: safeText(error?.message || error, 1000),
     })),
   ]);
@@ -394,5 +402,6 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
     pointerEventCount: projection.hydratedEvents.length,
     networkTaskProfile,
     rewardedTaskMemory,
+    teamContext,
   };
 }

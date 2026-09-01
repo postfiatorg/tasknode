@@ -17,6 +17,7 @@ import {
   listNetworkTaskCapacityBlockers,
 } from "./network-task-capacity.js";
 import { networkBadgeProjectionForAccount } from "./network-badges.js";
+import { enqueueNetworkTaskProfileForAccount } from "./network-task-profile.js";
 import { recordNetworkTaskCapacityEvent } from "./user-observability.js";
 
 export function useDatabase() { return databaseEnabled(); }
@@ -400,8 +401,20 @@ export async function getNetworkTaskEligibility({
   ]);
 
   const profile = profileResult.rows[0] || null;
-  const job = jobResult.rows[0] || null;
   const wallet = walletResult.rows[0] || null;
+  let job = jobResult.rows[0] || null;
+  if (!profile && !job && wallet?.wallet_address) {
+    const automaticEnqueue = await enqueueNetworkTaskProfileForAccount({
+      accountId: normalizedAccountId,
+      reason: "network_task_eligibility",
+    }).catch((error) => ({
+      queued: false,
+      reason: safeText(error?.message || "automatic_profile_enqueue_failed", 240),
+    }));
+    if (automaticEnqueue?.job) {
+      job = automaticEnqueue.job;
+    }
+  }
   const blockers = blockerResult;
   const capacityMetrics = capacityMetricsResult;
   const badgeProjection = badgeProjectionResult?.schema ? badgeProjectionResult : null;
@@ -473,7 +486,7 @@ export async function getNetworkTaskEligibility({
         : ["pending", "processing"].includes(profileStatus)
           ? "The routing profile job is queued or processing."
           : "Board Manager needs the generated routing profile before it can pick this account.",
-      profile ? "" : "Open Memory and refresh the Network Diagnostic Report"
+      profile ? "" : "No action required; Task Node queues this report automatically"
     ),
     eligibilityGate(
       "operating_badge",
@@ -535,8 +548,8 @@ export async function getNetworkTaskEligibility({
     setup_required: "Create or link a wallet.",
     wallet_sync_pending: "Open Wallet or Tasks and refresh after the wallet sync catches up.",
     profile_pending: "Wait for the memory worker to finish the Network Diagnostic Report.",
-    profile_failed: "Open Memory and refresh the Network Diagnostic Report.",
-    profile_required: "Open Memory and refresh the Network Diagnostic Report.",
+    profile_failed: "Task Node retries the Network Diagnostic Report automatically.",
+    profile_required: "No action is required. Task Node queues the Network Diagnostic Report automatically.",
     badge_required: "Open Profile and qualify at least one routing badge.",
     at_capacity: "Finish or close the active Network Task before another Network Task can be routed.",
     available_for_routing: "No manual request is needed. Hive Board Manager can route a Network Task when a project needs work.",

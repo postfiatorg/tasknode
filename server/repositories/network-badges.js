@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { githubCoreContributorAccess } from "../core-contributor-authorization.js";
 import { databaseEnabled, query } from "../db/pool.js";
 import { getAccountExpertReview, getAccountIdentityProfile } from "./account-profiles.js";
 import { normalizeCapabilityType } from "./capability-profiles.js";
@@ -551,18 +552,44 @@ export async function networkBadgeProjectionForAccount({
 } = {}) {
   const normalizedAccountId = safeText(accountId, 180);
   const normalizedWallet = safeText(walletAddress, 120);
+  const identityProfile = normalizedAccountId ? await getAccountIdentityProfile({ accountId: normalizedAccountId }) || {} : {};
+  const githubAlias = aliasForProvider(identityProfile, "github");
+  const githubAccess = githubCoreContributorAccess(
+    githubAlias?.username ||
+      githubAlias?.metrics?.coreContributorAccess?.username ||
+      githubAlias?.metrics?.coreContributorAccess?.matchedHandle ||
+      ""
+  );
+  const githubBadge = githubAlias &&
+    githubAlias.verified !== false &&
+    githubAccess.sanctioned &&
+    githubAccess.scopeRecorded
+    ? projectionBadge(networkBadgeDefinitions.core_contributor, {
+      provider: "github",
+      handle: safeText(githubAccess.username || githubAccess.matchedHandle, 120),
+      proofMethod: githubAccess.proofMethod,
+    })
+    : null;
+
   if (preferDurable) {
     const durableBadges = await listDurableProjectionBadges({ accountId: normalizedAccountId });
     if (durableBadges.length) {
+      const currentBadges = durableBadges.filter((badge) => {
+        if (badge.badgeId !== "core_contributor") return true;
+        const source = safeText(badge.evidence?.evidence?.source, 120);
+        return source !== "runtime_projection_refresh" || Boolean(githubBadge);
+      });
+      if (githubBadge && !currentBadges.some((badge) => badge.badgeId === "core_contributor")) {
+        currentBadges.push(githubBadge);
+      }
       return projectionFromBadges({
         accountId: normalizedAccountId,
         walletAddress: normalizedWallet,
-        badges: durableBadges,
-        source: "account_network_badges",
+        badges: currentBadges,
+        source: githubBadge ? "account_network_badges_plus_current_authorization" : "account_network_badges",
       });
     }
   }
-  const identityProfile = normalizedAccountId ? await getAccountIdentityProfile({ accountId: normalizedAccountId }) || {} : {};
   const badges = [];
 
   const xAlias = aliasForProvider(identityProfile, "x");
@@ -577,13 +604,8 @@ export async function networkBadgeProjectionForAccount({
     }));
   }
 
-  const githubAccess = safeObject(aliasForProvider(identityProfile, "github")?.metrics?.coreContributorAccess);
-  if (githubAccess.sanctioned === true && githubAccess.scopeRecorded === true) {
-    badges.push(projectionBadge(networkBadgeDefinitions.core_contributor, {
-      provider: "github",
-      handle: safeText(githubAccess.username || githubAccess.matchedHandle, 120),
-      proofMethod: safeText(githubAccess.proofMethod || "github_handle_allowlist", 120),
-    }));
+  if (githubBadge) {
+    badges.push(githubBadge);
   }
 
   const projectLeaderAccess = safeObject(identityProfile.projectLeaderAccess);

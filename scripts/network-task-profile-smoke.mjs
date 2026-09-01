@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import "./core-contributor-allowlist-smoke.mjs";
 import {
   buildNetworkTaskProfileSourcePacket,
+  enqueueNetworkTaskProfileForAccount,
   enqueueNetworkTaskProfileForRewardThreshold,
   enqueueNetworkTaskProfilesForRewardedAccounts,
+  enqueueNetworkTaskProfilesForRoutingAccounts,
   formatLiveTaskRoutingContext,
   formatNetworkContextInputs,
   formatNetworkTaskProfileOutput,
@@ -124,14 +127,24 @@ assert.match(output, /Companies this User Would Move the Needle At/);
 assert.doesNotMatch(output, /Best task types/);
 assert.doesNotMatch(output, /Caveats/);
 
+const automaticNoDb = await enqueueNetworkTaskProfileForAccount({
+  accountId: "acct_network_task_profile_smoke",
+});
+assert.equal(automaticNoDb.queued, false);
+assert.equal(automaticNoDb.reason, "database_not_configured");
+
 const thresholdNoDb = await enqueueNetworkTaskProfileForRewardThreshold({
   accountId: "acct_network_task_profile_smoke",
 });
 assert.equal(thresholdNoDb.queued, false);
 assert.equal(thresholdNoDb.reason, "database_not_configured");
 
-const backfillNoDb = await enqueueNetworkTaskProfilesForRewardedAccounts({ limit: 1 });
-assert.equal(backfillNoDb.skipped, true);
-assert.equal(backfillNoDb.reason, "database_not_configured");
+const routingBackfillNoDb = await enqueueNetworkTaskProfilesForRoutingAccounts({ limit: 1 });
+assert.equal(routingBackfillNoDb.skipped, true);
+assert.equal(routingBackfillNoDb.reason, "database_not_configured");
+
+const rewardedBackfillNoDb = await enqueueNetworkTaskProfilesForRewardedAccounts({ limit: 1 });
+assert.equal(rewardedBackfillNoDb.skipped, true);
+assert.equal(rewardedBackfillNoDb.reason, "database_not_configured");
 
 console.log("network task profile smoke ok");
