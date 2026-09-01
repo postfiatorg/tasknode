@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@node-rs/argon2": "2.1.0",
     "libsodium-wrappers": "^0.8.4",
     "luxon": "^3.7.2",
     "pg": "^8.20.0",
