@@ -202,7 +202,7 @@ const documentOnlyRequest = buildDocsAssistantRequest({
 });
 assert.match(documentOnlyRequest.messages[1].content, /Document-only evidence/);
 assert.doesNotMatch(documentOnlyRequest.messages[1].content, /Private profile context/);
-assert.doesNotMatch(documentOnlyRequest.messages[1].content, /Private prior chat turn/);
+assert.match(documentOnlyRequest.messages[1].content, /Private prior chat turn/);
 const odvResult = await generateDocsOdvResponse({
   accountId: alice,
   documentId: "00000000-0000-4000-8000-000000000000",

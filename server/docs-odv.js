@@ -132,7 +132,7 @@ export function buildDocsAssistantRequest({
     requester,
     title,
     content,
-    conversation: includeFullContext === true ? conversation : [],
+    conversation,
     userContext: includeFullContext === true ? userContext : {},
   });
   const system = `${definition.prompt.system}\n\n${detected.id === "coach" ? definition.prompt.user : ""}\n\n${runtimeBoundary()}`.trim();

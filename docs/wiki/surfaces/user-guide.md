@@ -70,7 +70,7 @@ Memory is a compressed record of useful chat history. It helps future chats carr
 
 Docs is the wallet-encrypted collaborative rich-text library in the primary sidebar. Unlock the linked wallet to create the Docs key envelope, decrypt titles, create/open documents, and share with an exact Task Node handle or linked wallet. The editor is embedded in Task Node; a separate popup is a defect. Renaming in either Task Node or PFDocs synchronizes the owner's encrypted canonical title.
 
-Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use Ambient GLM 5.2. By default they receive only the current document and mention. Turn on `Full context` only when the response should also use recent document chat, Context, Memory, and task state.
+Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use Ambient GLM 5.2. They receive the current document, the mention, and a bounded window of the active document chat so follow-ups retain continuity. Turn on `Full context` only when the response should additionally use Task Node Context, Memory, and task state.
 
 ### Team Screen
 
