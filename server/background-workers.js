@@ -1,3 +1,4 @@
+import { startHiveGroupWorker } from "./hive-group-worker.js";
 import { startMemoryWorker } from "./chat-memory-worker.js";
 import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
 import { startHiveProjectWorker } from "./hive-project-worker.js";
@@ -53,6 +54,7 @@ function startContextRewriteWorkers(startOne) {
 }
 
 function startHiveWorkers(startOne) {
+  startOne("hive_group_chat", startHiveGroupWorker);
   startOne("hive_secretary", startHiveSecretaryWorker);
   startOne("hive_project", startHiveProjectWorker);
   startOne("hive_reports", startHiveReportsWorker);

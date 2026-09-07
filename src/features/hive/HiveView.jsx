@@ -45,7 +45,7 @@ function validProjectDocument(document) {
   );
 }
 
-export function HiveView({ pftlExplorerUrl = "" }) {
+export function HiveView({ pftlExplorerUrl = "", onOpenChat }) {
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedHiveTask, setSelectedHiveTask] = useState(null);
   const [projectDocument, setProjectDocument] = useState(null);
@@ -98,6 +98,7 @@ export function HiveView({ pftlExplorerUrl = "" }) {
 
   return (
     <div className="route-scroll hive-route">
+      {onOpenChat && <div className="hive-group-entry"><button className="hgc-button" onClick={onOpenChat} type="button">Open Hive group chat →</button></div>}
       {selectedProject ? (
         <ProjectDetail
           onBack={() => setSelectedProject(null)}

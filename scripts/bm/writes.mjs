@@ -18,9 +18,10 @@ import {
   applyBoardAdminUpdate,
   normalizeBoardAdminUpdate,
 } from "../../server/board-admin-routes.js";
-import { boardBudgetStatus, boardPacket } from "./lib.mjs";
+import { boardBudgetStatus, boardPacket, sha256 } from "./lib.mjs";
+import { boardTaskDetail, requireBoardEvidence } from "../../server/board-task-detail.js";
 
-const ACTOR = process.env.BM_ACTOR || "board_manager_agent";
+import { boardAgentActor, boardAgentIdentity, assertBoardAgentScope } from "../../server/board-agent-context.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -39,6 +40,7 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
   const task = await taskContext(taskId);
   if (!task) throw new Error(`task_not_found:${taskId}`);
   const boardId = await boardForTask(taskId);
+  assertBoardAgentScope(boardId);
   if (!boardId) throw new Error(`task_not_board_linked:${taskId} (bm review only covers network board tasks)`);
   // Lifecycle invariant (operator ruling): every task completes the full
   // cycle. A review decision is only recordable after the contributor has
@@ -57,6 +59,7 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
     ? decision
     : "";
   if (!normalizedDecision) throw new Error("decision must be reward|partial_reward|reject");
+  await requireBoardEvidence(taskId, { review: true });
   const requested = normalizedDecision === "reject" ? 0 : Math.max(0, Number(pft) || 0);
   const capCheck = await computeRewardCap({
     boardId,
@@ -77,11 +80,11 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
     reason,
     userFeedback: feedback,
     status: refused ? "refused" : "pending",
-    createdBy: ACTOR,
+    createdBy: boardAgentActor(),
     metadata: { cap_check: capCheck },
   });
   await appendBmAudit({
-    actor: ACTOR,
+    actor: boardAgentActor(),
     boardId,
     command: "review",
     args: { taskId, decision: normalizedDecision, requestedPft: requested, reason },
@@ -94,6 +97,7 @@ export async function verifyRequest({ taskId, ask, type = "evidence", reason = "
   const task = await taskContext(taskId);
   if (!task) throw new Error(`task_not_found:${taskId}`);
   const boardId = await boardForTask(taskId);
+  assertBoardAgentScope(boardId);
   if (!boardId) throw new Error(`task_not_board_linked:${taskId}`);
   if (task.status !== "submitted") {
     throw new Error(
@@ -103,6 +107,7 @@ export async function verifyRequest({ taskId, ask, type = "evidence", reason = "
     );
   }
   if (!safeText(ask)) throw new Error("verification ask required (--ask)");
+  await requireBoardEvidence(taskId);
   const row = await recordAgentDecision({
     kind: "verification_request",
     taskId,
@@ -110,10 +115,10 @@ export async function verifyRequest({ taskId, ask, type = "evidence", reason = "
     verificationAsk: ask,
     verificationType: type,
     reason,
-    createdBy: ACTOR,
+    createdBy: boardAgentActor(),
   });
   await appendBmAudit({
-    actor: ACTOR,
+    actor: boardAgentActor(),
     boardId,
     command: "verify_request",
     args: { taskId, type },
@@ -148,6 +153,7 @@ export async function taskCreate({
   if (!boardId || !accountId || !wallet || !safeText(need)) {
     throw new Error("taskCreate requires boardId, accountId, wallet, need");
   }
+  assertBoardAgentScope(boardId);
   const constraints = await boardRoutingConstraints(boardId);
   const allowedHandles = Array.isArray(constraints.assignable_handles)
     ? constraints.assignable_handles.map((handle) => String(handle).toLowerCase())
@@ -234,7 +240,7 @@ export async function taskCreate({
     dryRun: !execute,
   });
   await appendBmAudit({
-    actor: ACTOR,
+    actor: boardAgentActor(),
     boardId,
     command: "task_create",
     args: { accountId, wallet, need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, execute },
@@ -243,7 +249,7 @@ export async function taskCreate({
   return { runId, dryRun: !execute, rewardMin: cappedMin, rewardMax: cappedMax, actionResult };
 }
 
-export async function cancelTask({ taskId, reason = "", execute = false }) {
+export async function cancelTask({ taskId, reason = "", execute = false, staleOnly = false }) {
   if (!safeText(taskId)) throw new Error("taskId required");
   if (!safeText(reason)) throw new Error("--reason required: cancellations are public audit events");
   const task = await query(
@@ -253,13 +259,23 @@ export async function cancelTask({ taskId, reason = "", execute = false }) {
   const row = task.rows[0];
   if (!row) throw new Error(`task_not_found:${taskId}`);
   const boardId = await boardForTask(taskId);
+  assertBoardAgentScope(boardId);
 
-  const { buildBoardManagerSourcePacket, startBoardManagerRun, completeBoardManagerRun } =
+  const { startBoardManagerRun, completeBoardManagerRun } =
     await import("../../server/repositories/board-manager.js");
   const { executeBoardManagerDecision } = await import("../../server/board-manager-actions.js");
 
   const trigger = "board_manager_v2_task_cancel";
-  const sourcePacket = await buildBoardManagerSourcePacket({ trigger, scope: "global_hive" });
+  // A targeted cancellation needs this task's evidence and activity, not a
+  // global planning packet. Global corpus reads can time out the command's
+  // transaction before the cancellation guard is even reached.
+  const sourcePacket = {
+    schema: "pf.hive.board_manager.source.v0",
+    trigger,
+    scope: boardId,
+    taskDetail: await boardTaskDetail(taskId),
+  };
+  sourcePacket.sourcePacketDigest = sha256(sourcePacket);
   const decision = {
     action: "cancel_network_task",
     target_type: "network_task",
@@ -268,7 +284,7 @@ export async function cancelTask({ taskId, reason = "", execute = false }) {
     confidence: 1,
     payload: {
       summary: `Cancel stale/irrelevant network task ${taskId}`,
-      cancel_target: { task_id: safeText(taskId, 180), reason: safeText(reason, 1000) },
+      cancel_target: { task_id: safeText(taskId, 180), reason: safeText(reason, 1000), stale_only: staleOnly === true },
     },
   };
   const started = await startBoardManagerRun({
@@ -294,7 +310,7 @@ export async function cancelTask({ taskId, reason = "", execute = false }) {
     dryRun: !execute,
   });
   await appendBmAudit({
-    actor: ACTOR,
+    actor: boardAgentActor(),
     boardId,
     command: "task_cancel",
     args: { taskId, reason: safeText(reason, 280), status_before: row.status, execute },
@@ -305,7 +321,17 @@ export async function cancelTask({ taskId, reason = "", execute = false }) {
       reason: actionResult?.result?.reason || "",
     },
   });
-  return { runId, dryRun: !execute, statusBefore: row.status, actionResult };
+  const executed = actionResult?.result?.executed === true;
+  return {
+    runId,
+    phase: !execute ? "dry_run" : executed ? "cancelled" : "skipped",
+    message: !execute
+      ? `Dry run only: task remains ${row.status}. If eligible, repeat with --execute to cancel it.`
+      : executed ? `Task cancelled: ${actionResult.result.status}.` : "Task was not cancelled; inspect the result reason.",
+    dryRun: !execute,
+    statusBefore: row.status,
+    actionResult,
+  };
 }
 
 function operatorTarget({ operatorAccount = "", operatorWallet = "" } = {}) {
@@ -363,11 +389,12 @@ export async function referMerge({ prUrl, summary = "", boardId, execute = false
 }
 
 export async function boardUpdate(payload = {}) {
+  assertBoardAgentScope(payload.boardId);
   const normalized = normalizeBoardAdminUpdate(payload);
   if (!normalized.ok) throw new Error(`board_update_invalid: ${normalized.error}`);
-  const row = await applyBoardAdminUpdate({ ...normalized, actor: ACTOR });
+  const row = await applyBoardAdminUpdate({ ...normalized, actor: boardAgentActor() });
   await appendBmAudit({
-    actor: ACTOR,
+    actor: boardAgentActor(),
     boardId: normalized.boardId,
     command: "board_update",
     args: { fields: normalized.fields, metadataPatch: normalized.metadataPatch },
@@ -381,6 +408,12 @@ function journalRoot() {
 }
 
 export async function journalAppend({ boardId, text }) {
+  assertBoardAgentScope(boardId);
+  if (boardAgentIdentity()) {
+    if (!safeText(text)) throw new Error("journal text required");
+    await appendBmAudit({ actor: boardAgentActor(), boardId, command: "journal_append", args: { text: safeText(text, 16000) }, result: { durable: true } });
+    return { boardId, text: safeText(text, 16000), durable: true };
+  }
   if (!safeText(text)) throw new Error("journal text required");
   const dir = path.join(journalRoot(), boardId);
   await mkdir(dir, { recursive: true });
@@ -388,7 +421,7 @@ export async function journalAppend({ boardId, text }) {
   const stamp = new Date().toISOString();
   await appendFile(file, `\n### ${stamp}\n\n${text.trim()}\n`);
   await appendBmAudit({
-    actor: ACTOR,
+    actor: boardAgentActor(),
     boardId,
     command: "journal_append",
     args: { chars: text.length, reason: safeText(text, 280) },
@@ -398,6 +431,7 @@ export async function journalAppend({ boardId, text }) {
 }
 
 export async function writeHandoff({ boardId }) {
+  assertBoardAgentScope(boardId);
   const packet = await boardPacket(boardId);
   if (!packet) throw new Error(`board_not_found:${boardId}`);
   const dir = path.join(journalRoot(), boardId);
@@ -426,9 +460,10 @@ export async function writeHandoff({ boardId }) {
     "(agent: annotate threads in flight, then commit this file)",
     "",
   ];
+  if (boardAgentIdentity()) return { boardId, markdown: lines.join("\n"), durable: true };
   await appendFile(file, lines.join("\n"));
   await appendBmAudit({
-    actor: ACTOR,
+    actor: boardAgentActor(),
     boardId,
     command: "handoff",
     args: {},

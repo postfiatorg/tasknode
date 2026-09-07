@@ -19,7 +19,8 @@ import {
   taskNodeNostrDomain,
   taskNodeNostrName,
 } from "../server/repositories/nostr-messages.js";
-import { routePolicyForPath } from "../server/route-policies.js";
+import { apiRoutePolicies, routePolicyForPath, routeBodyPolicyForRequest } from "../server/route-policies.js";
+import { validateJsonDocument } from "../server/request-validation.js";
 
 const mnemonic = generateTaskNodeMnemonic();
 const alice = await deriveNostrMessagingIdentity({ accountId: "account_alice", walletSecret: { mnemonic } });
@@ -146,6 +147,7 @@ assert.deepEqual(
     relays: { [directoryPubkey]: ["wss://nos.lol"] },
     profiles: {
       [directoryPubkey]: {
+        accountId: "account_bob",
         displayName: "Bob Builder",
         hiveHandle: "bob",
         heroNft: {
@@ -181,6 +183,22 @@ assert.equal(
 
 for (const path of ["/api/messages/bootstrap", "/api/messages/identity", "/api/messages/resolve"]) {
   assert.equal(routePolicyForPath(path)?.auth, "session", `${path} must require a signed-in session`);
+}
+
+// Cover the full activation envelope, including the NIP-05 address signed by the browser.
+for (const member of [alice, bob]) {
+  const activation = {
+    nostrPubkeyHex: member.publicKeyHex, npub: member.npub,
+    nip05: "activation_fixture@tasknode.postfiat.org", preferredRelays: ["wss://nos.lol"], visibility: "public",
+    proof: { challengeId: "fixture-challenge", publicKey: "fixture-public-key", signature: "fixture-signature" },
+  };
+  for (const policy of apiRoutePolicies.filter(item => item.bodies?.POST?.schema?.properties?.nostrPubkeyHex)) {
+    const contract = routeBodyPolicyForRequest(policy, "POST", policy.path);
+    assert.deepEqual(validateJsonDocument(activation, contract.schema), activation, `${policy.id} must accept the browser activation envelope`);
+    assert.throws(() => validateJsonDocument({ ...activation, unknownField: true }, contract.schema), { message: "request_body_field_unknown" });
+    assert.throws(() => validateJsonDocument({ ...activation, nip05: 42 }, contract.schema), { message: "request_body_field_type_invalid" });
+    assert.throws(() => validateJsonDocument({ ...activation, nip05: "a".repeat(321) }, contract.schema), { message: "request_body_field_too_long" });
+  }
 }
 
 const routes = await readFile(new URL("../server/collaboration-routes.js", import.meta.url), "utf8");

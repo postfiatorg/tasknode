@@ -25,6 +25,7 @@ resource membership, or other context beyond a generic identity class.
 
 | Policy | Path matcher | Methods | Authentication | Mutation body | Shared limit |
 | --- | --- | --- | --- | --- | --- |
+| `board_agent_command` | `/api/agent/board/command` | `POST` | `bearer` | strict JSON ≤ 131072 bytes | 120 / 60s |
 | `app_state` | `/api/app-state` | `GET` | `optional` | — | — |
 | `session` | `/api/session` | `GET` | `optional` | — | — |
 | `user_observability_event` | `/api/user-observability/event` | `POST` | `session` | strict JSON ≤ 8192 bytes | 120 / 60s |
@@ -134,6 +135,10 @@ resource membership, or other context beyond a generic identity class.
 | `hive_decision` | `/api/hive/decision/…` | `GET` | `session` | — | — |
 | `hive_bm_feed` | `/api/hive/bm-feed` | `GET` | `none` | — | — |
 | `hive_context` | `/api/hive/context` | `GET` `POST` | `handler` | strict JSON ≤ 8388608 bytes | — |
+| `hive_group` | `/api/hive/group` | `GET` | `optional` | — | — |
+| `hive_group_status` | `/api/hive/group/status` | `GET` | `session` | — | — |
+| `hive_group_messages` | `/api/hive/group/messages` | `POST` | `session` | strict JSON ≤ 65536 bytes | 60 / 60s |
+| `hive_group_read` | `/api/hive/group/read` | `POST` | `session` | strict JSON ≤ 4096 bytes | — |
 | `hive_chat` | `/api/hive/chat` | `GET` `POST` `PATCH` | `session` | POST: strict JSON ≤ 8388608 bytes<br>PATCH: strict JSON ≤ 1024 bytes | — |
 | `profile_daily_airdrop` | `/api/profile/daily-airdrop` | `GET` | `session` | — | — |
 | `profile_expert_evaluate` | `/api/profile/expert/evaluate` | `POST` | `session` | strict JSON ≤ 8192 bytes | 3 / 600s |
@@ -193,4 +198,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **167 route policies** and **8 authentication modes**.
+Total: **172 route policies** and **8 authentication modes**.
