@@ -1,3 +1,4 @@
+import { isHexLength, trimCharacters, stripPrefix, isAsciiLetter, isAsciiDigit, isWhitespace } from "../../shared/text-protocol.js";
 import { decode as decodeNip19 } from "nostr-tools/nip19";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { listDiscoverableAccountWalletIdentities } from "./account-profiles.js";
@@ -10,6 +11,7 @@ import {
 } from "./collaboration.js";
 import { getPublicProfileHeroNft } from "./profile-nfts.js";
 import { nonFixtureProfileNftSql } from "./task-projection-integrity.js";
+import { HIVE_BOARD_HANDLE, HIVE_GROUP_ID } from "../../shared/hive-group.js";
 
 export const DEFAULT_NOSTR_RELAYS = Object.freeze([
   "wss://relay.primal.net",
@@ -41,13 +43,17 @@ function ensureDatabase() {
 }
 
 export function taskNodeNostrDomain(value = process.env.TASKNODE_NOSTR_NIP05_DOMAIN || "tasknode.postfiat.org") {
-  const domain = safeText(value, 255).toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
-  return /^[a-z0-9.-]+(?::[0-9]{2,5})?$/.test(domain) ? domain : "tasknode.postfiat.org";
+  const domain = trimCharacters(stripPrefix(stripPrefix(safeText(value,255).toLowerCase(), "https://"), "http://"), "/", { start: false });
+  try {
+    const parsed = new URL(`https://${domain}`);
+    if (parsed.host === domain && !parsed.username && !parsed.password && parsed.pathname === "/" && !parsed.search && !parsed.hash) return domain;
+  } catch { /* Invalid domain uses the product default. */ }
+  return "tasknode.postfiat.org";
 }
 
 export function taskNodeNostrName(handle = "") {
-  const normalized = safeText(handle, 80).replace(/^@+/, "").toLowerCase();
-  return /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(normalized) ? normalized : "";
+  const normalized = trimCharacters(safeText(handle, 80),"@",{end:false}).toLowerCase();
+  return normalized.length >= 2 && [...normalized].every(char => isAsciiLetter(char) || isAsciiDigit(char) || "._-".includes(char)) && !"._-".includes(normalized[0]) && !"._-".includes(normalized.at(-1)) ? normalized : "";
 }
 
 export function taskNodeNostrAddress(handle = "", domain) {
@@ -57,8 +63,8 @@ export function taskNodeNostrAddress(handle = "", domain) {
 
 export function normalizeNostrRelays(relays = []) {
   return Array.from(new Set(safeArray(relays)
-    .map((relay) => safeText(relay, 500).replace(/\/+$/, ""))
-    .filter((relay) => /^wss:\/\/[a-z0-9.-]+(?::[0-9]{2,5})?(?:\/[^\s]*)?$/i.test(relay))))
+    .map((relay) => trimCharacters(safeText(relay, 500),"/",{start:false}))
+    .filter((relay) => { try { const url = new URL(relay); return url.protocol === "wss:" && Boolean(url.hostname) && !url.username && !url.password && !url.hash && ![...relay].some(isWhitespace); } catch { return false; } })))
     .slice(0, 5);
 }
 
@@ -91,6 +97,7 @@ export async function bindNostrIdentity({
   const normalizedRelays = normalizeNostrRelays(preferredRelays);
   const taskNodeIdentity = await canonicalNostrIdentityForAccount(accountId);
   if (!taskNodeIdentity) return { ok: false, status: 409, error: "nostr_tasknode_handle_required" };
+  if (taskNodeIdentity.nostrName === HIVE_BOARD_HANDLE) return { ok: false, status: 409, error: "nostr_handle_reserved" };
   if (!taskNodeIdentity.discoverable) {
     return { ok: false, status: 409, error: "nostr_discoverable_profile_required" };
   }
@@ -101,7 +108,7 @@ export async function bindNostrIdentity({
   } catch {
     // Validation below rejects undecodable npubs with the same public error.
   }
-  if (!/^[0-9a-f]{64}$/.test(pubkey) || decodedNpub !== pubkey) {
+  if (!isHexLength(pubkey,64) || decodedNpub !== pubkey) {
     return { ok: false, status: 400, error: "nostr_identity_invalid" };
   }
   const normalizedVisibility = ["private", "teammates", "public"].includes(visibility) ? visibility : "teammates";
@@ -228,10 +235,11 @@ export function buildNostrWellKnownDirectory({ discoverable = [], rows = [] } = 
   safeArray(rows).forEach((row) => {
     const publicIdentity = byAccount.get(row.account_id) || {};
     const handle = taskNodeNostrName(publicIdentity.hiveHandle);
-    if (!handle || !/^[0-9a-f]{64}$/.test(row.nostr_pubkey_hex)) return;
+    if (!handle || !isHexLength(row.nostr_pubkey_hex,64)) return;
     names[handle] = row.nostr_pubkey_hex;
     relays[row.nostr_pubkey_hex] = normalizeNostrRelays(row.preferred_relays);
     profiles[row.nostr_pubkey_hex] = {
+      accountId: row.account_id,
       displayName: safeText(publicIdentity.publicDisplayName || publicIdentity.displayName || `@${handle}`, 120),
       hiveHandle: handle,
       heroNft: publicProfileAvatar({
@@ -251,7 +259,6 @@ export async function getNostrWellKnownDirectory({ name = "" } = {}) {
   const discoverable = (await listDiscoverableAccountWalletIdentities())
     .filter((identity) => taskNodeNostrName(identity.hiveHandle))
     .filter((identity) => !requestedName || taskNodeNostrName(identity.hiveHandle) === requestedName);
-  if (!discoverable.length) return { names: {}, relays: {}, profiles: {} };
   const byAccount = new Map(discoverable.map((identity) => [identity.accountId, identity]));
   const result = await query(
     `SELECT nostr_identity.account_id, nostr_identity.nostr_pubkey_hex, nostr_identity.preferred_relays,
@@ -280,7 +287,14 @@ export async function getNostrWellKnownDirectory({ name = "" } = {}) {
         AND nostr_identity.expires_at > now()`,
     [[...byAccount.keys()]]
   );
-  return buildNostrWellKnownDirectory({ discoverable, rows: result.rows });
+  const directory = buildNostrWellKnownDirectory({ discoverable, rows: result.rows });
+  const channel = (await query("SELECT bot_pubkey,relays FROM hive_group_channels WHERE id=$1", [HIVE_GROUP_ID])).rows[0];
+  if (channel && (!requestedName || requestedName === HIVE_BOARD_HANDLE)) {
+    directory.names[HIVE_BOARD_HANDLE] = channel.bot_pubkey;
+    directory.relays[channel.bot_pubkey] = channel.relays;
+    directory.profiles[channel.bot_pubkey] = { accountId: "", displayName: "Hive Board", hiveHandle: HIVE_BOARD_HANDLE, heroNft: null, bot: true };
+  }
+  return directory;
 }
 
 export async function revokeNostrIdentity({ accountId = "", proof = {} } = {}) {

@@ -67,29 +67,42 @@ replacement, so wallet feed names do not get clobbered by profile display names
 
 Project IDs are part of the product surface. The project detail header should expose the stable `network_projects.id` so operators can refer to a project in tasks, docs, and chat without ambiguity.
 
-### Hive Chat
+### Hive chat: the public group
 
-Hive Chat is the pinned chat conversation for contributing network context. A
-posted message is first saved as a Hive Context entry, then the immediate
-response is generated from a scoped prompt in
-`prompts/hive/hive_immediate_response_v1.md`. The prompt is not embedded in
-server code.
+Open **Hive chat** in the primary sidebar or use the **Open Hive group chat**
+button on the Hive boards page. `#hive-chat` is one shared public conversation
+for Task Node members, backed by a signed Nostr thread. Handles link to member
+profiles; timestamps link to the signed Nostr event. Profile pictures reuse
+the selected public profile NFT, with a starter portrait when none is available.
+Type `@` to select a member, or use Reply to reference a message.
 
-The immediate response packet includes the requesting account identity, Account
-Live State, the requesting user's scoped Hive Context source packet, live board
-facts, the compressed Board Manager/Hive Mind packet, and a plain-text Hive
-Reports Context packet. The reports packet includes the latest generated Hive
-reports by type, the latest Harvest Report, and the deterministic Live Task
-Packet. Report bodies are clipped for prompt budget, but every report type is
-represented by name so Hive Chat can distinguish missing reports from generated
-reports.
+Reading works while signed out or with the wallet locked. Sending requires a
+signed-in account with a discoverable profile, an active public Messages
+identity and the matching unlocked wallet. Signed-in users without Messages
+see a nonblocking setup prompt. Messages explains the identity and provides a
+return link to Hive after activation. The composer clearly labels messages as
+public on Nostr; direct Messages remain encrypted.
 
-Hive Chat should use this context as an intake surface for the network. When a
-user message is ambiguous, the response should ask one or two targeted
-clarifying questions that would improve board management, report quality, task
-routing, or PFT-value judgment. When the user already supplied clear context,
-the response should state the operational implication and avoid pretending it
-created, assigned, archived, reviewed, rewarded, or resolved anything.
+`@hive-board` is an automated participant. On new community activity, GLM 5.3
+Flash periodically decides whether to respond or escalate. It can remain
+silent. GLM 5.3 writes selected replies from public room messages, room facts
+and public board summaries. No private chats, memories, task evidence or
+legacy Hive conversations enter this context. The default check interval is
+60 seconds, with no model call for an idle room and no immediate model call
+on message submission.
+
+Concrete board issues can create durable `hive_group_escalations` inbox items
+for the existing production Kimi K3 Corbanu TUI manager. Board packets,
+digests and supervisor duties include those items. The manager reads
+`bm hive-inbox <board>` and uses `bm hive-reply <id> --message <public text>
+--outcome resolved|declined` after investigation. Existing board scope and
+action permissions still apply. Closing the inbox and queuing a signed reply
+share the command transaction; retries cannot duplicate the reply. The group
+shows when an escalation is queued and when the manager has replied.
+
+The member panel contains **Previous private Hive chat**, a read-only archive
+scoped to the current account. Historical private conversations are never
+imported into the Nostr room. Old Hive recent-chat links now open the group.
 
 ## Hive Brain
 

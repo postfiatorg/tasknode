@@ -281,11 +281,20 @@ export const teamInviteActionBody = strictBody(128 * KiB, {
 }, { required: ["action"] });
 export const proofBody = strictBody(128 * KiB, { proof }, { required: ["proof"] });
 export const nostrBindBody = strictBody(128 * KiB, {
-  nostrPubkeyHex: text(64, 64), npub: text(120, 1), preferredRelays: stringArray(5, 500),
+  // The browser signs the canonical address returned by Messages bootstrap.
+  // The binding handler independently derives it again before verifying the proof.
+  nostrPubkeyHex: text(64, 64), npub: text(120, 1), nip05: text(320, 3), preferredRelays: stringArray(5, 500),
   visibility: text(20, 0, { enum: ["private", "teammates", "public"] }), proof,
 }, { required: ["nostrPubkeyHex", "npub", "proof"] });
 
 export const hiveChatBody = strictBody(8 * MiB, chatProperties);
+export const hiveGroupMessageBody = strictBody(64 * KiB, {
+  event: { type:"object",allowUnknown:false,required:["id","pubkey","sig","kind","created_at","content","tags"],properties:{
+    id:text(64,64),pubkey:text(64,64),sig:text(128,128),kind:integer(1,1),created_at:integer(),content:text(8000,1),
+    tags:{type:"array",maxItems:32,items:{type:"array",maxItems:5,items:text(500)}},
+  } },
+},{required:["event"]});
+export const hiveGroupReadBody = strictBody(4 * KiB,{sequence:integer()},{required:["sequence"]});
 export const hiveHarvestResolveBody = strictBody(8192, {
   outcome: text(80), resolutionOutcome: text(80), note: text(4000), resolutionNote: text(4000),
 }, { requiredAny: [["outcome", "resolutionOutcome"]] });

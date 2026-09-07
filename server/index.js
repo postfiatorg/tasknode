@@ -1,3 +1,5 @@
+import { handleBoardAgentRoute } from "./board-agent-routes.js";
+import { handleHiveGroupRoute } from "./hive-group-routes.js";
 import { installProcessHardening } from "./process-hardening.js";
 import { startChatStreamHeartbeat } from "./chat-stream-heartbeat.js";
 import { readValidatedJson as readJson } from "./request-validation.js";
@@ -252,6 +254,8 @@ async function routeApi(req, url, res) {
     return true;
   }
 
+  if (await handleBoardAgentRoute({ req, res, url, readJson, json })) return true;
+
   if (await handleTaskNodeTerminalRoute({
     json,
     readJson,
@@ -478,6 +482,7 @@ async function routeApi(req, url, res) {
   if (await handleBoardAdminRoute({ json, readJson, req, res, url })) return true;
   if (await handleBmFeedRoute({ json, req, res, url })) return true;
 
+  if (await handleHiveGroupRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 
   if (url.pathname === "/api/chat/stream") {

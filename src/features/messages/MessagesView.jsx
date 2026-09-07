@@ -92,7 +92,7 @@ function writeContacts(accountId, contacts) {
   }
 }
 
-export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletSecret }) {
+export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletSecret, onOpenHiveChat }) {
   const walletMnemonic = walletSecret?.mnemonic || "";
   const [bootstrap, setBootstrap] = useState(null);
   const [privateIdentity, setPrivateIdentity] = useState(null);
@@ -375,12 +375,13 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
 
   if (!bootstrap.binding) return <div className="messages-onboarding">
     <div className="messages-onboarding-icon"><LockKeyhole size={28} /></div>
-    <span>Private messages over Nostr</span>
+    <MessagesAvatar contact={selfContact} publicKey="" size={64} />
+    <span>Your identity for Messages & Hive</span>
     <h1>Activate <strong>@{bootstrap.identity.nostrName}</strong></h1>
-    <p>This creates a wallet-bound messaging identity for <code>{bootstrap.identity.nip05}</code>. Your Nostr key is derived only while your wallet is unlocked and is never uploaded.</p>
+    <p>Use your handle and profile picture in private Messages and the public Hive group chat. Your address is <code>{bootstrap.identity.nip05}</code>. Your wallet keeps control of the signing key.</p>
     <div className="messages-onboarding-points">
-      <span><ShieldCheck size={16} /><b>End-to-end encrypted</b><small>NIP-17 gift-wrapped messages</small></span>
-      <span><Wifi size={16} /><b>Relay delivered</b><small>No Task Node message database</small></span>
+      <span><ShieldCheck size={16} /><b>Private inbox</b><small>Direct messages stay encrypted</small></span>
+      <span><Wifi size={16} /><b>Public Hive chat</b><small>Talk with the whole network</small></span>
       <span><KeyRound size={16} /><b>Wallet controlled</b><small>Same identity on every device</small></span>
     </div>
     {error && <p className="messages-error">{error}</p>}
@@ -396,6 +397,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
     <p>Only your unlocked wallet can reconstruct the local key that decrypts your Nostr inbox.</p>
     {error && <p className="messages-error">{error}</p>}
     <button className="messages-primary" onClick={onWalletUnlock} type="button">Unlock wallet</button>
+    {onOpenHiveChat && <button className="messages-hive-link" onClick={onOpenHiveChat} type="button">Read Hive group chat</button>}
   </div>;
 
   return <div className={`messages-page ${selectedPeer ? "has-thread" : ""}`}>
@@ -405,6 +407,7 @@ export function MessagesView({ accountId, onOpenProfile, onWalletUnlock, walletS
         <button aria-label="New message" onClick={() => setNewMessageOpen(true)} type="button"><Plus size={19} /></button>
       </header>
       <div className="messages-identity-strip"><span aria-live="polite"><Circle className={connectionStatus === "live" ? "is-live" : ""} fill="currentColor" size={7} />@{bootstrap.identity.nostrName} · {connectionStatus === "live" ? "Live" : connectionStatus === "connecting" ? "Connecting" : "Reconnecting"}</span><button disabled={busy === "sync"} onClick={() => syncMessages(privateIdentity)} title="Manually check relays" type="button"><RefreshCw className={busy === "sync" ? "is-spinning" : ""} size={13} />Retry</button></div>
+      {onOpenHiveChat && <button className="messages-hive-link" onClick={onOpenHiveChat} type="button">Join the Hive group chat →</button>}
       <div className="messages-thread-list">
         {threads.map((thread) => <button className={thread.publicKey === selectedPeer ? "active" : ""} key={thread.publicKey} onClick={() => setSelectedPeer(thread.publicKey)} type="button">
           <MessagesAvatar contact={thread.contact} publicKey={thread.publicKey} />

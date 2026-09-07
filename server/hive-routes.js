@@ -379,7 +379,7 @@ async function saveHiveChatMessage({
   let chatTurn = null;
   let chatHistoryWarning = "";
   let immediateResponseWarning = "";
-  if (sourceConversationId) {
+  if (sourceConversationId && process.env.TASKNODE_HIVE_GROUP_ENABLED !== "true") {
     try {
       const immediate = await executeHiveImmediateResponse({
         accountId: session.accountId,
@@ -700,6 +700,10 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
   }
 
   if (url.pathname === "/api/hive/chat") {
+    if (req.method === "POST" && process.env.TASKNODE_HIVE_GROUP_ENABLED === "true") {
+      json(res, 410, { ok: false, error: "hive_chat_moved", message: "Hive is now a group chat. Open Hive chat and activate Messages to join with your Nostr identity.", view: "hive-chat", path: "/api/hive/group/messages" });
+      return true;
+    }
     if (!session?.accountId) {
       json(res, 401, {
         ok: false,

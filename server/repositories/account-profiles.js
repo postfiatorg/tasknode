@@ -1,3 +1,4 @@
+import { trimCharacters } from "../../shared/text-protocol.js";
 import {
   accountIdentityProfile,
   applyAccountAliasVisibility,
@@ -32,7 +33,7 @@ function publicWalletIdentity(account, wallet = {}) {
   const displayName = (
     identityProfile.publicDisplayName
     || (identityProfile.hiveHandle ? `@${identityProfile.hiveHandle}` : "")
-    || (firstPublicAlias?.handle ? `@${String(firstPublicAlias.handle).replace(/^@+/, "")}` : "")
+    || (firstPublicAlias?.handle ? `@${trimCharacters(String(firstPublicAlias.handle),"@",{end:false})}` : "")
   ).trim();
   if (!displayName) return null;
   return {

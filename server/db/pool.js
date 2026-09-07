@@ -1,4 +1,20 @@
 import pg from "pg";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+const commandTransaction = new AsyncLocalStorage();
+
+// A command receipt and all nested domain writes share one commit. The active
+// flag prevents deferred jobs from retaining a released transaction connection.
+export function transactionCommand(work) {
+  return transaction(async (client) => {
+    const scope = { client, active: true };
+    try {
+      return await commandTransaction.run(scope, () => work(client));
+    } finally {
+      scope.active = false;
+    }
+  });
+}
 
 const { Pool } = pg;
 
@@ -88,6 +104,8 @@ export function poolMetrics() {
 }
 
 export async function query(text, params = []) {
+  const scope = commandTransaction.getStore();
+  if (scope?.active) return scope.client.query(text, params);
   const db = getPool();
   if (!db) {
     const error = new Error("database_not_configured");
@@ -104,6 +122,8 @@ export async function query(text, params = []) {
 }
 
 export async function transaction(work) {
+  const scope = commandTransaction.getStore();
+  if (scope?.active) return work(scope.client);
   const db = getPool();
   if (!db) {
     const error = new Error("database_not_configured");

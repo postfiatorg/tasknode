@@ -18,6 +18,7 @@ assert.deepEqual(airdrop, {
 
 const hive = startBackgroundWorkers({ role: "worker:hive", runWorker: noOpWorker });
 assert.deepEqual(hive.startedWorkerGroups, [
+  "hive_group_chat",
   "hive_secretary",
   "hive_project",
   "hive_reports",

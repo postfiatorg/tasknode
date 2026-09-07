@@ -5,8 +5,15 @@ const HiveBrainView = lazy(() => import("../features/hive/HiveBrainView").then((
 const MemoryView = lazy(() => import("../features/memory/MemoryView").then((module) => ({ default: module.MemoryView })));
 const MessagesView = lazy(() => import("../features/messages/MessagesView").then((module) => ({ default: module.MessagesView })));
 const TeamView = lazy(() => import("../features/team/TeamView").then((module) => ({ default: module.TeamView })));
+const HiveGroupChat = lazy(() => import("../features/hive/HiveGroupChat").then((module) => ({ default: module.HiveGroupChat })));
 
 export const builtInTaskNodeExtensions = Object.freeze([
+  {
+    id: "hive-chat", label: "Hive chat", icon: Users, component: HiveGroupChat, menu: "primary", requiresAuth: false,
+    props: ({ accountId, walletSecret, onWalletUnlock, onOpenMessages, onLoginRequired, onHiveUnreadChange }) => ({
+      accountId, walletSecret, onWalletUnlock, onOpenMessages, onLoginRequired, onUnreadChange: onHiveUnreadChange,
+    }),
+  },
   {
     id: "messages",
     label: "Messages",
@@ -20,6 +27,7 @@ export const builtInTaskNodeExtensions = Object.freeze([
       onOpenProfile: () => navigateToView("profile"),
       onWalletUnlock,
       walletSecret,
+      onOpenHiveChat: () => navigateToView("hive-chat"),
     }),
   },
   {

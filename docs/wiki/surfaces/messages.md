@@ -11,6 +11,8 @@ Messages is the private user-to-user inbox under **More**. Users address each ot
 
 Activation is not automatic. It creates a wallet-bound public Nostr identity and publishes the handle mapping. The private key is deterministically reconstructed in the browser from the unlocked wallet and is never uploaded.
 
+If activation previously showed a request-contract error, select **Activate Messages** again. It creates a fresh wallet proof; no new account or wallet is needed.
+
 ## Starting a Conversation
 
 Select **New message**, enter an exact Task Node handle, and select the resolved member. A member is messageable only when the member has a discoverable Task Node handle and an active public Messages binding. The interface does not accept a fuzzy result that might address the wrong person.
@@ -38,3 +40,17 @@ The composer uses the same circular Arrow-Up send control as Task Node chat and 
 - Revoking Messages disables the Task Node handle binding but cannot delete copies already retained by independent relays.
 
 See [Nostr Messaging Architecture](#docs/nostr) for protocol and failure details.
+
+
+## Joining Hive chat
+
+Messages activation now sets up the same public handle and Nostr key used in
+Hive chat. The page previews the profile picture and address and explains
+that direct Messages are encrypted while Hive is public. Once activated,
+**Join the Hive group chat** opens `#hive-chat`. Signed-in users who have not
+activated Messages also see a dismissible setup prompt elsewhere in the app.
+
+Hive shares the identity, not the private inbox. Direct-message decryption and
+wallet key derivation are unchanged. Public Hive messages have their own
+signed-event projection and durable relay outbox; the statement that private
+Messages has no server plaintext archive does not apply to public Hive.

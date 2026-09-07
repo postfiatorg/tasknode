@@ -94,6 +94,11 @@ const capacityScopeSql = `
       AND (
         alloc.candidate_wallet_address = ''
         OR EXISTS (
+          SELECT 1 FROM account_linked_wallets linked
+          WHERE linked.account_id=alloc.candidate_account_id
+            AND linked.wallet_address=alloc.candidate_wallet_address AND linked.status='linked'
+        )
+        OR EXISTS (
           SELECT 1
           FROM pftl_sync_wallets w
           WHERE w.wallet_address = alloc.candidate_wallet_address
@@ -103,6 +108,17 @@ const capacityScopeSql = `
         )
       )
 `;
+
+export async function getNetworkTaskCapacityState({ accountId, walletAddress = "", queryImpl = query } = {}) {
+  const [count, limit] = await Promise.all([
+    queryImpl(`SELECT count(DISTINCT alloc.id)::int AS n FROM network_task_allocations alloc
+      LEFT JOIN task_projections p ON ${canonicalAllocationProjectionLinkSql("alloc", "p")}
+      WHERE ${capacityScopeSql}`, [activeAllocationStatuses, safeText(accountId, 180), safeText(walletAddress, 120), terminalNetworkTaskProjectionStatuses]),
+    getNetworkTaskCapacityLimit(accountId, { queryImpl, strict: true }),
+  ]);
+  const used = Number(count.rows[0]?.n || 0);
+  return { limit, used, freeSlots: Math.max(0, limit - used), available: used < limit };
+}
 
 // Canonical capacity predicate. Returns the live blockers that consume the
 // contributor's Network Task capacity. Used by the Board Manager executor
@@ -120,13 +136,14 @@ export async function listNetworkTaskCapacityBlockers({
   sameClassOnly = false,
   taskClass = "",
   limit = 12,
+  queryImpl = query,
 } = {}) {
   if (!useDatabase()) return [];
   const normalizedAccountId = safeText(accountId, 180);
   const normalizedWalletAddress = safeText(walletAddress, 120);
   if (!normalizedAccountId && !normalizedWalletAddress) return [];
   const normalizedClass = sameClassOnly ? normalizeTaskClass(taskClass) : "";
-  const result = await query(
+  const result = await queryImpl(
     `
       SELECT
         alloc.id AS allocation_id,
@@ -275,7 +292,7 @@ export async function listNetworkTaskCandidateCapacityChecks(candidates = []) {
     checks.push({
       accountId,
       walletAddress,
-      availableForNetworkTask: blockers.length === 0,
+      availableForNetworkTask: (await getNetworkTaskCapacityState({ accountId, walletAddress })).available,
       blockers,
     });
   }
@@ -284,18 +301,19 @@ export async function listNetworkTaskCandidateCapacityChecks(candidates = []) {
 
 // Operator-set per-account capacity limit (migration 104). Default 1 live
 // allocation; trusted contributors can be raised by the operator.
-export async function getNetworkTaskCapacityLimit(accountId = "") {
+export async function getNetworkTaskCapacityLimit(accountId = "", { queryImpl = query, strict = false } = {}) {
   const normalized = safeText(accountId, 180);
   const fallback = Math.max(1, Number(process.env.TASKNODE_NETWORK_TASK_DEFAULT_CAPACITY || 1));
   if (!normalized) return fallback;
   try {
-    const result = await query(
+    const result = await queryImpl(
       `SELECT max_live_allocations FROM network_task_capacity_limits WHERE account_id = $1`,
       [normalized]
     );
     const limit = Number(result.rows[0]?.max_live_allocations);
     return Number.isFinite(limit) && limit > 0 ? limit : fallback;
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return fallback;
   }
 }

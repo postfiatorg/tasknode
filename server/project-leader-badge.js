@@ -1,11 +1,6 @@
+import { normalizedHandle } from "../shared/text-protocol.js";
 function normalizeHandle(value = "") {
-  return String(value || "")
-    .trim()
-    .replace(/^@+/, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/[-_]{2,}/g, "-")
-    .replace(/^[-_]+|[-_]+$/g, "")
+  return normalizedHandle(value)
     .slice(0, 30);
 }
 

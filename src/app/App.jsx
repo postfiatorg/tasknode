@@ -4,8 +4,9 @@ import { fetchRuntimeConfig, requestJson } from "../api";
 import { ChatSearchModal } from "../features/chat/ChatSearchModal";
 import { ChatSurface } from "../features/chat/ChatSurface.jsx";
 import { ChatItemActionMenu, DeleteChatModal, ProfileAvatar, RenameChatModal, profileAvatarText, profileDisplayName, profileSessionText } from "../features/chat/AppChatDialogs.jsx";
-import { buildRecentChats, chatActionMenuPosition, formatUnreadCount, hiveUnreadCountFromAppState, mergeHiveConversationIntoAppState } from "../features/chat/chat-surface-state.js";
-import { ContextView } from "../features/context/ContextView.jsx";
+import { buildRecentChats, chatActionMenuPosition, formatUnreadCount } from "../features/chat/chat-surface-state.js";
+import "../features/hive/hive-navigation.css";
+import { useHiveGroupStatus } from "../features/hive/use-hive-group-status.js";
 import { extractHydratedContext } from "../features/context/context-view-state.js";
 import { publishContextToPft } from "../features/context/context-publish";
 import { IdentityHandleDialog } from "../features/identity/IdentityControls.jsx";
@@ -25,8 +26,9 @@ import { WalletUnlockModal } from "../features/wallet/WalletUnlockModal";
 import { formatCreditUsd } from "../formatters";
 import { isSignedInSession } from "../session";
 import { appExtensionRegistry, ExtensionSurface } from "../extensions/index.js";
-import { APP_VIEWS, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, HIVE_CHAT_NOTIFICATION_REFRESH_MS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
+import { APP_VIEWS, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
 
+const ContextView = lazy(() => import("../features/context/ContextView.jsx").then((module) => ({ default: module.ContextView })));
 const WalletView = lazy(() => import("../features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
 const HelpView = lazy(() => import("../features/docs/DocsView").then((module) => ({ default: module.DocsView })));
 const DocsLibraryView = lazy(() => import("../features/docs-library/DocsLibraryView").then((module) => ({ default: module.DocsLibraryView })));
@@ -73,6 +75,7 @@ export function App() {
     loadTaskActionReceipts(typeof window === "undefined" ? null : window.sessionStorage, TASK_ACTION_RECEIPTS_STORAGE_KEY)
   );
   const [profileAvatarNft, setProfileAvatarNft] = useState(null);
+  const [messagesPromptDismissed, setMessagesPromptDismissed] = useState("");
   const [walletVaultStatus, setWalletVaultStatus] = useState(EMPTY_WALLET_VAULT_STATUS);
   const [loadError, setLoadError] = useState("");
   const profileRef = useRef(null);
@@ -154,13 +157,14 @@ export function App() {
   }, []);
   const recentChats = buildRecentChats(appState?.chat?.recents || []);
   const activeChatId = activeChat?.conversationId || activeChat?.id || "";
-  const hiveUnreadCount = hiveUnreadCountFromAppState(appState);
   const pftBalance = formatPftBalance(appState?.wallet);
   const chatCredit = formatCreditUsd(appState?.usage?.availableCreditUsd || 0);
   const appStateLoading = !appState && !loadError;
   const canRenderWorkspaceContent = Boolean(appState);
   const session = appState?.session;
   const signedIn = canRenderWorkspaceContent && isSignedInSession(session);
+  const [hiveGroupStatus, setHiveGroupStatus] = useHiveGroupStatus({ accountId: session?.accountId, signedIn, activeChatKind: activeChat?.kind, activeChatId, view });
+  const hiveUnreadCount = hiveGroupStatus?.accountId === appState?.session?.accountId ? Number(hiveGroupStatus?.unreadCount || 0) : 0;
   const profileName = appStateLoading ? "Checking session" : profileDisplayName(session);
   const profileInitials = appStateLoading ? "TN" : profileAvatarText(session);
   const profileAvatarImages = profileNftImageCandidates(profileAvatarNft);
@@ -493,6 +497,7 @@ export function App() {
   }, [navigateToView]);
   const openRecentChat = useCallback(
     (chat) => {
+      if (chat?.kind === "hive") { setChatActionMenu(null); navigateToView("hive-chat"); return; }
       setActiveChat(chat);
       setChatActionMenu(null);
       setChatSelectionKey((key) => key + 1);
@@ -611,30 +616,7 @@ export function App() {
       events.close();
     };
   }, [signedIn, linkedWalletAddress, refreshWalletBalance]);
-  useEffect(() => {
-    if (!signedIn || !session?.accountId) return undefined;
-    let active = true;
-    const hiveChatOpen = view === "chat" && activeChat?.kind === "hive";
-    async function refreshHiveNotificationState() {
-      try {
-        const result = await requestJson("/api/hive/chat", {
-          method: hiveChatOpen ? "PATCH" : "GET",
-        });
-        if (!active || !result.ok || !result.body?.ok) return;
-        setAppState((current) =>
-          mergeHiveConversationIntoAppState(current, result.body.conversation)
-        );
-      } catch {
-        // Hive notifications are non-blocking; app-state will surface hard failures.
-      }
-    }
-    refreshHiveNotificationState();
-    const timer = window.setInterval(refreshHiveNotificationState, HIVE_CHAT_NOTIFICATION_REFRESH_MS);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [activeChat?.kind, activeChatId, session?.accountId, signedIn, view]);
+
   useEffect(() => {
     let active = true;
     if (!signedIn || !walletAccountId) {
@@ -855,6 +837,9 @@ export function App() {
     onWalletUnlock: openWalletVaultControl,
     runtimeConfig,
     walletSecret: walletSecretRef.current,
+    onOpenMessages: () => navigateToView("messages"),
+    onLoginRequired: () => setLoginOpen(true),
+    onHiveUnreadChange: (unreadCount) => setHiveGroupStatus(current => ({ ...current, accountId: walletAccountId, unreadCount })),
   };
   const collaborationExtensions = appExtensionRegistry.menu("more", "collaboration", extensionContext);
   const insightExtensions = appExtensionRegistry.menu("more", "insight", extensionContext);
@@ -922,13 +907,15 @@ export function App() {
           />
           <SidebarButton
             active={view === "hive"}
-            badge={hiveUnreadCount > 0 ? formatUnreadCount(hiveUnreadCount) : undefined}
             icon={Activity}
             label="Hive"
             onClick={() => navigateToView("hive")}
             sidebarOpen={sidebarOpen}
             trailing={sidebarOpen ? <small className="nav-live-state">live</small> : null}
           />
+          <SidebarButton active={view === "hive-chat"} icon={Network} label="Hive chat"
+            badge={hiveUnreadCount > 0 ? formatUnreadCount(hiveUnreadCount) : undefined}
+            onClick={() => navigateToView("hive-chat")} sidebarOpen={sidebarOpen} />
           {runtimeConfig?.collaboration?.docsEnabled && (
             <SidebarButton
               active={view === "docs"}
@@ -1277,6 +1264,9 @@ export function App() {
         </header>
         {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
         {appStateLoading && <StatusBanner>Loading product state</StatusBanner>}
+        {signedIn && hiveGroupStatus?.accountId === session?.accountId && hiveGroupStatus?.messaging && !hiveGroupStatus.messaging.binding && messagesPromptDismissed !== session.accountId && !["messages", "hive-chat"].includes(view) && (
+          <div className="hive-messages-setup"><span>Join Hive chat with your Task Node handle.</span><button onClick={() => navigateToView("messages")} type="button">Set up Messages</button><button aria-label="Dismiss Messages setup" onClick={() => setMessagesPromptDismissed(session.accountId)} type="button"><X size={14} /></button></div>
+        )}
         {canRenderWorkspaceContent && !accountTransitioning && (
         <RouteErrorBoundary resetKey={view}>
           {view === "chat" && (
@@ -1318,7 +1308,7 @@ export function App() {
           )}
           {view === "hive" && (
             <Suspense fallback={<StatusBanner>Loading hive</StatusBanner>}>
-              <HiveView pftlExplorerUrl={runtimeConfig?.pftlExplorerUrl || ""} />
+              <HiveView pftlExplorerUrl={runtimeConfig?.pftlExplorerUrl || ""} onOpenChat={() => navigateToView("hive-chat")} />
             </Suspense>
           )}
           {view === "directory" && (

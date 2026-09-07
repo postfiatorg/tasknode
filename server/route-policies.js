@@ -7,6 +7,7 @@ const confirmation = { type: "boolean" };
 const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const apiRoutePolicies = [
+  { id: "board_agent_command", path: "/api/agent/board/command", methods: ["POST"], auth: "bearer", unauthenticatedError: "board_agent_credential_required", rateLimit: { limit: 120, windowMs: 60_000 }, body: bodyPolicy(128 * 1024, { allowUnknown: false, required: ["requestKey", "argv"], properties: { requestKey: { type: "string", minLength: 1, maxLength: 180 }, argv: { type: "array", maxItems: 80, items: { type: "string", maxLength: 32_000 } } } }) },
   { id: "app_state", path: "/api/app-state", methods: ["GET"], auth: "optional" },
   { id: "session", path: "/api/session", methods: ["GET"], auth: "optional" },
   {
@@ -561,6 +562,11 @@ export const apiRoutePolicies = [
   { id: "hive_decision", prefix: "/api/hive/decision", methods: ["GET"], auth: "session" },
   { id: "hive_bm_feed", path: "/api/hive/bm-feed", methods: ["GET"], auth: "none" },
   { id: "hive_context", path: "/api/hive/context", methods: ["GET", "POST"], auth: "handler", body: requestBodies.hiveChatBody },
+  { id:"hive_group",path:"/api/hive/group",methods:["GET"],auth:"optional" },
+  { id:"hive_group_status",path:"/api/hive/group/status",methods:["GET"],auth:"session" },
+  { id:"hive_group_messages",path:"/api/hive/group/messages",methods:["POST"],auth:"session",body:requestBodies.hiveGroupMessageBody,
+    rateLimit:{limit:60,windowMs:60_000} },
+  { id:"hive_group_read",path:"/api/hive/group/read",methods:["POST"],auth:"session",body:requestBodies.hiveGroupReadBody },
   {
     id: "hive_chat",
     path: "/api/hive/chat",

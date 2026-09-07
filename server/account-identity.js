@@ -1,3 +1,5 @@
+import { isWhitespace, replaceCharacterRuns } from "../shared/text-protocol.js";
+import { normalizedHandle, isIdentifierChar } from "../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 import { githubCoreContributorAccess } from "./core-contributor-authorization.js";
 import { projectLeaderAccessForHandle } from "./project-leader-badge.js";
@@ -12,6 +14,7 @@ const reservedHiveHandles = new Set([
   "docs",
   "help",
   "hive",
+  "hive-board",
   "login",
   "logout",
   "me",
@@ -37,29 +40,17 @@ function providerLabel(provider) {
 }
 
 export function normalizeHiveHandle(value = "") {
-  return String(value || "")
-    .trim()
-    .replace(/^@+/, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/[-_]{2,}/g, "-")
-    .replace(/^[-_]+|[-_]+$/g, "")
+  return normalizedHandle(value)
     .slice(0, hiveHandleMaxLength);
 }
 
 function hiveHandleValidationError(handle) {
-  const unsliced = String(handle || "")
-    .trim()
-    .replace(/^@+/, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/[-_]{2,}/g, "-")
-    .replace(/^[-_]+|[-_]+$/g, "");
+  const unsliced = normalizedHandle(handle);
   const normalized = normalizeHiveHandle(handle);
   if (!normalized) return "handle_required";
   if (unsliced.length < hiveHandleMinLength) return "handle_too_short";
   if (unsliced.length > hiveHandleMaxLength) return "handle_too_long";
-  if (!/^[a-z0-9][a-z0-9_-]*[a-z0-9]$/.test(normalized)) return "handle_format_invalid";
+  if (!(normalized.length >= 2 && [...normalized].every(isIdentifierChar) && isIdentifierChar(normalized[0]) && !"-_".includes(normalized[0]) && !"-_".includes(normalized.at(-1)))) return "handle_format_invalid";
   if (reservedHiveHandles.has(normalized)) return "handle_reserved";
   return "";
 }
@@ -124,7 +115,7 @@ export function checkHiveHandleAvailability({ accounts = {}, handle = "", accoun
 export function suggestHiveHandles({ accounts = {}, accountId = "", base = "", limit = 4 } = {}) {
   const account = accounts[String(accountId || "").trim()] || {};
   const stem = handleSuggestionBase(accounts, account, base);
-  const digest = stableId(`${accountId}:${stem}`, "hive").replace(/^hive_/, "");
+  const digest = stableId(`${accountId}:${stem}`, "hive").slice(5);
   const candidates = [
     stem,
     `${stem}-${digest.slice(0, 4)}`,
@@ -306,7 +297,7 @@ export function applyAccountHiveHandle({
   const now = new Date().toISOString();
   account.hiveHandle = availability.handle;
   if (displayName !== undefined) {
-    account.publicDisplayName = String(displayName || "").trim().replace(/\s+/g, " ").slice(0, 80);
+    account.publicDisplayName = replaceCharacterRuns(String(displayName || "").trim(),isWhitespace," ").slice(0, 80);
   } else if (!account.publicDisplayName) {
     account.publicDisplayName = `@${availability.handle}`;
   }

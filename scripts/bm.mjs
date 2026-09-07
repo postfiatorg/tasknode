@@ -69,7 +69,49 @@ function requireBoard(input) {
   return boardId;
 }
 
+const usage = [
+      "Usage: node scripts/bm.mjs <command>",
+      "  boards                      list board ids",
+      "  digest <board>              current state digest",
+      "  board <board> [--json]      full board packet (incl. budget + pending decisions)",
+      "  user <account|wallet>       task history + badges",
+      "  history <board> [--limit N] terminal task history",
+      "  duties [board...]           current mandatory duties",
+      "  hive-inbox [board...]       public Hive escalations (scoped API)",
+      "  hive-reply <id> --message <public text> --outcome resolved|declined (scoped API)",
+      "  task detail <taskId>        scoped task, submission and verification evidence",
+      "  task create <board> --account --wallet --need [--reward-max N] [--execute]",
+      "  task cancel <taskId> --reason ... [--stale-only] [--execute]",
+      "  verify request <taskId> --ask ... [--type evidence]",
+      "  review <taskId> --decision reward|partial_reward|reject --pft N --reason ...",
+      "  refer-badge <account> <badge> [--evidence ...] [--execute]",
+      "  refer-merge --pr-url <url> [--summary ...] [--execute]",
+      "  board-update <board> [--title ...] [--summary ...] [--status ...]",
+      "  journal <board> --text ...",
+      "  handoff <board>",
+      "  round-status <round-id>     recover a supervisor work order (scoped API)",
+      "  duty-result <round-id> <duty-id> --outcome completed|blocked|deferred --reason ...",
+      "  --request-key <key>         explicit immutable mutation key (scoped API)",
+    ].join("\n");
+
 async function main() {
+  if (!command || ["help", "--help", "-h"].includes(command)) { console.log(usage); return; }
+  if (command === "round-status" && !rest[0]) return fail("Usage: bm round-status <round-id>. Use the id in the supervisor work order or saved <alias>.pending.json; wait for a work order if none is present.");
+  if (process.env.BM_AGENT_TOKEN_FILE) {
+    const { remoteBoardCommand } = await import("./bm/remote.mjs");
+    const result = await remoteBoardCommand([command, ...rest]);
+    if (command === "handoff" && result.markdown) {
+      const { mkdir, writeFile } = await import("node:fs/promises");
+      const path = await import("node:path");
+      const directory = path.join(process.env.BM_JOURNAL_DIR || "journal", result.boardId);
+      await mkdir(directory, { recursive: true });
+      const file = path.join(directory, `handoff-${new Date().toISOString().slice(0, 10)}.md`);
+      await writeFile(file, result.markdown, { mode: 0o600 });
+      console.log(file);
+    } else console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
   if (command === "boards") {
     for (const id of DETERMINISTIC_BOARD_IDS) console.log(id);
     return;
@@ -216,6 +258,12 @@ async function main() {
     return;
   }
 
+  if (command === "task" && positional[0] === "detail") {
+    const { boardTaskDetail } = await import("../server/board-task-detail.js");
+    console.log(JSON.stringify(await boardTaskDetail(positional[1]), null, 2));
+    return;
+  }
+
   if (command === "task" && positional[0] === "cancel") {
     const { cancelTask } = await import("./bm/writes.mjs");
     const taskId = positional[1] || "";
@@ -224,6 +272,7 @@ async function main() {
       taskId,
       reason: flagValue("--reason"),
       execute: rest.includes("--execute"),
+      staleOnly: rest.includes("--stale-only"),
     });
     console.log(JSON.stringify(result, null, 2));
     return;
@@ -308,10 +357,7 @@ async function main() {
   }
 
   if (command === "activity") {
-    // Rows in bm_audit_log for this board since a timestamp. The whip uses
-    // this as the processing acknowledgment for injected wakes: the agent's
-    // contract requires journaling every wake, so zero activity after an
-    // injection means the wake was lost and must be re-delivered.
+    // Historical operator audit count. Activity never acknowledges a duty.
     const boardId = requireBoard(positional[0]);
     if (!boardId) return;
     const since = flagValue("--since");
@@ -335,26 +381,7 @@ async function main() {
     return;
   }
 
-  fail(
-    [
-      "Usage: node scripts/bm.mjs <command>",
-      "  boards                      list board ids",
-      "  digest <board>              state digest (whip trigger input)",
-      "  board <board> [--json]      full board packet (incl. budget + pending decisions)",
-      "  user <account|wallet>       task history + badges",
-      "  history <board> [--limit N] terminal task history",
-      "  duties [board...]           deterministic per-round work order (whip input)",
-      "  task create <board> --account --wallet --need [--reward-max N] [--execute]",
-      "  task cancel <taskId> --reason ... [--execute]   (proposed/accepted network tasks only)",
-      "  verify request <taskId> --ask ... [--type evidence]",
-      "  review <taskId> --decision reward|partial_reward|reject --pft N --reason ...",
-      "  refer-badge <account> <badge> [--evidence ...] [--execute]",
-      "  refer-merge --pr-url <url> [--summary ...] [--execute]",
-      "  board-update <board> [--title ...] [--summary ...] [--status ...]",
-      "  journal <board> --text ...",
-      "  handoff <board>",
-    ].join("\n")
-  );
+  fail(usage);
 }
 
 try {

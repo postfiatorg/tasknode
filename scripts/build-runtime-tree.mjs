@@ -3,14 +3,24 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "espree";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const importPatterns = [
-  /(?:^|\n)\s*(?:import|export)\s+[\s\S]*?\s+from\s*["']([^"']+)["']/g,
-  /(?:^|\n)\s*import\s*["']([^"']+)["']/g,
-  /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
-  /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g,
-];
+export function importSpecifiers(source) {
+  const ast = parse(source, { ecmaVersion: "latest", sourceType: "module" });
+  const imports = new Set();
+  const visit = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (["ImportDeclaration", "ExportNamedDeclaration", "ExportAllDeclaration", "ImportExpression"].includes(node.type) && typeof node.source?.value === "string") imports.add(node.source.value);
+    if (node.type === "CallExpression" && node.callee?.name === "require" && typeof node.arguments?.[0]?.value === "string") imports.add(node.arguments[0].value);
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(visit);
+      else if (value && typeof value === "object") visit(value);
+    }
+  };
+  visit(ast);
+  return [...imports];
+}
 
 function packageName(specifier) {
   if (specifier.startsWith("@")) return specifier.split("/").slice(0, 2).join("/");
@@ -49,9 +59,7 @@ export function runtimeGraph(entryPaths = []) {
     files.add(file);
     if (path.extname(file) === ".json") return;
     const source = readFileSync(file, "utf8");
-    for (const pattern of importPatterns) {
-      for (const match of source.matchAll(pattern)) {
-        const specifier = match[1];
+    for (const specifier of importSpecifiers(source)) {
         if (specifier.startsWith("node:")) continue;
         if (!specifier.startsWith(".") && !specifier.startsWith("/")) {
           const dependency = packageName(specifier);
@@ -61,7 +69,6 @@ export function runtimeGraph(entryPaths = []) {
         const resolved = resolveLocalImport(file, specifier);
         if (!resolved) missing.push({ importer: normalizedRepoPath(file), specifier });
         else visit(resolved);
-      }
     }
   }
 
@@ -103,7 +110,7 @@ function copyEntry(source, output, excludes = []) {
 function buildRuntimeTree() {
   const entries = repeatedArgument("--entry");
   const includes = repeatedArgument("--include");
-  const excludes = repeatedArgument("--exclude").map((value) => value.replaceAll("\\", "/").replace(/\/$/, ""));
+  const excludes = repeatedArgument("--exclude").map((value) => value.replaceAll("\\", "/").split("/").filter(Boolean).join("/"));
   const outputArg = repeatedArgument("--out").at(-1) || "";
   if (!entries.length || !outputArg) throw new Error("usage: --entry <file> [--entry <file>] --out <directory>");
   const output = path.resolve(outputArg);

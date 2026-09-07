@@ -1,3 +1,4 @@
+import { isIdentifierChar, replaceCharacterRuns, trimCharacters } from "../shared/text-protocol.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   accountIdentityProfile as buildAccountIdentityProfile,
@@ -71,7 +72,7 @@ export const revokeRuntimeSessionsForDeviceAccountSet = authChallengeStore.revok
 function safeId(value, fallback) {
   const normalized =
     typeof value === "string"
-      ? value.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "")
+      ? trimCharacters(replaceCharacterRuns(value, char => !isIdentifierChar(char), "_"), "_")
       : "";
   return (normalized || fallback).slice(0, 80);
 }
@@ -580,7 +581,7 @@ export function listPublicAccountWalletIdentities() {
       const displayName = (
         identityProfile.publicDisplayName ||
         (identityProfile.hiveHandle ? `@${identityProfile.hiveHandle}` : "") ||
-        (firstPublicAlias?.handle ? `@${String(firstPublicAlias.handle).replace(/^@+/, "")}` : "")
+        (firstPublicAlias?.handle ? `@${trimCharacters(String(firstPublicAlias.handle), "@", { end: false })}` : "")
       ).trim();
       if (!displayName) return null;
 
