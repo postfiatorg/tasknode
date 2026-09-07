@@ -7,6 +7,7 @@ import { deriveNostrMessagingIdentity } from "../messages/nostr-messages";
 import { ComposerSendButton } from "../chat/ComposerSendButton.jsx";
 import { ProfilePortrait } from "../profile/ProfilePortrait.jsx";
 import { createHiveGroupEvent, hiveEventReplyId, hiveMentions, HIVE_MESSAGE_MAX, mergeHiveGroupMessages, validateHiveGroupEvent } from "../../../shared/hive-group.js";
+import "./hive-navigation.css";
 import "./hive-group.css";
 
 const post = (path, body) => requestJson(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });

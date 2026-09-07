@@ -5,7 +5,7 @@ import { ChatSearchModal } from "../features/chat/ChatSearchModal";
 import { ChatSurface } from "../features/chat/ChatSurface.jsx";
 import { ChatItemActionMenu, DeleteChatModal, ProfileAvatar, RenameChatModal, profileAvatarText, profileDisplayName, profileSessionText } from "../features/chat/AppChatDialogs.jsx";
 import { buildRecentChats, chatActionMenuPosition, formatUnreadCount } from "../features/chat/chat-surface-state.js";
-import "../features/hive/hive-group.css";
+import "../features/hive/hive-navigation.css";
 import { useHiveGroupStatus } from "../features/hive/use-hive-group-status.js";
 import { extractHydratedContext } from "../features/context/context-view-state.js";
 import { publishContextToPft } from "../features/context/context-publish";
