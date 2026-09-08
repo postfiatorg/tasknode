@@ -26,7 +26,7 @@ const worker = assertRole("worker", ["server/worker-entry.js", "scripts/hive-boa
 assert.ok(!web.files.includes("server/background-workers.js"), "web runtime must not import worker orchestration");
 assert.ok(worker.files.includes("server/background-workers.js"), "worker runtime must own worker orchestration");
 assert.ok(!worker.files.includes("server/index.js"), "worker runtime must not import the HTTP server");
-assert.ok(!worker.packages.includes("sharp"), "worker dependency graph must not include the web image proxy");
+assert.ok(!worker.files.includes("server/profile-nft-image-proxy.js"), "worker dependency graph must not include the web image proxy");
 assert.ok(!worker.packages.includes("pdfjs-dist"), "worker dependency graph must not include web evidence extraction");
 assert.ok(web.files.length !== worker.files.length, "runtime source graphs must be independently derived");
 

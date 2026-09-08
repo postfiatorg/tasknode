@@ -56,3 +56,13 @@ across 1,628 files. The stricter detector flagged 39 source-file SHA256 values
 in two provenance manifests; each was reviewed as a checksum. The unpublished
 commit-range scan passed with no detected credentials. Raw local scan logs and
 merge inventories are retained privately under the mounted scratch volume.
+
+## GitHub qualification follow-up
+
+The first GitHub run passed container and recovery checks and found two
+publication issues. The NFT renderer imports the shared thumbnail generator,
+so the worker dependency manifest now includes `sharp`; the isolation assertion
+continues to reject the web image proxy itself. The independent secret scanner
+matched the JSON property name `visionBackupAvailability`, not a credential.
+That exact finding was reviewed in the provenance manifest. The branch retains
+its linear commits so the commit-specific review remains attributable.
