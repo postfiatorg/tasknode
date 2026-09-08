@@ -1,3 +1,4 @@
+import { isWhitespace, replaceCharacterRuns } from "../shared/text-protocol.js";
 import { randomUUID } from "node:crypto";
 import { normalizeContextHistoryProjection } from "./context-history.js";
 import { CONTEXT_DOCUMENT_MAX_CHARS } from "../shared/context-budget.js";
@@ -9,16 +10,16 @@ export function createRuntimeChatContextStore({ state, saveState, safeId, contex
   }
 
   function chatTitleFromPrompt(prompt) {
-    const title = String(prompt || "").trim().replace(/\s+/g, " ").slice(0, 64);
+    const title = replaceCharacterRuns(String(prompt || "").trim(),isWhitespace," ").slice(0, 64);
     return title || "New chat";
   }
 
   function chatTitleFromUserInput(title) {
-    return String(title || "").trim().replace(/\s+/g, " ").slice(0, 80);
+    return replaceCharacterRuns(String(title || "").trim(),isWhitespace," ").slice(0, 80);
   }
 
   function messagePreview(message) {
-    return String(message?.body || message?.text || message?.content || "").trim().replace(/\s+/g, " ").slice(0, 140);
+    return replaceCharacterRuns(String(message?.body || message?.text || message?.content || "").trim(),isWhitespace," ").slice(0, 140);
   }
 
   function inferAccountIdFromConversationId(conversationId) {
@@ -252,7 +253,7 @@ export function createRuntimeChatContextStore({ state, saveState, safeId, contex
     const now = new Date().toISOString();
     const document = {
       id: existing?.id || `ctx_${normalizedAccountId}`, accountId: normalizedAccountId,
-      title: String(title || "Task Node Context").trim().replace(/\s+/g, " ").slice(0, 120) || "Task Node Context",
+      title: replaceCharacterRuns(String(title || "Task Node Context").trim(),isWhitespace," ").slice(0, 120) || "Task Node Context",
       body: String(body || "").slice(0, CONTEXT_DOCUMENT_MAX_CHARS), revision: Number(existing?.revision || 0) + 1,
       createdAt: existing?.createdAt || now, updatedAt: now,
     };

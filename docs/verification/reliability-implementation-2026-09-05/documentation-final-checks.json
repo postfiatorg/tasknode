@@ -1,0 +1,31 @@
+{
+  "at": "2026-09-05T23:04:43.907Z",
+  "checks": [
+    {
+      "command": "npm run api-reference-check",
+      "exitCode": 0,
+      "output": "> tasknode@0.1.0 api-reference-check\n> node scripts/generate-api-reference.mjs\n\nAPI reference ok: 169 policies match the generated inventory"
+    },
+    {
+      "command": "npm run public-help-check",
+      "exitCode": 0,
+      "output": "> tasknode@0.1.0 public-help-check\n> node scripts/public-help-boundary.mjs\n\npublic Help boundary ok: 26 explicitly allowlisted Markdown sources"
+    },
+    {
+      "command": "npm run format-check",
+      "exitCode": 0,
+      "output": "> tasknode@0.1.0 format-check\n> node scripts/format-check.mjs\n\nformat check ok"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "output": ""
+    }
+  ],
+  "manifestVerification": {
+    "tasknodeFiles": 322,
+    "corbanuFiles": 25,
+    "mismatches": 0,
+    "phase": "before documentation clarification"
+  }
+}

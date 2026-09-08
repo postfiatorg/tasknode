@@ -38,7 +38,7 @@ function taskVisibilityEventType(status = "") {
 function taskMutationSubmitted(payload = {}, result = {}) {
   if (result?.body?.ok !== true) return false;
   const phase = safeText(payload?.phase || result?.body?.phase || "", 80);
-  return phase === "submit" || Boolean(payload?.signedTxBlob || payload?.signed_tx_blob);
+  return ["submit", "retry", "dismiss"].includes(phase) || Boolean(payload?.signedTxBlob || payload?.signed_tx_blob);
 }
 
 async function linkedWalletAddressForEvent(getLinkedWallet, session) {
@@ -251,7 +251,7 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
     const eventType = result.body?.ok
       ? phase === "submit"
         ? "user.task.request_published"
-        : ""
+        : ["retry", "dismiss"].includes(phase) ? "user.task.action_published" : ""
       : "user.task.action_failed";
     if (eventType) {
       await recordTaskRouteEvent({
@@ -263,6 +263,7 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
         sourceRoute: "POST /api/tasks/request",
       });
     }
+    if (taskMutationSubmitted(payload, result)) invalidateCachedAppState(session);
     json(res, result.status, result.body);
     return true;
   }

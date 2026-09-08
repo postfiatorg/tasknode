@@ -1,3 +1,4 @@
+import { isAsciiDigit, isAsciiLetter, isWhitespace, replaceCharacterRuns } from "../../shared/text-protocol.js";
 import { databaseEnabled, query } from "../db/pool.js";
 import {
   capabilityScopeDigest,
@@ -514,11 +515,9 @@ export function compactCorpusRow(row = {}) {
 }
 
 export function corpusTheme(task = {}) {
-  return safeText(task.title || task.projectNeedSummary || task.summary, 240)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\b(document|write|map|review|inspect|trace|draft|create|submit|task|report|friction|fixes|fix|and|the|for|with|to|a|an)\b/g, " ")
-    .replace(/\s+/g, " ")
+  return replaceCharacterRuns(replaceCharacterRuns(safeText(task.title || task.projectNeedSummary || task.summary, 240)
+    .toLowerCase(),char=>!isAsciiLetter(char)&&!isAsciiDigit(char)," ")
+,isWhitespace," ")
     .trim()
     .split(" ")
     .slice(0, 4)

@@ -135,7 +135,7 @@ If Chat does not execute:
 - check `/api/chat/modes` and `/api/readiness`;
 - confirm the account has usable credit;
 - verify the selected mode/persona is accepted;
-- verify Ambient configuration and provider reachability; and
+- verify Vercel primary and Ambient backup configuration and reachability; and
 - distinguish an interrupted browser stream from a provider failure by
   checking the persisted conversation/model-run state.
 

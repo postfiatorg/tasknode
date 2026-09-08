@@ -1,10 +1,7 @@
-import { startHiveGroupWorker } from "./hive-group-worker.js";
 import { startMemoryWorker } from "./chat-memory-worker.js";
 import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
-import { startHiveProjectWorker } from "./hive-project-worker.js";
 import { startHiveReportsWorker } from "./hive-reports-worker.js";
-import { startHiveTaskManagerWorker } from "./hive-task-manager-worker.js";
-import { startTaskAccountingHarvesterWorker } from "./task-accounting-harvester-worker.js";
+import { startHiveGroupWorker } from "./hive-group-worker.js";
 import { startBmNarratorWorker } from "./bm-narrator-worker.js";
 import { startIpfsReplicationWorker } from "./ipfs-replication-worker.js";
 import { startNetworkTaskGenerationWorker } from "./network-task-generation-worker.js";
@@ -56,10 +53,7 @@ function startContextRewriteWorkers(startOne) {
 function startHiveWorkers(startOne) {
   startOne("hive_group_chat", startHiveGroupWorker);
   startOne("hive_secretary", startHiveSecretaryWorker);
-  startOne("hive_project", startHiveProjectWorker);
   startOne("hive_reports", startHiveReportsWorker);
-  startOne("hive_task_manager", startHiveTaskManagerWorker);
-  startOne("task_accounting_harvester", startTaskAccountingHarvesterWorker);
   startOne("bm_narrator", startBmNarratorWorker);
 }
 

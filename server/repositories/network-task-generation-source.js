@@ -1,3 +1,4 @@
+import { collapseWhitespace } from "../inference-text.js";
 import {
   compactProductDoc,
   compactProject,
@@ -426,12 +427,7 @@ export function networkTaskIntelligenceMetadata(sourceJson = {}) {
 }
 
 export function normalizedIntentText(value = "") {
-  return safeText(value, 2400)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\b(the|and|for|with|that|this|from|into|onto|about|please|task|work)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return collapseWhitespace(safeText(value, 2400));
 }
 
 export function intentStatusForAllocationStatus(status = "", canonicalStatus = "") {

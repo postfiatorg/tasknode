@@ -1,0 +1,346 @@
+{
+  "at": "2026-09-05T15:05:12.650Z",
+  "apps": {
+    "tasknodeofficial-dev": {
+      "release": {
+        "Version": 702,
+        "Status": "complete",
+        "ImageRef": "registry.fly.io/tasknodeofficial-dev:deployment-01M1S1AAX77VK1TS6BWT4JP6AQ",
+        "CreatedAt": "2026-09-05T15:00:08Z"
+      },
+      "machines": [
+        {
+          "id": "48e10e9a40d978",
+          "state": "stopped",
+          "group": "worker-pftl"
+        },
+        {
+          "id": "87d077b0263998",
+          "state": "started",
+          "group": "worker-context-rewrite"
+        },
+        {
+          "id": "7813e21f1295d8",
+          "state": "started",
+          "group": "worker-taskgen"
+        },
+        {
+          "id": "e827021fd67708",
+          "state": "stopped",
+          "group": "worker-taskgen"
+        },
+        {
+          "id": "e826571a546458",
+          "state": "stopped",
+          "group": "worker-task-review"
+        },
+        {
+          "id": "1850d37c3d3e48",
+          "state": "started",
+          "group": "worker-airdrop"
+        },
+        {
+          "id": "1854406a6e3508",
+          "state": "started",
+          "group": "worker-hive"
+        },
+        {
+          "id": "e820352ae34138",
+          "state": "stopped",
+          "group": "worker-airdrop"
+        },
+        {
+          "id": "48ee629a21e748",
+          "state": "started",
+          "group": "worker-nft-renderer"
+        },
+        {
+          "id": "d8d0ed9b969528",
+          "state": "stopped",
+          "group": "worker-context-rewrite"
+        },
+        {
+          "id": "e8267e0c015508",
+          "state": "stopped",
+          "group": "board-secretary"
+        },
+        {
+          "id": "6835d0ea464158",
+          "state": "started",
+          "group": "worker-task-review"
+        },
+        {
+          "id": "7845637cd3e708",
+          "state": "stopped",
+          "group": "worker-memory-profile"
+        },
+        {
+          "id": "e826761a263e18",
+          "state": "started",
+          "group": "worker-pftl"
+        },
+        {
+          "id": "8d4930ae156638",
+          "state": "started",
+          "group": "app",
+          "checks": [
+            {
+              "name": "servicecheck-00-http-8080",
+              "status": "passing"
+            }
+          ]
+        },
+        {
+          "id": "48e056a3705e18",
+          "state": "started",
+          "group": "worker-memory-profile"
+        },
+        {
+          "id": "8465ddb274e908",
+          "state": "stopped",
+          "group": "worker-hive"
+        },
+        {
+          "id": "0803736c291198",
+          "state": "stopped",
+          "group": "worker-nft-renderer"
+        },
+        {
+          "id": "2862170c66e238",
+          "state": "started",
+          "group": "board-secretary"
+        }
+      ]
+    },
+    "tasknode-pfdocs": {
+      "release": {
+        "Version": 61,
+        "Status": "complete",
+        "ImageRef": "registry.fly.io/tasknode-pfdocs:deployment-01M1S18Q0773W4ZZZCVPJ2TQY5",
+        "CreatedAt": "2026-09-05T15:02:37Z"
+      },
+      "machines": [
+        {
+          "id": "2862174f094328",
+          "state": "started",
+          "group": "app",
+          "checks": [
+            {
+              "name": "servicecheck-00-http-8080",
+              "status": "passing"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "assets": [
+    {
+      "host": "tasknode-pfdocs.fly.dev",
+      "path": "/common/tasknode-chat-protocol.js",
+      "sha256": "74355e7e0ad7dba3fea7a91c739f6abfe2ad613c482a08f22ddc6b3a4578b473"
+    },
+    {
+      "host": "tasknode-pfdocs.fly.dev",
+      "path": "/common/sframe-common.js",
+      "sha256": "6f0ef2812e8df0e0ee13651b73127f3a5bf9efca223c71ce18ba8776207e7530"
+    },
+    {
+      "host": "tasknode-pfdocs.fly.dev",
+      "path": "/common/sframe-common-outer.js",
+      "sha256": "317192066049a73c2a17456cba2fe2acf0300bf229f4dbb5e3d689ce6d2a4ea5"
+    },
+    {
+      "host": "tasknode-pfdocs.fly.dev",
+      "path": "/common/messenger-ui.js",
+      "sha256": "33310a497ac5112dad6f015fa9ff5c683569905c931034f6ad48fed842e445fd"
+    },
+    {
+      "host": "tasknode-pfdocs-sandbox.fly.dev",
+      "path": "/common/tasknode-chat-protocol.js",
+      "sha256": "74355e7e0ad7dba3fea7a91c739f6abfe2ad613c482a08f22ddc6b3a4578b473"
+    },
+    {
+      "host": "tasknode-pfdocs-sandbox.fly.dev",
+      "path": "/common/sframe-common.js",
+      "sha256": "6f0ef2812e8df0e0ee13651b73127f3a5bf9efca223c71ce18ba8776207e7530"
+    },
+    {
+      "host": "tasknode-pfdocs-sandbox.fly.dev",
+      "path": "/common/sframe-common-outer.js",
+      "sha256": "317192066049a73c2a17456cba2fe2acf0300bf229f4dbb5e3d689ce6d2a4ea5"
+    },
+    {
+      "host": "tasknode-pfdocs-sandbox.fly.dev",
+      "path": "/common/messenger-ui.js",
+      "sha256": "33310a497ac5112dad6f015fa9ff5c683569905c931034f6ad48fed842e445fd"
+    }
+  ],
+  "httpOptions": [
+    {
+      "ports": [
+        {
+          "port": 80,
+          "handlers": [
+            "http"
+          ],
+          "force_https": true,
+          "http_options": {
+            "idle_timeout": 600
+          }
+        },
+        {
+          "port": 443,
+          "handlers": [
+            "http",
+            "tls"
+          ],
+          "http_options": {
+            "idle_timeout": 600
+          }
+        }
+      ]
+    }
+  ],
+  "backend": {
+    "limits": {
+      "completionTokens": 32768,
+      "retryCompletionTokens": 65536,
+      "providerTimeoutMs": 300000,
+      "totalTimeoutMs": 540000
+    },
+    "files": {
+      "server/docs-odv.js": "a10efd455ea5d61a32a357e3fb42c6c2aa5322c24b6bcf526adf294f1825bf05",
+      "server/collaboration-routes.js": "f763209a0e285a9e2dd1a3548cef5be5b0bed99e466072a6cff11a263cf5958e"
+    }
+  },
+  "health": {
+    "ok": true,
+    "service": "tasknodeofficial",
+    "environment": "production",
+    "buildId": "prod",
+    "uptimeSeconds": 303
+  },
+  "live": [
+    {
+      "label": "odv_detailed_review",
+      "ok": true,
+      "provider": "vercel",
+      "model": "zai/glm-5.3",
+      "responseLength": 1861,
+      "elapsedMs": 7995,
+      "metrics": [
+        {
+          "completionBudget": 32768,
+          "host": "ai-gateway.vercel.sh",
+          "status": 200,
+          "model": "zai/glm-5.3",
+          "finishReason": "stop",
+          "contentLength": 1861,
+          "usage": {
+            "prompt_tokens": 12695,
+            "completion_tokens": 1384,
+            "total_tokens": 14079,
+            "cost": 0.0115665,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 640,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1129,
+              "reasoning_tokens_estimated": true,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 0.0115665,
+            "surcharge_cost": 0.0001,
+            "gateway_cost": 0.0116665,
+            "zero_data_retention_cost": 0.0001
+          }
+        }
+      ]
+    },
+    {
+      "label": "coach_detailed_review",
+      "ok": true,
+      "provider": "vercel",
+      "model": "zai/glm-5.3",
+      "responseLength": 3609,
+      "elapsedMs": 16930,
+      "metrics": [
+        {
+          "completionBudget": 32768,
+          "host": "ai-gateway.vercel.sh",
+          "status": 200,
+          "model": "zai/glm-5.3",
+          "finishReason": "stop",
+          "contentLength": 3609,
+          "usage": {
+            "prompt_tokens": 28305,
+            "completion_tokens": 3025,
+            "total_tokens": 31330,
+            "cost": 0.0264685,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2369,
+              "reasoning_tokens_estimated": true,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 0.0264685,
+            "surcharge_cost": 0.0001,
+            "gateway_cost": 0.0265685,
+            "zero_data_retention_cost": 0.0001
+          }
+        }
+      ]
+    }
+  ],
+  "providerMaximum": [
+    {
+      "provider": "vercel",
+      "model": "zai/glm-5.3",
+      "budget": 65536,
+      "ok": true,
+      "elapsedMs": 834
+    },
+    {
+      "provider": "ambient",
+      "model": "z-ai/glm-5.2",
+      "budget": 65536,
+      "ok": true,
+      "elapsedMs": 1380
+    }
+  ],
+  "browser": {
+    "pad": {
+      "passed": true,
+      "persona": "coach",
+      "responseLength": 107522,
+      "mode": "Deployed PFDocs, no source overlays, fixture assistant response"
+    },
+    "sheet": {
+      "passed": true,
+      "persona": "odv",
+      "responseLength": 107522,
+      "mode": "Deployed PFDocs, no source overlays, fixture assistant response"
+    }
+  }
+}

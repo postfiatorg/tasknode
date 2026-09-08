@@ -1,3 +1,4 @@
+import { redactSecrets } from "./inference-text.js";
 // Hive Brain narrator worker.
 //
 // Security boundary: the public Hive Brain feed must never render raw
@@ -10,9 +11,9 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "./db/pool.js";
 import { DETERMINISTIC_BOARD_IDS } from "./board-config.js";
-import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "./inference.js";
 
-const defaultModel = AMBIENT_MODELS.fastText;
+const defaultModel = INFERENCE_MODELS.fastText;
 let timer = null;
 let running = false;
 
@@ -29,23 +30,12 @@ function narratorModel(env = process.env) {
 }
 
 function apiKey(env = process.env) {
-  return ambientConfigured(env) ? "configured" : "";
+  return inferenceConfigured(env) ? "configured" : "";
 }
 
 // Defense-in-depth scrub applied to model output before storage. The model
 // is instructed never to emit secrets; this catches failures anyway.
-export function scrubNarrative(text = "") {
-  return String(text || "")
-    .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "[redacted]")
-    .replace(/\b(?:ghp|gho|github_pat|xoxb)_[A-Za-z0-9_-]{8,}\b/g, "[redacted]")
-    .replace(/\b(postgres(?:ql)?|mysql|redis|amqp|mongodb(?:\+srv)?):\/\/[^\s"']+/gi, "[redacted]")
-    .replace(/\b[a-fA-F0-9]{64,}\b/g, "[redacted]")
-    .replace(/\bs[a-zA-Z0-9]{28,}\b/g, "[redacted]")
-    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, "[redacted-ip]")
-    .replace(/\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|SEED|PASSWORD)[A-Z0-9_]*)\s*[=:]\s*\S+/g, "$1=[redacted]")
-    .trim()
-    .slice(0, 2400);
-}
+export function scrubNarrative(text = "") { return redactSecrets(text).trim().slice(0, 2400); }
 
 function publicActionLine(row = {}) {
   const args = row.args_json && typeof row.args_json === "object" ? row.args_json : {};
@@ -112,11 +102,12 @@ async function summarizeBoard(boardId, { logger = console } = {}) {
   const context = rows.rows.map(publicActionLine).join("\n");
   let summary = "";
   let source = "model";
-  const model = narratorModel();
+  let model = narratorModel();
+  let provider = "";
   const key = apiKey();
   if (key) {
     try {
-      const result = await ambientChatCompletion({
+      const result = await inferenceChatCompletion({
         capability: "fast_text",
         timeoutMs: 45000,
         body: {
@@ -131,6 +122,8 @@ async function summarizeBoard(boardId, { logger = console } = {}) {
           ],
         },
       });
+      model = result.model;
+      provider = result.provider;
       summary = scrubNarrative(result.text);
       if (!summary) throw new Error("narrator_empty_response");
     } catch (error) {
@@ -143,10 +136,10 @@ async function summarizeBoard(boardId, { logger = console } = {}) {
     source = "fallback_template";
   }
   await query(
-    `INSERT INTO bm_activity_summaries (id, board_id, latest_audit_id, summary, model, source)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO bm_activity_summaries (id, board_id, latest_audit_id, summary, model, source, provider)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (board_id, latest_audit_id) DO NOTHING`,
-    [`bmsum_${randomUUID()}`, boardId, latest.id, summary, source === "model" ? model : "", source]
+    [`bmsum_${randomUUID()}`, boardId, latest.id, summary, source === "model" ? model : "", source, source === "model" ? provider : ""]
   );
   return { ok: true, boardId, source };
 }

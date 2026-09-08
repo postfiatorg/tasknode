@@ -1,0 +1,54 @@
+{
+  "at": "2026-09-06T17:51:00.638Z",
+  "synthetic": true,
+  "published": false,
+  "latencyMs": 19742,
+  "output": {
+    "schema": "pf.taskgen.output.v1",
+    "title": "Compare Two Fictional Service Completion Observations",
+    "description": "Write a brief text comparison of two supplied service observations: service A completed 10 of 10 requests, service B completed 8 of 10 requests. State the completion rates, the difference, and which observation shows the higher completion, using only the supplied facts with no external systems or accounts. The deliverable is a short self-contained comparison submitted directly in Task Node.",
+    "task_kind": "personal",
+    "steps": [
+      "State the two supplied observations verbatim: A completed 10 of 10 requests, B completed 8 of 10 requests.",
+      "Compute and note each completion result (A: 10/10, B: 8/10) and the difference (2 fewer completions for B).",
+      "Write 3 to 6 sentences comparing the observations and concluding which shows the higher completion.",
+      "Submit the comparison as text, using only the supplied observations and no external data.",
+      "Check that the submission is self-contained and readable without any outside context."
+    ],
+    "submission_requirement": {
+      "type": "text",
+      "criteria": "A brief pasted text comparison that reports both observations (A: 10/10, B: 8/10), states the difference, identifies which is higher, and references no external systems or accounts."
+    },
+    "verification_policy": {
+      "followup_required": true,
+      "mode": "standard_followup",
+      "verification_type": "text"
+    },
+    "reward_offer": {
+      "amount_estimate_pft": "1.00"
+    },
+    "deadline": {
+      "accept_by": null,
+      "deadline_at": null
+    }
+  },
+  "metadata": {
+    "provider": "vercel",
+    "model": "zai/glm-5.3",
+    "prompt_version": "taskgen_personal_v1",
+    "prompt_path": "task_engine/taskgen_personal_v1.md",
+    "prompt_digest": "11a1f315e421a48d37db1627bd0f4942f0e3a8ce9a7095bb1324655439e250dd",
+    "input_packet_digest": "87cea8682f56dde66487bd4b46f680a206517f804329024c6b21f0e18d80b453",
+    "output_digest": "378f3b6a120d13f10a8d618ebece0235f43482db1e22cf163792e40111e28fa4",
+    "latency_ms": 19733,
+    "parse_status": "ok",
+    "provider_response_id": "gen_01M1VXG1EVQGPGKVM6QY3EM0FF",
+    "validation_attempts": 1,
+    "readiness": {
+      "approved": true,
+      "model": "zai/glm-5.3-flash",
+      "provider": "vercel",
+      "promptDigest": "882f223552a44ad398280e79df7aadb85e695e75444c5dc94f718a043679d16d"
+    }
+  }
+}

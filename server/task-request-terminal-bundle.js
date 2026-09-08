@@ -34,9 +34,9 @@ export function buildMinimalTaskRequestBundle({ accountId = "", walletAddress = 
     subject_encryption_pubkey: request.subjectEncryptionPubkey || "",
     created_at: createdAtIso,
     client: {
-      name: "pfterminal",
+      name: request.source === "pfterminal" ? "pfterminal" : "tasknodeofficial-web",
       version: "0.1.0",
-      source_app: "pfterminal",
+      source_app: request.source === "pfterminal" ? "pfterminal" : "tasknodeofficial",
       account_id: accountId,
       conversation_id: request.conversationId || null,
       conversation_title: request.sourceConversationTitle,
@@ -64,7 +64,7 @@ export function buildMinimalTaskRequestBundle({ accountId = "", walletAddress = 
       recent_memory: [],
     },
     relevant_history: {
-      strategy: "terminal_fast_request_minimal_bundle",
+      strategy: "pending_worker_context_enrichment",
       items: [],
     },
     context: {

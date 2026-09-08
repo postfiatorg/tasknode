@@ -381,12 +381,19 @@ export async function applyOffchainTaskOfferWithClient(client, {
   walletAddress = "",
   offerPayload = {},
   metadata = {},
+  requestAttempt = null,
 } = {}) {
   const payload = safeObject(offerPayload);
   const taskId = safeText(payload.task_id, 180);
   const subjectWallet = safeText(walletAddress || payload.subject_wallet, 180);
   if (!taskId) throw new Error("offchain_offer_task_id_required");
   if (!subjectWallet) throw new Error("offchain_offer_subject_wallet_required");
+  if (requestAttempt) {
+    const owned = await client.query(`SELECT request_id FROM task_requests
+      WHERE request_id=$1 AND account_id=$2 AND status='generating' AND worker_attempt_id=$3
+      AND generated_task_id='' FOR UPDATE`, [payload.request_id, accountId, requestAttempt.workerAttemptId]);
+    if (!owned.rowCount) throw Object.assign(new Error("task_generation_attempt_lost"), { staleAttempt: true });
+  }
   const task = {
     task_id: taskId,
     request_id: safeText(payload.request_id, 180),
@@ -585,6 +592,9 @@ export async function applyOffchainTaskOfferWithClient(client, {
     ]
   );
   if (projectionResult.rowCount < 1) throw new Error("offchain_task_offer_projection_missed");
+  if (requestAttempt) await client.query(`UPDATE task_requests SET status='proposed', generated_task_id=$2,
+    worker_completed_at=now(), worker_heartbeat_at=now(), last_error='', updated_at=now()
+    WHERE request_id=$1 AND worker_attempt_id=$3`, [payload.request_id, taskId, requestAttempt.workerAttemptId]);
   return {
     ok: true,
     source: DIRECT_WRITE_SOURCE,

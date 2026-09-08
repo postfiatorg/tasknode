@@ -1,3 +1,4 @@
+import { isWhitespace, replaceCharacterRuns, titleWords, trimCharacters } from "../../shared/text-protocol.js";
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "../db/pool.js";
 import {
@@ -21,43 +22,37 @@ function compactIdentifier(value = "", head = 12, tail = 8) {
 }
 
 function plainLabel(value = "") {
-  return safeText(value, 160)
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Unknown";
+  return titleWords(replaceCharacterRuns(replaceCharacterRuns(safeText(value, 160),char=>char==="_"||char==="-"," "),isWhitespace," ")
+    .trim()) || "Unknown";
 }
 
 function firstSentence(value = "", max = 320) {
-  const text = safeText(value, 4000).replace(/\s+/g, " ").trim();
+  const text = replaceCharacterRuns(safeText(value, 4000),isWhitespace," ").trim();
   if (!text) return "";
-  const sentence = text.match(/^(.+?[.!?])(?:\s|$)/)?.[1] || text;
+  const end = Array.from(text).findIndex((char,index)=>".!?".includes(char) && (!text[index+1] || isWhitespace(text[index+1])));
+  const sentence = end >= 0 ? text.slice(0,end+1) : text;
   return safeText(sentence, max);
 }
 
 function sourceContributorLabel(row = {}) {
-  const handle = safeText(row.contributor_public_handle, 120).replace(/^@+/, "");
+  const handle = trimCharacters(safeText(row.contributor_public_handle, 120),"@",{end:false});
   if (handle) return `@${handle}`;
   return compactIdentifier(row.account_id || row.subject_wallet, 10, 6) || "unknown contributor";
 }
 
 function operatorLabel(row = {}) {
-  const orcHandle = safeText(row.resolver_orc_handle || row.checkout_orc_handle, 120).replace(/^@+/, "");
+  const orcHandle = trimCharacters(safeText(row.resolver_orc_handle || row.checkout_orc_handle, 120),"@",{end:false});
   if (orcHandle) return `@${orcHandle}`;
-  const displayName = safeText(row.resolver_display_name || "", 160).replace(/^@+/, "");
+  const displayName = trimCharacters(safeText(row.resolver_display_name || "", 160),"@",{end:false});
   if (displayName) return displayName.startsWith("acct_") ? compactIdentifier(displayName) : displayName;
   return compactIdentifier(row.resolved_by_account_id || row.checkout_account_id || row.checkout_wallet_address, 12, 8) || "unknown operator";
 }
 
 function deploymentStatusLine(row = {}) {
-  const note = `${row.resolution_note || ""} ${row.suggested_action || ""}`.toLowerCase();
   const outcome = safeText(row.resolution_outcome, 80);
   if (outcome === "not_a_bug") return "No deployment needed; the closeout says this was not a product bug.";
   if (outcome === "already_fixed") return "No new deployment claimed; the closeout says the problem was already fixed.";
   if (outcome === "duplicate") return "No separate deployment claimed; the closeout points to an existing owner/item.";
-  if (/\b(deployed|production|shipped|released|merged|commit|pushed|pr\b|pull request|regression|smoke|test)\b/.test(note)) {
-    return "Deployment or verification evidence was named in the closeout.";
-  }
   if (outcome === "fixed") return "Marked fixed, but the closeout should still be checked for explicit deploy evidence.";
   return "Deployment status was not explicit in the closeout.";
 }

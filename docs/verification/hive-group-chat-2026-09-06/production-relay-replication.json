@@ -1,0 +1,35 @@
+{
+  "rootEventId": "fd6405ea63bc6e8c3ebf38ff280e8d411f9ffc7b864d59c14389a4d8f9ec951e",
+  "results": [
+    {
+      "kind": 1,
+      "relay": "wss://relay.primal.net",
+      "acknowledged": true
+    },
+    {
+      "kind": 1,
+      "relay": "wss://nos.lol",
+      "acknowledged": true
+    },
+    {
+      "kind": 1,
+      "relay": "wss://relay.damus.io",
+      "acknowledged": true
+    },
+    {
+      "kind": 0,
+      "relay": "wss://relay.primal.net",
+      "acknowledged": true
+    },
+    {
+      "kind": 0,
+      "relay": "wss://nos.lol",
+      "acknowledged": true
+    },
+    {
+      "kind": 0,
+      "relay": "wss://relay.damus.io",
+      "acknowledged": false
+    }
+  ]
+}

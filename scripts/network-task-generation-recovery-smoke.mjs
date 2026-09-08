@@ -77,9 +77,9 @@ async function insertJob({
     `
       INSERT INTO network_task_generation_jobs (
         id, idempotency_key, allocation_id, project_id, task_class, candidate_account_id,
-        candidate_wallet_address, status, request_id, task_id, attempt_count, locked_at
+        candidate_wallet_address, status, request_id, task_id, attempt_count, locked_at, worker_attempt_id, lease_expires_at
       )
-      VALUES ($1, $2, $3, $4, 'network', $5, $6, $7, $8, $9, $10, ${lockedAtSql})
+      VALUES ($1, $2, $3, $4, 'network', $5, $6, $7, $8, $9, $10, ${lockedAtSql}, 'fixture_attempt', ${lockedAtSql} + interval '5 minutes')
     `,
     [jobId, jobId, allocationId, projectId, accountId, wallet, status, requestId, taskId, attemptCount]
   );

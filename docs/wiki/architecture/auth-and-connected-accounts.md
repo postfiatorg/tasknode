@@ -22,6 +22,10 @@ The backend contract is `authProviders`, `authStart`, and `authCallback` in `ser
 
 ## What Exists Now
 
+Corbanu profiles can link separate Task Node accounts on the same machine.
+Terminal GitHub linking asks which GitHub account to use. Return to the same
+Corbanu profile and run `/tasknode status` to finish linking.
+
 Email login is implemented as an 8-digit code flow:
 
 1. `POST /api/auth/email/start` creates an email challenge.

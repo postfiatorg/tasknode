@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "mode": "Real React modal and browser IndexedDB with synthetic HTTP responses",
+  "checks": [
+    "lost HTTP response preserves original request",
+    "page reload recovers exact key",
+    "concurrent tabs share command",
+    "account switches hide other drafts",
+    "distinct draft survives unrelated receipt clearing"
+  ],
+  "submissions": 2,
+  "receipts": 1
+}

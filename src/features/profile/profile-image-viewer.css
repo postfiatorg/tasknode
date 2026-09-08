@@ -1,0 +1,15 @@
+.profile-image-expand { display: inline-block; position: relative; max-width: 100%; border: 0; padding: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; line-height: 0; vertical-align: middle; cursor: zoom-in; text-align: left; }
+.profile-image-expand:focus-visible { outline: 3px solid var(--tn-dark-focus, #5c8c4f); outline-offset: 4px; }
+.profile-image-expand-icon { position: absolute; right: 8px; bottom: 8px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; color: var(--tn-dark-on-inverse, #fffcf5); background: var(--tn-dark-inverse-surface, #1f1b16c9); opacity: 0; transition: opacity .15s; pointer-events: none; }
+.profile-image-expand:hover .profile-image-expand-icon, .profile-image-expand:focus-visible .profile-image-expand-icon { opacity: 1; }
+.profile-image-dialog { box-sizing: border-box; width: min(1120px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: 16px; border: 1px solid var(--tn-dark-border, #ffffff26); border-radius: 16px; background: var(--tn-dark-inverse-surface, #181b17); color: var(--tn-dark-on-inverse, #fffcf5); box-shadow: 0 24px 80px var(--tn-dark-shadow, #0006); }
+.profile-image-dialog::backdrop { background: var(--tn-dark-backdrop, #121510dc); }
+.profile-image-dialog header { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.profile-image-dialog h2 { flex: 1; margin: 0; font: 500 15px/1.4 Inter, sans-serif; overflow-wrap: anywhere; }
+.profile-image-dialog header button { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; padding: 0; border: 1px solid var(--tn-dark-control-border, #ffffff38); border-radius: 9px; background: transparent; color: inherit; cursor: pointer; }
+.profile-image-dialog button:focus-visible { outline: 2px solid var(--tn-dark-focus, #bacfa8); outline-offset: 3px; }
+.profile-image-stage { position: relative; height: min(78dvh, 1000px); max-height: calc(100dvh - 132px); display: grid; place-items: center; }
+.profile-image-stage img { width: 100%; height: 100%; min-height: 0; object-fit: contain; display: block; }
+.profile-image-stage [role="status"] { position: absolute; text-align: center; padding: 24px; font: 14px/1.5 Inter, sans-serif; }
+@media (hover: none) { .profile-image-expand-icon { opacity: 1; } }
+@media (max-width: 600px) { .profile-image-dialog { width: calc(100vw - 16px); padding: 12px; border-radius: 12px; } }

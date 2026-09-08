@@ -1,0 +1,2985 @@
+{
+  "schema": "tasknode.vercel_migration_catalogue.v1",
+  "audited_at": "2026-09-05T00:43:33.422032+00:00",
+  "repository": "/home/pfrpc/repos/tasknode",
+  "head": "571d7833ed016165de32bd305ed765e62da066c7",
+  "scope": "Current tracked and nonignored untracked source/config/wiki files, including pre-existing edits. Excludes secrets, logs, dist, node_modules, mocks, historical verification artifacts, and this audit itself. Literal reference inventory, supplemented by call-site investigation in the plan; not a complete call graph or deployed-state claim.",
+  "search_terms": [
+    "ambient",
+    "vercel",
+    "glm-5.2",
+    "glm 5.2",
+    "glm52",
+    "glm_5_2",
+    "glm5.2",
+    "deepseek-v4-flash",
+    "kimi-k2.7-code"
+  ],
+  "counts": {
+    "reference_files": 143,
+    "by_category": {
+      "configuration_or_top_level_documentation": 5,
+      "documentation_including_historical": 35,
+      "frontend_source": 6,
+      "historical_migration": 2,
+      "operator_or_verification_script": 12,
+      "runtime_source": 47,
+      "verification": 36
+    },
+    "runtime_direct_ambient_imports": 27
+  },
+  "model_catalogue": {
+    "source": "https://ai-gateway.vercel.sh/v1/models",
+    "authenticated": false,
+    "inference_called": false,
+    "catalogue_size": 373,
+    "requested_ids": [
+      "zai/glm-5.3",
+      "zai/glm-5.3-flash",
+      "deepseek/deepseek-v4-flash-0731",
+      "moonshotai/kimi-k2.7-code"
+    ],
+    "models": [
+      {
+        "id": "deepseek/deepseek-v4-flash-0731",
+        "context_window": 1000000,
+        "max_tokens": 384000,
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "supported_parameters": [
+          "max_tokens",
+          "temperature",
+          "stop",
+          "tools",
+          "tool_choice",
+          "reasoning",
+          "include_reasoning"
+        ],
+        "pricing": {
+          "input": "0.000000076",
+          "output": "0.000000153",
+          "input_cache_read": "0.000000014",
+          "varies_by_provider": true,
+          "regional": {
+            "us": {
+              "input": "0.00000013",
+              "output": "0.00000026",
+              "input_cache_read": "0.000000028"
+            }
+          }
+        },
+        "zdr": "some",
+        "no_training": "some"
+      },
+      {
+        "id": "moonshotai/kimi-k2.7-code",
+        "context_window": 256000,
+        "max_tokens": 32768,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "supported_parameters": [
+          "max_tokens",
+          "temperature",
+          "stop",
+          "tools",
+          "tool_choice",
+          "reasoning",
+          "include_reasoning"
+        ],
+        "pricing": {
+          "input": "0.00000095",
+          "output": "0.000004",
+          "input_cache_read": "0.00000016",
+          "varies_by_provider": true,
+          "fast": {
+            "input": "0.0000019",
+            "output": "0.000008",
+            "input_cache_read": "0.00000038"
+          },
+          "regional": {
+            "us": {
+              "input": "0.00000095",
+              "output": "0.000004",
+              "input_cache_read": "0.00000016"
+            }
+          }
+        },
+        "zdr": "all",
+        "no_training": "all"
+      },
+      {
+        "id": "zai/glm-5.3",
+        "context_window": 1000000,
+        "max_tokens": 1000000,
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "supported_parameters": [
+          "max_tokens",
+          "temperature",
+          "stop",
+          "tools",
+          "tool_choice",
+          "reasoning",
+          "include_reasoning"
+        ],
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "high",
+              "max"
+            ]
+          }
+        ],
+        "pricing": {
+          "input": "0.0000007",
+          "output": "0.0000022",
+          "input_cache_read": "0.00000013",
+          "varies_by_provider": true,
+          "fast": {
+            "input": "0.0000021",
+            "output": "0.0000066",
+            "input_cache_read": "0.00000021"
+          },
+          "regional": {
+            "us": {
+              "input": "0.0000014",
+              "output": "0.0000044",
+              "input_cache_read": "0.00000014"
+            }
+          }
+        },
+        "zdr": "some",
+        "no_training": "some"
+      },
+      {
+        "id": "zai/glm-5.3-flash",
+        "context_window": 1000000,
+        "max_tokens": 131000,
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "supported_parameters": [
+          "max_tokens",
+          "temperature",
+          "stop",
+          "tools",
+          "tool_choice",
+          "reasoning",
+          "include_reasoning"
+        ],
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "high",
+              "max"
+            ]
+          }
+        ],
+        "pricing": {
+          "input": "0.00000015",
+          "output": "0.0000005",
+          "input_cache_read": "0.00000003",
+          "varies_by_provider": true,
+          "regional": {
+            "us": {
+              "input": "0.00000015",
+              "output": "0.0000005",
+              "input_cache_read": "0.00000003"
+            }
+          }
+        },
+        "zdr": "some",
+        "no_training": "some"
+      }
+    ],
+    "pricing_note": "Per-token public catalogue snapshot, not Task Node user tariffs. Prices may vary by provider, region, promotion and time."
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "category": "configuration_or_top_level_documentation",
+      "sha256": "aa05a16830c09ca17d1a0da1ae1fcf7ac5f4c5f0209c95d0e44a57e5b116b67c",
+      "matches": {
+        "ambient": [
+          27
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docker-compose.dev.yml",
+      "category": "configuration_or_top_level_documentation",
+      "sha256": "f6ef072609449ab55e29080f2ff153c26aaa538cd704196ed2b5f26f8aeb8238",
+      "matches": {
+        "ambient": [
+          89,
+          164,
+          167
+        ],
+        "vercel": [
+          90,
+          168
+        ],
+        "glm-5.2": [
+          165
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docker-compose.reward-test.yml",
+      "category": "configuration_or_top_level_documentation",
+      "sha256": "afad2ed3d96b32d876b4c6af2eb608e79ccd533bf479acbd36aa1899edb784e7",
+      "matches": {
+        "ambient": [
+          76,
+          77
+        ],
+        "glm-5.2": [
+          78,
+          79
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/ai-providers.md",
+      "category": "documentation_including_historical",
+      "sha256": "aac8f5a7773f906fd89cdbe0a3033aad339c7cd7bbefce0d2fff746559970cb7",
+      "matches": {
+        "ambient": [
+          3,
+          10,
+          12,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          41,
+          46,
+          56,
+          57,
+          73,
+          85,
+          104,
+          113,
+          131,
+          137,
+          139
+        ],
+        "vercel": [
+          5,
+          29,
+          30,
+          132
+        ],
+        "glm-5.2": [
+          20,
+          21,
+          22,
+          49,
+          50,
+          51,
+          67
+        ],
+        "glm 5.2": [
+          56,
+          113
+        ],
+        "deepseek-v4-flash": [
+          19,
+          48,
+          66,
+          68
+        ],
+        "kimi-k2.7-code": [
+          23,
+          52
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/badge-aware-routing-capacity-plan.md",
+      "category": "documentation_including_historical",
+      "sha256": "7b5edfe74d4153df54433d313c6c9ea28eedde43d9d7acbd5801f646c3f9f6d1",
+      "matches": {
+        "glm 5.2": [
+          106
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/badge-based-network-task-routing.md",
+      "category": "documentation_including_historical",
+      "sha256": "1cef7696873b40b04845993b1ff3c20d294f7c7c90912a701ef0f9fda838e789",
+      "matches": {
+        "ambient": [
+          76,
+          179
+        ],
+        "glm-5.2": [
+          179
+        ],
+        "glm 5.2": [
+          59,
+          76,
+          355
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/board-manager-secretary-packet.md",
+      "category": "documentation_including_historical",
+      "sha256": "7a3a97cd326588b22517e3b09a9c1068f689780f3752b62125e515e58889d64e",
+      "matches": {
+        "ambient": [
+          3,
+          12,
+          125
+        ],
+        "glm-5.2": [
+          12
+        ],
+        "glm 5.2": [
+          3
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/bootup.md",
+      "category": "documentation_including_historical",
+      "sha256": "7b4895f37b233ade967ca71d6b83bec44e1d3bbf31eb4b5629c4fbf211dae2bb",
+      "matches": {
+        "ambient": [
+          138
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/codex-computer-control-qa.md",
+      "category": "documentation_including_historical",
+      "sha256": "09328dbddd9506854fa1fcd9e6bbc1b07985e283e842778b6eb4131969a4fc0f",
+      "matches": {
+        "ambient": [
+          442,
+          443,
+          446
+        ],
+        "glm 5.2": [
+          443
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/current-system.md",
+      "category": "documentation_including_historical",
+      "sha256": "ccbe7a87c7163e54e0412ef0e6423b442ea6faa5b964f84d367fbff53cd75b26",
+      "matches": {
+        "ambient": [
+          63
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/database.md",
+      "category": "documentation_including_historical",
+      "sha256": "6e859f385afaca7342779b179fda9b79aeb74a669db44347d3c191e740345399",
+      "matches": {
+        "ambient": [
+          74,
+          75,
+          76
+        ],
+        "glm 5.2": [
+          74,
+          75,
+          76,
+          93
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/deathmarch.md",
+      "category": "documentation_including_historical",
+      "sha256": "433a28bfd66ada6f82076a9e085eb2be29e9b72d5dbef0a4d451a5ae7040cc8f",
+      "matches": {
+        "ambient": [
+          5,
+          18,
+          36,
+          37,
+          38,
+          48,
+          49,
+          230,
+          234
+        ],
+        "glm-5.2": [
+          36,
+          37
+        ],
+        "glm 5.2": [
+          5
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/deep-memory-worker.md",
+      "category": "documentation_including_historical",
+      "sha256": "fb2c209c961331f18b8368653d40199a16b3f5cb077950e8c8adb8a21ca9838a",
+      "matches": {
+        "ambient": [
+          19
+        ],
+        "deepseek-v4-flash": [
+          20
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/deployment.md",
+      "category": "documentation_including_historical",
+      "sha256": "df8ec9d378bffaa36180d70248d14247e025494a891eb41253206d6cf8b4ac7c",
+      "matches": {
+        "ambient": [
+          125
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/model-default-inventory-upgrade-matrix.md",
+      "category": "documentation_including_historical",
+      "sha256": "70b53e401932f0bcbefeac46c2dbf8c362cc678a88b3a6442ff85b782d87946b",
+      "matches": {
+        "ambient": [
+          3
+        ],
+        "glm-5.2": [
+          31,
+          39,
+          43,
+          44,
+          45,
+          46,
+          48,
+          49,
+          54,
+          70,
+          79,
+          98,
+          114,
+          132
+        ],
+        "glm 5.2": [
+          17,
+          31,
+          39,
+          45,
+          46,
+          48,
+          49,
+          54,
+          61,
+          113
+        ],
+        "glm52": [
+          92,
+          98,
+          107
+        ],
+        "deepseek-v4-flash": [
+          30,
+          37,
+          93
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/network-task-generation-worker.md",
+      "category": "documentation_including_historical",
+      "sha256": "b7223b36c75915b1b47a65c71e88bd491f9bbce4a3af74d3079b9a93566ccf81",
+      "matches": {
+        "glm 5.2": [
+          55
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/network-task-profile-worker.md",
+      "category": "documentation_including_historical",
+      "sha256": "813f1a94665b50f7ec042b6b7acee9e886871c09bd7cdba41ee0eaed4bd55f54",
+      "matches": {
+        "ambient": [
+          24
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/orc-operator-runtime.md",
+      "category": "documentation_including_historical",
+      "sha256": "a61bea9d7c4942a7956edc3e63869796c8ac58aae0880754742dea3a4d6772fe",
+      "matches": {
+        "ambient": [
+          62
+        ],
+        "glm-5.2": [
+          62
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/repository-bloat-audit.md",
+      "category": "documentation_including_historical",
+      "sha256": "f18e363a0ba9025e9629788f44ae530a4d634e5415d379d1eabf537b87f65492",
+      "matches": {
+        "ambient": [
+          3
+        ],
+        "glm-5.2": [
+          9,
+          99,
+          100,
+          147,
+          198,
+          199,
+          204,
+          250
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/system-status.md",
+      "category": "documentation_including_historical",
+      "sha256": "144b61262c2ce74ac8ce150c796f2a79b045e4d775651c32505c9bdca5906433",
+      "matches": {
+        "ambient": [
+          12,
+          13,
+          121,
+          124,
+          129,
+          141,
+          170
+        ],
+        "glm-5.2": [
+          170
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/task-async-engine.md",
+      "category": "documentation_including_historical",
+      "sha256": "d3f98a535f857ab89a03340e271f597823a67816c5ccf8ce313d65fba9fe1d7b",
+      "matches": {
+        "ambient": [
+          14,
+          18
+        ],
+        "glm 5.2": [
+          14
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/task-lifecycle.md",
+      "category": "documentation_including_historical",
+      "sha256": "4564c708f71cdb794ebd54165cf614fa6a127940a0aae109c0eb110615910da7",
+      "matches": {
+        "ambient": [
+          60
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/team-context-report-plan.md",
+      "category": "documentation_including_historical",
+      "sha256": "42657f310eebbbe465a65529c37db2a79008c01e826c8f0c7f9a64d3a556cc6e",
+      "matches": {
+        "vercel": [
+          15,
+          34,
+          35,
+          36,
+          66,
+          75,
+          86,
+          110,
+          154
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/telegram-bot-chat.md",
+      "category": "documentation_including_historical",
+      "sha256": "b7306b5c99562d27968f807d9c5b8a986132996b8aeba860238cdf95e240891d",
+      "matches": {
+        "ambient": [
+          31
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/architecture/turn-memory-worker.md",
+      "category": "documentation_including_historical",
+      "sha256": "6f454a1278b2402e9a9542c319ddff7ae06ca4e3794d434040e23cd20b831c70",
+      "matches": {
+        "ambient": [
+          19
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/index.md",
+      "category": "documentation_including_historical",
+      "sha256": "dc24f1c1f7519b0a69ef5de38eb5c23dbed240852db7e7117f2c0178432822eb",
+      "matches": {
+        "ambient": [
+          59
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/operations/deploy-runbook.md",
+      "category": "documentation_including_historical",
+      "sha256": "13c1c2508c04f01108cf19217de97b33a3dc0da566d8fae47eb3854be4aac7a4",
+      "matches": {
+        "glm 5.2": [
+          129
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/chat.md",
+      "category": "documentation_including_historical",
+      "sha256": "89d6aa3a56341cbd751511ea90cbe643ac41fdd158a15f68ecb4ccc02587aaee",
+      "matches": {
+        "ambient": [
+          14,
+          30,
+          100,
+          101,
+          102,
+          111,
+          119,
+          123,
+          155,
+          181,
+          202,
+          247
+        ],
+        "vercel": [
+          113
+        ],
+        "glm-5.2": [
+          60,
+          101
+        ],
+        "glm 5.2": [
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          112,
+          181
+        ],
+        "deepseek-v4-flash": [
+          100,
+          102
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/context-rewrite.md",
+      "category": "documentation_including_historical",
+      "sha256": "2f603eb8c50b252257a9565ca7e869cc10540cf56406e8c4b6a48df036d373c9",
+      "matches": {
+        "ambient": [
+          45,
+          110,
+          127,
+          137,
+          138,
+          145,
+          151,
+          160
+        ],
+        "glm-5.2": [
+          110,
+          127
+        ],
+        "glm 5.2": [
+          16,
+          140
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/daily-airdrop.md",
+      "category": "documentation_including_historical",
+      "sha256": "6828637019d3e3ce67579e3dc978319720ba9d3df9c69ff09d4092506721c7c7",
+      "matches": {
+        "ambient": [
+          125,
+          126,
+          267
+        ],
+        "glm-5.2": [
+          125
+        ],
+        "glm 5.2": [
+          267
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/docs.md",
+      "category": "documentation_including_historical",
+      "sha256": "774eb628783c0d0b90d48695aef4c61ee7b51f0f2c212e5a9e423eebed84f34e",
+      "matches": {
+        "ambient": [
+          13,
+          42
+        ],
+        "glm-5.2": [
+          42
+        ],
+        "glm 5.2": [
+          13,
+          44
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/hive.md",
+      "category": "documentation_including_historical",
+      "sha256": "213487aaff5db7fbadf1473bf3264959dc4d383741436dd74b76ca8bdc7f93fd",
+      "matches": {
+        "ambient": [
+          153,
+          250,
+          291,
+          576,
+          616,
+          618,
+          710,
+          713,
+          814,
+          818
+        ],
+        "glm-5.2": [
+          153,
+          292,
+          616,
+          710,
+          713,
+          814
+        ],
+        "glm 5.2": [
+          251,
+          254,
+          618,
+          812,
+          818,
+          827
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/memory.md",
+      "category": "documentation_including_historical",
+      "sha256": "e70613a91c7d783da06c1ae08a72c4fa402a7e3ed336a02bff2a0cf248efe4b2",
+      "matches": {
+        "ambient": [
+          21,
+          34,
+          135,
+          150
+        ],
+        "deepseek-v4-flash": [
+          21,
+          76
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/profile.md",
+      "category": "documentation_including_historical",
+      "sha256": "13288e15b23f585c0563a3ad0f64f691f0208803d344dc9bdb0aac0035fdf2ed",
+      "matches": {
+        "ambient": [
+          123,
+          124,
+          650,
+          651
+        ],
+        "glm-5.2": [
+          650
+        ],
+        "deepseek-v4-flash": [
+          123
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/refine-context.md",
+      "category": "documentation_including_historical",
+      "sha256": "ebfea4a691229a090d4bf768f3002ac3db20b811b71a37da020c8bcaba156af0",
+      "matches": {
+        "ambient": [
+          15
+        ],
+        "glm 5.2": [
+          15,
+          35
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/tasks.md",
+      "category": "documentation_including_historical",
+      "sha256": "1afdb4dacc3863f77bdf8f7564881548b113486f608a76bb2213599d1e40970d",
+      "matches": {
+        "ambient": [
+          231,
+          249,
+          366
+        ],
+        "glm-5.2": [
+          232
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/team.md",
+      "category": "documentation_including_historical",
+      "sha256": "4048e972a881c9078c3208e2ed7d236c3e6a54881b432aab9539cd583add29d0",
+      "matches": {
+        "vercel": [
+          31,
+          55
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "docs/wiki/surfaces/user-guide.md",
+      "category": "documentation_including_historical",
+      "sha256": "38a814615cb5b46494a6e92d912c0bc91eb234b3a4515091569c696302608fb4",
+      "matches": {
+        "ambient": [
+          23,
+          73
+        ],
+        "glm 5.2": [
+          26,
+          73
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "fly.toml",
+      "category": "configuration_or_top_level_documentation",
+      "sha256": "ce214d07e85924e2463862eff569be772fae111273d77f892586feb4c4174e23",
+      "matches": {
+        "ambient": [
+          91,
+          94
+        ],
+        "glm-5.2": [
+          78,
+          85,
+          89,
+          92,
+          95,
+          113
+        ],
+        "deepseek-v4-flash": [
+          121
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "ops/bm-runtime/bm-env.sh",
+      "category": "operator_or_verification_script",
+      "sha256": "d82782ef7da5a99cbcc31c31fe997257829feeac1979d6a37a84308ab8b9bbd6",
+      "matches": {
+        "ambient": [
+          27
+        ],
+        "kimi-k2.7-code": [
+          27
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "package.json",
+      "category": "configuration_or_top_level_documentation",
+      "sha256": "3682cc9fddd763f71329f4e1abe518168c8b5800f0e4e5aa04fec66b7816b454",
+      "matches": {
+        "ambient": [
+          106,
+          107
+        ],
+        "glm52": [
+          146,
+          299
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/agent-chat-origin-smoke.mjs",
+      "category": "verification",
+      "sha256": "ca0b11440b0def84c2055e3427dc340bd7c8f72b8a5ec9f0118daeca2f1b36a6",
+      "matches": {
+        "ambient": [
+          12
+        ],
+        "deepseek-v4-flash": [
+          23
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/agent-hive-chat-smoke.mjs",
+      "category": "verification",
+      "sha256": "5554b6305f8f7fb711e7014d79d90178c3b86a0e44b170bca367d07aed5472bb",
+      "matches": {
+        "ambient": [
+          12
+        ],
+        "deepseek-v4-flash": [
+          27
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/ambient-cache-live-smoke.mjs",
+      "category": "verification",
+      "sha256": "da41905b56de6e2c3829ce0d6cfd273037d88d4e5bb3e0cc3625ca66f343a13b",
+      "matches": {
+        "ambient": [
+          3,
+          4,
+          5,
+          16,
+          19,
+          22,
+          34,
+          35,
+          39,
+          43,
+          53,
+          92
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/ambient-inference-smoke.mjs",
+      "category": "verification",
+      "sha256": "bdf0d1648c6adaf7f09f16cf880ae7881ae1f64c7131267b71dd496a81b02b7a",
+      "matches": {
+        "ambient": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          12,
+          13,
+          16,
+          17,
+          19,
+          27,
+          37,
+          54,
+          55,
+          61,
+          62,
+          63,
+          68,
+          88,
+          93,
+          97,
+          98,
+          101,
+          106,
+          124,
+          133,
+          137,
+          150,
+          154,
+          159,
+          163,
+          171,
+          174,
+          179,
+          183,
+          190,
+          197,
+          204,
+          206,
+          207,
+          210
+        ],
+        "deepseek-v4-flash": [
+          17,
+          112
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/board-manager-glm52-cost-smoke.mjs",
+      "category": "verification",
+      "sha256": "967a42c7f1fa94988cc24016099eccccfc776c9fd262725eb9f6dbb25745d303",
+      "matches": {
+        "ambient": [
+          20,
+          23,
+          26,
+          28
+        ],
+        "glm-5.2": [
+          20,
+          21,
+          24,
+          50,
+          188
+        ],
+        "glm52": [
+          195
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/board-manager-loop.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "20072afa40771af1d941b339fca5c35505691e47b1b85522e4244e6f6a427cbb",
+      "matches": {
+        "ambient": [
+          36,
+          48,
+          50,
+          139
+        ],
+        "glm-5.2": [
+          37,
+          55
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/board-manager-model-exec.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "5358225c92ad85ae20c87392fe6dd7352f36d576350d760cf765cb2c50438c21",
+      "matches": {
+        "ambient": [
+          51,
+          53,
+          64,
+          107,
+          200,
+          221,
+          222,
+          223,
+          284
+        ],
+        "glm-5.2": [
+          65
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/board-manager-secretary-packet-smoke.mjs",
+      "category": "verification",
+      "sha256": "4cd716105173e95efdb33a5e266ba4e52971235c15e4254c2c0605c74fb4b8b9",
+      "matches": {
+        "ambient": [
+          5,
+          436,
+          646
+        ],
+        "glm-5.2": [
+          17,
+          423
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/board-manager-v0-smoke.mjs",
+      "category": "verification",
+      "sha256": "119d0bf1d04c7f4734c5ec6dc48b0fe3bdd7d210c77425695a905340665fb48b",
+      "matches": {
+        "ambient": [
+          5,
+          388,
+          391,
+          432
+        ],
+        "glm-5.2": [
+          389,
+          392,
+          408,
+          423,
+          433,
+          449,
+          454,
+          459,
+          502,
+          535,
+          577
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/board-manager-worker.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "c76273809525836c4275fb27453e477b1fefccd749a1a48c9868019646352f7b",
+      "matches": {
+        "ambient": [
+          51,
+          66,
+          68,
+          259
+        ],
+        "glm-5.2": [
+          52,
+          73
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/chat-attachment-smoke.mjs",
+      "category": "verification",
+      "sha256": "968423d1274ff25faf5718a053532f5ebd61c54b711d65f042fc92b26821abf7",
+      "matches": {
+        "ambient": [
+          12,
+          105
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/chat-billing-postgres-smoke.mjs",
+      "category": "verification",
+      "sha256": "ae79a2196734e48317e97948a4803ec7355b7e14dd1970130080cbd6d8cfce43",
+      "matches": {
+        "ambient": [
+          93
+        ],
+        "glm-5.2": [
+          94,
+          176
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/chat-memory-postgres-smoke.mjs",
+      "category": "verification",
+      "sha256": "70caf6e0eadfb601b8fcc61b5a29a1d19184dcd527c7638d2c6ef9cba9531ad6",
+      "matches": {
+        "deepseek-v4-flash": [
+          54,
+          96
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/chat-memory-worker-request-smoke.mjs",
+      "category": "verification",
+      "sha256": "e238f92a0035f26af41108db256c734ad3cd1ac795a7e97b7564fe6cc19253ea",
+      "matches": {
+        "deepseek-v4-flash": [
+          14
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/chat-mode-deprecation-smoke.mjs",
+      "category": "verification",
+      "sha256": "ea70b4a981b4bdfca12671d483ea6d3502451674cb6a3d9793b47f66b3ba3516",
+      "matches": {
+        "ambient": [
+          3,
+          4,
+          5,
+          23,
+          24
+        ],
+        "glm-5.2": [
+          21,
+          40
+        ],
+        "deepseek-v4-flash": [
+          20,
+          22
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/chat-persona-routing-smoke.mjs",
+      "category": "verification",
+      "sha256": "338da812d17d7f71f4fa957bcbdf7084195ee35ef0fa318d9be301e53d9e7d20",
+      "matches": {
+        "ambient": [
+          5,
+          9,
+          32,
+          38,
+          39,
+          40,
+          148
+        ],
+        "glm-5.2": [
+          150,
+          162
+        ],
+        "glm 5.2": [
+          145
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/chat-spirit-prompt-smoke.mjs",
+      "category": "verification",
+      "sha256": "849fdc82ca60ea20029ffca744e7e771797d03774170ca5ac8d5d1c58455b352",
+      "matches": {
+        "ambient": [
+          7,
+          200,
+          249,
+          292
+        ],
+        "glm-5.2": [
+          198
+        ],
+        "deepseek-v4-flash": [
+          197,
+          251,
+          294
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/chat-stream-reliability-smoke.mjs",
+      "category": "verification",
+      "sha256": "4a4de38f83f05108c6b4deaaf98c6a4e8ba0c0e122498a9da40d5c7a00434092",
+      "matches": {
+        "ambient": [
+          81
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/collaboration-contract-smoke.mjs",
+      "category": "verification",
+      "sha256": "c4e2938e3b587f88c97e0496864383334ecc4bf839281e99a0dda825b27a56ae",
+      "matches": {
+        "glm-5.2": [
+          181
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/deathmarch-smoke.mjs",
+      "category": "verification",
+      "sha256": "75ef40c4e5134875f4faeb1e454f2852be791443efe4d108dd452129f2b40020",
+      "matches": {
+        "ambient": [
+          307,
+          308,
+          326,
+          327,
+          336,
+          345,
+          346,
+          375,
+          376,
+          380,
+          442,
+          443,
+          447,
+          472,
+          473,
+          477,
+          501,
+          502,
+          516,
+          517,
+          545,
+          546,
+          550,
+          570,
+          571,
+          580,
+          581,
+          585,
+          586,
+          587,
+          588,
+          589,
+          590,
+          591,
+          678
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/deathmarch.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "dd715eccc617d46070d32dcb938bad6ab51b8f83bc1cf205bfaf0a9d373aa541",
+      "matches": {
+        "ambient": [
+          5,
+          30,
+          31,
+          142,
+          148,
+          504,
+          506,
+          521,
+          522,
+          523,
+          663,
+          665,
+          669,
+          682,
+          684,
+          692,
+          693,
+          694,
+          713
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/docker-reward-env.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "fc49582d1dc5c28cf4b21b282f58e3a64946f7229b09ceea47761e6c9ccb6ae6",
+      "matches": {
+        "ambient": [
+          10,
+          11,
+          78
+        ],
+        "glm-5.2": [
+          72,
+          73
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/expert-badge-evaluation-smoke.mjs",
+      "category": "verification",
+      "sha256": "7599156b0fc0c37ca95e9148753c4ec34c142d8560e5809bdb293472c6da4014",
+      "matches": {
+        "ambient": [
+          14,
+          69
+        ],
+        "glm-5.2": [
+          83,
+          115
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/frame-smoke.mjs",
+      "category": "verification",
+      "sha256": "d083e3b20294a6c5d00b28f4ba3f6ad1ee502755f8ad9fdbd3639293a244ca76",
+      "matches": {
+        "glm 5.2": [
+          160
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/hive-board-secretary-smoke.mjs",
+      "category": "verification",
+      "sha256": "6ab8496a958944233133c56d066a16810ffa15e957eba777096ad30bf7e50b41",
+      "matches": {
+        "glm-5.2": [
+          67
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/hive-board-secretary-worker.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "7a7ff06daf5a714d2ab9bf49a2000933876f2debe63e6c55faab772805000266",
+      "matches": {
+        "glm 5.2": [
+          53
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/hive-brain-smoke.mjs",
+      "category": "verification",
+      "sha256": "aec7afa55571512c010754596e83642dfc4e9aaf4f6559ec6bb6edfdcea948be",
+      "matches": {
+        "glm-5.2": [
+          121,
+          300
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/hive-context-smoke.mjs",
+      "category": "verification",
+      "sha256": "59dc43b819fe8ac511b4e16f537392960a59633db258ba0a685e1cff9d721dab",
+      "matches": {
+        "ambient": [
+          400,
+          401,
+          456,
+          457,
+          459,
+          464
+        ],
+        "glm-5.2": [
+          358,
+          366
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/hive-project-planning-smoke.mjs",
+      "category": "verification",
+      "sha256": "fafffdefea20b03d5a187045ff096f01d4d83311081e8ed73aa54aa3193ada0e",
+      "matches": {
+        "ambient": [
+          3,
+          57,
+          137
+        ],
+        "glm-5.2": [
+          31,
+          47,
+          58,
+          89,
+          125,
+          138
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/network-badge-verifier-jobs-smoke.mjs",
+      "category": "verification",
+      "sha256": "5f23d4ed5a6bb0a60fdfb29905f86a5967b5b5b4b9ed7e23d1d660da5389cb45",
+      "matches": {
+        "glm-5.2": [
+          245
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/profile-daily-airdrop-score.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "7fc4f423b832f41f2501e3e24b9ce47b0e8a585b9c8fae7c6d9371c55649aed3",
+      "matches": {
+        "glm-5.2": [
+          24
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/profile-daily-airdrop-worker.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "d2080fe33f41487e8d96b879dae0d04a8707906b448b82060c090c38ac31e60f",
+      "matches": {
+        "glm-5.2": [
+          35
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/profile-nft-prompt-smoke.mjs",
+      "category": "verification",
+      "sha256": "01a3b89419038f2ee9b4b2551be54af52d8ab4e8d8cc0517c424d2b12d83e805",
+      "matches": {
+        "ambient": [
+          33,
+          34,
+          35,
+          41,
+          52,
+          55,
+          57,
+          150,
+          159,
+          227,
+          239,
+          266
+        ],
+        "glm-5.2": [
+          37
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/profile-public-snapshot.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "d99035654337031f4ac056fdf94a6e48eef3b7df8482feaced56f7f59cc315d3",
+      "matches": {
+        "glm-5.2": [
+          20
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/route-smoke.mjs",
+      "category": "verification",
+      "sha256": "49957e42edac157e08100cf42cbbbaef4668a792d54471c12f8beecbc65747f2",
+      "matches": {
+        "ambient": [
+          83
+        ],
+        "vercel": [
+          84
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/run-deathmarch-supervised.sh",
+      "category": "operator_or_verification_script",
+      "sha256": "2c3edac3095bb40e9ee433d247b25f4c0187a659196f2712168a5c500b12cc44",
+      "matches": {
+        "ambient": [
+          26,
+          28,
+          29,
+          31,
+          32,
+          34
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/runtime-store-smoke.mjs",
+      "category": "verification",
+      "sha256": "fed5d216aa5c0258df660862a220be9ea8082e968ebdd748675344da6b5a938a",
+      "matches": {
+        "ambient": [
+          15,
+          89,
+          92,
+          95,
+          98
+        ],
+        "glm-5.2": [
+          91
+        ],
+        "glm 5.2": [
+          92
+        ],
+        "deepseek-v4-flash": [
+          88,
+          94
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/security-smoke.mjs",
+      "category": "verification",
+      "sha256": "3f37abf9ad20a57c65d74636758e3f1a194814ff099d18ca3624fbdf46168ac2",
+      "matches": {
+        "ambient": [
+          11
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/system-status-smoke.mjs",
+      "category": "verification",
+      "sha256": "87b2db4793df2a1cbec04c7b55364fa0e0c72478ffc718d796d59caebfc7520e",
+      "matches": {
+        "ambient": [
+          16,
+          67,
+          72,
+          74
+        ],
+        "glm-5.2": [
+          65
+        ],
+        "deepseek-v4-flash": [
+          63,
+          73
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/task-determinism-board-state-audit.mjs",
+      "category": "operator_or_verification_script",
+      "sha256": "cdde2a8be29aa0cdced08323bfdae042352db4282f2c642c81212f375929da24",
+      "matches": {
+        "ambient": [
+          6,
+          17,
+          358,
+          437,
+          438,
+          465
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/task-evidence-file-processing-smoke.mjs",
+      "category": "verification",
+      "sha256": "e06dcd85d91c7155b4104fe9bb8acaa27f5615f1ff749253c1725995b5f2845c",
+      "matches": {
+        "ambient": [
+          25,
+          27
+        ],
+        "kimi-k2.7-code": [
+          28
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/task-generation-reliability-smoke.mjs",
+      "category": "verification",
+      "sha256": "de68859083e9a8ba5c7bb5d65920d37a61b9db6823218ed7948cf56545cf9b88",
+      "matches": {
+        "ambient": [
+          3,
+          4,
+          5,
+          100,
+          101,
+          147,
+          150,
+          176,
+          412
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/taskgen-network-v2-smoke.mjs",
+      "category": "verification",
+      "sha256": "9b52e9921a272a9bc90bc634e99908a8eba33a9f3274ba357b388787aee0918d",
+      "matches": {
+        "ambient": [
+          87,
+          92,
+          99,
+          105,
+          107
+        ],
+        "glm-5.2": [
+          88,
+          93,
+          100,
+          114
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/taskgen-replay-smoke.mjs",
+      "category": "verification",
+      "sha256": "fdd4c75d5ac5d664941b123e57dae64d6c6a1cfdb66adb498b44684d00d26e10",
+      "matches": {
+        "ambient": [
+          19
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/team-context-smoke.mjs",
+      "category": "verification",
+      "sha256": "f557397f3e3eae688268ef1e62b11038d8dea860a071a59411ad46f8fd49fa5d",
+      "matches": {
+        "vercel": [
+          26,
+          109,
+          124,
+          125,
+          191,
+          201,
+          247,
+          253,
+          292
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/team-context-state-smoke.mjs",
+      "category": "verification",
+      "sha256": "f8d79d19ceee88805e828d11cf2176a6a36a2e0644475274206cea14c6dc57e0",
+      "matches": {
+        "vercel": [
+          98,
+          151
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "scripts/telegram-bot-webhook-smoke.mjs",
+      "category": "verification",
+      "sha256": "2e56ed58acc548b6572a149109398f743df605384935d1d3a98663b1fa6e617e",
+      "matches": {
+        "ambient": [
+          14,
+          17,
+          71,
+          314,
+          315
+        ],
+        "glm-5.2": [
+          73,
+          315
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/ambient-attachments.js",
+      "category": "runtime_source",
+      "sha256": "6555b0807b29d88223fbe0a82f5061d1ca9d80df347293f587a5c99b20a5e50e",
+      "matches": {
+        "ambient": [
+          12
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/ambient-inference.js",
+      "category": "runtime_source",
+      "sha256": "588652e04e3ef40efca5bd7b7a18e1bfd4ea4f3706f0bde2a5e0ad185067f4ba",
+      "matches": {
+        "ambient": [
+          1,
+          5,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          26,
+          27,
+          30,
+          31,
+          34,
+          35,
+          39,
+          40,
+          41,
+          42,
+          43,
+          46,
+          51,
+          54,
+          55,
+          62,
+          77,
+          102,
+          104,
+          145,
+          146,
+          147,
+          150,
+          152,
+          153,
+          158,
+          164,
+          165,
+          168,
+          173,
+          174,
+          178,
+          182,
+          185,
+          189,
+          190,
+          195,
+          224,
+          232,
+          234,
+          239,
+          251,
+          254,
+          262,
+          272,
+          281,
+          285,
+          295,
+          301,
+          312,
+          321,
+          327,
+          329,
+          331,
+          333,
+          334,
+          338,
+          346,
+          349,
+          351,
+          367,
+          368,
+          373,
+          400,
+          402,
+          408,
+          417,
+          418,
+          430,
+          433,
+          450,
+          466,
+          467,
+          482,
+          485,
+          497,
+          498,
+          499,
+          500,
+          501,
+          505,
+          512,
+          519
+        ],
+        "glm-5.2": [
+          7,
+          8,
+          9
+        ],
+        "deepseek-v4-flash": [
+          6,
+          53
+        ],
+        "kimi-k2.7-code": [
+          10
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/bm-narrator-worker.js",
+      "category": "runtime_source",
+      "sha256": "5b80d4ceb898413ca9cf19b6d3cb6daf7b15e86fe7419920b66393e93c1a3db0",
+      "matches": {
+        "ambient": [
+          13,
+          15,
+          32,
+          119
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/board-manager-decision-provider.js",
+      "category": "runtime_source",
+      "sha256": "3b224993f725527abdac083c6631c221487b81bde11c8ff1b7b6fcb01eaccacb",
+      "matches": {
+        "ambient": [
+          10,
+          11,
+          12,
+          13,
+          14,
+          28,
+          33,
+          168,
+          201,
+          206,
+          207,
+          232,
+          249,
+          304,
+          315,
+          328
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/board-manager-secretary-packets.js",
+      "category": "runtime_source",
+      "sha256": "82f57e09423806adcab50535691c8856082301bac6f487dc57e5c7fa65fe67aa",
+      "matches": {
+        "ambient": [
+          5,
+          106,
+          122,
+          434,
+          435,
+          444,
+          521,
+          674,
+          729,
+          793
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/chat-memory-worker.js",
+      "category": "runtime_source",
+      "sha256": "a538093201272178e1f534365683f11269115cb1f16e96b7a50a2704fb632f9a",
+      "matches": {
+        "ambient": [
+          24,
+          25,
+          26,
+          27,
+          47,
+          54,
+          232,
+          257,
+          266,
+          297,
+          305,
+          332,
+          341,
+          361
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/chat-mode-defaults.js",
+      "category": "runtime_source",
+      "sha256": "d40cec48d6bcfc4624fe5c30bca8c657ddf57c294aa8fd65333bb4b2ba8847b4",
+      "matches": {
+        "ambient": [
+          1,
+          6
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/chat-mode-runtime.js",
+      "category": "runtime_source",
+      "sha256": "e21f2198a1e8f6f793be11b1023649c82457ce2d588507da73397b138589e438",
+      "matches": {
+        "ambient": [
+          2,
+          3,
+          4,
+          5,
+          15,
+          16,
+          18,
+          26,
+          27,
+          29,
+          37,
+          38,
+          40,
+          57,
+          79,
+          90,
+          127
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/chat-router.js",
+      "category": "runtime_source",
+      "sha256": "178c6f20d2c9be01cac66492814bacf62a2e1923d821f2e40cf928caf76835e8",
+      "matches": {
+        "ambient": [
+          28,
+          29,
+          30,
+          31,
+          274,
+          275,
+          301,
+          314,
+          358,
+          376,
+          395,
+          399,
+          417,
+          418,
+          421,
+          430,
+          433,
+          451,
+          455,
+          478,
+          480,
+          623,
+          813
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/context-rewrite-actions.js",
+      "category": "runtime_source",
+      "sha256": "17c8df22f14070b51a0039e36fcf3cc7805035eb88972cc6f75e63aa06e83720",
+      "matches": {
+        "ambient": [
+          94,
+          95
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/context-rewrite-provider.js",
+      "category": "runtime_source",
+      "sha256": "86aa70e2031ccef92341aee085653fd8e481ad42395f798c078047aef2ce1628",
+      "matches": {
+        "ambient": [
+          1,
+          71,
+          78,
+          84,
+          128,
+          135,
+          392,
+          483,
+          493,
+          547,
+          606
+        ],
+        "glm-5.2": [
+          70,
+          72,
+          77
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/context-rewrite-worker.js",
+      "category": "runtime_source",
+      "sha256": "ec777e8ebf382ac1bbef5a2d13c11be2282c65d7745be05bf2ffb942f0073221",
+      "matches": {
+        "ambient": [
+          110,
+          136,
+          374,
+          461
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/db/migrations/072_network_badges_identity_approvals.sql",
+      "category": "historical_migration",
+      "sha256": "4021830c057fc897df16217b6beb707e4cd13cdc138ecc055fc8b950a1606d2d",
+      "matches": {
+        "glm52": [
+          97
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/db/migrations/105_ambient_inference_defaults.sql",
+      "category": "historical_migration",
+      "sha256": "6d470584c70a15ec4417df815893c5a8e63efac6d37b9165fc16df203992f20e",
+      "matches": {
+        "ambient": [
+          2,
+          5
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/docs-odv.js",
+      "category": "runtime_source",
+      "sha256": "091b12116bbd9bc14bf7d146c6867f690a9c9a9adf3811a230fcf9efdfdd831b",
+      "matches": {
+        "ambient": [
+          4,
+          147,
+          175,
+          199,
+          202
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/expert-badge.js",
+      "category": "runtime_source",
+      "sha256": "9fa9b40515a8f7e38a231b9c7ad1cbdc54db71e954d64479fd3fe7d1f9142c10",
+      "matches": {
+        "ambient": [
+          4,
+          36,
+          241,
+          242,
+          251,
+          274,
+          285
+        ],
+        "glm52": [
+          160
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/hive-board-secretary-provider.js",
+      "category": "runtime_source",
+      "sha256": "e31ba2c54e113963435edf9f33befb1ccf38b0814944765e776d27c3544c570a",
+      "matches": {
+        "ambient": [
+          4,
+          17,
+          21,
+          29,
+          135,
+          136,
+          143,
+          168,
+          179,
+          180
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/hive-immediate-response.js",
+      "category": "runtime_source",
+      "sha256": "1cae6e2a46a840cbe8f48e68849e986c5d0e9611cadde2f05f807b66be64ce67",
+      "matches": {
+        "ambient": [
+          7,
+          28,
+          271,
+          276,
+          856,
+          877
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/hive-project-worker.js",
+      "category": "runtime_source",
+      "sha256": "4c2e7ac5fca53b11c99f66d787faef32b8b8207acb99636e1be30b870e7de9c3",
+      "matches": {
+        "ambient": [
+          10,
+          22,
+          23,
+          24,
+          30,
+          32,
+          37,
+          41,
+          56,
+          57,
+          167,
+          170,
+          171,
+          177,
+          201,
+          211
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/hive-report-provider.js",
+      "category": "runtime_source",
+      "sha256": "da831698bde5ba3b23f9c0965df8d1e9488ce233d31f6452d58ebc7da1247e7d",
+      "matches": {
+        "ambient": [
+          4,
+          75,
+          295,
+          296,
+          306,
+          328,
+          334,
+          344
+        ],
+        "glm-5.2": [
+          6
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/hive-secretary-worker.js",
+      "category": "runtime_source",
+      "sha256": "64e965368f52ffb92d15ab0dd5dffb6656231efd062534df549f695a30b23cbc",
+      "matches": {
+        "ambient": [
+          13,
+          25,
+          26,
+          27,
+          33,
+          35,
+          40,
+          44,
+          57,
+          58,
+          167,
+          188,
+          199,
+          202,
+          203
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/hive-task-manager-provider.js",
+      "category": "runtime_source",
+      "sha256": "191c426a039d0816a499523f677243f234db55d384d7e2993bc6fc9526a1f133",
+      "matches": {
+        "ambient": [
+          4,
+          17,
+          21,
+          29,
+          280,
+          281,
+          287,
+          317,
+          327
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/model-pricing-status.js",
+      "category": "runtime_source",
+      "sha256": "7c451dea5ea8f888f86f7d224e240013e45d3c4b1c2471c3b126bd961d84de73",
+      "matches": {
+        "ambient": [
+          5,
+          8,
+          25,
+          26,
+          27,
+          117,
+          172,
+          202,
+          210,
+          211,
+          215,
+          238,
+          247,
+          266
+        ],
+        "glm 5.2": [
+          26
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/product-chat-contracts.js",
+      "category": "runtime_source",
+      "sha256": "fdda8fd3690c0b3998c57c504e118fa12a2d3d6ac7604621fd6b879f3a34e474",
+      "matches": {
+        "ambient": [
+          639
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/product-contracts.js",
+      "category": "runtime_source",
+      "sha256": "44fa4dcb9e39dcb88778cd84dec7377567a6ae9cabef7f898ad44a33c5b4f2e4",
+      "matches": {
+        "ambient": [
+          753,
+          755,
+          757
+        ],
+        "vercel": [
+          756
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/profile-daily-airdrop-worker.js",
+      "category": "runtime_source",
+      "sha256": "3bf5e4f6bde4792297b2aa09a5090d68d3faf2f9373484340d80687a0402550a",
+      "matches": {
+        "glm-5.2": [
+          318
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/profile-daily-airdrop.js",
+      "category": "runtime_source",
+      "sha256": "566b1ba41b9dd18953d397431351c728cc1da35c97911ff242e5946e780bd86f",
+      "matches": {
+        "ambient": [
+          14,
+          18,
+          308,
+          336,
+          389
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/profile-nft-image-review.js",
+      "category": "runtime_source",
+      "sha256": "16b3d973f7fff42f209546a0738b3d29e79484598eb90e066355a8cc134fb7de",
+      "matches": {
+        "ambient": [
+          1,
+          26,
+          27
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/profile-nft-privacy-gateway.js",
+      "category": "runtime_source",
+      "sha256": "6af73f07fc0c14cd660a90c2451765a09b27d451b5dd74aea5b443243495cb95",
+      "matches": {
+        "ambient": [
+          1,
+          146,
+          152,
+          164,
+          170
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/profile-public-snapshot.js",
+      "category": "runtime_source",
+      "sha256": "daa4c156969944c13b04b206735cd287fc94f875c6513186e60abe85c1df3583",
+      "matches": {
+        "ambient": [
+          3,
+          14,
+          112,
+          147,
+          190
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/public-profile-snapshot-worker.js",
+      "category": "runtime_source",
+      "sha256": "f938b6bc4524bc83b5d176157e2e3fd3af41b7b1641aa96ed092662afd88d321",
+      "matches": {
+        "ambient": [
+          2,
+          114,
+          115
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/repositories/context-rewrite-projection.js",
+      "category": "runtime_source",
+      "sha256": "6898dcbc8ae9afe38a39518af30233f04793e59fabddcd6a0fc0fe67c796464e",
+      "matches": {
+        "glm 5.2": [
+          100
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/repositories/context-rewrite-provider-calls.js",
+      "category": "runtime_source",
+      "sha256": "cbfbbb238fe47b81769c0e1731300960d598cdf87f2a556d0f922aaa556cd7c5",
+      "matches": {
+        "ambient": [
+          70
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/repositories/hive-decision-agent.js",
+      "category": "runtime_source",
+      "sha256": "4c291280eeb0e5d8d6fb68c3e5d30c8f834ca1e59898a6612769e698a284e83b",
+      "matches": {
+        "ambient": [
+          709
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/repositories/hive-task-manager.js",
+      "category": "runtime_source",
+      "sha256": "57a7b74da07ba16dfe14dbef2a086db4ea54221d02319888e3826fc16c410677",
+      "matches": {
+        "ambient": [
+          465
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/repositories/network-badge-verifier-jobs.js",
+      "category": "runtime_source",
+      "sha256": "48a290051bebe1b536d7f032d35549b4d3e27cd2fcf3998b5f06cfda77e75551",
+      "matches": {
+        "glm52": [
+          347,
+          501
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/repositories/network-badges.js",
+      "category": "runtime_source",
+      "sha256": "eefafd3908ca4400c7fcb63a9477a174970814617fdbca481e48067f34c6e43b",
+      "matches": {
+        "glm52": [
+          640
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/repositories/recommended-connections-ranking.js",
+      "category": "runtime_source",
+      "sha256": "1038a1879dd908577c3e2247c565e7fc461de9a082c0a352a2180d4e6644de0f",
+      "matches": {
+        "ambient": [
+          1,
+          167,
+          177,
+          183,
+          211
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/repositories/team-context.js",
+      "category": "runtime_source",
+      "sha256": "780b6f36c5213dece404c719bcf2ad16a9870750669762fa56a7ae26b6940c56",
+      "matches": {
+        "vercel": [
+          434
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/system-status-readers.js",
+      "category": "runtime_source",
+      "sha256": "8eda182800c57681ffb8f5c86e379bec335000398fff44230717950ac488082c",
+      "matches": {
+        "glm-5.2": [
+          11
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/system-status-task-workers.js",
+      "category": "runtime_source",
+      "sha256": "ac1d259729cd4e8c7d93aa490a3bd1a552fe11fd1749f01eb87efa9515c80ea0",
+      "matches": {
+        "glm-5.2": [
+          217
+        ],
+        "glm 5.2": [
+          202
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/task-accounting-harvester-provider.js",
+      "category": "runtime_source",
+      "sha256": "3dbe81c26110d5814fd33c8a4c343efdca86a99d53b542ec20fd0f08cc2f28e5",
+      "matches": {
+        "ambient": [
+          4,
+          37,
+          42,
+          259,
+          274,
+          275,
+          304
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/task-evidence-processing.js",
+      "category": "runtime_source",
+      "sha256": "fcbe79f6312e267c6a4f54a5650d0f2d45932f3dc90ab7a731c329c9b61e1894",
+      "matches": {
+        "ambient": [
+          8,
+          46,
+          47,
+          67,
+          96
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/task-generation-contract.js",
+      "category": "runtime_source",
+      "sha256": "8236cc952acfedc968b793133f7999cd40c4dc51c43efa6c8a0604b0ab2cff4b",
+      "matches": {
+        "ambient": [
+          6,
+          7,
+          8,
+          9,
+          153,
+          164,
+          168,
+          170,
+          643,
+          658
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/task-generation-worker.js",
+      "category": "runtime_source",
+      "sha256": "bac44daa717029f846ca75d1e2d44d343c60742aaa989267063ad1d68d68de21",
+      "matches": {
+        "ambient": [
+          90,
+          91,
+          92
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/task-review-publication.js",
+      "category": "runtime_source",
+      "sha256": "0394d9cdc076882ebac79f90b53b1b1ab02d9e9363dbab3482cc3d368b08af94",
+      "matches": {
+        "ambient": [
+          11,
+          25,
+          29,
+          50,
+          62
+        ]
+      },
+      "imports_ambient_boundary": true,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/team-context-worker.js",
+      "category": "runtime_source",
+      "sha256": "7cf229435d26d905cf32426976142cd31ba537988e098a5722bd38062a701775",
+      "matches": {
+        "vercel": [
+          8,
+          9,
+          10,
+          11,
+          147,
+          148,
+          209,
+          223,
+          238,
+          249
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": true
+    },
+    {
+      "path": "server/telegram-bot.js",
+      "category": "runtime_source",
+      "sha256": "c7bd1229c597a512077301811b359ceaf1fc44f01ba3e9b4ac9311c98c60d948",
+      "matches": {
+        "ambient": [
+          241
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "server/vercel-inference.js",
+      "category": "runtime_source",
+      "sha256": "9958007305290fe3b5c972ec0ee5631acc6a4398e12bed456b68d1017189ea8f",
+      "matches": {
+        "vercel": [
+          1,
+          2,
+          8,
+          9,
+          12,
+          13,
+          16,
+          17,
+          18,
+          29,
+          31,
+          37,
+          38,
+          41,
+          61,
+          65,
+          66,
+          73
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "src/features/chat/AppChatDialogs.jsx",
+      "category": "frontend_source",
+      "sha256": "c2b561288b965ad3c0e5fc1f07d9268ba7674054ed076d8b68168f97851c6f5f",
+      "matches": {
+        "glm 5.2": [
+          249
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "src/features/chat/ChatSurface.jsx",
+      "category": "frontend_source",
+      "sha256": "4f1a720c09ddd76ebe67d8ffdd1b19d0ebcf3fdac332098e391f05171fee7390",
+      "matches": {
+        "glm 5.2": [
+          992
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "src/features/docs-library/DocsLibraryView.jsx",
+      "category": "frontend_source",
+      "sha256": "5605d44736802646695e0cb05c177de061ccba88d24aacbd01d6732e90119732",
+      "matches": {
+        "ambient": [
+          156
+        ],
+        "glm-5.2": [
+          156,
+          267,
+          281
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "src/features/docs/DocsView.jsx",
+      "category": "frontend_source",
+      "sha256": "c6ebdc4d019ae6f244d8ed0b83653ee8ab47c1c76e075bba2a1034ae98d5779c",
+      "matches": {
+        "ambient": [
+          501
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "src/features/profile/ProfileIdentityPanels.jsx",
+      "category": "frontend_source",
+      "sha256": "44c0b306541e9f91b91168aae091fc0aefa3771f2cf7d02072d0e623df6f1d11",
+      "matches": {
+        "glm 5.2": [
+          148,
+          150
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    },
+    {
+      "path": "src/features/profile/profile-view-shared.jsx",
+      "category": "frontend_source",
+      "sha256": "e8cb1f17c7d09ddcbb88ae4c521c650e000711ec5c3f843faf5edb82c99416d2",
+      "matches": {
+        "glm 5.2": [
+          78
+        ]
+      },
+      "imports_ambient_boundary": false,
+      "imports_vercel_boundary": false
+    }
+  ]
+}

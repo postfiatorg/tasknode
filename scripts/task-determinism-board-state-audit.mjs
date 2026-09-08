@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import { parseInferenceJson } from "../server/inference-text.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadPrompt, promptDigest } from "../server/prompt-registry.js";
 import { validateTaskgenOutput } from "../server/task-generation-worker.js";
-import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "../server/ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "../server/inference.js";
 
 const taskId = "task_724460b146babbd93e71cdce425bd0e6";
 const evidencePath = path.join(
@@ -14,7 +15,7 @@ const evidencePath = path.join(
 );
 const taskgenPromptPath = "task_engine/taskgen_personal_v1.md";
 const taskgenPromptVersion = "taskgen_personal_v1";
-const taskgenModel = process.env.TASKNODE_TASKGEN_MODEL || AMBIENT_MODELS.structured;
+const taskgenModel = process.env.TASKNODE_TASKGEN_MODEL || INFERENCE_MODELS.structured;
 
 const responseFormat = {
   type: "json_schema",
@@ -96,12 +97,7 @@ function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
 }
 
-function parseJsonObject(text = "") {
-  const raw = String(text || "").trim();
-  if (!raw.startsWith("```")) return JSON.parse(raw);
-  const stripped = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  return JSON.parse(stripped);
-}
+function parseJsonObject(text = "") { return parseInferenceJson(text); }
 
 function fixture({
   id,
@@ -355,7 +351,7 @@ function diffOutputs(a = {}, b = {}) {
 
 async function callTaskgen(taskInput, systemPrompt) {
   const startedAt = Date.now();
-  const result = await ambientChatCompletion({ capability: "strict_json", body: {
+  const result = await inferenceChatCompletion({ capability: "strict_json", body: {
       model: taskgenModel,
       messages: [
         { role: "system", content: systemPrompt },
@@ -434,8 +430,8 @@ async function captureLiveBoardState() {
 }
 
 async function main() {
-  if (!ambientConfigured()) {
-    throw new Error("AMBIENT_API_KEY required before running live audit");
+  if (!inferenceConfigured()) {
+    throw new Error("Inference credentials required before running live audit");
   }
   const systemPrompt = loadPrompt(taskgenPromptPath);
   const runs = [];
@@ -462,7 +458,7 @@ async function main() {
     environment: {
       repoPath: process.cwd(),
       appUrl: "https://tasknodeofficial-dev.fly.dev/",
-      provider: "ambient_chat_completions",
+      provider: "vercel_with_ambient_backup",
       model: taskgenModel,
       promptVersion: taskgenPromptVersion,
       promptDigest: promptDigest(systemPrompt),

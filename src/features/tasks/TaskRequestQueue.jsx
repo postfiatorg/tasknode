@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { requestJson } from "../../api";
 import {
   activeTaskRequests,
   attentionTaskRequests,
@@ -5,17 +7,25 @@ import {
 } from "./task-visible-state.js";
 
 function statusSlug(status = "") {
-  return String(status || "published")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const value = String(status || "published").toLowerCase();
+  return ["signing", "published", "queued", "generating", "proposed", "failed", "cancelled"].includes(value) ? value : "published";
 }
 
 function requestTitle(request = {}) {
   return request.userDetailText || request.requestText || "Task request";
 }
 
-function TaskRequestRow({ request }) {
+function TaskRequestRow({ request, onRefresh }) {
+  const [retry, setRetry] = useState({ pending: false, error: "" });
+  async function updateRequest(phase) {
+    setRetry({ pending: true, error: "" });
+    try {
+      const response = await requestJson("/api/tasks/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phase, expectedAccountId: request.accountId, requestId: request.requestId, expectedAttemptCount: request.workerAttemptCount }) });
+      if (!response.ok || !response.body?.ok) throw new Error(response.body?.message || "Could not update this request.");
+      await onRefresh?.();
+      setRetry({ pending: false, error: "" });
+    } catch (error) { setRetry({ pending: false, error: error.message }); }
+  }
   const statusClass = statusSlug(request.status);
   return (
     <article className={`task-request-row is-${statusClass}`}>
@@ -27,12 +37,17 @@ function TaskRequestRow({ request }) {
         </div>
         <p>{requestTitle(request)}</p>
         {request.lastError && <p className="task-request-row-error">{request.lastError}</p>}
+        {request.canRetry && <button className="task-request-text-button" type="button" disabled={retry.pending} onClick={() => updateRequest("retry")}>Retry request</button>}
+        {request.canDismiss && <button className="task-request-text-button" type="button" disabled={retry.pending} onClick={() => updateRequest("dismiss")}>Dismiss</button>}
+        {retry.pending && <span role="status">Updating request…</span>}
+        {retry.error && <p className="task-request-row-error" role="alert">{retry.error}</p>}
       </div>
     </article>
   );
 }
 
-export function TaskRequestQueue({ requests = [] }) {
+export function TaskRequestQueue({ requests = [], onRefresh }) {
+  const [expanded, setExpanded] = useState(false);
   const activeRequests = activeTaskRequests(requests);
   if (!activeRequests.length) return null;
   const processingCount = processingTaskRequests(activeRequests).length;
@@ -42,7 +57,7 @@ export function TaskRequestQueue({ requests = [] }) {
   if (activeRequests.length === 1) {
     return (
       <section className="task-request-queue" aria-label="Active task request">
-        <TaskRequestRow request={primary} />
+        <TaskRequestRow request={primary} onRefresh={onRefresh} />
       </section>
     );
   }
@@ -60,9 +75,10 @@ export function TaskRequestQueue({ requests = [] }) {
         </div>
         {extraCount > 0 && <em>+{extraCount}</em>}
       </div>
+      {activeRequests.length > 2 && <button type="button" className="task-request-text-button" onClick={() => setExpanded((value) => !value)}>{expanded ? "Show fewer requests" : `Show all ${activeRequests.length} requests`}</button>}
       <div className="task-request-queue-list">
-        {activeRequests.slice(0, 2).map((request) => (
-          <TaskRequestRow key={request.requestId} request={request} />
+        {activeRequests.slice(0, expanded ? activeRequests.length : 2).map((request) => (
+          <TaskRequestRow key={request.requestId} request={request} onRefresh={onRefresh} />
         ))}
       </div>
     </section>

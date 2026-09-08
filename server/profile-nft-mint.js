@@ -1,4 +1,5 @@
 import { pinContextIpfsJson } from "./context-ipfs.js";
+import { PROFILE_NFT_TITLE } from "../shared/profile-nft-art.js";
 import {
   pftUriToHex,
   preparePftNftMintTransaction,
@@ -11,8 +12,6 @@ import {
   markProfileNftMintPrepared,
 } from "./repositories/profile-nfts.js";
 
-const defaultTitle = "Task Node Profile NFT";
-
 function safeText(value = "", max = 2000) {
   return String(value || "").trim().slice(0, max);
 }
@@ -21,15 +20,26 @@ function linkedWalletAddressFromState(state = {}) {
   return safeText(state?.wallet?.pftWallet?.address || state?.session?.walletLink?.address || "", 120);
 }
 
-function metadataForNft(nft = {}) {
+export function metadataForNft(nft = {}) {
   return {
     schema: "erc721",
-    name: nft.title || defaultTitle,
+    name: nft.title || PROFILE_NFT_TITLE,
     description:
       nft.description ||
-      "Task Node profile NFT generated from private account context. Prompt text is intentionally not published.",
+      "Task Node profile artwork. Task history stays private.",
     image: `ipfs://${nft.imageCid}`,
+    ...(nft.metadataJson?.art ? { art: nft.metadataJson.art } : {}),
     attributes: [
+      ...(nft.metadataJson?.art ? [
+        { trait_type: "Collection", value: PROFILE_NFT_TITLE },
+        { trait_type: "Creature", value: nft.metadataJson.art.creature },
+        { trait_type: "Creature level", value: nft.metadataJson.art.creature_level },
+        { trait_type: "Hyperstition", value: nft.metadataJson.art.hyperstition, max_value: 100 },
+        { trait_type: "Bread and Circuses", value: nft.metadataJson.art.bread_and_circuses, max_value: 100 },
+        { trait_type: "Hostile AGI", value: nft.metadataJson.art.hostile_agi, max_value: 100 },
+        { trait_type: "Momentum", value: nft.metadataJson.art.momentum },
+        { trait_type: "Colors", value: nft.metadataJson.art.colors.join(" / ") },
+      ] : []),
       { trait_type: "Source", value: "Task Node Official" },
       { trait_type: "Model", value: nft.model || "gpt-image-2" },
       { trait_type: "Prompt digest", value: nft.promptDigest || "unavailable" },

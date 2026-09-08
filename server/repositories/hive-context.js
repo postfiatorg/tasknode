@@ -1,3 +1,4 @@
+import { isWhitespace, replaceCharacterRuns } from "../../shared/text-protocol.js";
 import { createHash, randomUUID } from "node:crypto";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
 import { compactProjectLeaderAuthority } from "../project-leader-badge.js";
@@ -29,7 +30,7 @@ export function hiveContextRepositoryStatus() {
 }
 
 function safeText(value = "", max = 1000) {
-  return String(value || "").trim().replace(/\s+\n/g, "\n").slice(0, max);
+  return String(value || "").trim().split("\n").map((line) => line.trimEnd()).join("\n").slice(0, max);
 }
 
 function safeAccountId(value = "") {
@@ -120,7 +121,7 @@ function stableDigestValue(value) {
 }
 
 function oneLine(value = "", max = 800) {
-  return safeText(value, max).replace(/\s+/g, " ");
+  return replaceCharacterRuns(safeText(value, max),isWhitespace," ");
 }
 
 function displayWallet(value = "") {

@@ -1,0 +1,215 @@
+{
+  "observedAt": "2026-09-05T18:21:14.433Z",
+  "tasks": [
+    {
+      "task_id": "task_00a15287c9d4eda8eb072704069d4652",
+      "status": "verification_response_submitted",
+      "updated_at": "2026-07-24T17:18:37.554Z",
+      "workers": {
+        "reward_scoring": {
+          "last_error": "The destination account is not activated on PFTL.",
+          "processing": "false",
+          "updated_at": "2026-07-24T17:18:37.549Z"
+        },
+        "verification_request": {
+          "cid": "postgres:evt_a1482faecde3eef780980a76",
+          "tx_hash": "offchain:evt_a1482faecde3eef780980a76",
+          "published": "true",
+          "processing": "false",
+          "published_at": "2026-07-24T17:13:08.618Z"
+        }
+      },
+      "payment_guard": {
+        "status": "submit_unknown",
+        "task_id": "task_00a15287c9d4eda8eb072704069d4652",
+        "event_id": "evt_9e309d49c29c41d001d54f63",
+        "created_at": "2026-07-24T17:18:33.396Z",
+        "last_error": "The destination account is not activated on PFTL.",
+        "reward_pft": "0.40",
+        "updated_at": "2026-07-24T17:18:37.533Z",
+        "payload_digest": "a8e6717aa0bb534253c31b73a799b93cba972bcc379af96e77960b754ff7877d"
+      },
+      "publications": [
+        {
+          "error": "The destination account is not activated on PFTL.",
+          "status": "error",
+          "worker": "reward_scoring",
+          "metadata": {
+            "phase": "reward_scoring",
+            "reward_cid": "",
+            "reward_tx_hash": "",
+            "subject_wallet": "rsa287psLhyX7fvDud8bFPVgrQjEDsKodn",
+            "submission_stage": "transaction_submit",
+            "submission_attempted": true,
+            "publication_attempted": true,
+            "verification_response_cid": ""
+          },
+          "updated_at": "2026-07-24T17:18:37.50372+00:00"
+        },
+        {
+          "error": "",
+          "status": "published",
+          "worker": "verification_request",
+          "metadata": {
+            "phase": "verification_request",
+            "source": "direct_write_by_worker",
+            "subject_wallet": "rsa287psLhyX7fvDud8bFPVgrQjEDsKodn",
+            "submission_cid": ""
+          },
+          "updated_at": "2026-07-24T17:13:08.611355+00:00"
+        }
+      ],
+      "rewards": null
+    },
+    {
+      "task_id": "task_b3aff46e1d68c83810b10e120d42e304",
+      "status": "verification_response_submitted",
+      "updated_at": "2026-08-12T16:10:56.853Z",
+      "workers": {
+        "reward_scoring": {
+          "published": "false",
+          "claimed_at": "2026-08-12T16:10:56.874Z",
+          "processing": "true"
+        },
+        "verification_request": {
+          "cid": "postgres:evt_55d02d596b3275b01269da20",
+          "tx_hash": "offchain:evt_55d02d596b3275b01269da20",
+          "published": "true",
+          "processing": "false",
+          "published_at": "2026-07-17T14:38:47.355Z"
+        }
+      },
+      "payment_guard": null,
+      "publications": [
+        {
+          "error": "",
+          "status": "reserved",
+          "worker": "reward_scoring",
+          "metadata": {
+            "phase": "reward_scoring",
+            "subject_wallet": "r4RPpeS2kUE8BjY9LvKbptW8PQVHhVWghS",
+            "verification_response_cid": ""
+          },
+          "updated_at": "2026-08-12T16:11:32.560264+00:00"
+        },
+        {
+          "error": "",
+          "status": "published",
+          "worker": "verification_request",
+          "metadata": {
+            "phase": "verification_request",
+            "source": "direct_write_by_worker",
+            "subject_wallet": "r4RPpeS2kUE8BjY9LvKbptW8PQVHhVWghS",
+            "submission_cid": ""
+          },
+          "updated_at": "2026-07-17T14:38:47.346762+00:00"
+        }
+      ],
+      "rewards": null
+    },
+    {
+      "task_id": "task_cdd241775a0a65ddae909bae3b771d29",
+      "status": "verification_response_submitted",
+      "updated_at": "2026-08-29T13:10:42.804Z",
+      "workers": null,
+      "payment_guard": null,
+      "publications": [
+        {
+          "error": "",
+          "status": "published",
+          "worker": "reward_scoring",
+          "metadata": {
+            "phase": "reward_scoring",
+            "source": "published_by_worker",
+            "reward_cid": "",
+            "reward_pft": "0.00",
+            "decision_cid": "QmZJgzZfgkyujnz262n7ciHeXqbAvzoN5CuvvSSrgai8Xy",
+            "reward_tx_hash": "",
+            "subject_wallet": "rhwiJxkiTkxTC65MrmLG7WiUkbiCyw2TaE",
+            "decision_tx_hash": "2830ACF922C2398E3B2DA295D5182E2A3CA4D0F594A1EC5B0B2B805513670936",
+            "reward_payment_required": false,
+            "verification_response_cid": ""
+          },
+          "updated_at": "2026-06-01T23:27:41.571139+00:00"
+        }
+      ],
+      "rewards": [
+        {
+          "cid": "QmZJgzZfgkyujnz262n7ciHeXqbAvzoN5CuvvSSrgai8Xy",
+          "type": "pf.task.reward_decision.v1",
+          "tx_hash": "2830ACF922C2398E3B2DA295D5182E2A3CA4D0F594A1EC5B0B2B805513670936"
+        },
+        {
+          "cid": "QmT434y6ZgnLMWUxarzcDFZye9GNmiPSbiqgKaVTumFE1X",
+          "type": "pf.task.reward_decision.v1",
+          "tx_hash": "D5969712CC1F3A7544DF606CA0C34021C66CF13ECC7DD09A198292A4EE71887F"
+        }
+      ]
+    },
+    {
+      "task_id": "task_2d5fd452fc4bcbf054075ad3e534269b",
+      "status": "verification_response_submitted",
+      "updated_at": "2026-09-05T18:06:45.510Z",
+      "workers": {
+        "reward_scoring": {
+          "published": "false",
+          "claimed_at": "2026-09-05T18:06:39.385Z",
+          "last_error": "context_ipfs_payload_too_large",
+          "processing": "false",
+          "updated_at": "2026-09-05T18:06:45.530Z",
+          "retry_after": "2026-09-05T18:21:45.530Z",
+          "retry_count": 27
+        },
+        "verification_request": {
+          "cid": "postgres:evt_e8346e5c1c13fabe99f39adb",
+          "tx_hash": "offchain:evt_e8346e5c1c13fabe99f39adb",
+          "published": "true",
+          "processing": "false",
+          "published_at": "2026-09-05T12:09:41.704Z"
+        }
+      },
+      "payment_guard": {
+        "status": "retry_wait",
+        "task_id": "task_2d5fd452fc4bcbf054075ad3e534269b",
+        "event_id": "evt_9b6f939edefa7836160105d0",
+        "created_at": "2026-09-05T18:06:45.234Z",
+        "last_error": "context_ipfs_payload_too_large",
+        "reward_pft": "4.00",
+        "updated_at": "2026-09-05T18:06:45.489Z",
+        "retry_after": "2026-09-05T18:21:45.447Z",
+        "payload_digest": "072de2c45a035e979d40c44ce2da5db33175f23544696044ab2ba02b32e7d174"
+      },
+      "publications": [
+        {
+          "error": "context_ipfs_payload_too_large",
+          "status": "retry_wait",
+          "worker": "reward_scoring",
+          "metadata": {
+            "phase": "reward_scoring",
+            "retry_after": "2026-09-05T18:21:45.447Z",
+            "retry_count": 27,
+            "subject_wallet": "rPTCS8SJr17SbMVSoro1vHF13iFQAXPN5w",
+            "submission_stage": "ipfs_pin",
+            "submission_attempted": false,
+            "publication_attempted": true,
+            "verification_response_cid": ""
+          },
+          "updated_at": "2026-09-05T18:06:45.422956+00:00"
+        },
+        {
+          "error": "",
+          "status": "published",
+          "worker": "verification_request",
+          "metadata": {
+            "phase": "verification_request",
+            "source": "direct_write_by_worker",
+            "subject_wallet": "rPTCS8SJr17SbMVSoro1vHF13iFQAXPN5w",
+            "submission_cid": ""
+          },
+          "updated_at": "2026-09-05T12:09:41.700363+00:00"
+        }
+      ],
+      "rewards": null
+    }
+  ]
+}

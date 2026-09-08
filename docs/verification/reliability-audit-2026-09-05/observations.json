@@ -1,0 +1,347 @@
+{
+  "auditDate": "2026-09-05",
+  "scope": "Read-only production observations and static source audit; no task mutation or model calls",
+  "publicSystemStatus": {
+    "generatedAt": "2026-09-05T15:24:34.915Z",
+    "elapsedSeconds": 8.183,
+    "summary": {
+      "ok": 15,
+      "warning": 6,
+      "critical": 2,
+      "unknown": 0,
+      "disabled": 1,
+      "total": 24
+    },
+    "items": [
+      {
+        "id": "board_manager",
+        "status": "disabled",
+        "statusLabel": "Retired",
+        "lastRunAt": null,
+        "lastSuccessAt": null,
+        "counts": {},
+        "cadence": "disabled"
+      },
+      {
+        "id": "hive_board_secretary",
+        "status": "ok",
+        "statusLabel": "Current",
+        "lastRunAt": "2026-09-05T15:16:32.696Z",
+        "lastSuccessAt": "2026-09-05T15:16:32.696Z",
+        "counts": {
+          "current": 25,
+          "failed": 784,
+          "superseded": 37894,
+          "activeProjects": 7
+        },
+        "cadence": "900s"
+      },
+      {
+        "id": "hive_active_projects",
+        "status": "critical",
+        "statusLabel": "Queue stale",
+        "lastRunAt": "2026-08-04T00:22:03.126Z",
+        "lastSuccessAt": "2026-08-04T00:22:03.126Z",
+        "counts": {
+          "failed": 15,
+          "completed": 790,
+          "pending": 23
+        },
+        "cadence": "60000ms"
+      },
+      {
+        "id": "context_rewrite",
+        "status": "warning",
+        "statusLabel": "Failures present",
+        "lastRunAt": null,
+        "lastSuccessAt": null,
+        "counts": {
+          "completed": 18,
+          "failed": 5,
+          "stale": 0,
+          "provider_running": 0,
+          "provider_timed_out": 0,
+          "provider_orphaned": 0
+        },
+        "cadence": "15000ms"
+      },
+      {
+        "id": "network_task_generation",
+        "status": "ok",
+        "statusLabel": "Current",
+        "lastRunAt": "2026-09-05T01:18:24.965Z",
+        "lastSuccessAt": "2026-09-05T01:18:24.965Z",
+        "counts": {
+          "failed": 107,
+          "published": 743
+        },
+        "cadence": "5000ms"
+      },
+      {
+        "id": "task_generation",
+        "status": "warning",
+        "statusLabel": "Recent failed requests",
+        "lastRunAt": "2026-09-05T15:06:11.389Z",
+        "lastSuccessAt": "2026-09-05T15:06:11.389Z",
+        "counts": {
+          "cancelled": 108,
+          "failed": 51,
+          "intent_recorded": 11,
+          "proposed": 2044
+        },
+        "cadence": "5000ms"
+      },
+      {
+        "id": "task_review",
+        "status": "critical",
+        "statusLabel": "Review queue stale",
+        "lastRunAt": "2026-09-05T15:13:38.346Z",
+        "lastSuccessAt": "2026-09-05T15:13:38.346Z",
+        "counts": {
+          "submitted": 0,
+          "verification_response_submitted": 3,
+          "awaiting_agent_verification_request": 0,
+          "awaiting_agent_review_decision": 0,
+          "retry_backoff": 1,
+          "reward_submit_unknown": 1,
+          "publication_stalled": 2
+        },
+        "cadence": "5000ms"
+      }
+    ]
+  },
+  "databaseReadOnly": {
+    "observedAt": "2026-09-05T15:27:12.341Z",
+    "hiveTaskManagerLastRuns": [
+      {
+        "status": "completed",
+        "selected_action": "create_task",
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "shadow": false,
+        "started_at": "2026-09-05T15:25:23.918Z",
+        "completed_at": "2026-09-05T15:25:42.238Z",
+        "blocked_reasons": [
+          "selected_board_not_active",
+          "missing_project_need_summary"
+        ],
+        "executed": "false"
+      },
+      {
+        "status": "completed",
+        "selected_action": "create_task",
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "shadow": false,
+        "started_at": "2026-09-05T15:20:23.636Z",
+        "completed_at": "2026-09-05T15:20:44.743Z",
+        "blocked_reasons": [
+          "selected_board_not_active",
+          "missing_project_need_summary"
+        ],
+        "executed": "false"
+      },
+      {
+        "status": "completed",
+        "selected_action": "create_task",
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "shadow": false,
+        "started_at": "2026-09-05T15:15:24.104Z",
+        "completed_at": "2026-09-05T15:15:44.054Z",
+        "blocked_reasons": [
+          "selected_board_not_active",
+          "missing_project_need_summary"
+        ],
+        "executed": "false"
+      },
+      {
+        "status": "completed",
+        "selected_action": "create_task",
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "shadow": false,
+        "started_at": "2026-09-05T15:10:24.121Z",
+        "completed_at": "2026-09-05T15:11:03.212Z",
+        "blocked_reasons": [
+          "selected_board_not_active",
+          "missing_project_need_summary"
+        ],
+        "executed": "false"
+      },
+      {
+        "status": "completed",
+        "selected_action": "create_task",
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "shadow": false,
+        "started_at": "2026-09-05T15:05:23.946Z",
+        "completed_at": "2026-09-05T15:05:42.948Z",
+        "blocked_reasons": [
+          "selected_board_not_active",
+          "missing_project_need_summary"
+        ],
+        "executed": "false"
+      }
+    ],
+    "hiveTaskManagerLast24Hours": {
+      "runs": 290,
+      "failed": 185,
+      "executed": 0
+    },
+    "taskRequestLast24Hours": {
+      "completed_receipts": 15,
+      "created_to_last_claim_p50_seconds": 0.282511,
+      "created_to_last_claim_p95_seconds": 0.3960259999999999,
+      "last_attempt_p50_seconds": 45.702098,
+      "last_attempt_p95_seconds": 63.331025999999994
+    }
+  },
+  "providerOutputShapesOnly": {
+    "observedAt": "2026-09-05T15:29:42.349Z",
+    "outputShapeAudit": [
+      {
+        "startedAt": "2026-09-05T15:25:23.918Z",
+        "sourceActiveBoards": 7,
+        "sourceEligibleOperators": 8,
+        "outputKeys": [
+          "action",
+          "board",
+          "operator",
+          "project_need_summary",
+          "routing_reason",
+          "task_intent"
+        ],
+        "boardKeys": [],
+        "intentKeys": [
+          "lane",
+          "title",
+          "description",
+          "targetSurface",
+          "requiredOutcome",
+          "completionEvidence",
+          "suggestedRewardOfferPft",
+          "antiDuplicationNotes"
+        ],
+        "rawProjectIdPresent": false,
+        "rawNeedPresent": false,
+        "normalizedProjectIdPresent": false,
+        "normalizedNeedPresent": false
+      },
+      {
+        "startedAt": "2026-09-05T15:20:23.636Z",
+        "sourceActiveBoards": 7,
+        "sourceEligibleOperators": 7,
+        "outputKeys": [
+          "action",
+          "selected_board",
+          "selected_operator",
+          "project_need_summary",
+          "task_intent",
+          "routing_reason",
+          "task_state_check_note"
+        ],
+        "boardKeys": [],
+        "intentKeys": [
+          "lane",
+          "title",
+          "target_surface",
+          "description",
+          "required_deliverable",
+          "completion_evidence",
+          "suggested_reward_pft"
+        ],
+        "rawProjectIdPresent": false,
+        "rawNeedPresent": false,
+        "normalizedProjectIdPresent": false,
+        "normalizedNeedPresent": false
+      },
+      {
+        "startedAt": "2026-09-05T15:15:24.104Z",
+        "sourceActiveBoards": 7,
+        "sourceEligibleOperators": 8,
+        "outputKeys": [
+          "action",
+          "selected_board",
+          "selected_operator",
+          "lane",
+          "project_need_summary",
+          "routing_reason",
+          "task_intent"
+        ],
+        "boardKeys": [],
+        "intentKeys": [
+          "title",
+          "work_type",
+          "public_surface",
+          "code_path",
+          "description",
+          "required_outcome",
+          "completion_evidence",
+          "verification_note"
+        ],
+        "rawProjectIdPresent": false,
+        "rawNeedPresent": false,
+        "normalizedProjectIdPresent": false,
+        "normalizedNeedPresent": false
+      }
+    ]
+  },
+  "localBoardRuntime": {
+    "observedAt": "2026-09-05T15:22:38Z",
+    "session": "bm-pfterminal",
+    "corbanuChildProcessPresent": true,
+    "provider": "kimi-code",
+    "model": "kimi-k3",
+    "launchedAt": "2026-09-05T06:10:06Z",
+    "strikes": 0,
+    "pendingWakeFilePresent": false,
+    "boards": [
+      "board_pf_terminal",
+      "board_community_promotion",
+      "board_postfiat_l1v2",
+      "board_ai_l1_governance",
+      "board_tasknode_fixes",
+      "board_capital_markets"
+    ],
+    "cronMinutes": {
+      "whip": 15,
+      "transcript": 5
+    },
+    "dailyResetUtc": "06:00",
+    "cronPathAliasResolvesToCanonicalRepository": true,
+    "dutyCompletionVerified": false
+  },
+  "sourceFiles": {
+    "server/tasknode-terminal-routes.js": "6dd342eeb8330f2bfe42e1fa0aa94f8b7118bf9a9ebfaf91c6cfcd98cec78a33",
+    "server/task-request.js": "0486d6bf42d10ea8d7581a835ee8c8abf51c29f1a9ff21416877251adf8fa700",
+    "server/task-request-terminal-bundle.js": "d7f1caa3e6e8146d0141a67fffabf705899dee8f6cfbd3df368aa33df071b8ba",
+    "server/task-generation-worker.js": "4efdbeff32d1a68470ef1104e6828d0538bb6755d1dabe1e6ed456fcf44310d2",
+    "server/network-task-generation-worker.js": "bd83dddf9e20afb41723905048511615f76a2b179a67bd6808e9a1764d696911",
+    "server/repositories/task-requests.js": "19335cf3fdd197c488dfa397cc319eb55853869da0d9c04347f45fea60af41c9",
+    "server/repositories/network-task-generation-jobs.js": "1dfd4dcbc5a34832a1239a78f850179f98ec9b7e5882955c3a58899bb2826e20",
+    "server/repositories/network-task-enqueue.js": "9d5b1f04c0666fc727cf794854cd2b36d40ec275dd25461e9c3428bd9be05dc8",
+    "server/hive-task-manager-provider.js": "8f9d381c471ac854caf7ebb9289ecd9a35d586f439001a74bd5d84e15d8afc00",
+    "server/repositories/hive-task-manager.js": "964ab2a00c2cb754c88d1606a890ad0da24781d003ce090bdfad69ac1d0ef54b",
+    "server/hive-task-manager-worker.js": "e6ac4989e99447db5f2611681731b1fc96edabab609016393794f290dcca8563",
+    "server/offchain-task-lifecycle.js": "16a6c751810bd2fa1352c53ce52d70b77436cc529361b064c0e53510c403ac3b",
+    "server/inference.js": "337bed416fcf23535ffb14ba4a78d76e6836482c3922bd59e034f7370f2a2f33",
+    "server/inference-policy.js": "7448efec0d018cb5b752c12bc4a72b60adce9d70ebbab35bbae32e948d44f0d3",
+    "server/background-workers.js": "20ae46e1d2324353d3c60021b499947bca040fc348e0f351b62a10e074bf3599",
+    "server/server-http-boundary.js": "3ee25f6ff559c94c1e1d7cdf9d34b23eecacdd2e61814903de3dfb31e43a45c7",
+    "scripts/inference-no-regex-check.mjs": "3dbc2e5a88dbe40042bf149ed3d74ddff4890c3f1eb0171c78647e331eb25256",
+    "scripts/bm.mjs": "4083f10d8131b1bc5d3e0730477e9287195e4274d5b242d195a2421e9747b285",
+    "scripts/bm/writes.mjs": "1981f1ffeaaf643e9688039189ae076ac5a632066ff50d87f46ee9eeeb4e9d14",
+    "ops/bm-runtime/bm-env.sh": "d82782ef7da5a99cbcc31c31fe997257829feeac1979d6a37a84308ab8b9bbd6",
+    "ops/bm-runtime/bm-launch.sh": "849bd9e113028a5e2fe49fd19fe5a3dff3f5ae7af7d6be192c641bb5eb030319",
+    "ops/bm-runtime/bm-whip.sh": "666721879f031ea4f5b93f802f9256ed7dc2523cc8cb70aaf8be645ed365b64f",
+    "ops/bm-runtime/bm-reset.sh": "28a3ca02ee642460687e116a4f7acc241375bdfd979a09fe020c6805650df1db",
+    "ops/bm-runtime/bm-transcript.sh": "712e6bee08c8891ca520225b261bc6e08d372944cec3a859b25ed8c04a752551",
+    "prompts/hive/task_manager_selection_v1.md": "b52b0cfe19ff26e3487f9d3a7cc19466e5cb8ac636c371fd52ab4b7b2ad9af92",
+    "prompts/task_engine/taskgen_network_v2.md": "4e31f77fde68f81c997bbe88e1bf88b9bb22b6168c4f5211a7c2d17b9009e166",
+    "fly.toml": "8bbe9cf774fb16fc450105a68e12a411ba6b574b95c9dfa9bcecfdef1b025618",
+    "../CorbanuTerminal/codex-rs/tui/src/chatwidget/tasknode_menu.rs": "a765324190e2a41938386b69d359ee2773d193f72f3a5b78d36b31f4202d84a2",
+    "../CorbanuTerminal/codex-rs/cli/src/tasknode_cmd.rs": "1a0d4227c8a38993dd920e53d5296ca6808a963198cbc5501479e68e628f7977",
+    "server/repositories/network-task-eligibility.js": "7a0a14522d5a08261bf0784d538a08f3415160700f8f2d4bf1d3668bcdfb8cc0"
+  }
+}

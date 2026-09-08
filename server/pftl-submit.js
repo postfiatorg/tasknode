@@ -1,3 +1,4 @@
+import { isAsciiDigit, isHex, splitWhitespace } from "./inference-text.js";
 import https from "node:https";
 import { Client, Wallet, decode, isValidClassicAddress, xrpToDrops } from "xrpl";
 import { pftlWssRejectUnauthorized } from "./pftl-wss-tls.js";
@@ -7,8 +8,7 @@ const DEFAULT_TIMEOUT_MS = 15000;
 const MIN_LAST_LEDGER_OFFSET = 120;
 
 function splitUrls(value) {
-  return String(value || "")
-    .split(/[,\s]+/)
+  return String(value || "").split(",").flatMap(splitWhitespace)
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -48,7 +48,7 @@ function endpointCandidates(env = process.env) {
   const explicit = splitUrls(env.PFTL_WSS_URL || env.VITE_PFTL_WSS_URL).map(normalizeWssUrl);
   const fallback = splitUrls(env.PFTL_WSS_URL_FALLBACKS).map(normalizeWssUrl);
   const derived = splitUrls(env.PFTL_RPC_URL || env.PFTL_RPC_URL_FALLBACKS)
-    .filter((url) => /^wss?:\/\//i.test(url))
+    .filter((url) => ["ws://", "wss://"].some((prefix) => url.toLowerCase().startsWith(prefix)))
     .map(normalizeWssUrl);
   return uniqueUrls([...explicit, ...fallback, ...derived]);
 }
@@ -178,12 +178,12 @@ function applyLastLedgerBuffer(txJson, validatedLedgerSeq) {
 
 function normalizeTokenIdValue(value) {
   const text = String(value || "").trim();
-  return /^[A-Fa-f0-9]{32,256}$/.test(text) ? text.toUpperCase() : "";
+  return (text.length >= 32 && text.length <= 256 && isHex(text)) ? text.toUpperCase() : "";
 }
 
 function decodeHexToUtf8(value) {
   const text = String(value || "").trim();
-  if (!text || text.length % 2 !== 0 || !/^[A-Fa-f0-9]+$/.test(text)) return "";
+  if (!text || text.length % 2 !== 0 || !isHex(text)) return "";
   try {
     return Buffer.from(text, "hex").toString("utf8");
   } catch {
@@ -299,7 +299,7 @@ export async function preparePftPointerTransaction({
   }
 
   const drops = String(amountDrops || "1").trim();
-  if (!/^\d+$/.test(drops) || BigInt(drops) <= 0n) {
+  if (!(drops.length > 0 && [...drops].every(isAsciiDigit)) || BigInt(drops) <= 0n) {
     const error = new Error("pointer_amount_invalid");
     error.status = 400;
     throw error;
@@ -404,7 +404,11 @@ export async function preparePftPaymentTransaction({
   let drops = String(amountDrops || "").trim();
   if (!drops) {
     const amountText = String(amountPft || "").trim();
-    if (!amountText || !/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(amountText)) {
+    const [whole = "", fraction, extra] = amountText.split(".");
+    const validAmount = whole.length > 0 && [...whole].every(isAsciiDigit) &&
+      (whole === "0" || !whole.startsWith("0")) && extra === undefined &&
+      (fraction === undefined || (fraction.length >= 1 && fraction.length <= 6 && [...fraction].every(isAsciiDigit)));
+    if (!validAmount) {
       const error = new Error("payment_amount_invalid");
       error.status = 400;
       throw error;
@@ -418,7 +422,7 @@ export async function preparePftPaymentTransaction({
     }
   }
 
-  if (!/^\d+$/.test(drops) || BigInt(drops) <= 0n) {
+  if (!(drops.length > 0 && [...drops].every(isAsciiDigit)) || BigInt(drops) <= 0n) {
     const error = new Error("payment_amount_invalid");
     error.status = 400;
     throw error;
@@ -504,7 +508,7 @@ export async function preparePftNftMintTransaction({
   }
 
   const normalizedUriHex = String(uriHex || "").trim().toUpperCase();
-  if (!normalizedUriHex || normalizedUriHex.length % 2 !== 0 || !/^[A-F0-9]+$/.test(normalizedUriHex)) {
+  if (!normalizedUriHex || normalizedUriHex.length % 2 !== 0 || !isHex(normalizedUriHex)) {
     const error = new Error("nft_uri_hex_invalid");
     error.status = 400;
     throw error;
@@ -568,7 +572,7 @@ export async function submitSignedPftTransaction({
   env = process.env,
 } = {}) {
   const blob = String(signedTxBlob || "").trim();
-  if (!/^[A-Fa-f0-9]+$/.test(blob)) {
+  if (!isHex(blob)) {
     const error = new Error("signed_transaction_blob_invalid");
     error.status = 400;
     throw error;
@@ -663,7 +667,7 @@ export async function submitSignedPftNftMintTransaction({
   env = process.env,
 } = {}) {
   const blob = String(signedTxBlob || "").trim();
-  if (!/^[A-Fa-f0-9]+$/.test(blob)) {
+  if (!isHex(blob)) {
     const error = new Error("signed_transaction_blob_invalid");
     error.status = 400;
     throw error;
@@ -741,5 +745,17 @@ export async function submitSignedPftNftMintTransaction({
     } catch {
       // Keep the submit result/error as the actionable outcome.
     }
+  }
+}
+
+// Read-only reconciliation; never submits or signs a payment.
+export async function readPftlTransaction({ txHash, env = process.env } = {}) {
+  if (!isHex(txHash) || txHash.length !== 64) throw new Error("transaction_hash_invalid");
+  const { client } = await connectPftlClient({ env, timeoutMs: DEFAULT_TIMEOUT_MS });
+  try {
+    const result = await client.request({ command: "tx", transaction: txHash, binary: false });
+    return result.result;
+  } finally {
+    if (client.isConnected()) await client.disconnect();
   }
 }

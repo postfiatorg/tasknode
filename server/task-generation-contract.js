@@ -1,12 +1,14 @@
+import { collapseWhitespace, isIdentifierChar, isWhitespace } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { Wallet } from "xrpl";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { buildTaskgenReplayKey } from "./repositories/taskgen-replay-cache.js";
+import { reviewTaskGenerationReadiness } from "./task-generation-readiness.js";
 import {
-  AMBIENT_MODELS,
-  ambientChatCompletion,
-  resolveAmbientModel,
-} from "./ambient-inference.js";
+  INFERENCE_MODELS,
+  inferenceChatCompletion,
+  resolveInferenceModel,
+} from "./inference.js";
 
 const TASKGEN_PERSONAL_PROMPT = {
   path: "task_engine/taskgen_personal_v1.md",
@@ -33,16 +35,16 @@ const taskgenResponseFormat = {
       additionalProperties: false,
       properties: {
         schema: { type: "string", enum: ["pf.taskgen.output.v1"] },
-        title: { type: "string" },
-        description: { type: "string" },
+        title: { type: "string", minLength: 5, maxLength: 240 },
+        description: { type: "string", minLength: 20, maxLength: 8000 },
         task_kind: { type: "string", enum: ["personal", "network", "alpha"] },
-        steps: { type: "array", items: { type: "string" } },
+        steps: { type: "array", minItems: 2, maxItems: 5, items: { type: "string", minLength: 5, maxLength: 1000 } },
         submission_requirement: {
           type: "object",
           additionalProperties: false,
           properties: {
             type: { type: "string", enum: ["text", "url", "github_commit", "screenshot", "file", "mixed"] },
-            criteria: { type: "string" },
+            criteria: { type: "string", minLength: 20, maxLength: 4000 },
           },
           required: ["type", "criteria"],
         },
@@ -150,7 +152,7 @@ export function taskgenPromptForInput(taskInput = {}) {
 
 export function taskgenProviderForInput(_taskInput = {}, env = process.env) {
   if (env.TASKNODE_TASKGEN_PROVIDER_MOCK === "true") return "mock";
-  return "ambient";
+  return "vercel";
 }
 
 export function taskgenModelForInput(taskInput = {}, env = process.env) {
@@ -161,13 +163,13 @@ export function taskgenModelForInput(taskInput = {}, env = process.env) {
       env.TASKNODE_NETWORK_TASKGEN_MODEL ||
         env.TASKNODE_HIVE_TASK_GENERATION_MODEL ||
         env.TASKNODE_TASKGEN_MODEL ||
-        AMBIENT_MODELS.structured,
+        INFERENCE_MODELS.structured,
       160
     );
   } else {
-    requestedModel = safeText(env.TASKNODE_TASKGEN_MODEL || AMBIENT_MODELS.structured, 160);
+    requestedModel = safeText(env.TASKNODE_TASKGEN_MODEL || INFERENCE_MODELS.structured, 160);
   }
-  return resolveAmbientModel({
+  return resolveInferenceModel({
     model: requestedModel,
     capability: "strict_json",
     env,
@@ -360,14 +362,18 @@ function normalizeTaskKind(value = "", policy = {}) {
 }
 
 export function validateTaskgenOutput(output = {}, policy = {}) {
+  const outputText = (value, minimum, maximum) => typeof value === "string" && value.trim().length >= minimum && value.trim().length <= maximum;
   const required = ["title", "description", "task_kind", "submission_requirement", "verification_policy", "reward_offer", "deadline"];
   const missing = required.filter((key) => output[key] === undefined || output[key] === null);
   if (missing.length) throw new Error(`taskgen_output_missing:${missing.join(",")}`);
   if (output.schema !== "pf.taskgen.output.v1") throw new Error("taskgen_output_schema_invalid");
+  if (!outputText(output.title, 5, 240) || !outputText(output.description, 20, 8000)) throw new Error("taskgen_description_invalid");
   const requirement = safeObject(output.submission_requirement);
-  if (!requirement.type || !requirement.criteria) throw new Error("taskgen_submission_requirement_invalid");
+  const evidenceTypes = ["text", "url", "github_commit", "screenshot", "file", "mixed"];
+  if (!evidenceTypes.includes(requirement.type) || !outputText(requirement.criteria, 20, 4000)) throw new Error("taskgen_submission_requirement_invalid");
   const verification = safeObject(output.verification_policy);
-  if (!verification.verification_type || !verification.mode) throw new Error("taskgen_verification_policy_invalid");
+  if (!evidenceTypes.includes(verification.verification_type) || !outputText(verification.mode, 1, 120) || typeof verification.followup_required !== "boolean") throw new Error("taskgen_verification_policy_invalid");
+  if (!Array.isArray(output.steps) || output.steps.length > 5 || output.steps.some((step) => !outputText(step, 5, 1000))) throw new Error("taskgen_steps_invalid");
   const steps = Array.isArray(output.steps)
     ? output.steps.map((step) => safeText(step, 1000)).filter(Boolean).slice(0, 5)
     : [];
@@ -577,7 +583,7 @@ function mockTaskgenOutput(taskInput = {}) {
   const titleBase = safeText(networkTask.action_output || networkTask.project_need_summary || taskInput.request?.requestText || "Prepare Task Evidence", 80);
   return validateTaskgenOutput({
     schema: "pf.taskgen.output.v1",
-    title: safeText(titleBase.replace(/[^\w\s-]+/g, " ").replace(/\s+/g, " ").trim() || "Prepare Task Evidence", 72),
+    title: safeText(collapseWhitespace([...titleBase].map((char) => isIdentifierChar(char) || isWhitespace(char) ? char : " ").join("")) || "Prepare Task Evidence", 72),
     description: safeText(
       [
         networkTask.project_title ? `This task supports ${networkTask.project_title}.` : "This task supports the selected Task Node project.",
@@ -640,10 +646,11 @@ export async function generateTaskWithProvider(taskInput, {
   }
   let completion;
   try {
-    completion = await ambientChatCompletion({
+    completion = await inferenceChatCompletion({
       fetchImpl,
       capability: "strict_json",
       timeoutMs: providerTimeoutMs,
+      totalTimeoutMs: Math.max(1000, Number(process.env.TASKNODE_TASK_GENERATION_TOTAL_TIMEOUT_MS) || 540_000),
       body: {
         model,
         messages: [
@@ -651,22 +658,33 @@ export async function generateTaskWithProvider(taskInput, {
           { role: "user", content: baseInstruction },
         ],
         response_format: taskgenResponseFormat,
+        max_tokens: Math.max(32768, Number(process.env.TASKNODE_TASK_GENERATION_MAX_OUTPUT_TOKENS) || 65536),
         reasoning: { effort: apiConfig.reasoningEffort },
       },
     });
   } catch (error) {
-    if (error?.code === "ambient_timeout") {
+    if (error?.code === "inference_timeout") {
       throw Object.assign(new Error("taskgen_provider_timeout"), { code: "TASKGEN_PROVIDER_TIMEOUT", timeoutMs: providerTimeoutMs });
+    }
+    if (error?.code === "inference_response_truncated") {
+      throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: "taskgen_output_truncated" });
     }
     throw error;
   }
   const body = completion.body;
-  const output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
+  let output;
+  try {
+    if (body?.choices?.[0]?.finish_reason === "length") throw new Error("taskgen_output_truncated");
+    output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
+  } catch (error) {
+    throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: error.message });
+  }
+  const readiness = await reviewTaskGenerationReadiness(output, { fetchImpl });
   return {
     output,
     metadata: {
-      provider: apiConfig.provider,
-      model,
+      provider: completion.provider,
+      model: completion.model,
       prompt_version: taskgenPrompt.version,
       prompt_path: taskgenPrompt.path,
       prompt_digest: promptDigest(systemPrompt),
@@ -676,6 +694,7 @@ export async function generateTaskWithProvider(taskInput, {
       parse_status: "ok",
       provider_response_id: body.id || "",
       validation_attempts: 1,
+      readiness,
     },
   };
 }

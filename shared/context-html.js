@@ -1,3 +1,4 @@
+import { htmlFragment, hiddenHtmlTags, escapeHtmlText } from "./html-tree.js";
 import { CONTEXT_DOCUMENT_MAX_CHARS } from "./context-budget.js";
 
 const allowedContextTags = new Set([
@@ -29,51 +30,21 @@ const allowedContextTags = new Set([
 
 const voidContextTags = new Set(["br"]);
 
-export function escapeContextHtml(value = "") {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+export { escapeHtmlText as escapeContextHtml } from "./html-tree.js";
 
 export function looksLikeContextHtml(value = "") {
-  return /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
+  return htmlFragment(value).childNodes.some((node) => Boolean(node.tagName));
 }
 
 export function sanitizeContextHtml(value = "") {
-  const input = String(value || "")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<!doctype[\s\S]*?>/gi, "")
-    .replace(/<script[\s\S]*?<\/script\s*>/gi, "")
-    .replace(/<style[\s\S]*?<\/style\s*>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe\s*>/gi, "")
-    .replace(/<object[\s\S]*?<\/object\s*>/gi, "")
-    .replace(/<embed[\s\S]*?<\/embed\s*>/gi, "")
-    .replace(/<svg[\s\S]*?<\/svg\s*>/gi, "")
-    .replace(/<math[\s\S]*?<\/math\s*>/gi, "");
-
-  let output = "";
-  let offset = 0;
-  const tagPattern = /<\/?[^>]+>/g;
-  let match;
-  const safeText = (text) => String(text || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  while ((match = tagPattern.exec(input))) {
-    output += safeText(input.slice(offset, match.index));
-    offset = match.index + match[0].length;
-
-    const tagMatch = /^<\s*(\/)?\s*([a-z0-9:-]+)/i.exec(match[0]);
-    if (!tagMatch) continue;
-
-    const closing = Boolean(tagMatch[1]);
-    const tagName = tagMatch[2].toLowerCase();
-    if (!allowedContextTags.has(tagName)) continue;
-    if (closing && voidContextTags.has(tagName)) continue;
-    output += closing ? `</${tagName}>` : `<${tagName}>`;
-  }
-
-  output += safeText(input.slice(offset));
-  return output.trim() || "<p><br></p>";
+  const render = (node) => {
+    if (hiddenHtmlTags.has(node.tagName) || node.nodeName === "#comment") return "";
+    if (node.nodeName === "#text") return escapeHtmlText(node.value);
+    const children = (node.childNodes || []).map(render).join("");
+    if (!allowedContextTags.has(node.tagName)) return children;
+    return voidContextTags.has(node.tagName) ? `<${node.tagName}>` : `<${node.tagName}>${children}</${node.tagName}>`;
+  };
+  return render(htmlFragment(value)).trim() || "<p><br></p>";
 }
 
 export function normalizeContextBodyForStorage(value = "") {

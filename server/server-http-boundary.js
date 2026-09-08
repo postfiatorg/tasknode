@@ -438,7 +438,7 @@ export async function serveStatic(url, res) {
   const ext = path.extname(filePath);
   res.writeHead(200, {
     "content-type": contentTypes.get(ext) || "application/octet-stream",
-    "cache-control": ext === ".html" ? "no-store" : "public, max-age=31536000, immutable",
+    "cache-control": ext === ".html" || ["theme-init.js", "theme-page.js"].includes(path.basename(filePath)) ? "no-store" : "public, max-age=31536000, immutable",
     ...securityHeaders(),
   });
   createReadStream(filePath).pipe(res);

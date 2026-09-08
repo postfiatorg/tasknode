@@ -440,7 +440,7 @@ Run only when the browser or app exposes a safe Telegram link/test path:
 | AUTH-05 | Session persistence | Refresh and reopen app after login. | Same account remains signed in; no handle modal loop. | Before/after route captures. |
 | AUTH-06 | Logout | Log out when safe. | Account state clears and private actions are gated. | UI state before/after refresh. |
 | CHAT-01 | Instant | Send deterministic small prompt. | Ambient DeepSeek Flash response appears, persists, and records a visible debit when shown. | UI transcript, credit before/after, refresh. |
-| CHAT-02 | Thinking | Send reasoning-mode prompt. | Ambient GLM 5.2 response arrives without truncation or wrong mode. | Mode label, transcript, refresh. |
+| CHAT-02 | Thinking | Send reasoning-mode prompt. | Vercel GLM 5.3 response arrives with correct mode and completeness; identify Ambient fallback separately. | Mode label, transcript, refresh. |
 | CHAT-03 | Help | Ask a product-navigation question. | Help uses the product guide and names the correct current surface. | Mode label, transcript, refresh. |
 | CHAT-04 | Deprecated-mode absence | Inspect every model picker at desktop and mobile widths. | No Frontier, Private, Discount, OpenRouter, or Direct DeepSeek option is visible. | Picker captures. |
 | CHAT-05 | Attachment routing | Send an approved text file and image fixture. | Text is locally extracted; visual content is understood through Ambient vision and never converted into an unexplained zero score. | Transcript, attachment state, request/result capture. |

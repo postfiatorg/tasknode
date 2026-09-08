@@ -1,0 +1,60 @@
+{
+  "release": {
+    "Version": 716,
+    "Status": "complete",
+    "ImageRef": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+  },
+  "active": [
+    {
+      "id": "e826761a263e18",
+      "process": "worker-pftl",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    },
+    {
+      "id": "8d4930ae156638",
+      "process": "app",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    },
+    {
+      "id": "87d077b0263998",
+      "process": "worker-context-rewrite",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    },
+    {
+      "id": "7813e21f1295d8",
+      "process": "worker-taskgen",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    },
+    {
+      "id": "6835d0ea464158",
+      "process": "worker-task-review",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    },
+    {
+      "id": "48ee629a21e748",
+      "process": "worker-nft-renderer",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    },
+    {
+      "id": "48e056a3705e18",
+      "process": "worker-memory-profile",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    },
+    {
+      "id": "2862170c66e238",
+      "process": "board-secretary",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    },
+    {
+      "id": "1854406a6e3508",
+      "process": "worker-hive",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    },
+    {
+      "id": "1850d37c3d3e48",
+      "process": "worker-airdrop",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VXD7A71THRG8HWKRX9E965"
+    }
+  ],
+  "allActiveOnRelease": true
+}

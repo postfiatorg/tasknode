@@ -11,11 +11,15 @@ const accountId = "acct_operator";
 const env = {
   CORBANU_DEEP_RESEARCH_BASE_URL: "https://plan.example.test/",
   CORBANU_TASKNODE_INTEGRATION_SECRET: secret,
-  TASKNODE_DEEP_RESEARCH_ACCOUNT_IDS: `acct_other,${accountId}`,
 };
 
 assert.equal(deepResearchAvailable({ accountId, env }), true);
-assert.equal(deepResearchAvailable({ accountId: "acct_not_allowed", env }), false);
+assert.equal(deepResearchAvailable({ accountId: "acct_any_authenticated_user", env }), true);
+assert.equal(deepResearchAvailable({
+  accountId: "acct_outside_legacy_canary",
+  env: { ...env, TASKNODE_DEEP_RESEARCH_ACCOUNT_IDS: "acct_legacy_canary" },
+}), true);
+assert.equal(deepResearchAvailable({ accountId: "", env }), false);
 assert.equal(deepResearchAvailable({
   accountId,
   env: { ...env, CORBANU_TASKNODE_INTEGRATION_SECRET: "" },
@@ -63,4 +67,4 @@ const canonical = [
 const expectedSignature = createHmac("sha256", secret).update(canonical).digest("hex");
 assert.equal(captured.options.headers["X-Corbanu-Signature"], expectedSignature);
 
-console.log("deep research boundary smoke ok: canary gate and signed private gateway contract verified");
+console.log("deep research boundary smoke ok: authenticated access and signed private gateway contract verified");

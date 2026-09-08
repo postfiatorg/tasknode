@@ -50,7 +50,7 @@ function usage() {
   return [
     "Usage: npm run hive-board-secretary-worker -- [--once] [--dry-run] [--json]",
     "",
-    "Runs the GLM 5.2 Hive board secretary memo worker.",
+    "Runs the GLM 5.3 Hive board secretary memo worker.",
     "The worker writes advisory Project Status memos only; it does not execute Board Manager actions.",
   ].join("\n");
 }

@@ -1,3 +1,4 @@
+import { isIdentifierChar, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 import { githubCoreContributorAccess } from "../core-contributor-authorization.js";
 import { databaseEnabled, query } from "../db/pool.js";
@@ -123,11 +124,8 @@ function linkedVerified(identityProfile = {}, provider = "") {
 }
 
 function normalizeWorkType(value = "") {
-  return safeText(value, 120)
-    .toLowerCase()
-    .replace(/[^a-z0-9_:-]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  return trimCharacters(replaceCharacterRuns(replaceCharacterRuns(safeText(value, 120)
+    .toLowerCase(),char=>!isIdentifierChar(char)&&char!==":","_"),char=>char==="_","_"),"_");
 }
 
 function capForWorkType(definition = {}, workType = "") {
@@ -637,7 +635,7 @@ export async function networkBadgeProjectionForAccount({
       topic: safeText(expertReview.topic, 160),
       score: expertScore,
       personalTaskCount: expertPersonalTasks,
-      proofMethod: "glm52_last_20_personal_tasks",
+      proofMethod: "model_review_last_20_personal_tasks",
     }));
   }
 

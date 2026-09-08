@@ -94,7 +94,7 @@ These board-specific standards are authoritative; apply them as written:
 - Maximum age of a “recent” official post for amplification: 14 days.
 - Paid amplification requires a verified `kol` badge (check with `user`); no badge, no paid amplification — route unpaid community shoutouts to the journal instead.
 - Reward bands (per-task cap is 5,000 PFT): routine amplification 250–1,000; high-effort thread or article distribution 1,000–3,000; exceptional verified-reach campaigns 3,000–5,000; site PRs priced like code (see evidence norms).
-- Cadence: at most 3 open tasks on this board at once; generate only from a named post or site defect.
+- Cadence: route to eligible contributors with free account capacity; generate only from a named post or site defect. Existing open board tasks do not impose a fixed numerical ceiling. Preserve reward budgets.
 - Priority: time-sensitive amplification of live official posts first, then site defects, then evergreen content.
 - Borderline evidence: follow the board-manager skill — one concrete `verify request`, then a final decision; unresolved conflicts go to the operator via a referral task.
 

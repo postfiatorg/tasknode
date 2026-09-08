@@ -32,7 +32,7 @@ try {
     submittingStaleMinutes: Number(argValue("--submitting-stale-minutes", process.env.TASKNODE_DAILY_AIRDROP_SUBMITTING_STALE_MINUTES || "30")),
     maxIssuanceAttempts: Number(argValue("--max-issuance-attempts", process.env.TASKNODE_DAILY_AIRDROP_MAX_ISSUANCE_ATTEMPTS || "5")),
     maxDailyPft: Number(argValue("--max-daily-pft", process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || "10000")),
-    model: argValue("--model", process.env.TASKNODE_DAILY_AIRDROP_MODEL || "z-ai/glm-5.2"),
+    model: argValue("--model", process.env.TASKNODE_DAILY_AIRDROP_MODEL || "zai/glm-5.3"),
     runMode: argValue("--run-mode", process.env.TASKNODE_DAILY_AIRDROP_WORKER_RUN_MODE || "production"),
     trigger: argValue("--trigger", "manual_daily_airdrop_worker"),
   });

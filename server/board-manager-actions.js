@@ -1,6 +1,8 @@
+import { isAsciiDigit, isAsciiLetter, replaceCharacterRuns, splitWhitespace, trimCharacters } from "../shared/text-protocol.js";
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "./db/pool.js";
 import { enqueueHiveSecretaryJob } from "./repositories/hive-context.js";
+import { boardTaskStaleness } from "./board-task-policy.js";
 import {
   boardManagerPromptVersion,
   normalizeBoardManagerDecision,
@@ -65,20 +67,16 @@ function intValue(value, fallback = 0) {
 }
 
 function slug(value = "") {
-  const normalized = safeText(value, 180)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
+  const normalized = trimCharacters(replaceCharacterRuns(safeText(value, 180)
+    .toLowerCase(),char=>!isAsciiLetter(char)&&!isAsciiDigit(char),"_"),"_")
     .slice(0, 80);
   return normalized || `project_${randomUUID().slice(0, 12)}`;
 }
 
 function tokenSet(value = "") {
   return new Set(
-    safeText(value, 600)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .split(/\s+/)
+    splitWhitespace(replaceCharacterRuns(safeText(value, 600)
+      .toLowerCase(),char=>!isAsciiLetter(char)&&!isAsciiDigit(char)," "))
       .filter((token) => token.length >= 3)
   );
 }
@@ -665,7 +663,7 @@ async function executeInitiateNetworkTask({ runId, decision, sourcePacket }) {
   };
 }
 
-async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
+async function executeCancelNetworkTask({ runId, decision, sourcePacket, dryRun = false }) {
   const cancelTarget = safeObject(decision.payload?.cancel_target);
   const taskId = safeText(
     cancelTarget.task_id || cancelTarget.taskId || decision.target_id,
@@ -683,7 +681,12 @@ async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
   // before mutating anything; personal/engineering tasks are never touched.
   const existing = await query(
     `
-      SELECT tp.task_id, tp.status, tp.title, tp.reward_actual_pft,
+      SELECT tp.task_id, tp.status, tp.title, tp.reward_actual_pft, tp.created_at, tp.last_event_at,
+             tp.last_event_at::text AS last_event_version,
+             (SELECT max(e.occurred_at) FROM task_events e WHERE e.task_id=tp.task_id AND e.account_id=tp.account_id) AS last_contact_at,
+             (SELECT max(e.occurred_at)::text FROM task_events e WHERE e.task_id=tp.task_id AND e.account_id=tp.account_id) AS last_contact_version,
+             EXISTS (SELECT 1 FROM task_events e WHERE e.task_id=tp.task_id AND e.account_id=tp.account_id
+               AND e.event_type IN ('pf.task.submission.v1','pf.task.verification_response.v1')) AS has_submission,
              (refs.task_id IS NOT NULL) AS is_network_task
       FROM task_projections tp
       LEFT JOIN network_project_task_refs refs
@@ -707,6 +710,9 @@ async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
     };
   }
   const status = String(task.status || "").toLowerCase();
+  if (cancelTarget.stale_only === true && !boardTaskStaleness(task).cancellationEligible) {
+    return { executed: false, skipped: true, reason: "board_manager_cancel_task_not_stale", taskId, status };
+  }
   // proposed/accepted only: pre-submission. Anything past acceptance may already
   // hold delivered work; canceling there is an economic decision for the operator.
   if (!["proposed", "accepted"].includes(status)) {
@@ -735,6 +741,7 @@ async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
   // stop transitions). Race-safe: the WHERE only mutates rows still in a
   // cancellable state, so a concurrent transition cannot be clobbered.
   const transition = status === "proposed" ? "refused" : "cancelled";
+  if (dryRun) return { executed: false, dryRun: true, eligible: true, taskId, status, transition, staleness: boardTaskStaleness(task) };
   const audit = {
     agent_cancelled: true,
     agent_cancelled_by: "board_manager",
@@ -752,10 +759,17 @@ async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
           metadata_json = COALESCE(metadata_json, '{}'::jsonb) || $3::jsonb,
           updated_at = now()
       WHERE task_id = $1
-        AND status = ANY($4::text[])
+        AND status = $4
+        AND last_event_at IS NOT DISTINCT FROM $5::timestamptz
+        AND (SELECT max(e.occurred_at) FROM task_events e WHERE e.task_id=task_projections.task_id
+          AND e.account_id=task_projections.account_id) IS NOT DISTINCT FROM $6::timestamptz
+        AND COALESCE(reward_actual_pft, 0) <= 0
+        AND NOT EXISTS (SELECT 1 FROM task_events e WHERE e.task_id=task_projections.task_id
+          AND e.account_id=task_projections.account_id
+          AND e.event_type IN ('pf.task.submission.v1','pf.task.verification_response.v1'))
       RETURNING task_id, status
     `,
-    [taskId, transition, jsonValue(audit), ["proposed", "accepted"]]
+    [taskId, transition, jsonValue(audit), status, task.last_event_version, task.last_contact_version]
   );
   if (!updated.rows[0]) {
     return {
@@ -806,7 +820,9 @@ export async function executeBoardManagerDecision({
   if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
   const normalizedDecision = normalizeBoardManagerDecision(decision);
   if (dryRun) {
-    const result = { executed: false, dryRun: true, action: normalizedDecision.action };
+    const result = normalizedDecision.action === "cancel_network_task"
+      ? await executeCancelNetworkTask({ runId, decision: normalizedDecision, sourcePacket, dryRun: true })
+      : { executed: false, dryRun: true, action: normalizedDecision.action };
     await recordResult({ runId, decision: normalizedDecision, result });
     return { ok: true, result };
   }

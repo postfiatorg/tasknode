@@ -97,7 +97,7 @@ const progressSteps = [
   {
     key: "polish_rewrite",
     label: "Polish Markdown artifact",
-    detail: "GLM 5.2 xhigh pass improves readability, persuasion, flow, formatting, and actionability.",
+    detail: "GLM 5.3 xhigh pass improves readability, persuasion, flow, formatting, and actionability.",
   },
   {
     key: "completed",

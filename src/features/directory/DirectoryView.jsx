@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { requestJson } from "../../api";
 import { compactWallet, formatCompactPft } from "../hive/HiveView.jsx";
-import { profileNftImageCandidates } from "../profile/profile-nft-images.js";
+import { ProfilePortrait, ProfileArtTraits } from "../profile/ProfilePortrait.jsx";
 import "./directory.css";
 
 const SORT_COLUMNS = [
@@ -12,43 +12,6 @@ const SORT_COLUMNS = [
   { key: "alignment", label: "Alignment" },
   { key: "score", label: "Score" },
 ];
-
-function initialsForOperator(operator = {}) {
-  const source = String(operator.displayName || operator.handle || "TN").replace(/^@+/, "").trim();
-  const parts = source.split(/[^a-z0-9]+/i).filter(Boolean);
-  const text = (parts[0]?.[0] || "T") + (parts[1]?.[0] || parts[0]?.[1] || "N");
-  return text.toUpperCase();
-}
-
-function DirectoryAvatar({ operator }) {
-  const [imageIndex, setImageIndex] = useState(0);
-  const candidates = useMemo(
-    () => profileNftImageCandidates(operator.heroNft, { avatarCssSize: 36 }),
-    [operator.heroNft]
-  );
-  const imageKey = candidates.join("|");
-  const imageSrc = candidates[imageIndex] || "";
-
-  useEffect(() => {
-    setImageIndex(0);
-  }, [imageKey]);
-
-  return (
-    <span className={`directory-avatar ${imageSrc ? "has-image" : ""}`}>
-      {imageSrc ? (
-        <img
-          alt={`${operator.displayName || operator.handle || "Operator"} profile NFT`}
-          decoding="async"
-          loading="lazy"
-          onError={() => setImageIndex((index) => index + 1)}
-          src={imageSrc}
-        />
-      ) : (
-        initialsForOperator(operator)
-      )}
-    </span>
-  );
-}
 
 function rankOperators(operators = []) {
   return [...operators]
@@ -107,7 +70,7 @@ function DirectoryStatus({ status, onRefresh }) {
 function OperatorIdentity({ operator }) {
   return (
     <span className="directory-operator">
-      <DirectoryAvatar operator={operator} />
+      <ProfilePortrait nft={operator.heroNft} seed={operator.accountId || operator.handle} label={`${operator.displayName || operator.handle || "Member"} profile picture`} size={64} className="directory-avatar" />
       <span className="directory-operator-copy">
         <strong>
           {operator.handle ? `@${operator.handle}` : operator.displayName || "Task Node member"}
@@ -117,6 +80,7 @@ function OperatorIdentity({ operator }) {
           <span className="directory-machine-badge">{operator.operatorDisclosure.label || "Orc operator"}</span>
         )}
         <small>{compactWallet(operator.wallet)}</small>
+        <ProfileArtTraits nft={operator.heroNft} />
       </span>
     </span>
   );

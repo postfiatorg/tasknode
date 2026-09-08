@@ -1,4 +1,5 @@
-import { actualChatCost } from "./chat-router.js";
+import { inferenceProviderUsage } from "./inference-usage.js";
+import { actualChatCost, chatModeConfig } from "./chat-mode-runtime.js";
 import { webSearchUsdPerCall } from "./chat-search-tools.js";
 
 function hasOwn(object, key) {
@@ -101,23 +102,23 @@ export function openRouterUsage(body, mode) {
     outputTokens,
     ...cacheUsage,
   });
-  const providerCost = usage.cost === undefined || usage.cost === null || usage.cost === ""
-    ? null
-    : Number(usage.cost);
-  const webSearchCalls = Number(usage.server_tool_use?.web_search_requests || 0);
+  const providerUsage = inferenceProviderUsage(body);
+  const apiCostBilling = chatModeConfig(mode).billingPolicy === "provider_api_cost";
+  if (apiCostBilling && providerUsage.providerCostUsd === null) {
+    throw Object.assign(new Error("chat_provider_cost_missing"), { status: 502 });
+  }
   return {
     inputTokens,
     outputTokens,
     totalTokens: Number(usage.total_tokens || inputTokens + outputTokens),
     ...cacheUsage,
     cacheSavingsUsd: configuredCost.cacheSavingsUsd,
-    providerCostUsd: Number.isFinite(providerCost) ? Number(providerCost.toFixed(6)) : null,
-    costSource: cacheUsage.cacheUsageReported
+    ...providerUsage,
+    costSource: apiCostBilling ? "provider_api_cost" : cacheUsage.cacheUsageReported
       ? "configured_user_cache_tariff"
       : "configured_user_tariff",
-    webSearchCalls,
     toolCostUsd: 0,
-    costUsd: configuredCost.cacheAwareCostUsd,
+    costUsd: apiCostBilling ? providerUsage.providerCostUsd : configuredCost.cacheAwareCostUsd,
   };
 }
 

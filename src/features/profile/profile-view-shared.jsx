@@ -2,23 +2,23 @@ import { useEffect } from "react";
 import { Bug, Crown, GitPullRequest, GraduationCap, Megaphone } from "lucide-react";
 
 export const C = {
-  paper:    "#F4EFE6",
-  paper2:   "#FBF7EE",
-  paper3:   "#FFFCF5",
-  ink:      "#1F1B16",
-  ink2:     "#3D362C",
-  ink3:     "#6B6052",
-  ink4:     "#9B9081",
-  ink5:     "#C4BBA9",
-  rule:     "#E5DCC8",
-  ruleSoft: "#EFE7D6",
-  success:  "#5C8C4F",
-  warning:  "#B07628",
-  rust:     "#B8451F",
-  flag:     "#C2410C",
-  layerPersonal: "#6B5D43",
-  layerNetwork:  "#B8451F",
-  layerAlpha:    "#C99F4E",
+  paper:    "var(--tn-dark-bg, #F4EFE6)",
+  paper2:   "var(--tn-dark-profile-surface, #FBF7EE)",
+  paper3:   "var(--tn-dark-profile-raised, #FFFCF5)",
+  ink:      "var(--tn-dark-text, #1F1B16)",
+  ink2:     "var(--tn-dark-secondary, #3D362C)",
+  ink3:     "var(--tn-dark-secondary, #6B6052)",
+  ink4:     "var(--tn-dark-muted, #9B9081)",
+  ink5:     "var(--tn-dark-muted, #C4BBA9)",
+  rule:     "var(--tn-dark-border, #E5DCC8)",
+  ruleSoft: "var(--tn-dark-border, #EFE7D6)",
+  success:  "var(--tn-dark-success, #5C8C4F)",
+  warning:  "var(--tn-dark-warning, #B07628)",
+  rust:     "var(--tn-dark-danger, #B8451F)",
+  flag:     "var(--tn-dark-danger, #C2410C)",
+  layerPersonal: "var(--tn-dark-warning, #6B5D43)",
+  layerNetwork:  "var(--tn-dark-danger, #B8451F)",
+  layerAlpha:    "var(--tn-dark-warning, #C99F4E)",
 };
 
 export const SANS = "'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
@@ -75,7 +75,7 @@ export const identityApprovalBadges = [
     requirements: [
       { id: "personal_task_count", label: "20 completed Personal tasks", personalTaskCount: 20 },
       { id: "expert_topic", label: "Expert topic supplied", expertTopic: true },
-      { id: "expert_score", label: "GLM 5.2 expertise score passes threshold", expertScore: 80 },
+      { id: "expert_score", label: "GLM 5.3 expertise score passes threshold", expertScore: 80 },
     ],
   },
   {
@@ -122,6 +122,16 @@ export function useStylesheet() {
         font-size: 15px;
         line-height: 1.5;
       }
+      .tn-profile-identity { grid-template-columns: 120px minmax(0, 1fr) auto; gap: 32px; }
+      .tn-profile-identity > * { min-width: 0; overflow-wrap: anywhere; }
+      .tn-profile-credentials { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px; }
+      .tn-profile-role { grid-template-columns: minmax(0, 720px) 180px; gap: 48px; }
+      @media (max-width: 640px) {
+        .tn-profile-identity { --profile-portrait-size: 96px; grid-template-columns: 96px minmax(0, 1fr); gap: 18px; }
+        .tn-profile-lifetime { grid-column: 1 / -1; text-align: left !important; }
+        .tn-profile-role, .tn-profile-credentials { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+        .tn-profile-role > div:last-child { text-align: left !important; }
+      }
       .tn-eyebrow {
         font-size: 10.5px;
         font-weight: 600;
@@ -159,7 +169,7 @@ export function useStylesheet() {
         background: ${C.ink}; color: ${C.paper};
         padding: 10px 18px; border-radius: 10px;
       }
-      .tn-btn-primary:hover { background: #000; }
+      .tn-btn-primary:hover { background: var(--tn-dark-on-inverse, #000); }
       .tn-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
       .tn-tab {
         padding: 4px 0; margin-right: 24px;
@@ -178,14 +188,14 @@ export function useStylesheet() {
         display: inline-block;
       }
       @keyframes tn-pulse {
-        0%   { box-shadow: 0 0 0 0 rgba(92,140,79,.45); }
+        0%   { box-shadow: 0 0 0 0 var(--tn-dark-shadow, rgba(92,140,79,.45)); }
         70%  { box-shadow: 0 0 0 6px rgba(92,140,79,0); }
         100% { box-shadow: 0 0 0 0 rgba(92,140,79,0); }
       }
       .tn-glow { animation: tn-glowPulse 2s ease-out; border-radius: 12px; }
       @keyframes tn-glowPulse {
         0%   { box-shadow: 0 0 0 0 rgba(95,166,109,0); transform: scale(1); }
-        20%  { box-shadow: 0 0 0 8px rgba(95,166,109,.35); transform: scale(1.015); }
+        20%  { box-shadow: 0 0 0 8px var(--tn-dark-shadow, rgba(95,166,109,.35)); transform: scale(1.015); }
         60%  { box-shadow: 0 0 0 24px rgba(95,166,109,0); transform: scale(1); }
         100% { box-shadow: 0 0 0 0 rgba(95,166,109,0); transform: scale(1); }
       }

@@ -1,3 +1,6 @@
+import { ExpandableProfileImage } from "./ExpandableProfileImage.jsx";
+import { ProfilePortrait, ProfileArtTraits } from "./ProfilePortrait.jsx";
+import { PROFILE_NFT_TITLE } from "../../../shared/profile-nft-art.js";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Bot,
@@ -16,15 +19,15 @@ import { requestJson } from "../../api";
 import { profileNftImageCandidates } from "./profile-nft-images.js";
 
 const C = {
-  paper2: "#FBF7EE",
-  ink: "#1F1B16",
-  ink2: "#3D362C",
-  ink3: "#6B6052",
-  ink4: "#9B9081",
-  ink5: "#C4BBA9",
-  ruleSoft: "#EFE7D6",
-  success: "#5C8C4F",
-  warning: "#B07628",
+  paper2: "var(--tn-dark-profile-surface, #FBF7EE)",
+  ink: "var(--tn-dark-text, #1F1B16)",
+  ink2: "var(--tn-dark-secondary, #3D362C)",
+  ink3: "var(--tn-dark-secondary, #6B6052)",
+  ink4: "var(--tn-dark-muted, #9B9081)",
+  ink5: "var(--tn-dark-muted, #C4BBA9)",
+  ruleSoft: "var(--tn-dark-border, #EFE7D6)",
+  success: "var(--tn-dark-success, #5C8C4F)",
+  warning: "var(--tn-dark-warning, #B07628)",
 };
 
 const fmtN = (n, options = {}) => Number(n || 0).toLocaleString("en-US", options);
@@ -76,42 +79,6 @@ function SectionHead({ eyebrow, sub }) {
         <div className="tn-eyebrow">{eyebrow}</div>
         {sub && <div style={{ color: C.ink3, fontSize: 13, marginTop: 4 }}>{sub}</div>}
       </div>
-    </div>
-  );
-}
-
-function ProfileAvatar({ nft = null, size = 120 }) {
-  const imageCandidates = useMemo(() => imageCandidatesForNft(nft || {}), [nft]);
-  const [imageIndex, setImageIndex] = useState(0);
-  const imageSrc = imageCandidates[imageIndex] || "";
-
-  useEffect(() => {
-    setImageIndex(0);
-  }, [imageCandidates]);
-
-  return (
-    <div style={{
-      alignItems: "center",
-      aspectRatio: "1 / 1",
-      background: C.paper2,
-      border: `1px solid ${C.ruleSoft}`,
-      borderRadius: 14,
-      display: "flex",
-      justifyContent: "center",
-      overflow: "hidden",
-      width: size,
-    }}>
-      {imageSrc ? (
-        <img
-          alt={nft?.title || "Profile NFT"}
-          decoding="async"
-          onError={() => setImageIndex((index) => index + 1)}
-          src={imageSrc}
-          style={{ display: "block", height: "100%", objectFit: "cover", width: "100%" }}
-        />
-      ) : (
-        <div className="tn-eyebrow" style={{ color: C.ink4, letterSpacing: "0.1em" }}>Profile NFT</div>
-      )}
     </div>
   );
 }
@@ -171,8 +138,13 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
   const snapshot = profile?.snapshot || null;
   return (
     <section style={{ paddingTop: 8 }}>
-      <div style={{ alignItems: "center", display: "grid", gap: 32, gridTemplateColumns: "120px 1fr auto" }}>
-        <ProfileAvatar nft={profile?.heroNft || null} size={120} />
+      <div className="tn-profile-identity" style={{ alignItems: "center", display: "grid" }}>
+        <div>
+          <ExpandableProfileImage nft={profile?.heroNft} label="Expand profile picture">
+            <ProfilePortrait nft={profile?.heroNft} seed={profile?.accountId || identity.hiveHandle || identity.displayName} size="var(--profile-portrait-size, 120px)" fullResolution />
+          </ExpandableProfileImage>
+          <ProfileArtTraits nft={profile?.heroNft} />
+        </div>
 
         <div>
           <div className="tn-eyebrow" style={{ marginBottom: 6 }}>Hive profile</div>
@@ -236,7 +208,7 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
           <PublicBadgeStrip badges={networkBadges} />
         </div>
 
-        <div style={{ textAlign: "right" }}>
+        <div className="tn-profile-lifetime" style={{ textAlign: "right" }}>
           <div className="tn-eyebrow" style={{ marginBottom: 6 }}>Total lifetime</div>
           <div className="tn-bigNum" style={{ color: C.ink, fontSize: 42, lineHeight: 1 }}>{loading ? "—" : fmtPft(totalPft)}</div>
           <div style={{ color: C.ink4, fontSize: 13, marginTop: 4 }}>
@@ -253,11 +225,10 @@ function ProfileRole({ role = null, snapshot = null, loading = false, error = ""
   const skills = Array.isArray(role?.skills) ? role.skills.filter(Boolean) : [];
   return (
     <section style={{ paddingTop: 56 }}>
-      <div style={{
+      <div className="tn-profile-role" style={{
         alignItems: "start",
         display: "grid",
-        gap: 48,
-        gridTemplateColumns: "minmax(0, 720px) 180px",
+
         justifyContent: "space-between",
       }}>
         <div style={{ minWidth: 0 }}>
@@ -349,7 +320,7 @@ function CredentialStrip({ metrics = {}, loading = false }) {
   ];
   return (
     <section style={{ paddingTop: 64 }}>
-      <div style={{ borderTop: `1px solid ${C.ruleSoft}`, display: "grid", gap: 48, gridTemplateColumns: "1fr 1fr", paddingTop: 22 }}>
+      <div className="tn-profile-credentials" style={{ borderTop: `1px solid ${C.ruleSoft}`, display: "grid", paddingTop: 22 }}>
         {items.map((item) => (
           <div key={item.label}>
             <div className="tn-eyebrow">{item.label}</div>
@@ -387,11 +358,11 @@ function PublicNFTTile({ nft }) {
   }, [imageCandidates]);
 
   return (
-    <div className="tn-lift" style={{ cursor: "pointer" }}>
-      <div style={{ aspectRatio: "1 / 1", background: C.paper2, borderRadius: 12, marginBottom: 10, overflow: "hidden", position: "relative" }}>
+    <div className="tn-lift">
+      <ExpandableProfileImage nft={nft} disabled={!imageSrc} style={{ width: "100%", aspectRatio: "1 / 1", background: C.paper2, borderRadius: 12, marginBottom: 10, overflow: "hidden", position: "relative" }}>
         {selected && (
           <div style={{
-            background: "rgba(31, 27, 22, 0.78)",
+            background: "var(--tn-dark-inverse-surface, rgba(31, 27, 22, 0.78))",
             borderRadius: 999,
             color: C.paper3,
             fontSize: 11,
@@ -428,9 +399,9 @@ function PublicNFTTile({ nft }) {
             Image unavailable
           </div>
         )}
-      </div>
+      </ExpandableProfileImage>
       <div style={{ color: C.ink, fontSize: 13.5, fontWeight: 600, letterSpacing: "-0.005em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {nft.title || "Task Node Profile NFT"}
+        {nft.title || PROFILE_NFT_TITLE}
       </div>
       <div style={{ color: C.ink4, display: "flex", fontSize: 11.5, gap: 8, marginTop: 3 }}>
         <span>{nft.mintedAt ? fmtDate(new Date(nft.mintedAt)) : nft.generatedAt ? fmtDate(new Date(nft.generatedAt)) : "Generated"}</span>
@@ -469,7 +440,7 @@ function PublicNFTGallery({ nfts = [], total = null }) {
       />
       {nfts.length > 0 ? (
         <>
-          <div style={{ display: "grid", gap: 32, gridTemplateColumns: "repeat(4, 1fr)" }}>
+          <div style={{ display: "grid", gap: 32, gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
             {visibleNfts.map((nft) => <PublicNFTTile key={nft.id} nft={nft} />)}
           </div>
           {pageCount > 1 && (
@@ -502,7 +473,7 @@ function PublicNFTGallery({ nfts = [], total = null }) {
         </>
       ) : (
         <div style={{ borderTop: `1px solid ${C.ruleSoft}`, color: C.ink3, fontSize: 13.5, lineHeight: 1.55, paddingTop: 18 }}>
-          No public profile NFTs yet. Generate or mint a profile NFT from the private profile tab.
+          Your profile picture is generated automatically after three completed tasks.
         </div>
       )}
     </section>

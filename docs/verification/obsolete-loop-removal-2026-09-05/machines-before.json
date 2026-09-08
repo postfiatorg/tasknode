@@ -1,0 +1,116 @@
+[
+  {
+    "id": "8465ddb274e908",
+    "state": "stopped",
+    "group": "worker-hive",
+    "release": "702"
+  },
+  {
+    "id": "6835d0ea464158",
+    "state": "started",
+    "group": "worker-task-review",
+    "release": "702"
+  },
+  {
+    "id": "0803736c291198",
+    "state": "stopped",
+    "group": "worker-nft-renderer",
+    "release": "702"
+  },
+  {
+    "id": "e826571a546458",
+    "state": "stopped",
+    "group": "worker-task-review",
+    "release": "702"
+  },
+  {
+    "id": "7813e21f1295d8",
+    "state": "started",
+    "group": "worker-taskgen",
+    "release": "702"
+  },
+  {
+    "id": "e827021fd67708",
+    "state": "stopped",
+    "group": "worker-taskgen",
+    "release": "702"
+  },
+  {
+    "id": "e826761a263e18",
+    "state": "started",
+    "group": "worker-pftl",
+    "release": "702"
+  },
+  {
+    "id": "1850d37c3d3e48",
+    "state": "started",
+    "group": "worker-airdrop",
+    "release": "702"
+  },
+  {
+    "id": "48e10e9a40d978",
+    "state": "stopped",
+    "group": "worker-pftl",
+    "release": "702"
+  },
+  {
+    "id": "87d077b0263998",
+    "state": "started",
+    "group": "worker-context-rewrite",
+    "release": "702"
+  },
+  {
+    "id": "7845637cd3e708",
+    "state": "stopped",
+    "group": "worker-memory-profile",
+    "release": "702"
+  },
+  {
+    "id": "8d4930ae156638",
+    "state": "started",
+    "group": "app",
+    "release": "702"
+  },
+  {
+    "id": "1854406a6e3508",
+    "state": "started",
+    "group": "worker-hive",
+    "release": "702"
+  },
+  {
+    "id": "e8267e0c015508",
+    "state": "stopped",
+    "group": "board-secretary",
+    "release": "702"
+  },
+  {
+    "id": "e820352ae34138",
+    "state": "stopped",
+    "group": "worker-airdrop",
+    "release": "702"
+  },
+  {
+    "id": "48e056a3705e18",
+    "state": "started",
+    "group": "worker-memory-profile",
+    "release": "702"
+  },
+  {
+    "id": "d8d0ed9b969528",
+    "state": "stopped",
+    "group": "worker-context-rewrite",
+    "release": "702"
+  },
+  {
+    "id": "48ee629a21e748",
+    "state": "started",
+    "group": "worker-nft-renderer",
+    "release": "702"
+  },
+  {
+    "id": "2862170c66e238",
+    "state": "started",
+    "group": "board-secretary",
+    "release": "702"
+  }
+]

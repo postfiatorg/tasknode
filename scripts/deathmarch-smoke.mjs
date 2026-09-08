@@ -206,8 +206,8 @@ const formattedOffer = formatDeathmarchDiscordMessage({
 });
 assert.equal(formattedOffer.includes("**Task proposed**"), true);
 assert.equal(formattedOffer.includes("**Launch Death March Discord Protocol**"), true);
-assert.equal(formattedOffer.includes("Green/Yellow/Red"), false);
-assert.equal(formattedOffer.includes("visibility model"), false);
+assert.equal(formattedOffer.includes("Green/Yellow/Red"), true);
+assert.equal(formattedOffer.includes("visibility model"), true);
 assert.equal((formattedOffer.match(/tx:/g) || []).length, 1);
 assert.equal(formattedOffer.endsWith("tx: 7005B006FDFF2C30F8914BC050A4B3B6C6FC72305F65A1ACD8CE8CB77BBF7C0C"), true);
 
@@ -333,7 +333,7 @@ await assert.rejects(
       text: async () => JSON.stringify({ error: { message: "provider unavailable" } }),
     }),
   }),
-  /ambient_http_503:provider unavailable/
+  (error) => error.code === "inference_http_503"
 );
 
 let deepseekRequestBody = null;

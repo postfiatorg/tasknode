@@ -1,9 +1,10 @@
+import { isAsciiDigit, isAsciiLetter, replaceCharacterRuns } from "../shared/text-protocol.js";
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
 }
 
 function compact(value = "") {
-  return safeText(value, 6000).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return replaceCharacterRuns(safeText(value, 6000).toLowerCase(),char=>!isAsciiLetter(char)&&!isAsciiDigit(char)," ").trim();
 }
 
 export const canonicalHiveProjects = Object.freeze({

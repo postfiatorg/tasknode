@@ -222,7 +222,7 @@ export async function executeBoardManagerMessageUser({ runId, decision, sourcePa
   }
   const accountLiveState = await buildHiveAccountLiveState({ accountId, limit: 12 });
   const messagePreconditionForAudit = normalizedBoardManagerMessagePrecondition(decision);
-  const freshnessGuard = guardBoardManagerMessageUserFreshness({
+  const freshnessGuard = await guardBoardManagerMessageUserFreshness({
     decision,
     messageText,
     accountLiveState,

@@ -1,3 +1,4 @@
+import { stripPrefix } from "../shared/text-protocol.js";
 const CONTENT_KIND = Object.freeze({
   UNSPECIFIED: 0,
   TASK: 1,
@@ -43,7 +44,7 @@ function normalizeText(value) {
 function normalizeCid(value) {
   const text = normalizeText(value);
   if (!text) return null;
-  return text.replace(/^ipfs:\/\//i, "").replace(/^\/ipfs\//i, "").split(/[?#]/)[0] || null;
+  return stripPrefix(stripPrefix(text,"ipfs://",true),"/ipfs/",true).replaceAll("#","?").split("?")[0] || null;
 }
 
 function normalizeDate(value) {

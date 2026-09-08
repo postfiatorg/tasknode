@@ -1,0 +1,31 @@
+{
+  "at": "2026-09-06T17:48:01.058Z",
+  "repairs": [
+    {
+      "taskId": "task_3a8e09c197870ea5d6fa03207c29d9ed",
+      "accountId": "acct_oauth_65d797e20cc132e39b5c1d58",
+      "walletAddress": "r4XLZKYK63z4zW8ttKzgy8NVW1Noa1pRwj",
+      "title": "Fix Zero-Cap Crash in UNL Selector and Open Pull Request",
+      "previousCriteria": ":[",
+      "criteria": "Submit (1) the pull-request URL for postfiatorg/dynamic-unl-scoring containing the regression test, minimal fix, and one-paragraph justification; (2) a public gist URL containing the before-and-after output of pytest tests/test_unl_selector.py, showing the regression failing before the fix and all tests passing afterward; and (3) the Discord announcement message link from an approved Post Fiat channel linking the pull request and gist. Do not include secrets or private links.",
+      "status": "proposed",
+      "eventId": "evt_23725a9e9896a84f381efc12",
+      "sourceTxHash": "offchain:evt_23725a9e9896a84f381efc12",
+      "sourceCid": "postgres:evt_23725a9e9896a84f381efc12",
+      "replayRows": 1
+    },
+    {
+      "taskId": "task_7e27a8f164b5a71e335e4c0f4713112e",
+      "accountId": "acct_oauth_2a72ae714510678b868d3078",
+      "walletAddress": "rBguS1AAQXprfASB5LUU7t6MeEVKCp5mBz",
+      "title": "Reproduce TUI Cooked-Mode Bug and Package Repro Evidence",
+      "previousCriteria": "verification_policy",
+      "criteria": "Submit (1) the public gist URL containing the reproduction commands, terminal emulator and operating-system versions, full terminal output, expected versus actual behavior, and the terminal-mode source file and line reference; and (2) the Discord message link from an approved Post Fiat channel announcing that gist. Do not include passwords or secrets.",
+      "status": "proposed",
+      "eventId": "evt_123d928c8140708c1a45b4ea",
+      "sourceTxHash": "offchain:evt_123d928c8140708c1a45b4ea",
+      "sourceCid": "postgres:evt_123d928c8140708c1a45b4ea",
+      "replayRows": 1
+    }
+  ]
+}

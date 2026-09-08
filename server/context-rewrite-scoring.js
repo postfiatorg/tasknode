@@ -1,3 +1,4 @@
+import { isWhitespace, replaceCharacterRuns } from "../shared/text-protocol.js";
 export const contextRewriteScoreDimensions = [
   "human_readability",
   "not_prompt_guide",
@@ -45,7 +46,7 @@ function median(values = []) {
 function textArray(value, { maxItems = 12, maxLength = 420 } = {}) {
   const source = Array.isArray(value) ? value : value ? [value] : [];
   return source
-    .map((item) => String(item || "").trim().replace(/\s+/g, " ").slice(0, maxLength))
+    .map((item) => replaceCharacterRuns(String(item || "").trim(),isWhitespace," ").slice(0, maxLength))
     .filter(Boolean)
     .slice(0, maxItems);
 }
@@ -58,8 +59,8 @@ function normalizeResearchRequests(value) {
         return { question: item.trim().slice(0, 260), why_it_matters: "" };
       }
       return {
-        question: String(item?.question || item?.query || "").trim().replace(/\s+/g, " ").slice(0, 260),
-        why_it_matters: String(item?.why_it_matters || item?.rationale || "").trim().replace(/\s+/g, " ").slice(0, 420),
+        question: replaceCharacterRuns(String(item?.question || item?.query || "").trim(),isWhitespace," ").slice(0, 260),
+        why_it_matters: replaceCharacterRuns(String(item?.why_it_matters || item?.rationale || "").trim(),isWhitespace," ").slice(0, 420),
       };
     })
     .filter((item) => item.question)

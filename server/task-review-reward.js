@@ -27,6 +27,7 @@ import {
   markRewardPaymentRetryWait,
   markRewardPaymentSubmitUnknown,
   markRewardPaymentSubmitted,
+  updateRewardPaymentGuard,
   normalizeReward,
   pftToDrops,
   rewardPaymentGuard,
@@ -478,6 +479,8 @@ export async function processVerificationResponse(row, { logger = console } = {}
         taskId: row.task_id,
         workerName,
         error: "awaiting_agent_review_decision",
+        retryMode: "fixed",
+        retryDelayMs: 60_000,
       }).catch(() => null);
       logger.info?.("task_reward_awaiting_agent_decision", {
         taskId: row.task_id,
@@ -495,7 +498,7 @@ export async function processVerificationResponse(row, { logger = console } = {}
       verificationResponse,
       processedInitial,
       processedVerification,
-    });
+    }, { allowSemantic: Boolean(badgePolicy.discordEvidenceRequired) });
     if (badgePolicy.discordEvidenceRequired && !discordEvidence.ok) {
       const blocked = await publishDiscordEvidenceVerificationRequest({
         row,
@@ -683,6 +686,7 @@ export async function processVerificationResponse(row, { logger = console } = {}
       tasknodeKey,
       accountId: row.account_id,
       amountDrops: rewardAmountDrops,
+      onPrepared: (transactionReceipt) => updateRewardPaymentGuard({ taskId: row.task_id, patch: { transaction_receipt: transactionReceipt } }),
     });
     await markRewardPaymentSubmitted({ taskId: row.task_id, reward });
     const recordedReward = await directWriteReviewTransition({

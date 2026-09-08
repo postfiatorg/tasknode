@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "model": "kimi-k3",
+  "runtime": "existing production supervised Corbanu TUI",
+  "scopedInboxCommandSucceeded": true,
+  "pendingEscalations": 0,
+  "installedSkillHash": "6ca5b7effeb9a628a2b925b5789511432156e317d1f9bb458bc8d3a09ba7fc55",
+  "terminalRestarted": false,
+  "realContributorEscalationCompleted": false
+}

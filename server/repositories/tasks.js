@@ -1,4 +1,5 @@
 import { databaseEnabled, query } from "../db/pool.js";
+import { unappliedTaskReducerFailureSql } from "./task-projection-integrity.js";
 import { taskEventExpectation } from "../task-event-meaning.js";
 import {
   dedupeAuditEntries,
@@ -266,7 +267,7 @@ export async function getTerminalTaskProjectionDetail({
   };
 }
 
-async function taskReadIntegrityByTaskId({ taskIds = [], accountId = "", walletAddress = "" } = {}) {
+export async function taskReadIntegrityByTaskId({ taskIds = [], accountId = "", walletAddress = "" } = {}) {
   const ids = [...new Set((Array.isArray(taskIds) ? taskIds : []).map((id) => safeText(id, 180)).filter(Boolean))];
   if (!ids.length || !databaseEnabled()) {
     return {
@@ -287,10 +288,10 @@ async function taskReadIntegrityByTaskId({ taskIds = [], accountId = "", walletA
           task_id,
           count(*) FILTER (WHERE status = 'pending')::int AS pending_count,
           count(*) FILTER (WHERE status = 'processing')::int AS processing_count,
-          count(*) FILTER (WHERE status = 'failed')::int AS failed_count,
+          count(*) FILTER (WHERE ${unappliedTaskReducerFailureSql()})::int AS failed_count,
           max(updated_at) AS latest_reducer_updated_at,
           max(processed_at) AS latest_reducer_processed_at
-        FROM pftl_cache_reducer_events
+        FROM pftl_cache_reducer_events r
         WHERE task_id = ANY($1::text[])
           AND ($2::text = '' OR account_id = $2)
         GROUP BY task_id
@@ -607,7 +608,7 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
         SELECT
           count(*) FILTER (WHERE status = 'pending')::int AS pending_count,
           count(*) FILTER (WHERE status = 'processing')::int AS processing_count,
-          count(*) FILTER (WHERE status = 'failed')::int AS failed_count,
+          count(*) FILTER (WHERE ${unappliedTaskReducerFailureSql()})::int AS failed_count,
           max(updated_at) AS latest_reducer_updated_at,
           max(processed_at) AS latest_reducer_processed_at,
           jsonb_agg(
@@ -621,8 +622,8 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
               'updatedAt', updated_at
             )
             ORDER BY updated_at DESC, id DESC
-          ) FILTER (WHERE status = 'failed') AS failed_examples
-        FROM pftl_cache_reducer_events
+          ) FILTER (WHERE ${unappliedTaskReducerFailureSql()}) AS failed_examples
+        FROM pftl_cache_reducer_events r
         WHERE task_id = $1
           AND ($2::text = '' OR account_id = $2)
       `,

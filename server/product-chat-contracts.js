@@ -20,7 +20,7 @@ import { normalizeClientChatHistory } from "./chat-client-history.js";
 import { getIChingProfile, iChingProfilePromptPayload } from "./repositories/i-ching-profile.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
 import { isHelpChatMode } from "./chat-help-mode.js";
-import { chatPersonaIsModality, normalizeChatPersona } from "../shared/chat-personas.js";
+import { normalizeChatPersona } from "../shared/chat-personas.js";
 import { metadataWithMachineAgentOrigin } from "./agent-origin.js";
 import { recordAgentActionJournal } from "./agent-quality-gates.js";
 import { getActiveContextEditProposal } from "./repositories/context-edit.js";
@@ -35,7 +35,7 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0, agentOrigin 
   const contextMode = isContextEditPayload(payload) ? contextEditMode : "";
   const persona = contextMode ? "jobs" : normalizeChatPersona(payload?.persona);
   const requestedMode = typeof payload?.mode === "string" ? payload.mode.trim() : "";
-  const mode = contextMode || chatPersonaIsModality(persona) ? "Thinking" : requestedMode || effectiveDefaultChatMode();
+  const mode = contextMode ? "Thinking" : requestedMode || effectiveDefaultChatMode();
   const conversationId =
     typeof payload?.conversationId === "string" && payload.conversationId.trim()
       ? payload.conversationId.trim().slice(0, 160)
@@ -633,10 +633,22 @@ export function chatModes({ signedOut = false } = {}) {
       providerLabel: status.providerLabel,
       model: status.model,
       configured: status.configured,
+      primaryConfigured: status.primaryConfigured,
+      backupConfigured: status.backupConfigured,
+      backupProvider: status.backupProvider,
       enabled: loginRequired ? false : status.enabled,
       status: loginRequired ? "login_required" : status.status,
       actionRequired: loginRequired ? "Sign in to use billable chat modes." : undefined,
-      privacy: "Ambient inference route",
+      billingPolicy: config.billingPolicy || "configured_user_tariff",
+      pricing: {
+        inputUsdPerMillion: config.inputUsdPerMillion,
+        inputCacheHitUsdPerMillion: config.inputCacheHitUsdPerMillion,
+        outputUsdPerMillion: config.outputUsdPerMillion,
+      },
+      description: config.exactModel
+        ? `API rates · from $${config.inputUsdPerMillion} input / $${config.outputUsdPerMillion} output per 1M tokens`
+        : "",
+      privacy: config.exactModel ? "Vercel AI Gateway" : "Vercel AI Gateway with Ambient backup",
       latency: config.reasoningEffort ? "Deep" : "Fast",
     };
   });

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { taskReviewWorkerInternalsForTests } from "../server/task-review-worker.js";
+import { nextWorkerClaimState } from "../server/task-review-publication.js";
 
 const {
   buildRewardOutcomePayload,
@@ -84,6 +85,28 @@ assert.equal(taskReviewRetryDelayMs(20), 900_000);
 assert.equal(rewardPaymentGuardCanSkipPreflightSync({ status: "retry_wait" }), true);
 assert.equal(rewardPaymentGuardCanSkipPreflightSync({ status: "submit_unknown" }), false);
 assert.equal(rewardPaymentGuardCanSkipPreflightSync({ status: "submitting" }), false);
+const firstFailure = nextWorkerClaimState({}, {
+  error: "temporary provider outage",
+  retryMode: "exponential",
+  nowMs: Date.parse("2026-09-04T00:00:00.000Z"),
+});
+assert.equal(firstFailure.processing, "false");
+assert.equal(firstFailure.retry_count, 1);
+assert.equal(firstFailure.retry_after, "2026-09-04T00:01:00.000Z");
+const secondFailure = nextWorkerClaimState(firstFailure, {
+  error: "temporary provider outage",
+  retryMode: "exponential",
+  nowMs: Date.parse("2026-09-04T00:01:00.000Z"),
+});
+assert.equal(secondFailure.retry_count, 2);
+assert.equal(secondFailure.retry_after, "2026-09-04T00:03:00.000Z");
+const awaitingAgent = nextWorkerClaimState({}, {
+  error: "awaiting_agent_verification_request",
+  retryMode: "fixed",
+  retryDelayMs: 60_000,
+  nowMs: Date.parse("2026-09-04T00:00:00.000Z"),
+});
+assert.equal(awaitingAgent.retry_after, "2026-09-04T00:01:00.000Z");
 const mixedSubmissionPayloads = [
   {
     schema: "pf.task.submission.v1",
@@ -134,13 +157,13 @@ assert.equal(badgeCappedScore.badge_reward_cap_pft, "5000.00");
 assert.equal(badgeCappedScore.badge_cap_applied, true);
 
 assert.equal(
-  discordAnnouncementEvidenceStatus({
+  (await discordAnnouncementEvidenceStatus({
     verificationResponse: {
       response: {
         text: "Announced in Discord: https://discord.com/channels/123456789012345678/223456789012345678/323456789012345678",
       },
     },
-  }).evidence_type,
+  }, { classify: async (input) => ({ kind: input.hasScreenshot ? "screenshot" : "message_id", messageId: input.hasScreenshot ? "" : "323456789012345678", citation: input.text }) })).evidence_type,
   "discord_message_link"
 );
 assert.deepEqual(
@@ -209,15 +232,15 @@ assert.equal(
   false
 );
 assert.equal(
-  discordAnnouncementEvidenceStatus({
+  (await discordAnnouncementEvidenceStatus({
     verificationResponse: {
       response_text: "Discord message id: 323456789012345678",
     },
-  }).evidence_type,
+  }, { classify: async (input) => ({ kind: input.hasScreenshot ? "screenshot" : "message_id", messageId: input.hasScreenshot ? "" : "323456789012345678", citation: input.text }) })).evidence_type,
   "discord_message_id"
 );
 assert.equal(
-  discordAnnouncementEvidenceStatus({
+  (await discordAnnouncementEvidenceStatus({
     verificationResponse: {
       evidence_items: [
         {
@@ -227,11 +250,11 @@ assert.equal(
         },
       ],
     },
-  }).evidence_type,
+  }, { classify: async (input) => ({ kind: input.hasScreenshot ? "screenshot" : "message_id", messageId: input.hasScreenshot ? "" : "323456789012345678", citation: input.text }) })).evidence_type,
   "discord_announcement_screenshot"
 );
 assert.equal(
-  discordAnnouncementEvidenceStatus({
+  (await discordAnnouncementEvidenceStatus({
     verificationResponse: {
       evidence_items: [
         {
@@ -241,13 +264,13 @@ assert.equal(
         },
       ],
     },
-  }).ok,
+  }, { classify: async () => ({kind:"missing",messageId:"",citation:""}) })).ok,
   false
 );
 assert.equal(
-  discordAnnouncementEvidenceStatus({
+  (await discordAnnouncementEvidenceStatus({
     verificationResponse: { response_text: "Completed the work, see notes." },
-  }).ok,
+  }, { classify: async () => ({kind:"missing",messageId:"",citation:""}) })).ok,
   false
 );
 assert.equal(evidencePayloadHasScreenshot({ file: { name: "proof.webp", mime_type: "image/webp" } }), true);

@@ -162,7 +162,9 @@ assert.equal(
   "generating",
   "a durable queued render must never be mislabeled as interrupted"
 );
-await completeProfileNftRenderJob(queuedJob.id);
+const queuedClaim = await claimProfileNftRenderJob();
+assert.equal(queuedClaim.id, queuedJob.id);
+await completeProfileNftRenderJob(queuedClaim);
 
 const reclaimDraft = await createGeneratingProfileNft({
   accountId,
@@ -186,7 +188,7 @@ assert.equal(claimed.profileNftId, reclaimDraft.id);
 const reclaimedNft = await getProfileNft({ accountId, nftId: reclaimDraft.id });
 assert.equal(reclaimedNft.status, "generating", "claiming durable work must restore generating state");
 assert.equal(reclaimedNft.error, "", "claiming durable work must clear an obsolete failure message");
-await completeProfileNftRenderJob(claimed.id);
+await completeProfileNftRenderJob(claimed);
 
 const otherAfter = await getProfileNft({ accountId: otherAccountId, nftId: otherStaleDraft.id });
 assert.equal(otherAfter.status, "generating", "account-scoped sweep must not touch other accounts");

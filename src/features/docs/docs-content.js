@@ -57,7 +57,7 @@ async function loadIdentityAndWallets() {
   return [
     "# Identity & Wallets",
     "Account login, retained-account selection, connected providers, wallet proof, local vault unlock, and custody are separate security states.",
-    docSection("Login And Connected Accounts", authAndConnectedAccounts),
+    docSection("Login, Account Switching, And Corbanu Linking", authAndConnectedAccounts),
     docSection("Wallet Proof And Local Vault", authWalletBoundary),
   ].join("\n\n");
 }
@@ -65,12 +65,14 @@ async function loadIdentityAndWallets() {
 const systemStatusIntro = [
   "# System Status",
   "This page renders live status returned by Task Node. A healthy web process does not prove that background workers, queues, providers, protocol endpoints, or dependent services are healthy.",
+  "Inference uses Vercel AI Gateway first, with Ambient as backup. Provider configuration and live availability are distinct states.",
   "Status links lead only to the public product and architecture documentation allowlist.",
 ].join("\n\n");
 
 export const SYSTEM_STATUS_DOC_LINKS = {
   board_manager: { slug: "hive", label: "Docs: Hive" },
   board_manager_secretary_packets: { slug: "hive", label: "Docs: Hive" },
+  hive_group_chat: { slug: "hive", label: "Docs: Hive group chat" },
   hive_secretary: { slug: "hive", label: "Docs: Hive" },
   hive_active_projects: { slug: "hive", label: "Docs: Hive" },
   network_task_generation: { slug: "tasks", label: "Docs: Tasks" },
@@ -114,7 +116,7 @@ export const DOC_GROUPS = [
       {
         slug: "user-guide",
         title: "User Guide",
-        summary: "Plain-English guide to the current application.",
+        summary: "Guide to Task Node, including Settings → General → Appearance (System, Light, Dark).",
         loadMarkdown: HELP_MARKDOWN_LOADERS.userGuide,
       },
       {
@@ -128,16 +130,16 @@ export const DOC_GROUPS = [
   {
     title: "Product",
     pages: [
-      { slug: "chat", title: "Chat", summary: "AI work, persistence, billing, and recovery.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
-      { slug: "tasks", title: "Tasks", summary: "Personal and network task lifecycle.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
+      { slug: "chat", title: "Chat", summary: "Model selection, API-rate chat billing, persistence, and recovery.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
+      { slug: "tasks", title: "Tasks", summary: "Personal and network tasks, submission requirements, request progress, retry and dismissal.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
       { slug: "hive", title: "Hive", summary: "Public Nostr group chat, shared handles, periodic GLM participation and Kimi board escalation.", loadMarkdown: HELP_MARKDOWN_LOADERS.hive },
-      { slug: "docs", title: "Docs", summary: "Wallet-encrypted documents and on-demand document chat.", loadMarkdown: HELP_MARKDOWN_LOADERS.docs },
+      { slug: "docs", title: "Docs", summary: "Encrypted documents, spreadsheets, folders, and chat with Coach and ODV.", loadMarkdown: HELP_MARKDOWN_LOADERS.docs },
       { slug: "team", title: "Team", summary: "Directional task-history permissions.", loadMarkdown: HELP_MARKDOWN_LOADERS.team },
       { slug: "messages", title: "Messages", summary: "Activate your shared Messages and Hive identity; send private NIP-17 messages.", loadMarkdown: HELP_MARKDOWN_LOADERS.messages },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, activity, custody, and signing.", loadMarkdown: HELP_MARKDOWN_LOADERS.wallet },
       { slug: "context", title: "Context", summary: "Durable account working context.", loadMarkdown: HELP_MARKDOWN_LOADERS.context },
       { slug: "memory", title: "Memory", summary: "Inspectable chat and work compression.", loadMarkdown: HELP_MARKDOWN_LOADERS.memory },
-      { slug: "profile", title: "Profile", summary: "Public identity, contribution, and NFT state.", loadMarkdown: HELP_MARKDOWN_LOADERS.profile },
+      { slug: "profile", title: "Profile", summary: "Named Profile Pic NFTs, full-size artwork viewing, three-task eligibility, and private Kimi ZDR generation.", loadMarkdown: HELP_MARKDOWN_LOADERS.profile },
       { slug: "directory", title: "Directory", summary: "Discoverable public member profiles.", loadMarkdown: HELP_MARKDOWN_LOADERS.directory },
       { slug: "search", title: "Search", summary: "Account-scoped chat retrieval.", loadMarkdown: HELP_MARKDOWN_LOADERS.search },
       { slug: "daily-airdrop", title: "Daily Airdrop", summary: "Contributor scoring and issuance state.", loadMarkdown: HELP_MARKDOWN_LOADERS.dailyAirdrop },

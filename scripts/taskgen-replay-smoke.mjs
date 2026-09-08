@@ -16,7 +16,7 @@ import {
   taskgenReplayIdentity,
 } from "../server/task-generation-worker.js";
 
-process.env.AMBIENT_MODEL_STRUCTURED = "taskgen-replay-smoke-model";
+process.env.TASKNODE_TASKGEN_MODEL = "zai/glm-5.3";
 
 const taskInput = {
   schema: "pf.taskgen.input.v1",
@@ -80,7 +80,7 @@ const sameIdentity = taskgenReplayIdentity({
 assert.equal(identity.replay_key, sameIdentity.replay_key);
 assert.match(identity.replay_key, /^taskgen_[a-f0-9]{48}$/);
 assert.equal(identity.source_payload_digest, "sha256:source-payload-a");
-assert.equal(identity.model, "taskgen-replay-smoke-model");
+assert.equal(identity.model, "zai/glm-5.3");
 assert.equal(identity.task_class, "network");
 
 const changedSourceKey = buildTaskgenReplayKey({
@@ -174,7 +174,7 @@ if (databaseEnabled()) {
   const generated = await getTaskgenReplay(identity.replay_key);
   assert.equal(hasGeneratedTaskgenReplay(generated), true);
   assert.equal(hasPublishedTaskgenReplay(generated), false);
-  assert.equal(generated.taskgenOutput.deadline.accept_by, "2026-06-18T12:00:00.000Z");
+  assert.equal(generated.taskgenOutput.deadline.accept_by, completeTaskgenOutput.deadline.accept_by);
   await recordTaskgenReplayGenerated({
     replayKey: identity.replay_key,
     identity,
@@ -187,7 +187,7 @@ if (databaseEnabled()) {
   assert.equal(refreshedGenerated.status, "generated");
   assert.equal(refreshedGenerated.offerTxHash, "");
   assert.equal(refreshedGenerated.taskId, "task_replay_smoke_refreshed");
-  assert.equal(refreshedGenerated.taskgenOutput.deadline.accept_by, "2026-06-19T14:00:00.000Z");
+  assert.equal(refreshedGenerated.taskgenOutput.deadline.accept_by, refreshedForPublish.taskgen.output.deadline.accept_by);
   await recordTaskgenReplayPublished({
     replayKey: identity.replay_key,
     identity,

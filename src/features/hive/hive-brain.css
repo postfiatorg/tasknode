@@ -56,7 +56,7 @@
 }
 
 .hive-brain-tab span {
-  background: #f1efe8;
+  background: var(--tn-dark-bg, #f1efe8);
   border-radius: 20px;
   color: var(--hive-muted);
   font-size: 10.5px;
@@ -96,7 +96,7 @@
   background: var(--hive-surface);
   border: 1px solid var(--hive-border);
   border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(40, 38, 32, 0.05), 0 1px 1px rgba(40, 38, 32, 0.03);
+  box-shadow: 0 1px 2px var(--tn-dark-shadow, rgba(40, 38, 32, 0.05)), 0 1px 1px var(--tn-dark-shadow, rgba(40, 38, 32, 0.03));
   min-width: 0;
 }
 
@@ -128,7 +128,7 @@
 }
 
 .hive-brain-system-summary {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 1px solid var(--hive-border);
   border-radius: 10px;
   display: grid;
@@ -234,7 +234,7 @@
 }
 
 .hive-brain-system-meta span {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 1px solid var(--hive-border);
   border-radius: 8px;
   display: grid;
@@ -265,7 +265,7 @@
 
 .hive-brain-prompt-block summary {
   align-items: center;
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 1px solid var(--hive-border);
   border-radius: 8px;
   color: var(--hive-ink);
@@ -296,9 +296,9 @@
 }
 
 .hive-brain-prompt-block pre {
-  background: #171817;
+  background: var(--tn-dark-inverse-surface, #171817);
   border-radius: 8px;
-  color: #eef4e7;
+  color: var(--tn-dark-on-inverse, #eef4e7);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11.5px;
   line-height: 1.52;
@@ -342,17 +342,17 @@
 }
 
 .hive-brain-badge.is-action {
-  background: #2b2a26;
-  color: #fff;
+  background: var(--tn-dark-inverse-surface, #2b2a26);
+  color: var(--tn-dark-on-inverse, #fff);
 }
 
 .hive-brain-badge.is-blue {
-  background: #eaf0f7;
-  color: #3a6ea5;
+  background: var(--tn-dark-bg, #eaf0f7);
+  color: var(--tn-dark-info, #3a6ea5);
 }
 
 .hive-brain-badge.is-gray {
-  background: #f1efe8;
+  background: var(--tn-dark-bg, #f1efe8);
   color: var(--hive-muted);
 }
 
@@ -362,8 +362,8 @@
 }
 
 .hive-brain-badge.is-red {
-  background: #f6e7e1;
-  color: #ab412c;
+  background: var(--tn-dark-hover, #f6e7e1);
+  color: var(--tn-dark-danger, #ab412c);
 }
 
 .hive-brain-decision-card {
@@ -372,7 +372,7 @@
 
 .hive-brain-decision-top {
   align-items: center;
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border-bottom: 1px solid var(--hive-border);
   color: var(--hive-muted);
   display: flex;
@@ -422,7 +422,7 @@
 
 .hive-brain-pill,
 .hive-brain-tag-row span {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 1px solid var(--hive-border);
   border-radius: 20px;
   color: var(--hive-muted);
@@ -462,9 +462,9 @@
 }
 
 .hive-brain-action.is-chosen {
-  background: #2b2a26;
-  border-color: #2b2a26;
-  color: #fff;
+  background: var(--tn-dark-inverse-surface, #2b2a26);
+  border-color: var(--tn-dark-border, #2b2a26);
+  color: var(--tn-dark-on-inverse, #fff);
 }
 
 .hive-brain-option-strip {
@@ -475,7 +475,7 @@
 }
 
 .hive-brain-option-strip article {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 1px solid var(--hive-border);
   border-radius: 9px;
   padding: 10px 12px;
@@ -561,7 +561,7 @@
 }
 
 .hive-brain-table th {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border-bottom: 1px solid var(--hive-border);
   color: var(--hive-muted);
   font-size: 10.5px;
@@ -585,7 +585,7 @@
 }
 
 .hive-brain-table tbody tr:hover {
-  background: #fbfaf6;
+  background: var(--tn-dark-hover, #fbfaf6);
 }
 
 .hive-brain-table .is-num {
@@ -683,7 +683,7 @@
 }
 
 .hive-brain-task-history-row code {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 1px solid var(--hive-border);
   border-radius: 5px;
   color: var(--hive-muted);
@@ -712,7 +712,7 @@
 }
 
 .hive-brain-task-history-grid span {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 1px solid var(--hive-border);
   border-radius: 8px;
   display: grid;
@@ -772,10 +772,10 @@
 
 .hive-brain-live-task-packet-meta button {
   align-items: center;
-  background: var(--hive-ink);
+  background: var(--tn-dark-inverse-surface, var(--hive-ink));
   border: 0;
   border-radius: 999px;
-  color: #fff;
+  color: var(--tn-dark-on-inverse, #fff);
   cursor: pointer;
   display: inline-flex;
   font-size: 12px;
@@ -787,7 +787,7 @@
 
 .hive-brain-live-task-packet-meta button:hover,
 .hive-brain-live-task-packet-meta button:focus-visible {
-  background: #2a2a2a;
+  background: var(--tn-dark-inverse-surface, #2a2a2a);
   outline: none;
 }
 
@@ -855,7 +855,7 @@
 
 .hive-brain-live-contributor code,
 .hive-brain-live-task-row code {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 1px solid var(--hive-border);
   border-radius: 5px;
   color: var(--hive-muted);

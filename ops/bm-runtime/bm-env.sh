@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared environment for the Board Manager v2 runtime harness (Gate D).
-# Sourced by bm-launch.sh, bm-whip.sh, bm-reset.sh, bm-proxy.sh, and the skill installer.
+# Sourced by the launcher, reset, proxy, supervisor installer and skill installer.
 
 set -u
 
@@ -34,7 +34,7 @@ export BM_MODEL="${BM_MODEL:-kimi-k3}"
 # 2026-08-17). BM_TERMINAL_BIN (or legacy PFTERMINAL_BIN) overrides.
 BM_TERMINAL_BIN="${BM_TERMINAL_BIN:-${PFTERMINAL_BIN:-}}"
 if [ -z "$BM_TERMINAL_BIN" ]; then
-  for candidate in corbanu pfterminal "$HOME/.local/bin/corbanu" "$HOME/.local/bin/pfterminal"; do
+  for candidate in "$BM_HOME/bin/corbanu" corbanu pfterminal "$HOME/.local/bin/corbanu" "$HOME/.local/bin/pfterminal"; do
     resolved="$(command -v "$candidate" 2>/dev/null || true)"
     if [ -n "$resolved" ] && [ -x "$resolved" ]; then BM_TERMINAL_BIN="$resolved"; break; fi
     if [ -x "$candidate" ]; then BM_TERMINAL_BIN="$candidate"; break; fi
@@ -58,16 +58,7 @@ export BM_SKILLS_DIR="${BM_SKILLS_DIR:-$BM_TERMINAL_HOME/skills}"
 export BM_OPERATOR_ACCOUNT_ID="${BM_OPERATOR_ACCOUNT_ID:-acct_oauth_3c70e69ab7b8ef1fad3df508}"
 export BM_OPERATOR_WALLET="${BM_OPERATOR_WALLET:-rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx}"
 
-# The six boards: "<alias>:<board_id>" pairs; tmux session is bm-<alias>.
-BM_BOARDS=(
-  "community:board_community_promotion"
-  "pfterminal:board_pf_terminal"
-  "l1v2:board_postfiat_l1v2"
-  "governance:board_ai_l1_governance"
-  "tasknode:board_tasknode_fixes"
-  "capital:board_capital_markets"
-)
-export BM_BOARDS_LIST="${BM_BOARDS[*]}"
+# Agent-to-board assignments have one owner: ops/bm-runtime/agents.json.
 
 mkdir -p "$BM_STATE_DIR" "$BM_JOURNAL_DIR" "$BM_LOG_DIR"
 

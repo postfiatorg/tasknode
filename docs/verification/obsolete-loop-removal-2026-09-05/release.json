@@ -1,0 +1,50 @@
+{
+  "observedAt": "2026-09-05T17:54:18.392768+00:00",
+  "release": "703",
+  "machineCount": 19,
+  "activeGroups": [
+    "app",
+    "board-secretary",
+    "worker-airdrop",
+    "worker-context-rewrite",
+    "worker-hive",
+    "worker-memory-profile",
+    "worker-nft-renderer",
+    "worker-pftl",
+    "worker-task-review",
+    "worker-taskgen"
+  ],
+  "health": {
+    "ok": true,
+    "status": null
+  },
+  "systemStatusItems": 22,
+  "retiredWorkerStatusRowsAbsent": true,
+  "workerStatus": [
+    {
+      "id": "hive_board_secretary",
+      "status": "ok",
+      "statusLabel": "Current"
+    },
+    {
+      "id": "hive_secretary",
+      "status": "warning",
+      "statusLabel": "Recent failed jobs"
+    },
+    {
+      "id": "network_task_generation",
+      "status": "ok",
+      "statusLabel": "Current"
+    },
+    {
+      "id": "task_generation",
+      "status": "warning",
+      "statusLabel": "Recent failed requests"
+    },
+    {
+      "id": "task_review",
+      "status": "critical",
+      "statusLabel": "Review queue stale"
+    }
+  ]
+}

@@ -161,9 +161,9 @@ export async function taskCreate({
   if (allowedHandles.length) {
     const handle = safeText(assigneeHandle, 120).toLowerCase();
     if (!handle || !allowedHandles.includes(handle)) {
-      throw new Error(
+      throw Object.assign(new Error(
         `board_routing_constraint: this board is assignable only to ${allowedHandles.join(", ")} (pass --assignee-handle)`
-      );
+      ), { status: 422 });
     }
   }
   const budget = await boardBudgetStatus(boardId);

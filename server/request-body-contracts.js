@@ -108,6 +108,8 @@ const chatProperties = {
 
 const taskProperties = {
   phase: text(40),
+  expectedAccountId: text(180),
+  expectedAttemptCount: integer(),
   taskId: text(180),
   task_id: text(180),
   taskAction: text(80),
@@ -251,6 +253,14 @@ export const collaborationChallengeBody = strictBody(512 * KiB, {
 export const docsSetupBody = strictBody(512 * KiB, {
   encryptedRootKeyEnvelope: encryptedEnvelope, proof,
 }, { required: ["encryptedRootKeyEnvelope", "proof"] });
+export const docsLibraryBody = strictBody(400_000, {
+  encryptedLibraryMetadata: {
+    type: "object", allowUnknown: false,
+    properties: { version: integer(1, 1), enc: text(20, 1, { enum: ["AES-256-GCM"] }), iv: text(24, 16), ciphertext: text(350_000, 24) },
+    required: ["version", "enc", "iv", "ciphertext"],
+  },
+  expectedVersion: integer(),
+}, { required: ["encryptedLibraryMetadata", "expectedVersion"] });
 export const docsCreateBody = strictBody(512 * KiB, {
   documentId: text(80, 1), channelHash: text(128, 1), encryptedMetadata: encryptedEnvelope, proof,
 }, { required: ["documentId", "channelHash", "encryptedMetadata", "proof"] });
@@ -415,4 +425,16 @@ export const networkBadgeAdminBody = strictBody(64 * KiB, {
   approvalScope: text(240), approval_scope: text(240), reason: text(700), notes: text(700), status: text(80),
   maxAttempts: integer(1, 20), max_attempts: integer(1, 20), runAfter: text(80), run_after: text(80),
   selectedDefault: boolean, selected_default: boolean, default: boolean, evidence: opaqueObject, metrics: opaqueObject,
+});
+
+// The route handler validates each command's required fields and nested payload.
+// This shared envelope rejects undeclared fields before any tracker work begins.
+export const campaignTrackerBody = strictBody(1100 * KiB, {
+  workspaceId: { type: "string" }, enabled: boolean, apiKey: { type: "string" }, event: opaqueObject,
+  title: { type: "string" }, objective: { type: "string" }, memberHandles: { type: "array" }, taskIds: { type: "array" },
+  accountId: { type: "string" }, id: { type: "string" }, revision: { type: "integer" },
+  kind: { type: "string" }, scores: opaqueObject, note: { type: "string" },
+  handle: { type: "string" }, capabilities: { type: "array" }, workspaceIds: { type: "array" },
+  historyFrom: { type: ["string", "null"] }, historyTo: { type: ["string", "null"] },
+  expiresAt: { type: ["string", "null"] }, grantId: { type: "string" },
 });

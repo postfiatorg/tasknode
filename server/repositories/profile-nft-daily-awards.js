@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
-import { nonFixtureTaskProjectionSql } from "./task-projection-integrity.js";
+import { nonFixtureTaskProjectionSql, nonFixtureProfileNftSql, completedTaskProjectionSql } from "./task-projection-integrity.js";
 
 const runtimeAwards = new Map();
 const runtimeHeartbeats = new Map();
@@ -54,20 +54,17 @@ function eligibilityReason({ personalCompletedCount = 0, networkCompletedCount =
 }
 
 export function dailyProfileNftEligibilityReason(candidate = {}) {
-  return eligibilityReason(candidate);
+  return Number(candidate.personalCompletedCount || 0) + Number(candidate.networkCompletedCount || 0) >= 3
+    ? "three_completed_tasks" : "ineligible";
 }
 
 export async function listDailyProfileNftCandidates({
   runDate = dateOnly(),
-  personalTaskThreshold = 3,
-  networkTaskThreshold = 1,
   maxAttempts = 3,
   limit = 10,
 } = {}) {
   if (!databaseEnabled()) return [];
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
-  const safePersonalTaskThreshold = Math.min(Math.max(Number(personalTaskThreshold) || 3, 0), 1000);
-  const safeNetworkTaskThreshold = Math.min(Math.max(Number(networkTaskThreshold) || 1, 1), 1000);
   const safeMaxAttempts = Math.min(Math.max(Number(maxAttempts) || 3, 1), 20);
   const result = await query(
     `WITH completed_tasks AS (
@@ -80,7 +77,7 @@ export async function listDailyProfileNftCandidates({
               COALESCE(p.last_event_at, p.updated_at, p.created_at) AS completed_at
          FROM task_projections p
         WHERE p.account_id <> ''
-          AND p.status IN ('completed', 'rewarded')
+          AND ${completedTaskProjectionSql("p")}
           AND ${nonFixtureTaskProjectionSql("p")}
      ),
      eligible_accounts AS (
@@ -103,46 +100,48 @@ export async function listDailyProfileNftCandidates({
         ORDER BY account_id, priority ASC, updated_at DESC, wallet_address ASC
      )
      SELECT e.account_id,
-            w.wallet_address,
+            COALESCE(w.wallet_address, '') AS wallet_address,
             e.personal_completed_count,
             e.network_completed_count,
             e.last_completed_at
        FROM eligible_accounts e
-       JOIN active_wallets w ON w.account_id = e.account_id
+       LEFT JOIN active_wallets w ON w.account_id = e.account_id
        LEFT JOIN profile_nft_daily_awards retry_award
               ON retry_award.account_id = e.account_id
              AND retry_award.run_date = $1::date
              AND retry_award.status IN ('pending', 'retry_wait')
-             AND retry_award.attempt_count < $5
+             AND retry_award.attempt_count < $3
              AND (retry_award.next_attempt_at IS NULL OR retry_award.next_attempt_at <= now())
-      WHERE (
-              e.personal_completed_count > $2
-              OR e.network_completed_count >= $3
-            )
+      WHERE e.personal_completed_count + e.network_completed_count >= 3
+        AND NOT EXISTS (SELECT 1 FROM profile_nfts active_nft JOIN profile_nft_render_jobs active_job ON active_job.profile_nft_id=active_nft.id
+          WHERE active_nft.account_id=e.account_id AND active_job.status IN ('queued','rendering'))
         AND NOT EXISTS (
               SELECT 1
                 FROM profile_nft_daily_awards award
                WHERE award.account_id = e.account_id
                  AND award.run_date = $1::date
                  AND (
-                       award.status IN ('generated', 'running', 'skipped', 'failed_permanent')
+                       award.status IN ('generated', 'running', 'rendering', 'skipped', 'failed_permanent')
                        OR (
                             award.status = 'retry_wait'
-                            AND (award.attempt_count >= $5 OR award.next_attempt_at > now())
+                            AND (award.attempt_count >= $3 OR award.next_attempt_at > now())
                           )
                        OR (
                             award.status = 'failed'
-                            AND award.attempt_count >= $5
+                            AND award.attempt_count >= $3
                          )
                      )
             )
-      ORDER BY (retry_award.id IS NOT NULL) DESC,
+      ORDER BY NOT EXISTS (SELECT 1 FROM profile_nfts visible_nft WHERE visible_nft.account_id=e.account_id
+                 AND visible_nft.status IN ('generated','prepared','minted') AND (visible_nft.image_cid<>'' OR visible_nft.image_gateway_url<>'')
+                 AND ${nonFixtureProfileNftSql("visible_nft")}) DESC,
+               (retry_award.id IS NOT NULL) DESC,
                e.last_completed_at DESC NULLS LAST,
                e.network_completed_count DESC,
                e.personal_completed_count DESC,
                e.account_id ASC
-      LIMIT $4`,
-    [dateOnly(runDate), safePersonalTaskThreshold, safeNetworkTaskThreshold, safeLimit, safeMaxAttempts]
+      LIMIT $2`,
+    [dateOnly(runDate), safeLimit, safeMaxAttempts]
   );
   return result.rows.map((row) => {
     const candidate = {
@@ -154,7 +153,7 @@ export async function listDailyProfileNftCandidates({
     };
     return {
       ...candidate,
-      eligibilityReason: eligibilityReason(candidate),
+      eligibilityReason: dailyProfileNftEligibilityReason(candidate),
     };
   });
 }
@@ -316,7 +315,7 @@ export async function recordDailyProfileNftBackfillSkippedSlots({
   const normalizedMode = safeText(mode, 120);
   const normalizedReason = safeText(reason, 500);
   const normalizedManifestHash = safeText(manifestHash, 64);
-  if (!/^[a-f0-9]{64}$/.test(normalizedManifestHash)) throw new Error("profile_nft_daily_backfill_manifest_hash_invalid");
+  if (!(normalizedManifestHash.length === 64 && [...normalizedManifestHash].every((char) => "0123456789abcdef".includes(char)))) throw new Error("profile_nft_daily_backfill_manifest_hash_invalid");
   if (!databaseEnabled()) {
     for (const slot of normalizedSlots) {
       const existing = [...runtimeAwards.values()].find((award) => award.accountId === slot.accountId && award.runDate === slot.runDate);
@@ -420,7 +419,7 @@ export async function createDailyProfileNftAward({
   const normalizedRunDate = dateOnly(runDate);
   const normalizedPersonalCount = Math.max(0, Number(personalCompletedCount || 0));
   const normalizedNetworkCount = Math.max(0, Number(networkCompletedCount || 0));
-  const normalizedReason = safeText(reason, 120) || eligibilityReason({
+  const normalizedReason = safeText(reason, 120) || dailyProfileNftEligibilityReason({
     personalCompletedCount: normalizedPersonalCount,
     networkCompletedCount: normalizedNetworkCount,
   });
@@ -533,10 +532,10 @@ export async function markDailyProfileNftAwardGenerated({ awardId = "", profileN
 
   const result = await query(
     `UPDATE profile_nft_daily_awards
-        SET status = 'generated',
+        SET status = CASE WHEN EXISTS (SELECT 1 FROM profile_nfts nft WHERE nft.id=$2 AND nft.status IN ('generated','prepared','minted')) THEN 'generated' ELSE 'rendering' END,
             profile_nft_id = $2,
             error = '',
-            completed_at = now(),
+            completed_at = CASE WHEN EXISTS (SELECT 1 FROM profile_nfts nft WHERE nft.id=$2 AND nft.status IN ('generated','prepared','minted')) THEN now() ELSE NULL END,
             updated_at = now()
       WHERE id = $1
       RETURNING *`,

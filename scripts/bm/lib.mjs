@@ -185,6 +185,11 @@ export async function boardPacket(boardId) {
       updated_at: board.updated_at,
     },
     allocation_counts: allocations,
+    generation_failures: (await query(
+      `SELECT id, allocation_id, candidate_account_id, status, last_error, created_at, updated_at
+       FROM network_task_generation_jobs WHERE project_id=$1 AND status='failed'
+       ORDER BY updated_at DESC LIMIT 10`, [boardId]
+    )).rows,
     tasks: buckets,
     hive_chat_digest: secretary
       ? { report_id: secretary.id, created_at: secretary.created_at, text: String(secretary.output_text || "").slice(0, 1500) }
@@ -231,6 +236,7 @@ export async function idleEligibleContributors() {
     `
     SELECT b.account_id,
            array_agg(DISTINCT b.badge_id ORDER BY b.badge_id) AS badges,
+           max(b.badge_id) FILTER (WHERE b.selected_default) AS selected_default_badge,
            COALESCE(hist.rewarded, 0) AS rewarded_tasks,
            hist.last_active
     FROM account_network_badges b
@@ -250,6 +256,7 @@ export async function idleEligibleContributors() {
   const members = result.rows.map((row) => ({
     account_id: row.account_id,
     badges: row.badges || [],
+    selected_default_badge: row.selected_default_badge || "",
     rewarded_tasks: Number(row.rewarded_tasks || 0),
     last_active: row.last_active,
   }));

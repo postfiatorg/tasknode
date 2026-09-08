@@ -4,32 +4,11 @@ import { requestJson } from "../../api";
 import { isSignedInSession } from "../../session";
 import { SettingsLine, SmallPill, ToggleSwitch } from "./SettingsControls.jsx";
 
-export function DataSettings({ chat, onAccountDeleted, onAppStateChange, session }) {
-  const hiveConversation = chat?.hiveConversation || null;
-  const hiveDisabled = hiveConversation?.disabled === true || hiveConversation?.enabled === false;
-  const [hivePending, setHivePending] = useState(false);
-  const [hiveMessage, setHiveMessage] = useState("");
+export function DataSettings({ onAccountDeleted, onAppStateChange, onOpenHiveChat, session }) {
   const [exportPending, setExportPending] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
   const [deletePending, setDeletePending] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState("");
-
-  async function enableHiveChat() {
-    setHivePending(true);
-    setHiveMessage("");
-    try {
-      const result = await requestJson("/api/hive/chat", { method: "POST" });
-      if (!result.ok || !result.body?.ok) {
-        throw new Error(result.body?.message || result.body?.error || "Hive Chat could not be enabled.");
-      }
-      setHiveMessage("Hive Chat enabled.");
-      await onAppStateChange?.();
-    } catch (error) {
-      setHiveMessage(error?.message || "Hive Chat could not be enabled.");
-    } finally {
-      setHivePending(false);
-    }
-  }
 
   async function exportAccountData() {
     if (!isSignedInSession(session)) {
@@ -91,13 +70,10 @@ export function DataSettings({ chat, onAccountDeleted, onAppStateChange, session
     <>
       <SettingsLine desc="Allow your content to be used to improve Task Node." label="Improve the model for everyone" right={<ToggleSwitch initial />} />
       <SettingsLine
-        desc={hiveDisabled ? "Restore the default Hive conversation in your chat sidebar." : "The default Hive conversation is active."}
+        desc="Public group chat over Nostr, using your Messages identity. Previous private Hive conversations remain in your archive."
         label="Hive Chat"
-        right={hiveDisabled ? (
-          <SmallPill disabled={hivePending} onClick={enableHiveChat}>{hivePending ? "Enabling" : "Re-enable"}</SmallPill>
-        ) : <SmallPill disabled>Enabled</SmallPill>}
+        right={<SmallPill onClick={onOpenHiveChat}>Open</SmallPill>}
       />
-      {hiveMessage && <div className="inline-message">{hiveMessage}</div>}
       <SettingsLine desc="Manage links you've shared from chats." label="Shared links" right={<SmallPill>Manage</SmallPill>} />
       <SettingsLine desc="Download your account, conversations, attachments, context, memory, activity, and billing history." label="Export data" right={<SmallPill disabled={exportPending} onClick={exportAccountData}>{exportPending ? "Preparing" : "Export"}</SmallPill>} />
       {exportMessage && <div className="inline-message">{exportMessage}</div>}

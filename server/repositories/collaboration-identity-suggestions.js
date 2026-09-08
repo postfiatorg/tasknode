@@ -1,3 +1,4 @@
+import { trimCharacters } from "../../shared/text-protocol.js";
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
 }
@@ -13,18 +14,18 @@ export function buildCollaborationIdentitySuggestions({
   recentAccountIds = [],
   viewerAccountId = "",
 } = {}) {
-  const needle = safeText(input, 180).replace(/^@+/, "").toLowerCase();
+  const needle = trimCharacters(safeText(input, 180),"@",{end:false}).toLowerCase();
   const recentRank = new Map(
     safeArray(recentAccountIds).map((accountId, index) => [safeText(accountId, 180), index])
   );
   const candidates = safeArray(identities)
     .filter((identity) => identity?.accountId && identity.accountId !== viewerAccountId)
     .map((identity) => {
-      const hiveHandle = safeText(identity.hiveHandle, 80).replace(/^@+/, "");
+      const hiveHandle = trimCharacters(safeText(identity.hiveHandle, 80),"@",{end:false});
       const displayName = safeText(identity.displayName || identity.publicDisplayName, 120);
       const walletAddress = safeText(identity.walletAddress, 120);
       const aliases = safeArray(identity.publicAliases)
-        .map((alias) => safeText(alias?.handle || alias, 120).replace(/^@+/, ""))
+        .map((alias) => trimCharacters(safeText(alias?.handle || alias, 120),"@",{end:false}))
         .filter(Boolean);
       const searchable = [hiveHandle, displayName, walletAddress, ...aliases]
         .map((value) => value.toLowerCase());

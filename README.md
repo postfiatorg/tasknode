@@ -24,7 +24,7 @@ commit from which it was built.
 
 The implemented application includes:
 
-- Ambient-backed AI chat with streaming, account-scoped conversation history,
+- Vercel AI Gateway chat with Ambient backup with streaming, account-scoped conversation history,
   attachments, usage billing, Context and Memory, and selectable personas and
   modalities;
 - email, GitHub, Telegram, Discord, and X account paths, each enabled only when

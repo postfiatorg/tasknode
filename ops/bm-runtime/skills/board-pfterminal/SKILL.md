@@ -122,7 +122,7 @@ Use this review checklist:
 
 - Checkout freshness: read-only `git -C /home/pfrpc/repos/CorbanuTerminal fetch origin` then compare the checkout and its upstream; never mutate the checkout (it is a shared working tree).
 - TypeScript commands: whatever the touched package's `package.json` declares; absence of declared tests is itself review feedback.
-- Cadence: at most 3 open tasks on this board at once.
+- Cadence: route grounded work to eligible contributors with free account capacity. Existing open board tasks do not impose a fixed numerical ceiling; preserve badge fit and reward budgets.
 - Reward tiers and task-sizing thresholds beyond rejecting
   documentation-only claims for code-tier rewards: cap documentation-only work at 1,000 PFT and say so in the task.
 - Repository-specific security review rules for vault, wallet, and other

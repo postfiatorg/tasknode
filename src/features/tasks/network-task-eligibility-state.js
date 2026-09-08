@@ -52,7 +52,7 @@ const PLAIN_STATUS = {
     explanation: "Your Network Diagnostic Report has not been generated yet. Task Node queues it automatically; no tab visit or manual refresh is required.",
   },
   badge_required: {
-    label: "Capacity blocked",
+    label: "Badge needed",
     tone: "blocked",
     explanation: "Network Task routing needs a verified operating badge. Open Profile to qualify for KOL, Core Contributor, QA Worker, Expert, or Project Leader.",
   },

@@ -1,3 +1,4 @@
+import { redactSecrets, stripMarkdownFence } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { databaseEnabled } from "./db/pool.js";
 import { loadPrompt } from "./prompt-registry.js";
@@ -8,9 +9,7 @@ import {
   hiveSecretaryPromptVersion,
   normalizeHiveSecretaryOutput,
 } from "./repositories/hive-context.js";
-import { enqueueHiveProjectPlanningJob } from "./repositories/hive-project-planning.js";
-import { scheduleHiveProjectQueue } from "./hive-project-worker.js";
-import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "./inference.js";
 
 const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_HIVE_SECRETARY_PROVIDER_TIMEOUT_MS || 240000));
 const hiveSecretaryPrompt = loadPrompt("hive/hive_secretary_v1.md");
@@ -22,26 +21,26 @@ function safeConfig(value = "", max = 200) {
   return String(value || "").trim().slice(0, max);
 }
 
-export function normalizeHiveSecretaryProvider(value = "ambient") {
-  const provider = safeConfig(value, 80).toLowerCase() || "ambient";
-  if (provider !== "ambient") {
+export function normalizeHiveSecretaryProvider(value = "vercel") {
+  const provider = safeConfig(value, 80).toLowerCase() || "vercel";
+  if (!["vercel", "ambient"].includes(provider)) {
     throw new Error(`hive_secretary_provider_unsupported:${provider || "unknown"}`);
   }
   return provider;
 }
 
-export function normalizeHiveSecretaryModel(value = AMBIENT_MODELS.structured) {
+export function normalizeHiveSecretaryModel(value = INFERENCE_MODELS.structured) {
   const rawModel = String(value || "").trim();
-  const model = safeConfig(rawModel, 160) || AMBIENT_MODELS.structured;
+  const model = safeConfig(rawModel, 160) || INFERENCE_MODELS.structured;
   return model;
 }
 
 export function hiveSecretaryProvider(env = process.env) {
-  return normalizeHiveSecretaryProvider(env.TASKNODE_HIVE_SECRETARY_PROVIDER || "ambient");
+  return normalizeHiveSecretaryProvider(env.TASKNODE_HIVE_SECRETARY_PROVIDER || "vercel");
 }
 
 export function hiveSecretaryModel(env = process.env) {
-  return normalizeHiveSecretaryModel(env.TASKNODE_HIVE_SECRETARY_MODEL || AMBIENT_MODELS.structured);
+  return normalizeHiveSecretaryModel(env.TASKNODE_HIVE_SECRETARY_MODEL || INFERENCE_MODELS.structured);
 }
 
 function hiveSecretaryReasoningEffort() {
@@ -54,8 +53,8 @@ function hiveSecretaryEnabled() {
   return (
     process.env.TASKNODE_HIVE_SECRETARY_ENABLED !== "false" &&
     databaseEnabled() &&
-    provider === "ambient" &&
-    ambientConfigured()
+    ["vercel", "ambient"].includes(provider) &&
+    inferenceConfigured()
   );
 }
 
@@ -63,15 +62,7 @@ function promptDigest(text = "") {
   return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
 }
 
-function redactSensitiveText(value = "") {
-  return String(value || "")
-    .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "[redacted_api_key]")
-    .replace(/\b(?:0x)?[a-fA-F0-9]{64}\b/g, "[redacted_secret_or_hash]")
-    .replace(
-      /\b(seed phrase|recovery phrase|mnemonic|private key|password)\s*[:=]\s*[^\n\r]+/gi,
-      "$1: [redacted]"
-    );
-}
+function redactSensitiveText(text = "") { return redactSecrets(text); }
 
 function compactSourceText(value = "", maxLength = 60000) {
   const text = redactSensitiveText(value).trim();
@@ -79,13 +70,7 @@ function compactSourceText(value = "", maxLength = 60000) {
   return `${text.slice(0, Math.floor(maxLength * 0.7))}\n\n[...middle truncated...]\n\n${text.slice(-Math.floor(maxLength * 0.3))}`;
 }
 
-function stripMarkdownFence(text = "") {
-  return String(text || "")
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-}
+
 
 function parseHiveSecretaryJson(text = "") {
   const raw = stripMarkdownFence(text);
@@ -164,7 +149,7 @@ function hiveSecretaryResponseFormat() {
 }
 
 async function fetchHiveSecretaryReportOpenRouter(source, { fetchImpl, model } = {}) {
-  const result = await ambientChatCompletion({
+  const result = await inferenceChatCompletion({
     fetchImpl,
     capability: "strict_json",
     timeoutMs: providerTimeoutMs,
@@ -185,7 +170,7 @@ async function fetchHiveSecretaryReportOpenRouter(source, { fetchImpl, model } =
   const content = body?.choices?.[0]?.message?.content || "";
   return {
     output: parseHiveSecretaryJson(content),
-    provider: "ambient",
+    provider: result.provider,
     model: body?.model || model,
     promptDigest: promptDigest(hiveSecretaryPrompt),
     promptVersion: hiveSecretaryPromptVersion,
@@ -196,11 +181,11 @@ async function fetchHiveSecretaryReportOpenRouter(source, { fetchImpl, model } =
 export async function fetchHiveSecretaryReport(source, { fetchImpl = fetch, provider, model } = {}) {
   const resolvedProvider = normalizeHiveSecretaryProvider(provider || hiveSecretaryProvider());
   const resolvedModel = normalizeHiveSecretaryModel(model || hiveSecretaryModel());
-  if (resolvedProvider !== "ambient") {
+  if (!["vercel", "ambient"].includes(resolvedProvider)) {
     throw new Error(`hive_secretary_provider_unsupported:${resolvedProvider}`);
   }
-  if (!ambientConfigured()) {
-    const error = new Error("hive_secretary_ambient_not_configured");
+  if (!inferenceConfigured()) {
+    const error = new Error("hive_secretary_inference_not_configured");
     error.status = 409;
     throw error;
   }
@@ -226,7 +211,7 @@ export async function processHiveSecretaryQueueOnce({ limit = 1 } = {}) {
           throw new Error("hive_secretary_source_missing");
         }
         const result = await fetchHiveSecretaryReport(job);
-        const completed = await completeHiveSecretaryJob({
+        await completeHiveSecretaryJob({
           job,
           output: result.output,
           provider: result.provider,
@@ -235,10 +220,6 @@ export async function processHiveSecretaryQueueOnce({ limit = 1 } = {}) {
           promptVersion: result.promptVersion,
           usage: result.usage,
         });
-        if (completed?.report) {
-          await enqueueHiveProjectPlanningJob({ report: completed.report, reason: "hive_secretary_completed" });
-          scheduleHiveProjectQueue({ delayMs: 500 });
-        }
         processed += 1;
       } catch (error) {
         failed += 1;

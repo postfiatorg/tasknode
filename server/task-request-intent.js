@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { collapseWhitespace } from "./inference-text.js";
+import { taskRequestCorrelationId } from "./task-request-command.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
 import { appendChatTurn } from "./repositories/chat-billing.js";
 
@@ -19,14 +20,10 @@ function actionResponse({ status, error, action, message, actionRequired }) {
 }
 
 function safeTaskString(value = "", maxLength = 4000) {
-  return String(value || "").trim().replace(/\s+/g, " ").slice(0, maxLength);
+  return collapseWhitespace(value).slice(0, maxLength);
 }
 
-function safeTaskCorrelationId(value = "", prefix = "req") {
-  const normalized = String(value || "").trim().slice(0, 96);
-  if (/^[a-z]+_[A-Za-z0-9_-]{8,90}$/.test(normalized)) return normalized;
-  return `${prefix}_${randomUUID()}`;
-}
+const safeTaskCorrelationId = taskRequestCorrelationId;
 
 function taskRequestIntentPayload(payload) {
   const accountId = typeof payload?.accountId === "string" ? payload.accountId.trim().slice(0, 160) : "";

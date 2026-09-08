@@ -1,3 +1,5 @@
+import { isWhitespace, replaceCharacterRuns } from "../../shared/text-protocol.js";
+import { contextBodyText } from "../../shared/context-line-map.js";
 import { createHash } from "node:crypto";
 import { normalizeTaskStatus, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
 import { formatTaskTimestamp } from "../../shared/task-time-format.js";
@@ -52,7 +54,7 @@ function stableDigestValue(value) {
 }
 
 function oneLine(value = "", max = 320) {
-  return safeText(value, max).replace(/\s+/g, " ");
+  return replaceCharacterRuns(safeText(value, max),isWhitespace," ");
 }
 
 function truncateWithEllipsis(value = "", max = 700) {
@@ -61,22 +63,7 @@ function truncateWithEllipsis(value = "", max = 700) {
   return `${text.slice(0, Math.max(0, max - 1)).trim()}...`;
 }
 
-function stripHtmlForPacket(value = "") {
-  return String(value || "")
-    .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6|tr)>/gi, "\n")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<li>/gi, "- ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"")
-    .replace(/&#39;/g, "'")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+const stripHtmlForPacket = contextBodyText;
 
 export function publicProfileFromRow(row = {}) {
   const metadata = safeObject(row.metadata_json);

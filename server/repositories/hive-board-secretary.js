@@ -1,3 +1,5 @@
+import { stripBullet, limitNewlines } from "../inference-text.js";
+import { isWhitespace, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash, randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { listHiveProjectComments } from "./hive-context.js";
@@ -81,7 +83,7 @@ function digestJson(value = {}) {
 }
 
 function oneLine(value = "", max = 1000) {
-  return safeText(value, max).replace(/\s+/g, " ");
+  return replaceCharacterRuns(safeText(value, max),isWhitespace," ");
 }
 
 function compactAccount(value = "") {
@@ -91,7 +93,7 @@ function compactAccount(value = "") {
 }
 
 function displayName(row = {}) {
-  const handle = safeText(row.public_handle || row.provider_public_handle || row.identity_public_handle, 120).replace(/^@+/, "");
+  const handle = trimCharacters(safeText(row.public_handle || row.provider_public_handle || row.identity_public_handle, 120),"@",{end:false});
   return safeText(
     row.display_name ||
       row.hive_display_name ||
@@ -203,7 +205,7 @@ function normalizeContributor(row = {}) {
   return {
     accountId: safeText(row.account_id, 180),
     displayName: safeText(row.display_name, 180) || compactAccount(row.account_id),
-    handle: safeText(row.public_handle, 120).replace(/^@+/, ""),
+    handle: trimCharacters(safeText(row.public_handle, 120),"@",{end:false}),
     walletAddress: safeText(row.wallet_address, 140),
     verifiedBadges: safeArray(row.verified_badges).map((item) => safeText(item, 80)).filter(Boolean),
     capacity: {
@@ -228,12 +230,13 @@ function normalizeContributor(row = {}) {
 }
 
 function publicMemoMarkdown(markdown = "") {
-  return safeText(markdown, 20000)
-    .split(/\r?\n/)
-    .filter((line) => !/^\s*(?:[-*]\s*)?(generated|model|source packet|source digest|prompt version|usage)\s*:/i.test(line))
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const internalLabels = new Set(["generated", "model", "source packet", "source digest", "prompt version", "usage"]);
+  const lines = safeText(markdown, 20000).replaceAll("\r\n", "\n").split("\n").filter((line) => {
+    const text = stripBullet(line);
+    const colon = text.indexOf(":");
+    return colon < 0 || !internalLabels.has(text.slice(0, colon).trim().toLowerCase());
+  });
+  return limitNewlines(lines.join("\n"), 2).trim();
 }
 
 export function publicHiveBoardSecretaryMemo(row = {}) {

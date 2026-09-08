@@ -1,0 +1,90 @@
+{
+  "at": "2026-09-06T17:51:24.461Z",
+  "tasks": [
+    {
+      "taskId": "task_3a8e09c197870ea5d6fa03207c29d9ed",
+      "status": "Proposed",
+      "submissionRequirement": {
+        "type": "mixed",
+        "criteria": "Submit (1) the pull-request URL for postfiatorg/dynamic-unl-scoring containing the regression test, minimal fix, and one-paragraph justification; (2) a public gist URL containing the before-and-after output of pytest tests/test_unl_selector.py, showing the regression failing before the fix and all tests passing afterward; and (3) the Discord announcement message link from an approved Post Fiat channel linking the pull request and gist. Do not include secrets or private links."
+      },
+      "verification": {
+        "title": "Submit Mixed",
+        "body": "Submit (1) the pull-request URL for postfiatorg/dynamic-unl-scoring containing the regression test, minimal fix, and one-paragraph justification; (2) a public gist URL containing the before-and-after output of pytest tests/test_unl_selector.py, showing the regression failing before the fix and all tests passing afterward; and (3) the Discord announcement message link from an approved Post Fiat channel linking the pull request and gist. Do not include secrets or private links.",
+        "policy": {
+          "mode": "manual",
+          "followup_required": true,
+          "verification_type": "mixed"
+        }
+      }
+    },
+    {
+      "taskId": "task_7e27a8f164b5a71e335e4c0f4713112e",
+      "status": "Proposed",
+      "submissionRequirement": {
+        "type": "mixed",
+        "criteria": "Submit (1) the public gist URL containing the reproduction commands, terminal emulator and operating-system versions, full terminal output, expected versus actual behavior, and the terminal-mode source file and line reference; and (2) the Discord message link from an approved Post Fiat channel announcing that gist. Do not include passwords or secrets."
+      },
+      "verification": {
+        "title": "Submit Mixed",
+        "body": "Submit (1) the public gist URL containing the reproduction commands, terminal emulator and operating-system versions, full terminal output, expected versus actual behavior, and the terminal-mode source file and line reference; and (2) the Discord message link from an approved Post Fiat channel announcing that gist. Do not include passwords or secrets.",
+        "policy": {
+          "mode": "manual",
+          "followup_required": true,
+          "verification_type": "text"
+        }
+      }
+    }
+  ],
+  "kol": {
+    "accountId": "acct_oauth_3c70e69ab7b8ef1fad3df508",
+    "provider": {
+      "id": "x",
+      "provider": "x",
+      "label": "X",
+      "status": "linked",
+      "username": "goodalexander",
+      "displayName": "goodalexander",
+      "profileUrl": "https://x.com/goodalexander",
+      "metrics": {
+        "followersCount": 174859,
+        "followingCount": 1337,
+        "listedCount": 3119,
+        "tweetCount": 16634,
+        "metricsCheckedAt": "2026-09-06T17:29:10.972Z"
+      },
+      "linkedAt": "2026-09-06T17:29:11.013Z",
+      "verified": true,
+      "visibility": "private",
+      "discloseHandle": false,
+      "discloseVerifiedBadge": false,
+      "canDiscloseHandle": true
+    },
+    "badge": {
+      "id": "anb_87710d7ee69e8b46bcd3cd7ae98817cc",
+      "badgeId": "kol",
+      "label": "KOL",
+      "symbolKey": "megaphone",
+      "status": "verified",
+      "publicVisible": true,
+      "selectedDefault": true,
+      "verifiedByOperator": "auto_x_oauth_linked",
+      "maxPayoutPft": 50000,
+      "allowedWorkTypes": [
+        "amplification",
+        "amplification_x",
+        "public_announcement",
+        "article_distribution",
+        "medium_article"
+      ],
+      "metrics": {
+        "proofMethod": "x_public_metrics",
+        "followersCount": 174859
+      },
+      "expiresAt": null,
+      "revokedAt": null,
+      "revocationReason": "",
+      "updatedAt": "2026-09-06T17:29:11.160Z"
+    }
+  }
+}

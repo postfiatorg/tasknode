@@ -1,3 +1,4 @@
+import { isWhitespace, replaceCharacterRuns, stripPrefix, titleWords } from "../shared/text-protocol.js";
 import { taskEventMeaning } from "./task-event-meaning.js";
 import { fetchAndDecryptTasknodePayload } from "./task-payloads.js";
 import { summarizeEvidenceItems } from "./task-evidence-summary.js";
@@ -17,11 +18,8 @@ function toIso(value) {
 }
 
 function titleCase(value = "") {
-  return String(value || "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return titleWords(replaceCharacterRuns(replaceCharacterRuns(String(value || ""),char=>char==="_"||char==="-"," "),isWhitespace," ")
+    .trim());
 }
 
 function safeObject(value) {
@@ -51,7 +49,7 @@ function schemaLabel(schema = "", payload = {}) {
     "pf.task.verification_response.v1": "Verification response submitted",
     "pf.reward.v1": "Reward outcome",
     "pf.task.update.v1": "Task updated",
-  }[normalized] || titleCase(normalized.replace(/^pf\./, "") || "Task event");
+  }[normalized] || titleCase(stripPrefix(normalized,"pf.",false) || "Task event");
 }
 
 function objectKeyCount(value) {

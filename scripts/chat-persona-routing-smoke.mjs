@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 process.env.TASKNODE_CHAT_SPIRIT_ENABLED = "true";
-process.env.AMBIENT_API_KEY = process.env.AMBIENT_API_KEY || "ambient-test-key";
+process.env.VERCEL_AI_GATEWAY_API_KEY = process.env.VERCEL_AI_GATEWAY_API_KEY || "ambient-test-key";
 
 const { taskNodeInstructions } = await import("../server/chat-memory-context.js");
 const { chatEstimate } = await import("../server/chat-estimate.js");
@@ -29,15 +29,15 @@ const iChingProfile = {
 };
 
 const timeoutEnvNames = [
-  "CHAT_PROVIDER_AMBIENT_THINKING_TIMEOUT_MS",
+  "CHAT_PROVIDER_VERCEL_THINKING_TIMEOUT_MS",
   "CHAT_PROVIDER_THINKING_TIMEOUT_MS",
   "CHAT_PROVIDER_TIMEOUT_MS",
 ];
 const previousTimeoutEnv = Object.fromEntries(timeoutEnvNames.map((name) => [name, process.env[name]]));
 for (const name of timeoutEnvNames) delete process.env[name];
-assert.equal(chatProviderTimeoutMs({ mode: "Thinking", provider: "ambient" }), 300_000);
-process.env.CHAT_PROVIDER_AMBIENT_THINKING_TIMEOUT_MS = "90000";
-assert.equal(chatProviderTimeoutMs({ mode: "Thinking", provider: "ambient" }), 90_000);
+assert.equal(chatProviderTimeoutMs({ mode: "Thinking", provider: "vercel" }), 300_000);
+process.env.CHAT_PROVIDER_VERCEL_THINKING_TIMEOUT_MS = "90000";
+assert.equal(chatProviderTimeoutMs({ mode: "Thinking", provider: "vercel" }), 90_000);
 for (const name of timeoutEnvNames) {
   if (previousTimeoutEnv[name] === undefined) delete process.env[name];
   else process.env[name] = previousTimeoutEnv[name];
@@ -142,12 +142,12 @@ for (const modality of CHAT_MODALITIES) {
     mode: "Instant",
     persona: modality.id,
   });
-  assert.equal(estimate.mode, "Thinking", `${modality.id} must be forced through GLM 5.2 Thinking mode`);
+  assert.equal(estimate.mode, "Instant", `${modality.id} must preserve the selected model`);
 }
 
 const modalityRequest = ambientChatRequest({
   mode: "Thinking",
-  model: "z-ai/glm-5.2",
+  model: "zai/glm-5.3",
   message: "Current modality question",
   conversationId: "conversation-modality-smoke",
   historyMessages: [
@@ -159,7 +159,7 @@ const modalityRequest = ambientChatRequest({
   taskContext,
   persona: "five-mirrors",
 });
-assert.equal(modalityRequest.model, "z-ai/glm-5.2");
+assert.equal(modalityRequest.model, "zai/glm-5.3");
 assert.ok(modalityRequest.messages.some((message) => message.content === "PRIOR_USER_TURN_SENTINEL"));
 assert.ok(modalityRequest.messages.some((message) => message.content === "PRIOR_ASSISTANT_TURN_SENTINEL"));
 
@@ -247,13 +247,13 @@ assert.equal(iChingWithoutProfile.status, 409);
 assert.equal(iChingWithoutProfile.body.error, "i_ching_profile_required");
 assert.equal(iChingWithoutProfile.body.setupPath, "/api/i-ching/profile");
 
-const frontendSource = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+const frontendSource = (await Promise.all(["../src/features/chat/ChatSurface.jsx", "../src/features/chat/AppChatDialogs.jsx", "../src/app/app-shell-shared.jsx"].map((file) => readFile(new URL(file, import.meta.url), "utf8")))).join("\n");
 const chatDocsSource = await readFile(new URL("../docs/wiki/surfaces/chat.md", import.meta.url), "utf8");
 assert.match(frontendSource, /label="Personality"/);
 assert.match(frontendSource, /persona: isContextEdit \? DEFAULT_CHAT_PERSONA : selectedPersona/);
 assert.match(frontendSource, /CHAT_PERSONAS\.map/);
 assert.match(frontendSource, /CHAT_MODALITIES\.map/);
-assert.match(frontendSource, /mode: isContextEdit \|\| activeModality \? "Thinking"/);
+assert.ok(frontendSource.includes('mode: isContextEdit ? "Thinking" : signedOut ? "Help" : selectedMode'));
 assert.match(frontendSource, /Ask a specific question before casting the I Ching/);
 assert.match(frontendSource, /IChingSetupDialog/);
 assert.match(frontendSource, /kravis: Landmark/);

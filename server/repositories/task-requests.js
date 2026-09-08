@@ -1,5 +1,6 @@
 import { databaseEnabled, query } from "../db/pool.js";
 import { randomUUID } from "node:crypto";
+import { taskRequestConflict, taskRequestIntentDigest } from "../task-request-command.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -97,14 +98,15 @@ function requestLifecycle(row = {}, status = normalizeRequestStatus(row.status),
       isStale: false,
       isTerminal: true,
       canRetry: false,
+      canDismiss: false,
       displayUntil: null,
     };
   }
   const ageMs = requestAgeMs(row.updated_at || row.created_at);
   const generatedTaskId = safeText(row.generated_task_id, 180);
   const hasGeneratedTask = Boolean(generatedTaskId);
-  const isFailedVisible = !hasGeneratedTask && status === "failed" && ageMs < 24 * 60 * 60 * 1000;
-  const isPublishedVisible = !hasGeneratedTask && status === "published" && ageMs < 20 * 60 * 1000;
+  const isFailedVisible = !hasGeneratedTask && status === "failed";
+  const isPublishedVisible = !hasGeneratedTask && status === "published";
   const isProcessing = !hasGeneratedTask && (["signing", "queued", "generating"].includes(status) || isPublishedVisible);
   const isActive = isProcessing || isFailedVisible;
   const isStale = ["published", "queued", "generating"].includes(status) && ageMs > 2 * 60 * 1000 && !generatedTaskId;
@@ -116,8 +118,9 @@ function requestLifecycle(row = {}, status = normalizeRequestStatus(row.status),
     needsAttention: isFailedVisible,
     isStale,
     isTerminal,
-    canRetry: !hasGeneratedTask && (status === "failed" || isStale),
-    displayUntil: isActive ? toIso(new Date(Date.now() + 20 * 60 * 1000)) : null,
+    canRetry: !hasGeneratedTask && status === "failed",
+    canDismiss: !hasGeneratedTask && status === "failed",
+    displayUntil: null,
   };
 }
 
@@ -141,7 +144,9 @@ export function publicTaskRequest(row = {}) {
     requestEventCid: row.request_event_cid || "",
     requestTxHash: row.request_tx_hash || "",
     status,
-    statusLabel: statusLabel(status, { operatorAuditOnly }),
+    progressStage: metadata.workerHeartbeat?.stage || status,
+    progressRevision: toIso(row.updated_at),
+    statusLabel: metadata.requestDismissal && status === "cancelled" ? "Dismissed" : statusLabel(status, { operatorAuditOnly }),
     generatedTaskId: row.generated_task_id || "",
     workerId: row.worker_id || "",
     workerAttemptId: row.worker_attempt_id || "",
@@ -172,12 +177,12 @@ export function emptyTaskRequestState({ walletLinked = false, walletAddress = ""
   };
 }
 
-export async function upsertTaskRequest(request = {}) {
+export async function upsertTaskRequest(request = {}, { queryImpl = query } = {}) {
   if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured" };
   const requestId = safeText(request.requestId || request.request_id, 180);
   if (!requestId) throw new Error("task_request_id_required");
-  const metadata = request.metadata && typeof request.metadata === "object" ? request.metadata : {};
-  const result = await query(
+  const metadata = { ...(request.metadata && typeof request.metadata === "object" ? request.metadata : {}), requestIntentDigest: taskRequestIntentDigest(request) };
+  const result = await queryImpl(
     `
       INSERT INTO task_requests (
         request_id,
@@ -203,25 +208,7 @@ export async function upsertTaskRequest(request = {}) {
         $9, $10, $11, $12, $13, $14, $15,
         $16, $17::jsonb
       )
-      ON CONFLICT (request_id)
-      DO UPDATE SET
-        account_id = COALESCE(NULLIF(EXCLUDED.account_id, ''), task_requests.account_id),
-        subject_wallet = COALESCE(NULLIF(EXCLUDED.subject_wallet, ''), task_requests.subject_wallet),
-        source = COALESCE(NULLIF(EXCLUDED.source, ''), task_requests.source),
-        source_conversation_id = COALESCE(NULLIF(EXCLUDED.source_conversation_id, ''), task_requests.source_conversation_id),
-        source_conversation_title = COALESCE(NULLIF(EXCLUDED.source_conversation_title, ''), task_requests.source_conversation_title),
-        request_text = COALESCE(NULLIF(EXCLUDED.request_text, ''), task_requests.request_text),
-        user_detail_text = COALESCE(NULLIF(EXCLUDED.user_detail_text, ''), task_requests.user_detail_text),
-        requested_task_kind = COALESCE(NULLIF(EXCLUDED.requested_task_kind, ''), task_requests.requested_task_kind),
-        request_bundle_cid = COALESCE(NULLIF(EXCLUDED.request_bundle_cid, ''), task_requests.request_bundle_cid),
-        request_event_cid = COALESCE(NULLIF(EXCLUDED.request_event_cid, ''), task_requests.request_event_cid),
-        request_tx_hash = COALESCE(NULLIF(EXCLUDED.request_tx_hash, ''), task_requests.request_tx_hash),
-        bundle_id = COALESCE(NULLIF(EXCLUDED.bundle_id, ''), task_requests.bundle_id),
-        status = EXCLUDED.status,
-        generated_task_id = COALESCE(NULLIF(EXCLUDED.generated_task_id, ''), task_requests.generated_task_id),
-        last_error = EXCLUDED.last_error,
-        metadata_json = task_requests.metadata_json || EXCLUDED.metadata_json,
-        updated_at = now()
+      ON CONFLICT (request_id) DO NOTHING
       RETURNING *
     `,
     [
@@ -244,7 +231,38 @@ export async function upsertTaskRequest(request = {}) {
       JSON.stringify(metadata),
     ]
   );
-  return { ok: true, request: publicTaskRequest(result.rows[0]) };
+  if (result.rows[0]) return { ok: true, replayed: false, request: publicTaskRequest(result.rows[0]) };
+  const existing = await queryImpl("SELECT * FROM task_requests WHERE request_id = $1", [requestId]);
+  const row = existing.rows[0];
+  const digest = row?.metadata_json?.requestIntentDigest || taskRequestIntentDigest(row);
+  if (!row || row.account_id !== safeText(request.accountId || request.account_id, 180) ||
+      row.subject_wallet !== safeText(request.subjectWallet || request.subject_wallet, 120) ||
+      digest !== metadata.requestIntentDigest) throw taskRequestConflict();
+  return { ok: true, replayed: true, request: publicTaskRequest(row) };
+}
+
+export async function getOwnedTaskRequest({ requestId = "", accountId = "" } = {}) {
+  if (!databaseEnabled() || !accountId || !requestId) return null;
+  const result = await query("SELECT * FROM task_requests WHERE request_id = $1 AND account_id = $2", [
+    safeText(requestId, 180), safeText(accountId, 180),
+  ]);
+  const row = result.rows[0];
+  return row && !isOperatorAuditOnlyTaskRequest(row) ? publicTaskRequest(row) : null;
+}
+
+export async function saveTaskRequestContext({ request, bundle } = {}) {
+  const result = await query(`
+    UPDATE task_requests
+    SET metadata_json = metadata_json || jsonb_build_object(
+      'requestBundle', $4::jsonb, 'contextEnrichmentPending', false,
+      'contextEnrichedAt', now()), updated_at = now()
+    WHERE request_id = $1 AND account_id = $2 AND worker_attempt_id = $3
+      AND status = 'generating'
+      AND metadata_json->>'contextEnrichmentPending' = 'true'
+    RETURNING *
+  `, [request.requestId, request.accountId, request.workerAttemptId, JSON.stringify(bundle)]);
+  if (!result.rows[0]) throw Object.assign(new Error("task_generation_attempt_lost"), { staleAttempt: true });
+  return publicTaskRequest(result.rows[0]);
 }
 
 export async function getTaskRequestByRequestId(requestId = "") {
@@ -410,7 +428,7 @@ export async function heartbeatTaskGenerationRequest({
         metadata_json = metadata_json || $4::jsonb,
         updated_at = now()
       WHERE request_id = $1
-        AND status = 'generating'
+        AND status IN ('generating', 'proposed')
         AND worker_attempt_id = $2
         AND ($3::text = '' OR worker_id = $3)
       RETURNING *
@@ -464,7 +482,7 @@ export async function markTaskRequestProposed({
         AND (
           $5::text = ''
           OR (
-            status = 'generating'
+            (status = 'generating' OR (status = 'proposed' AND generated_task_id = $3))
             AND worker_attempt_id = $5
             AND ($6::text = '' OR worker_id = $6)
           )
@@ -591,9 +609,43 @@ export async function retryTaskGenerationRequest({
     : { ok: false, stale: true, reason: "task_request_not_owned_by_attempt" };
 }
 
-export async function listTaskRequests({ accountId = "", walletAddress = "", limit = 40 } = {}) {
+export async function dismissOwnedTaskRequest({ accountId, requestId, expectedAttemptCount, reason = "Dismissed by the request owner." }) {
+  if (!accountId || !requestId || !Number.isInteger(expectedAttemptCount) || expectedAttemptCount < 0) {
+    throw Object.assign(new Error("task_request_dismiss_invalid"), { status: 400 });
+  }
+  const result = await query(`UPDATE task_requests SET status='cancelled',updated_at=now(),
+    metadata_json=metadata_json || jsonb_build_object('requestDismissal',jsonb_build_object(
+      'accountId',$2::text,'at',now(),'attemptCount',$3::integer,'reason',$4::text))
+    WHERE request_id=$1 AND account_id=$2 AND status='failed' AND COALESCE(generated_task_id,'')=''
+      AND worker_attempt_count=$3 RETURNING *`, [requestId, accountId, expectedAttemptCount, safeText(reason, 1000)]);
+  if (result.rows[0]) return publicTaskRequest(result.rows[0]);
+  const existing = await getOwnedTaskRequest({ accountId, requestId });
+  if (!existing) throw Object.assign(new Error("task_request_not_found"), { status: 404 });
+  // Replays preserve the receipt; a stale click cannot dismiss a newer attempt
+  // or a request that already generated a task.
+  return existing;
+}
+
+export async function retryOwnedTaskRequest({ accountId, requestId, expectedAttemptCount }) {
+  if (!accountId || !requestId || !Number.isInteger(expectedAttemptCount) || expectedAttemptCount < 0) {
+    throw Object.assign(new Error("task_request_retry_invalid"), { status: 400 });
+  }
+  const result = await query(`UPDATE task_requests SET status='queued',worker_id='',worker_attempt_id='',
+    worker_claimed_at=NULL,worker_heartbeat_at=NULL,worker_completed_at=NULL,worker_retry_after=now(),
+    last_error='',updated_at=now(),metadata_json=metadata_json || jsonb_build_object('manualRetryAt',now())
+    WHERE request_id=$1 AND account_id=$2 AND status='failed' AND coalesce(generated_task_id,'')=''
+      AND worker_attempt_count=$3 RETURNING *`, [requestId, accountId, expectedAttemptCount]);
+  if (result.rows[0]) return publicTaskRequest(result.rows[0]);
+  const existing = await getOwnedTaskRequest({ accountId, requestId });
+  if (!existing) throw Object.assign(new Error("task_request_not_found"), { status: 404 });
+  // The original attempt number prevents an old retry from restarting a newer
+  // failure. Repeated delivery after a successful enqueue simply returns it.
+  return existing;
+}
+
+export async function listTaskRequests({ accountId = "", walletAddress = "", limit = 40, cursor = "" } = {}) {
   const linked = Boolean(safeText(walletAddress, 120));
-  if (!linked) return emptyTaskRequestState({ walletLinked: false });
+  if (!linked && !accountId) return emptyTaskRequestState({ walletLinked: false });
   if (!databaseEnabled()) {
     return {
       ...emptyTaskRequestState({ walletLinked: true, walletAddress }),
@@ -607,34 +659,49 @@ export async function listTaskRequests({ accountId = "", walletAddress = "", lim
     };
   }
 
+  let after = null;
+  if (cursor) {
+    try {
+      after = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+      if (![0, 1].includes(after.active) || typeof after.id !== "string" || after.id.length > 180 ||
+          typeof after.createdAt !== "string" || !Number.isFinite(Date.parse(after.createdAt))) throw new Error("invalid_cursor");
+    } catch {
+      throw Object.assign(new Error("Task request page cursor is invalid."), { status: 400, code: "task_request_cursor_invalid" });
+    }
+  }
+  const pageSize = Math.min(Math.max(Number(limit || 40), 1), 100);
+  const activeRank = "CASE WHEN tr.generated_task_id='' AND tr.status IN ('signing','published','queued','generating','failed') THEN 1 ELSE 0 END";
   const result = await query(
     `
-      SELECT tr.*
+      SELECT tr.*, tr.created_at::text AS cursor_created_at, ${activeRank} AS cursor_active
       FROM task_requests tr
-      WHERE ($1::text = '' OR tr.account_id = $1)
-        AND (
-          tr.subject_wallet = $2
-          OR tr.subject_wallet = ''
-        )
+      WHERE (($1::text <> '' AND tr.account_id = $1) OR ($1::text = '' AND tr.subject_wallet = $2))
+        AND ($4::text = '' OR (${activeRank}, tr.created_at, tr.request_id) < ($5::integer, NULLIF($4, '')::timestamptz, $6::text))
         AND NOT (
           COALESCE(tr.metadata_json->'operator_repair'->>'action', '') = 'fail_network_task_generation_chain'
           OR COALESCE(tr.metadata_json->'operator_repair'->>'public_visibility', '') = 'hidden'
           OR COALESCE(tr.metadata_json->'operator_repair'->>'user_visible', '') = 'false'
         )
-      ORDER BY tr.updated_at DESC, tr.created_at DESC, tr.request_id DESC
+      ORDER BY ${activeRank} DESC, tr.created_at DESC, tr.request_id DESC
       LIMIT $3
     `,
-    [safeText(accountId, 180), safeText(walletAddress, 120), Math.min(Math.max(Number(limit || 40), 1), 100)]
+    [safeText(accountId, 180), safeText(walletAddress, 120), pageSize + 1, after?.createdAt || "", after?.active || 0, after?.id || ""]
   );
-  const items = result.rows.map(publicTaskRequest);
+  const page = result.rows.slice(0, pageSize);
+  const items = page.map(publicTaskRequest);
+  const last = page.at(-1);
+  const nextCursor = result.rows.length > pageSize && last ? Buffer.from(JSON.stringify({
+    active: last.cursor_active, createdAt: last.cursor_created_at, id: last.request_id,
+  })).toString("base64url") : null;
   return {
     items,
+    nextCursor,
     sync: {
       source: "task_requests",
       status: items.length ? "ready" : "empty",
       walletAddress,
       requestCount: items.length,
-      lastUpdatedAt: items[0]?.updatedAt || null,
+      lastUpdatedAt: items.reduce((latest, item) => item.updatedAt && (!latest || item.updatedAt > latest) ? item.updatedAt : latest, null),
     },
   };
 }

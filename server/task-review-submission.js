@@ -26,8 +26,8 @@ import {
   clearWorkerClaim,
   directWritePublishedRef,
   directWriteReviewTransition,
-  markReviewPublicationError,
   markReviewPublicationPublished,
+  markReviewPublicationRetryWait,
   markWorkerPublished,
   publicationLockPublishedRef,
   releaseReviewPublicationLock,
@@ -75,6 +75,8 @@ export async function processSubmittedTask(row, { logger = console } = {}) {
       taskId: row.task_id,
       workerName,
       error: "awaiting_agent_verification_request",
+      retryMode: "fixed",
+      retryDelayMs: 60_000,
     }).catch(() => null);
     logger.info?.("task_verification_request_awaiting_agent_decision", {
       taskId: row.task_id,
@@ -226,11 +228,14 @@ export async function processSubmittedTask(row, { logger = console } = {}) {
     return { ok: true, taskId: row.task_id, published };
   } catch (error) {
     if (publicationAttempted) {
-      await markReviewPublicationError({
+      await markReviewPublicationRetryWait({
         taskId: row.task_id,
         workerName,
         error: error?.message || String(error),
-        metadata: { publication_attempted: true },
+        metadata: {
+          publication_attempted: true,
+          publication_mode: "offchain_direct_write",
+        },
       }).catch(() => null);
     } else if (publicationLock?.acquired) {
       await releaseReviewPublicationLock({ taskId: row.task_id, workerName }).catch(() => null);

@@ -1,0 +1,188 @@
+{
+  "at": "2026-09-05T22:45:09.575Z",
+  "reviews": [
+    {
+      "task_id": "task_00a15287c9d4eda8eb072704069d4652",
+      "status": "verification_response_submitted",
+      "reward_actual_pft": "0.000000",
+      "payment_guard": "failed_validated",
+      "legacy_rejection_verified": false,
+      "worker_name": "reward_scoring",
+      "publication_status": "error"
+    },
+    {
+      "task_id": "task_00a15287c9d4eda8eb072704069d4652",
+      "status": "verification_response_submitted",
+      "reward_actual_pft": "0.000000",
+      "payment_guard": "failed_validated",
+      "legacy_rejection_verified": false,
+      "worker_name": "verification_request",
+      "publication_status": "published"
+    },
+    {
+      "task_id": "task_2d5fd452fc4bcbf054075ad3e534269b",
+      "status": "rewarded",
+      "reward_actual_pft": "4.000000",
+      "payment_guard": "submitted",
+      "legacy_rejection_verified": false,
+      "worker_name": "reward_scoring",
+      "publication_status": "published"
+    },
+    {
+      "task_id": "task_2d5fd452fc4bcbf054075ad3e534269b",
+      "status": "rewarded",
+      "reward_actual_pft": "4.000000",
+      "payment_guard": "submitted",
+      "legacy_rejection_verified": false,
+      "worker_name": "verification_request",
+      "publication_status": "published"
+    },
+    {
+      "task_id": "task_b3aff46e1d68c83810b10e120d42e304",
+      "status": "rewarded",
+      "reward_actual_pft": "2.100000",
+      "payment_guard": "submitted",
+      "legacy_rejection_verified": false,
+      "worker_name": "reward_scoring",
+      "publication_status": "published"
+    },
+    {
+      "task_id": "task_b3aff46e1d68c83810b10e120d42e304",
+      "status": "rewarded",
+      "reward_actual_pft": "2.100000",
+      "payment_guard": "submitted",
+      "legacy_rejection_verified": false,
+      "worker_name": "verification_request",
+      "publication_status": "published"
+    },
+    {
+      "task_id": "task_cdd241775a0a65ddae909bae3b771d29",
+      "status": "rejected",
+      "reward_actual_pft": "0.000000",
+      "payment_guard": null,
+      "legacy_rejection_verified": true,
+      "worker_name": "reward_scoring",
+      "publication_status": "published"
+    }
+  ],
+  "generation": [
+    {
+      "request_id": "req_net_5d10f3a111af12374d04005c2c717655",
+      "status": "proposed",
+      "worker_attempt_count": 1,
+      "created_at": "2026-09-05T21:34:45.881Z",
+      "updated_at": "2026-09-05T21:37:40.118Z",
+      "progress": {
+        "at": "2026-09-05T21:37:40.083Z",
+        "stage": "offer_published",
+        "workerId": "taskgen_worker_634_1788634054136"
+      },
+      "stage_timings": {
+        "contextMs": 19346,
+        "providerMs": 154372,
+        "queueWaitMs": 375,
+        "publicationMs": 140,
+        "totalProcessingMs": 173858
+      }
+    },
+    {
+      "request_id": "req_97dbf005-341d-4662-a520-52dd2d2f2e61",
+      "status": "proposed",
+      "worker_attempt_count": 1,
+      "created_at": "2026-09-05T18:28:56.402Z",
+      "updated_at": "2026-09-05T18:29:02.838Z",
+      "progress": {
+        "at": "2026-09-05T18:29:02.752Z",
+        "stage": "offer_published",
+        "workerId": "taskgen_worker_657_1788630785225"
+      },
+      "stage_timings": null
+    },
+    {
+      "request_id": "req_f0323027-00f6-4886-8c92-a97fc51ae071",
+      "status": "proposed",
+      "worker_attempt_count": 1,
+      "created_at": "2026-09-05T18:26:48.319Z",
+      "updated_at": "2026-09-05T18:26:57.089Z",
+      "progress": {
+        "at": "2026-09-05T18:26:57.061Z",
+        "stage": "offer_published",
+        "workerId": "taskgen_worker_657_1788630785225"
+      },
+      "stage_timings": null
+    },
+    {
+      "request_id": "req_ef5929ac-f0c5-415d-a79d-8ff89c3effb8",
+      "status": "proposed",
+      "worker_attempt_count": 1,
+      "created_at": "2026-09-05T17:29:40.751Z",
+      "updated_at": "2026-09-05T17:29:52.587Z",
+      "progress": {
+        "at": "2026-09-05T17:29:52.501Z",
+        "stage": "offer_published",
+        "workerId": "taskgen_worker_652_1788620423665"
+      },
+      "stage_timings": null
+    },
+    {
+      "request_id": "req_79be8dc2-d71d-421d-a37c-f4490a3633fa",
+      "status": "proposed",
+      "worker_attempt_count": 1,
+      "created_at": "2026-09-05T16:52:23.638Z",
+      "updated_at": "2026-09-05T16:52:37.100Z",
+      "progress": {
+        "at": "2026-09-05T16:52:37.069Z",
+        "stage": "offer_published",
+        "workerId": "taskgen_worker_652_1788620423665"
+      },
+      "stage_timings": null
+    },
+    {
+      "request_id": "req_d7ac5bf0-b53e-4338-b674-c3b53acb4406",
+      "status": "proposed",
+      "worker_attempt_count": 1,
+      "created_at": "2026-09-05T16:51:44.357Z",
+      "updated_at": "2026-09-05T16:51:55.753Z",
+      "progress": {
+        "at": "2026-09-05T16:51:55.712Z",
+        "stage": "offer_published",
+        "workerId": "taskgen_worker_652_1788620423665"
+      },
+      "stage_timings": null
+    },
+    {
+      "request_id": "req_f6a8edfa-7569-47c2-a1f9-fa6f5f0ab4b9",
+      "status": "failed",
+      "worker_attempt_count": 1,
+      "created_at": "2026-09-05T16:48:01.989Z",
+      "updated_at": "2026-09-05T16:48:14.592Z",
+      "progress": {
+        "at": "2026-09-05T16:48:14.193Z",
+        "stage": "failure_guard",
+        "workerId": "taskgen_worker_652_1788620423665"
+      },
+      "stage_timings": null
+    },
+    {
+      "request_id": "req_2bf5ed00-9f4f-43ae-a9d6-bd4ccd7879e5",
+      "status": "proposed",
+      "worker_attempt_count": 1,
+      "created_at": "2026-09-05T16:46:50.296Z",
+      "updated_at": "2026-09-05T16:47:05.309Z",
+      "progress": {
+        "at": "2026-09-05T16:47:04.507Z",
+        "stage": "offer_published",
+        "workerId": "taskgen_worker_652_1788620423665"
+      },
+      "stage_timings": null
+    }
+  ],
+  "kimiDecision": [
+    {
+      "id": "bmdec_4d50f1a2-7bb7-408a-9e7e-c48139b8cdff",
+      "kind": "verification_request",
+      "status": "consumed",
+      "created_at": "2026-09-05T21:33:23.676Z"
+    }
+  ]
+}

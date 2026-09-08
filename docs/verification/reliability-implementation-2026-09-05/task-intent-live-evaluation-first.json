@@ -1,0 +1,144 @@
+{
+  "at": "2026-09-05T22:38:07.527Z",
+  "synthetic": true,
+  "results": [
+    {
+      "id": "paraphrased_active",
+      "expected": "duplicate",
+      "passed": true,
+      "output": {
+        "newOutput": "A write-up explaining why a client retry after a lost task-request response causes duplicate tasks to be created.",
+        "priorTaskIds": [
+          "task_a"
+        ],
+        "relationship": "duplicate",
+        "reason": "task_a (accepted) already required producing a report explaining duplicate task creation after a lost submission response. The new need — writing up why retrying after a lost response creates duplicate tasks — describes the same causal mechanism and the same explanatory output. It is a paraphrase of the already-accepted deliverable, names no distinct next artifact, and does not cite task_a as a continuation or state a changed requirement.",
+        "scopeClear": true,
+        "actionable": true,
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "latencyMs": 18077
+      }
+    },
+    {
+      "id": "report_to_patch",
+      "expected": "continuation",
+      "passed": true,
+      "output": {
+        "reason": "task_a (\"Audit duplicate requests\") delivered only a report recommending atomic account-scoped receipts, with no implementation. This request produces a distinct next artifact after that investigation: the implementation of the recommended fix plus failure-injection tests. It is not a paraphrase of the already-delivered audit output, and the work is concrete and scoped.",
+        "newOutput": "Implementation of the atomic account-scoped receipt fix, plus failure-injection tests validating the fix",
+        "priorTaskIds": [
+          "task_a"
+        ],
+        "relationship": "continuation",
+        "actionable": true,
+        "scopeClear": true,
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "latencyMs": 20506
+      }
+    },
+    {
+      "id": "pr_followup",
+      "expected": "continuation",
+      "passed": true,
+      "output": {
+        "reason": "The prior task task_a delivered the retry-safety implementation and explicitly stated performance measurement was left for a follow-up. The current request is exactly that deferred follow-up: it references the real prior deliverable (the merged retry-safety patch) and asks for a distinct next artifact — latency benchmarks plus documentation. It is not a paraphrase of the already-delivered implementation. The work is concrete (run latency benchmarks post-merge, document results) with understandable scope.",
+        "newOutput": "Latency benchmark measurements and accompanying documentation for the merged retry-safety patch.",
+        "priorTaskIds": [
+          "task_a"
+        ],
+        "relationship": "continuation",
+        "scopeClear": true,
+        "actionable": true,
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "latencyMs": 15640
+      }
+    },
+    {
+      "id": "stopped_changed_goal",
+      "expected": "independent",
+      "passed": true,
+      "output": {
+        "reason": "The request targets a new artifact: a searchable Docs folder interface with keyboard navigation verification. The only prior task (task_a) intended a Markdown import script and was declined; its output and goal differ from this interface work. A declined prior task with a changed goal may stand as independent, and the stated work has a concrete action and understandable scope. No continuation citation is required because no delivered report, PR, or investigation is being extended.",
+        "priorTaskIds": [],
+        "relationship": "independent",
+        "scopeClear": true,
+        "actionable": true,
+        "newOutput": "Searchable Docs folder interface with verified keyboard navigation",
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "latencyMs": 16765
+      }
+    },
+    {
+      "id": "cross_board_duplicate",
+      "expected": "duplicate",
+      "passed": true,
+      "output": {
+        "priorTaskIds": [
+          "task_a"
+        ],
+        "newOutput": "An onboarding guide for the community board explaining how to link Corbanu to Task Node",
+        "relationship": "duplicate",
+        "reason": "The intended output is the same account-linking onboarding guide (linking Corbanu to Task Node) that task_a already published and was rewarded for. The only difference is the target board (community vs. terminal), and board is not a distinguishing factor. No changed requirement or distinct new artifact is stated, so this is a re-delivery of the already-published guide rather than a continuation with a new output.",
+        "actionable": true,
+        "scopeClear": true,
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "latencyMs": 17256
+      }
+    },
+    {
+      "id": "documentation_valid",
+      "expected": "independent",
+      "passed": true,
+      "output": {
+        "reason": "The request states a concrete action (update the API documentation) with understandable scope: add request recovery examples and verify each one against the local fixture server. Documentation with verification against a fixture server is valid standalone work. No prior tasks were provided, so there is no basis for a duplicate or continuation finding, and no prior reference should be invented.",
+        "priorTaskIds": [],
+        "newOutput": "API documentation updated with request recovery examples, each verified against the local fixture server",
+        "actionable": true,
+        "scopeClear": true,
+        "relationship": "independent",
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "latencyMs": 16841
+      }
+    },
+    {
+      "id": "investigation_valid",
+      "expected": "independent",
+      "passed": true,
+      "output": {
+        "reason": "The request is a self-contained investigation into a specific defect: document chat dropping partial replies on reconnect. It states a concrete action and two clear deliverables — a reproducible case and identification of the failing boundary — so the scope is understandable and actionable as written; small investigations are valid standalone work. No prior tasks were provided (priorTasks is empty, no board context), so there is no active or already-delivered output this paraphrases, and no prior report, PR, or investigation exists in evidence to cite as the basis for a continuation. No prior reference is invented.",
+        "scopeClear": true,
+        "actionable": true,
+        "newOutput": "Reproducible case for partial-reply loss on reconnect, plus identification of the failing boundary in document chat",
+        "priorTaskIds": [],
+        "relationship": "independent",
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "latencyMs": 30164
+      }
+    },
+    {
+      "id": "changed_requirements",
+      "expected": "continuation",
+      "passed": false,
+      "output": {
+        "relationship": "independent",
+        "priorTaskIds": [
+          "task_a"
+        ],
+        "reason": "The request asks to redo previously delivered work (the onboarding guide) due to a stated changed requirement, transitioning from an old global-session flow to a new profile-scoped authentication flow. Per the rules, a request to redo work for a changed requirement is not a duplicate. Because the prior task was already rewarded and this request is an update to an existing artifact rather than a distinct next artifact, it is classified as independent.",
+        "newOutput": "Revised onboarding guide for profile-scoped authentication",
+        "actionable": true,
+        "scopeClear": true,
+        "provider": "ambient",
+        "model": "z-ai/glm-5.2",
+        "latencyMs": 85918
+      }
+    }
+  ]
+}

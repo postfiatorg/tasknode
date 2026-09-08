@@ -1,0 +1,173 @@
+[
+  {
+    "id": "e826761a263e18",
+    "state": "started",
+    "group": "worker-pftl",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "1850d37c3d3e48",
+    "state": "started",
+    "group": "worker-airdrop",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "e8267e0c015508",
+    "state": "stopped",
+    "group": "board-secretary",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "87d077b0263998",
+    "state": "started",
+    "group": "worker-context-rewrite",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "8465ddb274e908",
+    "state": "stopped",
+    "group": "worker-hive",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "6835d0ea464158",
+    "state": "started",
+    "group": "worker-task-review",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "48e10e9a40d978",
+    "state": "stopped",
+    "group": "worker-pftl",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "0803736c291198",
+    "state": "stopped",
+    "group": "worker-nft-renderer",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "48e056a3705e18",
+    "state": "started",
+    "group": "worker-memory-profile",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "1854406a6e3508",
+    "state": "started",
+    "group": "worker-hive",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "8d4930ae156638",
+    "state": "started",
+    "group": "app",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "7813e21f1295d8",
+    "state": "started",
+    "group": "worker-taskgen",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "e827021fd67708",
+    "state": "stopped",
+    "group": "worker-taskgen",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "e820352ae34138",
+    "state": "stopped",
+    "group": "worker-airdrop",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "48ee629a21e748",
+    "state": "started",
+    "group": "worker-nft-renderer",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "7845637cd3e708",
+    "state": "stopped",
+    "group": "worker-memory-profile",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "d8d0ed9b969528",
+    "state": "stopped",
+    "group": "worker-context-rewrite",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "2862170c66e238",
+    "state": "started",
+    "group": "board-secretary",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  },
+  {
+    "id": "e826571a546458",
+    "state": "stopped",
+    "group": "worker-task-review",
+    "release": "703",
+    "imageDigest": "sha256:1e9345aca7241c2b217e10718e4181280fc0671de8fd6d0c9404925a64c66012",
+    "restart": "always",
+    "retiredConfigKeys": []
+  }
+]

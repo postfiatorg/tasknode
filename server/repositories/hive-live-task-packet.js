@@ -1,3 +1,4 @@
+import { trimCharacters } from "../../shared/text-protocol.js";
 import { databaseEnabled, query } from "../db/pool.js";
 
 const packetStatuses = [
@@ -80,7 +81,7 @@ function compactAccount(value = "") {
 }
 
 function formatStatus(value = "") {
-  return safeText(value, 80).replace(/_/g, " ") || "unknown";
+  return safeText(value, 80).replaceAll("_"," ") || "unknown";
 }
 
 function lineList(items = [], emptyText = "None.") {
@@ -101,7 +102,7 @@ function taskLine(task = {}) {
 }
 
 function contributorLabel(contributor = {}) {
-  if (contributor.handle) return `@${contributor.handle.replace(/^@+/, "")}`;
+  if (contributor.handle) return `@${trimCharacters(contributor.handle,"@",{end:false})}`;
   if (contributor.displayName) return contributor.displayName;
   if (contributor.accountId) return compactAccount(contributor.accountId);
   return compactWallet(contributor.walletAddress);
@@ -110,7 +111,7 @@ function contributorLabel(contributor = {}) {
 function normalizeTaskRow(row = {}) {
   const walletAddress = safeText(row.wallet_address || row.subject_wallet || row.assignee_wallet, 140);
   const accountId = safeText(row.resolved_account_id || row.account_id, 180);
-  const handle = safeText(row.provider_public_handle || row.public_handle || row.identity_public_handle, 120).replace(/^@+/, "");
+  const handle = trimCharacters(safeText(row.provider_public_handle || row.public_handle || row.identity_public_handle, 120),"@",{end:false});
   const displayName = safeText(
     row.hive_display_name ||
       row.display_name ||

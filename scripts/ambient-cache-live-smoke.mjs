@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import {
-  AMBIENT_MODELS,
-  ambientChatCompletion,
-} from "../server/ambient-inference.js";
+  INFERENCE_MODELS,
+  inferenceChatCompletion,
+} from "../server/inference.js";
 import { openRouterUsage } from "../server/chat-provider-usage.js";
 import { taskNodeInstructions } from "../server/chat-memory-context.js";
 
@@ -13,13 +13,13 @@ function argumentValue(name) {
 
 function help() {
   console.log([
-    "Paid live smoke for Ambient GLM prompt-cache reporting.",
+    "Paid live smoke for Vercel GLM prompt-cache reporting, with Ambient backup.",
     "",
     "Usage:",
     "  npm run ambient-cache-live-smoke -- --execute [--api-key-file /path/to/key.txt]",
     "",
     "The smoke sends the same bounded request twice, prints token/cache accounting only,",
-    "and fails if Ambient does not report a positive cache hit on the second response.",
+    "and fails if the provider does not report a positive cache hit on the second response.",
   ].join("\n"));
 }
 
@@ -31,16 +31,16 @@ if (process.argv.includes("--help") || !process.argv.includes("--execute")) {
 const apiKeyFile = argumentValue("--api-key-file");
 const apiKey = apiKeyFile
   ? String(await readFile(apiKeyFile, "utf8")).trim()
-  : String(process.env.AMBIENT_API_KEY || "").trim();
-if (!apiKey) throw new Error("ambient_api_key_missing");
+  : String(process.env.VERCEL_AI_GATEWAY_API_KEY || process.env.AI_GATEWAY_API_KEY || "").trim();
+if (!apiKey) throw new Error("vercel_api_key_missing");
 
 const env = {
   ...process.env,
-  AMBIENT_API_KEY: apiKey,
+  VERCEL_AI_GATEWAY_API_KEY: apiKey,
 };
 const systemPrompt = taskNodeInstructions({});
 const body = {
-  model: AMBIENT_MODELS.reasoningText,
+  model: INFERENCE_MODELS.reasoningText,
   messages: [
     { role: "system", content: systemPrompt },
     { role: "user", content: "Cache telemetry smoke. Reply with exactly OK." },
@@ -50,7 +50,7 @@ const body = {
 };
 
 async function runOnce() {
-  const result = await ambientChatCompletion({
+  const result = await inferenceChatCompletion({
     body,
     capability: "reasoning_text",
     env,
@@ -58,8 +58,9 @@ async function runOnce() {
   });
   return {
     id: result.id,
+    provider: result.provider,
     model: result.model,
-    usage: openRouterUsage({ usage: result.usage }, "Thinking"),
+    usage: openRouterUsage(result.body, "Thinking"),
   };
 }
 
@@ -68,6 +69,7 @@ const second = await runOnce();
 const report = {
   ok: second.usage.cacheUsageReported && second.usage.promptCacheHitTokens > 0,
   model: second.model,
+  provider: second.provider,
   stablePrefixCharacters: systemPrompt.length,
   first: {
     inputTokens: first.usage.inputTokens,
@@ -89,4 +91,4 @@ const report = {
   },
 };
 console.log(JSON.stringify(report, null, 2));
-if (!report.ok) throw new Error("ambient_prompt_cache_hit_not_observed");
+if (!report.ok) throw new Error("inference_prompt_cache_hit_not_observed");

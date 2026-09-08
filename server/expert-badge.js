@@ -1,7 +1,8 @@
+import { parseInferenceJson } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { getAccountExpertReview, setAccountExpertReview } from "./repositories/account-profiles.js";
 import { listTaskState } from "./repositories/tasks.js";
-import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "./inference.js";
 
 export const expertRequiredPersonalTaskCount = 20;
 export const expertScoreThreshold = 80;
@@ -33,7 +34,7 @@ function promptDigest(text = "") {
 }
 
 function expertModel() {
-  return safeText(process.env.TASKNODE_EXPERT_EVALUATOR_MODEL || AMBIENT_MODELS.structured, 120);
+  return safeText(process.env.TASKNODE_EXPERT_EVALUATOR_MODEL || INFERENCE_MODELS.structured, 120);
 }
 
 function expertReasoningEffort() {
@@ -55,20 +56,7 @@ function openRouterUsage(body = {}) {
   };
 }
 
-function parseJsonOutputText(text = "") {
-  const trimmed = safeText(text, 200000);
-  if (!trimmed) return {};
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) return JSON.parse(fenced[1]);
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1));
-    throw new Error("expert_badge_model_invalid_json");
-  }
-}
+function parseJsonOutputText(text = "") { return parseInferenceJson(text); }
 
 function taskTimestamp(task = {}) {
   return Date.parse(task.updatedAt || task.lastEventAt || "") || 0;
@@ -157,7 +145,7 @@ export async function expertAccessFromTaskState({ accountId = "", taskState = {}
     strengths: stringArray(review.strengths, 6, 240),
     weaknesses: stringArray(review.weaknesses, 6, 240),
     disqualifyingConcerns,
-    proofMethod: "glm52_last_20_personal_tasks",
+    proofMethod: "model_review_last_20_personal_tasks",
     model: safeText(review.model, 120),
     responseId: safeText(review.responseId, 200),
   };
@@ -238,8 +226,8 @@ function expertMessages({ topic = "", tasks = [] } = {}) {
 }
 
 async function fetchExpertEvaluation({ topic = "", tasks = [], fetchImpl = fetch } = {}) {
-  if (!ambientConfigured()) {
-    const error = new Error("expert_badge_ambient_not_configured");
+  if (!inferenceConfigured()) {
+    const error = new Error("expert_badge_inference_not_configured");
     error.status = 409;
     throw error;
   }
@@ -248,7 +236,7 @@ async function fetchExpertEvaluation({ topic = "", tasks = [], fetchImpl = fetch
   const model = expertModel();
   const promptText = expertEvaluationPrompt();
   try {
-    const result = await ambientChatCompletion({
+    const result = await inferenceChatCompletion({
       fetchImpl,
       capability: "strict_json",
       timeoutMs: expertTimeoutMs(),
@@ -271,7 +259,7 @@ async function fetchExpertEvaluation({ topic = "", tasks = [], fetchImpl = fetch
     const parsed = parseJsonOutputText(text);
     return {
       parsed,
-      provider: "ambient",
+      provider: result.provider,
       model: body?.model || model,
       responseId: safeText(body?.id, 200),
       promptDigest: promptDigest(promptText),
@@ -282,7 +270,7 @@ async function fetchExpertEvaluation({ topic = "", tasks = [], fetchImpl = fetch
       },
     };
   } catch (error) {
-    if (error?.code === "ambient_timeout") throw new Error("expert_badge_ambient_timeout");
+    if (error?.code === "inference_timeout") throw new Error("expert_badge_inference_timeout");
     throw error;
   }
 }

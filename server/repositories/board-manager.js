@@ -3,10 +3,8 @@ import { hostname } from "node:os";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
   buildBoardManagerRunMicroSummary,
-  formatBoardManagerAgentJob,
   formatBoardManagerAgentRun,
 } from "./board-manager-run-summary.js";
-import { activeBoardManagerJobs } from "./board-manager-agent-jobs.js";
 import {
   actionSet,
   emptyBoardManagerPayload,
@@ -48,14 +46,8 @@ function useDatabase() {
 
 export async function getBoardManagerAgentFeed({ limit = 20, includeInternal = false, includeDetails = false } = {}) {
   const normalizedLimit = Math.min(Math.max(Number(limit) || 20, 1), 30);
-  const [jobs, runs] = await Promise.all([
-    activeBoardManagerJobs({ limit: Math.min(normalizedLimit, 10), includeInternal, includeDetails }),
-    recentBoardManagerRuns({ limit: normalizedLimit, includeInternal, includeDetails }),
-  ]);
-  return [
-    ...jobs.map(formatBoardManagerAgentJob),
-    ...runs.map(formatBoardManagerAgentRun),
-  ]
+  const runs = await recentBoardManagerRuns({ limit: normalizedLimit, includeInternal, includeDetails });
+  return runs.map(formatBoardManagerAgentRun)
     .sort((left, right) =>
       (Date.parse(right.startedAt || right.completedAt || "") || 0) - (Date.parse(left.startedAt || left.completedAt || "") || 0)
     )

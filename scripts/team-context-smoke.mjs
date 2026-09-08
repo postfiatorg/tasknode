@@ -129,10 +129,14 @@ try {
   assert.equal(capturedRequest.body.messages[0].content.includes("evidence-grounded operating summary"), true);
   assert.equal(capturedRequest.body.messages[0].content.includes("Preserve source-grounded quantities"), true);
   assert.equal(capturedRequest.body.messages[0].content.includes("150 to 300 words"), true);
+  assert.equal(capturedRequest.body.messages[0].content.includes("three fields must serve visibly different roles"), true);
   assert.equal(capturedRequest.body.messages[1].content.includes("tasksPastDay"), false, "deterministic counts must not be delegated to the model");
   assert.equal(capturedRequest.body.messages[1].content.includes(member), false, "opaque account IDs must not be delegated to the model");
   assert.equal(capturedRequest.body.messages[1].content.includes('"member_key":"member_1"'), true);
   assert.equal(generated.report.members[0].account_id, member, "the server must restore the account ID from its member-key binding");
+  assert.equal(generated.report.members[0].focus, detailedMemberResponse.focus);
+  assert.deepEqual(generated.report.members[0].completed_changes, detailedMemberResponse.completed_changes);
+  assert.equal(generated.report.members[0].operational_effect, detailedMemberResponse.operational_effect);
   assert.equal(generated.report.members[0].recent_work.includes("canonical rewarded-task records"), true);
   assert.ok(
     generated.report.members[0].recent_work.split(" ").filter(Boolean).length >= 90,
@@ -178,6 +182,9 @@ try {
     overview: "",
     members: [],
   }), noWorkSource);
+  assert.equal(noWorkReport.members[0].focus, "");
+  assert.deepEqual(noWorkReport.members[0].completed_changes, []);
+  assert.equal(noWorkReport.members[0].operational_effect, "");
   assert.equal(noWorkReport.members[0].recent_work, "No rewarded work is available yet for this member.");
   await assert.rejects(
     () => generateTeamContextReport(source, {
@@ -246,6 +253,9 @@ try {
   assert.equal(current.model, TEAM_CONTEXT_VERCEL_MODEL);
   assert.equal(current.members[0].tasksPastDay, 1, "the rolling window must age out the exact 24-hour boundary");
   assert.equal(current.members[0].tasksPastWeek, 3, "the rolling window must age out the exact 7-day boundary");
+  assert.equal(current.members[0].focus, detailedMemberResponse.focus);
+  assert.deepEqual(current.members[0].completedChanges, detailedMemberResponse.completed_changes);
+  assert.equal(current.members[0].operationalEffect, detailedMemberResponse.operational_effect);
   assert.equal(current.members[0].recentWork.includes("canonical rewarded-task records"), true);
   const promptContext = formatTeamContextForPrompt(current);
   assert.equal(promptContext.includes("rewarded tasks past 24 hours=1; past 7 days=3"), true);

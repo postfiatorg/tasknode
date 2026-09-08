@@ -229,7 +229,7 @@ export function RewardsChart({ data = [] }) {
           color: C.ink2,
           pointerEvents: "none",
           lineHeight: 1.55,
-          background: "rgba(255,252,245,0.88)",
+          background: "var(--tn-dark-bg, rgba(255,252,245,0.88))",
           padding: "6px 10px",
           backdropFilter: "blur(2px)",
         }}>

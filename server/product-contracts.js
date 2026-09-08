@@ -752,9 +752,9 @@ export async function readiness() {
     llm: {
       ambientConfigured: chatProviderConfigured("ambient"),
       profileNftImageConfigured: process.env.TASKNODE_PROFILE_NFT_RENDERER_CONFIGURED === "true",
-      // Compatibility field for older readiness consumers. Ambient is now the
-      // inference gateway; the retired Vercel credential is no longer read.
-      aiGatewayConfigured: chatProviderConfigured("ambient"),
+      aiGatewayConfigured: chatProviderConfigured("vercel"),
+      defaultProvider: "vercel",
+      backupProvider: "ambient",
     },
   };
 }

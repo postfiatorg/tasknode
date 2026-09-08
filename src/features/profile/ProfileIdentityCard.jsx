@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { requestJson } from "../../api";
 
 const C = {
-  paper3: "#FFFCF5",
-  ink: "#1F1B16",
-  ink3: "#6B6052",
-  ink4: "#9B9081",
-  ruleSoft: "#EFE7D6",
+  paper3: "var(--tn-dark-bg, #FFFCF5)",
+  ink: "var(--tn-dark-text, #1F1B16)",
+  ink3: "var(--tn-dark-secondary, #6B6052)",
+  ink4: "var(--tn-dark-muted, #9B9081)",
+  ruleSoft: "var(--tn-dark-border, #EFE7D6)",
 };
 
 function SectionHead({ eyebrow, sub }) {
@@ -185,4 +185,3 @@ function ProfileIdentityAliasRow({ alias, pending, saveAlias }) {
     </div>
   );
 }
-

@@ -1,0 +1,40 @@
+{
+  "at": "2026-09-06T17:04:44.425Z",
+  "thumbnails": [
+    {
+      "nftId": "nft_7e9bb876-6d81-4bb4-af2f-567cb783f256",
+      "cid": "QmdiKPADrjyPrGNHKF1ScnTbd3zMAh3RvKCHnT9e6fT1iP",
+      "status": "thumbnail_saved",
+      "approvedPixelDigestVerified": true,
+      "bytes": 9692
+    },
+    {
+      "nftId": "nft_cc07f5be-c500-4f6b-8431-2a4b8c96a2d2",
+      "cid": "QmWaJunbQrGEYTfzMDYSzJ2oH8qSZpuPzPnyRYjRzA18eh",
+      "status": "thumbnail_saved",
+      "approvedPixelDigestVerified": true,
+      "bytes": 7872
+    },
+    {
+      "nftId": "nft_e04e204c-be2a-4d2b-a03f-4f7ff1b63913",
+      "cid": "QmRFm24foudJKp7rjXLWg1CRVzZLQxrcm84CyrG7Sw6Q3X",
+      "status": "thumbnail_saved",
+      "approvedPixelDigestVerified": true,
+      "bytes": 5350
+    },
+    {
+      "nftId": "nft_92845310-a3d9-4800-b542-74ced7536c96",
+      "cid": "QmPos9esEjshdMiQnokAuvkWqfYpikF26NETq3Cz2UMhmm",
+      "status": "thumbnail_saved",
+      "approvedPixelDigestVerified": true,
+      "bytes": 5060
+    },
+    {
+      "nftId": "nft_a2c02947-2519-45dd-a389-4a867d1f9095",
+      "cid": "QmNo3Fyz4bSkVKj5vVvgRkzpwRF9nJRmJhDMihgFmnTdFN",
+      "status": "thumbnail_saved",
+      "approvedPixelDigestVerified": true,
+      "bytes": 6162
+    }
+  ]
+}

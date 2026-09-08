@@ -8,6 +8,7 @@ export const INFERENCE_MODELS = Object.freeze({
 });
 
 const models = new Map([
+  ["openai/gpt-6-astra", { ambient: "", image: true }],
   ["moonshotai/kimi-k3", { ambient: "", image: true }],
   [INFERENCE_MODELS.instantText, { ambient: "z-ai/glm-5.2", image: true }],
   [INFERENCE_MODELS.reasoningText, { ambient: "z-ai/glm-5.2", image: false }],
@@ -48,8 +49,16 @@ export function cleanConfig(value = "") {
   return text.trim();
 }
 
-export function providerApiKey(provider, env = process.env) {
-  if (provider === "vercel") return cleanConfig(env.VERCEL_AI_GATEWAY_API_KEY) || cleanConfig(env.AI_GATEWAY_API_KEY);
+const modelCredentialNames = new Map([
+  ["openai/gpt-6-astra", "VERCEL_ASTRA_API_KEY"],
+  ["moonshotai/kimi-k3", "VERCEL_KIMI_API_KEY"],
+]);
+
+export function providerApiKey(provider, env = process.env, model = "") {
+  if (provider === "vercel") {
+    const name = modelCredentialNames.get(model);
+    return (name ? cleanConfig(env[name]) : "") || cleanConfig(env.VERCEL_AI_GATEWAY_API_KEY) || cleanConfig(env.AI_GATEWAY_API_KEY);
+  }
   if (provider === "ambient") return cleanConfig(env.AMBIENT_API_KEY);
   throw inferenceError("inference_provider_unsupported", { status: 400 });
 }
@@ -65,8 +74,8 @@ export function providerBaseUrl(provider, env = process.env) {
   return value;
 }
 
-export function inferenceProviderConfigured(provider, env = process.env) {
-  return Boolean(providerApiKey(provider, env));
+export function inferenceProviderConfigured(provider, env = process.env, model = "") {
+  return Boolean(providerApiKey(provider, env, model));
 }
 
 export function inferenceConfigured(env = process.env) {
@@ -74,9 +83,9 @@ export function inferenceConfigured(env = process.env) {
     (env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" && inferenceProviderConfigured("ambient", env));
 }
 
-export function inferenceRoutes(env = process.env) {
+export function inferenceRoutes(env = process.env, model = "") {
   return ["vercel", ...(env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" ? ["ambient"] : [])]
-    .filter((provider) => inferenceProviderConfigured(provider, env));
+    .filter((provider) => inferenceProviderConfigured(provider, env, model));
 }
 
 export function canonicalModel(model) {
@@ -87,6 +96,12 @@ export function canonicalModel(model) {
 }
 
 export function resolveInferenceModel({ model = "", capability = "reasoning_text", env = process.env, hasImages = false } = {}) {
+  // A user-selected model is an exact contract, independent of operator defaults.
+  if (capability === "selected_model") {
+    const selected = canonicalModel(model);
+    if (hasImages && !models.get(selected).image) throw inferenceError("inference_image_model_required", { status: 400 });
+    return selected;
+  }
   const policy = capabilities[capability];
   if (!policy) throw inferenceError("inference_capability_unsupported", { status: 400 });
   const configured = cleanConfig(env[policy[0]]) || cleanConfig(env[policy[1]]);
@@ -103,7 +118,7 @@ export function modelForProvider(model, provider, env = process.env, capability 
   const canonical = canonicalModel(model);
   if (provider === "vercel") return canonical;
   if (provider !== "ambient") throw inferenceError("inference_provider_unsupported", { status: 400 });
-  if (canonical === "moonshotai/kimi-k3") throw inferenceError("inference_private_model_fallback_forbidden", { status: 400 });
+  if (!models.get(canonical).ambient || capability === "selected_model") throw inferenceError("inference_private_model_fallback_forbidden", { status: 400 });
   // Ambient catalogue verified 2026-09-05: text GLM 5.2; vision Gemma 4.
   // Record actual provider/model on every completion; primary remains GLM 5.3.
   const needsVision = hasImages || capability === "vision_text" || capability === "verification_vision";

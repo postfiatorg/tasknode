@@ -1,4 +1,7 @@
-import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
+import { inferenceProviderUsage } from "./inference-usage.js";
+import { parseInferenceJson } from "./inference-text.js";
+import { inferenceProviderForResponse } from "./inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "./inference.js";
 const defaultTimeoutMs = 20 * 60 * 1000;
 const defaultScoreTimeoutMs = 12 * 60 * 1000;
 const defaultSearchTimeoutMs = 5 * 60 * 1000;
@@ -67,21 +70,21 @@ function annotationsFromOpenRouter(body = {}) {
 
 export function contextRewriteModels() {
   return {
-    glm: process.env.CONTEXT_REWRITE_GLM_MODEL || "z-ai/glm-5.2",
-    deepseek: process.env.CONTEXT_REWRITE_SECONDARY_MODEL || AMBIENT_MODELS.structured,
-    final: process.env.CONTEXT_REWRITE_FINAL_MODEL || process.env.CONTEXT_REWRITE_GLM_MODEL || "z-ai/glm-5.2",
+    glm: process.env.CONTEXT_REWRITE_GLM_MODEL || "zai/glm-5.3",
+    deepseek: process.env.CONTEXT_REWRITE_SECONDARY_MODEL || INFERENCE_MODELS.structured,
+    final: process.env.CONTEXT_REWRITE_FINAL_MODEL || process.env.CONTEXT_REWRITE_GLM_MODEL || "zai/glm-5.3",
     polish:
       process.env.CONTEXT_REWRITE_POLISH_MODEL ||
       process.env.CONTEXT_REWRITE_FINAL_MODEL ||
       process.env.CONTEXT_REWRITE_GLM_MODEL ||
-      "z-ai/glm-5.2",
-    research: process.env.CONTEXT_REWRITE_RESEARCH_MODEL || AMBIENT_MODELS.research,
+      "zai/glm-5.3",
+    research: process.env.CONTEXT_REWRITE_RESEARCH_MODEL || INFERENCE_MODELS.research,
   };
 }
 
 export function contextRewriteProviderConfigured() {
   if (process.env.CONTEXT_REWRITE_PROVIDER_MOCK === "true") return true;
-  return ambientConfigured();
+  return inferenceConfigured();
 }
 
 export function contextRewriteEstimateUsd() {
@@ -90,49 +93,38 @@ export function contextRewriteEstimateUsd() {
   return Number(value.toFixed(6));
 }
 
-function usageFromOpenRouter(body = {}, { webSearchCalls = 0 } = {}) {
+function usageFromOpenRouter(body = {}) {
   const usage = body?.usage || {};
   const inputTokens = Number(usage.prompt_tokens || usage.input_tokens || 0);
   const outputTokens = Number(usage.completion_tokens || usage.output_tokens || 0);
   const totalTokens = Number(usage.total_tokens || inputTokens + outputTokens || 0);
-  const costUsd = Number(usage.cost || usage.total_cost || 0);
+  const providerUsage = inferenceProviderUsage(body);
   return {
     inputTokens: Number.isFinite(inputTokens) ? inputTokens : 0,
     outputTokens: Number.isFinite(outputTokens) ? outputTokens : 0,
     totalTokens: Number.isFinite(totalTokens) ? totalTokens : 0,
-    webSearchCalls,
-    toolCostUsd: 0,
-    costUsd: Number.isFinite(costUsd) ? Number(costUsd.toFixed(6)) : 0,
+    ...providerUsage,
+    toolCostUsd: null,
+    costUsd: providerUsage.providerCostUsd,
     raw: usage,
   };
 }
 
 function parseJsonText(text = "", errorCode = "context_rewrite_invalid_json") {
-  const raw = String(text || "")
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
-    const error = new Error(errorCode);
-    error.rawText = raw.slice(0, 1200);
-    throw error;
+    try { return parseInferenceJson(text); }
+    catch { throw Object.assign(new Error(errorCode), { code: errorCode }); }
   }
-  return JSON.parse(raw.slice(start, end + 1));
-}
 
 async function fetchOpenRouter(body, { timeoutMs = defaultTimeoutMs } = {}) {
   try {
-    const result = await ambientChatCompletion({
+    const result = await inferenceChatCompletion({
       body,
       capability: Array.isArray(body?.tools) && body.tools.length ? "research_text" : "strict_json",
       timeoutMs,
     });
     return result.body;
   } catch (error) {
-    if (error?.code === "ambient_timeout") {
+    if (error?.code === "inference_timeout") {
       const timeoutError = new Error("context_rewrite_provider_timeout");
       timeoutError.status = 504;
       throw timeoutError;
@@ -389,7 +381,7 @@ export async function runContextRewriteScoreCall({
   const text = outputTextFromOpenRouter(body);
   if (!text) throw new Error("context_rewrite_score_empty_response");
   return {
-    provider: "ambient",
+    provider: inferenceProviderForResponse(body),
     model: body?.model || model,
     responseId: body?.id || null,
     text,
@@ -480,7 +472,7 @@ export async function runContextRewriteSearchCall({ model, query = "", index = 0
       })),
     };
     return {
-      provider: "ambient",
+      provider: inferenceProviderForResponse(body),
       model: body?.model || model,
       responseId: body?.id || null,
       text: JSON.stringify(parsed),
@@ -490,7 +482,7 @@ export async function runContextRewriteSearchCall({ model, query = "", index = 0
     };
   }
   return {
-    provider: "ambient",
+    provider: inferenceProviderForResponse(body),
     model: body?.model || model,
     responseId: body?.id || null,
     text,
@@ -544,7 +536,7 @@ export async function runContextRewriteFinalCall({
   const text = outputTextFromOpenRouter(body);
   if (!text) throw new Error("context_rewrite_final_empty_response");
   return {
-    provider: "ambient",
+    provider: inferenceProviderForResponse(body),
     model: body?.model || model,
     responseId: body?.id || null,
     text,
@@ -603,7 +595,7 @@ export async function runContextRewritePolishCall({
   const text = outputTextFromOpenRouter(body);
   if (!text) throw new Error("context_rewrite_polish_empty_response");
   return {
-    provider: "ambient",
+    provider: inferenceProviderForResponse(body),
     model: body?.model || model,
     responseId: body?.id || null,
     text,

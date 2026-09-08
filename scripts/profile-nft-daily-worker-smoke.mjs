@@ -42,9 +42,8 @@ const candidates = [
 ];
 
 const payload = buildDailyProfileNftGenerationPayload({ candidate: candidates[0], runDate });
-assert.match(payload.contextDocument, /Completed personal tasks: 4/);
-assert.match(payload.contextDocument, /Completed Network Tasks: 0/);
-assert.equal(JSON.parse(payload.nftUserData).eligibility.reason, "personal_task_threshold");
+assert.deepEqual(payload, { size: "1024x1024", quality: "high" });
+assert.equal(JSON.stringify(payload).includes(candidates[0].accountId), false);
 
 const first = await runDailyProfileNftWorkerOnce({
   runDate,
@@ -123,7 +122,7 @@ const failed = await runDailyProfileNftWorkerOnce({
 
 assert.equal(failed.generatedCount, 0);
 assert.equal(failed.failedCount, 1);
-assert.match(failed.failed[0].error, /transient image provider failure/);
+assert.equal(failed.failed[0].error, "Artwork generation was interrupted. It will retry automatically.");
 
 const retried = await runDailyProfileNftWorkerOnce({
   runDate,

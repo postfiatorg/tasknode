@@ -1,10 +1,11 @@
+import { inferenceProviderForResponse } from "./inference.js";
 import {
   normalizeChatAttachments,
   textAttachmentPrompt,
 } from "./chat-attachment-utils.js";
 import { actualChatCost } from "./chat-router.js";
 import { loadPrompt, promptDigest, renderPromptTemplate } from "./prompt-registry.js";
-import { AMBIENT_MODELS, ambientConfigured, ambientFetchCompatibility } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceConfigured, inferenceFetchCompatibility } from "./inference.js";
 import { getChatMessagesForWrite } from "./repositories/chat-billing.js";
 import { buildBoardManagerSourcePacket } from "./repositories/board-manager.js";
 import { buildHiveSecretarySourcePacket } from "./repositories/hive-context.js";
@@ -25,7 +26,7 @@ import {
   formatHiveAccountLiveStateForPrompt,
 } from "./repositories/hive-account-live-state.js";
 
-const defaultHiveImmediateModel = AMBIENT_MODELS.fastText;
+const defaultHiveImmediateModel = INFERENCE_MODELS.fastText;
 const defaultTimeoutMs = 45_000;
 const defaultHiveImmediateMaxTokens = 1600;
 const maxHiveImmediateMaxTokens = 4096;
@@ -268,12 +269,12 @@ function networkTaskRoutingPolicyForPrompt() {
 }
 
 export function hiveImmediateResponseStatus() {
-  const configured = ambientConfigured();
+  const configured = inferenceConfigured();
   const explicitlyDisabled =
     process.env.TASKNODE_HIVE_IMMEDIATE_RESPONSE_ENABLED === "false" ||
     process.env.TASKNODE_ENABLE_HIVE_IMMEDIATE_RESPONSE === "false";
   return {
-    provider: "ambient",
+    provider: "vercel",
     model: hiveImmediateModel(),
     configured,
     enabled: configured && !explicitlyDisabled,
@@ -416,7 +417,7 @@ function formatRequestingUserForImmediateResponse({
     `Conversation ID: ${safeText(conversationId, 180) || "unknown"}`,
     walletAddress ? `Linked wallet: ${walletAddress}` : "",
     displayName ? `Display: ${displayName}` : "",
-    hiveHandle ? `Hive handle: @${hiveHandle.replace(/^@+/, "")}` : "",
+    hiveHandle ? `Hive handle: @${hiveHandle.split("@").join("")}` : "",
     primaryProvider ? `Primary provider: ${primaryProvider}` : "",
     aliases.length ? ["Linked aliases", aliases.map(linkedAliasLine).join("\n")].join("\n") : "",
     "Second-person boundary: say 'you' only for facts tied to this account id, this conversation, the account-scoped Hive Context packet, or the latest user message. Shared board facts about other accounts must be described as shared board state or other contributors.",
@@ -853,7 +854,7 @@ export async function executeHiveImmediateResponse({
   );
 
   try {
-    const response = await ambientFetchCompatibility(fetchImpl, "", {
+    const response = await inferenceFetchCompatibility(fetchImpl, "", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -874,7 +875,7 @@ export async function executeHiveImmediateResponse({
       throw error;
     }
     return {
-      provider: "ambient",
+      provider: inferenceProviderForResponse(body),
       model: safeText(body?.model || status.model, 120),
       responseId: safeText(body?.id || "", 160),
       text,

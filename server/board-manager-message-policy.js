@@ -1,3 +1,4 @@
+import { classifySemanticInput } from "./semantic-classifier.js";
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
 }
@@ -42,29 +43,12 @@ function messageIsInformationalNoFollowup(decision = {}) {
   return safeObject(decision.payload).followup_required === false;
 }
 
-function messageRequestsTaskAction(text = "") {
-  const value = safeText(text, 5000).toLowerCase();
-  if (!value) return false;
-  return /\b(network\s+task|proposed\s+task|task\s+waiting|accept|accepted|decline|refuse|review|act\s+on|respond|capacity|unblock|waiting\s+for\s+(?:your|user|candidate))\b/.test(value);
-}
-
-function messageRequiresRelatedTaskPrecondition(text = "") {
-  const value = safeText(text, 5000).toLowerCase();
-  if (!value) return false;
-  return /\b(proposed\s+(?:network\s+)?task|network\s+task\s+waiting|task\s+waiting|accept|decline|refuse|review\s+(?:the\s+)?(?:task|offer)|act\s+on|respond\s+to\s+(?:the\s+)?(?:task|offer)|verification|submit\s+evidence|unblock\s+(?:your\s+)?capacity)\b/.test(value);
-}
-
-function taskReferenceMatchesText(task = {}, text = "") {
-  const haystack = safeText(text, 7000).toLowerCase();
-  const refs = [
-    task.taskId,
-    task.allocationId,
-    task.generationJobId,
-    task.requestId,
-    task.title,
-    task.projectNeedSummary,
-  ].map((item) => safeText(item, 240).toLowerCase()).filter((item) => item.length >= 6);
-  return refs.some((ref) => haystack.includes(ref));
+async function classifyMessageIntent(text, options) {
+  return classifySemanticInput({ name: "board_message_intent",
+    instruction: "Classify whether this outgoing board-manager message asks the recipient to act on a task or offer (task_action), merely provides information (information), or is unclear (uncertain).",
+    schema: { type: "object", additionalProperties: false, required: ["intent"], properties: { intent: { type: "string", enum: ["task_action","information","uncertain"] } } },
+    input: { text }, validate: value=>value && Object.keys(value).length===1 && ["task_action","information","uncertain"].includes(value.intent), fallback: {intent:"uncertain"},
+  }, options);
 }
 
 function messagePrecondition(decision = {}) {
@@ -121,13 +105,11 @@ function followupMatchesPrecondition(followup = {}, precondition = {}) {
 
 export function evaluateBoardManagerMessagePrecondition({
   decision = {},
-  messageText = "",
   accountLiveState = {},
+  requiresRelatedTask = false,
 } = {}) {
-  const combinedText = decisionUserMessageText(decision, messageText);
   const precondition = normalizedBoardManagerMessagePrecondition(decision);
   const hasAssertions = messagePreconditionHasAssertions(decision);
-  const requiresRelatedTask = messageRequiresRelatedTaskPrecondition(combinedText);
   if (!hasAssertions && !requiresRelatedTask) {
     return { ok: true, reason: "message_precondition_not_required" };
   }
@@ -253,31 +235,18 @@ export function evaluateBoardManagerMessagePrecondition({
   };
 }
 
-function messageAcknowledgesReservationMismatch(text = "", reservationMinPft = 0) {
-  const value = safeText(text, 5000).toLowerCase();
-  if (!reservationMinPft) return true;
-  const compactMin = String(Math.round(reservationMinPft));
-  const kMin = reservationMinPft % 1000 === 0 ? `${Math.round(reservationMinPft / 1000)}k` : "";
-  return (
-    value.includes("reservation") ||
-    value.includes("minimum") ||
-    value.includes("below") ||
-    value.includes("under") ||
-    value.includes(compactMin) ||
-    (kMin && value.includes(kMin))
-  );
-}
-
-export function guardBoardManagerMessageUserFreshness({
+export async function guardBoardManagerMessageUserFreshness({
   decision = {},
   messageText = "",
   accountLiveState = {},
-} = {}) {
+} = {}, options = {}) {
   const liveState = safeObject(accountLiveState);
   const combinedText = decisionUserMessageText(decision, messageText);
-  const wantsTaskAction = messageRequestsTaskAction(combinedText);
+  const classification = await classifyMessageIntent(combinedText, options);
+  if (classification.intent === "uncertain") return { ok:false, reason:"board_manager_message_intent_uncertain" };
+  const wantsTaskAction = classification.intent === "task_action";
   const hasStructuredPrecondition = messagePreconditionHasAssertions(decision);
-  const strictlyRequiresRelatedTask = messageRequiresRelatedTaskPrecondition(combinedText);
+  const strictlyRequiresRelatedTask = wantsTaskAction;
   if (messageIsInformationalNoFollowup(decision) && !hasStructuredPrecondition && !strictlyRequiresRelatedTask) {
     return { ok: true, reason: "informational_message_no_followup" };
   }
@@ -296,6 +265,7 @@ export function guardBoardManagerMessageUserFreshness({
     decision,
     messageText,
     accountLiveState: liveState,
+    requiresRelatedTask: wantsTaskAction,
   });
   if (!preconditionResult.ok) {
     return {
@@ -307,21 +277,7 @@ export function guardBoardManagerMessageUserFreshness({
   }
   const tasks = safeArray(liveState.networkTasks);
   const followups = safeArray(liveState.openFollowups);
-  const referencedTerminalTask = tasks.find((task) => {
-    const status = safeText(task.taskStatus || task.allocationStatus, 80).toLowerCase();
-    return staleGuardTerminalStatuses.has(status) && taskReferenceMatchesText(task, combinedText);
-  });
-  if (referencedTerminalTask) {
-    return {
-      ok: false,
-      reason: "board_manager_message_user_stale_terminal_task",
-      taskId: referencedTerminalTask.taskId,
-      allocationId: referencedTerminalTask.allocationId,
-      taskStatus: referencedTerminalTask.taskStatus,
-      allocationStatus: referencedTerminalTask.allocationStatus,
-      accountLiveStateDigest: safeText(liveState.digest, 120),
-    };
-  }
+  if (!wantsTaskAction) return { ok: true, reason: "informational_message_preconditions_satisfied" };
   const waitingTasks = tasks.filter((task) => task.waitingForUser && !task.terminal);
   if (!waitingTasks.length) {
     return {
@@ -337,7 +293,7 @@ export function guardBoardManagerMessageUserFreshness({
       const reward = numberValue(task.rewardMaxPft || task.rewardOfferPft || task.rewardMinPft, 0);
       return reward > 0 && reward < reservationMinPft;
     });
-    if (belowMinimumTask && !messageAcknowledgesReservationMismatch(combinedText, reservationMinPft)) {
+    if (belowMinimumTask) {
       return {
         ok: false,
         reason: "board_manager_message_user_below_reservation_rate",

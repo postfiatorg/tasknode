@@ -1,3 +1,4 @@
+import { isIdentifierChar, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 
 import { databaseEnabled, query, transaction } from "../db/pool.js";
@@ -32,11 +33,8 @@ function digestText(value = "") {
 }
 
 export function normalizeCapabilityType(value = "") {
-  return safeText(value, 80)
-    .toLowerCase()
-    .replace(/[^a-z0-9_:-]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "") || "unspecified_capability";
+  return trimCharacters(replaceCharacterRuns(replaceCharacterRuns(safeText(value, 80)
+    .toLowerCase(),char=>!isIdentifierChar(char)&&char!==":","_"),char=>char==="_","_"),"_") || "unspecified_capability";
 }
 
 export function capabilityScopeDigest(value = "") {

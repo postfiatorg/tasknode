@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { requestJson } from "../../api";
-import { profileNftImageCandidates } from "./profile-nft-images.js";
-import { connectionInitials, connectionLabel } from "./ProfileStudioPanels.jsx";
+import { ProfilePortrait } from "./ProfilePortrait.jsx";
+import { connectionLabel } from "./ProfileStudioPanels.jsx";
 import {
   C,
   SectionHead,
@@ -11,46 +11,7 @@ import {
 } from "./profile-view-shared.jsx";
 
 export function ConnectionAvatar({ connection = {}, size = 48 } = {}) {
-  const imageCandidates = useMemo(
-    () => profileNftImageCandidates(connection.heroNft || {}, { avatarCssSize: size }),
-    [connection.heroNft, size]
-  );
-  const [imageIndex, setImageIndex] = useState(0);
-  const imageSrc = imageCandidates[imageIndex] || "";
-
-  useEffect(() => {
-    setImageIndex(0);
-  }, [imageCandidates]);
-
-  return (
-    <div style={{
-      alignItems: "center",
-      background: C.paper2,
-      border: `1px solid ${C.ruleSoft}`,
-      borderRadius: 10,
-      color: C.ink2,
-      display: "flex",
-      fontSize: Math.max(12, Math.round(size * 0.29)),
-      fontWeight: 650,
-      height: size,
-      justifyContent: "center",
-      overflow: "hidden",
-      width: size,
-    }}>
-      {imageSrc ? (
-	        <img
-	          alt={`${connectionLabel(connection)} profile NFT`}
-	          decoding="async"
-	          loading="lazy"
-	          onError={() => setImageIndex((index) => index + 1)}
-	          src={imageSrc}
-          style={{ display: "block", height: "100%", objectFit: "cover", width: "100%" }}
-        />
-      ) : (
-        connectionInitials(connection)
-      )}
-    </div>
-  );
+  return <ProfilePortrait nft={connection.heroNft} seed={connection.accountId || connection.handle || connectionLabel(connection)} label={`${connectionLabel(connection)} profile picture`} size={size} />;
 }
 
 export function walletExplorerHref(walletAddress = "", explorerBase = "") {

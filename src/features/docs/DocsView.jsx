@@ -498,7 +498,7 @@ function SystemPricingPanel({ pricing }) {
         <div>
           <h2>Chat Model Pricing</h2>
           <p>
-            Configured estimates and live Ambient metadata for the current chat modes.{" "}
+            Configured estimates and live Vercel AI Gateway metadata for the current chat modes.{" "}
             {cacheEfficiency.status === "ok"
               ? `${cacheEfficiency.cacheHitPercent ?? 0}% cache hit across ${cacheEfficiency.reportedRuns}/${cacheEfficiency.runs} reported runs, saving ${formatUsd(cacheEfficiency.cacheSavingsUsd)} over ${cacheEfficiency.windowDays} days.`
               : cacheEfficiency.status === "awaiting_reported_usage"

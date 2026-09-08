@@ -30,3 +30,7 @@ export function shouldStartBackgroundWorkers(role = tasknodeProcessRole()) {
 export function isMonolithWorkerRole(role = tasknodeProcessRole()) {
   return ["all", "worker", "background"].includes(String(role || "").toLowerCase());
 }
+
+export function ownsTaskGeneration(role = tasknodeProcessRole()) {
+  return role === "worker:taskgen" || isMonolithWorkerRole(role);
+}

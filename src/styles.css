@@ -1,3 +1,4 @@
+@import "./styles-theme.css";
 @import "./styles-shell.css";
 @import "./styles-chat.css";
 @import "./styles-composer.css";

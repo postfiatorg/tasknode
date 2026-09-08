@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "at": "2026-09-06T12:09:11.632Z",
+  "latencyMs": 868,
+  "mode": "Deployed Fly runtime with production database",
+  "sync": {
+    "status": "ready",
+    "failedReducerCount": 0,
+    "pendingReducerCount": 0,
+    "processingReducerCount": 0,
+    "indexingLagCount": 0,
+    "projectionCount": 139
+  },
+  "receipt": {
+    "requestId": "req_40b97b66-3fa7-4315-a30d-8b4bac3da89d",
+    "status": "cancelled",
+    "statusLabel": "Dismissed",
+    "isActive": false,
+    "lastError": "taskgen_provider_timeout"
+  },
+  "completedTask": {
+    "task_id": "task_4045d2d9653a0671f1a7e1c7d0dda7aa",
+    "status": "rewarded",
+    "reward_actual_pft": "3.200000",
+    "last_event_tx_hash": "C44F04425EA7429E2081877818A2B35702D5E0DD4E46ECBF1AE53CB2EE97EA98"
+  },
+  "historicalFailureRowsPreserved": 5
+}

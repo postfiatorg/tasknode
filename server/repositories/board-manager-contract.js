@@ -103,6 +103,7 @@ export const emptyBoardManagerPayload = Object.freeze({
   cancel_target: {
     task_id: "",
     reason: "",
+    stale_only: false,
     referenced_task_ids: [],
   },
 });
@@ -281,6 +282,7 @@ export function normalizePayload(payload = {}) {
     cancel_target: {
       task_id: safeText(cancelTarget.task_id || cancelTarget.taskId, 180),
       reason: safeText(cancelTarget.reason, 1000),
+      stale_only: cancelTarget.stale_only === true,
       referenced_task_ids: safeArray(cancelTarget.referenced_task_ids || cancelTarget.referencedTaskIds)
         .map((item) => safeText(item, 180))
         .filter(Boolean)

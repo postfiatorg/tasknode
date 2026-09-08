@@ -1,4 +1,6 @@
-import { AMBIENT_MODELS, ambientConfigured, ambientFetchCompatibility } from "../ambient-inference.js";
+import { stripMarkdownFence } from "../inference-text.js";
+import { inferenceProviderForResponse } from "../inference.js";
+import { INFERENCE_MODELS, inferenceConfigured, inferenceFetchCompatibility } from "../inference.js";
 
 export const maxRecommendedConnections = 4;
 export const minRecommendedConnections = 3;
@@ -82,7 +84,7 @@ export function publicRecommendedConnection(row = {}) {
 }
 
 export function parseRecommendedConnectionsJson(text = "", candidates = []) {
-  const raw = String(text || "").replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+  const raw = stripMarkdownFence(text);
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("recommended_connections_invalid_json");
@@ -164,7 +166,7 @@ export async function callRecommendedConnectionsProvider({
   candidates,
   fetchImpl = fetch,
 } = {}) {
-  if (!ambientConfigured()) {
+  if (!inferenceConfigured()) {
     const recommendations = deterministicRecommendedConnections({ candidates });
     return {
       provider: "deterministic_fallback",
@@ -174,13 +176,13 @@ export async function callRecommendedConnectionsProvider({
       usage: {},
     };
   }
-  const model = process.env.TASKNODE_RECOMMENDED_CONNECTIONS_MODEL || AMBIENT_MODELS.fastText;
+  const model = process.env.TASKNODE_RECOMMENDED_CONNECTIONS_MODEL || INFERENCE_MODELS.fastText;
   const timeoutMs = Math.max(10_000, Number(process.env.TASKNODE_RECOMMENDED_CONNECTIONS_TIMEOUT_MS || 90_000));
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs * 2 + 1000);
   let response;
   try {
-    response = await ambientFetchCompatibility(fetchImpl, "", {
+    response = await inferenceFetchCompatibility(fetchImpl, "", {
       method: "POST",
       signal: controller.signal,
       headers: { "content-type": "application/json" },
@@ -208,7 +210,7 @@ export async function callRecommendedConnectionsProvider({
   }
   const content = body?.choices?.[0]?.message?.content || "";
   return {
-    provider: "ambient",
+    provider: inferenceProviderForResponse(body),
     model: body?.model || model,
     recommendations: parseRecommendedConnectionsJson(content, candidates),
     output: body,

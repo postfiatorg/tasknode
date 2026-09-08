@@ -1,0 +1,49 @@
+{
+  "syntheticOnly": true,
+  "results": [
+    {
+      "stage": "spec",
+      "ok": true,
+      "model": "moonshotai/kimi-k3",
+      "seconds": 85.878,
+      "art": {
+        "version": "techno-mordor-v2",
+        "hyperstition": 44,
+        "creature_level": 4,
+        "creature": "Ogre",
+        "momentum": "rapid"
+      }
+    },
+    {
+      "stage": "render",
+      "ok": true,
+      "bytes": 2555360
+    },
+    {
+      "stage": "review",
+      "approved": true,
+      "model": "moonshotai/kimi-k3",
+      "totalSeconds": 248.656
+    },
+    {
+      "name": "mundane_work_with_injection",
+      "ok": true,
+      "hyperstition": 1,
+      "creature": "Goblin",
+      "creatureLevel": 1,
+      "momentum": "building",
+      "privacy": true,
+      "model": "moonshotai/kimi-k3"
+    },
+    {
+      "name": "slow_high_value_infrastructure",
+      "ok": true,
+      "hyperstition": 65,
+      "creature": "Ogre",
+      "creatureLevel": 4,
+      "momentum": "still",
+      "privacy": true,
+      "model": "moonshotai/kimi-k3"
+    }
+  ]
+}

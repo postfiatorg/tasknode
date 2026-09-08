@@ -1,3 +1,4 @@
+import { markdownHeading } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { databaseEnabled } from "./db/pool.js";
 import { recordBillableModelRun } from "./repositories/chat-billing.js";
@@ -133,7 +134,7 @@ async function runAuditedProviderCall({
     job,
     stage,
     callIndex,
-    provider: "ambient",
+    provider: "vercel",
     model,
     requestDigest: requestDigest({ stage, callIndex, model, request }),
     timeoutMs,
@@ -191,13 +192,8 @@ function validateFinalMarkdown({ markdown = "", sourcePacket = {} } = {}) {
     error.minimumChars = minimumChars;
     throw error;
   }
-  const requiredHeadingPatterns = [
-    /##\s+.*values/i,
-    /##\s+.*strategy/i,
-    /##\s+.*milestone/i,
-    /##\s+.*decision/i,
-  ];
-  const missing = requiredHeadingPatterns.filter((pattern) => !pattern.test(text)).length;
+  const headings = text.split("\n").map(markdownHeading).filter(Boolean).map((heading) => heading.toLowerCase());
+  const missing = ["values", "strategy", "milestone", "decision"].filter((section) => !headings.some((heading) => heading.includes(section))).length;
   if (missing > 1) {
     const error = new Error("context_rewrite_final_markdown_missing_required_sections");
     error.missingSectionCount = missing;
@@ -371,7 +367,7 @@ async function runScoring({ job, sourcePacket }) {
           job,
           modelFamily: task.modelFamily || "unknown",
           runIndex: task.runIndex || index + 1,
-          provider: "ambient",
+          provider: "vercel",
           model: task.model || "",
           promptDigest: contextRewriteScorePromptSha256,
           parsedScore: {},
@@ -458,7 +454,7 @@ async function runOneResearch({ job, model, queryInfo, index }) {
       queryIndex: index,
       queryText: queryInfo.query,
       attemptId: job.currentAttemptId,
-      provider: "ambient",
+      provider: "vercel",
       model,
       resultJson: {
         query: queryInfo.query,

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { networkBadgeDefinitions, networkBadgeProjectionForAccount } from "./network-badges.js";
+import { getAccountIdentityProfile } from "./account-profiles.js";
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -320,18 +321,21 @@ export async function getIdentityApprovalState({ accountId = "" } = {}) {
       schema: "pf.task_node.identity_approval_state.v1",
       accountId: normalizedAccountId,
       database: { enabled: false },
+      identityProfile: await getAccountIdentityProfile({ accountId: normalizedAccountId }),
       approvals: [],
       badges: [],
     };
   }
-  const [approvals, badges] = await Promise.all([
+  const [approvals, badges, identityProfile] = await Promise.all([
     listIdentityApprovals({ accountId: normalizedAccountId }),
     listNetworkBadges({ accountId: normalizedAccountId }),
+    getAccountIdentityProfile({ accountId: normalizedAccountId }),
   ]);
   return {
     schema: "pf.task_node.identity_approval_state.v1",
     accountId: normalizedAccountId,
     database: { enabled: true },
+    identityProfile,
     approvals,
     badges,
   };

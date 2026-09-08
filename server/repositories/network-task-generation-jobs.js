@@ -1,6 +1,6 @@
+import { upsertTaskRequest } from "./task-requests.js";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { resolveBoardManagerFollowupsForTaskState } from "./board-manager-state.js";
-import { enqueueNetworkTaskRewardFollowup } from "./network-task-reward-followup.js";
 import { recordUserObservabilityEvent } from "./user-observability.js";
 import { syncNetworkTaskAllocationMirrors } from "./network-task-allocation-sync.js";
 import {
@@ -33,6 +33,9 @@ export async function claimNetworkTaskGenerationJobs({ limit = 1 } = {}) {
       UPDATE network_task_generation_jobs job
       SET status = 'running',
           locked_at = now(),
+          worker_attempt_id = gen_random_uuid()::text,
+          worker_heartbeat_at = now(),
+          lease_expires_at = now() + interval '5 minutes',
           attempt_count = job.attempt_count + 1,
           last_error = '',
           updated_at = now()
@@ -51,10 +54,10 @@ export async function reclaimStaleNetworkTaskGenerationJobs({ staleMinutes = 5, 
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 50);
   const result = await query(
     `
-      SELECT id
+      SELECT id, worker_attempt_id
       FROM network_task_generation_jobs
       WHERE status = 'running'
-        AND locked_at < now() - ($1::integer * interval '1 minute')
+        AND COALESCE(worker_heartbeat_at, locked_at) < now() - ($1::integer * interval '1 minute')
       ORDER BY locked_at ASC, id ASC
       LIMIT $2
     `,
@@ -64,6 +67,8 @@ export async function reclaimStaleNetworkTaskGenerationJobs({ staleMinutes = 5, 
   for (const row of result.rows) {
     const marked = await markNetworkTaskGenerationJobFailed({
       jobId: row.id,
+      workerAttemptId: row.worker_attempt_id,
+      staleMinutes: safeStaleMinutes,
       error: `network_task_generation_stale_running_reclaimed_after_${safeStaleMinutes}m`,
     });
     if (marked?.job) reclaimed.push(marked.job);
@@ -187,8 +192,11 @@ export async function markNetworkTaskGenerationJobGenerated({
   requestId = "",
   requestBundleCid = "",
   metadata = {},
-} = {}) {
+  workerAttemptId = "",
+} = {}, { client = null } = {}) {
   if (!useDatabase()) return { ok: false, skipped: true };
+  const update = async (connection) => {
+  const query = connection.query.bind(connection);
   const result = await query(
     `
       UPDATE network_task_generation_jobs
@@ -198,10 +206,11 @@ export async function markNetworkTaskGenerationJobGenerated({
           generated_task_payload = COALESCE(generated_task_payload, '{}'::jsonb) || $4::jsonb,
           locked_at = NULL,
           updated_at = now()
-      WHERE id = $1
+      WHERE id = $1 AND status = 'running' AND worker_attempt_id = $5
+        AND lease_expires_at > now()
       RETURNING *
     `,
-    [safeText(jobId, 180), safeText(requestId, 180), safeText(requestBundleCid, 240), jsonValue(metadata)]
+    [safeText(jobId, 180), safeText(requestId, 180), safeText(requestBundleCid, 240), jsonValue(metadata), safeText(workerAttemptId, 180)]
   );
   const row = result.rows[0];
   if (row?.allocation_id) {
@@ -238,7 +247,10 @@ export async function markNetworkTaskGenerationJobGenerated({
       ]
     );
   }
-  if (row?.id) {
+  return row;
+  };
+  const row = client ? await update(client) : await transaction(update);
+  if (row?.id && !client) {
     await recordUserObservabilityEvent({
       eventType: "user.network_task.generation_job_changed",
       accountId: row.candidate_account_id || "",
@@ -259,12 +271,14 @@ export async function markNetworkTaskGenerationJobGenerated({
       },
     }).catch(() => {});
   }
-  return { ok: true, job: row || null };
+  return { ok: Boolean(row), stale: !row, job: row || null };
 }
 
-export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "" } = {}) {
+export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "", workerAttemptId = "", staleMinutes = 0 } = {}) {
   if (!useDatabase()) return { ok: false, skipped: true };
   const message = safeText(error, 1000);
+  const row = await transaction(async (client) => {
+  const query = client.query.bind(client);
   const result = await query(
     `
       UPDATE network_task_generation_jobs
@@ -274,10 +288,11 @@ export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "
           last_error = $2,
           updated_at = now()
       WHERE id = $1
-        AND status = 'running'
+        AND status = 'running' AND worker_attempt_id = $3
+        AND ($4::integer = 0 OR COALESCE(worker_heartbeat_at, locked_at) < now() - ($4::integer * interval '1 minute'))
       RETURNING *
     `,
-    [safeText(jobId, 180), message]
+    [safeText(jobId, 180), message, safeText(workerAttemptId, 180), staleMinutes]
   );
   const row = result.rows[0];
   if (row?.allocation_id && row.status === "failed") {
@@ -303,6 +318,8 @@ export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "
       [row.id, jsonValue({ last_error: message }), row.allocation_id]
     );
   }
+  return row;
+  });
   if (row?.id) {
     await recordUserObservabilityEvent({
       eventType: "user.network_task.generation_job_changed",
@@ -322,7 +339,7 @@ export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "
       },
     }).catch(() => {});
   }
-  return { ok: true, job: row || null };
+  return { ok: Boolean(row), stale: !row, job: row || null };
 }
 
 export async function failNetworkTaskGenerationChain({
@@ -824,18 +841,6 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
       [projectId]
     );
   }
-  const boardManagerFollowup = canonicalStatus === "rewarded"
-    ? await enqueueNetworkTaskRewardFollowup({
-      taskId: normalizedTaskId,
-      projectIds,
-      projection,
-      rewardPft,
-    }).catch((error) => ({
-      ok: false,
-      queued: false,
-      error: error?.message || String(error),
-    }))
-    : { ok: true, queued: false, skipped: true, reason: "status_not_rewarded" };
   const boardManagerFollowupsResolved = await resolveBoardManagerFollowupsForTaskState({
     accountId: safeText(projection.account_id, 180),
     projectIds,
@@ -871,7 +876,6 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
           allocationStatus,
           taskProjectionUpdatedAt: toIso(projection.updated_at),
           taskProjectionLastEventAt: toIso(projection.last_event_at),
-          boardManagerFollowupQueued: boardManagerFollowup?.queued === true,
           boardManagerFollowupsResolved: Number(boardManagerFollowupsResolved?.updated || 0),
         },
       }).catch(() => {});
@@ -886,7 +890,6 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
     taskRefsUpdated: refResult.rowCount || 0,
     allocationsUpdated: allocationResult.allocationsUpdated || 0,
     projectIds,
-    boardManagerFollowup,
     boardManagerFollowupsResolved,
   };
 }
@@ -915,4 +918,30 @@ export async function syncNetworkTaskProjections({ limit = 100 } = {}) {
     checked: result.rows.length,
     synced,
   };
+}
+
+export async function heartbeatNetworkTaskGenerationJob(job) {
+  const result = await query(`UPDATE network_task_generation_jobs
+    SET worker_heartbeat_at=now(), lease_expires_at=now()+interval '5 minutes'
+    WHERE id=$1 AND worker_attempt_id=$2 AND status='running' AND lease_expires_at > now()
+    RETURNING id`, [job.id, job.worker_attempt_id]);
+  return { ok: result.rowCount === 1 };
+}
+
+// Fence the durable request and all its queue links in one transaction. A
+// worker that lost its lease may finish remote I/O but cannot publish work.
+export async function persistNetworkTaskRequest({ job, request, metadata }) {
+  return transaction(async (client) => {
+    const owned = await client.query(`SELECT id FROM network_task_generation_jobs
+      WHERE id=$1 AND worker_attempt_id=$2 AND status='running' AND lease_expires_at>now()
+      FOR UPDATE`, [job.id, job.worker_attempt_id]);
+    if (!owned.rowCount) throw new Error("network_task_generation_attempt_lost");
+    const receipt = await upsertTaskRequest(request, { queryImpl: client.query.bind(client) });
+    const marked = await markNetworkTaskGenerationJobGenerated({ jobId: job.id,
+      workerAttemptId: job.worker_attempt_id, requestId: receipt.request.requestId,
+      requestBundleCid: receipt.request.requestBundleCid, metadata,
+    }, { client });
+    if (!marked.ok) throw new Error("network_task_generation_attempt_lost");
+    return receipt;
+  });
 }

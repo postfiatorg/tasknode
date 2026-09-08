@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-const roots = ["server", "scripts"];
+const roots = ["server", "scripts", "ops/bm-runtime"];
 const configFiles = ["fly.toml", "docker-compose.dev.yml", "docker-compose.reward-test.yml"];
 const allowOpenAiHost = new Set(["server/profile-nft-image-provider.js"]);
 const selfPath = "scripts/provider-egress-check.mjs";
@@ -20,7 +20,7 @@ async function filesUnder(directory) {
   for (const entry of entries) {
     const relative = path.join(directory, entry.name);
     if (entry.isDirectory()) files.push(...await filesUnder(relative));
-    else if (/\.(?:js|mjs)$/.test(entry.name) && !/-smoke\.mjs$/.test(entry.name) && !/-test\.mjs$/.test(entry.name)) files.push(relative);
+    else if (/\.(?:js|mjs|sh)$/.test(entry.name) && !/-smoke\.mjs$/.test(entry.name) && !/-test\.mjs$/.test(entry.name)) files.push(relative);
   }
   return files;
 }
@@ -31,6 +31,7 @@ const violations = [];
 for (const file of files) {
   if (file === selfPath) continue;
   const body = await readFile(file, "utf8");
+  if (["api.ambient.xyz", "ai-gateway.vercel.sh"].some((host) => body.includes(host)) && !["server/inference-policy.js", ...configFiles].includes(file)) violations.push(`${file}: inference host outside shared policy`);
   for (const pattern of retired) if (pattern.test(body)) violations.push(`${file}: ${pattern}`);
   if (/api\.openai\.com/i.test(body) && !allowOpenAiHost.has(file)) violations.push(`${file}: non-allowlisted OpenAI host`);
   if (/PROFILE_NFT_OPENAI_API_KEY/.test(body) && ![

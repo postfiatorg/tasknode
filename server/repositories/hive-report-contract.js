@@ -1,3 +1,5 @@
+import { markdownHeading, stripBullet } from "../inference-text.js";
+import { isWhitespace, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { databaseEnabled } from "../db/pool.js";
 
 export const hiveReportVersion = "hive_reports.v1";
@@ -142,58 +144,47 @@ export function markdownBody(value = "") {
   return body;
 }
 
+// Decision labels are a report protocol. Prose is displayed, never classified by keywords.
 export function cleanReportDecisionText(value = "") {
-  return String(value || "")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/^[-*]\s+/, "")
-    .replace(/^#+\s+/, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = stripBullet(markdownHeading(value) || value);
+  return replaceCharacterRuns(text, isWhitespace, " ").trim();
 }
 
-export function extractMarkdownHeadingSection(markdown = "", headingPattern) {
-  const lines = String(markdown || "").split(/\r?\n/);
-  let start = -1;
+export function extractMarkdownHeadingSection(markdown = "", expectedHeading = "") {
+  const lines = String(markdown || "").replaceAll("\r\n", "\n").split("\n");
+  const expected = String(expectedHeading).toLowerCase().replaceAll("_", " ");
+  let found = false;
   let level = 0;
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/);
-    if (!match) continue;
-    if (headingPattern.test(cleanReportDecisionText(match[2]))) {
-      start = index + 1;
-      level = match[1].length;
-      break;
-    }
-  }
-  if (start < 0) return "";
   const section = [];
-  for (let index = start; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/);
-    if (match && match[1].length <= level) break;
-    section.push(lines[index]);
+  for (const line of lines) {
+    const heading = markdownHeading(line);
+    let depth = 0;
+    while (line[depth] === "#") depth += 1;
+    if (!found) {
+      if (heading.toLowerCase().replaceAll("_", " ") !== expected) continue;
+      found = true;
+      level = depth;
+    } else {
+      if (heading && depth <= level) break;
+      section.push(line);
+    }
   }
   return section.join("\n").trim();
 }
 
 export function reportActionDecision(markdown = "", action = "") {
   const actionText = safeText(action, 40).toUpperCase();
-  const recommendedActions = extractMarkdownHeadingSection(markdown, /^recommended actions$/i) || markdown;
-  const actionSection = extractMarkdownHeadingSection(recommendedActions, new RegExp(`^${actionText.replace("_", "[_ ]")}$`, "i"));
-  const source = actionSection || recommendedActions;
-  const noAction = new RegExp(`no\\s+${actionText.replace("_", "[_ ]")}|no action recommended|none recommended`, "i").test(source);
-  const recommended = !noAction && new RegExp(`\\b${actionText.replace("_", "[_ ]")}\\b`, "i").test(source);
-  const lines = source
-    .split(/\r?\n/)
-    .map(cleanReportDecisionText)
-    .filter(Boolean)
-    .filter((line) => !new RegExp(`^${actionText.replace("_", "[_ ]")}$`, "i").test(line));
-  const firstMeaningful = lines.find((line) => !/^no action recommended\.?$/i.test(line)) || "";
+  const recommendedActions = extractMarkdownHeadingSection(markdown, "Recommended Actions");
+  const section = extractMarkdownHeadingSection(recommendedActions, actionText);
+  const lines = section.split("\n").map(cleanReportDecisionText).filter(Boolean);
+  const decisions = lines.filter(line => line.startsWith("Decision:")).map(line => line.slice(9).trim());
+  // The exact no-action line is part of the original report format. Anything ambiguous stays unknown.
+  const legacyNone = lines.length === 1 && lines[0] === "No action recommended.";
+  const decision = decisions.length === 1 && ["none", "recommended"].includes(decisions[0]) ? decisions[0] : legacyNone ? "none" : "unknown";
   return {
     action: actionText,
-    decision: noAction ? "none" : recommended ? "recommended" : "unknown",
-    summary: safeText(noAction ? "No action recommended." : firstMeaningful || "Open report for decision details.", 260),
+    decision,
+    summary: safeText(decision === "none" ? "No action recommended." : lines.find(line => !line.startsWith("Decision:")) || "Open report for decision details.", 260),
   };
 }
 
@@ -230,7 +221,7 @@ export function reportRow(row = {}) {
     version: safeText(row.version, 80),
     generatedAt: iso(row.generated_at),
     bodyMarkdown: body,
-    bodyExcerpt: safeText(body.replace(/\s+/g, " "), 360),
+    bodyExcerpt: safeText(replaceCharacterRuns(body,isWhitespace," "), 360),
     bodyBytes: Buffer.byteLength(body, "utf8"),
     sourceRunId: safeText(row.source_run_id, 180),
     model: safeText(row.model, 180),
@@ -256,9 +247,9 @@ export function verificationRow(row = {}) {
 }
 export function identitySummary(accountId = "", fallback = {}, identityByAccount = new Map()) {
   const profile = accountId ? identityByAccount.get(accountId) || {} : {};
-  const publicHandle = safeText(fallback.publicHandle || "", 120).replace(/^@+/, "");
-  const providerHandle = safeText(fallback.providerHandle || "", 120).replace(/^@+/, "");
-  const hiveHandle = safeText(profile.hiveHandle || profile.handle || profile.username || fallback.handle, 120).replace(/^@+/, "");
+  const publicHandle = trimCharacters(safeText(fallback.publicHandle || "", 120),"@",{end:false});
+  const providerHandle = trimCharacters(safeText(fallback.providerHandle || "", 120),"@",{end:false});
+  const hiveHandle = trimCharacters(safeText(profile.hiveHandle || profile.handle || profile.username || fallback.handle, 120),"@",{end:false});
   const displayName = safeText(
     profile.publicDisplayName ||
       profile.displayName ||
@@ -282,13 +273,13 @@ export function hiveReportIdentityFallbackFromRow(row = {}) {
   const evidence = safeObject(row.evidence_json || row.evidence);
   const metrics = safeObject(row.validated_metrics_json || row.metrics);
   const nestedEvidence = safeObject(evidence.evidence);
-  const publicHandle = firstText(
+  const publicHandle = trimCharacters(firstText(
     row.public_handle,
     row.identity_public_handle,
     evidence.publicHandle,
     nestedEvidence.publicHandle
-  ).replace(/^@+/, "");
-  const providerHandle = firstText(
+  ),"@",{end:false});
+  const providerHandle = trimCharacters(firstText(
     row.provider_handle,
     row.provider_public_handle,
     evidence.xHandle,
@@ -303,7 +294,7 @@ export function hiveReportIdentityFallbackFromRow(row = {}) {
     metrics.githubHandle,
     metrics.handle,
     metrics.username
-  ).replace(/^@+/, "");
+  ),"@",{end:false});
   return {
     publicHandle,
     providerHandle,

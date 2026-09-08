@@ -16,6 +16,7 @@ const PROCESS_GROUPS = [
   "worker-hive",
   "worker-memory-profile",
   "worker-airdrop",
+  "worker-nft-renderer",
 ];
 
 function usage() {
@@ -122,6 +123,9 @@ function defaultRequiredEnv(processGroup = "") {
     "worker-pftl": [
       { name: "PFTL_CACHE_WORKER_ENABLED", expected: "true" },
       { name: "PFTL_CACHE_WSS_WATCHER_ENABLED", expected: "true" },
+    ],
+    "worker-nft-renderer": [
+      { name: "TASKNODE_PROFILE_NFT_RENDERER_CONFIGURED", expected: "true" },
     ],
     "worker-airdrop": [
       { name: "TASKNODE_DAILY_AIRDROP_WORKER_ENABLED", expected: "true" },

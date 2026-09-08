@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "origin": "https://tasknode.postfiat.org",
+  "mode": "Deployed app assets with synthetic API fixtures and local wallet-seeding helpers",
+  "fixtureModules": [
+    "/src/wallet-core.js",
+    "/node_modules/.vite/deps/@scure_bip39.js",
+    "/node_modules/.vite/deps/@scure_bip39_wordlists_english__js.js",
+    "/node_modules/.vite/deps/ripple-keypairs.js",
+    "/node_modules/.vite/deps/xrpl_dist_npm_Wallet_index__js.js",
+    "/node_modules/.vite/deps/dist-C0wJmxmb.js",
+    "/node_modules/.vite/deps/rolldown-runtime-EAsCxrDo.js",
+    "/src/features/docs-library/docs-crypto.js",
+    "/node_modules/.vite/deps/libsodium-wrappers.js",
+    "/src/features/wallet/wallet-unlocked-session.js"
+  ],
+  "checks": [
+    "one page unlock",
+    "native wallet unlock",
+    "encrypted fixtures",
+    "nested folders",
+    "move spreadsheet",
+    "breadcrumbs",
+    "global search",
+    "reload persistence",
+    "mobile overflow",
+    "clear titles on lock"
+  ],
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 960
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ]
+}

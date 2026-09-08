@@ -268,6 +268,15 @@ export const apiRoutePolicies = [
     body: requestBodies.taskEvidenceBody,
   },
   {
+    id: "terminal_campaign_tracker",
+    prefix: "/api/terminal/tasknode/campaign-tracker",
+    methods: ["GET", "POST"],
+    auth: "bearer",
+    unauthenticatedError: "terminal_login_required",
+    rateLimit: { limit: 180, windowMs: 60_000 },
+    body: requestBodies.campaignTrackerBody,
+  },
+  {
     id: "terminal_tasknode_fallback",
     prefix: "/api/terminal/tasknode",
     methods: ["GET"],
@@ -399,6 +408,14 @@ export const apiRoutePolicies = [
     unauthenticatedError: "collaboration_login_required",
     rateLimit: { limit: 20, windowMs: tenMinutes },
     body: requestBodies.docsAssistantBody,
+  },
+  {
+    id: "docs_library",
+    path: "/api/docs/library",
+    methods: ["PATCH"],
+    auth: "session",
+    unauthenticatedError: "collaboration_login_required",
+    body: requestBodies.docsLibraryBody,
   },
   {
     id: "docs_setup",

@@ -1,0 +1,32 @@
+[
+  {
+    "command": "node scripts/task-request-receipts-smoke.mjs",
+    "exitCode": 0,
+    "stdout": "{\"ok\":true,\"concurrentRetries\":12,\"immutableCompletion\":true,\"conflicts\":5,\"oldReceiptLookup\":true}\n",
+    "stderr": ""
+  },
+  {
+    "command": "node scripts/task-queue-leases-smoke.mjs",
+    "exitCode": 0,
+    "stdout": "{\"ok\":true,\"staleCompletionRejected\":true,\"atomicRequestAndLinks\":true,\"abandonedReviewRecovered\":true,\"uncertainPaymentPreserved\":true}\n",
+    "stderr": ""
+  },
+  {
+    "command": "node scripts/task-intake-generation-smoke.mjs",
+    "exitCode": 0,
+    "stdout": "{\"ok\":true,\"sharedWebTerminalReceipt\":true,\"stages\":[\"queued\",\"context_enriched\",\"offer_event\",\"projection\",\"receipt_proposed\"],\"provider\":\"mock\",\"noLedgerPayment\":true}\n",
+    "stderr": ""
+  },
+  {
+    "command": "node scripts/network-task-capacity-smoke.mjs",
+    "exitCode": 0,
+    "stdout": "network task capacity smoke ok: includes six concurrent last-slot requests\n",
+    "stderr": ""
+  },
+  {
+    "command": "node scripts/network-task-generation-recovery-smoke.mjs",
+    "exitCode": 0,
+    "stdout": "network task generation recovery smoke ok\n",
+    "stderr": ""
+  }
+]

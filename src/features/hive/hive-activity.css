@@ -135,7 +135,7 @@
 
 .hive-archived-boards-toggle:focus-visible {
   border-radius: 6px;
-  outline: 2px solid rgba(26, 26, 26, 0.14);
+  outline: 2px solid var(--tn-dark-focus, rgba(26, 26, 26, 0.14));
   outline-offset: 3px;
 }
 
@@ -246,7 +246,7 @@
 
 .hive-profile-identity.is-link:focus-visible {
   border-radius: 6px;
-  outline: 2px solid rgba(26, 26, 26, 0.16);
+  outline: 2px solid var(--tn-dark-focus, rgba(26, 26, 26, 0.16));
   outline-offset: 3px;
 }
 
@@ -285,7 +285,7 @@
 
 .hive-machine-badge {
   align-self: flex-start;
-  border: 0.5px solid rgba(91, 138, 85, 0.35);
+  border: 0.5px solid var(--tn-dark-border, rgba(91, 138, 85, 0.35));
   border-radius: 999px;
   color: var(--hive-green);
   display: inline-flex;
@@ -529,7 +529,7 @@
 }
 
 .hive-context-tabs {
-  background: #f7f3ea;
+  background: var(--tn-dark-bg, #f7f3ea);
   border: 0.5px solid var(--hive-border);
   border-radius: 8px;
   display: inline-flex;
@@ -593,7 +593,7 @@
 }
 
 .hive-secretary-report {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 0.5px solid var(--hive-border);
   border-radius: 8px;
   padding: 14px 16px;
@@ -699,18 +699,18 @@
 }
 
 .hive-agent-run {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 0.5px solid var(--hive-border);
   border-radius: 8px;
   padding: 11px 12px;
 }
 
 .hive-agent-run.is-executed {
-  border-color: rgba(91, 138, 85, 0.26);
+  border-color: var(--tn-dark-border, rgba(91, 138, 85, 0.26));
 }
 
 .hive-agent-run.is-failed {
-  border-color: rgba(168, 118, 26, 0.34);
+  border-color: var(--tn-dark-border, rgba(168, 118, 26, 0.34));
 }
 
 .hive-agent-run-top {
@@ -750,8 +750,8 @@
 }
 
 .hive-agent-audit-block {
-  background: rgba(255, 255, 255, 0.72);
-  border-left: 2px solid rgba(91, 138, 85, 0.28);
+  background: var(--tn-dark-surface, rgba(255, 255, 255, 0.72));
+  border-left: 2px solid var(--tn-dark-border, rgba(91, 138, 85, 0.28));
   margin-top: 9px;
   padding: 8px 10px;
 }
@@ -822,8 +822,8 @@
 }
 
 .hive-agent-basis-panel {
-  background: rgba(91, 138, 85, 0.08);
-  border: 0.5px solid rgba(91, 138, 85, 0.22);
+  background: var(--tn-dark-overlay, rgba(91, 138, 85, 0.08));
+  border: 0.5px solid var(--tn-dark-border, rgba(91, 138, 85, 0.22));
   border-radius: 8px;
   display: grid;
   gap: 9px;
@@ -873,8 +873,8 @@
 }
 
 .hive-agent-audit-summary {
-  background: rgba(255, 255, 255, 0.82);
-  border: 0.5px solid rgba(37, 37, 35, 0.1);
+  background: var(--tn-dark-surface, rgba(255, 255, 255, 0.82));
+  border: 0.5px solid var(--tn-dark-border, rgba(37, 37, 35, 0.1));
   border-radius: 8px;
   padding: 10px;
 }
@@ -910,15 +910,15 @@
 }
 
 .hive-agent-log-section {
-  background: rgba(255, 255, 255, 0.74);
-  border: 0.5px solid rgba(37, 37, 35, 0.1);
+  background: var(--tn-dark-surface, rgba(255, 255, 255, 0.74));
+  border: 0.5px solid var(--tn-dark-border, rgba(37, 37, 35, 0.1));
   border-radius: 8px;
   overflow: hidden;
 }
 
 .hive-agent-log-section h4 {
-  background: rgba(37, 37, 35, 0.04);
-  border-bottom: 0.5px solid rgba(37, 37, 35, 0.08);
+  background: var(--tn-dark-overlay, rgba(37, 37, 35, 0.04));
+  border-bottom: 0.5px solid var(--tn-dark-border, rgba(37, 37, 35, 0.08));
   color: var(--hive-muted);
   font-size: 10.5px;
   font-weight: 600;
@@ -929,8 +929,8 @@
 }
 
 .hive-agent-log-section summary {
-  background: rgba(37, 37, 35, 0.04);
-  border-bottom: 0.5px solid rgba(37, 37, 35, 0.08);
+  background: var(--tn-dark-overlay, rgba(37, 37, 35, 0.04));
+  border-bottom: 0.5px solid var(--tn-dark-border, rgba(37, 37, 35, 0.08));
   color: var(--hive-muted);
   cursor: pointer;
   font-size: 10.5px;

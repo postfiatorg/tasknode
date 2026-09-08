@@ -309,7 +309,15 @@ export function composeTeamContextDisplayState({
   const summaries = new Map(
     reportMembers.map((member) => [
       safeText(member.account_id, 180),
-      safeText(member.recent_work, 6000),
+      {
+        completedChanges: safeArray(member.completed_changes)
+          .map((change) => safeText(change, 900))
+          .filter(Boolean)
+          .slice(0, 12),
+        focus: safeText(member.focus, 1400),
+        operationalEffect: safeText(member.operational_effect, 1200),
+        recentWork: safeText(member.recent_work, 6000),
+      },
     ])
   );
   const overviewAuthorized = reportMembers.length > 0
@@ -317,7 +325,8 @@ export function composeTeamContextDisplayState({
       visibleAccountIds.has(safeText(member.account_id, 180))
     );
   const members = sourceMembers.map((member) => {
-    const latestSummary = summaries.get(safeText(member.accountId, 180)) || "";
+    const latestSummary = summaries.get(safeText(member.accountId, 180)) || null;
+    const recentWork = latestSummary?.recentWork || "";
     return {
       accountId: member.accountId,
       displayName: member.displayName,
@@ -325,10 +334,13 @@ export function composeTeamContextDisplayState({
       taskHistoryVisible: member.taskHistoryVisible,
       tasksPastDay: member.tasksPastDay,
       tasksPastWeek: member.tasksPastWeek,
+      focus: member.taskHistoryVisible ? latestSummary?.focus || "" : "",
+      completedChanges: member.taskHistoryVisible ? latestSummary?.completedChanges || [] : [],
+      operationalEffect: member.taskHistoryVisible ? latestSummary?.operationalEffect || "" : "",
       recentWork: member.taskHistoryVisible
-        ? latestSummary || "No completed summary is available for this member yet. Task Node is generating one."
+        ? recentWork || "No completed summary is available for this member yet. Task Node is generating one."
         : "This member has not shared task history with you.",
-      recentWorkGeneratedAt: member.taskHistoryVisible && latestSummary ? generatedAt : null,
+      recentWorkGeneratedAt: member.taskHistoryVisible && recentWork ? generatedAt : null,
     };
   });
   return {
@@ -405,7 +417,7 @@ export async function claimTeamContextJobs({ limit = 2 } = {}) {
   });
 }
 
-export async function completeTeamContextJob({ job = {}, report = {}, usage = {}, model = "" } = {}) {
+export async function completeTeamContextJob({ job = {}, report = {}, usage = {}, model = "", provider = "vercel" } = {}) {
   const output = safeObject(report);
   return transaction(async (client) => {
     const selected = await client.query(
@@ -419,7 +431,7 @@ export async function completeTeamContextJob({ job = {}, report = {}, usage = {}
       `INSERT INTO team_context_reports (
          account_id, source_fingerprint, source_packet_json, report_json,
          provider, model, prompt_version, usage_json, generated_at
-       ) VALUES ($1, $2, $3::jsonb, $4::jsonb, 'vercel', $5, $6, $7::jsonb, now())
+       ) VALUES ($1, $2, $3::jsonb, $4::jsonb, $8, $5, $6, $7::jsonb, now())
        ON CONFLICT (account_id) DO UPDATE SET
          source_fingerprint = EXCLUDED.source_fingerprint,
          source_packet_json = EXCLUDED.source_packet_json,
@@ -438,6 +450,7 @@ export async function completeTeamContextJob({ job = {}, report = {}, usage = {}
         safeText(model, 160),
         TEAM_CONTEXT_PROMPT_VERSION,
         JSON.stringify(safeObject(usage)),
+        safeText(provider, 80),
       ]
     );
     await client.query(

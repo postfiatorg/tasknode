@@ -1,8 +1,13 @@
 import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
 
 const apiOrigin = process.env.TASKNODE_API_ORIGIN || "http://127.0.0.1:8080";
 
 export default defineConfig({
+  // Shared Context helpers use the native browser parser. Node uses parse5.
+  resolve: {
+    alias: { "./html-tree.js": fileURLToPath(new URL("./shared/html-tree.browser.js", import.meta.url)) },
+  },
   build: {
     rolldownOptions: {
       output: {

@@ -1,3 +1,4 @@
+import { themedTaskStatusColor } from "../../theme/task-status-color.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
@@ -424,7 +425,7 @@ export function TaskDetailModal({
               <small>Status</small>
               <span className="task-status-inline">
                 <TaskStatusGlyph statusKey={displayTask.statusKey || displayTask.status} />
-                <strong style={{ color: displayTask.statusColor || taskStatusColor(displayTask.statusKey) }}>
+                <strong style={{ color: themedTaskStatusColor(displayTask.statusKey, displayTask.statusColor || taskStatusColor(displayTask.statusKey)) }}>
                   {displayTask.status}
                 </strong>
               </span>

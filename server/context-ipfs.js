@@ -1,3 +1,4 @@
+import { isAsciiLetter, isAsciiDigit } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { enqueueIpfsReplicationJob } from "./repositories/ipfs-replication-jobs.js";
 
@@ -10,22 +11,36 @@ const DEFAULT_GATEWAYS = [
   "https://ipfs.io/ipfs/",
 ];
 
-const CID_RE = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z2-7]{20,}|bafk[a-z2-7]{20,}|[a-zA-Z0-9]{32,})$/;
 const DEFAULT_TIMEOUT_MS = 12000;
-const MAX_IPFS_JSON_BYTES = 1_048_576;
-const MAX_PIN_JSON_BYTES = 1_048_576;
+// Reward forensics and long evidence bundles share the same read/write limit.
+export const MAX_IPFS_JSON_BYTES = 16_777_216;
+const MAX_PIN_JSON_BYTES = MAX_IPFS_JSON_BYTES;
 const MAX_PIN_FILE_BYTES = 8_388_608;
 
+const withoutTrailingSlash = (value) => value.endsWith("/") ? value.slice(0, -1) : value;
+function safeIpfsFilename(value, fallback) {
+  let output = "";
+  let replacing = false;
+  for (const char of String(value || fallback)) {
+    const allowed = isAsciiLetter(char) || isAsciiDigit(char) || "_.-".includes(char);
+    if (allowed) { output += char; replacing = false; }
+    else if (!replacing) { output += "_"; replacing = true; }
+  }
+  return output.slice(0, 120) || fallback;
+}
+
 export function normalizeContextCid(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^ipfs:\/\//i, "")
-    .replace(/^\/ipfs\//i, "")
-    .split(/[?#]/)[0] || "";
+  let cid = String(value || "").trim();
+  if (cid.toLowerCase().startsWith("ipfs://")) cid = cid.slice(7);
+  if (cid.toLowerCase().startsWith("/ipfs/")) cid = cid.slice(6);
+  return cid.split("?")[0].split("#")[0];
 }
 
 export function isValidContextCid(value) {
-  return CID_RE.test(normalizeContextCid(value));
+  const cid = normalizeContextCid(value);
+  if (cid.length >= 32 && [...cid].every((char) => isAsciiLetter(char) || isAsciiDigit(char))) return true;
+  return ["bafy", "bafk"].some((prefix) => cid.startsWith(prefix) && cid.length >= 24 &&
+    [...cid.slice(4)].every((char) => (char >= "a" && char <= "z") || (char >= "2" && char <= "7")));
 }
 
 export function contextIpfsGatewayList(env = process.env) {
@@ -78,7 +93,7 @@ async function fetchContextIpfsJsonFromGateway({
   controller = new AbortController(),
 } = {}) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  const url = `${gateway.replace(/\/$/, "")}/${encodeURIComponent(normalizedCid)}`;
+  const url = `${withoutTrailingSlash(gateway)}/${encodeURIComponent(normalizedCid)}`;
   try {
     const response = await fetchImpl(url, {
       method: "GET",
@@ -125,26 +140,30 @@ export async function fetchContextIpfsJson({
     };
   }
 
-  const attempts = contextIpfsGatewayList(env).map((gateway) => {
-    const controller = new AbortController();
-    const attempt = fetchContextIpfsJsonFromGateway({
-      gateway,
-      normalizedCid,
-      timeoutMs,
-      fetchImpl,
-      controller,
-    });
-    return { gateway, controller, attempt };
-  });
-
-  try {
-    const result = await Promise.any(attempts.map(({ attempt }) => attempt));
-    for (const { controller } of attempts) {
-      if (!controller.signal.aborted) controller.abort();
+  const gateways = contextIpfsGatewayList(env);
+  const controllers = [];
+  const errors = [];
+  let cursor = 0;
+  let completed = false;
+  const fetchNext = async () => {
+    while (!completed && cursor < gateways.length) {
+      const gateway = gateways[cursor++];
+      const controller = new AbortController();
+      controllers.push(controller);
+      try {
+        const result = await fetchContextIpfsJsonFromGateway({ gateway, normalizedCid, timeoutMs, fetchImpl, controller });
+        completed = true;
+        return result;
+      } catch (error) { errors.push(error); }
     }
+    throw new Error("ipfs_gateway_lane_exhausted");
+  };
+  try {
+    // Bound simultaneous large JSON reads while retaining a fast fallback.
+    const result = await Promise.any([fetchNext(), fetchNext()]);
+    for (const controller of controllers) if (!controller.signal.aborted) controller.abort();
     return result;
-  } catch (error) {
-    const errors = Array.isArray(error?.errors) ? error.errors : [];
+  } catch {
     const detail = errors
       .map((item) => `${item?.gateway || "gateway"}:${item?.message || item}`)
       .filter(Boolean)
@@ -186,7 +205,7 @@ function pinataHeaders(env) {
 }
 
 function firstPartyIpfsWriteConfig(env = process.env) {
-  const apiUrl = safeText(env.IPFS_API_URL, 2000).replace(/\/$/, "");
+  const apiUrl = withoutTrailingSlash(safeText(env.IPFS_API_URL, 2000));
   const username = safeText(env.IPFS_API_USERNAME || env.IPFS_API_USER, 500);
   const password = safeText(env.IPFS_API_PASSWORD || env.IPFS_API_PASS, 2000);
   if (!apiUrl || !username || !password) return null;
@@ -398,11 +417,13 @@ export async function pinIpfsFile({
   if (buffer.byteLength > MAX_PIN_FILE_BYTES) {
     const error = new Error("ipfs_file_too_large");
     error.status = 413;
+    error.maxBytes = MAX_PIN_FILE_BYTES;
+    error.actualBytes = buffer.byteLength;
     throw error;
   }
 
   const formData = new FormData();
-  const safeName = String(name || "file").replace(/[^a-zA-Z0-9_.-]+/g, "_").slice(0, 120) || "file";
+  const safeName = safeIpfsFilename(name, "file");
   formData.append("file", new Blob([buffer], { type: mimeType }), safeName);
   formData.append(
     "pinataMetadata",
@@ -504,7 +525,7 @@ export async function pinIpfsCidByHash({
   }
 
   const metadata = {
-    name: String(name || normalizedCid).replace(/[^a-zA-Z0-9_.-]+/g, "_").slice(0, 120) || normalizedCid,
+    name: safeIpfsFilename(name, normalizedCid),
   };
   const normalizedKeyvalues = {};
   if (keyvalues && typeof keyvalues === "object" && !Array.isArray(keyvalues)) {
@@ -577,11 +598,13 @@ export async function pinContextIpfsJson({
   if (byteLength > MAX_PIN_JSON_BYTES) {
     const error = new Error("context_ipfs_payload_too_large");
     error.status = 413;
+    error.maxBytes = MAX_PIN_JSON_BYTES;
+    error.actualBytes = byteLength;
     throw error;
   }
 
   const formData = new FormData();
-  const safeName = String(name || "context").replace(/[^a-zA-Z0-9_.-]+/g, "_").slice(0, 120) || "context";
+  const safeName = safeIpfsFilename(name, "context");
   formData.append("file", new Blob([body], { type: "application/json" }), `${safeName}.json`);
   formData.append(
     "pinataMetadata",

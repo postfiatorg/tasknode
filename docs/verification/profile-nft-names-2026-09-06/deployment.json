@@ -1,0 +1,95 @@
+{
+  "verifiedAt": "2026-09-06T18:54:43.353174+00:00",
+  "release": {
+    "Version": 718,
+    "Status": "complete",
+    "ImageRef": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+  },
+  "active": [
+    {
+      "id": "e826761a263e18",
+      "process": "worker-pftl",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    },
+    {
+      "id": "8d4930ae156638",
+      "process": "app",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    },
+    {
+      "id": "87d077b0263998",
+      "process": "worker-context-rewrite",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    },
+    {
+      "id": "7813e21f1295d8",
+      "process": "worker-taskgen",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    },
+    {
+      "id": "6835d0ea464158",
+      "process": "worker-task-review",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    },
+    {
+      "id": "48ee629a21e748",
+      "process": "worker-nft-renderer",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    },
+    {
+      "id": "48e056a3705e18",
+      "process": "worker-memory-profile",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    },
+    {
+      "id": "2862170c66e238",
+      "process": "board-secretary",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    },
+    {
+      "id": "1854406a6e3508",
+      "process": "worker-hive",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    },
+    {
+      "id": "1850d37c3d3e48",
+      "process": "worker-airdrop",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W127WE8GB79TQB5S31ED5Y"
+    }
+  ],
+  "allActiveOnRelease": true,
+  "prompts": [
+    {
+      "machine": "8d4930ae156638",
+      "promptHashesMatch": true,
+      "files": {
+        "prompts/profile/profile_nft_title_v1.md": "dfdb8012cbe1774241dcb042a05a39c9a7a33082e797fba5386107a7caba6896",
+        "server/profile-nft-title.js": "25db0ea546139634d6310a0e9ecda112b27a8cd8f26f906fecec0616a1651229",
+        "server/profile-nft-image-review.js": "942f0196e3b0043a01770b7271598e5c48a7b86368ad312973cf6a756b8a968d",
+        "server/profile-nft-render-worker.js": "04ee5453e80c32b9efb39841de7d2f1cc71d8373f9ea6efd3b3be63a695b7bfb",
+        "server/repositories/profile-nfts.js": "4f93481b354e5fb17ec42d1d6f7d1f39354a656097e0a109edeaea0109c5e03c"
+      }
+    },
+    {
+      "machine": "48ee629a21e748",
+      "promptHashesMatch": true,
+      "files": {
+        "prompts/profile/profile_nft_title_v1.md": "dfdb8012cbe1774241dcb042a05a39c9a7a33082e797fba5386107a7caba6896",
+        "server/profile-nft-title.js": "25db0ea546139634d6310a0e9ecda112b27a8cd8f26f906fecec0616a1651229",
+        "server/profile-nft-image-review.js": "942f0196e3b0043a01770b7271598e5c48a7b86368ad312973cf6a756b8a968d",
+        "server/profile-nft-render-worker.js": "04ee5453e80c32b9efb39841de7d2f1cc71d8373f9ea6efd3b3be63a695b7bfb",
+        "server/repositories/profile-nfts.js": "4f93481b354e5fb17ec42d1d6f7d1f39354a656097e0a109edeaea0109c5e03c"
+      }
+    }
+  ],
+  "health": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "service": "tasknodeofficial",
+      "environment": "production",
+      "buildId": "prod",
+      "uptimeSeconds": 59
+    }
+  }
+}

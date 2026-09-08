@@ -697,6 +697,8 @@ export async function completePublicProfileSnapshot({
   snapshotId,
   output = {},
   outputDigest = "",
+  provider = "",
+  model = "",
 } = {}) {
   const roleTitle = safeText(output.role_title || output.roleTitle, 120);
   const roleSummary = safeText(output.role_summary || output.roleSummary, 1000);
@@ -714,6 +716,8 @@ export async function completePublicProfileSnapshot({
       ...row,
       status: "completed",
       output_json: output,
+      provider: safeText(provider, 80) || row.provider,
+      model: safeText(model, 160) || row.model,
       role_title: roleTitle,
       role_summary: roleSummary,
       skills,
@@ -742,6 +746,8 @@ export async function completePublicProfileSnapshot({
               useful_to = $8,
               data_caveat = $9,
               output_digest = $10,
+              provider = COALESCE(NULLIF($11, ''), provider),
+              model = COALESCE(NULLIF($12, ''), model),
               completed_at = now(),
               updated_at = now(),
               error_message = null
@@ -758,6 +764,8 @@ export async function completePublicProfileSnapshot({
         usefulTo,
         dataCaveat,
         safeText(outputDigest, 160),
+        safeText(provider, 80),
+        safeText(model, 160),
       ]
     );
     return normalizeSnapshot(result.rows[0] || null);

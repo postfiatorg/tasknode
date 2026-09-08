@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { appearancePageHead } from "./appearance-page.js";
+import { handleCampaignTrackerRoute } from "./campaign-tracker-routes.js";
 import { authStart, chatModes, chatSend, chatStreamStart } from "./product-contracts.js";
 import { executeChatStream, logChatProviderError } from "./chat-router.js";
 import { startChatStreamHeartbeat } from "./chat-stream-heartbeat.js";
@@ -12,7 +14,7 @@ import {
   listTaskProjectionTasks,
 } from "./repositories/tasks.js";
 import { contextBodyText, contextLineCount } from "../shared/context-line-map.js";
-import { listTaskRequests } from "./repositories/task-requests.js";
+import { getOwnedTaskRequest, listTaskRequests } from "./repositories/task-requests.js";
 import {
   conversationIdForSession,
 } from "./runtime-store.js";
@@ -53,8 +55,10 @@ function writeSse(res, event, data) {
 
 function bearerToken(req) {
   const header = String(req.headers.authorization || "").trim();
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  return match ? match[1].trim() : "";
+  const boundary = [...header].findIndex(character => character === " " || character === "\t");
+  return boundary > 0 && header.slice(0, boundary).toLowerCase() === "bearer"
+    ? header.slice(boundary).trim()
+    : "";
 }
 
 function terminalHandoffUrl(origin = "", taskId = "") {
@@ -89,7 +93,7 @@ async function terminalSession(req, origin = "") {
         body: {
           ok: false,
           error: "terminal_login_required",
-          message: "Link Task Node from PFTerminal before calling terminal routes.",
+          message: "Task Node is not linked in this Corbanu profile. Run /tasknode link, choose your GitHub account, then run /tasknode status.",
         },
       },
     };
@@ -341,9 +345,10 @@ function terminalAuthCompleteHtml() {
   return `<!doctype html>
 <meta charset="utf-8">
 <title>Task Node terminal linked</title>
+${appearancePageHead}
 <body style="font-family: system-ui, sans-serif; margin: 2rem;">
   <h1>Task Node linked</h1>
-  <p>You can return to PFTerminal and run <code>/tasknode status</code>.</p>
+  <p>Return to the Corbanu profile where you started linking and run <code>/tasknode status</code>.</p>
 </body>`;
 }
 
@@ -471,6 +476,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
     return true;
   }
   const session = resolved.session;
+  if (await handleCampaignTrackerRoute({ json, readJson, req, res, url, session })) return true;
 
   if (url.pathname === "/api/terminal/tasknode/status") {
     const wallet = await linkedWalletForSession(session);
@@ -788,6 +794,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
         accountId: session.accountId,
         walletAddress: wallet.address || "",
         limit: Math.min(Math.max(Number(url.searchParams.get("limit") || 20), 1), 50),
+        cursor: url.searchParams.get("cursor") || "",
       });
       json(res, 200, {
         ok: true,
@@ -821,7 +828,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
       ...payload,
       phase: "submit",
       source: "pfterminal",
-      sourceConversationTitle: payload.sourceConversationTitle || "PFTerminal",
+      sourceConversationTitle: payload.sourceConversationTitle || "Corbanu Terminal",
       requestedTaskKind: payload.requestedTaskKind || "personal",
     }, req.method, session);
     const mapped = mapTaskRequestTerminalResult(result, origin);
@@ -864,20 +871,15 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
 
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[3] === "requests" && parts[4] && req.method === "GET") {
-    const wallet = await linkedWalletForSession(session);
-    const requests = await listTaskRequests({
+    const request = await getOwnedTaskRequest({
       accountId: session.accountId,
-      walletAddress: wallet.address || "",
-      limit: 100,
+      requestId: decodeURIComponent(parts[4]),
     });
-    const requestId = decodeURIComponent(parts[4]);
-    const request = (Array.isArray(requests.items) ? requests.items : [])
-      .find((item) => item.requestId === requestId);
     if (!request) {
       json(res, 404, {
         ok: false,
         error: "terminal_task_request_not_found",
-        message: "No active Task Node request was found for this account.",
+        message: "No Task Node request was found for this account.",
       });
       return true;
     }

@@ -1,0 +1,131 @@
+{
+  "verifiedAt": "2026-09-06T20:00:24.252882+00:00",
+  "release": {
+    "Version": 721,
+    "Status": "complete",
+    "ImageRef": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+  },
+  "active": [
+    {
+      "id": "e826761a263e18",
+      "process": "worker-pftl",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    },
+    {
+      "id": "8d4930ae156638",
+      "process": "app",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    },
+    {
+      "id": "87d077b0263998",
+      "process": "worker-context-rewrite",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    },
+    {
+      "id": "7813e21f1295d8",
+      "process": "worker-taskgen",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    },
+    {
+      "id": "6835d0ea464158",
+      "process": "worker-task-review",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    },
+    {
+      "id": "48ee629a21e748",
+      "process": "worker-nft-renderer",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    },
+    {
+      "id": "48e056a3705e18",
+      "process": "worker-memory-profile",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    },
+    {
+      "id": "2862170c66e238",
+      "process": "board-secretary",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    },
+    {
+      "id": "1854406a6e3508",
+      "process": "worker-hive",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    },
+    {
+      "id": "1850d37c3d3e48",
+      "process": "worker-airdrop",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1W4SJPHQ509CGQ58T4GK3RM"
+    }
+  ],
+  "allActiveOnRelease": true,
+  "hashChecks": [
+    {
+      "machine": "8d4930ae156638",
+      "match": true,
+      "files": [
+        "server/hive-group-provider.js",
+        "server/hive-group-routes.js",
+        "server/hive-group-worker.js",
+        "server/hive-group-board.js",
+        "server/hive-group-relay.js",
+        "server/repositories/hive-group.js",
+        "server/repositories/nostr-messages.js",
+        "server/board-agent-dispatch.js",
+        "server/board-agent-rounds.js",
+        "server/board-agent-routes.js",
+        "server/db/migrations/139_hive_group_chat.sql",
+        "shared/hive-group.js",
+        "scripts/bm/lib.mjs",
+        "prompts/hive/hive_group_decide_v1.md",
+        "prompts/hive/hive_group_reply_v1.md"
+      ]
+    },
+    {
+      "machine": "1854406a6e3508",
+      "match": true,
+      "files": [
+        "server/hive-group-provider.js",
+        "server/hive-group-worker.js",
+        "server/hive-group-relay.js",
+        "server/repositories/hive-group.js",
+        "shared/hive-group.js",
+        "prompts/hive/hive_group_decide_v1.md",
+        "prompts/hive/hive_group_reply_v1.md"
+      ]
+    }
+  ],
+  "health": {
+    "ok": true,
+    "service": "tasknodeofficial",
+    "environment": "production",
+    "buildId": "prod",
+    "uptimeSeconds": 71
+  },
+  "room": {
+    "id": "tasknode-hive-v1",
+    "rootEventId": "fd6405ea63bc6e8c3ebf38ff280e8d411f9ffc7b864d59c14389a4d8f9ec951e",
+    "botPubkey": "fe850b4599df628288809ded70a44ca4f1c2a8572d21184f41975a82ab3b831b",
+    "ready": true,
+    "members": 5,
+    "messages": 0
+  },
+  "botNip05": {
+    "hive-board": "fe850b4599df628288809ded70a44ca4f1c2a8572d21184f41975a82ab3b831b"
+  },
+  "database": {
+    "channel": [
+      {
+        "id": "tasknode-hive-v1",
+        "published_at": "2026-09-06T19:48:37.937Z",
+        "bot_cursor": "0",
+        "bot_next_at": "2026-09-06T19:48:37.001Z",
+        "bot_lease_until": null
+      }
+    ],
+    "counts": {
+      "messages": 0,
+      "bot_runs": 0,
+      "pending_escalations": 0
+    }
+  }
+}

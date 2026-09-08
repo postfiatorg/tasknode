@@ -1,0 +1,77 @@
+{
+  "generatedAt": "2026-09-07T20:23:51.190Z",
+  "elapsedMs": 8069,
+  "providerCostUsd": 0.003455,
+  "userLedgerWrites": 0,
+  "results": [
+    {
+      "mode": "GPT-6 Astra",
+      "credentialLabel": "vercel_astra",
+      "streaming": true,
+      "ok": true,
+      "requestedModel": "openai/gpt-6-astra",
+      "returnedModel": "openai/gpt-6-astra",
+      "text": "4",
+      "responseId": "gen_01M1YRMZAXM48QHGEY6RKH7GG8",
+      "inputTokens": 20,
+      "outputTokens": 18,
+      "providerCostUsd": 0.0011,
+      "calculatedDebitUsd": 0.0011,
+      "elapsedMs": 2359
+    },
+    {
+      "mode": "GPT-6 Astra",
+      "credentialLabel": "vercel_astra",
+      "streaming": false,
+      "ok": true,
+      "requestedModel": "openai/gpt-6-astra",
+      "returnedModel": "openai/gpt-6-astra",
+      "text": "4",
+      "responseId": "gen_01M1YRN1K1VFZE0YCF4WWJ9RXD",
+      "inputTokens": 20,
+      "outputTokens": 18,
+      "providerCostUsd": 0.0011,
+      "calculatedDebitUsd": 0.0011,
+      "elapsedMs": 2983
+    },
+    {
+      "mode": "Claude Fable 5.1",
+      "credentialLabel": "vercel_fable",
+      "streaming": true,
+      "ok": false,
+      "error": "inference_http_400",
+      "status": 400,
+      "elapsedMs": 292
+    },
+    {
+      "mode": "Kimi K3",
+      "credentialLabel": "vercel_kimi",
+      "streaming": true,
+      "ok": true,
+      "requestedModel": "moonshotai/kimi-k3",
+      "returnedModel": "moonshotai/kimi-k3",
+      "text": "4",
+      "responseId": "gen_01M1YRN4REJC0Q0QTBNJCCS9RP",
+      "inputTokens": 100,
+      "outputTokens": 31,
+      "providerCostUsd": 0.000603,
+      "calculatedDebitUsd": 0.000603,
+      "elapsedMs": 1322
+    },
+    {
+      "mode": "Kimi K3",
+      "credentialLabel": "vercel_kimi",
+      "streaming": false,
+      "ok": true,
+      "requestedModel": "moonshotai/kimi-k3",
+      "returnedModel": "moonshotai/kimi-k3",
+      "text": "4",
+      "responseId": "gen_01M1YRN62MH212YV0BA44ZNEKK",
+      "inputTokens": 100,
+      "outputTokens": 40,
+      "providerCostUsd": 0.000652,
+      "calculatedDebitUsd": 0.000652,
+      "elapsedMs": 1111
+    }
+  ]
+}

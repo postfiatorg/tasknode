@@ -11,11 +11,11 @@ import {
   resolveDailyAirdropWalletCloud,
 } from "./repositories/profile-daily-airdrop.js";
 import { canonicalRewardedTaskProjectionSql } from "./repositories/task-projection-integrity.js";
-import { AMBIENT_MODELS, ambientChatCompletion } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
 
 const PROMPT_PATH = "profile/daily_airdrop_v1.md";
 const PROMPT_VERSION = "daily_airdrop_v1";
-const DEFAULT_MODEL = AMBIENT_MODELS.structured;
+const DEFAULT_MODEL = INFERENCE_MODELS.structured;
 const DEFAULT_MAX_DAILY_PFT = 10000;
 const DEFAULT_LOOKBACK_DAYS = 7;
 
@@ -305,7 +305,7 @@ export function normalizeDailyAirdropOutput(
 }
 
 export async function scoreDailyAirdropWithOpenRouter({ packet, promptText, model, maxDailyPft, env = process.env } = {}) {
-  const result = await ambientChatCompletion({
+  const result = await inferenceChatCompletion({
     env,
     capability: "strict_json",
     body: {
@@ -333,7 +333,7 @@ export async function scoreDailyAirdropWithOpenRouter({ packet, promptText, mode
   const body = result.body;
   const content = result.text;
   return {
-    provider: "ambient",
+    provider: result.provider,
     model: body?.model || model,
     responseId: body?.id || null,
     output: parseJsonObject(content),
@@ -386,7 +386,7 @@ export async function runDailyAirdropScore({
     status: "running",
     inputHash,
     inputSnapshot: packet,
-    provider: "ambient",
+    provider: "vercel",
     model,
     promptVersion: PROMPT_VERSION,
     promptDigest: digest,
@@ -425,6 +425,8 @@ export async function runDailyAirdropScore({
     const alignmentScore7d = maxPossibleAirdropPft7d > 0 ? clampNumber(actualAirdropPft7d / maxPossibleAirdropPft7d, 0, 1) : 0;
     const row = await completeDailyAirdropRun({
       id: run.id,
+      provider: response.provider,
+      model: response.model,
       output: {
         ...response.output,
         normalized,

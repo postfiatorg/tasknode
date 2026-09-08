@@ -1,3 +1,4 @@
+import { isWhitespace, replaceCharacterRuns, titleWords } from "../../shared/text-protocol.js";
 import { taskProductConfig } from "../task-product-config.js";
 import { emptyTaskRequestState } from "./task-requests.js";
 import {
@@ -30,11 +31,8 @@ export function hasNumericValue(value) {
 }
 
 export function titleCase(value = "") {
-  return String(value || "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return titleWords(replaceCharacterRuns(replaceCharacterRuns(String(value || ""),char=>char==="_"||char==="-"," "),isWhitespace," ")
+    .trim());
 }
 
 export function safeObject(value) {
@@ -283,7 +281,12 @@ export function groupTasks(tasks) {
 
 export function taskRequestHandoffState({ requests = {}, taskItems = [] } = {}) {
   const items = Array.isArray(requests?.items) ? requests.items : [];
-  const latest = items[0] || null;
+  // Request pages put unresolved rows first; that is not chronological order.
+  const latest = items.reduce((newest, item) => {
+    const time = Date.parse(item.updatedAt || item.createdAt || "") || 0;
+    const previous = Date.parse(newest?.updatedAt || newest?.createdAt || "") || 0;
+    return !newest || time > previous ? item : newest;
+  }, null);
   if (!latest) {
     return {
       latestRequestId: "",

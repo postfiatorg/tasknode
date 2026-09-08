@@ -1,3 +1,4 @@
+import { isWhitespace, replaceCharacterRuns } from "../../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 
 const taskClasses = new Set(["network", "alpha"]);
@@ -95,7 +96,7 @@ export function toIso(value) {
 }
 
 function oneLine(value = "", max = 320) {
-  return safeText(value, max).replace(/\s+/g, " ");
+  return replaceCharacterRuns(safeText(value, max),isWhitespace," ");
 }
 
 function truncateWithEllipsis(value = "", max = 700) {

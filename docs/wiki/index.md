@@ -20,10 +20,12 @@ Documentation authority is scoped, not directory-wide:
 5. `docs/archive/` is historical reference only. Legacy PFTasks is not this
    repository's runtime; PFDocs is a separate service used by Docs.
 
-The in-app Help frontend imports Markdown and complete prompt files at build
-time. Imported content is public to every production browser. The current import
-set still includes material that must be classified or removed before the
-repository is open sourced; see `docs/open-source-readiness.md`.
+The in-app Help frontend loads only Markdown sources explicitly listed in
+`docs/public-help-manifest.json`. Imported content is public to production
+browsers. `npm run public-help-check` enforces the loader boundary; private
+plans, verification evidence and prompt files are not automatically exposed
+because they exist in the repository. Repository publication review remains a
+separate boundary.
 
 ## Product Map
 
@@ -56,7 +58,8 @@ flowchart LR
   Browser[Browser: wallet keys, signing, Nostr crypto] --> API[Task Node web/API]
   API --> PG[(Postgres)]
   API --> Store[(Runtime-store JSON)]
-  API --> Ambient[Ambient inference]
+  API --> Gateway[Vercel primary inference]
+  API --> Ambient[Ambient backup inference]
   API --> Workers[Task, Hive, Memory, Airdrop workers]
   Browser --> Relays[Nostr relays: encrypted gift wraps]
   Browser --> PFDocs[PFDocs service]

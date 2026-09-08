@@ -170,7 +170,7 @@ export function rewardPaymentGuardStatus(guard = {}) {
 }
 
 export function rewardPaymentGuardBlocksRetry(guard = {}) {
-  return ["submitting", "submitted", "submit_unknown"].includes(rewardPaymentGuardStatus(guard));
+  return ["submitting", "submitted", "submit_unknown", "failed_validated"].includes(rewardPaymentGuardStatus(guard));
 }
 
 export function rewardPaymentGuardCanSkipPreflightSync(guard = {}) {
@@ -218,7 +218,8 @@ export async function claimRewardPaymentGuard({ taskId = "", rewardPayload = {},
           OR lower(COALESCE(metadata_json->'reward_payment_guard'->>'status', '')) NOT IN (
             'submitting',
             'submitted',
-            'submit_unknown'
+            'submit_unknown',
+            'failed_validated'
           )
         )
       RETURNING metadata_json->'reward_payment_guard' AS guard

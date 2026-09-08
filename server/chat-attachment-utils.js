@@ -1,3 +1,4 @@
+import { isIdentifierChar, isAsciiLetter, isAsciiDigit, isWhitespace } from "./inference-text.js";
 import {
   CHAT_ATTACHMENT_MAX_COUNT,
   CHAT_ATTACHMENT_MAX_DATA_URL_BYTES,
@@ -9,14 +10,11 @@ export const maxAttachmentDataUrlBytes = CHAT_ATTACHMENT_MAX_DATA_URL_BYTES;
 export const maxChatAttachmentFileBytes = CHAT_ATTACHMENT_MAX_FILE_BYTES;
 export const maxTextAttachmentCharacters = 40_000;
 
-function dataUrlParts(dataUrl = "") {
-  const match = /^data:([^,]*),(.*)$/is.exec(String(dataUrl || ""));
-  if (!match) return null;
-  return {
-    metadata: match[1].toLowerCase(),
-    body: match[2] || "",
-  };
-}
+function dataUrlParts(value = "") {
+   const text = String(value || ""); const comma = text.indexOf(",");
+   if (!text.toLowerCase().startsWith("data:") || comma < 5) return null;
+   return { metadata: text.slice(5, comma).toLowerCase(), body: text.slice(comma + 1) };
+ }
 
 function mimeTypeFromAttachment(attachment, metadata = "") {
   const explicit = String(attachment?.mimeType || attachment?.type || "")
@@ -41,11 +39,8 @@ function chatAttachmentType(mimeType = "") {
 }
 
 function safeAttachmentName(name = "") {
-  return String(name || "attachment")
-    .trim()
-    .replace(/[^\w.\- ()[\]]+/g, "_")
-    .slice(0, 160) || "attachment";
-}
+   return [...String(name || "attachment").trim()].map((char) => isIdentifierChar(char) || ". ()[]".includes(char) ? char : "_").join("").slice(0, 160) || "attachment";
+ }
 
 function normalizedSource(source = "") {
   const value = String(source || "").trim().toLowerCase().slice(0, 40);
@@ -63,9 +58,14 @@ function attachmentError({ attachment, code, index, message }) {
 }
 
 function hasValidBase64Body(body = "") {
-  const normalized = String(body || "").replace(/\s+/g, "");
-  return /^[A-Za-z0-9+/]*={0,2}$/.test(normalized);
-}
+   const text = [...String(body || "")].filter((char) => !isWhitespace(char)).join("");
+   let padding = 0;
+   for (const char of text) {
+     if (char === "=") { padding += 1; if (padding > 2) return false; }
+     else if (padding || !(isAsciiLetter(char) || isAsciiDigit(char) || char === "+" || char === "/")) return false;
+   }
+   return true;
+ }
 
 function decodedDataUrlByteLength(parts) {
   if (parts.metadata.includes(";base64")) {

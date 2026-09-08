@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "mode": "Real browser and React request queue with synthetic HTTP responses",
+  "checks": [
+    "Dismiss visible on failed request",
+    "failed dismissal keeps row and shows error",
+    "retry preserves owner/request/attempt",
+    "successful dismissal refreshes the queue"
+  ]
+}

@@ -29,7 +29,7 @@ export function StarterPortrait({ seed = "member" }) {
   );
 }
 
-function PortraitCandidate({ src, loaded, onLoad, onError }) {
+function PortraitCandidate({ src, loaded, onLoad, onError, fullResolution }) {
   const thumbnail = src.startsWith("/api/profile/nft/pfp/");
   const [thumbnailUrl, setThumbnailUrl] = useState("");
   useEffect(() => {
@@ -69,11 +69,11 @@ function PortraitCandidate({ src, loaded, onLoad, onError }) {
   }, [src, thumbnail, onError]);
   const resolved = thumbnail ? thumbnailUrl : src;
   if (!resolved) return null;
-  return <img alt="" decoding="async" loading="lazy" src={resolved} onLoad={onLoad} onError={onError}
+  return <img alt="" decoding="async" loading={fullResolution ? "eager" : "lazy"} fetchPriority={fullResolution ? "high" : "auto"} src={resolved} onLoad={onLoad} onError={onError}
     style={{ position: "absolute", inset: 0, display: "block", width: "100%", height: "100%", objectFit: "cover", opacity: loaded ? 1 : 0 }} />;
 }
 
-function PortraitImages({ candidates, seed, label, size, className }) {
+function PortraitImages({ candidates, seed, label, size, className, fullResolution }) {
   const container = useRef(null);
   const [visible, setVisible] = useState(false);
   const [index, setIndex] = useState(0);
@@ -89,22 +89,24 @@ function PortraitImages({ candidates, seed, label, size, className }) {
     return () => observer.disconnect();
   }, []);
   return (
-    <span ref={container} className={className} role="img" aria-label={label} style={{ position: "relative", display: "inline-block", flexShrink: 0, width: size, height: size, overflow: "hidden", borderRadius: 10, background: "#e9e2d2", verticalAlign: "middle" }}>
+    <span ref={container} className={className} role="img" aria-label={label} style={{ position: "relative", display: "inline-block", flexShrink: 0, width: size, height: size, overflow: "hidden", borderRadius: 10, background: "var(--tn-dark-hover, #e9e2d2)", verticalAlign: "middle" }}>
       {!loaded && <StarterPortrait seed={seed} />}
-      {src && visible && <PortraitCandidate key={src} src={src} loaded={loaded} onLoad={() => setLoaded(true)} onError={onError} />}
+      {src && (visible || fullResolution) && <PortraitCandidate key={src} src={src} loaded={loaded} onLoad={() => setLoaded(true)} onError={onError} fullResolution={fullResolution} />}
     </span>
   );
 }
 
-export function ProfilePortrait({ nft = null, seed = "member", label = "Profile picture", size = 64, className = "", imageCandidates }) {
-  const candidates = imageCandidates || profileNftImageCandidates(nft, { avatarCssSize: typeof size === "number" ? size : 48 });
-  return <PortraitImages key={`${seed}|${candidates.join("|")}`} candidates={candidates} seed={seed} label={label} size={size} className={className} />;
+export function ProfilePortrait({ nft = null, seed = "member", label = "Profile picture", size = 64, className = "", imageCandidates, fullResolution = false }) {
+  const candidates = imageCandidates || profileNftImageCandidates(nft, fullResolution
+    ? { thumbnailFallback: false }
+    : { avatarCssSize: typeof size === "number" ? size : 48 });
+  return <PortraitImages key={`${seed}|${candidates.join("|")}`} candidates={candidates} seed={seed} label={label} size={size} className={className} fullResolution={fullResolution} />;
 }
 
 export function ProfileArtTraits({ nft }) {
   const art = nft?.metadataJson?.art;
   if (!art?.creature) return null;
-  return <span style={{ color: "var(--directory-muted, #6b6c64)", display: "block", fontSize: 11, lineHeight: 1.5, marginTop: 4 }} title={`Creature level ${art.creature_level} · Momentum: ${art.momentum}`}>
+  return <span style={{ color: "var(--directory-muted, var(--tn-dark-muted, #6b6c64))", display: "block", fontSize: 11, lineHeight: 1.5, marginTop: 4 }} title={`Creature level ${art.creature_level} · Momentum: ${art.momentum}`}>
     {art.creature} · Hyperstition {art.hyperstition}
   </span>;
 }

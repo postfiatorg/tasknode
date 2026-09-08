@@ -1,3 +1,4 @@
+import { themedTaskStatusColor } from "../../theme/task-status-color.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Clipboard, Clock3, Flag, LoaderCircle, X } from "lucide-react";
 import { requestJson } from "../../api";
@@ -137,7 +138,7 @@ export function TeamTaskDetailPopout({ member, onClose, task }) {
         <div className="team-task-popout-body">
           <div className="team-task-popout-title-row">
             <div>
-              <span className="team-task-popout-status" style={{ color: taskStatusColor(statusKey) }}>{statusLabel}</span>
+              <span className="team-task-popout-status" style={{ color: themedTaskStatusColor(statusKey, taskStatusColor(statusKey)) }}>{statusLabel}</span>
               <h2 id="team-task-popout-title">{displayText(displayTask.title, "Untitled task")}</h2>
             </div>
             <strong>{taskReward(displayTask).toLocaleString()} <small>PFT</small></strong>

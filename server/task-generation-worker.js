@@ -1,6 +1,10 @@
+import { buildRequestBundle } from "./task-request-context.js";
+import { reviewTaskGenerationReadiness } from "./task-generation-readiness.js";
+import { ownsTaskGeneration } from "./process-role.js";
 import { applyOffchainTaskOffer } from "./offchain-task-lifecycle.js";
 import {
   claimTaskGenerationRequests,
+  saveTaskRequestContext,
   heartbeatTaskGenerationRequest,
   markTaskRequestFailed,
   markTaskRequestProposed,
@@ -35,6 +39,7 @@ import {
   taskGenerationProviderTimeoutMs,
   taskgenFromReplay,
   taskgenReplayIdentity,
+  validateTaskgenOutput,
 } from "./task-generation-contract.js";
 
 export {
@@ -87,7 +92,8 @@ export function isRetryableTaskGenerationError(error = {}) {
   if (status === 429 || status >= 500) return true;
   return new Set([
     "taskgen_provider_timeout",
-    "ambient_timeout",
+    "taskgen_provider_output_invalid",
+    "inference_timeout",
     "ambient_rate_limited",
     "ambient_no_workers",
     "context_ipfs_fetch_failed",
@@ -247,6 +253,7 @@ async function publishOffer({ request, requestBundle, taskgen, authorityWallet, 
     accountId: request.accountId,
     walletAddress: subjectWallet,
     offerPayload,
+    requestAttempt: { workerAttemptId: request.workerAttemptId },
     metadata: {
       source: "task_generation_worker",
       request_bundle_cid: requestBundleCid,
@@ -286,7 +293,23 @@ async function syncOfferProjection({
 async function taskRequestBundleForGeneration(request = {}) {
   const requestBundleCid = safeText(request.requestBundleCid, 240);
   if (requestBundleCid.startsWith("postgres:")) {
-    const requestBundle = safeObject(request.metadata?.requestBundle);
+    let requestBundle = safeObject(request.metadata?.requestBundle);
+    if (request.metadata?.contextEnrichmentPending) {
+      await heartbeatRequestAttempt(request, "gather_context");
+      const enriched = await buildRequestBundle({
+        accountId: request.accountId, walletAddress: request.subjectWallet,
+        request: {
+          requestId: request.requestId, bundleId: request.bundleId,
+          requestText: request.requestText, userDetailText: request.userDetailText,
+          requestedTaskKind: request.requestedTaskKind, source: request.source,
+          conversationId: request.sourceConversationId, sourceConversationTitle: request.sourceConversationTitle,
+          subjectEncryptionPubkey: requestBundle.subject_encryption_pubkey || "",
+          attachments: requestBundle.request?.attachments || [],
+        },
+      });
+      const saved = await saveTaskRequestContext({ request, bundle: enriched });
+      requestBundle = saved.metadata.requestBundle;
+    }
     if (!Object.keys(requestBundle).length) {
       throw new Error("task_request_postgres_bundle_missing");
     }
@@ -299,7 +322,14 @@ async function taskRequestBundleForGeneration(request = {}) {
   return await fetchAndDecryptTasknodePayload({ cid: requestBundleCid });
 }
 
-export async function processTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
+let queueRun = null;
+export function processTaskGenerationQueueOnce(options = {}) {
+  if (queueRun) return queueRun;
+  queueRun = runTaskGenerationQueueOnce(options).finally(() => { queueRun = null; });
+  return queueRun;
+}
+
+async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
   const stale = await reclaimStaleTaskGenerationRequests({
     maxAttempts: taskGenerationMaxAttempts(),
     staleSeconds: taskGenerationStaleSeconds(),
@@ -309,12 +339,15 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
     return { retried: [], failed: [] };
   });
   const requests = await claimTaskGenerationRequests({
-    limit,
+    limit: Math.min(limit, 1),
     workerId: taskGenerationWorkerId,
     maxAttempts: taskGenerationMaxAttempts(),
   });
   const results = [];
   for (const request of requests) {
+    const startedAt = Date.now();
+    let contextReadyAt = startedAt;
+    let providerReadyAt = startedAt;
     let replayIdentity = null;
     try {
       await heartbeatRequestAttempt(request, "fetch_request_bundle");
@@ -322,6 +355,7 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
       const requestBundle = safeObject(requestBundleResult.payload);
       const requestBundleDigest = `sha256:${sha256(requestBundle)}`;
       await heartbeatRequestAttempt(request, "project_taskgen_input");
+      contextReadyAt = Date.now();
       const taskInput = projectTaskgenInput(requestBundle, {
         bundleCid: request.requestBundleCid,
         bundleDigest: requestBundleDigest,
@@ -336,11 +370,12 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
       });
       const replay = await getTaskgenReplay(replayIdentity.replay_key);
       const replayedPublishedOffer = hasPublishedTaskgenReplay(replay);
-      const replayedGeneratedOutput = hasGeneratedTaskgenReplay(replay);
+      let replayedGeneratedOutput = hasGeneratedTaskgenReplay(replay);
       await heartbeatRequestAttempt(request, "provider_generation");
       let taskgen = replayedGeneratedOutput
         ? taskgenFromReplay(replay, replayIdentity)
         : await generateTaskWithProvider(taskInput);
+      providerReadyAt = Date.now();
       let offer = replayedPublishedOffer ? offerFromReplay(replay) : null;
       await heartbeatRequestAttempt(request, "pre_publish_replay_check");
       if (replayedGeneratedOutput && !offer) {
@@ -382,6 +417,17 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
         }
       }
       if (!offer) {
+        if (replayedGeneratedOutput) {
+          try { validateTaskgenOutput(taskgen.output, taskInput.policy || {}); }
+          catch {
+            taskgen = await generateTaskWithProvider(taskInput);
+            replayedGeneratedOutput = false;
+          }
+          if (replayedGeneratedOutput && taskgen.metadata?.readiness?.approved !== true) {
+            taskgen.metadata.readiness = await reviewTaskGenerationReadiness(taskgen.output);
+            replayedGeneratedOutput = false;
+          }
+        }
         await heartbeatRequestAttempt(request, "pre_publish_offer");
         const publishReady = refreshTaskgenReplayDeadlineForPublish(taskgen, taskInput.policy || {});
         taskgen = publishReady.taskgen;
@@ -434,6 +480,13 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
         workerAttemptId: request.workerAttemptId,
         workerId: request.workerId,
         metadata: {
+          timing: {
+            queueWaitMs: Math.max(0, startedAt - Date.parse(request.createdAt)),
+            contextMs: contextReadyAt - startedAt,
+            providerMs: providerReadyAt - contextReadyAt,
+            publicationMs: Date.now() - providerReadyAt,
+            totalProcessingMs: Date.now() - startedAt,
+          },
           offerCid: offer.offerCid,
           offerTxHash: offer.txHash,
           generatedTask: offer.offerPayload,
@@ -583,6 +636,7 @@ export function scheduleTaskGenerationQueue({
   reason = "task_request_published",
 } = {}) {
   if (!enabled) return { scheduled: false, reason: "disabled" };
+  if (!ownsTaskGeneration()) return { scheduled: false, durable: true, reason: "worker_poll_owned_queue" };
   if (immediateTimer) return { scheduled: false, reason: "already_scheduled" };
   const safeDelay = Math.min(Math.max(Number(delayMs || 0), 0), 60_000);
   const safeLimit = Math.min(Math.max(Number(limit || 1), 1), 3);
@@ -620,7 +674,8 @@ export function startTaskGenerationWorker({
   logger = console,
 } = {}) {
   if (timer || !enabled) return { started: false, reason: timer ? "already_started" : "disabled" };
-  const safeInterval = Math.min(Math.max(intervalMs || 5000, 5000), 3_600_000);
+  if (!ownsTaskGeneration()) return { started: false, reason: "worker_role_required" };
+  const safeInterval = Math.min(Math.max(intervalMs || 5000, 1000), 3_600_000);
   const safeBatch = Math.min(Math.max(batchLimit || 1, 1), 3);
   let running = false;
   const runOnce = async () => {

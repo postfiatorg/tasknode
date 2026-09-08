@@ -1,3 +1,4 @@
+import { collapseWhitespace } from "./inference-text.js";
 import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { listTaskState } from "./repositories/tasks.js";
 import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
@@ -20,7 +21,7 @@ function safeObject(value) {
 }
 
 function clip(value = "", max = 260) {
-  const text = String(value || "").trim().replace(/\s+/g, " ");
+  const text = collapseWhitespace(value);
   if (text.length <= max) return text;
   return `${text.slice(0, Math.max(0, max - 15)).trimEnd()} [truncated]`;
 }

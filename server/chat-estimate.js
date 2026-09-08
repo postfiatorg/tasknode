@@ -34,7 +34,6 @@ import {
 import { getActiveContextEditProposal } from "./repositories/context-edit.js";
 import { getChatMessages } from "./repositories/chat-billing.js";
 import {
-  chatPersonaIsModality,
   chatPersonaUsesJobsRetrieval,
   normalizeChatPersona,
 } from "../shared/chat-personas.js";
@@ -46,7 +45,7 @@ function estimatePayload(payload) {
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 4) : [];
   const contextMode = payload?.contextMode === "context_edit" || mode === "context_edit" ? "context_edit" : "";
   const persona = contextMode ? "jobs" : normalizeChatPersona(payload?.persona);
-  const effectiveMode = contextMode || chatPersonaIsModality(persona) ? "Thinking" : mode;
+  const effectiveMode = contextMode ? "Thinking" : mode;
   if (!isKnownChatMode(effectiveMode)) {
     const error = new Error("unknown_chat_mode");
     error.status = 400;

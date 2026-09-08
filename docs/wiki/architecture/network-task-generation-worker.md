@@ -1,23 +1,27 @@
 # Network Task Generation Worker
 
-The Network Task Generation worker turns a Board Manager allocation into a
-normal task request and then hands it to the standard task engine. It does not
-create a separate lifecycle: generated work must become a signed PFTL task offer
-and project into `task_projections`.
+The Network Task Generation worker turns a routing allocation into a normal
+task request and hands it to the shared task engine. Current production prepares
+an encrypted IPFS request bundle, then the shared generator writes an offchain
+`pf.task.offer.v1` event and `task_projections` row. A generation job alone is
+not a visible task. Reviewed September 5, 2026.
 
 System Status row: `network_task_generation`
 
 ## Runtime Boundary
 
 - Worker module: `server/network-task-generation-worker.js`.
-- Repository module: `server/repositories/network-tasks.js`.
+- Periodic process: Fly `worker-taskgen`.
+- Repository facade: `server/repositories/network-tasks.js`; implementation is
+  split across `network-task-enqueue.js`, `network-task-generation-jobs.js`,
+  `network-task-generation-source.js`, and related repository modules.
 - Source table: `network_task_generation_jobs`.
 - Board Manager action: `initiate_network_task`.
 - Repair path: `scripts/network-task-recovery.mjs`.
 
 ## Contributor-Facing Clarity Boundary
 
-Board Manager owns routing, not final task prose. Its
+Kimi and authorized board command producers own routing, not final task prose. The
 `payload.network_task.project_need_summary` still has to be concrete enough for a
 contributor: name the app surface, document, code path, data state, or artifact
 to inspect and the output to produce. The prompt asks the model to translate
@@ -27,7 +31,7 @@ can understand.
 The Network Task Generation worker forwards the current project document as
 structured `network_task.project_document` context. It must not inject taskgen
 instructions or contributor-facing prompt prose in code. The network task
-generator prompt in `prompts/task_engine/taskgen_network_v1.md` provides
+generator prompt in `prompts/task_engine/taskgen_network_v2.md` provides
 language guidance. Generated wording is never rejected by a server-side content
 rule; once the provider returns mechanically valid task JSON, generation
 continues to publication.
@@ -46,38 +50,32 @@ documentation-only work is low value by default. When prior project-linked work
 already documented a problem, the next task should escalate to a concrete
 output or delivery surface such as a PR, mock, Discord handoff, review packet,
 collaboration, or shipped change. This is a model policy in
-`prompts/task_engine/taskgen_network_v1.md`, not a hard-coded rejection rule in
+the selected taskgen prompt, not a hard-coded rejection rule in
 the worker.
 
 ## Packet Lineage
 
-Hive Task Manager is the normal Network Task selector. It runs every 5 minutes
-on GLM 5.2 with high reasoning, reads Hive reports, board state, current task
-state, eligible contributor badges, operator capacity, user memory, refused
-tasks, and rewarded tasks, then narrows generation to one active board and one
-badge-eligible idle operator. It emits a Board Manager-compatible
-`initiate_network_task` payload so the existing allocation and task-generation
-path remains canonical. It does not author the final task title, steps,
-verification policy, or evidence requirement.
-
-Legacy Board Manager rows may still feed this worker, but new automatic routing
-should come through Task Manager selection and guardrails.
+Kimi K3 selects work in the operator-host Corbanu TUI and executes `bm task
+create`. The command emits a Board Manager-compatible `initiate_network_task`
+payload into the existing allocation and task-generation path. Kimi owns
+routing; the GLM generator writes the final title, steps, verification policy,
+and evidence requirement. The obsolete GLM selector and legacy automatic Fly
+manager were removed on September 5, 2026. See [board management](board-manager.md).
 
 The packet chain is:
 
-1. Task Manager emits `payload.network_task` with candidate ids, task class,
+1. The Kimi board command emits `payload.network_task` with candidate ids, task class,
    reward min/max, `project_need_summary`, `routing_reason`, cadence fields,
    and model-authored context/audit fields such as `action_output`,
    `delivery_surface`, `referenced_outputs`, `deduped_against`, and
    `escalation_stage`.
-2. `server/repositories/network-tasks.js` records that intent in
+2. `server/repositories/network-task-enqueue.js` records that intent in
    `network_task_allocations` and creates a `network_task_generation_jobs` row
    with the source payload, digest, candidate, project, task class, reward band,
    prompt version, operator policy, generation quality policy, prior-output
-   corpus, task lineage, Task Manager selection, board packet, operator packet,
+   corpus, task lineage, selection metadata, board packet, operator packet,
    and transparency metadata
-   (`server/repositories/network-tasks.js:573`,
-   `server/repositories/network-tasks.js:769`).
+   in a transaction. Candidate capacity is currently checked before this transaction.
 3. `server/network-task-generation-worker.js` builds a normal encrypted
    `pf.task.request_bundle.v1`, sets the request source to `network_task`, and
    appends a `network_task` block with schema
@@ -89,11 +87,13 @@ The packet chain is:
    `server/network-task-generation-worker.js:94`).
 4. `server/task-generation-worker.js` decrypts the request bundle, projects it
    into `pf.taskgen.input.v1`, and selects
-   `prompts/task_engine/taskgen_network_v1.md` when the `network_task` block or
-   network/alpha task class is present.
-5. The model returns strict `pf.taskgen.output.v1`; the worker embeds that body
-   in encrypted `pf.task.offer.v1`, anchors it with a signed PFTL pointer, and
-   the reducer projects it into the normal Tasks UX.
+   `prompts/task_engine/taskgen_network_v2.md` with the production v2 flag
+   when the `network_task` block or network/alpha task class is present. The v1
+   prompt is retained for the flag-disabled compatibility path.
+5. The model returns `pf.taskgen.output.v1`; the worker validates it and records
+   a `pf.task.offer.v1` event and task projection through
+   `applyOffchainTaskOffer`. Current generation does not submit an offer pointer
+   or wait for reducer replay. Receipt, replay and allocation links then complete.
 
 The generator should interpret `project_need_summary` as the closest request,
 `routing_reason` as contributor-fit context, `project_document` as the operating
@@ -118,7 +118,14 @@ Red means a queued or running generation job is stale.
 
 ## Recovery And Double-Publish Guards
 
-Job processing is restart-safe and idempotent at three layers:
+Network preparation uses `locked_at` and stale-job recovery; it does not yet
+share the ordinary request queue's attempt-token fencing and heartbeat contract.
+A slow preparation attempt and a reclaimer therefore need explicit ownership
+qualification before increasing concurrency. Shared taskgen replay is a
+separate downstream protection.
+
+Existing recovery guards cover these cases; they do not establish complete
+attempt fencing across all overlapping preparation attempts:
 
 - Stale-running reclaim. Each queue pass first calls
   `reclaimStaleNetworkTaskGenerationJobs`, which routes `running` jobs whose
@@ -154,3 +161,22 @@ npm run network-task-recovery-smoke
 Inspect `network_task_generation_jobs.last_error`, generated request IDs, and
 allocation IDs. If the task request was generated but allocation linking failed,
 reconcile through recovery instead of creating a duplicate request.
+
+
+## Direct intake and intent assessment (new source stage)
+
+Direct mode persists the complete account Context, memory, chat and task snapshot
+in the request's PostgreSQL bundle. It avoids encryption-key RPC and IPFS on this
+path. The actual project need from Kimi is retained in `userDetailText`; current
+linked-wallet resolution prevents offers being created for a stale wallet.
+
+A structured GLM assessment compares that need with the same account's prior
+network tasks across boards. It distinguishes duplicate, continuation, independent
+and uncertain work, requires real prior IDs and a new output for continuations,
+and records its result under the active worker attempt. Duplicate, unclear or
+unactionable work waits for review; a stale worker cannot persist its assessment
+or request. This validates Kimi's selected work rather than selecting a new task.
+
+The contract/PostgreSQL corpus passes. Live model qualification remains pending
+in the September 5 implementation ledger; do not claim production quality from
+synthetic provider fixtures alone.

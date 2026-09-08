@@ -1,0 +1,42 @@
+{
+  "passed": true,
+  "mode": "Real encrypted PFDocs with local source overlays and a fixture assistant response",
+  "checks": [
+    "ready handshake",
+    "closed initially",
+    "human message delivery",
+    "assistant request and response",
+    "cell context for sheets",
+    "same-channel history",
+    "collapse and reopen",
+    "desktop and mobile containment"
+  ],
+  "desktop": {
+    "drawerWidth": 384,
+    "inputWidth": 282,
+    "inputBottom": 855.828125,
+    "drawerBottom": 900,
+    "buttonRight": 1414,
+    "drawerRight": 1440,
+    "viewport": 1440,
+    "scroll": 1440
+  },
+  "mobile": {
+    "width": 390,
+    "scroll": 390,
+    "left": 6,
+    "right": 390,
+    "inputWidth": 282,
+    "inputBottom": 739.828125,
+    "drawerBottom": 784,
+    "viewportHeight": 784
+  },
+  "overrides": [
+    "/common/sframe-common-outer.js",
+    "/common/tasknode-chat-protocol.js",
+    "/common/onlyoffice/inner.js",
+    "/common/toolbar.js",
+    "/common/sframe-common.js",
+    "/common/messenger-ui.js"
+  ]
+}

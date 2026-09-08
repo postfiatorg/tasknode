@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chown, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { isValidContextCid, normalizeContextCid } from "./context-ipfs.js";
+import { readStoredProfileNftThumbnail } from "./profile-nft-thumbnails.js";
 
 const DEFAULT_GATEWAYS = [
   "https://pft-ipfs-testnet-clean.fly.dev/ipfs/",
@@ -344,6 +345,13 @@ async function readThumbnailFromDisk({ cid, size, format, env = process.env } = 
       cache: "disk",
     };
   } catch (error) {
+    const stored = await readStoredProfileNftThumbnail({ cid, size, format });
+    // Disk is a cache. A healthy durable thumbnail must remain deliverable
+    // even when the local volume is full or temporarily unwritable.
+    if (stored) {
+      await writeThumbnailToDisk({ cid, size, format, bytes: stored.bytes, env }).catch(() => {});
+      return stored;
+    }
     if (error?.code === "ENOENT") return null;
     throw error;
   }
@@ -352,6 +360,12 @@ async function readThumbnailFromDisk({ cid, size, format, env = process.env } = 
 async function writeThumbnailToDisk({ cid, size, format, bytes, env = process.env } = {}) {
   const cacheDir = thumbnailCacheDir(env);
   await mkdir(cacheDir, { recursive: true });
+  // Root-run operator warmups must preserve the writable application-volume
+  // owner instead of leaving a root-owned cache that the web process cannot use.
+  if (process.getuid?.() === 0) {
+    const owner = await stat(path.dirname(cacheDir));
+    if (owner.uid !== 0) await chown(cacheDir, owner.uid, owner.gid);
+  }
   const target = thumbnailCachePath({ cid, size, format, env });
   const temp = path.join(cacheDir, `.tmp-${process.pid}-${randomUUID()}`);
   await writeFile(temp, bytes);
@@ -488,18 +502,6 @@ export async function fetchProfileNftPfpThumbnail({
   }
 }
 
-function profileNftPfpPlaceholder({ cid = "", size = 96 } = {}) {
-  const normalizedSize = normalizeThumbnailSize(size);
-  const hue = createHash("sha256").update(String(cid || "profile-nft")).digest()[0] % 360;
-  const svg = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${normalizedSize}" height="${normalizedSize}" viewBox="0 0 ${normalizedSize} ${normalizedSize}" role="img" aria-label="Profile NFT thumbnail warming">`,
-    `<rect width="${normalizedSize}" height="${normalizedSize}" rx="${Math.max(4, Math.floor(normalizedSize / 6))}" fill="hsl(${hue} 22% 88%)"/>`,
-    `<circle cx="${normalizedSize / 2}" cy="${normalizedSize / 2}" r="${Math.floor(normalizedSize * 0.28)}" fill="hsl(${hue} 24% 64%)"/>`,
-    "</svg>",
-  ].join("");
-  return Buffer.from(svg);
-}
-
 function sendProfileNftPfpResult({ res, result, cacheHeaders }) {
   res.writeHead(200, {
     "content-type": result.contentType,
@@ -513,9 +515,9 @@ function sendProfileNftPfpResult({ res, result, cacheHeaders }) {
 }
 
 function sendProfileNftPfpWarming({ res, cid, size, format }) {
-  const bytes = profileNftPfpPlaceholder({ cid, size });
-  res.writeHead(200, {
-    "content-type": "image/svg+xml; charset=utf-8",
+  const bytes = Buffer.from(JSON.stringify({ ok: true, status: "warming", cid, size }));
+  res.writeHead(202, {
+    "content-type": "application/json; charset=utf-8",
     "content-length": String(bytes.length),
     "cache-control": "no-store, max-age=0",
     "x-content-type-options": "nosniff",

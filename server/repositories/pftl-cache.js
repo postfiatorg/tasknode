@@ -1,3 +1,4 @@
+import { isDecimalDigits, isHex, stripPrefix } from "../../shared/text-protocol.js";
 import { decodePftPointerMemo } from "../context-history-rpc.js";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 
@@ -36,7 +37,7 @@ function safeJson(value, fallback = {}) {
 }
 
 function nativeDrops(value) {
-  if (typeof value === "string" && /^-?\d+$/.test(value)) return value;
+  if (typeof value === "string" && isDecimalDigits(stripPrefix(value,"-"))) return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(Math.trunc(value));
   return null;
 }
@@ -56,7 +57,7 @@ function normalizeIso(value) {
 
 function decodeHexText(value) {
   const text = normalizeText(value);
-  if (!text || text.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(text)) return text;
+  if (!text || text.length % 2 !== 0 || !isHex(text)) return text;
   try {
     return Buffer.from(text, "hex").toString("utf8");
   } catch {

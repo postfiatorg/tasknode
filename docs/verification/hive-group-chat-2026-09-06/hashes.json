@@ -1,0 +1,17 @@
+{
+  "server/hive-group-provider.js": "68338ad49528e39e4c867de59583cd66e56f3f59593fac7d566f0fc392ab8b93",
+  "server/hive-group-routes.js": "40cdd54f04c3f5a30bb9948603ef888a87adb626dbe286dfeb72895d6f71128f",
+  "server/hive-group-worker.js": "6c2a6592058a449032a867eb00e272b098d734ee607317588250ff633ffbfd00",
+  "server/hive-group-board.js": "b96a055a018b18cdb03636a0ef84901cb1cc35460aa37e99560d734053ced703",
+  "server/hive-group-relay.js": "b4ed7562a8b20b76fb06302d3ae550b1f94c900de1e836525c882e10ef3369b2",
+  "server/repositories/hive-group.js": "9373bf90dcf875eaa97e21eb9f34136ea4307c226e17d931f85846d29a9e3d7e",
+  "server/repositories/nostr-messages.js": "b39a5588072d892d67af4e06851b25558ca9269d288beed14b0109e7839d83be",
+  "server/board-agent-dispatch.js": "9bbb83f6dd535c795bc915c64ccef54678f41a1309bbbe7cd74797744672a27a",
+  "server/board-agent-rounds.js": "47ed33d601e2410fb5e686eadead900bd3c436a186cdf4ad42db98ea4d99ad9e",
+  "server/board-agent-routes.js": "e0db59e6c696820febb35645edde1124d03ce09a06b7f2fe04a4fe5716380ab1",
+  "server/db/migrations/139_hive_group_chat.sql": "abfbee608ea65f588d229c36d62f89474f8e411c5c6f45f234020277a2853976",
+  "shared/hive-group.js": "2d0f5ea18ca1cd2cde328cf3878b47f983c70621e61057a2e8bc4645a74ab693",
+  "scripts/bm/lib.mjs": "e797ae291b8e1dbd6260d8905dfa8e9fcd9431adb076fd3af3654bc5ee3d3717",
+  "prompts/hive/hive_group_decide_v1.md": "ba27862dce072fb90acb586e08fb398138b219e58a2fb66e76e77741e3e94e99",
+  "prompts/hive/hive_group_reply_v1.md": "82055e11eeb6a18f1c3d361a32eb9e347dd8d686c0d3a67666eb7e1a8d5ad652"
+}

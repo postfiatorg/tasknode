@@ -33,6 +33,28 @@ import {
   setTeamContextPreference,
 } from "./repositories/team-context.js";
 
+import { updateDocsLibrary } from "./repositories/docs-library.js";
+
+export function matchCollaborationPath(pathname, pattern) {
+  const parts = pathname.split("/");
+  const expected = pattern.split("/");
+  if (parts.length !== expected.length) return null;
+  const captures = [pathname];
+  for (let index = 0; index < expected.length; index += 1) {
+    const kind = expected[index];
+    const value = parts[index];
+    if (kind === ":uuid") {
+      if (value.length !== 36 || ![...value.toLowerCase()].every((char, position) =>
+        [8, 13, 18, 23].includes(position) ? char === "-" : "0123456789abcdef".includes(char))) return null;
+      captures.push(value);
+    } else if (kind === ":part") {
+      if (!value) return null;
+      captures.push(value);
+    } else if (value.toLowerCase() !== kind) return null;
+  }
+  return captures;
+}
+
 function methodError(name) {
   return { ok: false, status: 405, error: `${name}_method_not_allowed` };
 }
@@ -54,7 +76,9 @@ function routeResult(json, res, result) {
 function routeFailure(json, res, error) {
   const status = Number(error?.status || 500);
   const candidate = String(error?.code || error?.message || "");
-  const safeError = /^(collaboration|docs|team|nostr|messages)_[a-z0-9_]+$/.test(candidate)
+  const safeError = ["collaboration", "docs", "team", "nostr", "messages"].includes(candidate.split("_")[0]) &&
+    candidate.includes("_") && candidate.at(-1) !== "_" &&
+    [...candidate].every((char) => "abcdefghijklmnopqrstuvwxyz0123456789_".includes(char))
     ? candidate
     : "collaboration_request_failed";
   json(res, status, {
@@ -192,6 +216,16 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       await run(json, res, () => listDocs({ accountId }));
       return true;
     }
+    if (pathname === "/api/docs/library") {
+      if (req.method !== "PATCH") return routeResult(json, res, methodError("docs_library")), true;
+      const payload = await readJson(req, 400_000);
+      await run(json, res, () => updateDocsLibrary({
+        accountId,
+        encryptedLibraryMetadata: payload.encryptedLibraryMetadata,
+        expectedVersion: payload.expectedVersion,
+      }));
+      return true;
+    }
     if (pathname === "/api/docs/setup") {
       if (req.method !== "POST") return routeResult(json, res, methodError("docs_setup")), true;
       const payload = await readJson(req, 512_000);
@@ -204,14 +238,14 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       await run(json, res, () => createDocument({ accountId, ...payload }));
       return true;
     }
-    const documentMatch = pathname.match(/^\/api\/docs\/documents\/([0-9a-f-]{36})$/i);
+    const documentMatch = matchCollaborationPath(pathname, "/api/docs/documents/:uuid");
     if (documentMatch) {
       if (req.method !== "PATCH") return routeResult(json, res, methodError("docs_document")), true;
       const payload = await readJson(req, 512_000);
       await run(json, res, () => updateDocument({ accountId, documentId: documentMatch[1], ...payload }));
       return true;
     }
-    const odvMatch = pathname.match(/^\/api\/docs\/documents\/([0-9a-f-]{36})\/odv$/i);
+    const odvMatch = matchCollaborationPath(pathname, "/api/docs/documents/:uuid/odv");
     if (odvMatch) {
       if (!featureEnabled("TASKNODE_DOCS_ODV_ENABLED")) return routeResult(json, res, featureError("docs_odv")), true;
       if (req.method !== "POST") return routeResult(json, res, methodError("docs_odv")), true;
@@ -228,7 +262,7 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       }));
       return true;
     }
-    const assistantMatch = pathname.match(/^\/api\/docs\/documents\/([0-9a-f-]{36})\/assistant$/i);
+    const assistantMatch = matchCollaborationPath(pathname, "/api/docs/documents/:uuid/assistant");
     if (assistantMatch) {
       if (!featureEnabled("TASKNODE_DOCS_ODV_ENABLED")) return routeResult(json, res, featureError("docs_assistant")), true;
       if (req.method !== "POST") return routeResult(json, res, methodError("docs_assistant")), true;
@@ -247,14 +281,14 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       }));
       return true;
     }
-    const shareMatch = pathname.match(/^\/api\/docs\/documents\/([0-9a-f-]{36})\/share$/i);
+    const shareMatch = matchCollaborationPath(pathname, "/api/docs/documents/:uuid/share");
     if (shareMatch) {
       if (req.method !== "POST") return routeResult(json, res, methodError("docs_share")), true;
       const payload = await readJson(req, 512_000);
       await run(json, res, () => shareDocument({ accountId, documentId: shareMatch[1], ...payload }));
       return true;
     }
-    const taskLinkMatch = pathname.match(/^\/api\/docs\/documents\/([0-9a-f-]{36})\/tasks$/i);
+    const taskLinkMatch = matchCollaborationPath(pathname, "/api/docs/documents/:uuid/tasks");
     if (taskLinkMatch) {
       if (!["POST", "DELETE"].includes(req.method)) return routeResult(json, res, methodError("docs_task_link")), true;
       const payload = await readJson(req, 16_384);
@@ -266,7 +300,7 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       }));
       return true;
     }
-    const grantMatch = pathname.match(/^\/api\/docs\/shares\/([0-9a-f-]{36})\/action$/i);
+    const grantMatch = matchCollaborationPath(pathname, "/api/docs/shares/:uuid/action");
     if (grantMatch) {
       if (req.method !== "POST") return routeResult(json, res, methodError("docs_share_action")), true;
       const payload = await readJson(req, 16_384);
@@ -305,14 +339,14 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       await run(json, res, () => createTeamInvite({ accountId, ...payload }));
       return true;
     }
-    const inviteMatch = pathname.match(/^\/api\/team\/invites\/([0-9a-f-]{36})\/action$/i);
+    const inviteMatch = matchCollaborationPath(pathname, "/api/team/invites/:uuid/action");
     if (inviteMatch) {
       if (req.method !== "POST") return routeResult(json, res, methodError("team_invite_action")), true;
       const payload = await readJson(req, 128_000);
       await run(json, res, () => actOnTeamInvite({ accountId, inviteId: inviteMatch[1], ...payload }));
       return true;
     }
-    const revokeMatch = pathname.match(/^\/api\/team\/grants\/([0-9a-f-]{36})\/revoke$/i);
+    const revokeMatch = matchCollaborationPath(pathname, "/api/team/grants/:uuid/revoke");
     if (revokeMatch) {
       if (req.method !== "POST") return routeResult(json, res, methodError("team_grant_revoke")), true;
       const payload = await readJson(req, 128_000);
@@ -336,7 +370,7 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       }
       return routeResult(json, res, methodError("team_nostr")), true;
     }
-    const teammateNostrMatch = pathname.match(/^\/api\/team\/([^/]+)\/nostr$/);
+    const teammateNostrMatch = matchCollaborationPath(pathname, "/api/team/:part/nostr");
     if (teammateNostrMatch) {
       if (req.method !== "GET") return routeResult(json, res, methodError("team_member_nostr")), true;
       await run(json, res, async () => ({
@@ -348,7 +382,7 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       }));
       return true;
     }
-    const taskListMatch = pathname.match(/^\/api\/team\/([^/]+)\/tasks$/);
+    const taskListMatch = matchCollaborationPath(pathname, "/api/team/:part/tasks");
     if (taskListMatch) {
       if (req.method !== "GET") return routeResult(json, res, methodError("team_member_tasks")), true;
       const subjectAccountId = decodeURIComponent(taskListMatch[1]);
@@ -372,7 +406,7 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
       });
       return true;
     }
-    const taskDetailMatch = pathname.match(/^\/api\/team\/([^/]+)\/tasks\/([^/]+)$/);
+    const taskDetailMatch = matchCollaborationPath(pathname, "/api/team/:part/tasks/:part");
     if (taskDetailMatch) {
       if (req.method !== "GET") return routeResult(json, res, methodError("team_member_task")), true;
       const subjectAccountId = decodeURIComponent(taskDetailMatch[1]);

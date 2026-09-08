@@ -13,7 +13,7 @@ process.env.TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED = "true";
 process.env.TASKNODE_TASK_REVIEW_WORKER_ENABLED = "true";
 process.env.TASKNODE_DAILY_AIRDROP_WORKER_ENABLED = "true";
 process.env.TASKNODE_SYSTEM_STATUS_LIVE_PRICING_ENABLED = "false";
-process.env.AMBIENT_API_KEY = "system-status-ambient-key";
+process.env.VERCEL_AI_GATEWAY_API_KEY = "system-status-ambient-key";
 process.env.PFTL_RPC_URL = "https://user:pass@rpc.example.test/current?api_key=secret#frag";
 process.env.PFTL_HISTORY_RPC_URL = "https://history.example.test/archive?token=secret";
 process.env.ETH_DEPOSIT_XPUB = "xpub_status_smoke";
@@ -25,7 +25,7 @@ const { routePolicyForPath } = await import("../server/route-policies.js");
 const status = await readSystemStatus();
 assert.equal(status.ok, true);
 assert.equal(status.database.enabled, false);
-assert.equal(status.summary.total, 24);
+assert.equal(status.summary.total, 22);
 assert.equal(status.databasePool.enabled, false);
 assert.equal(status.databasePool.role, "all");
 assert.equal(status.databasePool.max, 6);
@@ -59,37 +59,39 @@ assert.deepEqual(status.boardManagerDailyCost.totals, {
 });
 
 const pricingModes = new Map(status.chatPricing.modes.map((mode) => [mode.mode, mode]));
-assert.deepEqual([...pricingModes.keys()], ["Instant", "Thinking", "Help"]);
-assert.equal(pricingModes.get("Instant")?.model, "deepseek/deepseek-v4-flash-0731");
+assert.deepEqual([...pricingModes.keys()], ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3", "Help"]);
+for (const mode of ["GPT-6 Astra", "Kimi K3"]) {
+  assert.equal(pricingModes.get(mode).billingPolicy, "provider_api_cost");
+  assert.deepEqual(pricingModes.get(mode).providerOrder, ["vercel"]);
+}
+assert.equal(pricingModes.get("Instant")?.model, "zai/glm-5.3-flash");
 assert.equal(pricingModes.get("Instant")?.maxOutputTokens, 16384);
-assert.equal(pricingModes.get("Thinking")?.model, "z-ai/glm-5.2");
+assert.equal(pricingModes.get("Thinking")?.model, "zai/glm-5.3");
 assert.equal(pricingModes.get("Thinking")?.reasoning, "xhigh");
-assert.equal(pricingModes.get("Thinking")?.providerLabel, "Ambient");
+assert.equal(pricingModes.get("Thinking")?.providerLabel, "Vercel AI Gateway");
 assert.equal(pricingModes.get("Thinking")?.configuredPricing?.inputUsdPerMillion, 0.4725);
 assert.equal(pricingModes.get("Thinking")?.configuredPricing?.inputCacheHitUsdPerMillion, 0.09);
 assert.equal(pricingModes.get("Thinking")?.configuredPricing?.outputUsdPerMillion, 1.98);
-assert.deepEqual(pricingModes.get("Thinking")?.providerOrder, []);
-assert.match(pricingModes.get("Thinking")?.privacyPolicy || "", /Ambient inference/);
+assert.deepEqual(pricingModes.get("Thinking")?.providerOrder, ["vercel", "ambient"]);
+assert.match(pricingModes.get("Thinking")?.privacyPolicy || "", /Vercel AI Gateway/);
 assert.equal(pricingModes.get("Help")?.model, "deepseek/deepseek-v4-flash-0731");
-assert.equal(pricingModes.get("Help")?.providerLabel, "Ambient");
+assert.equal(pricingModes.get("Help")?.providerLabel, "Vercel AI Gateway");
 assert.equal(pricingModes.get("Help")?.reasoning, "");
 assert.equal(pricingModes.get("Help")?.estimatedOutputTokens, 1200);
 assert.equal(pricingModes.get("Help")?.maxOutputTokens, 1200);
 assert.equal(pricingModes.get("Instant")?.configuredPricing?.inputUsdPerMillion, 0.063);
 assert.equal(pricingModes.get("Instant")?.configuredPricing?.inputCacheHitUsdPerMillion, 0.0126);
 assert.equal(pricingModes.get("Instant")?.configuredPricing?.outputUsdPerMillion, 0.126);
-assert.match(pricingModes.get("Help")?.description || "", /plain-English Task Node product help/);
+assert.match(pricingModes.get("Help")?.description || "", /Plain-English Task Node help/);
 
 const categories = new Map(status.categories.map((category) => [category.id, category]));
 assert.deepEqual([...categories.keys()], ["hive", "task_engine", "pftl", "memory"]);
 
 const itemIds = new Set(status.categories.flatMap((category) => category.items.map((entry) => entry.id)));
 for (const id of [
-  "board_manager",
   "hive_board_secretary",
   "board_manager_secretary_packets",
   "hive_secretary",
-  "hive_active_projects",
   "network_task_generation",
   "task_generation",
   "task_review",
@@ -331,6 +333,14 @@ assert.match(source, /last_tick_finished_at/);
 assert.match(source, /current_retry_award_id/);
 assert.match(source, /next_retry_at/);
 assert.match(source, /candidate_count/);
+
+const taskWorkerStatusSource = await import("node:fs").then((fs) => (
+  fs.readFileSync(new URL("../server/system-status-task-workers.js", import.meta.url), "utf8")
+));
+assert.match(taskWorkerStatusSource, /min\(COALESCE\(actionable\.last_event_at, actionable\.created_at\)\) AS oldest_pending_at/);
+assert.doesNotMatch(taskWorkerStatusSource, /min\(actionable\.updated_at\) AS oldest_pending_at/);
+assert.match(taskWorkerStatusSource, /awaiting_agent_verification_request/);
+assert.match(taskWorkerStatusSource, /awaiting_agent_review_decision/);
 
 // Top-level state/reason must not be stripped by item().
 assert.equal(typeof item, "undefined");

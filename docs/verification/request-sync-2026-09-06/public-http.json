@@ -1,0 +1,20 @@
+{
+  "at": "2026-09-06T12:10:01.461404+00:00",
+  "checks": {
+    "/health": {
+      "status": 200,
+      "bytes": 104
+    },
+    "/": {
+      "status": 200,
+      "bytes": 994
+    }
+  },
+  "scripts": [
+    {
+      "path": "/assets/index-q64CFKh0.js",
+      "status": 200,
+      "sha256": "5688305a2e1685a9fcd4d84ebb6cfb1aaac4665e3ab69b0fb144250b8646a6df"
+    }
+  ]
+}

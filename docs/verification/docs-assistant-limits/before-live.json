@@ -1,0 +1,55 @@
+[
+  {
+    "label": "coach_detailed_review",
+    "ok": false,
+    "code": "inference_response_truncated",
+    "status": 422,
+    "provider": "vercel",
+    "attempts": [
+      {
+        "provider": "vercel",
+        "status": "failed",
+        "code": "inference_response_truncated",
+        "httpStatus": 422,
+        "latencyMs": 14794
+      }
+    ],
+    "elapsedMs": 14797,
+    "metrics": [
+      {
+        "host": "ai-gateway.vercel.sh",
+        "status": 200,
+        "model": "zai/glm-5.3",
+        "finishReason": "length",
+        "contentLength": 0,
+        "usage": {
+          "prompt_tokens": 28305,
+          "completion_tokens": 2400,
+          "total_tokens": 30705,
+          "cost": 0.0250935,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": null,
+            "upstream_inference_prompt_cost": 0,
+            "upstream_inference_completions_cost": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 2644,
+            "reasoning_tokens_estimated": true,
+            "image_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "market_cost": 0.0250935,
+          "surcharge_cost": 0.0001,
+          "gateway_cost": 0.0251935,
+          "zero_data_retention_cost": 0.0001
+        }
+      }
+    ]
+  }
+]

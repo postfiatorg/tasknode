@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { PROFILE_NFT_TITLE } from "../../shared/profile-nft-art.js";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { nonFixtureProfileNftSql } from "./task-projection-integrity.js";
 
@@ -25,7 +26,7 @@ function normalizeRecord(record = {}) {
     id: record.id || "",
     accountId: record.account_id || record.accountId || "",
     walletAddress: record.wallet_address || record.walletAddress || "",
-    title: record.title || "Task Node Profile NFT",
+    title: record.title || PROFILE_NFT_TITLE,
     description: record.description || "",
     status: record.status || "generated",
     imageCid,
@@ -106,7 +107,7 @@ function runtimeList({ accountId = "", walletAddress = "", hasWalletFilter = fal
 export async function createGeneratedProfileNft({
   accountId = "",
   walletAddress = "",
-  title = "Task Node Profile NFT",
+  title = PROFILE_NFT_TITLE,
   description = "",
   imageCid = "",
   imageGatewayUrl = "",
@@ -134,7 +135,7 @@ export async function createGeneratedProfileNft({
     id,
     accountId: normalizedAccountId,
     walletAddress: safeText(walletAddress, 120),
-    title: safeText(title, 120) || "Task Node Profile NFT",
+    title: safeText(title, 120) || PROFILE_NFT_TITLE,
     description: safeText(description, 800),
     status: "generated",
     imageCid: safeText(imageCid, 160),
@@ -199,7 +200,7 @@ export async function createGeneratedProfileNft({
 export async function createGeneratingProfileNft({
   accountId = "",
   walletAddress = "",
-  title = "Task Node Profile NFT",
+  title = PROFILE_NFT_TITLE,
   description = "",
   promptSource = "",
   promptDigest = "",
@@ -222,7 +223,7 @@ export async function createGeneratingProfileNft({
     id,
     accountId: normalizedAccountId,
     walletAddress: safeText(walletAddress, 120),
-    title: safeText(title, 120) || "Task Node Profile NFT",
+    title: safeText(title, 120) || PROFILE_NFT_TITLE,
     description: safeText(description, 800),
     status: "generating",
     promptSource: safeText(promptSource, 80),
@@ -272,6 +273,7 @@ export async function createGeneratingProfileNft({
 export async function markProfileNftGenerated({
   accountId = "",
   nftId = "",
+  title = "",
   imageCid = "",
   imageGatewayUrl = "",
   imageMimeType = "",
@@ -284,6 +286,7 @@ export async function markProfileNftGenerated({
   size = "",
   quality = "",
   outputFormat = "",
+  metadataJson = null,
 } = {}) {
   const record = await getProfileNft({ accountId, nftId });
   if (!record) return null;
@@ -294,6 +297,8 @@ export async function markProfileNftGenerated({
     const next = normalizeRecord({
       ...record,
       status: "generated",
+      title: safeText(title, 120) || record.title,
+      metadataJson: metadataJson || record.metadataJson,
       imageCid: normalizedImageCid,
       imageGatewayUrl: safeText(imageGatewayUrl, 500) || gatewayUrlForCid(normalizedImageCid),
       imageMimeType: safeText(imageMimeType, 120),
@@ -329,6 +334,8 @@ export async function markProfileNftGenerated({
             size = COALESCE(NULLIF($12, ''), size),
             quality = COALESCE(NULLIF($13, ''), quality),
             output_format = COALESCE(NULLIF($14, ''), output_format),
+            metadata_json = COALESCE($15::jsonb, metadata_json),
+            title = COALESCE(NULLIF($16, ''), title),
             generated_at = now(),
             updated_at = now(),
             error = ''
@@ -350,6 +357,8 @@ export async function markProfileNftGenerated({
       safeText(size, 40),
       safeText(quality, 40),
       safeText(outputFormat, 40),
+      metadataJson ? JSON.stringify(metadataJson) : null,
+      safeText(title, 120),
     ]
   );
   return result.rows[0] ? normalizeRecord(result.rows[0]) : null;

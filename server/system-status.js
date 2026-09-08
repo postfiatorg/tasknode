@@ -24,7 +24,6 @@ import {
   safeStatusRead,
 } from "./system-status-readers.js";
 import {
-  boardManagerItem,
   boardManagerSecretaryPacketItem,
   contextRewriteItem,
   hiveBoardSecretaryMemoItem,
@@ -61,11 +60,10 @@ export {
 } from "./system-status-aux-workers.js";
 
 async function categoryItems(tables, nowMs) {
-  const hiveItems = [
-    await boardManagerItem(tables, nowMs),
-    await hiveBoardSecretaryMemoItem(tables, nowMs),
-    await boardManagerSecretaryPacketItem(tables, nowMs),
-    await hiveQueueItem({
+  const hiveItems = await Promise.all([
+    hiveBoardSecretaryMemoItem(tables, nowMs),
+    boardManagerSecretaryPacketItem(tables, nowMs),
+    hiveQueueItem({
       tables,
       id: "hive_secretary",
       title: "Hive Secretary Worker",
@@ -79,28 +77,14 @@ async function categoryItems(tables, nowMs) {
       cadence: `${intEnv(process.env.TASKNODE_HIVE_SECRETARY_INTERVAL_MS, 15000, { min: 1000 })}ms`,
       nowMs,
     }),
-    await hiveQueueItem({
-      tables,
-      id: "hive_active_projects",
-      title: "Hive Active Projects Helper",
-      description: "Refreshes the active project registry after Secretary reports.",
-      owner: "worker process",
-      jobTable: "hive_project_planning_jobs",
-      resultTable: "hive_project_generations",
-      resultTimeColumn: "completed_at",
-      enabled: process.env.TASKNODE_HIVE_PROJECT_WORKER_ENABLED !== "false",
-      trigger: "Hive Secretary completion",
-      cadence: `${intEnv(process.env.TASKNODE_HIVE_PROJECT_INTERVAL_MS, 60000, { min: 15000 })}ms`,
-      nowMs,
-    }),
-  ];
+  ]);
 
-  const taskItems = [
-    await contextRewriteItem(tables),
-    await networkTaskGenerationItem(tables, nowMs),
-    await taskGenerationItem(tables, nowMs),
-    await taskReviewItem(tables, nowMs),
-  ];
+  const taskItems = await Promise.all([
+    contextRewriteItem(tables),
+    networkTaskGenerationItem(tables, nowMs),
+    taskGenerationItem(tables, nowMs),
+    taskReviewItem(tables, nowMs),
+  ]);
 
   const syncItems = await pftlSyncItems(tables, nowMs);
   const pftlItems = [
@@ -111,9 +95,9 @@ async function categoryItems(tables, nowMs) {
     ...rpcItems(syncItems),
   ];
 
-  const memoryItems = [
-    await jobsPgvectorCorpusItem(tables),
-    await memoryQueueItem({
+  const memoryItems = await Promise.all([
+    jobsPgvectorCorpusItem(tables),
+    memoryQueueItem({
       tables,
       id: "chat_turn_memory",
       title: "Turn Memory Worker",
@@ -125,7 +109,7 @@ async function categoryItems(tables, nowMs) {
       cadence: `${intEnv(process.env.TASKNODE_MEMORY_INTERVAL_MS, 15000, { min: 5000 })}ms`,
       nowMs,
     }),
-    await memoryQueueItem({
+    memoryQueueItem({
       tables,
       id: "rewarded_task_memory",
       title: "Rewarded Task Memory Worker",
@@ -137,7 +121,7 @@ async function categoryItems(tables, nowMs) {
       cadence: `${intEnv(process.env.TASKNODE_MEMORY_INTERVAL_MS, 15000, { min: 5000 })}ms`,
       nowMs,
     }),
-    await memoryQueueItem({
+    memoryQueueItem({
       tables,
       id: "deep_memory",
       title: "Deep Memory Worker",
@@ -149,7 +133,7 @@ async function categoryItems(tables, nowMs) {
       cadence: `${intEnv(process.env.TASKNODE_MEMORY_INTERVAL_MS, 15000, { min: 5000 })}ms`,
       nowMs,
     }),
-    await memoryQueueItem({
+    memoryQueueItem({
       tables,
       id: "network_task_profile",
       title: "Network Task Profile Worker",
@@ -161,9 +145,9 @@ async function categoryItems(tables, nowMs) {
       cadence: `${intEnv(process.env.TASKNODE_MEMORY_INTERVAL_MS, 15000, { min: 5000 })}ms`,
       nowMs,
     }),
-    await dailyAirdropItem(tables, nowMs),
-    await dailyProfileNftItem(tables, nowMs),
-  ];
+    dailyAirdropItem(tables, nowMs),
+    dailyProfileNftItem(tables, nowMs),
+  ]);
 
   return [
     {
@@ -269,9 +253,21 @@ export async function readSystemStatus({
   };
 }
 
+const statusSnapshots = new Map();
+async function systemStatusSnapshot(options) {
+  const key = JSON.stringify(options);
+  const cached = statusSnapshots.get(key);
+  if (cached && Date.now() - cached.startedAt < 15_000) return cached.promise;
+  const entry = { startedAt: Date.now(), promise: null };
+  entry.promise = readSystemStatus(options).catch((error) => { statusSnapshots.delete(key); throw error; });
+  statusSnapshots.set(key, entry);
+  if (statusSnapshots.size > 8) statusSnapshots.delete(statusSnapshots.keys().next().value);
+  return entry.promise;
+}
+
 export async function handleSystemStatusRoute({ json, res, url } = {}) {
   if (url.pathname !== "/api/system/status") return false;
-  const status = await readSystemStatus({
+  const status = await systemStatusSnapshot({
     networkSpendDays: url.searchParams.get("networkSpendDays") || DEFAULT_NETWORK_TASK_SPEND_DAYS,
     boardManagerCostDays: url.searchParams.get("boardManagerCostDays") || DEFAULT_BOARD_MANAGER_COST_DAYS,
   });

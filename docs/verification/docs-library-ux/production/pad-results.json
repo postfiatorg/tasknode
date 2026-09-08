@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "mode": "Deployed PFDocs, no source overlays, fixture assistant response",
+  "checks": [
+    "ready handshake",
+    "closed initially",
+    "human message delivery",
+    "assistant request and response",
+    "cell context for sheets",
+    "same-channel history",
+    "collapse and reopen",
+    "desktop and mobile containment"
+  ],
+  "desktop": {
+    "drawerWidth": 384,
+    "inputWidth": 275.71875,
+    "inputBottom": 862.828125,
+    "drawerBottom": 900,
+    "buttonRight": 1410.859375,
+    "drawerRight": 1440,
+    "viewport": 1440,
+    "scroll": 1440
+  },
+  "mobile": {
+    "width": 390,
+    "scroll": 390,
+    "left": 6,
+    "right": 390,
+    "inputWidth": 275.71875,
+    "inputBottom": 746.828125,
+    "drawerBottom": 784,
+    "viewportHeight": 784
+  },
+  "overrides": []
+}

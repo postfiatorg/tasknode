@@ -1,0 +1,53 @@
+{
+  "checkedAt": "2026-09-05T16:00:37.710386+00:00",
+  "markdownFiles": 24,
+  "localFileLinks": 85,
+  "issues": [],
+  "files": [
+    "docs/plans/tasknode-reliability-audit-2026-09-05.md",
+    "docs/wiki/index.md",
+    "docs/wiki/surfaces/tasks.md",
+    "docs/wiki/surfaces/user-guide.md",
+    "docs/wiki/surfaces/refine-context.md",
+    "docs/wiki/architecture/current-system.md",
+    "docs/wiki/architecture/ai-providers.md",
+    "docs/wiki/architecture/board-manager.md",
+    "docs/wiki/architecture/board-manager-secretary-packet.md",
+    "docs/wiki/architecture/tasknode-terminal-contract.md",
+    "docs/wiki/architecture/task-async-engine.md",
+    "docs/wiki/architecture/task-lifecycle.md",
+    "docs/wiki/architecture/task-generation-worker.md",
+    "docs/wiki/architecture/network-task-generation-worker.md",
+    "docs/wiki/architecture/network-task-profile-worker.md",
+    "docs/wiki/architecture/task-review-reward-worker.md",
+    "docs/wiki/architecture/badge-based-network-task-routing.md",
+    "docs/wiki/architecture/deployment.md",
+    "docs/wiki/architecture/bootup.md",
+    "docs/wiki/architecture/database.md",
+    "docs/wiki/architecture/deathmarch.md",
+    "docs/wiki/architecture/codex-computer-control-qa.md",
+    "docs/wiki/architecture/model-default-inventory-upgrade-matrix.md",
+    "docs/verification/reliability-audit-2026-09-05/verification.md"
+  ],
+  "commands": [
+    {
+      "command": "npm run format-check",
+      "exitCode": 0,
+      "output": "> tasknode@0.1.0 format-check\n> node scripts/format-check.mjs\n\nformat check ok"
+    },
+    {
+      "command": "npm run public-help-check",
+      "exitCode": 0,
+      "output": "> tasknode@0.1.0 public-help-check\n> node scripts/public-help-boundary.mjs\n\npublic Help boundary ok: 26 explicitly allowlisted Markdown sources"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "output": ""
+    }
+  ],
+  "runtimeSourceConsistency": {
+    "inspectedFiles": 30,
+    "changedSinceInspection": []
+  }
+}

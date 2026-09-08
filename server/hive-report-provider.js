@@ -1,9 +1,11 @@
+import { renderTextTemplate, limitNewlines, extractHttpLinks } from "./inference-text.js";
+import { inferenceProviderForResponse } from "./inference.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { hiveReportTypes } from "./repositories/hive-reports.js";
-import { ambientConfigured, ambientFetchCompatibility } from "./ambient-inference.js";
+import { inferenceConfigured, inferenceFetchCompatibility } from "./inference.js";
 
-const defaultReportModel = "z-ai/glm-5.2";
+const defaultReportModel = "zai/glm-5.3";
 
 const reportPromptFiles = Object.freeze({
   system: "prompts/hive/reports/hive_report_writer_system_v1.md",
@@ -72,7 +74,7 @@ function hiveReportMaxTokens(type = "") {
 }
 
 export function hiveReportsProviderConfigured() {
-  return process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK === "true" || ambientConfigured();
+  return process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK === "true" || inferenceConfigured();
 }
 
 function promptDigest(text = "") {
@@ -88,12 +90,7 @@ function readReportPromptFile(relativePath = "") {
   return body;
 }
 
-function renderPromptTemplate(template = "", values = {}) {
-  return String(template || "").replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, key) => {
-    if (!Object.prototype.hasOwnProperty.call(values, key)) return "";
-    return String(values[key] ?? "");
-  });
-}
+function renderPromptTemplate(template = "", values = {}) { return renderTextTemplate(template, values); }
 
 function markdownBody(value = "") {
   const body = safeText(value, 250_000);
@@ -104,24 +101,15 @@ function markdownBody(value = "") {
 }
 
 function cleanUserFacingReportMarkdown(value = "") {
-  const body = safeText(value, 250_000);
-  if (!body) return body;
-  const metadataLinePattern = /^\s*(?:\*\*)?(?:Generated|Model|Source packet|Source packet digest|Source run|Source run id)(?:\*\*)?\s*:/i;
-  const cleaned = body
-    .split("\n")
-    .filter((line) => !metadataLinePattern.test(line))
-    .join("\n")
-    .replace(
-      /Board state is available \(`boardStates\.ok = true`\)\. Five active boards confirmed from `activeBoardAuthority\.activeBoardIds` and `boardStates\.boards`:/g,
-      "Board state is available. Five active boards are confirmed from the live active-board read:"
-    )
-    .replace(/`boardStates\.boards`/g, "the live active-board read")
-    .replace(/`activeBoardAuthority\.activeBoardIds`/g, "the active-board authority list")
-    .replace(/`boardStates\.ok = true`/g, "board state is available")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return cleaned || body;
-}
+    const body = safeText(value, 250_000);
+    const metadataLabels = new Set(["generated", "model", "source packet", "source packet digest", "source run", "source run id"]);
+    const cleaned = body.split("\n").filter((line) => {
+      const colon = line.indexOf(":");
+      const label = line.slice(0, colon).split("**").join("").trim().toLowerCase();
+      return colon < 0 || !metadataLabels.has(label);
+    }).join("\n");
+    return limitNewlines(cleaned, 2).trim() || body;
+  }
 
 function compactJson(value, maxLength = 70_000, space = 2) {
   const text = JSON.stringify(value, null, space);
@@ -143,7 +131,7 @@ function reportInstructions(type = "", phase = "initial") {
 
 function reportMessages({ type = "", sourcePacket = {}, phase = "initial", initialMarkdown = "", verifierSummary = "" } = {}) {
   const system = readReportPromptFile(reportPromptFiles.system);
-  const user = renderPromptTemplate(readReportPromptFile(reportPromptFiles.userMessage), {
+  const user = limitNewlines(renderPromptTemplate(readReportPromptFile(reportPromptFiles.userMessage), {
     instructions: reportInstructions(type, phase),
     initial_report_section: initialMarkdown
       ? renderPromptTemplate(readReportPromptFile(reportPromptFiles.initialReportSection), { initial_markdown: initialMarkdown })
@@ -156,7 +144,7 @@ function reportMessages({ type = "", sourcePacket = {}, phase = "initial", initi
       ["hive_intelligence", "board_manager_planning"].includes(type) ? 180_000 : 70_000,
       type === "board_manager_planning" ? 0 : 2
     ),
-  }).replace(/\n{3,}/g, "\n\n").trim();
+  }), 2).trim();
   return [
     { role: "system", content: system },
     { role: "user", content: user },
@@ -292,18 +280,18 @@ export async function generateHiveReportMarkdown({
       },
     };
   }
-  if (!ambientConfigured()) {
-    const error = new Error("hive_report_ambient_not_configured");
+  if (!inferenceConfigured()) {
+    const error = new Error("hive_report_inference_not_configured");
     error.status = 409;
     throw error;
   }
   const model = hiveReportModel();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs());
+  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs() * 2 + 1000);
   const startedAt = Date.now();
   const messages = reportMessages({ type, sourcePacket, phase, initialMarkdown, verifierSummary });
   try {
-    const response = await ambientFetchCompatibility(fetchImpl, "", {
+    const response = await inferenceFetchCompatibility(fetchImpl, "", {
       method: "POST",
       signal: controller.signal,
       headers: { "content-type": "application/json" },
@@ -325,13 +313,13 @@ export async function generateHiveReportMarkdown({
     const text = await response.text();
     const body = text ? JSON.parse(text) : {};
     if (!response.ok) {
-      const error = new Error(body?.error?.message || body?.message || `Ambient Hive Report HTTP ${response.status}`);
+      const error = new Error(body?.error?.message || body?.message || `Inference Hive Report HTTP ${response.status}`);
       error.status = response.status;
       throw error;
     }
     return {
       bodyMarkdown: markdownBody(cleanUserFacingReportMarkdown(body?.choices?.[0]?.message?.content || "")),
-      provider: "ambient",
+      provider: inferenceProviderForResponse(body),
       model: safeText(body?.model || model, 160),
       responseId: safeText(body?.id, 200),
       promptDigest: promptDigest(JSON.stringify(messages)),
@@ -341,17 +329,14 @@ export async function generateHiveReportMarkdown({
       },
     };
   } catch (error) {
-    if (error?.name === "AbortError") throw new Error("hive_report_ambient_timeout");
+    if (error?.name === "AbortError") throw new Error("hive_report_inference_timeout");
     throw error;
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function extractLinksFromText(text = "") {
-  const matches = String(text || "").match(/https?:\/\/[^\s)>\]]+/g) || [];
-  return [...new Set(matches.map((link) => link.replace(/[.,;:]+$/g, "")))].slice(0, 30);
-}
+function extractLinksFromText(text = "") { return extractHttpLinks(text).slice(0, 30); }
 
 function collectText(value, depth = 0) {
   if (depth > 4) return "";
@@ -456,7 +441,7 @@ async function githubJson(url, fetchImpl = fetch) {
 export async function verifyDevelopmentReportRepos({ markdown = "", sourcePacket = {}, fetchImpl = fetch } = {}) {
   const sourceText = [markdown, collectText(sourcePacket.rewardedTasksByRole?.core_contributor), collectText(sourcePacket.activeTasksByRole?.core_contributor)].join("\n");
   const repoLinks = extractLinksFromText(sourceText)
-    .filter((link) => /github\.com\/postfiatorg\//i.test(link))
+    .filter((link) => new URL(link).hostname.toLowerCase() === "github.com" && new URL(link).pathname.toLowerCase().startsWith("/postfiatorg/"))
     .slice(0, 20);
   if (process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK === "true") {
     return verificationMarkdown({

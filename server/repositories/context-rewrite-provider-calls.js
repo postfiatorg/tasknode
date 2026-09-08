@@ -67,7 +67,7 @@ export async function createContextRewriteProviderCall({
   job = {},
   stage = "",
   callIndex = 0,
-  provider = "ambient",
+  provider = "vercel",
   model = "",
   requestDigest = "",
   timeoutMs = 0,
@@ -177,6 +177,8 @@ export async function finishContextRewriteProviderCall({
     `
       UPDATE context_rewrite_provider_calls
       SET status = $2,
+          provider = COALESCE(NULLIF($10, ''), provider),
+          model = COALESCE(NULLIF($11, ''), model),
           response_id = $3,
           usage_json = $4,
           cost_usd = $5,
@@ -200,6 +202,8 @@ export async function finishContextRewriteProviderCall({
       JSON.stringify(Array.isArray(result?.annotations) ? result.annotations : []),
       outputText,
       safeText(error, 1000) || null,
+      safeText(result?.provider, 80),
+      safeText(result?.model, 160),
     ]
   );
   return update.rows[0] || null;

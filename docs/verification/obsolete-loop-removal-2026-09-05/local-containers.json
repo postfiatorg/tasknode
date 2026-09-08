@@ -1,0 +1,19 @@
+[
+  {
+    "container": "tasknodeofficial-api-1",
+    "running": true,
+    "role": "web",
+    "retiredLoopFlags": {
+      "TASKNODE_HIVE_TASK_MANAGER_ACTIVE": "false",
+      "TASKNODE_HIVE_TASK_MANAGER_ENABLED": "false",
+      "TASKNODE_TASK_ACCOUNTING_HARVESTER_ENABLED": "false",
+      "TASKNODE_HIVE_PROJECT_WORKER_ENABLED": "false"
+    }
+  },
+  {
+    "container": "tasknodeofficial-web-1",
+    "running": true,
+    "role": null,
+    "retiredLoopFlags": {}
+  }
+]

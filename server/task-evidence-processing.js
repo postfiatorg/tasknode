@@ -5,7 +5,7 @@ import {
   extractEvidenceFileContent,
   MAX_EVIDENCE_FILE_BYTES,
 } from "./evidence-file-extraction.js";
-import { AMBIENT_MODELS, ambientChatCompletion } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
 
 const SCREENSHOT_PROMPT_PATH = "task_engine/evidence_screenshot_read_v1.md";
 
@@ -44,7 +44,7 @@ function openAiVisionModel(env = process.env) {
   return safeText(
     env.TASKNODE_EVIDENCE_VISION_MODEL ||
       env.AMBIENT_MODEL_VISION ||
-      AMBIENT_MODELS.vision,
+      INFERENCE_MODELS.vision,
     120
   );
 }
@@ -64,7 +64,7 @@ async function describeScreenshotWithOpenAi({
   });
   const model = openAiVisionModel(env);
   const startedAt = Date.now();
-  const result = await ambientChatCompletion({
+  const result = await inferenceChatCompletion({
       env,
       fetchImpl,
       capability: "verification_vision",
@@ -93,7 +93,7 @@ async function describeScreenshotWithOpenAi({
     return {
       description: safeText(result.text, 8000),
       metadata: {
-        provider: "ambient",
+        provider: result.provider,
         model,
         prompt_path: SCREENSHOT_PROMPT_PATH,
         prompt_digest: promptDigest(prompt),

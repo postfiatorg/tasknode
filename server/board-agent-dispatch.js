@@ -53,12 +53,18 @@ export async function dispatchBoardAgent(argv) {
   if (command === "user") {
     // Board agents receive board-linked task history and badge evidence, not
     // the contributor's private personal tasks, chats or context document.
-    const history = await query(`SELECT DISTINCT tp.task_id,tp.account_id,tp.subject_wallet,tp.status,tp.title,tp.reward_actual_pft
+    const history = await query(`SELECT DISTINCT tp.task_id,tp.account_id,tp.subject_wallet,tp.status,tp.title,tp.reward_actual_pft,tp.created_at,a.project_id
       FROM task_projections tp JOIN network_task_allocations a ON a.generated_task_id=tp.task_id
       WHERE a.project_id=ANY($1::text[]) AND (tp.account_id=$2 OR tp.subject_wallet=$2)
       ORDER BY tp.task_id LIMIT 100`, [identity.boards, args[0]]);
     const badges = await query(`SELECT account_id,badge_id,status FROM account_network_badges WHERE account_id=$1`, [args[0]]);
-    return { query: args[0], recent_tasks: history.rows, badges: badges.rows };
+    return {
+      query: args[0],
+      history_scope: { board_ids: identity.boards, limit: 100, includes_legacy_boards: false,
+        note: "Only tasks linked to these boards are included; absence here does not prove the user never received other work." },
+      recent_tasks: history.rows,
+      badges: badges.rows,
+    };
   }
   if (command === "review") return writes.reviewTask({ taskId: await task(args[0]), decision: f.decision, pft: number("pft"), reason: f.reason, feedback: f.feedback });
   if (command === "verify" && args[0] === "request") return writes.verifyRequest({ taskId: await task(args[1]), ask: f.ask, type: f.type || "evidence", reason: f.reason });

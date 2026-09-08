@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { ProfilePortrait } from "../profile/ProfilePortrait.jsx";
+import { useState } from "react";
 import { Check, Copy, Pencil, Share, Trash2, X } from "lucide-react";
 import { BlockRenderer, copyText } from "./ChatMessages.jsx";
 import { transcriptTextFromThread } from "./chat-turns";
@@ -244,9 +245,10 @@ export function formatModeLabel(label) {
 }
 
 export function modeDescription(mode = {}) {
+  if (mode.description) return mode.description;
   const label = String(mode.label || "");
-  if (label === "Instant") return "DeepSeek Flash 7/31. Fast.";
-  if (label === "Thinking") return "GLM 5.2. More reasoning.";
+  if (label === "Instant") return "GLM 5.3 Flash. Fast.";
+  if (label === "Thinking") return "GLM 5.3. More reasoning.";
   if (label === "Help") return "Plain-English app guide";
   return mode.latency || mode.privacy || "";
 }
@@ -290,33 +292,10 @@ export function sessionProviderLabel(session) {
   return "";
 }
 
-export function ProfileAvatar({ imageCandidates = [], initials, signedIn }) {
-  const [imageIndex, setImageIndex] = useState(0);
-  const imageSrc = signedIn ? imageCandidates[imageIndex] || "" : "";
-  const imageKey = imageCandidates.join("|");
-
-  useEffect(() => {
-    setImageIndex(0);
-  }, [imageKey]);
-
-  return (
-    <span className={`profile-avatar ${signedIn ? "signed-in" : "signed-out"} ${imageSrc ? "has-image" : ""}`}>
-      {imageSrc ? (
-        <img
-          alt="Profile NFT"
-          onError={() => setImageIndex((index) => index + 1)}
-          src={imageSrc}
-        />
-      ) : (
-        initials
-      )}
-      {signedIn && !imageSrc && (
-        <span className="profile-check" aria-hidden="true">
-          <Check size={9} strokeWidth={2.5} />
-        </span>
-      )}
-    </span>
-  );
+export function ProfileAvatar({ imageCandidates = [], initials, signedIn, seed }) {
+  return <span className={`profile-avatar ${signedIn ? "signed-in" : "signed-out"}`}>
+    {signedIn ? <ProfilePortrait imageCandidates={imageCandidates} seed={seed || initials} size="100%" /> : initials}
+  </span>;
 }
 
 export function EmptyState({ icon: Icon, title, desc }) {

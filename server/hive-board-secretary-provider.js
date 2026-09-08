@@ -1,7 +1,8 @@
+import { stripMarkdownFence } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { hiveBoardSecretaryPromptVersion } from "./repositories/hive-board-secretary.js";
-import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "./inference.js";
 
 const boardSecretaryPrompt = loadPrompt("hive/glm_board_secretary_status_memo_v1.md");
 
@@ -14,11 +15,11 @@ function safeObject(value = {}) {
 }
 
 export function hiveBoardSecretaryProvider() {
-  return "ambient";
+  return "vercel";
 }
 
 export function hiveBoardSecretaryModel(env = process.env) {
-  return safeText(env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || AMBIENT_MODELS.structured, 180);
+  return safeText(env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || INFERENCE_MODELS.structured, 180);
 }
 
 export function hiveBoardSecretaryPromptDigest() {
@@ -26,7 +27,7 @@ export function hiveBoardSecretaryPromptDigest() {
 }
 
 export function hiveBoardSecretaryProviderConfigured(env = process.env) {
-  return env.TASKNODE_HIVE_BOARD_SECRETARY_PROVIDER_MOCK === "true" || ambientConfigured(env);
+  return env.TASKNODE_HIVE_BOARD_SECRETARY_PROVIDER_MOCK === "true" || inferenceConfigured(env);
 }
 
 function providerTimeoutMs(env = process.env) {
@@ -50,11 +51,7 @@ function openRouterUsage(body = {}) {
   };
 }
 
-function stripMarkdownFence(text = "") {
-  const trimmed = safeText(text, 200000);
-  const fenced = trimmed.match(/^```(?:markdown|md)?\s*([\s\S]*?)```$/i);
-  return safeText(fenced?.[1] || trimmed, 200000);
-}
+
 
 function messagesForPacket(sourcePacket = {}) {
   return [
@@ -132,15 +129,15 @@ export async function fetchHiveBoardSecretaryMemo({
     };
   }
 
-  if (!ambientConfigured(env)) {
-    const error = new Error("hive_board_secretary_ambient_not_configured");
+  if (!inferenceConfigured(env)) {
+    const error = new Error("hive_board_secretary_inference_not_configured");
     error.status = 409;
     throw error;
   }
 
   const timeoutMs = providerTimeoutMs(env);
   try {
-    const result = await ambientChatCompletion({
+    const result = await inferenceChatCompletion({
       env,
       fetchImpl,
       capability: "strict_json",
@@ -165,7 +162,7 @@ export async function fetchHiveBoardSecretaryMemo({
     if (!memoMarkdown) throw new Error("hive_board_secretary_empty_memo");
     return {
       memoMarkdown,
-      provider: "ambient",
+      provider: result.provider,
       model: safeText(body?.model || model, 180),
       responseId: safeText(body?.id, 200),
       promptVersion: hiveBoardSecretaryPromptVersion,
@@ -176,8 +173,8 @@ export async function fetchHiveBoardSecretaryMemo({
       },
     };
   } catch (error) {
-    if (error?.code === "ambient_timeout") {
-      throw new Error("hive_board_secretary_ambient_timeout");
+    if (error?.code === "inference_timeout") {
+      throw new Error("hive_board_secretary_inference_timeout");
     }
     throw error;
   }

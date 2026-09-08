@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { closePool, databaseEnabled, query } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { syncNetworkTaskProjection } from "../server/repositories/network-tasks.js";
-import { shouldSkipBoardManagerJobForRecentRun } from "../server/repositories/board-manager-scheduler.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
@@ -33,7 +32,7 @@ async function insertProjectTask({ targetTaskId, txHash, eventAt, projectionLast
       )
       VALUES (
         $1, 'protocol_development', 'Reward followup smoke', 'Smoke project',
-        'Verify rewarded Network Tasks trigger Board Manager follow-up.',
+        'Verify reward projection without retired scheduler jobs.',
         'Smoke project for rewarded Network Task follow-up.', 'active', 'smoke', 'hive'
       )
       ON CONFLICT (id) DO NOTHING
@@ -119,49 +118,27 @@ async function main() {
       projectionLastEventAt: staleProjectionLastEventAt,
     });
 
-    const synced = await syncNetworkTaskProjection({ taskId });
-    assert.equal(synced.ok, true);
-    assert.equal(synced.status, "rewarded");
-    assert.equal(synced.boardManagerFollowup?.queued, true);
-    assert.equal(synced.boardManagerFollowup?.job?.trigger, "network_task_rewarded_followup");
-
-    const job = synced.boardManagerFollowup.job;
-    const metadata = job.metadata_json || {};
-    assert.equal(metadata.task_id, taskId);
-    assert.equal(metadata.skip_if_completed_after, eventAt.toISOString());
-    assert.equal(metadata.state_changed_source, "pf.reward.v1");
-    assert.deepEqual(metadata.project_ids, [projectId]);
-
-    const runAfterMs = new Date(job.run_after).getTime();
-    assert.equal(runAfterMs, eventAt.getTime() + 120_000);
-
-    const duplicate = await syncNetworkTaskProjection({ taskId });
-    assert.equal(duplicate.boardManagerFollowup?.queued, false);
-    assert.equal(duplicate.boardManagerFollowup?.reason, "reward_followup_already_recorded");
-
-    await query(
-      `
-        INSERT INTO board_manager_runs (
-          id, scope, manager_id, trigger, status, selected_action, dry_run, completed_at
-        )
-        VALUES ($1, 'global_hive', 'reward_followup_smoke', 'reward_followup_smoke',
-                'completed', 'do_nothing', false, $2)
-      `,
-      [`boardrun_reward_followup_${suffix}`, new Date(eventAt.getTime() + 60_000)]
-    );
-
-    const skip = await shouldSkipBoardManagerJobForRecentRun({ job });
-    assert.equal(skip.skip, true);
-    assert.equal(skip.reason, "recent_board_manager_run_after_trigger");
-
     await insertProjectTask({
       targetTaskId: duplicateTaskId,
       txHash: `tx_reward_followup_recent_${suffix}`,
       eventAt,
     });
-    const recentRunSynced = await syncNetworkTaskProjection({ taskId: duplicateTaskId });
-    assert.equal(recentRunSynced.boardManagerFollowup?.queued, false);
-    assert.equal(recentRunSynced.boardManagerFollowup?.reason, "recent_board_manager_run_after_reward");
+    for (const targetTaskId of [taskId, duplicateTaskId, taskId]) {
+      const synced = await syncNetworkTaskProjection({ taskId: targetTaskId });
+      assert.equal(synced.ok, true);
+      assert.equal(synced.status, "rewarded");
+      assert.equal(synced.taskRefsUpdated, 1);
+      assert.equal(Object.hasOwn(synced, "boardManagerFollowup"), false);
+      const refs = await query("SELECT state, reward_pft FROM network_project_task_refs WHERE task_id = $1", [targetTaskId]);
+      assert.equal(refs.rows[0].state, "rewarded");
+      assert.equal(Number(refs.rows[0].reward_pft), 7500);
+    }
+    const jobs = await query("SELECT count(*)::int AS count FROM board_manager_jobs WHERE idempotency_key LIKE $1 OR idempotency_key LIKE $2", [
+      `network_task_rewarded_followup:${taskId}%`, `network_task_rewarded_followup:${duplicateTaskId}%`,
+    ]);
+    assert.equal(jobs.rows[0].count, 0, "Rewarded tasks and replay must never enqueue the retired scheduler");
+    const project = await query("SELECT pft_routed FROM network_projects WHERE id = $1", [projectId]);
+    assert.equal(Number(project.rows[0].pft_routed), 15000, "Shared project reward accounting remains intact");
 
     console.log("network task reward followup smoke ok");
   } finally {

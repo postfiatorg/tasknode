@@ -1,3 +1,4 @@
+import { collapseWhitespace, limitNewlines } from "./inference-text.js";
 import { randomUUID } from "node:crypto";
 import {
   appendChatTurn,
@@ -25,13 +26,12 @@ import { buildChatContextStatus } from "./chat-context-status.js";
 import { openRouterMessages } from "./chat-provider-message-builders.js";
 import { helpModeInstructions, isHelpChatMode } from "./chat-help-mode.js";
 import {
-  ambientChatCompletion,
-  ambientChatCompletionStream,
-} from "./ambient-inference.js";
+  inferenceChatCompletion,
+  inferenceChatCompletionStream,
+} from "./inference.js";
 import { prepareAmbientChatAttachments } from "./ambient-attachments.js";
 import { iChingProfilePromptPayload } from "./repositories/i-ching-profile.js";
 import {
-  chatPersonaIsModality,
   chatPersonaUsesJobsRetrieval,
   normalizeChatPersona,
 } from "../shared/chat-personas.js";
@@ -53,11 +53,11 @@ export {
 
 
 function safeLogText(value = "", max = 600) {
-  return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+  return collapseWhitespace(value).slice(0, max);
 }
 
 function safeDebugText(value = "", max = 1200) {
-  const text = String(value || "").trim().replace(/\n{4,}/g, "\n\n\n");
+  const text = limitNewlines(String(value || "").trim(), 3);
   if (text.length <= max) return text;
   return `${text.slice(0, Math.max(0, max - 15)).trimEnd()} [truncated]`;
 }
@@ -271,8 +271,8 @@ export function logChatProviderError(error, context = {}) {
 
 function providerEmptyResponseError({
   body = null,
-  provider = "ambient",
-  providerLabel = "Ambient",
+  provider = "vercel",
+  providerLabel = "Vercel AI Gateway",
   mode = "",
   model = "",
   responseId = null,
@@ -393,9 +393,9 @@ export async function executeAmbient({
   persona = "jobs",
 }) {
   const preparedAttachments = await prepareAmbientChatAttachments(attachments);
-  const capability = preparedAttachments.some((attachment) => attachment.kind === "image")
-    ? "vision_text"
-    : chatModeConfig(mode).capability;
+  const config = chatModeConfig(mode);
+  const capability = config.exactModel ? "selected_model"
+    : preparedAttachments.some((attachment) => attachment.kind === "image") ? "vision_text" : config.capability;
   const request = ambientChatRequest({
     mode,
     model,
@@ -414,11 +414,11 @@ export async function executeAmbient({
     toolsEnabled,
     persona,
   });
-  const result = await ambientChatCompletion({ body: request, capability, timeoutMs });
-  if (!result.text) throw providerEmptyResponseError({ body: result.body, provider: "ambient", providerLabel: "Ambient", mode, model });
+  const result = await inferenceChatCompletion({ body: request, capability, timeoutMs });
+  if (!result.text) throw providerEmptyResponseError({ body: result.body, provider: result.provider, providerLabel: result.provider === "ambient" ? "Ambient" : "Vercel AI Gateway", mode, model });
 
   return {
-    provider: "ambient",
+    provider: result.provider,
     model: result.model,
     responseId: result.id,
     text: result.text,
@@ -449,9 +449,9 @@ async function streamAmbient({
   timeoutMs = defaultProviderTimeoutMs,
 }) {
   const preparedAttachments = await prepareAmbientChatAttachments(attachments);
-  const capability = preparedAttachments.some((attachment) => attachment.kind === "image")
-    ? "vision_text"
-    : chatModeConfig(mode).capability;
+  const config = chatModeConfig(mode);
+  const capability = config.exactModel ? "selected_model"
+    : preparedAttachments.some((attachment) => attachment.kind === "image") ? "vision_text" : config.capability;
   const request = ambientChatRequest({
     mode,
     model,
@@ -475,14 +475,14 @@ async function streamAmbient({
     }),
     persona,
   });
-  const result = await ambientChatCompletionStream({ body: request, capability, signal, timeoutMs, onDelta });
+  const result = await inferenceChatCompletionStream({ body: request, capability, signal, timeoutMs, onDelta });
   return {
-    provider: "ambient",
+    provider: result.provider,
     model: result.model,
     responseId: result.id,
     text: result.text,
-    usage: result.usage
-      ? openRouterUsage({ usage: result.usage }, mode)
+    usage: result.usage || config.exactModel
+      ? openRouterUsage(result.body, mode)
       : fallbackUsage({ mode, message, text: result.text }),
   };
 }
@@ -544,7 +544,7 @@ export async function executeChat({
     error.status = 400;
     throw error;
   }
-  const normalizedMode = chatPersonaIsModality(normalizedPersona) ? "Thinking" : normalizedChatMode(mode);
+  const normalizedMode = normalizedChatMode(mode);
   if (!normalizedMode) throw unknownChatModeError(mode);
   const status = chatExecutionStatus(normalizedMode);
 
@@ -734,7 +734,7 @@ export async function executeChatStream({
     error.status = 400;
     throw error;
   }
-  const normalizedMode = chatPersonaIsModality(normalizedPersona) ? "Thinking" : normalizedChatMode(mode);
+  const normalizedMode = normalizedChatMode(mode);
   if (!normalizedMode) throw unknownChatModeError(mode);
   const status = chatExecutionStatus(normalizedMode);
 

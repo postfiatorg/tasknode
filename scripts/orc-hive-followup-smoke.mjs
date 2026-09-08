@@ -5,7 +5,7 @@ import {
   sendOrcHiveFollowup,
 } from "./orc-hive-followup.mjs";
 import {
-  guardBoardManagerMessageUserFreshness,
+  guardBoardManagerMessageUserFreshness as realFreshnessGuard,
 } from "../server/board-manager-actions.js";
 import { normalizeBoardManagerDecision } from "../server/repositories/board-manager.js";
 
@@ -147,6 +147,11 @@ assert.equal(skipped.executed, false);
 assert.equal(skipped.skipped, true);
 assert.equal(skipped.error, "board_manager_message_user_open_followup");
 
+const semanticResponse = value => ({ body: { choices: [{ message: { content: JSON.stringify(value) } }] } });
+async function guardBoardManagerMessageUserFreshness(input, intent = "task_action") {
+  return realFreshnessGuard(input, { complete: async () => semanticResponse({ intent }) });
+}
+
 const { sourcePacket: _sourcePacket, ...rawDecision } = buildMessageUserDecision({
   taskId: "task_rewarded",
   target: {
@@ -160,15 +165,15 @@ const { sourcePacket: _sourcePacket, ...rawDecision } = buildMessageUserDecision
 });
 const normalizedDecision = normalizeBoardManagerDecision(rawDecision);
 assert.equal(normalizedDecision.payload.followup_required, false);
-const informationalGuard = guardBoardManagerMessageUserFreshness({
+const informationalGuard = await guardBoardManagerMessageUserFreshness({
   decision: normalizedDecision,
   messageText: normalizedDecision.payload.message_text,
   accountLiveState: { ok: false, status: "not_loaded" },
-});
+}, "information");
 assert.equal(informationalGuard.ok, true);
 assert.equal(informationalGuard.reason, "informational_message_no_followup");
 
-const strictActionGuard = guardBoardManagerMessageUserFreshness({
+const strictActionGuard = await guardBoardManagerMessageUserFreshness({
   decision: normalizeBoardManagerDecision({
     ...rawDecision,
     payload: {

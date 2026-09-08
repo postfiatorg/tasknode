@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "origin": "http://127.0.0.1:5192",
+  "mode": "Local app with synthetic API fixtures",
+  "fixtureModules": [],
+  "checks": [
+    "one page unlock",
+    "native wallet unlock",
+    "encrypted fixtures",
+    "nested folders",
+    "move spreadsheet",
+    "breadcrumbs",
+    "global search",
+    "reload persistence",
+    "mobile overflow",
+    "clear titles on lock"
+  ],
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 960
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ]
+}

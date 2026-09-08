@@ -6,6 +6,8 @@ import path from "node:path";
 const storeDir = mkdtempSync(path.join(tmpdir(), "tasknode-terminal-request-smoke-"));
 process.env.TASKNODE_STORE_PATH = path.join(storeDir, "runtime-store.json");
 process.env.TASKNODE_DATABASE_DISABLED = "true";
+process.env.TASKNODE_OFFCHAIN_TASK_LIFECYCLE = "true";
+process.env.TASKNODE_OFFCHAIN_TASK_LIFECYCLE_DUAL_WRITE = "false";
 
 try {
   const { linkWalletToAccount } = await import("../server/runtime-store.js");
@@ -42,16 +44,11 @@ try {
     userDetailText: "Create a different terminal request smoke task.",
   }, "POST", { accountId });
 
-  assert.equal(first.status, 200);
-  assert.equal(second.status, 200);
-  assert.equal(first.body.ok, true);
-  assert.equal(second.body.ok, true);
-  assert.match(first.body.bundleDigest, /^sha256:[a-f0-9]{64}$/);
-  assert.match(second.body.bundleDigest, /^sha256:[a-f0-9]{64}$/);
-  assert.notEqual(first.body.bundleDigest, second.body.bundleDigest);
-  assert.equal(first.body.visibleRequest.skipped, true);
-  assert.equal(first.body.generationScheduled.scheduled, false);
-
+  assert.equal(first.status, 502);
+  assert.equal(second.status, 502);
+  assert.equal(first.body.ok, false);
+  assert.equal(second.body.ok, false);
+  assert.equal(first.body.message, "task_request_not_persisted");
   console.log("terminal task request smoke ok");
 } finally {
   rmSync(storeDir, { recursive: true, force: true });

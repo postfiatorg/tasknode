@@ -36,6 +36,17 @@ Implementation references:
 
 Not implemented in v1: public member search, Hive mention resolution, provider-photo import, and admin impersonation review queues. Recommended connections now exist as a private-profile discovery surface, described below.
 
+## Viewing profile artwork
+
+The large public profile portrait loads the original image eagerly, including
+when its display size comes from a responsive CSS variable. Small directory and
+chat avatars retain the thumbnail path. The profile portrait, public and private
+NFT gallery pictures, and completed Studio preview open an expanded picture on
+click or keyboard activation. The viewer fits the entire original artwork within
+the screen without cropping, closes with Escape, its close button or the backdrop,
+and returns focus to the picture that opened it. Profiles without artwork have no
+expand control; loading failures remain visible in the viewer.
+
 ## Public Profile
 
 The public profile is now a read model over deterministic account metrics plus one generated profile snapshot.
@@ -120,8 +131,8 @@ The public profile role layout renders the model summary as exactly two sentence
 
 Provider policy:
 
-- model: Ambient `deepseek/deepseek-v4-flash-0731` by default;
-- provider: `ambient` through the shared strict-JSON capability;
+- model: Vercel `deepseek/deepseek-v4-flash-0731` by default;
+- provider: `vercel` through the shared strict-JSON capability, with Ambient backup;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.
@@ -152,38 +163,36 @@ The public NFT gallery renders real `profile_nfts` rows only. It returns the acc
 
 Private and public NFT galleries render 10 NFT tiles per page. Pagination is client-side over cached `profile_nfts` rows, and gallery images remain lazy-loaded through `/api/profile/nft/image/:cid` when an `imageCid` exists. Owners can use `POST /api/profile/nft/select` from the gallery to set one account-owned NFT as the profile picture; the setter clears any previous selection in the same transaction. This prevents large migrated NFT libraries from expanding the profile page or eagerly opening every image request at once.
 
-The app shell account avatar uses the same selected/newest profile NFT image as the public profile hero when one exists. If the account has no usable profile NFT image, the shell falls back to account initials.
+The directory, public profile, recommendations and signed-in shell use a shared profile portrait. A selected usable NFT takes priority, then the newest usable NFT. While an image loads, when its gateways fail, or before an account earns artwork, a deterministic local illustrated starter PFP fills the space. Starter portraits do not claim an earned creature level or on-chain ownership. Directory portraits are 64px and show the public creature and hyperstition traits when available.
 
-The hydrated image prompt is never returned to the browser or shown in public metadata. The tracked `prompts/profile/profile_nft_image_v1.md` prompt is the canonical art-direction prompt for every live generation. It preserves the final Task Node Hyperstitional Ink direction that previously lived only in the ignored `private_prompts/profile_nft_image.md` file and a Fly secret: white-square ink drawings, a single bionic central entity, obsessive linework and cross-hatching, and exactly two context-selected accent colors. The tracked source is authoritative so deleting a deployment secret cannot silently replace that visual identity again.
+### Network badge freshness
 
-The private prompt boundary does one job: it converts the raw profile packet and context document into two privacy-preserving prose summaries. A second privacy pass compares those summaries with the private source and removes details that could identify the person or reconstruct their actions. The gateway then inserts those summaries into the canonical prompt's `NFT_CONTEXT_HYDRATION` and `USER_CONTEXT_DOCUMENT_DIRECT` blocks. It does not select a replacement persona, composition, palette, setting, symbol set, or art style. The isolated OpenAI image renderer and the subsequent vision review receive the canonical prompt plus sanitized summaries, never the raw information packet. The vision review must approve both privacy and adherence to the canonical prompt before the image can be pinned; privacy leaks, generic imagery, missing figures, unclear actions, and prompt mismatch are retryable render failures.
+Network badge cards load current linked-provider proof alongside durable badge state, and refresh when the browser window regains focus. A verified, unexpired KOL badge displays Ready even if the original session snapshot predates linking X. Provider proof is scoped to the current account; stale links and badges from another account are ignored.
 
-The summaries are short declarative descriptions, not prompt fragments. The
-privacy review rejects instructional language and generalizes dashboards,
-interfaces, charts, documents, code, terminals, financial instruments, tickers,
-logos, and brands into non-identifying actions, capabilities, judgment style,
-working posture, tensions, and momentum before the canonical prompt is hydrated.
-It must preserve enough safe contrast to produce a specific portrait instead of
-flattening every person into generic labels. This prevents private context or
-literal work-artifact lists from competing with the canonical prompt's
-central-persona composition.
+### Profile Pic NFT art and privacy
 
-The deterministic overlap guard distinguishes opaque identifiers (account,
-wallet, transaction, and date-like tokens containing digits or separators) from
-ordinary long words that a useful summary may legitimately preserve. If a
-reviewed summary repeats one of those exact opaque identifiers, the gateway
-deterministically replaces it with a generic private-reference phrase before
-validation. If the sanitized result still fails another privacy rule, the
-gateway gives the reviewer one bounded repair pass, sanitizes it again, and
-validates the repaired result. A final privacy failure does not create or replace
-a draft, and Profile Studio receives a plain retry message instead of an internal
-privacy-rule code; the previously generated draft remains available to mint.
+The product and collection are **Profile Pic NFT**. Each newly generated artwork gets its own model-generated title during Kimi's existing image-review call, using the rendered portrait and approved anonymous specification. The naming prompt is `prompts/profile/profile_nft_title_v1.md`; no extra model call is needed for normal new renders, and naming does not change the OpenAI art prompt. Titles are public metadata, checked for format and private identifiers, then saved with the image checkpoint and published to the NFT row. Galleries and mint metadata use that saved title, and retries retain it. A job resuming an older checkpoint without a title obtains one from its anonymous art spec without regenerating the image. Previously completed artwork is not renamed by this change.
 
-The rendered-image review distinguishes an identifiable real person from the
-fictional illustrated avatar required by the canonical prompt. A visible or
-detailed fictional face is allowed; resemblance to a specific real individual
-is not. Repeated classifier labels are deduplicated before the rejection is
-logged or surfaced to the retry policy.
+While generation is pending, the fallback title remains **Profile Pic NFT**. Techno Mordor names the internal art direction, not the profile picture. Migration 138 repaired the previous default on existing records, including generating drafts; custom titles and previously pinned/on-chain metadata were preserved.
+
+The live generation contract is `techno-mordor-v2`. Public prompt sources are `prompts/profile/techno_mordor_spec_v2.md`, `techno_mordor_review_v2.md` and `techno_mordor_image_v2.md`. The reference JSON retains the requested original Bread and Circuses and Hostile AGI prompts from navstrategies with source path and SHA256. The old v1 hydration prompt is historical compatibility code; the live renderer does not call it.
+
+Art direction restores the historical ink lineage: Virgil Finlay → Moebius / Philippe Druillet → Katsuhiro Otomo → Tsutomu Nihei → Ian Miller. It uses clean white backgrounds, deliberate black masses, intricate industrial linework, purposeful action and bionic anatomy. Higher hyperstition increases visual complexity while the creature axis controls anatomy. Both Kimi's specification and OpenAI's fixed image guide receive this direction; artist references are public prompt text, never private user evidence. New generations use the restored guide. Already prepared jobs keep their saved prompt for reliable retries, and existing images change only through regeneration.
+
+The two axes are independent:
+
+- **Hyperstition, 0–100:** usefulness of demonstrated work to the fictional future AGI. Bread and Circuses and Hostile AGI are supporting lenses. This controls visual intensity from ordinary ink to extreme recursive biomechanical art.
+- **Creature, 0–11:** demonstrated execution aggression and increasing abstraction: Office worker, Goblin, Orc, Genetically modified Orc, Ogre, Troll, Wyvern, Sorcerer, Dragon, Nazgul, Balrog, Sauron. Three completed tasks unlock artwork; they do not grant level 3. Self replication, coordinated autonomous legions and an actual economic network require completed-work evidence for the upper levels.
+
+Recent work pace independently drives gesture, speed lines and ink pressure. The image is one original fictional central figure in ink on warm paper, with exactly two selected accent colors. It contains no writing, logos or identifiable people.
+
+`POST /api/profile/nft/generate` acknowledges a durable job with HTTP 202. It ignores client-supplied task history, context documents and claimed scores. The background worker reads up to 200 recent non-fixture, account-owned task projections plus all-time and recent completion aggregates. It includes task titles/descriptions and relative activity ages, not raw chats, context documents, evidence blobs, wallet/account IDs or provider identities. Optional style text is untrusted input. Any identity information embedded in task prose remains within the private stage.
+
+The private spec and independent review are pinned to `moonshotai/kimi-k3` on Vercel. The account is already configured for ZDR; every request additionally sets `providerOptions.gateway.zeroDataRetention=true`. Missing Vercel credentials, provider failure or lack of a compliant route cannot fall back to Ambient. This exception is limited to the NFT pipeline; general chat defaults remain GLM 5.3.
+
+Kimi creates detailed anonymous visual fields and separate public scores. A second Kimi ZDR call reviews privacy, prompt injection, evidence grounding and the art contract, returning a corrected complete spec or rejection. Explicit type/bounds checks and identifier-overlap checks reject malformed or leaking results without regex. Private evidence refs are discarded. Only the reviewed visual fields, public art traits and fixed art guide form the OpenAI request. No task history, private rationale or account identifier is sent to OpenAI. Vercel ZDR applies to the private Kimi stage and does not configure the separate OpenAI account.
+
+The isolated OpenAI Images provider uses `gpt-image-2`. A Kimi K3 ZDR vision review checks the resulting image for privacy and art compliance before IPFS pinning. Public `metadataJson.art` contains only the anonymous spec and traits; mint metadata preserves those traits. Errors expose fixed messages and typed codes, never raw provider responses that could echo inputs.
 
 Private Profile Studio treats the active linked wallet as the primary NFT scope. When a wallet is linked, `/api/profile/nfts` returns current-wallet rows plus walletless drafts and reports `walletScoped=true`; if no wallet is linked, it falls back to account-scoped rows. Imported chain inventory from `promptSource='pftl_chain_inventory'` is gallery history, not the primary Studio draft. The `latest` field prefers the newest native Studio row in the current wallet scope when one exists so large on-chain libraries and previous-wallet rows do not hide the user's current generated, prepared, mint-error, or failed draft. If the scoped rows only contain chain-imported rows, `latest` falls back to the newest chain row.
 
@@ -197,14 +206,9 @@ draft, and the Studio polls `/api/profile/nfts` while it is pending. The user ca
 navigate away, refresh, or close the app; on return, the latest row hydrates the
 Studio back into the same in-progress state.
 
-Queued rendering is durable and cannot be failed by the stale-generation sweep.
-The sweep only fails an old `generating` row when no queued or rendering
-`profile_nft_render_jobs` row exists. Claiming a queued job also restores the NFT
-row to `generating` and clears any obsolete failure label. The dedicated renderer
-runs up to three jobs concurrently so one image's provider or vision-review
-retries do not block the entire queue. Pinata file uploads have a bounded timeout,
-so a stalled storage request becomes retryable work instead of holding a renderer
-slot indefinitely.
+The NFT row and job are created in one transaction under an account lock. Concurrent starts reuse the same queued/rendering job. Private preparation runs after the worker claims it. The approved anonymous spec and prompt digest are persisted once and reused on retries. After image review and IPFS pinning, an asset checkpoint avoids regenerating a pinned image if final database publication must retry. The renderer also saves a 192px WebP in that checkpoint before publishing the NFT row; web machines can serve its 48/96/192px derivatives immediately through an indexed image-CID lookup. Local disk caching is optional, so an unwritable cache cannot hide an otherwise available new portrait. Root-run operator warmups preserve the parent volume owner on the cache directory so the application can continue writing it.
+
+Each render attempt has a unique token, a renewable lease and a heartbeat. Publication and failure transitions verify current ownership under a row lock; an expired worker cannot overwrite its replacement. The existing renderer runs up to three jobs concurrently, with bounded provider/storage timeouts and up to three attempts per job. The daily ledger records `rendering` while work is queued/in flight and only records `generated` after an image exists. A stale-generation sweep cannot fail a draft backed by a queued/rendering job. Unfinished pre-v2 jobs receive a new Kimi spec on their next claim; completed older art and explicit selections remain available.
 
 When generation and IPFS pinning finish, the same row is updated to
 `status='generated'` with the image CID and becomes mintable. If generation
@@ -223,8 +227,7 @@ Studio show the error as a broken image generation.
 If the server restarts while a generation request is in flight (for example
 during a deploy), the row would otherwise be stranded at `status='generating'`
 with no running request behind it. A staleness sweep on the next
-`/api/profile/nfts` read, and again at the start of the next generation
-request, marks any `generating` row older than the configured threshold
+`/api/profile/nfts` read marks any `generating` row older than the configured threshold
 (`TASKNODE_PROFILE_NFT_GENERATION_STALE_MINUTES`, default 10 minutes, always
 floored above the worst-case in-flight image timeout) as `status='failed'` with
 an interruption error, so the Studio recovers into the normal failed-row retry
@@ -239,18 +242,12 @@ inside the airdrop worker process. The worker is gated by
 `TASKNODE_PROFILE_NFT_DAILY_WORKER_ENABLED` and creates at most
 `TASKNODE_PROFILE_NFT_DAILY_BATCH_LIMIT` awards per tick. Production ticks every
 10 minutes, but idempotency remains one award per account per UTC day. Failed
-same-day awards are prioritized ahead of new candidates and can retry up to
+same-day awards can retry up to
 `TASKNODE_PROFILE_NFT_DAILY_MAX_ATTEMPTS`; interrupted running awards are
 recovered after `TASKNODE_PROFILE_NFT_DAILY_STALE_RUNNING_MS` (10 minutes in
 production).
 
-Eligibility is account-level and based on completed task projections:
-
-- more than 3 completed personal tasks; or
-- at least 1 completed Network Task.
-
-The worker requires an active `pftl_sync_wallets` row with `role='user'` so the
-generated Profile NFT is bound to the user's current wallet scope. Idempotency is
+Eligibility is at least **three completed tasks in total**, combining personal, network and alpha tasks. Explicit completed projections and positive full/partial reward outcomes count; rejected zero-reward terminal outcomes and fixtures do not. Accounts without a wallet qualify. If an active wallet exists, the artwork is associated with it; otherwise it is a walletless draft that can be minted after wallet linkage. Profiles without usable art are prioritized, followed by due retries. Active account render jobs are excluded to avoid duplicate work. Idempotency is
 one `profile_nft_daily_awards` row per account per UTC day. The award row stores
 the eligibility counts, selected wallet, status, and the generated
 `profile_nfts.id`.
@@ -347,7 +344,7 @@ URL plus the same public fallbacks directly instead of treating one gateway
 failure as a missing NFT. As a final recovery path for older CIDs whose public
 blocks disappeared, gallery tiles try immutable 192, 96, and 48 pixel
 thumbnails already persisted on the app volume. The cached-only thumbnail route
-returns 404 instead of a warming placeholder when that exact thumbnail is
+returns 404 instead of a warming response when that exact thumbnail is
 absent. Gallery tiles use
 `loading="lazy"` and `decoding="async"` so a profile with many NFTs does not
 eagerly request every full-size IPFS image at once.
@@ -384,14 +381,7 @@ slot count is controlled by
 is bounded by `TASKNODE_PROFILE_NFT_THUMBNAIL_GENERATION_QUEUE_MAX`
 (`server/profile-nft-image-proxy.js:7`, `server/profile-nft-image-proxy.js:364`).
 When the lane is saturated, direct thumbnail generation returns 429 instead of
-opening unbounded gateway and CPU work. For public avatar requests, a cold cache
-miss serves an instant same-origin SVG placeholder, marks it `no-store`, adds a
-short retry hint, and schedules asynchronous background warming
-(`server/profile-nft-image-proxy.js:480`,
-`server/profile-nft-image-proxy.js:519`). This exists because unbounded
-on-demand thumbnail generation during a cold cache saturated app connections in
-production; the shipped behavior in PR #63 makes cold misses cheap and lets
-warm thumbnails replace placeholders on the next load.
+opening unbounded gateway and CPU work. A cold public thumbnail request returns HTTP 202 JSON with `status=warming`, `no-store` and a retry hint, and schedules work in the bounded thumbnail queue. It does not return a successful placeholder image. The shared portrait component keeps its local starter visible, polls with backoff while mounted, and swaps in the real raster once it is ready. It also recognizes and ignores the legacy 200 SVG response during rolling deployments. Only portraits near the viewport start requests; cold misses do not fan out full-resolution source-image fetches. Fetches and timers are cancelled on unmount.
 
 Frontend avatar helpers use the thumbnail route at roughly 2x the rendered CSS
 size, while full-resolution profile gallery and hero views keep using
@@ -647,8 +637,8 @@ Runtime call sites:
 
 Provider policy:
 
-- model: Ambient `z-ai/glm-5.2` by default;
-- provider: `ambient` through the shared strict-JSON capability;
+- model: Vercel `zai/glm-5.3` with Ambient backup by default;
+- provider: `vercel` through the shared strict-JSON capability, with Ambient backup;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.

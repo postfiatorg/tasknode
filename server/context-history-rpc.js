@@ -1,3 +1,4 @@
+import { isHex, isIdentifierChar, replaceCharacterRuns, splitWhitespace, stripPrefix } from "../shared/text-protocol.js";
 import { Client, isValidClassicAddress } from "xrpl";
 
 const CONTENT_KIND = Object.freeze({
@@ -33,8 +34,7 @@ const DEFAULT_TIMEOUT_MS = 12000;
 const textDecoder = new TextDecoder();
 
 function splitUrls(value) {
-  return String(value || "")
-    .split(/[,\s]+/)
+  return splitWhitespace(String(value || "").replaceAll(","," "))
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -77,15 +77,14 @@ function normalizeWssUrl(value) {
 }
 
 function safeErrorCode(error) {
-  return String(error?.code || error?.message || "pftl_history_rpc_error")
-    .replace(/[^a-zA-Z0-9_.-]+/g, "_")
+  return replaceCharacterRuns(String(error?.code || error?.message || "pftl_history_rpc_error"),char=>!isIdentifierChar(char)&&char!==".","_")
     .slice(0, 100);
 }
 
 function normalizeCid(value) {
   const text = String(value || "").trim();
   if (!text) return null;
-  return text.replace(/^ipfs:\/\//i, "").replace(/^\/ipfs\//i, "").split(/[?#]/)[0] || null;
+  return stripPrefix(stripPrefix(text,"ipfs://",true),"/ipfs/",true).replaceAll("#","?").split("?")[0] || null;
 }
 
 function normalizeText(value) {
@@ -95,7 +94,7 @@ function normalizeText(value) {
 
 function hexToBytes(hex) {
   const text = String(hex || "").trim();
-  if (!text || text.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(text)) return null;
+  if (!text || text.length % 2 !== 0 || !isHex(text)) return null;
   const bytes = new Uint8Array(text.length / 2);
   for (let index = 0; index < text.length; index += 2) {
     const byte = Number.parseInt(text.slice(index, index + 2), 16);

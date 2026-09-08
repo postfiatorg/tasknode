@@ -22,16 +22,17 @@ are disposable.
 | `worker-taskgen` | `npm run start:worker:taskgen` | Personal and network task generation |
 | `worker-task-review` | `npm run start:worker:task-review` | Verification, review, and reward transitions |
 | `worker-context-rewrite` | `npm run start:worker:context-rewrite` | Async Context rewrites |
-| `worker-hive` | `npm run start:worker:hive` | Hive task manager, secretary/project/report/accounting work |
+| `worker-hive` | `npm run start:worker:hive` | Hive context secretary, reports, and Kimi activity narrator |
 | `worker-memory-profile` | `npm run start:worker:memory-profile` | Memory and profile/recommendation work |
 | `worker-airdrop` | `npm run start:worker:airdrop` | Daily airdrop work |
 | `worker-nft-renderer` | `npm run start:worker:nft-renderer` | Isolated Profile NFT image rendering |
 | `board-secretary` | `npm run start:board-secretary` | Advisory Hive board-status memo generation |
 
-The legacy `start:board-manager` command intentionally starts a disabled stub.
-The deployed Board Manager execution flags are false. The active
-`board-secretary` writes advisory project-status memos and does not execute
-Board Manager actions.
+Kimi K3 in the operator-host Corbanu TUI is the production task manager.
+`board-secretary` writes advisory project-status memos. The obsolete GLM Hive
+selector, legacy automatic manager launchers, experimental project planner,
+and disabled accounting harvester have been deleted. No deployment flag can
+restart those modules. `worker-hive` retains the three support workers above.
 
 ## Current Release Command
 
@@ -122,7 +123,7 @@ The deployment requires environment-specific classes of secrets for:
 
 - application session/auth signing;
 - database access;
-- Ambient inference;
+- Vercel primary inference and Ambient backup;
 - the isolated Profile NFT image renderer;
 - configured OAuth and email providers;
 - Telegram webhook authentication;

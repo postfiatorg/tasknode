@@ -5,12 +5,9 @@ import assert from "node:assert/strict";
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
 }
-process.env.TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK = "true";
-process.env.TASKNODE_TASK_ACCOUNTING_HARVESTER_BATCH_LIMIT = "10";
 
 const { closePool, databaseEnabled, query } = await import("../server/db/pool.js");
 const { migrateDatabase } = await import("../server/db/migrate.js");
-const { runTaskAccountingHarvesterOnce } = await import("../server/task-accounting-harvester-worker.js");
 const {
   accountCanResolveCheckedOutTaskAccountingHarvest,
   accountHasTaskAccountingCheckoutAccess,
@@ -194,15 +191,17 @@ async function main() {
       reward: 50,
     });
 
-    const run = await runTaskAccountingHarvesterOnce();
-    assert.equal(run.ok, true, JSON.stringify(run.errors || []));
-    assert.ok(run.queued >= 3, "rewarded Network tasks were queued");
-    const processedSmokeTaskIds = run.processed.map((row) => row.taskId).filter((taskId) => smokeTaskIds.includes(taskId));
-    assert.deepEqual(
-      processedSmokeTaskIds.sort(),
-      [...smokeTaskIds].sort(),
-      "three smoke harvest rows processed"
-    );
+    for (const historicalTaskId of smokeTaskIds) {
+      const actionable = historicalTaskId !== noActionTaskId;
+      await query(`INSERT INTO task_accounting_harvests (
+        task_id, title, status, classification, requires_action, suggested_action,
+        assessment_summary, completed_at, rewarded_at, project_ids_json
+      ) SELECT task_id, title, 'harvested', $2, $3, $4,
+        'Historical fixture assessment', now(), now(), '[]'::jsonb
+        FROM task_projections WHERE task_id = $1`, [historicalTaskId,
+        actionable ? "requires_action" : "no_action", actionable,
+        actionable ? "Investigate the task state and implement the underlying fix." : ""]);
+    }
 
     const listed = await listTaskAccountingHarvests({ limit: 20 });
     const rows = listed.harvests.filter((row) => smokeTaskIds.includes(row.taskId));

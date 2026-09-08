@@ -230,7 +230,16 @@ export function TeamView({ accountId, onWalletUnlock, walletSecret }) {
           <div className="team-context-members" role="list">{contextState.data.members.map((member, index) => {
             const expanded = expandedContextMembers[member.accountId] === true;
             const recentWork = String(member.recentWork || "");
-            const canExpand = recentWork.length > 420;
+            const completedChanges = Array.isArray(member.completedChanges)
+              ? member.completedChanges.filter(Boolean)
+              : [];
+            const focus = String(member.focus || "").trim();
+            const operationalEffect = String(member.operationalEffect || "").trim();
+            const hasStructuredUpdate = Boolean(focus && completedChanges.length && operationalEffect);
+            const visibleChanges = expanded || completedChanges.length <= 2
+              ? completedChanges
+              : completedChanges.slice(0, 1);
+            const canExpand = hasStructuredUpdate ? completedChanges.length > 2 : recentWork.length > 420;
             const updateId = `team-context-update-${index + 1}`;
             return <article className={expanded ? "team-context-member is-expanded" : "team-context-member"} key={member.accountId} role="listitem">
               <header className="team-context-member-head">
@@ -243,14 +252,27 @@ export function TeamView({ accountId, onWalletUnlock, walletSecret }) {
               </header>
               <div className="team-context-member-update">
                 <span>Recent rewarded work</span>
-                <p id={updateId}>{expanded || !canExpand ? recentWork : teamContextPreview(recentWork)}</p>
+                {hasStructuredUpdate ? <div className="team-context-brief" id={updateId}>
+                  <section className="team-context-brief-focus">
+                    <h3>Focus</h3>
+                    <p>{focus}</p>
+                  </section>
+                  <section className="team-context-brief-changes">
+                    <h3>Completed changes <small>{completedChanges.length}</small></h3>
+                    <ol>{visibleChanges.map((change, changeIndex) => <li key={`${updateId}-change-${changeIndex + 1}`}><span>{String(changeIndex + 1).padStart(2, "0")}</span><p>{change}</p></li>)}</ol>
+                  </section>
+                  <section className="team-context-brief-effect">
+                    <h3>Operational effect</h3>
+                    <p>{operationalEffect}</p>
+                  </section>
+                </div> : <p className="team-context-legacy-update" id={updateId}>{expanded || !canExpand ? recentWork : teamContextPreview(recentWork)}</p>}
                 {canExpand && <button
                   aria-controls={updateId}
                   aria-expanded={expanded}
                   data-team-context-expand
                   onClick={() => toggleContextMember(member.accountId)}
                   type="button"
-                >{expanded ? "Show less" : "Read full update"}<ChevronDown aria-hidden="true" size={15} /></button>}
+                >{expanded ? "Show less" : hasStructuredUpdate ? `Show all ${completedChanges.length} changes` : "Read full update"}<ChevronDown aria-hidden="true" size={15} /></button>}
               </div>
             </article>;
           })}</div>

@@ -1,8 +1,10 @@
+import { parseInferenceJson, redactSecrets } from "./inference-text.js";
+import { inferenceProviderForResponse } from "./inference.js";
 import { createHash, randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "./db/pool.js";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { boardManagerActions } from "./repositories/board-manager.js";
-import { AMBIENT_MODELS, ambientConfigured, ambientFetchCompatibility } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceConfigured, inferenceFetchCompatibility } from "./inference.js";
 import {
   boardManagerSecretaryFallbackPacket,
   normalizeBadgeEligibility,
@@ -70,7 +72,7 @@ const volatileFreshnessKeys = new Set([
 function stripVolatileSourceText(value = "") {
   return String(value || "")
     .split("\n")
-    .filter((line) => !/^Generated At:\s*/i.test(line.trim()))
+    .filter((line) => !line.trim().toLowerCase().startsWith("generated at:"))
     .join("\n");
 }
 
@@ -103,7 +105,7 @@ export function boardManagerSecretarySourceDigest(sourcePacket = {}) {
 }
 
 export function boardManagerSecretaryModel() {
-  return safeText(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MODEL || AMBIENT_MODELS.structured, 120);
+  return safeText(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MODEL || INFERENCE_MODELS.structured, 120);
 }
 
 function secretaryReasoningEffort() {
@@ -119,19 +121,11 @@ export function boardManagerSecretaryEnabled() {
   return (
     process.env.TASKNODE_BOARD_MANAGER_SECRETARY_ENABLED !== "false" &&
     useDatabase() &&
-    ambientConfigured()
+    inferenceConfigured()
   );
 }
 
-function redactSensitiveText(value = "") {
-  return String(value || "")
-    .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "[redacted_api_key]")
-    .replace(/\b(?:0x)?[a-fA-F0-9]{64}\b/g, "[redacted_secret_or_hash]")
-    .replace(
-      /\b(seed phrase|recovery phrase|mnemonic|private key|password|oauth token|api key)\s*[:=]\s*[^\n\r]+/gi,
-      "$1: [redacted]"
-    );
-}
+function redactSensitiveText(value = "") { return redactSecrets(value); }
 
 function sourcePacketText(sourcePacket = {}) {
   return redactSensitiveText(JSON.stringify(sourcePacket, null, 2));
@@ -152,35 +146,9 @@ function secretaryMessages(sourcePacket = {}) {
   ];
 }
 
-function parseJsonOutput(text = "") {
-  const raw = safeText(text, 2_000_000);
-  if (!raw) throw new Error("board_manager_secretary_empty_output");
-  const candidates = [raw];
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) candidates.push(fenced[1]);
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start >= 0 && end > start) candidates.push(raw.slice(start, end + 1));
-  let lastError = null;
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    try {
-      return JSON.parse(candidate);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  const message = safeText(lastError?.message || "invalid JSON", 500);
-  throw new Error(`board_manager_secretary_invalid_json:${message}`);
-}
+function parseJsonOutput(text = "") { return parseInferenceJson(text); }
 
-function isJsonOutputParseError(error) {
-  if (error instanceof SyntaxError) return true;
-  const message = safeText(error?.message, 500);
-  return message === "board_manager_secretary_empty_output" ||
-    message.startsWith("board_manager_secretary_invalid_json") ||
-    /JSON|Unexpected|Expected|unterminated|parse/i.test(message);
-}
+function isJsonOutputParseError(error) { return error instanceof SyntaxError || error?.message === "board_manager_secretary_empty_output"; }
 
 function boardManagerSecretaryRepairMessages({ sourcePacket = {}, invalidText = "", parseError = "" } = {}) {
   return [
@@ -431,17 +399,17 @@ export async function fetchBoardManagerSecretaryPacket({
   model = boardManagerSecretaryModel(),
   fetchImpl = fetch,
 } = {}) {
-  if (!ambientConfigured()) {
-    const error = new Error("board_manager_secretary_ambient_not_configured");
+  if (!inferenceConfigured()) {
+    const error = new Error("board_manager_secretary_inference_not_configured");
     error.status = 409;
     throw error;
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), secretaryTimeoutMs());
+  const timeout = setTimeout(() => controller.abort(), secretaryTimeoutMs() * 2 + 1000);
   const startedAt = Date.now();
   try {
     const requestPacket = async (messages) => {
-      const response = await ambientFetchCompatibility(fetchImpl, "", {
+      const response = await inferenceFetchCompatibility(fetchImpl, "", {
         method: "POST",
         signal: controller.signal,
         headers: {
@@ -518,7 +486,7 @@ export async function fetchBoardManagerSecretaryPacket({
       packet,
       outputText: response.outputText,
       packetText: packetText(packet),
-      provider: "ambient",
+      provider: inferenceProviderForResponse(response.body),
       model: response.body?.model || model,
       responseId: safeText(response.body?.id, 200),
       promptVersion,
@@ -671,7 +639,7 @@ async function insertBoardManagerSecretaryPacket({
         normalizedPacketDigest,
         jsonValue(packet),
         safeText(result.packetText || packetText(packet), 20000),
-        safeText(result.provider || "ambient", 80),
+        safeText(result.provider || "vercel", 80),
         safeText(result.model || boardManagerSecretaryModel(), 120),
         safeText(result.promptVersion || promptVersion, 120),
         safeText(result.promptDigest || promptDigest(secretaryPrompt), 120),
@@ -726,7 +694,7 @@ export function buildBoardManagerSecretaryDecisionPacket({
   const normalizedSecretaryJson = normalizeBoardManagerSecretaryPacket(secretaryPacket.packetJson);
   const packetCore = {
     schema: "pf.hive.board_manager.decision_source.v1",
-    sourceMode: "ambient_secretary_packet",
+    sourceMode: "gateway_secretary_packet",
     scope: safeText(sourcePacket.scope, 120) || "global_hive",
     trigger: safeText(sourcePacket.trigger, 160),
     generatedAt: new Date().toISOString(),

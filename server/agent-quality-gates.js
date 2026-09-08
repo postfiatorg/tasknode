@@ -1,3 +1,4 @@
+import { isAsciiDigit, replaceCharacterRuns, splitWhitespace } from "../shared/text-protocol.js";
 import { agentOriginForWalletSession } from "./agent-origin.js";
 import { query } from "./db/pool.js";
 import {
@@ -18,8 +19,7 @@ function numericEnv(name, fallback) {
 
 function envSet(name = "") {
   return new Set(
-    String(process.env[name] || "")
-      .split(/[,\s]+/)
+    splitWhitespace(String(process.env[name] || "").replaceAll(","," "))
       .map((item) => item.trim().toLowerCase())
       .filter(Boolean)
   );
@@ -76,7 +76,7 @@ async function trustedAgentRateLimitAccess(agentOrigin = {}) {
 }
 
 function rateLimitConfig(action = "", { trusted = false } = {}) {
-  const key = safeText(action, 80).toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  const key = replaceCharacterRuns(safeText(action, 80).toUpperCase(),char=>!(char>="A"&&char<="Z")&&!isAsciiDigit(char),"_");
   const maxPrefix = trusted ? "TASKNODE_TRUSTED_AGENT" : "TASKNODE_AGENT";
   const trustedWindow = trusted ? numericEnv("TASKNODE_TRUSTED_AGENT_QUALITY_GATE_WINDOW_MS", 0) : 0;
   return {

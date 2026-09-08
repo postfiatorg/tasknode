@@ -1,140 +1,104 @@
 # AI Providers
 
-Task Node uses Ambient as its default inference boundary. There are two scoped
-external exceptions: profile NFT image output uses OpenAI Images as a blind
-renderer, and Team Context generation uses Vercel AI Gateway with the exact
-`zai/glm-5.3-flash` model. Neither exception is a general chat-routing path.
+Task Node routes model inference through **Vercel AI Gateway first**, with
+**Ambient as backup**. Thinking and existing GLM workers use GLM 5.3; Instant
+and Team Context use GLM 5.3 Flash. The model layer is shared by chat, Docs
+assistants, context, memory, tasks, Hive, profiles, and operator scripts.
 
-## Runtime Boundary
+## Models
 
-`server/ambient-inference.js` owns authentication, model policy, request
-normalization, JSON output, streaming, image input, web search, errors, timeouts,
-catalog caching, and Ambient-only capacity fallback. Feature modules must not
-construct inference provider URLs or read retired provider credentials.
-
-Configuration:
-
-- `AMBIENT_API_KEY`
-- `AMBIENT_BASE_URL`, default `https://api.ambient.xyz/v1`
-- `AMBIENT_MODEL_FAST_TEXT`, default `deepseek/deepseek-v4-flash-0731`
-- `AMBIENT_MODEL_REASONING`, default `z-ai/glm-5.2`
-- `AMBIENT_MODEL_STRUCTURED`, default `z-ai/glm-5.2`
-- `AMBIENT_MODEL_RESEARCH`, default `z-ai/glm-5.2`
-- `AMBIENT_MODEL_VISION`, default `moonshotai/kimi-k2.7-code`
-
-OpenRouter, direct DeepSeek, and general OpenAI inference keys and hosts are
-retired. `npm run provider-egress-check` fails when one reappears in an active
-runtime, operator script, Fly configuration, or Docker configuration.
-
-`server/vercel-inference.js` is the narrow Vercel adapter. It reads
-`VERCEL_AI_GATEWAY_API_KEY` (or the gateway-compatible `AI_GATEWAY_API_KEY`),
-uses the OpenAI-compatible chat-completions endpoint, requests a JSON object,
-and permits no model substitution. `server/team-context-worker.js` is its only
-feature consumer. It sends task titles/descriptions and reward metadata that
-the viewer is already authorized to read; deterministic day/week counts remain
-local and are not delegated to the provider.
-
-Some internal functions and historical schema fields still contain names such
-as `executeOpenRouter`, `openRouterMessages`, `fetchOpenRouter`,
-`generateTaskWithOpenAi`, or `callOpenAiJson`. They are compatibility names,
-response parsers, and migration archaeology; their executable dispatch goes
-through `server/ambient-inference.js`. Provider identity is determined by the
-outbound host and persisted run metadata, not by a legacy symbol name.
-
-## Capability Matrix
-
-| Capability | Default Ambient model | Used for |
+| Workload | Vercel primary | Ambient backup |
 | --- | --- | --- |
-| `fast_text` | `deepseek/deepseek-v4-flash-0731` | Instant chat, Help, memory, short narration |
-| `reasoning_text` | `z-ai/glm-5.2` | Thinking chat and high-stakes reasoning |
-| `strict_json` | `z-ai/glm-5.2` | Task generation/review, Hive, profiles, Context Rewrite, economic decisions |
-| `research_text` | `z-ai/glm-5.2` | Prompt-governed web research |
-| `verification_vision` | `moonshotai/kimi-k2.7-code` | Screenshots, rendered PDF pages, DOCX images, NFT privacy review |
+| Instant, Team Context | `zai/glm-5.3-flash` | `z-ai/glm-5.2` |
+| Thinking, structured tasks, research, GLM workers | `zai/glm-5.3` | `z-ai/glm-5.2` |
+| Help, memory, short narration | `deepseek/deepseek-v4-flash-0731` | `z-ai/glm-5.2` |
+| Evidence images | `moonshotai/kimi-k2.7-code` | `google/gemma-4-26b-a4b-it` |
 
-The dated DeepSeek route is deliberate: the undated route returned a live
-no-worker response during the 2026-08-12 capability check. Fast-text requests
-may fall back to GLM 5.2 on that specific Ambient capacity error. No fallback
-may leave Ambient, and vision may fall back only after another image-input model
-has a live contract test.
+GLM 5.3 Flash accepts text and images and produces text. It does not generate
+images. Instant can retain Flash for image input; text-only models switch to the
+vision model when images are present. Files are extracted locally with byte,
+page, archive-entry, and expansion limits before inference.
 
-## Chat Modes
+The [Ambient catalogue](https://api.ambient.xyz/v1/models), checked September 5,
+2026, lists GLM 5.2 as ready and does not list GLM 5.3, Flash, DeepSeek, or Kimi.
+Its vision entries, including Gemma 4, are not currently marked ready. Text
+failover therefore changes the model version; vision backup availability is
+limited by Ambient capacity. Failed vision analysis remains an error and never
+becomes a zero task score. Actual provider and returned model are recorded on
+completed work so a backup answer is identifiable.
 
-The mode API and every picker expose exactly three canonical labels:
+## Shared Routing
 
-| Mode | Capability | Model |
-| --- | --- | --- |
-| Instant | `fast_text` | `deepseek/deepseek-v4-flash-0731` |
-| Thinking | `reasoning_text` | `z-ai/glm-5.2` |
-| Help | `fast_text` plus the Help prompt and user guide | `deepseek/deepseek-v4-flash-0731` |
+`server/inference.js` owns dispatch, with policy, protocol, transport, text, and
+usage helpers beside it. Feature modules use this boundary. The legacy
+`ambient-inference.js` exports and Team Context's `vercel-inference.js` wrapper
+also dispatch through it. Old function names are compatibility names, not
+provider selectors.
 
-Historical Private, Discount, and Frontier labels normalize one-way to Instant
-or Thinking so old stored preferences and clients remain usable. They are not
-returned by the mode API, shown in pickers, or eligible for separate provider
-routing. Billing and durable model-run records store `provider=ambient` plus the
-actual returned model ID.
+Vercel is tried first when its key is configured. An enabled, configured Ambient
+backup is tried after authentication, quota, rate-limit, model-unavailable,
+network, timeout, or upstream server failures. Each provider has a bounded
+attempt deadline covering headers and body reads. Invalid input, rejected
+schemas, truncated output, and caller cancellation do not trigger failover.
+Streaming may fail over only before the first visible text delta; it never
+replays a partially delivered answer against the backup.
 
-Chat personality is orthogonal to this table. The browser sends an allowlisted
-`persona` enum (`jobs`, `odv`, or `trading-coach`) while the mode continues to
-choose the capability and model. Jobs alone may query the local Jobs pgvector
-corpus. ODV and Trading Coach use their canonical prompts with the normal
-account Context document, memory, tasks, history, and attachments, and the
-router records Jobs retrieval as skipped before any embedding/search call.
+With only an Ambient key, inference runs in backup-only mode. Status exposes
+primary and backup configuration separately. A configured key is not proof of
+successful authentication or available model capacity.
 
-## Attachments And Verification
+## Configuration
 
-Ambient does not parse arbitrary office or archive files. Task Node decodes and
-extracts them locally in `server/evidence-file-extraction.js` with byte, entry,
-page, and expansion limits.
+- `VERCEL_AI_GATEWAY_API_KEY`, or alias `AI_GATEWAY_API_KEY`, configures primary inference.
+- `VERCEL_AI_GATEWAY_BASE_URL` defaults to `https://ai-gateway.vercel.sh/v1`.
+- `AMBIENT_API_KEY` configures backup inference.
+- `AMBIENT_BASE_URL` defaults to `https://api.ambient.xyz/v1`.
+- `INFERENCE_AMBIENT_BACKUP_ENABLED=false` disables backup; it is enabled by default.
+- `INFERENCE_CHAT_ENABLED=false` disables chat inference.
+- Capability overrides: `INFERENCE_MODEL_INSTANT`, `INFERENCE_MODEL_FAST_TEXT`, `INFERENCE_MODEL_REASONING`, `INFERENCE_MODEL_STRUCTURED`, `INFERENCE_MODEL_RESEARCH`, and `INFERENCE_MODEL_VISION`.
+- Backup overrides: `AMBIENT_BACKUP_MODEL_INSTANT`, `AMBIENT_BACKUP_MODEL_FAST_TEXT`, `AMBIENT_BACKUP_MODEL_REASONING`, and `AMBIENT_BACKUP_MODEL_VISION`.
 
-- Text, Markdown, JSON, CSV, source files: bounded UTF-8 extraction.
-- PDF: bounded text extraction plus rendered page images.
-- DOCX: OOXML text plus bounded embedded images.
-- ZIP, TAR, GZIP: bounded text-file extraction; binary entries are reported and
-  skipped.
-- Images: preserved as image parts.
+Existing `AMBIENT_MODEL_*` capability overrides remain lower-priority aliases.
+Known GLM 5.2 pins resolve to GLM 5.3 on the primary route. Unknown primary model
+IDs are rejected; add a reviewed registry entry before introducing a new model.
+Model configuration never selects a different provider order.
 
-Chat passes extracted text to its selected text capability and switches to the
-approved vision capability when preserved images are present. Task evidence
-sends every bounded visual page/image through Kimi and combines those
-observations with extracted text for the final GLM verification decision. A
-vision outage fails retryably; it is never converted into a zero score.
+## Search, Usage, And Persistence
 
-## Embeddings
+Context Rewrite uses Vercel's server-executed search tools. Ambient backup uses
+its bounded `/tools` protocol. Search counts and provider costs come from
+provider metadata when reported; missing wholesale costs remain unknown.
+The [Vercel model catalogue](https://ai-gateway.vercel.sh/v1/models) supplies live
+pricing and capability information with a short cache and last-known-good data.
 
-Ambient currently has no embeddings endpoint. Retrieval uses the pinned local
-`deterministic-bag-of-words-v1` provider at 1536 dimensions. Model, dimensions,
-and provider remain part of every corpus row so vectors from different models
-cannot be mixed. Production cutover requires re-running `npm run
-jobs-corpus-ingest` after migration 105 changes the live defaults.
+User chat tariffs remain separate from wholesale provider costs. This migration
+does not change user tariffs. Existing provider/model history is retained;
+new database defaults use Vercel. The shared completion carries actual provider
+and model metadata, and Team Context stores per-member inference metadata.
+Feature adapters must preserve actual provider/model metadata during fallback.
+The obsolete Hive Task Manager adapter and accounting-harvester inference
+path have been removed. NFT privacy retains its independent structured
+reviewer and mechanical literal checks.
 
-## Profile NFT Exception
+The shared inference modules use typed JSON/XML parsing and ordinary text
+parsers. Regex is prohibited throughout LLM call paths by workspace policy.
+`npm run inference-no-regex-check` covers direct inference callers and an
+explicit helper inventory; it does not yet prove transitive JS, Rust or shell
+call-path coverage. Passing that check must not be described as whole-system
+compliance.
 
-The trusted path in `server/profile-nft-generation.js` sends bounded profile,
-activity, memory, and context inputs only to Ambient GLM 5.2. GLM performs an
-abstraction pass and a separate privacy-review pass against an allowlisted art
-schema. Deterministic validation rejects URLs, handles, wallet-like values,
-hashes, monetary details, long identifiers, or private-source overlap.
+## Separate Services
 
-Only the sanitized rendered prompt and image settings enter the durable
-`profile_nft_render_jobs` queue. `server/profile-nft-image-provider.js` is the
-only allowlisted OpenAI host and the only module that reads
-`PROFILE_NFT_OPENAI_API_KEY`. The dedicated renderer process cannot accept a raw
-source packet. Before IPFS publication, Kimi scans the generated pixels for
-text, numbers, usernames, brands, wallets, QR codes, documents, source code,
-financial symbols, or recognizable people; any violation fails closed.
+Retrieval retains local `deterministic-bag-of-words-v1` embeddings at 1536
+dimensions; existing vectors remain compatible. Corbanu research and the
+independent Kimi board terminal runtime retain their own service contracts.
 
-Fly unsets the renderer credential from every other process command. The
-renderer is the sole process that retains it.
+Profile NFT preparation and image review are pinned to `moonshotai/kimi-k3` on Vercel with `providerOptions.gateway.zeroDataRetention=true`, using the account's existing ZDR setup. Ambient fallback is prohibited for this pipeline, even when Vercel is unavailable. Kimi reads bounded canonical task history and produces an independently reviewed anonymous Techno Mordor art spec. Only that anonymous spec reaches the isolated `gpt-image-2` OpenAI Images renderer; raw history, evidence refs and account identity do not. `PROFILE_NFT_OPENAI_API_KEY` belongs only to the renderer. The separate OpenAI account's retention controls are independent of Vercel ZDR. See [Profile](../surfaces/profile.md#techno-mordor-art-and-privacy).
 
-## Operations And Failure Modes
+## Verification
 
-- Missing `AMBIENT_API_KEY` disables inference-backed features explicitly.
-- Missing `VERCEL_AI_GATEWAY_API_KEY` leaves Team Context jobs pending and does not affect ordinary chat.
-- Missing `PROFILE_NFT_OPENAI_API_KEY` affects only queued NFT rendering.
-- Invalid structured output remains subject to feature-level schema validation
-  and fail-closed behavior.
-- Catalog reads use a short cache and last-known-good result.
-- Logs and optional Ambient metrics include workload/capability, model, request
-  ID, fallback, error class, and latency, never prompt content.
-- Migrations preserve historical provider labels. New defaults use `ambient`
-  and deterministic embeddings.
+Run `npm run inference-failover-smoke`, `npm run inference-no-regex-check`, and
+`npm run provider-egress-check` for the shared boundary. Feature smoke tests
+cover chat, attachment extraction, task evidence, Hive, profiles, and Team
+Context persistence. Synthetic live calls require valid provider credentials;
+fixture success alone does not prove production availability.

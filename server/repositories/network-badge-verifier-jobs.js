@@ -344,7 +344,7 @@ async function resolveJob(job = {}, { fetchImpl = fetch } = {}) {
       disqualifyingConcerns: Array.isArray(expertAccess.disqualifyingConcerns) ? expertAccess.disqualifyingConcerns : [],
       evidenceTaskIds: Array.isArray(expertAccess.reviewedTaskIds) ? expertAccess.reviewedTaskIds.slice(0, 20) : [],
       metrics: {
-        proofMethod: expertAccess.proofMethod || "glm52_last_20_personal_tasks",
+        proofMethod: expertAccess.proofMethod || "model_review_last_20_personal_tasks",
         model: expertAccess.model || "",
         responseId: expertAccess.responseId || "",
       },
@@ -498,7 +498,7 @@ export function approvalRecommendationFromVerifierResult({
               personalTaskCount: numeric(result.personalTaskCount, 0),
               requiredPersonalTaskCount: numeric(result.requiredPersonalTaskCount, 20),
               reviewCurrent: result.reviewCurrent === true,
-              proofMethod: "glm52_last_20_personal_tasks",
+              proofMethod: "model_review_last_20_personal_tasks",
               model: result.metrics?.model || "",
               responseId: result.metrics?.responseId || "",
             },

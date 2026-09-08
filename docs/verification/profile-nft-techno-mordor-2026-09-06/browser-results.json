@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "origin": "http://127.0.0.1:5198",
+  "mode": "Actual Directory and MemberProfileView components with synthetic API fixtures and real anonymous generated artwork",
+  "checks": [
+    "64px directory art",
+    "202 cold-thumbnail polling",
+    "legacy SVG ignored",
+    "no cold full-image fanout",
+    "starter portraits",
+    "failed image fallback",
+    "public profile art and traits",
+    "mobile overflow"
+  ],
+  "viewports": [
+    1440,
+    390
+  ]
+}

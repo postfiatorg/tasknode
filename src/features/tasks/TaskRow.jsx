@@ -1,3 +1,4 @@
+import { themedTaskStatusColor } from "../../theme/task-status-color.js";
 import { statusSlug, taskStatusColor } from "../../../shared/task-lifecycle";
 
 function TaskStatusGlyph({ task }) {
@@ -30,7 +31,7 @@ export function TaskRow({ isFirst, onClick, task }) {
           <span className="task-meta">
             <strong>{task.kind}</strong>
             <TaskDot />
-            <span className="task-status-text" style={{ color: task.statusColor || taskStatusColor(task.statusKey) }}>
+            <span className="task-status-text" style={{ color: themedTaskStatusColor(task.statusKey, task.statusColor || taskStatusColor(task.statusKey)) }}>
               {task.status}
             </span>
             {syncLabel && (

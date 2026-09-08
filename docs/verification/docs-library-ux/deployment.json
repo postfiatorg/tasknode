@@ -1,0 +1,439 @@
+{
+  "at": "2026-09-05T14:22:48.771Z",
+  "apps": {
+    "tasknodeofficial-dev": {
+      "release": {
+        "Version": 701,
+        "Status": "complete",
+        "ImageRef": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT",
+        "CreatedAt": "2026-09-05T14:22:18Z"
+      },
+      "machines": [
+        {
+          "id": "0803736c291198",
+          "state": "stopped",
+          "group": "worker-nft-renderer",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "87d077b0263998",
+          "state": "started",
+          "group": "worker-context-rewrite",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "e8267e0c015508",
+          "state": "stopped",
+          "group": "board-secretary",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "e827021fd67708",
+          "state": "stopped",
+          "group": "worker-taskgen",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "e826571a546458",
+          "state": "stopped",
+          "group": "worker-task-review",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "7813e21f1295d8",
+          "state": "started",
+          "group": "worker-taskgen",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "1850d37c3d3e48",
+          "state": "started",
+          "group": "worker-airdrop",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "6835d0ea464158",
+          "state": "started",
+          "group": "worker-task-review",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "8465ddb274e908",
+          "state": "stopped",
+          "group": "worker-hive",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "48e056a3705e18",
+          "state": "started",
+          "group": "worker-memory-profile",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "1854406a6e3508",
+          "state": "started",
+          "group": "worker-hive",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "48e10e9a40d978",
+          "state": "stopped",
+          "group": "worker-pftl",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "7845637cd3e708",
+          "state": "stopped",
+          "group": "worker-memory-profile",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "e820352ae34138",
+          "state": "stopped",
+          "group": "worker-airdrop",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "8d4930ae156638",
+          "state": "started",
+          "group": "app",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT",
+          "checks": [
+            {
+              "name": "servicecheck-00-http-8080",
+              "status": "passing",
+              "output": "{\"ok\":true,\"service\":\"tasknodeofficial\",\"environment\":\"production\",\"buildId\":\"prod\",\"uptimeSeconds\":7}",
+              "updated_at": "2026-09-05T14:22:34.019Z"
+            }
+          ]
+        },
+        {
+          "id": "d8d0ed9b969528",
+          "state": "stopped",
+          "group": "worker-context-rewrite",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "2862170c66e238",
+          "state": "started",
+          "group": "board-secretary",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "48ee629a21e748",
+          "state": "started",
+          "group": "worker-nft-renderer",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        },
+        {
+          "id": "e826761a263e18",
+          "state": "started",
+          "group": "worker-pftl",
+          "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1RZ56X8K4QZDEDWJJVSWFRT"
+        }
+      ],
+      "previousRelease": 700,
+      "sourceHead": "571d7833ed016165de32bd305ed765e62da066c7",
+      "sourceManifestSha256": "1afe47546d057c294cd418fe402cfde7c7b95efd44931037ee1f9ab0d0c02227"
+    },
+    "tasknode-pfdocs": {
+      "release": {
+        "Version": 60,
+        "Status": "complete",
+        "ImageRef": "registry.fly.io/tasknode-pfdocs:deployment-01M1RYRQZK0M0XTYF27WV3A9CX",
+        "CreatedAt": "2026-09-05T14:21:05Z"
+      },
+      "machines": [
+        {
+          "id": "2862174f094328",
+          "state": "started",
+          "group": "app",
+          "image": "registry.fly.io/tasknode-pfdocs:deployment-01M1RYRQZK0M0XTYF27WV3A9CX",
+          "checks": [
+            {
+              "name": "servicecheck-00-http-8080",
+              "status": "passing",
+              "output": "define(function(){;\nreturn {\n\t\"requireConf\": {\n\t\t\"waitSeconds\": 600,\n\t\t\"urlArgs\": \"ver=2026.2.2-1788618127196\"\n\t},\n\t\"removeDonateButton\": false,\n\t\"httpUnsafeOrigin\": \"https://tasknode-pfdocs.fly.dev\",\n\t\"adminKeys\": [],\n\t\"moderatorKeys\": [],\n\t\"inactiveTime\": 180,\n\t\"defaultStorageLimit\": 52428800,\n\t\"maxUploadSize\": 20971520,\n\t\"premiumUploadSize\": false,\n\t\"restrictRegistration\": false,\n\t\"httpSafeOrigin\": \"https://tasknode-pfdocs-sandbox.fly.dev\",\n\t\"enableEmbedding\": true,\n\t\"listMyInstance\": false,\n\t\"sso\": false,\n\t\"postFiat\": {\n\t\t\"walletFirst\": true,\n\t\t\"disableLegacyLogin\": true,\n\t\t\"taskNodeOrigins\": [\n\t\t\t\"https://tasknode.postfiat.org\"\n\t\t],\n\t\t\"pftl\": {\n\t\t\t\"networkId\": 2025,\n\t\t\t\"rpcUrl\": \"\",\n\t\t\t\"wssUrl\": \"\",\n\t\t\t\"archiveWssUrl\": \"\",\n\t\t\t\"ipfsGateway\": \"\",\n\t\t\t\"pftCurrency\": \"PFT\",\n\t\t\t\"accountTxCacheTtlMs\": 60000,\n\t\t\t\"accountTxCacheStaleMs\": 600000,\n\t\t\t\"accountTxCacheMaxEntries\": 2048,\n\t\t\t\"pointerMemoVersion\": \"v4\"\n\t\t},\n\t\t\"nostr\": {\n\t\t\t\"relays\": [],\n\t\t\t\"privateRelays\": [],\n\t\t\t\"relayProxy\": \"\",\n\t\t\t\"shareEnvelopeVersion\": 1\n\t\t},\n\t\t\"ai\": {\n\t\t\t\"ambientBaseUrl\": \"https://api.ambient.xyz\",\n\t\t\t\"openRouterBaseUrl\": \"https://openrouter.ai\"\n\t\t},\n\t\t\"data\": {\n\t\t\t\"queryEndpoint\": \"/api/postfiat/data/query\",\n\t\t\t\"defaultProvider\": \"tiingo\",\n\t\t\t\"tiingo\": {\n\t\t\t\t\"enabled\": true,\n\t\t\t\t\"baseUrl\": \"https://api.tiingo.com\",\n\t\t\t\t\"timeoutMs\": 10000,\n\t\t\t\t\"quoteCacheTtlMs\": 15000,\n\t\t\t\t\"quoteCacheStaleMs\": 300000,\n\t\t\t\t\"quoteCacheMaxEntries\": 2048,\n\t\t\t\t\"fundamentalCacheTtlMs\": 900000,\n\t\t\t\t\"fundamentalCacheStaleMs\": 86400000,\n\t\t\t\t\"fundamentalCacheMaxEntries\": 256\n\t\t\t}\n\t\t}\n\t},\n\t\"onlyOffice\": {\n\t\t\"availableVersions\": [\n\t\t\t\"v9\",\n\t\t\t\"x2t\"\n\t\t]\n\t}\n};\n});",
+              "updated_at": "2026-09-05T14:22:09.833Z"
+            }
+          ]
+        }
+      ],
+      "previousRelease": 59,
+      "sourceHead": "3927f26939027caf15026c93506180b303ff4bd7",
+      "sourceManifestSha256": "aebc11a1a3068ad96c36151a1c50c2b3681ec8427bd488f59085d37ccd4c9f72"
+    }
+  },
+  "checks": {
+    "tasknodeDatabaseAndSource": {
+      "migration": [
+        {
+          "name": "133_docs_library_folders.sql",
+          "applied_at": "2026-09-05T14:22:28.976Z"
+        }
+      ],
+      "columns": [
+        {
+          "column_name": "encrypted_library_metadata",
+          "data_type": "jsonb",
+          "column_default": null,
+          "is_nullable": "YES"
+        },
+        {
+          "column_name": "library_metadata_version",
+          "data_type": "integer",
+          "column_default": "0",
+          "is_nullable": "NO"
+        }
+      ],
+      "files": {
+        "server/repositories/docs-library.js": "9d958f87b7a2cdad994134166b8c3b7e1393f7372b464e8beced939d6552659c",
+        "server/repositories/collaboration.js": "1efc2c4013450813376f25149303475e1296d2ad1735d5162f925f1721b7611a",
+        "server/collaboration-routes.js": "e8c8746817d881e17105be39b226cc19a1eae843dadcb67f39c6e12286c63013",
+        "server/request-body-contracts.js": "9d29257365b230f65230cb06b3d4ab0ba54027fdae73b6bb9123fd66a160c7b3",
+        "server/route-policies.js": "99b6011d8c1ca61417a97a2eee55cec0cd7d9b3799417c18d4c68ae0afa8c3fb",
+        "server/db/migrations/133_docs_library_folders.sql": "5d67aa0eab39f75bfed79af6ce6722e5426eb091bc0aaffbc6fa746d27664478"
+      }
+    },
+    "health": {
+      "ok": true,
+      "service": "tasknodeofficial",
+      "environment": "production",
+      "buildId": "prod",
+      "uptimeSeconds": 28
+    },
+    "unauthenticatedLibraryWrite": {
+      "status": 401,
+      "body": {
+        "ok": false,
+        "route": "docs_library",
+        "error": "collaboration_login_required",
+        "message": "Sign in before using this route."
+      }
+    },
+    "modes": [
+      {
+        "label": "Instant",
+        "provider": "vercel",
+        "providerLabel": "Vercel AI Gateway",
+        "model": "zai/glm-5.3-flash",
+        "configured": true,
+        "primaryConfigured": true,
+        "backupConfigured": true,
+        "backupProvider": "ambient",
+        "enabled": false,
+        "status": "login_required",
+        "actionRequired": "Sign in to use billable chat modes.",
+        "privacy": "Vercel AI Gateway with Ambient backup",
+        "latency": "Fast"
+      },
+      {
+        "label": "Thinking",
+        "provider": "vercel",
+        "providerLabel": "Vercel AI Gateway",
+        "model": "zai/glm-5.3",
+        "configured": true,
+        "primaryConfigured": true,
+        "backupConfigured": true,
+        "backupProvider": "ambient",
+        "enabled": false,
+        "status": "login_required",
+        "actionRequired": "Sign in to use billable chat modes.",
+        "privacy": "Vercel AI Gateway with Ambient backup",
+        "latency": "Deep"
+      },
+      {
+        "label": "Help",
+        "provider": "vercel",
+        "providerLabel": "Vercel AI Gateway",
+        "model": "deepseek/deepseek-v4-flash-0731",
+        "configured": true,
+        "primaryConfigured": true,
+        "backupConfigured": true,
+        "backupProvider": "ambient",
+        "enabled": true,
+        "status": "ready",
+        "privacy": "Vercel AI Gateway with Ambient backup",
+        "latency": "Fast"
+      }
+    ],
+    "pfdocsAssets": [
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/common/tasknode-chat-protocol.js",
+        "sha256": "7e981e2b117ae27198526d4c9ccd9398ddc2dd4707aa7ce0ff3ddf62163c3e5a",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/common/sframe-app-framework.js",
+        "sha256": "95e21f2466d0d8ae95745e4440fbc924e02de2b59d559c68f1a32cdf8eed08c7",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/common/sframe-common.js",
+        "sha256": "2c744a713a5f0a63e724daa3367d6d8813e2713dfbb23527f8716cda1f82cea8",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/common/sframe-common-outer.js",
+        "sha256": "4e31235ef37c8db5a3a7f3b51d3ec218b309a8f0ce94a75f286a0f858688f3bd",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/common/onlyoffice/inner.js",
+        "sha256": "0c4ec96da7ddb0302fe29fb6c5b81e294b13ab2fd5ed55b681faec3961b4e679",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/common/onlyoffice/app-oo.less",
+        "sha256": "953a8187febd3f922aa173f8b5313fe2c3a0e606e3072b4a5e4206caeb26de51",
+        "encoding": null
+      },
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/common/toolbar.js",
+        "sha256": "bde0809cd3d18d61a124ce61527d82ba5f76a3e7d2f77b7925c8f26c98f17a75",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/common/messenger-ui.js",
+        "sha256": "0ebe6317b7955c3c3aa75343709ad806a0e703081419f2c6852ebdb146fa6384",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/pad/app-pad.less",
+        "sha256": "8b1cb9a265b35c5fdc77f4da6fd346edaa99a7bed823503bb6ed2e9e96037d49",
+        "encoding": null
+      },
+      {
+        "host": "tasknode-pfdocs.fly.dev",
+        "path": "/customize/src/less2/include/tasknode-chat.less",
+        "sha256": "cc33420e4b96aac9e9a9ce0fc2747e8f4f912e37a81fb48ff47316854dd7f79f",
+        "encoding": null
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/common/tasknode-chat-protocol.js",
+        "sha256": "7e981e2b117ae27198526d4c9ccd9398ddc2dd4707aa7ce0ff3ddf62163c3e5a",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/common/sframe-app-framework.js",
+        "sha256": "95e21f2466d0d8ae95745e4440fbc924e02de2b59d559c68f1a32cdf8eed08c7",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/common/sframe-common.js",
+        "sha256": "2c744a713a5f0a63e724daa3367d6d8813e2713dfbb23527f8716cda1f82cea8",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/common/sframe-common-outer.js",
+        "sha256": "4e31235ef37c8db5a3a7f3b51d3ec218b309a8f0ce94a75f286a0f858688f3bd",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/common/onlyoffice/inner.js",
+        "sha256": "0c4ec96da7ddb0302fe29fb6c5b81e294b13ab2fd5ed55b681faec3961b4e679",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/common/onlyoffice/app-oo.less",
+        "sha256": "953a8187febd3f922aa173f8b5313fe2c3a0e606e3072b4a5e4206caeb26de51",
+        "encoding": null
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/common/toolbar.js",
+        "sha256": "bde0809cd3d18d61a124ce61527d82ba5f76a3e7d2f77b7925c8f26c98f17a75",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/common/messenger-ui.js",
+        "sha256": "0ebe6317b7955c3c3aa75343709ad806a0e703081419f2c6852ebdb146fa6384",
+        "encoding": "br"
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/pad/app-pad.less",
+        "sha256": "8b1cb9a265b35c5fdc77f4da6fd346edaa99a7bed823503bb6ed2e9e96037d49",
+        "encoding": null
+      },
+      {
+        "host": "tasknode-pfdocs-sandbox.fly.dev",
+        "path": "/customize/src/less2/include/tasknode-chat.less",
+        "sha256": "cc33420e4b96aac9e9a9ce0fc2747e8f4f912e37a81fb48ff47316854dd7f79f",
+        "encoding": null
+      }
+    ]
+  },
+  "commands": {
+    "pfdocs": "fly deploy -a tasknode-pfdocs -c fly.toml --remote-only",
+    "tasknode": "PATH=/home/pfrpc/.fly/bin:$PATH npm run fly:deploy:prod"
+  },
+  "notes": [
+    "Task Node background guards passed; 10 active process groups and 9 cold standby machines.",
+    "PFDocs browser tests use production assets with no source overlays and a fixture assistant response.",
+    "Docs UI tests use production assets, synthetic API responses, and local fixture wallet helper modules. Production folder route auth, migration columns, and deployed server module hashes are verified separately."
+  ],
+  "browserChecks": {
+    "browser": {
+      "passed": true,
+      "mode": "Deployed app assets with synthetic API fixtures and local wallet-seeding helpers",
+      "checks": [
+        "one page unlock",
+        "native wallet unlock",
+        "encrypted fixtures",
+        "nested folders",
+        "move spreadsheet",
+        "breadcrumbs",
+        "global search",
+        "reload persistence",
+        "mobile overflow",
+        "clear titles on lock"
+      ]
+    },
+    "sheet": {
+      "passed": true,
+      "mode": "Deployed PFDocs, no source overlays, fixture assistant response",
+      "checks": [
+        "ready handshake",
+        "closed initially",
+        "human message delivery",
+        "assistant request and response",
+        "cell context for sheets",
+        "same-channel history",
+        "collapse and reopen",
+        "desktop and mobile containment"
+      ]
+    },
+    "pad": {
+      "passed": true,
+      "mode": "Deployed PFDocs, no source overlays, fixture assistant response",
+      "checks": [
+        "ready handshake",
+        "closed initially",
+        "human message delivery",
+        "assistant request and response",
+        "cell context for sheets",
+        "same-channel history",
+        "collapse and reopen",
+        "desktop and mobile containment"
+      ]
+    }
+  },
+  "verifiedAt": "2026-09-05T14:25:24.281Z"
+}

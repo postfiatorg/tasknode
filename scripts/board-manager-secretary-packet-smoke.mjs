@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 process.env.TASKNODE_DATABASE_DISABLED = "true";
 process.env.TASKNODE_POSTGRES_DISABLED = "true";
-process.env.AMBIENT_API_KEY = "board-manager-secretary-smoke-key";
+process.env.VERCEL_AI_GATEWAY_API_KEY = "board-manager-secretary-smoke-key";
 delete process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MODEL;
 delete process.env.TASKNODE_BOARD_MANAGER_SECRETARY_REASONING_EFFORT;
 
@@ -14,7 +14,7 @@ const {
   normalizeBoardManagerSecretaryPacket,
 } = await import("../server/board-manager-secretary-packets.js");
 
-assert.equal(boardManagerSecretaryModel(), "z-ai/glm-5.2");
+assert.equal(boardManagerSecretaryModel(), "zai/glm-5.3");
 
 const rawSourcePacket = {
   schema: "pf.hive.board_manager.source.v0",
@@ -420,12 +420,12 @@ const result = await fetchBoardManagerSecretaryPacket({
 });
 
 assert.match(capturedUrl, /\/chat\/completions$/);
-assert.equal(capturedBody.model, "z-ai/glm-5.2");
+assert.equal(capturedBody.model, "zai/glm-5.3");
 assert.deepEqual(capturedBody.reasoning, { effort: "high", exclude: true });
 assert.equal(capturedBody.thinking, undefined);
 assert.equal(capturedBody.reasoning_effort, undefined);
 assert.equal(capturedBody.response_format.type, "json_object");
-assert.equal(capturedBody.stream, undefined);
+assert.equal(capturedBody.stream, false);
 assert.match(capturedBody.messages[0].content, /Output valid JSON only/);
 assert.match(capturedBody.messages[0].content, /do not summarize the board as globally capacity-blocked/);
 assert.match(capturedBody.messages[1].content, /BOARD MANAGER SOURCE PACKET JSON/);
@@ -433,7 +433,7 @@ assert.match(capturedBody.messages[1].content, /capabilityInstrumentation/);
 assert.match(capturedBody.messages[1].content, /capability_gating_task/);
 assert.match(capturedBody.messages[1].content, /projectLeaderInputs/);
 
-assert.equal(result.provider, "ambient");
+assert.equal(result.provider, "vercel");
 assert.equal(result.model, "deepseek-v4-pro");
 assert.equal(result.packet.motion_state, "needs_attention");
 assert.equal(result.packet.recommended_context_request.target_id, "task_node");
@@ -643,7 +643,7 @@ const decisionPacket = buildBoardManagerSecretaryDecisionPacket({
   reused: false,
 });
 assert.equal(decisionPacket.schema, "pf.hive.board_manager.decision_source.v1");
-assert.equal(decisionPacket.sourceMode, "ambient_secretary_packet");
+assert.equal(decisionPacket.sourceMode, "gateway_secretary_packet");
 assert.equal(decisionPacket.rawSourcePacketDigest, rawSourcePacket.sourcePacketDigest);
 assert.equal(decisionPacket.secretarySourceDigest, boardManagerSecretarySourceDigest(rawSourcePacket));
 assert.equal(decisionPacket.secretaryPacket.packetJson.motion_state, "needs_attention");

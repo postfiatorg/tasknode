@@ -7,20 +7,14 @@ function clean(value = "", max = 1000) {
 export function deepResearchConfig(env = process.env) {
   const baseUrl = clean(env.CORBANU_DEEP_RESEARCH_BASE_URL, 1000);
   const secret = clean(env.CORBANU_TASKNODE_INTEGRATION_SECRET, 10_000);
-  const allowlist = new Set(
-    String(env.TASKNODE_DEEP_RESEARCH_ACCOUNT_IDS || "")
-      .split(",")
-      .map(value => clean(value, 180))
-      .filter(Boolean),
-  );
   let normalizedBaseUrl = baseUrl;
   while (normalizedBaseUrl.endsWith("/")) normalizedBaseUrl = normalizedBaseUrl.slice(0, -1);
-  return { baseUrl: normalizedBaseUrl, secret, allowlist };
+  return { baseUrl: normalizedBaseUrl, secret };
 }
 
 export function deepResearchAvailable({ accountId = "", env = process.env } = {}) {
   const config = deepResearchConfig(env);
-  return Boolean(config.baseUrl && config.secret && config.allowlist.has(clean(accountId, 180)));
+  return Boolean(config.baseUrl && config.secret && clean(accountId, 180));
 }
 
 export async function startCorbanuDeepResearch({
@@ -108,8 +102,8 @@ async function callCorbanu({
   if (!config.baseUrl || !config.secret) {
     throw Object.assign(new Error("deep_research_unavailable"), { status: 503 });
   }
-  if (!subject || !config.allowlist.has(subject)) {
-    throw Object.assign(new Error("deep_research_not_enabled"), { status: 403 });
+  if (!subject) {
+    throw Object.assign(new Error("deep_research_account_required"), { status: 400 });
   }
   if (!correlationId) {
     throw Object.assign(new Error("deep_research_request_id_required"), { status: 400 });

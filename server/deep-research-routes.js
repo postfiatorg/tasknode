@@ -33,9 +33,9 @@ async function create({ readJson, req, session }) {
   if (req.method !== "POST") return response(405, { error: "deep_research_method_not_allowed" });
   if (!session?.accountId) return response(401, { error: "deep_research_login_required" });
   if (!deepResearchAvailable({ accountId: session.accountId })) {
-    return response(403, {
-      error: "deep_research_not_enabled",
-      message: "Deep Research is currently available to the operator canary only.",
+    return response(503, {
+      error: "deep_research_unavailable",
+      message: "Deep Research is temporarily unavailable.",
     });
   }
   const payload = await readJson(req, 128 * 1024);

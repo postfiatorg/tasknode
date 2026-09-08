@@ -1,3 +1,4 @@
+import { classifySemanticInput } from "../semantic-classifier.js";
 import { databaseEnabled, query } from "../db/pool.js";
 import { getNetworkTaskEligibility } from "./network-tasks.js";
 import { canonicalAllocationProjectionLinkSql } from "./network-task-allocation-sync.js";
@@ -145,49 +146,48 @@ function publicHiveEntry(row = {}) {
   };
 }
 
-function compactNumber(value = "") {
-  const normalized = safeText(value, 40).replace(/,/g, "");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
+const reservationInstruction = "Extract only explicit current user requirements for the minimum PFT payment they will accept for task work. Never infer a minimum from a past reward, account balance, market price, investment target or suggestion. Entries are newest first; resolve explicit revisions using the newest applicable statement. Omit unspecified or ambiguous requirements. Convert explicitly stated k PFT to thousands. Cite the exact supporting passage and its entryId from that account only. This extracts user instructions; it does not decide prices.";
+const reservationFields = { minPft:{type:"number"}, entryId:{type:"string"}, citation:{type:"string"} };
+function validReservation(value, entries) {
+  return value && Number.isFinite(value.minPft) && value.minPft >= 0 && typeof value.citation === "string" && value.citation.length > 0 && entries.some(entry => entry.id === value.entryId && entry.body.includes(value.citation));
+}
+async function classifyReservation(entries, options) {
+  if (!entries.length) return null;
+  const result = await classifySemanticInput({ name: "explicit_task_reservation", instruction: reservationInstruction,
+    schema: { type:"object", additionalProperties:false, required:["present","minPft","entryId","citation"], properties:{present:{type:"boolean"},...reservationFields} },
+    input:{entries}, validate:value=>value && Object.keys(value).length===4 && typeof value.present==="boolean" && (value.present ? validReservation(value, entries) : value.minPft===0 && value.entryId==="" && value.citation===""),
+    fallback:{present:false,minPft:0,entryId:"",citation:""},
+  }, options);
+  return result.present ? result : null;
 }
 
-export function extractReservationRatePft(text = "") {
-  const value = safeText(text, 3000);
-  if (!value) return null;
-  const candidates = [];
-  const patterns = [
-    /\b(?:reservation(?:\s+rate)?|minimum|min(?:imum)?|floor|line|price|rate)\b[^.\n]{0,120}?(\d[\d,]*(?:\.\d+)?)\s*(k|pft)?\b/gi,
-    /\b(?:under|below|less\s+than|lower\s+than)\b[^.\n]{0,120}?(\d[\d,]*(?:\.\d+)?)\s*(k|pft)\b/gi,
-    /\b(\d[\d,]*(?:\.\d+)?)\s*(k|pft)\b[^.\n]{0,120}?\b(?:minimum|reservation|floor|or\s+no|or\s+i\s+won'?t|or\s+do\s+not)\b/gi,
-  ];
-  for (const pattern of patterns) {
-    let match = pattern.exec(value);
-    while (match) {
-      const raw = compactNumber(match[1]);
-      const unit = safeText(match[2], 8).toLowerCase();
-      const amount = unit === "k" ? raw * 1000 : raw;
-      if (amount >= 1_000 && amount <= 1_000_000) {
-        candidates.push(amount);
-      }
-      match = pattern.exec(value);
-    }
-  }
-  if (!candidates.length) return null;
-  return Math.max(...candidates);
+// One scoped batch avoids a provider call per account while building a board source packet.
+export async function classifyAccountReservations(accounts, options) {
+  if (!accounts.length) return new Map();
+  const byAccount = new Map(accounts.map(account => [account.accountId, account.entries]));
+  const result = await classifySemanticInput({ name:"account_task_reservations", instruction:reservationInstruction,
+    schema:{type:"object",additionalProperties:false,required:["reservations"],properties:{reservations:{type:"array",items:{type:"object",additionalProperties:false,required:["accountId","minPft","entryId","citation"],properties:{accountId:{type:"string"},...reservationFields}}}}},
+    input:{accounts}, validate:value=>value && Object.keys(value).length===1 && Array.isArray(value.reservations) && value.reservations.length<=accounts.length && new Set(value.reservations.map(item=>item?.accountId)).size===value.reservations.length && value.reservations.every(item=>Object.keys(item).length===4 && byAccount.has(item.accountId) && validReservation(item,byAccount.get(item.accountId))),
+    fallback:{reservations:[]},
+  }, options);
+  return new Map(result.reservations.map(item=>[item.accountId,item]));
 }
 
-function latestReservationRate(entries = []) {
-  for (const entry of safeArray(entries)) {
-    const rate = extractReservationRatePft(entry.body);
-    if (rate) {
-      return {
-        minPft: rate,
-        sourceEntryId: entry.id,
-        sourceCreatedAt: entry.createdAt,
-      };
-    }
-  }
-  return null;
+function reservationSource(result, entries) {
+  if (!result) return null;
+  return { minPft:result.minPft, sourceEntryId:result.entryId, sourceText:result.citation, sourceCreatedAt:entries.find(entry=>entry.id===result.entryId)?.createdAt || null };
+}
+
+export async function extractReservationRatePft(text = "", options) {
+  const result = await classifyReservation([{id:"input",body:safeText(text,3000)}], options);
+  return result?.minPft ?? null;
+}
+
+async function latestReservationRate(entries = []) {
+  const input = safeArray(entries).slice(0,20).map(entry=>({id:entry.id,body:entry.body}));
+  const result = await classifyReservation(input);
+  if (!result) return null;
+  return reservationSource(result, entries);
 }
 
 async function accountNetworkTasks({ accountId = "", walletAddress = "", limit = 12 } = {}) {
@@ -368,8 +368,8 @@ async function accountNetworkTaskEligibility({ accountId = "", walletAddress = "
   };
 }
 
-function summarizeConstraints({ entries = [], tasks = [] } = {}) {
-  const reservationRate = latestReservationRate(entries);
+async function summarizeConstraints({ entries = [], tasks = [] } = {}) {
+  const reservationRate = await latestReservationRate(entries);
   const recentRefusals = safeArray(tasks)
     .filter((task) => normalizeStatus(task.allocationStatus || task.taskStatus) === "refused")
     .slice(0, 6)
@@ -420,7 +420,7 @@ export async function buildHiveAccountLiveState({
       accountHiveEntries({ accountId: normalizedAccountId }),
       accountNetworkTaskEligibility({ accountId: normalizedAccountId, walletAddress: normalizedWallet }).catch(() => null),
     ]);
-    const routingConstraints = summarizeConstraints({ entries: hiveEntries, tasks: networkTasks });
+    const routingConstraints = await summarizeConstraints({ entries: hiveEntries, tasks: networkTasks });
     const liveState = {
       ok: true,
       schema: "tasknode.hive.account_live_state.v1",
@@ -607,12 +607,12 @@ export async function buildHiveRoutingConstraintsSnapshot({ limit = 80 } = {}) {
       },
     ]));
     const accountIds = new Set([...byAccount.keys(), ...refusalByAccount.keys()]);
-    const accounts = [...accountIds]
-      .map((accountId) => ({
-        accountId,
-        reservationRate: latestReservationRate(byAccount.get(accountId) || []),
-        recentRefusals: refusalByAccount.get(accountId) || null,
-      }))
+    const extracted = await classifyAccountReservations([...byAccount].map(([accountId, entries]) => ({ accountId, entries: entries.slice(0,20) })));
+    const accounts = [...accountIds].map(accountId => ({
+      accountId,
+      reservationRate: reservationSource(extracted.get(accountId), byAccount.get(accountId) || []),
+      recentRefusals: refusalByAccount.get(accountId) || null,
+    }))
       .filter((account) => account.reservationRate?.minPft || account.recentRefusals?.count45d)
       .slice(0, 20);
     const snapshot = {

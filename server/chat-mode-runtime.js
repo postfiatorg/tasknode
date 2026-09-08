@@ -1,8 +1,10 @@
+import { apiChatModels } from "./chat-api-models.js";
 import {
-  AMBIENT_MODELS,
-  ambientConfigured,
-  resolveAmbientModel,
-} from "./ambient-inference.js";
+  INFERENCE_MODELS,
+  inferenceConfigured,
+  inferenceProviderConfigured,
+  resolveInferenceModel,
+} from "./inference.js";
 import { effectiveDefaultChatMode, fallbackChatModeLabel } from "./chat-mode-defaults.js";
 
 export const defaultProviderTimeoutMs = 45_000;
@@ -12,10 +14,10 @@ export const chatModePrices = {
     inputUsdPerMillion: 0.063,
     inputCacheHitUsdPerMillion: 0.0126,
     outputUsdPerMillion: 0.126,
-    provider: "ambient",
-    providerLabel: "Ambient",
-    capability: "fast_text",
-    defaultModel: AMBIENT_MODELS.fastText,
+    provider: "vercel",
+    providerLabel: "Vercel AI Gateway",
+    capability: "instant_text",
+    defaultModel: INFERENCE_MODELS.instantText,
     maxOutputTokens: 16384,
     disableReasoning: true,
   },
@@ -23,21 +25,22 @@ export const chatModePrices = {
     inputUsdPerMillion: 0.4725,
     inputCacheHitUsdPerMillion: 0.09,
     outputUsdPerMillion: 1.98,
-    provider: "ambient",
-    providerLabel: "Ambient",
+    provider: "vercel",
+    providerLabel: "Vercel AI Gateway",
     capability: "reasoning_text",
-    defaultModel: AMBIENT_MODELS.reasoningText,
+    defaultModel: INFERENCE_MODELS.reasoningText,
     maxOutputTokens: 4096,
     reasoningEffort: "xhigh",
   },
+  ...apiChatModels,
   "Help": {
     inputUsdPerMillion: 0.063,
     inputCacheHitUsdPerMillion: 0.0126,
     outputUsdPerMillion: 0.126,
-    provider: "ambient",
-    providerLabel: "Ambient",
+    provider: "vercel",
+    providerLabel: "Vercel AI Gateway",
     capability: "fast_text",
-    defaultModel: AMBIENT_MODELS.fastText,
+    defaultModel: INFERENCE_MODELS.fastText,
     maxOutputTokens: 1200,
     estimatedOutputTokens: 1200,
   },
@@ -54,7 +57,7 @@ export { effectiveDefaultChatMode, fallbackChatModeLabel };
 export const defaultChatMode = fallbackChatModeLabel;
 
 export function chatProviderConfigured(provider) {
-  if (provider === "ambient") return ambientConfigured();
+  if (["vercel", "ambient"].includes(provider)) return inferenceProviderConfigured(provider);
   return false;
 }
 
@@ -72,10 +75,11 @@ export function chatProviderTimeoutMs({ mode = "", provider = "", source = "" } 
   const normalizedMode = normalizedChatMode(mode) || String(mode || "").trim();
   void provider;
   void source;
-  if (normalizedMode === "Thinking") {
+  if (normalizedMode === "Thinking" || chatModePrices[normalizedMode]?.exactModel) {
     return timeoutFromEnv(
       [
         normalizedMode === "Help" ? "CHAT_PROVIDER_HELP_TIMEOUT_MS" : "",
+        "CHAT_PROVIDER_VERCEL_THINKING_TIMEOUT_MS",
         "CHAT_PROVIDER_AMBIENT_THINKING_TIMEOUT_MS",
         "CHAT_PROVIDER_THINKING_TIMEOUT_MS",
         "CHAT_PROVIDER_TIMEOUT_MS",
@@ -87,7 +91,7 @@ export function chatProviderTimeoutMs({ mode = "", provider = "", source = "" } 
 }
 
 function chatProviderEnabled(provider) {
-  if (provider === "ambient") return ambientConfigured() && process.env.AMBIENT_CHAT_ENABLED !== "false";
+  if (provider === "vercel") return inferenceConfigured() && process.env.INFERENCE_CHAT_ENABLED !== "false";
   return false;
 }
 
@@ -124,7 +128,7 @@ export function normalizedChatMode(mode) {
 export function modelForMode(mode) {
   const normalizedMode = normalizedChatMode(mode);
   const config = chatModeConfig(normalizedMode);
-  return resolveAmbientModel({
+  return resolveInferenceModel({
     model: config.defaultModel,
     capability: config.capability,
   });
@@ -133,8 +137,9 @@ export function modelForMode(mode) {
 export function chatExecutionStatus(mode) {
   const normalizedMode = normalizedChatMode(mode);
   const config = chatModeConfig(normalizedMode);
-  const configured = chatProviderConfigured(config.provider);
-  const enabled = chatProviderEnabled(config.provider);
+  const primaryConfigured = inferenceProviderConfigured("vercel", process.env, modelForMode(normalizedMode));
+  const configured = config.exactModel ? primaryConfigured : inferenceConfigured();
+  const enabled = configured && (config.exactModel ? process.env.INFERENCE_CHAT_ENABLED !== "false" : chatProviderEnabled(config.provider));
 
   return {
     mode: normalizedMode,
@@ -142,14 +147,19 @@ export function chatExecutionStatus(mode) {
     providerLabel: config.providerLabel || config.provider,
     model: modelForMode(normalizedMode),
     configured,
+    primaryConfigured,
+    backupConfigured: !config.exactModel && process.env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" && chatProviderConfigured("ambient"),
+    backupProvider: config.exactModel ? "" : "ambient",
     enabled,
     status: enabled ? "ready" : configured ? "disabled" : "missing_config",
   };
 }
 
 export function actualChatCost(mode, usage) {
-  const config = chatModeConfig(mode);
+  const baseConfig = chatModeConfig(mode);
   const inputTokens = Number(usage?.inputTokens || 0);
+  const config = baseConfig.longContext && inputTokens >= baseConfig.longContext.threshold
+    ? { ...baseConfig, ...baseConfig.longContext } : baseConfig;
   const outputTokens = Number(usage?.outputTokens || 0);
   const promptCacheHitTokens = Math.max(0, Number(usage?.promptCacheHitTokens || 0));
   const promptCacheMissTokens = Math.max(

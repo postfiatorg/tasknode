@@ -1,0 +1,353 @@
+{
+  "release": {
+    "Version": 700,
+    "Status": "complete",
+    "ImageRef": "registry.fly.io/tasknodeofficial-dev:deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+    "CreatedAt": "2026-09-05T02:30:46Z"
+  },
+  "machines": [
+    {
+      "id": "e827021fd67708",
+      "group": "worker-taskgen",
+      "state": "stopped",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "e8267e0c015508",
+      "group": "board-secretary",
+      "state": "stopped",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "e826761a263e18",
+      "group": "worker-pftl",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "e826571a546458",
+      "group": "worker-task-review",
+      "state": "stopped",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "e820352ae34138",
+      "group": "worker-airdrop",
+      "state": "stopped",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "d8d0ed9b969528",
+      "group": "worker-context-rewrite",
+      "state": "stopped",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "8d4930ae156638",
+      "group": "app",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": [
+        {
+          "name": "servicecheck-00-http-8080",
+          "status": "passing",
+          "output": "{\"ok\":true,\"service\":\"tasknodeofficial\",\"environment\":\"production\",\"buildId\":\"prod\",\"uptimeSeconds\":7}",
+          "updated_at": "2026-09-05T02:31:07.419Z"
+        }
+      ]
+    },
+    {
+      "id": "87d077b0263998",
+      "group": "worker-context-rewrite",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "8465ddb274e908",
+      "group": "worker-hive",
+      "state": "stopped",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "7845637cd3e708",
+      "group": "worker-memory-profile",
+      "state": "stopped",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "7813e21f1295d8",
+      "group": "worker-taskgen",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "6835d0ea464158",
+      "group": "worker-task-review",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "48ee629a21e748",
+      "group": "worker-nft-renderer",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "48e10e9a40d978",
+      "group": "worker-pftl",
+      "state": "stopped",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "48e056a3705e18",
+      "group": "worker-memory-profile",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "2862170c66e238",
+      "group": "board-secretary",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "1854406a6e3508",
+      "group": "worker-hive",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "1850d37c3d3e48",
+      "group": "worker-airdrop",
+      "state": "started",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    },
+    {
+      "id": "0803736c291198",
+      "group": "worker-nft-renderer",
+      "state": "stopped",
+      "image": "deployment-01M1QPCRBS2KR3XSDA5VCF8E5K",
+      "digest": "sha256:af576e665dfcc9a3d3cb49ff54c0bdeb4e70ef5e984f6949e9a958d0d7cbc29e",
+      "restart": "always",
+      "checks": []
+    }
+  ],
+  "sourceHead": "571d7833ed016165de32bd305ed765e62da066c7",
+  "sourceManifestDigest": "51b9fd868cefec4978c6deff8e023ca6dda1ae9af9e99ecb2c748d2b846cadf6",
+  "deployedSourceChecks": {
+    "modes": [
+      {
+        "mode": "Instant",
+        "provider": "vercel",
+        "providerLabel": "Vercel AI Gateway",
+        "model": "zai/glm-5.3-flash",
+        "configured": true,
+        "primaryConfigured": true,
+        "backupConfigured": true,
+        "backupProvider": "ambient",
+        "enabled": true,
+        "status": "ready"
+      },
+      {
+        "mode": "Thinking",
+        "provider": "vercel",
+        "providerLabel": "Vercel AI Gateway",
+        "model": "zai/glm-5.3",
+        "configured": true,
+        "primaryConfigured": true,
+        "backupConfigured": true,
+        "backupProvider": "ambient",
+        "enabled": true,
+        "status": "ready"
+      },
+      {
+        "mode": "Help",
+        "provider": "vercel",
+        "providerLabel": "Vercel AI Gateway",
+        "model": "deepseek/deepseek-v4-flash-0731",
+        "configured": true,
+        "primaryConfigured": true,
+        "backupConfigured": true,
+        "backupProvider": "ambient",
+        "enabled": true,
+        "status": "ready"
+      }
+    ],
+    "migration": [
+      {
+        "name": "132_vercel_inference_defaults.sql",
+        "applied_at": "2026-09-05T02:31:02.611Z"
+      }
+    ],
+    "results": [
+      {
+        "test": "instant_text",
+        "provider": "vercel",
+        "model": "zai/glm-5.3-flash",
+        "valid": true
+      },
+      {
+        "test": "strict_json",
+        "provider": "vercel",
+        "model": "zai/glm-5.3",
+        "valid": true
+      },
+      {
+        "test": "ambient_backup",
+        "provider": "ambient",
+        "model": "z-ai/glm-5.2",
+        "fallbackFrom": "vercel",
+        "valid": true
+      }
+    ],
+    "files": {
+      "server/inference.js": "337bed416fcf23535ffb14ba4a78d76e6836482c3922bd59e034f7370f2a2f33",
+      "server/inference-policy.js": "7448efec0d018cb5b752c12bc4a72b60adce9d70ebbab35bbae32e948d44f0d3",
+      "server/inference-protocol.js": "cf3e33ea77f540a5d823e500f3a5eed1d08fe10b79983ddab1407a8dc65967cc",
+      "server/inference-transport.js": "d2b629798f2c147a5c4c8ee46085ab9494e50324e1a424663ade360f43381825",
+      "server/chat-mode-runtime.js": "dcc6cf708f3b2fff558948e4e01af281ec45e0bfa5c95e3ff2ef10bbc5952134"
+    }
+  },
+  "publicHealth": {
+    "http": 200,
+    "ok": true
+  },
+  "publicModes": {
+    "modes": [
+      {
+        "label": "Instant",
+        "provider": "vercel",
+        "providerLabel": "Vercel AI Gateway",
+        "model": "zai/glm-5.3-flash",
+        "configured": true,
+        "primaryConfigured": true,
+        "backupConfigured": true,
+        "backupProvider": "ambient",
+        "enabled": false,
+        "status": "login_required",
+        "actionRequired": "Sign in to use billable chat modes.",
+        "privacy": "Vercel AI Gateway with Ambient backup",
+        "latency": "Fast"
+      },
+      {
+        "label": "Thinking",
+        "provider": "vercel",
+        "providerLabel": "Vercel AI Gateway",
+        "model": "zai/glm-5.3",
+        "configured": true,
+        "primaryConfigured": true,
+        "backupConfigured": true,
+        "backupProvider": "ambient",
+        "enabled": false,
+        "status": "login_required",
+        "actionRequired": "Sign in to use billable chat modes.",
+        "privacy": "Vercel AI Gateway with Ambient backup",
+        "latency": "Deep"
+      },
+      {
+        "label": "Help",
+        "provider": "vercel",
+        "providerLabel": "Vercel AI Gateway",
+        "model": "deepseek/deepseek-v4-flash-0731",
+        "configured": true,
+        "primaryConfigured": true,
+        "backupConfigured": true,
+        "backupProvider": "ambient",
+        "enabled": true,
+        "status": "ready",
+        "privacy": "Vercel AI Gateway with Ambient backup",
+        "latency": "Fast"
+      }
+    ]
+  },
+  "systemStatusSummary": {
+    "ok": 17,
+    "warning": 4,
+    "critical": 2,
+    "unknown": 0,
+    "disabled": 1,
+    "total": 24
+  },
+  "existingQueueAlerts": [
+    "Hive active projects: oldest due 2026-08-07; last success 2026-08-04",
+    "Task review: existing reward-submit-unknown and stalled-publication records; oldest pending 2026-07-17"
+  ],
+  "workerProgress": {
+    "since": "2026-09-05T02:31:02.611Z",
+    "reports": [
+      {
+        "table": "profile_public_snapshots",
+        "rows": [
+          {
+            "provider": "vercel",
+            "model": "deepseek/deepseek-v4-flash-0731",
+            "status": "completed",
+            "count": 2,
+            "last_completed_at": "2026-09-05T02:31:57.257Z"
+          }
+        ]
+      },
+      {
+        "table": "profile_daily_airdrop_runs",
+        "rows": []
+      },
+      {
+        "table": "chat_model_runs",
+        "rows": []
+      }
+    ]
+  }
+}

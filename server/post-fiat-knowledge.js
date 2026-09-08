@@ -1,3 +1,4 @@
+import { isAsciiDigit, isAsciiLetter, replaceCharacterRuns, splitWhitespace } from "../shared/text-protocol.js";
 import { loadPrompt } from "./prompt-registry.js";
 
 const corpus = JSON.parse(loadPrompt("chat_modules/post_fiat_knowledge.json"));
@@ -20,13 +21,12 @@ const synonymGroups = [
 ];
 
 function normalizeText(value = "") {
-  return String(value || "").toLowerCase().replaceAll("-", "").replace(/[^a-z0-9]+/g, " ").trim();
+  return replaceCharacterRuns(String(value || "").toLowerCase().replaceAll("-", ""),char=>!isAsciiLetter(char)&&!isAsciiDigit(char)," ").trim();
 }
 
 function queryTokens(message = "") {
   const base = new Set(
-    normalizeText(message)
-      .split(/\s+/)
+    splitWhitespace(normalizeText(message))
       .filter((token) => token.length > 1 && !stopWords.has(token))
   );
   for (const group of synonymGroups) {
@@ -87,13 +87,13 @@ function selectedChunks(message = "", limit = 8) {
     sourceCounts.set(chunk.sourceId, sourceCount + 1);
     selected.push(chunk);
   };
-  add(corpus.chunks.find((chunk) => chunk.sourceType === "whitepaper" && /^Abstract/i.test(chunk.heading)), { force: true });
+  add(corpus.chunks.find((chunk) => chunk.sourceType === "whitepaper" && chunk.heading.toLowerCase().startsWith("abstract")), { force: true });
   const bestWhitepaper = ranked.find(
     (entry) => entry.chunk.sourceType === "whitepaper" && entry.score > 4 && !seen.has(entry.chunk.id)
   );
   if (bestWhitepaper) add(bestWhitepaper.chunk, { force: true });
   if (tokens.length === 0) {
-    add(corpus.chunks.find((chunk) => chunk.sourceType === "whitepaper" && /^1\. Introduction/i.test(chunk.heading)));
+    add(corpus.chunks.find((chunk) => chunk.sourceType === "whitepaper" && chunk.heading.toLowerCase().startsWith("1. introduction")));
     add(corpus.chunks.find((chunk) => chunk.sourceId === "blog:community-update-august-2026"));
   }
   for (const entry of ranked) {

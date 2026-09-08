@@ -1,3 +1,6 @@
+import { ExpandableProfileImage } from "./ExpandableProfileImage.jsx";
+import { ProfileArtTraits } from "./ProfilePortrait.jsx";
+import { PROFILE_NFT_TITLE } from "../../../shared/profile-nft-art.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { requestJson } from "../../api";
 import { profileNftImageCandidates } from "./profile-nft-images.js";
@@ -43,15 +46,8 @@ export function ProfileStudio({
   const [mintError, setMintError] = useState("");
   const palettes = ["green", "gray", "gold", "blue"];
   const kinds = ["topology", "circuit", "sunburst", "flow"];
-  const titles = [
-    "Network Verification Engineer",
-    "Ledger Triage Operator",
-    "Reward Composer",
-    "Daily Signal Analyst",
-  ];
   const palette = palettes[seed % 4];
   const kind = kinds[seed % 4];
-  const title = titles[seed % 4];
   const recoveredNftStatus = profileNftStatus(generatedNft);
   const generationFailed = profileNftFailed(generatedNft);
   const recoveredGenerationPending = profileNftIsGenerating(generatedNft);
@@ -250,27 +246,29 @@ export function ProfileStudio({
     <section style={{ paddingTop: 64 }}>
       <SectionHead
         eyebrow="Profile Studio · today's identity"
-        sub="Generated from your last 28 days of network behavior"
+        sub="Profile pictures inspired by your completed work"
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 32, alignItems: "center" }}>
         <div className={minted ? "tn-glow" : ""}
           style={{ borderRadius: 12, overflow: "hidden", position: "relative" }}>
           {generatedImageSrc ? (
-            <img
-              alt="Generated profile NFT"
-              onError={() => setImageLoadFailed(true)}
-              onLoad={() => setImageLoadFailed(false)}
-              src={generatedImageSrc}
-              style={{ display: "block", height: 180, objectFit: "cover", width: 180 }}
-            />
+            <ExpandableProfileImage nft={generatedNft}>
+              <img
+                alt="Generated profile NFT"
+                onError={() => setImageLoadFailed(true)}
+                onLoad={() => setImageLoadFailed(false)}
+                src={generatedImageSrc}
+                style={{ display: "block", height: 180, objectFit: "cover", width: 180 }}
+              />
+            </ExpandableProfileImage>
           ) : (
             <NFTArt kind={kind} palette={palette} size={180} />
           )}
           {minted && (
             <div style={{
               position: "absolute", top: 8, right: 8,
-              background: C.success, color: "#fff",
+              background: C.success, color: "var(--tn-dark-bg, #fff)",
               width: 22, height: 22, borderRadius: "50%",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 13, fontWeight: 700,
@@ -280,14 +278,15 @@ export function ProfileStudio({
 
         <div>
           <h3 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em", color: C.ink }}>
-            {generatedNft?.title || title}
+            {generatedNft?.title || PROFILE_NFT_TITLE}
           </h3>
+          <ProfileArtTraits nft={generatedNft} />
           <div style={{ fontSize: 13.5, color: C.ink3, marginBottom: 20, maxWidth: 480 }}>
             {recoveredGenerationPending
               ? "Generation is still running. You can leave this page; the result will appear here and in the gallery."
               : generationFailed
                 ? "Generation failed before the image was ready. Retry to create a new recoverable draft."
-                : "Mint it as today's identity, or reroll. One free mint per day."}
+                : "Use it as your profile picture, or mint it with your wallet."}
           </div>
 
           {!minted && (
@@ -310,7 +309,7 @@ export function ProfileStudio({
 
           {generating && (
             <div className="tn-fadeIn" style={{ color: C.ink3, fontSize: 12.5, marginTop: 14, maxWidth: 460 }}>
-              Generating with gpt-image-2, then pinning the image to IPFS. Safe to leave; this draft is saved.
+              Creating and reviewing your portrait. You can leave this page; your draft is saved.
             </div>
           )}
 
@@ -557,8 +556,9 @@ export function NFTTile({ nft, onSetProfilePicture = null, selecting = false }) 
   };
 
   return (
-    <div className="tn-lift" style={{ cursor: "pointer" }}>
-      <div style={{
+    <div className="tn-lift">
+      <ExpandableProfileImage nft={nft} disabled={!imageSrc} style={{
+        width: "100%",
         aspectRatio: "1 / 1",
         background: C.paper2,
         borderRadius: 12,
@@ -568,7 +568,7 @@ export function NFTTile({ nft, onSetProfilePicture = null, selecting = false }) 
       }}>
         {selected && (
           <div style={{
-            background: "rgba(31, 27, 22, 0.78)",
+            background: "var(--tn-dark-inverse-surface, rgba(31, 27, 22, 0.78))",
             borderRadius: 999,
             color: C.paper3,
             fontSize: 11,
@@ -638,7 +638,7 @@ export function NFTTile({ nft, onSetProfilePicture = null, selecting = false }) 
         ) : (
           <NFTArt kind={nft.kind || "topology"} palette={nft.palette || "green"} size="100%" />
         )}
-      </div>
+      </ExpandableProfileImage>
       <div style={{
         fontSize: 13.5, fontWeight: 600, color: C.ink,
         letterSpacing: "-0.005em",
@@ -646,6 +646,7 @@ export function NFTTile({ nft, onSetProfilePicture = null, selecting = false }) 
       }}>
         {nft.title}
       </div>
+      <ProfileArtTraits nft={nft} />
       <div style={{ fontSize: 11.5, color: C.ink4, marginTop: 3, display: "flex", gap: 8 }}>
         <span>{nftDateLabel(nft)}</span>
         <span style={{ color: C.ink5 }}>·</span>

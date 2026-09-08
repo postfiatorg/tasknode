@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { collapseWhitespace, isIdentifierChar, textTokens, isWhitespace, replaceClassifiedSpan, stripMarkdownFence } from "../server/inference-text.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AMBIENT_MODELS, ambientChatCompletion, ambientConfigured } from "../server/ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "../server/inference.js";
 import {
   databaseRowsToDeathmarchEvents,
   isDeathmarchTaskEvent,
@@ -27,8 +28,8 @@ export {
 const DEFAULT_WALLET = "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx";
 const DEFAULT_STATE_PATH = ".deathmarch-state.json";
 const DEFAULT_SEED_FILE = DEFAULT_DEATHMARCH_SEED_FILE;
-const DEFAULT_AMBIENT_MODEL = AMBIENT_MODELS.structured;
-const DEFAULT_AMBIENT_TIMEOUT_MS = 20000;
+const DEFAULT_INFERENCE_MODEL = INFERENCE_MODELS.structured;
+const DEFAULT_INFERENCE_TIMEOUT_MS = 20000;
 const DEFAULT_DISCORD_TIMEOUT_MS = 10000;
 const CLASSIFIER_FAILURE_CATEGORY = "classification unavailable";
 
@@ -36,9 +37,7 @@ function safeText(value = "", max = 4000) {
   return String(value ?? "").trim().slice(0, max);
 }
 
-function compactWhitespace(value = "") {
-  return safeText(value, 4000).replace(/\s+/g, " ").trim();
-}
+function compactWhitespace(value = "") { return collapseWhitespace(safeText(value, 4000)); }
 
 function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -54,11 +53,7 @@ function clampInteger(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.trunc(parsed)));
 }
 
-function safeErrorCode(error) {
-  return safeText(error?.code || error?.message || error?.name || "deathmarch_error", 240)
-    .replace(/[^a-zA-Z0-9_.:-]+/g, "_")
-    .slice(0, 240);
-}
+function safeErrorCode(error) { return [...safeText(error?.code || error?.name || "deathmarch_error", 240)].map((char) => isIdentifierChar(char) || ".:".includes(char) ? char : "_").join(""); }
 
 async function fetchWithTimeout(fetchImpl, url, options = {}, timeoutMs, timeoutCode) {
   const controller = new AbortController();
@@ -139,13 +134,13 @@ function usage() {
     "  npm run deathmarch -- --poll --seed-file ./deathmarchseed.txt",
     "",
     "Required env:",
-    "  AMBIENT_API_KEY",
+    "  VERCEL_AI_GATEWAY_API_KEY (primary); AMBIENT_API_KEY (backup)",
     "  DEATHMARCH_DISCORD_WEBHOOK_URL or DISCORD_BOT_TOKEN + DEATHMARCH_DISCORD_CHANNEL_ID",
     "",
     "Optional env:",
     `  DEATHMARCH_WALLET=${DEFAULT_WALLET}`,
     `  DEATHMARCH_SEED_FILE=${DEFAULT_SEED_FILE}`,
-    `  DEATHMARCH_AMBIENT_MODEL=${DEFAULT_AMBIENT_MODEL}`,
+    `  DEATHMARCH_INFERENCE_MODEL=${DEFAULT_INFERENCE_MODEL}`,
     `  DEATHMARCH_STATE_PATH=${DEFAULT_STATE_PATH}`,
     "  DEATHMARCH_DATABASE_URL=postgres://...  # optional direct-write task_events feed",
     "  DEATHMARCH_DATABASE_EVENTS_ENABLED=false  # disable database feed",
@@ -244,7 +239,7 @@ function compactRewardDetail(payload = {}, actionKind = "") {
       payload.reward_decision ||
       score.decision ||
       ""
-  ).replace(/_/g, " ");
+  ).split("_").join(" ");
   const evidenceQuality = safeText(payload.evidence_quality || score.evidence_quality || "", 40);
   const reason = compactWhitespace(
     payload.reward_summary ||
@@ -311,7 +306,7 @@ function deathmarchActionLabel(actionKind = "") {
   if (kind === "verification_response") return "Verification response submitted";
   if (kind === "reward_outcome") return "Reward outcome";
   if (kind.startsWith("task_update_")) {
-    const transition = kind.replace(/^task_update_/, "").replace(/_/g, " ");
+    const transition = kind.slice("task_update_".length).split("_").join(" ");
     if (transition === "accepted") return "Task accepted";
     if (transition === "refused") return "Task refused";
     if (transition === "cancelled" || transition === "canceled") return "Task cancelled";
@@ -325,21 +320,24 @@ function deathmarchActionLabel(actionKind = "") {
 }
 
 function stripGeneratedDiscordNoise(summary = "", txHash = "") {
-  let text = safeText(summary, 1200)
-    .replace(/^```(?:\w+)?\s*/i, "")
-    .replace(/\s*```$/i, "");
-  const tx = safeText(txHash, 200).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  if (tx) {
-    text = text.replace(new RegExp(`\\btx\\s*:\\s*${tx}\\b`, "gi"), "");
-    text = text.replace(new RegExp(`\\btransaction(?:\\s+hash)?\\s*:?\\s*${tx}\\b`, "gi"), "");
-    text = text.replace(new RegExp(`\\b${tx}\\b`, "g"), "");
+  const text = stripMarkdownFence(safeText(summary, 1200));
+  const tokens = textTokens(text);
+  let cleaned = "";
+  let cursor = 0;
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (!txHash || token.value.toLowerCase() !== txHash.toLowerCase()) continue;
+    let start = token.start;
+    const preceding = tokens[i - 1];
+    const label = preceding?.value.toLowerCase();
+    if (preceding && [...text.slice(preceding.end, token.start)].every((char) => char === ":" || isWhitespace(char))) {
+      if (["tx", "transaction"].includes(label)) start = preceding.start;
+      if (label === "hash" && tokens[i - 2]?.value.toLowerCase() === "transaction") start = tokens[i - 2].start;
+    }
+    cleaned += text.slice(cursor, start);
+    cursor = token.end;
   }
-  text = text
-    .replace(/\b(?:green\s*\/\s*yellow\s*\/\s*red|red\s*\/\s*yellow\s*\/\s*green)\s+(?:visibility\s+)?(?:model|framework|rubric)\b/gi, "public visibility rules")
-    .replace(/\b(?:green,\s*yellow,\s*and\s*red|red,\s*yellow,\s*and\s*green)\s+(?:visibility\s+)?(?:model|framework|rubric)\b/gi, "public visibility rules")
-    .replace(/\bvisibility model\b/gi, "public visibility rules")
-    .replace(/\breward decision\b/gi, "reward outcome");
-  return compactWhitespace(text).replace(/\s+([.,;:!?])/g, "$1").slice(0, 360);
+  return compactWhitespace(cleaned + text.slice(cursor)).slice(0, 360);
 }
 
 function isSubmissionAction(actionKind = "") {
@@ -501,9 +499,9 @@ export async function classifyEventAnonymity({
   env = process.env,
   fetchImpl = fetch,
 } = {}) {
-  if (!ambientConfigured(env)) return safeClassifierFallback();
+  if (!inferenceConfigured(env)) return safeClassifierFallback();
   const requestBody = {
-    model: env.DEATHMARCH_AMBIENT_CLASSIFY_MODEL || env.DEATHMARCH_AMBIENT_MODEL || DEFAULT_AMBIENT_MODEL,
+    model: (env.DEATHMARCH_INFERENCE_CLASSIFY_MODEL || env.DEATHMARCH_AMBIENT_CLASSIFY_MODEL) || (env.DEATHMARCH_INFERENCE_MODEL || env.DEATHMARCH_AMBIENT_MODEL) || DEFAULT_INFERENCE_MODEL,
     messages: [
       { role: "system", content: deathmarchClassifierPrompt() },
       {
@@ -518,9 +516,9 @@ export async function classifyEventAnonymity({
     max_tokens: 1200,
   };
   try {
-    const result = await ambientChatCompletion({ env, fetchImpl, body: requestBody, capability: "strict_json", timeoutMs: clampInteger(
-      env.DEATHMARCH_AMBIENT_TIMEOUT_MS,
-      DEFAULT_AMBIENT_TIMEOUT_MS,
+    const result = await inferenceChatCompletion({ env, fetchImpl, body: requestBody, capability: "strict_json", timeoutMs: clampInteger(
+      (env.DEATHMARCH_INFERENCE_TIMEOUT_MS || env.DEATHMARCH_AMBIENT_TIMEOUT_MS),
+      DEFAULT_INFERENCE_TIMEOUT_MS,
       1000,
       120000
     ) });
@@ -543,23 +541,19 @@ export function sanitizeEventForAnonymity(event = {}, anonymity = 3, classificat
   const level = clampInteger(anonymity, 3, 1, 3);
   const sensitiveEntities = safeArray(classification.sensitive_entities);
   const sensitiveStrategyDetails = safeArray(classification.sensitive_strategy_details);
-  const redactionPattern = (value) => {
-    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(escaped.replace(/\s+/g, "\\s+"), "gi");
-  };
   const redactProtectedText = (value) => {
     if (typeof value === "string") {
       const withoutStrategyDetails = sensitiveStrategyDetails.reduce((text, detail) => {
         const protectedDetail = compactWhitespace(detail).slice(0, 600);
         if (protectedDetail.length < 12) return text;
-        return text.replace(redactionPattern(protectedDetail), "[redacted strategy detail]");
+        return replaceClassifiedSpan(text, protectedDetail, "[redacted strategy detail]");
       }, value);
       return sensitiveEntities.reduce((text, entry) => {
         const entity = safeObject(entry);
         const kind = safeText(entity.kind, 40).toLowerCase();
         const name = compactWhitespace(entity.name).slice(0, 160);
         if (!name || !["client", "investor"].includes(kind)) return text;
-        return text.replace(redactionPattern(name), `[redacted ${kind}]`);
+        return replaceClassifiedSpan(text, name, `[redacted ${kind}]`);
       }, withoutStrategyDetails);
     }
     if (Array.isArray(value)) return value.map(redactProtectedText);
@@ -660,13 +654,13 @@ export async function callDeepSeekSummary({
   const sanitized = sanitizeEventForAnonymity(event, level, classified);
   const formatEvent = formatEventForAnonymity(event, sanitized);
   const deterministicFallback = () => formatDeathmarchDiscordMessage({ summary: "", event: formatEvent });
-  if (!ambientConfigured(env)) {
+  if (!inferenceConfigured(env)) {
     if (env.DEATHMARCH_DETERMINISTIC_FALLBACK !== "false") return deterministicFallback();
-    throw new Error("ambient_api_key_missing");
+    throw new Error("inference_not_configured");
   }
   const prompt = await readPrompt();
   const requestBody = {
-    model: env.DEATHMARCH_AMBIENT_MODEL || DEFAULT_AMBIENT_MODEL,
+    model: (env.DEATHMARCH_INFERENCE_MODEL || env.DEATHMARCH_AMBIENT_MODEL) || DEFAULT_INFERENCE_MODEL,
     messages: [
       { role: "system", content: prompt },
       {
@@ -679,9 +673,9 @@ export async function callDeepSeekSummary({
     ],
     temperature: 0.2,
   };
-  if (safeText(env.DEATHMARCH_AMBIENT_MAX_TOKENS, 40)) {
+  if (safeText((env.DEATHMARCH_INFERENCE_MAX_TOKENS || env.DEATHMARCH_AMBIENT_MAX_TOKENS), 40)) {
     requestBody.max_tokens = clampInteger(
-      env.DEATHMARCH_AMBIENT_MAX_TOKENS,
+      (env.DEATHMARCH_INFERENCE_MAX_TOKENS || env.DEATHMARCH_AMBIENT_MAX_TOKENS),
       4000,
       128,
       12000
@@ -689,9 +683,9 @@ export async function callDeepSeekSummary({
   }
   let result;
   try {
-    result = await ambientChatCompletion({ env, fetchImpl, body: requestBody, capability: "reasoning_text", timeoutMs: clampInteger(
-      env.DEATHMARCH_AMBIENT_TIMEOUT_MS,
-      DEFAULT_AMBIENT_TIMEOUT_MS,
+    result = await inferenceChatCompletion({ env, fetchImpl, body: requestBody, capability: "reasoning_text", timeoutMs: clampInteger(
+      (env.DEATHMARCH_INFERENCE_TIMEOUT_MS || env.DEATHMARCH_AMBIENT_TIMEOUT_MS),
+      DEFAULT_INFERENCE_TIMEOUT_MS,
       1000,
       120000
     ) });
@@ -710,7 +704,7 @@ export async function callDeepSeekSummary({
     if (env.DEATHMARCH_DETERMINISTIC_FALLBACK !== "false") {
       return deterministicFallback();
     }
-    throw new Error(`ambient_api_error:empty_response${detail ? `:${detail}` : ""}`);
+    throw new Error(`inference_error:empty_response${detail ? `:${detail}` : ""}`);
   }
   return formatDeathmarchDiscordMessage({ summary: content, event: formatEvent });
 }

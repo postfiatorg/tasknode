@@ -82,7 +82,7 @@ export function parsePromptDocument(rawText = "") {
   const prompt = text.slice(closing + 4).trim();
   const metadata = {};
 
-  for (const line of frontmatter.split(/\r?\n/)) {
+  for (const line of frontmatter.split("\n").map((line) => line.trimEnd())) {
     const separator = line.indexOf(":");
     if (separator === -1) continue;
     const key = line.slice(0, separator).trim();

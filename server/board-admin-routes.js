@@ -65,7 +65,7 @@ export function normalizeBoardAdminUpdate(payload = {}) {
   }
   const fields = {};
   for (const field of BOARD_ADMIN_MUTABLE_FIELDS) {
-    const camel = field.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    const camel = field.split("_").map((part, index) => index ? part[0].toUpperCase() + part.slice(1) : part).join("");
     const value = input[field] !== undefined ? input[field] : input[camel];
     if (value === undefined) continue;
     if (field === "status") {

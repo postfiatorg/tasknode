@@ -1,3 +1,4 @@
+import { isIdentifierChar, isWhitespace, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, transaction } from "../db/pool.js";
 
@@ -6,9 +7,7 @@ const safeConversationId = (conversationId = "dev") =>
   String(conversationId || "dev").trim().slice(0, 180) || "dev";
 
 function safeConversationAccountId(accountId = "") {
-  return String(accountId || "")
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
+  return trimCharacters(replaceCharacterRuns(String(accountId || ""),char=>!isIdentifierChar(char),"_"),"_")
     .slice(0, 80);
 }
 
@@ -37,7 +36,7 @@ function toIso(value) {
 }
 
 function messagePreview(message = "") {
-  return String(message || "").trim().replace(/\s+/g, " ").slice(0, 140);
+  return replaceCharacterRuns(String(message || "").trim(),isWhitespace," ").slice(0, 140);
 }
 
 function jsonValue(value) {

@@ -11,7 +11,7 @@ function retryable(error) {
 }
 
 async function execute({ body = {}, capability = "reasoning_text", env = process.env, fetchImpl = fetch, signal, timeoutMs = 45_000, onDelta, stream = false, allowFallback = true } = {}) {
-  const routes = inferenceRoutes(env);
+  const routes = inferenceRoutes(env, body.model).filter((provider) => capability !== "selected_model" || provider === "vercel");
   if (!routes.length) throw inferenceError("inference_not_configured", { status: 409 });
   const attempts = [];
   let emitted = false;

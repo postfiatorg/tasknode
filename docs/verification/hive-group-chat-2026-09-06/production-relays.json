@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "rootEventId": "fd6405ea63bc6e8c3ebf38ff280e8d411f9ffc7b864d59c14389a4d8f9ec951e",
+  "botPubkey": "fe850b4599df628288809ded70a44ca4f1c2a8572d21184f41975a82ab3b831b",
+  "results": [
+    {
+      "relay": "wss://relay.primal.net",
+      "rootFound": true
+    },
+    {
+      "relay": "wss://nos.lol",
+      "rootFound": true
+    },
+    {
+      "relay": "wss://relay.damus.io",
+      "rootFound": true
+    }
+  ]
+}

@@ -23,6 +23,7 @@ const suffix = `${Date.now()}`;
 const projectId = `netcap_project_${suffix}`;
 
 const accounts = {
+  concurrent: `acct_netcap_concurrent_${suffix}`,
   stale: `acct_netcap_stale_${suffix}`,
   crossClass: `acct_netcap_cross_${suffix}`,
   terminal: `acct_netcap_terminal_${suffix}`,
@@ -33,6 +34,7 @@ const accounts = {
   wallets: `acct_netcap_wallets_${suffix}`,
 };
 const wallets = {
+  concurrent: `rNetCapConcurrent${suffix}`,
   stale: `rNetCapStale${suffix}`,
   crossClass: `rNetCapCross${suffix}`,
   terminal: `rNetCapTerminal${suffix}`,
@@ -246,6 +248,10 @@ async function pressureVerdict({ accountId, walletAddress }) {
 
 async function eligibilityVerdict({ accountId, walletAddress }) {
   const eligibility = await getNetworkTaskEligibility({ accountId, walletAddress, recordCapacityEvent: false });
+  for (const id of ["wallet_sync", "routing_profile"]) {
+    const gate = eligibility.gates.find(gate => gate.id === id);
+    assert.ok(["complete", "waiting"].includes(gate.status), "informational enrichment cannot be presented as a routing blocker");
+  }
   return { blocked: eligibility.capacity.available === false, eligibility };
 }
 
@@ -524,7 +530,14 @@ async function main() {
     assert.equal(accountBlockers[0].walletAddress, "", "account-scoped blocker should report an empty wallet");
     assert.equal(accountBlockers[0].kind, "allocation");
 
-    console.log("network task capacity smoke ok");
+    await seedCandidate({ accountId: accounts.concurrent, walletAddress: wallets.concurrent });
+    const concurrent = await Promise.all(Array.from({ length: 6 }, (_, index) => executorVerdict({
+      accountId: accounts.concurrent, walletAddress: wallets.concurrent,
+      need: `Distinct concurrent work item ${index}`,
+    })));
+    assert.equal(concurrent.filter((result) => !result.blocked).length, 1, "only one request may reserve the last contributor slot");
+    assert.equal((await listNetworkTaskCapacityBlockers({ accountId: accounts.concurrent, walletAddress: wallets.concurrent })).length, 1);
+    console.log("network task capacity smoke ok: includes six concurrent last-slot requests");
   } finally {
     await cleanup();
   }

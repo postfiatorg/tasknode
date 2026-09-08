@@ -46,7 +46,7 @@ Do not recommend routing a concrete task to an operator unless SOURCE PACKET tas
 
 Use this top-level structure in order: BLUF; Current Board Portfolio; Board Ranking; Recommended Actions; Reasoning; What The Task Management Agent Should Know.
 In Board Ranking, include each board's project id, decision posture, outcome clarity, KPI believability, budget effectiveness, upside vs downside, sequencing feasibility, and reasoning.
-In Recommended Actions, include ADD_BOARD, ARCHIVE_BOARD, and UNARCHIVE_BOARD subsections. If no action is justified, write `No action recommended.` under that subsection.
+In Recommended Actions, include ADD_BOARD, ARCHIVE_BOARD, and UNARCHIVE_BOARD subsections. Start each subsection with exactly `Decision: recommended` or `Decision: none`. If no action is justified, use `Decision: none` followed by `No action recommended.`. These labels summarize this advisory report and do not authorize execution.
 For each ADD_BOARD recommendation, state title, desired outcome, time box, KPI, budget, why existing boards do not cover it, PFT value lever, and risks.
 For each ARCHIVE_BOARD recommendation, state board id, archive reason, preconditions checked, why this is risk-averse, and reversal path.
 For each UNARCHIVE_BOARD recommendation, state archived board id, title, why it should be restored instead of adding a new board, current evidence of renewed demand, operatorArchiveLock status, PFT value lever, and first 2-3 tactics after restoration.

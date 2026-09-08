@@ -1,0 +1,33 @@
+{
+  "syntheticOnly": true,
+  "exitCode": 0,
+  "results": [
+    {
+      "stage": "spec_candidate_reused",
+      "source": "prior live Kimi output with identical spec prompt"
+    },
+    {
+      "stage": "spec",
+      "seconds": 43.382,
+      "art": {
+        "creature": "Ogre",
+        "creature_level": 4,
+        "hyperstition": 40,
+        "momentum": "rapid"
+      },
+      "promptDigest": "368469a2f3f029323d9cda28b518400d0fd5f574f123a452575ea925a43997cb",
+      "templateDigest": "100aceae4f3bd327afb0b90c827513b8e8963d946de2e1d85d31d1c318062ccc"
+    },
+    {
+      "stage": "render",
+      "seconds": 209.803,
+      "bytes": 2646042
+    },
+    {
+      "stage": "review",
+      "seconds": 225.651,
+      "approved": true,
+      "model": "moonshotai/kimi-k3"
+    }
+  ]
+}

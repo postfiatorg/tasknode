@@ -41,9 +41,14 @@ export {
 } from "./task-review-evidence.js";
 export { taskReviewWorkerInternals } from "./task-review-reward.js";
 
+import { reconcileRewardPayments } from "./task-reward-reconciliation.js";
+import { recoverAbandonedReviewPublications } from "./task-review-recovery.js";
+
 let timer = null;
 
 export async function processTaskReviewQueueOnce({ limit = 1, logger = console } = {}) {
+  const recovery = await recoverAbandonedReviewPublications();
+  if (recovery.recovered.length) logger.info?.("task_review_abandoned_reservations_recovered", recovery);
   const results = [];
   const submitted = await claimSubmittedTasks({ limit });
   for (const row of submitted) {
@@ -51,7 +56,12 @@ export async function processTaskReviewQueueOnce({ limit = 1, logger = console }
       results.push(await processSubmittedTask(row, { logger }));
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
-      await clearWorkerClaim({ taskId: row.task_id, workerName: "verification_request", error: message }).catch(() => null);
+      await clearWorkerClaim({
+        taskId: row.task_id,
+        workerName: "verification_request",
+        error: message,
+        retryMode: "exponential",
+      }).catch(() => null);
       logger.warn?.("task_verification_request_failed", { taskId: row.task_id, error: message });
       results.push({ ok: false, taskId: row.task_id, phase: "verification_request", error: message });
     }
@@ -63,12 +73,19 @@ export async function processTaskReviewQueueOnce({ limit = 1, logger = console }
       results.push(await processVerificationResponse(row, { logger }));
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
-      await clearWorkerClaim({ taskId: row.task_id, workerName: "reward_scoring", error: message }).catch(() => null);
+      await clearWorkerClaim({
+        taskId: row.task_id,
+        workerName: "reward_scoring",
+        error: message,
+        retryMode: "exponential",
+      }).catch(() => null);
       logger.warn?.("task_reward_scoring_failed", { taskId: row.task_id, error: message });
       results.push({ ok: false, taskId: row.task_id, phase: "reward_scoring", error: message });
     }
   }
-  return { ok: true, claimed: submitted.length + responses.length, results };
+  const reconciliation = await reconcileRewardPayments({ apply: true });
+  if (reconciliation.outcomes.length) logger.info?.("task_reward_reconciliation", reconciliation);
+  return { ok: true, claimed: submitted.length + responses.length, results, reconciliation };
 }
 
 export function startTaskReviewWorker({

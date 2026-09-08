@@ -31,10 +31,6 @@ const {
   projectTaskgenInput,
   taskgenPromptForInput,
 } = await import("../server/task-generation-worker.js");
-const {
-  boardManagerResponseFormat,
-} = await import("../server/board-manager-decision-provider.js");
-
 const hiveContext = {
   groups: [
     {
@@ -386,30 +382,5 @@ assert.match(boardManagerPrompt, /evidence_evaluation_packet/);
 assert.match(taskgenPrompt, /Document-To-Action Network Tasks/);
 assert.match(taskgenPrompt, /Do not generate a task whose only deliverable is a report/i);
 assert.match(taskgenPrompt, /task_lineage\.referenced_outputs/);
-
-const responseFormat = boardManagerResponseFormat();
-const networkTaskSchema = responseFormat.schema.properties.payload.properties.network_task;
-for (const field of [
-  "action_output",
-  "task_work_type",
-  "delivery_surface",
-  "recipient_or_reviewer",
-  "escalation_stage",
-  "lineage_task_ids",
-  "referenced_outputs",
-  "deduped_against",
-  "why_not_duplicate",
-]) {
-  assert.ok(
-    networkTaskSchema.required.includes(field),
-    `board manager response schema must require network_task.${field}`
-  );
-  assert.ok(
-    networkTaskSchema.properties[field],
-    `board manager response schema must define network_task.${field}`
-  );
-}
-assert.equal(networkTaskSchema.properties.referenced_outputs.items.required.length, 5);
-assert.equal(networkTaskSchema.properties.deduped_against.items.required.length, 3);
 
 console.log("hive generation intelligence smoke passed");

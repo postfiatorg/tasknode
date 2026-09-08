@@ -65,7 +65,7 @@ try {
   delete process.env.CHAT_PROVIDER_TIMEOUT_MS;
   assert.equal(
     chatProviderTimeoutMs({ mode: "Thinking", source: "web" }),
-    120000
+    300000
   );
   process.env.CHAT_PROVIDER_TIMEOUT_MS = sharedProviderTimeout;
   const telegramPromptRequest = ambientChatRequest({

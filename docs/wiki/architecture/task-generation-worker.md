@@ -1,101 +1,107 @@
 # Task Generation Worker
 
-The Task Generation worker claims signed task requests, decrypts the request
-bundle, calls the task generation model, publishes a signed `pf.task.offer.v1`
-pointer, syncs PFTL, and lets the reducer project the offer into the Tasks UI.
+Current implementation reviewed September 6, 2026.
 
-System Status row: `task_generation`
+The task generator claims durable requests, reads their input bundle, calls the
+shared task-generation model and writes a `pf.task.offer.v1` event with a task
+projection. The current offer writer is offchain Postgres persistence. It does
+not submit a signed offer pointer or wait for the PFTL reducer.
 
-## Runtime Boundary
+System Status row: `task_generation`.
 
-- Worker module: `server/task-generation-worker.js`.
-- Prompts: `prompts/task_engine/taskgen_personal_v1.md` for personal requests and `prompts/task_engine/taskgen_network_v1.md` for Network/Alpha routing packets.
-- Source table: `task_requests`.
-- Replay table: `taskgen_replay_cache`.
-- Output protocol event: `pf.task.offer.v1`.
-- Projection target: `task_projections` through PFTL reducer replay.
+## Runtime boundary
 
-## Retry Idempotency
+- Periodic process: Fly `worker-taskgen`, registered in `server/background-workers.js`.
+- Worker: `server/task-generation-worker.js`.
+- Claims/receipts: `server/repositories/task-requests.js`, table `task_requests`.
+- Replay: `server/repositories/taskgen-replay-cache.js`, table `taskgen_replay_cache`.
+- Model/input/output contract: `server/task-generation-contract.js`.
+- Offer writer: `server/offchain-task-lifecycle.js::applyOffchainTaskOffer`.
+- Visibility: `task_events` and `task_projections`, written together for the offer.
 
-Task generation is not expected to make identical prose from a fresh model call.
-It is expected to avoid publishing a different live task for the same generation
-input. The worker builds a replay key from request bundle CID/digest, source
-payload digest, taskgen input digest, prompt digest, model, task class, and
-reward/deadline policy versions. Before calling the provider, it checks
-`taskgen_replay_cache`.
+The five-second periodic loop is a backstop. Immediate timers are also
+requested by intake/handoff code. Those scheduling helpers currently check the
+enable flag rather than the process role, so they can execute outside the
+periodic worker's process. A timer acknowledgement does not establish task
+completion.
 
-- If normalized taskgen output is already stored for the replay key, the worker
-  reuses that output and does not call the provider again.
-- If an offer CID and tx hash are already stored for the replay key, the worker
-  reuses the recorded offer and does not pin or submit a new `pf.task.offer.v1`.
-- If source facts, prompt/model, request bundle, or policy versions change, the
-  replay key changes and generation can intentionally produce a new task.
+## Inputs and models
 
-## Status Derivation
+`postgres:` request bundles come from `task_requests.metadata_json.requestBundle`.
+Other bundle references use the encrypted IPFS payload reader. Terminal input
+is minimal; richer browser/network bundles use different assembly paths.
 
-Green means the worker has no stale `published`, `queued`, or `generating`
-requests and no recently failed request rows.
+Personal work selects `prompts/task_engine/taskgen_personal_v1.md`. Network/Alpha
+work selects `taskgen_network_v2.md` when the network-v2 flag is enabled, as in
+current `fly.toml`; the v1 network prompt remains a compatibility branch.
+Vercel `zai/glm-5.3` is primary through the shared `strict_json` capability,
+with Ambient backup. Requested model/configuration and actual completion
+provider/model are separate provenance.
 
-Amber means recently failed task request rows exist.
+Taskgen projects bounded context, history, memory, task queue and network
+routing facts into `pf.taskgen.input.v1`. Network packets retain project,
+operator, badge, policy, prior-output and lineage context. The model authors
+concrete title, steps, submission requirement and verification policy; the
+worker validates the task-output contract. Titles, descriptions, steps and
+submission criteria have explicit text bounds; evidence types and verification
+flags are checked without coercion. Punctuation fragments, missing fields,
+object-valued text and truncated completions cannot become offers.
 
-Red means a published, queued, or generating request is older than the stale
-queue threshold.
+Before publication, a separate structured GLM 5.3 Flash readiness check verifies
+that the task is coherent, the submission instructions name concrete evidence,
+and the two agree. It receives only the candidate title, description, steps and
+submission requirement. Failed checks retry through the existing bounded queue;
+they do not publish a placeholder task. The review prompt is
+`prompts/task_engine/taskgen_readiness_v1.md`, and approval provenance is stored
+in generation metadata.
 
-Network Task allocations are different from user-created task requests. If a
-Board Manager-generated request fails before a `pf.task.offer.v1` exists, the
-worker closes the allocation/job/intent chain through
-`fail_network_task_generation_chain` and marks the task request operator-hidden.
-Those failures are audit records, not work the user can act on, so they must not
-appear in the Tasks request strip as `Needs attention`.
+## Claim, retry and replay
 
-## Network Taskgen Input Context
+The shared request queue claims `published` or `queued` rows with
+`FOR UPDATE SKIP LOCKED`, worker/attempt IDs and attempt counts. Updates check
+ownership. Heartbeats occur at stage boundaries; transient failures use durable
+backoff and stale claims can be reclaimed. Claimed batches are processed
+sequentially by the loop.
 
-For Network/Alpha requests, `projectTaskgenInput` now exposes the Board
-Manager's Hive-generation context to the taskgen model:
+Replay identity includes bundle CID/digest, source/input digests, prompt digest,
+model, class and policy versions. Stored normalized output is reused before
+calling the model again. Unpublished cached output is revalidated and receives
+the readiness check if absent. Invalid cached output is regenerated only after
+checking for an already-published offer. Recorded offers are reused rather than generating a
+new live task for an unchanged replay identity. Generated output is stored
+before offer persistence, and a retry can search for the corresponding offer
+when publication metadata is incomplete.
 
-- `hive_policy.operator_standing_policy`
-- `hive_policy.generation_quality_policy`
-- `prior_output_corpus`
-- `task_lineage`
-- `operator_transparency.referenced_outputs`
-- `operator_transparency.deduped_against`
-- `operator_transparency.escalation_stage`
+The provider timeout defaults to 240 seconds per provider attempt. Shared
+inference may try Vercel then Ambient with separate attempt deadlines. This is
+not a single 240-second outer deadline. The generation request allows 65,536
+output tokens by default (minimum configured allowance 32,768). Readiness has a
+separate 45-second provider/60-second total deadline and an 8,192-token allowance.
 
-The fields are populated from the encrypted request bundle's `network_task`
-block (`server/task-generation-worker.js:229`). The network taskgen prompt
-treats `hive_policy`, the concrete `network_task` packet, prior output corpus,
-and task lineage as the highest-authority task-shape inputs
-(`prompts/task_engine/taskgen_network_v1.md:70`). Its document-to-action
-section instructs the model to avoid documentation-only tasks by default,
-reference prior outputs, dedup silently, and move already-documented work toward
-PRs, mocks, Discord handoffs, collaboration, reviews, or shipped changes
-(`prompts/task_engine/taskgen_network_v1.md:99`).
+After the offer transaction, replay publication metadata, request completion
+and network allocation links are written separately. These boundaries require
+reconciliation after a crash; atomic offer/projection persistence alone does
+not prove every receipt/link has completed.
 
-This is context and prompt policy only. The worker still follows the normal
-claim, decrypt, model-call, encrypt, publish, and replay path. It does not add
-hard-coded gates, reward caps, wallet bans, deterministic documentation-task
-rejection, or alternate lifecycle rules.
+## Status and diagnosis
 
-## Debug And Repair
+Status reports stale pending requests and recent failures. A green/empty queue
+does not prove that an upstream selector is creating work. Trace the request,
+attempt, replay output, offer event, projection and any network allocation.
 
-Use the lifecycle smoke and replay repair:
+Network requests that fail before an offer can be closed through
+`fail_network_task_generation_chain`. Such repair rows are operator audit
+records and are hidden from the user's actionable request strip. User-created
+failed requests retain their own recovery state.
 
-```bash
-npm run task-lifecycle-smoke
-npm run task-replay-repair -- --task-id=<task_id> --apply
-```
+Inspect `task_requests.last_error`, attempt ownership, durable retry time,
+request bundle source, replay state and authoritative event/projection. For
+IPFS inputs inspect fetch/decryption separately. Use PFTL replay repair only
+when a historical signed pointer/reducer boundary actually failed. Do not
+invent a task projection or describe an offchain reference as a ledger receipt.
 
-Check `task_requests.last_error`, wallet seed availability, encryption identity,
-IPFS pinning, PFTL submission config, and reducer state. Do not turn a failed
-request into a fake visible task; visible tasks must come from replayed signed
-task offer events.
-
-If the automatic Network Task repair did not run, use:
-
-```bash
-npm run network-task-allocation-repair -- fail --request-id <request_id> --reason "<reason>" --execute
-```
-
-That marks the allocation failed, marks the generation job failed, stales the
-semantic intent, and hides the request receipt from the user-facing request
-queue.
+Related checks: `task-generation-reliability-smoke`, `taskgen-replay-smoke`,
+`network-task-generation-recovery-smoke`, and `task-lifecycle-smoke`.
+See [task async engine](task-async-engine.md),
+[network generation](network-task-generation-worker.md), and
+[terminal contract](tasknode-terminal-contract.md).

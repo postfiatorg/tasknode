@@ -1,7 +1,10 @@
 # Board Manager Secretary Packet
 
-The Board Manager Secretary Packet is the Ambient GLM 5.2 compression layer in
-front of the Board Manager decision model. It turns verbose Hive board state
+The Board Manager Secretary Packet is a retained compression layer in front
+of the Board Manager decision contract. When invoked it uses the shared
+Vercel-first GLM 5.3 route with Ambient backup. The automatic Fly Board Manager
+is retired; this packet is separate from the live advisory board-secretary
+memo worker. It turns verbose Hive board state
 into a compact reusable packet so the Board Manager can make a decision without
 receiving the full raw board every tick.
 
@@ -9,7 +12,7 @@ System Status row: `board_manager_secretary_packets`
 
 ## Runtime Boundary
 
-- Provider path: shared Ambient `strict_json` capability, default `z-ai/glm-5.2`.
+- Provider path: shared `strict_json` capability, primary `zai/glm-5.3`.
 - Prompt: `prompts/hive/board_manager_secretary_v1.md`.
 - Runtime module: `server/board-manager-secretary-packets.js`.
 - Primary store: `board_manager_secretary_packets`.

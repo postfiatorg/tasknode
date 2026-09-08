@@ -6,7 +6,7 @@ import { Wallet } from "xrpl";
 
 import {
   evaluateBoardManagerMessagePrecondition,
-  guardBoardManagerMessageUserFreshness,
+  guardBoardManagerMessageUserFreshness as realFreshnessGuard,
 } from "../server/board-manager-actions.js";
 import {
   extractReservationRatePft,
@@ -109,13 +109,25 @@ function validateSeeds(seedInputs = []) {
   return { valid, invalid };
 }
 
+const semanticResponse = value => ({ body: { choices: [{ message: { content: JSON.stringify(value) } }] } });
+async function guardBoardManagerMessageUserFreshness(input, intent = "task_action") {
+  return realFreshnessGuard(input, { complete: async () => semanticResponse({ intent }) });
+}
+
 const args = parseArgs(process.argv.slice(2));
 const envLoaded = loadEnvFile(args.envFile);
 
-assert.equal(extractReservationRatePft("I repeatedly told you my reservation rate is 25k PFT."), 25_000);
-assert.equal(extractReservationRatePft("I will not do Network Tasks below 30,000 PFT."), 30_000);
+for (const [text, minimum] of [
+  ["I repeatedly told you my reservation rate is 25k PFT.", 25_000],
+  ["I will not do Network Tasks below 30,000 PFT.", 30_000],
+]) {
+  assert.equal(await extractReservationRatePft(text, { complete: async () => semanticResponse({ present:true, minPft:minimum, entryId:"input", citation:text }) }), minimum);
+}
+assert.equal(await extractReservationRatePft("My balance is 30,000 PFT.", { complete: async () => semanticResponse({ present:false, minPft:0, entryId:"", citation:"" }) }), null);
+assert.equal(await extractReservationRatePft("No task preference.", { complete: async () => semanticResponse({ present:true, minPft:500, entryId:"another-user", citation:"minimum 500" }) }), null);
+assert.equal(await extractReservationRatePft("Minimum 500 PFT.", { complete: async () => { throw new Error("offline"); } }), null);
 
-const refusedGuard = guardBoardManagerMessageUserFreshness({
+const refusedGuard = await guardBoardManagerMessageUserFreshness({
   decision: {
     reason: "Nudge candidate to accept proposed Network Task",
     payload: {
@@ -160,7 +172,7 @@ assert.equal(canonicalTerminalTask.allocationMirrorDiverged, true);
 assert.equal(canonicalTerminalTask.terminal, true);
 assert.equal(canonicalTerminalTask.waitingForUser, false);
 
-const missingPreconditionGuard = guardBoardManagerMessageUserFreshness({
+const missingPreconditionGuard = await guardBoardManagerMessageUserFreshness({
   decision: {
     reason: "Nudge candidate to accept proposed Network Task",
     payload: {
@@ -194,7 +206,7 @@ assert.equal(
   "board_manager_message_user_missing_structured_precondition"
 );
 
-const staleStructuredPreconditionGuard = guardBoardManagerMessageUserFreshness({
+const staleStructuredPreconditionGuard = await guardBoardManagerMessageUserFreshness({
   decision: {
     reason: "Nudge candidate to accept proposed Network Task",
     payload: {
@@ -238,7 +250,7 @@ assert.equal(
   "board_manager_message_precondition_terminal_task"
 );
 
-const satisfiedPreconditionGuard = guardBoardManagerMessageUserFreshness({
+const satisfiedPreconditionGuard = await guardBoardManagerMessageUserFreshness({
   decision: {
     reason: "Nudge candidate to accept proposed Network Task",
     payload: {
@@ -307,7 +319,7 @@ const openFollowupPrecondition = evaluateBoardManagerMessagePrecondition({
 assert.equal(openFollowupPrecondition.ok, false);
 assert.equal(openFollowupPrecondition.reason, "board_manager_message_precondition_open_followup");
 
-const belowReservationGuard = guardBoardManagerMessageUserFreshness({
+const belowReservationGuard = await guardBoardManagerMessageUserFreshness({
   decision: {
     reason: "Nudge candidate to accept proposed Network Task",
     payload: {
@@ -350,7 +362,7 @@ const belowReservationGuard = guardBoardManagerMessageUserFreshness({
 assert.equal(belowReservationGuard.ok, false);
 assert.equal(belowReservationGuard.reason, "board_manager_message_user_below_reservation_rate");
 
-const satisfiedReservationGuard = guardBoardManagerMessageUserFreshness({
+const satisfiedReservationGuard = await guardBoardManagerMessageUserFreshness({
   decision: {
     reason: "Route task that satisfies candidate minimum",
     payload: {

@@ -1,3 +1,4 @@
+import { redactSecrets, stripBullet, stripMarkdownFence } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { databaseEnabled } from "./db/pool.js";
 import { loadPrompt } from "./prompt-registry.js";
@@ -21,10 +22,10 @@ import {
   networkTaskProfilePromptVersion,
 } from "./repositories/network-task-profile.js";
 import {
-  AMBIENT_MODELS,
-  ambientChatCompletion,
-  ambientConfigured,
-} from "./ambient-inference.js";
+  INFERENCE_MODELS,
+  inferenceChatCompletion,
+  inferenceConfigured,
+} from "./inference.js";
 import {
   claimRewardedTaskMemoryJobs,
   completeRewardedTaskMemoryJob,
@@ -44,14 +45,14 @@ let timer = null;
 let running = false;
 
 function memoryModel() {
-  return process.env.TASKNODE_MEMORY_MODEL || AMBIENT_MODELS.fastText;
+  return process.env.TASKNODE_MEMORY_MODEL || INFERENCE_MODELS.fastText;
 }
 
 function memoryWorkerEnabled() {
   return (
     process.env.TASKNODE_MEMORY_ENABLED !== "false" &&
     databaseEnabled() &&
-    ambientConfigured()
+    inferenceConfigured()
   );
 }
 
@@ -110,19 +111,7 @@ function promptDigest(text = "") {
   return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
 }
 
-function redactSensitiveText(value = "") {
-  return String(value || "")
-    .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "[redacted_api_key]")
-    .replace(/\b(?:0x)?[a-fA-F0-9]{64}\b/g, "[redacted_secret_or_hash]")
-    .replace(
-      /\b(seed phrase|recovery phrase|mnemonic|private key|password)\s*[:=]\s*[^\n\r]+/gi,
-      "$1: [redacted]"
-    )
-    .replace(
-      /("(?:seed_phrase|recovery_phrase|mnemonic|private_key|password|api_key|access_token)"\s*:\s*)"[^"]*"/gi,
-      '$1"[redacted]"'
-    );
-}
+function redactSensitiveText(value = "") { return redactSecrets(value); }
 
 function compactSourceText(value = "", maxLength = 16000) {
   const text = redactSensitiveText(value).trim();
@@ -140,19 +129,13 @@ function boundedDeepMemoryEntry(entry, index) {
   };
 }
 
-function stripMarkdownFence(text = "") {
-  return String(text || "")
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-}
+
 
 function bulletText(value, { maxItems = 5 } = {}) {
   if (Array.isArray(value)) {
     return value
       .slice(0, maxItems)
-      .map((item) => String(item || "").trim().replace(/^[-*]\s+/, ""))
+      .map((item) => stripBullet(item))
       .filter(Boolean)
       .map((item) => `- ${item}`)
       .join("\n");
@@ -229,7 +212,7 @@ async function fetchMemorySummary(source) {
     user_query: compactSourceText(source.user_body, 12000),
     system_response: compactSourceText(source.assistant_body, 18000),
   };
-  const result = await ambientChatCompletion({
+  const result = await inferenceChatCompletion({
     capability: "fast_text",
     timeoutMs: providerTimeoutMs,
     body: memoryOpenRouterRequestBody({
@@ -254,7 +237,7 @@ async function fetchMemorySummary(source) {
     conversationTitle: source.conversation_title || "New chat",
     sourceUserExcerpt: compactSourceText(source.user_body, 500),
     sourceAssistantExcerpt: compactSourceText(source.assistant_body, 500),
-    provider: "ambient",
+    provider: result.provider,
     model: body?.model || memoryModel(),
     promptVersion,
     usage: openRouterUsage(body),
@@ -263,7 +246,7 @@ async function fetchMemorySummary(source) {
 
 async function fetchDeepMemorySummary(source) {
   const memorySummaries = source.entries.map(boundedDeepMemoryEntry);
-  const result = await ambientChatCompletion({
+  const result = await inferenceChatCompletion({
     capability: "fast_text",
     timeoutMs: providerTimeoutMs,
     body: memoryOpenRouterRequestBody({
@@ -294,7 +277,7 @@ async function fetchDeepMemorySummary(source) {
     ...parsed,
     sourceUserExcerpt: `${memorySummaries.length} memory summaries in block ${source.block_index}.`,
     sourceAssistantExcerpt: `Deep memory synthesis for block ${source.block_index}.`,
-    provider: "ambient",
+    provider: result.provider,
     model: body?.model || memoryModel(),
     promptVersion: deepPromptVersion,
     usage: openRouterUsage(body),
@@ -302,7 +285,7 @@ async function fetchDeepMemorySummary(source) {
 }
 
 async function fetchNetworkTaskProfile(source) {
-  const result = await ambientChatCompletion({
+  const result = await inferenceChatCompletion({
     capability: "fast_text",
     timeoutMs: providerTimeoutMs,
     body: memoryOpenRouterRequestBody({
@@ -329,7 +312,7 @@ async function fetchNetworkTaskProfile(source) {
 
   return {
     output: parsed,
-    provider: "ambient",
+    provider: result.provider,
     model: body?.model || memoryModel(),
     promptDigest: promptDigest(networkTaskProfileSystemPrompt()),
     promptVersion: networkTaskProfilePromptVersion,
@@ -338,7 +321,7 @@ async function fetchNetworkTaskProfile(source) {
 }
 
 async function fetchRewardedTaskMemorySummary(source) {
-  const result = await ambientChatCompletion({
+  const result = await inferenceChatCompletion({
     capability: "fast_text",
     allowCapacityFallback: false,
     timeoutMs: providerTimeoutMs,
@@ -358,7 +341,7 @@ async function fetchRewardedTaskMemorySummary(source) {
   }
   return {
     ...parsed,
-    provider: "ambient",
+    provider: result.provider,
     model: body?.model || memoryModel(),
     promptVersion: rewardedTaskMemoryPromptVersion,
     usage: openRouterUsage(body),

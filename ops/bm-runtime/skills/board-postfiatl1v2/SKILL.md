@@ -64,4 +64,4 @@ For consensus-affecting work without a test or reproduction, or whenever protoco
 3. Route the record to the operator (goodalexander) via a referral task, per the board-manager skill's escalation section.
 4. Keep the work pending until that review resolves the uncertainty.
 
-Reward eligibility requires the evidence above. Reward magnitudes and generation cadence follow the paired board-manager skill (per-task cap 5,000 PFT; at most 3 open tasks); protocol test/hardening work prices at the top of its verified-value band because review cost here is highest.
+Reward eligibility requires the evidence above. Reward magnitudes and generation cadence follow the paired board-manager skill (per-task cap 5,000 PFT; routing follows eligible contributor capacity and reward budgets, with no fixed board task ceiling); protocol test/hardening work prices at the top of its verified-value band because review cost here is highest.

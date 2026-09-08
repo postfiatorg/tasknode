@@ -21,7 +21,7 @@ const runMode = argValue("--run-mode", "dry_run");
 const scenarioId = argValue("--scenario-id", `cli_${Date.now()}`);
 const lookbackDays = Number(argValue("--lookback-days", "7"));
 const maxDailyPft = Number(argValue("--max-daily-pft", process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || "10000"));
-const model = argValue("--model", process.env.TASKNODE_DAILY_AIRDROP_MODEL || "z-ai/glm-5.2");
+const model = argValue("--model", process.env.TASKNODE_DAILY_AIRDROP_MODEL || "zai/glm-5.3");
 const json = hasFlag("--json");
 
 if (!accountId) {

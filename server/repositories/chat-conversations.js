@@ -1,3 +1,4 @@
+import { isIdentifierChar, isWhitespace, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   appendChatTurn as appendRuntimeChatTurn,
@@ -30,9 +31,7 @@ function useDatabase() {
 }
 
 function safeConversationAccountId(accountId = "") {
-  return String(accountId || "")
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
+  return trimCharacters(replaceCharacterRuns(String(accountId || ""),char=>!isIdentifierChar(char),"_"),"_")
     .slice(0, 80);
 }
 
@@ -59,9 +58,9 @@ function assertConversationIdAccountBoundary({ accountId = "", conversationId = 
   }
 }
 
-const cleanTitle = (title = "") => String(title || "").trim().replace(/\s+/g, " ").slice(0, 80);
+const cleanTitle = (title = "") => replaceCharacterRuns(String(title || "").trim(),isWhitespace," ").slice(0, 80);
 const titleFromPrompt = (prompt = "") => cleanTitle(prompt).slice(0, 64) || "New chat";
-const messagePreview = (message = "") => String(message || "").trim().replace(/\s+/g, " ").slice(0, 140);
+const messagePreview = (message = "") => replaceCharacterRuns(String(message || "").trim(),isWhitespace," ").slice(0, 140);
 const HIVE_CHAT_TITLE = "Hive Chat";
 const HIVE_CHAT_MODE = "Hive";
 const HIVE_CHAT_PREVIEW = "Talk to Hive Chat.";
@@ -438,7 +437,7 @@ function escapeLikePattern(text = "") {
 }
 
 function searchSnippet(body = "", queryText = "") {
-  const text = String(body || "").trim().replace(/\s+/g, " ");
+  const text = replaceCharacterRuns(String(body || "").trim(),isWhitespace," ");
   const matchIndex = text.toLowerCase().indexOf(String(queryText || "").toLowerCase());
   if (matchIndex < 0) return text.slice(0, searchSnippetLength);
 
@@ -500,7 +499,7 @@ function searchRuntimeChatConversations({ accountId = "", query: searchQuery = "
 
 export async function searchChatConversations({ accountId = "", query: searchQuery = "", limit = 20 } = {}) {
   const normalizedAccountId = safeAccountId(accountId);
-  const normalizedQuery = String(searchQuery || "").trim().replace(/\s+/g, " ").slice(0, maxSearchQueryLength);
+  const normalizedQuery = replaceCharacterRuns(String(searchQuery || "").trim(),isWhitespace," ").slice(0, maxSearchQueryLength);
   const normalizedLimit = Math.min(Math.max(Number(limit) || 20, 1), maxSearchLimit);
   if (!normalizedAccountId || normalizedQuery.length < 2) return [];
 

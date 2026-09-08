@@ -1,0 +1,91 @@
+{
+  "verifiedAt": "2026-09-06T18:16:41.380899+00:00",
+  "release": {
+    "Version": 717,
+    "Status": "complete",
+    "ImageRef": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+  },
+  "active": [
+    {
+      "id": "e826761a263e18",
+      "process": "worker-pftl",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    },
+    {
+      "id": "8d4930ae156638",
+      "process": "app",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    },
+    {
+      "id": "87d077b0263998",
+      "process": "worker-context-rewrite",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    },
+    {
+      "id": "7813e21f1295d8",
+      "process": "worker-taskgen",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    },
+    {
+      "id": "6835d0ea464158",
+      "process": "worker-task-review",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    },
+    {
+      "id": "48ee629a21e748",
+      "process": "worker-nft-renderer",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    },
+    {
+      "id": "48e056a3705e18",
+      "process": "worker-memory-profile",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    },
+    {
+      "id": "2862170c66e238",
+      "process": "board-secretary",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    },
+    {
+      "id": "1854406a6e3508",
+      "process": "worker-hive",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    },
+    {
+      "id": "1850d37c3d3e48",
+      "process": "worker-airdrop",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VYWP2RDXY5TKJWASXK8J86"
+    }
+  ],
+  "allActiveOnRelease": true,
+  "prompts": [
+    {
+      "machine": "8d4930ae156638",
+      "promptHashesMatch": true,
+      "files": {
+        "techno_mordor_image_v2.md": "65d9c4edd7ed936f70a1aadb0c92e3c80f8bb894b40f6d4565e975aba4a69a2b",
+        "techno_mordor_spec_v2.md": "25010525c07cc54ceb804b65deaee8ab595087c5dcd1c88170721a8d2c4cb9c4",
+        "techno_mordor_review_v2.md": "f87883e42276bc2a3aa2218e3c9f4ea9e78cd5861a1cf0e48045be5906baf302"
+      }
+    },
+    {
+      "machine": "48ee629a21e748",
+      "promptHashesMatch": true,
+      "files": {
+        "techno_mordor_image_v2.md": "65d9c4edd7ed936f70a1aadb0c92e3c80f8bb894b40f6d4565e975aba4a69a2b",
+        "techno_mordor_spec_v2.md": "25010525c07cc54ceb804b65deaee8ab595087c5dcd1c88170721a8d2c4cb9c4",
+        "techno_mordor_review_v2.md": "f87883e42276bc2a3aa2218e3c9f4ea9e78cd5861a1cf0e48045be5906baf302"
+      }
+    }
+  ],
+  "health": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "service": "tasknodeofficial",
+      "environment": "production",
+      "buildId": "prod",
+      "uptimeSeconds": 34
+    }
+  }
+}

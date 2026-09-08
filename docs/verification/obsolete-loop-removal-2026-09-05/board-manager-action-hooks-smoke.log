@@ -1,0 +1,10 @@
+
+> tasknode@0.1.0 board-manager-action-hooks-smoke
+> node scripts/board-manager-action-hooks-smoke.mjs
+
+{
+  "ok": true,
+  "runId": "boardrun_0283e35b-cc1f-4e58-9c3b-ef7f1f609b45",
+  "projectId": "board_manager_action_smoke_project",
+  "actionResults": 14
+}

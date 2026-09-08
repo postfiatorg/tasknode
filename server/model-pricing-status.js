@@ -1,11 +1,13 @@
+import { collapseWhitespace } from "./inference-text.js";
 import {
   chatExecutionStatus,
   chatModePrices,
 } from "./chat-router.js";
-import { ambientBaseUrl, ambientModels } from "./ambient-inference.js";
+import { inferenceModels } from "./inference.js";
+import { providerBaseUrl } from "./inference-policy.js";
 import { databaseEnabled, query } from "./db/pool.js";
 
-const ambientModelsUrl = `${ambientBaseUrl()}/models`;
+const inferenceModelsUrl = `${providerBaseUrl("vercel")}/models`;
 const pricingTimeoutMs = Math.min(
   Math.max(Number(process.env.TASKNODE_MODEL_PRICING_TIMEOUT_MS) || 2500, 500),
   8000
@@ -22,9 +24,9 @@ const cacheEfficiencyWindowDays = Math.min(
 );
 
 const modeDescriptions = {
-  Instant: "Fast Ambient inference using DeepSeek V4 Flash 7/31 with reasoning disabled.",
-  Thinking: "Ambient inference using GLM 5.2 with deep reasoning.",
-  Help: "Ambient inference for plain-English Task Node product help with account context and the user guide injected.",
+  Instant: "GLM 5.3 Flash through Vercel AI Gateway, with Ambient as backup.",
+  Thinking: "GLM 5.3 with deep reasoning through Vercel AI Gateway, with Ambient as backup.",
+  Help: "Plain-English Task Node help through Vercel AI Gateway, with Ambient as backup.",
 };
 
 function pricingEnabled() {
@@ -32,6 +34,7 @@ function pricingEnabled() {
 }
 
 function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -114,7 +117,7 @@ export async function chatCacheEfficiencyStatus() {
           COALESCE(SUM(prompt_cache_miss_tokens) FILTER (WHERE cache_usage_reported), 0)::bigint AS prompt_cache_miss_tokens,
           COALESCE(SUM(cache_savings_usd) FILTER (WHERE cache_usage_reported), 0)::numeric AS cache_savings_usd
         FROM chat_model_runs
-        WHERE provider = 'ambient'
+        WHERE provider IN ('vercel', 'ambient')
           AND status = 'completed'
           AND started_at >= now() - ($1::text || ' days')::interval
         GROUP BY 1, model
@@ -163,13 +166,13 @@ function modelSummary(model = null) {
   return {
     id: model.id || "",
     name: model.name || "",
-    description: String(model.description || "").replace(/\s+/g, " ").trim().slice(0, 360),
-    inputUsdPerMillion: usdPerMillion(model.pricing?.prompt),
-    outputUsdPerMillion: usdPerMillion(model.pricing?.completion),
+    description: collapseWhitespace(model.description).slice(0, 360),
+    inputUsdPerMillion: usdPerMillion(model.pricing?.input ?? model.pricing?.prompt),
+    outputUsdPerMillion: usdPerMillion(model.pricing?.output ?? model.pricing?.completion),
     cacheReadUsdPerMillion: usdPerMillion(model.pricing?.input_cache_read),
-    contextLength: Number(model.context_length || model.top_provider?.context_length || 0) || null,
-    maxCompletionTokens: Number(model.top_provider?.max_completion_tokens || 0) || null,
-    sourceUrl: ambientModelsUrl,
+    contextLength: Number(model.context_window || model.context_length || model.top_provider?.context_length || 0) || null,
+    maxCompletionTokens: Number(model.max_tokens || model.top_provider?.max_completion_tokens || 0) || null,
+    sourceUrl: inferenceModelsUrl,
   };
 }
 
@@ -186,7 +189,8 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
       status: execution.status,
       configured: execution.configured,
       enabled: execution.enabled,
-      description: modeDescriptions[mode] || "",
+      description: modeDescriptions[mode] || mode,
+      billingPolicy: config.billingPolicy || "configured_user_tariff",
       configuredPricing: configuredPricing(config),
       maxOutputTokens: Number.isFinite(Number(config.maxOutputTokens)) && Number(config.maxOutputTokens) > 0
         ? Number(config.maxOutputTokens)
@@ -199,20 +203,20 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
         : config.disableReasoning
           ? "none"
           : "",
-      privacyPolicy: "Requests are sent to Ambient inference. The OpenAI exception is isolated to sanitized profile NFT image rendering and is not used for chat.",
-      providerOrder: [],
+      privacyPolicy: config.exactModel ? "Requests use the selected model through Vercel AI Gateway." : "Requests go to Vercel AI Gateway, with Ambient as backup. OpenAI Images is isolated to sanitized profile NFT rendering.",
+      providerOrder: ["vercel", ...(!config.exactModel && process.env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" ? ["ambient"] : [])],
       liveModel,
       liveEndpoints: endpointsByModel.get(execution.model) || [],
     };
   });
 }
 
-async function fetchLiveAmbientPricing({ fetchImpl = fetch } = {}) {
-  const modelsBody = await ambientModels({ fetchImpl, timeoutMs: pricingTimeoutMs });
+async function fetchLiveGatewayPricing({ fetchImpl = fetch } = {}) {
+  const modelsBody = await inferenceModels({ fetchImpl, timeoutMs: pricingTimeoutMs });
   const models = Array.isArray(modelsBody?.data) ? modelsBody.data : [];
   const modelIds = [...new Set(Object.keys(chatModePrices)
     .map((mode) => chatExecutionStatus(mode))
-    .filter((status) => status.provider === "ambient")
+    .filter((status) => status.provider === "vercel")
     .map((status) => status.model)
     .filter(Boolean))];
   const endpointsByModel = new Map();
@@ -235,7 +239,7 @@ export async function chatPricingStatus({ fetchImpl = fetch } = {}) {
     fetchedAt: null,
     error: "",
     sourceUrls: [
-      ambientModelsUrl,
+      inferenceModelsUrl,
     ],
   };
   const cacheEfficiencyPromise = chatCacheEfficiencyStatus();
@@ -244,7 +248,7 @@ export async function chatPricingStatus({ fetchImpl = fetch } = {}) {
 
   if (live.enabled) {
     try {
-      const fetched = await fetchLiveAmbientPricing({ fetchImpl });
+      const fetched = await fetchLiveGatewayPricing({ fetchImpl });
       liveByModel = fetched.liveByModel;
       endpointsByModel = fetched.endpointsByModel;
       live.status = "ok";
@@ -262,8 +266,8 @@ export async function chatPricingStatus({ fetchImpl = fetch } = {}) {
     modes: baseModeRows(liveByModel, endpointsByModel),
     references: [],
     notes: [
-      "Configured pricing is Task Node's user tariff and is authoritative for both estimates and ledger debits.",
-      "Live model metadata and wholesale pricing come from Ambient inference for comparison; provider-reported cost never overrides the user tariff.",
+      "Instant, Thinking, and Help use the configured user tariff for estimates and ledger debits.",
+      "GPT-6 Astra and Kimi K3 estimates use published base API rates; final debits equal Vercel-reported cost without markup. Missing provider cost prevents a debit.",
     ],
   };
   pricingCache = { cachedAtMs: now, value };

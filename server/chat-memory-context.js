@@ -1,3 +1,4 @@
+import { limitNewlines } from "./inference-text.js";
 import { getChatMemoryContext } from "./repositories/chat-memory.js";
 import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
 import { formatChatContextDocument } from "./chat-account-context.js";
@@ -37,7 +38,7 @@ function formatDeliveryContext(deliveryContext = null) {
 }
 
 function clipMemoryText(value = "", max = 1200) {
-  const text = String(value || "").trim().replace(/\n{3,}/g, "\n\n");
+  const text = limitNewlines(String(value || "").trim(), 2);
   if (text.length <= max) return text;
   return `${text.slice(0, Math.max(0, max - 15)).trimEnd()} [truncated]`;
 }

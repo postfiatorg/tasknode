@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "mode": "Actual HiveGroupChat and MessagesView with two wallet-derived fixture identities, synthetic HTTP/relay responses and real anonymous PFP artwork; no public test messages",
+  "checks": [
+    "shared feed across two accounts",
+    "PFPs and profile links",
+    "Nostr message links",
+    "mention keyboard completion and p tags",
+    "network failure draft retention",
+    "same event retry across reload",
+    "wallet locked reading",
+    "Messages activation UX",
+    "signed-out reading",
+    "account switch isolation",
+    "private archive isolation",
+    "390px mobile without overflow"
+  ]
+}

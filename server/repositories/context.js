@@ -1,3 +1,5 @@
+import { splitWhitespace } from "../../shared/text-protocol.js";
+import { isIdentifierChar, isWhitespace, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash, randomUUID } from "node:crypto";
 import { normalizeContextHistoryProjection } from "../context-history.js";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
@@ -30,16 +32,13 @@ function safeAccountId(accountId = "") {
 }
 
 function safeKey(value = "", fallback = "item") {
-  const normalized = String(value || "")
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  const normalized = trimCharacters(replaceCharacterRuns(String(value || ""),char=>!isIdentifierChar(char),"_"),"_");
   return (normalized || fallback).slice(0, 100);
 }
 
 function cleanTitle(title = "") {
-  return String(title || "Task Node Context")
-    .trim()
-    .replace(/\s+/g, " ")
+  return replaceCharacterRuns(String(title || "Task Node Context")
+    .trim(),isWhitespace," ")
     .slice(0, maxContextTitleLength) || "Task Node Context";
 }
 
@@ -66,7 +65,7 @@ function stablePointerId({ accountId, walletAddress, pointerType, pointer }) {
 }
 
 function wordCount(body = "") {
-  const words = String(body || "").trim().match(/\S+/g);
+  const words = splitWhitespace(String(body || ""));
   return words ? words.length : 0;
 }
 

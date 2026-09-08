@@ -1,3 +1,5 @@
+import { appearancePageHead } from "./appearance-page.js";
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -25,6 +27,7 @@ export function telegramAuthorizePage({ botUsername = "", callbackUrl = "", botD
     .telegram-widget { min-height: 46px; margin-top: 14px; }
     .muted { margin-top: 18px; font-size: 13px; color: #777267; }
   </style>
+  ${appearancePageHead}
 </head>
 <body>
   <main>
@@ -66,6 +69,7 @@ export function telegramAuthorizeErrorHtml({ title, message, actionRequired }) {
     p { margin: 0 0 14px; color: #5f5b52; font-size: 15px; line-height: 1.55; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: #f2eee7; border-radius: 4px; padding: 2px 4px; }
   </style>
+  ${appearancePageHead}
 </head>
 <body>
   <main>

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "alias": "pfterminal",
+      "provider": "kimi-code",
+      "model": "kimi-k3",
+      "boards": ["board_pf_terminal", "board_community_promotion", "board_postfiat_l1v2", "board_ai_l1_governance", "board_tasknode_fixes", "board_capital_markets"]
+    }
+  ],
+  "skills": {
+    "board_pf_terminal": "board-pfterminal",
+    "board_community_promotion": "board-community-promotion",
+    "board_postfiat_l1v2": "board-postfiatl1v2",
+    "board_ai_l1_governance": "board-ai-l1-governance",
+    "board_tasknode_fixes": "board-tasknode-fixes",
+    "board_capital_markets": "board-capital-markets"
+  }
+}

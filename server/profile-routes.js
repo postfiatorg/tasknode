@@ -872,7 +872,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
     ? result.body?.phase === "minted" || requestedNftPhase === "submit"
       ? "user.profile.nft_minted"
       : "user.profile.nft_mint_prepared"
-    : "user.profile.nft_generated";
+    : "user.profile.nft_generation_queued";
   await recordProfileObservabilityEvent({
     eventType: nftEventType,
     accountId: session?.accountId || "",

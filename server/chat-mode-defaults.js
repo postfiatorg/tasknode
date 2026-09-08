@@ -1,8 +1,8 @@
-import { ambientConfigured } from "./ambient-inference.js";
+import { inferenceConfigured } from "./inference.js";
 
 export const fallbackChatModeLabel = "Instant";
 
 export function effectiveDefaultChatMode() {
-  if (ambientConfigured() && process.env.AMBIENT_CHAT_ENABLED !== "false") return "Instant";
+  if (inferenceConfigured() && process.env.INFERENCE_CHAT_ENABLED !== "false") return "Instant";
   return fallbackChatModeLabel;
 }

@@ -1,6 +1,54 @@
-# Hive group routing: review and reproduction
+# Hive group chat verification — 2026-09-06
 
-## Before and after
+Implemented one public Nostr group with Messages identities, PFPs, @mentions,
+reply references, account-scoped drafts, unread markers and a private legacy
+archive. The existing Hive worker runs periodic Flash decisions and GLM replies.
+The existing production Kimi K3 TUI receives durable scoped escalation duties.
+
+## Focused checks
+
+- `scripts/hive-group-smoke.mjs`: disposable Postgres plus local WebSocket relay;
+  actual signed-event routes, signature/room/account rejection, durable pending
+  delivery, same-event retries, ten concurrent bot claims, late delivery cursor,
+  outsider rejection, public-only context, model defaults, scoped Kimi inbox,
+  transaction rollback, five concurrent Kimi reply retries, and completion proof.
+- `scripts/hive-group-visual-smoke.mjs`: actual React views with two generated
+  wallet identities and synthetic HTTP/relay responses. Checks shared feed,
+  PFPs/profile links, Nostr event links, mention completion/p tags, draft retry
+  across page reload, locked reading, setup, account switching and private archive.
+  Screenshots cover desktop and 390px mobile. No public fixture messages.
+- Live synthetic GLM evaluation: casual conversation, identity question, terminal
+  sync blocker and a paraphrased app submission blocker. No relay publication or
+  production task/board mutation. See `model-evaluation.json`.
+- Lint, build, format, API contracts, no-regex inference graph, provider egress,
+  Nostr identity regression, extension registry and Hive worker liveness checks.
+
+## Deployment evidence
+
+Release **v721** completed successfully. All ten active processes use the
+release image, and web/Hive-worker hashes match the reviewed files. The real
+room root was acknowledged by all three configured relays; bot NIP-05 resolves
+to its stable public key. The live app passed desktop/mobile read-only checks.
+The existing production Kimi credential successfully read the scoped inbox,
+and its installed skill matches the repository. No terminal restart was needed.
+Detailed production results are in the adjacent JSON files. Public group bot initialization publishes its real room root
+and profile; test chatter is never posted. Kimi's actual response to a real
+contributor escalation is not claimed by these fixtures.
+
+Relay publication returns the first positive acknowledgement promptly while
+allowing the other relay attempts to finish within their own timeout. A delayed
+relay fixture proves that a fast acknowledgement does not cancel replication.
+
+The deployed user guide was also checked for the new Messages activation path
+and removal of the previous pinned-chat instructions (`production-docs.json`).
+The disposable Postgres fixture was dropped, and the dedicated Vite and Chrome
+fixture processes were stopped; ports 5199 and 9369 are closed.
+
+## Subsequent isolated PR verification — September 7, 2026
+
+## Hive group routing: review and reproduction
+
+### Before and after
 
 Before this change, `/api/hive/chat` routed each contributor into a private,
 account-scoped conversation and could generate an immediate advisory reply.
@@ -21,7 +69,7 @@ The automatic per-message advisory interaction and the static introduction
 paragraph) are absent from the new view. The reply prompt also discourages canned
 praise, repetitive check-ins and long speeches.
 
-## Verification on the isolated PR branch, 2026-09-07
+### Verification on the isolated PR branch, 2026-09-07
 
 - `node scripts/hive-group-smoke.mjs`: passed against disposable Postgres and a
   local WebSocket relay. Covers shared delivery between two identities, signature
@@ -45,7 +93,7 @@ Browser transport fixtures publish no public messages. These checks do not claim
 a live Kimi response or a new production deployment. Generated screenshots, model
 outputs and production account records are deliberately excluded from this PR.
 
-## Reproduce the behavior
+### Reproduce the behavior
 
 1. Enable `TASKNODE_HIVE_GROUP_ENABLED=true`, configure the persistent bot key
    `TASKNODE_HIVE_NOSTR_SECRET_KEY`, and run the web and Hive worker processes.

@@ -1,3 +1,4 @@
+import { isIdentifierChar, replaceCharacterRuns } from "../shared/text-protocol.js";
 import fs from "node:fs/promises";
 import pg from "pg";
 
@@ -41,8 +42,7 @@ function clampInteger(value, fallback, min, max) {
 }
 
 function safeErrorCode(error) {
-  return safeText(error?.code || error?.message || error?.name || "deathmarch_error", 240)
-    .replace(/[^a-zA-Z0-9_.:-]+/g, "_")
+  return replaceCharacterRuns(safeText(error?.code || error?.message || error?.name || "deathmarch_error", 240),char=>!isIdentifierChar(char)&&char!=="."&&char!==":","_")
     .slice(0, 240);
 }
 

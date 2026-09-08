@@ -6,9 +6,9 @@ import {
 } from "./repositories/team-context.js";
 import {
   TEAM_CONTEXT_VERCEL_MODEL,
-  vercelAiGatewayConfigured,
   vercelChatCompletion,
 } from "./vercel-inference.js";
+import { inferenceConfigured, inferenceProviderForResponse } from "./inference.js";
 import { TEAM_CONTEXT_PROMPT_VERSION } from "./team-context-contract.js";
 
 const systemPrompt = loadPrompt(`team/${TEAM_CONTEXT_PROMPT_VERSION}.md`);
@@ -63,7 +63,7 @@ function compileMemberSummary(responseMember = {}, overview = "") {
   const recentWork = safeText([focus, ...completedChanges, operationalEffect].join(" "), 6000);
   const detailWordCount = wordCount(recentWork);
   if (detailWordCount < 90) throw new Error("team_context_response_member_detail_too_short");
-  return { recentWork, workstream };
+  return { completedChanges, focus, operationalEffect, recentWork, workstream };
 }
 
 export function parseTeamContextResponse(text = "", source = {}) {
@@ -100,6 +100,9 @@ export function parseTeamContextResponse(text = "", source = {}) {
         return {
           account_id: binding.accountId,
           workstream: "",
+          focus: "",
+          completed_changes: [],
+          operational_effect: "",
           recent_work: "No rewarded work is available yet for this member.",
         };
       }
@@ -110,6 +113,9 @@ export function parseTeamContextResponse(text = "", source = {}) {
       return {
         account_id: binding.accountId,
         workstream: compiled.workstream,
+        focus: compiled.focus,
+        completed_changes: compiled.completedChanges,
+        operational_effect: compiled.operationalEffect,
         recent_work: compiled.recentWork,
       };
     }),
@@ -155,6 +161,7 @@ async function generateSingleMemberReport(source = {}, member = {}, options = {}
   return {
     report: parseTeamContextResponse(content, singleMemberSource),
     usage: usageFromBody(body),
+    inference: { provider: inferenceProviderForResponse(body), model: body.model || TEAM_CONTEXT_VERCEL_MODEL, responseId: body.id || null },
   };
 }
 
@@ -188,16 +195,21 @@ export async function generateTeamContextReport(source = {}, options = {}) {
         generatedByAccount.get(binding.accountId) || {
           account_id: binding.accountId,
           workstream: "",
+          focus: "",
+          completed_changes: [],
+          operational_effect: "",
           recent_work: "No rewarded work is available yet for this member.",
         }
       ),
     },
-    usage,
+    usage: { ...usage, inferenceRuns: generated.map((result) => result.inference) },
+    provider: [...new Set(generated.map((result) => result.inference.provider))].join("+") || "vercel",
+    model: [...new Set(generated.map((result) => result.inference.model))].join("+") || TEAM_CONTEXT_VERCEL_MODEL,
   };
 }
 
 export async function processTeamContextQueueOnce({ limit = 2 } = {}) {
-  if (!vercelAiGatewayConfigured()) return { ok: true, skipped: true, reason: "vercel_ai_gateway_not_configured" };
+  if (!inferenceConfigured()) return { ok: true, skipped: true, reason: "inference_not_configured" };
   if (running) return { ok: true, skipped: true, reason: "team_context_worker_busy" };
   running = true;
   let processed = 0;
@@ -211,7 +223,8 @@ export async function processTeamContextQueueOnce({ limit = 2 } = {}) {
           job,
           report: generated.report,
           usage: generated.usage,
-          model: TEAM_CONTEXT_VERCEL_MODEL,
+          model: generated.model,
+          provider: generated.provider,
         });
         processed += 1;
       } catch (error) {
@@ -226,7 +239,7 @@ export async function processTeamContextQueueOnce({ limit = 2 } = {}) {
 }
 
 export function startTeamContextWorker() {
-  if (timer || process.env.TASKNODE_TEAM_CONTEXT_ENABLED === "false" || !vercelAiGatewayConfigured()) {
+  if (timer || process.env.TASKNODE_TEAM_CONTEXT_ENABLED === "false" || !inferenceConfigured()) {
     return { ok: true, skipped: true };
   }
   const intervalMs = Math.max(5000, Number(process.env.TASKNODE_TEAM_CONTEXT_INTERVAL_MS || 15_000));

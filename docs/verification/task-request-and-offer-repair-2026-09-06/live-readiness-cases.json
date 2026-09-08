@@ -1,0 +1,24 @@
+{
+  "at": "2026-09-06T17:52:07.246Z",
+  "synthetic": true,
+  "results": [
+    {
+      "name": "actionable",
+      "expected": true,
+      "approved": true,
+      "passed": true
+    },
+    {
+      "name": "circular_placeholder",
+      "expected": false,
+      "approved": false,
+      "passed": true
+    },
+    {
+      "name": "schema_tokens",
+      "expected": false,
+      "approved": false,
+      "passed": true
+    }
+  ]
+}

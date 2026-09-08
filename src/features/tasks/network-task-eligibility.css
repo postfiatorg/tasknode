@@ -1,15 +1,15 @@
 .net-elig {
   margin: 8px 0 0;
-  color: #8b8576;
+  color: var(--tn-dark-muted, #8b8576);
   font-size: 13px;
-  --ink: #1c1910;
-  --muted: #8b8576;
-  --faint: #b3ac9c;
-  --hair: rgba(28, 25, 16, 0.10);
-  --hair-soft: rgba(28, 25, 16, 0.06);
-  --ok: #2f8a46;
-  --warn: #b06a14;
-  --bad: #b3402e;
+  --ink: var(--tn-dark-text, #1c1910);
+  --muted: var(--tn-dark-muted, #8b8576);
+  --faint: var(--tn-dark-muted, #b3ac9c);
+  --hair: var(--tn-dark-muted, rgba(28, 25, 16, 0.10));
+  --hair-soft: var(--tn-dark-overlay, rgba(28, 25, 16, 0.06));
+  --ok: var(--tn-dark-success, #2f8a46);
+  --warn: var(--tn-dark-warning, #b06a14);
+  --bad: var(--tn-dark-danger, #b3402e);
 }
 
 .net-elig-line {

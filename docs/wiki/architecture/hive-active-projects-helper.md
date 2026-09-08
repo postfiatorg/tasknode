@@ -1,41 +1,14 @@
-# Hive Active Projects Helper
+# Retired Hive Active Projects Helper
 
-The Hive Active Projects helper derives the current active project set from the
-latest Hive Secretary report and project registry. It keeps the Hive board
-focused without deleting recoverable project history.
+The experimental model-driven project planner was removed on September 5,
+2026. Kimi K3 and authorized operators manage the deterministic board registry.
+Hive Secretary continues to summarize validated context; completing a report
+no longer enqueues project-planning jobs or mutates boards through a model.
 
-System Status row: `hive_active_projects`
+Historical `hive_project_planning_jobs` and `hive_project_generations` rows are
+retained for audit. The current read model returns no live planner job, and
+System Status no longer lists the retired helper. Operator archive locks and
+project rollup repair remain supported.
 
-## Runtime Boundary
-
-- Worker module: `server/hive-active-projects-worker.js`.
-- Prompt: `prompts/hive/hive_active_projects_v1.md`.
-- Source tables: `hive_project_planning_jobs`,
-  `hive_project_generations`, project registry tables, and latest Secretary
-  report rows.
-- Related repair script: `scripts/repair-hive-project-rollups.mjs`.
-
-## Status Derivation
-
-Green means the latest project generation is fresh and no due project-planning
-job is stale.
-
-Amber means project-planning jobs failed recently.
-
-Red means the project-planning queue is stale or the enabled helper has no
-completed generation.
-
-## Debug And Repair
-
-Run the project planning smoke and rollup repair when the generated read model
-is wrong:
-
-```bash
-npm run hive-project-planning-smoke
-npm run hive-project-rollup-repair
-```
-
-Inspect `hive_project_planning_jobs.last_error` before requeueing. If worker
-health is green but the board looks wrong, repair project rollups instead of
-forcing a new generation. Board Manager archives must remain reversible unless
-an explicit operator lock says otherwise.
+Use `npm run hive-secretary-project-views-smoke` for the retained secretary and
+project-view boundary. See [board management](board-manager.md).

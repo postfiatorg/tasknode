@@ -1,3 +1,4 @@
+import { isDecimalDigits } from "./text-protocol.js";
 export function taskIso(value) {
   if (!value) return "";
   if (value instanceof Date) return value.toISOString();
@@ -35,7 +36,8 @@ function dateTimeOptions(date, { timeZone } = {}) {
 }
 
 function isDateOnlyText(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+  const parts = String(value || "").trim().split("-");
+  return parts.length === 3 && parts.map(part=>part.length).join(",") === "4,2,2" && parts.every(isDecimalDigits);
 }
 
 function isUtcMidnight(date) {

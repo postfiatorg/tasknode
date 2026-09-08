@@ -707,6 +707,7 @@ async function startGithubAuth(requestMeta = {}) {
   authorizeUrl.searchParams.set("scope", githubAuthScope(requestMeta));
   authorizeUrl.searchParams.set("state", stateRow.id);
   authorizeUrl.searchParams.set("allow_signup", "true");
+  if (terminalRequestId) authorizeUrl.searchParams.set("prompt", "select_account");
   return oauthStartResponse({ providerId: "github", stateRow, linkingAccount, redirectUrl: authorizeUrl.toString(), redirectUri });
 }
 

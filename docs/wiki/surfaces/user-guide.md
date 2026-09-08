@@ -10,6 +10,14 @@ Task Node is a chat-first, AI-assisted work system where people keep a live cont
 
 The AI parts help generate tasks, explain app state, summarize context, route network work, draft evidence, score some outputs, and make recommendations. The user still controls account actions through the app surfaces. Do not assume that a human reviewed, verified, assigned, or approved something unless the app explicitly says that.
 
+## Appearance
+
+Open the account menu, then **Settings → General → Appearance**. Choose **System**, **Light**, or **Dark**; the change applies immediately. System follows your device's appearance and updates when it changes.
+
+Your choice is saved for this browser/device, remains through sign-out and account switching, and updates other open Task Node tabs. It does not sync across devices. If browser storage is blocked, Settings explains that the choice applies only to this session.
+
+Task Node's document toolbar follows Appearance. The embedded collaborative editor retains its own appearance setting. Images, artwork, and QR codes keep their original colors.
+
 ## Screen-by-Screen Feature Map
 
 Use this section when a user asks what Task Node is, where something lives, what a page means, or what to do next.
@@ -20,10 +28,10 @@ Chat is the main AI workspace. It can answer questions, reason through work, dra
 
 Chat does not secretly press product buttons. It cannot accept a task, refuse a task, submit evidence, mint an NFT, send PFT, edit Context, or create Hive work unless the user uses an explicit app control.
 
-The chat mode picker changes the model behavior. All options use Ambient:
+The chat mode picker changes model behavior. Shared inference uses Vercel first, with Ambient backup:
 
-- `Instant` uses DeepSeek Flash 7/31 for fast everyday chat.
-- `Thinking` uses GLM 5.2 for deeper reasoning.
+- `Instant` uses GLM 5.3 Flash for faster responses.
+- `Thinking` uses GLM 5.3 for deeper reasoning.
 - `Help` is product help. It uses this guide plus the user's available app context to explain what the user is seeing and which surface to use.
 
 A new empty chat shows four starter prompts for signed-in users: `Help me build my context document`, `Give me my first task`, `How do I earn PFT?`, and `What should I do first?`. Clicking one fills the composer so the user can edit or send it; it does not send by itself.
@@ -68,9 +76,9 @@ Memory is a compressed record of useful chat history. It helps future chats carr
 
 ### Docs Screen
 
-Docs is the wallet-encrypted collaborative rich-text library in the primary sidebar. Unlock the linked wallet to create the Docs key envelope, decrypt titles, create/open documents, and share with an exact Task Node handle or linked wallet. The editor is embedded in Task Node; a separate popup is a defect. Renaming in either Task Node or PFDocs synchronizes the owner's encrypted canonical title.
+Docs is the wallet-encrypted document and spreadsheet library in the primary sidebar. A locked library presents one page-level Unlock action. Encrypted folders support organizing documents in a nested hierarchy. Unlock the linked wallet to create the Docs key envelope, decrypt titles, create/open documents, and share with an exact Task Node handle or linked wallet. The editor is embedded in Task Node; a separate popup is a defect. Renaming in either Task Node or PFDocs synchronizes the owner's encrypted canonical title.
 
-Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use Ambient GLM 5.2. They receive the current document, the mention, and a bounded window of the active document chat so follow-ups retain continuity. Turn on `Full context` only when the response should additionally use Task Node Context, Memory, and task state.
+Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use GLM 5.3 through Vercel first, with Ambient backup. They receive the current document, the mention, and a bounded window of the active document chat so follow-ups retain continuity. Turn on `Full context` only when the response should additionally use Task Node Context, Memory, and task state.
 
 ### Team Screen
 
@@ -126,11 +134,11 @@ Recommendations require enough public/discoverable member data to compare agains
 
 Hive is the group coordination board. It shows shared Post Fiat projects, Network Task routing, contributor activity, Hive Context, and Hive Mind Agent activity. It is where the user inspects network work, not where they accept or submit tasks.
 
-Hive Chat is a pinned chat conversation for contributing network context. A Hive Chat message is saved to Hive Context. The immediate response can explain board state, badges, and routing blockers, but it does not create a task by itself. Network Tasks are routed later by the Board Manager when there is a project need, eligible contributor capacity, a verified operating badge, and a matching user profile.
+Hive chat is one public group conversation over Nostr, available from the primary sidebar. It uses your Messages handle and public profile picture, with @mentions and linked replies. A periodic GLM 5.3 Flash check decides whether the bot should participate; GLM 5.3 writes selected replies. Concrete board issues can enter the existing production Kimi K3 manager’s durable inbox. Messages do not create tasks by themselves; normal badge, capacity, board and reward checks still apply.
 
 When Hive Chat describes an active Network Task reward, the user-visible task projection reward is authoritative. Internal allocation caps are only context for not-yet-offered work and should not be reported as the accepted task reward.
 
-Hive Context validation means the entry came from an account with a linked PFT wallet. Ordinary Hive Chat messages do not require the wallet vault to be unlocked. Wallet unlock is needed later for signed task actions.
+Public Hive chat can be read with the wallet locked. Sending requires an active public Messages identity and the matching unlocked wallet to sign a Nostr event. Private direct Messages and the previous private Hive archive remain separate from the group.
 
 ### Telegram Login And Telegram Chat
 
@@ -387,7 +395,7 @@ Use Hive to understand active network projects, project needs, recent activity, 
 
 Use Hive Chat when you want to tell the coordination layer something relevant, ask why routing is happening, or add context that the group should consider.
 
-Hive Chat cannot create personal tasks for you. It can record context and explain state. Project-linked Network Tasks are routed by the Board Manager when there is a project need and an eligible contributor.
+The Hive bot participates periodically and can queue a concrete issue for the Kimi board manager. It does not reply to every message or create tasks directly. The manager investigates through its existing scoped board workflow and can post a public reply to the original message.
 
 Board Manager is an AI-assisted coordination system. It can route, summarize, and recommend network actions through the product workflow. It is not a human manager, and Help should not describe it as one.
 
@@ -398,12 +406,12 @@ For a first Hive Chat session:
 1. Sign in or create an account.
 2. Choose a Hive handle on Profile.
 3. Link or create a PFT wallet on Wallet.
-4. Open the pinned `Hive Chat` conversation in Chat.
-5. Send a short message describing what you can contribute or what network context the Board Manager should know.
+4. Open Messages and activate your public Nostr identity. The page explains private Messages and public Hive together.
+5. Open Hive chat from the sidebar, unlock the wallet to send, and use @ to tag a member. The composer clearly labels the room as public on Nostr.
 6. Open Hive to inspect active projects and Board Manager activity.
 7. Open Tasks when a Network Task is proposed, because acceptance, refusal, evidence submission, verification, and reward state happen there.
 
-Hive Context validation means the Hive entry came from an account with a linked PFT wallet. Ordinary Hive Chat messages do not require the wallet vault to be unlocked. Wallet unlock is needed later for signing wallet-bound actions such as accepting a task or submitting evidence.
+Signed-in users without Messages receive a dismissible setup prompt. Reading the public group does not need wallet unlock; sending does. If relay delivery is delayed, the signed event is saved and retried automatically. A failed HTTP send preserves the draft and event ID for retry after a reload. The member panel also links to the account’s previous private Hive archive.
 
 ### How To Explain Network Tasks
 

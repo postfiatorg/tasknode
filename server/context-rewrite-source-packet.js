@@ -1,3 +1,5 @@
+import { contextBodyText } from "../shared/context-line-map.js";
+import { redactSecrets, textTokens, isWhitespace } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { getContextDocument } from "./repositories/context.js";
 import { getChatMessages } from "./repositories/chat-billing.js";
@@ -33,29 +35,16 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function stripHtml(value = "") {
-  return String(value || "")
-    .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6|tr)>/gi, "\n")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<li>/gi, "- ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"")
-    .replace(/&#39;/g, "'")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{4,}/g, "\n\n\n")
-    .trim();
-}
-
+const stripHtml = contextBodyText;
 function redactSensitiveText(value = "") {
-  return String(value || "")
-    .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "[redacted_api_key]")
-    .replace(/\b(?:0x)?[a-fA-F0-9]{64}\b/g, "[redacted_secret_or_hash]")
-    .replace(/\b(seed phrase|recovery phrase|mnemonic|private key|password)\s*[:=]\s*[^\n\r]+/gi, "$1: [redacted]")
-    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[redacted_email]");
+  const text = redactSecrets(value);
+  let result = "", cursor = 0;
+  for (const token of textTokens(text, char=>!isWhitespace(char) && !['"',"'","<",">",",",";"].includes(char))) {
+    const parts = token.value.split("@");
+    if (parts.length !== 2 || !parts[0] || !parts[1].includes(".")) continue;
+    result += text.slice(cursor, token.start) + "[redacted_email]"; cursor=token.end;
+  }
+  return result + text.slice(cursor);
 }
 
 function clip(value = "", max = 4000) {

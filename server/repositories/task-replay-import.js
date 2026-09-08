@@ -294,6 +294,9 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
             -- the status or mark the task rewarded.
             WHEN task_projections.metadata_json ? 'agent_cancelled'
             THEN task_projections.status
+            WHEN task_projections.metadata_json ? 'legacy_rejected_review'
+              AND EXCLUDED.status <> 'rewarded'
+            THEN 'rejected'
             ELSE EXCLUDED.status
           END,
           title = EXCLUDED.title,
@@ -303,6 +306,9 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
           reward_actual_pft = CASE
             WHEN task_projections.metadata_json ? 'agent_cancelled'
             THEN task_projections.reward_actual_pft
+            WHEN task_projections.metadata_json ? 'legacy_rejected_review'
+              AND EXCLUDED.status <> 'rewarded'
+            THEN 0
             ELSE EXCLUDED.reward_actual_pft
           END,
           request_bundle_cid = EXCLUDED.request_bundle_cid,

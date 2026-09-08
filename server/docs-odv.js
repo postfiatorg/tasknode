@@ -1,11 +1,20 @@
+import { textTokens, isWhitespace, replaceIdentifier } from "./inference-text.js";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AMBIENT_MODELS, ambientChatCompletion } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
 import { loadChatExecutionContext } from "./chat-context-load.js";
 import { requireDocumentAccess } from "./repositories/collaboration.js";
 
 const promptRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../prompts/docs");
+
+// Completion budgets include the model's reasoning as well as its visible answer.
+export const DOCS_ASSISTANT_LIMITS = Object.freeze({
+  completionTokens: 32_768,
+  retryCompletionTokens: 65_536,
+  providerTimeoutMs: 300_000,
+  totalTimeoutMs: 540_000,
+});
 
 function clippedText(value = "", max = 4000) {
   return String(value || "").split("\u0000").join("").trim().slice(0, max);
@@ -30,14 +39,12 @@ const personaDefinitions = Object.freeze({
     mention: "@ODV",
     label: "ODV",
     prompt: promptSections("odv_lindy_v1.md"),
-    maxTokens: 2200,
   }),
   coach: Object.freeze({
     id: "coach",
     mention: "@coach",
     label: "Trading Coach",
     prompt: promptSections("trading_coach_v1.md"),
-    maxTokens: 2400,
   }),
 });
 
@@ -50,12 +57,14 @@ export const DOCS_PERSONAS = Object.freeze(Object.fromEntries(
 ));
 
 export function detectDocsPersonaMention(value = "") {
-  const text = String(value || "");
-  const match = /(^|\s)@(ODV|coach)\b/i.exec(text);
-  if (!match) return null;
-  const persona = match[2].toLowerCase() === "odv" ? "odv" : "coach";
-  return DOCS_PERSONAS[persona];
-}
+    const text = String(value || "");
+    for (const token of textTokens(text)) {
+      if (text[token.start - 1] !== "@" || (token.start > 1 && !isWhitespace(text[token.start - 2]))) continue;
+      const persona = token.value.toLowerCase();
+      if (Object.hasOwn(DOCS_PERSONAS, persona)) return DOCS_PERSONAS[persona];
+    }
+    return null;
+  }
 
 export function containsOdvMention(value = "") {
   return detectDocsPersonaMention(value)?.id === "odv";
@@ -137,17 +146,15 @@ export function buildDocsAssistantRequest({
   });
   const system = `${definition.prompt.system}\n\n${detected.id === "coach" ? definition.prompt.user : ""}\n\n${runtimeBoundary()}`.trim();
   const user = detected.id === "odv"
-    ? definition.prompt.user
-      .replace(/\bfinal_string\b/g, normalizedPrompt)
-      .replace(/\bfull_user_context\b/g, safeJson(packet, 70_000))
+    ? replaceIdentifier(replaceIdentifier(definition.prompt.user, "final_string", normalizedPrompt), "full_user_context", safeJson(packet, 70_000))
     : safeJson(packet, 100_000);
   return {
     persona: detected.id,
     label: detected.label,
-    model: AMBIENT_MODELS.reasoningText,
+    model: INFERENCE_MODELS.reasoningText,
     messages: [{ role: "system", content: system }, { role: "user", content: user }],
     reasoning: { effort: "medium", exclude: true },
-    max_tokens: definition.maxTokens,
+    max_tokens: DOCS_ASSISTANT_LIMITS.completionTokens,
     temperature: 0.1,
   };
 }
@@ -172,8 +179,9 @@ export async function generateDocsAssistantResponse({
   includeFullContext = false,
 } = {}, {
   authorize = requireDocumentAccess,
-  infer = ambientChatCompletion,
+  infer = inferenceChatCompletion,
   loadUserContext = loadChatExecutionContext,
+  reportFailure = (details) => console.warn("docs_assistant_failure", JSON.stringify(details)),
 } = {}) {
   const access = await authorize({ accountId, documentId, channelHash });
   if (!access?.ok) return access;
@@ -191,18 +199,58 @@ export async function generateDocsAssistantResponse({
     includeFullContext,
   });
   const { persona: resolvedPersona, label, ...providerBody } = body;
-  const result = await infer({ body: providerBody, capability: "reasoning_text", timeoutMs: 60_000 });
-  const response = clippedText(result?.text, 12_000);
-  if (!response) return { ok: false, status: 502, error: "docs_assistant_empty_response" };
-  return {
-    ok: true,
-    provider: "ambient",
-    persona: resolvedPersona,
-    label,
-    model: result.model || AMBIENT_MODELS.reasoningText,
-    response,
-    responseId: result.id || null,
-  };
+  const signal = AbortSignal.timeout(DOCS_ASSISTANT_LIMITS.totalTimeoutMs);
+  let completionTokens = providerBody.max_tokens;
+  while (true) {
+    try {
+      const result = await infer({
+        body: { ...providerBody, max_tokens: completionTokens },
+        capability: "reasoning_text",
+        timeoutMs: DOCS_ASSISTANT_LIMITS.providerTimeoutMs,
+        signal,
+      });
+      // The provider token budget bounds output. Preserve the entire answer.
+      const response = typeof result?.text === "string" ? result.text.trim() : "";
+      if (!response) throw Object.assign(new Error("inference_empty_response"), { code: "inference_empty_response" });
+      return {
+        ok: true,
+        provider: result.provider,
+        persona: resolvedPersona,
+        label,
+        model: result.model || INFERENCE_MODELS.reasoningText,
+        response,
+        responseId: result.id || null,
+      };
+    } catch (error) {
+      if (error?.code === "inference_response_truncated" &&
+          completionTokens < DOCS_ASSISTANT_LIMITS.retryCompletionTokens && !signal.aborted) {
+        completionTokens = DOCS_ASSISTANT_LIMITS.retryCompletionTokens;
+        continue;
+      }
+      const failure = docsAssistantFailure(error, { timedOut: signal.aborted });
+      reportFailure({
+        persona: resolvedPersona,
+        provider: ["vercel", "ambient"].includes(error?.provider) ? error.provider : "unknown",
+        error: failure.error,
+        status: failure.status,
+        completionTokens,
+      });
+      return failure;
+    }
+  }
+}
+
+export function docsAssistantFailure(error, { timedOut = false } = {}) {
+  if (timedOut || ["inference_timeout", "inference_aborted", "inference_http_408", "inference_http_504"].includes(error?.code)) {
+    return { ok: false, status: 504, error: "docs_assistant_timeout", message: "The document assistant took too long to answer. Please try again." };
+  }
+  if (error?.code === "inference_response_truncated") {
+    return { ok: false, status: 502, error: "docs_assistant_response_limit", message: "The answer exceeded the document assistant's response limit. Ask it to split the answer into parts." };
+  }
+  if (error?.code === "inference_http_429") {
+    return { ok: false, status: 503, error: "docs_assistant_busy", message: "The document assistant is busy. Please try again shortly." };
+  }
+  return { ok: false, status: 502, error: "docs_assistant_unavailable", message: "The document assistant could not complete its answer. Please try again." };
 }
 
 export async function generateDocsOdvResponse(input = {}, dependencies = {}) {

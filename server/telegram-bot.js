@@ -238,7 +238,7 @@ function fallbackTelegramMode(currentMode = "") {
 
 function shouldRetryTelegramChat({ mode = "", result = {} } = {}) {
   if (mode !== "Thinking" || result?.body?.ok === true) return false;
-  if (result?.body?.estimate?.provider !== "ambient") return false;
+  if (!["vercel", "ambient"].includes(result?.body?.estimate?.provider)) return false;
   const error = result?.body?.error || "";
   const status = Number(result?.body?.providerStatus || result?.status || 0);
   return (

@@ -1,3 +1,4 @@
+import { isIdentifierChar, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import {
   getChatMessages as getRuntimeChatMessages,
   usageLedger as runtimeUsageLedger,
@@ -23,9 +24,7 @@ const safeConversationId = (conversationId = "dev") =>
   String(conversationId || "dev").trim().slice(0, 180) || "dev";
 
 function safeConversationAccountId(accountId = "") {
-  return String(accountId || "")
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
+  return trimCharacters(replaceCharacterRuns(String(accountId || ""),char=>!isIdentifierChar(char),"_"),"_")
     .slice(0, 80);
 }
 

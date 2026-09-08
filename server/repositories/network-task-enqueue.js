@@ -4,7 +4,7 @@ import {
 } from "./user-observability.js";
 import { assertNetworkTaskBadgeEligibility } from "./network-badges.js";
 import {
-  getNetworkTaskCapacityLimit,
+  getNetworkTaskCapacityState,
   listNetworkTaskCapacityBlockers,
 } from "./network-task-capacity.js";
 import {
@@ -221,8 +221,9 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     accountId: candidate.accountId,
     walletAddress: candidate.walletAddress,
   });
-  const capacityLimit = await getNetworkTaskCapacityLimit(candidate.accountId);
-  const activeCount = capacityBlockers.length;
+  const capacityState = await getNetworkTaskCapacityState({ accountId: candidate.accountId, walletAddress: candidate.walletAddress });
+  const capacityLimit = capacityState.limit;
+  const activeCount = capacityState.used;
   if (activeCount >= capacityLimit && !networkTask.allow_over_capacity) {
     await recordUserObservabilityEvent({
       eventType: "user.network_task.candidate_blocked",
@@ -257,7 +258,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     throw new Error("network_task_candidate_at_capacity");
   }
 	  const productDoc = await currentProjectProductDoc(projectId);
-	  const idSuffix = idempotencyKey.replace(/^network_task:/, "").slice(0, 32);
+	  const idSuffix = idempotencyKey.slice("network_task:".length, "network_task:".length + 32);
 	  const intentId = `netintent_${idSuffix}`;
 	  const allocationId = `netalloc_${idSuffix}`;
 	  const jobId = `nettaskjob_${idSuffix}`;
@@ -280,7 +281,16 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	  const intelligenceMetadata = networkTaskIntelligenceMetadata(sourceJson);
 	  const sourceDigest = digestJson(sourceJson);
 	  const sourceText = sourcePacketText(sourceJson);
-  await transaction(async (client) => {
+  const reservation = await transaction(async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`network-task-capacity:${candidate.accountId}`]);
+    // Re-check both replay and capacity after acquiring the account lock.
+    const replay = await client.query(`SELECT i.id, i.allocation_id, i.generation_job_id,
+      i.request_id, i.task_id, i.status FROM network_task_intents i
+      WHERE i.semantic_key=$1
+      LIMIT 1`, [intentSemanticKey]);
+    if (replay.rows[0]) return replay.rows[0];
+    const lockedCapacity = await getNetworkTaskCapacityState({ accountId: candidate.accountId, walletAddress: candidate.walletAddress, queryImpl: client.query.bind(client) });
+    if (!lockedCapacity.available && !networkTask.allow_over_capacity) throw new Error("network_task_candidate_at_capacity");
     await client.query(
       `
         INSERT INTO network_task_intents (
@@ -473,6 +483,15 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       ]
     );
   });
+  if (reservation) return {
+    executed: true, idempotent: true, suppressed: true,
+    reason: "network_task_semantic_intent_exists", intentId: reservation.id,
+    allocationId: reservation.allocation_id, jobId: reservation.generation_job_id,
+    requestId: reservation.request_id, taskId: reservation.task_id, status: reservation.status,
+    projectId, taskClass: normalizedTaskClass, candidateAccountId: candidate.accountId,
+    candidateWalletAddress: candidate.walletAddress, rewardBandPft: [band.min, band.max],
+    idempotencyKey, intentSemanticKey,
+  };
   await recordUserObservabilityEvent({
     eventType: "user.network_task.candidate_selected",
     accountId: candidate.accountId,

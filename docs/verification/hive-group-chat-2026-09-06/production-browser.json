@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "url": "https://tasknode.postfiat.org/#hive-chat",
+  "mode": "live signed-out app and public API, read only",
+  "members": 5,
+  "checks": [
+    "actual application shell and deep link",
+    "live member directory",
+    "public read and sign-in CTA",
+    "mobile without overflow"
+  ]
+}

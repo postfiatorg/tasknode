@@ -23,7 +23,7 @@ const expectedLabels = {
   available_for_routing: "Eligible",
   at_capacity: "Capacity blocked",
   profile_required: "Report queueing",
-  badge_required: "Capacity blocked",
+  badge_required: "Badge needed",
   profile_pending: "Report processing",
   profile_failed: "Report retrying",
   wallet_sync_pending: "Wallet sync in progress",

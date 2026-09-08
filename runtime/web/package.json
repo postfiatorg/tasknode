@@ -6,6 +6,7 @@
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65",
     "@node-rs/argon2": "2.1.0",
+    "@xmldom/xmldom": "0.9.12",
     "ethers": "^6.17.0",
     "fflate": "^0.8.3",
     "geo-tz": "^8.1.8",
@@ -15,6 +16,7 @@
     "luxon": "^3.7.2",
     "node-geocoder": "^4.4.1",
     "nostr-tools": "^2.24.1",
+    "parse5": "8.0.1",
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.20.0",
     "ripple-keypairs": "^2.0.0",

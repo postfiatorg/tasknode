@@ -1,3 +1,4 @@
+import { textTokens, isAsciiDigit, isAsciiLetter } from "./inference-text.js";
 import { createHash } from "node:crypto";
 
 const defaultEmbeddingModel = "deterministic-bag-of-words-v1";
@@ -33,9 +34,9 @@ function tokenHash(token) {
 
 function deterministicEmbedding(text = "", dimensions = defaultEmbeddingDimensions) {
   const vector = new Array(dimensions).fill(0);
-  const tokens = String(text || "")
-    .toLowerCase()
-    .match(/[a-z0-9][a-z0-9'-]{1,}/g) || [];
+  const tokens = textTokens(String(text || "").toLowerCase(), (char) => isAsciiLetter(char) || isAsciiDigit(char) || char === "'" || char === "-")
+    .map(({ value }) => { let token = value; while (token && !isAsciiLetter(token[0]) && !isAsciiDigit(token[0])) token = token.slice(1); return token; })
+    .filter((token) => token.length >= 2);
 
   for (const token of tokens) {
     const digest = tokenHash(token);

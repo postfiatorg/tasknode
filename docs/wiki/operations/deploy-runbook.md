@@ -7,7 +7,7 @@ rollbacks, and first-response deploy triage.
 ## Production Shape
 
 `fly.toml` defines the HTTP app, role-specific background workers, and the
-Board Manager process group:
+advisory board-secretary process group:
 
 ```text
 app                    npm run start:web
@@ -18,11 +18,12 @@ worker-context-rewrite npm run start:worker:context-rewrite
 worker-hive            npm run start:worker:hive
 worker-memory-profile  npm run start:worker:memory-profile
 worker-airdrop         npm run start:worker:airdrop
+worker-nft-renderer    npm run start:worker:nft-renderer
 board-secretary        npm run start:board-secretary
 ```
 
 Only `app` receives HTTP traffic. Every listed background process group
-(`board-secretary` plus the seven `worker-*` groups) must be verified separately
+(`board-secretary` plus the eight `worker-*` groups) must be verified separately
 after every deploy. The legacy `worker` process still exists for local
 compatibility, but production rejects the monolith worker unless
 `TASKNODE_ALLOW_MONOLITH_WORKER=true` is set explicitly.
@@ -66,11 +67,11 @@ requires an explicit `--fix` invocation.
 
 ### Process-group guard workflow
 
-The guard defaults to all nine process groups in `fly.toml`: `app`,
+The guard defaults to all ten process groups in `fly.toml`: `app`,
 `board-secretary`, `worker-pftl`, `worker-taskgen`,
 `worker-task-review`, `worker-context-rewrite`, `worker-hive`,
-`worker-memory-profile`, and `worker-airdrop`. It reads live Machine JSON
-and prints every Machine's state and restart policy.
+`worker-memory-profile`, `worker-airdrop`, and `worker-nft-renderer`. It reads live Machine JSON
+and prints every Machine's state and restart policy. The NFT renderer is required even when no artwork is queued; a stopped renderer must fail the post-deploy guard.
 
 Verify without a mutation command:
 
@@ -96,6 +97,10 @@ node scripts/fly-worker-guard.mjs --app tasknodeofficial-dev --fix
 A non-zero read-only or dry-run exit means at least one group lacks the
 minimum started Machine or has a Machine whose restart policy is not
 `always`. Never substitute `--fix` when only evidence is required.
+
+## Chat model credentials
+
+Store `VERCEL_ASTRA_API_KEY` and `VERCEL_KIMI_API_KEY` as Fly secrets for the exact Astra and Kimi K3 routes. Import values through stdin with `fly secrets import --stage`, then deploy normally; never put keys in `fly.toml`, browser environment variables, command arguments, or the image. A dedicated model key takes precedence over the generic `VERCEL_AI_GATEWAY_API_KEY`/`AI_GATEWAY_API_KEY`. Generic credentials remain the fallback when a dedicated key is absent. Fable is not offered.
 
 ## Rollback
 
@@ -327,47 +332,21 @@ Expected:
 
 - `app` has a started machine and `/health` is green.
 - Every `worker-*` group has a started machine with `restart=always`.
-- `board-manager` has a started machine with `restart=always`.
+- `board-secretary` has a started machine with `restart=always`.
 - The newly deployed endpoint, config, migration, or UI behavior is visible on
   production.
-- For Board Manager model/cadence changes, watch at least one scheduled run or
-  `board-manager:ops status` output to confirm the effective provider/model and
-  cadence are the intended values.
-
-Board Manager status:
-
-```bash
-fly ssh console -a tasknodeofficial-dev -C \
-  "sh -lc 'cd /app && npm run board-manager:ops -- status'"
-```
+- Verify Kimi supervision on the operator host separately from Fly worker health.
 
 If post-deploy health fails, rollback to the prior known-good image before
 investigating. Do not leave production in a partially booting state while
 debugging.
 
-## Board Manager Environment Gotcha
+## Task Manager Runtime
 
-`TASKNODE_BOARD_MANAGER_*` values can come from both `fly.toml` and Fly secrets.
-Fly secrets win. This matters for:
-
-- `TASKNODE_BOARD_MANAGER_PROVIDER`
-- `TASKNODE_BOARD_MANAGER_MODEL`
-- `TASKNODE_BOARD_MANAGER_CADENCE_SECONDS`
-- `TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR`
-- `TASKNODE_BOARD_MANAGER_SECRETARY_*`
-
-Changing the default in `fly.toml` is not enough when a secret exists. To change
-the live cadence or model, update the Fly secret intentionally, then verify the
-Board Manager process sees it:
-
-```bash
-fly secrets set TASKNODE_BOARD_MANAGER_CADENCE_SECONDS=120 -a tasknodeofficial-dev
-fly ssh console -a tasknodeofficial-dev -C \
-  "sh -lc 'cd /app && npm run board-manager:ops -- status'"
-```
-
-Use the same rule for model/provider switches. Confirm the live process, not
-only the repository config.
+Kimi K3 runs in the operator-host Corbanu TUI. Fly runs downstream task
+execution and advisory services. Do not revive the deleted automatic manager
+with flags or queue jobs. The supported ownership and supervision commands
+are documented in [board management](../architecture/board-manager.md).
 
 ## Fast Triage Decision Tree
 
@@ -386,3 +365,28 @@ only the repository config.
    check the quality-gate action contract. `task_submission`,
    `task_verification_response`, and terminal reward/control actions must not
    share the same self-dealing outcome.
+
+
+## Hive group chat
+
+Migration `139_hive_group_chat.sql` adds the public room, signed-message
+outbox/projection, read markers, bot decisions and Kimi escalation inbox.
+Configure `TASKNODE_HIVE_GROUP_ENABLED=true` and a dedicated stable 64-hex
+`TASKNODE_HIVE_NOSTR_SECRET_KEY` through Fly secrets. Never reuse a user wallet
+key or log this secret. The Vercel model credentials remain the existing ones.
+`TASKNODE_HIVE_GROUP_BOT_INTERVAL_SECONDS` defaults to 60, with a 30-second
+minimum. Only `worker:hive` runs the scheduler; no new machine is required.
+
+Keep the bot key across deployments: startup rejects a changed public key
+instead of silently creating another room. The worker publishes its signed
+root and metadata and marks the room ready only after relay acknowledgement.
+Inspect `hive_group_channels.published_at`, recent `hive_group_bot_runs`,
+pending message delivery state and `hive_group_escalations` for verification.
+Do not publish synthetic test messages to the public production room.
+
+Focused proof: `scripts/hive-group-smoke.mjs` uses the explicitly guarded
+`tasknode_hive_20260906` disposable Postgres database and a local WebSocket
+relay. `scripts/hive-group-visual-smoke.mjs` checks two browser identities,
+mentions, retry persistence, PFPs, setup and mobile layouts with synthetic
+HTTP/relay responses. Evidence is under
+`docs/verification/hive-group-chat-2026-09-06/`.

@@ -1,0 +1,76 @@
+{
+  "verified_at": "2026-09-06T15:36:06.662196+00:00",
+  "release": 711,
+  "manager": "existing production Kimi K3 terminal",
+  "cancellations": [
+    {
+      "task_id": "task_a053012be777cf3ae51b7ff59336b322",
+      "status": "cancelled",
+      "allocation_status": "cancelled",
+      "cancelled_at": "2026-09-06T15:20:33.648Z"
+    },
+    {
+      "task_id": "task_2aecc5ff81d841385cf53e4de36481d7",
+      "status": "cancelled",
+      "allocation_status": "cancelled",
+      "cancelled_at": "2026-09-06T15:22:54.211Z"
+    },
+    {
+      "task_id": "task_4ec86f14eea5d3d61bcb7956a23ffb10",
+      "status": "cancelled",
+      "allocation_status": "cancelled",
+      "cancelled_at": "2026-09-06T15:22:54.991Z"
+    }
+  ],
+  "recent_task_preserved": {
+    "task_id": "task_0378d312d18c5e7d67cf7c2423ec062f",
+    "status": "accepted",
+    "last_activity": "2026-09-04T02:04:06.675Z"
+  },
+  "secondfmaster": {
+    "id": "netalloc_25d4fe10298b32ef9bf0fe6802ac97d8",
+    "project_id": "board_pf_terminal",
+    "candidate_account_id": "acct_oauth_df7ee2b244f3217f13d34eea",
+    "allocation_status": "proposed",
+    "generated_task_id": "task_c9412113667f8b174cce30f2d21ebed5",
+    "created_at": "2026-09-06T15:30:55.330Z",
+    "generation_status": "published",
+    "attempt_count": 1,
+    "last_error": "",
+    "request_id": "req_net_5ab0d7057c25e69954c68cf4fea7cd4c",
+    "request_status": "proposed",
+    "request_error": "",
+    "request_updated_at": "2026-09-06T15:34:49.116Z",
+    "offer_tx_hash": "offchain:evt_d066079ecc92df048a8aecac",
+    "offer_cid": "postgres:evt_d066079ecc92df048a8aecac",
+    "projection_status": "proposed",
+    "title": "Write Two Terminal-Ownership Regression Tests for CorbanuTerminal"
+  },
+  "other_allocations": [
+    {
+      "allocation_id": "netalloc_11ca52e1884aa96814d0bcaa2b4b0f34",
+      "board": "board_postfiat_l1v2",
+      "generation_status": "generated",
+      "request_status": "generating"
+    },
+    {
+      "allocation_id": "netalloc_53dc4e7f080fcffa43ef04ce51a243e1",
+      "board": "board_ai_l1_governance",
+      "generation_status": "generated",
+      "request_status": "queued"
+    },
+    {
+      "allocation_id": "netalloc_bb73df016d07cc9ed7651eb053d529a6",
+      "board": "board_capital_markets",
+      "generation_status": "running",
+      "request_status": null
+    },
+    {
+      "allocation_id": "netalloc_25ddc02971fea17fb7b97a4bf91381c0",
+      "board": "board_community_promotion",
+      "generation_status": "queued",
+      "request_status": null
+    }
+  ],
+  "verification_scope": "Production scoped API and canonical database rows; no browser-rendering claim. Current production lifecycle publishes offchain events and PostgreSQL-backed payloads."
+}

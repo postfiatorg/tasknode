@@ -1,3 +1,7 @@
+import { classifyEvidenceReference, validateEvidenceReference } from "./task-evidence-intent.js";
+import { htmlDocument, htmlTreeText, findHtmlElement, hiddenHtmlTags, decodeHtmlEntities } from "../shared/html-tree.js";
+import { collapseWhitespace, splitWhitespace, extractHttpLinks, isAsciiDigit } from "./inference-text.js";
+export { collapseWhitespace, decodeHtmlEntities };
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import {
@@ -14,7 +18,8 @@ import {
 } from "./task-review-core.js";
 
 export function hostnameValue(value = "") {
-  return safeText(value, 260).toLowerCase().replace(/^\[|\]$/g, "");
+  const text = safeText(value, 260).toLowerCase();
+  return text.startsWith("[") && text.endsWith("]") ? text.slice(1,-1) : text;
 }
 
 export function isPrivateIpv4(address = "") {
@@ -42,8 +47,17 @@ export function isPrivateIpv6(address = "") {
     return true;
   }
   if (normalized.startsWith("ff")) return true;
-  const mappedIpv4 = normalized.match(/(?:^|:)ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-  return mappedIpv4 ? isPrivateIpv4(mappedIpv4) : false;
+  if (normalized.startsWith("::ffff:")) {
+    const tail = normalized.slice(7);
+    if (isIP(tail) === 4) return isPrivateIpv4(tail);
+    const halves = tail.split(":");
+    if (halves.length === 2) {
+      const words = halves.map((part) => Number.parseInt(part,16));
+      return isPrivateIpv4(words.flatMap((word) => [word >>> 8, word & 255]).join("."));
+    }
+    return true;
+  }
+  return false;
 }
 
 export function isPrivateIpAddress(address = "") {
@@ -98,55 +112,20 @@ export function headerValue(headers, name) {
   return typeof getter === "function" ? safeText(getter.call(headers, name) || "", 2000) : "";
 }
 
-export function decodeHtmlEntities(value = "") {
-  return String(value || "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;/gi, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => {
-      const codepoint = Number.parseInt(hex, 16);
-      return Number.isFinite(codepoint) && codepoint >= 0 && codepoint <= 0x10ffff ? String.fromCodePoint(codepoint) : "";
-    })
-    .replace(/&#(\d+);/g, (_match, decimal) => {
-      const codepoint = Number.parseInt(decimal, 10);
-      return Number.isFinite(codepoint) && codepoint >= 0 && codepoint <= 0x10ffff ? String.fromCodePoint(codepoint) : "";
-    });
-}
-
-export function collapseWhitespace(value = "") {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-
+const evidenceBoilerplate = new Set([...hiddenHtmlTags, "nav", "header", "footer", "form", "title"]);
 export function stripHtmlToText(html = "") {
-  const withoutBoilerplate = String(html || "")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, " ")
-    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, " ")
-    .replace(/<noscript\b[\s\S]*?<\/noscript\s*>/gi, " ")
-    .replace(/<template\b[\s\S]*?<\/template\s*>/gi, " ")
-    .replace(/<nav\b[\s\S]*?<\/nav\s*>/gi, " ")
-    .replace(/<header\b[\s\S]*?<\/header\s*>/gi, " ")
-    .replace(/<footer\b[\s\S]*?<\/footer\s*>/gi, " ")
-    .replace(/<form\b[\s\S]*?<\/form\s*>/gi, " ")
-    .replace(/<title\b[\s\S]*?<\/title\s*>/gi, " ")
-    .replace(/<[^>]+>/g, " ");
-  return collapseWhitespace(decodeHtmlEntities(withoutBoilerplate));
+  return collapseWhitespace(htmlTreeText(htmlDocument(html), { skip: evidenceBoilerplate, block: true }));
 }
-
 export function extractHtmlTitle(html = "") {
-  const raw = String(html || "").match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i)?.[1] || "";
-  return safeText(collapseWhitespace(decodeHtmlEntities(raw.replace(/<[^>]+>/g, " "))), 300);
+  const title = findHtmlElement(htmlDocument(html), "title");
+  return safeText(title ? collapseWhitespace(htmlTreeText(title)) : "", 300);
 }
-
 export function isHtmlResponse(response, text = "") {
   const contentType = headerValue(response?.headers, "content-type").toLowerCase();
   if (contentType.includes("text/html") || contentType.includes("application/xhtml")) return true;
   if (contentType) return false;
-  return /^\s*<!doctype html\b/i.test(text) || /^\s*<html\b/i.test(text);
+  const start = String(text).trimStart().toLowerCase();
+  return start.startsWith("<!doctype html>") || start.startsWith("<!doctype html ") || start.startsWith("<html>") || start.startsWith("<html ");
 }
 
 export async function fetchOnceWithTimeout(fetchImpl, url, options = {}) {
@@ -277,7 +256,10 @@ export async function gistApiExcerpt({ id, sourceUrl, fetchImpl, lookupFn }) {
     const allFiles = Object.values(safeObject(body.files))
       .filter((file) => typeof file?.content === "string")
       .sort((left, right) => {
-        const priority = (file) => /^(?:readme)(?:\.|$)|\.(?:md|markdown|txt|rst|adoc)$/i.test(file?.filename || "") ? 0 : 1;
+        const priority = (file) => {
+          const name = String(file?.filename || "").toLowerCase();
+          return name === "readme" || name.startsWith("readme.") || ["md","markdown","txt","rst","adoc"].includes(name.split(".").at(-1)) ? 0 : 1;
+        };
         return priority(left) - priority(right) || String(left?.filename || "").localeCompare(String(right?.filename || ""));
       });
     const files = allFiles.slice(0, GIST_MAX_FILES);
@@ -556,13 +538,13 @@ export function evidencePayloadHasScreenshot(value, depth = 0) {
     .map((item) => safeText(item, 120).toLowerCase())
     .filter(Boolean)
     .join(" ");
-  if (/\b(screenshot|screen\s*shot|image|photo)\b/.test(typeText)) return true;
+  if (["screenshot", "screen shot", "image", "photo"].includes(typeText)) return true;
   const source = safeObject(object.source);
   const file = safeObject(object.file);
   const mime = safeText(object.mime_type || object.mimeType || source.mime_type || source.mimeType || file.mime_type || file.mimeType, 160).toLowerCase();
   if (mime.startsWith("image/")) return true;
   const fileName = safeText(object.file_name || object.fileName || object.filename || object.name || source.file_name || file.name, 500).toLowerCase();
-  if (/\.(png|jpe?g|webp|gif|heic)$/i.test(fileName)) return true;
+  if (["png", "jpg", "jpeg", "webp", "gif", "heic"].includes(fileName.split(".").at(-1))) return true;
   return Object.values(object).slice(0, 80).some((item) => evidencePayloadHasScreenshot(item, depth + 1));
 }
 
@@ -574,23 +556,20 @@ export function normalizeBooleanFlag(value) {
 }
 
 export function splitConfigList(value = "") {
-  return safeText(value, 4000)
-    .split(/[,\s]+/g)
+  return splitWhitespace(safeText(value, 4000).replaceAll(",", " "))
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
 export function parseDiscordMessageLink(value = "") {
-  const match = safeText(value, 1000).match(
-    /https?:\/\/(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/channels\/(\d{15,25})\/(\d{15,25})\/(\d{15,25})/i
-  );
-  if (!match) return null;
-  return {
-    guildId: match[1],
-    channelId: match[2],
-    messageId: match[3],
-    url: safeText(match[0], 500),
-  };
+  for (const link of extractHttpLinks(value)) {
+    const parsed = new URL(link);
+    if (!["discord.com","discordapp.com","canary.discord.com","ptb.discord.com","canary.discordapp.com","ptb.discordapp.com"].includes(parsed.hostname)) continue;
+    const [prefix,guildId,channelId,messageId,...extra] = parsed.pathname.split("/").filter(Boolean);
+    if (prefix !== "channels" || extra.length || ![guildId,channelId,messageId].every((id) => id && id.length>=15 && id.length<=25 && [...id].every(isAsciiDigit))) continue;
+    return { guildId, channelId, messageId, url: parsed.href };
+  }
+  return null;
 }
 
 export function discordEvidencePolicy(env = process.env) {
@@ -602,12 +581,12 @@ export function discordEvidencePolicy(env = process.env) {
   };
 }
 
-export function discordAnnouncementEvidenceStatus({
+export async function discordAnnouncementEvidenceStatus({
   initialSubmission = {},
   verificationResponse = {},
   processedInitial = {},
   processedVerification = {},
-} = {}) {
+} = {}, { classify = classifyEvidenceReference, allowSemantic = true } = {}) {
   const packets = [verificationResponse, initialSubmission, processedVerification, processedInitial];
   const text = collectEvidenceText(packets);
   const discordMessage = parseDiscordMessageLink(text);
@@ -620,33 +599,21 @@ export function discordAnnouncementEvidenceStatus({
       reason: "Discord message link evidence was provided.",
     };
   }
-  const messageId =
-    text.match(/\bdiscord\b[\s\S]{0,80}\b(?:message|msg)?\s*(?:id|link)?\s*[:#-]?\s*(\d{15,25})\b/i) ||
-    text.match(/\b(?:message|msg)\s*id\s*[:#-]?\s*(\d{15,25})\b[\s\S]{0,80}\bdiscord\b/i);
-  if (messageId?.[1]) {
-    return {
-      ok: true,
-      evidence_type: "discord_message_id",
-      evidence_ref: safeText(messageId[1], 80),
-      discord_message: {
-        guildId: "",
-        channelId: "",
-        messageId: safeText(messageId[1], 80),
-        url: "",
-      },
-      reason: "Discord message id evidence was provided.",
-    };
-  }
   const hasScreenshot = packets.some((packet) => evidencePayloadHasScreenshot(packet));
-  if (hasScreenshot && /\bdiscord\b/i.test(text)) {
-    return {
-      ok: true,
-      evidence_type: "discord_announcement_screenshot",
-      evidence_ref: "screenshot_or_image_artifact",
-      discord_message: null,
-      reason: "Screenshot or image evidence was provided with Discord announcement context.",
-    };
+  let reference = { kind: "missing", messageId: "", citation: "" };
+  if (allowSemantic) {
+    try { reference = validateEvidenceReference(await classify({ text, hasScreenshot }), { text, hasScreenshot }); }
+    catch { /* Invalid or unavailable classification remains unverified. */ }
   }
+  if (reference.kind === "message_id") return {
+    ok: true, evidence_type: "discord_message_id", evidence_ref: reference.messageId,
+    discord_message: { guildId: "", channelId: "", messageId: reference.messageId, url: "" },
+    reason: "Discord message id evidence was provided.",
+  };
+  if (reference.kind === "screenshot") return {
+    ok: true, evidence_type: "discord_announcement_screenshot", evidence_ref: "screenshot_or_image_artifact",
+    discord_message: null, reason: "Screenshot or image evidence was provided with Discord announcement context.",
+  };
   return {
     ok: false,
     evidence_type: "",
@@ -659,9 +626,9 @@ export function discordAnnouncementEvidenceStatus({
 
 export async function resolveDiscordAnnouncementEvidenceStatus(input = {}, {
   env = process.env,
-  fetchImpl = fetch,
+  fetchImpl = fetch, classify = classifyEvidenceReference, allowSemantic = true,
 } = {}) {
-  const status = discordAnnouncementEvidenceStatus(input);
+  const status = await discordAnnouncementEvidenceStatus(input, { classify, allowSemantic });
   if (!status.ok) return status;
   const policy = discordEvidencePolicy(env);
   const message = safeObject(status.discord_message);

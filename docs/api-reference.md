@@ -79,6 +79,7 @@ resource membership, or other context beyond a generic identity class.
 | `terminal_tasknode_task` | `/^\/api\/terminal\/tasknode\/tasks\/[^/]+$/` | `GET` | `bearer` | — | — |
 | `terminal_tasknode_task_action` | `/^\/api\/terminal\/tasknode\/tasks\/[^/]+\/action$/` | `POST` | `bearer` | strict JSON ≤ 65536 bytes | 20 / 60s |
 | `terminal_tasknode_task_evidence` | `/^\/api\/terminal\/tasknode\/tasks\/[^/]+\/evidence$/` | `POST` | `bearer` | strict JSON ≤ 1048576 bytes | 20 / 60s |
+| `terminal_campaign_tracker` | `/api/terminal/tasknode/campaign-tracker/…` | `GET` `POST` | `bearer` | strict JSON ≤ 1126400 bytes | 180 / 60s |
 | `terminal_tasknode_fallback` | `/api/terminal/tasknode/…` | `GET` | `bearer` | — | — |
 | `readiness` | `/api/readiness` | `GET` | `none` | — | — |
 | `health` | `/api/health` | `GET` | `none` | — | — |
@@ -106,6 +107,7 @@ resource membership, or other context beyond a generic identity class.
 | `collaboration_resolve` | `/api/collaboration/resolve`<br>`/api/collaboration/encryption-identity`<br>`/api/collaboration/suggestions` | `GET` | `session` | — | 60 / 600s |
 | `docs_odv` | `/^\/api\/docs\/documents\/[0-9a-f-]{36}\/odv$/i` | `POST` | `session` | strict JSON ≤ 131072 bytes | 20 / 600s |
 | `docs_assistant` | `/^\/api\/docs\/documents\/[0-9a-f-]{36}\/assistant$/i` | `POST` | `session` | strict JSON ≤ 131072 bytes | 20 / 600s |
+| `docs_library` | `/api/docs/library` | `PATCH` | `session` | strict JSON ≤ 400000 bytes | — |
 | `docs_setup` | `/api/docs/setup` | `POST` | `session` | strict JSON ≤ 524288 bytes | — |
 | `docs_create` | `/api/docs/documents` | `POST` | `session` | strict JSON ≤ 524288 bytes | — |
 | `docs_update` | `/^\/api\/docs\/documents\/[0-9a-f-]{36}$/i` | `PATCH` | `session` | strict JSON ≤ 524288 bytes | — |
@@ -198,4 +200,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **172 route policies** and **8 authentication modes**.
+Total: **174 route policies** and **8 authentication modes**.

@@ -81,7 +81,7 @@ function retryDelayMs(attemptCount = 1, baseMs = DEFAULT_RETRY_BASE_MS) {
 
 function normalizeIsoDate(value = "") {
   const text = safeText(value, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || dateOnly(`${text}T00:00:00.000Z`) !== text) {
+  if (!(text.length === 10 && text[4] === "-" && text[7] === "-" && [...text.slice(0,4), ...text.slice(5,7), ...text.slice(8)].every((char) => char >= "0" && char <= "9")) || dateOnly(`${text}T00:00:00.000Z`) !== text) {
     throw new Error("profile_nft_daily_backfill_run_date_invalid");
   }
   return text;
@@ -310,13 +310,14 @@ export async function runDailyProfileNftBackfill({
         listCandidates: async () => [{ ...candidate, runDate: slot.runDate }],
       },
     });
-    const generated = result.generated[0];
+    const generated = result.generated[0] || result.queued?.[0];
+    const renderQueued = Boolean(result.queued?.length);
     const failure = result.failed[0];
     const skipped = result.skipped[0];
     results.push({
       accountId: slot.accountId,
       runDate: slot.runDate,
-      status: generated ? "generated" : failure ? (failure.retryable ? "retry_wait" : "failed_permanent") : skipped ? skipped.status : "not_processed",
+      status: generated ? (renderQueued ? "rendering" : "generated") : failure ? (failure.retryable ? "retry_wait" : "failed_permanent") : skipped ? skipped.status : "not_processed",
       awardId: generated?.awardId || failure?.awardId || skipped?.awardId || "",
       profileNftId: generated?.profileNftId || "",
       error: failure?.error || "",
@@ -459,48 +460,9 @@ export async function finalizeDailyProfileNftBackfillSkippedSlots({
   }
 }
 
-export function buildDailyProfileNftGenerationPayload({ candidate = {}, runDate = dateOnly() } = {}) {
-  const normalizedRunDate = dateOnly(runDate);
-  const personalCompletedCount = Number(candidate.personalCompletedCount || 0);
-  const networkCompletedCount = Number(candidate.networkCompletedCount || 0);
-  const eligibilityReason = safeText(candidate.eligibilityReason, 120) ||
-    (networkCompletedCount >= 1 ? "network_task_completed" : "personal_task_threshold");
-  const contextDocument = [
-    `Daily Profile NFT award date: ${normalizedRunDate}`,
-    `Eligibility reason: ${eligibilityReason}`,
-    `Completed personal tasks: ${personalCompletedCount}`,
-    `Completed Network Tasks: ${networkCompletedCount}`,
-    candidate.lastCompletedAt ? `Latest completed task at: ${candidate.lastCompletedAt}` : "",
-    "Generate a profile NFT image that celebrates verified Task Node work without exposing private task text, wallet secrets, or raw evidence.",
-  ].filter(Boolean).join("\n");
-  const nftUserData = JSON.stringify(
-    {
-      schema: "pf.profile.daily_nft_award.v1",
-      runDate: normalizedRunDate,
-      account: {
-        accountId: safeText(candidate.accountId, 180),
-      },
-      wallet: {
-        status: candidate.walletAddress ? "linked" : "",
-        address: safeText(candidate.walletAddress, 120),
-      },
-      eligibility: {
-        reason: eligibilityReason,
-        personalCompletedCount,
-        networkCompletedCount,
-        lastCompletedAt: candidate.lastCompletedAt || null,
-      },
-    },
-    null,
-    2
-  );
-  return {
-    contextDocument,
-    nftUserData,
-    style: `Daily Task Node achievement badge for ${normalizedRunDate}.`,
-    size: "1024x1024",
-    quality: "high",
-  };
+export function buildDailyProfileNftGenerationPayload() {
+  // Account ownership is passed separately; the worker reads canonical history.
+  return { size: "1024x1024", quality: "high" };
 }
 
 export async function generateDailyProfileNft({ award, candidate = {}, runDate = dateOnly(), env = process.env } = {}) {
@@ -509,6 +471,7 @@ export async function generateDailyProfileNft({ award, candidate = {}, runDate =
   const accountId = safeText(candidate.accountId || award?.accountId, 180);
   const result = await profileNftGenerateStart({
     method: "POST",
+    awardId: award?.id || "",
     payload,
     session: {
       accountId,
@@ -556,8 +519,6 @@ export async function generateDailyProfileNft({ award, candidate = {}, runDate =
 export async function runDailyProfileNftWorkerOnce({
   runDate = dateOnly(),
   batchLimit = Number(process.env.TASKNODE_PROFILE_NFT_DAILY_BATCH_LIMIT || DEFAULT_BATCH_LIMIT),
-  personalTaskThreshold = Number(process.env.TASKNODE_PROFILE_NFT_DAILY_PERSONAL_TASK_THRESHOLD || 3),
-  networkTaskThreshold = Number(process.env.TASKNODE_PROFILE_NFT_DAILY_NETWORK_TASK_THRESHOLD || 1),
   maxAttempts = Number(process.env.TASKNODE_PROFILE_NFT_DAILY_MAX_ATTEMPTS || DEFAULT_MAX_ATTEMPTS),
   staleRunningMs = Number(process.env.TASKNODE_PROFILE_NFT_DAILY_STALE_RUNNING_MS || DEFAULT_STALE_RUNNING_MS),
   trigger = "profile_nft_daily_worker",
@@ -577,8 +538,6 @@ export async function runDailyProfileNftWorkerOnce({
   }
   const normalizedRunDate = dateOnly(runDate);
   const safeBatchLimit = clampInteger(batchLimit, DEFAULT_BATCH_LIMIT, { min: 1, max: 50 });
-  const safePersonalTaskThreshold = clampInteger(personalTaskThreshold, 3, { min: 0, max: 1000 });
-  const safeNetworkTaskThreshold = clampInteger(networkTaskThreshold, 1, { min: 1, max: 1000 });
   const safeMaxAttempts = clampInteger(maxAttempts, DEFAULT_MAX_ATTEMPTS, { min: 1, max: 20 });
   const safeStaleRunningMs = clampMs(staleRunningMs, DEFAULT_STALE_RUNNING_MS, {
     min: 60_000,
@@ -620,14 +579,12 @@ export async function runDailyProfileNftWorkerOnce({
 
     const candidates = await listCandidates({
       runDate: normalizedRunDate,
-      personalTaskThreshold: safePersonalTaskThreshold,
-      networkTaskThreshold: safeNetworkTaskThreshold,
       maxAttempts: safeMaxAttempts,
       limit: safeBatchLimit,
     });
     if (dryRun) {
       await writeHeartbeat({ ...heartbeatBase, lastTickFinishedAt: new Date().toISOString(), lastErrorCode: "profile_nft_daily_dry_run", lastErrorMessage: "Dry run: no award claim or generation performed.", retryableCount: 0, permanentCount: 0, currentRetryAwardId: "", nextRetryAt: null, candidateCount: candidates.length });
-      return { ok: true, dryRun: true, runDate: normalizedRunDate, candidateCount: candidates.length, generatedCount: 0, failedCount: 0, skippedCount: candidates.length, staleFailedCount: 0, generated: [], failed: [], skipped: candidates.map((candidate) => ({ accountId: candidate.accountId, status: "dry_run" })), summary: `Dry run found ${candidates.length} daily profile NFT candidates.` };
+      return { ok: true, dryRun: true, runDate: normalizedRunDate, candidateCount: candidates.length, generatedCount: 0, queuedCount: 0, failedCount: 0, skippedCount: candidates.length, staleFailedCount: 0, generated: [], queued: [], failed: [], skipped: candidates.map((candidate) => ({ accountId: candidate.accountId, status: "dry_run" })), summary: `Dry run found ${candidates.length} daily profile NFT candidates.` };
     }
     if (!forwardEnabled) {
       await writeHeartbeat({ ...heartbeatBase, lastTickFinishedAt: new Date().toISOString(), lastErrorCode: "profile_nft_daily_forward_generation_disabled", lastErrorMessage: "Forward Daily Profile NFT generation is gated pending authorized backfill.", retryableCount: 0, permanentCount: 0, currentRetryAwardId: "", nextRetryAt: null, candidateCount: candidates.length });
@@ -638,6 +595,7 @@ export async function runDailyProfileNftWorkerOnce({
       error: "Daily Profile NFT generation was interrupted before completion.",
     });
     const generated = [];
+    const queued = [];
     const failed = [];
     const skipped = [];
 
@@ -654,10 +612,7 @@ export async function runDailyProfileNftWorkerOnce({
           eligibilityJson: {
             trigger,
             lastCompletedAt: candidate.lastCompletedAt || null,
-            thresholds: {
-              personalTaskThreshold: safePersonalTaskThreshold,
-              networkTaskThreshold: safeNetworkTaskThreshold,
-            },
+            thresholds: { totalCompletedTasks: 3 },
           },
         });
         if (!["pending", "retry_wait"].includes(award.status)) {
@@ -679,7 +634,7 @@ export async function runDailyProfileNftWorkerOnce({
           awardId: runningAward.id,
           profileNftId: nft.id,
         });
-        generated.push({
+        (completed?.status === "rendering" ? queued : generated).push({
           accountId: candidate.accountId,
           walletAddress: candidate.walletAddress,
           awardId: completed?.id || runningAward.id,
@@ -707,20 +662,22 @@ export async function runDailyProfileNftWorkerOnce({
 
     const retryableFailures = failed.filter((item) => item.retryable);
     const permanentFailures = failed.filter((item) => !item.retryable);
-    await writeHeartbeat({ ...heartbeatBase, lastTickFinishedAt: new Date().toISOString(), lastSuccessAt: generated.length ? new Date().toISOString() : null, lastErrorCode: failed[0]?.errorCode || "", lastErrorMessage: failed[0]?.error || "", retryableCount: retryableFailures.length, permanentCount: permanentFailures.length, currentRetryAwardId: retryableFailures[0]?.awardId || "", nextRetryAt: retryableFailures[0]?.nextRetryAt || null, candidateCount: candidates.length });
+    await writeHeartbeat({ ...heartbeatBase, lastTickFinishedAt: new Date().toISOString(), lastSuccessAt: (generated.length || queued.length) ? new Date().toISOString() : null, lastErrorCode: failed[0]?.errorCode || "", lastErrorMessage: failed[0]?.error || "", retryableCount: retryableFailures.length, permanentCount: permanentFailures.length, currentRetryAwardId: retryableFailures[0]?.awardId || "", nextRetryAt: retryableFailures[0]?.nextRetryAt || null, candidateCount: candidates.length });
 
     return {
       ok: true,
       runDate: normalizedRunDate,
       candidateCount: candidates.length,
       generatedCount: generated.length,
+      queuedCount: queued.length,
       failedCount: failed.length,
       skippedCount: skipped.length,
       staleFailedCount: stale.failedCount || 0,
       generated,
+      queued,
       failed,
       skipped,
-      summary: `Generated ${generated.length} daily profile NFT ${generated.length === 1 ? "award" : "awards"} for ${normalizedRunDate}.`,
+      summary: `Queued ${queued.length} profile portraits; ${generated.length} images already generated for ${normalizedRunDate}.`,
     };
   } catch (error) {
     const classification = classifyProfileNftGenerationFailure(error);
@@ -761,7 +718,7 @@ export function startDailyProfileNftWorker({ env = process.env, logger = console
         logger,
         trigger: "profile_nft_daily_worker_tick",
       });
-      if (!result.skipped && (result.generatedCount || result.failedCount)) {
+      if (!result.skipped && (result.queuedCount || result.generatedCount || result.failedCount)) {
         logger.info?.("[profile-nft-daily-worker]", result.summary);
       }
     } catch (error) {

@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "mode": "Actual MessagesView → real request validator → real signature verifier → disposable Postgres",
+  "accountsActivated": 2,
+  "reloadsRestored": 2,
+  "hiveMembershipVerified": true,
+  "protections": [
+    "unauthenticated",
+    "unknown field",
+    "wrong type",
+    "oversized address",
+    "spoofed address",
+    "invalid signature",
+    "replayed proof"
+  ],
+  "freshProofRetry": true,
+  "publicMessagesSent": 0
+}

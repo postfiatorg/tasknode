@@ -7,6 +7,10 @@ const targetPath = ".env.local-rewards";
 const devPath = ".env.tasknodeofficial-dev";
 
 const copiedKeys = [
+  "VERCEL_AI_GATEWAY_API_KEY",
+  "AI_GATEWAY_API_KEY",
+  "VERCEL_AI_GATEWAY_BASE_URL",
+  "INFERENCE_AMBIENT_BACKUP_ENABLED",
   "AMBIENT_API_KEY",
   "AMBIENT_BASE_URL",
   "TASKNODE_TASKGEN_MODEL",
@@ -69,13 +73,14 @@ for (const key of copiedKeys) {
   next[key] ||= process.env[key] || dev[key] || "";
 }
 
-next.TASKNODE_TASKGEN_MODEL ||= "z-ai/glm-5.2";
-next.TASKNODE_TASK_REVIEW_MODEL ||= "z-ai/glm-5.2";
+next.TASKNODE_TASKGEN_MODEL ||= "zai/glm-5.3";
+next.TASKNODE_TASK_REVIEW_MODEL ||= "zai/glm-5.3";
 
 await writeFile(targetPath, serializeEnv(next), { mode: 0o600 });
 await chmod(targetPath, 0o600);
 
-const missing = copiedKeys.filter((key) => !next[key] && key === "AMBIENT_API_KEY");
+const missing = !next.VERCEL_AI_GATEWAY_API_KEY && !next.AI_GATEWAY_API_KEY && !next.AMBIENT_API_KEY
+  ? ["VERCEL_AI_GATEWAY_API_KEY (primary) or AMBIENT_API_KEY (backup)"] : [];
 console.log(`wrote ${targetPath}`);
 console.log(`namespace=${next.TASKNODE_LOCAL_NAMESPACE}`);
 console.log("local_authority_seed=configured");

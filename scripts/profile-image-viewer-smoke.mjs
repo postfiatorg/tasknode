@@ -1,0 +1,122 @@
+import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
+import sharp from "sharp";
+import { browserFixture } from "./browser-fixture-driver.mjs";
+
+const origin = process.env.TASKNODE_APP_ORIGIN || "http://127.0.0.1:5198";
+const output = process.env.PROFILE_IMAGE_PROOF_DIR;
+const artwork = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><rect width="1024" height="1536" fill="#ece2cc"/><rect x="32" y="32" width="960" height="1472" fill="none" stroke="#273e31" stroke-width="12"/><circle cx="512" cy="550" r="270" fill="#566d4e"/><path d="M120 1360 370 720 650 720 904 1360Z" fill="#273e31"/><path d="M160 80H864M160 1456H864M512 120V1416" stroke="#bc7244" stroke-width="8"/></svg>`)).png().toBuffer();
+const nft = { id: "fixture_original", title: "The Quiet Architect", status: "generated", imageCid: "QmRFm24foudJKp7rjXLWg1CRVzZLQxrcm84CyrG7Sw6Q3X", imageGatewayUrl: `${origin}/fixture-original.png` };
+const missing = { id: "fixture_missing", title: "Missing artwork", status: "generated", imageGatewayUrl: `${origin}/fixture-missing.png` };
+const main = await fetch(`${origin}/src/main.jsx`).then(response => response.text());
+const component = await fetch(`${origin}/src/features/profile/PublicProfileView.jsx`).then(response => response.text());
+const moduleUrl = (source, name) => source.split('"').find(part => part.startsWith("/node_modules/") && part.includes(name));
+const react = moduleUrl(component, "/react.js"), reactDom = moduleUrl(main, "react-dom_client.js");
+assert.ok(react && reactDom);
+const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+<script>window.fixtureErrors=[];window.onerror=(...args)=>fixtureErrors.push(String(args[0]));window.onunhandledrejection=e=>fixtureErrors.push(String(e.reason));window.selections=0;</script><div id="root"></div><script type="module">
+import React from ${JSON.stringify(react)};import ReactDOM from ${JSON.stringify(reactDom)};
+import {MemberProfileView} from '/src/features/profile/ProfileView.jsx';
+import {NFTGallery, ProfileStudio} from '/src/features/profile/ProfileStudioPanels.jsx';
+import {ProfilePortrait} from '/src/features/profile/ProfilePortrait.jsx';
+import {ExpandableProfileImage} from '/src/features/profile/ExpandableProfileImage.jsx';
+import '/src/styles.css';
+const root=ReactDOM.createRoot(document.getElementById('root')), nft=${JSON.stringify(nft)};
+window.showPublic=()=>root.render(React.createElement(MemberProfileView,{accountId:'fixture_member'}));
+window.showPrivate=()=>root.render(React.createElement('div',{className:'tn-root',style:{padding:24}},React.createElement(NFTGallery,{minted:[nft],onSetProfilePicture:()=>window.selections++})));
+window.showStudio=()=>root.render(React.createElement('div',{className:'tn-root'},React.createElement(ProfileStudio,{accountId:'fixture_member'})));
+window.showAvatar=()=>root.render(React.createElement(ProfilePortrait,{nft,size:48}));
+window.showMissing=()=>root.render(React.createElement(ExpandableProfileImage,{nft:${JSON.stringify(missing)}},'Missing artwork'));
+window.showPublic();</script></body></html>`;
+let thumbnails = 0;
+const browser = await browserFixture({ port: Number(process.env.CDP_PORT || 9358) });
+try {
+  const page = await browser.page({ url: `${origin}/__profile_image_fixture`, intercept: async request => {
+    const url = new URL(request.url);
+    if (url.pathname === "/__profile_image_fixture") return { type: "text/html", body: html };
+    if (url.pathname.startsWith("/api/profile/nft/pfp/")) { thumbnails++; return { type: "image/png", base64Body: artwork.toString("base64") }; }
+    if (url.pathname.startsWith("/api/profile/nft/image/") || url.pathname === "/fixture-original.png") return { type: "image/png", base64Body: artwork.toString("base64") };
+    if (url.pathname === "/fixture-missing.png") return { code: 404, body: {} };
+    if (url.pathname === "/api/profile/member") return { body: { ok: true, profile: { accountId: "fixture_member", identity: { displayName: "Ink Builder" }, heroNft: nft, nfts: [nft], metrics: {} } } };
+    if (url.pathname === "/api/profile/nfts") return { body: { ok: true, nfts: [nft], latest: nft, total: 1 } };
+    if (url.pathname.startsWith("/api/")) return { body: { ok: true, entries: [], rows: [] } };
+    return null;
+  } });
+  await page.command("Page.bringToFront");
+  const key = async (name, code) => {
+    await page.command("Input.dispatchKeyEvent", { type: "keyDown", key: name, code: name, windowsVirtualKeyCode: code, ...(name === "Enter" ? { text: "\r" } : {}) });
+    await page.command("Input.dispatchKeyEvent", { type: "keyUp", key: name, code: name, windowsVirtualKeyCode: code });
+  };
+  const click = async (x, y) => {
+    await page.command("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+    await page.command("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+  };
+  const loadedDialog = () => page.until("document.querySelector('dialog[open] img')?.naturalWidth===1024 && document.querySelector('dialog[open] img').style.opacity==='1'").catch(async error => {
+    console.error(await page.evaluate("({errors:window.fixtureErrors,dialog:document.querySelector('dialog')?.outerHTML,focus:document.activeElement?.outerHTML,body:document.body.innerText.slice(0,1500)})")); throw error;
+  });
+  const screenshot = async name => {
+    if (!output) return;
+    await mkdir(output, { recursive: true });
+    const shot = await page.command("Page.captureScreenshot", { format: "png" });
+    await writeFile(`${output}/${name}.png`, Buffer.from(shot.data, "base64"));
+  };
+  await page.command("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 2, mobile: false });
+  await page.until("document.querySelector('[aria-label=\"Profile picture\"] img')?.naturalWidth===1024");
+  const hero = await page.evaluate("(()=>{const img=document.querySelector('[aria-label=\"Profile picture\"] img');return {src:img.getAttribute('src'),loading:img.loading,priority:img.fetchPriority,width:img.getBoundingClientRect().width};})()");
+  assert.ok(hero.src.startsWith("/api/profile/nft/image/"));
+  assert.equal(hero.loading, "eager"); assert.equal(hero.priority, "high"); assert.equal(hero.width, 120);
+  assert.equal(thumbnails, 0, "A CSS-sized profile hero must use original pixels, not a small avatar thumbnail");
+  await screenshot("profile-desktop");
+  await page.evaluate("window.trigger=document.querySelector('[aria-label=\"Expand profile picture\"]');window.trigger.focus()");
+  await key("Enter", 13);
+  await loadedDialog();
+  assert.equal(await page.evaluate("getComputedStyle(document.querySelector('dialog img')).objectFit"), "contain");
+  assert.equal(await page.evaluate("document.querySelector('dialog img').naturalHeight"), 1536);
+  assert.equal(await page.evaluate("!!document.querySelector('dialog:modal')"), true);
+  assert.equal(await page.evaluate("document.body.style.overflow"), "hidden");
+  await screenshot("expanded-desktop");
+  await key("Escape", 27);
+  await page.until("!document.querySelector('dialog')");
+  assert.equal(await page.evaluate("document.activeElement===window.trigger"), true);
+  assert.equal(await page.evaluate("document.body.style.overflow"), "");
+  await page.evaluate("document.querySelector('.tn-lift .profile-image-expand').click()");
+  await loadedDialog();
+  await page.evaluate("document.querySelector('[aria-label=\"Close picture\"]').click()");
+  await page.until("!document.querySelector('dialog')");
+  await page.command("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
+  await page.evaluate("window.trigger.click()");
+  await loadedDialog();
+  assert.equal(await page.evaluate("(()=>{const r=document.querySelector('dialog').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;})()"), true);
+  await screenshot("expanded-mobile");
+  await click(2, 2);
+  await page.until("!document.querySelector('dialog')");
+  await page.command("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await page.evaluate("window.showPrivate()");
+  await page.until("[...document.querySelectorAll('#profile-nft-gallery button')].some(b=>b.textContent==='Set as profile picture')");
+  await page.evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='Set as profile picture').click()");
+  assert.equal(await page.evaluate("window.selections"), 1);
+  assert.equal(await page.evaluate("!!document.querySelector('dialog')"), false);
+  await page.evaluate("document.querySelector('.profile-image-expand').click()");
+  await loadedDialog();
+  await key("Escape", 27);
+  await page.until("!document.querySelector('dialog')");
+  await page.evaluate("window.showStudio()");
+  await page.until("!!document.querySelector('.profile-image-expand img[alt=\"Generated profile NFT\"]')");
+  await page.evaluate("document.querySelector('.profile-image-expand').click()");
+  await loadedDialog();
+  await key("Escape", 27);
+  await page.until("!document.querySelector('dialog')");
+  await page.evaluate("window.showMissing()");
+  await page.until("document.querySelector('.profile-image-expand')?.textContent==='Missing artwork'");
+  await page.evaluate("document.querySelector('.profile-image-expand').click()");
+  await page.until("document.querySelector('dialog [role=status]')?.textContent.includes('couldn’t be loaded')");
+  await key("Escape", 27);
+  await page.until("!document.querySelector('dialog')");
+  await page.evaluate("window.showAvatar()");
+  await page.until("!!document.querySelector('[aria-label=\"Profile picture\"] img')");
+  assert.equal(thumbnails, 1, "Small avatars retain their thumbnail path");
+  assert.deepEqual(await page.evaluate("window.fixtureErrors"), []);
+  const result = { ok: true, checks: ["original eager CSS-sized profile hero", "public and private gallery expansion", "Studio preview expansion", "uncropped original artwork", "keyboard activation and Escape", "close button and backdrop", "focus restoration", "mobile viewport fit", "independent avatar selection", "image failure state", "small avatar thumbnails"] };
+  if (output) await writeFile(`${output}/results.json`, JSON.stringify(result, null, 2) + "\n");
+  console.log(JSON.stringify(result));
+} finally { await browser.close(); }

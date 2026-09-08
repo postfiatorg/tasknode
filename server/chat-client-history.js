@@ -5,8 +5,8 @@ function cleanHistoryText(value = "") {
   return String(value || "")
     .split("\u0000")
     .join("")
-    .replace(/\r\n/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
+    .split("\r\n").join("\n")
+    .split("\n").map((line) => line.trimEnd()).join("\n")
     .trim()
     .slice(0, maxClientHistoryCharsPerTurn);
 }

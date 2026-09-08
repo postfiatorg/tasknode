@@ -74,7 +74,7 @@
 }
 
 .hive-context-entry {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 0.5px solid var(--hive-border);
   border-radius: 8px;
   padding: 10px 12px;
@@ -217,7 +217,7 @@
 }
 
 .hive-project-doc {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 0.5px solid var(--hive-border);
   border-radius: 8px;
   margin-top: 16px;
@@ -438,7 +438,7 @@
 }
 
 .hive-project-doc-markdown pre {
-  background: #f5f2ea;
+  background: var(--tn-dark-bg, #f5f2ea);
   border: 0.5px solid var(--hive-border);
   border-radius: 6px;
   color: var(--hive-ink);
@@ -474,7 +474,7 @@
 }
 
 .hive-project-doc-markdown th {
-  background: #f5f2ea;
+  background: var(--tn-dark-bg, #f5f2ea);
   color: var(--hive-ink);
   font-weight: 600;
 }
@@ -585,7 +585,7 @@
 }
 
 .hive-project-comment-status.is-error {
-  color: #a53d35;
+  color: var(--tn-dark-danger, #a53d35);
 }
 
 .hive-project-comment-list {
@@ -737,7 +737,7 @@
 .hive-feed-row.is-clickable:focus-visible,
 .hive-task-row.is-clickable:hover,
 .hive-task-row.is-clickable:focus-visible {
-  background: #fbfaf6;
+  background: var(--tn-dark-hover, #fbfaf6);
   border-color: var(--hive-border-strong);
   outline: none;
 }
@@ -748,7 +748,7 @@
 }
 
 .hive-task-dot {
-  background: #3d5c38;
+  background: var(--tn-dark-success-surface, #3d5c38);
   border-radius: 50%;
   flex-shrink: 0;
   height: 8px;
@@ -889,7 +889,7 @@
 }
 
 .hive-pagination button {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 0.5px solid var(--hive-border);
   border-radius: 6px;
   color: var(--hive-ink-soft);
@@ -924,7 +924,7 @@
 }
 
 .htp-wash {
-  background: rgba(28, 25, 16, 0.34);
+  background: var(--tn-dark-overlay-strong, rgba(28, 25, 16, 0.34));
   backdrop-filter: blur(3px);
   inset: 0;
   opacity: 0;
@@ -940,7 +940,7 @@
   background: var(--hive-surface);
   border: 1px solid var(--hive-border-strong);
   border-radius: 18px;
-  box-shadow: 0 24px 60px -28px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 60px -28px var(--tn-dark-shadow, rgba(0, 0, 0, 0.5));
   max-height: 88vh;
   max-width: 560px;
   opacity: 0;

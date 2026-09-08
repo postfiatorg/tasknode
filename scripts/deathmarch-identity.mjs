@@ -1,3 +1,4 @@
+import { isWhitespace, replaceCharacterRuns } from "../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -23,13 +24,12 @@ function seedEnvAlreadyConfigured(env = process.env) {
 }
 
 export function configuredDeathmarchUserMnemonic(env = process.env) {
-  return safeText(env.DEATHMARCH_USER_MNEMONIC || env.TASKNODE_USER_MNEMONIC || "", 10000)
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+  return replaceCharacterRuns(safeText(env.DEATHMARCH_USER_MNEMONIC || env.TASKNODE_USER_MNEMONIC || "", 10000)
+    .toLowerCase(),isWhitespace," ");
 }
 
 function looksLikeTaskNodeMnemonic(value = "") {
-  const normalized = safeText(value, 10000).toLowerCase().replace(/\s+/g, " ");
+  const normalized = replaceCharacterRuns(safeText(value, 10000).toLowerCase(),isWhitespace," ");
   return Boolean(normalized && validateMnemonic(normalized, wordlist));
 }
 
@@ -42,7 +42,7 @@ function bytesToBase64(value) {
 }
 
 async function userKeypairFromMnemonic(mnemonic = "") {
-  const normalized = safeText(mnemonic, 10000).toLowerCase().replace(/\s+/g, " ");
+  const normalized = replaceCharacterRuns(safeText(mnemonic, 10000).toLowerCase(),isWhitespace," ");
   if (!looksLikeTaskNodeMnemonic(normalized)) throw new Error("deathmarch_user_mnemonic_invalid");
   await sodium.ready;
   const seedBytes = createHash("sha256").update(mnemonicToSeedSync(normalized)).digest();

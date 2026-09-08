@@ -1,3 +1,4 @@
+import { isWhitespace, replaceCharacterRuns } from "./text-protocol.js";
 export const MODEL_CONTEXT_MAX_CHARS = 60_000;
 export const TASKGEN_CONTEXT_MAX_CHARS = MODEL_CONTEXT_MAX_CHARS;
 export const CONTEXT_DOCUMENT_MAX_CHARS = 120_000;
@@ -14,7 +15,7 @@ export function normalizeContextCharLimit(value, fallback = TASKGEN_CONTEXT_MAX_
 }
 
 export function compactContextForModel(value = "") {
-  return String(value || "").replace(/\s+/g, " ").trim();
+  return replaceCharacterRuns(String(value || ""),isWhitespace," ").trim();
 }
 
 export function contextBudgetMetrics(value = "", { maxChars = TASKGEN_CONTEXT_MAX_CHARS } = {}) {

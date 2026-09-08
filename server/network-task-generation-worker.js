@@ -1,11 +1,15 @@
+import { assessTaskIntent } from "./task-intent-assessment.js";
+import { offchainTaskLifecycleEnabled, offchainTaskLifecycleDualWriteEnabled } from "./offchain-task-lifecycle.js";
+import { heartbeatNetworkTaskGenerationJob, persistNetworkTaskRequest } from "./repositories/network-task-generation-jobs.js";
+import { ownsTaskGeneration } from "./process-role.js";
 import { createHash } from "node:crypto";
 import { pinContextIpfsJson } from "./context-ipfs.js";
 import { resolveTasknodeEncryptionKey } from "./context-publish.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
-import { buildRequestBundle } from "./task-request.js";
+import { buildRequestBundle } from "./task-request-context.js";
 import { scheduleTaskGenerationQueue } from "./task-generation-worker.js";
-import { getTaskRequestByRequestId, upsertTaskRequest } from "./repositories/task-requests.js";
+import { getTaskRequestByRequestId } from "./repositories/task-requests.js";
 import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { query } from "./db/pool.js";
 import {
@@ -122,7 +126,7 @@ export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward =
   };
 }
 
-export async function createTaskRequestForNetworkJob(job = {}) {
+export async function createTaskRequestForNetworkJob(job = {}, { assess = assessTaskIntent } = {}) {
   const source = safeObject(job.source_payload_json);
 
   // Route to the candidate's CURRENT linked wallet. Candidate rows can carry
@@ -172,8 +176,9 @@ export async function createTaskRequestForNetworkJob(job = {}) {
       (existingRequest.generatedTaskId || ["generating", "proposed", "cancelled"].includes(existingRequest.status))
   );
   if (existingRequestAdvanced) {
-    await markNetworkTaskGenerationJobGenerated({
+    const marked = await markNetworkTaskGenerationJobGenerated({
       jobId: job.id,
+      workerAttemptId: job.worker_attempt_id,
       requestId,
       requestBundleCid: existingRequest.requestBundleCid,
       metadata: {
@@ -183,6 +188,7 @@ export async function createTaskRequestForNetworkJob(job = {}) {
         reused_existing_request: true,
       },
     });
+    if (!marked.ok) throw new Error("network_task_generation_attempt_lost");
     return {
       requestId,
       bundleId: existingRequest.bundleId || bundleId,
@@ -191,13 +197,14 @@ export async function createTaskRequestForNetworkJob(job = {}) {
       reusedExistingRequest: true,
     };
   }
-  const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
-  if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
+  const direct = offchainTaskLifecycleEnabled() && !offchainTaskLifecycleDualWriteEnabled();
+  const tasknodeKey = direct ? null : await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
+  if (!direct && !tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
   const request = {
     requestId,
     bundleId,
     requestText: "Network Task",
-    userDetailText: "",
+    userDetailText: safeText(source.networkTask?.projectNeedSummary || source.networkTask?.project_need_summary || source.network_task?.projectNeedSummary || source.network_task?.project_need_summary, 8000),
     requestedTaskKind: safeText(job.task_class, 80) || "network",
     source: "network_task",
     sourceConversationTitle: `Hive: ${source.project?.title || job.project_id}`,
@@ -208,7 +215,7 @@ export async function createTaskRequestForNetworkJob(job = {}) {
     accountId: job.candidate_account_id,
     walletAddress: job.candidate_wallet_address,
     request,
-    authorityWallet: tasknodeKey.serviceAddress || "",
+    authorityWallet: tasknodeKey?.serviceAddress || "",
   });
   requestBundle.network_task = buildNetworkTaskRequestContext({ source, job, reward });
   requestBundle.policy = {
@@ -228,6 +235,30 @@ export async function createTaskRequestForNetworkJob(job = {}) {
     discord_evidence_required: requestBundle.network_task.discord_evidence_required,
     supported_evidence_types: ["text", "url", "github_commit", "screenshot", "file", "mixed"],
   };
+  const priorTasks = (await query(`SELECT task_id,status,title,description FROM task_projections
+    WHERE account_id=$1 AND task_kind IN ('network','alpha') ORDER BY updated_at DESC LIMIT 40`, [job.candidate_account_id])).rows;
+  const assessment = await assess({ need: request.userDetailText, board: job.project_id, priorTasks });
+  const assessedAttempt = await query(`UPDATE network_task_generation_jobs SET generated_task_payload=generated_task_payload || jsonb_build_object('intentAssessment',$3::jsonb)
+    WHERE id=$1 AND worker_attempt_id=$2 AND status='running'`, [job.id, job.worker_attempt_id, JSON.stringify(assessment)]);
+  if (!assessedAttempt.rowCount) throw new Error("network_task_generation_attempt_lost");
+  if (["duplicate", "uncertain"].includes(assessment.relationship) || !assessment.actionable || !assessment.scopeClear) {
+    throw new Error(`network_task_intent_needs_review:${assessment.relationship}:${assessment.reason}`);
+  }
+  requestBundle.network_task.intent_assessment = assessment;
+  requestBundle.network_task.task_lineage.lineage_task_ids = [...new Set([...requestBundle.network_task.task_lineage.lineage_task_ids, ...assessment.priorTaskIds])];
+  if (direct) {
+    const cid = `postgres:${requestId}`;
+    await persistNetworkTaskRequest({ job, request: {
+      requestId, bundleId, accountId: job.candidate_account_id, subjectWallet: job.candidate_wallet_address,
+      source: "network_task", sourceConversationTitle: request.sourceConversationTitle,
+      requestText: request.requestText, userDetailText: request.userDetailText, requestedTaskKind: job.task_class,
+      requestBundleCid: cid, status: "queued",
+      metadata: { requestBundle, requestBundleDigest: sha256(requestBundle), networkTask: requestBundle.network_task,
+        sourcePayloadDigest: job.source_payload_digest, allocationId: job.allocation_id, generationJobId: job.id,
+        offchainLifecycle: { enabled: true, dualWrite: false, writeSource: "direct_write" } },
+    }, metadata: { request_id: requestId, request_bundle_cid: cid, intentAssessment: assessment } });
+    return { requestId, bundleId, requestBundleCid: cid, generationScheduled: scheduleTaskGenerationQueue({ reason: "network_request_ready" }) };
+  }
   const plaintext = stableJson(requestBundle);
   const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
     tasknodeKey,
@@ -256,7 +287,7 @@ export async function createTaskRequestForNetworkJob(job = {}) {
       task_class: job.task_class,
     },
   });
-  const visibleRequest = await upsertTaskRequest({
+  await persistNetworkTaskRequest({ job, request: {
     requestId,
     bundleId,
     accountId: job.candidate_account_id,
@@ -279,18 +310,10 @@ export async function createTaskRequestForNetworkJob(job = {}) {
         sizeBytes: pin.sizeBytes,
       },
     },
-  });
-  await markNetworkTaskGenerationJobGenerated({
-    jobId: job.id,
-    requestId,
-    requestBundleCid: pin.cid,
-    metadata: {
-      request_id: requestId,
-      request_bundle_cid: pin.cid,
-      request_bundle_digest: `sha256:${pin.sha256}`,
-      task_request_status: visibleRequest?.request?.status || "queued",
-    },
-  });
+  }, metadata: {
+    request_id: requestId, request_bundle_cid: pin.cid,
+    request_bundle_digest: `sha256:${pin.sha256}`, task_request_status: "queued",
+  } });
   const generationScheduled = scheduleTaskGenerationQueue({
     delayMs: 250,
     limit: 3,
@@ -299,7 +322,13 @@ export async function createTaskRequestForNetworkJob(job = {}) {
   return { requestId, bundleId, requestBundleCid: pin.cid, generationScheduled };
 }
 
-export async function processNetworkTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
+let queueRun = null;
+export function processNetworkTaskGenerationQueueOnce(options = {}) {
+  if (queueRun) return queueRun;
+  queueRun = runNetworkTaskGenerationQueueOnce(options).finally(() => { queueRun = null; });
+  return queueRun;
+}
+async function runNetworkTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
   const staleMinutes = Number(process.env.TASKNODE_NETWORK_TASK_GENERATION_STALE_MINUTES || 5);
   await reclaimStaleNetworkTaskGenerationJobs({ staleMinutes }).catch((error) => {
     logger.warn?.("network_task_generation_stale_reclaim_failed", { error: error?.message || String(error) });
@@ -310,17 +339,23 @@ export async function processNetworkTaskGenerationQueueOnce({ limit = 1, logger 
   await repairNetworkTaskOfferLinks({ limit }).catch((error) => {
     logger.warn?.("network_task_offer_link_repair_failed", { error: error?.message || String(error) });
   });
-  const jobs = await claimNetworkTaskGenerationJobs({ limit });
+  const jobs = await claimNetworkTaskGenerationJobs({ limit: Math.min(limit, 1) });
   const results = [];
   for (const job of jobs) {
+    const heartbeat = setInterval(() => {
+      heartbeatNetworkTaskGenerationJob(job).catch((error) => logger.warn?.("network_generation_heartbeat_failed", { jobId: job.id, error: error.message }));
+    }, 20_000);
+    heartbeat.unref?.();
     try {
       const result = await createTaskRequestForNetworkJob(job);
       results.push({ ok: true, jobId: job.id, ...result });
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
-      await markNetworkTaskGenerationJobFailed({ jobId: job.id, error: message }).catch(() => null);
+      await markNetworkTaskGenerationJobFailed({ jobId: job.id, workerAttemptId: job.worker_attempt_id, error: message }).catch(() => null);
       logger.warn?.("network_task_generation_job_failed", { jobId: job.id, error: message });
       results.push({ ok: false, jobId: job.id, error: message });
+    } finally {
+      clearInterval(heartbeat);
     }
   }
   return { ok: true, claimed: jobs.length, results };
@@ -334,6 +369,7 @@ export function scheduleNetworkTaskGenerationQueue({
   reason = "network_task_queued",
 } = {}) {
   if (!enabled) return { scheduled: false, reason: "disabled" };
+  if (!ownsTaskGeneration()) return { scheduled: false, durable: true, reason: "worker_poll_owned_queue" };
   if (immediateTimer) return { scheduled: false, reason: "already_scheduled" };
   const safeDelay = Math.min(Math.max(Number(delayMs || 0), 0), 60_000);
   const safeLimit = Math.min(Math.max(Number(limit || 1), 1), 5);
@@ -371,7 +407,8 @@ export function startNetworkTaskGenerationWorker({
   logger = console,
 } = {}) {
   if (timer || !enabled) return { started: false, reason: timer ? "already_started" : "disabled" };
-  const safeInterval = Math.min(Math.max(intervalMs || 15000, 5000), 3_600_000);
+  if (!ownsTaskGeneration()) return { started: false, reason: "worker_role_required" };
+  const safeInterval = Math.min(Math.max(intervalMs || 15000, 1000), 3_600_000);
   const safeBatch = Math.min(Math.max(batchLimit || 1, 1), 5);
   let running = false;
   const runOnce = async () => {

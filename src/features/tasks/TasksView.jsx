@@ -341,7 +341,7 @@ export function TasksView({
           </div>
         </div>
 
-        <TaskRequestQueue requests={activeRequests} />
+        <TaskRequestQueue requests={activeRequests} onRefresh={onRequestSettled} />
 
         {taskSyncNotice && (
           <div className="tasks-sync-notice" role="status">

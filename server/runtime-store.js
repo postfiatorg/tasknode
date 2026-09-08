@@ -1,4 +1,4 @@
-import { isIdentifierChar, replaceCharacterRuns, trimCharacters } from "../shared/text-protocol.js";
+import { isAsciiDigit, isAsciiLetter, isIdentifierChar, replaceCharacterRuns, splitWhitespace, trimCharacters } from "../shared/text-protocol.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   accountIdentityProfile as buildAccountIdentityProfile,
@@ -168,10 +168,9 @@ export function pruneExpiredSessions() {
 
 function displayNameFromEmail(email) {
   const localPart = email.split("@")[0] || "dev";
-  const words = localPart
+  const words = splitWhitespace(localPart
     .replace(/[^a-zA-Z0-9]+/g, " ")
-    .trim()
-    .split(/\s+/)
+    .trim())
     .filter(Boolean);
 
   if (words.length === 0) return "Task Node Dev";
@@ -939,7 +938,7 @@ export function createDevSession({ email = "dev@tasknode.local" } = {}) {
       ? email.trim().toLowerCase().slice(0, 160)
       : "dev@tasknode.local";
   const now = new Date();
-  const accountId = `acct_dev_${normalizedEmail.replace(/[^a-z0-9]+/g, "_").slice(0, 48)}`;
+  const accountId = `acct_dev_${replaceCharacterRuns(normalizedEmail,char=>!isAsciiLetter(char)&&!isAsciiDigit(char),"_").slice(0, 48)}`;
   const account = state.accounts[accountId] || {
     id: accountId,
     status: "active",

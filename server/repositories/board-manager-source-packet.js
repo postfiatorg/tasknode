@@ -71,13 +71,7 @@ export function isBoardManagerSourceReadTimeout(error) {
   const code = safeText(error?.code, 80).toUpperCase();
   if (["57014", "ETIMEDOUT", "ESOCKETTIMEDOUT"].includes(code)) return true;
   const message = safeText(error?.message || error, 1000).toLowerCase();
-  return [
-    /^(?:connection|query|read|statement)(?: read)? timeout\b/,
-    /^connection terminated due to connection timeout\b/,
-    /^(?:connection|query|read|statement)\b[^\n]*\btimed out\b/,
-    /^timeout exceeded when trying to connect\b/,
-    /\btimeout expired\b/,
-  ].some((pattern) => pattern.test(message));
+  return ["connection timeout", "query timeout", "query read timeout", "read timeout", "statement timeout", "connection terminated due to connection timeout", "timeout exceeded when trying to connect"].some(prefix=>message.startsWith(prefix)) || message.includes("timeout expired") || (["connection ","query ","read ","statement "].some(prefix=>message.startsWith(prefix)) && message.includes("timed out"));
 }
 
 function boardManagerReadFallback(reader, error) {

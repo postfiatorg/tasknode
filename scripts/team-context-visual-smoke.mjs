@@ -20,6 +20,63 @@ const summaries = [
   "Repairing the daily 2,201-name Pre-Catalyst stock-scoring build, correcting overnight P&L reporting, and establishing a backward-compatible security policy domain. Added incremental coverage for 52 missing names and repaired 139 Bloomberg factor-data mapping gaps without changing factor or portfolio methodology. Fixed transcript error classification so temporary provider-capacity failures remain retryable, restoring 244 previously excluded names without deleting completed cells. Corrected overnight P&L reconciliation so corporate-action adjustments no longer appear as roughly $309.90 of adverse entry slippage when Friday closing-auction fills are compared with Monday ex-dividend prices. Added a stable security-level enum, deterministic authorization and revocation types, versioned persistence, and a tested Permissive compatibility baseline. The daily build now covers the intended universe, traders see a trustworthy execution-cost breakdown, and stricter permission levels can be added without breaking existing behavior.",
 ];
 
+const structuredSummaries = [
+  {
+    focus: "NavStrategies quantitative strategy work and corbanu.com site upkeep, covering signal methodology, universe testing, monitoring APIs, instrument discovery, and operator documentation.",
+    completedChanges: [
+      "Migrated the fixed-clip equity strategy from percentile-rank transforms to population z-scores while preserving fixed hedges, position clips, the one-session lag, and disabled order submission.",
+      "Ran a controlled comparison between the original 19-name universe and an expanded 25-name universe using identical thresholds and execution timing.",
+      "Built a protected read-only API that reports healthy, stale, missing, partial, and error states across stock, crypto relative-value, and macro signal files without executing a strategy.",
+      "Added asset categories to all 39 public instruments and replaced the flat instrument picker with a grouped accessible menu.",
+      "Documented every script, service, environment variable, publish step, degradation policy, and sanitization rule required to run a full Market Lens refresh and diagnose stale output.",
+    ],
+    operationalEffect: "New engineers can operate and diagnose the market-data pipeline without tribal knowledge, while strategy comparisons and signal health remain explicit and reproducible.",
+  },
+  null,
+  {
+    focus: "PostFiat L1 consensus verification, controlled-devnet storage deployment, and public-testnet readiness across validator behavior and operator rollout evidence.",
+    completedChanges: [
+      "Fixed the non-uniform support boundary so authenticated messages from validators outside a peer's local view are ignored instead of poisoning local support, then reran the frozen 18-case oracle corpus to a full pass.",
+      "Reproduced the original liveness failure on controlled infrastructure and verified that the repaired implementation resolves it.",
+      "Qualified the release candidate by replaying the exact 915-block devnet archive and rehearsing forward rollback before the controlled-testnet cutover.",
+      "Generated more than 10,000 deterministic trust graphs across 6–20 validators with an independent second oracle to compare classification at adversarial boundaries.",
+      "Completed the authorized six-validator storage rollout with fleet ground truth, rollback binaries, storage health checks, and redaction-safe receipts.",
+    ],
+    operationalEffect: "The consensus boundary, activation state, storage rollout, and remaining operator decisions are now independently auditable.",
+  },
+  {
+    focus: "Restoring the NavStrategies signals surface after an accidental Flask cleanup and defining a safe retirement plan for obsolete production routes.",
+    completedChanges: [
+      "Restored the GET /signals page and both signals API endpoints from the existing signal catalog, including the dedicated template, styles, and client behavior.",
+      "Verified that the route allowlist still contains exactly 53 rules, retired routes return 404, and the hotfix changed no trading methodology, timers, database state, positions, or order execution.",
+      "Deployed the UI-only repair and verified the restored page and endpoints live.",
+      "Produced a retained-route manifest, scoped removal targets, archival inventory, regression design, and rollout and rollback steps for the remaining deprecation work.",
+    ],
+    operationalEffect: "Operators have the signals interface back and can remove obsolete Flask surface area without guessing which routes production still depends on.",
+  },
+  {
+    focus: "Building the scoring-model governance round pipeline that freezes a round, selects judges, runs grading, decides replacement, and publishes verifiable records.",
+    completedChanges: [
+      "Connected exam generation and identity-blinded grading to the orchestrator so triggered rounds run end to end and failed judges can be blocklisted.",
+      "Made judge selection reproducible from the on-chain announcement anchor and frozen package.",
+      "Added deterministic rules for margin comparison, disqualification, no-survivor fallback, and ledger-randomness tie-breaking.",
+      "Withheld results until the commit window closes, then pinned the record to IPFS and emitted the round-close receipt on chain.",
+      "Added an operator playbook for distribution failures covering wait, admin republish, and fresh manual-round recovery paths.",
+    ],
+    operationalEffect: "Scoring rounds can complete automatically with reproducible judge selection, explicit recovery paths, and an auditable publication record.",
+  },
+  {
+    focus: "Repairing the daily 2,201-name Pre-Catalyst stock-scoring build, correcting overnight P&L reporting, and establishing backward-compatible security policy types.",
+    completedChanges: [
+      "Added incremental coverage for 52 missing names and repaired 139 Bloomberg factor-data mapping gaps without changing factor or portfolio methodology.",
+      "Reclassified temporary provider-capacity failures as retryable, restoring 244 previously excluded names without deleting completed cells.",
+      "Corrected overnight P&L reconciliation so corporate-action adjustments no longer appear as roughly $309.90 of adverse entry slippage between Friday auction fills and Monday ex-dividend prices.",
+      "Added a stable security-level enum, deterministic authorization and revocation types, versioned persistence, and a tested Permissive compatibility baseline.",
+    ],
+    operationalEffect: "The daily build covers its intended universe, execution-cost reporting is trustworthy, and stricter permission levels can be added without breaking existing behavior.",
+  },
+];
+
 const identities = [
   ["@corbanuai", "corbanuai"],
   ["Task Node member", ""],
@@ -44,6 +101,7 @@ const contextMembers = identities.map(([displayName, hiveHandle], index) => ({
   tasksPastDay: [2, 0, 1, 2, 0, 0][index],
   tasksPastWeek: [3, 0, 9, 2, 0, 2][index],
   recentWork: summaries[index],
+  ...(structuredSummaries[index] || {}),
 }));
 
 const appState = {
@@ -168,23 +226,29 @@ await waitFor(
   "Six Team Context members did not render",
 );
 await delay(300);
-await evaluate("window.scrollTo(0, 0)");
+await evaluate(viewportWidth <= 720
+  ? "document.querySelector('.team-context-report')?.scrollIntoView({ block: 'start' })"
+  : "window.scrollTo(0, 0)");
 const result = await evaluate(`(() => {
   const report = document.querySelector('.team-context-report');
-  const firstUpdate = report?.querySelector('.team-context-member-update p');
+  const firstBrief = report?.querySelector('.team-context-brief');
   return {
     articles: report?.querySelectorAll('.team-context-members article').length || 0,
     width: Math.round(report?.getBoundingClientRect().width || 0),
     height: Math.round(report?.getBoundingClientRect().height || 0),
     bodyOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     expandButtons: report?.querySelectorAll('[data-team-context-expand]').length || 0,
-    firstUpdateLength: firstUpdate?.textContent.length || 0,
+    structuredBriefs: report?.querySelectorAll('.team-context-brief').length || 0,
+    firstBriefSections: firstBrief?.querySelectorAll(':scope > section').length || 0,
+    firstCollapsedChanges: firstBrief?.querySelectorAll('.team-context-brief-changes li').length || 0,
   };
 })()`);
 assert.equal(result.articles, 6);
 assert.equal(result.expandButtons, 5);
 assert.equal(result.bodyOverflow, false);
-assert.ok(result.firstUpdateLength < summaries[0].length, "Long summaries must render as concise previews by default");
+assert.equal(result.structuredBriefs, 5);
+assert.equal(result.firstBriefSections, 3);
+assert.equal(result.firstCollapsedChanges, 1);
 
 if (screenshotPath) {
   const screenshot = await command("Page.captureScreenshot", {
@@ -197,12 +261,15 @@ if (screenshotPath) {
 await evaluate("document.querySelector('[data-team-context-expand]').click()");
 const expanded = await waitFor(`(() => {
   const button = document.querySelector('[data-team-context-expand]');
-  const update = document.querySelector('.team-context-member-update p');
   if (button?.getAttribute('aria-expanded') !== 'true') return null;
-  return { buttonLabel: button.textContent, updateLength: update?.textContent.length || 0 };
+  const brief = document.querySelector('.team-context-brief');
+  return {
+    buttonLabel: button.textContent,
+    changeCount: brief?.querySelectorAll('.team-context-brief-changes li').length || 0,
+  };
 })()`, "The first contributor update did not expand");
 assert.match(expanded.buttonLabel, /Show less/);
-assert.equal(expanded.updateLength, summaries[0].length);
+assert.equal(expanded.changeCount, structuredSummaries[0].completedChanges.length);
 
 console.log(JSON.stringify({ ok: true, result, expanded, screenshotPath }, null, 2));
 socket.close();

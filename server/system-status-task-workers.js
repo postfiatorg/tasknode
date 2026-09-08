@@ -16,126 +16,6 @@ import {
   recentFailureWindowMs,
 } from "./system-status-readers.js";
 
-export async function boardManagerItem(tables, nowMs) {
-  if (process.env.TASKNODE_BOARD_MANAGER_ENABLED !== "true") {
-    return item({
-      id: "board_manager",
-      category: "hive",
-      title: "Hive Board Manager",
-      description: "Legacy Hive action manager. Retired in favor of advisory GLM board secretary memos.",
-      owner: "retired",
-      trigger: "disabled",
-      cadence: "disabled",
-      status: "disabled",
-      statusLabel: "Retired",
-      details: [
-        "TASKNODE_BOARD_MANAGER_ENABLED=false",
-      ],
-    });
-  }
-  const cadenceFallback = intEnv(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS, 300, { min: 60, max: 86400 });
-  const [scopeResult, runResult, successResult, jobResult, leaseResult] = await Promise.all([
-    optionalQuery(
-      tables,
-      ["board_manager_scopes"],
-      `SELECT scope, status, cadence_seconds, max_actions_per_hour, next_run_at, last_enqueued_at,
-              last_run_id, metadata_json, updated_at
-         FROM board_manager_scopes
-        WHERE scope = 'global_hive'
-        LIMIT 1`
-    ),
-    optionalQuery(
-      tables,
-      ["board_manager_runs"],
-      `SELECT id, status, selected_action, trigger, error, started_at, completed_at
-         FROM board_manager_runs
-        WHERE scope = 'global_hive'
-        ORDER BY started_at DESC, id DESC
-        LIMIT 1`
-    ),
-    optionalQuery(
-      tables,
-      ["board_manager_runs"],
-      `SELECT id, status, selected_action, trigger, error, started_at, completed_at
-         FROM board_manager_runs
-        WHERE scope = 'global_hive'
-          AND status = 'completed'
-        ORDER BY completed_at DESC NULLS LAST, started_at DESC, id DESC
-        LIMIT 1`
-    ),
-    optionalQuery(
-      tables,
-      ["board_manager_jobs"],
-      `SELECT status, count(*)::int AS count,
-              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
-         FROM board_manager_jobs
-        WHERE scope = 'global_hive'
-        GROUP BY status`,
-      [recentFailureWindowMs]
-    ),
-    optionalQuery(
-      tables,
-      ["board_manager_leases"],
-      `SELECT status, manager_id, owner_instance, heartbeat_at, expires_at, updated_at
-         FROM board_manager_leases
-        WHERE scope = 'global_hive'
-        ORDER BY updated_at DESC
-        LIMIT 1`
-    ),
-  ]);
-  const scope = scopeResult.rows[0] || null;
-  const run = runResult.rows[0] || null;
-  const successRun = successResult.rows[0] || null;
-  const lease = leaseResult.rows[0] || null;
-  const counts = countsFromRows(jobResult.rows);
-  const cadenceSeconds = Number(scope?.cadence_seconds || cadenceFallback);
-  const lastSuccessAt = successRun?.completed_at || null;
-  const freshness = runFreshness({
-    enabled: true,
-    lastSuccessAt,
-    warningAfterMs: cadenceSeconds * 1000 + 5 * minute,
-    staleAfterMs: cadenceSeconds * 2000 + 5 * minute,
-    nowMs,
-    missingStatus: "critical",
-  });
-  let status = freshness;
-  if (!scope) status = { status: "critical", label: "Scope missing" };
-  else if (scope.status !== "enabled") status = { status: "critical", label: scope.status === "paused" ? "Paused" : "Not enabled" };
-  if (run?.status === "running") {
-    const runningMs = oldestAgeMs(run.started_at, nowMs);
-    status = runningMs > cadenceSeconds * 2000 + 5 * minute
-      ? { status: "critical", label: "Run stale" }
-      : { status: "ok", label: "Running" };
-  }
-  if (run?.status === "failed") status = { status: "critical", label: "Last run failed" };
-  const recentFailed = jobResult.rows.reduce((sum, row) => sum + Number(row.recent_failed || 0), 0);
-  status = recentFailureStatus(status, recentFailed, "Recent failed jobs");
-  return item({
-    id: "board_manager",
-    category: "hive",
-    title: "Hive Mind Board Agent",
-    description: "Leased Board Manager scheduler for Hive decisions and action hooks.",
-    owner: "board-manager process",
-    trigger: "periodic tick and post-action follow-up",
-    cadence: scope ? `${cadenceSeconds}s` : `${cadenceFallback}s`,
-    status: status.status,
-    statusLabel: status.label,
-    lastRunAt: run?.completed_at || run?.started_at || scope?.updated_at,
-    lastSuccessAt,
-    nextRunAt: scope?.next_run_at,
-    staleAfterMs: cadenceSeconds * 2000 + 5 * minute,
-    counts,
-    lastError: run?.error || "",
-    details: [
-      scope && `scope=${scope.scope} ${scope.status}`,
-      scope && `maxActionsPerHour=${scope.max_actions_per_hour}`,
-      scope?.last_run_id && `lastRunId=${scope.last_run_id}`,
-      run?.id && `latestRun=${run.id} ${run.status}${run.selected_action ? ` action=${run.selected_action}` : ""}`,
-      lease && `lease=${lease.status}${lease.owner_instance ? ` owner=${lease.owner_instance}` : ""}`,
-    ],
-  });
-}
-
 export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
   const cadenceSeconds = intEnv(process.env.TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS, 900, { min: 60, max: 86400 });
   const enabled = process.env.TASKNODE_HIVE_BOARD_SECRETARY_ENABLED !== "false";
@@ -199,7 +79,7 @@ export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
     id: "hive_board_secretary",
     category: "hive",
     title: "GLM Board Secretary",
-    description: "Per-board GLM 5.2 Project Status memo writer. Advisory only; no task, message, reward, or board mutations.",
+    description: "Per-board GLM 5.3 Project Status memo writer. Advisory only; no task, message, reward, or board mutations.",
     owner: "board-secretary process",
     trigger: "periodic project status memo refresh",
     cadence: `${cadenceSeconds}s`,
@@ -214,7 +94,7 @@ export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
     },
     lastError: memo?.error || "",
     details: [
-      `model=${process.env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || "z-ai/glm-5.2"}`,
+      `model=${process.env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || "zai/glm-5.3"}`,
       memo?.id && `latestMemo=${memo.id}`,
       memo?.project_id && `latestProject=${memo.project_id}`,
       memo?.model && `latestModel=${memo.model}`,
@@ -525,6 +405,7 @@ export async function taskReviewItem(tables, nowMs) {
              FROM task_review_publications pub
              WHERE pub.task_id = p.task_id
                AND pub.worker_name = 'verification_request'
+               AND pub.status = 'published'
            )
            AND NOT EXISTS (
              SELECT 1
@@ -545,6 +426,7 @@ export async function taskReviewItem(tables, nowMs) {
              FROM task_review_publications pub
              WHERE pub.task_id = p.task_id
                AND pub.worker_name = 'reward_scoring'
+               AND pub.status = 'published'
            )
            AND NOT EXISTS (
              SELECT 1
@@ -556,11 +438,71 @@ export async function taskReviewItem(tables, nowMs) {
      )
      SELECT count(*) FILTER (WHERE actionable.status = 'submitted')::int AS submitted,
             count(*) FILTER (WHERE actionable.status = 'verification_response_submitted')::int AS verification_response_submitted,
+            count(*) FILTER (
+              WHERE actionable.metadata_json->'workers'->'verification_request'->>'last_error'
+                = 'awaiting_agent_verification_request'
+            )::int AS awaiting_agent_verification_request,
+            count(*) FILTER (
+              WHERE actionable.metadata_json->'workers'->'reward_scoring'->>'last_error'
+                = 'awaiting_agent_review_decision'
+            )::int AS awaiting_agent_review_decision,
+            count(*) FILTER (
+              WHERE COALESCE(
+                NULLIF(
+                  CASE actionable.status
+                    WHEN 'submitted' THEN actionable.metadata_json->'workers'->'verification_request'->>'retry_after'
+                    ELSE actionable.metadata_json->'workers'->'reward_scoring'->>'retry_after'
+                  END,
+                  ''
+                )::timestamptz,
+                '-infinity'::timestamptz
+              ) > now()
+            )::int AS retry_backoff,
+            count(*) FILTER (
+              WHERE actionable.metadata_json->'reward_payment_guard'->>'status' = 'submit_unknown'
+            )::int AS reward_submit_unknown,
+            count(*) FILTER (
+              WHERE EXISTS (
+                SELECT 1
+                FROM task_review_publications stalled
+                WHERE stalled.task_id = actionable.task_id
+                  AND stalled.status IN ('reserved', 'error')
+              )
+            )::int AS publication_stalled,
+            CASE
+              WHEN count(*) FILTER (
+                WHERE actionable.metadata_json->'reward_payment_guard'->>'status' = 'submit_unknown'
+              ) > 0 THEN 'task_reward_submit_unknown'
+              WHEN count(*) FILTER (
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM task_review_publications stalled
+                  WHERE stalled.task_id = actionable.task_id
+                    AND stalled.status IN ('reserved', 'error')
+                )
+              ) > 0 THEN 'task_review_publication_stalled'
+              WHEN count(*) FILTER (
+                WHERE actionable.metadata_json->'workers'->'verification_request'->>'last_error'
+                  = 'awaiting_agent_verification_request'
+              ) > 0 THEN 'awaiting_agent_verification_request'
+              WHEN count(*) FILTER (
+                WHERE actionable.metadata_json->'workers'->'reward_scoring'->>'last_error'
+                  = 'awaiting_agent_review_decision'
+              ) > 0 THEN 'awaiting_agent_review_decision'
+              WHEN count(*) FILTER (
+                WHERE COALESCE(
+                  actionable.metadata_json->'workers'->'verification_request'->>'last_error',
+                  actionable.metadata_json->'workers'->'reward_scoring'->>'last_error',
+                  ''
+                ) <> ''
+              ) > 0 THEN 'task_review_retrying'
+              ELSE ''
+            END AS last_error_code,
             max(p.updated_at) FILTER (
               WHERE p.status IN ('verification_requested','reward_decided','rewarded')
             ) AS last_completed_at,
             max(p.updated_at) AS last_seen_at,
-            min(actionable.updated_at) AS oldest_pending_at
+            min(COALESCE(actionable.last_event_at, actionable.created_at)) AS oldest_pending_at
        FROM task_projections p
        LEFT JOIN actionable ON actionable.task_id = p.task_id`
   );
@@ -568,6 +510,11 @@ export async function taskReviewItem(tables, nowMs) {
   const counts = {
     submitted: Number(row.submitted || 0),
     verification_response_submitted: Number(row.verification_response_submitted || 0),
+    awaiting_agent_verification_request: Number(row.awaiting_agent_verification_request || 0),
+    awaiting_agent_review_decision: Number(row.awaiting_agent_review_decision || 0),
+    retry_backoff: Number(row.retry_backoff || 0),
+    reward_submit_unknown: Number(row.reward_submit_unknown || 0),
+    publication_stalled: Number(row.publication_stalled || 0),
   };
   let status = runFreshness({
     enabled: boolEnv(process.env.TASKNODE_TASK_REVIEW_WORKER_ENABLED),
@@ -589,6 +536,16 @@ export async function taskReviewItem(tables, nowMs) {
     lastRunAt: row.last_completed_at || row.last_seen_at,
     lastSuccessAt: row.last_completed_at,
     counts,
-    details: [oldest && `oldestPending=${oldest}`],
+    lastError: row.last_error_code || "",
+    details: [
+      oldest && `oldestPending=${oldest}`,
+      counts.awaiting_agent_verification_request > 0
+        && `awaitingAgentVerificationRequest=${counts.awaiting_agent_verification_request}`,
+      counts.awaiting_agent_review_decision > 0
+        && `awaitingAgentReviewDecision=${counts.awaiting_agent_review_decision}`,
+      counts.retry_backoff > 0 && `retryBackoff=${counts.retry_backoff}`,
+      counts.reward_submit_unknown > 0 && `rewardSubmitUnknown=${counts.reward_submit_unknown}`,
+      counts.publication_stalled > 0 && `publicationStalled=${counts.publication_stalled}`,
+    ],
   });
 }

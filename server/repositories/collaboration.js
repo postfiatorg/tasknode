@@ -1,3 +1,4 @@
+import { isHexLength, isUuidText, isWhitespace, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
@@ -125,10 +126,10 @@ async function audit({
 export async function resolveCollaborationIdentity({ viewerAccountId = "", input = "" } = {}) {
   const needle = safeText(input, 180);
   if (!needle) return { ok: false, status: 400, error: "collaboration_identity_required" };
-  const normalizedHandle = needle.replace(/^@+/, "").toLowerCase();
+  const normalizedHandle = trimCharacters(needle,"@",{end:false}).toLowerCase();
   const identities = await listDiscoverableAccountWalletIdentities();
   let match = identities.find((entry) => safeText(entry.hiveHandle, 80).toLowerCase() === normalizedHandle);
-  if (!match && /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(needle)) {
+  if (!match) {
     match = identities.find((entry) => entry.walletAddress === needle);
   }
   if (!match || match.accountId === viewerAccountId) {
@@ -187,6 +188,8 @@ function docsAccountDocument(row) {
     accountId: row.account_id,
     status: row.status,
     encryptedRootKeyEnvelope: row.encrypted_root_key_envelope,
+    encryptedLibraryMetadata: row.encrypted_library_metadata || null,
+    libraryMetadataVersion: Number(row.library_metadata_version || 0),
     envelopeWalletAddress: row.envelope_wallet_address,
     envelopeKeyVersion: Number(row.envelope_key_version || 1),
     storageLimitBytes: Number(row.storage_limit_bytes || defaultDocsStorageLimit),
@@ -355,7 +358,7 @@ export async function requireDocumentAccess({ accountId = "", documentId = "", c
   ensureDatabase();
   const normalizedDocumentId = safeText(documentId, 80);
   const normalizedChannelHash = safeText(channelHash, 128);
-  if (!/^[0-9a-f-]{36}$/i.test(normalizedDocumentId) || !/^[0-9a-f]{32}$/i.test(normalizedChannelHash)) {
+  if (!isUuidText(normalizedDocumentId) || !isHexLength(normalizedChannelHash,32)) {
     return { ok: false, status: 400, error: "docs_document_identity_invalid" };
   }
   const result = await query(
@@ -392,7 +395,7 @@ export async function createDocument({
   const normalizedId = safeText(documentId, 80);
   const normalizedChannelHash = safeText(channelHash, 128);
   const metadata = safeObject(encryptedMetadata);
-  if (!/^[0-9a-f-]{36}$/i.test(normalizedId) || !/^[0-9a-f]{32}$/i.test(normalizedChannelHash)) {
+  if (!isUuidText(normalizedId) || !isHexLength(normalizedChannelHash,32)) {
     return { ok: false, status: 400, error: "docs_document_identity_invalid" };
   }
   if (!metadata.ciphertext || !metadata.iv) {
@@ -648,7 +651,7 @@ export async function createTeamInvite({
   proof = {},
 } = {}) {
   ensureDatabase();
-  const normalizedRelationship = safeText(relationship, 40).toLowerCase().replace(/\s+/g, "_");
+  const normalizedRelationship = replaceCharacterRuns(safeText(relationship, 40).toLowerCase(),isWhitespace,"_");
   if (!["collaborator", "manager", "direct_report"].includes(normalizedRelationship)) {
     return { ok: false, status: 400, error: "team_relationship_invalid" };
   }
@@ -656,7 +659,7 @@ export async function createTeamInvite({
     return { ok: false, status: 400, error: "team_invitee_invalid" };
   }
   const normalizedInviteId = safeText(inviteId, 80);
-  if (!/^[0-9a-f-]{36}$/i.test(normalizedInviteId)) {
+  if (!isUuidText(normalizedInviteId)) {
     return { ok: false, status: 400, error: "team_invite_id_invalid" };
   }
   const grants = requestedGrantDirections(normalizedRelationship, accountId, inviteeAccountId);

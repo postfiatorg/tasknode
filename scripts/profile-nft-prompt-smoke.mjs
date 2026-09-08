@@ -34,7 +34,7 @@ let ambientCalls = 0;
 const ambientFetch = async (_url, init) => {
   ambientCalls += 1;
   const request = JSON.parse(init.body);
-  assert.equal(request.model, "z-ai/glm-5.2");
+  assert.equal(request.model, "zai/glm-5.3");
   assert.ok(JSON.stringify(request.messages).includes("SecretProjectZephyr9081726354"));
   return new Response(
     JSON.stringify({
@@ -49,7 +49,7 @@ const ambientFetch = async (_url, init) => {
 const rendered = await createPrivateProfileNftSummary({
   sourcePacket: privatePacket,
   env: {
-    AMBIENT_API_KEY: "ambient-test",
+    VERCEL_AI_GATEWAY_API_KEY: "ambient-test",
     PROFILE_NFT_PROMPT_TEXT: "THIS REPLACEMENT PROMPT MUST NEVER BE USED",
   },
   fetchImpl: ambientFetch,
@@ -135,9 +135,10 @@ assert.throws(
   () =>
     validateProfileNftSummary({
       ...approvedSummary,
+      instruction_risk: "high",
       context_summary: "Create a dashboard showing market charts and source code.",
     }),
-  /instruction_leak/
+  /privacy_not_approved/
 );
 assert.throws(
   () => validateProfileNftSummary({ ...approvedSummary, context_summary: "" }),
@@ -147,7 +148,7 @@ assert.throws(
 let literalSanitizerCalls = 0;
 const literalSanitized = await createPrivateProfileNftSummary({
   sourcePacket: { account_id: "acct_oauth_9081726354", work_identity: "interdisciplinary builder" },
-  env: { AMBIENT_API_KEY: "ambient-test" },
+  env: { VERCEL_AI_GATEWAY_API_KEY: "ambient-test" },
   fetchImpl: async (_url, init) => {
     literalSanitizerCalls += 1;
     const request = JSON.parse(init.body);
@@ -170,7 +171,7 @@ assert.match(literalSanitized.prompt, /Current work references private reference
 assert.doesNotMatch(literalSanitized.prompt, /acct_oauth_9081726354/);
 assert.equal(
   publicProfileNftGenerationMessage(new Error("profile_nft_privacy_source_overlap")),
-  "Your private context could not be safely summarized on this attempt. Nothing was generated; try again."
+  "The artwork did not pass its privacy or art review. Please try again."
 );
 
 let openAiRequest = null;
@@ -211,6 +212,7 @@ const approvedReviewFetch = async (_url, init) => {
           message: {
             content: JSON.stringify({
               approved: true,
+              title: "The Folded Circuit",
               privacy_violations: [],
               art_direction_violations: [],
             }),
@@ -224,7 +226,7 @@ const approvedReviewFetch = async (_url, init) => {
 await reviewRenderedProfileNftImage({
   imageBase64: "aW1hZ2U=",
   sanitizedPrompt: rendered.prompt,
-  env: { AMBIENT_API_KEY: "ambient-test" },
+  env: { VERCEL_AI_GATEWAY_API_KEY: "ambient-test" },
   fetchImpl: approvedReviewFetch,
 });
 assert.ok(JSON.stringify(reviewRequest.messages).includes("Create a single central avatar/entity"));
@@ -236,7 +238,7 @@ await assert.rejects(
   reviewRenderedProfileNftImage({
     imageBase64: "aW1hZ2U=",
     sanitizedPrompt: alternate.prompt,
-    env: { AMBIENT_API_KEY: "ambient-test" },
+    env: { VERCEL_AI_GATEWAY_API_KEY: "ambient-test" },
     fetchImpl: async (_url, init) => {
       const request = JSON.parse(init.body);
       return new Response(
@@ -248,6 +250,7 @@ await assert.rejects(
               message: {
                 content: JSON.stringify({
                   approved: false,
+                  title: "The Unfinished Engine",
                   privacy_violations: [],
                   art_direction_violations: ["generic_or_stock", "no_clear_action"],
                 }),

@@ -1,5 +1,5 @@
 .wallet-unlock-backdrop {
-  background: rgba(20, 18, 14, 0.45);
+  background: var(--tn-dark-backdrop, rgba(20, 18, 14, 0.45));
   font: inherit;
   -webkit-font-smoothing: antialiased;
 }
@@ -11,9 +11,9 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: 16px;
-  background: #ffffff;
-  color: #1a1714;
-  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.2), 0 8px 20px -8px rgba(0, 0, 0, 0.1);
+  background: var(--tn-dark-raised, #ffffff);
+  color: var(--tn-dark-text, #1a1714);
+  box-shadow: 0 20px 50px -10px var(--tn-dark-shadow, rgba(0, 0, 0, 0.2)), 0 8px 20px -8px var(--tn-dark-shadow, rgba(0, 0, 0, 0.1));
 }
 
 .wallet-unlock-modal header {
@@ -30,7 +30,7 @@
 
 .wallet-unlock-modal h2 {
   margin: 0;
-  color: #1a1714;
+  color: var(--tn-dark-text, #1a1714);
   font-size: 18px;
   font-weight: 600;
   letter-spacing: 0;
@@ -39,7 +39,7 @@
 
 .wallet-unlock-modal p {
   margin: 4px 0 0;
-  color: #6b665c;
+  color: var(--tn-dark-secondary, #6b665c);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -54,18 +54,18 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #6b665c;
+  color: var(--tn-dark-secondary, #6b665c);
 }
 
 .wallet-unlock-close:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #1a1714;
+  background: var(--tn-dark-overlay, rgba(0, 0, 0, 0.05));
+  color: var(--tn-dark-text, #1a1714);
 }
 
 .wallet-unlock-divider {
   height: 0;
   margin: 0 24px;
-  border-top: 0.5px solid rgba(0, 0, 0, 0.07);
+  border-top: 0.5px solid var(--tn-dark-border, rgba(0, 0, 0, 0.07));
 }
 
 .wallet-unlock-body {
@@ -77,14 +77,14 @@
   gap: 2px;
   margin-bottom: 18px;
   padding: 12px 14px;
-  border: 0.5px solid rgba(0, 0, 0, 0.07);
+  border: 0.5px solid var(--tn-dark-border, rgba(0, 0, 0, 0.07));
   border-radius: 10px;
-  background: #f7f3ea;
+  background: var(--tn-dark-bg, #f7f3ea);
 }
 
 .wallet-unlock-card strong {
   overflow: hidden;
-  color: #1a1714;
+  color: var(--tn-dark-text, #1a1714);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 14px;
   font-weight: 600;
@@ -94,7 +94,7 @@
 }
 
 .wallet-unlock-card span {
-  color: #6b665c;
+  color: var(--tn-dark-secondary, #6b665c);
   font-size: 12px;
 }
 
@@ -104,7 +104,7 @@
 }
 
 .wallet-unlock-field span {
-  color: #1a1714;
+  color: var(--tn-dark-text, #1a1714);
   font-size: 13px;
   font-weight: 600;
 }
@@ -113,17 +113,17 @@
   width: 100%;
   min-height: 43px;
   padding: 11px 14px;
-  border: 0.5px solid rgba(0, 0, 0, 0.07);
+  border: 0.5px solid var(--tn-dark-control-border, rgba(0, 0, 0, 0.07));
   border-radius: 10px;
-  background: #f7f3ea;
-  color: #1a1714;
+  background: var(--tn-dark-bg, #f7f3ea);
+  color: var(--tn-dark-text, #1a1714);
   font: inherit;
   font-size: 14px;
   outline: 0;
 }
 
 .wallet-unlock-field input:focus {
-  border-color: rgba(0, 0, 0, 0.2);
+  border-color: var(--tn-dark-control-border, rgba(0, 0, 0, 0.2));
 }
 
 .wallet-unlock-warning {
@@ -131,7 +131,7 @@
   align-items: flex-start;
   gap: 8px;
   margin-top: 14px;
-  color: #7a2f1f;
+  color: var(--tn-dark-danger, #7a2f1f);
   font-size: 12.5px;
   line-height: 1.55;
 }
@@ -143,7 +143,7 @@
 
 .wallet-unlock-message {
   margin-top: 14px;
-  color: #7a2f1f;
+  color: var(--tn-dark-danger, #7a2f1f);
   font-size: 12.5px;
   line-height: 1.45;
 }
@@ -169,24 +169,24 @@
 
 .wallet-unlock-secondary {
   padding: 0 16px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--tn-dark-border, rgba(0, 0, 0, 0.2));
   background: transparent;
-  color: #1a1714;
+  color: var(--tn-dark-text, #1a1714);
 }
 
 .wallet-unlock-secondary:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--tn-dark-overlay, rgba(0, 0, 0, 0.03));
 }
 
 .wallet-unlock-primary {
   padding: 0 20px;
   border: 0;
-  background: #1a1714;
-  color: #ffffff;
+  background: var(--tn-dark-inverse-surface, #1a1714);
+  color: var(--tn-dark-on-inverse, #ffffff);
 }
 
 .wallet-unlock-primary:hover {
-  background: #000000;
+  background: var(--tn-dark-inverse-surface, #000000);
 }
 
 .wallet-unlock-secondary:disabled,

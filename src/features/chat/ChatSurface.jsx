@@ -682,7 +682,7 @@ export function ChatSurface({
       }
       const chatPayload = {
         message: submittedText,
-        mode: isContextEdit || activeModality ? "Thinking" : signedOut ? "Help" : selectedMode,
+        mode: isContextEdit ? "Thinking" : signedOut ? "Help" : selectedMode,
         persona: isContextEdit ? DEFAULT_CHAT_PERSONA : selectedPersona,
         contextMode: isContextEdit ? CONTEXT_EDIT_MODE : undefined,
         conversationId: requestedConversationId,
@@ -978,7 +978,7 @@ export function ChatSurface({
     contextEditMode ? "is-context-edit" : "",
     isHiveChat ? "is-hive-input" : "",
   ].filter(Boolean).join(" ");
-  const modelPickerDisabled = contextEditMode || contextRewriteMode || deepResearchMode || isHiveChat || Boolean(activeModality);
+  const modelPickerDisabled = contextEditMode || contextRewriteMode || deepResearchMode || isHiveChat;
   const ActivePersonaIcon = CHAT_PERSONA_ICONS[activePersona.id] || Lightbulb;
   const modelPickerLabel = deepResearchMode
     ? "Deep Research"
@@ -988,8 +988,6 @@ export function ChatSurface({
     ? "Thinking carefully"
     : isHiveChat
       ? HIVE_CHAT_TITLE
-      : activeModality
-        ? "GLM 5.2"
       : formatModeLabel(selectedMode);
   const composer = (
     <div className="composer-shell">
@@ -1140,7 +1138,7 @@ export function ChatSurface({
                 <ToolMenuRow
                   disabled={chat?.deepResearchAvailable !== true}
                   icon={Search}
-                  label={chat?.deepResearchAvailable === true ? "Deep Research" : "Deep Research · Canary"}
+                  label="Deep Research"
                   onClick={() => {
                     setPlusMenuOpen(false);
                     setTaskRequestMode(false);
@@ -1298,8 +1296,11 @@ export function ChatSurface({
             )}
             <div className="model-picker" ref={modelRef}>
               <button
+                aria-label={`Choose model, current model: ${modelPickerLabel}`}
+                aria-expanded={modelMenuOpen}
                 className="model-button"
                 disabled={modelPickerDisabled}
+                title={modelPickerDisabled ? modelPickerLabel : "Choose an AI model"}
                 onClick={() => {
                   if (modelPickerDisabled) return;
                   setPlusMenuOpen(false);
@@ -1309,11 +1310,11 @@ export function ChatSurface({
                 }}
                 type="button"
               >
-                {modelPickerLabel}
+                <span className="model-button-label">{modelPickerDisabled ? modelPickerLabel : `Model: ${modelPickerLabel}`}</span>
                 <ChevronDown className={modelMenuOpen ? "is-open" : ""} size={14} strokeWidth={1.75} />
               </button>
               {modelMenuOpen && !modelPickerDisabled && (
-                <div className="model-menu">
+                <div aria-label="AI models" className="model-menu" role="group">
                   {modes.map((mode) => (
                     <ModelOption
                       disabled={!mode.enabled}

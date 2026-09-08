@@ -19,6 +19,7 @@ function usage() {
     "  6. worker-memory-profile",
     "  7. worker-airdrop",
     "  8. board-secretary",
+    "  9. worker-nft-renderer",
     "",
     "Every group is guarded at one active replica; worker-airdrop intentionally",
     "runs a single active machine plus a cold standby so airdrops are never",
@@ -82,6 +83,7 @@ for (const processGroup of [
   "worker-memory-profile",
   "worker-airdrop",
   "board-secretary",
+  "worker-nft-renderer",
 ]) {
   runGuard(guardArgsForProcess(processGroup, sharedArgs), { dryRun });
 }

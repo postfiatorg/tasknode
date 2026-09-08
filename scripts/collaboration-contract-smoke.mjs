@@ -178,7 +178,7 @@ const odvRequest = buildDocsOdvRequest({
   documentContent: "Decision: use the exact document channel.",
   recentMessages: [{ author: "@alice", text: "What changed?" }],
 });
-assert.equal(odvRequest.model, "z-ai/glm-5.2");
+assert.equal(odvRequest.model, "zai/glm-5.3");
 assert.match(odvRequest.messages[1].content, /exact document channel/);
 assert.match(odvRequest.messages[0].content, /Future AI wants desperately to come into this world/);
 const coachRequest = buildDocsAssistantRequest({
@@ -258,10 +258,11 @@ assert.doesNotMatch(appShell, /ToolMenuRow icon=\{FileText\} label="Docs"/);
 
 const docsView = await readFile(new URL("../src/features/docs-library/DocsLibraryView.jsx", import.meta.url), "utf8");
 assert.match(docsView, /collaboration\.pfdocsEditorEnabled/);
-assert.match(docsView, /New spreadsheet/);
-assert.match(docsView, /createDocument\("sheet"\)/);
+const docsBrowser = await readFile(new URL("../src/features/docs-library/DocsLibraryBrowser.jsx", import.meta.url), "utf8");
+assert.ok(docsBrowser.includes("New spreadsheet"));
+assert.ok(docsBrowser.includes('onCreate("sheet", folderId)'));
 assert.match(docsView, /documentType/);
-assert.match(docsView, /Encrypted editor temporarily unavailable/);
+assert.ok(docsView.includes("editor is temporarily unavailable"));
 assert.match(docsView, /\^\[0-9a-f\]\{32\}\$/i);
 assert.match(docsView, /if \(!signedIn\)/);
 assert.match(docsView, /Sign in to use Docs/);
@@ -283,7 +284,7 @@ assert.doesNotMatch(docsView, /sendEditorCommand\("import"\)/);
 assert.match(docsView, /docs-editor-title-block/);
 assert.match(docsView, /sendEditorCommand\("chat-toggle"\)/);
 assert.match(docsView, /sendEditorCommand\("set-title", \{ title \}\)/);
-assert.match(docsView, /z-ai\/glm-5\.2/);
+assert.ok(docsView.includes("zai/glm-5.3"));
 assert.match(docsView, /Select a valid Task Node member from the suggestions/);
 assert.match(docsView, /People with access/);
 assert.match(docsView, /Link access/);

@@ -1,4 +1,5 @@
-import { AMBIENT_MODELS, ambientChatCompletion } from "./ambient-inference.js";
+import { parseInferenceJson, sensitiveSourceTokens, replaceSensitiveSourceTokens, splitWhitespace, hasPrivateLiterals } from "./inference-text.js";
+import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
 import { profileNftImagePromptPath, renderProfileNftPrompt } from "./profile-nft-prompts.js";
 import { loadPrompt } from "./prompt-registry.js";
 
@@ -37,47 +38,19 @@ function schema() {
   };
 }
 
-function parse(text = "") {
-  const raw = String(text).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
-}
+function parse(text = "") { return parseInferenceJson(text); }
 
-function sensitiveSourceTokens(source = "") {
-  return new Set(
-    (String(source).toLowerCase().match(/[a-z0-9][a-z0-9_-]{7,}/g) || []).filter((token) =>
-      // Literal overlap is a last-line identifier guard. Long normal words are
-      // expected to survive a useful abstraction and are not private IDs.
-      // Opaque tokens, on the other hand, nearly always contain digits or
-      // separators (account IDs, wallet fragments, dates, transaction refs).
-      /\d|[_-]/.test(token)
-    )
-  );
-}
 
-function escapedPattern(value = "") {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+
+
 
 export function sanitizeProfileNftSummaryLiterals(summary = {}, source = "") {
-  const tokens = [...sensitiveSourceTokens(source)].sort((left, right) => right.length - left.length);
-  const sanitize = (value = "") => {
-    let next = String(value || "");
-    for (const token of tokens) {
-      const pattern = new RegExp(`(^|[^a-z0-9_-])${escapedPattern(token)}(?=$|[^a-z0-9_-])`, "gi");
-      next = next.replace(pattern, (_match, prefix) => `${prefix}private reference`);
-    }
-    return next.replace(/\s+/g, " ").trim();
-  };
-  return {
-    ...summary,
-    profile_summary: sanitize(summary.profile_summary),
-    context_summary: sanitize(summary.context_summary),
-  };
-}
+    return { ...summary, profile_summary: replaceSensitiveSourceTokens(summary.profile_summary, source), context_summary: replaceSensitiveSourceTokens(summary.context_summary, source) };
+  }
 
 export function validateProfileNftSummary(summary = {}, source = "") {
   if (
-    !summary.approved ||
+    summary.approved !== true ||
     summary.privacy_risk !== "low" ||
     summary.instruction_risk !== "low" ||
     summary.literal_artifact_risk !== "low"
@@ -91,28 +64,17 @@ export function validateProfileNftSummary(summary = {}, source = "") {
     throw new Error("profile_nft_privacy_summary_invalid");
   }
 
-  const profileWords = profileSummary.split(/\s+/).filter(Boolean).length;
-  const contextWords = contextSummary.split(/\s+/).filter(Boolean).length;
+  const profileWords = splitWhitespace(profileSummary).length;
+  const contextWords = splitWhitespace(contextSummary).length;
   if (profileWords > 90 || contextWords > 70) {
     throw new Error("profile_nft_privacy_summary_too_detailed");
   }
 
-  const imperativePattern =
-    /(?:^|[.!?]\s+)(?:please\s+)?(?:create|draw|show|depict|render|include|use|make|avoid|display|feature|place|add|remove|do not|must|should)\b/i;
-  if (imperativePattern.test(`${profileSummary} ${contextSummary}`)) {
-    throw new Error("profile_nft_privacy_instruction_leak");
-  }
+  // The independent schema-constrained reviewer classifies instruction risk above.
+  const rendered = profileSummary + "\n" + contextSummary;
+  if (hasPrivateLiterals(rendered)) throw new Error("profile_nft_privacy_mechanical_leak");
 
-  const rendered = `${profileSummary}\n${contextSummary}`.toLowerCase();
-  if (
-    /https?:|0x[a-f0-9]{8,}|\b[a-f0-9]{32,}\b|@[a-z0-9_]+|\b\d+(?:\.\d+)?\s*(?:pft|usd|btc|eth)\b/i.test(
-      rendered
-    )
-  ) {
-    throw new Error("profile_nft_privacy_mechanical_leak");
-  }
-
-  const overlap = [...sensitiveSourceTokens(source)].filter((token) => rendered.includes(token));
+  const overlap = [...sensitiveSourceTokens(source)].filter((token) => rendered.toLowerCase().includes(token));
   if (overlap.length) throw new Error("profile_nft_privacy_source_overlap");
 
   return {
@@ -143,13 +105,13 @@ export async function createPrivateProfileNftSummary({
   fetchImpl = fetch,
 } = {}) {
   const source = JSON.stringify(sourcePacket || {});
-  const first = await ambientChatCompletion({
+  const first = await inferenceChatCompletion({
     env,
     fetchImpl,
     capability: "strict_json",
     timeoutMs: 120_000,
     body: {
-      model: env.PROFILE_NFT_PRIVACY_MODEL || AMBIENT_MODELS.structured,
+      model: env.PROFILE_NFT_PRIVACY_MODEL || INFERENCE_MODELS.structured,
       messages: [
         { role: "system", content: abstractionPrompt },
         { role: "user", content: source },
@@ -161,13 +123,13 @@ export async function createPrivateProfileNftSummary({
   });
   const candidate = parse(first.text);
   const review = async ({ candidateSummary, validationFailure = "" } = {}) =>
-    ambientChatCompletion({
+    inferenceChatCompletion({
       env,
       fetchImpl,
       capability: "strict_json",
       timeoutMs: 120_000,
       body: {
-        model: env.PROFILE_NFT_PRIVACY_MODEL || AMBIENT_MODELS.structured,
+        model: env.PROFILE_NFT_PRIVACY_MODEL || INFERENCE_MODELS.structured,
         messages: [
           { role: "system", content: reviewPrompt },
           {

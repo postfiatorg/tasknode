@@ -1,0 +1,364 @@
+{
+  "at": "2026-09-06T17:03:44.983Z",
+  "eligibility": {
+    "eligible_accounts": 49,
+    "without_art": 0
+  },
+  "jobs": [
+    {
+      "id": "nft_a2c02947-2519-45dd-a389-4a867d1f9095",
+      "status": "generated",
+      "image_cid": "QmNo3Fyz4bSkVKj5vVvgRkzpwRF9nJRmJhDMihgFmnTdFN",
+      "prompt_source": "techno-mordor-v2",
+      "job_status": "completed",
+      "attempt_count": 1,
+      "art_version": "techno-mordor-v2",
+      "creature": "Goblin",
+      "hyperstition": "11",
+      "created_at": "2026-09-06T16:43:12.590Z",
+      "updated_at": "2026-09-06T16:47:17.500Z",
+      "error": ""
+    },
+    {
+      "id": "nft_92845310-a3d9-4800-b542-74ced7536c96",
+      "status": "generated",
+      "image_cid": "QmPos9esEjshdMiQnokAuvkWqfYpikF26NETq3Cz2UMhmm",
+      "prompt_source": "techno-mordor-v2",
+      "job_status": "completed",
+      "attempt_count": 1,
+      "art_version": "techno-mordor-v2",
+      "creature": "Goblin",
+      "hyperstition": "4",
+      "created_at": "2026-09-06T16:43:12.486Z",
+      "updated_at": "2026-09-06T16:47:13.778Z",
+      "error": ""
+    },
+    {
+      "id": "nft_cc07f5be-c500-4f6b-8431-2a4b8c96a2d2",
+      "status": "generated",
+      "image_cid": "QmWaJunbQrGEYTfzMDYSzJ2oH8qSZpuPzPnyRYjRzA18eh",
+      "prompt_source": "techno-mordor-v2",
+      "job_status": "completed",
+      "attempt_count": 1,
+      "art_version": "techno-mordor-v2",
+      "creature": "Orc",
+      "hyperstition": "7",
+      "created_at": "2026-09-06T16:33:57.472Z",
+      "updated_at": "2026-09-06T16:37:53.178Z",
+      "error": ""
+    },
+    {
+      "id": "nft_7e9bb876-6d81-4bb4-af2f-567cb783f256",
+      "status": "generated",
+      "image_cid": "QmdiKPADrjyPrGNHKF1ScnTbd3zMAh3RvKCHnT9e6fT1iP",
+      "prompt_source": "techno-mordor-v2",
+      "job_status": "completed",
+      "attempt_count": 1,
+      "art_version": "techno-mordor-v2",
+      "creature": "Goblin",
+      "hyperstition": "18",
+      "created_at": "2026-09-06T16:33:57.362Z",
+      "updated_at": "2026-09-06T16:38:34.489Z",
+      "error": ""
+    },
+    {
+      "id": "nft_e04e204c-be2a-4d2b-a03f-4f7ff1b63913",
+      "status": "generated",
+      "image_cid": "QmRFm24foudJKp7rjXLWg1CRVzZLQxrcm84CyrG7Sw6Q3X",
+      "prompt_source": "techno-mordor-v2",
+      "job_status": "completed",
+      "attempt_count": 1,
+      "art_version": "techno-mordor-v2",
+      "creature": "Orc",
+      "hyperstition": "7",
+      "created_at": "2026-09-06T16:33:57.253Z",
+      "updated_at": "2026-09-06T16:37:37.744Z",
+      "error": ""
+    }
+  ],
+  "release": 713,
+  "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VTFH0QHD566YRJN61VHN38",
+  "thumbnailDelivery": {
+    "at": "2026-09-06T17:05:25.641Z",
+    "results": [
+      {
+        "cid": "QmNo3Fyz4bSkVKj5vVvgRkzpwRF9nJRmJhDMihgFmnTdFN",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 200,
+            "contentType": "image/png",
+            "bytes": 5099,
+            "cache": "disk",
+            "width": 48,
+            "height": 48,
+            "realRaster": true
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 200,
+            "contentType": "image/webp",
+            "bytes": 6162,
+            "cache": "disk",
+            "width": 192,
+            "height": 192,
+            "realRaster": true
+          }
+        ]
+      },
+      {
+        "cid": "QmPos9esEjshdMiQnokAuvkWqfYpikF26NETq3Cz2UMhmm",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 200,
+            "contentType": "image/png",
+            "bytes": 4740,
+            "cache": "disk",
+            "width": 48,
+            "height": 48,
+            "realRaster": true
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 200,
+            "contentType": "image/webp",
+            "bytes": 5060,
+            "cache": "disk",
+            "width": 192,
+            "height": 192,
+            "realRaster": true
+          }
+        ]
+      },
+      {
+        "cid": "QmWaJunbQrGEYTfzMDYSzJ2oH8qSZpuPzPnyRYjRzA18eh",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 200,
+            "contentType": "image/png",
+            "bytes": 6171,
+            "cache": "disk",
+            "width": 48,
+            "height": 48,
+            "realRaster": true
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 200,
+            "contentType": "image/webp",
+            "bytes": 7872,
+            "cache": "disk",
+            "width": 192,
+            "height": 192,
+            "realRaster": true
+          }
+        ]
+      },
+      {
+        "cid": "QmdiKPADrjyPrGNHKF1ScnTbd3zMAh3RvKCHnT9e6fT1iP",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 200,
+            "contentType": "image/png",
+            "bytes": 6684,
+            "cache": "disk",
+            "width": 48,
+            "height": 48,
+            "realRaster": true
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 200,
+            "contentType": "image/webp",
+            "bytes": 9692,
+            "cache": "disk",
+            "width": 192,
+            "height": 192,
+            "realRaster": true
+          }
+        ]
+      },
+      {
+        "cid": "QmRFm24foudJKp7rjXLWg1CRVzZLQxrcm84CyrG7Sw6Q3X",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 200,
+            "contentType": "image/png",
+            "bytes": 4543,
+            "cache": "disk",
+            "width": 48,
+            "height": 48,
+            "realRaster": true
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 200,
+            "contentType": "image/webp",
+            "bytes": 5350,
+            "cache": "disk",
+            "width": 192,
+            "height": 192,
+            "realRaster": true
+          }
+        ]
+      }
+    ],
+    "passed": true
+  },
+  "home": {
+    "status": 200,
+    "blobImagesAllowed": true
+  },
+  "firstV713ThumbnailCheck": {
+    "at": "2026-09-06T17:04:09.448Z",
+    "results": [
+      {
+        "cid": "QmNo3Fyz4bSkVKj5vVvgRkzpwRF9nJRmJhDMihgFmnTdFN",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 202,
+            "contentType": "application/json; charset=utf-8",
+            "bytes": 95,
+            "cache": "warming",
+            "realRaster": false
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 202,
+            "contentType": "application/json; charset=utf-8",
+            "bytes": 96,
+            "cache": "warming",
+            "realRaster": false
+          }
+        ]
+      },
+      {
+        "cid": "QmPos9esEjshdMiQnokAuvkWqfYpikF26NETq3Cz2UMhmm",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 202,
+            "contentType": "application/json; charset=utf-8",
+            "bytes": 95,
+            "cache": "warming",
+            "realRaster": false
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 202,
+            "contentType": "application/json; charset=utf-8",
+            "bytes": 96,
+            "cache": "warming",
+            "realRaster": false
+          }
+        ]
+      },
+      {
+        "cid": "QmWaJunbQrGEYTfzMDYSzJ2oH8qSZpuPzPnyRYjRzA18eh",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 200,
+            "contentType": "image/png",
+            "bytes": 6171,
+            "cache": "render_checkpoint",
+            "width": 48,
+            "height": 48,
+            "realRaster": true
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 200,
+            "contentType": "image/webp",
+            "bytes": 7872,
+            "cache": "render_checkpoint",
+            "width": 192,
+            "height": 192,
+            "realRaster": true
+          }
+        ]
+      },
+      {
+        "cid": "QmdiKPADrjyPrGNHKF1ScnTbd3zMAh3RvKCHnT9e6fT1iP",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 200,
+            "contentType": "image/png",
+            "bytes": 6684,
+            "cache": "render_checkpoint",
+            "width": 48,
+            "height": 48,
+            "realRaster": true
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 200,
+            "contentType": "image/webp",
+            "bytes": 9692,
+            "cache": "render_checkpoint",
+            "width": 192,
+            "height": 192,
+            "realRaster": true
+          }
+        ]
+      },
+      {
+        "cid": "QmRFm24foudJKp7rjXLWg1CRVzZLQxrcm84CyrG7Sw6Q3X",
+        "variants": [
+          {
+            "size": 48,
+            "format": "png",
+            "status": 200,
+            "contentType": "image/png",
+            "bytes": 4543,
+            "cache": "render_checkpoint",
+            "width": 48,
+            "height": 48,
+            "realRaster": true
+          },
+          {
+            "size": 192,
+            "format": "webp",
+            "status": 200,
+            "contentType": "image/webp",
+            "bytes": 5350,
+            "cache": "disk",
+            "width": 192,
+            "height": 192,
+            "realRaster": true
+          }
+        ]
+      }
+    ],
+    "passed": false
+  },
+  "migrations": [
+    "136_profile_nft_art_pipeline.sql",
+    "137_profile_nft_image_lookup.sql"
+  ],
+  "allTenActiveProcessesOnRelease": true
+}

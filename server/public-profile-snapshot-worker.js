@@ -1,5 +1,5 @@
 import { databaseEnabled, query } from "./db/pool.js";
-import { ambientConfigured } from "./ambient-inference.js";
+import { inferenceConfigured } from "./inference.js";
 import { runPublicProfileSnapshot } from "./profile-public-snapshot.js";
 
 const defaultIntervalMs = 10 * 60 * 1000;
@@ -111,8 +111,8 @@ export async function runPublicProfileSnapshotWorkerOnce({
   if (!databaseEnabled()) {
     return { ok: true, skipped: true, reason: "database_not_enabled", summary: {} };
   }
-  if (!dryRun && !ambientConfigured(env)) {
-    return { ok: true, skipped: true, reason: "ambient_key_missing", summary: {} };
+  if (!dryRun && !inferenceConfigured(env)) {
+    return { ok: true, skipped: true, reason: "inference_not_configured", summary: {} };
   }
   const limit = Math.min(Math.max(Number(env.TASKNODE_PUBLIC_PROFILE_SNAPSHOT_WORKER_LIMIT || 2), 1), 25);
   const failedRetryMinutes = Math.min(

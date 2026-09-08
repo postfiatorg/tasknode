@@ -97,4 +97,4 @@ An escalation must include:
 - Why verification could not be completed.
 - Available test, CI, or replay evidence.
 
-Escalation goes to the operator (goodalexander) via referral tasks per the board-manager skill. Priority order: governance-replay correctness first, fork maintenance second, UNL scoring third. Cadence: at most 3 open tasks; anything touching quorum, veto, or amendment behavior escalates instead of rewarding when not fully verifiable.
+Escalation goes to the operator (goodalexander) via referral tasks per the board-manager skill. Priority order: governance-replay correctness first, fork maintenance second, UNL scoring third. Cadence: route grounded work according to eligible contributor capacity and reward budgets, without a fixed board task ceiling; anything touching quorum, veto, or amendment behavior escalates instead of rewarding when not fully verifiable.

@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "checks": [
+    "Fresh X proof overrides stale missing session identity",
+    "Verified KOL displays Ready",
+    "Focus refresh removes disconnected provider despite stale session",
+    "Other account badge state cannot leak across account switch"
+  ]
+}

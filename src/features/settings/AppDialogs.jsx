@@ -9,7 +9,7 @@ import { loginProviderDisplayState } from "../chat/chat-ui-state.js";
 import { isSignedInSession } from "../../session";
 import { SETTINGS_PAGES } from "../../app/app-shell-shared.jsx";
 
-export function SettingsModal({ chat, linkedWallet, onAppStateChange, onClose, onWalletUnlock, session, setTheme, theme, walletSecret, walletVault }) {
+export function SettingsModal({ linkedWallet, onAppStateChange, onClose, onWalletUnlock, session, setTheme, theme, themeSessionOnly = false, walletSecret, walletVault }) {
   const [page, setPage] = useState("general");
   const activePage = SETTINGS_PAGES.find((item) => item.key === page) || SETTINGS_PAGES[0];
 
@@ -42,7 +42,7 @@ export function SettingsModal({ chat, linkedWallet, onAppStateChange, onClose, o
             <h2 id="settings-title">{activePage.label}</h2>
           </header>
           <div className="settings-page">
-            {page === "general" && <GeneralSettings setTheme={setTheme} theme={theme} />}
+            {page === "general" && <GeneralSettings setTheme={setTheme} theme={theme} sessionOnly={themeSessionOnly} />}
             {page === "security" && (
               <SecuritySettings
                 linkedWallet={linkedWallet}
@@ -53,7 +53,7 @@ export function SettingsModal({ chat, linkedWallet, onAppStateChange, onClose, o
                 walletVault={walletVault}
               />
             )}
-            {page === "data" && <DataSettings chat={chat} onAccountDeleted={onClose} onAppStateChange={onAppStateChange} session={session} />}
+            {page === "data" && <DataSettings onAccountDeleted={onClose} onAppStateChange={onAppStateChange} onOpenHiveChat={() => { window.location.hash = "/hive-chat"; onClose(); }} session={session} />}
             {page === "billing" && <BillingSettings onAppStateChange={onAppStateChange} />}
           </div>
         </div>
@@ -62,11 +62,23 @@ export function SettingsModal({ chat, linkedWallet, onAppStateChange, onClose, o
   );
 }
 
-export function GeneralSettings({ setTheme, theme }) {
+export function GeneralSettings({ setTheme, theme, sessionOnly = false }) {
   return (
     <>
+      <fieldset className="appearance-setting">
+        <legend>Appearance</legend>
+        <p>Choose how Task Node looks on this device.</p>
+        <div className="appearance-options">
+          {[["system", "System"], ["light", "Light"], ["dark", "Dark"]].map(([value, label]) => (
+            <label key={value}>
+              <input type="radio" name="appearance" value={value} checked={theme === value} onChange={() => setTheme(value)} />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        {sessionOnly && <p role="status">Applied for this session. Your browser could not save this preference.</p>}
+      </fieldset>
       <MfaCallout />
-      <SettingsLine label="Appearance" right={<CycleButton onClick={() => setTheme(nextTheme(theme))} value={themeLabel(theme)} />} />
       <SettingsLine label="Contrast" right={<StaticButton value="System" />} />
       <SettingsLine label="Accent color" right={<StaticButton value="Black" />} />
       <SettingsLine label="Language" right={<StaticButton value="Auto-detect" />} />
@@ -491,26 +503,6 @@ export function StaticButton({ value }) {
       <ChevronRight size={13} strokeWidth={1.75} />
     </button>
   );
-}
-
-export function CycleButton({ onClick, value }) {
-  return (
-    <button className="static-button" onClick={onClick} type="button">
-      {value}
-      <ChevronRight size={13} strokeWidth={1.75} />
-    </button>
-  );
-}
-
-export function nextTheme(theme) {
-  if (theme === "auto") return "light";
-  if (theme === "light") return "dark";
-  return "auto";
-}
-
-export function themeLabel(theme) {
-  if (theme === "auto") return "System";
-  return theme[0].toUpperCase() + theme.slice(1);
 }
 
 export function LoginDialog({ authLoading = false, session, onClose, onSessionChange, reloadOnSuccess = false }) {

@@ -150,7 +150,7 @@ assert.equal(heartbeat.pulse(), false);
 
 const indexSource = await readFile(new URL("../server/index.js", import.meta.url), "utf8");
 const terminalSource = await readFile(new URL("../server/tasknode-terminal-routes.js", import.meta.url), "utf8");
-const frontendSource = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+const frontendSource = await readFile(new URL("../src/features/chat/ChatSurface.jsx", import.meta.url), "utf8");
 assert.match(indexSource, /startChatStreamHeartbeat\(res\)/);
 assert.match(terminalSource, /startChatStreamHeartbeat\(res\)/);
 assert.match(frontendSource, /event === "progress"/);

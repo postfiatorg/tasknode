@@ -123,6 +123,7 @@ function heroNftFromRow(row = {}) {
   return {
     imageCid,
     imageGatewayUrl,
+    metadataJson: { art: row.hero_nft_art || null },
   };
 }
 
@@ -212,12 +213,13 @@ export async function queryDirectoryLeaderboardRows({
              ''::text AS identity_display_name,
              '[]'::jsonb AS wallets_json,
              COALESCE(hero_nft.image_cid, '') AS hero_nft_image_cid,
-             COALESCE(hero_nft.image_gateway_url, '') AS hero_nft_image_gateway_url
+             COALESCE(hero_nft.image_gateway_url, '') AS hero_nft_image_gateway_url,
+             hero_nft.art AS hero_nft_art
       FROM candidates
       LEFT JOIN task_stats ON task_stats.account_id = candidates.account_id
       LEFT JOIN latest_alignment ON latest_alignment.account_id = candidates.account_id
       LEFT JOIN LATERAL (
-        SELECT nft.image_cid, nft.image_gateway_url
+        SELECT nft.image_cid, nft.image_gateway_url, nft.metadata_json->'art' AS art
         FROM profile_nfts nft
         WHERE nft.account_id = candidates.account_id
           AND lower(nft.status) IN ('minted', 'prepared', 'generated')

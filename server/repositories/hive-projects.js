@@ -1,3 +1,4 @@
+import { trimCharacters } from "../../shared/text-protocol.js";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { listPublicAccountWalletIdentities } from "./account-profiles.js";
 import { publicReducerEvent } from "../task-forensics-format.js";
@@ -169,12 +170,12 @@ export async function resolveHivePublicWalletIdentities({
       accountId: safeText(row.account_id, 180),
       walletAddress: safeText(row.wallet_address, 160),
       displayName: safeText(row.display_name, 120),
-      hiveHandle: safeText(row.hive_handle, 80).replace(/^@+/, ""),
+      hiveHandle: trimCharacters(safeText(row.hive_handle, 80),"@",{end:false}),
       publicDisplayName: safeText(row.public_display_name, 120),
       publicAliases: row.hive_handle ? [{
         provider: "hive",
         label: "Hive",
-        handle: safeText(row.hive_handle, 80).replace(/^@+/, ""),
+        handle: trimCharacters(safeText(row.hive_handle, 80),"@",{end:false}),
         verified: false,
       }] : [],
       publicTrustBadges: [],

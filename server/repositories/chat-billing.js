@@ -1,3 +1,4 @@
+import { isIdentifierChar, isWhitespace, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   appendChatTurn as appendRuntimeChatTurn,
@@ -53,9 +54,7 @@ const safeConversationId = (conversationId = "dev") =>
   String(conversationId || "dev").trim().slice(0, 180) || "dev";
 
 function safeConversationAccountId(accountId = "") {
-  return String(accountId || "")
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
+  return trimCharacters(replaceCharacterRuns(String(accountId || ""),char=>!isIdentifierChar(char),"_"),"_")
     .slice(0, 80);
 }
 
@@ -77,9 +76,9 @@ function assertConversationIdAccountBoundary({ accountId = "", conversationId = 
   }
 }
 
-const cleanTitle = (title = "") => String(title || "").trim().replace(/\s+/g, " ").slice(0, 80);
+const cleanTitle = (title = "") => replaceCharacterRuns(String(title || "").trim(),isWhitespace," ").slice(0, 80);
 const titleFromPrompt = (prompt = "") => cleanTitle(prompt).slice(0, 64) || "New chat";
-const messagePreview = (message = "") => String(message || "").trim().replace(/\s+/g, " ").slice(0, 140);
+const messagePreview = (message = "") => replaceCharacterRuns(String(message || "").trim(),isWhitespace," ").slice(0, 140);
 const conversationStatusForInsert = (status = "active") =>
   String(status || "active").trim().toLowerCase().slice(0, 40) === "task_request" ? "task_request" : "active";
 

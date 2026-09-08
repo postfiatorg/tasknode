@@ -1,0 +1,57 @@
+{
+  "observedAt": "2026-09-05T17:53:37.961Z",
+  "selectorEnabled": null,
+  "selectorActive": null,
+  "workerRegistration": [
+    "hive_secretary",
+    "hive_reports",
+    "bm_narrator"
+  ],
+  "files": {
+    "server/hive-task-manager-worker.js": false,
+    "server/hive-project-worker.js": false,
+    "server/task-accounting-harvester-worker.js": false,
+    "scripts/board-manager-worker.mjs": false,
+    "scripts/board-manager-disabled.mjs": false
+  },
+  "selectors": [
+    {
+      "scope": "hive_task_manager:global_hive",
+      "runs": 19672,
+      "latest_started_at": "2026-09-05T17:35:24.496Z",
+      "running": 0
+    }
+  ],
+  "kimiActorActivity": [
+    {
+      "command": "board_update",
+      "rows": 5,
+      "latest_at": "2026-09-05T09:00:57.473Z"
+    },
+    {
+      "command": "handoff",
+      "rows": 1,
+      "latest_at": "2026-09-05T06:00:33.359Z"
+    },
+    {
+      "command": "journal_append",
+      "rows": 19,
+      "latest_at": "2026-09-05T13:01:02.078Z"
+    },
+    {
+      "command": "review",
+      "rows": 1,
+      "latest_at": "2026-09-05T02:46:48.205Z"
+    },
+    {
+      "command": "task_create",
+      "rows": 15,
+      "latest_at": "2026-09-05T12:31:08.775Z"
+    },
+    {
+      "command": "verify_request",
+      "rows": 2,
+      "latest_at": "2026-09-05T01:16:28.802Z"
+    }
+  ]
+}

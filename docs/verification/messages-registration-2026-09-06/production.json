@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "validActivationAccepted": true,
+  "wrongTypeRejected": true,
+  "unrelatedRoutesUnchanged": true,
+  "hashes": {
+    "server/request-body-contracts.js": "6a95e0912221aac30bace68a1e33c72a7da95178244741646bb98eb4a6e9d346",
+    "server/route-policies.js": "6c8f69d8d954e8a67089846f470a5f0c281ca978ffeec8ad3add2d95902595e2",
+    "server/collaboration-routes.js": "f763209a0e285a9e2dd1a3548cef5be5b0bed99e466072a6cff11a263cf5958e"
+  },
+  "release": {
+    "Version": 723,
+    "Status": "complete",
+    "ImageRef": "registry.fly.io/tasknodeofficial-dev:deployment-01M1WDHS0PC4JZ69EZX4PMF5EJ"
+  },
+  "healthStatus": 200,
+  "backgroundWorkerGuard": "passed"
+}

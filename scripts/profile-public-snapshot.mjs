@@ -17,7 +17,7 @@ function hasFlag(name) {
 }
 
 const accountId = argValue("--account-id", process.env.TASKNODE_PUBLIC_PROFILE_ACCOUNT_ID || "");
-const model = argValue("--model", process.env.TASKNODE_PUBLIC_PROFILE_MODEL || "z-ai/glm-5.2");
+const model = argValue("--model", process.env.TASKNODE_PUBLIC_PROFILE_MODEL || "zai/glm-5.3");
 const json = hasFlag("--json");
 
 if (!accountId) {

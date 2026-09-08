@@ -14,7 +14,10 @@ System Status row: `task_review`
   `prompts/task_engine/reward_scoring_v1.md`.
 - Repair scripts: `scripts/task-replay-repair.mjs` and
   `scripts/data-architecture-audit.mjs`.
-- Canonical source: signed PFTL task lifecycle events.
+- Canonical task state: current offchain task events/projections plus supported
+  historical signed PFTL events. Economic reward settlement retains its
+  recorded publication and ledger boundary.
+- Periodic owner: Fly `worker-task-review`.
 
 Only the production worker should publish verification requests or reward
 outcomes by default. Local Docker and ad hoc development servers can read and
@@ -94,6 +97,26 @@ review/scoring can include provider calls, IPFS writes, PFTL publication, and
 projection refresh. A short stale window can reclaim the same task while the
 first transaction is still settling.
 
+Provider failures use durable exponential retry backoff rather than reclaiming
+the same projection on every worker tick. Board-linked tasks that are waiting
+for an agent-authored verification or review decision use a one-minute defer,
+so a missing Board Manager does not churn `task_projections.updated_at` every
+five seconds. System Status ages pending review work from the canonical
+`last_event_at` (falling back to task creation), not that mutable projection
+timestamp, and reports the two `awaiting_agent_*` counts plus a safe worker
+reason code. It also keeps stale publication reservations and uncertain reward
+submissions visible instead of treating any publication-lock row as completed.
+A submission older than 15 minutes is therefore critical even when the worker
+is alive and repeatedly deferring it.
+
+The external Board Manager harness refreshes its private database environment
+from Fly when control-plane auth is available. If that lookup fails, it may
+continue only with a cached or caller-supplied credential that successfully
+targets the configured localhost proxy port and passes a live `SELECT 1` probe
+through the recorded MPG proxy. An invalid cache stops the wake loop and writes
+a deduplicated operator alert; it is never trusted merely because the file
+exists.
+
 ## Multi-Machine And Local Boundaries
 
 Multiple Fly machines are safe only when they share the same Postgres database,
@@ -149,3 +172,44 @@ If projection is current but review is stalled, inspect worker logs, provider
 config, reward seed config, `task_review_publications`, and the latest
 `task_events`. Do not issue a reward from a Hive or UI row; reward state must be
 backed by signed lifecycle evidence.
+
+## Publication recovery and large evidence
+
+Abandoned reward reservations can return to the queue only when no payment
+guard, submission evidence, or indexed reward outcome exists. Unknown payment
+submissions remain guarded for reconciliation. New payment attempts save their
+signed transaction hash, destination, amount, sequence, last ledger sequence,
+and encrypted payload CID before submission, so a disconnected response can be
+reconciled without paying again.
+
+Encrypted JSON evidence and reward forensics use a consistent 16 MiB read/write
+limit. Gateway reads run in at most two simultaneous lanes to bound memory use.
+Binary file upload limits are separate.
+
+
+## Payment and historical review reconciliation
+
+A new reward saves its signed transaction hash, CID, sender, recipient, amount,
+sequence and last ledger sequence before submission. `task-reward-reconciliation.js`
+requires a validated matching transaction and, for success, the exact delivered
+amount. Missing, provisional or mismatched results remain guarded. A historical
+hash-less guard additionally requires its decrypted original payload/event/digest
+to match before a transaction can be associated with it.
+
+A validated failed payment becomes `failed_validated` and remains blocked. After
+resolving the ledger failure, an operator can retry only with the exact reconciled
+hash; prior payment evidence is retained. Successful payments replay their existing
+receipt and never trigger another transfer. Reconciliation runs after normal review
+claims so historical lookups do not delay the first queued review in a tick.
+
+Use `node scripts/task-reward-reconcile.mjs --help`. The default is read-only;
+`--apply` records proof. `--retry-failed <hash>` explicitly requeues a verified
+failure. `--legacy-rejection` repairs only old `pf.task.reward_decision.v1` records
+whose explicit decision is reject/zero and whose authority transaction is validated
+with only the one-drop receipt carrier. This preserves the old decision as rejected;
+it does not rescore it, infer a positive payout, or send a payment. Replay preserves
+that recovered rejection unless a real reward outcome is later recorded.
+
+Finality follows the ledger's validated result, not a submission response:
+[transaction results](https://xrpl.org/docs/references/protocol/transactions/transaction-results)
+and [lookup finality](https://xrpl.org/docs/concepts/transactions/finality-of-results/look-up-transaction-results).

@@ -1,0 +1,37 @@
+{
+  "at": "2026-09-06T17:27:26.252Z",
+  "checks": [
+    "Repository default",
+    "Mint metadata name",
+    "Rendered recovering draft heading",
+    "Rendered gallery tile title"
+  ],
+  "heading": "Profile Pic NFT",
+  "hasOldName": false,
+  "titleOccurrences": 2,
+  "production": {
+    "at": "2026-09-06T17:27:56.023Z",
+    "titles": {
+      "v2_records": 6,
+      "old_titles": 0,
+      "corrected_titles": 6
+    },
+    "reportedDraft": [
+      {
+        "id": "nft_c2612551-3aaf-4aa2-ac61-99701ee8f22d",
+        "title": "Profile Pic NFT",
+        "status": "generating"
+      }
+    ],
+    "migration": [
+      {
+        "name": "138_profile_nft_display_name.sql"
+      }
+    ]
+  },
+  "release": {
+    "Version": 714,
+    "Status": "complete",
+    "ImageRef": "registry.fly.io/tasknodeofficial-dev:deployment-01M1VW450WR35PZ0MWB669N65M"
+  }
+}

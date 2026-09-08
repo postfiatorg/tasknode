@@ -1,3 +1,4 @@
+import { isDecimalDigits, isWhitespace, replaceCharacterRuns, stripPrefix } from "../shared/text-protocol.js";
 const textEncoder = new TextEncoder();
 
 export const POINTER_MEMO_TYPE = "pf.ptr";
@@ -80,12 +81,9 @@ function normalizeEnumValue(value, values, fallback = null) {
     throw new Error("Invalid enum value");
   }
 
-  const key = String(value)
+  const key = stripPrefix(stripPrefix(replaceCharacterRuns(String(value)
     .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, "_")
-    .replace(/^CONTENT_KIND_/, "")
-    .replace(/^TARGET_/, "");
+    .toUpperCase(),char=>isWhitespace(char)||char==="-","_"),"CONTENT_KIND_",false),"TARGET_",false);
   if (values[key] !== undefined) return values[key];
   if (values[`CONTENT_KIND_${key}`] !== undefined) return values[`CONTENT_KIND_${key}`];
   if (values[`TARGET_${key}`] !== undefined) return values[`TARGET_${key}`];
@@ -103,7 +101,7 @@ function normalizeFlags(input) {
   }
   const raw = String(input).trim();
   if (!raw) return POINTER_FLAGS.encrypted;
-  if (/^\d+$/.test(raw)) return Number(raw);
+  if (isDecimalDigits(raw)) return Number(raw);
   return raw
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
@@ -130,7 +128,7 @@ export function buildPftPointerPayload({
   contextId,
   context_id: contextIdSnake,
 } = {}) {
-  const normalizedCid = String(cid || "").trim().replace(/^ipfs:\/\//i, "").replace(/^\/ipfs\//i, "");
+  const normalizedCid = stripPrefix(stripPrefix(String(cid || "").trim(),"ipfs://",true),"/ipfs/",true);
   if (!normalizedCid) throw new Error("Missing CID");
 
   const normalizedKind = normalizeEnumValue(kind, CONTENT_KIND, CONTENT_KIND.UNSPECIFIED);

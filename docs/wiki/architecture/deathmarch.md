@@ -2,7 +2,7 @@
 
 `deathmarch` is a local-only Discord posting harness for Task Node task events. It does not start the Task Node app.
 
-The harness watches or ingests Task Node PFTL task actions, asks Ambient GLM 5.2 to summarize what the user just did, and posts the resulting plain-English update to the Discord Death March channel.
+The harness watches or ingests Task Node PFTL task actions, asks GLM 5.3 through Vercel first, with Ambient backup, to summarize what the user just did, and posts the resulting plain-English update to the Discord Death March channel.
 
 Default watched wallet:
 

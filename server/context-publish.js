@@ -1,3 +1,4 @@
+import { isHexLength, isWhitespace, replaceCharacterRuns, splitWhitespace, stripPrefix } from "../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 import sodium from "libsodium-wrappers";
 import { Wallet } from "xrpl";
@@ -52,17 +53,16 @@ function cleanText(value = "", maxLength = CONTEXT_DOCUMENT_MAX_CHARS) {
 }
 
 function stripHtml(value = "") {
-  return String(value || "")
+  return replaceCharacterRuns(String(value || "")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/<[^>]+>/g, " "),isWhitespace," ")
     .trim();
 }
 
 function wordCount(value = "") {
   const text = stripHtml(value);
-  return text ? text.split(/\s+/).filter(Boolean).length : 0;
+  return text ? splitWhitespace(text).filter(Boolean).length : 0;
 }
 
 function parsePhase(payload = {}) {
@@ -84,10 +84,9 @@ function configuredSeed(env = process.env) {
 }
 
 function rpcCandidates(env = process.env) {
-  const values = `${env.PFTL_RPC_URL || ""} ${env.PFTL_RPC_URL_FALLBACKS || ""}`
-    .split(/[,\s]+/)
+  const values = splitWhitespace(`${env.PFTL_RPC_URL || ""} ${env.PFTL_RPC_URL_FALLBACKS || ""}`.replaceAll(","," "))
     .map((item) => item.trim())
-    .filter((item) => /^https?:\/\//i.test(item));
+    .filter((item) => { try { return ["http:","https:"].includes(new URL(item).protocol); } catch { return false; } });
   return [...new Set(values)];
 }
 
@@ -113,14 +112,14 @@ function messageKeyFromPublicKeyBytes(bytes) {
 export function publicKeyBase64FromMessageKey(messageKey) {
   const normalized = String(messageKey || "").trim().toUpperCase();
   const hex = normalized.startsWith("ED") ? normalized.slice(2) : normalized;
-  if (!/^[A-F0-9]{64}$/.test(hex)) throw new Error("tasknode_message_key_invalid");
+  if (!isHexLength(hex,64)) throw new Error("tasknode_message_key_invalid");
   return hexToBase64(hex);
 }
 
 export function normalizePublicKeyBase64(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  if (/^(ED)?[A-Fa-f0-9]{64}$/.test(raw)) {
+  if (isHexLength(raw.startsWith("ED") ? raw.slice(2) : raw,64)) {
     return publicKeyBase64FromMessageKey(raw);
   }
   const bytes = base64ToBytes(raw);
@@ -280,7 +279,7 @@ export function encryptedPayloadHasRecipient(payload, publicKey) {
 
 export function safeTxHash(value = "") {
   const text = String(value || "").trim().toUpperCase();
-  return /^[A-F0-9]{64}$/.test(text) ? text : "";
+  return isHexLength(text,64) ? text : "";
 }
 
 async function requireSessionWallet(session) {
@@ -446,7 +445,7 @@ async function submitContextPublish({ payload, session }) {
   const resolved = await requireSessionWallet(session);
   if (resolved.error) return resolved.error;
 
-  const cid = String(payload?.cid || "").trim().replace(/^ipfs:\/\//i, "").replace(/^\/ipfs\//i, "");
+  const cid = stripPrefix(stripPrefix(String(payload?.cid || "").trim(),"ipfs://",true),"/ipfs/",true);
   if (!cid) {
     return actionResponse({
       status: 400,

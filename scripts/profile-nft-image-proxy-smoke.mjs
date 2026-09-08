@@ -340,9 +340,10 @@ try {
     });
     assert.equal(handledWarmingRoute, true);
     assert.ok(Date.now() - startedAt < 100);
-    assert.equal(warmingRouteRes.statusCode, 200);
+    assert.equal(warmingRouteRes.statusCode, 202);
     assert.equal(warmingRouteRes.headers["cache-control"], "no-store, max-age=0");
-    assert.equal(warmingRouteRes.headers["content-type"], "image/svg+xml; charset=utf-8");
+    assert.equal(warmingRouteRes.headers["content-type"], "application/json; charset=utf-8");
+    assert.equal(JSON.parse(warmingRouteRes.body.toString()).status, "warming");
     assert.equal(warmingRouteRes.headers["x-profile-nft-thumbnail-cache"], "warming");
     assert.ok(warmingRouteRes.body.length < 1024);
     await new Promise((resolve) => setTimeout(resolve, 40));

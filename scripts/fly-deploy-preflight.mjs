@@ -12,6 +12,7 @@ const REQUIRED_PROCESS_GROUPS = [
   "worker-hive",
   "worker-memory-profile",
   "worker-airdrop",
+  "worker-nft-renderer",
 ];
 
 function flyTomlEnvValue(source, key) {

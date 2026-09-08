@@ -17,6 +17,7 @@ import { appendTaskActionReceipt, loadTaskActionReceipts, saveTaskActionReceipts
 import { findTaskById, mergeTaskStateWithActionReceipts, reconcileTaskVisibleState } from "../features/tasks/task-visible-state.js";
 import { mergeAppStateWithMonotonicTasks } from "../features/tasks/task-app-state-refresh.js";
 import { LoginDialog, SettingsModal, TelegramProfileMenuRow, accountLinkProvider, linkedProviderById } from "../features/settings/AppDialogs.jsx";
+import { useAppearance } from "../theme/use-appearance.js";
 import { ProfileAccountSwitcher } from "../features/settings/ProfileAccountSwitcher.jsx";
 import { createAccountSwitcherActions } from "../features/settings/account-switch-client.js";
 import { acceptAccountBoundaryResponse, accountBoundaryCaptureIsCurrent, beginAccountBoundaryTransition, cancelAccountBoundaryTransition, initialAccountBoundary } from "../features/settings/account-transition-boundary.js";
@@ -53,7 +54,7 @@ export function App() {
   const [identityPromptDismissed, setIdentityPromptDismissed] = useState(false);
   const [profileAuthMessage, setProfileAuthMessage] = useState("");
   const [profilePendingProvider, setProfilePendingProvider] = useState("");
-  const [theme, setTheme] = useState("auto");
+  const { preference: theme, setPreference: setTheme, sessionOnly: themeSessionOnly } = useAppearance();
   const [profileTab, setProfileTab] = useState("private");
   const [profilePublic, setProfilePublic] = useState(true);
   const [locationHash, setLocationHash] = useState(() => (typeof window === "undefined" ? "" : window.location.hash));
@@ -1094,7 +1095,7 @@ export function App() {
                 }}
                 type="button"
               >
-                <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} />
+                <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} />
                 <>
                   <span className="profile-copy">
                     <strong>{profileName}</strong>
@@ -1121,7 +1122,7 @@ export function App() {
                     }}
                     type="button"
                   >
-                    <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} />
+                    <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} />
                     <span className="profile-copy">
                       <strong>{profileName}</strong>
                       <small>{profileSubtext}</small>
@@ -1334,14 +1335,16 @@ export function App() {
             </Suspense>
           )}
           {view === "context" && (
-            <ContextView
-              context={appState?.context}
-              linkedWalletAddress={linkedWalletAddress}
-              onContextChange={refreshAppState}
-              onHydrateContext={hydrateContextPointer}
-              onPublishContext={publishContextPointer}
-              walletVault={walletVaultStatus}
-            />
+            <Suspense fallback={<StatusBanner>Loading context</StatusBanner>}>
+              <ContextView
+                context={appState?.context}
+                linkedWalletAddress={linkedWalletAddress}
+                onContextChange={refreshAppState}
+                onHydrateContext={hydrateContextPointer}
+                onPublishContext={publishContextPointer}
+                walletVault={walletVaultStatus}
+              />
+            </Suspense>
           )}
           {view === "profile" && memberProfileAccountId && (
             <Suspense fallback={<StatusBanner>Loading profile</StatusBanner>}>
@@ -1409,7 +1412,7 @@ export function App() {
           onClose={() => setSettingsOpen(false)} onWalletUnlock={openWalletVaultControl}
           session={session}
           setTheme={setTheme}
-          theme={theme} walletSecret={walletSecretRef.current} walletVault={walletVaultStatus}
+          theme={theme} themeSessionOnly={themeSessionOnly} walletSecret={walletSecretRef.current} walletVault={walletVaultStatus}
         />
       )}
       {identityHandleRequired && !identityPromptDismissed && !loginOpen && (

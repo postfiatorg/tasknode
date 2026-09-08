@@ -1,7 +1,7 @@
 # Current System
 
 This page describes the implemented Task Node runtime as of
-2026-08-15. It is a production system, not an early mock or a thin frontend
+2026-09-05. It is a production system, not an early mock or a thin frontend
 shell.
 
 ## Product Boundary
@@ -60,8 +60,10 @@ durable.
 
 ### External systems
 
-- Ambient handles general inference. The Profile NFT renderer is an isolated
-  OpenAI image-generation exception after privacy abstraction/review.
+- Vercel AI Gateway handles general inference first, with Ambient backup.
+  Thinking/structured work uses GLM 5.3; Instant uses GLM 5.3 Flash. See
+  [AI providers](ai-providers.md) for workload-specific models and exceptions.
+  The Profile NFT renderer retains its isolated OpenAI image-generation path.
 - PFTL endpoints provide balance, transaction, pointer, and replay data; IPFS
   stores applicable encrypted or public payloads.
 - The separately deployed PFDocs service owns its document runtime.
@@ -91,9 +93,10 @@ docker-compose.dev.yml       Current local stack
 fly.toml                     Current official production topology
 ```
 
-Large central files remain a known maintainability problem; the presence of a
-feature directory does not imply that its whole boundary has been extracted
-from `src/main.jsx`, `server/product-contracts.js`, or other central modules.
+Feature modules, shared contracts and split workers already exist; `src/main.jsx`
+is a small bootstrap. Remaining maintainability work concerns ownership across
+route/service/repository and operator adapters, rather than assuming the app
+still lives in one main component.
 
 ## Runtime Processes
 
@@ -106,15 +109,15 @@ The current Fly process map is defined by `fly.toml`:
 | `worker-taskgen` | Personal and network task generation |
 | `worker-task-review` | Verification, review, and reward transitions |
 | `worker-context-rewrite` | Asynchronous full-document Context rewrites |
-| `worker-hive` | Hive task manager, secretary/project/report/accounting work |
+| `worker-hive` | Hive context secretary, reports, and Kimi activity narrator |
 | `worker-memory-profile` | Chat memory and profile/recommendation work |
 | `worker-airdrop` | Daily airdrop work |
 | `worker-nft-renderer` | Isolated Profile NFT image rendering |
 | `board-secretary` | Hive board-secretary loop |
 
-`start:board-manager` remains only as a deliberately disabled legacy command.
-Documentation or operations that expect a live `board-manager` Fly process are
-obsolete.
+Kimi K3 runs in the operator-host Corbanu TUI and owns board/task management.
+The obsolete GLM selector and legacy Fly manager launchers are deleted. See
+[board management](board-manager.md) for the supported runtime.
 
 ## Authentication and Identity
 
@@ -129,10 +132,11 @@ wallet unlock is not application login.
 
 The route inventory and declared auth classes live in
 `server/route-policies.js`, with handlers spread across `server/index.js` and
-route modules. The central policy function currently enforces methods and rate
-limits, not the declared `auth` field. Until authorization is centralized or a
-complete route-by-route negative audit exists, the route registry is
-documentation metadata rather than an authorization guarantee.
+route modules. `server/server-http-boundary.js` calls `routeAuthenticationFailure`
+to enforce declared session requirements and credential presence, alongside
+method/body/rate policy. Bearer validity, resource ownership, OAuth state and
+handler-specific permissions still require semantic checks by their owning
+handlers. A declared auth class alone does not prove every ownership boundary.
 
 ## Product Surfaces
 
@@ -159,9 +163,13 @@ PFTL/IPFS replay and pointer boundaries where configured. Documentation must
 state which record is canonical for each event rather than claiming every row
 is already chain-native.
 
-Hive includes projects, Hive Chat, network-task routing, task management,
-secretary/reporting work, contributor accounting, and the board-secretary
-process. The legacy autonomous Board Manager execution flags are disabled in
+Hive includes projects, a shared public Nostr group chat, network-task routing,
+task management, secretary/reporting work, contributor accounting and the
+board-secretary process. The group reuses Messages identities and public
+profile pictures. GLM 5.3 Flash periodically selects participation; GLM 5.3
+writes replies using public context. Durable escalations enter the existing
+Kimi K3 Corbanu TUI board manager inbox. Group transport runs in the existing
+Hive worker, independently of slow model calls. The legacy autonomous Board Manager execution flags are disabled in
 the current Fly configuration.
 
 ### Wallet and top-up

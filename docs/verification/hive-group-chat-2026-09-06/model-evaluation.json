@@ -1,0 +1,68 @@
+{
+  "ok": true,
+  "provider": "Vercel",
+  "mode": "synthetic public input, live deployed inference gateway, no relay or board writes",
+  "cases": [
+    {
+      "id": "casual",
+      "model": "zai/glm-5.3-flash",
+      "latencyMs": 1495,
+      "decision": {
+        "respond": false,
+        "escalate": false,
+        "board_id": "",
+        "source_event_id": "",
+        "escalation_summary": "",
+        "reply_brief": ""
+      },
+      "escalationMatches": true
+    },
+    {
+      "id": "public_question",
+      "model": "zai/glm-5.3-flash",
+      "latencyMs": 2151,
+      "decision": {
+        "respond": true,
+        "escalate": false,
+        "board_id": "",
+        "source_event_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "escalation_summary": "",
+        "reply_brief": "Answer cinder's question: Hive chat uses the existing public Task Node Messages Nostr identity and NIP-05 handle, so signing in and activating Messages lets you post public kind-1 thread messages here; profile pictures come from public profiles. Note that reading doesn't require wallet unlock, but posting messages does, and DMs use a separate encrypted NIP-17 inbox separate from this public room."
+      },
+      "escalationMatches": true,
+      "reply": {
+        "text": "@cinder Hive runs on your existing public Task Node Messages identity \u2014 same Nostr key and NIP-05 handle you use for Messages, so there's no separate sign-up. To post here you sign in, activate Messages, and unlock the linked wallet to sign public kind-1 thread messages; just reading the room doesn't need the wallet unlocked. Profile pics are pulled from your public Nostr profile. One thing worth knowing: DMs don't happen here \u2014 they go through a separate encrypted NIP-17 inbox, so anything in this room is fully public by design.",
+        "model": "zai/glm-5.3",
+        "latencyMs": 1735
+      }
+    },
+    {
+      "id": "terminal_blocker",
+      "model": "zai/glm-5.3-flash",
+      "latencyMs": 2496,
+      "decision": {
+        "respond": true,
+        "escalate": true,
+        "board_id": "board_pf_terminal",
+        "source_event_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "escalation_summary": "Contributor cinder reports a terminal task sync defect on the Corbanu Terminal board: an accepted task still appears as available after reconnect. Contributor has a reproduction and an event trace available for investigation.",
+        "reply_brief": "Acknowledge the sync defect report, note that the reproduction and event trace are helpful evidence, and confirm it has been escalated to the terminal board manager for investigation."
+      },
+      "escalationMatches": true
+    },
+    {
+      "id": "app_blocker_paraphrase",
+      "model": "zai/glm-5.3-flash",
+      "latencyMs": 3140,
+      "decision": {
+        "respond": true,
+        "escalate": true,
+        "board_id": "board_tasknode_fixes",
+        "source_event_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "escalation_summary": "Contributor cinder reports a reproducible blocker: two contributors' submission forms lose the saved task reference, across browsers, blocking their task submissions. Requesting investigation on the Task Node board.",
+        "reply_brief": "Acknowledge cinder's report in the public chat, confirm the submission-form task-reference loss has been escalated to the Task Node board, and invite repro details (browsers, steps) to help the investigation."
+      },
+      "escalationMatches": true
+    }
+  ]
+}

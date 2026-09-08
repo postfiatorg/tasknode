@@ -23,16 +23,18 @@ if [[ -z "$remote_database_url" ]]; then
   exit 1
 fi
 
-# Deathmarch runs locally but uses the deployed app's Ambient credential. Keep
-# the credential in process memory only; do not persist it to the repo env file.
-if [[ -z "${AMBIENT_API_KEY:-}" ]]; then
-  ambient_api_key="$($fly_bin ssh console --quiet --app "$app_name" --command 'printenv AMBIENT_API_KEY' 2>/dev/null \
-    | awk 'NF { value = $0 } END { print value }')"
-  if [[ -n "$ambient_api_key" ]]; then
-    export AMBIENT_API_KEY="$ambient_api_key"
-  else
-    echo "deathmarch_supervisor_warning:ambient_api_key_missing_using_safe_fallback" >&2
+# Inference uses Vercel first and Ambient as backup. Credentials stay in memory.
+for inference_key_name in VERCEL_AI_GATEWAY_API_KEY AMBIENT_API_KEY; do
+  if [[ -z "${!inference_key_name:-}" ]]; then
+    inference_key_value="$($fly_bin ssh console --quiet --app "$app_name" --command "printenv $inference_key_name" 2>/dev/null || true)"
+    if [[ -n "$inference_key_value" && "$inference_key_value" != *$'\n'* ]]; then
+      export "$inference_key_name=$inference_key_value"
+    fi
   fi
+done
+unset inference_key_value
+if [[ -z "${VERCEL_AI_GATEWAY_API_KEY:-${AI_GATEWAY_API_KEY:-${AMBIENT_API_KEY:-}}}" ]]; then
+  echo "deathmarch_supervisor_warning:inference_not_configured_using_safe_fallback" >&2
 fi
 
 export DEATHMARCH_DATABASE_URL="$(

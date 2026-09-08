@@ -192,6 +192,7 @@ export function evaluateDailyProfileNftWorkerState({
     ...counts,
     pending: Number(pendingCount || counts.pending || 0),
     running: Number(runningCount || counts.running || 0),
+    rendering: Number(counts.rendering || 0),
     failed: Number(counts.failed || 0),
     generated: Number(counts.generated || 0),
     skipped: Number(counts.skipped || 0),

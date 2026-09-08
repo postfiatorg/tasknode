@@ -610,6 +610,8 @@ export async function completeDailyAirdropRun({
   actualAirdropPft7d = 0,
   maxPossibleAirdropPft7d = 70000,
   alignmentScore7d = 0,
+  provider = "",
+  model = "",
 } = {}) {
   const result = await query(
     `UPDATE profile_daily_airdrop_runs
@@ -626,6 +628,8 @@ export async function completeDailyAirdropRun({
             max_possible_airdrop_pft_7d = $11,
             alignment_score_7d = $12,
             output_json = $13::jsonb,
+            provider = COALESCE(NULLIF($14, ''), provider),
+            model = COALESCE(NULLIF($15, ''), model),
             updated_at = now(),
             completed_at = now()
       WHERE id = $1
@@ -644,6 +648,8 @@ export async function completeDailyAirdropRun({
       Number(maxPossibleAirdropPft7d || 0),
       Number(alignmentScore7d || 0),
       JSON.stringify(output || {}),
+      safeText(provider, 80),
+      safeText(model, 160),
     ]
   );
   return result.rows[0] || null;

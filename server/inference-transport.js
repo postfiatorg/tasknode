@@ -42,7 +42,7 @@ function providerError(provider, response, body) {
 }
 
 export async function inferenceHttp(provider, path, { body, env = process.env, fetchImpl = fetch, signal, method = "POST" } = {}) {
-  const apiKey = providerApiKey(provider, env);
+  const apiKey = providerApiKey(provider, env, body?.model);
   const headers = { accept: body?.stream ? "text/event-stream" : "application/json" };
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
   if (body) headers["content-type"] = "application/json";

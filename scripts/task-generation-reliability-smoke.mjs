@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 
 process.env.TASKNODE_TASKGEN_PROVIDER = "ambient";
 process.env.AMBIENT_API_KEY = "taskgen-reliability-smoke-key";
-process.env.AMBIENT_MODEL_STRUCTURED = "taskgen-reliability-smoke-model";
+process.env.AMBIENT_MODEL_STRUCTURED = "z-ai/glm-5.2";
+delete process.env.VERCEL_AI_GATEWAY_API_KEY;
+delete process.env.AI_GATEWAY_API_KEY;
 process.env.TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED = "false";
 process.env.TASKNODE_HIVE_TASK_GENERATION_V2_ENABLED = "false";
 
@@ -97,6 +99,7 @@ function providerRetryPolicySmoke() {
   assert.equal(taskGenerationRetryDelayMs(5, {}), 120_000);
 
   assert.equal(isRetryableTaskGenerationError({ code: "TASKGEN_PROVIDER_TIMEOUT" }), true);
+  assert.equal(isRetryableTaskGenerationError({ code: "TASKGEN_PROVIDER_OUTPUT_INVALID" }), true);
   assert.equal(isRetryableTaskGenerationError({ code: "ambient_rate_limited", status: 429 }), true);
   assert.equal(isRetryableTaskGenerationError({ code: "ambient_http_503", status: 503 }), true);
   assert.equal(isRetryableTaskGenerationError({ code: "UND_ERR_SOCKET" }), true);
@@ -166,6 +169,7 @@ async function ambientRequestBodySmoke() {
   };
   const generated = await generateTaskWithProvider(taskInput, {
     fetchImpl: async (_url, init = {}) => {
+      if (JSON.parse(init.body).response_format?.json_schema?.name === "taskgen_readiness") return Response.json({ choices: [{ message: { content: JSON.stringify({ actionable_task: true, actionable_submission: true, consistent_scope: true }) } }] });
       requestBody = JSON.parse(init.body);
       return new Response(JSON.stringify(responsePayload), {
         status: 200,
@@ -174,8 +178,43 @@ async function ambientRequestBodySmoke() {
     },
   });
   assert.equal(generated.metadata.provider, "ambient");
-  assert.equal(requestBody.model, "taskgen-reliability-smoke-model");
+  assert.equal(requestBody.model, "z-ai/glm-5.2");
   assert.deepEqual(requestBody.reasoning, { effort: "xhigh" });
+
+  const validOutput = JSON.parse(responsePayload.choices[0].message.content);
+  const malformedOutputs = [
+    ...[":[", "verification_policy", " ", "{}", "", ["Submit the evidence packet."], { criteria: "Submit the evidence packet." }].map((criteria) => ({ ...validOutput, submission_requirement: { type: "text", criteria } })),
+    { ...validOutput, submission_requirement: { type: "unknown", criteria: "Submit the evidence packet." } },
+    { ...validOutput, steps: [{ text: "Review the request." }, "Create the evidence packet."] },
+    { ...validOutput, verification_policy: { ...validOutput.verification_policy, followup_required: "false" } },
+    { ...validOutput, description: " " },
+  ];
+  for (const output of malformedOutputs) {
+    await assert.rejects(generateTaskWithProvider(taskInput, {
+      fetchImpl: async () => Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] }),
+    }), (error) => error.code === "TASKGEN_PROVIDER_OUTPUT_INVALID" && isRetryableTaskGenerationError(error));
+  }
+  await assert.rejects(generateTaskWithProvider(taskInput, {
+    fetchImpl: async () => Response.json({ choices: [{ finish_reason: "length", message: { content: JSON.stringify(validOutput) } }] }),
+  }), (error) => error.code === "TASKGEN_PROVIDER_OUTPUT_INVALID" && error.validationError === "taskgen_output_truncated");
+  const recovered = await generateTaskWithProvider(taskInput, {
+    fetchImpl: async (_url, init) => JSON.parse(init.body).response_format?.json_schema?.name === "taskgen_readiness"
+      ? Response.json({ choices: [{ message: { content: JSON.stringify({ actionable_task: true, actionable_submission: true, consistent_scope: true }) } }] })
+      : Response.json(responsePayload),
+  });
+  assert.equal(recovered.output.submission_requirement.criteria, "Submit the evidence packet.");
+  assert.equal(recovered.metadata.readiness.approved, true);
+  for (const review of [
+    { actionable_task: true, actionable_submission: false, consistent_scope: true },
+    { actionable_task: false, actionable_submission: true, consistent_scope: true },
+    { actionable_task: true, actionable_submission: true, consistent_scope: false },
+    { actionable_task: "true", actionable_submission: true, consistent_scope: true },
+  ]) {
+    await assert.rejects(generateTaskWithProvider(taskInput, {
+      fetchImpl: async (_url, init) => JSON.parse(init.body).response_format?.json_schema?.name === "taskgen_readiness"
+        ? Response.json({ choices: [{ message: { content: JSON.stringify(review) } }] }) : Response.json(responsePayload),
+    }), (error) => error.code === "TASKGEN_PROVIDER_OUTPUT_INVALID" && isRetryableTaskGenerationError(error));
+  }
 }
 
 async function requestRow(id) {

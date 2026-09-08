@@ -268,5 +268,17 @@ for (const routeId of ["task_action", "task_submission"]) {
   );
 }
 
+const requestRoute = apiRoutePolicies.find((candidate) => candidate.id === "task_request");
+const requestContract = routeBodyPolicyForRequest(requestRoute, "POST", requestRoute.path);
+for (const phase of ["config", "prepare_bundle", "prepare", "submit", "retry", "dismiss"]) {
+  const command = { phase, expectedAccountId: "acct_browser", requestId: "req_browser", bundleId: "bundle_browser", conversationId: "chat_browser", userDetailText: "Plan a scoped infrastructure improvement.", requestedTaskKind: "personal", source: "task_interface", sourceConversationTitle: "Tasks", attachments: [], tasknodeEncryptionPubkey: "", ...(["retry", "dismiss"].includes(phase) ? { expectedAttemptCount: 2 } : {}) };
+  assert.deepEqual(validateJsonDocument(command, requestContract.schema), command, `Browser ${phase} must reach the task request handler`);
+}
+for (const value of [-1, 1.5, "2", null]) {
+  assert.throws(() => validateJsonDocument({ phase: "retry", expectedAttemptCount: value }, requestContract.schema), (error) => error.field === "body.expectedAttemptCount");
+}
+assert.throws(() => validateJsonDocument({ phase: "config", expectedAccountId: {} }, requestContract.schema), (error) => error.field === "body.expectedAccountId");
+assert.throws(() => validateJsonDocument({ phase: "config", inventedField: true }, requestContract.schema), (error) => error.message === "request_body_field_unknown");
+
 assert.ok(mutationPolicyCount > 70, "the mutation inventory must not silently shrink");
 console.log(`request validation smoke ok: ${apiRoutePolicies.length} route policies, ${mutationPolicyCount} fail-closed mutation policies`);

@@ -1,3 +1,4 @@
+import { isAsciiLetter, isAsciiDigit } from "../../shared/text-protocol.js";
 import { query as defaultQuery } from "../db/pool.js";
 import {
   allocationStatusForTaskStatus,
@@ -18,7 +19,7 @@ export const terminalNetworkTaskStatuses = Object.freeze([
 
 function alias(value, fallback) {
   const normalized = safeText(value, 40);
-  return /^[a-z_][a-z0-9_]*$/i.test(normalized) ? normalized : fallback;
+  return normalized && (isAsciiLetter(normalized[0]) || normalized[0] === "_") && [...normalized].every(char => isAsciiLetter(char) || isAsciiDigit(char) || char === "_") ? normalized : fallback;
 }
 
 // Allocation/projection linkage is intentionally one-way: a populated
@@ -45,7 +46,7 @@ function executorFor(client) {
 }
 
 function projectionValue(projection = {}, key, fallback = "") {
-  return projection[key] ?? projection[key.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`)] ?? fallback;
+  return projection[key] ?? projection[Array.from(key,char=>char>="A"&&char<="Z"?((match) => `_${match.toLowerCase()}`)(char):char).join("")] ?? fallback;
 }
 
 export async function syncNetworkTaskAllocationMirrors({

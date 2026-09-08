@@ -1,0 +1,76 @@
+{
+  "liveBoundaryProbes": [
+    {
+      "name": "flash_image",
+      "ok": true,
+      "provider": "vercel",
+      "model": "zai/glm-5.3-flash",
+      "textPresent": true
+    },
+    {
+      "name": "flash_stream",
+      "ok": true,
+      "provider": "vercel",
+      "model": "zai/glm-5.3-flash",
+      "deltas": 3,
+      "usagePresent": true
+    },
+    {
+      "name": "ambient_failover",
+      "ok": true,
+      "provider": "ambient",
+      "model": "z-ai/glm-5.2",
+      "fallbackFrom": "vercel",
+      "attempts": [
+        {
+          "provider": "vercel",
+          "status": "failed"
+        },
+        {
+          "provider": "ambient",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "name": "glm53_xhigh_schema",
+      "ok": true,
+      "provider": "vercel",
+      "model": "zai/glm-5.3",
+      "valid": true
+    },
+    {
+      "name": "server_search",
+      "ok": true,
+      "provider": "vercel",
+      "model": "zai/glm-5.3",
+      "usage": {
+        "providerCostUsd": 0.010953,
+        "webSearchCalls": 1,
+        "searchUsageReported": true
+      },
+      "gatewayKeys": [
+        "routing",
+        "cost",
+        "marketCost",
+        "surchargeCost",
+        "gatewayCost",
+        "inferenceCost",
+        "inputInferenceCost",
+        "outputInferenceCost",
+        "zeroDataRetentionCost",
+        "enabledZeroDataRetention",
+        "generationId",
+        "gatewayToolCalls"
+      ],
+      "toolCallCounts": {
+        "exa_search": 1
+      },
+      "hasUrl": true
+    }
+  ],
+  "date": "2026-09-05",
+  "execution": "New local adapter bundled into an ephemeral Node process on tasknodeofficial-dev; no deployed files changed",
+  "localDevelopmentKey": "HTTP 401; deployed Vercel and Ambient credentials succeeded",
+  "visionBackupAvailability": "Ambient catalogue listed no ready vision model"
+}

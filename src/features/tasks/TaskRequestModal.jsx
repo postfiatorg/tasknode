@@ -1,3 +1,4 @@
+import { readTaskRequestDraft, saveTaskRequestDraft, clearTaskRequestDraft } from "./task-request-draft.js";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Check, X } from "lucide-react";
 import { newClientConversationId, newClientCorrelationId } from "../chat/chat-turns";
@@ -19,7 +20,24 @@ export function TaskRequestModal({
   const [detailText, setDetailText] = useState("");
   const [status, setStatus] = useState({ error: "", pending: false, pendingLabel: "", success: "" });
   const [focused, setFocused] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftLoadError, setDraftLoadError] = useState("");
   const textareaRef = useRef(null);
+  const pendingDraft = useRef(null);
+  const currentAccount = useRef(accountId);
+  currentAccount.current = accountId;
+  useEffect(() => {
+    let current = true;
+    pendingDraft.current = null;
+    setDraftLoaded(false);
+    setDraftLoadError("");
+    setDetailText("");
+    setStatus({ error: "", pending: false, pendingLabel: "", success: "" });
+    readTaskRequestDraft(accountId).then((draft) => {
+      if (current && draft) { pendingDraft.current = draft; setDetailText((text) => text || draft.userDetailText); }
+    }).catch(() => { if (current) setDraftLoadError("Saved requests could not be opened. Reload this page before submitting so an earlier request is not duplicated."); }).finally(() => { if (current) setDraftLoaded(true); });
+    return () => { current = false; };
+  }, [accountId]);
   const unlockPolicy = evaluateTaskRequestUnlockPolicy({
     accountId,
     directOffchain,
@@ -29,7 +47,7 @@ export function TaskRequestModal({
     unlockPending: walletUnlockPending,
   });
   const walletReady = unlockPolicy.allowed;
-  const canSubmit = Boolean(detailText.trim()) && !status.pending && walletReady;
+  const canSubmit = Boolean(detailText.trim()) && draftLoaded && !draftLoadError && !status.pending && walletReady;
   const walletLocked = unlockPolicy.state === TASK_REQUEST_UNLOCK_STATES.LOCKED;
   const vaultMissing = unlockPolicy.state === TASK_REQUEST_UNLOCK_STATES.NEEDS_LOCAL_VAULT;
   const unlockPending = unlockPolicy.state === TASK_REQUEST_UNLOCK_STATES.UNLOCK_PENDING;
@@ -48,7 +66,7 @@ export function TaskRequestModal({
   async function submitTaskRequest(event) {
     event.preventDefault();
     const userDetailText = detailText.trim();
-    if (!userDetailText || status.pending) return;
+    if (!userDetailText || !draftLoaded || draftLoadError || status.pending) return;
     if (!walletReady) {
       if (["unlock", "open_wallet"].includes(unlockPolicy.action)) onWalletUnlock?.();
       setStatus({
@@ -61,11 +79,15 @@ export function TaskRequestModal({
     }
 
     setStatus({ error: "", pending: true, pendingLabel: "Configuring request", success: "" });
-    const requestId = newClientCorrelationId("req");
-    const bundleId = newClientCorrelationId("bundle");
-    const conversationId = newClientConversationId();
-
+    let draft = pendingDraft.current?.userDetailText === userDetailText ? pendingDraft.current : {
+      requestId: newClientCorrelationId("req"), bundleId: newClientCorrelationId("bundle"),
+      conversationId: newClientConversationId(), userDetailText,
+    };
     try {
+      draft = await saveTaskRequestDraft(accountId, draft);
+      const { requestId, bundleId, conversationId } = draft;
+      if (currentAccount.current !== accountId) return;
+      pendingDraft.current = draft;
       const result = await publishTaskRequest({
         accountId,
         linkedWalletAddress,
@@ -79,10 +101,14 @@ export function TaskRequestModal({
         source: "task_interface",
         sourceConversationTitle: "Tasks",
         onProgress: (label) => {
+          if (currentAccount.current !== accountId) return;
           setStatus({ error: "", pending: true, pendingLabel: label, success: "" });
         },
       });
 
+      await clearTaskRequestDraft(accountId, requestId);
+      if (currentAccount.current !== accountId) return;
+      pendingDraft.current = null;
       const directRecorded = result?.offchainLifecycle?.writeSource === "direct_write" ||
         String(result?.txHash || "").startsWith("offchain:");
       setStatus({
@@ -96,8 +122,9 @@ export function TaskRequestModal({
       setDetailText("");
       await onRecorded?.(result);
     } catch (error) {
+      if (currentAccount.current !== accountId) return;
       setStatus({
-        error: error?.message || "Task request could not be published.",
+        error: `${error?.message || "Task request could not be published."}${pendingDraft.current === draft ? " Your request stays saved here for retry." : " Keep this page open to preserve your input."}`,
         pending: false,
         pendingLabel: "",
         success: "",
@@ -180,10 +207,10 @@ export function TaskRequestModal({
               />
             </div>
 
-            {status.error && (
+            {(status.error || draftLoadError) && (
               <p className="task-request-message is-error">
                 <AlertTriangle size={14} strokeWidth={1.8} />
-                {status.error}
+                {status.error || draftLoadError}
               </p>
             )}
             {status.success && (

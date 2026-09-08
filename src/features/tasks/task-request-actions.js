@@ -70,6 +70,7 @@ export async function publishTaskRequest({
   if (!linkedWalletAddress) throw new Error("Link a PFT wallet before requesting a task.");
 
   const requestPayload = {
+    expectedAccountId: accountId,
     requestId,
     bundleId,
     conversationId,
@@ -97,7 +98,8 @@ export async function publishTaskRequest({
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ phase: "config", ...requestPayload, tasknodeEncryptionPubkey: userPubkey }),
   });
-  if (!config.ok || !config.body?.tasknodeEncryptionPubkey || !config.body?.requestBundle) {
+  const directConfig = config.body?.offchainLifecycle?.enabled && !config.body?.offchainLifecycle?.dualWrite;
+  if (!config.ok || (!directConfig && (!config.body?.tasknodeEncryptionPubkey || !config.body?.requestBundle))) {
     throw new Error(config.body?.message || "Task request publishing is not configured.");
   }
   const dualWrite = Boolean(config.body?.offchainLifecycle?.enabled && config.body?.offchainLifecycle?.dualWrite);

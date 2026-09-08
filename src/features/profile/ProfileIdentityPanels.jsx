@@ -5,6 +5,7 @@ import { ProfileIdentityCard } from "./ProfileIdentityCard.jsx";
 import { TodaysBriefing, latestAvatarNft } from "./ProfileBriefing.jsx";
 import { ConnectionsCard } from "./ProfileConnections.jsx";
 import { NFTGallery, PFTTimeseries, ProfileStudio } from "./ProfileStudioPanels.jsx";
+import { mergedProviderConnections, providerConnectionState } from "./provider-connection-state.js";
 import {
   C,
   SectionHead,
@@ -15,7 +16,10 @@ import {
 export function NetworkBadgesPanel({ session = null } = {}) {
   const [xRefreshState, setXRefreshState] = useState({ pending: false, message: "" });
   const [githubRefreshState, setGithubRefreshState] = useState({ pending: false, message: "" });
-  const [discordRefreshState, setDiscordRefreshState] = useState({ pending: false, message: "" });
+  const [qaProviderRefreshState, setQaProviderRefreshState] = useState({
+    discord: { pending: false, message: "" },
+    telegram: { pending: false, message: "" },
+  });
   const [badgeRefreshState, setBadgeRefreshState] = useState({ pending: false, message: "" });
   const [networkBadgeState, setNetworkBadgeState] = useState({ pending: false, message: "", state: null });
   const [badgeActionState, setBadgeActionState] = useState({});
@@ -25,9 +29,13 @@ export function NetworkBadgesPanel({ session = null } = {}) {
   const [expertEvalState, setExpertEvalState] = useState({ pending: false, message: "" });
   const expertAccess = expertAccessOverride || sessionExpertAccess;
   const projectLeaderAccess = session?.identityProfile?.projectLeaderAccess || {};
-  const aliases = Array.isArray(session?.identityProfile?.aliases) ? session.identityProfile.aliases : [];
-  const durableBadges = Array.isArray(networkBadgeState.state?.badges) ? networkBadgeState.state.badges : [];
-  const durableBadgeFor = (badgeId = "") => durableBadges.find((badge) => badge.badgeId === badgeId && badge.status === "verified");
+  const currentBadgeState = networkBadgeState.state?.accountId === session?.accountId ? networkBadgeState.state : null;
+  const currentIdentity = currentBadgeState?.identityProfile || session?.identityProfile;
+  const aliases = Array.isArray(currentIdentity?.aliases) ? currentIdentity.aliases : [];
+  const linkedProviders = currentBadgeState?.identityProfile ? [] : Array.isArray(session?.linkedProviders) ? session.linkedProviders : [];
+  const providerConnections = mergedProviderConnections({ aliases, linkedProviders });
+  const durableBadges = Array.isArray(currentBadgeState?.badges) ? currentBadgeState.badges : [];
+  const durableBadgeFor = (badgeId = "") => durableBadges.find((badge) => badge.badgeId === badgeId && badge.status === "verified" && !badge.revokedAt && (!badge.expiresAt || Date.parse(badge.expiresAt) > Date.now()));
   const providerAliases = {
     x: ["x", "twitter"],
     github: ["github"],
@@ -39,15 +47,22 @@ export function NetworkBadgesPanel({ session = null } = {}) {
     const accepted = providerAliases[provider] || [provider];
     return aliases.find((alias) => accepted.includes(String(alias.provider || "").toLowerCase()));
   };
-  const linked = (provider = "") => Boolean(aliasForProvider(provider));
-  const verifiedLinked = (provider = "") => Boolean(aliasForProvider(provider)?.verified);
+  const connectionForProvider = (provider = "") => providerConnectionState({
+    aliases,
+    linkedProviders,
+    provider,
+  });
+  const linked = (provider = "") => connectionForProvider(provider).linked;
+  const verifiedLinked = (provider = "") => connectionForProvider(provider).verified;
   useEffect(() => {
     setExpertAccessOverride(null);
     setExpertTopicInput(sessionExpertAccess.topic || "");
   }, [sessionExpertAccess.topic, sessionExpertAccess.reviewedAt]);
   useEffect(() => {
     let cancelled = false;
+    let sequence = 0;
     async function loadNetworkBadgeState() {
+      const currentSequence = ++sequence;
       if (!session?.accountId) {
         setNetworkBadgeState({ pending: false, message: "", state: null });
         return;
@@ -55,21 +70,23 @@ export function NetworkBadgesPanel({ session = null } = {}) {
       setNetworkBadgeState((current) => ({ ...current, pending: true, message: "" }));
       try {
         const result = await requestJson("/api/profile/network-badges");
-        if (cancelled) return;
+        if (cancelled || currentSequence !== sequence) return;
         setNetworkBadgeState({
           pending: false,
           message: result.ok ? "" : result.body?.message || result.body?.error || `Badge state returned HTTP ${result.status}.`,
           state: result.body?.state || null,
         });
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && currentSequence === sequence) {
           setNetworkBadgeState({ pending: false, message: error?.message || "Network badge state could not load.", state: null });
         }
       }
     }
     loadNetworkBadgeState();
+    window.addEventListener("focus", loadNetworkBadgeState);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", loadNetworkBadgeState);
     };
   }, [session?.accountId]);
   const coreContributorAccessFor = (provider = "") => {
@@ -134,9 +151,9 @@ export function NetworkBadgesPanel({ session = null } = {}) {
     }
     if (requirement.expertScore) {
       if (expertAccess.reviewedAt) {
-        return `${fmtN(expertAccess.score || 0)} / 100 GLM 5.2 expertise score (${fmtN(requirement.expertScore)}+ required)`;
+        return `${fmtN(expertAccess.score || 0)} / 100 GLM 5.3 expertise score (${fmtN(requirement.expertScore)}+ required)`;
       }
-      return "Run GLM 5.2 review over last 20 Personal tasks";
+      return "Run GLM 5.3 review over last 20 Personal tasks";
     }
     if (requirement.projectLeader) {
       if (projectLeaderAccess.eligible) {
@@ -159,6 +176,8 @@ export function NetworkBadgesPanel({ session = null } = {}) {
   };
   const completedCount = (requirements = []) => requirements.filter(requirementFulfilled).length;
   const statusFor = (badge) => {
+    if (durableBadgeFor(badge.id)) return { label: "Ready", color: C.success, tone: "ready" };
+    if (networkBadgeState.pending && !currentBadgeState) return { label: "Checking", color: C.ink3, tone: "proof" };
     const providerRequirements = badge.requirements.filter((requirement) => requirement.provider && !requirement.metric);
     const missingProvider = providerRequirements.find((requirement) => !linked(requirement.provider));
     if (missingProvider) {
@@ -225,14 +244,17 @@ export function NetworkBadgesPanel({ session = null } = {}) {
     }
     return { label: "Needs proof", color: C.ink3, tone: "proof" };
   };
-  const topAliases = aliases.filter((alias) => ["x", "twitter", "github", "discord", "telegram"].includes(String(alias.provider || "").toLowerCase()));
+  const topAliases = providerConnections.filter((alias) => (
+    ["x", "twitter", "github", "discord", "telegram"].includes(String(alias.provider || "").toLowerCase())
+  ));
   const xAlias = aliasForProvider("x");
   const xFollowerCount = Number(xAlias?.metrics?.followersCount);
   const xFollowerMetricsPresent = Number.isFinite(xFollowerCount);
   const githubAlias = aliasForProvider("github");
   const githubAccess = coreContributorAccessFor("github");
   const githubAccessPresent = Boolean(githubAccess.checkedAt) || Number(githubAccess.accessCount || 0) > 0;
-  const discordAlias = aliasForProvider("discord");
+  const telegramConnection = connectionForProvider("telegram").connection;
+  const discordConnection = connectionForProvider("discord").connection;
   const expertCanEvaluate = Number(expertAccess.personalTaskCount || 0) >= Number(expertAccess.requiredPersonalTaskCount || 20) &&
     String(expertTopicInput || "").trim().length >= 3 &&
     !expertEvalState.pending;
@@ -271,20 +293,30 @@ export function NetworkBadgesPanel({ session = null } = {}) {
     }
   }
 
-  async function refreshDiscordProof() {
-    setDiscordRefreshState({ pending: true, message: "" });
+  async function refreshQaProviderProof(provider = "") {
+    const label = providerLabel(provider);
+    setQaProviderRefreshState((current) => ({
+      ...current,
+      [provider]: { pending: true, message: "" },
+    }));
     try {
-      const result = await requestJson(`/api/auth/start/discord?redirect=${encodeURIComponent("/#profile")}`);
+      const result = await requestJson(`/api/auth/start/${provider}?redirect=${encodeURIComponent("/#profile")}`);
       if (result.ok && result.body?.redirectUrl) {
         window.location.assign(result.body.redirectUrl);
         return;
       }
-      setDiscordRefreshState({
-        pending: false,
-        message: result.body?.message || result.body?.actionRequired || `Discord returned HTTP ${result.status}.`,
-      });
+      setQaProviderRefreshState((current) => ({
+        ...current,
+        [provider]: {
+          pending: false,
+          message: result.body?.message || result.body?.actionRequired || `${label} returned HTTP ${result.status}.`,
+        },
+      }));
     } catch (error) {
-      setDiscordRefreshState({ pending: false, message: error?.message || "Discord link could not start." });
+      setQaProviderRefreshState((current) => ({
+        ...current,
+        [provider]: { pending: false, message: error?.message || `${label} link could not start.` },
+      }));
     }
   }
 
@@ -651,25 +683,41 @@ export function NetworkBadgesPanel({ session = null } = {}) {
 
                 {badge.id === "qa_worker" && (
                   <div style={{ display: "grid", gap: 8 }}>
-                    <button
-                      className="tn-btn"
-                      disabled={discordRefreshState.pending}
-                      onClick={refreshDiscordProof}
-                      style={{ justifyContent: "center", minHeight: 34, width: "100%" }}
-                      type="button"
-                    >
-                      {discordRefreshState.pending ? "Opening Discord..." : discordAlias ? "Re-link Discord" : "Connect Discord"}
-                    </button>
-                    {!discordAlias && (
+                    <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+                      {[
+                        { provider: "telegram", connection: telegramConnection },
+                        { provider: "discord", connection: discordConnection },
+                      ].map(({ provider, connection }) => {
+                        const label = providerLabel(provider);
+                        const refreshState = qaProviderRefreshState[provider] || {};
+                        return (
+                          <button
+                            className="tn-btn"
+                            disabled={refreshState.pending}
+                            key={provider}
+                            onClick={() => refreshQaProviderProof(provider)}
+                            style={{ justifyContent: "center", minHeight: 44, width: "100%" }}
+                            type="button"
+                          >
+                            {refreshState.pending ? `Opening ${label}...` : connection ? `Re-link ${label}` : `Connect ${label}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(!telegramConnection || !discordConnection) && (
                       <div style={{ color: C.ink4, fontSize: 12, lineHeight: 1.45 }}>
-                        Link Discord to qualify for QA Worker routing.
+                        QA proof uses this active Task Node profile
+                        {session?.hiveHandle ? ` (@${session.hiveHandle})` : ""}. A provider linked to another Task Node account does not carry over.
                       </div>
                     )}
-                    {discordRefreshState.message && (
-                      <div style={{ color: C.rust, fontSize: 12, lineHeight: 1.45 }}>
-                        {discordRefreshState.message}
-                      </div>
-                    )}
+                    {["telegram", "discord"].map((provider) => {
+                      const message = qaProviderRefreshState[provider]?.message;
+                      return message ? (
+                        <div key={provider} style={{ color: C.rust, fontSize: 12, lineHeight: 1.45 }}>
+                          {message}
+                        </div>
+                      ) : null;
+                    })}
                   </div>
                 )}
               </div>

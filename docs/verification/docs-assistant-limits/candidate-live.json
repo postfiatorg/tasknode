@@ -1,0 +1,90 @@
+[
+  {
+    "label": "coach_detailed_review",
+    "ok": true,
+    "provider": "vercel",
+    "model": "zai/glm-5.3",
+    "responseLength": 3543,
+    "elapsedMs": 27361,
+    "metrics": [
+      {
+        "host": "ai-gateway.vercel.sh",
+        "status": 200,
+        "model": "zai/glm-5.3",
+        "finishReason": "stop",
+        "contentLength": 3543,
+        "usage": {
+          "prompt_tokens": 28305,
+          "completion_tokens": 4076,
+          "total_tokens": 32381,
+          "cost": 0.0287807,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": null,
+            "upstream_inference_prompt_cost": 0,
+            "upstream_inference_completions_cost": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 3493,
+            "reasoning_tokens_estimated": true,
+            "image_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "market_cost": 0.0287807,
+          "surcharge_cost": 0.0001,
+          "gateway_cost": 0.0288807,
+          "zero_data_retention_cost": 0.0001
+        }
+      }
+    ]
+  },
+  {
+    "label": "coach_large_answer",
+    "ok": true,
+    "provider": "vercel",
+    "model": "zai/glm-5.3",
+    "responseLength": 8896,
+    "elapsedMs": 42477,
+    "metrics": [
+      {
+        "host": "ai-gateway.vercel.sh",
+        "status": 200,
+        "model": "zai/glm-5.3",
+        "finishReason": "stop",
+        "contentLength": 8896,
+        "usage": {
+          "prompt_tokens": 20510,
+          "completion_tokens": 7175,
+          "total_tokens": 27685,
+          "cost": 0.02518072,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 8704,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": null,
+            "upstream_inference_prompt_cost": 0,
+            "upstream_inference_completions_cost": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 5985,
+            "reasoning_tokens_estimated": true,
+            "image_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "market_cost": 0.02518072,
+          "surcharge_cost": 0.0001,
+          "gateway_cost": 0.02528072,
+          "zero_data_retention_cost": 0.0001
+        }
+      }
+    ]
+  }
+]

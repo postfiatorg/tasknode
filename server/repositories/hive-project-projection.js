@@ -1,3 +1,4 @@
+import { trimCharacters } from "../../shared/text-protocol.js";
 import { projectHasOperatorArchiveLock } from "./hive-project-planning.js";
 import { deriveNetworkTaskStatusPacketFromRow } from "./network-task-status.js";
 
@@ -120,8 +121,8 @@ export function walletIdentityDisplayName(identity = {}) {
   return safeText(
     identity.displayName ||
       identity.publicDisplayName ||
-      (identity.hiveHandle ? `@${safeText(identity.hiveHandle, 80).replace(/^@+/, "")}` : "") ||
-      (publicAlias?.handle ? `@${safeText(publicAlias.handle, 120).replace(/^@+/, "")}` : ""),
+      (identity.hiveHandle ? `@${trimCharacters(safeText(identity.hiveHandle, 80),"@",{end:false})}` : "") ||
+      (publicAlias?.handle ? `@${trimCharacters(safeText(publicAlias.handle, 120),"@",{end:false})}` : ""),
     120
   );
 }
@@ -434,7 +435,7 @@ export function deriveContributorFromTask(project = {}, task = {}) {
   const taskState = safeText(task.state, 80).toLowerCase();
   const paidPft = taskState === "rewarded" ? numeric(task.pft) : 0;
   const activeLoad = taskIsInFlight(task) ? 1 : 0;
-  const identityLabel = task.assigneeDisplayName || (task.assigneeHandle ? `@${safeText(task.assigneeHandle, 80).replace(/^@+/, "")}` : "");
+  const identityLabel = task.assigneeDisplayName || (task.assigneeHandle ? `@${trimCharacters(safeText(task.assigneeHandle, 80),"@",{end:false})}` : "");
   return {
     wallet,
     accountId: task.assigneeAccountId || "",

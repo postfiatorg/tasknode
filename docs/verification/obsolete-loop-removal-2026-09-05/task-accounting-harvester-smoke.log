@@ -1,0 +1,5 @@
+
+> tasknode@0.1.0 task-accounting-harvester-smoke
+> node scripts/task-accounting-harvester-smoke.mjs
+
+task-accounting-harvester-smoke ok

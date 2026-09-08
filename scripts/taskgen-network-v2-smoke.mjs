@@ -84,34 +84,30 @@ assert.equal(taskgenProviderForInput(taskInput), "mock");
 assert.equal(taskgenModelForInput(taskInput), "mock-taskgen");
 
 const defaultNetworkEnv = { TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED: "true" };
-assert.equal(taskgenProviderForInput(taskInput, defaultNetworkEnv), "ambient");
-assert.equal(taskgenModelForInput(taskInput, defaultNetworkEnv), "z-ai/glm-5.2");
+assert.equal(taskgenProviderForInput(taskInput, defaultNetworkEnv), "vercel");
+assert.equal(taskgenModelForInput(taskInput, defaultNetworkEnv), "zai/glm-5.3");
 assert.equal(taskgenReasoningEffort(taskInput, defaultNetworkEnv), "xhigh");
 const personalInput = { request: { requestedTaskKind: "personal" }, policy: { task_class: "personal" } };
 const defaultPersonalEnv = {};
-assert.equal(taskgenProviderForInput(personalInput, defaultPersonalEnv), "ambient");
-assert.equal(taskgenModelForInput(personalInput, defaultPersonalEnv), "z-ai/glm-5.2");
+assert.equal(taskgenProviderForInput(personalInput, defaultPersonalEnv), "vercel");
+assert.equal(taskgenModelForInput(personalInput, defaultPersonalEnv), "zai/glm-5.3");
 assert.equal(taskgenReasoningEffort(personalInput, defaultPersonalEnv), "xhigh");
-assert.deepEqual(taskgenApiConfig(personalInput, {
+assert.throws(() => taskgenApiConfig(personalInput, {
   TASKNODE_TASKGEN_PROVIDER: "frontier",
   TASKNODE_TASKGEN_MODEL: "gpt-5.6-sol",
-}), {
-  provider: "ambient",
-  model: "z-ai/glm-5.2",
-  reasoningEffort: "xhigh",
-});
+}), (error) => error.code === "inference_model_unsupported");
 assert.deepEqual(taskgenApiConfig(taskInput, {
   TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED: "true",
-  AMBIENT_MODEL_STRUCTURED: "test/structured-model",
+  TASKNODE_TASKGEN_MODEL: "zai/glm-5.3-flash",
 }), {
-  provider: "ambient",
-  model: "test/structured-model",
+  provider: "vercel",
+  model: "zai/glm-5.3-flash",
   reasoningEffort: "xhigh",
 });
 
 const productionFlyConfig = readFileSync(new URL("../fly.toml", import.meta.url), "utf8");
 for (const [key, value] of [
-  ["TASKNODE_HIVE_TASK_GENERATION_MODEL", "z-ai/glm-5.2"],
+  ["TASKNODE_HIVE_TASK_GENERATION_MODEL", "zai/glm-5.3"],
   ["TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT", "xhigh"],
 ]) {
   assert.match(

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
-import { AMBIENT_MODELS, ambientChatCompletion } from "./ambient-inference.js";
+import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
 import {
   buildPublicProfileSnapshotInput,
   completePublicProfileSnapshot,
@@ -11,7 +11,7 @@ import {
 
 const PROMPT_PATH = "profile/public_profile_snapshot_v1.md";
 const PROMPT_VERSION = "public_profile_snapshot_v1";
-const DEFAULT_MODEL = AMBIENT_MODELS.fastText;
+const DEFAULT_MODEL = INFERENCE_MODELS.fastText;
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -109,7 +109,7 @@ export async function generatePublicProfileWithOpenRouter({
   model,
   env = process.env,
 } = {}) {
-  const result = await ambientChatCompletion({
+  const result = await inferenceChatCompletion({
     env,
     capability: "strict_json",
     body: {
@@ -144,7 +144,7 @@ export async function generatePublicProfileWithOpenRouter({
   const body = result.body;
   const content = result.text;
   return {
-    provider: "ambient",
+    provider: result.provider,
     model: body?.model || model,
     responseId: body?.id || null,
     output: parseJsonObject(content),
@@ -187,7 +187,7 @@ export async function runPublicProfileSnapshot({
     accountId,
     inputFingerprint,
     inputSnapshot: packet,
-    provider: "ambient",
+    provider: "vercel",
     model,
     promptVersion: PROMPT_VERSION,
     promptDigest: digest,
@@ -207,6 +207,8 @@ export async function runPublicProfileSnapshot({
     };
     const snapshot = await completePublicProfileSnapshot({
       snapshotId: run.snapshotId,
+      provider: response.provider,
+      model: response.model,
       output,
       outputDigest: `sha256:${sha256(normalized)}`,
     });

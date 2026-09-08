@@ -1,0 +1,64 @@
+import assert from "node:assert/strict";
+import { randomUUID, createHash } from "node:crypto";
+import { query, transaction, closePool } from "../server/db/pool.js";
+import { migrateDatabase } from "../server/db/migrate.js";
+import { executeBoardAgentCommand } from "../server/board-agent-routes.js";
+import { journalAppend, taskCreate } from "./bm/writes.mjs";
+import { readAgentRegistry } from "../ops/bm-runtime/registry.mjs";
+import { terminalLifecycle } from "../ops/bm-runtime/terminal-state.mjs";
+import { validateDutyResult, openAgentRound, recordDutyResult } from "../server/board-agent-rounds.js";
+
+const id = `agent_fixture_${randomUUID()}`, token = randomUUID();
+const board = "board_pf_terminal";
+try {
+  await migrateDatabase();
+  await query("INSERT INTO board_agent_credentials(id,token_hash,actor,board_ids,expires_at) VALUES($1,$2,$1,$3::jsonb,now()+interval '1 hour')", [id, createHash("sha256").update(token).digest("hex"), JSON.stringify([board])]);
+  await assert.rejects(taskCreate({boardId:"board_tasknode_fixes",accountId:id,wallet:"rFixture",need:"Fixture task",assigneeHandle:"ineligible-fixture"}), {status:422});
+  const user = await executeBoardAgentCommand({token,payload:{requestKey:"user-scope",argv:["user",id]}});
+  assert.deepEqual(user.result.history_scope.board_ids,[board]);
+  assert.equal(user.result.history_scope.includes_legacy_boards,false);
+  const input = { token, payload: { requestKey: "immutable", argv: ["journal", board, "--text", "A fixture journal entry, never proof of completed work."] } };
+  const responses = await Promise.all(Array.from({ length: 10 }, () => executeBoardAgentCommand(input)));
+  assert.equal(responses.filter((row) => !row.replayed).length, 1);
+  assert.equal((await query("SELECT count(*)::int n FROM bm_audit_log WHERE actor=$1", [id])).rows[0].n, 1);
+  await assert.rejects(executeBoardAgentCommand({ token, payload: { ...input.payload, argv: ["journal", "capital", "--text", "Changed intent must be rejected."] } }), { status: 409 });
+  await assert.rejects(executeBoardAgentCommand({ token, payload: { requestKey: "scope", argv: ["board", "capital"] } }), { status: 403 });
+  await assert.rejects(executeBoardAgentCommand({ token: "x".repeat(40), payload: input.payload }), { status: 401 });
+  await assert.rejects(executeBoardAgentCommand({ token, payload: { requestKey: "rollback", argv: ["fixture"] } }, { dispatch: async () => {
+    await transaction(async () => journalAppend({ boardId: board, text: "This nested domain write must roll back with the receipt." }));
+    throw new Error("simulated_crash_before_receipt_commit");
+  } }), { message: "simulated_crash_before_receipt_commit" });
+  assert.equal((await query("SELECT count(*)::int n FROM bm_audit_log WHERE actor=$1", [id])).rows[0].n, 1);
+  assert.equal((await query("SELECT 1 FROM board_agent_commands WHERE credential_id=$1 AND request_key='rollback'", [id])).rowCount, 0);
+  const duties = [{ type: "routing_due", board_id: board, task_id: "" }, { type: "review_due", board_id: board, task_id: "fixture_task" }];
+  const computeDuties = async () => ({ duties });
+  const scoped = (key, dispatch) => executeBoardAgentCommand({ token, payload: { requestKey: key, argv: ["fixture", key] } }, { dispatch });
+  const opened = await scoped("open-round", () => openAgentRound([board], { computeDuties }));
+  const round = opened.result;
+  assert.equal(round.state, "pending");
+  assert.equal((await scoped("resume-round", () => openAgentRound([board], { computeDuties }))).result.id, round.id);
+  const outcome = { roundId: round.id, dutyId: round.duties_json[0].id, outcome: "completed", reason: "A journal was written, but no actual assignment exists." };
+  await assert.rejects(scoped("false-completion", () => recordDutyResult(outcome, { computeDuties })), { status: 409 });
+  const partial = await scoped("partial-round", () => recordDutyResult({ ...outcome, outcome: "blocked", reason: "Fixture contributor lacks the required artifact; no assignment was made." }, { computeDuties }));
+  assert.equal(partial.result.state, "pending");
+  assert.equal(Object.keys(partial.result.results_json).length, 1);
+  const finished = await scoped("finish-round", () => recordDutyResult({ ...outcome, dutyId: round.duties_json[1].id, reason: "The fixture task is no longer awaiting review in durable state." }, { computeDuties: async () => ({ duties: [duties[0]] }) }));
+  assert.equal(finished.result.state, "complete");
+  assert.equal(finished.result.results_json[outcome.dutyId].outcome, "blocked");
+  assert.equal((await scoped("quiet-backoff", () => openAgentRound([board], { computeDuties }))).result.state, "backoff");
+  const registry = readAgentRegistry();
+  assert.equal(registry.agents.length, 1); assert.equal(new Set(registry.agents.flatMap((agent) => agent.boards)).size, 6);
+  const event = (type, turn_id) => ({ type: "event_msg", payload: { type, turn_id } });
+  assert.equal(terminalLifecycle([event("task_started", "one"), event("agent_message"), event("task_complete", "other")]).state, "busy");
+  assert.equal(terminalLifecycle([event("task_started", "one"), event("task_complete", "one")]).state, "idle");
+  assert.equal(terminalLifecycle([event("agent_message")]).state, "unknown");
+  assert.throws(() => validateDutyResult({ duties_json: [{ id: "d1" }] }, { dutyId: "d2", outcome: "completed", reason: "Journal activity happened" }));
+  assert.throws(() => validateDutyResult({ duties_json: [{ id: "d1" }] }, { dutyId: "d1", outcome: "completed", reason: "" }));
+  console.log(JSON.stringify({ ok: true, concurrentRetries: 10, scopedDenial: true, nestedRollback: true, boards: 6, structuredReadiness: true }));
+} finally {
+  await query("DELETE FROM bm_audit_log WHERE actor=$1", [id]);
+  await query("DELETE FROM board_agent_rounds WHERE actor=$1", [id]);
+  await query("DELETE FROM board_agent_commands WHERE credential_id=$1", [id]);
+  await query("DELETE FROM board_agent_credentials WHERE id=$1", [id]);
+  await closePool();
+}

@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "database": "tasknode_hive_20260906 (disposable, now removed)",
+  "relay": "local WebSocket fixture",
+  "checks": [
+    "actual signed message route",
+    "cross-account rejection",
+    "forged signature rejection including cached verification symbols",
+    "wrong room rejection",
+    "public feed and owner-only pending messages",
+    "relay ACK before delivered state",
+    "late delivery gets a fresh bot sequence",
+    "same-event retries are idempotent",
+    "ten bot claims produce one lease",
+    "no per-message or idle-room model call",
+    "unknown and revoked Nostr identities rejected",
+    "public-only bot context",
+    "Flash decision and GLM reply model overrides",
+    "scoped Kimi inbox and forbidden-board denial",
+    "reply and escalation closure transaction rollback",
+    "five concurrent command retries produce one public reply",
+    "duty completion requires closed inbox",
+    "fast relay ACK keeps slower replication alive",
+    "malformed relay frames ignored",
+    "board-agent existing command and round regressions"
+  ],
+  "browser": "See browser-results.json and production-browser.json",
+  "liveModels": "See model-evaluation.json"
+}

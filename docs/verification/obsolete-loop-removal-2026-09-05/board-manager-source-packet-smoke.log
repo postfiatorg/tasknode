@@ -1,0 +1,5 @@
+
+> tasknode@0.1.0 board-manager-source-packet-smoke
+> node scripts/board-manager-source-packet-smoke.mjs
+
+board manager source packet smoke ok

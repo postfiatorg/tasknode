@@ -5,7 +5,7 @@
 
 .htp-header {
   align-items: center;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--tn-dark-surface, rgba(255, 255, 255, 0.92));
   backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--hive-border);
   display: flex;
@@ -39,7 +39,7 @@
 
 .htp-close {
   align-items: center;
-  background: #fff;
+  background: var(--tn-dark-surface, #fff);
   border: 1px solid var(--hive-border);
   border-radius: 7px;
   color: var(--hive-muted);
@@ -143,9 +143,9 @@
 }
 
 .htp-step.is-current .htp-step-dot {
-  background: #fff;
+  background: var(--tn-dark-surface, #fff);
   border-color: var(--hive-ink);
-  box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.12);
+  box-shadow: 0 0 0 3px var(--tn-dark-shadow, rgba(26, 26, 26, 0.12));
 }
 
 .htp-step.is-current .htp-step-label {
@@ -379,7 +379,7 @@
 }
 
 .htp-review-artifacts code {
-  background: rgba(44, 37, 29, 0.04);
+  background: var(--tn-dark-overlay, rgba(44, 37, 29, 0.04));
   border: 1px solid var(--hive-border);
   border-radius: 6px;
   color: var(--hive-muted);
@@ -389,7 +389,7 @@
 
 .htp-review-outcome {
   background: var(--hive-green-soft);
-  border: 1px solid rgba(91, 138, 85, 0.25);
+  border: 1px solid var(--tn-dark-border, rgba(91, 138, 85, 0.25));
   border-radius: 11px;
   padding: 12px;
 }
@@ -410,8 +410,8 @@
 }
 
 .htp-proof-card {
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(91, 138, 85, 0.22);
+  background: var(--tn-dark-surface, rgba(255, 255, 255, 0.62));
+  border: 1px solid var(--tn-dark-border, rgba(91, 138, 85, 0.22));
   border-radius: 9px;
   display: grid;
   gap: 7px;
@@ -444,7 +444,7 @@
 .htp-proof-card button,
 .htp-proof-card a {
   align-items: center;
-  background: #fff;
+  background: var(--tn-dark-surface, #fff);
   border: 1px solid var(--hive-border);
   border-radius: 999px;
   color: var(--hive-ink);
@@ -535,7 +535,7 @@
 }
 
 .htp-tl-meta code {
-  background: #fbfaf6;
+  background: var(--tn-dark-bg, #fbfaf6);
   border: 1px solid var(--hive-border);
   border-radius: 5px;
   color: var(--hive-muted);

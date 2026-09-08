@@ -1,6 +1,8 @@
 # Model-default inventory and upgrade matrix
 
-> **Historical baseline — superseded 2026-08-12.** This page records the provider/model state at commit `57f3eac` and must not be used as the current runtime map. The completed system uses Ambient for all inference, exposes only Instant, Thinking, and Help, and retains OpenAI only as the isolated Profile NFT image renderer. See [AI Providers](#docs/ai-providers) and [Ambient Inference Cutover Plan](#docs/ambient-inference-cutover-plan).
+> September 5, 2026 retirement: Kimi K3 is the production task manager. The GLM Hive selector, legacy Board Manager launchers, experimental project planner, and disabled accounting harvester described below have been deleted. This inventory records earlier states; use [board management](board-manager.md) for current ownership.
+
+> **Historical baseline — superseded.** This page records provider/model state at commit `57f3eac` and is not the current runtime map. As of September 5, 2026, shared Task Node inference uses Vercel first and Ambient backup. See [AI providers](ai-providers.md) for current models and the separate Kimi/NFT service boundaries. The historical recommendations below are not current upgrade instructions.
 
 **Baseline:** `57f3eace716895b3cdc0e998c20d87375d333cd4` (`57f3eac`).  Every source reference below is against that commit.  This is an inventory and proposal document only; it makes no runtime change and records no credential value.
 

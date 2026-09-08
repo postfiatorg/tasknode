@@ -1,3 +1,4 @@
+import { extractHttpLinks } from "../inference-text.js";
 import { createHash } from "node:crypto";
 
 import { databaseEnabled, query } from "../db/pool.js";
@@ -49,12 +50,7 @@ function artifactDigest(value = "") {
   return text ? `sha256:${sha256(text)}` : "";
 }
 
-function extractUrls(text = "") {
-  return [...String(text || "").matchAll(/https?:\/\/[^\s<>"')\]]+/gi)]
-    .map((match) => safeText(match[0].replace(/[.,;:!?]+$/g, ""), 1000))
-    .filter(Boolean)
-    .slice(0, 12);
-}
+const extractUrls = (text = "") => extractHttpLinks(text).slice(0,12);
 
 function parseUrl(value = "") {
   try {

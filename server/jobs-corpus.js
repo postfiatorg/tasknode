@@ -1,3 +1,4 @@
+import { markdownHeading, limitNewlines } from "./inference-text.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { databaseEnabled, databaseStatus, query, transaction } from "./db/pool.js";
@@ -41,21 +42,14 @@ function safeText(value = "", max = 500) {
   return String(value || "").trim().slice(0, max);
 }
 
-function cleanText(value = "") {
-  return String(value || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\t/g, " ")
-    .replace(/[ \u00a0]+\n/g, "\n")
-    .replace(/\n{4,}/g, "\n\n\n")
-    .trim();
-}
+function cleanText(value = "") { return limitNewlines(String(value || "").split("\r\n").join("\n").split("\t").join(" ").split("\n").map((line) => line.trimEnd()).join("\n"), 3).trim(); }
 
 function titleFromParagraph(paragraph = "", fallback = "") {
-  const heading = paragraph.match(/^#{1,6}\s+(.+)$/m)?.[1];
-  if (heading) return safeText(heading.replace(/[*_`]/g, ""), 160);
-  const firstLine = paragraph.split("\n").find((line) => line.trim()) || fallback;
-  return safeText(firstLine.replace(/^[>#*\-\s]+/, "").replace(/[*_`]/g, ""), 160);
-}
+   const heading = paragraph.split("\n").map(markdownHeading).find(Boolean);
+   let title = heading || paragraph.split("\n").find((line) => line.trim()) || fallback;
+   while (title && (">#*-".includes(title[0]) || title[0].trim() === "")) title = title.slice(1);
+   return safeText([...title].filter((char) => !"*_`".includes(char)).join(""), 160);
+ }
 
 function chunkLongParagraph(text = "", { title = "", packetLabel = "" } = {}) {
   const chunks = [];
@@ -80,7 +74,7 @@ export function chunkJobsCorpus(raw = "") {
   const normalized = cleanText(raw);
   if (!normalized) return [];
 
-  const paragraphs = normalized.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  const paragraphs = normalized.split("\n\n").map((part) => part.trim()).filter(Boolean);
   const chunks = [];
   let currentTitle = "Jobs corpus";
   let currentPacket = "Jobs corpus";
@@ -99,7 +93,7 @@ export function chunkJobsCorpus(raw = "") {
   }
 
   for (const paragraph of paragraphs) {
-    const heading = paragraph.match(/^#{1,6}\s+(.+)$/m);
+    const heading = paragraph.split("\n").map(markdownHeading).find(Boolean);
     if (heading) {
       flush();
       currentTitle = titleFromParagraph(paragraph, currentTitle);
@@ -446,7 +440,7 @@ export function jobsRetrievalEstimateText() {
 
 export function buildJobsRetrievalQuery({ message = "", contextDocument = null, memoryContext = null, taskContext = null } = {}) {
   const parts = [`User message:\n${safeText(message, 1200)}`];
-  if (contextDocument?.body) parts.push(`Context document:\n${safeText(contextDocument.body.replace(/<[^>]*>/g, " "), 2200)}`);
+  if (contextDocument?.body) parts.push(`Context document:\n${safeText(contextDocument.body, 2200)}`);
   const deep = Array.isArray(memoryContext?.deepMemories) ? memoryContext.deepMemories : [];
   const recent = Array.isArray(memoryContext?.memories) ? memoryContext.memories : [];
   const memoryLines = [...deep, ...recent].map((entry) => entry.memoryText || entry.userRequestSummary || "").filter(Boolean);

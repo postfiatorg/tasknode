@@ -1,3 +1,5 @@
+import { DOMParser } from "@xmldom/xmldom";
+import { isAsciiDigit } from "./inference-text.js";
 import { gunzipSync, unzipSync } from "fflate";
 import { fileURLToPath } from "node:url";
 
@@ -19,25 +21,18 @@ const textExtensions = new Set([
 ]);
 
 function cleanText(value = "", max = MAX_EXTRACTED_TEXT_CHARS) {
-  const normalized = String(value || "")
-    .replaceAll("\u0000", "")
-    .replace(/\r\n?/g, "\n")
-    .trim();
-  if (normalized.length <= max) return normalized;
-  return `${normalized.slice(0, max)}\n[system_note: extracted_text_truncated]`;
-}
+   const normalized = String(value || "").split("\u0000").join("").split("\r\n").join("\n").split("\r").join("\n").trim();
+   return normalized.length <= max ? normalized : normalized.slice(0, max) + "\n[system_note: extracted_text_truncated]";
+ }
 
 function extensionFor(name = "") {
-  const normalized = String(name || "").trim().toLowerCase().split(/[?#]/, 1)[0];
-  const base = normalized.split("/").at(-1) || "";
-  if (base === "dockerfile") return "dockerfile";
-  const dot = base.lastIndexOf(".");
-  return dot >= 0 ? base.slice(dot + 1) : "";
-}
+   const normalized = String(name || "").trim().toLowerCase().split("?", 1)[0].split("#", 1)[0];
+   const base = normalized.split("/").at(-1) || "";
+   if (base === "dockerfile") return "dockerfile";
+   const dot = base.lastIndexOf("."); return dot >= 0 ? base.slice(dot + 1) : "";
+ }
 
-function withoutExtension(name = "") {
-  return String(name || "").replace(/\.[^.]+$/, "");
-}
+function withoutExtension(name = "") { const text = String(name || ""); const dot = text.lastIndexOf("."); return dot >= 0 ? text.slice(0, dot) : text; }
 
 function isTextFile(name = "", mimeType = "") {
   const normalizedMime = String(mimeType || "").toLowerCase().split(";", 1)[0];
@@ -46,27 +41,20 @@ function isTextFile(name = "", mimeType = "") {
     textExtensions.has(extensionFor(name));
 }
 
-function decodeXmlEntities(value = "") {
-  return String(value || "")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&apos;/gi, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_match, decimal) => String.fromCodePoint(Number.parseInt(decimal, 10)))
-    .replace(/&amp;/gi, "&");
-}
+
 
 function textFromWordXml(xml = "") {
-  const withLayout = String(xml || "")
-    .replace(/<w:tab\b[^>]*\/?\s*>/gi, "\t")
-    .replace(/<w:(?:br|cr)\b[^>]*\/?\s*>/gi, "\n")
-    .replace(/<\/w:(?:p|tr)>/gi, "\n");
-  const parts = [...withLayout.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/gi)]
-    .map((match) => decodeXmlEntities(match[1]));
-  if (parts.length) return cleanText(parts.join(" ").replace(/\s+\n/g, "\n").replace(/\n\s+/g, "\n"));
-  return "";
-}
+   if (String(xml).toUpperCase().includes("<!DOCTYPE")) throw new Error("evidence_docx_doctype_unsupported");
+   const document = new DOMParser({ onError: () => { throw new Error("evidence_docx_invalid_xml"); } }).parseFromString(String(xml), "application/xml");
+   const parts = [];
+   const stack = [document.documentElement];
+   while (stack.length) {
+     const node = stack.pop(); if (!node) continue;
+     if (node.localName === "t" && (node.prefix === "w" || node.namespaceURI === "http://schemas.openxmlformats.org/wordprocessingml/2006/main")) { parts.push(node.textContent); continue; }
+     for (let index = node.childNodes.length - 1; index >= 0; index -= 1) stack.push(node.childNodes[index]);
+   }
+   return cleanText(parts.join(" "));
+ }
 
 function zipEntries(buffer, filter) {
   let selectedEntries = 0;
@@ -93,10 +81,13 @@ function zipEntries(buffer, filter) {
 }
 
 function extractDocx(buffer) {
-  const { output } = zipEntries(buffer, (name) => (
-    /^word\/(?:document|footnotes|endnotes|comments|header\d+|footer\d+)\.xml$/i.test(name) ||
-    /^word\/media\/[^/]+\.(?:png|jpe?g|webp|gif)$/i.test(name)
-  ));
+  const { output } = zipEntries(buffer, (name) => {
+    const normalized = name.toLowerCase();
+    if (normalized.startsWith("word/media/") && normalized.split("/").length === 3) return ["png", "jpg", "jpeg", "webp", "gif"].includes(extensionFor(normalized));
+    if (!normalized.startsWith("word/") || normalized.split("/").length !== 2 || !normalized.endsWith(".xml")) return false;
+    const stem = normalized.slice(5, -4);
+    return ["document", "footnotes", "endnotes", "comments"].includes(stem) || ["header", "footer"].some((prefix) => stem.startsWith(prefix) && stem.length > prefix.length && [...stem.slice(prefix.length)].every(isAsciiDigit));
+  });
   const names = Object.keys(output).sort((left, right) => {
     if (left === "word/document.xml") return -1;
     if (right === "word/document.xml") return 1;
@@ -109,7 +100,7 @@ function extractDocx(buffer) {
     text: cleanText(sections.join("\n\n")),
     parser: "docx_ooxml",
     metadata: { section_count: sections.length },
-    images: names.filter((name) => /^word\/media\//i.test(name)).slice(0, MAX_EMBEDDED_IMAGES).map((name) => ({
+    images: names.filter((name) => name.toLowerCase().startsWith("word/media/")).slice(0, MAX_EMBEDDED_IMAGES).map((name) => ({
       name,
       mimeType: name.toLowerCase().endsWith(".png") ? "image/png" : name.toLowerCase().endsWith(".webp") ? "image/webp" : name.toLowerCase().endsWith(".gif") ? "image/gif" : "image/jpeg",
       buffer: Buffer.from(output[name]),
@@ -155,7 +146,7 @@ function parseTarString(bytes) {
 }
 
 function parseTarSize(bytes) {
-  const value = parseTarString(bytes).replace(/^0+/, "") || "0";
+  const value = parseTarString(bytes) || "0";
   const size = Number.parseInt(value, 8);
   return Number.isFinite(size) && size >= 0 ? size : 0;
 }
@@ -231,7 +222,7 @@ async function extractPdf(buffer) {
       const pageText = content.items
         .map((item) => `${String(item?.str || "")}${item?.hasEOL ? "\n" : " "}`)
         .join("")
-        .replace(/[ \t]+\n/g, "\n")
+        .split("\n").map((line) => line.trimEnd()).join("\n")
         .trim();
       if (pageText) pages.push(`[Page ${index}]\n${pageText}`);
       if (index <= MAX_VISUAL_PAGES) {

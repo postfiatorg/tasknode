@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "title": "The Fist That Falls Once",
+  "checks": [
+    "Actual private NFT tile displays model title",
+    "Artwork alt text uses title",
+    "Actual public profile gallery displays the same title"
+  ]
+}

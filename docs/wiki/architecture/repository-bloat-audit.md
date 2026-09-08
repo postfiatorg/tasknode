@@ -1,5 +1,7 @@
 # Repository bloat audit (report-only)
 
+> September 5, 2026 retirement: Kimi K3 is the production task manager. The GLM Hive selector, legacy Board Manager launchers, experimental project planner, and disabled accounting harvester described below have been deleted. This inventory records earlier states; use [board management](board-manager.md) for current ownership.
+
 > **Historical audit — superseded for provider routing.** Provider statements below describe the 2026-07-14 repository baseline and release v561, not the current runtime. OpenRouter, direct DeepSeek, and general OpenAI inference were retired by the Ambient cutover on 2026-08-12. Preserve the rows as dated removal evidence; use [AI Providers](#docs/ai-providers) for current egress.
 
 **Date:** 2026-07-14 (final reconciliation)
