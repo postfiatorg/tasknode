@@ -295,6 +295,7 @@
     "wallet-challenge-replay-regression": "node scripts/wallet-challenge-replay-regression.mjs",
     "wallet-vault-durability-smoke": "node scripts/wallet-vault-durability-smoke.mjs",
     "wallet-unlocked-session-smoke": "node scripts/wallet-unlocked-session-smoke.mjs",
+    "wallet-relock-reload-smoke": "node scripts/wallet-relock-reload-smoke.mjs",
     "verified-seed-backup-smoke": "node scripts/verified-seed-backup-smoke.mjs",
     "url-evidence-extraction-smoke": "node scripts/url-evidence-extraction-smoke.mjs",
     "task-evidence-file-processing-smoke": "node --no-warnings --loader ./scripts/esm-extension-loader.mjs scripts/task-evidence-file-processing-smoke.mjs",

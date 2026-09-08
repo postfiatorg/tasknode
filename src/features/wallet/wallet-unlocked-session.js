@@ -221,6 +221,12 @@ export function createUnlockedWalletSessionStore({
     }
     storage.removeItem(LAST_ACTIVE_KEY);
     keys.clear?.();
+    // Drop the cached key handle too: keys.clear() wiped the AES key from
+    // storage, so the next unlock must regenerate AND re-persist it. Leaving
+    // keyPromise set would re-encrypt the new envelope with a key that no
+    // longer exists in storage, and the next reload would fail to decrypt and
+    // force a full seed re-entry (the regression this module fixes).
+    keyPromise = null;
     return true;
   }
 
