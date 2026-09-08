@@ -153,13 +153,15 @@ export function approvalRecordsFromNetworkBadgeProjection({
   projection = {},
   verifiedByAccountId = "",
   verifiedByOperator = "runtime_projection_refresh",
+  selectedDefaultBadgeId = "",
 } = {}) {
   const accountId = safeText(projection.accountId, 180);
   const badges = safeArray(projection.verifiedBadges)
     .filter((badge) => networkBadgeDefinitions[safeText(badge.badgeId, 80)]);
+  const preservedDefaultBadgeId = safeText(selectedDefaultBadgeId, 80);
   const identityApprovals = [];
   const accountBadges = [];
-  badges.forEach((badge, index) => {
+  badges.forEach((badge) => {
     const badgeId = safeText(badge.badgeId, 80);
     const provider = approvalProviderForBadge(badgeId);
     const approvalScope = `badge:${badgeId}`;
@@ -194,7 +196,11 @@ export function approvalRecordsFromNetworkBadgeProjection({
       badgeId,
       status: "verified",
       publicVisible: true,
-      selectedDefault: index === 0,
+      // Keep the account's existing selection; only a first-ever materialization
+      // picks a default, and then the first badge that actually materialized.
+      selectedDefault: preservedDefaultBadgeId
+        ? badgeId === preservedDefaultBadgeId
+        : accountBadges.length === 0,
       verifiedByAccountId: safeText(verifiedByAccountId, 180),
       verifiedByOperator: safeText(verifiedByOperator, 120),
       evidenceTaskId: "",
@@ -709,12 +715,34 @@ export async function refreshIdentityApprovalsFromProjection({
     walletAddress,
     preferDurable: false,
   });
-  const materialized = approvalRecordsFromNetworkBadgeProjection({
-    projection,
-    verifiedByAccountId,
-    verifiedByOperator,
-  });
-  await transaction(async (client) => {
+  const projectedBadgeIds = safeArray(projection.verifiedBadges)
+    .map((badge) => safeText(badge?.badgeId, 80))
+    .filter(Boolean);
+  const result = await transaction(async (client) => {
+    const existingDefault = await client.query(
+      `
+        SELECT badge_id
+        FROM account_network_badges
+        WHERE account_id = $1
+          AND selected_default = true
+          AND status = 'verified'
+          AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at > now())
+          AND (
+            badge_id = ANY($2::text[])
+            OR COALESCE(evidence_json->>'source', '') <> 'runtime_projection_refresh'
+          )
+        ORDER BY updated_at DESC, badge_id ASC
+        LIMIT 1
+      `,
+      [normalizedAccountId, projectedBadgeIds]
+    );
+    const materialized = approvalRecordsFromNetworkBadgeProjection({
+      projection,
+      verifiedByAccountId,
+      verifiedByOperator,
+      selectedDefaultBadgeId: safeText(existingDefault.rows[0]?.badge_id, 80),
+    });
     for (const approval of materialized.identityApprovals) {
       await client.query(
         `
@@ -859,12 +887,13 @@ export async function refreshIdentityApprovalsFromProjection({
       `,
       [normalizedAccountId, materialized.badgeIds.map((badgeId) => `badge:${badgeId}`)]
     );
+    return materialized;
   });
 
   return {
     ok: true,
     projection,
-    materialized,
+    materialized: result,
     state: await getIdentityApprovalState({ accountId: normalizedAccountId }),
   };
 }
