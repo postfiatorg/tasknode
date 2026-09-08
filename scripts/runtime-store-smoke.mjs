@@ -85,20 +85,20 @@ try {
   } = await import("../src/wallet-core.js");
   const { appState } = await import("../server/app-state.js");
 
-  if (modelForMode("Instant") !== "deepseek/deepseek-v4-flash-0731") {
-    throw new Error("Instant must default to Ambient DeepSeek V4 Flash 7/31.");
+  if (modelForMode("Instant") !== "zai/glm-5.3-flash") {
+    throw new Error("Instant must default to GLM 5.3 Flash.");
   }
-  if (modelForMode("Thinking") !== "z-ai/glm-5.2") {
-    throw new Error("Thinking must default to Ambient GLM 5.2.");
+  if (modelForMode("Thinking") !== "zai/glm-5.3") {
+    throw new Error("Thinking must default to GLM 5.3.");
   }
   if (modelForMode("Help") !== "deepseek/deepseek-v4-flash-0731") {
-    throw new Error("Help must default to Ambient DeepSeek V4 Flash 7/31.");
+    throw new Error("Help must default to the configured fast-text model.");
   }
   if (!chatExecutionStatus("Instant").enabled || !chatExecutionStatus("Thinking").enabled) {
-    throw new Error("Canonical Ambient chat modes should be enabled when Ambient is configured.");
+    throw new Error("Canonical chat modes should remain enabled when the Ambient backup is configured.");
   }
   const canonicalModeLabels = chatModes().map((mode) => mode.label);
-  if (canonicalModeLabels.join(",") !== "Instant,Thinking,Help") {
+  if (canonicalModeLabels.join(",") !== "Instant,Thinking,GPT-6 Astra,Kimi K3,Help") {
     throw new Error(`Only canonical chat modes should be exposed: ${canonicalModeLabels.join(", ")}`);
   }
 

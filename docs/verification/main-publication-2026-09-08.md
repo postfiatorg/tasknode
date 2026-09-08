@@ -66,3 +66,10 @@ continues to reject the web image proxy itself. The independent secret scanner
 matched the JSON property name `visionBackupAvailability`, not a credential.
 That exact finding was reviewed in the provenance manifest. The branch retains
 its linear commits so the commit-specific review remains attributable.
+
+The remaining integration fixture still expected the pre-migration chat model
+catalogue. Its independent expected values now match the shipped GLM 5.3 Flash,
+GLM 5.3, Astra, Kimi and Help choices. The isolated local replay passed all
+repository, unit and integration checks through the browser launch; the first
+local browser attempt could not open its debug endpoint and is not claimed as
+a pass. GitHub repeats the complete check on the corrected source.
