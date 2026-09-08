@@ -10,6 +10,13 @@ import { signatureRecord, taskTransitionSignatureRequired } from "./task-transit
 
 const DIRECT_WRITE_SOURCE = "direct_write";
 
+// Stop-action transitions carry no client-authored economic content: accept/refuse/
+// cancel are NOT in eventSchemaForTransition's fixed list, so pre-guard the client
+// dictated event_type, event id, source refs and payload task_id via offchainPayload
+// (server/request-body-contracts.js allows offchainPayload/txHash/cid). For these the
+// event is derived solely from the transition and the authoritative task.
+const SERVER_DERIVED_TRANSITIONS = new Set(["accepted", "refused", "cancelled"]);
+
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
 }
@@ -269,25 +276,40 @@ export function offchainTaskEventPayload({
     providedPayload: rawProvidedPayload,
     transition,
   });
-  const schema = eventSchemaForTransition(transition, providedPayload);
-  const eventId = safeText(providedPayload.event_id || providedPayload.eventId, 180) || `task_evt_${randomUUID()}`;
+  const serverDerived = SERVER_DERIVED_TRANSITIONS.has(safeText(transition, 80));
+  const schema = serverDerived
+    ? "pf.task.update.v1"
+    : eventSchemaForTransition(transition, providedPayload);
+  const eventId = serverDerived
+    ? `task_evt_${randomUUID()}`
+    : safeText(providedPayload.event_id || providedPayload.eventId, 180) || `task_evt_${randomUUID()}`;
   const recordedAt = nowIso();
   const eventPayload = {
     ...providedPayload,
     event_id: eventId,
     schema,
-    task_id: safeText(providedPayload.task_id || providedPayload.taskId || task.task_id, 180),
+    task_id: serverDerived
+      ? safeText(task.task_id, 180)
+      : safeText(providedPayload.task_id || providedPayload.taskId || task.task_id, 180),
     account_id: safeText(accountId, 180),
     wallet_address: safeText(walletAddress, 180),
     transition,
     previous_status: safeText(task.status, 80),
     request_id: safeText(task.request_id, 180),
-    cid: safeText(payload?.cid || payload?.eventCid || payload?.event_cid || providedPayload.cid, 240),
+    cid: serverDerived
+      ? sourceRefForEvent(eventId)
+      : safeText(payload?.cid || payload?.eventCid || payload?.event_cid || providedPayload.cid, 240),
     evidence_sha256:
       safeText(payload?.evidenceSha256 || payload?.evidence_sha256 || providedPayload.evidence_sha256, 180),
     recorded_at: recordedAt,
     metadata: safeObject(metadata),
   };
+  if (serverDerived) {
+    // A stop action never carries economic content; drop any client-injected reward.
+    delete eventPayload.economic_reward_pft;
+    delete eventPayload.reward_pft;
+    delete eventPayload.verdict;
+  }
   const payloadDigest = sha256(JSON.stringify(eventPayload));
   const signatureJson = signatureRecord({
     payload: eventPayload,
@@ -297,8 +319,12 @@ export function offchainTaskEventPayload({
   const result = {
     eventId,
     schema,
-    sourceTxHash: txRefForEvent(eventId, payload, providedPayload),
-    sourceCid: cidRefForEvent(eventId, payload, providedPayload, eventPayload),
+    sourceTxHash: serverDerived
+      ? `offchain:${eventId}`
+      : txRefForEvent(eventId, payload, providedPayload),
+    sourceCid: serverDerived
+      ? sourceRefForEvent(eventId)
+      : cidRefForEvent(eventId, payload, providedPayload, eventPayload),
     eventDigest: payloadDigest,
     payloadJson: eventPayload,
     signatureJson,
