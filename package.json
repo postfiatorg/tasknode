@@ -299,6 +299,7 @@
     "url-evidence-extraction-smoke": "node scripts/url-evidence-extraction-smoke.mjs",
     "task-evidence-file-processing-smoke": "node --no-warnings --loader ./scripts/esm-extension-loader.mjs scripts/task-evidence-file-processing-smoke.mjs",
     "route-smoke": "node scripts/route-smoke.mjs",
+    "double-slash-request-smoke": "node scripts/double-slash-request-smoke.mjs",
     "chat-attachment-smoke": "node scripts/chat-attachment-smoke.mjs",
     "chat-context-status-smoke": "node scripts/chat-context-status-smoke.mjs",
     "chat-auth-loading-state-smoke": "node scripts/chat-auth-loading-state-smoke.mjs",
