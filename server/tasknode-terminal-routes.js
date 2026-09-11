@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { appearancePageHead } from "./appearance-page.js";
 import { handleCampaignTrackerRoute } from "./campaign-tracker-routes.js";
+import { handleCollaborationRoute } from "./collaboration-routes.js";
 import { authStart, chatModes, chatSend, chatStreamStart } from "./product-contracts.js";
 import { executeChatStream, logChatProviderError } from "./chat-router.js";
 import { startChatStreamHeartbeat } from "./chat-stream-heartbeat.js";
@@ -477,6 +478,12 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
   }
   const session = resolved.session;
   if (await handleCampaignTrackerRoute({ json, readJson, req, res, url, session })) return true;
+
+  if (url.pathname === "/api/terminal/tasknode/team/context") {
+    const teamUrl = new URL(url);
+    teamUrl.pathname = "/api/team/context";
+    return handleCollaborationRoute({ json, readJson, req, res, url: teamUrl, session });
+  }
 
   if (url.pathname === "/api/terminal/tasknode/status") {
     const wallet = await linkedWalletForSession(session);
