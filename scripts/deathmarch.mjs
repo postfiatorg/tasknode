@@ -54,7 +54,12 @@ function clampInteger(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.trunc(parsed)));
 }
 
-function safeErrorCode(error) { return [...safeText(error?.code || error?.name || "deathmarch_error", 240)].map((char) => isIdentifierChar(char) || ".:".includes(char) ? char : "_").join(""); }
+function safeErrorCode(error) {
+  // Keep the bounded message: a bare "Error" hides Discord/inference failure
+  // detail such as discord_bot_error:429 from the poll log.
+  const detail = safeText(error?.code || error?.message || error?.name || "deathmarch_error", 240);
+  return [...detail].map((char) => isIdentifierChar(char) || ".:".includes(char) ? char : "_").join("");
+}
 
 async function fetchWithTimeout(fetchImpl, url, options = {}, timeoutMs, timeoutCode) {
   const controller = new AbortController();
