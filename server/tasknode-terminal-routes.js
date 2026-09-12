@@ -15,6 +15,7 @@ import {
   listTaskProjectionTasks,
 } from "./repositories/tasks.js";
 import { contextBodyText, contextLineCount } from "../shared/context-line-map.js";
+import { normalizeTaskSteps } from "../shared/task-steps.js";
 import { getOwnedTaskRequest, listTaskRequests } from "./repositories/task-requests.js";
 import {
   conversationIdForSession,
@@ -250,9 +251,7 @@ function terminalTaskBrief(detail = {}) {
   const due = cleanText(task.fullDue || task.due || "", 120);
   const dueLabel = cleanText(task.dueLabel || "Deadline", 80);
   const description = cleanText(task.description || "", 8000);
-  const steps = Array.isArray(task.steps)
-    ? task.steps.map((step) => cleanText(step, 1000)).filter(Boolean).slice(0, 8)
-    : [];
+  const steps = normalizeTaskSteps(task.steps, { clean: cleanText });
   const verification = terminalTaskVerification(task);
   const currentVerificationRequest = terminalCurrentVerificationRequest(detail);
   const sections = [
