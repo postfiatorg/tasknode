@@ -773,7 +773,19 @@ export async function postToDiscord({
     const text = await response.text().catch(() => "");
     throw new Error(`discord_bot_error:${response.status}:${safeText(text, 300)}`);
   }
-  return { ok: true, transport: "bot", channelId };
+  // Keep the Discord message id so posts can be audited per event.
+  const messageId = await discordMessageId(response);
+  return { ok: true, transport: "bot", channelId, ...(messageId ? { messageId } : {}) };
+}
+
+async function discordMessageId(response) {
+  if (typeof response?.json !== "function") return "";
+  try {
+    const body = await response.json();
+    return safeText(body?.id, 64);
+  } catch {
+    return "";
+  }
 }
 
 async function readState(statePath) {

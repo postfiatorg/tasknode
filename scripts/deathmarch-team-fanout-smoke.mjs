@@ -121,24 +121,28 @@ assert.equal(new Set(events.map((event) => event.eventKey)).size, events.length,
 const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "deathmarch-fanout-"));
 const statePath = path.join(tempDir, "state.json");
 const posted = [];
+const botEnv = { ...env, DEATHMARCH_DISCORD_WEBHOOK_URL: "", DISCORD_BOT_TOKEN: "test-token", DEATHMARCH_DISCORD_CHANNEL_ID: "123" };
 const fetchImpl = async (url, options) => {
   posted.push(JSON.parse(options.body).content);
-  return { ok: true, status: 204, text: async () => "" };
+  return { ok: true, status: 200, text: async () => "", json: async () => ({ id: `msg_${posted.length}` }) };
 };
-const first = await processDeathmarchEvents({ events, anonymity: 3, statePath, env, fetchImpl });
+const first = await processDeathmarchEvents({ events, anonymity: 3, statePath, env: botEnv, fetchImpl });
 assert.equal(first.posted, 4);
 assert.equal(first.failed, 0);
+assert.deepEqual(first.results.map((result) => result.discord.messageId), ["msg_1", "msg_2", "msg_3", "msg_4"], "Discord message ids are recorded per post");
+const persisted = JSON.parse(await fs.readFile(statePath, "utf8"));
+assert.equal(Object.values(persisted.seen).filter((entry) => entry.discord?.messageId).length, 4, "message ids persist in state");
 assert.equal(posted.filter((content) => content.startsWith("**@alphadev** · ")).length, 2);
 assert.equal(posted.filter((content) => content.startsWith("**@betadev** · ")).length, 1);
 assert.equal(posted.filter((content) => content.startsWith("**Evidence submitted**")).length, 1, "manager without configured handle keeps the legacy header");
-const second = await processDeathmarchEvents({ events, anonymity: 3, statePath, env, fetchImpl });
+const second = await processDeathmarchEvents({ events, anonymity: 3, statePath, env: botEnv, fetchImpl });
 assert.equal(second.posted, 0, "restart with persisted state must not double-post");
 assert.equal(posted.length, 4);
 const duplicateDelivery = await processDeathmarchEvents({
   events: [...events, ...events],
   anonymity: 3,
   statePath: path.join(tempDir, "dup.json"),
-  env,
+  env: botEnv,
   fetchImpl,
 });
 assert.equal(duplicateDelivery.posted, 4, "duplicate delivery inside one batch posts once per event");
