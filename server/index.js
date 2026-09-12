@@ -854,7 +854,17 @@ async function routeApi(req, url, res) {
 }
 
 const server = createServer((req, res) => {
-  const url = new URL(req.url, "http://tasknode.local");
+  let url;
+  try {
+    url = new URL(req.url, "http://tasknode.local");
+  } catch {
+    json(res, 400, {
+      ok: false,
+      error: "invalid_request_target",
+      message: "Malformed request URL.",
+    });
+    return;
+  }
 
   if (url.pathname === "/health" || url.pathname === "/api/health") {
     json(res, 200, {
