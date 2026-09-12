@@ -48,6 +48,10 @@ export DEATHMARCH_DATABASE_URL="$(
     '
 )"
 export DEATHMARCH_DISCORD_CHANNEL_ID="${DEATHMARCH_DISCORD_CHANNEL_ID:-${DEATHMARCH_CHANNEL_ID:-}}"
+# Team fan-out: the watched wallet's account is the manager; every account that
+# shares task history with it (direct reports / collaborators) is polled too and
+# attributed by public handle. DEATHMARCH_TEAM_FANOUT=false restores single-wallet.
+export DEATHMARCH_WALLET_HANDLE="${DEATHMARCH_WALLET_HANDLE:-goodalexander}"
 export DEATHMARCH_DATABASE_CONNECTION_TIMEOUT_MS="${DEATHMARCH_DATABASE_CONNECTION_TIMEOUT_MS:-15000}"
 export DEATHMARCH_DATABASE_QUERY_TIMEOUT_MS="${DEATHMARCH_DATABASE_QUERY_TIMEOUT_MS:-30000}"
 
