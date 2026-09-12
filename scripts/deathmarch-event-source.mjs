@@ -232,7 +232,15 @@ async function loadEventsFromWallet({
 }
 
 export function databaseRowsToDeathmarchEvents(rows = []) {
-  return safeArray(rows).map(normalizeEvent).filter(isDeathmarchTaskEvent);
+  return safeArray(rows).map((row) => {
+    // Direct-write submission / update / reward rows carry no title; the task
+    // projection does. Without it the summary can only echo the task id.
+    const title = safeText(row?.task_title, 240);
+    const payload = safeObject(row?.payload_json);
+    return title && !payload.title
+      ? normalizeEvent({ ...row, payload_json: { ...payload, title } })
+      : normalizeEvent(row);
+  }).filter(isDeathmarchTaskEvent);
 }
 
 async function loadEventsFromDatabase({
@@ -250,26 +258,28 @@ async function loadEventsFromDatabase({
   const result = await queryImpl(
     `SELECT *
        FROM (
-         SELECT event_type,
-                task_id,
-                account_id,
-                source_tx_hash,
-                source_cid,
-                occurred_at,
-                wallet_address,
-                payload_json,
-                pointer_json
-           FROM task_events
-          WHERE event_type = ANY($1::text[])
+         SELECT e.event_type,
+                e.task_id,
+                e.account_id,
+                e.source_tx_hash,
+                e.source_cid,
+                e.occurred_at,
+                e.wallet_address,
+                e.payload_json,
+                e.pointer_json,
+                p.title AS task_title
+           FROM task_events e
+           LEFT JOIN task_projections p ON p.task_id = e.task_id
+          WHERE e.event_type = ANY($1::text[])
             AND (
               ($2::text = '' AND $4::text = '')
-              OR wallet_address = $2
-              OR payload_json->>'wallet_address' = $2
-              OR payload_json->>'subject_wallet' = $2
-              OR payload_json->>'authority_wallet' = $2
-              OR ($4::text <> '' AND account_id = $4)
+              OR e.wallet_address = $2
+              OR e.payload_json->>'wallet_address' = $2
+              OR e.payload_json->>'subject_wallet' = $2
+              OR e.payload_json->>'authority_wallet' = $2
+              OR ($4::text <> '' AND e.account_id = $4)
             )
-          ORDER BY occurred_at DESC, created_at DESC
+          ORDER BY e.occurred_at DESC, e.created_at DESC
           LIMIT $3
        ) recent
       ORDER BY occurred_at ASC`,
