@@ -1,3 +1,4 @@
+import {corbanuXCallback} from "./corbanu-x-callback.js";
 import { createHash, randomBytes } from "node:crypto";
 import { githubCoreContributorAccess } from "./core-contributor-authorization.js";
 import {
@@ -793,6 +794,7 @@ function oauthStartResponse({ providerId, stateRow, linkingAccount, redirectUrl,
 }
 
 export async function oauthAuthCallback(providerId, query = {}, requestMeta = {}) {
+  if(providerId === "x") { const corbanu=corbanuXCallback(query); if(corbanu)return corbanu; }
   const providerItem = oauthProviderById(providerId);
   if (!providerItem) {
     return { status: 404, body: { ok: false, error: "unknown_auth_provider", provider: providerId, message: "Unknown auth provider." } };
