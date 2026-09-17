@@ -17,8 +17,8 @@
 // Keyless: TASKNODE_DATABASE_ENABLED=false and a mocked pg client. Drives the real
 // offchainTaskEventPayload / applyOffchainTaskTransitionWithClient. Runs the three
 // CONTRIBUTING-required negative classes (forged reward, forged submission event,
-// PK collision). FAILS on the unmodified tree; with the guard applied and
-// GUARD_APPLIED=1 (which gates the red-only exploit characterization) it PASSES.
+// PK collision). FAILS on the unmodified tree and PASSES with the guard applied.
+// CHARACTERIZE_UNGUARDED=1 opts into extra pre-fix diagnostic output.
 process.env.TASKNODE_DATABASE_ENABLED = "false";
 
 import assert from "node:assert/strict";
@@ -27,8 +27,8 @@ import {
   offchainTaskEventPayload,
 } from "../server/offchain-task-lifecycle.js";
 
-const GUARDED = ["1", "true", "yes", "on"].includes(
-  String(process.env.GUARD_APPLIED || "").trim().toLowerCase()
+const CHARACTERIZE_UNGUARDED = ["1", "true", "yes", "on"].includes(
+  String(process.env.CHARACTERIZE_UNGUARDED || "").trim().toLowerCase()
 );
 
 // Mocked pg client: captures every query + params, reports the projection moved.
@@ -96,8 +96,8 @@ const acceptEvent = offchainTaskEventPayload({
 });
 
 // Red-only characterization: on the unmodified tree, assert the exploit is real so
-// the report has a proven pre-guard baseline. Skipped once GUARD_APPLIED=1.
-if (!GUARDED) {
+// the report has a proven pre-guard baseline. Explicit opt-in; CI stays quiet.
+if (CHARACTERIZE_UNGUARDED) {
   const exploit = [];
   const seen = (label, fn) => {
     try {
