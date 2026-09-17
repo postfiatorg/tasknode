@@ -278,8 +278,8 @@ export async function gistApiExcerpt({ id, sourceUrl, fetchImpl, lookupFn }) {
       const included = allocations[index];
       return [
         `FILE: ${filename} | original_chars=${content.length} | included_chars=${included}`,
-        content.slice(0, included),
         included < content.length ? `[truncated omitted_chars=${content.length - included}]` : "",
+        content.slice(0, included),
       ].filter(Boolean).join("\n");
     });
     const excerpt = [
