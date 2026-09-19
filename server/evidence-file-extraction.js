@@ -146,9 +146,13 @@ function parseTarString(bytes) {
 }
 
 function parseTarSize(bytes) {
-  const value = parseTarString(bytes) || "0";
-  const size = Number.parseInt(value, 8);
-  return Number.isFinite(size) && size >= 0 ? size : 0;
+  const field = Buffer.from(bytes).toString("latin1");
+  const match = /^ *([0-7]+)[ \0]*$/.exec(field);
+  const size = match ? Number.parseInt(match[1], 8) : NaN;
+  if (!Number.isSafeInteger(size)) {
+    throw Object.assign(new Error("evidence_archive_invalid_tar_size"), { status: 422 });
+  }
+  return size;
 }
 
 function extractTarArchive(buffer) {
