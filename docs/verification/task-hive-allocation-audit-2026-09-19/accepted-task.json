@@ -1,0 +1,61 @@
+{
+  "ok": true,
+  "task": {
+    "taskId": "task_6e13951bd3e4973aa7ef7b892380fc32",
+    "title": "Audit Task Hive Allocator and Draft Repair-Backed Incident Report",
+    "statusKey": "accepted",
+    "steps": [
+      "Record the deployed revision and a dated observation window, then trace the production path in /home/pfrpc/repos/tasknode from contributor eligibility and available work through task generation, queueing, allocation, assignment persistence, and contributor visibility.",
+      "Inspect allocator scheduling, deployed configuration, workers, job claims, locks, retries, timeouts, stale state, and failure handling; reconcile counts of eligible contributors, pending requests, available tasks, allocator attempts, and delivered assignments, identifying longest-waiting contributors and explaining exclusions using real rules and recorded state.",
+      "Build isolated reproductions for concurrency, rejected or malformed generated tasks, transient provider failure, worker restart, stale claims, and retry exhaustion, and determine whether tasks can strand without a visible error or operator alert.",
+      "Write the audit report separating confirmed causes, plausible hypotheses, and missing evidence, with findings ranked by impact, a flow map, and a clear answer on whether allocation currently works and who remains affected.",
+      "Attach a prioritized repair plan where each fix has an observable success criterion and a rollback or recovery approach, plus monitoring recommendations exposing queue age, time since last successful allocation, rejection reasons, and silent stalls.",
+      "submission_requirement:"
+    ],
+    "submissionRequirement": {
+      "type": "mixed",
+      "criteria": "A sanitized audit report file with deployed revision, stated observation window, system flow map, and reconciliation counts across eligibility, pending work, allocator attempts, and delivered assignments. Include at least one reproducible failure case with exact commands and outcomes, findings separated into confirmed causes, hypotheses, and missing evidence, and a repair plan where each fix names an observable success criterion and rollback approach. No sensitive account details, balances, or credentials in the submitted artifact."
+    }
+  },
+  "canSubmitInitialEvidence": true,
+  "readiness": {
+    "model": "zai/glm-5.3-flash",
+    "version": "taskgen_readiness_v2",
+    "approved": true,
+    "provider": "vercel",
+    "stepReviews": [
+      {
+        "reason": "Concrete contributor action: record revision and observation window, then trace the production allocation path in the named repository through all named stages.",
+        "actionable": true,
+        "step_index": 1
+      },
+      {
+        "reason": "Specific inspection of allocator internals plus a count reconciliation with named quantities and required explanation of exclusions; clear and verifiable work.",
+        "actionable": true,
+        "step_index": 2
+      },
+      {
+        "reason": "Directs building isolated reproductions for six named failure modes and answering a specific diagnostic question about stranding without alerts.",
+        "actionable": true,
+        "step_index": 3
+      },
+      {
+        "reason": "Writing the audit report with a defined structure (confirmed causes vs. hypotheses vs. missing evidence), ranked findings, flow map, and a stated verdict; clear deliverable action.",
+        "actionable": true,
+        "step_index": 4
+      },
+      {
+        "reason": "Directs producing the repair plan with observable success criteria, rollback approach, and named monitoring signals; consistent with the report deliverable.",
+        "actionable": true,
+        "step_index": 5
+      },
+      {
+        "reason": "No additional steps were supplied beyond the five evaluated above.",
+        "actionable": true,
+        "step_index": 6
+      }
+    ],
+    "promptDigest": "46356b9b650a3c3aef7ef0b98bbb6b214771a7b01b7e0a7b4486889297fca57f",
+    "candidateDigest": "c2ae2075303f8e499033b6dd0af5e140ac537776a2c88d71976df7ec73330e13"
+  }
+}

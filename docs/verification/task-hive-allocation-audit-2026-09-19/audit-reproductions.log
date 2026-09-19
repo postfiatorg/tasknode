@@ -1,0 +1,34 @@
+{
+  "ok": true,
+  "expectedFailureModesReproduced": [
+    {
+      "case": "supervisor_exhaustion",
+      "reproduced": true,
+      "horizonsDays": [
+        1,
+        9,
+        30
+      ],
+      "afterRealDurableProgress": "deliver",
+      "restartedReadyTerminalAlone": "alert_pending"
+    },
+    {
+      "case": "candidate_starvation",
+      "reproduced": true,
+      "eligible": 13,
+      "surfaced": 12,
+      "stableAcrossRepeatedRounds": true,
+      "omittedAllowedContributorSuppressesRestrictedBoardDuty": true
+    },
+    {
+      "case": "queued_exhausted_request",
+      "reproduced": true,
+      "claimed": false,
+      "staleReclaimerRepairs": false,
+      "ownerRetryRepairs": false,
+      "status": "queued",
+      "attempts": 3
+    }
+  ],
+  "productionMutations": 0
+}
