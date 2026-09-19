@@ -354,12 +354,12 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
         FROM (
           SELECT job.*, 0 AS match_rank
           FROM network_task_generation_jobs job
-          WHERE job.task_id = projection.task_id
+          WHERE job.task_id <> '' AND job.task_id = projection.task_id
           UNION ALL
           SELECT job.*, 1 AS match_rank
           FROM network_task_generation_jobs job
           WHERE projection.request_id <> ''
-            AND job.request_id = projection.request_id
+            AND job.request_id <> '' AND job.request_id = projection.request_id
           UNION ALL
           SELECT job.*, 2 AS match_rank
           FROM network_task_generation_jobs job
@@ -376,12 +376,12 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
         FROM (
           SELECT alloc.*, 0 AS match_rank
           FROM network_task_allocations alloc
-          WHERE alloc.generated_task_id = projection.task_id
+          WHERE alloc.generated_task_id <> '' AND alloc.generated_task_id = projection.task_id
           UNION ALL
           SELECT alloc.*, 1 AS match_rank
           FROM network_task_allocations alloc
           WHERE projection.request_id <> ''
-            AND alloc.task_request_id = projection.request_id
+            AND alloc.task_request_id <> '' AND alloc.task_request_id = projection.request_id
           UNION ALL
           SELECT alloc.*, 2 AS match_rank
           FROM network_task_allocations alloc
@@ -611,12 +611,12 @@ export async function getHiveProjectsDocument({
           FROM (
             SELECT job.*, 0 AS match_rank
             FROM network_task_generation_jobs job
-            WHERE job.task_id = projection.task_id
+            WHERE job.task_id <> '' AND job.task_id = projection.task_id
             UNION ALL
             SELECT job.*, 1 AS match_rank
             FROM network_task_generation_jobs job
             WHERE projection.request_id <> ''
-              AND job.request_id = projection.request_id
+              AND job.request_id <> '' AND job.request_id = projection.request_id
             UNION ALL
             SELECT job.*, 2 AS match_rank
             FROM network_task_generation_jobs job
@@ -633,12 +633,12 @@ export async function getHiveProjectsDocument({
           FROM (
             SELECT alloc.*, 0 AS match_rank
             FROM network_task_allocations alloc
-            WHERE alloc.generated_task_id = projection.task_id
+            WHERE alloc.generated_task_id <> '' AND alloc.generated_task_id = projection.task_id
             UNION ALL
             SELECT alloc.*, 1 AS match_rank
             FROM network_task_allocations alloc
             WHERE projection.request_id <> ''
-              AND alloc.task_request_id = projection.request_id
+              AND alloc.task_request_id <> '' AND alloc.task_request_id = projection.request_id
             UNION ALL
             SELECT alloc.*, 2 AS match_rank
             FROM network_task_allocations alloc

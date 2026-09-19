@@ -75,7 +75,9 @@ command, lifecycle and staleness fixtures. Lint and format checks remain require
 Scoped command reads serialize before entering the PostgreSQL client queue, so
 waiting behind another read does not consume a statement's execution timeout.
 The command and its receipt still share one transaction; slow statements still
-fail and roll back. Run `node scripts/command-transaction-queue-smoke.mjs` to
+fail and roll back. Hive task-reference joins include explicit nonempty job and
+allocation ID predicates so PostgreSQL can use the existing partial indexes;
+preserve these predicates when changing the board source query. Run `node scripts/command-transaction-queue-smoke.mjs` to
 verify this boundary, alongside board command retry/rollback tests.
 Production verification must separately record: image/source hashes, full candidate
 coverage, request failures with Retry available, mirror agreement, recovery
