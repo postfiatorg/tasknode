@@ -6,11 +6,12 @@ import { enqueueNetworkTaskGenerationFromBoardDecision as enqueue } from "../ser
 import { claimNetworkTaskGenerationJobs, markNetworkTaskGenerationJobFailed } from "../server/repositories/network-task-generation-jobs.js";
 import { boardPacket } from "./bm/lib.mjs";
 import { parseAgentCommand } from "../server/board-agent-dispatch.js";
+import { executeBoardAgentCommand } from "../server/board-agent-routes.js";
 const url = new URL(process.env.DATABASE_URL);
 assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
 assert.equal(url.pathname, "/tasknode_hive_audit_20260919");
-const id = "network_retry_" + randomUUID(), wallet = "rExplicitRetryFixture";
-const request = retry => ({ decision: { action: "initiate_network_task", target_id: id, payload: { network_task: {
+const id = "network_retry_" + randomUUID(), wallet = "rExplicitRetryFixture", board = "board_pf_terminal";
+const request = retry => ({ decision: { action: "initiate_network_task", target_id: board, payload: { network_task: {
   candidate_account_id: id, candidate_wallet_address: wallet, project_need_summary: "Implement a bounded provider-recovery control with regression evidence.",
   task_class: "network", task_work_type: "code_task", required_badge_id: "core_contributor", operating_badge_id: "core_contributor",
   badge_work_type: "code_task", reward_min_pft: 1, reward_max_pft: 2, retry_failed: retry,
@@ -23,7 +24,7 @@ async function fail(cause = "inference_timeout") {
 }
 try {
   await migrateDatabase();
-  await query("INSERT INTO network_projects(id,title,status) VALUES($1,'Retry fixture','active')", [id]);
+  await query("INSERT INTO network_projects(id,title,status) VALUES($1,'Retry fixture','active') ON CONFLICT DO NOTHING", [board]);
   await query("INSERT INTO pftl_sync_wallets(wallet_address,account_id,role,status) VALUES($1,$2,'user','active')", [wallet,id]);
   await query("INSERT INTO account_network_badges(id,account_id,badge_id,status,selected_default) VALUES($1,$1,'core_contributor','verified',true)", [id]);
   assert.equal(parseAgentCommand(["task","create",id,"--retry-failed","--execute"]).flags["retry-failed"], true);
@@ -34,7 +35,7 @@ try {
   await fail();
   const replay = await enqueue(request(false));
   assert.equal(replay.executed, false); assert.equal(replay.reason, "network_task_failed_intent_requires_explicit_retry");
-  const packet = await boardPacket(id);
+  const packet = await boardPacket(board);
   assert.equal(packet.generation_queue.queued, 0); assert.equal(packet.generation_queue.historical_failed, 1);
   assert.equal(packet.generation_failures[0].legacy_intent_provider_error, "inference_timeout");
   const retries = await Promise.all(Array.from({ length: 6 }, () => enqueue(request(true))));
@@ -57,15 +58,34 @@ try {
   await assert.rejects(enqueue(request(true)), { message: "network_task_retry_request_exists" });
   await query("DELETE FROM task_requests WHERE account_id=$1", [id]);
   // A new assignment can consume the free slot while an old job is failed.
-  await query("INSERT INTO network_task_allocations(id,project_id,candidate_account_id,candidate_wallet_address,allocation_status) VALUES($1,$2,$2,$3,'accepted')", [id+"_blocker",id,wallet]);
+  await query("INSERT INTO network_task_allocations(id,project_id,candidate_account_id,candidate_wallet_address,allocation_status) VALUES($1,$2,$3,$4,'accepted')", [id+"_blocker",board,id,wallet]);
   await assert.rejects(enqueue(request(true)), { message: "network_task_candidate_at_capacity" });
   await query("DELETE FROM network_task_allocations WHERE id=$1", [id+"_blocker"]);
+  const token = randomUUID();
+  await query("INSERT INTO board_reward_budgets(board_id) VALUES($1) ON CONFLICT DO NOTHING", [board]);
+  await query("INSERT INTO board_agent_credentials(id,token_hash,actor,board_ids,expires_at) VALUES($1,$2,$1,$3::jsonb,now()+interval '1 hour')", [id,createHash("sha256").update(token).digest("hex"),JSON.stringify([board])]);
+  const args = ["task","create",board,"--account",id,"--wallet",wallet,"--need",request(false).decision.payload.network_task.project_need_summary,"--required-badge","core_contributor","--work-type","code_task","--reward-min","1","--reward-max","2","--retry-failed"];
+  const dryRun = await executeBoardAgentCommand({ token, payload: { requestKey: id+"_dry", argv: args } });
+  assert.equal(dryRun.result.dryRun, true);
+  assert.equal((await query("SELECT status FROM network_task_generation_jobs WHERE id=$1",[jobId])).rows[0].status,"failed");
+  const command = { token, payload: { requestKey: id+"_execute", argv: [...args,"--execute"] } };
+  const executed = await executeBoardAgentCommand(command);
+  assert.equal(executed.result.actionResult.result.reason, "network_task_provider_failure_requeued");
+  const deliveredAgain = await executeBoardAgentCommand(command);
+  assert.equal(deliveredAgain.replayed, true);
+  assert.equal(deliveredAgain.result.actionResult.result.jobId, jobId);
+  await fail();
   await query("UPDATE account_network_badges SET status='revoked',revoked_at=now() WHERE id=$1", [id]);
   await assert.rejects(enqueue(request(true)), error => error.message.includes("badge"));
-  console.log(JSON.stringify({ ok: true, historicalFailuresNotPending: true, explicitRecoveryRequired: true, concurrentRetries: 6, requeues: 1, durableIdsPreserved: true, lifetimeAttempts: 6, retryBudget: 3, semanticHoldProtected: true, existingRequestProtected: true, capacityAndBadgeRechecked: true }));
+  console.log(JSON.stringify({ ok: true, historicalFailuresNotPending: true, explicitRecoveryRequired: true, concurrentRetries: 6, requeues: 1, durableIdsPreserved: true, lifetimeAttempts: 6, retryBudget: 3, semanticHoldProtected: true, existingRequestProtected: true, capacityAndBadgeRechecked: true, scopedCommandDryRun: true, lostResponseReplayed: true }));
 } finally {
   await query("DELETE FROM task_requests WHERE account_id=$1", [id]);
-  await query("DELETE FROM network_projects WHERE id=$1", [id]);
+  await query("DELETE FROM board_agent_commands WHERE credential_id=$1", [id]);
+  await query("DELETE FROM board_agent_credentials WHERE id=$1", [id]);
+  await query("DELETE FROM network_task_intents WHERE candidate_account_id=$1", [id]);
+  await query("DELETE FROM network_task_generation_jobs WHERE candidate_account_id=$1", [id]);
+  await query("DELETE FROM network_task_allocations WHERE candidate_account_id=$1", [id]);
+  await query("DELETE FROM bm_audit_log WHERE actor=$1", [id]);
   await query("DELETE FROM account_network_badges WHERE account_id=$1", [id]);
   await query("DELETE FROM pftl_sync_wallets WHERE account_id=$1", [id]);
   await query("DELETE FROM user_observability_events WHERE account_id=$1", [id]);
