@@ -72,6 +72,11 @@ script. Review its candidate output against canonical rows before applying it.
 Run `node scripts/task-hive-allocation-repair-smoke.mjs` against its dedicated
 local fixture database, plus the focused queue, capacity, direct-intake, board
 command, lifecycle and staleness fixtures. Lint and format checks remain required.
+Scoped command reads serialize before entering the PostgreSQL client queue, so
+waiting behind another read does not consume a statement's execution timeout.
+The command and its receipt still share one transaction; slow statements still
+fail and roll back. Run `node scripts/command-transaction-queue-smoke.mjs` to
+verify this boundary, alongside board command retry/rollback tests.
 Production verification must separately record: image/source hashes, full candidate
 coverage, request failures with Retry available, mirror agreement, recovery
 delivery, durable duty outcomes, new jobs and visible offers. An inbox receipt
