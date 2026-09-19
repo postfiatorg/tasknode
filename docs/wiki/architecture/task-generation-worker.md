@@ -63,6 +63,15 @@ ownership. Heartbeats occur at stage boundaries; transient failures use durable
 backoff and stale claims can be reclaimed. Claimed batches are processed
 sequentially by the loop.
 
+Reclamation also finds published/queued requests that have exhausted their
+automatic retry cycle. With no generated task or canonical offer, these become
+explicit failures with the previous error retained in metadata. The owner's
+existing Retry action can enqueue the same request, keeping lifetime attempt
+counts monotonic and resetting only the automatic cycle budget. Reconciliation
+does not retry on the owner's behalf, and a canonical offer prevents restart.
+Both stale generating requests and exhausted queued requests use the same
+bounded, locked reclamation pass.
+
 Replay identity includes bundle CID/digest, source/input digests, prompt digest,
 model, class and policy versions. Stored normalized output is reused before
 calling the model again. Unpublished cached output is revalidated and receives

@@ -20,6 +20,6 @@ for (const need of ["Implement the retry fix described in the audit.", "Turn the
   } });
   assert.equal(result.relationship, "continuation");
 }
-const invalid = await assessTaskIntent({ need: "A task", priorTasks }, { complete: async () => ({ body: { choices: [{ message: { content: "unstructured prose" } }] } }) });
-assert.equal(invalid.relationship, "uncertain"); assert.equal(invalid.actionable, false);
+await assert.rejects(assessTaskIntent({ need: "A task", priorTasks }, { complete: async () => ({ body: { choices: [{ message: { content: "unstructured prose" } }] } }) }),
+  error => error.code === "network_task_intent_assessment_failed" && error.causeCode === "task_intent_assessment_json_invalid" && error.retryable);
 console.log(JSON.stringify({ ok: true, classifierCallsForParaphrases: calls, inventedReferencesRejected: true, malformedResponseConservative: true, note: "Contract fixture; live semantic accuracy is a separate evaluation." }));

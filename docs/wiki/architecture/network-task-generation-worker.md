@@ -118,14 +118,13 @@ Red means a queued or running generation job is stale.
 
 ## Recovery And Double-Publish Guards
 
-Network preparation uses `locked_at` and stale-job recovery; it does not yet
-share the ordinary request queue's attempt-token fencing and heartbeat contract.
-A slow preparation attempt and a reclaimer therefore need explicit ownership
-qualification before increasing concurrency. Shared taskgen replay is a
-separate downstream protection.
+Network preparation claims a unique worker attempt, heartbeats every 20 seconds,
+and holds a five-minute lease. Request persistence and generated-state writes
+require the current attempt and an unexpired lease. Late failures are fenced by
+the running attempt. The queue processes one preparation job at a time; shared
+taskgen replay remains a separate downstream protection.
 
-Existing recovery guards cover these cases; they do not establish complete
-attempt fencing across all overlapping preparation attempts:
+Recovery guards cover these cases:
 
 - Stale-running reclaim. Each queue pass first calls
   `reclaimStaleNetworkTaskGenerationJobs`, which routes `running` jobs whose
@@ -177,6 +176,20 @@ and records its result under the active worker attempt. Duplicate, unclear or
 unactionable work waits for review; a stale worker cannot persist its assessment
 or request. This validates Kimi's selected work rather than selecting a new task.
 
-The contract/PostgreSQL corpus passes. Live model qualification remains pending
-in the September 5 implementation ledger; do not claim production quality from
-synthetic provider fixtures alone.
+Provider, JSON and schema failures throw a typed
+`network_task_intent_assessment_failed` error; they never fabricate an
+`uncertain` semantic result. Durable `generationFailure` metadata retains the
+cause code, HTTP status, retryability and provider attempts. Transient failures
+retry the same job up to three attempts. Authentication/configuration failures
+and genuine duplicate/uncertain/unactionable judgments stop for review; they
+do not spend three calls retrying an unchanged semantic hold.
+
+The classifier requests concise structured output, low reasoning effort and
+8,192 output tokens, with a 60-second provider / 120-second total deadline.
+Model quality still requires live qualification, separate from injected fixtures.
+Never relabel an earlier failed job as successful after a qualification probe.
+
+Lifecycle transitions synchronize allocation mirrors with canonical task state
+inside the same transaction, including accepted and submitted states. Historical
+divergences use the existing recovery path with review execution disabled; this
+does not accept, cancel, submit evidence or issue rewards for a contributor.

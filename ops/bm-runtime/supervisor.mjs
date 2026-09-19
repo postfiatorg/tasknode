@@ -13,11 +13,20 @@ const read = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } 
 const save = (file, value) => { writeFileSync(`${file}.tmp`, JSON.stringify(value, null, 2), { mode: 0o600 }); renameSync(`${file}.tmp`, file); };
 const log = (event) => appendFileSync(path.join(home, "logs", "supervisor.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`);
 
+export function recoverySchedule(pending = {}) {
+  const attempts = Number(pending?.attempts || 0);
+  const delivered = Date.parse(pending?.lastDeliveredAt);
+  const delayMs = attempts < 3 ? 5 * 60_000 : Math.min(6 * 60 * 60_000, 15 * 60_000 * 2 ** Math.min(5, attempts - 3));
+  return { attempts, delayMs, nextRetryAt: Number.isFinite(delivered) ? new Date(delivered + delayMs).toISOString() : "" };
+}
+
 export function deliveryDecision({ round, status, pending, now = Date.now() }) {
   if (!round?.id || round.state !== "pending") return "quiet";
   if (!terminalStatusFresh(status, now) || !status.ready) return "wait_ready";
-  if (pending?.lastDeliveredAt && now - Date.parse(pending.lastDeliveredAt) < 5 * 60_000) return "wait_completion";
-  return Number(pending?.attempts || 0) >= 3 ? "alert_pending" : "deliver";
+  const { attempts, nextRetryAt } = recoverySchedule(pending);
+  if (attempts >= 3 && !pending?.alerted) return "alert_pending";
+  if (nextRetryAt && now < Date.parse(nextRetryAt)) return attempts >= 3 ? "wait_recovery" : "wait_completion";
+  return attempts >= 3 ? "recover" : "deliver";
 }
 
 export function terminalStatusFresh(status, now = Date.now()) {
@@ -27,7 +36,7 @@ export function terminalStatusFresh(status, now = Date.now()) {
 }
 
 export function mergeRoundProgress(pending, round) {
-  const next = { ...pending };
+  const next = { ...pending, deliveryCount: Math.max(Number(pending?.deliveryCount || 0), Number(pending?.attempts || 0)) };
   const progress = JSON.stringify(round.results_json);
   if (next.progress && next.progress !== progress) { next.attempts = 0; next.alerted = false; next.lastDeliveredAt = ""; }
   next.progress = progress;
@@ -69,11 +78,12 @@ export async function superviseOnce() {
     }
     const control = path.join(stateDir, `${agent.alias}.control`);
     const status = read(path.join(control, "status.json"));
-    const runtimeState = !terminalStatusFresh(status) ? "unavailable" : status.ready ? "ready" : "busy";
-    const projected = JSON.stringify([runtimeState, round?.id, round?.state, round?.results_json]);
+    const recovery = recoverySchedule(pending);
+    const runtimeState = !terminalStatusFresh(status) ? "unavailable" : !status.ready ? "busy" : recovery.attempts >= 3 ? "cooldown" : "ready";
+    const projected = JSON.stringify([runtimeState, round?.id, round?.state, round?.results_json, recovery]);
     const feedFile = path.join(stateDir, `${agent.alias}.feed.json`);
     if (read(feedFile)?.projected !== projected) {
-      await remote(["runtime-status", "--state", runtimeState, ...(round?.id ? ["--round", round.id] : [])]);
+      await remote(["runtime-status", "--state", runtimeState, "--attempts", String(recovery.attempts), ...(recovery.nextRetryAt ? ["--next-retry", recovery.nextRetryAt] : []), ...(round?.id ? ["--round", round.id] : [])]);
       save(feedFile, { projected });
     }
     const decision = deliveryDecision({ round, status, pending });
@@ -85,17 +95,18 @@ export async function superviseOnce() {
       }
       continue;
     }
-    if (decision !== "deliver" || existsSync(path.join(control, "inbox.json"))) continue;
+    if (!["deliver", "recover"].includes(decision) || existsSync(path.join(control, "inbox.json"))) continue;
     const workdir = path.join(home, "duties", agent.alias);
     mkdirSync(workdir, { recursive: true, mode: 0o700 });
     const file = path.join(workdir, `${round.id}.json`);
     save(file, round); save(path.join(workdir, "latest.json"), round);
-    const id = `${round.id}_${Number(pending.attempts || 0) + 1}`;
+    pending.deliveryCount = Number(pending.deliveryCount || 0) + 1;
+    const id = `${round.id}_${pending.deliveryCount}`;
     save(path.join(control, "inbox.json"), { id, prompt: `Read the board-manager skill and the durable work order ${file}. Complete each unresolved duty, then report its explicit result using: node ${path.join(directory, "../../scripts/bm.mjs")} duty-result ${round.id} <duty-id> --outcome completed|blocked|deferred --reason '<specific outcome and evidence>'. Journaling alone does not finish a duty. Keep Kimi K3 as the task manager and follow the existing board rules. This is delivery ${Number(pending.attempts || 0) + 1}; reconcile existing command receipts before repeating a mutation.` });
     pending.attempts = Number(pending.attempts || 0) + 1;
     pending.lastDeliveredAt = new Date().toISOString();
     save(pendingFile, pending);
-    log({ alias: agent.alias, event: "work_queued_for_ready_terminal", roundId: round.id, deliveryId: id });
+    log({ alias: agent.alias, event: decision === "recover" ? "recovery_probe_queued" : "work_queued_for_ready_terminal", roundId: round.id, deliveryId: id, nextRetryAt: recoverySchedule(pending).nextRetryAt });
   }
   save(path.join(stateDir, "scoped-supervisor-tick.json"), { version: 1, pid: process.pid, completedAt: new Date().toISOString() });
 }
