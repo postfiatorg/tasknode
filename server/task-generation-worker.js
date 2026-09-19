@@ -557,8 +557,9 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
         await markTaskgenReplayFailed({ replayKey: replayIdentity.replay_key, error: message }).catch(() => null);
       }
       const maxAttempts = taskGenerationMaxAttempts();
-      if (isRetryableTaskGenerationError(error) && request.workerAttemptCount < maxAttempts) {
-        const retryDelayMs = taskGenerationRetryDelayMs(request.workerAttemptCount);
+      const cycleAttemptCount = request.workerCycleAttemptCount ?? request.workerAttemptCount;
+      if (isRetryableTaskGenerationError(error) && cycleAttemptCount < maxAttempts) {
+        const retryDelayMs = taskGenerationRetryDelayMs(cycleAttemptCount);
         const retry = await retryTaskGenerationRequest({
           requestId: request.requestId,
           error: message,

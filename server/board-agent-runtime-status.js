@@ -3,12 +3,14 @@ import { query } from "./db/pool.js";
 import { boardAgentIdentity } from "./board-agent-context.js";
 import { readAgentRound } from "./board-agent-rounds.js";
 
-export async function publishAgentRuntimeStatus({ state, roundId = "" }) {
-  if (!["ready", "busy", "unavailable"].includes(state)) throw Object.assign(new Error("board_agent_runtime_state_invalid"), { status: 400 });
+export async function publishAgentRuntimeStatus({ state, roundId = "", attempts = 0, nextRetryAt = "" }) {
+  if (!["ready", "busy", "unavailable", "cooldown"].includes(state) || !Number.isSafeInteger(attempts) || attempts < 0 ||
+      (nextRetryAt && !Number.isFinite(Date.parse(nextRetryAt)))) throw Object.assign(new Error("board_agent_runtime_state_invalid"), { status: 400 });
   const identity = boardAgentIdentity();
   const round = roundId ? await readAgentRound(roundId) : null;
   for (const board of identity.boards) {
     const lines = [`Kimi K3 · ${identity.actor}`, `Board: ${board}`, `Terminal: ${state}`];
+    if (attempts >= 3) lines.push(`Recovery: ${attempts} deliveries without durable progress; next ready-terminal probe ${nextRetryAt || "pending"}`);
     if (round) {
       lines.push(`Round: ${round.id} (${round.state})`);
       for (const duty of round.duties_json.filter((item) => item.board_id === board)) {

@@ -242,7 +242,7 @@ export async function createTaskRequestForNetworkJob(job = {}, { assess = assess
     WHERE id=$1 AND worker_attempt_id=$2 AND status='running'`, [job.id, job.worker_attempt_id, JSON.stringify(assessment)]);
   if (!assessedAttempt.rowCount) throw new Error("network_task_generation_attempt_lost");
   if (["duplicate", "uncertain"].includes(assessment.relationship) || !assessment.actionable || !assessment.scopeClear) {
-    throw new Error(`network_task_intent_needs_review:${assessment.relationship}:${assessment.reason}`);
+    throw Object.assign(new Error(`network_task_intent_needs_review:${assessment.relationship}:${assessment.reason}`), { code: "network_task_intent_needs_review", retryable: false });
   }
   requestBundle.network_task.intent_assessment = assessment;
   requestBundle.network_task.task_lineage.lineage_task_ids = [...new Set([...requestBundle.network_task.task_lineage.lineage_task_ids, ...assessment.priorTaskIds])];
@@ -351,7 +351,9 @@ async function runNetworkTaskGenerationQueueOnce({ limit = 1, logger = console }
       results.push({ ok: true, jobId: job.id, ...result });
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
-      await markNetworkTaskGenerationJobFailed({ jobId: job.id, workerAttemptId: job.worker_attempt_id, error: message }).catch(() => null);
+      await markNetworkTaskGenerationJobFailed({ jobId: job.id, workerAttemptId: job.worker_attempt_id, error: message,
+        retryable: error.retryable !== false,
+        failure: { code: error.code || "network_task_generation_failed", causeCode: error.causeCode || "", status: error.status || null, retryable: error.retryable !== false, attempts: error.attempts || [] } }).catch(() => null);
       logger.warn?.("network_task_generation_job_failed", { jobId: job.id, error: message });
       results.push({ ok: false, jobId: job.id, error: message });
     } finally {

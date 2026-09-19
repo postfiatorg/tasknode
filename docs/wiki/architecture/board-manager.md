@@ -79,10 +79,21 @@ Launch, supervisor, reset and status publication use that same registry.
 - A round requires a specific `completed`, `blocked` or `deferred` result for
   every duty. Completion must agree with current durable state; routing completion
   requires an actual task-creation audit. A journal entry alone is insufficient.
-- Partial results reset delivery backoff. Three unanswered deliveries alert and
-  retain the pending round. Identical completed rounds have a fifteen-minute
-  cooldown. Crash recovery resumes the saved thread. The daily reset preserves
-  pending/busy work and starts a fresh context only at an idle boundary.
+- Partial results reset delivery backoff while retaining a monotonic delivery
+  sequence. Three unanswered deliveries alert and retain the pending round.
+  Recovery probes then wait 15, 30, 60, 120, 240 and at most 360 minutes between
+  deliveries. Every probe requires a fresh ready terminal and an empty inbox.
+  Public runtime status reports cooldown, attempt count and next probe time.
+  Provider failure cannot permanently disable delivery. Results and command
+  receipts remain authoritative; no retry creates a replacement round.
+  Identical completed rounds have a fifteen-minute cooldown. Crash recovery
+  resumes the saved thread. Daily reset preserves pending/busy work.
+- Candidate discovery returns the entire eligible idle pool on every round,
+  in stable account order, without a rewarded-history top-100 or a top-12 cut.
+  Board restrictions filter that complete pool. Discovery errors fail the read
+  instead of reporting an empty healthy board. All candidates are surfaced,
+  including newcomers; actual assignment still requires source-grounded work,
+  badge/work-type fit, wallet resolution, locked capacity and budget checks.
 - `bm-install-cron.sh` installs one user systemd supervisor and an idle-only daily
   reset timer, replacing the compatibility wake timer. Its preflight verifies the scoped
   API and installed ready terminal before changing schedules. Failed startup keeps

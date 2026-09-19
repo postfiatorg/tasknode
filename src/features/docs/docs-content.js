@@ -131,7 +131,7 @@ export const DOC_GROUPS = [
     title: "Product",
     pages: [
       { slug: "chat", title: "Chat", summary: "Model selection, API-rate chat billing, persistence, and recovery.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
-      { slug: "tasks", title: "Tasks", summary: "Personal and network tasks, submission requirements, request progress, retry and dismissal.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
+      { slug: "tasks", title: "Tasks", summary: "Personal and network tasks, submission requirements, routing eligibility, exhausted-request retry, allocation recovery, and dismissal.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
       { slug: "hive", title: "Hive", summary: "Public Nostr group chat, shared handles, periodic GLM participation and Kimi board escalation.", loadMarkdown: HELP_MARKDOWN_LOADERS.hive },
       { slug: "docs", title: "Docs", summary: "Encrypted documents, spreadsheets, folders, and chat with Coach and ODV.", loadMarkdown: HELP_MARKDOWN_LOADERS.docs },
       { slug: "team", title: "Team", summary: "Shared task history and Team Context in the app and Corbanu Terminal.", loadMarkdown: HELP_MARKDOWN_LOADERS.team },

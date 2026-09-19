@@ -274,7 +274,7 @@ export async function markNetworkTaskGenerationJobGenerated({
   return { ok: Boolean(row), stale: !row, job: row || null };
 }
 
-export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "", workerAttemptId = "", staleMinutes = 0 } = {}) {
+export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "", workerAttemptId = "", staleMinutes = 0, retryable = true, failure = {} } = {}) {
   if (!useDatabase()) return { ok: false, skipped: true };
   const message = safeText(error, 1000);
   const row = await transaction(async (client) => {
@@ -282,17 +282,18 @@ export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "
   const result = await query(
     `
       UPDATE network_task_generation_jobs
-      SET status = CASE WHEN attempt_count >= 3 THEN 'failed' ELSE 'queued' END,
-          next_attempt_at = CASE WHEN attempt_count >= 3 THEN now() ELSE now() + interval '60 seconds' END,
+      SET status = CASE WHEN attempt_count >= 3 OR NOT $5 THEN 'failed' ELSE 'queued' END,
+          next_attempt_at = CASE WHEN attempt_count >= 3 OR NOT $5 THEN now() ELSE now() + interval '60 seconds' END,
           locked_at = NULL,
           last_error = $2,
+          generated_task_payload = generated_task_payload || jsonb_build_object('generationFailure', $6::jsonb),
           updated_at = now()
       WHERE id = $1
         AND status = 'running' AND worker_attempt_id = $3
         AND ($4::integer = 0 OR COALESCE(worker_heartbeat_at, locked_at) < now() - ($4::integer * interval '1 minute'))
       RETURNING *
     `,
-    [safeText(jobId, 180), message, safeText(workerAttemptId, 180), staleMinutes]
+    [safeText(jobId, 180), message, safeText(workerAttemptId, 180), staleMinutes, retryable, jsonValue(failure)]
   );
   const row = result.rows[0];
   if (row?.allocation_id && row.status === "failed") {

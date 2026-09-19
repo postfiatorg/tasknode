@@ -793,19 +793,18 @@ export async function applyOffchainTaskTransitionWithClient(client, {
     throw new Error("offchain_task_projection_update_missed");
   }
   const projection = projectionUpdate.rows[0] || {};
-  const terminalMirrorSync = terminalNetworkTaskStatuses.includes(
-    safeText(projection.status, 80).toLowerCase()
-  )
-    ? await syncNetworkTaskAllocationMirrors({
-      client,
-      projection: {
-        task_id: safeText(task.task_id, 180),
-        request_id: safeText(task.request_id, 180),
-        status: safeText(projection.status, 80),
-        updated_at: projection.updated_at,
-      },
-    })
-    : { ok: true, skipped: true, reason: "status_not_terminal", allocationsUpdated: 0, rows: [] };
+  // Acceptance and submissions must move the allocation mirror in the same
+  // transaction as the canonical projection, just like terminal outcomes.
+  // Retain the receipt field name for existing consumers.
+  const terminalMirrorSync = await syncNetworkTaskAllocationMirrors({
+    client,
+    projection: {
+      task_id: safeText(task.task_id, 180),
+      request_id: safeText(task.request_id, 180),
+      status: safeText(projection.status, 80),
+      updated_at: projection.updated_at,
+    },
+  });
   return {
     ok: true,
     source: DIRECT_WRITE_SOURCE,

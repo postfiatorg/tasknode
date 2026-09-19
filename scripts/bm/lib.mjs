@@ -235,24 +235,25 @@ export async function idleEligibleContributors() {
   const result = await query(
     `
     SELECT b.account_id,
-           array_agg(DISTINCT b.badge_id ORDER BY b.badge_id) AS badges,
-           max(b.badge_id) FILTER (WHERE b.selected_default) AS selected_default_badge,
            COALESCE(hist.rewarded, 0) AS rewarded_tasks,
            hist.last_active
-    FROM account_network_badges b
+    FROM (
+      SELECT account_id FROM account_network_badges
+      WHERE status = 'verified' AND revoked_at IS NULL
+      UNION
+      SELECT account_id FROM account_linked_wallets WHERE status = 'linked'
+      UNION
+      SELECT account_id FROM pftl_sync_wallets WHERE role = 'user' AND status = 'active'
+    ) b
     LEFT JOIN LATERAL (
       SELECT count(*) FILTER (WHERE tp.status = 'rewarded')::int AS rewarded,
              max(tp.last_event_at) AS last_active
       FROM task_projections tp
       WHERE tp.account_id = b.account_id
     ) hist ON true
-    WHERE b.status = 'verified'
-      AND b.revoked_at IS NULL
-    GROUP BY b.account_id, hist.rewarded, hist.last_active
-    ORDER BY COALESCE(hist.rewarded, 0) DESC
-    LIMIT 100
+    ORDER BY b.account_id
     `
-  ).catch(() => ({ rows: [] }));
+  );
   const members = result.rows.map((row) => ({
     account_id: row.account_id,
     badges: row.badges || [],
@@ -269,12 +270,17 @@ export async function idleEligibleContributors() {
   for (const member of members) {
     const verdict = await explainNetworkTaskCandidateEligibility({ accountId: member.account_id });
     const capacity = await getNetworkTaskCapacityState({ accountId: member.account_id, walletAddress: verdict.walletAddress || "" });
+    member.badges = verdict.badgeIds || [];
+    member.selected_default_badge = verdict.defaultBadge || "";
     member.free_slots = capacity.freeSlots;
     member.engine_verdict = verdict?.eligible ? "eligible" : `refused:${verdict?.reason || "unknown"}`;
     member.delivery_wallet = verdict?.walletAddress || "";
     member.public_handle = (await getAccountIdentityProfile({ accountId: member.account_id }))?.hiveHandle || "";
   }
-  return members.filter((member) => member.free_slots > 0 && member.engine_verdict === "eligible").slice(0, 12);
+  // Return the complete eligible pool. Reward rank and fixed shortlists must
+  // never hide a contributor (including a board's sole allowed assignee).
+  // Every round considers every idle member; board policy filters downstream.
+  return members.filter((member) => member.free_slots > 0 && member.engine_verdict === "eligible");
 }
 
 // Mechanical source-lead mining (demand-side raw material). The issue
