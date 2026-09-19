@@ -88,6 +88,7 @@ export const emptyBoardManagerPayload = Object.freeze({
     reward_max_pft: 50000,
     accept_window_hours: 24,
     allow_over_capacity: false,
+    retry_failed: false,
   },
   message_precondition: {
     intent: "",
@@ -250,6 +251,7 @@ export function normalizePayload(payload = {}) {
         return raw > 0 ? Math.min(336, Math.max(1, raw)) : 0;
       })(),
       allow_over_capacity: Boolean(networkTask.allow_over_capacity || networkTask.allowOverCapacity),
+      retry_failed: networkTask.retry_failed === true,
     },
     message_precondition: {
       intent: safeText(messagePrecondition.intent, 80),
