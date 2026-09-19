@@ -53,7 +53,10 @@ at assignment. A candidate being visible does not promise an assignment.
    allocation and intent IDs, preserves lifetime attempts and diagnostic history,
    and grants a new three-attempt cycle. Concurrent retries reuse the single
    requeue. Changed parameters do not silently create a new task in retry mode.
-   Genuine semantic holds cannot use this infrastructure recovery.
+   Genuine semantic holds cannot use this infrastructure recovery. Copy the
+   stored need text exactly: a paraphrase has a different intent key and returns
+   `409 network_task_retry_target_not_found`. Changed arguments need a new command
+   receipt key; use the saved key only for an unchanged command replay.
 4. Deploy lifecycle mirror updates to API and review workers. For historical
    mismatches, lock each canonical projection inside `transactionCommand`
    before invoking `syncNetworkTaskProjection`. Recheck mismatch count and

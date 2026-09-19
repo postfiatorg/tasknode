@@ -215,7 +215,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       intentSemanticKey,
     };
   }
-  if (networkTask.retry_failed === true && !existing.rows.length) throw new Error("network_task_retry_target_not_found");
+  if (networkTask.retry_failed === true && !existing.rows.length) throw Object.assign(new Error("network_task_retry_target_not_found"), { status: 409 });
   // Canonical capacity predicate (shared with getNetworkTaskEligibility and
   // boardActionPressure.candidateCapacity): status-based liveness without a
   // created_at window, cross-class blocking, projection-terminal exclusion,
@@ -300,16 +300,16 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       const retryableProviderFailure = (failure?.code === "network_task_intent_assessment_failed" && failure.retryable === true) ||
         ["inference_timeout", "inference_response_truncated", "task_intent_assessment_schema_invalid", "task_intent_assessment_json_invalid"].includes(legacyCause);
       if (job?.status !== "failed" || !retryableProviderFailure || job.request_id || job.task_id || job.request_bundle_cid ||
-          existing.request_id || existing.task_id) throw new Error("network_task_retry_requires_pre_request_provider_failure");
+          existing.request_id || existing.task_id) throw Object.assign(new Error("network_task_retry_requires_pre_request_provider_failure"), { status: 409 });
       const allocation = (await client.query("SELECT * FROM network_task_allocations WHERE id=$1 FOR UPDATE", [existing.allocation_id])).rows[0];
-      if (allocation?.allocation_status !== "failed" || allocation.generated_task_id || allocation.task_request_id) throw new Error("network_task_retry_allocation_advanced");
+      if (allocation?.allocation_status !== "failed" || allocation.generated_task_id || allocation.task_request_id) throw Object.assign(new Error("network_task_retry_allocation_advanced"), { status: 409 });
       const deterministicRequestId = "req_net_" + createHash("sha256").update(job.id).digest("hex").slice(0, 32);
       const published = await client.query(`SELECT 1 FROM task_projections WHERE request_id=$3
         UNION ALL SELECT 1 FROM task_requests WHERE request_id=$3
         UNION ALL SELECT 1 FROM network_project_task_refs WHERE request_id=$3
           OR metadata_json->>'generation_job_id'=$2 OR metadata_json->>'allocation_id'=$1 LIMIT 1`,
       [allocation.id, job.id, deterministicRequestId]);
-      if (published.rows.length) throw new Error("network_task_retry_request_exists");
+      if (published.rows.length) throw Object.assign(new Error("network_task_retry_request_exists"), { status: 409 });
       const capacity = await getNetworkTaskCapacityState({ accountId: candidate.accountId, walletAddress: candidate.walletAddress, queryImpl: client.query.bind(client) });
       if (!capacity.available) throw new Error("network_task_candidate_at_capacity");
       // Explicit recovery reuses all durable identities and preserves lifetime
