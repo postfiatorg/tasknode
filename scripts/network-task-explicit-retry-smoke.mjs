@@ -28,7 +28,7 @@ try {
   await query("INSERT INTO pftl_sync_wallets(wallet_address,account_id,role,status) VALUES($1,$2,'user','active')", [wallet,id]);
   await query("INSERT INTO account_network_badges(id,account_id,badge_id,status,selected_default) VALUES($1,$1,'core_contributor','verified',true)", [id]);
   assert.equal(parseAgentCommand(["task","create",id,"--retry-failed","--execute"]).flags["retry-failed"], true);
-  await assert.rejects(enqueue(request(true)), { message: "network_task_retry_target_not_found" });
+  await assert.rejects(enqueue(request(true)), { message: "network_task_retry_target_not_found", status: 409 });
   const first = await enqueue(request(false));
   jobId = first.jobId; allocId = first.allocationId;
   intentId = (await query("SELECT id FROM network_task_intents WHERE generation_job_id=$1", [jobId])).rows[0].id;
@@ -69,6 +69,9 @@ try {
   assert.equal(dryRun.result.dryRun, true);
   assert.equal((await query("SELECT status FROM network_task_generation_jobs WHERE id=$1",[jobId])).rows[0].status,"failed");
   const command = { token, payload: { requestKey: id+"_execute", argv: [...args,"--execute"] } };
+  const changed = [...command.payload.argv];
+  changed[changed.indexOf("--need") + 1] += " Paraphrased.";
+  await assert.rejects(executeBoardAgentCommand({ token, payload: { requestKey: id+"_changed", argv: changed } }), { message: "network_task_retry_target_not_found", status: 409 });
   const executed = await executeBoardAgentCommand(command);
   assert.equal(executed.result.actionResult.result.reason, "network_task_provider_failure_requeued");
   const deliveredAgain = await executeBoardAgentCommand(command);
@@ -77,7 +80,7 @@ try {
   await fail();
   await query("UPDATE account_network_badges SET status='revoked',revoked_at=now() WHERE id=$1", [id]);
   await assert.rejects(enqueue(request(true)), error => error.message.includes("badge"));
-  console.log(JSON.stringify({ ok: true, historicalFailuresNotPending: true, explicitRecoveryRequired: true, concurrentRetries: 6, requeues: 1, durableIdsPreserved: true, lifetimeAttempts: 6, retryBudget: 3, semanticHoldProtected: true, existingRequestProtected: true, capacityAndBadgeRechecked: true, scopedCommandDryRun: true, lostResponseReplayed: true }));
+  console.log(JSON.stringify({ ok: true, historicalFailuresNotPending: true, explicitRecoveryRequired: true, concurrentRetries: 6, requeues: 1, durableIdsPreserved: true, lifetimeAttempts: 6, retryBudget: 3, semanticHoldProtected: true, existingRequestProtected: true, capacityAndBadgeRechecked: true, scopedCommandDryRun: true, changedIntentConflict: true, lostResponseReplayed: true }));
 } finally {
   await query("DELETE FROM task_requests WHERE account_id=$1", [id]);
   await query("DELETE FROM board_agent_commands WHERE credential_id=$1", [id]);
