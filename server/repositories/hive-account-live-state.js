@@ -280,6 +280,21 @@ async function accountRelevantBoardRuns({ accountId = "", walletAddress = "", li
   if (!normalizedAccountId && !normalizedWallet) return [];
   const result = await query(
     `
+      WITH relevant_runs AS MATERIALIZED (
+        SELECT id FROM board_manager_runs
+        WHERE ARRAY[
+          action_payload_json #>> '{network_task,candidate_account_id}',
+          action_payload_json #>> '{networkTask,candidateAccountId}',
+          action_payload_json #>> '{network_task,candidate_wallet_address}',
+          action_payload_json #>> '{networkTask,candidateWalletAddress}'
+        ] && ARRAY[NULLIF($1::text, ''), NULLIF($2::text, '')]
+        UNION
+        SELECT run_id FROM board_manager_action_results
+        WHERE ARRAY[
+          target_id, result_json->>'accountId',
+          result_json->>'candidateAccountId', result_json->>'candidateWalletAddress'
+        ] && ARRAY[NULLIF($1::text, ''), NULLIF($2::text, '')]
+      )
       SELECT
         runs.id,
         runs.trigger,
@@ -291,6 +306,7 @@ async function accountRelevantBoardRuns({ accountId = "", walletAddress = "", li
         results.target_id,
         COALESCE(results.result_json->>'reason', runs.decision_json->>'reason', '') AS reason
       FROM board_manager_runs runs
+      JOIN relevant_runs relevant ON relevant.id = runs.id
       LEFT JOIN board_manager_action_results results
         ON results.run_id = runs.id
       WHERE ($1::text <> '' AND (

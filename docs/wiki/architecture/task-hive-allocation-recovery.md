@@ -77,7 +77,11 @@ waiting behind another read does not consume a statement's execution timeout.
 The command and its receipt still share one transaction; slow statements still
 fail and roll back. Hive task-reference joins include explicit nonempty job and
 allocation ID predicates so PostgreSQL can use the existing partial indexes;
-preserve these predicates when changing the board source query. Run `node scripts/command-transaction-queue-smoke.mjs` to
+preserve these predicates when changing the board source query. Migration 143
+adds two GIN lookup indexes for account/wallet board history. Its candidate lookup
+retains the original account/wallet predicates as the final filter. Apply that
+migration before deploying the account-history query; it is safe to retain the
+indexes during an application rollback. Run `node scripts/command-transaction-queue-smoke.mjs` to
 verify this boundary, alongside board command retry/rollback tests.
 Production verification must separately record: image/source hashes, full candidate
 coverage, request failures with Retry available, mirror agreement, recovery
