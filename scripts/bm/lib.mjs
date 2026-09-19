@@ -185,11 +185,24 @@ export async function boardPacket(boardId) {
       updated_at: board.updated_at,
     },
     allocation_counts: allocations,
+    generation_queue: (await query(
+      `SELECT count(*) FILTER (WHERE status='queued')::int AS queued,
+              count(*) FILTER (WHERE status='running')::int AS running,
+              count(*) FILTER (WHERE status IN ('generated','link_failed'))::int AS awaiting_offer_or_link,
+              count(*) FILTER (WHERE status='failed')::int AS historical_failed,
+              max(updated_at) FILTER (WHERE status='published') AS last_published_at
+       FROM network_task_generation_jobs WHERE project_id=$1`, [boardId]
+    )).rows[0],
     generation_failures: (await query(
-      `SELECT id, allocation_id, candidate_account_id, status, last_error, created_at, updated_at
+      `SELECT id, allocation_id, candidate_account_id, candidate_wallet_address, status,
+              reward_min_pft, reward_max_pft, last_error, attempt_count, created_at, updated_at,
+              generated_task_payload->'generationFailure' AS failure,
+              generated_task_payload->'intentAssessment'->>'error' AS legacy_intent_provider_error,
+              source_payload_json->'networkTask' AS selected_network_task
        FROM network_task_generation_jobs WHERE project_id=$1 AND status='failed'
        ORDER BY updated_at DESC LIMIT 10`, [boardId]
     )).rows,
+    generation_recovery_policy: "Historical failed jobs are terminal, not a pending worker queue. Refresh queue counts and failure causes before claiming an outage. A pre-request provider failure can be explicitly retried with the unchanged task create parameters plus --retry-failed after revalidating that the work is still needed. Semantic holds require a revised decision, not an infrastructure retry.",
     tasks: buckets,
     hive_chat_digest: secretary
       ? { report_id: secretary.id, created_at: secretary.created_at, text: String(secretary.output_text || "").slice(0, 1500) }

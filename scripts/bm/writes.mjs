@@ -148,6 +148,7 @@ export async function taskCreate({
   rewardMax = 0,
   assigneeHandle = "",
   acceptWindowHours = 0,
+  retryFailed = false,
   execute = false,
 }) {
   if (!boardId || !accountId || !wallet || !safeText(need)) {
@@ -214,6 +215,7 @@ export async function taskCreate({
         reward_max_pft: cappedMax,
         accept_window_hours: acceptWindowHours > 0 ? acceptWindowHours : 0,
         allow_over_capacity: false,
+        retry_failed: retryFailed === true,
       },
     },
   };
@@ -243,7 +245,7 @@ export async function taskCreate({
     actor: boardAgentActor(),
     boardId,
     command: "task_create",
-    args: { accountId, wallet, need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, execute },
+    args: { accountId, wallet, need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, retryFailed, execute },
     result: { runId, executed: actionResult?.result?.executed ?? false, skipped: actionResult?.result?.skipped ?? false, reason: actionResult?.result?.reason || "" },
   });
   return { runId, dryRun: !execute, rewardMin: cappedMin, rewardMax: cappedMax, actionResult };

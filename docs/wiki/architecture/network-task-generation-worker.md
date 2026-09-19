@@ -176,6 +176,14 @@ and records its result under the active worker attempt. Duplicate, unclear or
 unactionable work waits for review; a stale worker cannot persist its assessment
 or request. This validates Kimi's selected work rather than selecting a new task.
 
+Board packets expose current queue counts separately from historical failures.
+A normal create replay of a failed job is not successful enqueueing. Explicit
+`task create --retry-failed` uses the original parameters and can recover only a
+retryable intent-provider failure before request creation. It rechecks capacity
+under the account lock, preserves durable IDs and lifetime attempts, and grants
+three further automatic attempts. Existing requests/offers and semantic holds
+block that recovery. See [the recovery runbook](task-hive-allocation-recovery.md).
+
 Provider, JSON and schema failures throw a typed
 `network_task_intent_assessment_failed` error; they never fabricate an
 `uncertain` semantic result. Durable `generationFailure` metadata retains the

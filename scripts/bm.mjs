@@ -80,7 +80,7 @@ const usage = [
       "  hive-inbox [board...]       public Hive escalations (scoped API)",
       "  hive-reply <id> --message <public text> --outcome resolved|declined (scoped API)",
       "  task detail <taskId>        scoped task, submission and verification evidence",
-      "  task create <board> --account --wallet --need [--reward-max N] [--execute]",
+      "  task create <board> --account --wallet --need [--reward-max N] [--retry-failed] [--execute]",
       "  task cancel <taskId> --reason ... [--stale-only] [--execute]",
       "  verify request <taskId> --ask ... [--type evidence]",
       "  review <taskId> --decision reward|partial_reward|reject --pft N --reason ...",
@@ -252,6 +252,7 @@ async function main() {
       rewardMax: Number(flagValue("--reward-max", "0")),
       assigneeHandle: flagValue("--assignee-handle"),
       acceptWindowHours: Number(flagValue("--accept-window-hours", "0")),
+      retryFailed: rest.includes("--retry-failed"),
       execute: rest.includes("--execute"),
     });
     console.log(JSON.stringify(result, null, 2));

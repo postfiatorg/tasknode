@@ -282,8 +282,8 @@ export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "
   const result = await query(
     `
       UPDATE network_task_generation_jobs
-      SET status = CASE WHEN attempt_count >= 3 OR NOT $5 THEN 'failed' ELSE 'queued' END,
-          next_attempt_at = CASE WHEN attempt_count >= 3 OR NOT $5 THEN now() ELSE now() + interval '60 seconds' END,
+      SET status = CASE WHEN attempt_count - COALESCE((generated_task_payload->>'manualRetryAttemptBase')::integer, 0) >= 3 OR NOT $5 THEN 'failed' ELSE 'queued' END,
+          next_attempt_at = CASE WHEN attempt_count - COALESCE((generated_task_payload->>'manualRetryAttemptBase')::integer, 0) >= 3 OR NOT $5 THEN now() ELSE now() + interval '60 seconds' END,
           locked_at = NULL,
           last_error = $2,
           generated_task_payload = generated_task_payload || jsonb_build_object('generationFailure', $6::jsonb),

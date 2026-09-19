@@ -38,7 +38,22 @@ at assignment. A candidate being visible does not promise an assignment.
    `intentAssessment.relationship`. Provider/schema failures use bounded
    retries; genuine duplicate/uncertain judgments stop for manager review.
    Qualifying the provider on an earlier input does not change that historical
-   job or authorize re-publication.
+   job or authorize re-publication. The board packet's `generation_queue`
+   separates queued/running work from historical failures and exposes both typed
+   and legacy provider causes. A normal replay of a failed job reports
+   `executed: false` and requires explicit recovery.
+
+   For a still-needed task that failed during intent assessment before any
+   request existed, repeat its original `task create` parameters with
+   `--retry-failed`, inspect the dry run, then add `--execute`. The selected
+   need, badge/work type, reward band and candidate are in the failure packet.
+   The command reruns normal scope, routing and badge checks, then serializes
+   capacity and recovery under the account lock. It requires a retryable provider
+   cause and no existing request, offer or linked task. It reuses the job,
+   allocation and intent IDs, preserves lifetime attempts and diagnostic history,
+   and grants a new three-attempt cycle. Concurrent retries reuse the single
+   requeue. Changed parameters do not silently create a new task in retry mode.
+   Genuine semantic holds cannot use this infrastructure recovery.
 4. Deploy lifecycle mirror updates to API and review workers. For historical
    mismatches, lock each canonical projection inside `transactionCommand`
    before invoking `syncNetworkTaskProjection`. Recheck mismatch count and

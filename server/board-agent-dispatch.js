@@ -21,7 +21,7 @@ export function parseAgentCommand(argv) {
     const equal = value.indexOf("=");
     const key = equal < 0 ? value.slice(2) : value.slice(2, equal);
     if (["__proto__", "constructor", "prototype"].includes(key)) throw bad("board_agent_flag_invalid");
-    flags[key] = equal >= 0 ? value.slice(equal + 1) : ["json", "execute", "stale-only"].includes(key) ? true : rest[++index];
+    flags[key] = equal >= 0 ? value.slice(equal + 1) : ["json", "execute", "stale-only", "retry-failed"].includes(key) ? true : rest[++index];
     if (flags[key] === undefined) throw bad("board_agent_flag_value_required");
   }
   return { command, args, flags };
@@ -69,7 +69,7 @@ export async function dispatchBoardAgent(argv) {
   if (command === "review") return writes.reviewTask({ taskId: await task(args[0]), decision: f.decision, pft: number("pft"), reason: f.reason, feedback: f.feedback });
   if (command === "verify" && args[0] === "request") return writes.verifyRequest({ taskId: await task(args[1]), ask: f.ask, type: f.type || "evidence", reason: f.reason });
   if (command === "task" && args[0] === "cancel") return writes.cancelTask({ taskId: await task(args[1]), reason: f.reason, execute: f.execute === true, staleOnly: f["stale-only"] === true });
-  if (command === "task" && args[0] === "create") return writes.taskCreate({ boardId: board(args[1]), accountId: required("account"), wallet: required("wallet"), need: required("need"), reason: f.reason, workType: f["work-type"] || "code_task", requiredBadge: f["required-badge"], badgeCap: number("badge-cap"), rewardMin: number("reward-min"), rewardMax: number("reward-max"), assigneeHandle: f["assignee-handle"], acceptWindowHours: number("accept-window-hours"), execute: f.execute === true });
+  if (command === "task" && args[0] === "create") return writes.taskCreate({ boardId: board(args[1]), accountId: required("account"), wallet: required("wallet"), need: required("need"), reason: f.reason, workType: f["work-type"] || "code_task", requiredBadge: f["required-badge"], badgeCap: number("badge-cap"), rewardMin: number("reward-min"), rewardMax: number("reward-max"), assigneeHandle: f["assignee-handle"], acceptWindowHours: number("accept-window-hours"), retryFailed: f["retry-failed"] === true, execute: f.execute === true });
   if (command === "board-update") {
     const payload = { boardId: board(args[0]) };
     for (const field of ["title", "summary", "objective", "about", "status", "priority", "phase_label"]) {
