@@ -7,11 +7,25 @@ const commandTransaction = new AsyncLocalStorage();
 // flag prevents deferred jobs from retaining a released transaction connection.
 export function transactionCommand(work) {
   return transaction(async (client) => {
-    const scope = { client, active: true };
+    // pg starts query_timeout when a query is submitted, including time spent
+    // waiting behind other reads on this one transaction connection. Serialize
+    // at the promise boundary so each statement gets its own execution budget.
+    const execute = client.query.bind(client);
+    let pending = Promise.resolve();
+    const scopedClient = Object.create(client);
+    scopedClient.query = (...args) => {
+      const result = pending.then(() => execute(...args));
+      pending = result.catch(() => {});
+      return result;
+    };
+    const scope = { client: scopedClient, active: true };
     try {
-      return await commandTransaction.run(scope, () => work(client));
+      return await commandTransaction.run(scope, () => work(scopedClient));
     } finally {
       scope.active = false;
+      // Drain already-issued reads before the outer commit/rollback can release
+      // this connection. Detached later work must use a fresh pool connection.
+      await pending;
     }
   });
 }
