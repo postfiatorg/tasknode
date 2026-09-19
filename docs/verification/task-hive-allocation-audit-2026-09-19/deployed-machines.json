@@ -1,0 +1,214 @@
+{
+  "app": "tasknodeofficial-dev",
+  "machines": [
+    {
+      "id": "e827021fd67708",
+      "state": "stopped",
+      "group": "worker-taskgen",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:task-step-readiness-20260916@sha256:ee2d49c37ec2707e19a43eb8689a7490040939223614e80e1c433f722feb34a9",
+      "updated_at": "2026-09-16T19:29:20Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "e8267e0c015508",
+      "state": "stopped",
+      "group": "board-secretary",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:12Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "e826761a263e18",
+      "state": "started",
+      "group": "worker-pftl",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T20:05:56Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "e826571a546458",
+      "state": "stopped",
+      "group": "worker-task-review",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:16Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "e820352ae34138",
+      "state": "stopped",
+      "group": "worker-airdrop",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:14Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "d8d0ed9b969528",
+      "state": "stopped",
+      "group": "worker-context-rewrite",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:14Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "8d4930ae156638",
+      "state": "started",
+      "group": "app",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:decisions-context-memory-20260919@sha256:5008851b189a96bb033d28ff816bc454d9298b5d0ba0921b82c9aa196b780d0c",
+      "updated_at": "2026-09-19T15:45:35Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "87d077b0263998",
+      "state": "started",
+      "group": "worker-context-rewrite",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:17Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "8465ddb274e908",
+      "state": "stopped",
+      "group": "worker-hive",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:14Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "7845637cd3e708",
+      "state": "stopped",
+      "group": "worker-memory-profile",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:20Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "7813e21f1295d8",
+      "state": "started",
+      "group": "worker-taskgen",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:task-step-readiness-20260916@sha256:ee2d49c37ec2707e19a43eb8689a7490040939223614e80e1c433f722feb34a9",
+      "updated_at": "2026-09-16T19:29:10Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "6835d0ea464158",
+      "state": "started",
+      "group": "worker-task-review",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-18T18:42:21Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "48ee629a21e748",
+      "state": "started",
+      "group": "worker-nft-renderer",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T20:05:58Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "48e10e9a40d978",
+      "state": "stopped",
+      "group": "worker-pftl",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:15Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "48e056a3705e18",
+      "state": "started",
+      "group": "worker-memory-profile",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-18T18:42:11Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "2862170c66e238",
+      "state": "started",
+      "group": "board-secretary",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:22Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "1854406a6e3508",
+      "state": "started",
+      "group": "worker-hive",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T20:05:57Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "1850d37c3d3e48",
+      "state": "started",
+      "group": "worker-airdrop",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:16Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    },
+    {
+      "id": "0803736c291198",
+      "state": "stopped",
+      "group": "worker-nft-renderer",
+      "release": "741",
+      "image": "registry.fly.io/tasknodeofficial-dev:deployment-01M29XS3HAAT42NSQBHV58YWRG",
+      "updated_at": "2026-09-12T04:26:12Z",
+      "taskgen_enabled": "true",
+      "network_taskgen_enabled": "true",
+      "offchain": "true"
+    }
+  ]
+}

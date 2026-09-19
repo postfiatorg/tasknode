@@ -1,0 +1,94 @@
+{
+  "observedAt": "2026-09-19T19:27:32.696Z",
+  "mode": "schema",
+  "transaction": {
+    "transaction_read_only": "on"
+  },
+  "tables": [
+    {
+      "table_name": "account_linked_wallets",
+      "columns": "{account_id,wallet_address,status,linked_at,updated_at,public_key,encryption_public_key,custody,proof_purpose,wallet_created_in_account,proof_json,metadata_json}"
+    },
+    {
+      "table_name": "account_network_badges",
+      "columns": "{id,account_id,badge_id,status,public_visible,selected_default,verified_by_account_id,verified_by_operator,evidence_task_id,evidence_url_or_ref,evidence_json,validated_metrics_json,expires_at,revoked_at,revocation_reason,created_at,updated_at}"
+    },
+    {
+      "table_name": "board_agent_commands",
+      "columns": "{credential_id,request_key,input_digest,command,result_json,created_at,completed_at}"
+    },
+    {
+      "table_name": "board_agent_credentials",
+      "columns": "{id,token_hash,actor,board_ids,expires_at,revoked_at,created_at}"
+    },
+    {
+      "table_name": "board_agent_rounds",
+      "columns": "{id,actor,board_ids,duties_json,results_json,state,created_at,completed_at}"
+    },
+    {
+      "table_name": "board_manager_followups",
+      "columns": "{id,run_id,account_id,project_id,hive_context_entry_id,response_hive_context_entry_id,conversation_id,board_message_id,chat_message_id,status,blocker_type,blocker_summary,expected_response,source_packet_digest,metadata_json,last_sent_at,answered_at,resolved_at,expires_at,created_at,updated_at}"
+    },
+    {
+      "table_name": "network_project_task_refs",
+      "columns": "{id,project_id,task_id,request_id,title,state,assignee_wallet,reward_pft,age_label,sort_order,source,metadata_json,created_at,updated_at}"
+    },
+    {
+      "table_name": "network_projects",
+      "columns": "{id,type,title,summary,objective,about,status,priority,origin,proposed_by,proposed_at,phase_label,phase_current,phase_total,pft_routed,task_count,contributor_count,source_hive_secretary_report_id,source_hive_secretary_report_digest,source_inputs_json,metadata_json,created_at,updated_at}"
+    },
+    {
+      "table_name": "network_task_allocations",
+      "columns": "{id,idempotency_key,project_id,task_class,allocation_status,task_request_id,generated_task_id,candidate_account_id,candidate_wallet_address,candidate_profile_id,candidate_profile_digest,allocation_reason_summary,project_need_summary,reward_min_pft,reward_max_pft,cadence_policy_json,metadata_json,expires_at,created_at,updated_at}"
+    },
+    {
+      "table_name": "network_task_generation_jobs",
+      "columns": "{id,idempotency_key,allocation_id,project_id,task_class,candidate_account_id,candidate_wallet_address,reward_min_pft,reward_max_pft,status,trigger,board_manager_run_id,request_id,source_payload_digest,source_payload_json,source_payload_text,provider,model,prompt_version,request_bundle_cid,generated_task_payload,task_id,offer_cid,offer_tx_hash,attempt_count,next_attempt_at,locked_at,last_error,created_at,updated_at,worker_attempt_id,worker_heartbeat_at,lease_expires_at}"
+    },
+    {
+      "table_name": "network_task_intents",
+      "columns": "{id,semantic_key,project_id,task_class,candidate_account_id,candidate_wallet_address,normalized_need_hash,project_need_summary,routing_reason_summary,reward_min_pft,reward_max_pft,status,allocation_id,generation_job_id,request_id,task_id,source_state_digest,created_by_run_id,metadata_json,expires_at,created_at,updated_at}"
+    },
+    {
+      "table_name": "network_task_profiles",
+      "columns": "{id,account_id,status,source_packet_json,source_packet_text,source_packet_digest,output_json,output_text,provider,model,prompt_version,prompt_digest,usage_json,error,created_at,completed_at,superseded_at}"
+    },
+    {
+      "table_name": "pftl_sync_wallets",
+      "columns": "{wallet_address,account_id,role,owner_wallet_address,status,priority,last_seen_tx_hash,last_seen_ledger,last_checked_at,last_hot_sync_at,last_archive_sync_at,archive_marker,last_archive_ledger,last_error,metadata_json,created_at,updated_at}"
+    },
+    {
+      "table_name": "task_events",
+      "columns": "{id,task_id,account_id,wallet_address,event_type,source_tx_hash,source_cid,event_digest,payload_json,pointer_json,occurred_at,created_at,write_source,provenance_json,signature_json}"
+    },
+    {
+      "table_name": "task_projections",
+      "columns": "{task_id,account_id,subject_wallet,authority_wallet,allocation_wallet,request_id,status,title,description,task_kind,reward_offer_pft,reward_actual_pft,request_bundle_cid,context_cid,submission_type,submission_requirement_text,verification_policy_json,accept_by,deadline_at,event_count,last_event_tx_hash,last_event_cid,last_event_at,source,metadata_json,created_at,updated_at}"
+    },
+    {
+      "table_name": "task_requests",
+      "columns": "{request_id,account_id,subject_wallet,source,source_conversation_id,source_conversation_title,request_text,user_detail_text,requested_task_kind,request_bundle_cid,request_event_cid,request_tx_hash,bundle_id,status,generated_task_id,worker_claimed_at,worker_completed_at,worker_attempt_count,last_error,metadata_json,created_at,updated_at,worker_id,worker_attempt_id,worker_heartbeat_at,worker_retry_after}"
+    },
+    {
+      "table_name": "user_observability_events",
+      "columns": "{id,occurred_at,received_at,event_type,event_version,account_id,public_handle,wallet_address,wallet_scope,provider,provider_user_id_hash,session_id_hash,request_id,task_id,conversation_id,project_id,allocation_id,generation_job_id,model_run_id,tx_hash,cid,source_surface,source_route,result_status,reason_code,identity_snapshot_json,decision_json,metrics_json,metadata_json,privacy_class,retention_until}"
+    }
+  ],
+  "sourceHashes": {
+    "server/repositories/network-task-eligibility.js": "8221267c08023d850b27050b1729c0402af223198491add4cc638f85390788a5",
+    "server/repositories/network-task-enqueue.js": "3e7e7f7a3f3f9c0668a39e0685c916a8e901d159a97a9205bcf6e5ab0e08358a",
+    "server/repositories/network-task-capacity.js": "6963656fe75a592ce3d0abe1470d5c70146bed23a881472cb36463ba0bf99f5e",
+    "server/repositories/network-task-generation-jobs.js": "cfd439a900de104e856ca44c5d8abce295da29db544c20b789b133672d3deaa4",
+    "server/network-task-generation-worker.js": "d22b5fa1c4d4ca8b318e920751f4ee778f2c32ed58a83664c4793cc287a29ca9",
+    "server/task-generation-worker.js": "2f1cc7a6e42c0afb6b9ecd96a66473bb3b4d9bc2a0ff36e894c58e4bbc190cce",
+    "server/task-generation-readiness.js": "ca9efa7c685f6dc271393c8e4f49c31e188a3742ec52b5697cdce10b22aaa659",
+    "server/repositories/task-requests.js": "90c0aef8208a4cb4b2c3eee33ebd21f6c129f26e3fad36cbf092db025ec842ea",
+    "scripts/bm/lib.mjs": "8b260c95edf886856e94f0b45e775423d8c415a3d7d4be2a6bd1dd80d2a91ff5",
+    "server/board-task-policy.js": "4b006091da1259477de37a35a88683aebc4dd88f9320e93ead0ba5c4d0bc04e0",
+    "server/board-agent-rounds.js": "47ed33d601e2410fb5e686eadead900bd3c436a186cdf4ad42db98ea4d99ad9e",
+    "server/task-intent-assessment.js": "beaf528cb9c04a94faca04fd1d472ff2d5f5a1d17ed441fc4e99087b4c54e743",
+    "server/offchain-task-lifecycle.js": "86112b5d5f974d0201f8c15a3c76d57ec86dfb4b57b087e91630c1fb3e9eeb8c",
+    "server/repositories/tasks.js": "f9ef24493014837347bacae9c824e7e4ff11aed1fee74a11f8aff9558af2dab6",
+    "server/system-status-task-workers.js": "43ffd7e96bf61825c7e9039473c35070a5cf84ca9c70532c07499d12eb0869d5"
+  }
+}

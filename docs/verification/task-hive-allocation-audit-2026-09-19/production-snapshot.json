@@ -1,0 +1,290 @@
+{
+  "observedAt": "2026-09-19T19:16:48.025Z",
+  "mode": "snapshot",
+  "transaction": {
+    "transaction_read_only": "on"
+  },
+  "windowStart": "2026-09-12T00:00:00Z",
+  "schemaExtras": [
+    {
+      "table_name": "bm_activity_summaries",
+      "columns": "{id,board_id,latest_audit_id,summary,model,source,created_at,provider}"
+    },
+    {
+      "table_name": "bm_agent_decisions",
+      "columns": "{id,kind,board_id,task_id,decision,requested_reward_pft,reward_pft,caps_applied_json,reason,user_feedback,verification_ask,verification_type,status,consumed_at,consumed_ref_json,created_by,metadata_json,created_at,updated_at}"
+    },
+    {
+      "table_name": "bm_audit_log",
+      "columns": "{id,actor,board_id,command,args_json,result_json,created_at}"
+    },
+    {
+      "table_name": "board_agent_commands",
+      "columns": "{credential_id,request_key,input_digest,command,result_json,created_at,completed_at}"
+    },
+    {
+      "table_name": "board_agent_credentials",
+      "columns": "{id,token_hash,actor,board_ids,expires_at,revoked_at,created_at}"
+    },
+    {
+      "table_name": "board_agent_rounds",
+      "columns": "{id,actor,board_ids,duties_json,results_json,state,created_at,completed_at}"
+    }
+  ],
+  "projects": [
+    {
+      "id": "board_ai_l1_governance",
+      "status": "active",
+      "manager": null
+    },
+    {
+      "id": "board_capital_markets",
+      "status": "active",
+      "manager": null
+    },
+    {
+      "id": "board_community_promotion",
+      "status": "active",
+      "manager": null
+    },
+    {
+      "id": "board_manager_action_smoke_project",
+      "status": "archived",
+      "manager": null
+    },
+    {
+      "id": "board_pf_terminal",
+      "status": "active",
+      "manager": null
+    },
+    {
+      "id": "board_postfiat_l1v2",
+      "status": "active",
+      "manager": null
+    },
+    {
+      "id": "board_source_packet_project_1786125186983",
+      "status": "active",
+      "manager": null
+    },
+    {
+      "id": "board_tasknode_fixes",
+      "status": "active",
+      "manager": null
+    }
+  ],
+  "allocationStatuses": [
+    {
+      "allocation_status": "cancelled",
+      "count": 49,
+      "oldest": "2026-05-30T03:02:51.493Z",
+      "newest": "2026-09-06T15:31:40.390Z"
+    },
+    {
+      "allocation_status": "failed",
+      "count": 112,
+      "oldest": "2026-05-24T15:11:16.370Z",
+      "newest": "2026-09-08T09:55:03.816Z"
+    },
+    {
+      "allocation_status": "proposed",
+      "count": 5,
+      "oldest": "2026-08-31T22:41:14.851Z",
+      "newest": "2026-09-06T15:33:50.371Z"
+    },
+    {
+      "allocation_status": "refused",
+      "count": 344,
+      "oldest": "2026-05-23T15:33:07.532Z",
+      "newest": "2026-09-03T08:43:16.731Z"
+    },
+    {
+      "allocation_status": "rewarded",
+      "count": 358,
+      "oldest": "2026-05-23T01:08:52.307Z",
+      "newest": "2026-09-07T16:53:55.691Z"
+    }
+  ],
+  "jobStatuses": [
+    {
+      "status": "failed",
+      "count": 112,
+      "oldest": "2026-05-24T15:11:16.370Z",
+      "newest": "2026-09-08T09:55:03.816Z",
+      "last_update": "2026-09-08T09:58:22.448Z"
+    },
+    {
+      "status": "published",
+      "count": 756,
+      "oldest": "2026-05-23T01:08:52.310Z",
+      "newest": "2026-09-07T16:53:55.691Z",
+      "last_update": "2026-09-07T16:54:51.222Z"
+    }
+  ],
+  "requestStatuses": [
+    {
+      "source": "pfterminal",
+      "status": "cancelled",
+      "count": 2,
+      "oldest": "2026-09-12T01:25:13.789Z",
+      "newest": "2026-09-12T01:28:11.229Z"
+    },
+    {
+      "source": "pfterminal",
+      "status": "proposed",
+      "count": 37,
+      "oldest": "2026-09-12T01:37:48.979Z",
+      "newest": "2026-09-19T19:05:04.582Z"
+    },
+    {
+      "source": "pfterminal",
+      "status": "queued",
+      "count": 1,
+      "oldest": "2026-09-08T06:04:52.841Z",
+      "newest": "2026-09-08T06:04:52.841Z"
+    },
+    {
+      "source": "task_interface",
+      "status": "proposed",
+      "count": 64,
+      "oldest": "2026-09-12T04:01:45.571Z",
+      "newest": "2026-09-19T16:07:29.385Z"
+    },
+    {
+      "source": "task_interface",
+      "status": "queued",
+      "count": 2,
+      "oldest": "2026-09-08T09:38:01.337Z",
+      "newest": "2026-09-08T09:46:52.164Z"
+    }
+  ],
+  "networkDaily": [
+    {
+      "day": "2026-09-01T00:00:00.000Z",
+      "allocated": 3,
+      "contributors": 3,
+      "linked_tasks": 3
+    },
+    {
+      "day": "2026-09-02T00:00:00.000Z",
+      "allocated": 3,
+      "contributors": 2,
+      "linked_tasks": 2
+    },
+    {
+      "day": "2026-09-03T00:00:00.000Z",
+      "allocated": 2,
+      "contributors": 2,
+      "linked_tasks": 2
+    },
+    {
+      "day": "2026-09-04T00:00:00.000Z",
+      "allocated": 1,
+      "contributors": 1,
+      "linked_tasks": 1
+    },
+    {
+      "day": "2026-09-05T00:00:00.000Z",
+      "allocated": 2,
+      "contributors": 2,
+      "linked_tasks": 2
+    },
+    {
+      "day": "2026-09-06T00:00:00.000Z",
+      "allocated": 13,
+      "contributors": 7,
+      "linked_tasks": 9
+    },
+    {
+      "day": "2026-09-07T00:00:00.000Z",
+      "allocated": 3,
+      "contributors": 1,
+      "linked_tasks": 3
+    },
+    {
+      "day": "2026-09-08T00:00:00.000Z",
+      "allocated": 1,
+      "contributors": 1,
+      "linked_tasks": 0
+    }
+  ],
+  "recentByBoard": [],
+  "pendingChains": [],
+  "failureReasons": [],
+  "chainIntegrity": [
+    {
+      "allocations": 868,
+      "missing_job": 0,
+      "missing_request": 0,
+      "missing_projection": 0,
+      "missing_hive_ref": 0,
+      "status_mismatches": 2
+    }
+  ],
+  "duplicateRequests": [
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "tasks": 9
+    },
+    {
+      "request_id": "req_3258e9fe-01eb-4afe-9501-e14e5a0032a6",
+      "tasks": 2
+    },
+    {
+      "request_id": "req_net_admin_badge_7ab237aed744905baf3369f63a171de4",
+      "tasks": 2
+    }
+  ],
+  "recentRounds": [
+    {
+      "state": "pending",
+      "rounds": 1,
+      "oldest": "2026-09-10T21:20:45.710Z",
+      "newest": "2026-09-10T21:20:45.710Z",
+      "last_completed": null
+    }
+  ],
+  "recentCommands": [],
+  "pendingRoundDuties": [
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "duty_type": "routing_due",
+      "board_id": "board_pf_terminal"
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "duty_type": "routing_due",
+      "board_id": "board_community_promotion"
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "duty_type": "routing_due",
+      "board_id": "board_postfiat_l1v2"
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "duty_type": "routing_due",
+      "board_id": "board_ai_l1_governance"
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "duty_type": "routing_due",
+      "board_id": "board_tasknode_fixes"
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "duty_type": "routing_due",
+      "board_id": "board_capital_markets"
+    }
+  ],
+  "observabilityReasons": {
+    "error": "57014",
+    "message": "canceling statement due to statement timeout"
+  }
+}
