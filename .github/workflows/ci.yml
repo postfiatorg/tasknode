@@ -29,6 +29,10 @@ jobs:
           TASKNODE_DATABASE_ENABLED: "false"
       - name: Verify board-agent lifecycle error responses
         run: node --test scripts/board-agent-lifecycle.test.mjs
+      - name: Verify board-agent progress escalation, retry bounds and worker wake-up
+        run: node --test scripts/board-agent-progress.test.mjs
+      - name: Verify task review worker retry state
+        run: node scripts/task-review-idempotency-smoke.mjs
       - run: npm run check
         env:
           CHROME_BIN: google-chrome

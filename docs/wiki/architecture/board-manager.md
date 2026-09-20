@@ -63,6 +63,22 @@ transient server failures: refresh task detail and take the indicated next step
 instead of retrying the same command. Rejected commands roll back their receipt
 and cannot create a decision or reward.
 
+Repetition of a rejected command is bounded and visible. Each lifecycle rejection
+is recorded in `bm_audit_log` as `lifecycle_rejected` after the rollback; the 409
+body carries `lifecycle.taskId`, `taskStatus`, `command`, `nextAction` and
+`priorRejections`, and the message states how many times the same command was
+already refused in that status. The `bm` CLI keeps the rejection with the saved
+command key: an identical command is not resent until a fresh `task detail` shows
+the status changed, and is refused locally with the original guidance otherwise.
+
+A pending manager decision wakes its publication worker. Recording a
+`verification_request` or `review` decision clears the idle matching worker's
+`retry_after` in the same transaction, so the next worker tick publishes it. Active
+claims and published work are never touched. Worker claim state separates
+`wait_count` (successful passes that found no decision yet) from `retry_count`
+(failures); a wait resets the failure streak, so one transient error after a long
+wait gets the first-failure backoff instead of the fifteen-minute ceiling.
+
 Reward projection still updates project totals, allocations and user
 followups. It no longer enqueues the retired `board_manager_jobs` scheduler.
 Historical runs and accounting records remain available; old queued planner
@@ -96,6 +112,18 @@ Launch, supervisor, reset and status publication use that same registry.
   receipts remain authoritative; no retry creates a replacement round.
   Identical completed rounds have a fifteen-minute cooldown. Crash recovery
   resumes the saved thread. Daily reset preserves pending/busy work.
+- A processed round is not a resolved task. The supervisor keeps
+  `<alias>.blockers.json` and tracks progress duties (`review_due`,
+  `verification_due`, `hive_chat_escalation`) that were reported anything but
+  completed in consecutive processed rounds, keyed by type, board and task. These
+  duties disappear as soon as the required decision or reply exists, so recurrence
+  means the task did not advance. Two consecutive rounds log
+  `duty_blocked_across_rounds`, append to `ALERTS.log`, publish a
+  `Stalled:` line and per-duty round counts in runtime status, and add an
+  escalation directive to the next work order naming each stalled duty, its last
+  reason, and the rule that a repeated identical command cannot change task
+  state. Routing, staleness and board-info duties recur legitimately and are not
+  tracked. The streak clears when the duty completes or leaves the duty set.
 - Candidate discovery returns the entire eligible idle pool on every round,
   in stable account order, without a rewarded-history top-100 or a top-12 cut.
   Board restrictions filter that complete pool. Discovery errors fail the read

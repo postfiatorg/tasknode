@@ -43,6 +43,56 @@ export function mergeRoundProgress(pending, round) {
   return next;
 }
 
+// Cross-round progress tracking. A round completes when every duty has a
+// recorded outcome; that proves the work order was answered, not that the task
+// advanced. Progress duties disappear from the duty set as soon as the manager
+// records the required decision or reply, so the same one reported anything
+// but completed in consecutive processed rounds is a stalled task and must
+// escalate instead of quietly cycling. Routing, staleness and board-info duties
+// recur legitimately (nothing routable, not yet eligible) and are not tracked.
+export const RECURRING_BLOCKER_ROUNDS = 2;
+export const PROGRESS_DUTY_TYPES = new Set(["review_due", "verification_due", "hive_chat_escalation"]);
+
+// Keyed by the stable duty identity (type, board, task). Some hashed duty ids
+// include staleness timestamps and change every round; the task does not.
+export function blockerKey(duty) { return [duty.type, duty.board_id, duty.task_id || ""].join("|"); }
+
+export function trackRecurringBlockers(previous = {}, round) {
+  const next = {};
+  for (const duty of round?.duties_json || []) {
+    if (!PROGRESS_DUTY_TYPES.has(duty.type)) continue;
+    const result = round.results_json?.[duty.id];
+    if (!result || result.outcome === "completed") continue;
+    const key = blockerKey(duty);
+    const prior = previous?.[key];
+    next[key] = {
+      dutyId: duty.id, type: duty.type, board_id: duty.board_id, task_id: duty.task_id || "",
+      rounds: Number(prior?.rounds || 0) + 1,
+      firstRoundId: prior?.firstRoundId || round.id, lastRoundId: round.id,
+      lastOutcome: result.outcome, lastReason: String(result.reason || "").slice(0, 600), lastRecordedAt: result.recordedAt || "",
+      alertedRounds: Number(prior?.alertedRounds || 0),
+    };
+  }
+  return next;
+}
+
+export function recurringBlockers(blockers = {}, threshold = RECURRING_BLOCKER_ROUNDS) {
+  return Object.values(blockers || {}).filter((item) => Number(item.rounds || 0) >= threshold)
+    .sort((a, b) => b.rounds - a.rounds || String(a.task_id).localeCompare(String(b.task_id)));
+}
+
+export function escalationDirective(recurring = []) {
+  if (!recurring.length) return "";
+  const lines = recurring.map((item) => `- ${item.type}${item.task_id ? ` ${item.task_id}` : ""} (${item.board_id}): ${item.lastOutcome} in ${item.rounds} consecutive rounds; last reason: ${JSON.stringify(item.lastReason.slice(0, 240))}`);
+  return ` ESCALATION - the following duties were reported blocked or deferred in consecutive rounds without task progress:\n${lines.join("\n")}\n` +
+    `A repeated identical command cannot change a task's state. For each duty above: run task detail, compare the current status to the submission lifecycle in the skill (submitted -> verify request -> contributor verification response -> review), and issue only the command valid for that status. If the API rejects a command with lifecycle_violation, do not reissue it; quote the exact error text and the task status in the duty result. If the blocker is outside your control, name the exact dependency and who must act.`;
+}
+
+export function recurringSummary(recurring = []) {
+  if (!recurring.length) return "";
+  return JSON.stringify(recurring.map((item) => ({ type: item.type, board_id: item.board_id, task_id: item.task_id, rounds: item.rounds })));
+}
+
 function processAlive(alias) {
   try {
     const pane = execFileSync("tmux", ["list-panes", "-t", `bm-${alias}`, "-F", "#{pane_pid}"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().split("\n")[0];
@@ -66,8 +116,19 @@ export async function superviseOnce() {
     let pending = read(pendingFile);
     const remote = (argv) => remoteBoardCommand(argv, { tokenFile, stateDir, requestKey: `supervisor_${randomUUID()}` });
     let round = pending?.id ? await remote(["round-status", pending.id]) : null;
+    const blockersFile = path.join(stateDir, `${agent.alias}.blockers.json`);
     if (!round || round.state !== "pending") {
-      if (round) log({ alias: agent.alias, event: "round_processed", roundId: round.id, outcomes: round.results_json });
+      if (round) {
+        log({ alias: agent.alias, event: "round_processed", roundId: round.id, outcomes: round.results_json });
+        const blockers = trackRecurringBlockers(read(blockersFile) || {}, round);
+        for (const item of recurringBlockers(blockers)) {
+          if (item.alertedRounds >= item.rounds) continue;
+          item.alertedRounds = item.rounds;
+          log({ alias: agent.alias, event: "duty_blocked_across_rounds", dutyId: item.dutyId, type: item.type, boardId: item.board_id, taskId: item.task_id, rounds: item.rounds, firstRoundId: item.firstRoundId, lastRoundId: item.lastRoundId, lastOutcome: item.lastOutcome, lastReason: item.lastReason });
+          appendFileSync(path.join(home, "ALERTS.log"), `${new Date().toISOString()} ${agent.alias}: ${item.type}${item.task_id ? ` ${item.task_id}` : ""} ${item.lastOutcome} in ${item.rounds} consecutive rounds (${item.firstRoundId}..${item.lastRoundId}); no task progress; last reason: ${item.lastReason.slice(0, 300)}\n`);
+        }
+        save(blockersFile, blockers);
+      }
       if (existsSync(pendingFile)) unlinkSync(pendingFile);
       round = await remote(["round-open", ...agent.boards]);
       pending = round?.id && round.state === "pending" ? { id: round.id, attempts: 0 } : null;
@@ -80,10 +141,12 @@ export async function superviseOnce() {
     const status = read(path.join(control, "status.json"));
     const recovery = recoverySchedule(pending);
     const runtimeState = !terminalStatusFresh(status) ? "unavailable" : !status.ready ? "busy" : recovery.attempts >= 3 ? "cooldown" : "ready";
-    const projected = JSON.stringify([runtimeState, round?.id, round?.state, round?.results_json, recovery]);
+    const recurring = recurringBlockers(read(blockersFile) || {});
+    const recurringFlag = recurringSummary(recurring);
+    const projected = JSON.stringify([runtimeState, round?.id, round?.state, round?.results_json, recovery, recurringFlag]);
     const feedFile = path.join(stateDir, `${agent.alias}.feed.json`);
     if (read(feedFile)?.projected !== projected) {
-      await remote(["runtime-status", "--state", runtimeState, "--attempts", String(recovery.attempts), ...(recovery.nextRetryAt ? ["--next-retry", recovery.nextRetryAt] : []), ...(round?.id ? ["--round", round.id] : [])]);
+      await remote(["runtime-status", "--state", runtimeState, "--attempts", String(recovery.attempts), ...(recovery.nextRetryAt ? ["--next-retry", recovery.nextRetryAt] : []), ...(round?.id ? ["--round", round.id] : []), ...(recurringFlag ? ["--recurring", recurringFlag] : [])]);
       save(feedFile, { projected });
     }
     const decision = deliveryDecision({ round, status, pending });
@@ -102,7 +165,7 @@ export async function superviseOnce() {
     save(file, round); save(path.join(workdir, "latest.json"), round);
     pending.deliveryCount = Number(pending.deliveryCount || 0) + 1;
     const id = `${round.id}_${pending.deliveryCount}`;
-    save(path.join(control, "inbox.json"), { id, prompt: `Read the board-manager skill and the durable work order ${file}. Complete each unresolved duty, then report its explicit result using: node ${path.join(directory, "../../scripts/bm.mjs")} duty-result ${round.id} <duty-id> --outcome completed|blocked|deferred --reason '<specific outcome and evidence>'. Journaling alone does not finish a duty. Refresh board packets before reusing earlier blockers: generation_queue counts and generation_failures describe current work and historical terminal failures separately. A failed job will not flush itself; use the documented explicit provider-failure recovery after revalidating the original need. Keep Kimi K3 as the task manager and follow the existing board rules. This is delivery ${Number(pending.attempts || 0) + 1}; reconcile existing command receipts before repeating a mutation.` });
+    save(path.join(control, "inbox.json"), { id, prompt: `Read the board-manager skill and the durable work order ${file}. Complete each unresolved duty, then report its explicit result using: node ${path.join(directory, "../../scripts/bm.mjs")} duty-result ${round.id} <duty-id> --outcome completed|blocked|deferred --reason '<specific outcome and evidence>'. Journaling alone does not finish a duty. Refresh board packets before reusing earlier blockers: generation_queue counts and generation_failures describe current work and historical terminal failures separately. A failed job will not flush itself; use the documented explicit provider-failure recovery after revalidating the original need. Keep Kimi K3 as the task manager and follow the existing board rules. This is delivery ${Number(pending.attempts || 0) + 1}; reconcile existing command receipts before repeating a mutation.${escalationDirective(recurring)}` });
     pending.attempts = Number(pending.attempts || 0) + 1;
     pending.lastDeliveredAt = new Date().toISOString();
     save(pendingFile, pending);

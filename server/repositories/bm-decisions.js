@@ -181,7 +181,46 @@ export async function recordAgentDecision({
       jsonValue(metadata),
     ]
   );
+  if (safeText(status, 40) === "pending") await wakeDecisionWorker({ taskId, kind });
   return result.rows[0];
+}
+
+// The publication worker that consumes a decision kind. Anything else has no
+// worker to wake.
+export function workerForDecisionKind(kind) {
+  if (kind === "verification_request") return "verification_request";
+  if (kind === "review") return "reward_scoring";
+  return "";
+}
+
+// A new pending decision makes the idle matching worker eligible on its next
+// tick instead of waiting out a backoff timer that was set while no decision
+// existed. Active claims and published work are never touched, so this cannot
+// reclaim in-flight work or duplicate a publication.
+export async function wakeDecisionWorker({ taskId, kind }) {
+  const workerName = workerForDecisionKind(kind);
+  if (!workerName) return null;
+  const result = await query(
+    `UPDATE task_projections
+     SET metadata_json = jsonb_set(
+           jsonb_set(metadata_json, '{workers}', COALESCE(metadata_json->'workers', '{}'::jsonb), true),
+           $2::text[],
+           COALESCE(metadata_json #> $2::text[], '{}'::jsonb) || $3::jsonb,
+           true
+         ),
+         updated_at = now()
+     WHERE task_id = $1
+       AND COALESCE((metadata_json #> $2::text[]) ->> 'processing', '') <> 'true'
+       AND COALESCE((metadata_json #> $2::text[]) ->> 'published', '') <> 'true'
+       AND COALESCE((metadata_json #> $2::text[]) ->> 'retry_after', '') <> ''
+     RETURNING task_id`,
+    [
+      safeText(taskId, 180),
+      ["workers", workerName],
+      jsonValue({ retry_after: "", woken_at: new Date().toISOString(), woken_by: `decision:${safeText(kind, 40)}` }),
+    ]
+  );
+  return { workerName, woken: result.rows.length > 0 };
 }
 
 export async function pendingAgentDecision({ taskId, kind }) {

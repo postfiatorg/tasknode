@@ -3,6 +3,7 @@ import { query, transactionCommand } from "./db/pool.js";
 import { validateJsonDocument } from "./request-validation.js";
 import { withBoardAgent } from "./board-agent-context.js";
 import { dispatchBoardAgent } from "./board-agent-dispatch.js";
+import { recordLifecycleRejection } from "../scripts/bm/writes.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -22,6 +23,21 @@ export async function executeBoardAgentCommand({ token, payload }, { dispatch = 
     return { ok: true, result: await withBoardAgent(context, () => dispatch(payload.argv)) };
   }
   const inputDigest = digest(JSON.stringify(payload.argv));
+  try {
+    return await executeBoardAgentMutation({ row, payload, inputDigest, dispatch });
+  } catch (error) {
+    // The rejected command's receipt rolled back with its transaction. Keep a
+    // durable record of the lifecycle conflict so repetition is countable by
+    // the guard, visible in board history, and detectable by supervision.
+    if (error?.status === 409 && error.lifecycle?.taskId) {
+      await withBoardAgent(context, () => recordLifecycleRejection({ actor: row.actor, lifecycle: error.lifecycle, argv: payload.argv }))
+        .catch((auditError) => console.error("board_agent_lifecycle_rejection_unrecorded", { error: auditError.message }));
+    }
+    throw error;
+  }
+}
+
+function executeBoardAgentMutation({ row, payload, inputDigest, dispatch }) {
   return transactionCommand(async () => withBoardAgent({ actor: row.actor, boards: row.board_ids, credentialId: row.id }, async () => {
     // Serializes the actor's commands, including opening or acknowledging a round.
     // Nested domain writes and the immutable receipt share this transaction.
@@ -51,7 +67,9 @@ export async function handleBoardAgentRoute({ req, res, url, readJson, json }) {
   } catch (error) {
     const status = Number(error.status) || 500;
     if (status >= 500) console.error("board_agent_command_failed", { error: error.message });
-    json(res, status, { ok: false, error: status >= 500 ? "board_agent_command_failed" : error.message, message: status >= 500 ? "The command did not commit. Retry with its saved request key." : error.message });
+    const body = { ok: false, error: status >= 500 ? "board_agent_command_failed" : error.message, message: status >= 500 ? "The command did not commit. Retry with its saved request key." : error.message };
+    if (status === 409 && error.lifecycle) body.lifecycle = error.lifecycle;
+    json(res, status, body);
   }
   return true;
 }

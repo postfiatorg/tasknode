@@ -148,7 +148,13 @@ For every submission or verification response:
    confirming one (for example: the required announcement link, the merged
    state, or a restatement of the key artifact). A decision recorded out
    of order is never consumed by the reward publisher; it just wedges the
-   task.
+   task. If a command returns `lifecycle_violation`, it is a permanent state
+   conflict, not a transient failure: do not reissue it and do not record it
+   as a broken execution path. Run `task detail`, read the current status,
+   and issue only the command that status allows (the error names it as
+   `Next action`). Quote the exact error text and the task status in your
+   duty result. The CLI refuses to resend an identical rejected command
+   while the status is unchanged.
 5. Shape the verification request by case:
    - **Missing fact or artifact:** ask for exactly that.
    - **A close PR needs changes:** comment with specifics via
