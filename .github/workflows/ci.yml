@@ -23,6 +23,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Verify offchain task action event integrity
+        run: node --test scripts/offchain-task-event-integrity.test.mjs
+        env:
+          TASKNODE_DATABASE_ENABLED: "false"
       - run: npm run check
         env:
           CHROME_BIN: google-chrome
