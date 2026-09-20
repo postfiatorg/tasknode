@@ -36,7 +36,7 @@ export async function executeBoardAgentCommand({ token, payload }, { dispatch = 
     const result = await dispatch(payload.argv);
     await query("UPDATE board_agent_commands SET result_json=$3::jsonb,completed_at=now() WHERE credential_id=$1 AND request_key=$2", [row.id, payload.requestKey, JSON.stringify(result ?? null)]);
     return { ok: true, replayed: false, result };
-  }));
+  }), { statementTimeoutMs: 15_000 });
 }
 
 export async function handleBoardAgentRoute({ req, res, url, readJson, json }) {
