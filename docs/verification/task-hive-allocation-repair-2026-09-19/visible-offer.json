@@ -1,0 +1,59 @@
+{
+  "ok": true,
+  "taskId": "task_77bbf7560e8f82948d4b0a202a15a03d",
+  "title": "Patch Reward-Forgery Guard in Offchain Task Lifecycle",
+  "status": "proposed",
+  "pft": 100,
+  "requestId": "req_net_fa9868363644ed853dd3535c9d876ed9",
+  "generation": {
+    "model": "z-ai/glm-5.2",
+    "provider": "ambient",
+    "readiness": {
+      "model": "zai/glm-5.3-flash",
+      "version": "taskgen_readiness_v2",
+      "approved": true,
+      "provider": "vercel",
+      "stepReviews": [
+        {
+          "reason": "Concrete contributor action: clone the named repo at pinned commit 40d2df7, read the named function, and verify the missing transitions and payload fallback. Clear verification step.",
+          "actionable": true,
+          "step_index": 1
+        },
+        {
+          "reason": "Asks the contributor to inspect named code locations (event_id, payload.task_id, txRefForEvent, cidRefForEvent) and confirm client-supplied values are preferred. Understandable investigation toward the fix.",
+          "actionable": true,
+          "step_index": 2
+        },
+        {
+          "reason": "Implementing the guard for the three stop transitions with server-derived event metadata is a well-defined code change, correctly scoped, with the untrusted gist made optional and verification required.",
+          "actionable": true,
+          "step_index": 3
+        },
+        {
+          "reason": "Writing a regression test with a specific forged input (pf.reward.v1 on accept) and a specific expected outcome (persisted type differs) is an actionable, verifiable step.",
+          "actionable": true,
+          "step_index": 4
+        },
+        {
+          "reason": "Open a PR against the named repo, post a details-free completion notice, and submit PR link, test output, and Discord link. Actions are clear and the task itself calls for these deliverables.",
+          "actionable": true,
+          "step_index": 5
+        }
+      ],
+      "promptDigest": "46356b9b650a3c3aef7ef0b98bbb6b214771a7b01b7e0a7b4486889297fca57f",
+      "candidateDigest": "3c8da62b2059d4f5a86bbf4f4f1f8c1426c021453ba4f7e3e93df9c80beb0603"
+    },
+    "latency_ms": 291637,
+    "prompt_path": "task_engine/taskgen_network_v2.md",
+    "parse_status": "ok",
+    "output_digest": "f51727bb33b4125c5aab123d6897375778bbc116d9e266d79dce3a7c7bad8c94",
+    "prompt_digest": "5c7b2fd229299f6c86579b193a4d99a25dc55448a1463290e1728447b9adad18",
+    "prompt_version": "taskgen_network_v2",
+    "request_bundle_cid": "postgres:req_net_fa9868363644ed853dd3535c9d876ed9",
+    "input_packet_digest": "bf99f47cc41df2c20a9876eb5bcf40ab8f4acff4862a54e62768237e61f469da",
+    "validation_attempts": 1,
+    "provider_response_id": "chatcmpl-01a0bc23-d10d-7f91-a00a-fe7349fc5cf6",
+    "request_bundle_digest": "sha256:cf27c66fb28cc4fa4cbefb36b6511a2855ff017b8ba92efb36aeb2b9e4cb6976"
+  },
+  "canAccept": true
+}
