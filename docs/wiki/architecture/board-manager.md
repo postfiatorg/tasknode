@@ -55,6 +55,14 @@ missing/unreadable evidence with `board_task_evidence_unavailable`; the agent mu
 record a blocked duty instead of rejecting the contributor or consuming another
 verification round. External artifact access failures are also blocked reviews.
 
+The submission sequence is initial evidence → manager verification request →
+contributor verification response → manager review. Out-of-order review and
+verification commands return HTTP 409 with the required lifecycle state and, for
+a submitted task, the next verification command. These are state conflicts, not
+transient server failures: refresh task detail and take the indicated next step
+instead of retrying the same command. Rejected commands roll back their receipt
+and cannot create a decision or reward.
+
 Reward projection still updates project totals, allocations and user
 followups. It no longer enqueues the retired `board_manager_jobs` scheduler.
 Historical runs and accounting records remain available; old queued planner

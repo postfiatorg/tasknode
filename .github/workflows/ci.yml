@@ -27,6 +27,8 @@ jobs:
         run: node --test scripts/offchain-task-event-integrity.test.mjs
         env:
           TASKNODE_DATABASE_ENABLED: "false"
+      - name: Verify board-agent lifecycle error responses
+        run: node --test scripts/board-agent-lifecycle.test.mjs
       - run: npm run check
         env:
           CHROME_BIN: google-chrome
