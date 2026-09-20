@@ -38,7 +38,7 @@ export async function dispatchBoardAgent(argv) {
     if (typeof f[key] !== "string" || !f[key].trim()) throw bad(`board_agent_required_flag:${key}`);
     return f[key];
   };
-  if (command === "runtime-status") return publishAgentRuntimeStatus({ state: f.state, roundId: f.round || "", attempts: number("attempts"), nextRetryAt: f["next-retry"] || "" });
+  if (command === "runtime-status") return publishAgentRuntimeStatus({ state: f.state, roundId: f.round || "", attempts: number("attempts"), nextRetryAt: f["next-retry"] || "", recurring: f.recurring || "" });
   if (command === "boards") return identity.boards;
   if (command === "board") return boardPacket(board(args[0]));
   if (command === "digest") return boardDigest(board(args[0]));

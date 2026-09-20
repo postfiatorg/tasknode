@@ -27,6 +27,48 @@ function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
 }
 
+// Out-of-order lifecycle commands are permanent state conflicts, not transient
+// failures. The error carries structured fields so the API and CLI can tell the
+// agent exactly which state it is in and what to do next, and a durable count
+// of prior identical rejections so repetition is visible in the message itself.
+export async function lifecycleViolation({ taskId, boardId, taskStatus, command, requirement, nextAction = "" }) {
+  let priorRejections = 0;
+  try {
+    const counted = await query(
+      `SELECT count(*)::int AS count FROM bm_audit_log
+       WHERE actor = $1 AND command = 'lifecycle_rejected'
+         AND args_json->>'taskId' = $2 AND args_json->>'taskStatus' = $3 AND args_json->>'command' = $4
+         AND created_at > now() - interval '24 hours'`,
+      [boardAgentActor(), taskId, taskStatus, command]
+    );
+    priorRejections = Number(counted.rows[0]?.count) || 0;
+  } catch {
+    priorRejections = 0;
+  }
+  const repeated = priorRejections > 0
+    ? ` This command has already been rejected ${priorRejections} time(s) while the task stayed in '${taskStatus}'; ` +
+      `repeating it cannot succeed until the task status changes.`
+    : "";
+  const message = `lifecycle_violation: task is in '${taskStatus}'. ${requirement}` +
+    (nextAction ? ` Next action: ${nextAction}` : ` No ${command} action is available from '${taskStatus}'.`) + repeated;
+  return Object.assign(new Error(message), {
+    status: 409,
+    lifecycle: { taskId, boardId, taskStatus, command, nextAction, priorRejections },
+  });
+}
+
+// Durable record of a rejected lifecycle command. Called by the API after the
+// command transaction has rolled back, so it survives the rejection.
+export async function recordLifecycleRejection({ actor, lifecycle, argv = [] }) {
+  return appendBmAudit({
+    actor,
+    boardId: lifecycle.boardId || "",
+    command: "lifecycle_rejected",
+    args: { taskId: lifecycle.taskId, taskStatus: lifecycle.taskStatus, command: lifecycle.command, argv },
+    result: { rejection: (lifecycle.priorRejections || 0) + 1, nextAction: lifecycle.nextAction || "" },
+  });
+}
+
 async function taskContext(taskId) {
   const result = await query(
     `SELECT task_id, account_id, subject_wallet, status, title, reward_offer_pft
@@ -46,14 +88,15 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
   // cycle. A review decision is only recordable after the contributor has
   // answered a verification request. No skip paths.
   if (task.status !== "verification_response_submitted") {
-    throw Object.assign(new Error(
-      `lifecycle_violation: task is in '${task.status}'. A review decision requires state ` +
-        `'verification_response_submitted'. The cycle is: submitted -> bm verify request ` +
-        `-> contributor verification response -> bm review. ` +
-        (task.status === "submitted"
-          ? `Next action: bm verify request ${taskId} --ask "..."`
-          : `No review action is available from '${task.status}'.`)
-    ), { status: 409 });
+    throw await lifecycleViolation({
+      taskId,
+      boardId,
+      taskStatus: task.status,
+      command: "review",
+      requirement: `A review decision requires state 'verification_response_submitted'. The cycle is: ` +
+        `submitted -> bm verify request -> contributor verification response -> bm review.`,
+      nextAction: task.status === "submitted" ? `bm verify request ${taskId} --ask "..."` : "",
+    });
   }
   const normalizedDecision = ["reward", "partial_reward", "reject"].includes(decision)
     ? decision
@@ -100,11 +143,17 @@ export async function verifyRequest({ taskId, ask, type = "evidence", reason = "
   assertBoardAgentScope(boardId);
   if (!boardId) throw new Error(`task_not_board_linked:${taskId}`);
   if (task.status !== "submitted") {
-    throw Object.assign(new Error(
-      `lifecycle_violation: task is in '${task.status}'. A verification request is issued ` +
-        `only for state 'submitted' (after initial evidence, before the contributor's ` +
-        `verification response).`
-    ), { status: 409 });
+    throw await lifecycleViolation({
+      taskId,
+      boardId,
+      taskStatus: task.status,
+      command: "verify request",
+      requirement: `A verification request is issued only for state 'submitted' (after initial ` +
+        `evidence, before the contributor's verification response).`,
+      nextAction: task.status === "verification_response_submitted"
+        ? `bm review ${taskId} --decision reward|partial_reward|reject --pft N --reason "..."`
+        : "",
+    });
   }
   if (!safeText(ask)) throw new Error("verification ask required (--ask)");
   await requireBoardEvidence(taskId);
