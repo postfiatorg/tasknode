@@ -1,0 +1,586 @@
+{
+  "observedAt": "2026-09-19T22:53:49.786Z",
+  "mode": "forensics",
+  "transaction": {
+    "transaction_read_only": "on"
+  },
+  "budgets": [
+    {
+      "board_id": "board_ai_l1_governance",
+      "daily_budget_positive": true,
+      "per_task_cap_positive": true,
+      "budget_remaining": true
+    },
+    {
+      "board_id": "board_capital_markets",
+      "daily_budget_positive": true,
+      "per_task_cap_positive": true,
+      "budget_remaining": true
+    },
+    {
+      "board_id": "board_community_promotion",
+      "daily_budget_positive": true,
+      "per_task_cap_positive": true,
+      "budget_remaining": true
+    },
+    {
+      "board_id": "board_pf_terminal",
+      "daily_budget_positive": true,
+      "per_task_cap_positive": true,
+      "budget_remaining": true
+    },
+    {
+      "board_id": "board_postfiat_l1v2",
+      "daily_budget_positive": true,
+      "per_task_cap_positive": true,
+      "budget_remaining": true
+    },
+    {
+      "board_id": "board_tasknode_fixes",
+      "daily_budget_positive": true,
+      "per_task_cap_positive": true,
+      "budget_remaining": true
+    }
+  ],
+  "currentAllocations": [
+    {
+      "id": "netalloc_1035a4020ba3e3015c3ae481136e6d91",
+      "project_id": "board_ai_l1_governance",
+      "allocation_status": "proposed",
+      "canonical_status": "accepted",
+      "task_id": "task_0378d312d18c5e7d67cf7c2423ec062f",
+      "created_at": "2026-08-31T22:45:17.503Z",
+      "last_event_at": "2026-09-04T02:04:06.675Z",
+      "contributor": "contributor_58da54389f"
+    },
+    {
+      "id": "netalloc_2db5317ad15ab45730dea81a11176973",
+      "project_id": "board_pf_terminal",
+      "allocation_status": "proposed",
+      "canonical_status": "accepted",
+      "task_id": "task_7e27a8f164b5a71e335e4c0f4713112e",
+      "created_at": "2026-08-31T22:56:15.994Z",
+      "last_event_at": "2026-09-06T17:59:09.851Z",
+      "contributor": "contributor_c2dbf3eb13"
+    },
+    {
+      "id": "netalloc_d01b95a9da83db0c761469a2b1c557df",
+      "project_id": "board_ai_l1_governance",
+      "allocation_status": "proposed",
+      "canonical_status": "proposed",
+      "task_id": "task_62330b92395268df6a508f838ccc6e91",
+      "created_at": "2026-09-05T01:18:24.821Z",
+      "last_event_at": "2026-09-05T01:18:24.821Z",
+      "contributor": "contributor_3f01257fb3"
+    },
+    {
+      "id": "netalloc_25d4fe10298b32ef9bf0fe6802ac97d8",
+      "project_id": "board_pf_terminal",
+      "allocation_status": "proposed",
+      "canonical_status": "proposed",
+      "task_id": "task_c9412113667f8b174cce30f2d21ebed5",
+      "created_at": "2026-09-06T15:34:49.008Z",
+      "last_event_at": "2026-09-06T15:34:49.008Z",
+      "contributor": "contributor_0f587764f2"
+    },
+    {
+      "id": "netalloc_25ddc02971fea17fb7b97a4bf91381c0",
+      "project_id": "board_community_promotion",
+      "allocation_status": "proposed",
+      "canonical_status": "proposed",
+      "task_id": "task_ee94ea8f9285852534c050eff989bfc8",
+      "created_at": "2026-09-06T15:42:14.970Z",
+      "last_event_at": "2026-09-06T15:42:14.970Z",
+      "contributor": "contributor_a634d2d255"
+    }
+  ],
+  "queuedOrdinaryRequests": [
+    {
+      "request_id": "req_7ad873f5e2a06960d8bb01e69b46e0ecb44e19fccc0a4338ab6f165273e018b5",
+      "source": "pfterminal",
+      "status": "queued",
+      "created_at": "2026-09-08T06:04:52.841Z",
+      "updated_at": "2026-09-08T06:10:00.682Z",
+      "worker_attempt_count": 3,
+      "worker_retry_after": "2026-09-08T06:10:00.682Z",
+      "generated_task_id": "",
+      "has_bundle": true,
+      "retry_base": 0,
+      "cycle_attempts": 3,
+      "task_status": null
+    },
+    {
+      "request_id": "req_ecb611ad-d41a-47cd-b5dc-05e9984eb7bf",
+      "source": "task_interface",
+      "status": "queued",
+      "created_at": "2026-09-08T09:38:01.337Z",
+      "updated_at": "2026-09-08T12:58:27.424Z",
+      "worker_attempt_count": 3,
+      "worker_retry_after": "2026-09-08T12:58:27.424Z",
+      "generated_task_id": "",
+      "has_bundle": true,
+      "retry_base": 0,
+      "cycle_attempts": 3,
+      "task_status": null
+    },
+    {
+      "request_id": "req_33dcd976-16c8-4663-b21f-bce376fde608",
+      "source": "task_interface",
+      "status": "queued",
+      "created_at": "2026-09-08T09:46:52.164Z",
+      "updated_at": "2026-09-08T12:54:23.103Z",
+      "worker_attempt_count": 3,
+      "worker_retry_after": "2026-09-08T12:54:23.103Z",
+      "generated_task_id": "",
+      "has_bundle": true,
+      "retry_base": 0,
+      "cycle_attempts": 3,
+      "task_status": null
+    }
+  ],
+  "duplicateDetails": [
+    {
+      "request_id": "req_3258e9fe-01eb-4afe-9501-e14e5a0032a6",
+      "task_id": "task_a5a03c414264293061bd2d1d3cbbeca4",
+      "task_kind": "personal",
+      "status": "refused",
+      "created_at": "2026-06-29T13:59:08.510Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_3258e9fe-01eb-4afe-9501-e14e5a0032a6",
+      "task_id": "task_bc45ee339ed0252fcc8b1c23ca9cb982",
+      "task_kind": "personal",
+      "status": "proposed",
+      "created_at": "2026-09-06T20:24:58.078Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "task_id": "task_630e48d740691f7f7d01509dfc5cec44",
+      "task_kind": "development",
+      "status": "rewarded",
+      "created_at": "2026-05-18T00:34:18.429Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "task_id": "task_b96e5add4e17177fad59c9a2a695855e",
+      "task_kind": "engineering",
+      "status": "rewarded",
+      "created_at": "2026-05-18T00:34:18.451Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "task_id": "task_9267b381dc434f0ced8a816ab17e6ec7",
+      "task_kind": "engineering",
+      "status": "rewarded",
+      "created_at": "2026-05-18T19:33:58.373Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "task_id": "task_bbda229d3ab37b48e08473394142f709",
+      "task_kind": "engineering",
+      "status": "cancelled",
+      "created_at": "2026-05-18T19:36:38.368Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "task_id": "task_d6b3cf5879e16e393a78847303251abf",
+      "task_kind": "engineering",
+      "status": "rewarded",
+      "created_at": "2026-05-18T19:39:07.751Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "task_id": "task_db579b53fcb4ab45f11cfa21fd01ec79",
+      "task_kind": "engineering",
+      "status": "rewarded",
+      "created_at": "2026-05-18T19:42:27.786Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "task_id": "task_96f6b23b90e4d8beed0309f48915bc37",
+      "task_kind": "engineering",
+      "status": "rewarded",
+      "created_at": "2026-05-18T19:46:26.889Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "task_id": "task_182fcd2db9975a115e7b2e2576489ed6",
+      "task_kind": "engineering",
+      "status": "rewarded",
+      "created_at": "2026-05-18T19:49:26.957Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_e038e9a0-917c-4060-8a23-968554b99f5b",
+      "task_id": "task_8cfd40c2304b21722779a8c28f0ed244",
+      "task_kind": "engineering",
+      "status": "rewarded",
+      "created_at": "2026-05-18T19:50:36.955Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_net_admin_badge_7ab237aed744905baf3369f63a171de4",
+      "task_id": "task_380adc259dfe762f4f052902ec3cd583",
+      "task_kind": "network",
+      "status": "rewarded",
+      "created_at": "2026-06-25T02:08:15.841Z",
+      "offer_events": "1"
+    },
+    {
+      "request_id": "req_net_admin_badge_7ab237aed744905baf3369f63a171de4",
+      "task_id": "task_d6dadc02b865d1214a196671c56f83b3",
+      "task_kind": "network",
+      "status": "refused",
+      "created_at": "2026-06-25T02:08:17.681Z",
+      "offer_events": "1"
+    }
+  ],
+  "lastFailedNetworks": [
+    {
+      "id": "nettaskjob_21badcf30df1246fd8ff0ab371491975",
+      "project_id": "board_tasknode_fixes",
+      "status": "failed",
+      "attempt_count": 3,
+      "error_code": "network_task_intent_needs_review",
+      "assessment_relationship": "uncertain",
+      "assessment_error": "inference_response_truncated",
+      "created_at": "2026-09-08T09:55:03.816Z",
+      "updated_at": "2026-09-08T09:58:22.448Z"
+    },
+    {
+      "id": "nettaskjob_6c192f99f85b4ad81697f99e1d469a8a",
+      "project_id": "board_pf_terminal",
+      "status": "failed",
+      "attempt_count": 3,
+      "error_code": "network_task_intent_needs_review",
+      "assessment_relationship": "duplicate",
+      "assessment_error": null,
+      "created_at": "2026-09-06T18:08:26.091Z",
+      "updated_at": "2026-09-06T18:12:33.014Z"
+    },
+    {
+      "id": "nettaskjob_1e354d75a4b2a127fd4e6657af764f96",
+      "project_id": "board_tasknode_fixes",
+      "status": "failed",
+      "attempt_count": 3,
+      "error_code": "network_task_intent_needs_review",
+      "assessment_relationship": "uncertain",
+      "assessment_error": "inference_response_truncated",
+      "created_at": "2026-09-06T17:31:04.787Z",
+      "updated_at": "2026-09-06T17:42:26.876Z"
+    },
+    {
+      "id": "nettaskjob_12e0ecd7bdd0a725cf5b151f49f5a918",
+      "project_id": "board_tasknode_fixes",
+      "status": "failed",
+      "attempt_count": 3,
+      "error_code": "network_task_intent_needs_review",
+      "assessment_relationship": "uncertain",
+      "assessment_error": "inference_response_truncated",
+      "created_at": "2026-09-06T16:43:38.439Z",
+      "updated_at": "2026-09-06T16:49:49.473Z"
+    },
+    {
+      "id": "nettaskjob_596527e3e0e61fdf9368d1af1c3ef9aa",
+      "project_id": "board_tasknode_fixes",
+      "status": "failed",
+      "attempt_count": 3,
+      "error_code": "network_task_intent_needs_review",
+      "assessment_relationship": "uncertain",
+      "assessment_error": "inference_timeout",
+      "created_at": "2026-09-06T15:41:56.442Z",
+      "updated_at": "2026-09-06T15:48:06.687Z"
+    },
+    {
+      "id": "nettaskjob_e55dfe29de8815eb52e96603305685c0",
+      "project_id": "board_capital_markets",
+      "status": "failed",
+      "attempt_count": 1,
+      "error_code": "taskgen_provider_timeout",
+      "assessment_relationship": "",
+      "assessment_error": null,
+      "created_at": "2026-09-02T09:32:34.852Z",
+      "updated_at": "2026-09-02T09:45:39.269Z"
+    },
+    {
+      "id": "nettaskjob_0bdebfef83188a9525aee5b247c4d3d3",
+      "project_id": "board_ai_l1_governance",
+      "status": "failed",
+      "attempt_count": 1,
+      "error_code": "taskgen_provider_timeout",
+      "assessment_relationship": "",
+      "assessment_error": null,
+      "created_at": "2026-08-31T23:02:38.025Z",
+      "updated_at": "2026-08-31T23:19:07.083Z"
+    },
+    {
+      "id": "nettaskjob_07882213c7e5423f4650b3c2be2ca8e5",
+      "project_id": "board_community_promotion",
+      "status": "failed",
+      "attempt_count": 1,
+      "error_code": "taskgen_provider_timeout",
+      "assessment_relationship": "",
+      "assessment_error": null,
+      "created_at": "2026-08-18T23:08:49.077Z",
+      "updated_at": "2026-08-18T23:10:25.548Z"
+    }
+  ],
+  "roundOutcomes": [
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "state": "pending",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "completed_at": null,
+      "duties": 6,
+      "result_count": "0",
+      "outcomes": null
+    },
+    {
+      "id": "round_af36e36e-ad61-4536-a587-26cb7c98e931",
+      "state": "complete",
+      "created_at": "2026-09-10T20:45:19.626Z",
+      "completed_at": "2026-09-10T21:04:53.307Z",
+      "duties": 6,
+      "result_count": "6",
+      "outcomes": [
+        "blocked",
+        "deferred"
+      ]
+    },
+    {
+      "id": "round_979b2ef6-6f94-4254-bc7f-edb830b51dda",
+      "state": "complete",
+      "created_at": "2026-09-10T19:56:29.868Z",
+      "completed_at": "2026-09-10T20:28:47.644Z",
+      "duties": 6,
+      "result_count": "6",
+      "outcomes": [
+        "blocked",
+        "deferred"
+      ]
+    },
+    {
+      "id": "round_785aa21b-bbd8-4680-b978-b6f755ae01ff",
+      "state": "complete",
+      "created_at": "2026-09-10T19:37:26.078Z",
+      "completed_at": "2026-09-10T19:39:31.756Z",
+      "duties": 6,
+      "result_count": "6",
+      "outcomes": [
+        "blocked",
+        "deferred"
+      ]
+    },
+    {
+      "id": "round_1fda6b9f-7b2c-481a-8d19-51485f835c33",
+      "state": "complete",
+      "created_at": "2026-09-10T19:19:53.158Z",
+      "completed_at": "2026-09-10T19:22:11.328Z",
+      "duties": 6,
+      "result_count": "6",
+      "outcomes": [
+        "blocked",
+        "deferred"
+      ]
+    },
+    {
+      "id": "round_d2cf096c-c631-493c-a842-71da9443ac55",
+      "state": "complete",
+      "created_at": "2026-09-10T19:01:36.442Z",
+      "completed_at": "2026-09-10T19:04:52.221Z",
+      "duties": 6,
+      "result_count": "6",
+      "outcomes": [
+        "blocked",
+        "deferred"
+      ]
+    },
+    {
+      "id": "round_c1ef1b04-eb21-4a7a-9726-1ade940e1823",
+      "state": "complete",
+      "created_at": "2026-09-10T18:55:42.027Z",
+      "completed_at": "2026-09-10T19:01:30.425Z",
+      "duties": 10,
+      "result_count": "10",
+      "outcomes": [
+        "blocked",
+        "completed",
+        "deferred"
+      ]
+    },
+    {
+      "id": "round_0718944b-92e0-4e6d-aa5c-ea26b3f956ba",
+      "state": "complete",
+      "created_at": "2026-09-10T18:33:40.586Z",
+      "completed_at": "2026-09-10T18:55:24.826Z",
+      "duties": 6,
+      "result_count": "6",
+      "outcomes": [
+        "blocked",
+        "deferred"
+      ]
+    }
+  ],
+  "recentRoutingOutcomes": [
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "board_id": "board_pf_terminal",
+      "outcome": null,
+      "reason_characters": null
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "board_id": "board_community_promotion",
+      "outcome": null,
+      "reason_characters": null
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "board_id": "board_postfiat_l1v2",
+      "outcome": null,
+      "reason_characters": null
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "board_id": "board_ai_l1_governance",
+      "outcome": null,
+      "reason_characters": null
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "board_id": "board_tasknode_fixes",
+      "outcome": null,
+      "reason_characters": null
+    },
+    {
+      "id": "round_86fafc0f-722c-405f-9b62-1a2eddf70f94",
+      "created_at": "2026-09-10T21:20:45.710Z",
+      "board_id": "board_capital_markets",
+      "outcome": null,
+      "reason_characters": null
+    },
+    {
+      "id": "round_af36e36e-ad61-4536-a587-26cb7c98e931",
+      "created_at": "2026-09-10T20:45:19.626Z",
+      "board_id": "board_pf_terminal",
+      "outcome": "deferred",
+      "reason_characters": 723
+    },
+    {
+      "id": "round_af36e36e-ad61-4536-a587-26cb7c98e931",
+      "created_at": "2026-09-10T20:45:19.626Z",
+      "board_id": "board_community_promotion",
+      "outcome": "deferred",
+      "reason_characters": 511
+    },
+    {
+      "id": "round_af36e36e-ad61-4536-a587-26cb7c98e931",
+      "created_at": "2026-09-10T20:45:19.626Z",
+      "board_id": "board_postfiat_l1v2",
+      "outcome": "deferred",
+      "reason_characters": 440
+    },
+    {
+      "id": "round_af36e36e-ad61-4536-a587-26cb7c98e931",
+      "created_at": "2026-09-10T20:45:19.626Z",
+      "board_id": "board_ai_l1_governance",
+      "outcome": "deferred",
+      "reason_characters": 555
+    },
+    {
+      "id": "round_af36e36e-ad61-4536-a587-26cb7c98e931",
+      "created_at": "2026-09-10T20:45:19.626Z",
+      "board_id": "board_tasknode_fixes",
+      "outcome": "blocked",
+      "reason_characters": 529
+    },
+    {
+      "id": "round_af36e36e-ad61-4536-a587-26cb7c98e931",
+      "created_at": "2026-09-10T20:45:19.626Z",
+      "board_id": "board_capital_markets",
+      "outcome": "blocked",
+      "reason_characters": 450
+    }
+  ],
+  "lastCommandAudit": [
+    {
+      "command": "board_update",
+      "count": 41,
+      "latest": "2026-09-10T18:59:47.097Z"
+    },
+    {
+      "command": "task_cancel",
+      "count": 30,
+      "latest": "2026-09-10T08:45:29.564Z"
+    },
+    {
+      "command": "journal_append",
+      "count": 251,
+      "latest": "2026-09-09T18:47:23.941Z"
+    },
+    {
+      "command": "task_create",
+      "count": 68,
+      "latest": "2026-09-08T09:55:03.816Z"
+    },
+    {
+      "command": "review",
+      "count": 17,
+      "latest": "2026-09-08T04:01:50.105Z"
+    },
+    {
+      "command": "verify_request",
+      "count": 17,
+      "latest": "2026-09-07T18:53:38.525Z"
+    },
+    {
+      "command": "handoff",
+      "count": 13,
+      "latest": "2026-09-05T06:10:04.701Z"
+    }
+  ],
+  "networkEventDaily": [
+    {
+      "day": "2026-09-01T00:00:00.000Z",
+      "offers": 3
+    },
+    {
+      "day": "2026-09-02T00:00:00.000Z",
+      "offers": 2
+    },
+    {
+      "day": "2026-09-03T00:00:00.000Z",
+      "offers": 2
+    },
+    {
+      "day": "2026-09-04T00:00:00.000Z",
+      "offers": 1
+    },
+    {
+      "day": "2026-09-05T00:00:00.000Z",
+      "offers": 2
+    },
+    {
+      "day": "2026-09-06T00:00:00.000Z",
+      "offers": 11
+    },
+    {
+      "day": "2026-09-07T00:00:00.000Z",
+      "offers": 3
+    }
+  ]
+}

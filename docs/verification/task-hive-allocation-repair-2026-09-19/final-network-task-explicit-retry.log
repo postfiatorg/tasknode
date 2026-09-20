@@ -1,0 +1,1 @@
+{"ok":true,"historicalFailuresNotPending":true,"explicitRecoveryRequired":true,"concurrentRetries":6,"requeues":1,"durableIdsPreserved":true,"lifetimeAttempts":6,"retryBudget":3,"semanticHoldProtected":true,"existingRequestProtected":true,"capacityAndBadgeRechecked":true,"scopedCommandDryRun":true,"changedIntentConflict":true,"lostResponseReplayed":true}

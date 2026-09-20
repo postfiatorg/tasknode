@@ -1,0 +1,32 @@
+[
+  {
+    "id": "e826571a546458",
+    "state": "stopped",
+    "processGroup": "worker-task-review",
+    "image": "registry.fly.io/tasknodeofficial-dev:hive-allocation-review-20260919@sha256:2211ee5a39c7bc8281255134e2960fad5a386bcd06b38342387b5ecffc2f60b2"
+  },
+  {
+    "id": "e827021fd67708",
+    "state": "stopped",
+    "processGroup": "worker-taskgen",
+    "image": "registry.fly.io/tasknodeofficial-dev:hive-allocation-worker-20260919-v7@sha256:f3f6863a363d32f28ae5a11e8600df041e89b44a3cc73217e540375f1364dec5"
+  },
+  {
+    "id": "6835d0ea464158",
+    "state": "started",
+    "processGroup": "worker-task-review",
+    "image": "registry.fly.io/tasknodeofficial-dev:hive-allocation-review-20260919@sha256:2211ee5a39c7bc8281255134e2960fad5a386bcd06b38342387b5ecffc2f60b2"
+  },
+  {
+    "id": "7813e21f1295d8",
+    "state": "started",
+    "processGroup": "worker-taskgen",
+    "image": "registry.fly.io/tasknodeofficial-dev:hive-allocation-worker-20260919-v7@sha256:f3f6863a363d32f28ae5a11e8600df041e89b44a3cc73217e540375f1364dec5"
+  },
+  {
+    "id": "8d4930ae156638",
+    "state": "started",
+    "processGroup": "app",
+    "image": "registry.fly.io/tasknodeofficial-dev:hive-allocation-api-20260919-v7@sha256:17f4f5d7b7cbe044058ba4c8c1eb3142ae5730df80e38c5b86d3ef5dd1d0a723"
+  }
+]

@@ -1,0 +1,42 @@
+{
+  "observedAt": "2026-09-20T00:03:22.090Z",
+  "requestKey": "hive_repair_original_intent_21badcf3_20260919",
+  "needHash": "1954178d4bfed110956c647a878d2bc6476fed9d39d55ee7fa05ebcba4354fbc",
+  "latencyMs": 52909,
+  "result": {
+    "runId": "boardrun_23309ac3-5545-4a99-b243-00c27d9f969d",
+    "dryRun": false,
+    "rewardMin": 100,
+    "rewardMax": 400,
+    "actionResult": {
+      "ok": true,
+      "result": {
+        "executed": true,
+        "idempotent": false,
+        "suppressed": false,
+        "reason": "network_task_provider_failure_requeued",
+        "intentId": "netintent_21badcf30df1246fd8ff0ab371491975",
+        "allocationId": "netalloc_21badcf30df1246fd8ff0ab371491975",
+        "jobId": "nettaskjob_21badcf30df1246fd8ff0ab371491975",
+        "requestId": "",
+        "taskId": "",
+        "status": "queued",
+        "projectId": "board_tasknode_fixes",
+        "taskClass": "network",
+        "candidateAccountId": "acct_oauth_3c70e69ab7b8ef1fad3df508",
+        "candidateWalletAddress": "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx",
+        "rewardBandPft": [
+          100,
+          400
+        ],
+        "idempotencyKey": "network_task:21badcf30df1246fd8ff0ab3714919753dbe6ddff4edc2999d9dc7c1b6f7b4f5",
+        "intentSemanticKey": "network_task_intent:21badcf30df1246fd8ff0ab3714919753dbe6ddff4edc2999d9dc7c1b6f7b4f5",
+        "workerScheduled": {
+          "scheduled": false,
+          "durable": true,
+          "reason": "worker_poll_owned_queue"
+        }
+      }
+    }
+  }
+}
