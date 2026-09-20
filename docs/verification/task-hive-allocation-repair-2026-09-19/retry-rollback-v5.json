@@ -1,0 +1,52 @@
+{
+  "observedAt": "2026-09-19T23:45:30.268Z",
+  "productionCommits": 0,
+  "forcedRollback": true,
+  "error": {
+    "code": "25P02",
+    "message": "current transaction is aborted, commands ignored until end of transaction block",
+    "stack": "error: current transaction is aborted, commands ignored until end of transaction block\n    at /app/node_modules/pg/lib/client.js:631:17\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"
+  },
+  "failures": [
+    {
+      "message": "Query read timeout",
+      "sql": "\n      SELECT\n        runs.id,\n        runs.trigger,\n        runs.status,\n        runs.selected_action,\n        runs.started_at,\n        runs.completed_at,\n        results.target_type,\n        results.target_id,\n        COALESCE(results.result_json->>'reason', runs.decision_json->>'reason', '') AS reason\n      FROM board_manager_runs runs\n      LEFT JOIN board_manager_action_results results\n        ON results.run_id = runs.id\n      WHERE ($1::text <> '' AND (\n          results.target_id = $1\n          OR results.result_json->>'accountId' = $1\n          OR results.result_json->>'candidateAccountId' = $1\n          OR runs.action_payload_json #>> '{network_task,candidate_account_id}' = $1\n          OR runs.action_payload_json #>> '{networkTask,candidateAccountId}' = $1\n        ))\n        OR ($2::text <> '' AND (\n          results.result_json->>'candidateWalletAddress' = $2\n          OR runs"
+    },
+    {
+      "code": "25P02",
+      "message": "current transaction is aborted, commands ignored until end of transaction block",
+      "sql": "\n      SELECT id, body, created_at\n      FROM hive_context_entries\n      WHERE account_id = $1\n        AND deleted_at IS NULL\n      ORDER BY created_at DESC, id DESC\n      LIMIT $2\n    "
+    },
+    {
+      "code": "25P02",
+      "message": "current transaction is aborted, commands ignored until end of transaction block",
+      "sql": "\n        SELECT *\n        FROM network_task_profiles\n        WHERE account_id = $1\n          AND status = 'completed'\n          AND superseded_at IS NULL\n        ORDER BY completed_at DESC NULLS LAST, created_at DESC, id DESC\n        LIMIT 1\n      "
+    },
+    {
+      "code": "25P02",
+      "message": "current transaction is aborted, commands ignored until end of transaction block",
+      "sql": "\n        SELECT id, status, last_error, created_at, updated_at\n        FROM network_task_profile_jobs\n        WHERE account_id = $1\n          AND status IN ('pending', 'processing', 'failed')\n        ORDER BY\n          CASE status WHEN 'processing' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END,\n          updated_at DESC,\n          id DESC\n        LIMIT 1\n      "
+    },
+    {
+      "code": "25P02",
+      "message": "current transaction is aborted, commands ignored until end of transaction block",
+      "sql": "\n          SELECT wallet_address, last_hot_sync_at, last_archive_sync_at AS last_full_sync_at, status\n          FROM pftl_sync_wallets\n          WHERE account_id = $1\n            AND wallet_address = $2\n            AND role = 'user'\n            AND status = 'active'\n          ORDER BY priority DESC, last_hot_sync_at DESC NULLS LAST, wallet_address ASC\n          LIMIT 1\n        "
+    },
+    {
+      "code": "25P02",
+      "message": "current transaction is aborted, commands ignored until end of transaction block",
+      "sql": "\n      SELECT\n        alloc.id AS allocation_id,\n        alloc.project_id,\n        alloc.task_class,\n        alloc.allocation_status,\n        alloc.candidate_account_id,\n        alloc.candidate_wallet_address,\n        alloc.project_need_summary,\n        alloc.created_at AS allocation_created_at,\n        alloc.updated_at AS allocation_updated_at,\n        job.id AS generation_job_id,\n        job.status AS generation_job_status,\n        COALESCE(NULLIF(alloc.task_request_id, ''), job.request_id, '') AS request_id,\n        COALESCE(NULLIF(alloc.generated_task_id, ''), NULLIF(job.task_id, ''), refs.task_id, '') AS task_id,\n        refs.title AS ref_title,\n        p.title,\n        p.status AS task_projection_status,\n        p.reward_offer_pft,\n        alloc.reward_max_pft,\n        p.accept_by,\n        p.deadline_at,\n        COALESCE(p.status, refs.state, job.status, alloc.allocation_status) AS"
+    },
+    {
+      "code": "25P02",
+      "message": "current transaction is aborted, commands ignored until end of transaction block",
+      "sql": "\n      SELECT\n        count(*) FILTER (\n          WHERE $2::text <> ''\n            AND alloc.candidate_account_id = $2\n        )::int AS account_outstanding_count,\n        count(*) FILTER (\n          WHERE $3::text <> ''\n            AND alloc.candidate_wallet_address = $3\n        )::int AS wallet_outstanding_count,\n        count(*) FILTER (\n          WHERE $2::text <> ''\n            AND alloc.candidate_account_id = $2\n            AND alloc.candidate_wallet_address = ''\n        )::int AS account_only_pending_count,\n        count(*) FILTER (\n          WHERE $2::text <> ''\n            AND alloc.candidate_account_id = $2\n            AND job.status = ANY($5::text[])\n        )::int AS account_pending_generation_count,\n        count(*) FILTER (\n          WHERE $3::text <> ''\n            AND alloc.candidate_wallet_address = $3\n            AND job.status = ANY($5::text[])\n        )::int AS wallet"
+    },
+    {
+      "code": "25P02",
+      "message": "current transaction is aborted, commands ignored until end of transaction block",
+      "sql": "SELECT account_json FROM app_accounts WHERE account_id = $1"
+    }
+  ],
+  "commandSucceededBeforeRollback": false
+}

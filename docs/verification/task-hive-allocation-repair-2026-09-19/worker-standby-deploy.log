@@ -1,0 +1,10 @@
+Searching for image 'registry.fly.io/tasknodeofficial-dev:hive-allocation-worker-20260919' remotely...
+image found: img_rj5yv1gn80wyvdwq
+Image: registry.fly.io/tasknodeofficial-dev:hive-allocation-worker-20260919@sha256:37d15f3778d2a467e15cf7c92c0d363de4ba554c2b146fe85b1a4f8e10968576
+Image size: 173 MB
+
+Updating machine e827021fd67708
+Machine e827021fd67708 updated successfully!
+
+Monitor machine status here:
+https://fly.io/apps/tasknodeofficial-dev/machines/e827021fd67708

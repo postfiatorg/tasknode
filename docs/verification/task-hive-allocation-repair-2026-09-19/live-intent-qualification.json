@@ -1,0 +1,27 @@
+{
+  "observedAt": "2026-09-19T22:55:20.713Z",
+  "sourceSha256": "3e51fad9c0697b34fa453d9ee4ee16321bbe6f76ee1fe316c7749a3f573ab8ab",
+  "jobId": "nettaskjob_21badcf30df1246fd8ff0ab371491975",
+  "previousError": "inference_response_truncated",
+  "needDigest": "1954178d4bfed110956c647a878d2bc6476fed9d39d55ee7fa05ebcba4354fbc",
+  "priorTaskCount": 40,
+  "output": {
+    "relationship": "independent",
+    "priorTaskIds": [],
+    "reason": "The request is a specific security fix PR against postfiatorg/tasknode (offchain task lifecycle event forgery at commit 40d2df7, applying a guard for three stop transitions plus a regression test). No prior task on this board addresses this vulnerability or produces this artifact: prior tasks are UX/QA audits, beta docs, onboarding guides, reward-routing audits, Sybil tooling, and general review documents. None deliver or revise a patch to offchain-task-lifecycle.js. While the reward-integrity audits (dedup, double-reward) touch reward pipelines, they produced anomaly reports, not a code fix for this exploit path, so this is a separate output with no dependency.",
+    "newOutput": "A PR to postfiatorg/tasknode applying a guard in offchain-task-lifecycle.js that derives persisted stop-transition events solely from transition + authoritative task (blocking forged pf.reward.v1 schemas, client event IDs, and foreign task_ids), plus a passing node --test regression test proving a forged accept cannot write pf.reward.v1, scoped only to the three stop transitions with verified gist citations.",
+    "actionable": true,
+    "scopeClear": true,
+    "provider": "vercel",
+    "model": "zai/glm-5.3",
+    "attempts": [
+      {
+        "provider": "vercel",
+        "status": "completed",
+        "latencyMs": 4203
+      }
+    ],
+    "latencyMs": 4207
+  },
+  "productionMutations": 0
+}

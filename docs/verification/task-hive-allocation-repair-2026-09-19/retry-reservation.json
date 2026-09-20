@@ -1,0 +1,35 @@
+{
+  "observedAt": "2026-09-19T23:56:30.665Z",
+  "productionCommits": 0,
+  "error": "forced_rollback",
+  "result": {
+    "executed": true,
+    "idempotent": false,
+    "suppressed": false,
+    "reason": "network_task_provider_failure_requeued",
+    "intentId": "netintent_21badcf30df1246fd8ff0ab371491975",
+    "allocationId": "netalloc_21badcf30df1246fd8ff0ab371491975",
+    "jobId": "nettaskjob_21badcf30df1246fd8ff0ab371491975",
+    "requestId": "",
+    "taskId": "",
+    "status": "queued",
+    "projectId": "board_tasknode_fixes",
+    "taskClass": "network",
+    "candidateAccountId": "acct_oauth_3c70e69ab7b8ef1fad3df508",
+    "candidateWalletAddress": "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx",
+    "rewardBandPft": [
+      100,
+      400
+    ],
+    "idempotencyKey": "network_task:21badcf30df1246fd8ff0ab3714919753dbe6ddff4edc2999d9dc7c1b6f7b4f5",
+    "intentSemanticKey": "network_task_intent:21badcf30df1246fd8ff0ab3714919753dbe6ddff4edc2999d9dc7c1b6f7b4f5"
+  },
+  "prior": {
+    "status": "failed",
+    "requestId": "",
+    "taskId": "",
+    "requestBundleCid": "",
+    "failure": null,
+    "legacyCause": "inference_response_truncated"
+  }
+}

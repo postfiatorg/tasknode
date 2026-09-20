@@ -1,0 +1,28 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.worker
+#1 transferring dockerfile: 227B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for registry.fly.io/tasknodeofficial-dev:task-step-readiness-20260916@sha256:ee2d49c37ec2707e19a43eb8689a7490040939223614e80e1c433f722feb34a9
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 810B done
+#4 DONE 0.0s
+
+#5 [1/2] FROM registry.fly.io/tasknodeofficial-dev:task-step-readiness-20260916@sha256:ee2d49c37ec2707e19a43eb8689a7490040939223614e80e1c433f722feb34a9
+#5 CACHED
+
+#6 [2/2] COPY --chown=node:node overlay/ /app/
+#6 DONE 0.0s
+
+#7 exporting to image
+#7 exporting layers done
+#7 writing image sha256:470b5048b9d4d3486b9ffa7f9659bc72ee695ab68fcf22f28c70446a4cb20e84 done
+#7 naming to registry.fly.io/tasknodeofficial-dev:hive-allocation-worker-20260919-v2 done
+#7 DONE 0.0s

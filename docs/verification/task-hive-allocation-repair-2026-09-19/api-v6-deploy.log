@@ -1,0 +1,13 @@
+Searching for image 'registry.fly.io/tasknodeofficial-dev:hive-allocation-api-20260919-v6' remotely...
+image found: img_lj9x4dz8zdeypwo1
+Image: registry.fly.io/tasknodeofficial-dev:hive-allocation-api-20260919-v6@sha256:aba03d7981a2fd2940658f4f6712e135e2ac89e2a34a02c42b56553f3e516fcc
+Image size: 176 MB
+
+Updating machine 8d4930ae156638
+  Waiting for 8d4930ae156638 to become healthy (started, 0/1)
+  Waiting for 8d4930ae156638 to become healthy (started, 0/1)
+  Waiting for 8d4930ae156638 to become healthy (started, 1/1)
+Machine 8d4930ae156638 updated successfully!
+
+Monitor machine status here:
+https://fly.io/apps/tasknodeofficial-dev/machines/8d4930ae156638

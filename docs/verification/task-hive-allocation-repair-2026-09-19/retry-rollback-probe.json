@@ -1,0 +1,45 @@
+{
+  "observedAt": "2026-09-19T23:30:42.105Z",
+  "productionCommits": 0,
+  "forcedRollback": true,
+  "error": {
+    "code": "25P02",
+    "message": "current transaction is aborted, commands ignored until end of transaction block",
+    "stack": "error: current transaction is aborted, commands ignored until end of transaction block\n    at /app/node_modules/pg/lib/client.js:631:17\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async Promise.all (index 0)\n    at async getHiveProjectsDocument (file:///app/server/repositories/hive-projects.js:526:119)\n    at async runOne (file:///app/server/repositories/board-manager-source-packet.js:104:26)\n    at async worker (file:///app/server/repositories/board-manager-source-packet.js:128:7)\n    at async Promise.all (index 0)\n    at async runBoardManagerSourceReads (file:///app/server/repositories/board-manager-source-packet.js:132:3)\n    at async buildBoardManagerSourcePacket (file:///app/server/repositories/board-manager-source-packet.js:157:7)\n    at async Module.taskCreate (file:///app/scripts/bm/writes.mjs:181:24)"
+  },
+  "failures": [
+    {
+      "message": "Query read timeout",
+      "sql": "SELECT account_json FROM app_accounts WHERE account_id = $1"
+    },
+    {
+      "message": "Query read timeout",
+      "sql": "SELECT account_json FROM app_accounts WHERE account_id = $1"
+    },
+    {
+      "message": "Query read timeout",
+      "sql": "SELECT account_json FROM app_accounts WHERE account_id = $1"
+    },
+    {
+      "message": "Query read timeout",
+      "sql": "SELECT account_json FROM app_accounts WHERE account_id = $1"
+    },
+    {
+      "message": "Query read timeout",
+      "sql": "SELECT account_json FROM app_accounts WHERE account_id = $1"
+    },
+    {
+      "message": "Query read timeout",
+      "sql": "SELECT account_json FROM app_accounts WHERE account_id = $1"
+    },
+    {
+      "message": "Query read timeout",
+      "sql": "SELECT account_json FROM app_accounts WHERE account_id = $1"
+    },
+    {
+      "message": "Query read timeout",
+      "sql": "SELECT account_json FROM app_accounts WHERE account_id = $1"
+    }
+  ],
+  "commandSucceededBeforeRollback": false
+}

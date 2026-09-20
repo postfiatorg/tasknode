@@ -1,0 +1,18 @@
+(node:897177) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+/home/pfrpc/repos/tasknode/node_modules/pg/lib/client.js:631
+          Error.captureStackTrace(err)
+                ^
+
+Error: Query read timeout
+    at /home/pfrpc/repos/tasknode/node_modules/pg/lib/client.js:631:17
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at runNextTicks (node:internal/process/task_queues:64:3)
+    at listOnTimeout (node:internal/timers:545:9)
+    at process.processTimers (node:internal/timers:519:7)
+    at async Promise.all (index 12)
+    at async file:///home/pfrpc/repos/tasknode/server/db/pool.js:12:14
+    at async transaction (file:///home/pfrpc/repos/tasknode/server/db/pool.js:138:20)
+    at async file:///home/pfrpc/repos/tasknode/scripts/command-transaction-queue-smoke.mjs:9:18
+
+Node.js v20.20.0

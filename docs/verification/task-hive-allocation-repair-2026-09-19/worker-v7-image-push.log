@@ -1,0 +1,49 @@
+The push refers to repository [registry.fly.io/tasknodeofficial-dev]
+18e7d6529544: Preparing
+5f70bf18a086: Preparing
+e445784021ee: Preparing
+b1178245e89b: Preparing
+de07119083ba: Preparing
+5be3f28259eb: Preparing
+25933edb7b0b: Preparing
+e7751858b4d2: Preparing
+91dccd11e147: Preparing
+5a836add2ddb: Preparing
+a1f42b356bc5: Preparing
+bc8a08ec2c96: Preparing
+5f70bf18a086: Waiting
+afa543f85b46: Preparing
+e10358715ead: Preparing
+5be3f28259eb: Waiting
+4983b93ee796: Preparing
+e445784021ee: Waiting
+29df493baa13: Preparing
+de07119083ba: Waiting
+29df493baa13: Waiting
+b1178245e89b: Waiting
+afa543f85b46: Waiting
+a1f42b356bc5: Waiting
+bc8a08ec2c96: Waiting
+e10358715ead: Waiting
+e7751858b4d2: Waiting
+4983b93ee796: Waiting
+25933edb7b0b: Waiting
+91dccd11e147: Waiting
+5a836add2ddb: Waiting
+25933edb7b0b: Layer already exists
+5be3f28259eb: Layer already exists
+e7751858b4d2: Layer already exists
+91dccd11e147: Layer already exists
+5a836add2ddb: Layer already exists
+a1f42b356bc5: Layer already exists
+bc8a08ec2c96: Layer already exists
+e10358715ead: Layer already exists
+4983b93ee796: Layer already exists
+afa543f85b46: Layer already exists
+29df493baa13: Layer already exists
+5f70bf18a086: Layer already exists
+e445784021ee: Layer already exists
+b1178245e89b: Layer already exists
+de07119083ba: Layer already exists
+18e7d6529544: Pushed
+hive-allocation-worker-20260919-v7: digest: sha256:f3f6863a363d32f28ae5a11e8600df041e89b44a3cc73217e540375f1364dec5 size: 3668

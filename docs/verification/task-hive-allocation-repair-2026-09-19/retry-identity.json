@@ -1,0 +1,34 @@
+{
+  "observedAt": "2026-09-19T23:54:26.676Z",
+  "oldKey": "network_task:21badcf30df1246fd8ff0ab3714919753dbe6ddff4edc2999d9dc7c1b6f7b4f5",
+  "currentKey": "network_task:21badcf30df1246fd8ff0ab3714919753dbe6ddff4edc2999d9dc7c1b6f7b4f5",
+  "fields": {
+    "action": "initiate_network_task",
+    "projectId": "board_tasknode_fixes",
+    "candidateAccountId": "acct_oauth_3c70e69ab7b8ef1fad3df508",
+    "candidateWalletAddress": "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx",
+    "taskClass": "network",
+    "requiredBadgeId": "core_contributor",
+    "operatingBadgeId": "core_contributor",
+    "badgeWorkType": "code_task",
+    "normalizedNeedHash": "e5c7b9eec23eaa1a00fe2ec3e2f9d7c932e591de4c6977f493770c207854c4f2",
+    "rewardMinPft": 100,
+    "rewardMaxPft": 400
+  },
+  "candidateIdentityChanged": false,
+  "originalBadge": {
+    "required": "core_contributor",
+    "operating": "core_contributor",
+    "work": "code_task"
+  },
+  "intent": [
+    {
+      "id": "netintent_21badcf30df1246fd8ff0ab371491975",
+      "semantic_key": "network_task_intent:21badcf30df1246fd8ff0ab3714919753dbe6ddff4edc2999d9dc7c1b6f7b4f5",
+      "normalized_need_hash": "e5c7b9eec23eaa1a00fe2ec3e2f9d7c932e591de4c6977f493770c207854c4f2",
+      "status": "failed",
+      "allocation_id": "netalloc_21badcf30df1246fd8ff0ab371491975",
+      "generation_job_id": "nettaskjob_21badcf30df1246fd8ff0ab371491975"
+    }
+  ]
+}
