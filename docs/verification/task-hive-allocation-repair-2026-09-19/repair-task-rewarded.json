@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "task": {
+    "taskId": "task_5784f3d5514054aa898635058deca548",
+    "title": "Implement Task Hive Allocation Repairs With Recovery Evidence",
+    "statusKey": "rewarded",
+    "pft": 3.8,
+    "txHash": "9C915A625F85160E490A5160FECEF7259C3FAF92446B6DA2649939F0EAFC175D",
+    "updatedAt": "2026-09-20T00:10:15.874Z"
+  },
+  "lastEvent": {
+    "txHash": "9C915A625F85160E490A5160FECEF7259C3FAF92446B6DA2649939F0EAFC175D",
+    "cid": "QmTdta8e9QfiQdbx6m6Ck9weh3DfRsgJdVuCX2oo4piGH6",
+    "status": "rewarded",
+    "eventCount": 6
+  }
+}
