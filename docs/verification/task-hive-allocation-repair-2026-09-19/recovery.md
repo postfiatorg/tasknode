@@ -461,3 +461,14 @@ Task selection, existing work, source availability, board restrictions and futur
 provider quotas can still prevent a proposal. The retained historic 429s do not
 establish a present outage: fresh Kimi execution and GLM qualification succeeded.
 Production observations are time-bounded, not a guarantee of future throughput.
+
+## Task Node verification outcome
+
+The initial evidence receipt was `task_evt_2798007e-50a2-44df-9b63-880a58788069`.
+Task Node requested both complete retry receipts and the 3 → 4 attempt proof.
+The response supplied the exact receipts and matching before/after rows; its
+receipt was `task_evt_ae9d82ec-4be5-444b-8a87-101884002851`.
+The scoped helper subsequently reported task `task_5784f3d5514054aa898635058deca548`
+explicitly **rewarded**, displaying 3.8 PFT, at 2026-09-20T00:10:15.874Z.
+See `repair-task-rewarded.json`. The separate 100-PFT Network proposal remains
+an offer for the user's decision.
