@@ -13,12 +13,13 @@ eligible idle contributors instead of 12; board-specific restrictions remain.
 The worker reconciled the three exhausted queued requests without resetting their
 attempt history. Both historical allocation/canonical-state mismatches were repaired.
 
-At 00:03:22 UTC on September 20, the scoped retry committed for the original
-failed intent. At 00:03:48 the same job was generated at lifetime attempt 4
-(retry base 3), with request `req_net_fa9868363644ed853dd3535c9d876ed9`.
-The downstream task writer was still generating; no new visible offer was claimed
-at this cutoff. Completed supervisor rounds include deferred/blocked judgments
-and are distinct from allocations.
+Recovery reached a visible Network proposal at 00:08:30 UTC on September 20:
+`task_77bbf7560e8f82948d4b0a202a15a03d`, “Patch Reward-Forgery Guard in
+Offchain Task Lifecycle,” offered at 100 PFT with Accept available in the task API.
+The original failed job was preserved, now published at lifetime attempt 4
+(retry base 3), through request `req_net_fa9868363644ed853dd3535c9d876ed9`.
+No new duplicate offer group or allocation/canonical mismatch was observed.
+Supervisor duty completion remains distinct from this successful allocation.
 
 Code commits, in order:
 - `d50a20c45fa185e43acf3a9b9516979df2b46b42` — recovery, complete candidate discovery, typed failures, exhausted queue and mirrors.
@@ -180,6 +181,23 @@ Network totals became 756 published, 111 failed and 1 generated, with zero
 mirror divergences. The generated request was in downstream provider generation
 at 00:04:49. Receipt and snapshot files: `original-intent-final-receipt.json`,
 `original-intent-replay-receipt.json`, `progress-final.json`.
+
+### Published offer — September 20, 00:09:34 UTC
+
+`progress-published.json` confirms the same job published
+`task_77bbf7560e8f82948d4b0a202a15a03d`, created 00:08:30.584 UTC.
+`visible-offer.json` confirms Proposed, Network, 100 PFT and `canAccept: true`
+through the user's scoped Task Node helper. The writer completed on the existing
+configured Ambient/GLM 5.2 path in 291,637 ms; readiness passed through GLM 5.3
+Flash. No operator provider/model rerouting was performed. The GLM 5.3 intent
+classifier had already succeeded. The proposal was left for the user's choice.
+
+Network job totals are now 757 published and 111 failed (still 868 total).
+The recovered job retains attempt count 4 and retry base 3; its request and offer
+are linked. There is one proposed plus one accepted live allocation, zero new
+duplicate offer groups since recovery began, and zero mirror divergences.
+The original submission and verification response accurately described the
+earlier pending-publication cutoff; this later snapshot establishes publication.
 
 ### Deployment identity
 
@@ -436,8 +454,9 @@ canonical task state or attempt history.
 
 This repair proves deployed behavior, complete candidate visibility, recovered
 manager progress, bounded retry contracts and one successful live intent call.
-The final cutoff proves a committed retry and generated request, while downstream
-offer publication remains pending.
+The final snapshot also proves one published, user-visible offer through the
+configured offchain lifecycle. This is one observed recovery, not a throughput
+guarantee for every board.
 Task selection, existing work, source availability, board restrictions and future
 provider quotas can still prevent a proposal. The retained historic 429s do not
 establish a present outage: fresh Kimi execution and GLM qualification succeeded.
