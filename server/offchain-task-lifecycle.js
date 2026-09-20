@@ -63,6 +63,7 @@ export function transitionForSubmissionMode(mode = "") {
 }
 
 function eventSchemaForTransition(transition = "", providedPayload = {}) {
+  if (isTaskActionTransition(transition)) return "pf.task.update.v1";
   if (transition === "proposed") return "pf.task.offer.v1";
   if (transition === "submitted") return "pf.task.submission.v1";
   if (transition === "verification_response_submitted") return "pf.task.verification_response.v1";
@@ -70,6 +71,10 @@ function eventSchemaForTransition(transition = "", providedPayload = {}) {
   const providedSchema = safeText(providedPayload.schema, 120);
   if (providedSchema.startsWith("pf.")) return providedSchema;
   return "pf.task.update.v1";
+}
+
+function isTaskActionTransition(transition = "") {
+  return ["accepted", "refused", "cancelled"].includes(transition);
 }
 
 function sourceRefForEvent(eventId = "") {
@@ -264,11 +269,20 @@ export function offchainTaskEventPayload({
   const rawProvidedPayload = safeObject(
     payload?.offchainPayload || payload?.offchain_payload || payload?.eventPayload || payload?.event_payload
   );
-  const providedPayload = normalizeDirectSubmissionPayload({
-    payload,
-    providedPayload: rawProvidedPayload,
-    transition,
-  });
+  const serverDerived = isTaskActionTransition(transition);
+  // Task actions carry only a user explanation. Identity, state and provenance
+  // come from the authenticated task/action, never a caller-authored event.
+  const providedPayload = serverDerived
+    ? {
+        reason: safeText(rawProvidedPayload.reason || payload?.reason, 2000),
+        status_after: transition,
+      }
+    : normalizeDirectSubmissionPayload({
+        payload,
+        providedPayload: rawProvidedPayload,
+        transition,
+      });
+  const sourcePayload = serverDerived ? {} : payload;
   const schema = eventSchemaForTransition(transition, providedPayload);
   const eventId = safeText(providedPayload.event_id || providedPayload.eventId, 180) || `task_evt_${randomUUID()}`;
   const recordedAt = nowIso();
@@ -282,23 +296,25 @@ export function offchainTaskEventPayload({
     transition,
     previous_status: safeText(task.status, 80),
     request_id: safeText(task.request_id, 180),
-    cid: safeText(payload?.cid || payload?.eventCid || payload?.event_cid || providedPayload.cid, 240),
+    cid: serverDerived
+      ? sourceRefForEvent(eventId)
+      : safeText(payload?.cid || payload?.eventCid || payload?.event_cid || providedPayload.cid, 240),
     evidence_sha256:
-      safeText(payload?.evidenceSha256 || payload?.evidence_sha256 || providedPayload.evidence_sha256, 180),
+      safeText(sourcePayload?.evidenceSha256 || sourcePayload?.evidence_sha256 || providedPayload.evidence_sha256, 180),
     recorded_at: recordedAt,
     metadata: safeObject(metadata),
   };
   const payloadDigest = sha256(JSON.stringify(eventPayload));
   const signatureJson = signatureRecord({
     payload: eventPayload,
-    signature: payload?.actorSignature || payload?.actor_signature || providedPayload.actor_signature || {},
+    signature: payload?.actorSignature || payload?.actor_signature || rawProvidedPayload.actor_signature || {},
     required: taskTransitionSignatureRequired(),
   });
   const result = {
     eventId,
     schema,
-    sourceTxHash: txRefForEvent(eventId, payload, providedPayload),
-    sourceCid: cidRefForEvent(eventId, payload, providedPayload, eventPayload),
+    sourceTxHash: txRefForEvent(eventId, sourcePayload, providedPayload),
+    sourceCid: cidRefForEvent(eventId, sourcePayload, providedPayload, eventPayload),
     eventDigest: payloadDigest,
     payloadJson: eventPayload,
     signatureJson,

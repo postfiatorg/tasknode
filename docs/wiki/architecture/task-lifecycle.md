@@ -55,6 +55,18 @@ Signing and local unlock are required for paths that actually use the browser
 wallet. An authenticated offchain terminal mutation does not ask the TUI to
 sign a PFTL transaction.
 
+For offchain accept, refuse and cancel actions, the persisted event is always
+`pf.task.update.v1`. The server generates the event ID and its `offchain:` and
+`postgres:` references, and takes the task identity and prior status from the
+authorized task record. Only the caller's bounded explanation is retained from
+the event body; caller-supplied event types, identities, economic fields and
+source references cannot become lifecycle facts. This rule also applies to the
+offchain copy in dual-write mode. Offer, evidence, verification and reward
+producers retain their existing contracts.
+
+Run `node --test scripts/offchain-task-event-integrity.test.mjs` for the focused
+regression suite, together with `npm run offchain-task-lifecycle-smoke`.
+
 ## Evidence
 
 The canonical evidence packet is `pf.task.evidence.v1`, wrapped by the relevant
