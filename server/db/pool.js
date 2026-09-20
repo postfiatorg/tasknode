@@ -5,8 +5,10 @@ const commandTransaction = new AsyncLocalStorage();
 
 // A command receipt and all nested domain writes share one commit. The active
 // flag prevents deferred jobs from retaining a released transaction connection.
-export function transactionCommand(work) {
+export function transactionCommand(work, { statementTimeoutMs: requestedTimeout } = {}) {
+  const commandTimeout = requestedTimeout === undefined ? statementTimeoutMs : Math.min(15_000, Math.max(500, Number(requestedTimeout) || statementTimeoutMs));
   return transaction(async (client) => {
+    await client.query("SELECT set_config('statement_timeout', $1, true)", [String(commandTimeout)]);
     // pg starts query_timeout when a query is submitted, including time spent
     // waiting behind other reads on this one transaction connection. Serialize
     // at the promise boundary so each statement gets its own execution budget.
@@ -14,7 +16,9 @@ export function transactionCommand(work) {
     let pending = Promise.resolve();
     const scopedClient = Object.create(client);
     scopedClient.query = (...args) => {
-      const result = pending.then(() => execute(...args));
+      const config = typeof args[0] === "string" ? { text: args[0] } : { ...args[0] };
+      config.query_timeout = commandTimeout;
+      const result = pending.then(() => execute(config, ...args.slice(1)));
       pending = result.catch(() => {});
       return result;
     };

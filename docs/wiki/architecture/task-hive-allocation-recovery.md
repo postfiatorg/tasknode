@@ -77,6 +77,8 @@ local fixture database, plus the focused queue, capacity, direct-intake, board
 command, lifecycle and staleness fixtures. Lint and format checks remain required.
 Scoped command reads serialize before entering the PostgreSQL client queue, so
 waiting behind another read does not consume a statement's execution timeout.
+Board-agent commands have a bounded 15-second per-statement budget for cold
+context reads; other command callers retain their configured default budget.
 The command and its receipt still share one transaction; slow statements still
 fail and roll back. Hive task-reference joins include explicit nonempty job and
 allocation ID predicates so PostgreSQL can use the existing partial indexes;

@@ -16,5 +16,7 @@ try {
   assert.ok(Date.now() - start >= 900);
   await assert.rejects(transactionCommand(() => query("SELECT pg_sleep(0.8)")), error => error.code === "57014" || error.message.includes("timeout"));
   assert.equal((await transactionCommand(() => query("SELECT 1 AS value"))).rows[0].value, 1);
-  console.log(JSON.stringify({ ok: true, concurrentReads: 24, statementTimeoutMs: 500, commandExceedsSingleStatementTimeout: true, slowStatementStillRejected: true, connectionReusableAfterRollback: true }));
+  await transactionCommand(() => query("SELECT pg_sleep(0.7)"), { statementTimeoutMs: 1500 });
+  await assert.rejects(transactionCommand(() => query("SELECT pg_sleep(0.9)"), { statementTimeoutMs: 600 }), error => error.code === "57014" || error.message.includes("timeout"));
+  console.log(JSON.stringify({ ok: true, concurrentReads: 24, statementTimeoutMs: 500, commandExceedsSingleStatementTimeout: true, slowStatementStillRejected: true, connectionReusableAfterRollback: true, scopedBudgetHonored: true, scopedBudgetStillBounded: true }));
 } finally { await closePool(); }
