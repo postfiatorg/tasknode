@@ -14,6 +14,7 @@ const {
   projectTaskgenInput,
   taskGenerationProviderTimeoutMs,
   taskGenerationRetryDelayMs,
+  taskGenerationFailureMetadata,
 } = await import("../server/task-generation-worker.js");
 const {
   closePool,
@@ -93,6 +94,13 @@ async function providerTimeoutSmoke() {
 }
 
 function providerRetryPolicySmoke() {
+  for (const validationError of ["taskgen_steps_invalid", "taskgen_submission_requirement_invalid", "taskgen_output_truncated"]) {
+    for (const attempt of [1, 2, 3]) {
+      const failure = taskGenerationFailureMetadata({ code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError, response: { secret: "must-not-persist" } }, { workerAttemptCount: attempt }, 3);
+      assert.deepEqual(failure.lastProviderFailure, { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", status: null, validationError, contentPreview: "", finishReason: "", attempt, maxAttempts: 3 });
+    }
+  }
+
   assert.equal(taskGenerationProviderTimeoutMs({}), 240_000);
   assert.equal(taskGenerationRetryDelayMs(1, {}), 15_000);
   assert.equal(taskGenerationRetryDelayMs(2, {}), 30_000);
@@ -169,7 +177,7 @@ async function ambientRequestBodySmoke() {
   };
   const generated = await generateTaskWithProvider(taskInput, {
     fetchImpl: async (_url, init = {}) => {
-      if (JSON.parse(init.body).response_format?.json_schema?.name === "taskgen_readiness") return Response.json({ choices: [{ message: { content: JSON.stringify({ actionable_task: true, actionable_submission: true, consistent_scope: true }) } }] });
+      if (JSON.parse(init.body).response_format?.json_schema?.name === "taskgen_readiness") return Response.json({ choices: [{ message: { content: JSON.stringify({ actionable_task: true, actionable_submission: true, consistent_scope: true, step_reviews: JSON.parse(JSON.parse(init.body).messages[1].content).steps.map((_step, index) => ({ step_index: index + 1, actionable: true, reason: "Concrete contributor action." })) }) } }] });
       requestBody = JSON.parse(init.body);
       return new Response(JSON.stringify(responsePayload), {
         status: 200,
@@ -199,7 +207,7 @@ async function ambientRequestBodySmoke() {
   }), (error) => error.code === "TASKGEN_PROVIDER_OUTPUT_INVALID" && error.validationError === "taskgen_output_truncated");
   const recovered = await generateTaskWithProvider(taskInput, {
     fetchImpl: async (_url, init) => JSON.parse(init.body).response_format?.json_schema?.name === "taskgen_readiness"
-      ? Response.json({ choices: [{ message: { content: JSON.stringify({ actionable_task: true, actionable_submission: true, consistent_scope: true }) } }] })
+      ? Response.json({ choices: [{ message: { content: JSON.stringify({ actionable_task: true, actionable_submission: true, consistent_scope: true, step_reviews: JSON.parse(JSON.parse(init.body).messages[1].content).steps.map((_step, index) => ({ step_index: index + 1, actionable: true, reason: "Concrete contributor action." })) }) } }] })
       : Response.json(responsePayload),
   });
   assert.equal(recovered.output.submission_requirement.criteria, "Submit the evidence packet.");

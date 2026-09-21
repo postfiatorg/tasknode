@@ -1,5 +1,5 @@
 import { buildRequestBundle } from "./task-request-context.js";
-import { reviewTaskGenerationReadiness } from "./task-generation-readiness.js";
+import { reviewTaskGenerationReadiness, taskGenerationReadinessIsCurrent } from "./task-generation-readiness.js";
 import { ownsTaskGeneration } from "./process-role.js";
 import { applyOffchainTaskOffer } from "./offchain-task-lifecycle.js";
 import {
@@ -106,6 +106,20 @@ export function isRetryableTaskGenerationError(error = {}) {
   ]).has(code);
 }
 
+export function taskGenerationFailureMetadata(error = {}, request = {}, maxAttempts = taskGenerationMaxAttempts()) {
+  return {
+    lastProviderFailure: {
+      code: safeText(error?.code, 120),
+      status: Number(error?.status || error?.statusCode || 0) || null,
+      validationError: safeText(error?.validationError, 1000),
+      contentPreview: safeText(error?.contentPreview, 1500),
+      finishReason: safeText(error?.finishReason, 40),
+      attempt: request.workerAttemptCount,
+      maxAttempts,
+    },
+  };
+}
+
 function taskGenerationStaleSeconds(env = process.env) {
   const minimumSeconds = Math.max(60, Math.ceil(taskGenerationProviderTimeoutMs(env) / 1000) + 60);
   return positiveInteger(env.TASKNODE_TASK_GENERATION_STALE_SECONDS, 900, {
@@ -133,7 +147,7 @@ function networkGenerationFailureMetadata(message = "") {
   };
 }
 
-async function markGenerationFailure({ request = {}, message = "", logger = console } = {}) {
+async function markGenerationFailure({ request = {}, message = "", metadata = {}, logger = console } = {}) {
   const requestId = request.requestId || request.request_id;
   const ownership = {
     workerAttemptId: request.workerAttemptId || request.worker_attempt_id || "",
@@ -157,13 +171,13 @@ async function markGenerationFailure({ request = {}, message = "", logger = cons
     await markTaskRequestFailed({
       requestId,
       error: message,
-      metadata: networkGenerationFailureMetadata(message),
+      metadata: { ...metadata, ...networkGenerationFailureMetadata(message) },
       ...ownership,
     }).catch(() => null);
     return { ok: false, hidden: true, repair };
   }
 
-  await markTaskRequestFailed({ requestId, error: message, ...ownership }).catch(() => null);
+  await markTaskRequestFailed({ requestId, error: message, metadata, ...ownership }).catch(() => null);
   return { ok: true, hidden: false, repair: null };
 }
 
@@ -423,7 +437,7 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
             taskgen = await generateTaskWithProvider(taskInput);
             replayedGeneratedOutput = false;
           }
-          if (replayedGeneratedOutput && taskgen.metadata?.readiness?.approved !== true) {
+          if (replayedGeneratedOutput && !taskGenerationReadinessIsCurrent(taskgen.output, taskgen.metadata?.readiness)) {
             taskgen.metadata.readiness = await reviewTaskGenerationReadiness(taskgen.output);
             replayedGeneratedOutput = false;
           }
@@ -557,6 +571,7 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
         await markTaskgenReplayFailed({ replayKey: replayIdentity.replay_key, error: message }).catch(() => null);
       }
       const maxAttempts = taskGenerationMaxAttempts();
+      const failureMetadata = taskGenerationFailureMetadata(error, request, maxAttempts);
       const cycleAttemptCount = request.workerCycleAttemptCount ?? request.workerAttemptCount;
       if (isRetryableTaskGenerationError(error) && cycleAttemptCount < maxAttempts) {
         const retryDelayMs = taskGenerationRetryDelayMs(cycleAttemptCount);
@@ -566,14 +581,7 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
           retryDelayMs,
           workerAttemptId: request.workerAttemptId,
           workerId: request.workerId,
-          metadata: {
-            lastProviderFailure: {
-              code: safeText(error?.code, 120),
-              status: Number(error?.status || error?.statusCode || 0) || null,
-              attempt: request.workerAttemptCount,
-              maxAttempts,
-            },
-          },
+          metadata: failureMetadata,
         }).catch((retryError) => ({
           ok: false,
           reason: retryError?.message || "task_generation_retry_schedule_failed",
@@ -610,11 +618,12 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
           error: message,
         });
       }
-      const failure = await markGenerationFailure({ request, message, logger });
+      const failure = await markGenerationFailure({ request, message, metadata: failureMetadata, logger });
       logger.warn?.("task_generation_request_failed", {
         requestId: request.requestId,
         error: message,
         userVisible: !failure.hidden,
+        ...failureMetadata.lastProviderFailure,
       });
       results.push({ ok: false, requestId: request.requestId, error: message });
     }
