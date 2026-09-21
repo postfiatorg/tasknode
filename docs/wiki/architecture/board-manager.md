@@ -79,6 +79,27 @@ claims and published work are never touched. Worker claim state separates
 (failures); a wait resets the failure streak, so one transient error after a long
 wait gets the first-failure backoff instead of the fifteen-minute ceiling.
 
+Grounding sources are remote. Each board packet carries `sources`, one entry per
+declared repository (`github_repo`, resolved through `DEFAULT_REPO_MAP` or
+`TASKNODE_BOARD_SOURCE_REPO_MAP`), official X account (`x_account`, needs
+`X_BEARER_TOKEN`) and website. Snapshots are cached in `board_source_snapshots`
+(migration 144) for thirty minutes with `fetched_at`; a failed refresh serves the
+previous snapshot as `stale` with the error, and a source that never fetched is
+`unavailable`. Degraded sources appear in runtime status. `GITHUB_SOURCE_TOKEN`
+is optional (private repositories, higher rate limits). Local checkouts on the
+operator host are no longer a precondition for any board. Blockers that only the
+operator can clear are recorded once with `operator-action <board> --add … --owner …`
+and shown in the packet and status until `--resolve <id> --resolution …`.
+
+The intent classifier's prompt states the JSON contract by key name. Provider
+output is normalized through documented key aliases before validation; a
+contract failure gets exactly one repair turn with the rejection fed back; a
+second failure fails the job non-retryably as `network_task_intent_contract_failed`
+with both raw outputs persisted under `generationFailure.rawAttempts`. Board
+packets label each failed job with `failure_family` (`provider`, `contract`,
+`semantic`) and `classifier_output_preview`; provider and contract failures can be
+explicitly retried with `--retry-failed`, semantic holds cannot.
+
 Reward projection still updates project totals, allocations and user
 followups. It no longer enqueues the retired `board_manager_jobs` scheduler.
 Historical runs and accounting records remain available; old queued planner
@@ -112,6 +133,26 @@ Launch, supervisor, reset and status publication use that same registry.
   receipts remain authoritative; no retry creates a replacement round.
   Identical completed rounds have a fifteen-minute cooldown. Crash recovery
   resumes the saved thread. Daily reset preserves pending/busy work.
+- Routing is answered per contributor. A `routing_due` duty result carries
+  `--dispositions`, one entry per eligible candidate: `routed` or
+  `investigation_routed` (each must match an executed `task create` for that
+  account in the round, verified against `bm_audit_log`) or `not_served` with a
+  `reason_code` (`no_badge_fit`, `source_unavailable`, `budget_exhausted`,
+  `capacity_taken_this_round`, `restricted_board`,
+  `contributor_declined_recently`, `other` with a 40+ character reason). A duty
+  that routed nobody is recorded as the outcome `not_served`, never
+  `completed`. Three consecutive `not_served` rounds for a board with candidates
+  write `duty_blocked_across_rounds` and an `ALERTS.log` line, a `Routing
+  stalled:` status line, and a work-order directive naming each unserved
+  contributor with handle, badges and reason code. A `deferred` routing duty
+  with no candidates does not escalate.
+- Allocation health is published with every runtime status: idle badge-verified
+  contributors without a live network task, executed task creates in 24h/7d,
+  distinct accounts offered in 7d, live allocations, per-board failure families
+  and `not_served` streaks. Ten or more idle with zero creates in 24h is
+  critical: the supervisor appends to `ALERTS.log` at most every six hours and
+  System Status shows a `Network Allocation Health` item separate from
+  generation-worker freshness.
 - A processed round is not a resolved task. The supervisor keeps
   `<alias>.blockers.json` and tracks progress duties (`review_due`,
   `verification_due`, `hive_chat_escalation`) that were reported anything but

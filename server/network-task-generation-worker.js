@@ -1,4 +1,4 @@
-import { assessTaskIntent } from "./task-intent-assessment.js";
+import { assessTaskIntent, taskIntentFailureFamily } from "./task-intent-assessment.js";
 import { offchainTaskLifecycleEnabled, offchainTaskLifecycleDualWriteEnabled } from "./offchain-task-lifecycle.js";
 import { heartbeatNetworkTaskGenerationJob, persistNetworkTaskRequest } from "./repositories/network-task-generation-jobs.js";
 import { ownsTaskGeneration } from "./process-role.js";
@@ -242,9 +242,11 @@ export async function createTaskRequestForNetworkJob(job = {}, { assess = assess
     WHERE id=$1 AND worker_attempt_id=$2 AND status='running'`, [job.id, job.worker_attempt_id, JSON.stringify(assessment)]);
   if (!assessedAttempt.rowCount) throw new Error("network_task_generation_attempt_lost");
   if (["duplicate", "uncertain"].includes(assessment.relationship) || !assessment.actionable || !assessment.scopeClear) {
-    throw Object.assign(new Error(`network_task_intent_needs_review:${assessment.relationship}:${assessment.reason}`), { code: "network_task_intent_needs_review", retryable: false });
+    throw Object.assign(new Error(`network_task_intent_needs_review:${assessment.relationship}:${assessment.reason}`), { code: "network_task_intent_needs_review", retryable: false, family: "semantic" });
   }
-  requestBundle.network_task.intent_assessment = assessment;
+  // The bundle carries the verdict; raw provider transcripts stay on the job row.
+  const { rawAttempts: _rawAttempts, ...assessmentForBundle } = assessment;
+  requestBundle.network_task.intent_assessment = assessmentForBundle;
   requestBundle.network_task.task_lineage.lineage_task_ids = [...new Set([...requestBundle.network_task.task_lineage.lineage_task_ids, ...assessment.priorTaskIds])];
   if (direct) {
     const cid = `postgres:${requestId}`;
@@ -353,8 +355,16 @@ async function runNetworkTaskGenerationQueueOnce({ limit = 1, logger = console }
       const message = safeText(error?.message || error, 1000);
       await markNetworkTaskGenerationJobFailed({ jobId: job.id, workerAttemptId: job.worker_attempt_id, error: message,
         retryable: error.retryable !== false,
-        failure: { code: error.code || "network_task_generation_failed", causeCode: error.causeCode || "", status: error.status || null, retryable: error.retryable !== false, attempts: error.attempts || [] } }).catch(() => null);
-      logger.warn?.("network_task_generation_job_failed", { jobId: job.id, error: message });
+        failure: {
+          code: error.code || "network_task_generation_failed", causeCode: error.causeCode || "", status: error.status || null, retryable: error.retryable !== false,
+          family: error.family || taskIntentFailureFamily({ code: error.code, causeCode: error.causeCode }) || "provider",
+          attempts: error.attempts || [],
+          // Operators must be able to read what the classifier actually said.
+          provider: error.provider || "", model: error.model || "", repairAttempted: error.repairAttempted === true,
+          rawAttempts: Array.isArray(error.rawAttempts) ? error.rawAttempts.slice(0, 2) : [],
+          failedAt: new Date().toISOString(),
+        } }).catch(() => null);
+      logger.warn?.("network_task_generation_job_failed", { jobId: job.id, error: message, family: error.family || "", causeCode: error.causeCode || "", contentPreview: error.rawAttempts?.at(-1)?.contentPreview?.slice(0, 300) || "" });
       results.push({ ok: false, jobId: job.id, error: message });
     } finally {
       clearInterval(heartbeat);

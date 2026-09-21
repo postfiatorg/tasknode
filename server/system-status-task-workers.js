@@ -1,4 +1,5 @@
 import { contextRewriteWatchdogSnapshot } from "./repositories/context-rewrite.js";
+import { readAllocationHealth } from "./allocation-health.js";
 import {
   boolEnv,
   countsFromRows,
@@ -388,6 +389,43 @@ export async function networkTaskGenerationItem(tables, nowMs) {
     counts: queueCounts,
     lastError: row.last_error || "",
     details: [oldest && `oldestPending=${oldest}`],
+  });
+}
+
+// Generation freshness says the worker is alive. This says whether eligible
+// contributors are actually receiving work. They must never be conflated.
+export async function networkAllocationHealthItem(tables, _nowMs) {
+  const required = ["network_task_allocations", "network_task_generation_jobs", "bm_audit_log", "board_agent_rounds", "account_network_badges", "task_projections"];
+  let health = null;
+  if (required.every((name) => tables.get(name) === true)) {
+    try { health = await readAllocationHealth(); } catch { health = null; }
+  }
+  const aggregate = health?.aggregate || {};
+  const evaluation = health?.evaluation || { status: "unknown", label: "Allocation health unavailable" };
+  return item({
+    id: "network_allocation_health",
+    category: "hive",
+    title: "Network Allocation Health",
+    description: "Eligible idle contributors versus tasks actually created and offered by the board manager. Separate from generation worker freshness.",
+    owner: "board manager (Kimi) + supervisor",
+    trigger: "board_agent_rounds routing duties",
+    cadence: "per supervisor round",
+    status: evaluation.status,
+    statusLabel: evaluation.label,
+    lastRunAt: aggregate.last_create_at || null,
+    lastSuccessAt: aggregate.last_create_at || null,
+    counts: {
+      idle_badge_verified_no_live_task: aggregate.idle_badge_verified_no_live_task ?? 0,
+      executed_creates_24h: aggregate.executed_creates_24h ?? 0,
+      executed_creates_7d: aggregate.executed_creates_7d ?? 0,
+      distinct_accounts_offered_7d: aggregate.distinct_accounts_offered_7d ?? 0,
+      live_allocations: aggregate.live_allocations ?? 0,
+    },
+    lastError: "",
+    details: [
+      ...(aggregate.boards_not_served_3_plus?.length ? [`boardsNotServed3PlusRounds=${aggregate.boards_not_served_3_plus.join(",")}`] : []),
+      ...((health?.boards || []).map((board) => `${board.board_id}: created24h=${board.creates_24h} offered7d=${board.accounts_offered_7d} notServedStreak=${board.consecutive_not_served_rounds}`)),
+    ],
   });
 }
 

@@ -49,7 +49,7 @@ export async function dispatchBoardAgent(argv) {
   if (command === "round-open") return openAgentRound(boards());
   if (command === "round-status") return readAgentRound(args[0]);
   if (command === "task" && args[0] === "detail") return boardTaskDetail(args[1]);
-  if (command === "duty-result") return recordDutyResult({ roundId: args[0], dutyId: args[1], outcome: f.outcome, reason: f.reason });
+  if (command === "duty-result") return recordDutyResult({ roundId: args[0], dutyId: args[1], outcome: f.outcome, reason: f.reason, dispositions: f.dispositions });
   if (command === "user") {
     // Board agents receive board-linked task history and badge evidence, not
     // the contributor's private personal tasks, chats or context document.
@@ -78,6 +78,7 @@ export async function dispatchBoardAgent(argv) {
     return writes.boardUpdate(payload);
   }
   if (command === "journal") return writes.journalAppend({ boardId: board(args[0]), text: f.text });
+  if (command === "operator-action") return writes.operatorAction({ boardId: board(args[0]), add: f.add || "", owner: f.owner || "", resolve: f.resolve || "", resolution: f.resolution || "" });
   if (command === "handoff") return writes.writeHandoff({ boardId: board(args[0]) });
   if (command === "refer-badge") return writes.referBadge({ accountId: args[0], badgeId: args[1], evidence: f.evidence, boardId: board(f.board || "tasknode"), execute: f.execute === true });
   if (command === "refer-merge") return writes.referMerge({ prUrl: f["pr-url"] || args[0], summary: f.summary, boardId: board(f.board || "tasknode"), execute: f.execute === true });

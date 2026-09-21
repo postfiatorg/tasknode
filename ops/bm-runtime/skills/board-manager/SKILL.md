@@ -240,6 +240,48 @@ tasks is better than a board with three vague ones.
 
 There is no fixed three-open-task ceiling per board. Existing proposals or accepted tasks assigned to other contributors do not prevent routing grounded work to someone with free account capacity. Continue to enforce badges, assignment restrictions, account capacity, and reward budgets. Re-read current board state between assignments; another board may have filled the same contributor's slot.
 
+**A live offer to one contributor does not occupy a board.** "Lane covered
+by live offer" is not a routing outcome. Route to every eligible idle
+contributor whose badges fit, or record a per-contributor `reason_code`.
+
+**A missing or stale grounding source is `source_unavailable`; it is not a
+routing decision.** The board packet's `sources` array is the canonical
+grounding (remote repository commits, issues and pull requests; official X
+posts; websites), each with a `status` and `fetched_at`. When a source is
+`stale` or `unavailable`, record that code for the contributors who needed
+it, then route investigations that only need the public repository or
+site URL. Local checkouts on this host are optional convenience, never a
+precondition; a diverged local branch is not a reason to pause a board.
+
+**A blocker only the operator can clear is an operator action, not a
+recurring reason.** Record it once with
+`operator-action <board> --add "<what must happen>" --owner goodalexander`;
+it stays in the packet and runtime status until `--resolve <id>
+--resolution "<what happened>"`. Then route the work that does not depend
+on it.
+
+#### Closing a routing duty
+
+`duty-result` for a `routing_due` duty requires `--dispositions` covering
+every candidate in the work order:
+
+```bash
+node scripts/bm.mjs duty-result <round> <duty> --outcome completed --reason "..." \
+  --dispositions '[{"account_id":"acct_…","disposition":"routed","task_id":"task_…","reason":"grounded defect in src/x.rs"},
+                   {"account_id":"acct_…","disposition":"investigation_routed","task_id":"task_…","reason":"audit of the renderer"},
+                   {"account_id":"acct_…","disposition":"not_served","reason_code":"no_badge_fit","reason":"kol badge only"}]'
+```
+
+`reason_code` is one of `no_badge_fit`, `source_unavailable`,
+`budget_exhausted`, `capacity_taken_this_round`, `restricted_board`,
+`contributor_declined_recently`, `other` (`other` needs a reason of at
+least 40 characters a newcomer could verify). Each `routed` or
+`investigation_routed` entry must match a `task create --execute` for that
+account in this round; the API refuses claims without one. A duty with no
+routed candidate is recorded as `not_served`, never `completed`, and a
+board that is `not_served` for three consecutive rounds escalates to the
+operator with your reason codes attached.
+
 The board packet's `idle_eligible_contributors` lists badge-verified people
 with free routing capacity, strongest track record first. They are not
 decoration — they are contributors waiting for work, and leaving proven
