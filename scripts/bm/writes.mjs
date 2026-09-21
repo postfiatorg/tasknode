@@ -454,6 +454,37 @@ export async function boardUpdate(payload = {}) {
   return row;
 }
 
+// Durable operator action items. A blocker only the operator can clear is
+// recorded once with an owner and surfaced in every packet and runtime status
+// until it is explicitly resolved. It replaces the same prose blocker being
+// repeated in every round.
+export async function operatorAction({ boardId, add = "", owner = "", resolve = "", resolution = "" }) {
+  assertBoardAgentScope(boardId);
+  const row = (await query("SELECT metadata_json FROM network_projects WHERE id=$1", [boardId])).rows[0];
+  if (!row) throw Object.assign(new Error(`board_not_found:${boardId}`), { status: 404 });
+  const { normalizeOperatorActions } = await import("../../server/board-sources.js");
+  const actions = normalizeOperatorActions(row.metadata_json?.operator_actions);
+  let entry;
+  if (safeText(add)) {
+    const description = safeText(add, 600);
+    const duplicate = actions.find((item) => !item.resolved_at && item.description === description);
+    if (duplicate) return { boardId, action: duplicate, duplicate: true, open: actions.filter((item) => !item.resolved_at) };
+    entry = { id: `opact_${sha256(`${boardId}:${description}:${Date.now()}`).slice(0, 12)}`, description, owner: safeText(owner, 120) || "operator", since: new Date().toISOString(), resolved_at: null, resolution: "" };
+    actions.push(entry);
+  } else if (safeText(resolve)) {
+    entry = actions.find((item) => item.id === safeText(resolve, 80));
+    if (!entry) throw Object.assign(new Error(`operator_action_not_found:${resolve}`), { status: 404 });
+    if (!safeText(resolution)) throw Object.assign(new Error("operator_action_resolution_required"), { status: 400 });
+    entry.resolved_at = new Date().toISOString();
+    entry.resolution = safeText(resolution, 600);
+  } else {
+    throw Object.assign(new Error("operator_action_requires_add_or_resolve"), { status: 400 });
+  }
+  await query("UPDATE network_projects SET metadata_json = COALESCE(metadata_json,'{}'::jsonb) || jsonb_build_object('operator_actions', $2::jsonb), updated_at=now() WHERE id=$1", [boardId, JSON.stringify(actions.slice(-50))]);
+  await appendBmAudit({ actor: boardAgentActor(), boardId, command: "operator_action", args: { add: safeText(add, 600), owner, resolve, resolution: safeText(resolution, 600) }, result: { id: entry.id, resolved: Boolean(entry.resolved_at) } });
+  return { boardId, action: entry, open: actions.filter((item) => !item.resolved_at) };
+}
+
 function journalRoot() {
   return process.env.BM_JOURNAL_DIR || path.join(process.cwd(), "journal");
 }

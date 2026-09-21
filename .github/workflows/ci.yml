@@ -33,6 +33,10 @@ jobs:
         run: node --test scripts/board-agent-progress.test.mjs
       - name: Verify task review worker retry state
         run: node scripts/task-review-idempotency-smoke.mjs
+      - name: Verify board grounding sources and operator actions
+        run: node --test scripts/board-sources.test.mjs
+      - name: Verify task intent classifier contract
+        run: node scripts/task-intent-assessment-smoke.mjs
       - run: npm run check
         env:
           CHROME_BIN: google-chrome

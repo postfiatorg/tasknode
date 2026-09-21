@@ -7,6 +7,7 @@ import { claimNetworkTaskGenerationJobs, markNetworkTaskGenerationJobFailed } fr
 import { boardPacket } from "./bm/lib.mjs";
 import { parseAgentCommand } from "../server/board-agent-dispatch.js";
 import { executeBoardAgentCommand } from "../server/board-agent-routes.js";
+process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 const url = new URL(process.env.DATABASE_URL);
 assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
 assert.equal(url.pathname, "/tasknode_hive_audit_20260919");

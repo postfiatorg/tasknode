@@ -52,6 +52,11 @@ export function mergeRoundProgress(pending, round) {
 // recur legitimately (nothing routable, not yet eligible) and are not tracked.
 export const RECURRING_BLOCKER_ROUNDS = 2;
 export const PROGRESS_DUTY_TYPES = new Set(["review_due", "verification_due", "hive_chat_escalation"]);
+// Routing that serves nobody while eligible candidates exist is tracked
+// separately: a legitimately quiet round is "deferred" with zero candidates or
+// with every candidate carrying a coded reason, and does not escalate at all;
+// "not_served" with candidates present escalates after this many rounds.
+export const ROUTING_STALL_ROUNDS = 3;
 
 // Keyed by the stable duty identity (type, board, task). Some hashed duty ids
 // include staleness timestamps and change every round; the task does not.
@@ -60,37 +65,62 @@ export function blockerKey(duty) { return [duty.type, duty.board_id, duty.task_i
 export function trackRecurringBlockers(previous = {}, round) {
   const next = {};
   for (const duty of round?.duties_json || []) {
-    if (!PROGRESS_DUTY_TYPES.has(duty.type)) continue;
     const result = round.results_json?.[duty.id];
     if (!result || result.outcome === "completed") continue;
+    const routing = duty.type === "routing_due";
+    if (!routing && !PROGRESS_DUTY_TYPES.has(duty.type)) continue;
+    if (routing && (result.outcome !== "not_served" || !Array.isArray(duty.candidate_ids) || !duty.candidate_ids.length)) continue;
     const key = blockerKey(duty);
     const prior = previous?.[key];
-    next[key] = {
+    const entry = {
       dutyId: duty.id, type: duty.type, board_id: duty.board_id, task_id: duty.task_id || "",
       rounds: Number(prior?.rounds || 0) + 1,
       firstRoundId: prior?.firstRoundId || round.id, lastRoundId: round.id,
       lastOutcome: result.outcome, lastReason: String(result.reason || "").slice(0, 600), lastRecordedAt: result.recordedAt || "",
       alertedRounds: Number(prior?.alertedRounds || 0),
+      threshold: routing ? ROUTING_STALL_ROUNDS : RECURRING_BLOCKER_ROUNDS,
     };
+    if (routing) {
+      const byAccount = new Map((duty.candidates || []).map((member) => [member.account_id, member]));
+      entry.unserved = (result.dispositions || []).filter((item) => item.disposition === "not_served").map((item) => ({
+        account_id: item.account_id, handle: byAccount.get(item.account_id)?.public_handle || "", badges: byAccount.get(item.account_id)?.badges || [],
+        reason_code: item.reason_code || "other", reason: String(item.reason || "").slice(0, 200),
+      }));
+      const codes = entry.unserved.map((item) => item.reason_code);
+      entry.dominantReasonCode = codes.sort((a, b) => codes.filter((c) => c === b).length - codes.filter((c) => c === a).length)[0] || "";
+    }
+    next[key] = entry;
   }
   return next;
 }
 
-export function recurringBlockers(blockers = {}, threshold = RECURRING_BLOCKER_ROUNDS) {
-  return Object.values(blockers || {}).filter((item) => Number(item.rounds || 0) >= threshold)
+export function recurringBlockers(blockers = {}) {
+  return Object.values(blockers || {}).filter((item) => Number(item.rounds || 0) >= Number(item.threshold || RECURRING_BLOCKER_ROUNDS))
     .sort((a, b) => b.rounds - a.rounds || String(a.task_id).localeCompare(String(b.task_id)));
 }
 
 export function escalationDirective(recurring = []) {
   if (!recurring.length) return "";
-  const lines = recurring.map((item) => `- ${item.type}${item.task_id ? ` ${item.task_id}` : ""} (${item.board_id}): ${item.lastOutcome} in ${item.rounds} consecutive rounds; last reason: ${JSON.stringify(item.lastReason.slice(0, 240))}`);
-  return ` ESCALATION - the following duties were reported blocked or deferred in consecutive rounds without task progress:\n${lines.join("\n")}\n` +
-    `A repeated identical command cannot change a task's state. For each duty above: run task detail, compare the current status to the submission lifecycle in the skill (submitted -> verify request -> contributor verification response -> review), and issue only the command valid for that status. If the API rejects a command with lifecycle_violation, do not reissue it; quote the exact error text and the task status in the duty result. If the blocker is outside your control, name the exact dependency and who must act.`;
+  const stalledTasks = recurring.filter((item) => item.type !== "routing_due");
+  const stalledRouting = recurring.filter((item) => item.type === "routing_due");
+  let text = "";
+  if (stalledTasks.length) {
+    const lines = stalledTasks.map((item) => `- ${item.type}${item.task_id ? ` ${item.task_id}` : ""} (${item.board_id}): ${item.lastOutcome} in ${item.rounds} consecutive rounds; last reason: ${JSON.stringify(item.lastReason.slice(0, 240))}`);
+    text += ` ESCALATION - the following duties were reported blocked or deferred in consecutive rounds without task progress:\n${lines.join("\n")}\n` +
+      `A repeated identical command cannot change a task's state. For each duty above: run task detail, compare the current status to the submission lifecycle in the skill (submitted -> verify request -> contributor verification response -> review), and issue only the command valid for that status. If the API rejects a command with lifecycle_violation, do not reissue it; quote the exact error text and the task status in the duty result. If the blocker is outside your control, name the exact dependency and who must act.`;
+  }
+  if (stalledRouting.length) {
+    const lines = stalledRouting.map((item) => `- ${item.board_id}: ${item.unserved?.length || 0} eligible contributor(s) unserved for ${item.rounds} consecutive rounds (dominant reason_code ${item.dominantReasonCode || "none"}): ${(item.unserved || []).map((member) => `${member.handle ? "@" + member.handle : member.account_id} [${(member.badges || []).join("/")}] ${member.reason_code}`).join("; ")}`);
+    text += ` ROUTING ESCALATION - these boards served nobody for ${ROUTING_STALL_ROUNDS}+ rounds while eligible contributors waited:\n${lines.join("\n")}\n` +
+      `A live offer to one contributor does not occupy a board. For every contributor listed, this round must end with either an executed task create (grounded work or an investigation that creates the grounding) or a disposition with a reason_code that a newcomer could verify. source_unavailable means a missing input, not a routing decision: route work that does not need that source. Do not reuse last round's reason text.`;
+  }
+  return text;
 }
 
 export function recurringSummary(recurring = []) {
   if (!recurring.length) return "";
-  return JSON.stringify(recurring.map((item) => ({ type: item.type, board_id: item.board_id, task_id: item.task_id, rounds: item.rounds })));
+  return JSON.stringify(recurring.map((item) => ({ type: item.type, board_id: item.board_id, task_id: item.task_id, rounds: item.rounds,
+    ...(item.type === "routing_due" ? { unserved: item.unserved?.length || 0, reason_code: item.dominantReasonCode || "" } : {}) })));
 }
 
 function processAlive(alias) {
@@ -125,7 +155,9 @@ export async function superviseOnce() {
           if (item.alertedRounds >= item.rounds) continue;
           item.alertedRounds = item.rounds;
           log({ alias: agent.alias, event: "duty_blocked_across_rounds", dutyId: item.dutyId, type: item.type, boardId: item.board_id, taskId: item.task_id, rounds: item.rounds, firstRoundId: item.firstRoundId, lastRoundId: item.lastRoundId, lastOutcome: item.lastOutcome, lastReason: item.lastReason });
-          appendFileSync(path.join(home, "ALERTS.log"), `${new Date().toISOString()} ${agent.alias}: ${item.type}${item.task_id ? ` ${item.task_id}` : ""} ${item.lastOutcome} in ${item.rounds} consecutive rounds (${item.firstRoundId}..${item.lastRoundId}); no task progress; last reason: ${item.lastReason.slice(0, 300)}\n`);
+          appendFileSync(path.join(home, "ALERTS.log"), item.type === "routing_due"
+            ? `${new Date().toISOString()} ${agent.alias}: routing ${item.board_id} served nobody in ${item.rounds} consecutive rounds (${item.firstRoundId}..${item.lastRoundId}); ${item.unserved?.length || 0} eligible unserved; dominant reason_code ${item.dominantReasonCode || "none"}\n`
+            : `${new Date().toISOString()} ${agent.alias}: ${item.type}${item.task_id ? ` ${item.task_id}` : ""} ${item.lastOutcome} in ${item.rounds} consecutive rounds (${item.firstRoundId}..${item.lastRoundId}); no task progress; last reason: ${item.lastReason.slice(0, 300)}\n`);
         }
         save(blockersFile, blockers);
       }
@@ -146,8 +178,19 @@ export async function superviseOnce() {
     const projected = JSON.stringify([runtimeState, round?.id, round?.state, round?.results_json, recovery, recurringFlag]);
     const feedFile = path.join(stateDir, `${agent.alias}.feed.json`);
     if (read(feedFile)?.projected !== projected) {
-      await remote(["runtime-status", "--state", runtimeState, "--attempts", String(recovery.attempts), ...(recovery.nextRetryAt ? ["--next-retry", recovery.nextRetryAt] : []), ...(round?.id ? ["--round", round.id] : []), ...(recurringFlag ? ["--recurring", recurringFlag] : [])]);
+      const published = await remote(["runtime-status", "--state", runtimeState, "--attempts", String(recovery.attempts), ...(recovery.nextRetryAt ? ["--next-retry", recovery.nextRetryAt] : []), ...(round?.id ? ["--round", round.id] : []), ...(recurringFlag ? ["--recurring", recurringFlag] : [])]);
       save(feedFile, { projected });
+      // Allocation health is computed by the API; the supervisor only alerts.
+      const health = published?.allocation_health;
+      if (health?.evaluation?.status === "critical") {
+        const healthFile = path.join(stateDir, `${agent.alias}.health.json`);
+        const last = Date.parse(read(healthFile)?.alertedAt);
+        if (!Number.isFinite(last) || Date.now() - last > 6 * 60 * 60_000) {
+          appendFileSync(path.join(home, "ALERTS.log"), `${new Date().toISOString()} ${agent.alias}: allocation health critical: ${health.evaluation.label}; boards not served 3+ rounds: ${(health.aggregate.boards_not_served_3_plus || []).join(", ") || "none"}\n`);
+          log({ alias: agent.alias, event: "allocation_health_critical", ...health.aggregate });
+          save(healthFile, { alertedAt: new Date().toISOString(), aggregate: health.aggregate });
+        }
+      }
     }
     const decision = deliveryDecision({ round, status, pending });
     if (decision === "alert_pending") {
@@ -165,7 +208,7 @@ export async function superviseOnce() {
     save(file, round); save(path.join(workdir, "latest.json"), round);
     pending.deliveryCount = Number(pending.deliveryCount || 0) + 1;
     const id = `${round.id}_${pending.deliveryCount}`;
-    save(path.join(control, "inbox.json"), { id, prompt: `Read the board-manager skill and the durable work order ${file}. Complete each unresolved duty, then report its explicit result using: node ${path.join(directory, "../../scripts/bm.mjs")} duty-result ${round.id} <duty-id> --outcome completed|blocked|deferred --reason '<specific outcome and evidence>'. Journaling alone does not finish a duty. Refresh board packets before reusing earlier blockers: generation_queue counts and generation_failures describe current work and historical terminal failures separately. A failed job will not flush itself; use the documented explicit provider-failure recovery after revalidating the original need. Keep Kimi K3 as the task manager and follow the existing board rules. This is delivery ${Number(pending.attempts || 0) + 1}; reconcile existing command receipts before repeating a mutation.${escalationDirective(recurring)}` });
+    save(path.join(control, "inbox.json"), { id, prompt: `Read the board-manager skill and the durable work order ${file}. Complete each unresolved duty, then report its explicit result using: node ${path.join(directory, "../../scripts/bm.mjs")} duty-result ${round.id} <duty-id> --outcome completed|blocked|deferred|not_served --reason '<specific outcome and evidence>'. A routing_due duty additionally requires --dispositions '<json array>' with one entry per listed candidate: {"account_id","disposition":"routed|investigation_routed|not_served","task_id" (for routed),"reason_code" (for not_served: no_badge_fit|source_unavailable|budget_exhausted|capacity_taken_this_round|restricted_board|contributor_declined_recently|other),"reason"}. Routed entries must match an executed task create for that account this round. Journaling alone does not finish a duty. Refresh board packets before reusing earlier blockers: generation_queue counts and generation_failures describe current work and historical terminal failures separately. A failed job will not flush itself; use the documented explicit provider-failure recovery after revalidating the original need. Keep Kimi K3 as the task manager and follow the existing board rules. This is delivery ${Number(pending.attempts || 0) + 1}; reconcile existing command receipts before repeating a mutation.${escalationDirective(recurring)}` });
     pending.attempts = Number(pending.attempts || 0) + 1;
     pending.lastDeliveredAt = new Date().toISOString();
     save(pendingFile, pending);

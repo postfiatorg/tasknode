@@ -14,8 +14,17 @@ Use this context together with the board-manager skill. This board routes:
 
 ## Sources to read before generating tasks
 
-- The official X account’s recent posts. Identify what is live and worth amplifying now. Every amplification task must reference one specific official post, not a generic request to “post about Post Fiat.”
-- The public site repo checkout at `/home/pfrpc/repos/postfiatorg.github.io`. Content gaps, stale pages, and broken links are legitimate task material.
+- The board packet's `sources` entry `x:PostFiatOrg`: the official account's
+  recent posts with URLs, timestamps and metrics, fetched from the X API.
+  Identify what is live and worth amplifying now. Every amplification task
+  must reference one specific official post URL, not a generic request to
+  “post about Post Fiat.” If that source is `unavailable`, record
+  `source_unavailable` for amplification candidates; do not substitute a
+  scraper or a mirror.
+- The board packet's `sources` entries `repo:postfiatorg.github.io` (open
+  issues, recent commits) and `web:https://postfiatorg.github.io` (live
+  status). Content gaps, stale pages, and broken links are legitimate task
+  material and do not depend on the X source.
 
 ## What good looks like here
 
@@ -66,7 +75,7 @@ Reject:
 
 ### Site task creation and review
 
-A well-formed site task must identify a content gap, stale page, or broken link in `/home/pfrpc/repos/postfiatorg.github.io`.
+A well-formed site task must identify a content gap, stale page, or broken link in `postfiatorg/postfiatorg.github.io` by file or page URL.
 
 Completion requires:
 

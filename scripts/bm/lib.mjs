@@ -2,6 +2,8 @@ import { splitWhitespace, isAsciiDigit, isAsciiLetter } from "../../server/infer
 import { getNetworkTaskCapacityState } from "../../server/repositories/network-task-capacity.js";
 import { getAccountIdentityProfile } from "../../server/repositories/account-profiles.js";
 import { boardTaskStaleness, routingDuty } from "../../server/board-task-policy.js";
+import { taskIntentFailureFamily } from "../../server/task-intent-assessment.js";
+import { normalizeOperatorActions, readBoardSources } from "../../server/board-sources.js";
 import { listHiveGroupEscalations } from "../../server/repositories/hive-group.js";
 // Read-model queries for the `bm` board-manager CLI (Gate B).
 //
@@ -201,8 +203,8 @@ export async function boardPacket(boardId) {
               source_payload_json->'networkTask' AS selected_network_task
        FROM network_task_generation_jobs WHERE project_id=$1 AND status='failed'
        ORDER BY updated_at DESC LIMIT 10`, [boardId]
-    )).rows,
-    generation_recovery_policy: "Historical failed jobs are terminal, not a pending worker queue. Refresh queue counts and failure causes before claiming an outage. A pre-request provider failure can be explicitly retried with the unchanged task create parameters plus --retry-failed after revalidating that the work is still needed. Semantic holds require a revised decision, not an infrastructure retry.",
+    )).rows.map((row) => describeGenerationFailure(row)),
+    generation_recovery_policy: "Historical failed jobs are terminal, not a pending worker queue. Refresh queue counts and failure causes before claiming an outage. failure_family 'provider' (timeout, rate limit, truncation) and 'contract' (the classifier returned output that violated the required JSON contract; its raw output is in failure.rawAttempts) can be explicitly retried with the unchanged task create parameters plus --retry-failed after revalidating that the work is still needed. failure_family 'semantic' (duplicate, uncertain, not actionable) requires a revised task, not an infrastructure retry.",
     tasks: buckets,
     hive_chat_digest: secretary
       ? { report_id: secretary.id, created_at: secretary.created_at, text: String(secretary.output_text || "").slice(0, 1500) }
@@ -211,6 +213,11 @@ export async function boardPacket(boardId) {
     pending_decisions: await pendingDecisions(boardId),
     hive_chat_escalations: await listHiveGroupEscalations([boardId]),
     idle_eligible_contributors: await idleEligibleContributors(),
+    // Canonical grounding: fetched from each source's remote and cached with a
+    // fetched_at. A source with status stale/unavailable is a missing input
+    // (reason_code source_unavailable), never a reason to route nothing.
+    sources: await readBoardSources(board).catch((error) => [{ id: "sources", kind: "error", status: "unavailable", fetched_at: null, error: String(error?.message || error).slice(0, 300) }]),
+    operator_actions: normalizeOperatorActions(board.metadata_json?.operator_actions).filter((item) => !item.resolved_at),
     source_leads: repoSourceLeads(board.metadata_json?.sources?.repos || []),
   };
 }
@@ -602,6 +609,25 @@ export async function userPacket(accountOrWallet, { limit = 20 } = {}) {
 // Deterministic per-round duty computation (the whip's work order). Every
 // duty is derived from durable state, so two runs against the same state
 // produce the same list and the same digest.
+// Failure family for a failed generation job: provider (retry), contract
+// (classifier output violated its JSON contract; retry after revalidation) or
+// semantic (a real verdict about the work; needs a revised task).
+export function describeGenerationFailure(row = {}) {
+  const failure = row.failure && typeof row.failure === "object" ? row.failure : null;
+  const code = failure?.code || String(row.last_error || "").split(":")[0];
+  const causeCode = failure?.causeCode || String(row.last_error || "").split(":")[1] || row.legacy_intent_provider_error || "";
+  const family = failure?.family || taskIntentFailureFamily({ code, causeCode }) || (code ? "provider" : "");
+  const lastRaw = Array.isArray(failure?.rawAttempts) ? failure.rawAttempts.at(-1) : null;
+  return {
+    ...row,
+    failure_family: family,
+    failure_code: code,
+    failure_cause: causeCode,
+    classifier_output_preview: lastRaw?.contentPreview ? String(lastRaw.contentPreview).slice(0, 600) : "",
+    explicit_retry_allowed: family === "provider" || family === "contract",
+  };
+}
+
 export async function computeBoardDuties(boardIds = [], { queryImpl = query, idleContributors = idleEligibleContributors, now = Date.now() } = {}) {
   const duties = [];
   const idle = await idleContributors();

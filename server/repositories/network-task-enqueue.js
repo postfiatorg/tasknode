@@ -297,7 +297,11 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       const job = (await client.query("SELECT * FROM network_task_generation_jobs WHERE id=$1 FOR UPDATE", [existing.generation_job_id])).rows[0];
       const failure = job?.generated_task_payload?.generationFailure;
       const legacyCause = job?.generated_task_payload?.intentAssessment?.error;
+      // Provider failures and output-contract failures are both pre-request
+      // infrastructure outcomes; neither is a judgment about the work, so both
+      // may be explicitly retried once the need is revalidated.
       const retryableProviderFailure = (failure?.code === "network_task_intent_assessment_failed" && failure.retryable === true) ||
+        failure?.code === "network_task_intent_contract_failed" ||
         ["inference_timeout", "inference_response_truncated", "task_intent_assessment_schema_invalid", "task_intent_assessment_json_invalid"].includes(legacyCause);
       if (job?.status !== "failed" || !retryableProviderFailure || job.request_id || job.task_id || job.request_bundle_cid ||
           existing.request_id || existing.task_id) throw Object.assign(new Error("network_task_retry_requires_pre_request_provider_failure"), { status: 409 });

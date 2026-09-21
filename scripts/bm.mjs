@@ -87,10 +87,12 @@ const usage = [
       "  refer-badge <account> <badge> [--evidence ...] [--execute]",
       "  refer-merge --pr-url <url> [--summary ...] [--execute]",
       "  board-update <board> [--title ...] [--summary ...] [--status ...]",
+      "  operator-action <board> --add <description> [--owner <who>] | --resolve <id> --resolution <text>",
       "  journal <board> --text ...",
       "  handoff <board>",
       "  round-status <round-id>     recover a supervisor work order (scoped API)",
-      "  duty-result <round-id> <duty-id> --outcome completed|blocked|deferred --reason ...",
+      "  duty-result <round-id> <duty-id> --outcome completed|blocked|deferred|not_served --reason ...",
+      "      routing_due also requires --dispositions '[{\"account_id\":..,\"disposition\":\"routed|investigation_routed|not_served\",\"task_id\":..,\"reason_code\":..,\"reason\":..}]' for every candidate",
       "  --request-key <key>         explicit immutable mutation key (scoped API)",
     ].join("\n");
 
@@ -138,6 +140,8 @@ async function main() {
     console.log(`summary: ${board.summary}`);
     console.log(`sources: ${JSON.stringify(board.sources)}`);
     console.log(`evidence_norms: ${JSON.stringify(board.evidence_norms)}`);
+    if (Array.isArray(packet.sources)) console.log(`sources: ${packet.sources.map((source) => `${source.id}=${source.status}`).join(", ") || "none declared"}`);
+    if (packet.operator_actions?.length) console.log(`operator_actions: ${packet.operator_actions.map((item) => `${item.id} (${item.owner}) ${item.description}`).join(" | ")}`);
     if (Object.keys(board.routing_constraints || {}).length) {
       console.log(`routing_constraints: ${JSON.stringify(board.routing_constraints)}`);
     }

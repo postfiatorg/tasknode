@@ -7,6 +7,7 @@ import { journalAppend, taskCreate } from "./bm/writes.mjs";
 import { readAgentRegistry } from "../ops/bm-runtime/registry.mjs";
 import { terminalLifecycle } from "../ops/bm-runtime/terminal-state.mjs";
 import { validateDutyResult, openAgentRound, recordDutyResult } from "../server/board-agent-rounds.js";
+process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 
 const id = `agent_fixture_${randomUUID()}`, token = randomUUID();
 const board = "board_pf_terminal";

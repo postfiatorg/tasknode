@@ -28,6 +28,7 @@ import {
   contextRewriteItem,
   hiveBoardSecretaryMemoItem,
   hiveQueueItem,
+  networkAllocationHealthItem,
   networkTaskGenerationItem,
   taskGenerationItem,
   taskReviewItem,
@@ -61,6 +62,7 @@ export {
 
 async function categoryItems(tables, nowMs) {
   const hiveItems = await Promise.all([
+    networkAllocationHealthItem(tables, nowMs),
     hiveBoardSecretaryMemoItem(tables, nowMs),
     boardManagerSecretaryPacketItem(tables, nowMs),
     hiveQueueItem({

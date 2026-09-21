@@ -8,6 +8,7 @@ import { query, closePool } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { claimTaskGenerationRequests, reclaimStaleTaskGenerationRequests, retryOwnedTaskRequest } from "../server/repositories/task-requests.js";
 import { claimNetworkTaskGenerationJobs, markNetworkTaskGenerationJobFailed } from "../server/repositories/network-task-generation-jobs.js";
+process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 
 const url = new URL(process.env.DATABASE_URL);
 assert.ok(["127.0.0.1", "localhost"].includes(url.hostname), "Fixture must use local Postgres");
@@ -40,8 +41,13 @@ for (const code of ["inference_response_truncated", "inference_timeout"]) {
   await assert.rejects(assessTaskIntent({ need: "Implement recovery" }, { complete: async () => { throw Object.assign(new Error(code), { code, status: 502 }); } }),
     error => error.code === "network_task_intent_assessment_failed" && error.causeCode === code && error.retryable);
 }
-await assert.rejects(assessTaskIntent({ need: "Implement recovery" }, { complete: async () => ({ body: { choices: [{ message: { content: "{}" } }] } }) }),
-  error => error.causeCode === "task_intent_assessment_schema_invalid" && error.retryable);
+{
+  // Contract failure: one repair turn, then a non-retryable contract failure that keeps both raw outputs.
+  let calls = 0;
+  await assert.rejects(assessTaskIntent({ need: "Implement recovery" }, { complete: async ({ body }) => { calls += 1; if (calls === 2) assert.ok(body.messages.at(-1).content.includes("task_intent_assessment_schema_invalid")); return { body: { choices: [{ message: { content: "{}", }, finish_reason: "stop" }] } }; } }),
+    error => error.code === "network_task_intent_contract_failed" && error.causeCode === "task_intent_assessment_schema_invalid" && error.retryable === false && error.family === "contract" && error.repairAttempted && error.rawAttempts.length === 2);
+  assert.equal(calls, 2, "exactly one repair request");
+}
 await assert.rejects(assessTaskIntent({ need: "Implement recovery" }, { complete: async () => { throw Object.assign(new Error("inference_http_error"), { code: "inference_http_error", status: 401 }); } }),
   error => error.retryable === false);
 for (const relationship of ["duplicate", "uncertain", "continuation", "independent"]) {
@@ -52,7 +58,7 @@ for (const relationship of ["duplicate", "uncertain", "continuation", "independe
   } });
   assert.equal(result.relationship, relationship);
 }
-results.push({ case: "typed_intent_failures", pass: true, transportCausesPreserved: true, invalidSchemaRetries: true, authenticationStops: true, semanticJudgmentsPreserved: true });
+results.push({ case: "typed_intent_failures", pass: true, transportCausesPreserved: true, contractFailuresRepairOnceThenStop: true, authenticationStops: true, semanticJudgmentsPreserved: true });
 
 try {
   await migrateDatabase();

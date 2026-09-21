@@ -15,7 +15,9 @@ process.env.TASKNODE_POSTGRES_DISABLED = "false";
 const { recordAgentDecision, wakeDecisionWorker, workerForDecisionKind } = await import("../server/repositories/bm-decisions.js");
 const { parseRecurringBlockers } = await import("../server/board-agent-runtime-status.js");
 const { remoteBoardCommand } = await import("../scripts/bm/remote.mjs");
-const { trackRecurringBlockers, recurringBlockers, escalationDirective, recurringSummary, RECURRING_BLOCKER_ROUNDS } = await import("../ops/bm-runtime/supervisor.mjs");
+const { trackRecurringBlockers, recurringBlockers, escalationDirective, recurringSummary, RECURRING_BLOCKER_ROUNDS, ROUTING_STALL_ROUNDS } = await import("../ops/bm-runtime/supervisor.mjs");
+const { validateRoutingDispositions, routingOutcome, ROUTING_REASON_CODES } = await import("../server/board-agent-rounds.js");
+const { evaluateAllocationHealth, consecutiveNotServedRounds, readAllocationHealth, allocationHealthLines } = await import("../server/allocation-health.js");
 const { closePool } = await import("../server/db/pool.js");
 
 const taskId = "task_progress_fixture";
@@ -130,7 +132,7 @@ test("the supervisor detects a duty blocked across consecutive processed rounds"
   assert.ok(directive.includes("do not reissue it"));
   assert.equal(escalationDirective([]), "");
   const summary = recurringSummary(recurringBlockers(third));
-  assert.deepEqual(parseRecurringBlockers(summary), [{ type: "verification_due", board_id: "board_pf_terminal", task_id: taskId, rounds: 3 }]);
+  assert.deepEqual(parseRecurringBlockers(summary), [{ type: "verification_due", board_id: "board_pf_terminal", task_id: taskId, rounds: 3, unserved: 0, reason_code: "" }]);
   assert.equal(recurringSummary([]), "");
   assert.deepEqual(parseRecurringBlockers(""), []);
   assert.throws(() => parseRecurringBlockers("not json"), { message: "board_agent_runtime_state_invalid" });
@@ -143,6 +145,86 @@ test("the supervisor detects a duty blocked across consecutive processed rounds"
   const absent = trackRecurringBlockers(third, { id: "round_e", state: "complete", duties_json: [other], results_json: { d2: { outcome: "completed", reason: "ok" } } });
   assert.deepEqual(absent, {});
   assert.equal(trackRecurringBlockers(cleared, blocked("round_f", "new blocker"))["verification_due|board_pf_terminal|" + taskId].rounds, 1);
+});
+
+test("a routing duty answers for every candidate and cannot complete without routing anyone", () => {
+  const duty = { id: "r1", type: "routing_due", board_id: "board_pf_terminal", candidate_ids: ["acct_a", "acct_b", "acct_c"] };
+  const served = [
+    { account_id: "acct_a", disposition: "routed", task_id: "task_new", reason: "Grounded defect in the TUI." },
+    { account_id: "acct_b", disposition: "not_served", reason_code: "no_badge_fit", reason: "kol badge only." },
+    { account_id: "acct_c", disposition: "investigation_routed", task_id: "task_inv", reason: "Audit of the renderer." },
+  ];
+  assert.equal(validateRoutingDispositions(duty, JSON.stringify(served)).length, 3);
+  assert.equal(routingOutcome(validateRoutingDispositions(duty, served), "completed"), "completed");
+  assert.throws(() => validateRoutingDispositions(duty, served.slice(0, 2)), { message: /board_agent_dispositions_incomplete: missing acct_c/ });
+  assert.throws(() => validateRoutingDispositions(duty, undefined), { message: /board_agent_dispositions_required/ });
+  assert.throws(() => validateRoutingDispositions(duty, [...served, { account_id: "acct_zzz", disposition: "not_served", reason_code: "other", reason: "x".repeat(50) }]), { message: /unknown_candidate/ });
+  assert.throws(() => validateRoutingDispositions(duty, [{ ...served[1], reason_code: "vibes" }, served[0], served[2]]), { message: /reason_code_required/ });
+  assert.throws(() => validateRoutingDispositions(duty, [{ ...served[1], reason_code: "other", reason: "too short" }, served[0], served[2]]), { message: /reason_too_short/ });
+  assert.throws(() => validateRoutingDispositions(duty, [{ ...served[0], task_id: "" }, served[1], served[2]]), { message: /task_id_required/ });
+  const nobody = duty.candidate_ids.map((account_id) => ({ account_id, disposition: "not_served", reason_code: "source_unavailable", reason: "Nitter feed empty." }));
+  assert.throws(() => routingOutcome(validateRoutingDispositions(duty, nobody), "completed"), { status: 409 });
+  assert.equal(routingOutcome(validateRoutingDispositions(duty, nobody), "deferred"), "not_served");
+  assert.equal(routingOutcome(validateRoutingDispositions(duty, nobody), "blocked"), "not_served");
+  // No candidates: the legacy shape keeps its reported outcome.
+  assert.equal(routingOutcome(validateRoutingDispositions({ ...duty, candidate_ids: [] }, undefined), "deferred"), "deferred");
+  assert.ok(ROUTING_REASON_CODES.includes("source_unavailable"));
+});
+
+test("the supervisor escalates a board that serves nobody for three consecutive rounds", () => {
+  const duty = { id: "r1", type: "routing_due", board_id: "board_pf_terminal", candidate_ids: ["acct_a", "acct_b"],
+    candidates: [{ account_id: "acct_a", public_handle: "alice", badges: ["core_contributor"] }, { account_id: "acct_b", public_handle: "bob", badges: ["qa_worker"] }] };
+  const unserved = (roundId, code) => ({ id: roundId, state: "complete", duties_json: [duty], results_json: { r1: { outcome: "not_served", reason: "lane covered by live offer", reported_outcome: "deferred",
+    dispositions: [{ account_id: "acct_a", disposition: "not_served", reason_code: code, reason: "x" }, { account_id: "acct_b", disposition: "not_served", reason_code: "no_badge_fit", reason: "y" }] } } });
+  let blockers = {};
+  for (const [index, id] of ["round_1", "round_2"].entries()) { blockers = trackRecurringBlockers(blockers, unserved(id, "source_unavailable")); assert.equal(recurringBlockers(blockers).length, 0, `round ${index + 1} does not escalate yet`); }
+  blockers = trackRecurringBlockers(blockers, unserved("round_3", "source_unavailable"));
+  assert.equal(ROUTING_STALL_ROUNDS, 3);
+  const recurring = recurringBlockers(blockers);
+  assert.equal(recurring.length, 1);
+  assert.equal(recurring[0].unserved.length, 2);
+  assert.equal(recurring[0].unserved[0].handle, "alice");
+  const directive = escalationDirective(recurring);
+  assert.ok(directive.includes("ROUTING ESCALATION"));
+  assert.ok(directive.includes("@alice [core_contributor] source_unavailable"));
+  assert.ok(directive.includes("@bob [qa_worker] no_badge_fit"));
+  assert.ok(directive.includes("does not occupy a board"));
+  assert.deepEqual(parseRecurringBlockers(recurringSummary(recurring))[0], { type: "routing_due", board_id: "board_pf_terminal", task_id: "", rounds: 3, unserved: 2, reason_code: "source_unavailable" });
+  // A deferred routing round (legacy shape, or no candidates) never escalates; a routed round clears the streak.
+  const deferred = { id: "round_4", state: "complete", duties_json: [duty], results_json: { r1: { outcome: "deferred", reason: "Nothing routable." } } };
+  assert.deepEqual(trackRecurringBlockers(blockers, deferred), {});
+  const routed = { id: "round_5", state: "complete", duties_json: [duty], results_json: { r1: { outcome: "completed", reason: "Routed.", dispositions: [] } } };
+  assert.deepEqual(trackRecurringBlockers(blockers, routed), {});
+  assert.deepEqual(trackRecurringBlockers(blockers, { ...unserved("round_6", "other"), duties_json: [{ ...duty, candidate_ids: [] }] }), {}, "no candidates means nobody was starved");
+});
+
+test("allocation health measures tasks created against idle contributors", async (t) => {
+  assert.equal(evaluateAllocationHealth({ idle_badge_verified_no_live_task: 12, executed_creates_24h: 0, executed_creates_7d: 4 }).status, "critical");
+  assert.equal(evaluateAllocationHealth({ idle_badge_verified_no_live_task: 9, executed_creates_24h: 0, executed_creates_7d: 4 }).status, "warning");
+  assert.equal(evaluateAllocationHealth({ idle_badge_verified_no_live_task: 12, executed_creates_24h: 3, executed_creates_7d: 9, distinct_accounts_offered_7d: 5 }).status, "ok");
+  const routing = (board, outcome) => ({ duties_json: [{ id: "r", type: "routing_due", board_id: board }], results_json: { r: { outcome } } });
+  assert.equal(consecutiveNotServedRounds([routing("b", "not_served"), routing("b", "not_served"), routing("b", "completed"), routing("b", "not_served")], "b"), 2);
+  assert.equal(consecutiveNotServedRounds([routing("other", "not_served")], "b"), 0);
+  const queryImpl = async (sql) => {
+    if (sql.includes("FROM account_network_badges")) return { rows: [{ idle: 35 }] };
+    if (sql.includes("FROM bm_audit_log")) return { rows: [{ board_id: "board_tasknode_fixes", creates_24h: 1, creates_7d: 3, last_create_at: "2026-09-21T01:41:58.183Z" }] };
+    if (sql.includes("count(DISTINCT p.account_id)")) return { rows: [{ board_id: "board_tasknode_fixes", accounts_offered_7d: 1 }] };
+    if (sql.includes("GROUP BY a.project_id, p.status")) return { rows: [{ board_id: "board_pf_terminal", status: "proposed", count: 1 }] };
+    if (sql.includes("FROM network_task_generation_jobs")) return { rows: [{ board_id: "board_tasknode_fixes", family: "contract", count: 1 }] };
+    if (sql.includes("FROM board_agent_rounds")) return { rows: [routing("board_pf_terminal", "not_served"), routing("board_pf_terminal", "not_served"), routing("board_pf_terminal", "not_served")] };
+    if (sql.includes("count(DISTINCT account_id)")) return { rows: [{ accounts: 3 }] };
+    throw new Error("unexpected " + sql);
+  };
+  const health = await readAllocationHealth({ boardIds: ["board_pf_terminal", "board_tasknode_fixes"], queryImpl });
+  assert.equal(health.aggregate.idle_badge_verified_no_live_task, 35);
+  assert.equal(health.aggregate.executed_creates_24h, 1);
+  assert.equal(health.aggregate.distinct_accounts_offered_7d, 3);
+  assert.deepEqual(health.aggregate.boards_not_served_3_plus, ["board_pf_terminal"]);
+  assert.equal(health.boards.find((b) => b.board_id === "board_tasknode_fixes").failures_7d.contract, 1);
+  const lines = allocationHealthLines(health, "board_pf_terminal");
+  assert.ok(lines[0].startsWith("Allocation: 35 idle badge-verified; 1 created 24h / 3 7d"));
+  assert.ok(lines[1].includes("not_served streak 3"));
+  t.diagnostic(lines.join(" | "));
 });
 
 after(async () => { mock.restoreAll(); await closePool(); });

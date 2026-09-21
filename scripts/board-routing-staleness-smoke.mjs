@@ -7,6 +7,7 @@ import { computeBoardDuties } from "./bm/lib.mjs";
 import { executeBoardManagerDecision } from "../server/board-manager-actions.js";
 import { executeBoardAgentCommand } from "../server/board-agent-routes.js";
 import { dutyId, openAgentRound, recordDutyResult } from "../server/board-agent-rounds.js";
+process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 
 assert.ok(new URL(process.env.DATABASE_URL).pathname.includes("routing_"), "Use the isolated routing fixture database");
 const prefix = `routing_fixture_${randomUUID()}`;
@@ -109,7 +110,8 @@ try {
     dispatch: () => openAgentRound([board], { computeDuties: async () => ({ duties: [originalDuty] }) }),
   });
   await assert.rejects(executeBoardAgentCommand({ token, payload: { requestKey: randomUUID(), argv: ["duty-result"] } }, {
-    dispatch: () => recordDutyResult({ roundId: opened.result.id, dutyId: dutyId(originalDuty), outcome: "completed", reason: "The candidate pool changed but no task was actually routed" }, {
+    dispatch: () => recordDutyResult({ roundId: opened.result.id, dutyId: dutyId(originalDuty), outcome: "completed", reason: "The candidate pool changed but no task was actually routed",
+      dispositions: [{ account_id: candidate.account_id, disposition: "routed", task_id: "task_claimed_but_never_created", reason: "Claimed without an audit." }] }, {
       computeDuties: async () => ({ duties: [routingDuty({ id: board }, [candidate, { ...candidate, account_id: `${account}_new` }], 5)] }),
     }),
   }), { status: 409 }, "changing candidate pools must not bypass actual routing proof");
