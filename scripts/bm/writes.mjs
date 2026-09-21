@@ -517,7 +517,6 @@ export async function writeHandoff({ boardId }) {
   const packet = await boardPacket(boardId, { lean: true });
   if (!packet) throw new Error(`board_not_found:${boardId}`);
   const dir = path.join(journalRoot(), boardId);
-  await mkdir(dir, { recursive: true });
   const day = new Date().toISOString().slice(0, 10);
   const file = path.join(dir, `handoff-${day}.md`);
   const lines = [
@@ -542,7 +541,9 @@ export async function writeHandoff({ boardId }) {
     "(agent: annotate threads in flight, then commit this file)",
     "",
   ];
+  // Scoped agents receive the markdown; only the local CLI writes files.
   if (boardAgentIdentity()) return { boardId, markdown: lines.join("\n"), durable: true };
+  await mkdir(dir, { recursive: true });
   await appendFile(file, lines.join("\n"));
   await appendBmAudit({
     actor: boardAgentActor(),
