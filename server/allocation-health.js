@@ -76,6 +76,7 @@ export async function readAllocationHealth({ boardIds = [], queryImpl = defaultQ
               CASE WHEN last_error LIKE 'network_task_intent_needs_review%' THEN 'semantic'
                    WHEN last_error LIKE 'network_task_intent_contract_failed%' THEN 'contract'
                    WHEN last_error LIKE '%task_intent_assessment_schema_invalid%' OR last_error LIKE '%task_intent_assessment_json_invalid%' THEN 'contract'
+                   WHEN last_error LIKE '%taskgen_provider_output_invalid%' THEN 'contract'
                    ELSE 'provider' END) AS family,
             count(*)::int AS count
        FROM network_task_generation_jobs
@@ -101,7 +102,7 @@ export async function readAllocationHealth({ boardIds = [], queryImpl = defaultQ
     executed_creates_24h: perBoard.reduce((sum, entry) => sum + entry.creates_24h, 0),
     executed_creates_7d: perBoard.reduce((sum, entry) => sum + entry.creates_7d, 0),
     distinct_accounts_offered_7d: safeInt(totalOffered.rows[0]?.accounts),
-    last_create_at: perBoard.map((entry) => entry.last_create_at).filter(Boolean).sort().at(-1) || null,
+    last_create_at: perBoard.map((entry) => entry.last_create_at ? new Date(entry.last_create_at).toISOString() : "").filter(Boolean).sort().at(-1) || null,
     live_allocations: perBoard.reduce((sum, entry) => sum + Object.values(entry.live).reduce((a, b) => a + b, 0), 0),
     boards_not_served_3_plus: perBoard.filter((entry) => entry.consecutive_not_served_rounds >= 3).map((entry) => entry.board_id),
   };
