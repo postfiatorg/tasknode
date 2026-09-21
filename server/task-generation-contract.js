@@ -363,6 +363,30 @@ function normalizeTaskKind(value = "", policy = {}) {
   return "personal";
 }
 
+const VERIFICATION_TYPE_ALIASES = {
+  pr: "github_commit", pull_request: "github_commit", commit: "github_commit", github: "github_commit", github_pr: "github_commit", code: "github_commit", repository: "github_commit",
+  link: "url", links: "url", website: "url", post: "url", x_post: "url", tweet: "url",
+  image: "screenshot", screenshots: "screenshot", picture: "screenshot",
+  document: "file", attachment: "file", files: "file", report: "file",
+  written: "text", writeup: "text", description: "text", summary: "text",
+  multiple: "mixed", any: "mixed", combined: "mixed", all: "mixed",
+};
+
+export function coerceVerificationPolicy(raw, requirement = {}, policy = {}, evidenceTypes = ["text", "url", "github_commit", "screenshot", "file", "mixed"]) {
+  const source = safeObject(raw);
+  if (!Object.keys(source).length) return null;
+  const pick = (...keys) => { for (const key of keys) if (source[key] !== undefined && source[key] !== null) return source[key]; return undefined; };
+  let followup = pick("followup_required", "followupRequired", "follow_up_required", "requires_followup", "verification_required");
+  if (typeof followup === "string") followup = ["true", "yes", "required", "1"].includes(followup.trim().toLowerCase()) ? true : ["false", "no", "none", "0"].includes(followup.trim().toLowerCase()) ? false : undefined;
+  if (typeof followup !== "boolean") followup = safeText(policy.task_class || policy.requested_task_kind, 40) === "network" || requirement.type !== undefined;
+  let mode = safeText(pick("mode", "verification_mode", "followup_mode", "review_mode"), 120);
+  if (!mode) mode = "standard_followup";
+  let type = safeText(pick("verification_type", "verificationType", "type", "evidence_type", "followup_type"), 80).toLowerCase().replace(/[\s-]+/g, "_");
+  if (!evidenceTypes.includes(type)) type = VERIFICATION_TYPE_ALIASES[type] || "";
+  if (!type) type = evidenceTypes.includes(requirement.type) ? requirement.type : "mixed";
+  return { followup_required: followup, mode, verification_type: type };
+}
+
 export function validateTaskgenOutput(output = {}, policy = {}) {
   const outputText = (value, minimum, maximum) => typeof value === "string" && value.trim().length >= minimum && value.trim().length <= maximum;
   const required = ["title", "description", "task_kind", "submission_requirement", "verification_policy", "reward_offer", "deadline"];
@@ -373,9 +397,12 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
   const requirement = safeObject(output.submission_requirement);
   const evidenceTypes = ["text", "url", "github_commit", "screenshot", "file", "mixed"];
   if (!evidenceTypes.includes(requirement.type) || !outputText(requirement.criteria, 20, 4000)) throw new Error("taskgen_submission_requirement_invalid");
-  const verification = safeObject(output.verification_policy);
-  if (!evidenceTypes.includes(verification.verification_type) || !outputText(verification.mode, 1, 120) || typeof verification.followup_required !== "boolean") throw new Error("taskgen_verification_policy_invalid");
   // Clamp, never reject: a thorough model output must not burn a generation.
+  // The verification policy is operational metadata, not task content, and
+  // providers routinely ignore the strict enum/boolean schema for it. Coerce
+  // documented variants; only an absent or unrecognisable policy is invalid.
+  const verification = coerceVerificationPolicy(output.verification_policy, requirement, policy, evidenceTypes);
+  if (!verification) throw new Error("taskgen_verification_policy_invalid");
   const steps = normalizeTaskSteps(output.steps, { clean: safeText });
   if (steps.length < TASK_MIN_STEPS) throw new Error("taskgen_steps_invalid");
   const reward = safeObject(output.reward_offer);
@@ -677,7 +704,9 @@ export async function generateTaskWithProvider(taskInput, {
     if (body?.choices?.[0]?.finish_reason === "length") throw new Error("taskgen_output_truncated");
     output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
   } catch (error) {
-    throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: error.message });
+    // Keep what the model said so an operator can see why it was rejected.
+    throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: error.message,
+      contentPreview: String(body?.choices?.[0]?.message?.content || "").slice(0, 1500), finishReason: body?.choices?.[0]?.finish_reason || "" });
   }
   const readiness = await reviewTaskGenerationReadiness(output, { fetchImpl });
   return {
