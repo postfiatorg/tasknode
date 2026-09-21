@@ -167,6 +167,8 @@ The directory, public profile, recommendations and signed-in shell use a shared 
 
 ### Network badge freshness
 
+Refreshing badges preserves your chosen default while that badge remains eligible. Newly earned badges do not replace it. You can still change the default explicitly. If a badge verified by automatic refresh no longer qualifies, refresh revokes it and selects an eligible fallback when available.
+
 Network badge cards load current linked-provider proof alongside durable badge state, and refresh when the browser window regains focus. A verified, unexpired KOL badge displays Ready even if the original session snapshot predates linking X. Provider proof is scoped to the current account; stale links and badges from another account are ignored.
 
 ### Profile Pic NFT art and privacy
