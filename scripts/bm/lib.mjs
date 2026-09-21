@@ -155,7 +155,10 @@ const inVerificationStates = new Set(["verification_requested"]);
 const openStates = new Set(["proposed", "accepted"]);
 const terminalStates = new Set(["rewarded", "refused", "cancelled", "expired", "rejected"]);
 
-export async function boardPacket(boardId) {
+// lean: board, budget, task buckets and pending decisions only. Used by
+// handoff, which runs inside the 15-second command transaction; the full
+// packet (per-member eligibility, remote sources, Hive reads) takes longer.
+export async function boardPacket(boardId, { lean = false } = {}) {
   const [board, allocations, tasks, secretary] = await Promise.all([
     boardRow(boardId),
     allocationState(boardId),
@@ -211,14 +214,15 @@ export async function boardPacket(boardId) {
       : null,
     budget: await boardBudgetStatus(boardId),
     pending_decisions: await pendingDecisions(boardId),
-    hive_chat_escalations: await listHiveGroupEscalations([boardId]),
-    idle_eligible_contributors: await idleEligibleContributors(),
+    hive_chat_escalations: lean ? [] : await listHiveGroupEscalations([boardId]),
+    idle_eligible_contributors: lean ? [] : await idleEligibleContributors(),
     // Canonical grounding: fetched from each source's remote and cached with a
     // fetched_at. A source with status stale/unavailable is a missing input
     // (reason_code source_unavailable), never a reason to route nothing.
-    sources: await readBoardSources(board).catch((error) => [{ id: "sources", kind: "error", status: "unavailable", fetched_at: null, error: String(error?.message || error).slice(0, 300) }]),
+    sources: lean ? [] : await readBoardSources(board).catch((error) => [{ id: "sources", kind: "error", status: "unavailable", fetched_at: null, error: String(error?.message || error).slice(0, 300) }]),
     operator_actions: normalizeOperatorActions(board.metadata_json?.operator_actions).filter((item) => !item.resolved_at),
-    source_leads: repoSourceLeads(board.metadata_json?.sources?.repos || []),
+    source_leads: lean ? [] : repoSourceLeads(board.metadata_json?.sources?.repos || []),
+    lean,
   };
 }
 

@@ -514,7 +514,7 @@ export async function journalAppend({ boardId, text }) {
 
 export async function writeHandoff({ boardId }) {
   assertBoardAgentScope(boardId);
-  const packet = await boardPacket(boardId);
+  const packet = await boardPacket(boardId, { lean: true });
   if (!packet) throw new Error(`board_not_found:${boardId}`);
   const dir = path.join(journalRoot(), boardId);
   await mkdir(dir, { recursive: true });
