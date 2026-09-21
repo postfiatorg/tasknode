@@ -207,7 +207,7 @@ test("allocation health measures tasks created against idle contributors", async
   assert.equal(consecutiveNotServedRounds([routing("other", "not_served")], "b"), 0);
   const queryImpl = async (sql) => {
     if (sql.includes("FROM account_network_badges")) return { rows: [{ idle: 35 }] };
-    if (sql.includes("FROM bm_audit_log")) return { rows: [{ board_id: "board_tasknode_fixes", creates_24h: 1, creates_7d: 3, last_create_at: "2026-09-21T01:41:58.183Z" }] };
+    if (sql.includes("FROM bm_audit_log")) return { rows: [{ board_id: "board_tasknode_fixes", creates_24h: 1, creates_7d: 3, last_create_at: new Date("2026-09-21T01:41:58.183Z") }, { board_id: "board_pf_terminal", creates_24h: 0, creates_7d: 1, last_create_at: new Date("2026-09-06T19:04:33.860Z") }] };
     if (sql.includes("count(DISTINCT p.account_id)")) return { rows: [{ board_id: "board_tasknode_fixes", accounts_offered_7d: 1 }] };
     if (sql.includes("GROUP BY a.project_id, p.status")) return { rows: [{ board_id: "board_pf_terminal", status: "proposed", count: 1 }] };
     if (sql.includes("FROM network_task_generation_jobs")) return { rows: [{ board_id: "board_tasknode_fixes", family: "contract", count: 1 }] };
@@ -220,9 +220,10 @@ test("allocation health measures tasks created against idle contributors", async
   assert.equal(health.aggregate.executed_creates_24h, 1);
   assert.equal(health.aggregate.distinct_accounts_offered_7d, 3);
   assert.deepEqual(health.aggregate.boards_not_served_3_plus, ["board_pf_terminal"]);
+  assert.equal(health.aggregate.last_create_at, "2026-09-21T01:41:58.183Z", "latest by time, not by string order of Date objects");
   assert.equal(health.boards.find((b) => b.board_id === "board_tasknode_fixes").failures_7d.contract, 1);
   const lines = allocationHealthLines(health, "board_pf_terminal");
-  assert.ok(lines[0].startsWith("Allocation: 35 idle badge-verified; 1 created 24h / 3 7d"));
+  assert.ok(lines[0].startsWith("Allocation: 35 idle badge-verified; 1 created 24h / 4 7d"));
   assert.ok(lines[1].includes("not_served streak 3"));
   t.diagnostic(lines.join(" | "));
 });
