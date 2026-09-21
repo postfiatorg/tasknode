@@ -57,6 +57,7 @@ export const PROGRESS_DUTY_TYPES = new Set(["review_due", "verification_due", "h
 // with every candidate carrying a coded reason, and does not escalate at all;
 // "not_served" with candidates present escalates after this many rounds.
 export const ROUTING_STALL_ROUNDS = 3;
+export const ROUND_OPEN_HOLDOFF_MS = 60_000;
 
 // Keyed by the stable duty identity (type, board, task). Some hashed duty ids
 // include staleness timestamps and change every round; the task does not.
@@ -162,7 +163,15 @@ export async function superviseOnce() {
         save(blockersFile, blockers);
       }
       if (existsSync(pendingFile)) unlinkSync(pendingFile);
-      round = await remote(["round-open", ...agent.boards]);
+      // round-open computes every board's duties (per-member eligibility, tens of
+      // seconds) while holding the actor's command lock. During cooldown or a
+      // quiet board set, reopening every tick starves every other mutation
+      // (handoff, task create) of its 15-second budget. Hold off for a minute.
+      const openFile = path.join(stateDir, `${agent.alias}.roundopen.json`);
+      const lastOpen = read(openFile);
+      const holdOff = lastOpen && ["backoff", "quiet"].includes(lastOpen.state) && Date.now() - Date.parse(lastOpen.at) < ROUND_OPEN_HOLDOFF_MS;
+      round = holdOff ? null : await remote(["round-open", ...agent.boards]);
+      if (!holdOff) save(openFile, { at: new Date().toISOString(), state: round?.state || "" });
       pending = round?.id && round.state === "pending" ? { id: round.id, attempts: 0 } : null;
       if (pending) save(pendingFile, pending);
     }
