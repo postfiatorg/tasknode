@@ -199,6 +199,9 @@ export async function taskCreate({
   acceptWindowHours = 0,
   retryFailed = false,
   execute = false,
+  // Operator referrals (merge and badge decisions) are duties, not contributor
+  // work; they must not be blocked by the operator's own task capacity.
+  allowOverCapacity = false,
 }) {
   if (!boardId || !accountId || !wallet || !safeText(need)) {
     throw new Error("taskCreate requires boardId, accountId, wallet, need");
@@ -282,7 +285,7 @@ export async function taskCreate({
         reward_min_pft: cappedMin,
         reward_max_pft: cappedMax,
         accept_window_hours: acceptWindowHours > 0 ? acceptWindowHours : 0,
-        allow_over_capacity: false,
+        allow_over_capacity: allowOverCapacity === true,
         retry_failed: retryFailed === true,
       },
     },
@@ -447,6 +450,7 @@ export async function referBadge({ accountId, badgeId, evidence = "", boardId = 
     // no "badge_approval" work type, so the referral would fail the badge gate.
     workType: "project_management",
     requiredBadge: "project_leader",
+    allowOverCapacity: true,
     assigneeHandle: "goodalexander",
     rewardMin: 0,
     rewardMax: 1,
@@ -472,6 +476,7 @@ export async function referMerge({ prUrl, summary = "", boardId, execute = false
     // "merge_review" is not in any badge's allowed work types.
     workType: "code_review",
     requiredBadge: "core_contributor",
+    allowOverCapacity: true,
     assigneeHandle: "goodalexander",
     rewardMin: 0,
     rewardMax: 1,
