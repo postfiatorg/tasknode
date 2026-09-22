@@ -20,6 +20,28 @@ export function recoverySchedule(pending = {}) {
   return { attempts, delayMs, nextRetryAt: Number.isFinite(delivered) ? new Date(delivered + delayMs).toISOString() : "" };
 }
 
+// A pending round with no delivery because the terminal never reports ready
+// is a stall the delivery-attempt alert cannot see. Track how long the
+// terminal has been continuously busy while a round waits; alert, then
+// interrupt the terminal (it is almost always a self-imposed sleep or poll).
+export const BUSY_ALERT_MS = 30 * 60_000;
+export const BUSY_INTERRUPT_MS = 90 * 60_000;
+export const BUSY_INTERRUPT_REPEAT_MS = 60 * 60_000;
+
+export function busyBlockedDecision({ round, status, pending, busy = {}, now = Date.now() }) {
+  if (!round?.id || round.state !== "pending") return { state: "clear" };
+  const fresh = terminalStatusFresh(status, now);
+  if (!fresh || status.ready) return { state: "clear" };
+  // Only an undelivered round counts. A terminal busy on a delivered round is working.
+  if (Number(pending?.attempts || 0) > 0) return { state: "clear" };
+  const since = busy.roundId === round.id && busy.since ? busy.since : new Date(now).toISOString();
+  const busyMs = now - Date.parse(since);
+  const lastInterrupt = Date.parse(busy.interruptedAt);
+  if (busyMs >= BUSY_INTERRUPT_MS && (!Number.isFinite(lastInterrupt) || now - lastInterrupt >= BUSY_INTERRUPT_REPEAT_MS)) return { state: "interrupt", since, busyMs };
+  if (busyMs >= BUSY_ALERT_MS && !busy.alerted) return { state: "alert", since, busyMs };
+  return { state: "tracking", since, busyMs };
+}
+
 export function deliveryDecision({ round, status, pending, now = Date.now() }) {
   if (!round?.id || round.state !== "pending") return "quiet";
   if (!terminalStatusFresh(status, now) || !status.ready) return "wait_ready";
@@ -200,6 +222,25 @@ export async function superviseOnce() {
           save(healthFile, { alertedAt: new Date().toISOString(), aggregate: health.aggregate });
         }
       }
+    }
+    const busyFile = path.join(stateDir, `${agent.alias}.busy.json`);
+    const busy = read(busyFile) || {};
+    const blocked = busyBlockedDecision({ round, status, pending, busy });
+    if (blocked.state === "clear") { if (existsSync(busyFile)) unlinkSync(busyFile); }
+    else {
+      const next = { roundId: round.id, since: blocked.since, alerted: busy.alerted === true && busy.roundId === round.id, interruptedAt: busy.roundId === round.id ? busy.interruptedAt || "" : "" };
+      if (blocked.state === "alert") {
+        next.alerted = true;
+        log({ alias: agent.alias, event: "terminal_busy_blocking_delivery", roundId: round.id, busyMinutes: Math.round(blocked.busyMs / 60_000) });
+        appendFileSync(path.join(home, "ALERTS.log"), `${new Date().toISOString()} ${agent.alias}: round ${round.id} undelivered; terminal busy for ${Math.round(blocked.busyMs / 60_000)} minutes (likely a sleep or polling loop)\n`);
+      }
+      if (blocked.state === "interrupt") {
+        next.interruptedAt = new Date().toISOString();
+        try { execFileSync("tmux", ["send-keys", "-t", `bm-${agent.alias}`, "Escape"], { stdio: "ignore", timeout: 10_000 }); } catch { /* pane missing; relaunch path handles it */ }
+        log({ alias: agent.alias, event: "terminal_interrupted_for_delivery", roundId: round.id, busyMinutes: Math.round(blocked.busyMs / 60_000) });
+        appendFileSync(path.join(home, "ALERTS.log"), `${new Date().toISOString()} ${agent.alias}: interrupted terminal after ${Math.round(blocked.busyMs / 60_000)} busy minutes so round ${round.id} can be delivered\n`);
+      }
+      save(busyFile, next);
     }
     const decision = deliveryDecision({ round, status, pending });
     if (decision === "alert_pending") {

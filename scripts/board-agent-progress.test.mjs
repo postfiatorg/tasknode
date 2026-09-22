@@ -15,7 +15,7 @@ process.env.TASKNODE_POSTGRES_DISABLED = "false";
 const { recordAgentDecision, wakeDecisionWorker, workerForDecisionKind } = await import("../server/repositories/bm-decisions.js");
 const { parseRecurringBlockers } = await import("../server/board-agent-runtime-status.js");
 const { remoteBoardCommand } = await import("../scripts/bm/remote.mjs");
-const { trackRecurringBlockers, recurringBlockers, escalationDirective, recurringSummary, RECURRING_BLOCKER_ROUNDS, ROUTING_STALL_ROUNDS } = await import("../ops/bm-runtime/supervisor.mjs");
+const { trackRecurringBlockers, recurringBlockers, escalationDirective, recurringSummary, RECURRING_BLOCKER_ROUNDS, ROUTING_STALL_ROUNDS, busyBlockedDecision, BUSY_ALERT_MS, BUSY_INTERRUPT_MS } = await import("../ops/bm-runtime/supervisor.mjs");
 const { validateRoutingDispositions, routingOutcome, ROUTING_REASON_CODES } = await import("../server/board-agent-rounds.js");
 const { evaluateAllocationHealth, consecutiveNotServedRounds, readAllocationHealth, allocationHealthLines } = await import("../server/allocation-health.js");
 const { closePool } = await import("../server/db/pool.js");
@@ -213,6 +213,7 @@ test("allocation health measures tasks created against idle contributors", async
     if (sql.includes("FROM network_task_generation_jobs")) return { rows: [{ board_id: "board_tasknode_fixes", family: "contract", count: 1 }] };
     if (sql.includes("FROM board_agent_rounds")) return { rows: [routing("board_pf_terminal", "not_served"), routing("board_pf_terminal", "not_served"), routing("board_pf_terminal", "not_served")] };
     if (sql.includes("count(DISTINCT account_id)")) return { rows: [{ accounts: 3 }] };
+    if (sql.includes("submitted','verification_response_submitted")) return { rows: [{ board_id: "board_pf_terminal", task_id: "task_waiting", status: "submitted", since: "2026-09-21T20:32:24.264Z", wait_ms: 4 * 60 * 60_000 }] };
     throw new Error("unexpected " + sql);
   };
   const health = await readAllocationHealth({ boardIds: ["board_pf_terminal", "board_tasknode_fixes"], queryImpl });
@@ -221,11 +222,43 @@ test("allocation health measures tasks created against idle contributors", async
   assert.equal(health.aggregate.distinct_accounts_offered_7d, 3);
   assert.deepEqual(health.aggregate.boards_not_served_3_plus, ["board_pf_terminal"]);
   assert.equal(health.aggregate.last_create_at, "2026-09-21T01:41:58.183Z", "latest by time, not by string order of Date objects");
+  assert.equal(health.aggregate.submissions_awaiting_manager, 1);
+  assert.equal(health.evaluation.status, "critical", "a four-hour unreviewed submission is critical even when routing is healthy");
+  assert.ok(health.evaluation.label.includes("awaiting a manager verification request"));
+  assert.equal(health.boards.find((b) => b.board_id === "board_pf_terminal").submissions_awaiting_manager[0].task_id, "task_waiting");
+  assert.equal(evaluateAllocationHealth({ idle_badge_verified_no_live_task: 12, executed_creates_24h: 3, executed_creates_7d: 9, submissions_awaiting_manager: 1, oldest_submission_wait_ms: 50 * 60_000 }).status, "warning");
+  assert.equal(evaluateAllocationHealth({ idle_badge_verified_no_live_task: 12, executed_creates_24h: 3, executed_creates_7d: 9, submissions_awaiting_manager: 0, oldest_submission_wait_ms: 0 }).status, "ok");
   assert.equal(health.boards.find((b) => b.board_id === "board_tasknode_fixes").failures_7d.contract, 1);
   const lines = allocationHealthLines(health, "board_pf_terminal");
   assert.ok(lines[0].startsWith("Allocation: 35 idle badge-verified; 1 created 24h / 4 7d"));
-  assert.ok(lines[1].includes("not_served streak 3"));
+  assert.ok(lines[1].startsWith("Review backlog: 1 submission(s)"));
+  assert.ok(lines[2].includes("task_waiting submitted 240min"));
+  assert.ok(lines[3].includes("not_served streak 3"));
   t.diagnostic(lines.join(" | "));
+});
+
+test("a terminal that stays busy while an undelivered round waits is alerted and then interrupted", () => {
+  const t0 = Date.parse("2026-09-21T10:16:56.596Z");
+  const round = { id: "round_4b40943b", state: "pending" };
+  const busyStatus = (at) => ({ version: 1, pid: 1, threadId: "t", ready: false, updatedAt: new Date(at).toISOString() });
+  const pending = { id: round.id, attempts: 0 };
+  const first = busyBlockedDecision({ round, status: busyStatus(t0), pending, busy: {}, now: t0 });
+  assert.equal(first.state, "tracking");
+  const busy = { roundId: round.id, since: first.since };
+  assert.equal(busyBlockedDecision({ round, status: busyStatus(t0 + 10 * 60_000), pending, busy, now: t0 + 10 * 60_000 }).state, "tracking");
+  const alert = busyBlockedDecision({ round, status: busyStatus(t0 + BUSY_ALERT_MS), pending, busy, now: t0 + BUSY_ALERT_MS });
+  assert.equal(alert.state, "alert");
+  assert.equal(busyBlockedDecision({ round, status: busyStatus(t0 + BUSY_ALERT_MS + 60_000), pending, busy: { ...busy, alerted: true }, now: t0 + BUSY_ALERT_MS + 60_000 }).state, "tracking", "alert fires once");
+  const interrupt = busyBlockedDecision({ round, status: busyStatus(t0 + BUSY_INTERRUPT_MS), pending, busy: { ...busy, alerted: true }, now: t0 + BUSY_INTERRUPT_MS });
+  assert.equal(interrupt.state, "interrupt");
+  const interruptedAt = new Date(t0 + BUSY_INTERRUPT_MS).toISOString();
+  assert.equal(busyBlockedDecision({ round, status: busyStatus(t0 + BUSY_INTERRUPT_MS + 5 * 60_000), pending, busy: { ...busy, alerted: true, interruptedAt }, now: t0 + BUSY_INTERRUPT_MS + 5 * 60_000 }).state, "tracking", "no repeat within an hour");
+  assert.equal(busyBlockedDecision({ round, status: busyStatus(t0 + BUSY_INTERRUPT_MS + 61 * 60_000), pending, busy: { ...busy, alerted: true, interruptedAt }, now: t0 + BUSY_INTERRUPT_MS + 61 * 60_000 }).state, "interrupt");
+  // Never interrupt a terminal that is working a delivered round, an idle terminal, or a stale heartbeat.
+  assert.equal(busyBlockedDecision({ round, status: busyStatus(t0 + BUSY_INTERRUPT_MS), pending: { ...pending, attempts: 1, lastDeliveredAt: new Date(t0).toISOString() }, busy, now: t0 + BUSY_INTERRUPT_MS }).state, "clear");
+  assert.equal(busyBlockedDecision({ round, status: { ...busyStatus(t0), ready: true }, pending, busy, now: t0 + BUSY_INTERRUPT_MS }).state, "clear");
+  assert.equal(busyBlockedDecision({ round, status: busyStatus(t0), pending, busy, now: t0 + BUSY_INTERRUPT_MS }).state, "clear", "stale heartbeat is the relaunch path, not an interrupt");
+  assert.equal(busyBlockedDecision({ round: { ...round, state: "complete" }, status: busyStatus(t0), pending, busy, now: t0 }).state, "clear");
 });
 
 after(async () => { mock.restoreAll(); await closePool(); });

@@ -45,6 +45,17 @@ code in this session. Use read-only inspection (`gh pr diff`,
 the contributor's code, require CI evidence in the submission instead, or
 reject and say exactly what proof is needed.
 
+## Idle means idle
+
+The supervisor delivers a work order only when your terminal reports it is
+idle between turns. When every duty in the current round has a recorded
+result, end your turn. Never run `sleep`, a polling loop, a watch on
+`latest.json`, or any command whose purpose is to wait for the next work
+order: a busy terminal cannot receive one, the round stays undelivered,
+and contributors' submissions sit unreviewed for as long as you wait.
+Waiting on a contributor's response is the same: record the duty, end the
+turn, and the next round will bring the response.
+
 ## Your tool: the bm CLI
 
 Run every command as:
