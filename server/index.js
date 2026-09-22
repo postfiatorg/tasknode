@@ -1,3 +1,4 @@
+import { REQUEST_URL_BASE, parseRequestUrl } from "./request-url.js";
 import { handleBoardAgentRoute } from "./board-agent-routes.js";
 import { handleHiveGroupRoute } from "./hive-group-routes.js";
 import { installProcessHardening } from "./process-hardening.js";
@@ -854,7 +855,12 @@ async function routeApi(req, url, res) {
 }
 
 const server = createServer((req, res) => {
-  const url = new URL(req.url, "http://tasknode.local");
+  const parsedTarget = parseRequestUrl(req.url, REQUEST_URL_BASE);
+  if (!parsedTarget.ok) {
+    json(res, 400, { ok: false, error: parsedTarget.error });
+    return;
+  }
+  const url = parsedTarget.url;
 
   if (url.pathname === "/health" || url.pathname === "/api/health") {
     json(res, 200, {
