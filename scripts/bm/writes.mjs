@@ -443,7 +443,10 @@ export async function referBadge({ accountId, badgeId, evidence = "", boardId = 
     wallet: operator.wallet,
     need,
     reason: `Badge referral for ${accountId}:${badgeId}`,
-    workType: "badge_approval",
+    // Badge approvals are a project-leadership decision; the badge catalog has
+    // no "badge_approval" work type, so the referral would fail the badge gate.
+    workType: "project_management",
+    requiredBadge: "project_leader",
     assigneeHandle: "goodalexander",
     rewardMin: 0,
     rewardMax: 1,
@@ -465,7 +468,10 @@ export async function referMerge({ prUrl, summary = "", boardId, execute = false
     wallet: operator.wallet,
     need,
     reason: `Merge referral for ${prUrl}`,
-    workType: "merge_review",
+    // Merge review is code review by the core contributor who owns the repo.
+    // "merge_review" is not in any badge's allowed work types.
+    workType: "code_review",
+    requiredBadge: "core_contributor",
     assigneeHandle: "goodalexander",
     rewardMin: 0,
     rewardMax: 1,
