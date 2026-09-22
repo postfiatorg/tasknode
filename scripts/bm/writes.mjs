@@ -395,7 +395,7 @@ async function operatorTarget({ operatorAccount = "", operatorWallet = "" } = {}
   let accountId = safeText(operatorAccount, 180) || process.env.BM_OPERATOR_ACCOUNT_ID || "";
   let wallet = safeText(operatorWallet, 120) || process.env.BM_OPERATOR_WALLET || "";
   if (!accountId) {
-    const found = await query("SELECT id FROM app_accounts WHERE lower(hive_handle)=lower($1) AND status='active' ORDER BY updated_at DESC LIMIT 1", [OPERATOR_HANDLE]);
+    const found = await query("SELECT account_id AS id FROM app_accounts WHERE lower(hive_handle)=lower($1) AND status='active' ORDER BY updated_at DESC LIMIT 1", [OPERATOR_HANDLE]);
     accountId = found.rows[0]?.id || "";
   }
   if (accountId && !wallet) {
