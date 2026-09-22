@@ -37,6 +37,8 @@ jobs:
         run: node --test scripts/board-sources.test.mjs
       - name: Verify task intent classifier contract
         run: node scripts/task-intent-assessment-smoke.mjs
+      - name: Verify request targets cannot crash or re-host the server
+        run: node --test scripts/request-url.test.mjs
       - run: npm run check
         env:
           CHROME_BIN: google-chrome
