@@ -225,6 +225,102 @@ async function ambientRequestBodySmoke() {
   }
 }
 
+async function readinessRecoverySmoke() {
+  const base = {
+    schema: "pf.taskgen.output.v1",
+    title: "Prepare reliability evidence",
+    description: "Create a concise reliability evidence packet.",
+    task_kind: "network",
+    steps: ["Review the request.", "Create the evidence packet.", "Create  the evidence packet.", "submission_requirement", "Reward_Offer:", "deadline"],
+    submission_requirement: { type: "text", criteria: "Submit the evidence packet." },
+    verification_policy: { followup_required: false, mode: "standard_followup", verification_type: "text" },
+    reward_offer: { amount_estimate_pft: "3.00" },
+    deadline: { accept_by: "2030-01-01T00:00:00.000Z", deadline_at: null },
+  };
+  const isReview = (init) => JSON.parse(init.body).response_format?.json_schema?.name === "taskgen_readiness";
+  const reviewSteps = (init) => JSON.parse(JSON.parse(init.body).messages[1].content).steps;
+  const approve = (init) => Response.json({ choices: [{ message: { content: JSON.stringify({
+    actionable_task: true, actionable_submission: true, consistent_scope: true,
+    step_reviews: reviewSteps(init).map((_step, index) => ({ step_index: index + 1, actionable: true, reason: "Concrete contributor action." })),
+  }) } }] });
+  const rejectLast = (init) => Response.json({ choices: [{ message: { content: JSON.stringify({
+    actionable_task: false, actionable_submission: true, consistent_scope: true,
+    step_reviews: reviewSteps(init).map((_step, index, all) => ({ step_index: index + 1, actionable: index < all.length - 1, reason: index < all.length - 1 ? "Concrete contributor action." : "Metadata heading, not an action." })),
+  }) } }] });
+
+  // Duplicate and field-name steps are dropped; the schema caps steps at five.
+  let generatorBody = null;
+  const stages = [];
+  const deduped = await generateTaskWithProvider(taskInput, {
+    heartbeat: async (stage) => { stages.push(stage); },
+    fetchImpl: async (_url, init) => {
+      if (isReview(init)) return approve(init);
+      generatorBody = JSON.parse(init.body);
+      return Response.json({ choices: [{ message: { content: JSON.stringify(base) } }] });
+    },
+  });
+  assert.deepEqual(deduped.output.steps, ["Review the request.", "Create the evidence packet."]);
+  assert.equal(generatorBody.response_format.json_schema.schema.properties.steps.maxItems, 5);
+  assert.deepEqual(stages, ["readiness_review_1"]);
+
+  // A reviewer failure retries the review, not the generation.
+  let generations = 0;
+  let reviews = 0;
+  const reviewRetried = await generateTaskWithProvider(taskInput, {
+    fetchImpl: async (_url, init) => {
+      if (!isReview(init)) { generations += 1; return Response.json({ choices: [{ message: { content: JSON.stringify(base) } }] }); }
+      reviews += 1;
+      if (reviews === 1) return Response.json({ choices: [{ message: { content: JSON.stringify({ actionable_task: true }) } }] });
+      if (reviews === 2) return Response.json({ choices: [{ message: { content: "not json" } }] });
+      return approve(init);
+    },
+  });
+  assert.equal(reviewRetried.metadata.readiness.approved, true);
+  assert.equal(generations, 1);
+  assert.equal(reviews, 3);
+
+  // A rejection feeds the reviewer's reasons into one repair generation;
+  // reward and deadline survive the repair unchanged.
+  const generatorMessages = [];
+  reviews = 0;
+  const repaired = await generateTaskWithProvider(taskInput, {
+    fetchImpl: async (_url, init) => {
+      if (isReview(init)) { reviews += 1; return reviews === 1 ? rejectLast(init) : approve(init); }
+      const body = JSON.parse(init.body);
+      generatorMessages.push(body.messages);
+      const output = generatorMessages.length === 1
+        ? { ...base, steps: ["Review the request.", "Create the evidence packet.", "Evidence:"] }
+        : { ...base, steps: ["Review the request.", "Create and submit the evidence packet."], reward_offer: { amount_estimate_pft: "999" } };
+      return Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] });
+    },
+  });
+  assert.equal(generatorMessages.length, 2);
+  const repairMessage = generatorMessages[1].at(-1).content;
+  assert.match(repairMessage, /Step 3 \("Evidence:"\): Metadata heading, not an action\./);
+  assert.match(repairMessage, /actionable_task/);
+  assert.equal(generatorMessages[1].at(-2).role, "assistant");
+  assert.deepEqual(repaired.output.steps, ["Review the request.", "Create and submit the evidence packet."]);
+  assert.equal(repaired.output.reward_offer.amount_estimate_pft, deduped.output.reward_offer.amount_estimate_pft);
+  assert.equal(repaired.metadata.readiness_repair_attempts, 1);
+
+  // A second rejection surfaces the rejected step text and reason to operators.
+  let error;
+  try {
+    await generateTaskWithProvider(taskInput, {
+      fetchImpl: async (_url, init) => isReview(init)
+        ? rejectLast(init)
+        : Response.json({ choices: [{ message: { content: JSON.stringify({ ...base, steps: ["Review the request.", "Evidence:"] }) } }] }),
+    });
+  } catch (caught) { error = caught; }
+  assert.equal(error?.message, "taskgen_offer_not_actionable");
+  assert.equal(isRetryableTaskGenerationError(error), true);
+  const failure = taskGenerationFailureMetadata(error, { workerAttemptCount: 1 }, 3).lastProviderFailure;
+  assert.deepEqual(failure.readinessRejection, {
+    checks: ["actionable_task"],
+    steps: [{ step_index: 2, step: "Evidence:", reason: "Metadata heading, not an action." }],
+  });
+}
+
 async function requestRow(id) {
   const result = await query("SELECT * FROM task_requests WHERE request_id = $1", [id]);
   return result.rows[0] || null;
@@ -457,6 +553,7 @@ async function ownershipSmoke() {
 }
 
 await ambientRequestBodySmoke();
+await readinessRecoverySmoke();
 await providerTimeoutSmoke();
 providerRetryPolicySmoke();
 taskgenInputBudgetSmoke();
