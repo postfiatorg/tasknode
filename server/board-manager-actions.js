@@ -20,7 +20,7 @@ import {
   enqueueNetworkTaskGenerationFromBoardDecision,
   syncNetworkTaskProjection,
 } from "./repositories/network-tasks.js";
-import { buildHiveAccountLiveState } from "./repositories/hive-account-live-state.js";
+import { accountReservationRate } from "./repositories/hive-account-live-state.js";
 import { executeBoardManagerMessageUser } from "./board-manager-message-action.js";
 
 export {
@@ -614,15 +614,14 @@ async function executeInitiateNetworkTask({ runId, decision, sourcePacket }) {
   const networkTask = safeObject(decision.payload?.network_task || decision.payload?.networkTask);
   const candidateAccountId = safeText(networkTask.candidate_account_id || networkTask.candidateAccountId, 180);
   const candidateWalletAddress = safeText(networkTask.candidate_wallet_address || networkTask.candidateWalletAddress, 120);
-  if (candidateAccountId || candidateWalletAddress) {
-    const accountLiveState = await buildHiveAccountLiveState({
-      accountId: candidateAccountId,
-      walletAddress: candidateWalletAddress,
-      limit: 8,
-    });
-    const reservationMinPft = numberValue(accountLiveState.routingConstraints?.reservationRate?.minPft, 0);
+  if (candidateAccountId) {
+    // Only the reservation rate matters here. The full account live state
+    // (six parallel history reads plus classification) ran inside the command
+    // transaction and exhausted its statement budget for busy accounts.
+    const reservation = await accountReservationRate({ accountId: candidateAccountId });
+    const reservationMinPft = numberValue(reservation.reservationRate?.minPft, 0);
     const rewardMaxPft = numberValue(networkTask.reward_max_pft || networkTask.rewardMaxPft, 0);
-    if (accountLiveState.ok && reservationMinPft > 0 && rewardMaxPft > 0 && rewardMaxPft < reservationMinPft) {
+    if (reservation.ok && reservationMinPft > 0 && rewardMaxPft > 0 && rewardMaxPft < reservationMinPft) {
       return {
         executed: false,
         skipped: true,
@@ -631,7 +630,7 @@ async function executeInitiateNetworkTask({ runId, decision, sourcePacket }) {
         candidateWalletAddress,
         reservationMinPft,
         rewardMaxPft,
-        accountLiveStateDigest: safeText(accountLiveState.digest, 120),
+        reservationSourceEntryId: safeText(reservation.reservationRate?.sourceEntryId, 120),
       };
     }
   }

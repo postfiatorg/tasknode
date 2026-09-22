@@ -402,6 +402,17 @@ async function summarizeConstraints({ entries = [], tasks = [] } = {}) {
   };
 }
 
+// The one routing constraint a task assignment needs: the contributor's
+// explicitly stated minimum rate, if any. One query and one bounded
+// classification; the full live state (history joins, followups, messages,
+// runs, eligibility) is for reading, not for the assignment transaction.
+export async function accountReservationRate({ accountId = "", limit = 20, classify = latestReservationRate } = {}) {
+  const entries = await accountHiveEntries({ accountId, limit });
+  if (!entries.length) return { ok: true, entries: 0, reservationRate: null };
+  const reservationRate = await classify(entries).catch(() => null);
+  return { ok: true, entries: entries.length, reservationRate };
+}
+
 export async function buildHiveAccountLiveState({
   accountId = "",
   walletAddress = "",
