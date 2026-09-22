@@ -25,6 +25,18 @@ const TASKGEN_NETWORK_V2_PROMPT = {
 };
 const TASKGEN_REPLAY_ACCEPT_BY_MIN_FRESH_MS = 5 * 60 * 1000;
 const TASKGEN_REPLAY_ACCEPT_BY_FALLBACK_MS = 24 * 60 * 60 * 1000;
+// The taskgen prompts ask for 2 to 5 steps. The schema says so too; the
+// validator still clamps (TASK_MAX_STEPS) rather than rejects if a provider
+// ignores maxItems.
+const TASKGEN_MAX_STEPS = 5;
+
+function schemaKeys(schema, keys = new Set()) {
+  for (const [key, value] of Object.entries(schema?.properties || {})) {
+    keys.add(key);
+    schemaKeys(value, keys);
+  }
+  return keys;
+}
 
 const taskgenResponseFormat = {
   type: "json_schema",
@@ -39,7 +51,7 @@ const taskgenResponseFormat = {
         title: { type: "string", minLength: 5, maxLength: 240 },
         description: { type: "string", minLength: 20, maxLength: 8000 },
         task_kind: { type: "string", enum: ["personal", "network", "alpha"] },
-        steps: { type: "array", minItems: TASK_MIN_STEPS, items: { type: "string" } },
+        steps: { type: "array", minItems: TASK_MIN_STEPS, maxItems: TASKGEN_MAX_STEPS, items: { type: "string" } },
         submission_requirement: {
           type: "object",
           additionalProperties: false,
@@ -92,6 +104,10 @@ const taskgenResponseFormat = {
     },
   },
 };
+
+// Providers occasionally spill output field names ("reward_offer",
+// "deadline") into the steps array. They are never contributor actions.
+const TASKGEN_OUTPUT_KEYS = schemaKeys(taskgenResponseFormat.json_schema.schema);
 
 export function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -403,7 +419,13 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
   // documented variants; only an absent or unrecognisable policy is invalid.
   const verification = coerceVerificationPolicy(output.verification_policy, requirement, policy, evidenceTypes);
   if (!verification) throw new Error("taskgen_verification_policy_invalid");
-  const steps = normalizeTaskSteps(output.steps, { clean: safeText });
+  const seenSteps = new Set();
+  const steps = normalizeTaskSteps(output.steps, { clean: safeText }).filter((step) => {
+    const key = collapseWhitespace(step).toLowerCase();
+    if (seenSteps.has(key) || TASKGEN_OUTPUT_KEYS.has(key.replace(/^[\s"'`*:.-]+|[\s"'`*:.-]+$/g, ""))) return false;
+    seenSteps.add(key);
+    return true;
+  });
   if (steps.length < TASK_MIN_STEPS) throw new Error("taskgen_steps_invalid");
   const reward = safeObject(output.reward_offer);
   const policyAcceptBy = policyDeadlineValue(policy, "accept_by");
@@ -643,9 +665,61 @@ function mockTaskgenOutput(taskInput = {}) {
   }, policy);
 }
 
+const READINESS_CHECK_DESCRIPTIONS = {
+  actionable_task: "the description and steps must coherently explain actionable work",
+  actionable_submission: "the submission requirement must name what to submit and what evidence demonstrates completion",
+  consistent_scope: "the description, steps, and submission requirement must describe the same scope",
+};
+
+function readinessRepairInstruction(rejection = {}) {
+  const lines = ["A readiness review rejected this task before publication. Fix only these problems:"];
+  for (const step of rejection.steps || []) lines.push(`- Step ${step.step_index} ("${step.step}"): ${step.reason}`);
+  for (const check of rejection.checks || []) lines.push(`- ${check}: ${READINESS_CHECK_DESCRIPTIONS[check] || "failed"}.`);
+  lines.push("Keep the same project, deliverable, scope, reward, and deadline. Rewrite, merge, or remove the failing steps (2 to 5 steps total). Return the complete corrected JSON matching schema pf.taskgen.output.v1.");
+  return lines.join("\n");
+}
+
+async function requestTaskgenCompletion({ fetchImpl, providerTimeoutMs, model, reasoningEffort, messages }) {
+  try {
+    return await inferenceChatCompletion({
+      fetchImpl,
+      capability: "strict_json",
+      timeoutMs: providerTimeoutMs,
+      totalTimeoutMs: Math.max(1000, Number(process.env.TASKNODE_TASK_GENERATION_TOTAL_TIMEOUT_MS) || 540_000),
+      body: {
+        model,
+        messages,
+        response_format: taskgenResponseFormat,
+        max_tokens: Math.max(32768, Number(process.env.TASKNODE_TASK_GENERATION_MAX_OUTPUT_TOKENS) || 65536),
+        reasoning: { effort: reasoningEffort },
+      },
+    });
+  } catch (error) {
+    if (error?.code === "inference_timeout") {
+      throw Object.assign(new Error("taskgen_provider_timeout"), { code: "TASKGEN_PROVIDER_TIMEOUT", timeoutMs: providerTimeoutMs });
+    }
+    if (error?.code === "inference_response_truncated") {
+      throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: "taskgen_output_truncated" });
+    }
+    throw error;
+  }
+}
+
+function parseTaskgenCompletion(body, policy) {
+  try {
+    if (body?.choices?.[0]?.finish_reason === "length") throw new Error("taskgen_output_truncated");
+    return validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), policy);
+  } catch (error) {
+    // Keep what the model said so an operator can see why it was rejected.
+    throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: error.message,
+      contentPreview: String(body?.choices?.[0]?.message?.content || "").slice(0, 1500), finishReason: body?.choices?.[0]?.finish_reason || "" });
+  }
+}
+
 export async function generateTaskWithProvider(taskInput, {
   fetchImpl = fetch,
   providerTimeoutMs = taskGenerationProviderTimeoutMs(),
+  heartbeat = async () => {},
 } = {}) {
   const taskgenPrompt = taskgenPromptForInput(taskInput);
   const systemPrompt = loadPrompt(taskgenPrompt.path);
@@ -671,44 +745,36 @@ export async function generateTaskWithProvider(taskInput, {
       },
     };
   }
-  let completion;
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: baseInstruction },
+  ];
+  const requestOutput = async () => {
+    const completion = await requestTaskgenCompletion({ fetchImpl, providerTimeoutMs, model, reasoningEffort: apiConfig.reasoningEffort, messages });
+    return { completion, output: parseTaskgenCompletion(completion.body, taskInput.policy || {}) };
+  };
+  let { completion, output } = await requestOutput();
+  let readiness;
+  let repairAttempts = 0;
   try {
-    completion = await inferenceChatCompletion({
-      fetchImpl,
-      capability: "strict_json",
-      timeoutMs: providerTimeoutMs,
-      totalTimeoutMs: Math.max(1000, Number(process.env.TASKNODE_TASK_GENERATION_TOTAL_TIMEOUT_MS) || 540_000),
-      body: {
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: baseInstruction },
-        ],
-        response_format: taskgenResponseFormat,
-        max_tokens: Math.max(32768, Number(process.env.TASKNODE_TASK_GENERATION_MAX_OUTPUT_TOKENS) || 65536),
-        reasoning: { effort: apiConfig.reasoningEffort },
-      },
-    });
+    readiness = await reviewTaskGenerationReadiness(output, { fetchImpl, heartbeat });
   } catch (error) {
-    if (error?.code === "inference_timeout") {
-      throw Object.assign(new Error("taskgen_provider_timeout"), { code: "TASKGEN_PROVIDER_TIMEOUT", timeoutMs: providerTimeoutMs });
-    }
-    if (error?.code === "inference_response_truncated") {
-      throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: "taskgen_output_truncated" });
-    }
-    throw error;
+    if (!error?.readinessRejection) throw error;
+    // One repair pass: show the generator the reviewer's reasons instead of
+    // discarding the whole generation and starting again blind.
+    await heartbeat("readiness_repair");
+    repairAttempts = 1;
+    messages.push(
+      { role: "assistant", content: JSON.stringify(output) },
+      { role: "user", content: readinessRepairInstruction(error.readinessRejection) },
+    );
+    const repaired = await requestOutput();
+    completion = repaired.completion;
+    // Repair fixes wording only; reward and deadline stay as first generated.
+    output = { ...repaired.output, reward_offer: output.reward_offer, deadline: output.deadline };
+    readiness = await reviewTaskGenerationReadiness(output, { fetchImpl, heartbeat });
   }
   const body = completion.body;
-  let output;
-  try {
-    if (body?.choices?.[0]?.finish_reason === "length") throw new Error("taskgen_output_truncated");
-    output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
-  } catch (error) {
-    // Keep what the model said so an operator can see why it was rejected.
-    throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: error.message,
-      contentPreview: String(body?.choices?.[0]?.message?.content || "").slice(0, 1500), finishReason: body?.choices?.[0]?.finish_reason || "" });
-  }
-  const readiness = await reviewTaskGenerationReadiness(output, { fetchImpl });
   return {
     output,
     metadata: {
@@ -722,7 +788,8 @@ export async function generateTaskWithProvider(taskInput, {
       latency_ms: Date.now() - startedAt,
       parse_status: "ok",
       provider_response_id: body.id || "",
-      validation_attempts: 1,
+      validation_attempts: 1 + repairAttempts,
+      readiness_repair_attempts: repairAttempts,
       readiness,
     },
   };

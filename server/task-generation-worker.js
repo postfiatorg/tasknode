@@ -114,6 +114,7 @@ export function taskGenerationFailureMetadata(error = {}, request = {}, maxAttem
       validationError: safeText(error?.validationError, 1000),
       contentPreview: safeText(error?.contentPreview, 1500),
       finishReason: safeText(error?.finishReason, 40),
+      ...(error?.readinessRejection ? { readinessRejection: error.readinessRejection } : {}),
       attempt: request.workerAttemptCount,
       maxAttempts,
     },
@@ -375,6 +376,7 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
         bundleDigest: requestBundleDigest,
       });
       const authorityWallet = taskAuthorityWallet();
+      const providerHeartbeat = (stage) => heartbeatRequestAttempt(request, stage);
       replayIdentity = taskgenReplayIdentity({
         taskInput,
         request,
@@ -388,7 +390,7 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
       await heartbeatRequestAttempt(request, "provider_generation");
       let taskgen = replayedGeneratedOutput
         ? taskgenFromReplay(replay, replayIdentity)
-        : await generateTaskWithProvider(taskInput);
+        : await generateTaskWithProvider(taskInput, { heartbeat: providerHeartbeat });
       providerReadyAt = Date.now();
       let offer = replayedPublishedOffer ? offerFromReplay(replay) : null;
       await heartbeatRequestAttempt(request, "pre_publish_replay_check");
@@ -434,11 +436,11 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
         if (replayedGeneratedOutput) {
           try { validateTaskgenOutput(taskgen.output, taskInput.policy || {}); }
           catch {
-            taskgen = await generateTaskWithProvider(taskInput);
+            taskgen = await generateTaskWithProvider(taskInput, { heartbeat: providerHeartbeat });
             replayedGeneratedOutput = false;
           }
           if (replayedGeneratedOutput && !taskGenerationReadinessIsCurrent(taskgen.output, taskgen.metadata?.readiness)) {
-            taskgen.metadata.readiness = await reviewTaskGenerationReadiness(taskgen.output);
+            taskgen.metadata.readiness = await reviewTaskGenerationReadiness(taskgen.output, { heartbeat: providerHeartbeat });
             replayedGeneratedOutput = false;
           }
         }
@@ -590,6 +592,8 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
           logger.warn?.("task_generation_request_retry_scheduled", {
             requestId: request.requestId,
             error: message,
+            validationError: failureMetadata.lastProviderFailure.validationError,
+            readinessRejection: failureMetadata.lastProviderFailure.readinessRejection,
             attempt: request.workerAttemptCount,
             maxAttempts,
             retryDelayMs,
