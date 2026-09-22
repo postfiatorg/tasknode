@@ -277,9 +277,10 @@ export async function gistApiExcerpt({ id, sourceUrl, fetchImpl, lookupFn }) {
       const content = String(file?.content || "");
       const included = allocations[index];
       return [
-        `FILE: ${filename} | original_chars=${content.length} | included_chars=${included}`,
-        content.slice(0, included),
+        `FILE: ${filename} | ${file.truncated === true ? "api_prefix_chars" : "original_chars"}=${content.length} | included_chars=${included}`,
+        file.truncated === true ? "[GitHub API truncated: source length unknown; content is a partial prefix]" : "",
         included < content.length ? `[truncated omitted_chars=${content.length - included}]` : "",
+        content.slice(0, included),
       ].filter(Boolean).join("\n");
     });
     const excerpt = [
