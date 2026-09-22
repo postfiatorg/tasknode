@@ -19,6 +19,8 @@ conversations without losing state.
 
 The chat composer and thread live in `ChatSurface` in `src/main.jsx`. Provider routing is handled by `server/chat-router.js`. Billing and conversation persistence flow through `server/repositories/chat-billing.js` and migration `server/db/migrations/001_chat_billing.sql`. Attachment text extraction is handled by `server/chat-attachment-utils.js` and migration `server/db/migrations/002_chat_attachments.sql`. Chat accepts up to four attachments of 4 MB each; this chat-specific decoded-file limit is independent from task-evidence processing limits and is enforced during preflight before provider execution.
 
+Chat and Telegram receive a fresh, read-only task-activity snapshot on every turn. It includes the account's current tasks and the last 48 hours of recorded offers, acceptances, submissions, verification steps, and rewards. When **Include Team Context in personal context** is enabled, it also includes collaborators covered by active incoming task-history grants. Revoked, reverse-only, or unrelated accounts are excluded at query time. This shares task records only, not collaborators' private Context, Memory, or chat. UTC timestamps, capture time, and list limits distinguish current activity from the generated weekly rewarded-work summary; zero rewards must not be interpreted as zero work. Chat loads this bounded snapshot instead of running the Tasks UI's expensive eligibility and forensics aggregation on every turn. Context, Memory, and activity load before the generated Team report so those core reads do not compete with its database fan-out. The activity snapshot has a ten-second bound; Context and Memory reads have a five-second default budget. The older task-list reader is used only if the snapshot is unavailable. This prevents the former 300/250-millisecond task/memory timeouts from silently discarding useful inputs.
+
 The current account context document is injected by `server/chat-account-context.js`. It reads the saved Context document from `server/repositories/context.js` and renders it through `prompts/chat/account_context_document_v1.md`.
 
 If the user enabled **Include Team Context in personal context** on the Team page, `server/chat-context-load.js` also injects the current generated team report into that same execution-context boundary. This makes it available to every normal browser chat personality and to wallet-origin agent chat that uses the product chat execution path. A pending, failed, stale, disabled, or no-longer-authorized report is not injected.
@@ -307,3 +309,58 @@ handles and profile pictures, mentions and a periodic board bot; it is separate
 from private AI chat modes. Old Hive recent-chat links open this group. The
 member panel preserves a read-only, account-scoped previous private Hive
 archive. See [Hive](hive.md) for setup, public visibility and Kimi escalation.
+
+## Deleting a conversation
+
+Confirming Delete removes the conversation from Recents and closes the dialog immediately while the server saves the deletion. Deletion does not wait for a full app-state or wallet refresh. If the request fails, the conversation returns to the sidebar with a dismissible error. Older app-state responses cannot bring a deleted row back. Deleting the open conversation clears it after the server confirms success; opening another chat while the request is pending keeps that newer selection.
+
+## Decisions
+
+Choose **+ → Decisions** in the chat composer, then enter a decision and the facts
+that matter. Task Node currently uses Corbanu's **budget** workflow: one full
+research report, three independent DeepSeek V4.1 Flash votes, two Flash draft
+reviews, and a complete Kimi K3 final rewrite. The usual chat model picker does
+not change these models.
+
+**Use my context and chat memory** is selected by default. Turn it off to use only
+the question and supplied text. Task Node snapshots the saved Context document,
+the latest three deep memories and 36 recent memory records when the job is
+created. These are the default memory selections used by normal chat; this does
+not attach the full chat archive. Deep memories keep their separate user,
+assistant and memory summaries; recent records keep their dates and memory text.
+The current question and latest user corrections take precedence over older
+memory and assistant recommendations.
+
+The card shows whether the document was included and how many memories were
+attached. The job retains document revision, memory IDs and an input hash, while
+the full packet contains the exact submitted context. Retries reuse that snapshot;
+later edits do not change an in-progress decision. Older jobs that sent only the
+document remain labeled as document-only. Failed memory loads stop creation
+instead of silently sending a request without memory. Markdown and text
+attachments are included; other file types must first be converted to text. The
+combined question, document and selected memories must fit within 60,000
+characters. Oversized input is rejected rather than silently shortened.
+
+The chat card shows progress. You can navigate away or close the app: Corbanu
+keeps running, and reopening the conversation resumes status updates. The
+finished report appears directly in chat, with copy, Markdown download, PDF
+download, and full execution packet links. It covers your question, context,
+five options, recommendation, reasoning, and votes. Three votes from Flash are
+three runs of one model, not a three-model panel.
+
+A failed run keeps its completed work in the packet. Reloading the conversation
+or retrying a lost submission response does not start a new paid decision.
+Submitting a new question starts new work. There is no cancellation control for
+Decisions. Inputs, reports, and packets are restricted to the signed-in account;
+processing uses Corbanu and third-party model and research providers.
+
+Task Node uses the same signed server integration as Deep Research. This
+integration is sponsored by the service; it does not ask users for a Corbanu API
+key or debit their Task Node chat balance. The public Corbanu Decisions API has
+separate prepaid billing. The Task Node integration accepts budget mode only.
+
+Decisions research progress includes finding sources, reading and analyzing them,
+writing/reviewing the research, and finalizing it. A provider capacity rejection
+shows “Waiting for model capacity”; completed work stays saved while the research
+client waits for the provider's cooldown. The same model and output allowance are
+retained. Accepted or interrupted calls are not automatically submitted again.

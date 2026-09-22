@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "mode": "Read-only calls to deployed validation module; no gateway, database or wallet writes",
+  "results": [
+    {
+      "ok": false,
+      "error": "tracker_text_invalid",
+      "message": "Campaign name exceeds 200 UTF-8 bytes. Shorten it and submit again.",
+      "validation": {
+        "field": "title",
+        "reason": "max_bytes",
+        "maxBytes": 200
+      }
+    },
+    {
+      "ok": false,
+      "error": "tracker_credential_required",
+      "message": "A Corbanu API credential is required to enable or sync recording. Link Corbanu API in Providers, then retry. Existing local activity is retained."
+    }
+  ]
+}

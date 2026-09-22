@@ -85,5 +85,20 @@ try {
   const audit=await store.trackerAuditList("alice");check(()=>assert(audit.items.some(a=>a.action==="revoke")&&audit.items.some(a=>a.action==="replay")));
   await query("UPDATE campaign_tracker_activity SET expires_at=now()-interval '1 second'");await store.trackerExpire();
   const remaining=await query("SELECT count(*)::int AS count FROM campaign_tracker_activity");check(()=>assert.equal(remaining.rows[0].count,0));
-  console.log(`Campaign Tracker PostgreSQL smoke: ${checks} checks passed. Isolated schema removed.`);
+  const {handleCampaignTrackerRoute}=await import("../server/campaign-tracker-routes.js");
+  for (const [path,body,field,reason,maxBytes] of [
+    ["/campaigns",{title:"",objective:"Valid objective",memberHandles:[],taskIds:[]},"title","required",200],
+    ["/campaigns",{title:"Valid title",objective:"界".repeat(1334),memberHandles:[],taskIds:[]},"objective","max_bytes",4000],
+    ["/annotations",{id:"first",revision:2,kind:"mapping",taskIds:[],note:""},"note","required",6000],
+    ["/activity?search="+encodeURIComponent("é".repeat(251)),null,"search","max_bytes",500],
+  ]) {
+    let response;
+    await handleCampaignTrackerRoute({json:(_res,status,value)=>{response={status,value};},readJson:async()=>body,req:{method:body?"POST":"GET"},res:{setHeader(){}},url:new URL("http://localhost/api/terminal/tasknode/campaign-tracker"+path),session:{accountId:"alice"}});
+    check(()=>assert.deepEqual(response,{status:400,value:{ok:false,error:"tracker_text_invalid",message:response.value.message,validation:{field,reason,maxBytes}}}));
+    check(()=>assert(!response.value.message.includes("tracker text invalid")));
+  }
+  let missingCredential;
+  await handleCampaignTrackerRoute({json:(_res,status,value)=>{missingCredential={status,value};},readJson:async()=>({workspaceId:"workspace",enabled:true,apiKey:""}),req:{method:"POST"},res:{setHeader(){}},url:new URL("http://localhost/api/terminal/tasknode/campaign-tracker/enrollment"),session:{accountId:"alice"}});
+  check(()=>assert.equal(missingCredential.value.error,"tracker_credential_required"));
+  console.log(`Campaign Tracker PostgreSQL and route smoke: ${checks} checks passed.`);
 } finally {await closePool();await admin.query(`DROP SCHEMA ${schema} CASCADE`);await admin.end();}

@@ -410,13 +410,12 @@ export function TodaysBriefing({ airdrop, error = "", loading = false, rewardHis
                 <span title={paidAirdrop.txHash}>Tx {paidAirdrop.txHash.slice(0, 10)}...</span>
               </>
             )}
-            <span style={{ color: C.ink5 }}>·</span>
             {deltaVs7d !== null && (
               <>
+                <span style={{ color: C.ink5 }}>·</span>
                 <span style={{ color: deltaVs7d >= 0 ? C.success : C.rust, fontWeight: 600 }}>
                   {deltaVs7d >= 0 ? "↑" : "↓"} {Math.abs(deltaVs7d).toFixed(0)}% <span style={{ color: C.ink4, fontWeight: 400 }}>vs 7-day avg</span>
                 </span>
-                <span style={{ color: C.ink5 }}>·</span>
               </>
             )}
             <span data-testid="daily-airdrop-alignment" title="AI assessment of recent rewarded work on the latest scored day, independent of the PFT payout. Not the 7-day Alignment used by the directory.">
@@ -453,9 +452,9 @@ export function TodaysBriefing({ airdrop, error = "", loading = false, rewardHis
         display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
         gap: 40, paddingTop: 24, borderTop: `1px solid ${C.ruleSoft}`,
       }}>
-        <Reasoning sign="↑" tone={C.success} label="What raised today" body={airdrop.whatRaisedToday || "No positive driver was recorded."} />
-        <Reasoning sign="↓" tone={C.warning} label="What kept it lower" body={airdrop.whatKeptItLower || "No limiting factor was recorded."} />
-        <Reasoning sign="→" tone={C.rust} label="To improve tomorrow" body={airdrop.toImproveTomorrow || "No next-step recommendation was recorded."} />
+        <Reasoning sign="↑" tone={C.success} label="What contributed" body={airdrop.whatRaisedToday || "No contribution details were recorded."} />
+        <Reasoning sign="·" tone={C.ink3} label="Reward details" body={airdrop.whatKeptItLower || "No additional reward details were recorded."} />
+        <Reasoning sign="→" tone={C.ink3} label="Next step" body={airdrop.toImproveTomorrow || "No next-step recommendation was recorded."} />
       </div>
 
       {reasoningOpen && (

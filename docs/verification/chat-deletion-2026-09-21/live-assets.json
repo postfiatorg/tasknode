@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "assets": [
+    {
+      "path": "/assets/index-qPhBVPDx.js",
+      "sha256": "942509620a354283223f9c433b36c34fa6bb9f7522462a70e22d92f226811fc0"
+    },
+    {
+      "path": "/assets/rolldown-runtime-B0Z9INg1.js",
+      "sha256": "5e9b0d884d2ebb14e241ab38b43e41efb61bce2e74d71507b0b95b264fba4047"
+    },
+    {
+      "path": "/assets/react-runtime-CIt5SPK4.js",
+      "sha256": "3d1c0b748fa19ec1c5682626af22b0dbcf647de27bb5dd1c7f86335fcb4d68d0"
+    },
+    {
+      "path": "/assets/icon-runtime-Doe4nqSP.js",
+      "sha256": "9d6b1d041bf572d4ee406bfd97d25bd3a71d0d4f402ab5962187aa81043ae3fa"
+    },
+    {
+      "path": "/assets/index-D7I4lVTf.css",
+      "sha256": "d7a9c7f7d7242f23733f7ae4b412435d9a9bf1dfd83173188b11020c3df383a7"
+    }
+  ]
+}

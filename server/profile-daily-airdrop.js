@@ -304,6 +304,54 @@ export function normalizeDailyAirdropOutput(
   };
 }
 
+export function dailyAirdropScoringPacket(packet = {}) {
+  // The feedback reviewer sees task evidence, not recipient/lifetime metadata.
+  return {
+    lookback: packet.lookback,
+    reward_totals: packet.reward_totals,
+    daily_airdrop_policy: packet.daily_airdrop_policy,
+    rewarded_tasks: (packet.rewarded_tasks || []).map((task) => Object.fromEntries(
+      Object.entries(task).filter(([key]) => key !== "subject_wallet")
+    )),
+  };
+}
+
+export async function reviewDailyAirdropFeedback({ packet, payoutFacts, model, env = process.env } = {}) {
+  let promptText = "";
+  const fields = ["what_raised_today", "what_kept_it_lower", "to_improve_tomorrow", "reasoning_text"];
+  try {
+    promptText = loadPrompt("profile/daily_airdrop_feedback_v1.md");
+    const result = await inferenceChatCompletion({
+      env, capability: "strict_json", timeoutMs: 30_000, totalTimeoutMs: 30_000,
+      body: {
+        model, temperature: 0, max_tokens: 900,
+        messages: [
+          { role: "system", content: promptText },
+          { role: "user", content: JSON.stringify({ task_reward_packet: dailyAirdropScoringPacket(packet), payout_facts: payoutFacts }) },
+        ],
+        response_format: { type: "json_schema", json_schema: {
+          name: "daily_airdrop_feedback", strict: true,
+          schema: { type: "object", additionalProperties: false,
+            properties: Object.fromEntries(fields.map(field => [field, { type: "string" }])), required: fields },
+        } },
+      },
+    });
+    const parsed = parseJsonObject(result.text);
+    if (fields.some(field => typeof parsed[field] !== "string" || !parsed[field].trim())) throw new Error("daily_airdrop_feedback_invalid");
+    return { status: "completed", promptDigest: promptDigest(promptText), provider: result.provider, model: result.body?.model || model,
+      usage: result.body?.usage || {}, output: Object.fromEntries(fields.map(field => [field, safeText(parsed[field], field === "reasoning_text" ? 2500 : 1000)])) };
+  } catch {
+    // Optional prose must never block an earned payout or fall back to a harsh
+    // unreviewed explanation. Payment eligibility and arithmetic are unchanged.
+    return { status: "unavailable", promptDigest: promptDigest(promptText), output: {
+      what_raised_today: "This airdrop uses the rewarded tasks in the lookback window.",
+      what_kept_it_lower: "Detailed feedback is temporarily unavailable.",
+      to_improve_tomorrow: "No corrective action is being requested while feedback is unavailable.",
+      reasoning_text: "The airdrop amount and payout status are shown above. Detailed task feedback is temporarily unavailable.",
+    } };
+  }
+}
+
 export async function scoreDailyAirdropWithOpenRouter({ packet, promptText, model, maxDailyPft, env = process.env } = {}) {
   const result = await inferenceChatCompletion({
     env,
@@ -412,6 +460,13 @@ export async function runDailyAirdropScore({
     }
     if (!response) throw lastError || new Error("daily_airdrop_score_failed");
     const normalized = normalizeDailyAirdropOutput(response.output, packet, { maxDailyPft, maxRewardFraction });
+    const feedback = await reviewDailyAirdropFeedback({ packet, model, env, payoutFacts: {
+      daily_airdrop_pft: normalized.daily_airdrop_pft,
+      retention_value_score: normalized.retention_value_score,
+      eligibility_status: normalized.eligibility_status,
+      deterministic_cap: normalized.deterministic_cap,
+    } });
+    Object.assign(normalized, feedback.output);
     const airdropWindow = await recentDailyAirdropRunWindow({
       accountId,
       from: packet.lookback.from,
@@ -430,6 +485,7 @@ export async function runDailyAirdropScore({
       output: {
         ...response.output,
         normalized,
+        feedback_review: feedback,
         response_id: response.responseId,
         usage: response.usage,
       },

@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "origin": "https://tasknode.postfiat.org",
+  "mode": "Deployed production App and Profile bundle in Chrome, synthetic signed-in HTTP fixtures; no real user session or payment",
+  "checks": [
+    "actual production lazy-loaded Profile route",
+    "new feedback headings",
+    "Alignment restored as 80 / 100 from model score, despite near-zero payout ratio",
+    "paid amount and reward count present"
+  ]
+}

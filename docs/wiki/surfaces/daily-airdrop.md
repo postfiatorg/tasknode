@@ -1,6 +1,6 @@
 # Daily Airdrop
 
-Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT airdrop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
+Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT airdrop plus short contribution details, reward details, and any supported next step.
 
 Current status: recurring scoring, live issuance, stale recovery, and catch-up retries are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row as `processing_pre_submit`, marks it `submitting` before calling PFTL submit, and then records `submitted` only after a transaction hash is persisted. The worker also writes a `Hive Mind Agent` audit card summarizing how much PFT was dispensed, which run dates were checked, and any unresolved airdrop debt.
 
@@ -11,15 +11,15 @@ The private profile top section reads the latest completed run through `GET /api
 Profile copy distinguishes scored from paid state. When an issuance is not `submitted`, the headline says the airdrop was scored but not paid yet and shows the current payout status such as `Retry pending`, `Preparing payout`, or `Needs reconciliation`. The reward chart only counts submitted airdrops as earned PFT.
 
 The panel shows two labelled numbers. `Work quality (day) / 100` uses the latest run's `retention_value_score` (API `retentionValueScore`), the model's assessment of recent rewarded work; it does not divide the payout by the daily maximum and the tooltip says it is independent of the PFT payout. `Alignment (7d) / 100` is `alignment_score_7d × 100`, the same deterministic 7-day airdrop share the directory ranks by and public profiles show, so the profile and directory no longer show different numbers under one name. An unavailable score is shown as `— / 100`; a real zero is shown as `0 / 100`. Existing completed runs immediately use their stored model score, without rescoring or changing payments.
+The feedback headings are `What contributed`, `Reward details`, and `Next step`. Existing stored explanations remain visible; the feedback review applies on subsequent scoring runs.
+
 
 Displayed airdrop values come from:
 
 - `daily_airdrop_pft`;
+- `retention_value_score`;
 - `run_mode`;
 - `completed_at`;
-- `actual_airdrop_pft_7d`;
-- `max_possible_airdrop_pft_7d`;
-- `alignment_score_7d`;
 - `what_raised_today`;
 - `what_kept_it_lower`;
 - `to_improve_tomorrow`;
@@ -57,6 +57,8 @@ Excluded work:
 - tasks from wallets not in the account wallet cloud;
 - raw evidence blobs unless a later version explicitly needs them.
 
+`dailyAirdropScoringPacket` sends only lookback, reward totals, policy, and rewarded tasks to the feedback reviewer. It omits account identity, identity-cloud metadata, recipient selection/lifetime statistics, and per-task subject wallets. The original monetary scorer and its input remain unchanged; the complete input snapshot remains stored for audit and recipient selection.
+
 ### Identity Cloud
 
 The airdrop is one score per identity cloud, not one score per wallet. An account can link, delink, and relink multiple PFT wallets over time, but daily scoring remains keyed by `account_id` and `run_date`. The wallet cloud is for attribution and recipient selection; it is not a payout fanout list.
@@ -68,7 +70,7 @@ The worker-visible identity wallet cloud is built from `pftl_sync_wallets`:
 - non-user roles such as `allocation_reward`, authority, and funding wallets are
   excluded.
 
-This prevents a user from farming airdrops by rotating wallets and prevents Task Node authority/funding wallets from being selected just because they appear in chain replay rows.
+This prevents multiple payouts through wallet rotation within one account and excludes Task Node authority/funding wallets. It does not establish that separate accounts belong to separate people or provide cross-account Sybil resistance.
 
 `runtime-store.js` can describe the signed-in app session, but it is not the
 daily-airdrop worker source of truth. If a wallet link or delink changes user
@@ -143,11 +145,9 @@ The model returns:
 
 `reasoning_text` is contributor reasoning. It explains why the member's task packet merits the proposed airdrop. Recipient wallet selection is deterministic and separate from contributor reasoning.
 
-The prompt declares an explicit trust boundary: task titles, reward reasons, and
-any quoted evidence or feedback inside `rewarded_tasks` are user-influenced text
-and are scored as untrusted data, never followed as instructions. Embedded
-amount demands or scorer instructions are treated as fraud signals that lower
-the score.
+The monetary prompt and calculation are unchanged. After normalization, a separate optional review uses `prompts/profile/daily_airdrop_feedback_v1.md` and the already calculated payout facts to produce only the four feedback strings. Its schema and parsed-field allowlist cannot change the payout, retention score, eligibility, or recipient. The review has a 30-second total deadline; unavailable or malformed feedback produces neutral fallback text without blocking the payment. `output_json.feedback_review` records status, prompt digest, provider/model, and usage when available. The original monetary response remains in the audit record.
+
+The feedback reviewer treats task prose as evidence rather than instructions, and recognizes reward reasons as prior reviewer summaries that may quote user material. It honors accepted local-only/self-attested evidence, attributes findings to the prior review, avoids repeated criticism for the same shortfall, and does not manufacture accusations or corrective action. It describes concrete verification discrepancies without assigning motives. The amount is still assessed by the original scorer within the existing deterministic caps. No new payout formula, grant, or identity gate was added.
 
 The paid amount is also deterministically capped in code, independent of the
 model. By default the live cap is only the historical daily maximum:
@@ -166,7 +166,7 @@ normal airdrops. The run's `output_json.normalized.deterministic_cap` records
 `reward_fraction_cap_pft`, the raw `model_daily_airdrop_pft`, and a `cap_bound`
 flag so operators can audit when any configured cap clamped the model.
 
-### Alignment Score
+### Legacy Alignment Field
 
 The retained `alignment_score_7d` field is deterministic and is not an LLM output. It is displayed as `Alignment (7d)` on the profile panel, public profiles, and the directory, always labelled with its window.
 
@@ -184,7 +184,7 @@ Examples:
 - one dry run proposes `600 PFT` with a `10000 PFT` max: `600 / 10000 = 0.06`;
 - seven completed production runs each with a `10000 PFT` max: denominator is `70000 PFT`.
 
-During the scoring-only phase, `actual_airdrop_pft_7d` means completed dry-run or production scoring rows that are explicitly counted by the run. Once live issuance exists, it should mean actually issued production PFT.
+The current aggregation counts completed production scoring rows, irrespective of issuance status. It runs before the current production score completes, so that score is excluded; dry-run calculations explicitly add their candidate amount. These legacy diagnostics are not a source of truth for paid amounts or contributor quality. Use submitted issuance history for paid amounts.
 
 ### Database
 

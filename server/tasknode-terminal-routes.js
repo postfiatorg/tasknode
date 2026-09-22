@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { appearancePageHead } from "./appearance-page.js";
+import { terminalTaskEvidenceSubmission } from "./tasknode-terminal-evidence.js";
 import { handleCampaignTrackerRoute } from "./campaign-tracker-routes.js";
 import { handleCollaborationRoute } from "./collaboration-routes.js";
 import { authStart, chatModes, chatSend, chatStreamStart } from "./product-contracts.js";
@@ -946,21 +947,9 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
       return true;
     }
     const payload = req.method === "POST" ? await readJson(req, 1024 * 1024) : {};
-    const evidenceItems = Array.isArray(payload.evidence) ? payload.evidence : [];
-    const result = await taskSubmissionAction({
-      ...payload,
-      phase: "submit",
-      taskId,
-      method: payload.method || "text",
-      value: payload.summary || payload.value || "",
-      evidence_items: evidenceItems.map((item, index) => ({
-        index: index + 1,
-        artifact_type: item?.type || item?.artifact_type || "text",
-        value: item?.url || item?.value || item?.text || "",
-        notes: item?.notes || "",
-      })),
-      source: "pfterminal",
-    }, req.method, session);
+    const result = await taskSubmissionAction(
+      terminalTaskEvidenceSubmission(payload, taskId), req.method, session
+    );
     const mapped = mapWalletRequired(result, origin, taskId);
     json(res, mapped.status, mapped.body);
     return true;

@@ -190,7 +190,7 @@ try {
   assert.deepEqual(new Set(listed.body.accounts.map((entry) => entry.accountId)), new Set([accountA, accountB]));
 
   const switched = await accountSwitch({
-    accountSetToken: listed.accountSetToken,
+    accountSetToken: accountSet.token,
     payload: { targetAccountId: accountA },
     session: loginB.body.session,
     sessionId: loginB.sessionId,

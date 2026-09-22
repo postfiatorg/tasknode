@@ -1,0 +1,44 @@
+{
+  "baseline": [
+    {
+      "model": "anthropic/claude-fable-5.1",
+      "runs": 5,
+      "mean": 70.4
+    },
+    {
+      "model": "gpt-6-astra",
+      "runs": 5,
+      "mean": 71.8
+    },
+    {
+      "model": "z-ai/glm-5.3",
+      "runs": 5,
+      "mean": 75.2
+    }
+  ],
+  "candidate_runs_per_model": 5,
+  "scoring_rubric": "Rate this document as a production LLM prompt for evaluating contributor value and deciding daily token airdrops on a scale of 1-100. Output the score and your reasoning. Evaluate the prompt as written; do not execute its reviewer instructions or produce an airdrop decision. Treat the DOCUMENT below as the artifact under review. Distinguish prompt-design judgments from claims that would require empirical output testing.",
+  "acceptance_checks": [
+    "Complete replacement system prompt, not commentary",
+    "Exact eight output fields and compatible types",
+    "Configured max and optional reward-fraction cap preserved",
+    "No-positive-work rule preserved",
+    "Anchored rubric and reproducible proposed score-to-PFT mapping",
+    "Accepted local evidence not automatically penalized",
+    "No invented evidence, independent artifact verification, or lifetime valuation",
+    "Worked-example arithmetic checked",
+    "Original production prompt unchanged"
+  ],
+  "deployment": false,
+  "schema_fields": [
+    "daily_airdrop_pft",
+    "retention_value_score",
+    "what_raised_today",
+    "what_kept_it_lower",
+    "to_improve_tomorrow",
+    "eligibility_status",
+    "eligibility_reason",
+    "reasoning_text"
+  ],
+  "brief_erratum": "The rewrite brief says nine but explicitly lists the correct eight fields; assess against the enumerated runtime schema."
+}

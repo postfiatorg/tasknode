@@ -10,7 +10,7 @@ Task Node can accept private Telegram bot messages from Telegram accounts that a
 4. The webhook validates `X-Telegram-Bot-Api-Secret-Token` against `TELEGRAM_BOT_WEBHOOK_SECRET`.
 5. The webhook records the Telegram `update_id` in a short in-process duplicate guard and acknowledges Telegram immediately.
 6. The background handler resolves `message.from.id` through the linked Telegram identity.
-7. The message is sent through the existing account-scoped chat path with the Telegram chat's selected mode.
+7. The message is sent through the existing account-scoped chat path with the Telegram chat's selected mode. It receives current task projections and timestamped lifecycle events, along with Context and Memory. Collaborator task activity follows active directional Team grants and the personal-context opt-in; it is not limited to the weekly rewarded-work report. Context and Memory reads use a five-second default budget. A ten-second bounded activity snapshot replaces the expensive full Tasks UI aggregation on successful reads, and generated-Team report loading starts after the core context reads.
 8. The assistant response is sent back to the same private Telegram chat with `sendMessage`.
 
 Group chats are rejected with a privacy message. This prevents a linked account chat from leaking into a shared Telegram room.

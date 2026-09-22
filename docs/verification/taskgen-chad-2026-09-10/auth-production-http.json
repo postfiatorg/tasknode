@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "origin": "https://tasknode.postfiat.org",
+  "checks": [
+    "live password login and HttpOnly session cookie",
+    "live add account and five concurrent profile lists without cookie rotation",
+    "live profile switch and previous session revocation",
+    "live logout current selects remaining account",
+    "live logout all clears authentication",
+    "live login after logout"
+  ]
+}

@@ -20,9 +20,16 @@ export function createAccountSwitcherActions({
   async function logOut(path = "/api/auth/logout") {
     onTransitionChange(true);
     lockWalletVault();
-    await requestJson(path, { method: "POST" });
-    clearSessionHint();
-    window.location.reload();
+    onMessage("");
+    try {
+      const result = await requestJson(path, { method: "POST" });
+      if (!result.ok || result.body?.ok === false) throw new Error(result.body?.message || "Log out failed. Please try again.");
+      clearSessionHint();
+      window.location.reload();
+    } catch (error) {
+      onTransitionChange(false);
+      onMessage(error?.message || "Log out failed. Check your connection and try again.");
+    }
   }
 
   return {
@@ -40,6 +47,8 @@ export function createAccountSwitcherActions({
         if (!result.ok) return onMessage(result.body?.message || "Another account cannot be added right now.");
         lockWalletVault();
         onAddLoginOpen();
+      } catch (error) {
+        onMessage(error?.message || "Another account cannot be added right now.");
       } finally {
         onPendingChange("");
       }
@@ -51,19 +60,28 @@ export function createAccountSwitcherActions({
       onMessage("");
       lockWalletVault();
       prepareTransition();
-      const result = await requestJson("/api/auth/accounts/switch", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ targetAccountId }),
-      });
-      if (result.ok) {
-        clearSessionHint();
-        window.location.reload();
-        return;
+      let reloading = false;
+      try {
+        const result = await requestJson("/api/auth/accounts/switch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ targetAccountId }),
+        });
+        if (result.ok && result.body?.ok !== false) {
+          reloading = true;
+          clearSessionHint();
+          window.location.reload();
+          return;
+        }
+        onMessage(result.body?.message || "That account could not be selected.");
+      } catch (error) {
+        onMessage(error?.message || "Check your connection and try switching again.");
+      } finally {
+        if (!reloading) {
+          onPendingChange("");
+          onTransitionChange(false);
+        }
       }
-      onPendingChange("");
-      onTransitionChange(false);
-      onMessage(result.body?.message || "That account could not be selected.");
     },
     async removeRetainedAccount(targetAccountId) {
       onPendingChange(`remove:${targetAccountId}`);

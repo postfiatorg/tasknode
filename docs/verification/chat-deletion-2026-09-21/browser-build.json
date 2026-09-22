@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "origin": "http://127.0.0.1:5200",
+  "measurements": [
+    {
+      "title": "Alpha",
+      "confirmationToRemovalMs": 2.4,
+      "responseStillPending": true
+    },
+    {
+      "title": "Gamma",
+      "confirmationToRemovalMs": 1.3,
+      "responseStillPending": true
+    },
+    {
+      "title": "Gamma",
+      "confirmationToRemovalMs": 1.1,
+      "responseStillPending": true
+    },
+    {
+      "title": "Delta",
+      "confirmationToRemovalMs": 1.6,
+      "responseStillPending": true
+    },
+    {
+      "title": "Beta",
+      "confirmationToRemovalMs": 1.7,
+      "responseStillPending": true
+    }
+  ],
+  "appStateCallsDuringDeletes": 0,
+  "checks": [
+    "immediate row removal and dialog closure with DELETE response held open",
+    "newer active chat survives late deletion success",
+    "HTTP failure restores only deleted chat and displays dismissible error",
+    "retry of already deleted chat succeeds",
+    "network failure restores row",
+    "active chat clears after confirmed success",
+    "mobile layout has no horizontal overflow"
+  ]
+}

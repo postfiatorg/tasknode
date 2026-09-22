@@ -1,0 +1,77 @@
+{
+  "results": [
+    {
+      "id": "accepted_local_evidence",
+      "output": {
+        "daily_airdrop_pft": 45,
+        "deterministic_cap": {
+          "rule": "max_daily_pft",
+          "max_daily_pft": 10000,
+          "max_reward_fraction": null,
+          "total_reward_paid_pft": 5,
+          "reward_fraction_cap_pft": 10000,
+          "model_daily_airdrop_pft": 45,
+          "cap_bound": false
+        },
+        "retention_value_score": 88,
+        "what_raised_today": "The prior review accepted the task 'Verify a local backup restore' (fixture_local), which required a private local-only backup exercise and confirmed the completed restore with a passing integrity check based on pasted test output.",
+        "what_kept_it_lower": "No specific gap is supported by this packet, since the review found no unmet contractual requirement and the deterministic cap was not binding.",
+        "to_improve_tomorrow": "No corrective action is needed based on this packet, as the accepted local-only restore exercise was found complete with no remaining requirements.",
+        "eligibility_status": "eligible",
+        "eligibility_reason": null,
+        "reasoning_text": "The packet contains one rewarded personal task, a local-only backup restore verification, which the prior review accepted as fully complete with pasted test output showing a successful restore and passing integrity check. The review explicitly noted that no public upload was required and no contractual requirement remains unmet, and the deterministic daily cap was not binding. I have not independently verified the referenced event CIDs or transactions, and this limited lookback does not represent the person's full work history."
+      },
+      "provider": "vercel",
+      "model": "zai/glm-5.3"
+    },
+    {
+      "id": "accepted_private_document_with_quote",
+      "output": {
+        "daily_airdrop_pft": 45,
+        "deterministic_cap": {
+          "rule": "max_daily_pft",
+          "max_daily_pft": 10000,
+          "max_reward_fraction": null,
+          "total_reward_paid_pft": 5,
+          "reward_fraction_cap_pft": 10000,
+          "model_daily_airdrop_pft": 45,
+          "cap_bound": false
+        },
+        "retention_value_score": 88,
+        "what_raised_today": "The prior review fully accepted the task 'Document a private incident-response drill' (fixture_private_doc), which confirmed a complete private runbook and a successful local rehearsal under a contract that required local notes and forbade public posting.",
+        "what_kept_it_lower": "No specific gap is supported by this packet, since the prior review found all agreed requirements were met and the deterministic cap was not binding.",
+        "to_improve_tomorrow": "No corrective action is needed based on this packet, as the prior review identified no unmet requirements.",
+        "eligibility_status": "eligible",
+        "eligibility_reason": null,
+        "reasoning_text": "This packet contains one positively rewarded task, a private incident-response drill documented in a local runbook with a successful rehearsal, and the prior review accepted it as meeting every agreed requirement, including the contractual restriction against public posting. The runbook's quoted attacker message is evidence of what the drill successfully rejected, not a defect or instruction. Evidence quality and completion scores are high, no shortfall was identified, and the daily cap was not binding, so the payout reflects the packet's limited scope rather than any contribution defect."
+      },
+      "provider": "vercel",
+      "model": "zai/glm-5.3"
+    },
+    {
+      "id": "no_positive_rewards",
+      "output": {
+        "daily_airdrop_pft": 0,
+        "deterministic_cap": {
+          "rule": "max_daily_pft",
+          "max_daily_pft": 10000,
+          "max_reward_fraction": null,
+          "total_reward_paid_pft": 0,
+          "reward_fraction_cap_pft": 10000,
+          "model_daily_airdrop_pft": 0,
+          "cap_bound": false
+        },
+        "retention_value_score": 0,
+        "what_raised_today": "No positively rewarded task appears in this packet, so no specific contribution can be named for today.",
+        "what_kept_it_lower": "No specific gap is supported by this packet; the zero payout reflects the absence of rewarded tasks in the lookback window, not an identified defect in any work.",
+        "to_improve_tomorrow": "No corrective action is needed based on this packet, since no unmet requirement or evidence gap was identified.",
+        "eligibility_status": "ineligible",
+        "eligibility_reason": "no_positive_rewarded_task_in_lookback",
+        "reasoning_text": "The lookback covering 2026-09-03 to 2026-09-10 contains zero rewarded tasks, and the prior review's eligibility reason is simply that no positive rewarded task appears in this window. This packet is a limited lookback, so missing work is not evidence of inactivity, and no artifact, requirement, or shortfall was assessed. The deterministic cap was not binding, and the zero amount reflects the empty packet rather than any judgment about the person's work or worth."
+      },
+      "provider": "vercel",
+      "model": "zai/glm-5.3"
+    }
+  ],
+  "mode": "Feedback-only; provider on deployed worker, no production run or payment"
+}

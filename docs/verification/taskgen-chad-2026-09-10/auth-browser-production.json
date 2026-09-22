@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "mode": "Real App, LoginDialog and profile menu in Chrome with fixture HTTP responses",
+  "lists": 10,
+  "checks": [
+    "password network failure allows retry",
+    "password login",
+    "add second account",
+    "Switch profile remains visible",
+    "list failure preserves profiles",
+    "switch network failure unlocks UI",
+    "switch changes account",
+    "logout HTTP and network failures allow retry",
+    "logout current selects remaining profile",
+    "logout all signs out",
+    "login after logout"
+  ],
+  "origin": "https://tasknode.postfiat.org"
+}

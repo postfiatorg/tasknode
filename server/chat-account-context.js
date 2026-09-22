@@ -10,8 +10,8 @@ const contextDocumentMaxChars = Math.min(
   MODEL_CONTEXT_MAX_CHARS
 );
 const contextDocumentTimeoutMs = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_CONTEXT_DOCUMENT_TIMEOUT_MS) || 1000, 50),
-  2500
+  Math.max(Number(process.env.TASKNODE_CHAT_CONTEXT_DOCUMENT_TIMEOUT_MS) || 5000, 50),
+  10000
 );
 
 function clipContextDocumentText(value = "") {

@@ -33,3 +33,33 @@ for(const filename of ["server/campaign-tracker-contract.js","server/campaign-tr
   const walk=value=>{if(!value||typeof value!=="object")return;if(value.regex || ((value.type==="NewExpression"||value.type==="CallExpression") && value.callee?.name==="RegExp"))throw Error(`${filename}: regex is forbidden on the tracker LLM path`);for(const child of Object.values(value)){if(Array.isArray(child))child.forEach(walk);else walk(child);}};walk(ast);
 }
 console.log("Campaign Tracker contract smoke passed: pinned Flash route, entitlement, schema, conservative mapping, no fallback, and AST regex guard.");
+
+const {text,trackerErrorResponse,validateEvent}=await import("../server/campaign-tracker-contract.js");
+for (const [value,max,required,field,reason] of [
+  [undefined,200,true,"title","type"], ["",200,true,"title","required"],
+  ["x".repeat(201),200,true,"title","max_bytes"], ["界".repeat(67),200,true,"title","max_bytes"],
+  [42,6000,true,"note","type"], ["",6000,true,"note","required"],
+  ["é".repeat(251),500,false,"search","max_bytes"],
+]) {
+  assert.throws(()=>text(value,max,required,field),error=>{
+    const body=trackerErrorResponse(error);
+    assert.deepEqual(body.validation,{field,reason,maxBytes:max});
+    assert.equal(body.error,"tracker_text_invalid");
+    assert.ok(body.message.includes(reason==="max_bytes"?`${max} UTF-8 bytes`:reason==="required"?"is required":"must be text"));
+    if(typeof value==="string"&&value.length>200)assert.ok(!JSON.stringify(body).includes(value));
+    return true;
+  });
+}
+assert.equal(text("界".repeat(66),200,true,"title"),"界".repeat(66));
+assert.equal(text("é".repeat(250),500,false,"search"),"é".repeat(250));
+assert.throws(()=>validateEvent({id:"event",instanceId:"instance",sessionId:"session",turnId:"turn",workspaceId:"",sequence:0}),error=>{
+  assert.deepEqual(trackerErrorResponse(error).validation,{field:"event.workspaceId",reason:"required",maxBytes:200});return true;
+});
+assert.deepEqual(trackerErrorResponse({code:"tracker_text_invalid",validation:{field:"private-input",reason:"required",maxBytes:5,value:"must-not-leak"}}),{ok:false,error:"tracker_text_invalid",message:"tracker text invalid"});
+for(const key of [undefined,null,""," \t"])await assert.rejects(()=>trackerEntitlement(key,{env,fetchImpl:()=>{throw Error("must not call gateway without credential");}}),error=>{
+  assert.equal(error.code,"tracker_credential_required");assert.ok(trackerErrorResponse(error).message.includes("Link Corbanu API"));return true;
+});
+await assert.rejects(()=>trackerEntitlement("secret".repeat(1000),{env,fetchImpl:()=>{throw Error("oversized key must not leave server");}}),error=>{
+  assert.deepEqual(trackerErrorResponse(error).validation,{field:"apiKey",reason:"max_bytes",maxBytes:4096});assert.ok(!JSON.stringify(trackerErrorResponse(error)).includes("secret"));return true;
+});
+console.log("Tracker validation: typed field metadata, UTF-8 boundaries, credential guidance and safe error envelopes passed.");

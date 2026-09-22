@@ -523,7 +523,7 @@ export async function getNetworkTaskEligibility({
   ];
 
   const ready = candidateVerdict.eligible && capacityAvailable;
-  const status = !normalizedWalletAddress && !candidateVerdict.walletAddress
+  const status = candidateVerdict.reason === "wallet_unresolved" || (!normalizedWalletAddress && !candidateVerdict.walletAddress)
     ? "setup_required"
     : !candidateVerdict.eligible ? "badge_required"
       : !capacityAvailable ? "at_capacity" : "available_for_routing";
@@ -625,27 +625,25 @@ export async function currentProjectProductDoc(projectId = "") {
 export async function explainNetworkTaskCandidateEligibility({
   accountId = "",
   explicitWallet = "",
-} = {}) {
+} = {}, { queryImpl = query, badgeProjection = networkBadgeProjectionForAccount } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) return { eligible: false, reason: "account_unresolved" };
 
-  const badge = await query(
-    `SELECT badge_id FROM account_network_badges
-     WHERE account_id = $1 AND status = 'verified' AND revoked_at IS NULL
-     LIMIT 1`,
-    [normalizedAccount]
-  );
-  if (!badge.rows[0]) return { eligible: false, reason: "no_verified_badge" };
+  // Profile and routing must use the same current authorization, including
+  // provider-derived badges that have not yet been materialized in Postgres.
+  const projection = await badgeProjection({ accountId: normalizedAccount, walletAddress: explicitWallet });
+  const badgeIds = safeArray(projection?.verifiedBadgeIds).filter(Boolean);
+  if (!badgeIds.length) return { eligible: false, reason: "no_verified_badge" };
 
   let walletAddress = "";
-  const mirror = await query(
+  const mirror = await queryImpl(
     `SELECT wallet_address FROM account_linked_wallets WHERE account_id = $1 AND status = 'linked' LIMIT 1`,
     [normalizedAccount]
   );
   walletAddress = safeText(mirror.rows[0]?.wallet_address, 120);
   if (!walletAddress) walletAddress = safeText(explicitWallet, 120);
   if (!walletAddress) {
-    const sync = await query(
+    const sync = await queryImpl(
       `SELECT wallet_address FROM pftl_sync_wallets
        WHERE account_id = $1 AND role = 'user' AND status = 'active' AND wallet_address <> ''
        ORDER BY priority DESC, last_hot_sync_at DESC NULLS LAST LIMIT 1`,
@@ -654,7 +652,7 @@ export async function explainNetworkTaskCandidateEligibility({
     walletAddress = safeText(sync.rows[0]?.wallet_address, 120);
   }
   if (!walletAddress) return { eligible: false, reason: "wallet_unresolved" };
-  return { eligible: true, reason: "", accountId: normalizedAccount, walletAddress, badgeId: badge.rows[0].badge_id };
+  return { eligible: true, reason: "", accountId: normalizedAccount, walletAddress, badgeId: badgeIds[0], badgeIds, defaultBadge: projection.defaultBadge || badgeIds[0] };
 }
 
 export async function resolveCandidate({ decision = {} } = {}) {
