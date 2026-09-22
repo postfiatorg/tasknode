@@ -145,8 +145,10 @@ function parseTarString(bytes) {
   return Buffer.from(bytes).toString("utf8").split("\u0000", 1)[0].trim();
 }
 
-function parseTarSize(bytes) {
+function parseTarSize(bytes, type) {
   const field = Buffer.from(bytes).toString("latin1");
+  // Some TAR writers leave the size field blank on entries without file bodies.
+  if (["1", "2", "5"].includes(type) && /^[ \0]*$/.test(field)) return 0;
   const match = /^ *([0-7]+)[ \0]*$/.exec(field);
   const size = match ? Number.parseInt(match[1], 8) : NaN;
   if (!Number.isSafeInteger(size)) {
@@ -171,8 +173,8 @@ function extractTarArchive(buffer) {
     const name = [parseTarString(header.subarray(345, 500)), parseTarString(header.subarray(0, 100))]
       .filter(Boolean)
       .join("/");
-    const size = parseTarSize(header.subarray(124, 136));
     const type = String.fromCharCode(header[156] || 48);
+    const size = parseTarSize(header.subarray(124, 136), type);
     const bodyStart = offset + 512;
     const bodyEnd = bodyStart + size;
     if (bodyEnd > buffer.length) throw Object.assign(new Error("evidence_archive_invalid_tar"), { status: 422 });
