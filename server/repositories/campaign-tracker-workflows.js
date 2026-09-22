@@ -9,7 +9,7 @@ export async function trackerAnnotate(actor,body) {
   const subject=body.accountId || actor,id=identifier(body.id);
   if(!Number.isSafeInteger(body.revision))throw trackerError("tracker_revision_required");
   if(!["review","mapping"].includes(body.kind))throw trackerError("tracker_annotation_invalid");
-  const note=text(body.note,6000,true);
+  const note=text(body.note,6000,true,"note");
   let payload;
   if(body.kind==="review") {
     const scores=object(body.scores,dimensions);
@@ -17,7 +17,7 @@ export async function trackerAnnotate(actor,body) {
     payload={scores,note,rubricVersion:"prompt-quality-v1",evaluator:"human",model:null};
   } else {
     if(actor!==subject)throw trackerError("tracker_owner_correction_required",403);
-    const taskIds=stringList(body.taskIds);
+    const taskIds=stringList(body.taskIds,32,"taskIds");
     const tasks=await query("SELECT task_id FROM task_projections WHERE account_id=$1 AND task_id=ANY($2)",[actor,taskIds]);
     if(tasks.rowCount!==taskIds.length)throw trackerError("tracker_task_not_owned",403);
     payload={taskIds,note,mappingStatus:"corrected"};
@@ -56,19 +56,19 @@ export async function trackerAnnotations(actor,subject,id) {
 }
 export async function trackerCreateCampaign(actor,body) {
   object(body,["title","objective","memberHandles","taskIds"]);
-  const title=text(body.title,200,true),objective=text(body.objective,4000,true);
+  const title=text(body.title,200,true,"title"),objective=text(body.objective,4000,true,"objective");
   const handles=Array.isArray(body.memberHandles)?body.memberHandles:[];
   if(handles.length>30)throw trackerError("tracker_campaign_too_many_members");
   const members=[];
   for(const raw of handles) {
-    const handle=text(raw,80,true),normalized=handle.startsWith("@")?handle.slice(1):handle;
+    const handle=text(raw,80,true,"memberHandles"),normalized=handle.startsWith("@")?handle.slice(1):handle;
     const result=await query("SELECT account_id FROM app_accounts WHERE lower(hive_handle)=lower($1) AND status='active'",[normalized]);
     const id=result.rows[0]?.account_id;
     const relation=await query("SELECT 1 FROM task_history_grants WHERE status='active' AND ((subject_account_id=$1 AND viewer_account_id=$2) OR (subject_account_id=$2 AND viewer_account_id=$1))",[actor,id || ""]);
     if(!id || !relation.rowCount)throw trackerError("tracker_accepted_relationship_required",403);
     members.push(id);
   }
-  const taskIds=stringList(body.taskIds || []);
+  const taskIds=stringList(body.taskIds || [],32,"taskIds");
   const tasks=await query("SELECT task_id FROM task_projections WHERE account_id=$1 AND task_id=ANY($2)",[actor,taskIds]);
   if(tasks.rowCount!==taskIds.length)throw trackerError("tracker_task_not_owned",403);
   const id=randomUUID(),payload={title,objective,members:[actor,...new Set(members)],taskIds};

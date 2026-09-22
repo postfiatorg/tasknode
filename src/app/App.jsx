@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Activity, BookOpen, Check, ChevronRight, CreditCard, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
 import { fetchRuntimeConfig, requestJson } from "../api";
 import { ChatSearchModal } from "../features/chat/ChatSearchModal";
+import { createChatDeletionState, removeRecentChat, restoreRecentChat } from "../features/chat/chat-deletion-state.js";
 import { ChatSurface } from "../features/chat/ChatSurface.jsx";
 import { ChatItemActionMenu, DeleteChatModal, ProfileAvatar, RenameChatModal, profileAvatarText, profileDisplayName, profileSessionText } from "../features/chat/AppChatDialogs.jsx";
 import { buildRecentChats, chatActionMenuPosition, formatUnreadCount } from "../features/chat/chat-surface-state.js";
@@ -69,6 +70,10 @@ export function App() {
   const [chatActionMenu, setChatActionMenu] = useState(null);
   const [chatRenameTarget, setChatRenameTarget] = useState(null);
   const [chatDeleteTarget, setChatDeleteTarget] = useState(null);
+  const [chatDeleteError, setChatDeleteError] = useState(null);
+  const chatDeletionsRef = useRef(createChatDeletionState());
+  const activeChatRef = useRef(activeChat);
+  activeChatRef.current = activeChat;
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [walletUnlockOpen, setWalletUnlockOpen] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
@@ -91,11 +96,12 @@ export function App() {
   useEffect(() => {
     let active = true;
     const accountCapture = { ...accountBoundaryRef.current };
+    const chatRevision = chatDeletionsRef.current.capture();
     Promise.all([fetchRuntimeConfig(), fetchAppStateWithSessionRetry()])
       .then(([config, state]) => {
         if (!active) return;
         setRuntimeConfig(config);
-        applyFetchedAppState(state, accountCapture);
+        applyFetchedAppState(state, accountCapture, chatRevision);
       })
       .catch((error) => {
         if (active) setLoadError(error?.message || "Failed to load app state");
@@ -208,12 +214,16 @@ export function App() {
     const accountCapture = { ...accountBoundaryRef.current };
     const result = await requestJson("/api/auth/accounts");
     if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return [];
-    const accounts = result.ok && Array.isArray(result.body?.accounts) ? result.body.accounts : [];
+    if (!result.ok || !Array.isArray(result.body?.accounts)) {
+      setProfileAuthMessage(result.body?.message || "Profiles could not be loaded. Reopen this menu to retry.");
+      return [];
+    }
+    const accounts = result.body.accounts;
     setRetainedAccounts(accounts);
     return accounts;
   }, [signedIn]);
   useEffect(() => {
-    loadRetainedAccounts().catch(() => setRetainedAccounts([]));
+    loadRetainedAccounts().catch(() => setProfileAuthMessage("Profiles could not be loaded. Check your connection and reopen this menu."));
   }, [loadRetainedAccounts, session?.accountId]);
   useEffect(() => {
     if (view !== "tasks") return;
@@ -652,6 +662,7 @@ export function App() {
     taskProjectionRefresh = false,
   } = {}) {
     const accountCapture = { ...accountBoundaryRef.current };
+    const chatRevision = chatDeletionsRef.current.capture();
     const taskRefreshSequence = taskProjectionRefresh
       ? taskRefreshSequenceRef.current.started + 1
       : 0;
@@ -674,7 +685,7 @@ export function App() {
       ) {
         return state;
       }
-      if (!applyFetchedAppState(state, accountCapture)) return state;
+      if (!applyFetchedAppState(state, accountCapture, chatRevision)) return state;
       if (taskProjectionRefresh) {
         taskRefreshSequenceRef.current.applied = Math.max(
           taskRefreshSequenceRef.current.applied,
@@ -691,7 +702,7 @@ export function App() {
     }
   }
   refreshAppStateRef.current = refreshAppState;
-  function applyFetchedAppState(state, accountCapture = { ...accountBoundaryRef.current }) {
+  function applyFetchedAppState(state, accountCapture, chatRevision) {
     const nextAccountId = isSignedInSession(state?.session) ? state.session.accountId || "" : "";
     const accepted = acceptAccountBoundaryResponse(accountBoundaryRef.current, accountCapture, nextAccountId);
     if (!accepted.ok) return false;
@@ -702,7 +713,7 @@ export function App() {
     }
     appStateFetchedAtRef.current = Date.now();
     setAppState((current) =>
-      mergeAppStateWithMonotonicTasks(current, state, {
+      mergeAppStateWithMonotonicTasks(current, chatDeletionsRef.current.reconcile(state, chatRevision), {
         mergeBase: mergeAppStateWithClientWalletBalance,
       })
     );
@@ -811,22 +822,41 @@ export function App() {
   }
   async function deleteRecentChat(chat) {
     const conversationId = chat?.conversationId || chat?.id || "";
-    const result = await requestJson("/api/chat/conversation", {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ conversationId }),
-    });
-    if (!result.ok || !result.body?.ok) {
-      throw new Error(result.body?.error || result.body?.message || "Could not delete this chat.");
-    }
-    if (activeChatId === conversationId) {
-      setActiveChat(null);
-      setChatResetKey((key) => key + 1);
-      navigateToView("chat");
-    }
+    const accountCapture = { ...accountBoundaryRef.current };
+    const accountId = session?.accountId || "";
+    if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture) ||
+        !chatDeletionsRef.current.begin(accountId, conversationId)) return;
+    const originalRecents = appState?.chat?.recents || [];
+    const index = originalRecents.findIndex((item) => (item.conversationId || item.id) === conversationId);
+    const originalChat = originalRecents[index] || chat;
+    setChatDeleteError(null);
     setChatDeleteTarget(null);
     setChatActionMenu(null);
-    await refreshAppState();
+    setAppState((current) => removeRecentChat(current, accountId, conversationId));
+    try {
+      const result = await requestJson("/api/chat/conversation", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ conversationId }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const alreadyDeleted = result.status === 404 && result.body?.error === "chat_conversation_not_found";
+      if (!alreadyDeleted && (!result.ok || !result.body?.ok)) {
+        throw new Error(result.body?.message || "The server could not delete this chat.");
+      }
+      chatDeletionsRef.current.complete(accountId, conversationId);
+      if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return;
+      const selectedChat = activeChatRef.current;
+      if ((selectedChat?.conversationId || selectedChat?.id) === conversationId) {
+        setActiveChat(null);
+        setChatResetKey((key) => key + 1);
+      }
+    } catch {
+      chatDeletionsRef.current.fail(accountId, conversationId);
+      if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return;
+      setAppState((current) => restoreRecentChat(current, accountId, originalChat, index));
+      setChatDeleteError({ accountId, message: `Could not confirm deletion of “${chat?.title || "this chat"}”. Restored it to the sidebar. Please try again.` });
+    }
   }
   function toggleSidebar() {
     setSidebarOpen((open) => {
@@ -1098,7 +1128,7 @@ export function App() {
                 onClick={() => {
                   if (appStateLoading) return;
                   setProfileMenuOpen((open) => !open);
-                  if (!profileMenuOpen && signedIn) loadRetainedAccounts().catch(() => null);
+                  if (!profileMenuOpen && signedIn) loadRetainedAccounts().catch(() => setProfileAuthMessage("Profiles could not be loaded. Check your connection and reopen this menu."));
                 }}
                 type="button"
               >
@@ -1270,6 +1300,12 @@ export function App() {
             </button>
           )}
         </header>
+        {chatDeleteError && chatDeleteError.accountId === session?.accountId && (
+          <div className="status-banner error" role="alert">
+            <span>{chatDeleteError.message}</span>
+            <button aria-label="Dismiss chat deletion error" className="chat-edit-close" onClick={() => setChatDeleteError(null)} type="button"><X size={16} /></button>
+          </div>
+        )}
         {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
         {appStateLoading && <StatusBanner>Loading product state</StatusBanner>}
         {signedIn && hiveGroupStatus?.accountId === session?.accountId && hiveGroupStatus?.messaging && !hiveGroupStatus.messaging.binding && messagesPromptDismissed !== session.accountId && !["messages", "hive-chat"].includes(view) && (
@@ -1408,7 +1444,7 @@ export function App() {
           authLoading={appStateLoading}
           onSessionChange={refreshAppState}
           session={session}
-          reloadOnSuccess={addingAccount}
+          reloadOnSuccess
           onClose={closeAccountLogin}
         />
       )}

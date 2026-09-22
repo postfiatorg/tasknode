@@ -13,6 +13,7 @@ const {
   networkBadgeProjectionForAccount,
 } = await import("../server/repositories/network-badges.js");
 const { buildNetworkTaskRequestContext } = await import("../server/network-task-generation-worker.js");
+const { explainNetworkTaskCandidateEligibility } = await import("../server/repositories/network-task-eligibility.js");
 
 const coreAccount = getOrCreateProviderAccount({
   provider: "github",
@@ -74,6 +75,28 @@ assert.ok(
   newlyAuthorizedProjection.verifiedBadgeIds.includes("core_contributor"),
   "current allowlist authorization must grant the badge without another GitHub OAuth callback"
 );
+
+// Routing must honor the same live provider authorization even with no
+// materialized badge rows. Conversely, an unqualified identity stays blocked.
+for (const account of [coreAccount, newlyAuthorizedAccount]) {
+  const verdict = await explainNetworkTaskCandidateEligibility({ accountId: account.id }, {
+    queryImpl: async (sql) => {
+      assert.ok(sql.includes("account_linked_wallets"), "badge eligibility must use the canonical projection");
+      return { rows: [{ wallet_address: "rProviderBadgeRoutingSmoke" }] };
+    },
+  });
+  assert.equal(verdict.eligible, true);
+  assert.deepEqual(verdict.badgeIds, ["core_contributor"]);
+  assert.equal(verdict.walletAddress, "rProviderBadgeRoutingSmoke");
+}
+const unbadgedVerdict = await explainNetworkTaskCandidateEligibility({ accountId: unbadgedAccount.id }, {
+  queryImpl: async () => { throw new Error("unbadged candidate must not reach wallet resolution"); },
+});
+assert.equal(unbadgedVerdict.reason, "no_verified_badge");
+const walletlessVerdict = await explainNetworkTaskCandidateEligibility({ accountId: newlyAuthorizedAccount.id }, {
+  queryImpl: async () => ({ rows: [] }),
+});
+assert.equal(walletlessVerdict.reason, "wallet_unresolved");
 
 const coreDecision = await assertNetworkTaskBadgeEligibility({
   accountId: coreAccount.id,

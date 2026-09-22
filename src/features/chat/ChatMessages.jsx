@@ -1,3 +1,4 @@
+import { DecisionArtifactCard } from "./DecisionArtifactCard.jsx";
 import { useState } from "react";
 import {
   ArrowUp,
@@ -271,6 +272,7 @@ export function AssistantMessage({
       />
       <ContextRewriteArtifactCard contextRewrite={contextRewrite} />
       <DeepResearchArtifactCard deepResearch={deepResearch} />
+      <DecisionArtifactCard decision={message.metadata?.decision} onCopy={copyText} onDownload={downloadTextFile} />
       {message.error && <div className="assistant-error">Response failed</div>}
       {showToolbar && (
         <MessageToolbar
@@ -541,6 +543,9 @@ function assistantSourceLabel(metadata = {}) {
       title: metadata.taskId ? `Orc signal for ${metadata.taskId}` : "Orc agent Hive signal",
     };
   }
+  if (metadata?.kind === "decision") {
+    return { kind: "deep-research", label: "Decisions · Budget", meta: metadata.decision?.status || "", title: "Corbanu budget decision report" };
+  }
   if (metadata?.kind === "deep_research") {
     const research = metadata.deepResearch || {};
     return {
@@ -582,6 +587,9 @@ function thinkingSteps(message) {
   }
   if (message.pending && message.metadata?.kind === "context_edit") {
     return ["Reading your context document", "Locating the edit", "Preparing a proposal"];
+  }
+  if (message.pending && message.metadata?.kind === "decision") {
+    return ["Define five options", "Research the options", "Collect three Flash votes", "Review the draft", "Kimi K3 final rewrite"];
   }
   if (message.pending && message.metadata?.kind === "deep_research") {
     const tasks = message.metadata?.deepResearch?.progress?.tasks;

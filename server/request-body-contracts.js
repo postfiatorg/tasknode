@@ -236,7 +236,12 @@ export const chatConversationDeleteBody = strictBody(16 * KiB, {
 }, { requiredAny: [["conversationId", "id"]] });
 export const taskBody = strictBody(8 * MiB, taskProperties);
 export const terminalTaskBody = strictBody(64 * KiB, taskProperties);
-export const taskEvidenceBody = strictBody(MiB, taskProperties);
+// Terminal reports use summary as the full evidence body. Match the existing
+// direct-write evidence limit instead of the shorter task-description limit.
+export const taskEvidenceBody = strictBody(MiB, {
+  ...taskProperties,
+  summary: text(120_000),
+});
 
 export const iChingBody = strictBody(16 * KiB, {
   birthDate: text(10, 10), birthTime: text(8, 4), birthLocation: text(240, 1),
@@ -366,6 +371,9 @@ export const walletDelinkBody = strictBody(8192, {
 export const contextRewriteBody = strictBody(1_200_000, {
   message: text(12_000), instruction: text(12_000), instructions: text(12_000), conversationId: text(180),
 }, { requiredAny: [["message", "instruction", "instructions"]] });
+export const decisionBody = strictBody(256 * KiB, {
+  input: text(60_000, 1), conversationId: text(180, 1), requestId: text(180, 1), includeContext: boolean,
+}, { required: ["input", "conversationId", "requestId"] });
 export const deepResearchBody = strictBody(128 * KiB, {
   question: text(50_000, 1),
   message: text(50_000, 1),

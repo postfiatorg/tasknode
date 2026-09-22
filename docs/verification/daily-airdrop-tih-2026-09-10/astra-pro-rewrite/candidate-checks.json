@@ -1,0 +1,16 @@
+{
+  "schema_fields": [
+    "daily_airdrop_pft",
+    "retention_value_score",
+    "what_raised_today",
+    "what_kept_it_lower",
+    "to_improve_tomorrow",
+    "eligibility_status",
+    "eligibility_reason",
+    "reasoning_text"
+  ],
+  "worked_example_arithmetic": "passed",
+  "source_unchanged": true,
+  "candidate_sha256": "d734f3278c638c0704da1c76c78c65e6619cf4acb9566315ab5d5569ae84642e",
+  "material_policy_change": "Payout becomes floor(configured maximum * retention score / 100), optionally capped by the configured fraction. With default max 10000 and no fraction, score 80 proposes 8000 PFT and score 100 proposes 10000 PFT. This differs substantially from current observed awards. Candidate only."
+}

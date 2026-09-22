@@ -8,11 +8,12 @@ import {
   listDeviceAccounts,
   removeDeviceAccount,
   revokeDeviceAccountSet,
+  resolveDeviceAccountSet,
   selectDeviceAccount,
 } from "./repositories/device-account-sets.js";
 import { getLinkedWallet } from "./repositories/account-wallets.js";
-import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { prewarmAppState } from "./app-state.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 
 function result(status, body = {}, extra = {}) {
   return { status, body: { ok: status < 400, ...body }, ...extra };
@@ -48,13 +49,18 @@ export async function registerAuthenticatedAccountSet({
 
 export async function accountList({ accountSetToken = "", session = null, sessionId = "" } = {}) {
   if (!session?.accountId) return result(401, { error: "account_switch_login_required", message: "Sign in to view retained accounts." });
-  const ensured = await registerAuthenticatedAccountSet({
+  // Listing is not fresh authentication: it must never restore a logged-out
+  // membership or replace an invalid cookie with a new one-account set.
+  const ensured = accountSetToken ? null : await registerAuthenticatedAccountSet({
     accountId: session.accountId,
-    accountSetToken,
     sessionId,
   });
-  if (!ensured) return result(503, { error: "account_switch_unavailable", message: "Retained accounts are unavailable." });
-  const listed = await listDeviceAccounts({ token: ensured.token, selectedAccountId: session.accountId });
+  const token = accountSetToken || ensured?.token;
+  if (!token) return result(503, { error: "account_switch_unavailable", message: "Retained accounts are unavailable." });
+  const listed = await listDeviceAccounts({ token, selectedAccountId: session.accountId });
+  if (!listed.ok || !listed.accounts.some((entry) => entry.accountId === session.accountId)) {
+    return result(409, { error: "account_switch_session_changed", message: "Your account selection changed. Reload to refresh your profiles." });
+  }
   const enriched = await Promise.all((listed.accounts || []).map(async (entry) => {
     if (entry.displayName) return entry;
     const [account, wallet] = await Promise.all([
@@ -71,19 +77,22 @@ export async function accountList({ accountSetToken = "", session = null, sessio
       walletAddress: wallet?.status === "linked" ? wallet.address || "" : "",
     };
   }));
-  return result(200, { accounts: enriched, selectedAccountId: session.accountId }, { accountSetToken: ensured.token });
+  return result(200, { accounts: enriched, selectedAccountId: session.accountId }, ensured ? { accountSetToken: ensured.token } : {});
 }
 
 export async function accountAddStart({ accountSetToken = "", session = null, sessionId = "" } = {}) {
   if (!session?.accountId) return result(401, { error: "account_switch_login_required", message: "Sign in before adding another account." });
-  const ensured = await registerAuthenticatedAccountSet({ accountId: session.accountId, accountSetToken, sessionId });
-  if (!ensured) return result(503, { error: "account_switch_unavailable", message: "Another account cannot be added right now." });
-  const intent = await createAddAccountIntent({ accountId: session.accountId, setId: ensured.setId });
+  const listed = await accountList({ accountSetToken, session, sessionId });
+  if (listed.status >= 400) return listed;
+  const token = listed.accountSetToken || accountSetToken;
+  const set = await resolveDeviceAccountSet({ token });
+  if (!set) return result(409, { error: "account_switch_session_changed", message: "Your account selection changed. Reload and try again." });
+  const intent = await createAddAccountIntent({ accountId: session.accountId, setId: set.setId });
   return result(200, {
     intent: "add_account",
     expiresAt: intent.expiresAt,
     message: "Authenticate the account you want to add.",
-  }, { accountSetToken: ensured.token, accountAddIntentId: intent.id });
+  }, { ...(listed.accountSetToken ? { accountSetToken: token } : {}), accountAddIntentId: intent.id });
 }
 
 export async function accountSwitch({ accountSetToken = "", payload = {}, session = null, sessionId = "" } = {}) {

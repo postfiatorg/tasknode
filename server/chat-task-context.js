@@ -1,4 +1,5 @@
 import { collapseWhitespace } from "./inference-text.js";
+import { formatChatTaskActivity } from "./chat-task-activity.js";
 import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { listTaskState } from "./repositories/tasks.js";
 import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
@@ -6,8 +7,8 @@ import { buildTaskContextStatus, taskContextIsEmpty } from "./chat-context-statu
 
 const taskContextPrompt = loadPrompt("chat/account_tasks_context_v1.md");
 const taskContextTimeoutMs = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_TASK_CONTEXT_TIMEOUT_MS) || 300, 50),
-  2500
+  Math.max(Number(process.env.TASKNODE_CHAT_TASK_CONTEXT_TIMEOUT_MS) || 5000, 50),
+  10000
 );
 const refusedTaskLimit = 10;
 const rewardedTaskLimit = 12;
@@ -146,6 +147,8 @@ function formatNetworkTaskEligibility(networkTasks = null) {
 
 export function formatChatTaskContext(taskContext = null) {
   if (!taskContext) return "";
+  const activity = formatChatTaskActivity(taskContext.activity);
+  if (taskContext.activityOnly) return activity;
   const outstanding = Array.isArray(taskContext.outstanding) ? taskContext.outstanding : [];
   const pendingVerification = Array.isArray(taskContext.verification) ? taskContext.verification : [];
   const refused = Array.isArray(taskContext.refused) ? taskContext.refused : [];
@@ -158,7 +161,7 @@ export function formatChatTaskContext(taskContext = null) {
     sync.lastSyncedAt ? `last_synced_at=${clip(sync.lastSyncedAt, 80)}` : "",
   ].filter(Boolean).join("; ");
 
-  return renderPromptTemplate(taskContextPrompt, {
+  return [renderPromptTemplate(taskContextPrompt, {
     SYNC_LINE: syncLine,
     NETWORK_TASK_ELIGIBILITY: formatNetworkTaskEligibility(taskContext.networkTasks),
     OUTSTANDING_COUNT: outstanding.length,
@@ -169,7 +172,7 @@ export function formatChatTaskContext(taskContext = null) {
     REFUSED_TASKS: formatGroup(refused, { limit: refusedTaskLimit }),
     REWARDED_COUNT: rewarded.length,
     REWARDED_TASKS: formatGroup(rewarded, { limit: rewardedTaskLimit }),
-  });
+  }), activity].filter(Boolean).join("\n\n");
 }
 
 export async function chatTaskContextLoadForAccount(accountId = "") {

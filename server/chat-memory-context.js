@@ -16,7 +16,7 @@ function boundedEnvInt(value, fallback, min, max) {
 
 const memoryContextDeepLimit = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_DEEP_LIMIT, 3, 0, 10);
 const memoryContextTurnLimit = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TURN_LIMIT, 36, 0, 72);
-const memoryContextTimeoutMs = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TIMEOUT_MS, 250, 50, 2500);
+const memoryContextTimeoutMs = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TIMEOUT_MS, 5000, 50, 10000);
 const memoryContextTurnMaxChars = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TURN_MAX_CHARS, 1200, 200, 2400);
 const memoryContextDeepMaxChars = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_DEEP_MAX_CHARS, 1800, 300, 3000);
 const taskNodeInstructionsPrompt = loadPrompt("chat/task_node_instructions_v1.md");

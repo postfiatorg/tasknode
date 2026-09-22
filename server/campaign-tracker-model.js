@@ -14,7 +14,8 @@ function gateway(env) {
   return url.origin;
 }
 async function gatewayRequest(path, apiKey, body, { env=process.env, fetchImpl=fetch }={}) {
-  text(apiKey,4096,true);
+  if (apiKey == null || (typeof apiKey === "string" && !apiKey.trim())) throw trackerError("tracker_credential_required");
+  text(apiKey,4096,true,"apiKey");
   const response=await fetchImpl(`${gateway(env)}${path}`, {method:body?"POST":"GET",redirect:"error",headers:{authorization:`Bearer ${apiKey}`,"content-type":"application/json"}, ...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(25_000)});
   if (!response.ok) throw trackerError(response.status===401||response.status===402?"tracker_subscription_required":"tracker_gateway_unavailable",response.status===401||response.status===402?402:503);
   const reader=response.body.getReader(); let size=0; const chunks=[];

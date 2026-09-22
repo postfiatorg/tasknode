@@ -1,0 +1,43 @@
+{
+  "sourceRunId": "airdrop_a3f4ef6b-8ed0-4ae2-8a0d-61044d0386f2",
+  "oldAmount": 45,
+  "oldRetentionScore": 80,
+  "output": {
+    "daily_airdrop_pft": 45,
+    "retention_value_score": 80,
+    "eligibility_status": "eligible",
+    "what_raised_today": "The prior review rewarded \"Resolve \u00a71.9 Delayed-Certificate Safety Concern Against Cobalt Runtime\" (task_2fcb55fa06199dd8459491fb15ad5b9b), accepting raw before/after test output showing the regression fails at baseline cb175ef3 and passes after fix bbb291ce, an exact \u00a71.9 excerpt, and the changed-file list covering every step of the offer.",
+    "what_kept_it_lower": "The review classified both artifacts for the \u00a71.9 task as self-attested because the GitHub commit URL was not independently resolved, and it also found that roughly half the agreed scope of \"Fix StakeHub PR #8 Safety Blockers\" (task_e8a897157d362e3aab353e42fd80acc4) \u2014 the operational-script confirmed-flag change, validator cleanup, and honest dispositions for remaining findings \u2014 remained unevidenced.",
+    "to_improve_tomorrow": "For the \u00a71.9 fix, provide a resolvable public commit reference or repository state so the fix, test run, and revised text can be checked against an independent artifact, and for the StakeHub PR #8 work, evidence the outstanding operational-script flag change, validator cleanup, and dispositions for the remaining findings.",
+    "reasoning_text": "This packet shows eight positively rewarded tasks over the lookback, including several full rewards for verified or contract-appropriate local evidence (whitepaper audit patch, research spec lock, UNL amendment and journal, proof-inventory reconciliation). The most recent strong contribution was the \u00a71.9 delayed-certificate safety fix, which the prior review accepted as concrete and complete in form but could not confirm against a public artifact since the commit URL was unresolved. The main genuine unresolved requirements are that public resolution for the \u00a71.9 fix and the unevidenced half of the StakeHub PR #8 scope; the low-rewarded whitepaper/blog alignment task also lacked the required raw build and diff evidence per that review. No deterministic cap bound is reported in the payout facts, and the daily amount reflects the already calculated policy, not a measure of overall worth."
+  },
+  "provider": "vercel",
+  "model": "zai/glm-5.3",
+  "usage": {
+    "prompt_tokens": 3505,
+    "completion_tokens": 624,
+    "total_tokens": 4129,
+    "cost": 0.00680588,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 672,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": null,
+      "upstream_inference_prompt_cost": 0,
+      "upstream_inference_completions_cost": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 170,
+      "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0,
+    "market_cost": 0.00680588,
+    "surcharge_cost": 0.0001,
+    "gateway_cost": 0.00690588,
+    "zero_data_retention_cost": 0.0001
+  },
+  "mode": "scoring-only; no stored run or payment"
+}

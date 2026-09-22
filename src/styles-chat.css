@@ -542,7 +542,9 @@
   gap: 8px;
 }
 
-.deep-research-card-actions button {
+.deep-research-card-actions button,
+.deep-research-card-actions a {
+  text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -556,7 +558,8 @@
   font-weight: 650;
 }
 
-.deep-research-card-actions button:hover {
+.deep-research-card-actions button:hover,
+.deep-research-card-actions a:hover {
   border-color: var(--tn-dark-control-border, #aebdd0);
   background: var(--tn-dark-hover, #f4f7fb);
 }
@@ -980,3 +983,5 @@
   width: min(760px, calc(100% - 32px));
   margin: 0 auto;
 }
+
+.decision-votes { font-size: 12px; line-height: 1.6; }

@@ -1,0 +1,14 @@
+[
+  "rewrite",
+  "/mnt/HC_Volume_101713660/pfrpc/scratch/tasknode-daily-airdrop-tih-20260910/daily_airdrop_v1.md",
+  "--mode",
+  "astra-pro",
+  "--db",
+  "/mnt/HC_Volume_101713660/pfrpc/scratch/tasknode-daily-airdrop-tih-20260910/harness.sqlite3",
+  "--project",
+  "tasknode-daily-airdrop-prompt",
+  "--instructions-file",
+  "/mnt/HC_Volume_101713660/pfrpc/scratch/tasknode-daily-airdrop-tih-20260910/astra-pro-instructions.txt",
+  "--out",
+  "/mnt/HC_Volume_101713660/pfrpc/scratch/tasknode-daily-airdrop-tih-20260910/daily_airdrop_v2.astra-pro.candidate.md"
+]

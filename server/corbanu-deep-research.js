@@ -87,7 +87,7 @@ export async function cancelCorbanuDeepResearch({
   });
 }
 
-async function callCorbanu({
+export async function callCorbanu({
   accountId = "",
   requestId = "",
   path,
@@ -95,6 +95,7 @@ async function callCorbanu({
   body,
   env,
   fetchImpl,
+  responseType = "json",
 }) {
   const config = deepResearchConfig(env);
   const subject = clean(accountId, 180);
@@ -129,6 +130,9 @@ async function callCorbanu({
       body: serialized || undefined,
       signal: controller.signal,
     });
+    if (response.ok && responseType === "pdf") {
+      return { status: response.status, body: Buffer.from(await response.arrayBuffer()) };
+    }
     const text = await response.text();
     let payload;
     try {

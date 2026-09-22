@@ -1,3 +1,4 @@
+import { decisionsAvailable } from "./corbanu-decisions.js";
 import {
   authProviders,
   chatModes,
@@ -639,6 +640,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       hiveConversation,
       defaultMode: signedOut ? "Help" : enabledMode?.label || "Instant",
       deepResearchAvailable: deepResearchAvailable({ accountId }),
+      decisionsAvailable: decisionsAvailable({ accountId }),
       modes,
       seedMessages,
     },

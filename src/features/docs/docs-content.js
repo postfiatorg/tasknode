@@ -56,7 +56,7 @@ async function loadIdentityAndWallets() {
   ]);
   return [
     "# Identity & Wallets",
-    "Account login, retained-account selection, connected providers, wallet proof, local vault unlock, and custody are separate security states.",
+    "Account login, retained-account selection, connected providers, wallet proof, local vault unlock, and custody are separate security states. Corbanu index X claims use a signed callback relay without creating a Task Node session.",
     docSection("Login, Account Switching, And Corbanu Linking", authAndConnectedAccounts),
     docSection("Wallet Proof And Local Vault", authWalletBoundary),
   ].join("\n\n");
@@ -130,8 +130,8 @@ export const DOC_GROUPS = [
   {
     title: "Product",
     pages: [
-      { slug: "chat", title: "Chat", summary: "Model selection, API-rate chat billing, persistence, and recovery.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
-      { slug: "tasks", title: "Tasks", summary: "Personal and network tasks, submission requirements, routing eligibility, exhausted-request retry, allocation recovery, and dismissal.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
+      { slug: "chat", title: "Chat", summary: "Chat models, current task and shared team activity in web and Telegram, Deep Research, budget Decisions with context and memory, billing, and saved reports.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
+      { slug: "tasks", title: "Tasks", summary: "Personal and network tasks, actionable steps, submission requirements, full evidence reports up to 120,000 characters, routing eligibility, exhausted-request retry, allocation recovery, and Campaign Tracker validation.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
       { slug: "hive", title: "Hive", summary: "Public Nostr group chat, shared handles, periodic GLM participation and Kimi board escalation.", loadMarkdown: HELP_MARKDOWN_LOADERS.hive },
       { slug: "docs", title: "Docs", summary: "Encrypted documents, spreadsheets, folders, and chat with Coach and ODV.", loadMarkdown: HELP_MARKDOWN_LOADERS.docs },
       { slug: "team", title: "Team", summary: "Shared task history and Team Context in the app and Corbanu Terminal.", loadMarkdown: HELP_MARKDOWN_LOADERS.team },
@@ -142,7 +142,7 @@ export const DOC_GROUPS = [
       { slug: "profile", title: "Profile", summary: "Named Profile Pic NFTs, full-size artwork viewing, three-task eligibility, and private Kimi ZDR generation.", loadMarkdown: HELP_MARKDOWN_LOADERS.profile },
       { slug: "directory", title: "Directory", summary: "Discoverable public member profiles.", loadMarkdown: HELP_MARKDOWN_LOADERS.directory },
       { slug: "search", title: "Search", summary: "Account-scoped chat retrieval.", loadMarkdown: HELP_MARKDOWN_LOADERS.search },
-      { slug: "daily-airdrop", title: "Daily Airdrop", summary: "Contributor scoring and issuance state.", loadMarkdown: HELP_MARKDOWN_LOADERS.dailyAirdrop },
+      { slug: "daily-airdrop", title: "Daily Airdrop", summary: "Alignment score, rewarded contributions, and payout status.", loadMarkdown: HELP_MARKDOWN_LOADERS.dailyAirdrop },
       { slug: "refine-context", title: "Refine Context", summary: "Targeted Context editing.", loadMarkdown: HELP_MARKDOWN_LOADERS.refineContext },
       { slug: "context-rewrite", title: "Context Rewrite", summary: "Asynchronous full-document rewrite.", loadMarkdown: HELP_MARKDOWN_LOADERS.contextRewrite },
       { slug: "agents", title: "Agents", summary: "External wallet-native workers.", loadMarkdown: HELP_MARKDOWN_LOADERS.agents },
@@ -154,7 +154,7 @@ export const DOC_GROUPS = [
       {
         slug: "identity-wallets",
         title: "Identity & Wallets",
-        summary: "Password login, account switching, provider linkage, wallet proof, vault, and custody boundaries.",
+        summary: "Password login, profile switching and recovery, provider linkage, wallet proof, vault, and custody boundaries.",
         loadMarkdown: loadIdentityAndWallets,
       },
       {

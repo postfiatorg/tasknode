@@ -801,6 +801,14 @@ export const apiRoutePolicies = [
   { id: "context_edit_save", path: "/api/context/edit/save", methods: ["POST"], auth: "handler", body: requestBodies.contextSaveBody },
   { id: "context_edit_proposal", prefix: "/api/context/edit/proposals/", methods: ["POST"], auth: "handler", body: requestBodies.emptyRequestBody },
   {
+    id: "decision_create", path: "/api/decisions/jobs", methods: ["POST"], auth: "session",
+    rateLimit: { limit: 6, windowMs: tenMinutes }, body: requestBodies.decisionBody,
+  },
+  {
+    id: "decision_jobs", prefix: "/api/decisions/jobs/", methods: ["GET"], auth: "session",
+    rateLimit: { limit: 240, windowMs: tenMinutes },
+  },
+  {
     id: "deep_research_create",
     path: "/api/deep-research/jobs",
     methods: ["POST"],

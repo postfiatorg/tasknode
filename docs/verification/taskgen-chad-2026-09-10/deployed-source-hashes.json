@@ -1,0 +1,7 @@
+{
+  "server/account-switching.js": "adca28c7b762d6b170f46b9a1de4a1bfadb727da6fa8ee410b5f4afdd33872de",
+  "server/repositories/device-account-sets.js": "3d9882c7ad710958eb5d3f6434bac0842e73b122a48e13ac21b8558a1815b08f",
+  "server/repositories/task-requests.js": "90c0aef8208a4cb4b2c3eee33ebd21f6c129f26e3fad36cbf092db025ec842ea",
+  "server/task-generation-worker.js": "2f1cc7a6e42c0afb6b9ecd96a66473bb3b4d9bc2a0ff36e894c58e4bbc190cce",
+  "server/repositories/network-task-eligibility.js": "8221267c08023d850b27050b1729c0402af223198491add4cc638f85390788a5"
+}

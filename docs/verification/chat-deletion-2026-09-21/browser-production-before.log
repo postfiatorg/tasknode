@@ -1,0 +1,10 @@
+file:///home/pfrpc/repos/tasknode/scripts/browser-fixture-driver.mjs:31
+      return {command,evaluate,async until(expression){for(let attempt=0;attempt<150;attempt++){if(await evaluate(expression))return;await new Promise(resolve=>setTimeout(resolve,100));}throw new Error('Browser condition failed: '+expression);}};
+                                                                                                                                                                                                ^
+
+Error: Browser condition failed: !(Array.from(document.querySelectorAll('.recent-chat-row')).find(row=>row.querySelector('.recent-chat-open')?.title==="Alpha")) && !document.querySelector('#delete-chat-title')
+    at Object.until (file:///home/pfrpc/repos/tasknode/scripts/browser-fixture-driver.mjs:31:193)
+    at async beginDelete (file:///home/pfrpc/repos/tasknode/scripts/chat-deletion-browser-smoke.mjs:44:5)
+    at async file:///home/pfrpc/repos/tasknode/scripts/chat-deletion-browser-smoke.mjs:52:3
+
+Node.js v20.20.0
