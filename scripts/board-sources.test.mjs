@@ -109,4 +109,25 @@ test("operator actions are recorded once, surfaced while open, and resolved expl
   await assert.rejects(run({}), { message: "operator_action_requires_add_or_resolve" });
 });
 
+test("merge referrals resolve the operator from the durable account record, not host environment", async (t) => {
+  const { referMerge } = await import("../scripts/bm/writes.mjs");
+  const { withBoardAgent } = await import("../server/board-agent-context.js");
+  delete process.env.BM_OPERATOR_ACCOUNT_ID; delete process.env.BM_OPERATOR_WALLET;
+  const calls = [];
+  t.mock.method(pg.Pool.prototype, "query", async (sql) => {
+    calls.push(sql);
+    if (sql.includes("FROM app_accounts WHERE lower(hive_handle)")) return { rows: [{ id: "acct_operator" }] };
+    if (sql.includes("account_linked_wallets") || sql.toLowerCase().includes("linked")) return { rows: [{ account_id: "acct_operator", wallet_address: "rOperatorWallet", status: "linked" }] };
+    if (sql.includes("FROM network_projects")) return { rows: [{ metadata_json: { routing_constraints: { assignable_handles: ["goodalexander"] } } }] };
+    throw Object.assign(new Error("fixture_stop:" + sql.slice(0, 60)), { fixtureStop: true });
+  });
+  // Resolution succeeds and the referral proceeds into taskCreate with the resolved target (the fixture stops at the next query).
+  await assert.rejects(withBoardAgent({ actor: "fixture", boards: ["board_tasknode_fixes"], credentialId: "c" }, () => referMerge({ prUrl: "https://github.com/postfiatorg/postfiatorg.github.io/pull/21", boardId: "board_tasknode_fixes" })),
+    (error) => error.fixtureStop === true || !/operator_target_unresolved/.test(error.message));
+  assert.ok(calls.some((sql) => sql.includes("FROM app_accounts WHERE lower(hive_handle)")), "operator looked up by handle");
+  // No account: a typed 422, not an untyped 500.
+  t.mock.method(pg.Pool.prototype, "query", async (sql) => { if (sql.includes("FROM app_accounts")) return { rows: [] }; return { rows: [] }; });
+  await assert.rejects(withBoardAgent({ actor: "fixture", boards: ["board_tasknode_fixes"], credentialId: "c" }, () => referMerge({ prUrl: "https://example.test/pr/1", boardId: "board_tasknode_fixes" })), { status: 422, message: /operator_target_unresolved/ });
+});
+
 after(async () => { mock.restoreAll(); await closePool(); });

@@ -385,19 +385,34 @@ export async function cancelTask({ taskId, reason = "", execute = false, staleOn
   };
 }
 
-function operatorTarget({ operatorAccount = "", operatorWallet = "" } = {}) {
-  const accountId = operatorAccount || process.env.BM_OPERATOR_ACCOUNT_ID || "";
-  const wallet = operatorWallet || process.env.BM_OPERATOR_WALLET || "";
+export const OPERATOR_HANDLE = "goodalexander";
+
+// The operator who receives merge and badge referrals. Explicit flags win,
+// then environment, then the durable record: the account carrying the
+// operator handle and its current linked wallet. The scoped API has no
+// BM_OPERATOR_* environment, so the lookup is what production uses.
+async function operatorTarget({ operatorAccount = "", operatorWallet = "" } = {}) {
+  let accountId = safeText(operatorAccount, 180) || process.env.BM_OPERATOR_ACCOUNT_ID || "";
+  let wallet = safeText(operatorWallet, 120) || process.env.BM_OPERATOR_WALLET || "";
+  if (!accountId) {
+    const found = await query("SELECT id FROM app_accounts WHERE lower(hive_handle)=lower($1) AND status='active' ORDER BY updated_at DESC LIMIT 1", [OPERATOR_HANDLE]);
+    accountId = found.rows[0]?.id || "";
+  }
+  if (accountId && !wallet) {
+    const { getLinkedWallet } = await import("../../server/repositories/account-wallets.js");
+    const linked = await getLinkedWallet({ accountId });
+    wallet = linked?.status === "linked" ? linked.address || "" : "";
+  }
   if (!accountId || !wallet) {
-    throw new Error(
-      "operator target missing: set BM_OPERATOR_ACCOUNT_ID and BM_OPERATOR_WALLET or pass --operator-account/--operator-wallet"
-    );
+    throw Object.assign(new Error(
+      `operator_target_unresolved: no active account with handle ${OPERATOR_HANDLE} and a linked wallet; pass --operator-account/--operator-wallet or set BM_OPERATOR_ACCOUNT_ID/BM_OPERATOR_WALLET`
+    ), { status: 422 });
   }
   return { accountId, wallet };
 }
 
 export async function referBadge({ accountId, badgeId, evidence = "", boardId = "board_tasknode_fixes", execute = false, operatorAccount = "", operatorWallet = "" }) {
-  const operator = operatorTarget({ operatorAccount, operatorWallet });
+  const operator = await operatorTarget({ operatorAccount, operatorWallet });
   const need = [
     `Badge approval request: grant badge \`${badgeId}\` to account \`${accountId}\`.`,
     `Screened by the board manager as worth approving. Evidence: ${safeText(evidence, 1500) || "see attached task history"}.`,
@@ -418,8 +433,8 @@ export async function referBadge({ accountId, badgeId, evidence = "", boardId = 
 }
 
 export async function referMerge({ prUrl, summary = "", boardId, execute = false, operatorAccount = "", operatorWallet = "" }) {
-  if (!safeText(prUrl)) throw new Error("--pr-url required");
-  const operator = operatorTarget({ operatorAccount, operatorWallet });
+  if (!safeText(prUrl)) throw Object.assign(new Error("--pr-url required"), { status: 400 });
+  const operator = await operatorTarget({ operatorAccount, operatorWallet });
   const need = [
     `PR merge review: ${prUrl}.`,
     `Board manager initial review passed. ${safeText(summary, 1500)}`,
