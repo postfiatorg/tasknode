@@ -16,6 +16,7 @@ import { DEEP_RESEARCH_MODE, DEEP_RESEARCH_PLACEHOLDER, createDeepResearchJob } 
 import { createDecisionJob, DECISION_MODE, DECISION_PLACEHOLDER } from "./decisions-client.js";
 import { useDecisionPolling } from "./use-decision-polling.js";
 import { useDeepResearchPolling } from "./use-deep-research-polling.js";
+import { ComposerModeChip } from "./ComposerModeChip.jsx";
 import { ToolMenuRow } from "../shell/ShellControls";
 import { publishTaskRequest } from "../tasks/task-request-actions.js";
 import { evaluateTaskRequestUnlockPolicy } from "../tasks/task-request-unlock-policy.js";
@@ -76,6 +77,14 @@ export function ChatSurface({
   const [deepResearchMode, setDeepResearchMode] = useState(false);
   const [decisionMode, setDecisionMode] = useState(false);
   const [decisionUseContext, setDecisionUseContext] = useState(true);
+  // Composer modes are mutually exclusive; no argument clears them all.
+  function selectComposerMode(mode = "") {
+    setTaskRequestMode(mode === "task");
+    setContextEditMode(mode === "edit");
+    setContextRewriteMode(mode === "rewrite");
+    setDeepResearchMode(mode === "research");
+    setDecisionMode(mode === "decision");
+  }
   const [contextEditSavingId, setContextEditSavingId] = useState("");
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
@@ -134,11 +143,7 @@ export function ChatSurface({
   }
   function activateChatModality(modality) {
     persistChatPersona(modality.id);
-    setTaskRequestMode(false);
-    setContextEditMode(false);
-    setContextRewriteMode(false);
-    setDeepResearchMode(false);
-    setDecisionMode(false);
+    selectComposerMode();
     setModalityMenuOpen(false);
     setPlusMenuOpen(false);
     setSendMessage("");
@@ -222,11 +227,7 @@ export function ChatSurface({
   }, [accountId, storedChatPersona]);
   useEffect(() => {
     if (!signedOut) return;
-    setTaskRequestMode(false);
-    setContextEditMode(false);
-    setContextRewriteMode(false);
-    setDeepResearchMode(false);
-    setDecisionMode(false);
+    selectComposerMode();
     setSelectedMode("Help");
     setSelectedPersona(DEFAULT_CHAT_PERSONA);
     setPlusMenuOpen(false);
@@ -247,11 +248,7 @@ export function ChatSurface({
     setTurns([]);
     setInput("");
     setAttachments([]);
-    setTaskRequestMode(false);
-    setContextEditMode(false);
-    setContextRewriteMode(false);
-    setDeepResearchMode(false);
-    setDecisionMode(false);
+    selectComposerMode();
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -267,11 +264,7 @@ export function ChatSurface({
       return undefined;
     }
     clearedChatRef.current = false;
-    setTaskRequestMode(false);
-    setContextEditMode(false);
-    setContextRewriteMode(false);
-    setDeepResearchMode(false);
-    setDecisionMode(false);
+    selectComposerMode();
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -312,11 +305,7 @@ export function ChatSurface({
     if (!contextRefinePending) return;
     onContextRefineHandled?.();
     if (signedOut) return;
-    setTaskRequestMode(false);
-    setContextRewriteMode(false);
-    setDeepResearchMode(false);
-    setDecisionMode(false);
-    setContextEditMode(true);
+    selectComposerMode("edit");
     setSendMessage("");
     setStatusTone("muted");
     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -325,11 +314,7 @@ export function ChatSurface({
     if (!contextRewritePending) return;
     onContextRewriteHandled?.();
     if (signedOut) return;
-    setTaskRequestMode(false);
-    setContextEditMode(false);
-    setDeepResearchMode(false);
-    setDecisionMode(false);
-    setContextRewriteMode(true);
+    selectComposerMode("rewrite");
     setSendMessage("Context Rewrite uses multiple model calls and web research, so the charge may be higher than a normal chat call.");
     setStatusTone("muted");
     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1045,49 +1030,16 @@ export function ChatSurface({
             onShowInText={showAttachmentInTextField}
           />
         )}
-        {contextEditMode && (
-          <div className="composer-mode-chip">
-            <Wand2 size={13} strokeWidth={1.9} />
-            <span>Context Refine</span>
-            <button aria-label="Exit Context Refine" onClick={() => setContextEditMode(false)} type="button">
-              <X size={12} strokeWidth={2} />
-            </button>
-          </div>
-        )}
+        {contextEditMode && <ComposerModeChip icon={Wand2} label="Context Refine" onExit={() => setContextEditMode(false)} />}
         {decisionMode && (
           <div className="decision-composer-options">
-            <div className="composer-mode-chip">
-              <Lightbulb size={13} strokeWidth={1.9} />
-              <span>Decisions · Budget</span>
-              <button aria-label="Exit Decisions" onClick={() => setDecisionMode(false)} type="button"><X size={12} strokeWidth={2} /></button>
-            </div>
+            <ComposerModeChip exitLabel="Decisions" icon={Lightbulb} label="Decisions · Budget" onExit={() => setDecisionMode(false)} />
             <label><input type="checkbox" checked={decisionUseContext} onChange={event => setDecisionUseContext(event.target.checked)} /> Use my context and chat memory</label>
           </div>
         )}
-        {deepResearchMode && (
-          <div className="composer-mode-chip">
-            <Search size={13} strokeWidth={1.9} />
-            <span>Deep Research</span>
-            <button aria-label="Exit Deep Research" onClick={() => setDeepResearchMode(false)} type="button">
-              <X size={12} strokeWidth={2} />
-            </button>
-          </div>
-        )}
-        {contextRewriteMode && (
-          <div className="composer-mode-chip">
-            <FileText size={13} strokeWidth={1.9} />
-            <span>Context Rewrite</span>
-            <button aria-label="Exit Context Rewrite" onClick={() => setContextRewriteMode(false)} type="button">
-              <X size={12} strokeWidth={2} />
-            </button>
-          </div>
-        )}
-        {isHiveChat && (
-          <div className="composer-mode-chip">
-            <Network size={13} strokeWidth={1.9} />
-            <span>{HIVE_CHAT_TITLE}</span>
-          </div>
-        )}
+        {deepResearchMode && <ComposerModeChip icon={Search} label="Deep Research" onExit={() => setDeepResearchMode(false)} />}
+        {contextRewriteMode && <ComposerModeChip icon={FileText} label="Context Rewrite" onExit={() => setContextRewriteMode(false)} />}
+        {isHiveChat && <ComposerModeChip icon={Network} label={HIVE_CHAT_TITLE} />}
         {activeModality && !isHiveChat && (
           <div className="composer-mode-chip">
             <ActivePersonaIcon size={13} strokeWidth={1.9} />
@@ -1153,11 +1105,7 @@ export function ChatSurface({
                   label="Context Refine"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    setTaskRequestMode(false);
-                    setContextRewriteMode(false);
-                    setDeepResearchMode(false);
-                    setDecisionMode(false);
-                    setContextEditMode(true);
+                    selectComposerMode("edit");
                     setSendMessage("");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1168,11 +1116,7 @@ export function ChatSurface({
                   label="Context Rewrite"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    setTaskRequestMode(false);
-                    setContextEditMode(false);
-                    setDeepResearchMode(false);
-                    setDecisionMode(false);
-                    setContextRewriteMode(true);
+                    selectComposerMode("rewrite");
                     setSendMessage("Context Rewrite uses multiple model calls and web research, so the charge may be higher than a normal chat call.");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1184,11 +1128,7 @@ export function ChatSurface({
                   label="Decisions"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    setTaskRequestMode(false);
-                    setContextEditMode(false);
-                    setContextRewriteMode(false);
-                    setDeepResearchMode(false);
-                    setDecisionMode(true);
+                    selectComposerMode("decision");
                     setSendMessage("Budget Decisions: one research report, three Flash votes, and a full Kimi K3 rewrite. You can leave and return to this chat.");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1200,11 +1140,7 @@ export function ChatSurface({
                   label="Deep Research"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    setTaskRequestMode(false);
-                    setContextEditMode(false);
-                    setContextRewriteMode(false);
-                    setDeepResearchMode(true);
-                    setDecisionMode(false);
+                    selectComposerMode("research");
                     setSendMessage("Deep Research runs privately through Corbanu and can take several minutes. You can leave and return to the chat.");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1215,11 +1151,7 @@ export function ChatSurface({
                   label="Request a task"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    setTaskRequestMode(true);
-                    setContextEditMode(false);
-                    setContextRewriteMode(false);
-                    setDeepResearchMode(false);
-                    setDecisionMode(false);
+                    selectComposerMode("task");
                     setSendMessage("");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1262,11 +1194,7 @@ export function ChatSurface({
                                 /* storage unavailable: selection still applies for this session */
                               }
                             }
-                            setTaskRequestMode(false);
-                            setContextEditMode(false);
-                            setContextRewriteMode(false);
-                            setDeepResearchMode(false);
-                            setDecisionMode(false);
+                            selectComposerMode();
                             setPersonaMenuOpen(false);
                             setPlusMenuOpen(false);
                             window.setTimeout(() => inputRef.current?.focus(), 0);
