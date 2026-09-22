@@ -420,6 +420,8 @@ export async function networkAllocationHealthItem(tables, _nowMs) {
       executed_creates_7d: aggregate.executed_creates_7d ?? 0,
       distinct_accounts_offered_7d: aggregate.distinct_accounts_offered_7d ?? 0,
       live_allocations: aggregate.live_allocations ?? 0,
+      submissions_awaiting_manager: aggregate.submissions_awaiting_manager ?? 0,
+      oldest_submission_wait_minutes: Math.round((aggregate.oldest_submission_wait_ms ?? 0) / 60_000),
     },
     lastError: "",
     details: [
