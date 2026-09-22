@@ -222,12 +222,31 @@ export async function taskCreate({
   const cappedMax = Math.min(Number(rewardMax) || perTask, perTask, badgeCap > 0 ? badgeCap : perTask);
   const cappedMin = Math.min(Number(rewardMin) || 0, cappedMax);
 
-  const { buildBoardManagerSourcePacket, startBoardManagerRun, completeBoardManagerRun } =
+  const { startBoardManagerRun, completeBoardManagerRun } =
     await import("../../server/repositories/board-manager.js");
   const { executeBoardManagerDecision } = await import("../../server/board-manager-actions.js");
 
   const trigger = "board_manager_v2_task_create";
-  const sourcePacket = await buildBoardManagerSourcePacket({ trigger, scope: "global_hive" });
+  // A targeted assignment needs this board, this candidate and this need, not
+  // the global Hive planning packet. The global packet's task-ref join can
+  // exceed the command's 15-second statement budget; a timed-out statement
+  // aborts the transaction and every later step fails with "current
+  // transaction is aborted". Kimi has already selected the work.
+  const boardRow = (await query("SELECT id,title,status,metadata_json->'routing_constraints' AS routing_constraints FROM network_projects WHERE id=$1", [boardId])).rows[0] || { id: boardId };
+  const sourcePacket = {
+    schema: "pf.hive.board_manager.source.v0",
+    trigger,
+    scope: boardId,
+    board: boardRow,
+    budget,
+    candidate: { account_id: accountId, wallet, assignee_handle: safeText(assigneeHandle, 120) },
+    need: safeText(need, 8000),
+    reward_band: { min: cappedMin, max: cappedMax },
+    work_type: workType,
+    required_badge_id: requiredBadge || "",
+    retry_failed: retryFailed === true,
+  };
+  sourcePacket.sourcePacketDigest = sha256(sourcePacket);
   const decision = {
     action: "initiate_network_task",
     target_type: "network_project",
