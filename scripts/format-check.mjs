@@ -20,7 +20,7 @@ const ignoredPathPrefixes = [
   "work_in_progress/",
 ];
 
-const ignoredFiles = new Set(["package-lock.json", "PUBLICATION.json", "login.jsx"]);
+const ignoredFiles = new Set(["package-lock.json", "PUBLICATION.json"]);
 
 function trackedFiles() {
   let candidates = [];

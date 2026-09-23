@@ -613,7 +613,7 @@ The detail modal is state-specific.
 
 When a task is proposed or accepted, the overview shows the original task offer: description, steps, evidence requirement, and any Hive routing context. This helps the user decide what work is being requested.
 
-When a task enters `verification_requested`, the detail view uses the compact verification layout from `mocks/verify.jsx`. The overview shows a short `Original task` summary so the user knows what work the verification belongs to, but the full offer, steps, and Hive routing context stay behind a `Show` toggle. The active `Verification requested` ask appears directly below that summary, followed by a `Respond in Submit` action and a visible lifecycle-provided cancel control. The cancel control stays secondary in styling so it does not compete with the current verification requirement.
+When a task enters `verification_requested`, the detail view uses the compact verification layout from the verification design mock. The overview shows a short `Original task` summary so the user knows what work the verification belongs to, but the full offer, steps, and Hive routing context stay behind a `Show` toggle. The active `Verification requested` ask appears directly below that summary, followed by a `Respond in Submit` action and a visible lifecycle-provided cancel control. The cancel control stays secondary in styling so it does not compete with the current verification requirement.
 
 The Submit tab repeats the current verification request in a collapsible block, then focuses on the user's response. It starts with one evidence item. A second item appears only when the user clicks `Add second evidence`; mixed evidence requirements do not auto-open a second blank card.
 

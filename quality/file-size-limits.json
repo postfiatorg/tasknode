@@ -42,10 +42,6 @@
       "maxLines": 1000
     },
     {
-      "prefix": "mocks/",
-      "maxLines": 5000
-    },
-    {
       "prefix": "work_in_progress/",
       "maxLines": 2000
     }
