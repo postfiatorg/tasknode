@@ -263,12 +263,12 @@ Hot activity should use the rapid PFTL RPC/WSS. Historical backfill should use t
 ```text
 npm run pftl-cache-smoke
 npm run pftl-cache-watcher-smoke
-npm run wallet-realtime-events-smoke
-npm run db:pftl-cache-smoke
+node scripts/realtime-wallet-events-smoke.mjs
+node scripts/run-smokes.mjs db scripts/pftl-cache-postgres-smoke.mjs
 npm run db:pftl-cache-watcher-stress
-npm run db:pftl-cache-reducer-smoke
-npm run db:pftl-cache-archive-smoke
-npm run db:pftl-cache-health-retention-smoke
+node scripts/run-smokes.mjs db scripts/pftl-cache-reducer-postgres-smoke.mjs
+node scripts/run-smokes.mjs db scripts/pftl-cache-archive-postgres-smoke.mjs
+node scripts/run-smokes.mjs db scripts/pftl-cache-health-retention-postgres-smoke.mjs
 npm run db:pftl-pointer-observation-backfill -- --limit=10000
 npm run data-architecture-audit
 npm run task-replay-repair -- --task-id=<task_id>

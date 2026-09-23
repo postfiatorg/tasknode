@@ -16,7 +16,7 @@ import { listDailyProfileNftCandidates, createDailyProfileNftAward, markDailyPro
 import { metadataForNft } from "../server/profile-nft-mint.js";
 
 assert.ok(databaseEnabled(), "Run against an isolated fixture database");
-assert.ok(new URL(process.env.DATABASE_URL).pathname.includes("tasknode_nft_"), "Dedicated NFT fixture DB required");
+assert.ok(new URL(process.env.DATABASE_URL).pathname.endsWith("_test"), "Use a disposable *_test database");
 const prefix = `nft_pipeline_${randomUUID()}`;
 const ids = ["zero","two","mixed","personal","network","rejected","with_art"].map((name) => `${prefix}_${name}`);
 const [zero,two,mixed,personal,network,rejected,withArt] = ids;

@@ -282,7 +282,7 @@ idempotency tests, not a route to the official worker fleet.
 Packet boundary regression:
 
 ```bash
-npm run profile-daily-airdrop-packet-smoke
+node scripts/profile-daily-airdrop-packet-smoke.mjs
 ```
 
 This smoke inserts a user wallet only through `pftl_sync_wallets`, creates a

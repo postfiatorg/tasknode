@@ -18,7 +18,7 @@ function usage() {
     "Fresh IPFS CID replication check",
     "",
     "Usage:",
-    "  npm run ipfs-new-write-replication-check -- --lookback-hours 24 --require-clean-gateway",
+    "  node scripts/ipfs-new-write-replication-check.mjs -- --lookback-hours 24 --require-clean-gateway",
     "",
     "Options:",
     "  --lookback-hours <n>       Window to inspect. Default: 24",

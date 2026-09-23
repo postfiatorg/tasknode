@@ -42,7 +42,7 @@ Red means due profile work is stale or no completed profile exists when enabled.
 Run the profile smoke and verify workers:
 
 ```bash
-npm run network-task-profile-smoke
+node scripts/network-task-profile-smoke.mjs
 npm run fly:background-guard
 ```
 

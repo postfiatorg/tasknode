@@ -30,7 +30,7 @@ report has ever completed while the worker is enabled.
 Run the focused Hive context smoke and verify the background worker:
 
 ```bash
-npm run hive-context-smoke
+node scripts/hive-context-smoke.mjs
 npm run fly:background-guard
 ```
 

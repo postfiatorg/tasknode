@@ -28,7 +28,7 @@ is beyond the stale threshold.
 Run cache and watcher smoke checks:
 
 ```bash
-npm run db:pftl-cache-smoke
+node scripts/run-smokes.mjs db scripts/pftl-cache-postgres-smoke.mjs
 npm run pftl-cache-watcher-smoke
 ```
 

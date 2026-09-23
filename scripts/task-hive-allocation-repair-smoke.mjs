@@ -12,7 +12,7 @@ process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 
 const url = new URL(process.env.DATABASE_URL);
 assert.ok(["127.0.0.1", "localhost"].includes(url.hostname), "Fixture must use local Postgres");
-assert.equal(url.pathname, "/tasknode_hive_audit_20260919", "Fixture must use its dedicated disposable database");
+assert.ok(url.pathname.endsWith("_test"), "Fixture must use a disposable *_test database");
 const prefix = "hive_repair_" + randomUUID();
 const ids = Array.from({ length: 103 }, (_, index) => prefix + "_" + String(index + 1).padStart(3, "0"));
 const requestId = prefix + "_exhausted";

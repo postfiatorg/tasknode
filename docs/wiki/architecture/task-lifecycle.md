@@ -65,7 +65,7 @@ offchain copy in dual-write mode. Offer, evidence, verification and reward
 producers retain their existing contracts.
 
 Run `node --test scripts/offchain-task-event-integrity.test.mjs` for the focused
-regression suite, together with `npm run offchain-task-lifecycle-smoke`.
+regression suite, together with `node scripts/offchain-task-lifecycle-smoke.mjs`.
 
 ## Evidence
 

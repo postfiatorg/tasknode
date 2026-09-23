@@ -146,10 +146,22 @@ export function legacyTerminalAuthSnapshotForMigration() {
 export function legacyAccountStateSnapshotForMigration() {
   return structuredClone({ accounts: state.accounts || {}, emails: state.accountEmails || {}, identities: state.accountIdentities || {} });
 }
-export function replaceRuntimeAccountStateFromDurable(snapshot = {}) {
-  state.accounts = plainObject(snapshot.accounts);
-  state.accountEmails = plainObject(snapshot.emails);
-  state.accountIdentities = plainObject(snapshot.identities);
+// With accountIds, only those accounts (and their email/identity keys) are
+// replaced; without, the whole durable snapshot replaces the cache.
+export function replaceRuntimeAccountStateFromDurable({ accountIds = null, accounts = {}, emails = {}, identities = {} } = {}) {
+  if (!accountIds) {
+    state.accounts = plainObject(accounts);
+    state.accountEmails = plainObject(emails);
+    state.accountIdentities = plainObject(identities);
+  } else {
+    const ids = new Set(accountIds);
+    for (const id of ids) delete state.accounts[id];
+    for (const [key, id] of Object.entries(state.accountEmails)) if (ids.has(id)) delete state.accountEmails[key];
+    for (const [key, id] of Object.entries(state.accountIdentities)) if (ids.has(id)) delete state.accountIdentities[key];
+    Object.assign(state.accounts, plainObject(accounts));
+    Object.assign(state.accountEmails, plainObject(emails));
+    Object.assign(state.accountIdentities, plainObject(identities));
+  }
   saveState();
 }
 export function clearLegacyTerminalAuthAfterMigration() {

@@ -92,7 +92,7 @@ Unlink rules:
 - Founding-identity safety: account ids are derived from the identity that
   created the account. A founding identity that has been unlinked does not
   re-enter its old account on a later login; it founds a fresh account
-  instead. `npm run account-unlink-provider-smoke` pins all of these rules.
+  instead. `node scripts/account-unlink-provider-smoke.mjs` pins all of these rules.
 
 Discord login and linking are implemented through OAuth and currently enabled in production, while remaining outside the core launch surface:
 
@@ -153,7 +153,7 @@ The current identity product contract is split between this architecture page an
 
 Password login, retained browser accounts, profile-dropdown switching, and the
 required distinct-wallet isolation boundary are specified in
-[`multi-account-password-wallet-spec.md`](./multi-account-password-wallet-spec.md).
+[`multi-account-password-wallet-spec.md`](../../plans/multi-account-password-wallet-spec.md).
 The repository implements that contract. Deployment remains conditional on the
 target environment passing the active-wallet and sync-assignment ownership
 audit; the rollout must never select or move an owner automatically.
@@ -282,7 +282,7 @@ Run:
 
 ```bash
 npm run auth-login-state-fixture
-npm run multi-account-password-wallet-smoke
+node scripts/multi-account-password-wallet-smoke.mjs
 npm run account-wallet-repository-smoke
 DATABASE_URL=... npm run wallet-account-isolation-audit
 ```
@@ -295,7 +295,7 @@ Expected final line:
 auth_login_state_fixture_passed transitions=14
 ```
 
-The script is intentionally part of `npm run quality` so future auth changes cannot silently break email, Telegram, Discord, X linking, stale state rejection, or logout.
+Run it before changing auth so email, Telegram, Discord, X linking, stale state rejection, and logout stay covered.
 
 ## Code References
 

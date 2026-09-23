@@ -10,5 +10,5 @@ retained for audit. The current read model returns no live planner job, and
 System Status no longer lists the retired helper. Operator archive locks and
 project rollup repair remain supported.
 
-Use `npm run hive-secretary-project-views-smoke` for the retained secretary and
+Use `node scripts/hive-secretary-project-views-smoke.mjs` for the retained secretary and
 project-view boundary. See [board management](board-manager.md).

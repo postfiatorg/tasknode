@@ -9,7 +9,7 @@ import { executeBoardAgentCommand } from "../server/board-agent-routes.js";
 import { dutyId, openAgentRound, recordDutyResult } from "../server/board-agent-rounds.js";
 process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 
-assert.ok(new URL(process.env.DATABASE_URL).pathname.includes("routing_"), "Use the isolated routing fixture database");
+assert.ok(new URL(process.env.DATABASE_URL).pathname.endsWith("_test"), "Use a disposable *_test database");
 const prefix = `routing_fixture_${randomUUID()}`;
 const board = "board_pf_terminal", otherBoard = "board_capital_markets";
 const account = `${prefix}_account`, token = randomUUID();

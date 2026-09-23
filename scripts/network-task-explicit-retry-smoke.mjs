@@ -10,7 +10,7 @@ import { executeBoardAgentCommand } from "../server/board-agent-routes.js";
 process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 const url = new URL(process.env.DATABASE_URL);
 assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
-assert.equal(url.pathname, "/tasknode_hive_audit_20260919");
+assert.ok(url.pathname.endsWith("_test"), "Use a disposable *_test database");
 const id = "network_retry_" + randomUUID(), wallet = "rExplicitRetryFixture", board = "board_pf_terminal";
 const request = retry => ({ decision: { action: "initiate_network_task", target_id: board, payload: { network_task: {
   candidate_account_id: id, candidate_wallet_address: wallet, project_need_summary: "Implement a bounded provider-recovery control with regression evidence.",

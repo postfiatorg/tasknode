@@ -58,4 +58,4 @@ Messaging is a separate first-class surface under **More -> Messages**. A user e
 - Schema: migrations `110_docs_team_collaboration.sql` and `130_team_context_reports.sql`.
 - Feature flag: `TASKNODE_TEAM_ENABLED`.
 
-Verification: `npm run collaboration-contract-smoke`, `npm run team-task-popout-smoke`, and `docker exec tasknodeofficial-api-1 node scripts/team-context-smoke.mjs` in the local Docker stack.
+Verification: `node scripts/collaboration-contract-smoke.mjs` and `docker exec tasknodeofficial-api-1 node scripts/team-context-smoke.mjs` in the local Docker stack.
