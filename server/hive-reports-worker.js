@@ -19,6 +19,17 @@ let timer = null;
 let running = false;
 let scheduled = null;
 const manualReportReruns = new Map();
+// Due-ness is measured from the last successful report, so without this a
+// report that keeps failing was retried every tick: on 2026-09-23 a truncated
+// hive_intelligence report ran every ~3 minutes for 19 hours at ~100K tokens each.
+const reportFailures = new Map();
+
+// Failed attempts back off exponentially from 15 minutes, never past the cadence.
+export function reportRetryAt({ failures = 0, cadenceMs = 0, now = Date.now() } = {}) {
+  if (failures < 1) return 0;
+  const backoffMs = Math.min(15 * 60_000 * 2 ** Math.min(failures - 1, 10), cadenceMs || Infinity);
+  return Number(now) + backoffMs;
+}
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -202,6 +213,11 @@ export async function runHiveReportsWorkerOnce({
   const skipped = [];
   const errors = [];
   for (const type of normalizedTypes) {
+    const failure = reportFailures.get(type);
+    if (!force && failure && failure.retryAt > Number(now)) {
+      skipped.push({ type, reason: "backing_off_after_failure", failures: failure.count, retryAt: new Date(failure.retryAt).toISOString() });
+      continue;
+    }
     try {
       const due = force ? { due: true, forced: true } : await hiveReportDue({ type, now });
       if (!due.due) {
@@ -209,6 +225,7 @@ export async function runHiveReportsWorkerOnce({
         continue;
       }
       const result = await generateHiveReport({ type, now, fetchImpl });
+      reportFailures.delete(type);
       generated.push({
         type,
         reportId: result.report?.id || "",
@@ -217,9 +234,14 @@ export async function runHiveReportsWorkerOnce({
         verificationCount: result.report?.verificationCount || 0,
       });
     } catch (error) {
+      const count = (failure?.count || 0) + 1;
+      const retryAt = reportRetryAt({ failures: count, cadenceMs: hiveReportTypes[type]?.cadenceMs, now });
+      reportFailures.set(type, { count, retryAt });
       errors.push({
         type,
         error: error?.message || String(error),
+        failures: count,
+        retryAt: new Date(retryAt).toISOString(),
       });
     }
   }
