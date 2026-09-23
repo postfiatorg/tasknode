@@ -40,7 +40,7 @@ try {
       return { rows: [], rowCount: 1 };
     },
   };
-  const result = await runDataRetention({ now, databaseReady: true, transactionImpl: (work) => work(client), queryImpl: client.query });
+  const result = await runDataRetention({ now, databaseReady: true, transactionImpl: (work) => work(client), queryImpl: client.query, batchSize: 1000 });
   assert.equal(result.enabled, true);
   assert.equal(result.database.conversations, 1);
   assert.deepEqual(calls[0].params, ["2026-07-16T12:00:00.000Z", 1000]);
