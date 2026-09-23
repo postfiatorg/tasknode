@@ -1,4 +1,5 @@
 import { collapseWhitespace, isIdentifierChar, isWhitespace } from "./inference-text.js";
+import { replaceCharacterRuns, trimCharacters } from "../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 import { Wallet } from "xrpl";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
@@ -397,7 +398,8 @@ export function coerceVerificationPolicy(raw, requirement = {}, policy = {}, evi
   if (typeof followup !== "boolean") followup = safeText(policy.task_class || policy.requested_task_kind, 40) === "network" || requirement.type !== undefined;
   let mode = safeText(pick("mode", "verification_mode", "followup_mode", "review_mode"), 120);
   if (!mode) mode = "standard_followup";
-  let type = safeText(pick("verification_type", "verificationType", "type", "evidence_type", "followup_type"), 80).toLowerCase().replace(/[\s-]+/g, "_");
+  let type = safeText(pick("verification_type", "verificationType", "type", "evidence_type", "followup_type"), 80).toLowerCase();
+  type = replaceCharacterRuns(type, (char) => isWhitespace(char) || char === "-", "_");
   if (!evidenceTypes.includes(type)) type = VERIFICATION_TYPE_ALIASES[type] || "";
   if (!type) type = evidenceTypes.includes(requirement.type) ? requirement.type : "mixed";
   return { followup_required: followup, mode, verification_type: type };
@@ -422,7 +424,7 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
   const seenSteps = new Set();
   const steps = normalizeTaskSteps(output.steps, { clean: safeText }).filter((step) => {
     const key = collapseWhitespace(step).toLowerCase();
-    if (seenSteps.has(key) || TASKGEN_OUTPUT_KEYS.has(key.replace(/^[\s"'`*:.-]+|[\s"'`*:.-]+$/g, ""))) return false;
+    if (seenSteps.has(key) || TASKGEN_OUTPUT_KEYS.has(trimCharacters(key, " \"'`*:.-"))) return false;
     seenSteps.add(key);
     return true;
   });

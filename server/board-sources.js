@@ -6,6 +6,7 @@
 // canonical remote, cached with a fetched_at timestamp, and reported with an
 // explicit status so an outage is a visible input problem, never a silent
 // "nothing to route".
+import { isAsciiDigit, isAsciiLetter, stripPrefix } from "../shared/text-protocol.js";
 import { query as defaultQuery } from "./db/pool.js";
 
 export const SOURCE_TTL_MS = 30 * 60_000;
@@ -32,7 +33,8 @@ export function resolveRepoFullName(name, env = process.env) {
   if (env.TASKNODE_BOARD_SOURCE_REPO_MAP) {
     try { map = { ...DEFAULT_REPO_MAP, ...JSON.parse(env.TASKNODE_BOARD_SOURCE_REPO_MAP) }; } catch { map = DEFAULT_REPO_MAP; }
   }
-  if (/^[\w.-]+\/[\w.-]+$/.test(text)) return text;
+  const parts = text.split("/");
+  if (parts.length === 2 && parts.every((part) => part && [...part].every((char) => isAsciiLetter(char) || isAsciiDigit(char) || "_.-".includes(char)))) return text;
   return map[text] || "";
 }
 
@@ -105,10 +107,20 @@ export async function fetchXAccountSnapshot(handle, { bearer = process.env.X_BEA
   };
 }
 
+function htmlTitle(html = "") {
+  const lower = html.toLowerCase();
+  const open = lower.indexOf("<title");
+  const start = open < 0 ? -1 : html.indexOf(">", open) + 1;
+  if (start <= 0) return "";
+  const end = html.indexOf("<", start);
+  if (end < 0 || end - start > 200 || !lower.startsWith("</title>", end)) return "";
+  return html.slice(start, end).trim();
+}
+
 export async function fetchWebsiteSnapshot(url, { fetchImpl = fetch } = {}) {
   const response = await fetchImpl(url, { headers: { "user-agent": "tasknode-board-sources" }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: "follow" });
   const text = response.ok ? (await response.text()).slice(0, 200_000) : "";
-  const title = /<title[^>]*>([^<]{0,200})<\/title>/i.exec(text)?.[1]?.trim() || "";
+  const title = htmlTitle(text);
   if (!response.ok) throw Object.assign(new Error(`source_http_${response.status}`), { status: response.status });
   return { url, http_status: response.status, title, bytes: text.length, last_modified: response.headers.get("last-modified") || null };
 }
@@ -120,7 +132,7 @@ export function sourceDescriptorsForBoard(board = {}) {
     const fullName = resolveRepoFullName(repo);
     descriptors.push({ id: `repo:${repo}`, kind: "github_repo", reference: fullName, unresolved: !fullName });
   }
-  for (const handle of Array.isArray(sources.x_accounts) ? sources.x_accounts : []) descriptors.push({ id: `x:${handle}`, kind: "x_account", reference: String(handle).replace(/^@/, "") });
+  for (const handle of Array.isArray(sources.x_accounts) ? sources.x_accounts : []) descriptors.push({ id: `x:${handle}`, kind: "x_account", reference: stripPrefix(String(handle), "@") });
   for (const url of Array.isArray(sources.websites) ? sources.websites : []) descriptors.push({ id: `web:${url}`, kind: "website", reference: String(url) });
   return descriptors;
 }

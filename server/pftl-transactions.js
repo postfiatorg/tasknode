@@ -8,6 +8,7 @@ const RIPPLE_EPOCH_OFFSET = 946684800;
 const DEFAULT_LIMIT = 50;
 const DEFAULT_CACHE_TTL_MS = 30_000;
 const txCache = new Map();
+const MAX_TX_CACHE_ENTRIES = 1000;
 
 function clampInteger(value, fallback, min, max) {
   const number = Number(value);
@@ -316,7 +317,9 @@ export async function fetchWalletTransactions(walletAddress, {
       source: "pftl_cache",
       sync: cachedAccountTx.sync,
     };
+    txCache.delete(cacheKey);
     txCache.set(cacheKey, { cachedAtMs: now, result });
+    if (txCache.size > MAX_TX_CACHE_ENTRIES) txCache.delete(txCache.keys().next().value);
     return result;
   } catch (error) {
     return {
