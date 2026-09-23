@@ -135,8 +135,10 @@ const search = normalizeInferenceRequest(searchBody, { env, capability: "researc
 assert.deepEqual(search.tools, [{ type: "vercel:exa_search", config: { query: "structured research query", num_results: 3 } }]);
 assert.equal(search.tool_choice, "required");
 assert.equal(Object.hasOwn(search, "enabled_tools"), false);
+assert.deepEqual(search.providerOptions.gateway.tags.slice(0, 2), [`role:${env.TASKNODE_PROCESS_ROLE || "other"}`, "cap:research_text"]);
 const backupSearch = normalizeInferenceRequest(searchBody, { provider: "ambient", env, capability: "research_text" });
 assert.deepEqual(backupSearch.enabled_tools, ["websearch"]);
+assert.equal(Object.hasOwn(backupSearch, "providerOptions"), false);
 assert.equal(Object.hasOwn(backupSearch, "tools"), false);
 const imageRequest = normalizeInferenceRequest({ ...body, messages: [{ role: "user", content: [{ type: "input_image", url: "https://images.invalid/example.png" }] }] }, { env });
 assert.equal(imageRequest.model, INFERENCE_MODELS.vision);
