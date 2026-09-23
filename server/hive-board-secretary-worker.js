@@ -9,6 +9,8 @@ import {
 import {
   buildHiveBoardSecretarySourcePacket,
   completeHiveBoardSecretaryMemo,
+  currentHiveBoardSecretaryMemo,
+  hiveBoardContentDigest,
   failHiveBoardSecretaryMemo,
   listHiveBoardSecretaryProjects,
 } from "./repositories/hive-board-secretary.js";
@@ -37,6 +39,19 @@ function cadenceMs(env = process.env) {
 
 function initialDelayMs(env = process.env) {
   return intEnv("TASKNODE_HIVE_BOARD_SECRETARY_INITIAL_DELAY_MS", 15000, { min: 0, max: 900000, env });
+}
+
+function rosterRefreshMs(env = process.env) {
+  return intEnv("TASKNODE_HIVE_BOARD_SECRETARY_ROSTER_REFRESH_SECONDS", 21600, { min: 900, max: 604800, env }) * 1000;
+}
+
+// Each memo costs ~30K input tokens. A board whose own content is unchanged
+// keeps its memo; roster churn alone refreshes it at most every roster window.
+// Before this, every board regenerated every cadence tick (~100 memos/board/day).
+export function boardMemoIsFresh({ packet, current, now = Date.now(), refreshMs = rosterRefreshMs() } = {}) {
+  if (!current?.source_packet_json) return false;
+  if (hiveBoardContentDigest(packet) !== hiveBoardContentDigest(current.source_packet_json)) return false;
+  return now - new Date(current.created_at).getTime() < refreshMs;
 }
 
 function projectLimit(env = process.env) {
@@ -79,6 +94,10 @@ export async function runHiveBoardSecretaryOnce({
           sourcePacketDigest: sourcePacket.sourcePacketDigest,
           counts: sourcePacket.counts,
         });
+        continue;
+      }
+      if (boardMemoIsFresh({ packet: sourcePacket, current: await currentHiveBoardSecretaryMemo(project.id), refreshMs: rosterRefreshMs(env) })) {
+        results.push({ projectId: project.id, title: project.title, skipped: true, reason: "board_unchanged" });
         continue;
       }
       const memo = await fetchHiveBoardSecretaryMemo({

@@ -82,6 +82,21 @@ function digestJson(value = {}) {
   return createHash("sha256").update(JSON.stringify(stableValue(value)), "utf8").digest("hex");
 }
 
+// The board's own content, without the network-wide contributor roster that
+// changes whenever any contributor's profile does.
+export function hiveBoardContentDigest(packet = {}) {
+  const { version, project, taskState, boardComments, projectLeaderContext } = packet || {};
+  return digestJson({ version, project, taskState, boardComments, projectLeaderContext });
+}
+
+export async function currentHiveBoardSecretaryMemo(projectId = "") {
+  const result = await query(
+    "SELECT source_packet_json, created_at FROM hive_board_secretary_memos WHERE project_id = $1 AND status = 'current' ORDER BY created_at DESC LIMIT 1",
+    [safeText(projectId, 180)]
+  );
+  return result.rows[0] || null;
+}
+
 function oneLine(value = "", max = 1000) {
   return replaceCharacterRuns(safeText(value, max),isWhitespace," ");
 }
