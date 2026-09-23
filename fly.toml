@@ -21,7 +21,6 @@ kill_timeout = "45s"
   worker-memory-profile = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:memory-profile node server/worker-entry.js"
   worker-airdrop = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:airdrop node server/worker-entry.js"
   worker-nft-renderer = "env TASKNODE_PROCESS_ROLE=worker:nft-renderer node server/worker-entry.js"
-  board-secretary = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=board-secretary node scripts/hive-board-secretary-worker.mjs"
 
 [env]
   PORT = "8080"
@@ -95,11 +94,6 @@ kill_timeout = "45s"
   TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES = "0xpostfiat,0xpostfiatchad,corbanuai,dravlic,goodalexander,iridiummaster,jimricketts,pleometric,postfiat-agent,secondfmaster"
   TASKNODE_PROJECT_LEADER_HIVE_HANDLES = "zoz,donravle,georgl0nggamma,jollydinger,nydiokar,hitori,wizbubba,diamond-hand-honcho,goodalexander"
   TASKNODE_JOBS_CORPUS_URL = "https://gist.githubusercontent.com/goodalexander/3246640dcf10db350fbae9fab8e6a473/raw/bd144a47532fbcba8dd4e8a6f81b605a034c4d16/jobs.md"
-  TASKNODE_HIVE_BOARD_SECRETARY_ENABLED = "true"
-  TASKNODE_HIVE_BOARD_SECRETARY_MODEL = "zai/glm-5.3"
-  TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS = "900"
-  TASKNODE_HIVE_BOARD_SECRETARY_PROJECT_LIMIT = "100"
-  TASKNODE_HIVE_BOARD_SECRETARY_DB_STATEMENT_TIMEOUT_MS = "60000"
   TASKNODE_TASK_REVIEW_WORKER_ENABLED = "true"
   TASKNODE_TASK_REVIEW_AGENT_DECISIONS = "true"
   DATABASE_STATEMENT_TIMEOUT_MS = "10000"
@@ -133,7 +127,7 @@ kill_timeout = "45s"
 
 [[restart]]
   policy = "always"
-  processes = ["app", "board-secretary", "worker-pftl", "worker-taskgen", "worker-task-review", "worker-context-rewrite", "worker-hive", "worker-memory-profile", "worker-airdrop", "worker-nft-renderer"]
+  processes = ["app", "worker-pftl", "worker-taskgen", "worker-task-review", "worker-context-rewrite", "worker-hive", "worker-memory-profile", "worker-airdrop", "worker-nft-renderer"]
 
 [http_service]
   internal_port = 8080

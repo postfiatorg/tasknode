@@ -2,6 +2,7 @@ import { startMemoryWorker } from "./chat-memory-worker.js";
 import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
 import { startHiveReportsWorker } from "./hive-reports-worker.js";
 import { startHiveGroupWorker } from "./hive-group-worker.js";
+import { startHiveBoardSecretaryWorker } from "./hive-board-secretary-worker.js";
 import { startBmNarratorWorker } from "./bm-narrator-worker.js";
 import { startIpfsReplicationWorker } from "./ipfs-replication-worker.js";
 import { startNetworkTaskGenerationWorker } from "./network-task-generation-worker.js";
@@ -54,6 +55,7 @@ function startHiveWorkers(startOne) {
   startOne("hive_group_chat", startHiveGroupWorker);
   startOne("hive_secretary", startHiveSecretaryWorker);
   startOne("hive_reports", startHiveReportsWorker);
+  startOne("hive_board_secretary", startHiveBoardSecretaryWorker);
   startOne("bm_narrator", startBmNarratorWorker);
 }
 
