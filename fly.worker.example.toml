@@ -16,7 +16,6 @@ primary_region = "replace-with-your-region"
   worker-memory-profile = "env TASKNODE_PROCESS_ROLE=worker:memory-profile node server/worker-entry.js"
   worker-airdrop = "env TASKNODE_PROCESS_ROLE=worker:airdrop node server/worker-entry.js"
   worker-nft-renderer = "env TASKNODE_PROCESS_ROLE=worker:nft-renderer node server/worker-entry.js"
-  board-secretary = "env TASKNODE_PROCESS_ROLE=board-secretary node scripts/hive-board-secretary-worker.mjs"
 
 [env]
   NODE_ENV = "production"

@@ -26,17 +26,16 @@ is not offered in `ewr`.
 | `worker-taskgen` | `node server/worker-entry.js` (role `worker:taskgen`) | Personal and network task generation |
 | `worker-task-review` | `node server/worker-entry.js` (role `worker:task-review`) | Verification, review, and reward transitions |
 | `worker-context-rewrite` | `node server/worker-entry.js` (role `worker:context-rewrite`) | Async Context rewrites |
-| `worker-hive` | `node server/worker-entry.js` (role `worker:hive`) | Hive context secretary, reports, and Kimi activity narrator |
+| `worker-hive` | `node server/worker-entry.js` (role `worker:hive`) | Hive context secretary, board-secretary memos, reports, and Kimi activity narrator |
 | `worker-memory-profile` | `node server/worker-entry.js` (role `worker:memory-profile`) | Memory and profile/recommendation work |
 | `worker-airdrop` | `node server/worker-entry.js` (role `worker:airdrop`) | Daily airdrop work |
 | `worker-nft-renderer` | `node server/worker-entry.js` (role `worker:nft-renderer`) | Isolated Profile NFT image rendering |
-| `board-secretary` | `node scripts/hive-board-secretary-worker.mjs` | Advisory Hive board-status memo generation |
 
 Kimi K3 in the operator-host Corbanu TUI is the production task manager.
-`board-secretary` writes advisory project-status memos. The obsolete GLM Hive
+The obsolete GLM Hive
 selector, legacy automatic manager launchers, experimental project planner,
 and disabled accounting harvester have been deleted. No deployment flag can
-restart those modules. `worker-hive` retains the three support workers above.
+restart those modules. 
 
 ## Current Release Command
 
@@ -60,7 +59,7 @@ The background guard is **read-only by default**. It verifies one active,
 `restart=always` machine for each of the nine background groups
 (`worker-pftl`, `worker-taskgen`, `worker-task-review`,
 `worker-context-rewrite`, `worker-hive`, `worker-memory-profile`,
-`worker-airdrop`, `board-secretary`, `worker-nft-renderer`). The `app` group is
+`worker-airdrop`, `worker-nft-renderer`). The `app` group is
 covered by the Fly HTTP health check on `/health`. The guard changes machines
 only when `scripts/fly-worker-guard.mjs` is invoked with `--fix`.
 

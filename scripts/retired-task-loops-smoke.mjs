@@ -14,7 +14,7 @@ for (const name of [
 
 const { startBackgroundWorkers } = await import("../server/background-workers.js");
 const expected = {
-  "worker:hive": ["hive_group_chat", "hive_secretary", "hive_reports", "bm_narrator"],
+  "worker:hive": ["hive_group_chat", "hive_secretary", "hive_reports", "hive_board_secretary", "bm_narrator"],
   "worker:taskgen": ["network_task_generation", "task_generation"],
   "worker:task-review": ["task_review"],
 };
@@ -35,7 +35,7 @@ for (const file of removed) {
   assert.equal(commands.some((command) => command.includes(file)), false, `${file} must have no npm launcher`);
 }
 for (const entries of [
-  ["server/index.js"], ["server/worker-entry.js", "scripts/hive-board-secretary-worker.mjs"], ["scripts/bm.mjs"],
+  ["server/index.js"], ["server/worker-entry.js"], ["scripts/bm.mjs"],
 ]) {
   const graph = runtimeGraph(entries);
   assert.deepEqual(graph.missing, [], `Unresolved imports from ${entries.join(", ")}`);

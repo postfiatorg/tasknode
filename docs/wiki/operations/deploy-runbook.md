@@ -6,17 +6,15 @@ rollbacks, and first-response deploy triage.
 
 ## Production Shape
 
-`fly.toml` defines the HTTP app, role-specific background workers, and the
-advisory board-secretary process group:
+`fly.toml` defines the HTTP app and role-specific background workers:
 
 ```text
 app                    node server/index.js            (role web)
 worker-*               node server/worker-entry.js     (role worker:<group>)
-board-secretary        node scripts/hive-board-secretary-worker.mjs
 ```
 
 Only `app` receives HTTP traffic. Every background process group
-(`board-secretary` plus the eight `worker-*` groups) must be verified after
+(the eight `worker-*` groups) must be verified after
 every deploy. Production rejects the monolith `worker` role unless
 `TASKNODE_ALLOW_MONOLITH_WORKER=true` is set explicitly.
 
@@ -66,8 +64,8 @@ requires an explicit `--fix` invocation.
 
 ### Process-group guard workflow
 
-The guard defaults to all ten process groups in `fly.toml`: `app`,
-`board-secretary`, `worker-pftl`, `worker-taskgen`,
+The guard defaults to all nine process groups in `fly.toml`: `app`,
+`worker-pftl`, `worker-taskgen`,
 `worker-task-review`, `worker-context-rewrite`, `worker-hive`,
 `worker-memory-profile`, `worker-airdrop`, and `worker-nft-renderer`. It reads live Machine JSON
 and prints every Machine's state and restart policy. The NFT renderer is required even when no artwork is queued; a stopped renderer must fail the post-deploy guard.
@@ -310,7 +308,6 @@ Expected:
 
 - `app` has a started machine and `/health` is green.
 - Every `worker-*` group has a started machine with `restart=always`.
-- `board-secretary` has a started machine with `restart=always`.
 - The newly deployed endpoint, config, migration, or UI behavior is visible on
   production.
 - Verify Kimi supervision on the operator host separately from Fly worker health.

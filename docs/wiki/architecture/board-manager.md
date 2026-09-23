@@ -21,8 +21,7 @@ harvester were also removed.
 | Kimi board manager | Operator-host Corbanu TUI; `kimi-code` / `kimi-k3` | Inspect boards, select work, and execute authorized `bm` commands |
 | Network/task generation | Fly `worker-taskgen`; GLM 5.3 | Prepare the request and generate the concrete task |
 | Task review publication | Fly `worker-task-review` | Consume Kimi decisions and publish verification/reward transitions |
-| GLM board secretary | Fly `board-secretary` | Advisory project memos |
-| Hive support | Fly `worker-hive` | Hive context secretary, reports, and Kimi activity narrator |
+| Hive support | Fly `worker-hive` | Hive context secretary, board secretary memos, reports, and Kimi activity narrator |
 
 ## Shared routing contract
 
