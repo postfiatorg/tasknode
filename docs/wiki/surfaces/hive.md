@@ -750,7 +750,7 @@ workflow.
 
 ## Technical Architecture
 
-The production app does not import from `mocks/hive.jsx`. The mock is preserved as design input, and the app route is implemented as normal source code:
+The production app does not import design mocks, and the app route is implemented as normal source code:
 
 - `src/features/hive/HiveView.jsx` renders the Hive index and project detail drill-in.
 - `src/features/hive/hive.css` contains the isolated styling for the surface.
