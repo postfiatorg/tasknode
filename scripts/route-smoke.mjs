@@ -122,10 +122,12 @@ async function main() {
         `--remote-debugging-port=${chromePort}`,
         "about:blank",
       ],
-      { stdio: ["ignore", "ignore", "ignore"] }
+      { stdio: ["ignore", "ignore", "pipe"] }
     );
+    const chromeOutput = [];
+    collectOutput(chrome.stderr, chromeOutput);
 
-    const page = await waitForPage();
+    const page = await waitForPage(chrome, chromeOutput);
     cdp = new CdpClient(page.webSocketDebuggerUrl);
     await cdp.connect();
     await cdp.send("Runtime.enable");
@@ -244,8 +246,11 @@ async function waitForHttp(url, timeoutMs, serverOutput, child) {
   throw new Error(`Timed out waiting for ${url}.\n${serverOutput.join("")}`);
 }
 
-async function waitForPage() {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+// Cold CI runners can take well over 8 s to start headless Chrome.
+async function waitForPage(child, output, timeoutMs = 30000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (child.exitCode !== null) throw new Error(`Chrome exited before exposing a page.\n${output.join("")}`);
     try {
       const response = await fetch(`http://127.0.0.1:${chromePort}/json/list`);
       if (response.ok) {
@@ -256,9 +261,9 @@ async function waitForPage() {
     } catch {
       // Retry until Chrome exposes the debugging endpoint.
     }
-    await sleep(100);
+    await sleep(150);
   }
-  throw new Error("No debuggable Chrome page found.");
+  throw new Error(`No debuggable Chrome page found.\n${output.join("")}`);
 }
 
 async function waitForRootText() {
