@@ -86,4 +86,16 @@ assert.doesNotMatch(publicMemo.memoMarkdown, /^- Generated:/m);
 assert.doesNotMatch(publicMemo.memoMarkdown, /^- Model:/m);
 assert.doesNotMatch(publicMemo.memoMarkdown, /^- Source packet:/m);
 
+// A board whose own content is unchanged keeps its memo; roster-only changes
+// refresh it once the roster window passes; board changes refresh immediately.
+const { boardMemoIsFresh } = await import("../server/hive-board-secretary-worker.js");
+const board = { version: "v1", project: { id: "project_smoke" }, taskState: { activeTasks: [{ id: "t1" }] }, boardComments: [], projectLeaderContext: [], eligibleContributors: [{ handle: "a" }] };
+const current = { source_packet_json: board, created_at: new Date("2026-06-28T00:00:00Z") };
+const at = (minutes) => Date.parse("2026-06-28T00:00:00Z") + minutes * 60_000;
+const refreshMs = 6 * 3_600_000;
+assert.equal(boardMemoIsFresh({ packet: { ...board, eligibleContributors: [{ handle: "b" }] }, current, now: at(15), refreshMs }), true, "roster churn alone does not regenerate");
+assert.equal(boardMemoIsFresh({ packet: { ...board, eligibleContributors: [{ handle: "b" }] }, current, now: at(6 * 60 + 1), refreshMs }), false, "roster refreshes after the window");
+assert.equal(boardMemoIsFresh({ packet: { ...board, taskState: { activeTasks: [{ id: "t2" }] } }, current, now: at(15), refreshMs }), false, "a board change regenerates");
+assert.equal(boardMemoIsFresh({ packet: board, current: null, now: at(15), refreshMs }), false, "a board with no memo gets one");
+
 console.log("hive board secretary smoke ok");
