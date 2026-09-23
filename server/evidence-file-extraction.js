@@ -145,12 +145,19 @@ function parseTarString(bytes) {
   return Buffer.from(bytes).toString("utf8").split("\u0000", 1)[0].trim();
 }
 
+// A size field is optional leading spaces, one or more octal digits, then only
+// spaces or NULs. Parsed by hand: this module is reachable from inference paths.
 function parseTarSize(bytes, type) {
   const field = Buffer.from(bytes).toString("latin1");
-  // Some TAR writers leave the size field blank on entries without file bodies.
-  if (["1", "2", "5"].includes(type) && /^[ \0]*$/.test(field)) return 0;
-  const match = /^ *([0-7]+)[ \0]*$/.exec(field);
-  const size = match ? Number.parseInt(match[1], 8) : NaN;
+  const padding = (char) => char === " " || char === "\0";
+  // Some TAR writers leave the size field blank on entries without file bodies
+  // (hard links, symlinks, directories); regular files stay strict.
+  if (["1", "2", "5"].includes(type) && [...field].every(padding)) return 0;
+  let start = 0;
+  while (field[start] === " ") start += 1;
+  let end = start;
+  while (field[end] >= "0" && field[end] <= "7") end += 1;
+  const size = end > start && [...field.slice(end)].every(padding) ? Number.parseInt(field.slice(start, end), 8) : NaN;
   if (!Number.isSafeInteger(size)) {
     throw Object.assign(new Error("evidence_archive_invalid_tar_size"), { status: 422 });
   }
