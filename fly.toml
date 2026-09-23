@@ -1,5 +1,5 @@
 app = "tasknodeofficial-dev"
-primary_region = "ewr"
+primary_region = "iad"
 # Processes drain in-flight requests and tracked work on SIGTERM before exiting.
 kill_timeout = "45s"
 

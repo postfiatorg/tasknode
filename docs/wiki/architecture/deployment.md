@@ -13,6 +13,10 @@ retains the historical name `tasknodeofficial-dev`, but it is production. Do
 not call it “Fly dev” or assume its database, volume, workers, or credentials
 are disposable.
 
+All machines run in `iad`, the same region as the production Fly Managed
+Postgres cluster (`zp2wjrejjv5odn4q`). Keep them co-located; Managed Postgres
+is not offered in `ewr`.
+
 `fly.toml` currently defines these process groups:
 
 | Group | Command | Role |
