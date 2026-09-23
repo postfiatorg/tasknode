@@ -10,18 +10,24 @@ function retryable(error) {
     ([401, 402, 403, 404, 408, 429].includes(error?.status) || error?.status >= 500);
 }
 
-async function execute({ body = {}, capability = "reasoning_text", env = process.env, fetchImpl = fetch, signal, timeoutMs = 45_000, onDelta, stream = false, allowFallback = true } = {}) {
+const defaultFirstByteMs = (env) => Math.max(1_000, Number(env.INFERENCE_FIRST_BYTE_TIMEOUT_MS) || 30_000);
+
+async function execute({ body = {}, capability = "reasoning_text", env = process.env, fetchImpl = fetch, signal, timeoutMs = 45_000, onDelta, stream = false, allowFallback = true, firstByteTimeoutMs = defaultFirstByteMs(env) } = {}) {
   const routes = inferenceRoutes(env, body.model).filter((provider) => capability !== "selected_model" || provider === "vercel");
   if (!routes.length) throw inferenceError("inference_not_configured", { status: 409 });
   const attempts = [];
   let emitted = false;
-  for (const provider of routes) {
+  // A stream that never started (no first byte) is retried once on the same provider.
+  const plan = routes.flatMap((provider) => (stream ? [provider, provider] : [provider]));
+  for (const [index, provider] of plan.entries()) {
+    const retry = index > 0 && plan[index - 1] === provider;
+    if (retry && attempts.at(-1)?.code !== "inference_first_byte_timeout") continue;
     // Resolve/validate before any provider call. Invalid input never causes failover.
     const request = normalizeInferenceRequest({ ...body, ...(stream ? { stream: true, stream_options: { include_usage: true } } : { stream: false }) }, { provider, capability, env });
     const started = Date.now();
     try {
       const result = await (stream ? streamWithProvider : completeWithProvider)(provider, request, {
-        env, fetchImpl, signal, timeoutMs,
+        env, fetchImpl, signal, timeoutMs, firstByteTimeoutMs: stream ? firstByteTimeoutMs : 0,
         onDelta: async (delta) => { emitted = true; await onDelta?.(delta); },
       });
       attempts.push({ provider, status: "completed", latencyMs: Date.now() - started });
@@ -34,7 +40,9 @@ async function execute({ body = {}, capability = "reasoning_text", env = process
     } catch (error) {
       attempts.push({ provider, status: "failed", code: error.code || "inference_error", httpStatus: error.status || 502, latencyMs: Date.now() - started });
       error.attempts = attempts;
-      if (signal?.aborted || emitted || !allowFallback || !retryable(error) || provider === routes.at(-1)) throw error;
+      if (signal?.aborted || emitted) throw error;
+      if (!retry && error.code === "inference_first_byte_timeout") continue;
+      if (!allowFallback || !retryable(error) || provider === routes.at(-1)) throw error;
     }
   }
   throw inferenceError("inference_not_configured", { status: 409 });
