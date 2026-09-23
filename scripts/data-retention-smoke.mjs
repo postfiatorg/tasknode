@@ -50,7 +50,7 @@ try {
   assert.equal(result.database.authSessionsExpired, 2500, "large backlogs drain in bounded batches");
   assert.equal(calls.filter((entry) => entry.sql.startsWith("DELETE FROM auth_sessions")).length, 3);
   assert.match(result.errors.telegramEventsExpired, /statement timeout/);
-  for (const table of ["auth_challenges", "user_observability_events", "api_rate_limit_buckets", "account_deletion_audit"]) {
+  for (const table of ["auth_challenges", "user_observability_events", "api_rate_limit_buckets", "account_deletion_audit", "hive_board_secretary_memos"]) {
     assert.equal(calls.some((entry) => entry.sql.startsWith(`DELETE FROM ${table}`)), true, `${table} still purged after another table failed`);
   }
   assert.equal(calls.some((entry) => entry.sql.includes("UPDATE ")), false, "retention must delete expired content, not relabel it");
