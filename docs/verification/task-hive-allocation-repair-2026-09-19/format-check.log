@@ -1,5 +1,0 @@
-
-> tasknode@0.1.0 format-check
-> node scripts/format-check.mjs
-
-format check ok

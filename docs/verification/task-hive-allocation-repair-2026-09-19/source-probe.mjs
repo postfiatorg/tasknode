@@ -1,4 +1,0 @@
-import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-const files = ["server/board-agent-routes.js", "server/db/migrations/143_board_account_history_lookup.sql", "server/repositories/hive-account-live-state.js", "server/repositories/hive-projects.js", "server/db/pool.js", "server/repositories/board-manager-contract.js", "scripts/bm/writes.mjs", "server/repositories/network-task-enqueue.js", "scripts/bm/lib.mjs", "server/board-agent-dispatch.js", "server/board-agent-runtime-status.js", "server/network-task-generation-worker.js", "server/offchain-task-lifecycle.js", "server/repositories/network-task-generation-jobs.js", "server/repositories/task-requests.js", "server/task-intent-assessment.js"];
-console.log(JSON.stringify({ observedAt: new Date().toISOString(), files: Object.fromEntries(files.map(file => [file, createHash("sha256").update(readFileSync(file)).digest("hex")])) }, null, 2));

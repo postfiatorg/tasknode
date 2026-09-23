@@ -1,5 +1,0 @@
-
-> tasknode@0.1.0 network-task-capacity-smoke
-> node scripts/network-task-capacity-smoke.mjs
-
-network task capacity smoke ok: includes six concurrent last-slot requests

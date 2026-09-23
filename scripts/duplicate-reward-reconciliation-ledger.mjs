@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const LEDGER_SCHEMA = "tasknode.duplicate_reward_manual_reconciliation_ledger.v1";
 const DEFAULT_HARVEST_TASK_ID = "task_b1850294f50ed777c7b0eb29a75e7d4a";
-const DEFAULT_OUTPUT = "docs/verification/duplicate_reward_manual_reconciliation_ledger_task_b1850294.json";
-const DEFAULT_SUMMARY = "docs/verification/duplicate_reward_manual_reconciliation_ledger_task_b1850294.md";
+const DEFAULT_OUTPUT = "artifacts/duplicate_reward_manual_reconciliation_ledger.json";
+const DEFAULT_SUMMARY = "artifacts/duplicate_reward_manual_reconciliation_ledger.md";
 const OPERATOR_OWNER = "accounting_operator_review";
 
 function usage() {

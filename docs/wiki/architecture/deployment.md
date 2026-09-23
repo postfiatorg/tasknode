@@ -17,16 +17,16 @@ are disposable.
 
 | Group | Command | Role |
 | --- | --- | --- |
-| `app` | `npm run start:web` | Public web/API process |
-| `worker-pftl` | `npm run start:worker:pftl` | PFTL cache/watcher/archive/reducer/retention work |
-| `worker-taskgen` | `npm run start:worker:taskgen` | Personal and network task generation |
-| `worker-task-review` | `npm run start:worker:task-review` | Verification, review, and reward transitions |
-| `worker-context-rewrite` | `npm run start:worker:context-rewrite` | Async Context rewrites |
-| `worker-hive` | `npm run start:worker:hive` | Hive context secretary, reports, and Kimi activity narrator |
-| `worker-memory-profile` | `npm run start:worker:memory-profile` | Memory and profile/recommendation work |
-| `worker-airdrop` | `npm run start:worker:airdrop` | Daily airdrop work |
-| `worker-nft-renderer` | `npm run start:worker:nft-renderer` | Isolated Profile NFT image rendering |
-| `board-secretary` | `npm run start:board-secretary` | Advisory Hive board-status memo generation |
+| `app` | `node server/index.js` (role `web`) | Public web/API process |
+| `worker-pftl` | `node server/worker-entry.js` (role `worker:pftl`) | PFTL cache/watcher/archive/reducer/retention work |
+| `worker-taskgen` | `node server/worker-entry.js` (role `worker:taskgen`) | Personal and network task generation |
+| `worker-task-review` | `node server/worker-entry.js` (role `worker:task-review`) | Verification, review, and reward transitions |
+| `worker-context-rewrite` | `node server/worker-entry.js` (role `worker:context-rewrite`) | Async Context rewrites |
+| `worker-hive` | `node server/worker-entry.js` (role `worker:hive`) | Hive context secretary, reports, and Kimi activity narrator |
+| `worker-memory-profile` | `node server/worker-entry.js` (role `worker:memory-profile`) | Memory and profile/recommendation work |
+| `worker-airdrop` | `node server/worker-entry.js` (role `worker:airdrop`) | Daily airdrop work |
+| `worker-nft-renderer` | `node server/worker-entry.js` (role `worker:nft-renderer`) | Isolated Profile NFT image rendering |
+| `board-secretary` | `node scripts/hive-board-secretary-worker.mjs` | Advisory Hive board-status memo generation |
 
 Kimi K3 in the operator-host Corbanu TUI is the production task manager.
 `board-secretary` writes advisory project-status memos. The obsolete GLM Hive
@@ -107,15 +107,16 @@ changed so read-only verification checks configuration too.
 | Store | Current role | Durability requirement |
 | --- | --- | --- |
 | Postgres | Chat, billing, Context revisions, Memory, Tasks/projections, Hive, profiles, collaboration state, PFTL cache, queues | Managed database with tested backups/restores and migration control |
-| Runtime-store JSON | Sessions, account/connected identities, wallet links, OAuth/email challenges, and remaining unmigrated state | Fly volume at `/data/runtime-store.json`; never an undeclared `/tmp` path in production |
+| Runtime-store JSON | Remaining unmigrated state only (for example Telegram bot preferences and wallet-initiation grant eligibility inputs). Sessions, accounts, auth challenges, wallet links, deposit accounts, and terminal sessions must be Postgres-backed or public startup is refused (`assertDurableRuntimeAuthority`) | Fly volume at `/data/runtime-store.json`; never an undeclared `/tmp` path in production |
 | Browser state | Cookies, contact-label cache, encrypted wallet vault, same-tab unlocked session | User/browser controlled; not recovered from server backups |
 | PFTL/IPFS | Protocol transactions/pointers and applicable encrypted/public payloads | External canonical/replay boundary varies by event kind |
 | Nostr relays | Encrypted NIP-17 user-message gift wraps | Independent best-effort retention; not a guaranteed archive |
 | PFDocs deployment | Collaborative document runtime | Separate service, storage, backup, and capability boundary |
 
-The runtime store is still security-critical product state. Deleting or
-replacing its volume can invalidate sessions, identity links, wallet links, and
-other account behavior even when Postgres is intact.
+The runtime store still holds unmigrated product state. Deleting or replacing
+its volume can change Telegram preferences and wallet-initiation eligibility
+even when Postgres is intact. The volume also pins the `app` group to one
+machine; finishing the Postgres migration removes that constraint.
 
 ## Secrets and Least Privilege
 

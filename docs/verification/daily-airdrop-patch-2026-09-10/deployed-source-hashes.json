@@ -1,9 +1,0 @@
-{
-  "machine": "1850d37c3d3e48",
-  "sha256": {
-    "server/profile-daily-airdrop.js": "cb8d36251fa8d0cb2819d96ea1c721a60606d01ecc92ae2248a202e2bfd993f5",
-    "prompts/profile/daily_airdrop_v1.md": "b8c3cbf64f3a44c95b3c6f7f36cfca3126a630ffc423b02edc4e53f31f506a0c",
-    "prompts/profile/daily_airdrop_feedback_v1.md": "791a633a269d86585bf1a5063e6768ad44f04c78f7d09b899522fa4a942d7d15"
-  },
-  "local_match": true
-}

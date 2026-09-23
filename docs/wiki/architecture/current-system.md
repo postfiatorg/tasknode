@@ -88,7 +88,6 @@ scripts/                     Smoke, migration, operator, and release tooling
 prompts/                     Source-controlled runtime prompts
 docs/wiki/                   User/product and architecture documentation
 docs/archive/                Historical material
-docs/verification/           Internal evidence pending publication review
 docker-compose.dev.yml       Current local stack
 fly.toml                     Current official production topology
 ```

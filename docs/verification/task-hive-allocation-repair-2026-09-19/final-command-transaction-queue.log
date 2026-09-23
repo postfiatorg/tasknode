@@ -1,1 +1,0 @@
-{"ok":true,"concurrentReads":24,"statementTimeoutMs":500,"commandExceedsSingleStatementTimeout":true,"slowStatementStillRejected":true,"connectionReusableAfterRollback":true,"scopedBudgetHonored":true,"scopedBudgetStillBounded":true}

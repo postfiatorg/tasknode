@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
 import { browserFixture } from "./browser-fixture-driver.mjs";
 const origin = process.env.TASKNODE_APP_ORIGIN || "http://127.0.0.1:5198";
 const base = await fetch("https://tasknode.postfiat.org/api/app-state").then(r => r.json());
@@ -90,7 +89,5 @@ try {
   await page.until("document.querySelector('.profile-button:not(:disabled)')?.getAttribute('aria-label')==='Log in or sign up'");
   await menu(); await click("Log in or sign up"); await login("alpha");
   const evidence = { ok: true, mode: "Real App, LoginDialog and profile menu in Chrome with fixture HTTP responses", lists, checks: ["password network failure allows retry", "password login", "add second account", "Switch profile remains visible", "list failure preserves profiles", "switch network failure unlocks UI", "switch changes account", "logout HTTP and network failures allow retry", "logout current selects remaining profile", "logout all signs out", "login after logout"] };
-  await mkdir("docs/verification/taskgen-chad-2026-09-10", { recursive: true });
-  await writeFile("docs/verification/taskgen-chad-2026-09-10/auth-browser.json", JSON.stringify(evidence,null,2)+"\n");
   console.log(JSON.stringify(evidence));
 } finally { await browser.close(); }

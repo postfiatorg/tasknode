@@ -45,8 +45,8 @@ async function runPrewarmCheck() {
 // 2. The real appState executes end to end without a database (repositories
 //    fall back to in-memory runtime stores) and emits one app_state_timing
 //    record with per-section durations. Production concurrency is proven by
-//    the route_observability_summary p50/p95 before/after numbers recorded in
-//    docs/verification; this check guards the payload shape and the timing
+//    the route_observability_summary p50/p95 numbers in production logs;
+//    this check guards the payload shape and the timing
 //    instrumentation that those numbers depend on.
 async function runConcurrencyCheck() {
   __resetAppStateCacheForTests();
