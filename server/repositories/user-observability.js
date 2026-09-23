@@ -684,12 +684,31 @@ export function networkTaskCapacityDecision({ eligibility = {}, metrics = {} } =
   };
 }
 
+// Eligibility is read on every task-state load, every few seconds while the
+// Tasks view is open, and recording each read made these events 82% of the
+// observability table. Record a decision only when it changes for an account
+// and wallet, or hourly as a heartbeat.
+const lastCapacityDecisions = new Map();
+
+function capacityDecisionChanged(key, fingerprint, now = Date.now()) {
+  const last = lastCapacityDecisions.get(key);
+  if (last?.fingerprint === fingerprint && now - last.at < 3_600_000) return false;
+  lastCapacityDecisions.delete(key);
+  lastCapacityDecisions.set(key, { fingerprint, at: now });
+  if (lastCapacityDecisions.size > 5_000) lastCapacityDecisions.delete(lastCapacityDecisions.keys().next().value);
+  return true;
+}
+
 export async function recordNetworkTaskCapacityEvent({
   eligibility = {},
   metrics = {},
   sourceRoute = "server/repositories/network-tasks.js::getNetworkTaskEligibility",
 } = {}) {
   const decision = networkTaskCapacityDecision({ eligibility, metrics });
+  const fingerprint = JSON.stringify([decision, eligibility.label, eligibility.nextAction, eligibility.profile?.status, eligibility.wallet?.synced]);
+  if (!capacityDecisionChanged(`${eligibility.accountId || ""}|${eligibility.walletAddress || ""}`, fingerprint)) {
+    return { ok: true, skipped: true, reason: "capacity_decision_unchanged" };
+  }
   return recordUserObservabilityEvent({
     eventType: "user.network_task.capacity_checked",
     accountId: eligibility.accountId || "",

@@ -364,8 +364,11 @@ Coverage notes as of 2026-06-08:
 
 ## Network Task Capacity Log Contract
 
-Every Network Task eligibility or routing check should emit
-`user.network_task.capacity_checked` with this decision shape:
+Network Task eligibility checks emit `user.network_task.capacity_checked` when
+the decision for an account and wallet changes, and at most hourly while it
+stays the same (each process remembers the last 5,000 decisions). Eligibility
+is read on every task-state load, so recording every read is not useful. The
+decision shape:
 
 The operator packet is read-only by default. Its diagnostic eligibility probes
 emit this event only when `--record-capacity-checks` is passed.
