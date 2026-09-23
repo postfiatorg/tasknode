@@ -46,8 +46,9 @@ function retentionRules(schedule, now) {
     ["memoryJobsExpired", "chat_memory_jobs", "status IN ('completed', 'failed', 'skipped') AND updated_at < $1::timestamptz", [transient]],
     ["deepMemoryJobsExpired", "chat_deep_memory_jobs", "status IN ('completed', 'failed', 'skipped') AND updated_at < $1::timestamptz", [transient]],
     ["contextProviderCallsExpired", "context_rewrite_provider_calls", "created_at < $1::timestamptz", [transient]],
-    // Readers use only the current memo per board; superseded and failed memos carry full source packets.
-    ["boardSecretaryMemosExpired", "hive_board_secretary_memos", "status IN ('superseded', 'failed') AND generated_at < $1::timestamptz", [transient]],
+    // Readers use only the current memo per board; superseded and failed memos
+    // carry ~40 KB source packets, so they are deleted 25 at a time (~0.6 s each).
+    ["boardSecretaryMemosExpired", "hive_board_secretary_memos", "status IN ('superseded', 'failed') AND generated_at < $1::timestamptz", [transient], 25],
     ["telegramEventsExpired", "telegram_bot_events", "created_at < $1::timestamptz", [cutoffIso(now, schedule.telegramEventDays)]],
     ["observabilityExpired", "user_observability_events", "retention_until < $1::timestamptz OR (retention_until IS NULL AND received_at < $2::timestamptz)", [at, cutoffIso(now, schedule.observabilityDays)]],
     ["collaborationAuditExpired", "collaboration_audit_events", "created_at < $1::timestamptz", [cutoffIso(now, schedule.collaborationAuditDays)]],
@@ -127,9 +128,9 @@ export async function runDataRetention({
   } catch (error) {
     errors.conversations = error?.message || String(error);
   }
-  for (const [name, table, where, params] of retentionRules(schedule, now)) {
+  for (const [name, table, where, params, maxBatch = limit] of retentionRules(schedule, now)) {
     try {
-      database[name] = await deleteInBatches(queryImpl, table, where, params, limit);
+      database[name] = await deleteInBatches(queryImpl, table, where, params, Math.min(limit, maxBatch));
     } catch (error) {
       errors[name] = error?.message || String(error);
     }
