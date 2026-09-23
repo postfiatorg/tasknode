@@ -386,7 +386,4 @@ Do not publish synthetic test messages to the public production room.
 
 Focused proof: `scripts/hive-group-smoke.mjs` uses the explicitly guarded
 `tasknode_hive_20260906` disposable Postgres database and a local WebSocket
-relay. `scripts/hive-group-visual-smoke.mjs` checks two browser identities,
-mentions, retry persistence, PFPs, setup and mobile layouts with synthetic
-HTTP/relay responses. Evidence is under
-`docs/verification/hive-group-chat-2026-09-06/`.
+relay.

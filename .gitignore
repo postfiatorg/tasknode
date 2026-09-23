@@ -15,8 +15,8 @@ deathmarch.log
 deathmarch.pid
 deathmarchseed.txt
 .tasknode-evidence-*.tmp
-docs/verification/evidence/
-docs/verification/task_*.md
+docs/verification/
+artifacts/
 node_modules/
 dist/
 private_prompts/

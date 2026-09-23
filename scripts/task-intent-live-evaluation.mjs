@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { assessTaskIntent } from "../server/task-intent-assessment.js";
 
 const cases = JSON.parse(await readFile(new URL("./task-intent-evaluation-cases.json",import.meta.url),"utf8"));
@@ -13,7 +13,4 @@ for (let start=0;start<cases.length;start+=2) {
   }));
   results.push(...batch);
 }
-const directory="docs/verification/reliability-implementation-2026-09-05";
-await mkdir(directory,{recursive:true});
-await writeFile(`${directory}/task-intent-live-evaluation.json`,JSON.stringify({at:new Date().toISOString(),synthetic:true,results},null,2)+"\n");
 assert.ok(results.every(item=>item.passed),"Task intent evaluation failed; inspect the recorded cases before enabling this gate.");

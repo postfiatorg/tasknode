@@ -1,6 +1,0 @@
-{
-  "observedAt": "2026-09-19T23:53:16.517Z",
-  "requestKey": "hive_repair_original_intent_21badcf3_20260919",
-  "latencyMs": 10684,
-  "error": "The command did not commit. Retry with its saved request key."
-}

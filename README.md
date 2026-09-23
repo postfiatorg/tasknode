@@ -135,14 +135,9 @@ npm run runtime-smoke
 git diff --check
 ```
 
-`npm run file-size-check`, and therefore the aggregate `quality` and `check`
-commands, is known to fail at the reviewed baseline. Do not describe the
-repository as green until the checker and violations are repaired and the
-fresh-clone CI gate passes.
-
-There are hundreds of specialized npm aliases and focused smoke scripts. They
-are current engineering tools, but the command surface must be consolidated
-before broad external contribution.
+`npm run check` is the CI gate (`.github/workflows/ci.yml`). Most other smoke
+aliases are not run by CI; treat a smoke outside `check` as unverified until it
+is run locally, and fold anything worth keeping into `check`.
 
 ## Documentation
 

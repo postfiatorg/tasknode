@@ -64,4 +64,4 @@ Both assistants allow 32,768 completion tokens, including reasoning. A provider 
 
 `TASKNODE_DOCS_ENABLED` controls the library. `TASKNODE_PFDOCS_EDITOR_ENABLED` controls create/open transport independently, so a PFDocs outage must not erase or hide the library. `TASKNODE_DOCS_ODV_ENABLED` disables assistant mentions without disabling documents or human chat. The PFDocs apps do not run on the Task Node web/worker machines.
 
-Verification: `node scripts/docs-assistant-limits-smoke.mjs`, `node scripts/docs-folders-smoke.mjs`, `node scripts/docs-library-visual-smoke.mjs` (fresh Chrome CDP target on port 9347; local source app on port 5192), `npm run collaboration-contract-smoke`, the PFDocs bridge tests in the `pftdocs` repository, and the production checks in [Docs and Team Deployment Runbook](#docs/team-mate-coordination-deploy-runbook).
+Verification: `node scripts/docs-assistant-limits-smoke.mjs`, `node scripts/docs-folders-smoke.mjs`, `npm run collaboration-contract-smoke`, the PFDocs bridge tests in the `pftdocs` repository, and the production checks in [Docs and Team Deployment Runbook](#docs/team-mate-coordination-deploy-runbook).

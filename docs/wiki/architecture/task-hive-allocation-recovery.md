@@ -101,5 +101,6 @@ request attempt counts. Do not revert a reconciled mirror or reset exhausted
 requests to queued: both can recreate the incident. Stopped standbys stay stopped.
 
 Source and image digests, commands, observations and remaining limitations for
-the September 19 deployment are in
-`docs/verification/task-hive-allocation-repair-2026-09-19/`.
+the September 19 deployment are in Git history under
+`docs/verification/task-hive-allocation-repair-2026-09-19/` (removed from the
+tree on 2026-09-23; committed evidence no longer lives in the repository).

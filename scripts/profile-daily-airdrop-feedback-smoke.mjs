@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import {
   dailyAirdropScoringPacket,
   normalizeDailyAirdropOutput,
@@ -103,9 +103,6 @@ if (process.argv.includes("--live")) {
     assert.equal(output.eligibility_status, testCase.id === "no_positive_rewards" ? "ineligible" : "eligible");
     return { id: testCase.id, input: dailyAirdropScoringPacket(testCase.packet), output, provider: feedback.provider, model: feedback.model, usage: feedback.usage };
   }));
-  const dir = "docs/verification/daily-airdrop-patch-2026-09-10";
-  await mkdir(dir, { recursive: true });
-  await writeFile(`${dir}/live-feedback.json`, JSON.stringify({ checks: "Live provider output and deterministic bounds; semantic feedback requires review of recorded outputs", results }, null, 2) + "\n");
   console.log(JSON.stringify(results.map(({ id, output, provider, model }) => ({ id, output, provider, model })), null, 2));
 }
 console.log("daily airdrop feedback smoke ok: model evidence excludes routing metadata; existing cap and no-reward protections preserved");

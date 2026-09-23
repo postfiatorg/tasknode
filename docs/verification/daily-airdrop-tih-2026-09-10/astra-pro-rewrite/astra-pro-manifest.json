@@ -1,9 +1,0 @@
-{
-  "baseline_sha256": "b8c3cbf64f3a44c95b3c6f7f36cfca3126a630ffc423b02edc4e53f31f506a0c",
-  "instructions_sha256": "caeb3d1ad4e791f9f454fa16a7509dd486d675980c7c5533afbca962cf135261",
-  "critique_packet_sha256": "0284c6b67d141787b11b214cb558749b74bbc8e33eceb637b7ab7ecf8316dc8f",
-  "requested_mode": "astra-pro",
-  "response_id": "resp_008ceb162e41e8be006aa2cfd86d9887d2942441e7afcefc30",
-  "candidate_path": "/mnt/HC_Volume_101713660/pfrpc/scratch/tasknode-daily-airdrop-tih-20260910/daily_airdrop_v2.astra-pro.candidate.md",
-  "assessment": "Five independent reviews per original TIH judge, using the identical scoring rubric. Baseline retained; no production promotion."
-}

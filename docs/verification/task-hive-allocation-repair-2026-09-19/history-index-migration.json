@@ -1,5 +1,0 @@
-{
-  "observedAt": "2026-09-19T23:48:11.898Z",
-  "migration": "143_board_account_history_lookup.sql",
-  "applied": true
-}
