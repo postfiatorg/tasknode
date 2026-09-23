@@ -49,7 +49,8 @@ function defaultPoolMaxForRole(role = processRole()) {
   if (role === "worker:taskgen" || role === "worker:context-rewrite") return 4;
   if (role === "worker:pftl") return 4;
   if (role === "worker:task-review" || role === "worker:hive") return 3;
-  if (role === "worker:memory-profile" || role === "worker:airdrop") return 2;
+  if (role === "worker:memory-profile") return 3;
+  if (role === "worker:airdrop") return 2;
   return 6;
 }
 

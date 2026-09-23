@@ -107,7 +107,8 @@ export async function runDataRetention({
   databaseReady = databaseEnabled(),
   transactionImpl = transaction,
   queryImpl = query,
-  batchSize = 1000,
+  // Small batches keep each DELETE (including TOAST-heavy rows) well under the statement timeout.
+  batchSize = 200,
 } = {}) {
   pruneExpiredSessions();
   pruneExpiredEmailChallenges();
@@ -118,7 +119,7 @@ export async function runDataRetention({
   if (!databaseReady) return { enabled: false, runtimeSecurityStatePurged: true, database: {} };
 
   const schedule = retentionSchedule(env);
-  const limit = Math.min(Math.max(Math.round(Number(batchSize)) || 1000, 1), 10_000);
+  const limit = Math.min(Math.max(Math.round(Number(batchSize)) || 200, 1), 10_000);
   const database = {};
   const errors = {};
   try {
