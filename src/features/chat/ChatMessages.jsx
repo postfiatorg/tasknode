@@ -68,6 +68,7 @@ export function UserMessage({
   onSaveEdit,
   onStartEdit,
   text,
+  unanswered = false,
 }) {
   if (isEditing) {
     return (
@@ -95,6 +96,7 @@ export function UserMessage({
     <article className="user-message">
       {attachments.length > 0 && <MessageAttachmentList attachments={attachments} />}
       <div className="user-bubble">{text}</div>
+      {unanswered && <p className="user-message-note">No reply was generated. Send it again to retry.</p>}
       <div className="user-message-tools">
         <ToolbarButton
           doneLabel="Copied"

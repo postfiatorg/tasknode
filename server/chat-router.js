@@ -4,7 +4,9 @@ import {
   appendChatTurn,
   getChatMessagesForWrite,
 } from "./repositories/chat-billing.js";
+import { appendChatUserMessage } from "./repositories/chat-conversations.js";
 import { enqueueChatMemoryJob } from "./repositories/chat-memory.js";
+import { databaseEnabled } from "./db/pool.js";
 import {
   chatMemoryContextForAccount,
   taskNodeInstructions,
@@ -517,6 +519,27 @@ export async function resolveChatJobsContext({
   return retrieve({ message, contextDocument, memoryContext, taskContext });
 }
 
+// A reply that fails, times out, or is abandoned must not take the user's
+// message with it: it stays in the conversation marked unanswered, and a
+// retry with the same message id (or a later reply) proceeds normally.
+async function replyOrKeepMessage(turn, generate) {
+  try {
+    const result = await generate();
+    if (!result.text) throw Object.assign(new Error("chat_provider_empty_response"), { status: 502, provider: turn.provider });
+    return result;
+  } catch (error) {
+    if (turn.accountId && databaseEnabled()) {
+      const state = error?.status === 499 ? "abandoned" : error?.status === 504 ? "timed_out" : "failed";
+      await appendChatUserMessage({
+        ...turn,
+        userMessage: turn.message,
+        userMetadata: { ...turn.userMetadata, reply: { state, at: new Date().toISOString() } },
+      }).catch(() => {});
+    }
+    throw error;
+  }
+}
+
 export async function executeChat({
   accountId = "",
   mode,
@@ -620,13 +643,14 @@ export async function executeChat({
         iChingProfile: iChingProfilePromptPayload(iChingProfile),
       })
     : "";
-  const result = await executeAmbient({
+  const unanswered = { accountId, conversationId, mode: normalizedMode, message, attachments, userMessageId, provider: status.provider, userMetadata: { ...userMetadata, chatPersona: normalizedPersona } };
+  const result = await replyOrKeepMessage(unanswered, () => executeAmbient({
     mode: normalizedMode,
     model: status.model,
     message,
     conversationId,
     attachments,
-    historyMessages,
+    historyMessages: historyMessages.filter((row) => !userMessageId || row?.id !== userMessageId),
     contextDocument: resolvedContextDocument,
     memoryContext: resolvedMemoryContext,
     taskContext: resolvedTaskContext,
@@ -635,14 +659,7 @@ export async function executeChat({
     persona: normalizedPersona,
     instructionsOverride: personaInstructions,
     timeoutMs,
-  });
-
-  if (!result.text) {
-    const error = new Error("chat_provider_empty_response");
-    error.status = 502;
-    error.provider = status.provider;
-    throw error;
-  }
+  }));
 
   const { assistantThinking, assistantMetadata } = assistantChatMetadata({
     thinking,
@@ -810,13 +827,14 @@ export async function executeChatStream({
         iChingProfile: iChingProfilePromptPayload(iChingProfile),
       })
     : "";
-  const result = await streamAmbient({
+  const unanswered = { accountId, conversationId, mode: normalizedMode, message, attachments, userMessageId, provider: status.provider, userMetadata: { ...userMetadata, chatPersona: normalizedPersona } };
+  const result = await replyOrKeepMessage(unanswered, () => streamAmbient({
     mode: normalizedMode,
     model: status.model,
     message,
     conversationId,
     attachments,
-    historyMessages,
+    historyMessages: historyMessages.filter((row) => !userMessageId || row?.id !== userMessageId),
     contextDocument: resolvedContextDocument,
     memoryContext: resolvedMemoryContext,
     taskContext: resolvedTaskContext,
@@ -827,14 +845,7 @@ export async function executeChatStream({
     onDelta,
     signal,
     timeoutMs,
-  });
-
-  if (!result.text) {
-    const error = new Error("chat_provider_empty_response");
-    error.status = 502;
-    error.provider = status.provider;
-    throw error;
-  }
+  }));
 
   const { assistantThinking, assistantMetadata } = assistantChatMetadata({
     thinking,

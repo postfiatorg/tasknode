@@ -790,6 +790,8 @@ export async function recordChatFailureObservability({
   model = "",
   error = "",
   status = "",
+  elapsedMs = 0,
+  firstDeltaMs = 0,
   sourceRoute = "server/product-contracts.js::chatSend",
   sourceSurface = "chat",
 } = {}) {
@@ -809,6 +811,8 @@ export async function recordChatFailureObservability({
       provider: safeText(provider || error?.provider, 80),
       model: safeText(model, 180),
       status: safeText(status || error?.status, 80),
+      elapsedMs: Math.max(0, Number(elapsedMs) || 0),
+      firstDeltaMs: Math.max(0, Number(firstDeltaMs) || 0),
     },
   });
 }
