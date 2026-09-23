@@ -3,6 +3,14 @@ import { syncPftlWalletTransactions } from "./pftl-cache-sync.js";
 
 const inFlightRefreshes = new Map();
 const lastRefreshes = new Map();
+const MAX_REMEMBERED_REFRESHES = 2000;
+
+// Remember only recent refreshes; the map is keyed per account and wallet.
+function rememberRefresh(key, result) {
+  lastRefreshes.delete(key);
+  lastRefreshes.set(key, { completedAtMs: Date.now(), result });
+  if (lastRefreshes.size > MAX_REMEMBERED_REFRESHES) lastRefreshes.delete(lastRefreshes.keys().next().value);
+}
 const defaultMinIntervalMs = Math.max(
   1000,
   Number(process.env.TASK_PROJECTION_REFRESH_MIN_INTERVAL_MS || 5000)
@@ -92,7 +100,7 @@ export function scheduleLinkedWalletTaskProjectionRefresh({
     logger,
   })
     .then((result) => {
-      lastRefreshes.set(key, { completedAtMs: Date.now(), result });
+      rememberRefresh(key, result);
       return result;
     })
     .catch((error) => {
@@ -100,7 +108,7 @@ export function scheduleLinkedWalletTaskProjectionRefresh({
         ok: false,
         error: safeText(error?.code || error?.message || error, 500),
       };
-      lastRefreshes.set(key, { completedAtMs: Date.now(), result });
+      rememberRefresh(key, result);
       logger.warn?.("task_projection_refresh_failed", {
         walletAddress: normalizedWallet,
         error: result.error,

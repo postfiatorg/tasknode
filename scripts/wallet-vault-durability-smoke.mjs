@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import {
   vaultStatusFromVault,
@@ -92,61 +92,44 @@ async function assertWalletPersistenceStatus() {
   restoreNavigator();
 }
 
-async function importRuntimeStore(label) {
-  const runtimeStoreUrl = pathToFileURL(join(process.cwd(), "server/runtime-store.js")).href;
-  return import(`${runtimeStoreUrl}?wallet-vault-durability=${encodeURIComponent(label)}-${Date.now()}`);
+// Each step runs in a fresh process: the store module loads its file once at import.
+function runStore(storePath, body) {
+  const output = execFileSync(process.execPath, ["--input-type=module", "-e", `import * as store from "./server/runtime-store.js";\n${body}`], {
+    cwd: process.cwd(),
+    env: { ...process.env, TASKNODE_STORE_PATH: storePath, TASKNODE_DATABASE_ENABLED: "false" },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return JSON.parse(output.trim().split("\n").at(-1));
 }
 
-async function assertAtomicRuntimeStoreWrites() {
+function assertAtomicRuntimeStoreWrites() {
   const tempDir = mkdtempSync(join(tmpdir(), "tasknodeofficial-wallet-vault-durability-"));
-  const priorStorePath = process.env.TASKNODE_STORE_PATH;
-  const storePath = join(tempDir, "runtime-store.json");
-  process.env.TASKNODE_STORE_PATH = storePath;
-
   try {
-    const runtimeStore = await importRuntimeStore("valid");
-    const account = {
-      id: "acct_atomic_runtime",
-      displayName: "Atomic Runtime",
-      linkedProviders: [],
-      profileVisibility: "public",
-    };
-    const created = runtimeStore.createAccountSession(account);
-    const saved = JSON.parse(readFileSync(storePath, "utf8"));
-    assert.equal(saved.sessions[created.sessionId].accountId, account.id);
+    const storePath = join(tempDir, "runtime-store.json");
+    const account = { id: "acct_atomic_runtime", displayName: "Atomic Runtime", linkedProviders: [], profileVisibility: "public" };
+    const { sessionId } = runStore(storePath, `console.log(JSON.stringify({ sessionId: store.createAccountSession(${JSON.stringify(account)}).sessionId }));`);
+    assert.equal(JSON.parse(readFileSync(storePath, "utf8")).sessions[sessionId].accountId, account.id);
     assert.equal(existsSync(`${storePath}.tmp`), false, "atomic save should not leave a tmp file after rename");
 
     writeFileSync(`${storePath}.tmp`, "{\"sessions\":", { mode: 0o600 });
-    const runtimeStoreReloaded = await importRuntimeStore("valid-with-stray-tmp");
-    assert.equal(
-      runtimeStoreReloaded.getSession(created.sessionId).accountId,
-      account.id,
-      "a stray partial tmp file must not clobber the good post-rename store"
-    );
-    assert.equal(readFileSync(`${storePath}.tmp`, "utf8"), "{\"sessions\":");
+    const reloaded = runStore(storePath, `console.log(JSON.stringify({ accountId: store.getSession(${JSON.stringify(sessionId)})?.accountId || null }));`);
+    assert.equal(reloaded.accountId, account.id, "a stray partial tmp file must not clobber the good post-rename store");
 
     const corruptPath = join(tempDir, "corrupt-runtime-store.json");
     const corruptBody = "{\"sessions\":";
     writeFileSync(corruptPath, corruptBody, { mode: 0o600 });
-    process.env.TASKNODE_STORE_PATH = corruptPath;
-    const corruptRuntimeStore = await importRuntimeStore("corrupt");
-    assert.equal(corruptRuntimeStore.getSession(created.sessionId), null);
-    assert.equal(
-      readFileSync(corruptPath, "utf8"),
-      corruptBody,
-      "loading a corrupt actual store should fall back in memory without rewriting the corrupt file"
-    );
+    const afterCorrupt = runStore(corruptPath, `store.createAccountSession(${JSON.stringify(account)}); console.log(JSON.stringify({ ok: true }));`);
+    assert.equal(afterCorrupt.ok, true);
+    const quarantined = readdirSync(tempDir).filter((name) => name.startsWith("corrupt-runtime-store.json.corrupt-"));
+    assert.equal(quarantined.length, 1, "a corrupt store must be moved aside");
+    assert.equal(readFileSync(join(tempDir, quarantined[0]), "utf8"), corruptBody, "saving after a corrupt load must not overwrite the corrupt original");
   } finally {
-    if (priorStorePath === undefined) {
-      delete process.env.TASKNODE_STORE_PATH;
-    } else {
-      process.env.TASKNODE_STORE_PATH = priorStorePath;
-    }
     rmSync(tempDir, { recursive: true, force: true });
   }
 }
 
 await assertWalletPersistenceStatus();
-await assertAtomicRuntimeStoreWrites();
+assertAtomicRuntimeStoreWrites();
 
 console.log("wallet vault durability smoke ok");
