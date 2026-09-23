@@ -42,65 +42,23 @@ The checked-in production wrapper is:
 npm run fly:deploy:prod
 ```
 
-Its actual sequence is:
+Its sequence is:
 
-1. run the migration-registration smoke;
-2. run the Fly deploy preflight;
-3. require the explicit production-host confirmation;
-4. run remote `fly deploy` against the application/config in `package.json` and
-   `fly.toml`; and
-5. run the background guard.
+1. run the migration-discovery smoke;
+2. run the Fly deploy preflight, which requires the explicit production-host
+   confirmation and `restart=always` coverage for every process group;
+3. run remote `fly deploy`; Fly runs `node scripts/migrate-db.mjs` as the
+   release command before replacing any machine, and a failing migration
+   aborts the release; and
+4. run the background guard.
 
 The background guard is **read-only by default**. It verifies one active,
-`restart=always` machine for these eight groups:
-
-```text
-worker-pftl
-worker-taskgen
-worker-task-review
-worker-context-rewrite
-worker-hive
-worker-memory-profile
-worker-airdrop
-board-secretary
-```
-
-It does not “start or repair” machines unless the lower-level worker guard is
-explicitly invoked with `--fix`. The deploy wrapper does not pass `--fix`.
-
-The current aggregate background guard also omits `worker-nft-renderer`, and it
-does not verify the public `app` group. Until the guard is corrected, a release
-is not proven complete without separate evidence for the web process and NFT
-renderer. This is a deployment-gate defect, not an operator convention.
-
-Raw `fly deploy` bypasses the repository preflight and should not be the normal
-official release path. Conversely, the npm wrapper is not safe public tooling:
-any shell with matching Fly credentials can target the official app. Extracting
-production configuration and approval to private operations is a P0
-open-source requirement.
-
-## Release Verification
-
-A healthy HTTP response proves only the `app` process. A complete release must
-verify:
-
-- the deployed commit/image and migration registration;
-- `/health` and the expected public origin;
-- every process group in `fly.toml`, including `worker-nft-renderer`;
-- `restart=always` for active background machines;
-- required enablement flags for the worker families;
-- queue progress and recent successful rows, not merely a running process;
-- provider/RPC/IPFS/PFDocs/Nostr readiness for the changed boundary; and
-- no unexpected database, volume, or runtime-store target.
-
-`/api/system/status` is the product read model for many of these checks, but it
-does not replace Fly machine inventory, database evidence, or an external
-health probe.
-
-The current worker guard verifies required environment values only in its
-mutating `--fix` path. Read-only guard success therefore does not by itself
-prove that all required worker flags are set. The release tooling should be
-changed so read-only verification checks configuration too.
+`restart=always` machine for each of the nine background groups
+(`worker-pftl`, `worker-taskgen`, `worker-task-review`,
+`worker-context-rewrite`, `worker-hive`, `worker-memory-profile`,
+`worker-airdrop`, `board-secretary`, `worker-nft-renderer`). The `app` group is
+covered by the Fly HTTP health check on `/health`. The guard changes machines
+only when `scripts/fly-worker-guard.mjs` is invoked with `--fix`.
 
 ## State and Durability
 

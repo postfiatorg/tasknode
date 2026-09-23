@@ -12,8 +12,8 @@
   },
   "homepage": "https://postfiat.org/task-node/",
   "engines": {
-    "node": ">=20.20.0 <21",
-    "npm": ">=10.8.2 <11"
+    "node": ">=24.21.0 <25",
+    "npm": ">=11 <12"
   },
   "packageManager": "npm@10.8.2",
   "type": "module",

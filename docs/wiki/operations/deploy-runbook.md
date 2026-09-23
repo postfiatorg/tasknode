@@ -10,35 +10,34 @@ rollbacks, and first-response deploy triage.
 advisory board-secretary process group:
 
 ```text
-app                    npm run start:web
-worker-pftl            npm run start:worker:pftl
-worker-taskgen         npm run start:worker:taskgen
-worker-task-review     npm run start:worker:task-review
-worker-context-rewrite npm run start:worker:context-rewrite
-worker-hive            npm run start:worker:hive
-worker-memory-profile  npm run start:worker:memory-profile
-worker-airdrop         npm run start:worker:airdrop
-worker-nft-renderer    npm run start:worker:nft-renderer
-board-secretary        npm run start:board-secretary
+app                    node server/index.js            (role web)
+worker-*               node server/worker-entry.js     (role worker:<group>)
+board-secretary        node scripts/hive-board-secretary-worker.mjs
 ```
 
-Only `app` receives HTTP traffic. Every listed background process group
-(`board-secretary` plus the eight `worker-*` groups) must be verified separately
-after every deploy. The legacy `worker` process still exists for local
-compatibility, but production rejects the monolith worker unless
+Only `app` receives HTTP traffic. Every background process group
+(`board-secretary` plus the eight `worker-*` groups) must be verified after
+every deploy. Production rejects the monolith `worker` role unless
 `TASKNODE_ALLOW_MONOLITH_WORKER=true` is set explicitly.
 
-Database pool defaults are role-aware. `web` gets a larger pool for request
-traffic, task generation/context rewrite get medium pools for provider-heavy
-work, and low-frequency workers get smaller pools. `/api/system/status` exposes
+Database pool defaults are role-aware. `/api/system/status` exposes
 `databasePool.role`, `max`, `total`, `idle`, and `waiting` for the current
 process.
 
-Every process starts through `server/index.js`, and startup calls
-`migrateDatabase()` before the process finishes booting. That migrator reads the
-explicit filename list in `server/db/migrate.js` and applies unapplied SQL files
-from `server/db/migrations/` into `tasknode_schema_migrations`. A migration
-failure is therefore a deploy failure, even if the Docker image built cleanly.
+Migrations run once per release through Fly's `release_command`
+(`node scripts/migrate-db.mjs`) before any machine is replaced. A failing
+migration aborts the deploy and leaves the running release untouched.
+Processes run with `TASKNODE_MIGRATIONS=release`: they only verify that every
+file in `server/db/migrations/` is applied. While Postgres is unreachable or
+the schema is behind, the web process keeps serving `/health` and static assets
+and answers `/api/*` with `503 service_starting`; workers wait with capped
+backoff instead of crash-looping.
+
+On `SIGTERM` (deploys, restarts) the web process stops accepting connections,
+ends realtime streams so clients reconnect, lets in-flight requests finish,
+and exits; workers finish tracked work (task review, generation, context
+rewrite, airdrop, NFT jobs). `kill_timeout` is 45 s. Tracked work running
+longer than 20 minutes is treated as hung and restarts the process.
 
 ## Deploy Command
 
@@ -158,29 +157,8 @@ Avoidance:
 - Before deploy, read the migration and ask: "What is the worst-case row count
   on production?"
 
-If a migration timeout reaches production, rollback first to restore service,
-then fix the migration. Do not keep retrying the same image.
-
-### 069-Class: SQL File Not Registered
-
-Symptom: code boots expecting a new column/table, but the database never got it
-because a `server/db/migrations/*.sql` file exists but is not listed in
-`server/db/migrate.js`.
-
-What happened: migration `069_board_manager_run_usage.sql` existed but was not
-registered, so the deployed Board Manager cost-telemetry code read columns that
-boot migrations had never applied. The fix landed as `0e9dfae` / PR #104, and
-`928b5c5` / PR #106 added `npm run migration-registration-smoke`.
-
-Avoidance:
-
-```bash
-npm run migration-registration-smoke
-```
-
-This smoke fails if any `.sql` file is missing from `server/db/migrate.js`, if
-`migrate.js` contains a stale entry with no file, or if the list contains a
-duplicate. It now runs at the start of `npm run fly:deploy`.
+A migration timeout now fails the release command, so the running release keeps
+serving. Fix the migration before redeploying; do not keep retrying the same image.
 
 ### Quality-Gate Contract Drift: Submission Blocked As Self-Dealing
 
@@ -230,8 +208,8 @@ npm run format-check
 
 For any PR that adds or changes `server/db/migrations/*.sql`:
 
-- Confirm the new file is listed in `server/db/migrate.js`.
-- Confirm the filename order matches the intended migration order.
+- Name the file `NNN_name.sql` with the next unused prefix; discovery is
+  automatic and ordered by filename.
 - Read every statement for prod-scale behavior.
 - Prefer `CREATE INDEX CONCURRENTLY` for large-table indexes when the migration
   framework supports it; if it cannot run safely in the normal transaction

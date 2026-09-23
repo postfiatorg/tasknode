@@ -425,7 +425,7 @@ The task detail modal keeps its own local detail state while it is open. It seed
 The Tasks page refresh policy is driven by the shared lifecycle contract in `shared/task-lifecycle.js` and the server metadata returned by `GET /api/tasks`. Initial submissions can be advanced by the review worker into `Verification requested`; verification responses can be advanced into `Rewarded` after the authority scores the evidence and publishes the terminal `pf.reward.v1` outcome. The list and tab counts should therefore follow the projection cache without a manual browser reload.
 
 The review worker is a production dependency, not an optional enhancement. On
-Fly it runs under `npm run start:worker`; a passing public `/health` check does
+Fly it runs in the `worker-task-review` process group; a passing public `/health` check does
 not prove this loop is alive. `npm run fly:worker-guard` is the operator check
 for stuck review-loop states.
 

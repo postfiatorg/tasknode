@@ -764,7 +764,7 @@ async function handleTerminalTaskNodeRoute({ json, readJson, req, res, url, orig
               ? "The chat provider timed out before returning a response."
               : "The chat provider could not complete this response.",
           actionRequired:
-            "Retry with a shorter prompt, choose another configured mode, or check provider health.",
+            "Try again in a moment, or switch to a different mode.",
           estimate: started.estimate,
         });
       }

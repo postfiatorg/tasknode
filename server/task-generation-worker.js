@@ -1,3 +1,4 @@
+import { runTrackedWork } from "./process-hardening.js";
 import { buildRequestBundle } from "./task-request-context.js";
 import { reviewTaskGenerationReadiness, taskGenerationReadinessIsCurrent } from "./task-generation-readiness.js";
 import { ownsTaskGeneration } from "./process-role.js";
@@ -696,7 +697,7 @@ export function startTaskGenerationWorker({
     if (running) return;
     running = true;
     try {
-      await processTaskGenerationQueueOnce({ limit: safeBatch, logger });
+      await runTrackedWork("task_generation", () => processTaskGenerationQueueOnce({ limit: safeBatch, logger }));
     } catch (error) {
       logger.warn?.("task_generation_worker_tick_failed", { error: error?.message || String(error) });
     } finally {

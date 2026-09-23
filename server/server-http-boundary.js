@@ -203,7 +203,29 @@ export async function enforceRateLimit(req, res, { route, session = null, extra 
   return true;
 }
 
+// Browsers send Origin on every cross-origin and same-origin mutation, and
+// Sec-Fetch-Site when they omit it. SameSite=Lax alone would still admit
+// requests from any sibling *.postfiat.org host, so mutations must come from
+// this origin. Webhooks and CLI clients send neither header and are unaffected.
+export function crossOriginMutation(req, env = process.env) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return false;
+  const origin = String(req.headers.origin || "");
+  if (!origin) return ["cross-site", "same-site"].includes(String(req.headers["sec-fetch-site"] || ""));
+  const allowed = [requestOrigin(req), `${trustedProxy.requestProtocol(req, env)}://${trustedProxy.requestHost(req, env)}`];
+  if (allowed.includes(origin)) return false;
+  if (isProductionEnvironment(env)) return true;
+  try {
+    return !isLocalHostname(new URL(origin).hostname);
+  } catch {
+    return true;
+  }
+}
+
 export async function enforceRoutePolicy(req, url, res, session) {
+  if (crossOriginMutation(req)) {
+    json(res, 403, { ok: false, error: "cross_origin_request_rejected", message: "This request must come from the Task Node site." });
+    return true;
+  }
   const policy = routePolicyForPath(url.pathname);
   if (!policy) return false;
 

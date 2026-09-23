@@ -1,3 +1,4 @@
+import { runTrackedWork } from "./process-hardening.js";
 import { assessTaskIntent, taskIntentFailureFamily } from "./task-intent-assessment.js";
 import { offchainTaskLifecycleEnabled, offchainTaskLifecycleDualWriteEnabled } from "./offchain-task-lifecycle.js";
 import { heartbeatNetworkTaskGenerationJob, persistNetworkTaskRequest } from "./repositories/network-task-generation-jobs.js";
@@ -427,7 +428,7 @@ export function startNetworkTaskGenerationWorker({
     if (running) return;
     running = true;
     try {
-      await processNetworkTaskGenerationQueueOnce({ limit: safeBatch, logger });
+      await runTrackedWork("network_task_generation", () => processNetworkTaskGenerationQueueOnce({ limit: safeBatch, logger }));
     } catch (error) {
       logger.warn?.("network_task_generation_worker_tick_failed", { error: error?.message || String(error) });
     } finally {

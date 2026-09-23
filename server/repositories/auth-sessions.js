@@ -112,6 +112,22 @@ export async function getSession(sessionId = "") {
   return rowSession(result.rows[0], sessionId);
 }
 
+// Sliding renewal: a session used in the second half of its lifetime gets a
+// fresh TTL, capped at 90 days from sign-in. Returns true when the caller must
+// re-issue the cookie.
+export async function renewSessionIfDue(sessionId = "", session = null) {
+  if (!sessionId || !session?.expiresAt || !databaseEnabled()) return false;
+  if (Date.parse(session.expiresAt) - Date.now() > (sessionTtlSeconds * 1000) / 2) return false;
+  const result = await query(
+    `UPDATE auth_sessions
+        SET expires_at = LEAST(now() + $2 * interval '1 second', created_at + interval '90 days')
+      WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+      RETURNING expires_at`,
+    [tokenHash(sessionId), sessionTtlSeconds]
+  );
+  return result.rowCount > 0 && new Date(result.rows[0].expires_at).getTime() > Date.parse(session.expiresAt);
+}
+
 export async function destroySession(sessionId = "") {
   if (!sessionId) return false;
   if (!databaseEnabled()) return destroyRuntimeSession(sessionId);

@@ -577,7 +577,7 @@ export async function chatSend(payload, method, options = {}) {
             ? "The chat provider timed out before returning a response."
             : "The chat provider could not complete this response.",
         actionRequired:
-          "Retry with a shorter prompt, choose another configured mode, or check provider health.",
+          "Try again in a moment, or switch to a different mode.",
         providerStatus: status,
         providerMessage: error?.providerMessage || "",
         estimate,
