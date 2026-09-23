@@ -583,7 +583,6 @@ export const apiRoutePolicies = [
     body: requestBodies.hiveReportRerunBody,
   },
   { id: "hive_reports", prefix: "/api/hive/reports", methods: ["GET"], auth: "session" },
-  { id: "hive_decision", prefix: "/api/hive/decision", methods: ["GET"], auth: "session" },
   { id: "hive_bm_feed", path: "/api/hive/bm-feed", methods: ["GET"], auth: "none" },
   { id: "hive_context", path: "/api/hive/context", methods: ["GET", "POST"], auth: "handler", body: requestBodies.hiveChatBody },
   { id:"hive_group",path:"/api/hive/group",methods:["GET"],auth:"optional" },

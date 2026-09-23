@@ -117,8 +117,7 @@ imported into the Nostr room. Old Hive recent-chat links now open the group.
 
 `Hive Brain` is an operator-only audit tab under the sidebar `More` menu at
 `#hive-brain`. It exposes the current board stack in human terms: the Hive
-Reports, the Decision Agent decision trail, a deterministic Live Task Packet,
-Task generation history, system prompt documentation, and post-reward Task
+Reports, a deterministic Live Task Packet, Task generation history, system prompt documentation, and post-reward Task
 Accounting harvests. Raw legacy Board Manager JSON is not the primary operator
 surface.
 
@@ -126,12 +125,10 @@ The main read APIs are:
 
 - `GET /api/hive/reports?type=&since=` for the report secretaries
 - `GET /api/hive/reports/:id` for full report markdown plus verification phases
-- `GET /api/hive/decision/runs` and `GET /api/hive/decision/run/:id` for the
-  Decision Agent audit trail
 - `GET /api/hive/brain/live-task-packet` for the plain-English Live Task
   Packet
-- `GET /api/hive/brain/task-generation-history` for Task Manager selections
-  and Network Task generation jobs
+- `GET /api/hive/brain/task-generation-history` for Network Task generation
+  jobs
 - `GET /api/hive/brain/harvest-report` for the latest resolved-history Harvest
   Report
 - `GET /api/hive/brain/harvests` for post-reward Task Accounting harvests
@@ -157,12 +154,8 @@ plain-text copy remains available for audit, but raw JSON and markdown tables
 are not the primary view.
 
 Task generation history is also assembled without an LLM. `server/repositories/hive-brain.js`
-reads Task Manager audit rows from `hive_decision_runs` where the scope starts
-with `hive_task_manager:` and durable worker rows from
-`network_task_generation_jobs`, then merges them into a reverse-chronological
-operator view. A Task Manager selection row answers what board/operator/task
-intent was selected and whether guardrails blocked it. A generation job row
-answers what durable worker job was queued, whether it linked to a request or
+reads durable worker rows from `network_task_generation_jobs` into a
+reverse-chronological operator view. Each row answers what durable worker job was queued, whether it linked to a request or
 visible task, which badge lane and reward band were used, and any recorded
 worker error. The surface is read-only and does not itself generate, approve,
 publish, or reward tasks.
@@ -382,56 +375,9 @@ needed before the first report is generated.
 
 ### Hive v2 Decision Agent (removed)
 
-The executable Hive v2 Decision Agent provider, worker, action adapter, and
-launchers were removed. There is no supported scheduler or deploy flag that can
-execute that path. The current Hive runtime uses readable reports, the GLM Board
-Secretary, and Kimi K3 for board/task management.
-Historical `hive_decision_runs` rows, source-packet data, action records, and
-the raw `prompts/hive/hive_decision_agent_v1.md` display remain readable through
-the existing repository, routes, and Hive Brain prompt display for audit.
-
-Historical Decision Agent runs used the following inputs:
-
-- latest `hive_reports` documents for the report set
-- live task state from `task_projections` and pending
-  `network_task_generation_jobs`
-- idle eligible contributors from the same badge/capacity predicates used by
-  Network Task routing
-- recent board discussions and Project Leader/operator Hive chat from
-  `hive_context_entries`
-
-The historical prompt required a structured action from the v2 registry
-(`create_board`, `archive_board`, `create_task`, `cancel_task`,
-`cancel_network_task`,
-`message_user`, or `do_nothing`), a one- or two-paragraph plain-English
-explanation, options considered, and the exact reports/task-state/discussion
-references that informed the decision.
-
-The historical implementation applied deterministic guardrails after model
-output and before a run was marked complete. Its former active mode required
-these checks before action execution:
-
-- the target must be an idle badge-eligible contributor from the live source
-  packet, not merely a contributor from stale reports
-- the task must not duplicate the target's outstanding, pending, completed,
-  rewarded, or recently terminal Network Tasks
-
-When the historical `create_task` guardrail passed, that executor did not write
-a final task offer directly. It translated the recommendation into the existing
-`initiate_network_task` hook, which re-checks candidate eligibility, badge lane,
-capacity, reward cap, and semantic idempotency before queuing the normal Network
-Task generation worker. Other supported actions used the existing Board Manager
-action hooks with no legacy `board_manager_action_results` row; the historical
-execution result was persisted on the `hive_decision_runs.result_json` payload.
-
-The historical read API remains operator-gated:
-
-- `GET /api/hive/decision/runs`
-- `GET /api/hive/decision/run/:id`
-
-The former Decision Agent smoke and provider commands were removed with the
-executor; no model call or replacement executor is implied by the historical
-routes above.
+The Hive v2 Decision Agent, its routes, prompt, and `hive_decision_runs` table
+were removed (migration 146). The current Hive runtime uses readable reports,
+the GLM Board Secretary, and Kimi K3 for board/task management.
 
 ## New User Quickstart
 

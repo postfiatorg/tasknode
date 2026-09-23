@@ -135,7 +135,6 @@ resource membership, or other context beyond a generic identity class.
 | `hive_brain` | `/api/hive/brain/…` | `GET` | `session` | — | — |
 | `hive_reports_rerun` | `/api/hive/reports/rerun` | `POST` | `session` | strict JSON ≤ 4096 bytes | — |
 | `hive_reports` | `/api/hive/reports/…` | `GET` | `session` | — | — |
-| `hive_decision` | `/api/hive/decision/…` | `GET` | `session` | — | — |
 | `hive_bm_feed` | `/api/hive/bm-feed` | `GET` | `none` | — | — |
 | `hive_context` | `/api/hive/context` | `GET` `POST` | `handler` | strict JSON ≤ 8388608 bytes | — |
 | `hive_group` | `/api/hive/group` | `GET` | `optional` | — | — |
@@ -203,4 +202,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **177 route policies** and **8 authentication modes**.
+Total: **176 route policies** and **8 authentication modes**.

@@ -9,10 +9,6 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-function safeArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
 function iso(value) {
   if (!value) return null;
   try {
@@ -208,95 +204,6 @@ function historyOccurredAt(item = {}) {
   return iso(item.completedAt || item.updatedAt || item.startedAt || item.createdAt);
 }
 
-function compactTaskManagerHistory(row = {}) {
-  const decision = safeObject(row.decision_json);
-  const actionPayload = safeObject(row.action_payload_json);
-  const guardrail = safeObject(row.guardrail_result_json);
-  const result = safeObject(row.result_json);
-  const executionResult = safeObject(result.executionResult || result.execution_result);
-  const board = safeObject(
-    decision.boardSelection ||
-      decision.board_selection ||
-      actionPayload.boardSelection ||
-      actionPayload.board_selection
-  );
-  const operator = safeObject(
-    decision.operatorSelection ||
-      decision.operator_selection ||
-      actionPayload.operatorSelection ||
-      actionPayload.operator_selection
-  );
-  const taskIntent = safeObject(
-    decision.taskIntent ||
-      decision.task_intent ||
-      actionPayload.taskIntent ||
-      actionPayload.task_intent
-  );
-  const startedAt = iso(row.started_at);
-  const completedAt = iso(row.completed_at);
-  const updatedAt = iso(row.updated_at);
-  const createdAt = iso(row.created_at);
-  const executed = result.executed === true || executionResult.executed === true;
-  const title = firstText([
-    taskIntent.title,
-    taskIntent.task_title,
-    executionResult.title,
-    executionResult.taskTitle,
-    executionResult.task_title,
-    row.selected_action === "create_task" ? "Task Manager selected a task" : "",
-    row.selected_action || row.status,
-  ], 240);
-  return {
-    id: row.id || "",
-    kind: "task_manager_run",
-    label: "Task Manager selection",
-    scope: row.scope || "",
-    trigger: row.trigger || "",
-    status: row.status || "",
-    action: row.selected_action || "",
-    title,
-    summary: firstText([
-      row.reasoning_text,
-      decision.explanation,
-      actionPayload.explanation,
-      taskIntent.routingReason,
-      taskIntent.routing_reason,
-      executionResult.reason,
-    ], 1000),
-    projectId: firstText([board.projectId, board.project_id, executionResult.projectId, executionResult.project_id], 180),
-    projectTitle: firstText([board.projectTitle, board.project_title, board.title, executionResult.projectTitle], 240),
-    accountId: firstText([operator.accountId, operator.account_id, executionResult.accountId, executionResult.account_id], 180),
-    walletAddress: firstText([operator.walletAddress, operator.wallet_address, executionResult.walletAddress, executionResult.wallet_address], 140),
-    requiredBadgeId: firstText([operator.requiredBadgeId, operator.required_badge_id], 80),
-    badgeWorkType: firstText([operator.badgeWorkType, operator.badge_work_type, operator.taskWorkType, operator.task_work_type], 120),
-    rewardMinPft: numeric(taskIntent.rewardMinPft ?? taskIntent.reward_min_pft, 0),
-    rewardMaxPft: numeric(taskIntent.rewardMaxPft ?? taskIntent.reward_max_pft, 0),
-    requestId: firstText([executionResult.requestId, executionResult.request_id], 180),
-    jobId: firstText([executionResult.jobId, executionResult.job_id, executionResult.generationJobId], 180),
-    allocationId: firstText([executionResult.allocationId, executionResult.allocation_id], 180),
-    taskId: firstText([executionResult.taskId, executionResult.task_id], 180),
-    guardrailOk: guardrail.ok === true,
-    guardrailBlocked: guardrail.blocked === true,
-    guardrailReasons: safeArray(guardrail.reasons).map((reason) => safeText(reason, 180)).filter(Boolean),
-    executed,
-    resultSummary: firstText([
-      executionResult.reason,
-      executionResult.status,
-      executed ? "Queued Network Task generation." : "",
-      row.error,
-    ], 1000),
-    model: row.model || "",
-    provider: row.provider || "",
-    reasoningEffort: row.reasoning_effort || "",
-    error: row.error || "",
-    startedAt,
-    completedAt,
-    createdAt,
-    updatedAt,
-    occurredAt: historyOccurredAt({ completedAt, updatedAt, startedAt, createdAt }),
-  };
-}
-
 function compactGenerationJobHistory(row = {}) {
   const sourcePayload = safeObject(row.source_payload_json);
   const generatedPayload = safeObject(row.generated_task_payload);
@@ -382,25 +289,8 @@ export async function listHiveBrainTaskGenerationHistory({
   const normalizedPage = Math.min(Math.max(Number(page) || 1, 1), 1000);
   const offset = (normalizedPage - 1) * normalizedLimit;
   const windowLimit = Math.min(Math.max(offset + normalizedLimit + 1, normalizedLimit + 1), 200);
-  const hasDecisionRuns = await tableExists("hive_decision_runs");
   const hasGenerationJobs = await tableExists("network_task_generation_jobs");
-  const [decisionResult, jobResult] = await Promise.all([
-    hasDecisionRuns
-      ? query(
-          `
-            SELECT id, scope, trigger, status, shadow, selected_action,
-                   action_payload_json, decision_json, guardrail_result_json,
-                   result_json, reasoning_text, provider, model,
-                   reasoning_effort, output_text, error, started_at,
-                   completed_at, created_at, updated_at
-            FROM hive_decision_runs
-            WHERE scope LIKE 'hive_task_manager:%'
-            ORDER BY started_at DESC NULLS LAST, created_at DESC, id DESC
-            LIMIT $1
-          `,
-          [windowLimit]
-        )
-      : Promise.resolve({ rows: [] }),
+  const jobResult = await (
     hasGenerationJobs
       ? query(
           `
@@ -433,12 +323,9 @@ export async function listHiveBrainTaskGenerationHistory({
           `,
           [windowLimit]
         )
-      : Promise.resolve({ rows: [] }),
-  ]);
-  const items = [
-    ...decisionResult.rows.map(compactTaskManagerHistory),
-    ...jobResult.rows.map(compactGenerationJobHistory),
-  ].sort((left, right) => {
+      : Promise.resolve({ rows: [] })
+  );
+  const items = jobResult.rows.map(compactGenerationJobHistory).sort((left, right) => {
     const leftMs = Date.parse(left.occurredAt || left.updatedAt || left.createdAt || "");
     const rightMs = Date.parse(right.occurredAt || right.updatedAt || right.createdAt || "");
     return (Number.isFinite(rightMs) ? rightMs : 0) - (Number.isFinite(leftMs) ? leftMs : 0);
@@ -449,10 +336,7 @@ export async function listHiveBrainTaskGenerationHistory({
     page: normalizedPage,
     pageSize: normalizedLimit,
     hasMore: items.length > offset + normalizedLimit,
-    sources: {
-      taskManagerRuns: hasDecisionRuns,
-      generationJobs: hasGenerationJobs,
-    },
+    sources: { generationJobs: hasGenerationJobs },
   };
 }
 
