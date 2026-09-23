@@ -304,3 +304,54 @@ export function createCrashIsolatingTickRunner({
   Object.defineProperty(runner, "state", { get: state });
   return runner;
 }
+
+const trackedWork = new Map();
+let draining = false;
+
+// Wraps one unit of background work (a claim, generation, review, payout) so
+// shutdown waits for it and a unit that never settles restarts the process
+// instead of silently blocking its worker loop forever.
+export async function runTrackedWork(name, work) {
+  if (draining) return undefined;
+  const token = Symbol(name);
+  trackedWork.set(token, { name, startedAtMs: Date.now() });
+  try {
+    return await work();
+  } finally {
+    trackedWork.delete(token);
+  }
+}
+
+export function installGracefulShutdown({
+  drain = async () => {},
+  timeoutMs = Number(process.env.TASKNODE_SHUTDOWN_TIMEOUT_MS || 40_000),
+  hungWorkMs = Number(process.env.TASKNODE_WORK_HANG_MS || 20 * 60_000),
+  processImpl = process,
+  exit = (code) => processImpl.exit(code),
+} = {}) {
+  const log = (event, details = {}) => emitStructuredRecord({ processImpl, event, details });
+  const watchdog = setInterval(() => {
+    const now = Date.now();
+    for (const { name, startedAtMs } of trackedWork.values()) {
+      if (now - startedAtMs <= hungWorkMs) continue;
+      log("tracked_work_hung", { name, runningMs: now - startedAtMs });
+      exit(1);
+      return;
+    }
+  }, 30_000);
+  watchdog.unref?.();
+
+  const shutdown = async (signal) => {
+    if (draining) return;
+    draining = true;
+    const deadline = Date.now() + timeoutMs;
+    log("shutdown_started", { signal, trackedWork: trackedWork.size });
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    await Promise.race([Promise.resolve().then(drain).catch(() => {}), sleep(timeoutMs)]);
+    while (trackedWork.size > 0 && Date.now() < deadline) await sleep(250);
+    log("shutdown_finished", { signal, abandonedWork: [...trackedWork.values()].map((entry) => entry.name) });
+    exit(0);
+  };
+  processImpl.once("SIGTERM", () => void shutdown("SIGTERM"));
+  processImpl.once("SIGINT", () => void shutdown("SIGINT"));
+}

@@ -1,3 +1,4 @@
+import { runTrackedWork } from "./process-hardening.js";
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
 import { databaseEnabled, query } from "./db/pool.js";
@@ -595,12 +596,12 @@ export function startDailyAirdropWorker({
     if (running) return;
     running = true;
     try {
-      const result = await runDailyAirdropWorkerOnce({
+      const result = await runTrackedWork("daily_airdrop", () => runDailyAirdropWorkerOnce({
         env,
         logger,
         trigger: "daily_airdrop_worker_tick",
-      });
-      if (!result.skipped && (result.issuedCount || result.failedCount || result.debtCount)) {
+      }));
+      if (result && !result.skipped && (result.issuedCount || result.failedCount || result.debtCount)) {
         logger.info?.("[daily-airdrop-worker]", result.summary);
       }
     } catch (error) {

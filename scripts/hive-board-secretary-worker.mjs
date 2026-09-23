@@ -20,7 +20,7 @@ if (!process.env.DATABASE_STATEMENT_TIMEOUT_MS) {
     process.env.TASKNODE_HIVE_BOARD_SECRETARY_DB_STATEMENT_TIMEOUT_MS || "60000";
 }
 
-const [{ migrateDatabase }, { closePool }, worker] = await Promise.all([
+const [{ waitForDatabase }, { closePool }, worker] = await Promise.all([
   import("../server/db/migrate.js"),
   import("../server/db/pool.js"),
   import("../server/hive-board-secretary-worker.js"),
@@ -60,7 +60,7 @@ if (hasArg("--help") || hasArg("-h")) {
   process.exit(0);
 }
 
-await migrateDatabase();
+await waitForDatabase();
 
 if (hasArg("--once") || hasArg("--dry-run")) {
   const result = await worker.runHiveBoardSecretaryOnce({

@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { REQUEST_URL_BASE, parseRequestUrl } from "./request-url.js";
 import { handleBoardAgentRoute } from "./board-agent-routes.js";
 import { handleHiveGroupRoute } from "./hive-group-routes.js";
-import { installProcessHardening } from "./process-hardening.js";
+import { installGracefulShutdown, installProcessHardening } from "./process-hardening.js";
 import { startChatStreamHeartbeat } from "./chat-stream-heartbeat.js";
 import { readValidatedJson as readJson } from "./request-validation.js";
 import * as trustedProxy from "./trusted-proxy.js";
@@ -18,6 +19,7 @@ import {
   runtimeConfigScript,
   securityHeaders,
   serveStatic,
+  sessionCookie,
   writeSse,
 } from "./server-http-boundary.js";
 installProcessHardening();
@@ -42,7 +44,7 @@ const [
     conversationIdForSession,
     sessionCookieName,
   },
-  { getSession },
+  { getSession, renewSessionIfDue },
   { migrateLegacyRuntimeAuthority },
   { getLinkedWallet },
   {
@@ -55,7 +57,7 @@ const [
   },
   { recordChatFailureObservability },
   { chatConversationExistsForAccount },
-  { migrateDatabase },
+  { waitForDatabase },
   { observeApiRoute },
   { authWalletStart, authWalletVerify },
   { oauthStateCookieName, responseHeadersForAuthResult },
@@ -82,10 +84,11 @@ const [
   { handleTelegramBotRoute },
   { walletSendPrepare, walletSendSubmit },
   { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole },
-  { startRealtimeNotificationListener, subscribeRealtimeEvents },
+  { closeRealtimeSubscribers, startRealtimeNotificationListener, subscribeRealtimeEvents },
   { agentOriginForWalletSession },
   { startBackgroundWorkerKeepalive },
   { authResultHeaders, currentAuthIntent, handleAccountAuthRoutes },
+  { closePool },
 ] = await Promise.all([
   import("node:http"),
   import("./app-state.js"),
@@ -134,6 +137,7 @@ const [
   import("./agent-origin.js"),
   import("./background-worker-liveness.js"),
   import("./account-auth-routes.js"),
+  import("./db/pool.js"),
 ]);
 
 const port = Number(process.env.PORT || 8080);
@@ -158,6 +162,7 @@ async function agentOriginForCurrentWalletSession(session = null, payload = {}) 
 async function routeApi(req, url, res) {
   const sessionId = cookieValue(req, sessionCookieName);
   const session = await getSession(sessionId);
+  if (await renewSessionIfDue(sessionId, session)) res.setHeader("set-cookie", sessionCookie(req, sessionId));
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
     res.once("finish", () => {
       if (res.statusCode < 400) invalidateCachedAppState(session);
@@ -284,9 +289,16 @@ async function routeApi(req, url, res) {
     return true;
   }
 
-  if (parts[0] === "api" && parts[1] === "auth" && parts[2] === "start" && parts[3]) {
+  // Both /api/auth/start/:provider and /api/auth/:provider/start (and the
+  // matching callback shapes) are registered with OAuth providers.
+  const authRoute = parts[0] === "api" && parts[1] === "auth"
+    ? (["start", "callback"].includes(parts[2]) && parts[3] ? { action: parts[2], providerId: parts[3] }
+      : ["start", "callback"].includes(parts[3]) ? { action: parts[3], providerId: parts[2] } : null)
+    : null;
+
+  if (authRoute?.action === "start") {
     const authIntent = await currentAuthIntent(req);
-    const result = await authStart(parts[3], {
+    const result = await authStart(authRoute.providerId, {
       origin: requestOrigin(req),
       redirectPath: url.searchParams.get("redirect") || "/",
       proof: url.searchParams.get("proof") || "",
@@ -297,51 +309,13 @@ async function routeApi(req, url, res) {
     return true;
   }
 
-  if (parts[0] === "api" && parts[1] === "auth" && parts[2] === "callback" && parts[3]) {
-    const providerId = parts[3];
+  if (authRoute?.action === "callback") {
     const result = await authCallback(
-      providerId,
+      authRoute.providerId,
       Object.fromEntries(url.searchParams.entries()),
       {
         origin: requestOrigin(req),
-        oauthState: cookieValue(req, oauthStateCookieName(providerId)),
-      }
-    );
-    const headers = await authResultHeaders(req, result, { clearAccountAddIntent: Boolean(result.sessionId) });
-    if (result.status >= 300 && result.status < 400 && result.redirectLocation) {
-      res.writeHead(result.status, {
-        "cache-control": "no-store",
-        ...securityHeaders(),
-        ...headers,
-      });
-      res.end("");
-    } else {
-      json(res, result.status, result.body, headers);
-    }
-    return true;
-  }
-
-  if (parts[0] === "api" && parts[1] === "auth" && parts[3] === "start") {
-    const authIntent = await currentAuthIntent(req);
-    const result = await authStart(parts[2], {
-      origin: requestOrigin(req),
-      redirectPath: url.searchParams.get("redirect") || "/",
-      proof: url.searchParams.get("proof") || "",
-      session: authIntent === "add_account" ? null : session,
-      authIntent,
-    });
-    json(res, result.status, result.body, responseHeadersForAuthResult(req, result));
-    return true;
-  }
-
-  if (parts[0] === "api" && parts[1] === "auth" && parts[3] === "callback") {
-    const providerId = parts[2];
-    const result = await authCallback(
-      providerId,
-      Object.fromEntries(url.searchParams.entries()),
-      {
-        origin: requestOrigin(req),
-        oauthState: cookieValue(req, oauthStateCookieName(providerId)),
+        oauthState: cookieValue(req, oauthStateCookieName(authRoute.providerId)),
       }
     );
     const headers = await authResultHeaders(req, result, { clearAccountAddIntent: Boolean(result.sessionId) });
@@ -585,7 +559,7 @@ async function routeApi(req, url, res) {
               ? "The chat provider timed out before returning a response."
               : "The chat provider could not complete this response.",
           actionRequired:
-            "Retry with a shorter prompt, choose another configured mode, or check provider health.",
+            "Try again in a moment, or switch to a different mode.",
           estimate: started.estimate,
         });
       }
@@ -857,6 +831,26 @@ async function routeApi(req, url, res) {
   return false;
 }
 
+let databaseReady = false;
+
+// Internal detail stays in logs; clients get a stable code and a reference.
+function sendRequestFailure(req, res, url, error) {
+  const status = Number(error?.status) >= 400 && Number(error?.status) < 600 ? Number(error.status) : 500;
+  const requestId = randomUUID();
+  console.warn("request_failed", {
+    requestId,
+    method: req.method,
+    path: url.pathname,
+    status,
+    error: String(error?.message || error || "internal_error").slice(0, 1000),
+  });
+  if (res.headersSent) {
+    res.destroy();
+    return;
+  }
+  json(res, status, { ok: false, error: status < 500 ? error?.message || "request_failed" : "internal_error", requestId });
+}
+
 const server = createServer((req, res) => {
   const parsedTarget = parseRequestUrl(req.url, REQUEST_URL_BASE);
   if (!parsedTarget.ok) {
@@ -872,6 +866,7 @@ const server = createServer((req, res) => {
       environment,
       buildId,
       uptimeSeconds: Math.round(process.uptime()),
+      database: databaseReady ? "ready" : "waiting",
     });
     return;
   }
@@ -898,6 +893,11 @@ const server = createServer((req, res) => {
     return;
   }
 
+  if (!databaseReady && url.pathname.startsWith("/api/")) {
+    json(res, 503, { ok: false, error: "service_starting", message: "Task Node is starting. Try again in a moment." }, { "retry-after": "5" });
+    return;
+  }
+
   routeApi(req, url, res)
     .then((handled) => {
       if (handled) return;
@@ -906,62 +906,35 @@ const server = createServer((req, res) => {
         return;
       }
 
-      serveStatic(url, res).catch((error) => {
-        json(res, 500, { ok: false, error: error?.message || "internal_error" });
-      });
+      serveStatic(url, res).catch((error) => sendRequestFailure(req, res, url, error));
     })
-    .catch((error) => {
-      if (url.pathname.startsWith("/api/")) {
-        console.warn("api_route_failed", {
-          method: req.method,
-          path: url.pathname,
-          status: error?.status || 500,
-          error: String(error?.message || error || "internal_error").slice(0, 1000),
-        });
-      }
-      json(res, error?.status || 500, {
-        ok: false,
-        error: error?.message || "internal_error",
-      });
-    });
+    .catch((error) => sendRequestFailure(req, res, url, error));
 });
 
 const processRole = tasknodeProcessRole();
-const httpEnabled = shouldStartHttpServer(processRole);
-const backgroundWorkersEnabled = shouldStartBackgroundWorkers(processRole);
-
-if (backgroundWorkersEnabled) {
-  throw new Error(`web_entry_rejects_worker_role:${processRole}. Use server/worker-entry.js for background workers.`);
+if (shouldStartBackgroundWorkers(processRole) || !shouldStartHttpServer(processRole)) {
+  throw new Error(`web_entry_requires_web_role:${processRole}. Use server/worker-entry.js for background workers.`);
 }
-if (!httpEnabled) {
-  throw new Error(`web_entry_requires_web_role:${processRole}`);
-}
-
-if (httpEnabled) assertStartupSecurity();
-try {
-  await migrateDatabase();
-  if (httpEnabled) await migrateLegacyRuntimeAuthority();
-} catch (error) {
-  if (process.env.TASKNODE_FLY_DEV_DATA_BRIDGE === "true") {
-    throw new Error(
-      "Fly dev data bridge is enabled but Postgres is unreachable. Rerun `npm run docker:dev:fly-data` or start the proxy with `npm run fly-dev:data:proxy`."
-    );
-  }
-  throw error;
-}
+assertStartupSecurity();
 startBackgroundWorkerKeepalive();
-if (httpEnabled) {
-  startRealtimeNotificationListener().catch((error) => {
-    console.warn("realtime_notification_listener_start_failed", { error: error?.message || String(error) });
-  });
-}
 
-if (httpEnabled) {
-  const bindHost = process.env.TASKNODE_BIND_HOST
-    || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
-  server.listen(port, bindHost, () => {
-    console.log(`tasknodeofficial listening on ${bindHost}:${port} role=${processRole}`);
-  });
-} else {
-  console.log(`tasknodeofficial background process started role=${processRole}`);
-}
+const bindHost = process.env.TASKNODE_BIND_HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
+server.listen(port, bindHost, () => {
+  console.log(`tasknodeofficial listening on ${bindHost}:${port} role=${processRole}`);
+});
+
+installGracefulShutdown({
+  drain: async () => {
+    closeRealtimeSubscribers();
+    const closed = new Promise((resolve) => server.close(resolve));
+    server.closeIdleConnections();
+    await closed;
+    await closePool();
+  },
+});
+
+await waitForDatabase({ afterReady: migrateLegacyRuntimeAuthority });
+databaseReady = true;
+startRealtimeNotificationListener().catch((error) => {
+  console.warn("realtime_notification_listener_start_failed", { error: error?.message || String(error) });
+});

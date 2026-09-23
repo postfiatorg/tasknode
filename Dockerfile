@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+ARG NODE_IMAGE=node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
 
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
@@ -21,6 +21,7 @@ RUN npm run build \
     && node scripts/build-runtime-tree.mjs \
       --entry server/worker-entry.js \
       --entry scripts/hive-board-secretary-worker.mjs \
+      --entry scripts/migrate-db.mjs \
       --include server/db/migrations \
       --include prompts \
       --exclude prompts/non_production \

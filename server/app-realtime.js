@@ -6,6 +6,8 @@ import { databaseEnabled, databaseUrl, query } from "./db/pool.js";
 const { Client } = pg;
 const REALTIME_CHANNEL = "tasknode_realtime";
 const HEARTBEAT_MS = 25000;
+// Each open stream holds a proxy request slot; cap them per account.
+const MAX_STREAMS_PER_ACCOUNT = Math.max(1, Number(process.env.TASKNODE_REALTIME_MAX_STREAMS_PER_ACCOUNT || 4));
 const subscribersByAccount = new Map();
 const localEvents = new EventEmitter();
 
@@ -99,6 +101,9 @@ export function subscribeRealtimeEvents({
 } = {}) {
   const accountId = safeText(session?.accountId, 180);
   if (!accountId) return { ok: false, status: 401, error: "realtime_login_required" };
+  if ((subscribersByAccount.get(accountId)?.size || 0) >= MAX_STREAMS_PER_ACCOUNT) {
+    return { ok: false, status: 429, error: "realtime_stream_limit" };
+  }
 
   res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -222,6 +227,15 @@ export async function startRealtimeNotificationListener({ env = process.env, log
   } finally {
     listenerStarting = false;
   }
+}
+
+// Ends every open stream so a draining process can close; clients reconnect.
+export function closeRealtimeSubscribers() {
+  for (const subscribers of subscribersByAccount.values()) {
+    for (const subscriber of [...subscribers]) subscriber.res?.end?.();
+  }
+  listener?.removeAllListeners?.("end");
+  listener?.end?.().catch?.(() => {});
 }
 
 export function realtimeSubscriberCount(accountId = "") {

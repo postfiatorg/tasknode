@@ -89,8 +89,8 @@ The in-app Help surface imports an explicit set of wiki pages and prompts from
 
 Requirements:
 
-- Node 20;
-- npm with the checked-in lockfile; and
+- Node 24 (`.nvmrc`);
+- npm 11 with the checked-in lockfile; and
 - Docker for the normal full-stack workflow.
 
 Install and build:

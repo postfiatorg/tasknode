@@ -26,7 +26,7 @@ for (const directory of ["server", "scripts"]) {
     const file = `${directory}/${name}`;
     const source = await readFile(file, "utf8");
     const ast = parse(source, { ecmaVersion: "latest", sourceType: "module" });
-    if (name.startsWith("inference-") || name === "inference.js" || ast.body.some((node) => node.type === "ImportDeclaration" && ["inference.js", "ambient-inference.js", "vercel-inference.js"].some((suffix) => node.source.value.endsWith(`/${suffix}`)))) files.add(file);
+    if (name.startsWith("inference-") || name === "inference.js" || ast.body.some((node) => node.type === "ImportDeclaration" && ["inference.js", "vercel-inference.js"].some((suffix) => node.source.value.endsWith(`/${suffix}`)))) files.add(file);
   }
 }
 const graph = inferenceCallGraph([...files]);
