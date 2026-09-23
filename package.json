@@ -176,7 +176,7 @@
     "test:db": "node scripts/run-smokes.mjs db"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^0.1.65",
+    "@napi-rs/canvas": "^1.0.9",
     "@node-rs/argon2": "2.2.1",
     "@scure/bip39": "^2.2.0",
     "@xmldom/xmldom": "0.9.12",
