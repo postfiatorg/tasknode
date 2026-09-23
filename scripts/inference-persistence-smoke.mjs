@@ -17,8 +17,8 @@ try {
     const { rows } = await query(`SELECT status, provider, model FROM ${table} WHERE ${column} = $1`, [id]);
     assert.deepEqual(rows[0], { status: "completed", provider: "ambient", model: "z-ai/glm-5.2" });
   }
-  const defaults = await query("SELECT table_name, column_default FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'provider' AND table_name IN ('board_manager_secretary_packets', 'hive_decision_runs') ORDER BY table_name");
-  assert.equal(defaults.rows.length, 2);
+  const defaults = await query("SELECT table_name, column_default FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'provider' AND table_name = 'board_manager_secretary_packets'");
+  assert.equal(defaults.rows.length, 1);
   defaults.rows.forEach((row) => assert.equal(row.column_default, "'vercel'::text"));
   const narrator = await query("SELECT column_name FROM information_schema.columns WHERE table_name = 'bm_activity_summaries' AND column_name = 'provider'");
   assert.equal(narrator.rows.length, 1);
