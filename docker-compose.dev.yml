@@ -124,46 +124,6 @@ services:
       - api_node_modules:/app/node_modules
       - dev_data:/data
 
-  board-manager:
-    profiles: ["board-manager"]
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    command: npm run board-manager:worker
-    depends_on:
-      db:
-        condition: service_healthy
-    env_file:
-      - path: .env.tasknode.local
-        required: false
-    environment:
-      NODE_ENV: development
-      TASKNODE_ENV: development
-      TASKNODE_APP_NAME: tasknodeofficial-local-board-manager
-      TASKNODE_PROCESS_ROLE: board-manager
-      TASKNODE_HIVE_DECISION_AGENT_ENABLED: "false"
-      TASKNODE_HIVE_DECISION_AGENT_ACTIVE: "false"
-      TASKNODE_HIVE_DECISION_AGENT_RUN_IN_WORKER: "false"
-      TASKNODE_DATABASE_ENABLED: "true"
-      DATABASE_URL: ${TASKNODE_DATABASE_URL:-postgres://tasknodeofficial:tasknodeofficial@db:5432/tasknodeofficial}
-      TASKNODE_PUBLIC_URL: http://localhost:5174
-      VITE_SITE_ORIGIN: http://localhost:5174
-      TASKNODE_BOARD_MANAGER_WORKER_POLL_MS: ${TASKNODE_BOARD_MANAGER_WORKER_POLL_MS:-15000}
-      TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS: ${TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS:-5000}
-      TASKNODE_BOARD_MANAGER_ERROR_DELAY_MS: ${TASKNODE_BOARD_MANAGER_ERROR_DELAY_MS:-300000}
-      TASKNODE_BOARD_MANAGER_STALE_JOB_SECONDS: ${TASKNODE_BOARD_MANAGER_STALE_JOB_SECONDS:-900}
-      TASKNODE_BOARD_MANAGER_PROVIDER: ${TASKNODE_BOARD_MANAGER_PROVIDER:-vercel}
-      TASKNODE_BOARD_MANAGER_MODEL: ${TASKNODE_BOARD_MANAGER_MODEL:-zai/glm-5.3}
-      TASKNODE_BOARD_MANAGER_REASONING_EFFORT: ${TASKNODE_BOARD_MANAGER_REASONING_EFFORT:-high}
-      AMBIENT_API_KEY: ""
-      VERCEL_AI_GATEWAY_API_KEY: ""
-      AI_GATEWAY_API_KEY: ""
-    user: "${TASKNODE_DOCKER_UID:-1001}:${TASKNODE_DOCKER_GID:-1001}"
-    volumes:
-      - .:/app
-      - board_manager_node_modules:/app/node_modules
-    restart: unless-stopped
-
   web:
     build:
       context: .

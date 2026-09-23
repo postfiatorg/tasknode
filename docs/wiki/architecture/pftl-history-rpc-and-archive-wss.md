@@ -34,7 +34,7 @@ Check Fly secrets and archive-cache smoke:
 
 ```bash
 fly secrets list -a tasknodeofficial-dev
-npm run db:pftl-cache-archive-smoke
+node scripts/run-smokes.mjs db scripts/pftl-cache-archive-postgres-smoke.mjs
 ```
 
 History RPC failures affect context restore, old wallet transaction history,

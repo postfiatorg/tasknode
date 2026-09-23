@@ -289,7 +289,7 @@ Add an operator command that answers:
 Example command shape:
 
 ```bash
-npm run ipfs-new-write-replication-check -- \
+node scripts/ipfs-new-write-replication-check.mjs -- \
   --lookback-hours 24 \
   --require-clean-gateway \
   --fail-on-unverified
@@ -298,7 +298,7 @@ npm run ipfs-new-write-replication-check -- \
 Implemented command:
 
 ```bash
-npm run ipfs-new-write-replication-check -- \
+node scripts/ipfs-new-write-replication-check.mjs -- \
   --lookback-hours 24 \
   --require-clean-gateway \
   --fail-on-unverified \
@@ -322,7 +322,7 @@ can actively test unverified sample CIDs against the clean gateway.
 Local unit smoke:
 
 ```bash
-npm run ipfs-replication-smoke
+node scripts/ipfs-replication-smoke.mjs
 ```
 
 Postgres queue/worker smoke:
@@ -332,7 +332,7 @@ set -a; source .env.tasknodeofficial-fly-dev-data; set +a
 export DATABASE_URL="$TASKNODE_DATABASE_URL"
 export TASKNODE_DATABASE_ENABLED=true
 export TASKNODE_POSTGRES_ENABLED=true
-npm run ipfs-replication-postgres-smoke
+node scripts/ipfs-replication-postgres-smoke.mjs
 ```
 
 Fresh-write health check:
@@ -342,7 +342,7 @@ set -a; source .env.tasknodeofficial-fly-dev-data; set +a
 export DATABASE_URL="$TASKNODE_DATABASE_URL"
 export TASKNODE_DATABASE_ENABLED=true
 export TASKNODE_POSTGRES_ENABLED=true
-npm run ipfs-new-write-replication-check -- \
+node scripts/ipfs-new-write-replication-check.mjs -- \
   --lookback-hours 24 \
   --require-clean-gateway \
   --fail-on-unverified \

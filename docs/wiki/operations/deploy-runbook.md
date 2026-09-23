@@ -184,7 +184,7 @@ Avoidance:
 - Before deploy, run the focused positive/negative smoke:
 
   ```bash
-  npm run agent-quality-gates-smoke
+  node scripts/agent-quality-gates-smoke.mjs
   ```
 
 - After deploy, verify the live code path without mutating task state. A small
@@ -235,7 +235,7 @@ fly secrets list -a tasknodeofficial-dev
 
 For agent quality-gate changes:
 
-- Run `npm run agent-quality-gates-smoke`.
+- Run `node scripts/agent-quality-gates-smoke.mjs`.
 - Confirm every changed action has both an allowed and blocked test case.
 - Confirm the smoke covers the production action strings used by
   `server/task-submission.js` and adjacent task routes.

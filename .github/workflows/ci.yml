@@ -126,6 +126,10 @@ jobs:
         env:
           DATABASE_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres
           TASKNODE_DATABASE_ENABLED: "true"
+      - name: Run database smokes, each in a fresh migrated database
+        run: npm run test:db
+        env:
+          TASKNODE_TEST_ADMIN_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres
       - name: Verify default badge preservation against PostgreSQL
         run: |
           psql postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tasknode_badge_test_ci'

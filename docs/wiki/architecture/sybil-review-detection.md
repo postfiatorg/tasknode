@@ -103,7 +103,7 @@ These should remain review inputs until Sauron defines a separate enforcement po
 Use:
 
 ```bash
-npm run sybil-review-detector-smoke
+node scripts/sybil-review-detector-smoke.mjs
 npm run migration-registration-smoke
 ```
 

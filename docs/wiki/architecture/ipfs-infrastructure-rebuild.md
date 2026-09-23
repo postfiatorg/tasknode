@@ -618,7 +618,7 @@ fly ssh console -a pft-ipfs-testnet-node-1 --machine <machine-id> \
 Local pin status check from Task Node:
 
 ```bash
-npm run context-ipfs-gateway-smoke
+node scripts/context-ipfs-gateway-smoke.mjs
 ```
 
 Current Task Node CID inventory, without network gateway checks:

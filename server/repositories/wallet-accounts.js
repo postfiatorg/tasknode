@@ -49,7 +49,7 @@ export async function resolveOrCreateWalletLoginAccount(options = {}) {
     );
     return { accountId, created: !current.rows[0], linked: !owner.rows[0], wallet: owner.rows[0] ? { accountId, address, status: "linked" } : null };
   });
-  await refreshDurableAccountCache();
+  await refreshDurableAccountCache([result.accountId]);
   return {
     ok: true, account: await getAccount(result.accountId), wallet: result.wallet,
     created: result.created, linked: result.linked, reclaimedWalletCount: 0,

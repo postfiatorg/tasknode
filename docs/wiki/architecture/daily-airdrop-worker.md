@@ -98,7 +98,7 @@ Run the worker and issue script only after checking failed issuance state:
 npm run profile-daily-airdrop-worker -- --json
 npm run profile-daily-airdrop-debt -- --json
 npm run profile-daily-airdrop-issue -- --account-id=<account_id> --run-id=<run_id>
-npm run profile-daily-airdrop-packet-smoke
+node scripts/profile-daily-airdrop-packet-smoke.mjs
 ```
 
 The issue script requires both `--account-id` and `--run-id`: issuing pays the

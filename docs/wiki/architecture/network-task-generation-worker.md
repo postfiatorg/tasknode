@@ -144,7 +144,7 @@ Recovery guards cover these cases:
   `markNetworkTaskGenerationJobFailed` only flips jobs that are still
   `running`, so a late failure cannot re-queue a job that already generated.
 
-`npm run network-task-generation-recovery-smoke` proves these guards against a
+`node scripts/network-task-generation-recovery-smoke.mjs` proves these guards against a
 configured database.
 
 ## Debug And Repair
@@ -154,7 +154,7 @@ mirrors, and task projections:
 
 ```bash
 npm run network-task-recovery
-npm run network-task-recovery-smoke
+node scripts/network-task-recovery-smoke.mjs
 ```
 
 Inspect `network_task_generation_jobs.last_error`, generated request IDs, and

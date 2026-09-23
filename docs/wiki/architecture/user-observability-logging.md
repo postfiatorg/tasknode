@@ -533,7 +533,7 @@ System Status row is needed yet.
 Minimum checks for the first implementation:
 
 - `npm run user-observability -- --help`
-- `npm run user-observability-smoke`
+- `node scripts/user-observability-smoke.mjs`
 - temp-store fixture resolving one account with two wallets;
 - fixture proving Network Task capacity builds two wallet-specific capacity
   decision payloads for the same account;

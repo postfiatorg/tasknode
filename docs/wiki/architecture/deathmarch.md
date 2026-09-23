@@ -224,7 +224,7 @@ npm run deathmarch -- --file docs/verification/evidence/task_8f8ff4b94792842a9b5
 Run local smoke coverage:
 
 ```bash
-npm run deathmarch-smoke
+node scripts/deathmarch-smoke.mjs
 ```
 
 ## Event Scope

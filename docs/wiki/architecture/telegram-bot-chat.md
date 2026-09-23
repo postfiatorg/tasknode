@@ -98,8 +98,8 @@ Deleted chat conversation:
 ## Verification
 
 ```sh
-npm run telegram-bot-webhook-smoke
-npm run db:chat-billing-smoke
+node scripts/telegram-bot-webhook-smoke.mjs
+node scripts/run-smokes.mjs db scripts/chat-billing-postgres-smoke.mjs
 ```
 
 The Telegram smoke covers linked private chat routing, unlinked user handling, and group-chat rejection without calling Telegram or a model provider. The Postgres smoke covers the deleted-conversation read/write boundary: normal reads reject deleted conversations, while write history returns empty so the next chat write can revive the owned conversation.

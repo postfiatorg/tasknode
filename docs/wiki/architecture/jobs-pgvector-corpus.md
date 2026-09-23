@@ -129,13 +129,13 @@ fly status -a tasknodeofficial-dev
 Run the local Postgres/pgvector smoke against the configured database:
 
 ```bash
-npm run db:jobs-corpus-smoke
+node scripts/run-smokes.mjs db scripts/jobs-corpus-pgvector-smoke.mjs
 ```
 
 Focused chat injection checks:
 
 ```bash
-npm run chat-spirit-prompt-smoke
+node scripts/chat-spirit-prompt-smoke.mjs
 npm run format-check
 npm run lint
 git diff --check

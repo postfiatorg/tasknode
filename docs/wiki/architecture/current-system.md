@@ -223,11 +223,9 @@ route/auth inventory is `server/route-policies.js`, and route ownership is in
 `server/index.js` plus the route modules it dispatches to. A generated public
 API/auth reference is an open-source readiness requirement.
 
-Focused regression coverage is primarily under `scripts/` and
-`reference_clients/`. The repository currently has hundreds of npm aliases and
-smoke scripts rather than a conventional discoverable JavaScript test suite,
-and no checked-in CI runs the aggregate gate. `npm run file-size-check` is
-currently failing, so `npm run quality` and `npm run check` are not green.
+Regression coverage lives under `scripts/` and `reference_clients/`.
+`npm run check` is the CI gate (`.github/workflows/ci.yml`); a smoke that
+`check` does not run is unverified.
 
 ## Documentation and Publication Boundary
 

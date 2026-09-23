@@ -80,14 +80,22 @@ async function saveAccount(client, account) {
     })]
   );
 }
-async function refreshRuntimeCache() {
+// Mirrors durable accounts into the legacy runtime cache. Per-account refreshes
+// read only the changed accounts; a full reload (every account) is reserved for
+// migrations and merges so ordinary logins stay O(1) as the user base grows.
+async function refreshRuntimeCache(accountIds = null) {
   if (!databaseEnabled()) return;
+  const ids = Array.isArray(accountIds) ? [...new Set(accountIds.map((id) => String(id || "").trim()).filter(Boolean))] : null;
+  if (ids && ids.length === 0) return;
+  const scope = ids ? " WHERE account_id = ANY($1::text[])" : "";
+  const params = ids ? [ids] : [];
   const [accounts, emails, identities] = await Promise.all([
-    query("SELECT account_id, account_json FROM app_accounts"),
-    query("SELECT email_canonical, account_id FROM account_email_identities"),
-    query("SELECT provider, provider_user_id, account_id FROM account_provider_identities"),
+    query(`SELECT account_id, account_json FROM app_accounts${scope}`, params),
+    query(`SELECT email_canonical, account_id FROM account_email_identities${scope}`, params),
+    query(`SELECT provider, provider_user_id, account_id FROM account_provider_identities${scope}`, params),
   ]);
   replaceRuntimeAccountStateFromDurable({
+    accountIds: ids,
     accounts: Object.fromEntries(accounts.rows.map((row) => [row.account_id, row.account_json])),
     emails: Object.fromEntries(emails.rows.map((row) => [row.email_canonical, row.account_id])),
     identities: Object.fromEntries(identities.rows.map((row) => [identityKey(row.provider, row.provider_user_id), row.account_id])),
@@ -183,7 +191,7 @@ export async function getOrCreateEmailAccount(options = {}) {
     );
     return publicAccount(account);
   });
-  await refreshRuntimeCache(); return result;
+  await refreshRuntimeCache([result?.id]); return result;
 }
 
 export async function getOrCreateProviderAccount(options = {}) {
@@ -224,7 +232,7 @@ export async function getOrCreateProviderAccount(options = {}) {
     );
     return publicAccount(account);
   });
-  await refreshRuntimeCache(); return result;
+  await refreshRuntimeCache([result?.id]); return result;
 }
 
 export async function linkProviderToAccount(options = {}) {
@@ -253,7 +261,7 @@ export async function linkProviderToAccount(options = {}) {
     await client.query("INSERT INTO account_provider_identities (provider, provider_user_id, account_id, identity_json) VALUES ($1,$2,$3,$4::jsonb) ON CONFLICT DO NOTHING", [provider, userId, accountId, JSON.stringify({ username: options.username || "" })]);
     return { ok: true, account: publicAccount(account) };
   });
-  await refreshRuntimeCache(); return result;
+  await refreshRuntimeCache([result?.account?.id]); return result;
 }
 
 export async function unlinkProviderFromAccount(options = {}) {
@@ -281,7 +289,7 @@ export async function unlinkProviderFromAccount(options = {}) {
     await client.query("DELETE FROM account_provider_identities WHERE provider = $1 AND account_id = $2", [provider, accountId]);
     return { ok: true, provider, unlinkedUsername: target.username || null, remainingLoginMethods: (emailSurvives ? 1 : 0) + (passwordSurvives ? 1 : 0) + remainingOauth.length, account: publicAccount(account) };
   });
-  await refreshRuntimeCache(); return result;
+  await refreshRuntimeCache([result?.account?.id]); return result;
 }
 
 function accountRecoveryError(code, detail = "") {
@@ -719,5 +727,5 @@ export async function migrateLegacyAccounts() {
   });
   await refreshRuntimeCache(); return result;
 }
-export async function refreshDurableAccountCache() { await refreshRuntimeCache(); }
+export async function refreshDurableAccountCache(accountIds = null) { await refreshRuntimeCache(accountIds); }
 export function accountStorageStatus() { return { adapter: databaseEnabled() ? "postgres" : "runtime" }; }
