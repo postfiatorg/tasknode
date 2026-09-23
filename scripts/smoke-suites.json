@@ -189,6 +189,7 @@
     "scripts/chat-memory-postgres-smoke.mjs",
     "scripts/command-transaction-queue-smoke.mjs",
     "scripts/context-postgres-smoke.mjs",
+    "scripts/db-connection-loss-smoke.mjs",
     "scripts/decisions-repository-smoke.mjs",
     "scripts/docs-folders-smoke.mjs",
     "scripts/hive-reports-smoke.mjs",

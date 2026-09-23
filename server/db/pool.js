@@ -151,6 +151,14 @@ export async function transaction(work) {
   }
 
   const client = await db.connect();
+  // pg-pool only listens for errors on idle clients. Without this, a connection
+  // lost mid-transaction (restart, failover) is an uncaught exception.
+  let connectionError;
+  const onConnectionError = (error) => {
+    connectionError = error;
+    lastError = error?.message || "database_connection_lost";
+  };
+  client.on("error", onConnectionError);
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('statement_timeout', $1, true)", [String(statementTimeoutMs)]);
@@ -166,7 +174,8 @@ export async function transaction(work) {
     lastError = error?.message || "database_transaction_failed";
     throw error;
   } finally {
-    client.release();
+    client.off("error", onConnectionError);
+    client.release(connectionError);
   }
 }
 
