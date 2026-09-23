@@ -189,7 +189,6 @@
     "scripts/chat-memory-postgres-smoke.mjs",
     "scripts/command-transaction-queue-smoke.mjs",
     "scripts/context-postgres-smoke.mjs",
-    "scripts/context-rewrite-sample-smoke.mjs",
     "scripts/decisions-repository-smoke.mjs",
     "scripts/docs-folders-smoke.mjs",
     "scripts/hive-reports-smoke.mjs",
@@ -219,13 +218,14 @@
   "manual": {
     "scripts/ambient-cache-live-smoke.mjs": "calls a live inference provider",
     "scripts/campaign-tracker-live-model-smoke.mjs": "calls a live inference provider",
-    "scripts/chat-api-models-live-smoke.mjs": "calls a live inference provider",
-    "scripts/context-rewrite-live-smoke.mjs": "calls a live inference provider",
-    "scripts/context-publish-live-smoke.mjs": "publishes to live IPFS and PFTL",
-    "scripts/theme-production-smoke.mjs": "read-only check against production",
     "scripts/campaign-tracker-smoke.mjs": "drives the local Docker development stack",
+    "scripts/chat-api-models-live-smoke.mjs": "calls a live inference provider",
     "scripts/chat-task-activity-smoke.mjs": "uses psql inside a named local Postgres container",
+    "scripts/context-publish-live-smoke.mjs": "publishes to live IPFS and PFTL",
+    "scripts/context-rewrite-live-smoke.mjs": "calls a live inference provider",
+    "scripts/context-rewrite-sample-smoke.mjs": "reads a sample context document from the operator host",
     "scripts/smoke.mjs": "exercises a running server with live providers (SMOKE_BASE_URL)",
-    "scripts/sybil-blocklist-regression.mjs": "operator audit over production blocklist data"
+    "scripts/sybil-blocklist-regression.mjs": "operator audit over production blocklist data",
+    "scripts/theme-production-smoke.mjs": "read-only check against production"
   }
 }

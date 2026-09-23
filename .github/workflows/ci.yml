@@ -23,6 +23,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Install ripgrep for board-manager source scans
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
       - name: Verify offchain task action event integrity
         run: node --test scripts/offchain-task-event-integrity.test.mjs
         env:
