@@ -199,6 +199,7 @@
     "scripts/jobs-corpus-pgvector-smoke.mjs",
     "scripts/network-task-direct-intake-smoke.mjs",
     "scripts/network-task-explicit-retry-smoke.mjs",
+    "scripts/network-task-reward-band-smoke.mjs",
     "scripts/pftl-cache-archive-postgres-smoke.mjs",
     "scripts/pftl-cache-health-retention-postgres-smoke.mjs",
     "scripts/pftl-cache-postgres-smoke.mjs",
