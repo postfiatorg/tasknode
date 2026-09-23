@@ -263,7 +263,6 @@ export async function readAgentActivity({
          (agents.wallet_address <> '' AND p.subject_wallet = agents.wallet_address)
        )
        AND COALESCE(p.source, '') <> 'directory_polish_local_fixture'
-       AND COALESCE(p.metadata_json->>'directoryPolishFixture', 'false') <> 'true'
      GROUP BY agents.id, agents.handle, agents.agent_id, agents.role, agents.status, agents.active, agents.updated_at, agents.created_at
      ORDER BY
        COALESCE(agents.active, true) DESC,
@@ -312,7 +311,6 @@ export async function readAgentActivity({
            )
           AND p.status IN ('proposed', 'accepted', 'submitted', 'verification_requested', 'verification_response_submitted', 'reward_decided', 'rewarded')
           AND COALESCE(p.source, '') <> 'directory_polish_local_fixture'
-          AND COALESCE(p.metadata_json->>'directoryPolishFixture', 'false') <> 'true'
        )
        SELECT *
        FROM matched
