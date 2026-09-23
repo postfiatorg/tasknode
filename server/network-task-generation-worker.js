@@ -17,7 +17,6 @@ import {
   claimNetworkTaskGenerationJobs,
   markNetworkTaskGenerationJobFailed,
   markNetworkTaskGenerationJobGenerated,
-  normalizeNetworkTaskRewardBand,
   reclaimStaleNetworkTaskGenerationJobs,
   recoverFailedRequestNetworkTaskGenerationChains,
   repairNetworkTaskOfferLinks,
@@ -127,6 +126,13 @@ export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward =
   };
 }
 
+export function advertisedRewardBand({ min = 0, max = 0, perTaskCap = 0 } = {}) {
+  const requested = { min: Number(min) || 0, max: Number(max) || 0 };
+  const capped = perTaskCap > 0 ? Math.min(requested.max, perTaskCap) : requested.max;
+  const band = { min: Math.min(requested.min, capped), max: capped };
+  return band.min === requested.min && band.max === requested.max ? band : { ...band, clampedFrom: requested };
+}
+
 export async function createTaskRequestForNetworkJob(job = {}, { assess = assessTaskIntent } = {}) {
   const source = safeObject(job.source_payload_json);
 
@@ -165,10 +171,16 @@ export async function createTaskRequestForNetworkJob(job = {}, { assess = assess
   } catch {
     perTaskCap = 0;
   }
-  const reward = normalizeNetworkTaskRewardBand({
-    min: perTaskCap > 0 ? Math.min(Number(job.reward_min_pft) || 0, perTaskCap) : job.reward_min_pft,
-    max: perTaskCap > 0 ? Math.min(Number(job.reward_max_pft) || 0, perTaskCap) : job.reward_max_pft,
-  });
+  // The floor was applied (or waived for operator duties) when the allocation
+  // was created; here only the cap may lower the band, and a lowered band is
+  // recorded on the allocation.
+  const reward = advertisedRewardBand({ min: job.reward_min_pft, max: job.reward_max_pft, perTaskCap });
+  if (reward.clampedFrom) {
+    await query(
+      "UPDATE network_task_allocations SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) || jsonb_build_object('reward_band_clamped_from', $2::jsonb) WHERE id = $1",
+      [safeText(job.allocation_id, 180), JSON.stringify(reward.clampedFrom)]
+    );
+  }
   const requestId = safeText(job.request_id, 180) || `req_net_${sha256(job.id).slice(0, 32)}`;
   const bundleId = `bundle_net_${sha256(`${job.id}:${job.source_payload_digest}`).slice(0, 32)}`;
   const existingRequest = await getTaskRequestByRequestId(requestId);

@@ -15,7 +15,7 @@ const id = "network_retry_" + randomUUID(), wallet = "rExplicitRetryFixture", bo
 const request = retry => ({ decision: { action: "initiate_network_task", target_id: board, payload: { network_task: {
   candidate_account_id: id, candidate_wallet_address: wallet, project_need_summary: "Implement a bounded provider-recovery control with regression evidence.",
   task_class: "network", task_work_type: "code_task", required_badge_id: "core_contributor", operating_badge_id: "core_contributor",
-  badge_work_type: "code_task", reward_min_pft: 1, reward_max_pft: 2, retry_failed: retry,
+  badge_work_type: "code_task", reward_min_pft: 100, reward_max_pft: 200, retry_failed: retry,
 } } }, sourcePacket: {} });
 let jobId = "", allocId = "", intentId = "";
 async function fail(cause = "inference_timeout") {
@@ -65,7 +65,7 @@ try {
   const token = randomUUID();
   await query("INSERT INTO board_reward_budgets(board_id) VALUES($1) ON CONFLICT DO NOTHING", [board]);
   await query("INSERT INTO board_agent_credentials(id,token_hash,actor,board_ids,expires_at) VALUES($1,$2,$1,$3::jsonb,now()+interval '1 hour')", [id,createHash("sha256").update(token).digest("hex"),JSON.stringify([board])]);
-  const args = ["task","create",board,"--account",id,"--wallet",wallet,"--need",request(false).decision.payload.network_task.project_need_summary,"--required-badge","core_contributor","--work-type","code_task","--reward-min","1","--reward-max","2","--retry-failed"];
+  const args = ["task","create",board,"--account",id,"--wallet",wallet,"--need",request(false).decision.payload.network_task.project_need_summary,"--required-badge","core_contributor","--work-type","code_task","--reward-min","100","--reward-max","200","--retry-failed"];
   const dryRun = await executeBoardAgentCommand({ token, payload: { requestKey: id+"_dry", argv: args } });
   assert.equal(dryRun.result.dryRun, true);
   assert.equal((await query("SELECT status FROM network_task_generation_jobs WHERE id=$1",[jobId])).rows[0].status,"failed");

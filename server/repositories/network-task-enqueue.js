@@ -11,6 +11,7 @@ import {
 import {
   digestJson,
   jsonValue,
+  assertNetworkTaskRewardFloor,
   rewardBand,
   safeObject,
   safeText,
@@ -53,10 +54,16 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       networkTask.taskClass ||
       (payload.project?.type === "alpha_generation" || project.type === "alpha_generation" ? "alpha" : "network")
   );
+  const operatorDuty = networkTask.operator_duty === true;
   const band = rewardBand({
     min: networkTask.reward_min_pft ?? networkTask.rewardMinPft,
     max: networkTask.reward_max_pft ?? networkTask.rewardMaxPft,
+    operatorDuty,
   });
+  // The decision contract may already have clamped the band; judge and record
+  // the band the manager asked for, not the clamped one.
+  const rewardBandClampedFrom = networkTask.reward_band_clamped_from || band.clampedFrom || null;
+  assertNetworkTaskRewardFloor({ ...(rewardBandClampedFrom || band), operatorDuty });
   const projectNeedSummary = safeText(networkTask.project_need_summary || networkTask.projectNeedSummary || payload.summary || decision.reason, 2400);
   const allocationReasonSummary = safeText(networkTask.allocation_reason_summary || networkTask.routing_reason || networkTask.routingReason || decision.reason, 1800);
   const cadenceReason = safeText(networkTask.cadence_reason || networkTask.cadenceReason || "board_manager_initiated", 600);
@@ -457,6 +464,8 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	          idempotency_key: idempotencyKey,
 	          network_task_intelligence: intelligenceMetadata,
 	          badge_eligibility_decision: badgeEligibilityDecision,
+	          reward_band_clamped_from: rewardBandClampedFrom,
+	          operator_duty: operatorDuty,
 	        }),
 	        expiresAt ? expiresAt.toISOString() : null,
 	      ]
@@ -597,6 +606,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     candidateAccountId: candidate.accountId,
     candidateWalletAddress: candidate.walletAddress,
     rewardBandPft: [band.min, band.max],
+    ...(rewardBandClampedFrom ? { rewardBandClampedFrom } : {}),
     sourcePayloadDigest: sourceDigest,
     idempotencyKey,
     intentSemanticKey,

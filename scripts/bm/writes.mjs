@@ -200,8 +200,9 @@ export async function taskCreate({
   retryFailed = false,
   execute = false,
   // Operator referrals (merge and badge decisions) are duties, not contributor
-  // work; they must not be blocked by the operator's own task capacity.
-  allowOverCapacity = false,
+  // work: they bypass the operator's own task capacity and keep their exact
+  // band (0-1 PFT) instead of the contributor floor. Only refer-* set this.
+  operatorDuty = false,
 }) {
   if (!boardId || !accountId || !wallet || !safeText(need)) {
     throw new Error("taskCreate requires boardId, accountId, wallet, need");
@@ -224,6 +225,10 @@ export async function taskCreate({
   const perTask = budget.per_task_cap_pft;
   const cappedMax = Math.min(Number(rewardMax) || perTask, perTask, badgeCap > 0 ? badgeCap : perTask);
   const cappedMin = Math.min(Number(rewardMin) || 0, cappedMax);
+  const { assertNetworkTaskRewardFloor, normalizeNetworkTaskRewardBand } =
+    await import("../../server/repositories/network-tasks-utils.js");
+  assertNetworkTaskRewardFloor({ min: cappedMin, max: cappedMax, operatorDuty });
+  const effectiveBand = normalizeNetworkTaskRewardBand({ min: cappedMin, max: cappedMax, operatorDuty });
 
   const { startBoardManagerRun, completeBoardManagerRun } =
     await import("../../server/repositories/board-manager.js");
@@ -285,7 +290,8 @@ export async function taskCreate({
         reward_min_pft: cappedMin,
         reward_max_pft: cappedMax,
         accept_window_hours: acceptWindowHours > 0 ? acceptWindowHours : 0,
-        allow_over_capacity: allowOverCapacity === true,
+        allow_over_capacity: operatorDuty === true,
+        operator_duty: operatorDuty === true,
         retry_failed: retryFailed === true,
       },
     },
@@ -317,9 +323,18 @@ export async function taskCreate({
     boardId,
     command: "task_create",
     args: { accountId, wallet, need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, retryFailed, execute },
-    result: { runId, executed: actionResult?.result?.executed ?? false, skipped: actionResult?.result?.skipped ?? false, reason: actionResult?.result?.reason || "" },
+    result: { runId, executed: actionResult?.result?.executed ?? false, skipped: actionResult?.result?.skipped ?? false, reason: actionResult?.result?.reason || "", rewardBandClampedFrom: effectiveBand.clampedFrom || null },
   });
-  return { runId, dryRun: !execute, rewardMin: cappedMin, rewardMax: cappedMax, actionResult };
+  // The command reports the band the offer will advertise and, when it differs
+  // from the request, what was asked for.
+  return {
+    runId,
+    dryRun: !execute,
+    rewardMin: effectiveBand.min,
+    rewardMax: effectiveBand.max,
+    ...(effectiveBand.clampedFrom ? { rewardBandClampedFrom: effectiveBand.clampedFrom } : {}),
+    actionResult,
+  };
 }
 
 export async function cancelTask({ taskId, reason = "", execute = false, staleOnly = false }) {
@@ -450,7 +465,7 @@ export async function referBadge({ accountId, badgeId, evidence = "", boardId = 
     // no "badge_approval" work type, so the referral would fail the badge gate.
     workType: "project_management",
     requiredBadge: "project_leader",
-    allowOverCapacity: true,
+    operatorDuty: true,
     assigneeHandle: "goodalexander",
     rewardMin: 0,
     rewardMax: 1,
@@ -476,7 +491,7 @@ export async function referMerge({ prUrl, summary = "", boardId, execute = false
     // "merge_review" is not in any badge's allowed work types.
     workType: "code_review",
     requiredBadge: "core_contributor",
-    allowOverCapacity: true,
+    operatorDuty: true,
     assigneeHandle: "goodalexander",
     rewardMin: 0,
     rewardMax: 1,
