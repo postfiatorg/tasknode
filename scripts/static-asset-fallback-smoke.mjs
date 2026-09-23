@@ -124,6 +124,12 @@ try {
   assert.match(appRoute.contentType, /^text\/html\b/);
   assert.match(appRoute.text, /<div id="root"/);
 
+  // Directory targets and malformed escapes must not crash the process.
+  for (const requestPath of ["/assets/", "/assets", "/%E0%A4%A"]) {
+    assert.ok((await fetchText(baseUrl, requestPath)).response.status < 500, requestPath);
+  }
+  assert.equal((await fetch(`${baseUrl}/health`)).status, 200);
+
   console.log("static asset fallback smoke ok");
 } finally {
   await stopProcess(child);
