@@ -116,6 +116,20 @@ await assert.rejects(inferenceChatCompletionStream({ env, body, onDelta: () => {
 assert.equal(calls.length, 1, "Never replay a stream after delivering content");
 assertions += 5;
 
+// A stream whose upstream never starts answering is retried once on the same provider.
+for (const secondStalls of [false, true]) {
+  calls = [];
+  const stalled = (url, init) => new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+  const attempt = inferenceChatCompletionStream({ env, body: { ...body, model: "moonshotai/kimi-k3" }, capability: "selected_model", firstByteTimeoutMs: 20, onDelta: () => {}, fetchImpl: async (url, init) => {
+    calls.push(url);
+    return calls.length === 1 || secondStalls ? stalled(url, init) : stream([event(delta("Recovered")), event(finish)]);
+  } });
+  if (secondStalls) await assert.rejects(attempt, codeIs("inference_first_byte_timeout"));
+  else assert.equal((await attempt).text, "Recovered");
+  assert.equal(calls.length, 2, "exactly one retry after a stalled first byte");
+  assertions += 2;
+}
+
 const searchBody = { ...body, messages: [{ role: "user", content: JSON.stringify({ query: "structured research query" }) }], tools: [{ type: "web_search", parameters: { engine: "exa", max_results: 3 } }] };
 const search = normalizeInferenceRequest(searchBody, { env, capability: "research_text" });
 assert.deepEqual(search.tools, [{ type: "vercel:exa_search", config: { query: "structured research query", num_results: 3 } }]);

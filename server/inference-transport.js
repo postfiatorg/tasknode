@@ -10,7 +10,7 @@ function abortable(promise, signal) {
   });
 }
 
-export async function withInferenceDeadline({ signal, timeoutMs = 45_000, provider }, run) {
+export async function withInferenceDeadline({ signal, timeoutMs = 45_000, provider, timeoutCode = "inference_timeout" }, run) {
   const controller = new AbortController();
   let timedOut = false;
   const abort = () => controller.abort();
@@ -23,7 +23,7 @@ export async function withInferenceDeadline({ signal, timeoutMs = 45_000, provid
     return await abortable(run(controller.signal), controller.signal);
   } catch (error) {
     if (signal?.aborted) throw inferenceError("inference_aborted", { status: 499, provider });
-    if (timedOut) throw inferenceError("inference_timeout", { status: 504, provider });
+    if (timedOut) throw inferenceError(timeoutCode, { status: 504, provider });
     throw error;
   } finally {
     clearTimeout(timer);
@@ -128,7 +128,12 @@ export async function completeWithProvider(provider, request, options) {
 
 export async function streamWithProvider(provider, request, options) {
   return withInferenceDeadline({ ...options, provider }, async (signal) => {
-    const response = await inferenceHttp(provider, "/chat/completions", { ...options, body: request, signal });
+    // An upstream that accepts the request but never starts answering would
+    // otherwise hold the caller for the whole deadline.
+    const response = options.firstByteTimeoutMs > 0
+      ? await withInferenceDeadline({ signal, timeoutMs: options.firstByteTimeoutMs, provider, timeoutCode: "inference_first_byte_timeout" },
+        (attemptSignal) => inferenceHttp(provider, "/chat/completions", { ...options, body: request, signal: attemptSignal }))
+      : await inferenceHttp(provider, "/chat/completions", { ...options, body: request, signal });
     if (!response.ok) await readInferenceJson(provider, response, signal);
     if (!response.body?.getReader) throw inferenceError("inference_stream_body_missing", { status: 502, provider });
     const reader = response.body.getReader();
