@@ -187,6 +187,7 @@
     "scripts/board-routing-staleness-smoke.mjs",
     "scripts/chat-billing-postgres-smoke.mjs",
     "scripts/chat-memory-postgres-smoke.mjs",
+    "scripts/chat-unanswered-message-smoke.mjs",
     "scripts/command-transaction-queue-smoke.mjs",
     "scripts/context-postgres-smoke.mjs",
     "scripts/db-connection-loss-smoke.mjs",

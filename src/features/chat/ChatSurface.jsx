@@ -1400,6 +1400,7 @@ export function ChatSurface({
                       setEditDraft(message.text || "");
                     }}
                     text={message.text}
+                    unanswered={Boolean(message.metadata?.reply?.state)}
                   />
                 );
               }

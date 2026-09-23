@@ -487,6 +487,8 @@ async function routeApi(req, url, res) {
 
     const controller = new AbortController();
     const heartbeat = startChatStreamHeartbeat(res);
+    const startedAt = Date.now();
+    let firstDeltaMs = 0;
     res.on("close", () => {
       heartbeat.stop();
       if (!res.writableEnded) controller.abort();
@@ -496,7 +498,10 @@ async function routeApi(req, url, res) {
       const result = await executeChatStream({
         ...started.chat,
         signal: controller.signal,
-        onDelta: (delta) => writeSse(res, "delta", { delta }),
+        onDelta: (delta) => {
+          firstDeltaMs ||= Date.now() - startedAt;
+          writeSse(res, "delta", { delta });
+        },
       });
 
       writeSse(res, "done", {
@@ -533,6 +538,19 @@ async function routeApi(req, url, res) {
         contextStatus: result.contextStatus || started.chat.contextStatus,
       });
     } catch (error) {
+      // Abandoned streams (499) are recorded too, with timing, so a stall is visible.
+      await recordChatFailureObservability({
+        accountId: started.chat.accountId,
+        conversationId,
+        mode: started.chat.mode,
+        provider: started.estimate?.provider,
+        model: started.estimate?.model,
+        status: error?.status || 502,
+        error,
+        elapsedMs: Date.now() - startedAt,
+        firstDeltaMs,
+        sourceRoute: "server/index.js::/api/chat/stream",
+      }).catch(() => {});
       if (error?.status !== 499) {
         logChatProviderError(error, {
           action: "chat_stream",
@@ -540,16 +558,6 @@ async function routeApi(req, url, res) {
           provider: started.estimate?.provider,
           model: started.estimate?.model,
         });
-        await recordChatFailureObservability({
-          accountId: started.chat.accountId,
-          conversationId,
-          mode: started.chat.mode,
-          provider: started.estimate?.provider,
-          model: started.estimate?.model,
-          status: error?.status || 502,
-          error,
-          sourceRoute: "server/index.js::/api/chat/stream",
-        }).catch(() => {});
         writeSse(res, "error", {
           ok: false,
           error: error?.message || "chat_provider_error",

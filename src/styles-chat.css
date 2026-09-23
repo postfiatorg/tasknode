@@ -200,6 +200,12 @@
   opacity: 1;
 }
 
+.user-message-note {
+  margin: 4px 2px 0;
+  color: var(--tn-text-muted, #6b7280);
+  font-size: 12px;
+}
+
 .user-message-tools {
   display: flex;
   align-items: center;
