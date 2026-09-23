@@ -246,7 +246,8 @@ async function waitForHttp(url, timeoutMs, serverOutput, child) {
   throw new Error(`Timed out waiting for ${url}.\n${serverOutput.join("")}`);
 }
 
-// Cold CI runners can take well over 8 s to start headless Chrome.
+// Cold CI runners can take well over 8 s to start headless Chrome, and a
+// started Chrome sometimes lists no page target; open one instead of waiting.
 async function waitForPage(child, output, timeoutMs = 30000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -257,6 +258,8 @@ async function waitForPage(child, output, timeoutMs = 30000) {
         const pages = await response.json();
         const page = pages.find((entry) => entry.type === "page");
         if (page) return page;
+        const opened = await fetch(`http://127.0.0.1:${chromePort}/json/new?about:blank`, { method: "PUT" });
+        if (opened.ok) return opened.json();
       }
     } catch {
       // Retry until Chrome exposes the debugging endpoint.
