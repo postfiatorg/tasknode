@@ -398,7 +398,6 @@ export async function getBoardManagerOrcOperations({ limit = 24 } = {}) {
             (agents.wallet_address <> '' AND p.subject_wallet = agents.wallet_address)
           )
           AND COALESCE(p.source, '') <> 'directory_polish_local_fixture'
-          AND COALESCE(p.metadata_json->>'directoryPolishFixture', 'false') <> 'true'
       )
       SELECT
         id,
