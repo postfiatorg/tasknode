@@ -10,6 +10,7 @@ export const INFERENCE_MODELS = Object.freeze({
 const models = new Map([
   ["openai/gpt-6-astra", { ambient: "", image: true }],
   ["moonshotai/kimi-k3", { ambient: "", image: true }],
+  ["anthropic/claude-opus-5.5", { ambient: "", image: true }],
   [INFERENCE_MODELS.instantText, { ambient: "z-ai/glm-5.2", image: true }],
   [INFERENCE_MODELS.reasoningText, { ambient: "z-ai/glm-5.2", image: false }],
   [INFERENCE_MODELS.fastText, { ambient: "z-ai/glm-5.2", image: false }],
