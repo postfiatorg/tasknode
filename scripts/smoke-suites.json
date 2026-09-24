@@ -230,6 +230,7 @@
     "scripts/context-rewrite-sample-smoke.mjs": "reads a sample context document from the operator host",
     "scripts/smoke.mjs": "exercises a running server with live providers (SMOKE_BASE_URL)",
     "scripts/sybil-blocklist-regression.mjs": "operator audit over production blocklist data",
-    "scripts/theme-production-smoke.mjs": "read-only check against production"
+    "scripts/theme-production-smoke.mjs": "read-only check against production",
+    "scripts/chat-persona-adherence-live-smoke.mjs": "calls a live inference provider"
   }
 }
