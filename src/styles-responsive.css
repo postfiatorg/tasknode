@@ -180,6 +180,26 @@
     font-size: 15px;
   }
 
+  /* Phone tables fit the column and wrap; very wide tables still scroll. */
+  .assistant-table {
+    min-width: 0;
+  }
+
+  .assistant-table th,
+  .assistant-table td {
+    padding: 8px 9px;
+    overflow-wrap: break-word;
+  }
+
+  .assistant-body h2 {
+    margin: 22px 0 10px;
+    font-size: 19px;
+  }
+
+  .assistant-body h3 {
+    font-size: 16px;
+  }
+
   .user-bubble,
   .user-edit-card {
     max-width: 88%;

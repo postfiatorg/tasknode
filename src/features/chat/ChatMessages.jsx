@@ -71,6 +71,9 @@ export function UserMessage({
   text,
   unanswered = false,
 }) {
+  const [expanded, setExpanded] = useState(false);
+  // Long pasted context (decisions accept up to 60,000 characters) collapses.
+  const long = String(text || "").length > 600;
   if (isEditing) {
     return (
       <article className="user-message editing">
@@ -96,7 +99,8 @@ export function UserMessage({
   return (
     <article className="user-message">
       {attachments.length > 0 && <MessageAttachmentList attachments={attachments} />}
-      <div className="user-bubble">{text}</div>
+      <div className="user-bubble"><span className={long && !expanded ? "user-bubble-clamp" : undefined}>{text}</span></div>
+      {long && <button className="user-message-more" onClick={() => setExpanded(open => !open)} type="button">{expanded ? "Show less" : "Show all"}</button>}
       {unanswered && <p className="user-message-note">No reply was generated. Send it again to retry.</p>}
       <div className="user-message-tools">
         <ToolbarButton
@@ -260,11 +264,14 @@ export function AssistantMessage({
           {sourceLabel.meta && <span className="assistant-source-meta">{sourceLabel.meta}</span>}
         </div>
       )}
-      <div className="assistant-body">
-        {(message.blocks || []).map((block, index) => (
-          <BlockRenderer block={block} key={index} />
-        ))}
-      </div>
+      {/* A running or failed decision's card already states its progress or error. */}
+      {(!message.metadata?.decision || message.metadata.decision.status === "completed") && (
+        <div className="assistant-body">
+          {(message.blocks || []).map((block, index) => (
+            <BlockRenderer block={block} key={index} />
+          ))}
+        </div>
+      )}
       <ContextEditProposalCard
         error={message.metadata?.contextEdit?.error || proposal?.error || ""}
         onApply={onContextEditApply}
@@ -545,9 +552,6 @@ function assistantSourceLabel(metadata = {}) {
       meta: metadata.taskId ? `Task ${shortMetaId(metadata.taskId)}` : "",
       title: metadata.taskId ? `Orc signal for ${metadata.taskId}` : "Orc agent Hive signal",
     };
-  }
-  if (metadata?.kind === "decision") {
-    return { kind: "deep-research", label: "Decisions · Budget", meta: metadata.decision?.status || "", title: "Corbanu budget decision report" };
   }
   if (metadata?.kind === "deep_research") {
     const research = metadata.deepResearch || {};

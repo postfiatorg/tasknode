@@ -1385,10 +1385,13 @@
   overflow-y: auto;
 }
 
-.decision-composer-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-.decision-composer-options label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
-.decision-tier-toggle { display: inline-flex; border: 1px solid var(--tn-dark-border, #e8e6df); border-radius: 999px; overflow: hidden; background: var(--tn-dark-surface, #ffffff); }
-.decision-tier-toggle button { min-height: 26px; border: 0; background: transparent; color: var(--tn-dark-secondary, #44443f); font: inherit; font-size: 12px; padding: 3px 12px; cursor: pointer; }
-.decision-tier-toggle button small { color: var(--tn-dark-muted, #77776f); margin-left: 4px; }
-.decision-tier-toggle button.is-active { background: var(--tn-dark-inverse-surface, #1f1f1c); color: var(--tn-dark-on-inverse, #ffffff); font-weight: 600; }
-.decision-tier-toggle button.is-active small { color: inherit; opacity: 0.75; }
+.decision-composer-head { display: flex; align-items: center; gap: 10px; min-height: 28px; padding: 0 0 0 4px; color: var(--tn-dark-secondary, #44443f); font-size: 13px; }
+.decision-composer-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.decision-context-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--tn-dark-muted, #6b6963); cursor: pointer; }
+.decision-context-toggle input { width: 15px; height: 15px; margin: 0; accent-color: var(--tn-dark-text, #1f1f1c); }
+.decision-composer-exit { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--tn-dark-muted, #77746d); cursor: pointer; }
+.decision-composer-exit:hover { background: var(--tn-dark-hover, #f3f2ee); color: var(--tn-dark-text, #1f1f1c); }
+.decision-tier-control { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--tn-dark-bg, #efeee9); }
+.decision-tier-control button { min-height: 32px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: var(--tn-dark-muted, #6b6963); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+.decision-tier-control button[aria-checked="true"] { background: var(--tn-dark-hover, #ffffff); color: var(--tn-dark-text, #1f1f1c); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }
+.decision-tier-control button:focus-visible, .decision-composer-exit:focus-visible { outline: 2px solid var(--tn-dark-text, #1f1f1c); outline-offset: 1px; }
