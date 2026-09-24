@@ -373,6 +373,7 @@ export const contextRewriteBody = strictBody(1_200_000, {
 }, { requiredAny: [["message", "instruction", "instructions"]] });
 export const decisionBody = strictBody(256 * KiB, {
   input: text(60_000, 1), conversationId: text(180, 1), requestId: text(180, 1), includeContext: boolean,
+  mode: text(20, 1, { enum: ["budget", "premium"] }),
 }, { required: ["input", "conversationId", "requestId"] });
 export const deepResearchBody = strictBody(128 * KiB, {
   question: text(50_000, 1),
