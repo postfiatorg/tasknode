@@ -317,8 +317,8 @@ Confirming Delete removes the conversation from Recents and closes the dialog im
 
 ## Decisions
 
-Choose **+ → Decisions** in the chat composer, pick **Budget** or **Premium** in the
-toggle above the message box, then enter a decision and the facts that matter. The
+Choose **+ → Decisions** in the chat composer, pick **Budget** or **Premium** next to
+the send button, then enter a decision and the facts that matter. The
 usual chat model picker does not change these models.
 
 - **Budget** (free): one research report, three DeepSeek V4.1 Flash votes, two

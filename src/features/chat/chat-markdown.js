@@ -71,7 +71,8 @@ export function markdownToBlocks(input) {
       continue;
     }
 
-    const h2 = raw.match(/^##\s+(.+)/);
+    // A top-level title renders as a section heading; chat has no page title.
+    const h2 = raw.match(/^##\s+(.+)/) || (raw.startsWith("# ") && raw.slice(2).trim() ? [raw, raw.slice(2).trim()] : null);
     const h3 = raw.match(/^###\s+(.+)/);
     const quote = raw.match(/^>\s+(.+)/);
     const ul = raw.match(/^[-*]\s+(.+)/);

@@ -988,16 +988,14 @@ export function ChatSurface({
     "composer",
     composerDragActive ? "is-drag-active" : "",
     taskRequestMode ? "is-task-request" : "",
-    deepResearchMode || decisionMode ? "is-deep-research" : "",
+    deepResearchMode ? "is-deep-research" : "",
     contextRewriteMode ? "is-context-rewrite" : "",
     contextEditMode ? "is-context-edit" : "",
     isHiveChat ? "is-hive-input" : "",
   ].filter(Boolean).join(" ");
   const modelPickerDisabled = contextEditMode || contextRewriteMode || deepResearchMode || decisionMode || isHiveChat;
   const ActivePersonaIcon = CHAT_PERSONA_ICONS[activePersona.id] || Lightbulb;
-  const modelPickerLabel = decisionMode
-    ? `Decisions · ${DECISION_TIERS[decisionTier].label}`
-    : deepResearchMode
+  const modelPickerLabel = deepResearchMode
     ? "Deep Research"
     : contextRewriteMode
     ? "Context Rewrite"
@@ -1033,17 +1031,12 @@ export function ChatSurface({
         )}
         {contextEditMode && <ComposerModeChip icon={Wand2} label="Context Refine" onExit={() => setContextEditMode(false)} />}
         {decisionMode && (
-          <div className="decision-composer-options">
-            <ComposerModeChip exitLabel="Decisions" icon={Lightbulb} label={`Decisions · ${DECISION_TIERS[decisionTier].label}`} onExit={() => setDecisionMode(false)} />
-            <div className="decision-tier-toggle" role="radiogroup" aria-label="Decision tier">
-              {Object.entries(DECISION_TIERS).map(([tier, option]) => (
-                <button aria-checked={decisionTier === tier} className={decisionTier === tier ? "is-active" : ""} key={tier} role="radio" type="button"
-                  onClick={() => { setDecisionTier(tier); setSendMessage(`${option.label} Decisions: ${option.summary}. ${option.note}.`); setStatusTone("muted"); }}>
-                  {option.label} <small>{option.note}</small>
-                </button>
-              ))}
-            </div>
-            <label><input type="checkbox" checked={decisionUseContext} onChange={event => setDecisionUseContext(event.target.checked)} /> Use my context and chat memory</label>
+          <div className="decision-composer-head">
+            <span className="decision-composer-title"><Lightbulb size={14} strokeWidth={1.9} />Decisions</span>
+            <label className="decision-context-toggle" title="Include your saved context document and chat memory">
+              <input type="checkbox" checked={decisionUseContext} onChange={event => setDecisionUseContext(event.target.checked)} />Use my context
+            </label>
+            <button aria-label="Exit Decisions" className="decision-composer-exit" onClick={() => setDecisionMode(false)} type="button"><X size={15} strokeWidth={1.9} /></button>
           </div>
         )}
         {deepResearchMode && <ComposerModeChip icon={Search} label="Deep Research" onExit={() => setDeepResearchMode(false)} />}
@@ -1138,7 +1131,7 @@ export function ChatSurface({
                   onClick={() => {
                     setPlusMenuOpen(false);
                     selectComposerMode("decision");
-                    setSendMessage(`${DECISION_TIERS[decisionTier].label} Decisions: ${DECISION_TIERS[decisionTier].summary}. Switch between Budget (free) and Premium (~$7 at cost) above the message box.`);
+                    setSendMessage(DECISION_TIERS[decisionTier].note);
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}
@@ -1293,6 +1286,16 @@ export function ChatSurface({
                 {activePersona.name}
               </span>
             )}
+            {decisionMode ? (
+              <div aria-label="Decision tier" className="decision-tier-control" role="radiogroup">
+                {Object.entries(DECISION_TIERS).map(([tier, option]) => (
+                  <button aria-checked={decisionTier === tier} key={tier} role="radio" type="button"
+                    onClick={() => { setDecisionTier(tier); setSendMessage(option.note); setStatusTone("muted"); }}>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
             <div className="model-picker" ref={modelRef}>
               <button
                 aria-label={`Choose model, current model: ${modelPickerLabel}`}
@@ -1337,6 +1340,7 @@ export function ChatSurface({
                 </div>
               )}
             </div>
+            )}
             <ComposerSendButton disabled={historicalReadOnly || !hasPromptInput || sending} />
           </div>
         </div>
