@@ -20,6 +20,7 @@ try {
   await query(await readFile(new URL("../server/db/migrations/001_chat_billing.sql", import.meta.url), "utf8"));
   await query(await readFile(new URL("../server/db/migrations/141_decision_jobs.sql", import.meta.url), "utf8"));
   await query(await readFile(new URL("../server/db/migrations/142_decision_context_snapshot.sql", import.meta.url), "utf8"));
+  await query(await readFile(new URL("../server/db/migrations/147_decision_mode.sql", import.meta.url), "utf8"));
   let context = "Original saved context";
   let memory = "The user lives in Montreal and is learning French to participate in the local community.";
   let loads = 0;
@@ -68,7 +69,14 @@ try {
   const stale = await updateDecisionJob({ accountId: request.accountId, jobId: retry.job.id, remote: { id: "remote-fixture", status: "running", stage: "voting" } });
   assert.equal(stale.job.status, "completed");
   assert.equal(stale.assistant.body, completed.assistant.body);
-  console.log("Decisions PostgreSQL smoke passed: concurrent idempotency, context snapshot, account ownership, rollback, saved report, and stale-poll protection.");
+  assert.equal(retry.record.mode, "budget");
+  const premium = await createDecisionJob({ ...request, conversationId: "premium-chat", requestId: "premium", mode: "premium" }, opts);
+  assert.equal(premium.record.mode, "premium");
+  assert.equal(premium.assistant.metadata.decision.mode, "premium");
+  assert.equal(premium.assistant.metadata.decision.totalCalls, 15);
+  await assert.rejects(createDecisionJob({ ...request, conversationId: "premium-chat", requestId: "premium" }, opts), { status: 409 });
+  await assert.rejects(query("UPDATE decision_jobs SET mode='deluxe' WHERE request_id='premium'"));
+  console.log("Decisions PostgreSQL smoke passed: concurrent idempotency, context snapshot, account ownership, rollback, saved report, stale-poll protection, and persisted budget/premium mode.");
 } finally {
   await closePool(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); await rm(directory, { recursive: true, force: true });
 }

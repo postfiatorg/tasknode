@@ -1,14 +1,14 @@
 import { Download, Copy, FileText, Lightbulb } from "lucide-react";
+import { decisionTier } from "./decisions-client.js";
 
-const stages = [
-  ["framing", "Define five options"], ["planning_research", "Plan research"],
-  ["researching", "Research the options"], ["voting", "Collect three votes"],
-  ["drafting", "Write the draft"], ["mini_tih", "Review the draft"], ["rewriting", "Kimi K3 final rewrite"],
-];
+const stageKeys = ["framing", "planning_research", "researching", "voting", "drafting", "mini_tih", "rewriting"];
 
 export function DecisionArtifactCard({ decision, onCopy, onDownload }) {
   if (!decision) return null;
   const { status, stage, jobId, selected, voteCounts = {}, markdown = "", contextIncluded } = decision;
+  const tier = decisionTier(decision.mode);
+  const [define, research, vote, review, rewrite] = tier.steps;
+  const stages = stageKeys.map((key, i) => [key, [define, "Plan research", research, vote, "Write the draft", review, rewrite][i]]);
   const completed = status === "completed";
   const failed = status === "failed";
   const snapshot = decision.contextSnapshot;
@@ -32,10 +32,10 @@ export function DecisionArtifactCard({ decision, onCopy, onDownload }) {
       <div className="deep-research-card-head">
         <span className="deep-research-icon"><Lightbulb size={16} strokeWidth={1.8} /></span>
         <div>
-          <strong>{completed ? `Decision report · Option ${selected}` : "Decisions · Budget"}</strong>
+          <strong>{completed ? `Decision report · Option ${selected}` : `Decisions · ${tier.label}`}</strong>
           <small>{failed ? decision.error || "This decision did not complete." : completed
-            ? "One research report · Three Flash votes · Kimi K3 final rewrite"
-            : `${decision.completedCalls || 0} of 10 steps complete · You can leave and return`}</small>
+            ? tier.summary
+            : `${decision.completedCalls || 0} of ${tier.totalCalls} steps complete · You can leave and return`}</small>
         </div>
       </div>
       {!completed && !failed && stage === "researching" && researchDetail && (
@@ -50,7 +50,7 @@ export function DecisionArtifactCard({ decision, onCopy, onDownload }) {
           ))}
         </ol>
       )}
-      {selected && <p className="decision-votes">Three runs of DeepSeek V4.1 Flash: {Object.entries(voteCounts).map(([option, count]) => `${option}: ${count}`).join(" · ")}</p>}
+      {selected && <p className="decision-votes">{tier.votes}: {Object.entries(voteCounts).map(([option, count]) => `${option}: ${count}`).join(" · ")}</p>}
       <div className="deep-research-privacy">{contextSources.length ? `Includes your ${contextSources.join(" and ")}. ` : ""}Processed by Corbanu and its model and research providers.</div>
       <div className="deep-research-card-actions">
         {completed && markdown && <>

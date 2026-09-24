@@ -317,11 +317,17 @@ Confirming Delete removes the conversation from Recents and closes the dialog im
 
 ## Decisions
 
-Choose **+ → Decisions** in the chat composer, then enter a decision and the facts
-that matter. Task Node currently uses Corbanu's **budget** workflow: one full
-research report, three independent DeepSeek V4.1 Flash votes, two Flash draft
-reviews, and a complete Kimi K3 final rewrite. The usual chat model picker does
-not change these models.
+Choose **+ → Decisions** in the chat composer, pick **Budget** or **Premium** in the
+toggle above the message box, then enter a decision and the facts that matter. The
+usual chat model picker does not change these models.
+
+- **Budget** (free): one research report, three DeepSeek V4.1 Flash votes, two
+  Flash draft reviews, and a complete Kimi K3 final rewrite.
+- **Premium** (charged at cost, usually about $7): three research reports, three
+  GPT-6 Sol and three Claude Opus 5.5 votes, one Sol and one Opus review, and an
+  Opus final rewrite. It needs $10 of available chat credit to start. The actual
+  provider cost is debited once, when the finished report is first shown; a
+  failed premium decision is not charged.
 
 **Use my context and chat memory** is selected by default. Turn it off to use only
 the question and supplied text. Task Node snapshots the saved Context document,
@@ -346,8 +352,8 @@ The chat card shows progress. You can navigate away or close the app: Corbanu
 keeps running, and reopening the conversation resumes status updates. The
 finished report appears directly in chat, with copy, Markdown download, PDF
 download, and full execution packet links. It covers your question, context,
-five options, recommendation, reasoning, and votes. Three votes from Flash are
-three runs of one model, not a three-model panel.
+five options, recommendation, reasoning, and votes. Budget's three votes are three
+runs of one model; Premium's six are three runs each of two models.
 
 A failed run keeps its completed work in the packet. Reloading the conversation
 or retrying a lost submission response does not start a new paid decision.
@@ -355,10 +361,11 @@ Submitting a new question starts new work. There is no cancellation control for
 Decisions. Inputs, reports, and packets are restricted to the signed-in account;
 processing uses Corbanu and third-party model and research providers.
 
-Task Node uses the same signed server integration as Deep Research. This
-integration is sponsored by the service; it does not ask users for a Corbanu API
-key or debit their Task Node chat balance. The public Corbanu Decisions API has
-separate prepaid billing. The Task Node integration accepts budget mode only.
+Task Node uses the same signed server integration as Deep Research. It
+does not ask users for a Corbanu API key. Budget decisions are free; premium
+decisions debit the Task Node chat balance with Corbanu's reported provider cost.
+The public Corbanu Decisions API has separate prepaid billing. The Task Node
+integration accepts budget and premium modes.
 
 Decisions research progress includes finding sources, reading and analyzing them,
 writing/reviewing the research, and finalizing it. A provider capacity rejection

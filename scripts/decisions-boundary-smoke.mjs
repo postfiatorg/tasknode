@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 process.env.TASKNODE_STORE_PATH = join(mkdtempSync(join(tmpdir(), "decisions-boundary-")), "store.json");
 process.env.TASKNODE_DATABASE_DISABLED = "true";
-const { decisionsAvailable, startCorbanuDecision, fetchCorbanuDecision } = await import("../server/corbanu-decisions.js");
+const { decisionsAvailable, decisionCostUsd, startCorbanuDecision, fetchCorbanuDecision } = await import("../server/corbanu-decisions.js");
 const { createDecisionRouteHandler } = await import("../server/decision-routes.js");
 const { decisionProjection } = await import("../server/repositories/decisions.js");
 const env = { CORBANU_DEEP_RESEARCH_BASE_URL: "https://corbanu.test/", CORBANU_TASKNODE_INTEGRATION_SECRET: "fixture-secret" };
@@ -79,4 +79,45 @@ assert.equal(finished.body.assistant.metadata.decision.selected, "A");
 assert.ok(finished.body.assistant.body.includes("Compare the pilot options"));
 await call("GET", "/api/decisions/jobs/local"); assert.equal(starts, 2);
 assert.equal((await call("GET", "/api/decisions/jobs/local/packet")).status, 200);
-console.log("Decisions boundary smoke passed: signed budget request, PDF, owner isolation, lost-response recovery, report persistence, and no restart after completion.");
+// Premium: credit preflight, signed mode, and one at-cost debit before the report is visible.
+await startCorbanuDecision({ accountId: "acct-fixture", requestId: "premium-request", input: "Should we launch the pilot?", mode: "premium", env,
+  fetchImpl: async (url, options) => { captured = { url, options }; return Response.json({ id: "remote", status: "queued" }, { status: 202 }); } });
+assert.equal(JSON.parse(captured.options.body).mode, "premium");
+assert.equal(decisionCostUsd({ billing: { model_cost_microusd: "3612345", research_usage: [{ totalCostUsd: 1.1 }, null, { totalCostUsd: 2.2 }] } }), 6.912345);
+const premiumRows = new Map(), debits = []; let credit = 9, premiumStarts = [];
+const premiumProject = row => ({ record: row, job: decisionProjection(row).job, assistant: { id: "a", role: "assistant", body: decisionProjection(row).body, metadata: decisionProjection(row).metadata } });
+const premium = createDecisionRouteHandler({
+  decisionsAvailable: () => true, usageSummary: async () => ({ availableCreditUsd: credit }),
+  createDecisionJob: async body => { const row = { id: body.requestId, account_id: body.accountId, conversation_id: body.conversationId, request_id: body.requestId,
+    question_message_id: "q", assistant_message_id: "a", input: body.input, mode: body.mode, status: "starting", stage: "starting" }; premiumRows.set(row.id, row); return premiumProject(row); },
+  getDecisionJob: async ({ jobId }) => premiumRows.has(jobId) ? premiumProject(premiumRows.get(jobId)) : null,
+  updateDecisionJob: async ({ jobId, remote, markdown }) => { const row = premiumRows.get(jobId);
+    Object.assign(row, { gateway_job_id: remote.id, status: remote.status, stage: remote.stage, progress_json: remote, report_markdown: markdown || "" }); return premiumProject(row); },
+  startCorbanuDecision: async body => { premiumStarts.push(body.mode); return { body: { id: `remote-${body.requestId}`, status: "running", stage: "voting" } }; },
+  fetchCorbanuDecision: async ({ artifact }) => artifact === "result" ? { body: { markdown: "# Report" } }
+    : { body: { id: "remote", status: "completed", stage: "completed", selected: "B", billing: { model_cost_microusd: "3600000", research_usage: [{ totalCostUsd: 3.3 }] } } },
+  recordBillableModelRun: async entry => { debits.push(entry); return { ledgerEntry: {} }; },
+});
+async function premiumCall(method, path, body) {
+  let response;
+  await premium({ req: { method }, res: { setHeader() {}, writeHead(status) { response = { status }; }, end(value) { response.body = value; } },
+    url: new URL(path, "https://tasknode.test"), session: { accountId: "acct-p" }, readJson: async () => body, json: (_res, status, payload) => { response = { status, body: payload }; } });
+  return response;
+}
+const premiumRequest = { ...request, requestId: "premium", mode: "premium" };
+const short = await premiumCall("POST", "/api/decisions/jobs", premiumRequest);
+assert.equal(short.status, 402); assert.ok(short.body.message.includes("Budget"));
+assert.equal((await premiumCall("POST", "/api/decisions/jobs", { ...premiumRequest, mode: "deluxe" })).status, 400);
+credit = 10;
+assert.equal((await premiumCall("POST", "/api/decisions/jobs", premiumRequest)).body.assistant.metadata.decision.mode, "premium");
+assert.equal((await premiumCall("POST", "/api/decisions/jobs", { ...request, requestId: "budget-free" })).status, 202);
+assert.deepEqual(premiumStarts, ["premium", "budget"]);
+credit = 0;
+assert.equal((await premiumCall("GET", "/api/decisions/jobs/budget-free")).body.job.status, "completed");
+assert.equal(debits.length, 0, "budget decisions are free");
+assert.equal((await premiumCall("GET", "/api/decisions/jobs/premium/packet")).status, 200, "an artifact read syncs and bills first");
+assert.equal(debits.length, 1);
+assert.equal(debits[0].usage.costUsd, 6.9); assert.equal(debits[0].uniqueKey, "decision:premium"); assert.equal(debits[0].mode, "Decisions Premium");
+await premiumCall("GET", "/api/decisions/jobs/premium"); assert.equal(debits.length, 1);
+assert.equal(decisionProjection(premiumRows.get("premium")).metadata.decision.totalCalls, 15);
+console.log("Decisions boundary smoke passed: signed budget and premium requests, credit preflight, one at-cost premium debit, PDF, owner isolation, lost-response recovery, report persistence, and no restart after completion.");

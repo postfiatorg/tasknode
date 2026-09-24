@@ -1,4 +1,5 @@
 import { DecisionArtifactCard } from "./DecisionArtifactCard.jsx";
+import { decisionTier } from "./decisions-client.js";
 import { useState } from "react";
 import {
   ArrowUp,
@@ -591,7 +592,7 @@ function thinkingSteps(message) {
     return ["Reading your context document", "Locating the edit", "Preparing a proposal"];
   }
   if (message.pending && message.metadata?.kind === "decision") {
-    return ["Define five options", "Research the options", "Collect three Flash votes", "Review the draft", "Kimi K3 final rewrite"];
+    return decisionTier(message.metadata?.decision?.mode).steps;
   }
   if (message.pending && message.metadata?.kind === "deep_research") {
     const tasks = message.metadata?.deepResearch?.progress?.tasks;
