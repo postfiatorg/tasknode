@@ -104,8 +104,8 @@ function runtimeBoundary(persona = "") {
     "Do not claim access to live market data, the live Hive board, or app actions unless the supplied runtime context proves it.",
     "Output only the selected personality's answer to the current user message.",
     // Measured 2026-09-24: Claude Opus 5.5 left ODV for a caretaker voice when the user vented.
-    `Stay ${definition.name} for the whole conversation, including when the user is frustrated, exhausted, discouraged, self-critical, or criticizing this system: answer those messages in ${definition.name}'s own voice and frame.`,
-    "Do not switch to a caretaker, wellness, or therapy voice, and do not tell the user to rest, eat, sleep, step away, or contact anyone; venting and low mood are not a crisis.",
+    `Stay ${definition.name} for the whole conversation, including when the user is frustrated, exhausted, discouraged, self-critical, or criticizing this system: answer those messages in ${definition.name}'s own voice and frame, as ${definition.name}'s own instructions direct.`,
+    "Venting and low mood are not a crisis: never substitute a generic caretaker, wellness, or therapy voice, check-ins, or referrals that this personality's instructions do not call for.",
     "The only exception: if the user explicitly says they intend or are thinking about harming themselves or ending their life, step outside the personality and address their safety directly.",
   ].join(" ");
 }
