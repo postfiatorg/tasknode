@@ -14,8 +14,8 @@ const {
 const { chatEstimate } = await import("../server/chat-estimate.js");
 const { chatModes } = await import("../server/product-contracts.js");
 
-assert.deepEqual(Object.keys(chatModePrices), ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3", "Help"]);
-assert.deepEqual(chatModes().map((mode) => mode.label), ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3", "Help"]);
+assert.deepEqual(Object.keys(chatModePrices), ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3", "Claude Opus 5.5", "Help"]);
+assert.deepEqual(chatModes().map((mode) => mode.label), ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3", "Claude Opus 5.5", "Help"]);
 
 assert.equal(modelForMode("Instant"), "zai/glm-5.3-flash");
 assert.equal(modelForMode("Thinking"), "zai/glm-5.3");

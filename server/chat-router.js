@@ -360,6 +360,7 @@ export function ambientChatRequest({
     response_format: ambientResponseFormat(responseFormat),
     enabled_tools: toolsEnabled && config.webSearchEnabled ? ["websearch"] : undefined,
     max_tokens: config.maxOutputTokens || undefined,
+    providerOptions: config.zeroDataRetention ? { gateway: { zeroDataRetention: true } } : undefined,
   };
 }
 

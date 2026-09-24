@@ -59,8 +59,8 @@ assert.deepEqual(status.boardManagerDailyCost.totals, {
 });
 
 const pricingModes = new Map(status.chatPricing.modes.map((mode) => [mode.mode, mode]));
-assert.deepEqual([...pricingModes.keys()], ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3", "Help"]);
-for (const mode of ["GPT-6 Astra", "Kimi K3"]) {
+assert.deepEqual([...pricingModes.keys()], ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3", "Claude Opus 5.5", "Help"]);
+for (const mode of ["GPT-6 Astra", "Kimi K3", "Claude Opus 5.5"]) {
   assert.equal(pricingModes.get(mode).billingPolicy, "provider_api_cost");
   assert.deepEqual(pricingModes.get(mode).providerOrder, ["vercel"]);
 }
