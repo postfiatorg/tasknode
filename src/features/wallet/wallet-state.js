@@ -1,3 +1,17 @@
+export function walletUnlockSessionForAccount(accountId, unlock, accountBoundary) {
+  if (!accountId || !unlock?.mnemonic || !unlock?.address) return null;
+  if (accountBoundary?.transitioning || accountBoundary?.accountId !== accountId
+    || (unlock.accountId && unlock.accountId !== accountId)) return null;
+  return {
+    accountId,
+    address: unlock.address,
+    publicKey: unlock.publicKey || null,
+    derivationPath: unlock.derivationPath || null,
+    mnemonic: unlock.mnemonic,
+    unlockedAt: unlock.unlockedAt || new Date().toISOString(),
+  };
+}
+
 export function walletVaultDisplayState(walletVault = {}, linkedWalletAddress = "") {
   const hasLinkedWallet = Boolean(String(linkedWalletAddress || walletVault?.address || "").trim());
   if (walletVault?.unlocked) {
