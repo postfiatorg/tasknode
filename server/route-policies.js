@@ -549,6 +549,7 @@ export const apiRoutePolicies = [
   { id: "network_task_profile", path: "/api/memory/network-task-profile", methods: ["GET", "POST"], auth: "session", body: requestBodies.emptyRequestBody },
   { id: "directory_leaderboard", path: "/api/directory/leaderboard", methods: ["GET"], auth: "optional" },
   { id: "directory_rewarded_tasks", path: "/api/directory/rewarded-tasks", methods: ["GET"], auth: "optional" },
+  { id: "directory_blacklist", path: "/api/directory/blacklist", methods: ["GET"], auth: "optional" },
   { id: "hive_projects", path: "/api/hive/projects", methods: ["GET"], auth: "optional" },
   { id: "hive_task_detail", path: "/api/hive/task-detail", methods: ["GET"], auth: "optional" },
   {

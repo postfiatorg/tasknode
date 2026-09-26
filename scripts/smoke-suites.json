@@ -181,7 +181,8 @@
     "scripts/wallet-nft-inventory-smoke.mjs",
     "scripts/wallet-transactions-smoke.mjs",
     "scripts/wallet-unlocked-session-smoke.mjs",
-    "scripts/worker-crash-resilience-smoke.mjs"
+    "scripts/worker-crash-resilience-smoke.mjs",
+    "scripts/network-task-content-policy.test.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",

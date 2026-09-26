@@ -30,6 +30,8 @@ export const BOARD_ALIASES = Object.freeze({
   fixes: "board_tasknode_fixes",
   capital: "board_capital_markets",
   markets: "board_capital_markets",
+  accountability: "board_value_accountability",
+  value: "board_value_accountability",
 });
 
 export function resolveBoardId(input = "") {

@@ -48,7 +48,7 @@ try {
   assert.equal(finished.result.results_json[outcome.dutyId].outcome, "blocked");
   assert.equal((await scoped("quiet-backoff", () => openAgentRound([board], { computeDuties }))).result.state, "backoff");
   const registry = readAgentRegistry();
-  assert.equal(registry.agents.length, 1); assert.equal(new Set(registry.agents.flatMap((agent) => agent.boards)).size, 6);
+  assert.equal(registry.agents.length, 1); assert.equal(new Set(registry.agents.flatMap((agent) => agent.boards)).size, 7);
   const event = (type, turn_id) => ({ type: "event_msg", payload: { type, turn_id } });
   assert.equal(terminalLifecycle([event("task_started", "one"), event("agent_message"), event("task_complete", "other")]).state, "busy");
   assert.equal(terminalLifecycle([event("task_started", "one"), event("task_complete", "one")]).state, "idle");

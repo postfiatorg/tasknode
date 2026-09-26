@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, BookOpen, Check, ChevronRight, CreditCard, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
+import { Activity, BookOpen, Check, ChevronRight, CreditCard, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
 import { fetchRuntimeConfig, requestJson } from "../api";
 import { ChatSearchModal } from "../features/chat/ChatSearchModal";
 import { createChatDeletionState } from "../features/chat/chat-deletion-state.js";
@@ -40,6 +40,7 @@ const TASKS_VIEW_FRESH_STATE_MS = 2000;
 const ProfilePage = lazy(() => import("../features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
 const MemberProfilePage = lazy(() => import("../features/profile/ProfileView").then((module) => ({ default: module.MemberProfileView })));
 const DirectoryView = lazy(() => import("../features/directory/DirectoryView").then((module) => ({ default: module.DirectoryView })));
+const BlacklistView = lazy(() => import("../features/directory/BlacklistView").then((module) => ({ default: module.BlacklistView })));
 
 export function App() {
   const [view, setView] = useState(() => viewFromLocation());
@@ -1168,6 +1169,8 @@ export function App() {
                         }}
                         trailing={<ChevronRight size={14} strokeWidth={1.75} />}
                       />
+                      <ToolMenuRow icon={ShieldBan} label="Blacklist" trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                        onClick={() => { navigateToView("blacklist"); setProfileMenuOpen(false); }} />
                       <TelegramProfileMenuRow
                         linkedProvider={linkedTelegramProvider}
                         onClick={startTelegramLinkFromProfileMenu}
@@ -1319,6 +1322,7 @@ export function App() {
               <DirectoryView />
             </Suspense>
           )}
+          {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView /></Suspense>}
           {view === "wallet" && (
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
               <WalletView

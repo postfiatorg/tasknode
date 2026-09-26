@@ -103,6 +103,19 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
     : "";
   if (!normalizedDecision) throw new Error("decision must be reward|partial_reward|reject");
   await requireBoardEvidence(taskId, { review: true });
+  if (normalizedDecision !== "reject") {
+    // Operator policy: network tasks are paid only for a PR merged into the
+    // default branch. Anything else must be rejected, not rewarded.
+    const { assertMergedPrForPayment } = await import("../../server/merged-pr-requirement.js");
+    try {
+      await assertMergedPrForPayment({ taskId });
+    } catch (error) {
+      if (error?.code !== "merged_pr_required") throw error;
+      throw Object.assign(new Error(
+        `${error.message}. This task cannot be rewarded: record \`bm review ${taskId} reject\` citing the missing merged PR.`
+      ), { status: 422, code: "merged_pr_required" });
+    }
+  }
   const requested = normalizedDecision === "reject" ? 0 : Math.max(0, Number(pft) || 0);
   const capCheck = await computeRewardCap({
     boardId,
@@ -133,7 +146,20 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
     args: { taskId, decision: normalizedDecision, requestedPft: requested, reason },
     result: { decisionId: row.id, clampedPft, capsApplied: capCheck.capsApplied, refused },
   });
-  return { decision: row, capCheck, clampedPft, refused };
+  // Value accountability: only a full reward clears the case; a partial
+  // reward or rejection blacklists the account.
+  let accountability = null;
+  const { VALUE_ACCOUNTABILITY_BOARD_ID, recordAccountabilityVerdict } =
+    await import("../../server/value-accountability.js");
+  if (boardId === VALUE_ACCOUNTABILITY_BOARD_ID) {
+    accountability = await recordAccountabilityVerdict({
+      taskId,
+      decision: normalizedDecision === "reward" ? "accept" : "reject",
+      reason,
+      decidedBy: boardAgentActor(),
+    });
+  }
+  return { decision: row, capCheck, clampedPft, refused, accountability };
 }
 
 export async function verifyRequest({ taskId, ask, type = "evidence", reason = "" }) {
