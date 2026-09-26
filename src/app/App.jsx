@@ -23,7 +23,7 @@ import { useAppearance } from "../theme/use-appearance.js";
 import { ProfileAccountSwitcher } from "../features/settings/ProfileAccountSwitcher.jsx";
 import { createAccountSwitcherActions } from "../features/settings/account-switch-client.js";
 import { acceptAccountBoundaryResponse, accountBoundaryCaptureIsCurrent, beginAccountBoundaryTransition, cancelAccountBoundaryTransition, initialAccountBoundary } from "../features/settings/account-transition-boundary.js";
-import { applyWalletBalanceError, applyWalletBalanceResult, formatPftBalance, markWalletBalanceChecking, mergeAppStateWithClientWalletBalance, walletVaultDisplayState } from "../features/wallet/wallet-state";
+import { applyWalletBalanceError, applyWalletBalanceResult, formatPftBalance, markWalletBalanceChecking, mergeAppStateWithClientWalletBalance, walletUnlockSessionForAccount, walletVaultDisplayState } from "../features/wallet/wallet-state";
 import { clearAllUnlockedWalletSessions, clearOtherUnlockedWalletSessions, clearUnlockedWalletSession, readUnlockedWalletSession, saveUnlockedWalletSession, touchWalletUnlockActivity, walletUnlockIdleLockMs, walletUnlockIdleRemainingMs } from "../features/wallet/wallet-unlocked-session.js";
 import { WalletUnlockModal } from "../features/wallet/WalletUnlockModal";
 import { formatCreditUsd } from "../formatters";
@@ -87,6 +87,7 @@ export function App() {
   const moreRef = useRef(null);
   const chatActionRef = useRef(null);
   const walletSecretRef = useRef(null);
+  const walletUnlockIntentRef = useRef(0);
   const refreshAppStateRef = useRef(null);
   const taskRefreshSequenceRef = useRef({ applied: 0, started: 0 });
   const accountBoundaryRef = useRef(initialAccountBoundary());
@@ -260,6 +261,7 @@ export function App() {
     setIdentityPromptDismissed(false);
   }, [session?.accountId]);
   const lockWalletVault = useCallback(() => {
+    walletUnlockIntentRef.current += 1;
     walletSecretRef.current = null;
     clearAllUnlockedWalletSessions();
     setWalletVaultStatus((current) => ({
@@ -272,6 +274,12 @@ export function App() {
     async ({ preserveUnlock = false, accountId = "" } = {}) => {
       const accountCapture = { ...accountBoundaryRef.current };
       const effectiveAccountId = accountId || walletAccountId;
+      const accountIsCurrent = () => accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)
+        && effectiveAccountId === accountCapture.accountId;
+      if (!accountIsCurrent()) return null;
+      if (!preserveUnlock) walletUnlockIntentRef.current += 1;
+      const unlockIntent = walletUnlockIntentRef.current;
+      const isCurrent = () => walletUnlockIntentRef.current === unlockIntent && accountIsCurrent();
       if (!effectiveAccountId) {
         walletSecretRef.current = null;
         setWalletVaultStatus(EMPTY_WALLET_VAULT_STATUS);
@@ -294,7 +302,7 @@ export function App() {
           ...nextStatus,
           persistence: nextStatus?.persistence && nextStatus.persistence !== "unknown" ? nextStatus.persistence : persistence,
         };
-        if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return null;
+        if (!isCurrent()) return null;
         const currentSecret = walletSecretRef.current;
         const canRestoreUnlock = Boolean(preserveUnlock && nextStatusWithPersistence?.available && nextStatusWithPersistence?.address);
         const inMemorySecretMatches =
@@ -310,6 +318,8 @@ export function App() {
               expectedAddress: nextStatusWithPersistence.address,
             })
             : null;
+        // A lock, later unlock, or account transition wins over this read.
+        if (!isCurrent()) return null;
         const activeSecret = inMemorySecretMatches ? currentSecret : sessionSecret;
         if (activeSecret) {
           walletSecretRef.current = activeSecret;
@@ -317,20 +327,20 @@ export function App() {
           walletSecretRef.current = null;
           clearUnlockedWalletSession({ accountId: effectiveAccountId });
         }
-        setWalletVaultStatus((current) => ({
+        setWalletVaultStatus((current) => isCurrent() ? ({
           ...nextStatusWithPersistence,
           unlocked: Boolean(activeSecret),
           lastUnlockedAt: activeSecret ? activeSecret.unlockedAt || current.lastUnlockedAt : null,
-        }));
+        }) : current);
         return nextStatusWithPersistence;
       } catch {
-        if (!accountBoundaryCaptureIsCurrent(accountBoundaryRef.current, accountCapture)) return null;
+        if (!isCurrent()) return null;
         walletSecretRef.current = null;
         clearUnlockedWalletSession({ accountId: effectiveAccountId });
-        setWalletVaultStatus({
+        setWalletVaultStatus((current) => isCurrent() ? {
           ...EMPTY_WALLET_VAULT_STATUS,
           accountId: effectiveAccountId,
-        });
+        } : current);
         return null;
       }
     },
@@ -338,15 +348,10 @@ export function App() {
   );
   const handleWalletVaultUnlocked = useCallback(
     (unlock) => {
-      if (!walletAccountId || !unlock?.mnemonic || !unlock?.address) return;
-      walletSecretRef.current = {
-        accountId: walletAccountId,
-        address: unlock.address,
-        publicKey: unlock.publicKey || null,
-        derivationPath: unlock.derivationPath || null,
-        mnemonic: unlock.mnemonic,
-        unlockedAt: unlock.unlockedAt || new Date().toISOString(),
-      };
+      const secret = walletUnlockSessionForAccount(walletAccountId, unlock, accountBoundaryRef.current);
+      if (!secret) return;
+      walletUnlockIntentRef.current += 1;
+      walletSecretRef.current = secret;
       void saveUnlockedWalletSession(walletSecretRef.current);
       touchWalletUnlockActivity();
       setWalletVaultStatus((current) => ({
