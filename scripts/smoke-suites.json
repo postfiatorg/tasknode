@@ -179,6 +179,10 @@
     "scripts/wallet-challenge-account-binding-smoke.mjs",
     "scripts/wallet-challenge-replay-regression.mjs",
     "scripts/wallet-nft-inventory-smoke.mjs",
+    "scripts/wallet-read-lock-race-smoke.mjs",
+    "scripts/wallet-refresh-lock-race-smoke.mjs",
+    "scripts/wallet-relock-reload-smoke.mjs",
+    "scripts/wallet-save-lock-race-smoke.mjs",
     "scripts/wallet-transactions-smoke.mjs",
     "scripts/wallet-unlocked-session-smoke.mjs",
     "scripts/worker-crash-resilience-smoke.mjs"
