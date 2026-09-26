@@ -31,6 +31,22 @@ export async function handleDirectoryRoute({
   url,
   rewardedTasksReader = getDirectoryRewardedTasksDocument,
 } = {}) {
+  if (url.pathname === "/api/directory/blacklist") {
+    if (req.method !== "GET") {
+      json(res, 405, { ok: false, error: "directory_blacklist_method_not_allowed", message: "Blacklist supports GET." });
+      return true;
+    }
+    const { listPublicBlacklist } = await import("./value-accountability.js");
+    const entries = await listPublicBlacklist();
+    json(res, 200, {
+      ok: true,
+      policy:
+        "Accounts paid for commentary on published writing or audit/review write-ups had to show market-cap accretion with a Discord sign-off from another member. Accounts that refused, missed the deadline or failed the review receive no network tasks and no rewards.",
+      count: entries.length,
+      entries,
+    });
+    return true;
+  }
   if (!["/api/directory/leaderboard", "/api/directory/rewarded-tasks"].includes(url.pathname)) return false;
 
   if (url.pathname === "/api/directory/leaderboard" && req.method !== "GET") {

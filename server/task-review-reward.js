@@ -1,3 +1,4 @@
+import { assertNotBlacklisted } from "./value-accountability.js";
 import { query } from "./db/pool.js";
 import { getTaskDetail } from "./repositories/tasks.js";
 import { resolveTasknodeEncryptionKey } from "./context-publish.js";
@@ -667,6 +668,8 @@ export async function processVerificationResponse(row, { logger = console } = {}
     });
     const rewardForensicDigest = `sha256:${sha256(rewardPayload.reward_forensics || {})}`;
 
+    // Blacklisted accounts are never paid (value accountability policy).
+    await assertNotBlacklisted({ accountId: row.account_id, walletAddress: row.subject_wallet, action: "reward" });
     const paymentGuard = await claimRewardPaymentGuard({
       taskId: row.task_id,
       rewardPayload,

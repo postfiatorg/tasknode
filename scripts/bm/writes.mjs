@@ -133,7 +133,20 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
     args: { taskId, decision: normalizedDecision, requestedPft: requested, reason },
     result: { decisionId: row.id, clampedPft, capsApplied: capCheck.capsApplied, refused },
   });
-  return { decision: row, capCheck, clampedPft, refused };
+  // Value accountability: only a full reward clears the case; a partial
+  // reward or rejection blacklists the account.
+  let accountability = null;
+  const { VALUE_ACCOUNTABILITY_BOARD_ID, recordAccountabilityVerdict } =
+    await import("../../server/value-accountability.js");
+  if (boardId === VALUE_ACCOUNTABILITY_BOARD_ID) {
+    accountability = await recordAccountabilityVerdict({
+      taskId,
+      decision: normalizedDecision === "reward" ? "accept" : "reject",
+      reason,
+      decidedBy: boardAgentActor(),
+    });
+  }
+  return { decision: row, capCheck, clampedPft, refused, accountability };
 }
 
 export async function verifyRequest({ taskId, ask, type = "evidence", reason = "" }) {

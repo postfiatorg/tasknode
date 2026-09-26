@@ -1,4 +1,5 @@
 import { assertNetworkTaskContentAllowed } from "./network-task-content-policy.js";
+import { VALUE_ACCOUNTABILITY_BOARD_ID, assertNotBlacklisted } from "./value-accountability.js";
 import { runTrackedWork } from "./process-hardening.js";
 import { assessTaskIntent, taskIntentFailureFamily } from "./task-intent-assessment.js";
 import { offchainTaskLifecycleEnabled, offchainTaskLifecycleDualWriteEnabled } from "./offchain-task-lifecycle.js";
@@ -139,10 +140,17 @@ export async function createTaskRequestForNetworkJob(job = {}, { assess = assess
   // Operator content policy applies to every network job, including jobs
   // queued before the policy existed.
   const sourceTask = safeObject(source.networkTask || source.network_task);
-  assertNetworkTaskContentAllowed(
-    safeText(source.need, 8000),
-    safeText(sourceTask.projectNeedSummary || sourceTask.project_need_summary, 8000),
-  );
+  if (safeText(job.project_id, 180) !== VALUE_ACCOUNTABILITY_BOARD_ID) {
+    assertNetworkTaskContentAllowed(
+      safeText(source.need, 8000),
+      safeText(sourceTask.projectNeedSummary || sourceTask.project_need_summary, 8000),
+    );
+  }
+  await assertNotBlacklisted({
+    accountId: job.candidate_account_id,
+    walletAddress: job.candidate_wallet_address,
+    action: "network_task",
+  });
 
   // Route to the candidate's CURRENT linked wallet. Candidate rows can carry
   // stale wallets from historic profile data; a task offered to a wallet the
