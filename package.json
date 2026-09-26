@@ -170,7 +170,9 @@
     "hive-group-smoke": "node scripts/hive-group-smoke.mjs",
     "campaign-tracker-body-smoke": "node scripts/campaign-tracker-body-smoke.mjs",
     "test:smoke": "node scripts/run-smokes.mjs verify && node scripts/run-smokes.mjs unit",
-    "test:db": "node scripts/run-smokes.mjs db"
+    "test:db": "node scripts/run-smokes.mjs db",
+    "pftl-reducer-redrive-postgres-smoke": "node scripts/pftl-reducer-redrive-postgres-smoke.mjs",
+    "pftl-cache-failed-retry-smoke": "node scripts/pftl-cache-failed-retry-smoke.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65",
