@@ -19,6 +19,13 @@ const TASK_PAYLOAD_SCHEMAS = new Set([
   "pf.reward.v1",
 ]);
 
+// Revisit failed rows after a growing backoff so transient failures can recover.
+// A hard attempt cap prevents permanently invalid rows from retrying forever.
+const FAILED_REDRIVE_MAX_ATTEMPTS = 50;
+const FAILED_REDRIVE_MIN_BACKOFF_SECONDS = 60;
+const FAILED_REDRIVE_MAX_BACKOFF_SECONDS = 3600;
+const FAILED_REDRIVE_BACKOFF_STEP_SECONDS = 60;
+
 function normalizeText(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
@@ -53,12 +60,18 @@ function sha256Hex(value) {
   return createHash("sha256").update(data).digest("hex");
 }
 
-export async function claimPftlReducerEvents({ limit = 10, taskId = "", txHash = "" } = {}) {
-  if (!databaseEnabled()) return [];
+export async function claimPftlReducerEvents({
+  limit = 10,
+  taskId = "",
+  txHash = "",
+  transactionImpl = transaction,
+  databaseEnabledImpl = databaseEnabled,
+} = {}) {
+  if (!databaseEnabledImpl()) return [];
   const cappedLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
   const normalizedTaskId = normalizeText(taskId).slice(0, 180);
   const normalizedTxHash = normalizeText(txHash).slice(0, 180);
-  return transaction(async (client) => {
+  return transactionImpl(async (client) => {
     await client.query(
       `
         UPDATE pftl_cache_reducer_events
@@ -69,6 +82,26 @@ export async function claimPftlReducerEvents({ limit = 10, taskId = "", txHash =
         WHERE status = 'processing'
           AND updated_at < now() - INTERVAL '10 minutes'
       `
+    );
+    await client.query(
+      `
+        UPDATE pftl_cache_reducer_events
+        SET status = 'pending',
+            available_at = now(),
+            last_error = COALESCE(last_error, 'failed_retry_redrive'),
+            updated_at = now()
+        WHERE status = 'failed'
+          AND attempts < $1
+          AND updated_at < now() - (
+            LEAST($2, GREATEST($3, attempts * $4)) * INTERVAL '1 second'
+          )
+      `,
+      [
+        FAILED_REDRIVE_MAX_ATTEMPTS,
+        FAILED_REDRIVE_MAX_BACKOFF_SECONDS,
+        FAILED_REDRIVE_MIN_BACKOFF_SECONDS,
+        FAILED_REDRIVE_BACKOFF_STEP_SECONDS,
+      ]
     );
     const result = await client.query(
       `
