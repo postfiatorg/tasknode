@@ -29,3 +29,12 @@ test("banned network task shapes are rejected with the right code", () => {
 test("engineering and reproducible data work is allowed", () => {
   for (const text of allowed) assert.equal(networkTaskContentViolation(text), null, text);
 });
+
+test("pull request URLs are extracted and de-duplicated from evidence", async () => {
+  const { extractPullRequestRefs } = await import("../server/merged-pr-requirement.js");
+  const refs = extractPullRequestRefs(
+    { text: "PR https://github.com/postfiatorg/tasknode/pull/279 again https://github.com/postfiatorg/tasknode/pull/279" },
+    "gist https://gist.github.com/x/abc and https://github.com/postfiatorg/postfiatl1v2/pull/12/files"
+  );
+  assert.deepEqual(refs.map((ref) => ref.key), ["postfiatorg/tasknode#279", "postfiatorg/postfiatl1v2#12"]);
+});

@@ -1,5 +1,6 @@
 import { assertNetworkTaskContentAllowed } from "../network-task-content-policy.js";
 import { VALUE_ACCOUNTABILITY_BOARD_ID, assertNotBlacklisted } from "../value-accountability.js";
+import { MERGED_PR_REQUIREMENT_TEXT } from "../merged-pr-requirement.js";
 import { createHash } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
@@ -67,6 +68,9 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   const rewardBandClampedFrom = networkTask.reward_band_clamped_from || band.clampedFrom || null;
   assertNetworkTaskRewardFloor({ ...(rewardBandClampedFrom || band), operatorDuty });
   const projectNeedSummary = safeText(networkTask.project_need_summary || networkTask.projectNeedSummary || payload.summary || decision.reason, 2400);
+  const projectNeedWithPayment = projectId === VALUE_ACCOUNTABILITY_BOARD_ID || operatorDuty
+    ? projectNeedSummary
+    : `${projectNeedSummary}\n\n${MERGED_PR_REQUIREMENT_TEXT}`;
   if (projectId !== VALUE_ACCOUNTABILITY_BOARD_ID) {
     assertNetworkTaskContentAllowed(projectNeedSummary, safeText(payload.summary, 2400));
   }
@@ -288,7 +292,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	    candidate,
 	    normalizedTaskClass,
 	    band,
-	    projectNeedSummary,
+	    projectNeedSummary: projectNeedWithPayment,
 	    allocationReasonSummary,
 	    cadenceReason,
 	    acceptWindowHours,
@@ -389,7 +393,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
         candidate.accountId,
         candidate.walletAddress,
         normalizedNeedHash,
-        projectNeedSummary,
+        projectNeedWithPayment,
         allocationReasonSummary,
         band.min,
         band.max,
