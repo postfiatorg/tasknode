@@ -8,11 +8,13 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { parseRequestUrl, normalizeRequestTarget } from "../server/request-url.js";
 
 test("request targets cannot carry an authority or throw", () => {
+  assert.equal(normalizeRequestTarget("//"), "/");
+  assert.equal(normalizeRequestTarget("//user@"), "/user@");
   assert.equal(normalizeRequestTarget("//api/tasks"), "/api/tasks");
   assert.equal(normalizeRequestTarget("///api/health"), "/api/health");
   assert.equal(normalizeRequestTarget("http://proxy.example//api/health"), "/api/health");
   assert.equal(normalizeRequestTarget(""), "/");
-  for (const raw of ["//[::1/x", "//a b/c", "//%/x", "//user:pw@evil.example/api/health"]) {
+  for (const raw of ["//", "//user@", "//[::1/x", "//a b/c", "//%/x", "//user:pw@evil.example/api/health"]) {
     const parsed = parseRequestUrl(raw);
     assert.equal(parsed.ok, true, raw);
     assert.equal(parsed.url.host, "tasknode.local", raw);
@@ -62,6 +64,8 @@ test("a double-slash or malformed GET gets a controlled response and the server 
   }
   const statusOf = (raw) => Number(/^HTTP\/1\.1 (\d{3})/.exec(raw)?.[1]);
   const cases = [
+    ["//", null],
+    ["//user@", null],
     ["//api/health", 200],
     ["//api/tasks", null],
     ["///api/health", 200],
@@ -75,6 +79,8 @@ test("a double-slash or malformed GET gets a controlled response and the server 
     assert.ok(Number.isInteger(status) && status < 500, `${target} -> ${raw.slice(0, 120)}`);
     if (expected) assert.equal(status, expected, target);
     assert.equal(server.exitCode, null, `server died after ${target}: ${output.slice(-800)}`);
+    const afterRequest = await fetch(`http://127.0.0.1:${port}/api/health`);
+    assert.equal(afterRequest.status, 200, `server still healthy after ${target}`);
   }
   const health = await fetch(`http://127.0.0.1:${port}/api/health`);
   assert.equal(health.status, 200, "server still healthy after malformed requests");
