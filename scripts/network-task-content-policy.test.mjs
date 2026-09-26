@@ -38,3 +38,12 @@ test("pull request URLs are extracted and de-duplicated from evidence", async ()
   );
   assert.deepEqual(refs.map((ref) => ref.key), ["postfiatorg/tasknode#279", "postfiatorg/postfiatl1v2#12"]);
 });
+
+test("ordinary engineering wording is not mistaken for critique", async () => {
+  const { networkTaskContentViolation: check } = await import("../server/network-task-content-policy.js");
+  for (const text of [
+    "Fix critical consensus bug in the Post Fiat node and open a pull request",
+    "Refactor the thread pool used by the Post Fiat RPC server",
+    "Add medium-severity lint rules to CorbanuTerminal",
+  ]) assert.equal(check(text), null, text);
+});

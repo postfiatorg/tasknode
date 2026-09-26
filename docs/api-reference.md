@@ -127,6 +127,7 @@ resource membership, or other context beyond a generic identity class.
 | `network_task_profile` | `/api/memory/network-task-profile` | `GET` `POST` | `session` | strict JSON ≤ 1024 bytes | — |
 | `directory_leaderboard` | `/api/directory/leaderboard` | `GET` | `optional` | — | — |
 | `directory_rewarded_tasks` | `/api/directory/rewarded-tasks` | `GET` | `optional` | — | — |
+| `directory_blacklist` | `/api/directory/blacklist` | `GET` | `optional` | — | — |
 | `hive_projects` | `/api/hive/projects` | `GET` | `optional` | — | — |
 | `hive_task_detail` | `/api/hive/task-detail` | `GET` | `optional` | — | — |
 | `hive_capability_profile` | `/api/hive/capability-profile` | `POST` | `admin_bearer` | strict JSON ≤ 32768 bytes | 30 / 600s |
@@ -202,4 +203,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **176 route policies** and **8 authentication modes**.
+Total: **177 route policies** and **8 authentication modes**.

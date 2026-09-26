@@ -48,3 +48,15 @@ non-discoverable accounts.
 
 - Directory exposure is limited to public, discoverable operators.
 - The rank weighting is the configurable formula documented above.
+
+## Blacklist
+
+`GET /api/directory/blacklist` lists accounts blacklisted under the value
+accountability policy: accounts paid for commentary on published writing or
+audit/review write-ups that refused, missed the deadline for, or failed the
+mandatory market-cap accretion task. Blacklisted accounts receive no network
+tasks and no reward payments. The Blacklist page (profile menu) renders it.
+
+Network tasks are paid only for a GitHub pull request merged into the
+repository's default branch, authored by the contributor's linked GitHub
+account, merged after the task was created and not used to pay another task.

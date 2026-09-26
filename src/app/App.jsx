@@ -1169,15 +1169,8 @@ export function App() {
                         }}
                         trailing={<ChevronRight size={14} strokeWidth={1.75} />}
                       />
-                      <ToolMenuRow
-                        icon={ShieldBan}
-                        label="Blacklist"
-                        onClick={() => {
-                          navigateToView("blacklist");
-                          setProfileMenuOpen(false);
-                        }}
-                        trailing={<ChevronRight size={14} strokeWidth={1.75} />}
-                      />
+                      <ToolMenuRow icon={ShieldBan} label="Blacklist" trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                        onClick={() => { navigateToView("blacklist"); setProfileMenuOpen(false); }} />
                       <TelegramProfileMenuRow
                         linkedProvider={linkedTelegramProvider}
                         onClick={startTelegramLinkFromProfileMenu}
@@ -1329,11 +1322,7 @@ export function App() {
               <DirectoryView />
             </Suspense>
           )}
-          {view === "blacklist" && (
-            <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}>
-              <BlacklistView />
-            </Suspense>
-          )}
+          {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView /></Suspense>}
           {view === "wallet" && (
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
               <WalletView

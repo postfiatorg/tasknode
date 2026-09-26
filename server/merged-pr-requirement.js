@@ -18,7 +18,41 @@ export const MERGED_PR_OPERATOR_HANDLE = "goodalexander";
 export const MERGED_PR_REQUIREMENT_TEXT =
   "Payment requirement: this task pays only for a GitHub pull request authored by the GitHub account linked to your Task Node account and MERGED into the repository's default branch (main) after this task was created. Submit the PR URL. An open, unmerged, closed or draft PR is not evidence and will not be paid; neither is a PR that already paid another task.";
 
-const PR_URL = /https?:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)/g;
+const GITHUB_PREFIX = "github.com/";
+
+function isSegmentChar(char) {
+  const code = char.charCodeAt(0);
+  return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || "_.-".includes(char);
+}
+
+function readWhile(text, start, predicate) {
+  let end = start;
+  while (end < text.length && predicate(text[end])) end += 1;
+  return text.slice(start, end);
+}
+
+// Parse github.com/<owner>/<repo>/pull/<number> occurrences without regular
+// expressions (this module is reachable from inference paths).
+function pullRequestMatches(text) {
+  const found = [];
+  let index = text.indexOf(GITHUB_PREFIX);
+  while (index >= 0) {
+    const before = text.slice(Math.max(0, index - 8), index);
+    let cursor = index + GITHUB_PREFIX.length;
+    const owner = readWhile(text, cursor, isSegmentChar);
+    cursor += owner.length;
+    if (owner && text[cursor] === "/" && (before.endsWith("://") || before.endsWith("www."))) {
+      const repo = readWhile(text, cursor + 1, isSegmentChar);
+      cursor += 1 + repo.length;
+      if (repo && text.startsWith("/pull/", cursor)) {
+        const digits = readWhile(text, cursor + 6, (char) => char >= "0" && char <= "9");
+        if (digits) found.push([owner, repo, digits]);
+      }
+    }
+    index = text.indexOf(GITHUB_PREFIX, index + GITHUB_PREFIX.length);
+  }
+  return found;
+}
 
 function safeText(value = "", max = 4000) {
   return String(value ?? "").trim().slice(0, max);
@@ -27,10 +61,9 @@ function safeText(value = "", max = 4000) {
 export function extractPullRequestRefs(...payloads) {
   const text = payloads.map((value) => (typeof value === "string" ? value : JSON.stringify(value ?? ""))).join("\n");
   const seen = new Map();
-  for (const match of text.matchAll(PR_URL)) {
-    const owner = match[1];
-    const repo = match[2].replace(/\.git$/, "");
-    const number = Number(match[3]);
+  for (const [owner, rawRepo, digits] of pullRequestMatches(text)) {
+    const repo = rawRepo.endsWith(".git") ? rawRepo.slice(0, -4) : rawRepo;
+    const number = Number(digits);
     const key = `${owner.toLowerCase()}/${repo.toLowerCase()}#${number}`;
     if (!seen.has(key)) seen.set(key, { owner, repo, number, key, url: `https://github.com/${owner}/${repo}/pull/${number}` });
   }

@@ -13,35 +13,91 @@
 //
 // Real engineering stays allowed: pull requests, fixes, tests, reproductions
 // that land a patch, backtests with code.
-
-const WRITING_TARGET =
-  /\b(essays?|blog ?posts?|posts?|articles?|primers?|threads?|newsletters?|substack|medium (?:article|post|critique)|op-?eds?|writing|goodalexander\.github\.io|content\/posts)\b/i;
-const CRITIQUE_ACTION =
-  /\b(critiqu\w*|critic\w*|fact[- ]?check\w*|claim[- ]?(?:by[- ]?claim|audit\w*)|retrospective claim|falsifiab\w*|stress[- ]?test\w*|rebut\w*|rebuttal|refut\w*|scorecard|steelman\w*|contradict\w*|debunk\w*|tear[- ]?down|red[- ]?team\w*)/i;
-
-const AUDIT_ACTION =
-  /\b(audit\w*|review\w*|assess\w*|evaluat\w*|inspect\w*|critiqu\w*|fact[- ]?check\w*|coverage (?:map|gap|plan)|merge[- ]readiness)\b/i;
-const DOCUMENT_DELIVERABLE =
-  /\b(gists?|write[- ]?ups?|reports?|memos?|scorecards?|findings (?:doc|document|note)|coverage (?:map|plan)|decision gist|public note)\b/i;
-const CODE_DELIVERABLE =
-  /\b(open (?:a )?(?:pull request|PR)|submit (?:a )?(?:pull request|PR)|pull request that|patch(?:es)?|fix(?:es|ed)? (?:the|a)|land (?:a|the) fix|failing test|regression test|unit test|pytest|cargo test|write (?:a )?test)\b/i;
+//
+// This module is reachable from inference paths, where regular expressions are
+// prohibited; matching uses word tokens and plain substring checks.
 
 export const NETWORK_TASK_CONTENT_POLICY_VERSION = "network_task_content_policy_v1";
 
+// Word stems (a token matches when it starts with the stem).
+const WRITING_STEMS = ["essay", "article", "primer", "newsletter", "substack", "writing", "oped"];
+const WRITING_WORDS = ["posts", "blog", "blogs"];
+const WRITING_PHRASES = [
+  "goodalexander.github.io", "content/posts", "op-ed", "blog post", " the post ", " a post ", " this post ",
+  "x post", "twitter post", "x thread", "twitter thread", "medium article", "medium post", "medium critique", "on medium",
+];
+
+const CRITIQUE_STEMS = ["critiqu", "criticis", "criticiz", "factcheck", "falsifiab", "rebut", "refut", "scorecard", "steelman", "contradict", "debunk", "redteam"];
+const CRITIQUE_PHRASES = [
+  "fact check", "fact-check", "claim by claim", "claim-by-claim", "claim audit", "retrospective claim",
+  "stress test", "stress-test", "tear down", "teardown", "red team", "red-team",
+];
+
+const AUDIT_STEMS = ["audit", "review", "assess", "evaluat", "inspect", "critiqu", "factcheck"];
+const AUDIT_PHRASES = ["fact check", "fact-check", "coverage map", "coverage gap", "coverage plan", "merge readiness", "merge-readiness"];
+
+const DOCUMENT_STEMS = ["gist", "writeup", "report", "memo", "scorecard"];
+const DOCUMENT_PHRASES = ["write up", "write-up", "findings doc", "findings note", "coverage map", "coverage plan", "decision gist", "public note"];
+
+const CODE_PHRASES = [
+  "open a pull request", "open pull request", "open a pr", "open pr", "submit a pull request", "submit a pr",
+  "pull request that", "land a fix", "land the fix", "failing test", "regression test", "unit test",
+  "pytest", "cargo test", "write a test", "write test", "fix the", "fix a", "patch",
+];
+
+function isWordChar(char) {
+  const code = char.charCodeAt(0);
+  return (code >= 48 && code <= 57) || (code >= 97 && code <= 122) || char === "_";
+}
+
+function normalize(text) {
+  const lower = String(text || "").toLowerCase();
+  const tokens = [];
+  let current = "";
+  let spaced = "";
+  for (const char of lower) {
+    if (isWordChar(char)) {
+      current += char;
+      spaced += char;
+    } else {
+      if (current) tokens.push(current);
+      current = "";
+      spaced += char === "-" || char === "." || char === "/" ? char : " ";
+    }
+  }
+  if (current) tokens.push(current);
+  // Hyphen-joined compounds ("fact-check") also appear as one token ("factcheck").
+  const joined = [];
+  for (let index = 0; index + 1 < tokens.length; index += 1) joined.push(tokens[index] + tokens[index + 1]);
+  return { tokens: [...tokens, ...joined], text: ` ${spaced.split(" ").filter(Boolean).join(" ")} ` };
+}
+
+function matches({ tokens, text }, { stems = [], words = [], phrases = [] }) {
+  if (phrases.some((phrase) => text.includes(phrase))) return true;
+  if (words.some((word) => tokens.includes(word))) return true;
+  return tokens.some((token) => stems.some((stem) => token.startsWith(stem)));
+}
+
 export function networkTaskContentViolation(...texts) {
-  const text = texts
+  const raw = texts
     .flat()
     .filter((value) => typeof value === "string" && value.trim())
     .join("\n");
-  if (!text) return null;
-  if (CRITIQUE_ACTION.test(text) && WRITING_TARGET.test(text)) {
+  if (!raw) return null;
+  const normalized = normalize(raw);
+  const critique = matches(normalized, { stems: CRITIQUE_STEMS, phrases: CRITIQUE_PHRASES });
+  const writing = matches(normalized, { stems: WRITING_STEMS, words: WRITING_WORDS, phrases: WRITING_PHRASES });
+  if (critique && writing) {
     return {
       code: "critique_of_published_writing",
       message:
         "Network tasks may not critique, fact-check, audit or stress-test essays, posts or other published writing.",
     };
   }
-  if (AUDIT_ACTION.test(text) && DOCUMENT_DELIVERABLE.test(text) && !CODE_DELIVERABLE.test(text)) {
+  const audit = matches(normalized, { stems: AUDIT_STEMS, phrases: AUDIT_PHRASES });
+  const document = matches(normalized, { stems: DOCUMENT_STEMS, phrases: DOCUMENT_PHRASES });
+  const code = matches(normalized, { phrases: CODE_PHRASES });
+  if (audit && document && !code) {
     return {
       code: "audit_document_deliverable",
       message:
