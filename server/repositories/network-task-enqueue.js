@@ -46,7 +46,10 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   if (!projectId) throw new Error("network_task_project_required");
   const project = await projectById(projectId);
   if (!project?.id) throw new Error("network_task_project_not_found");
-  const candidate = await resolveCandidate({ decision });
+  const candidate = await resolveCandidate({
+    decision,
+    requireBadge: projectId !== VALUE_ACCOUNTABILITY_BOARD_ID,
+  });
   if (!candidate?.accountId || !candidate?.walletAddress) {
     throw new Error("network_task_candidate_required");
   }
@@ -91,7 +94,21 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     120
   );
   let badgeEligibilityDecision = null;
-  try {
+  // The mandatory value accountability task is owed by the account regardless
+  // of the badges it holds; it is a verdict, not badge-gated work.
+  const badgeGateExempt = projectId === VALUE_ACCOUNTABILITY_BOARD_ID;
+  if (badgeGateExempt) {
+    badgeEligibilityDecision = {
+      schema: "pf.task_node.network_task_candidate_decision.v1",
+      eligible: true,
+      exempt: "value_accountability",
+      required_badge_id: "",
+      operating_badge_id: "",
+      work_type: "value_accountability",
+      badge_reward_cap_pft: 1,
+    };
+  }
+  if (!badgeGateExempt) try {
     badgeEligibilityDecision = await assertNetworkTaskBadgeEligibility({
       accountId: candidate.accountId,
       walletAddress: candidate.walletAddress,
