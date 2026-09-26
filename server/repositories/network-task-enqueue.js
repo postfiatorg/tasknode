@@ -1,3 +1,4 @@
+import { assertNetworkTaskContentAllowed } from "../network-task-content-policy.js";
 import { createHash } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
@@ -65,6 +66,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   const rewardBandClampedFrom = networkTask.reward_band_clamped_from || band.clampedFrom || null;
   assertNetworkTaskRewardFloor({ ...(rewardBandClampedFrom || band), operatorDuty });
   const projectNeedSummary = safeText(networkTask.project_need_summary || networkTask.projectNeedSummary || payload.summary || decision.reason, 2400);
+  assertNetworkTaskContentAllowed(projectNeedSummary, safeText(payload.summary, 2400));
   const allocationReasonSummary = safeText(networkTask.allocation_reason_summary || networkTask.routing_reason || networkTask.routingReason || decision.reason, 1800);
   const cadenceReason = safeText(networkTask.cadence_reason || networkTask.cadenceReason || "board_manager_initiated", 600);
   // Accept windows are opt-in. Tasks never die by clock; the board manager

@@ -1,3 +1,4 @@
+import { assertNetworkTaskContentAllowed } from "./network-task-content-policy.js";
 import { runTrackedWork } from "./process-hardening.js";
 import { assessTaskIntent, taskIntentFailureFamily } from "./task-intent-assessment.js";
 import { offchainTaskLifecycleEnabled, offchainTaskLifecycleDualWriteEnabled } from "./offchain-task-lifecycle.js";
@@ -135,6 +136,13 @@ export function advertisedRewardBand({ min = 0, max = 0, perTaskCap = 0 } = {}) 
 
 export async function createTaskRequestForNetworkJob(job = {}, { assess = assessTaskIntent } = {}) {
   const source = safeObject(job.source_payload_json);
+  // Operator content policy applies to every network job, including jobs
+  // queued before the policy existed.
+  const sourceTask = safeObject(source.networkTask || source.network_task);
+  assertNetworkTaskContentAllowed(
+    safeText(source.need, 8000),
+    safeText(sourceTask.projectNeedSummary || sourceTask.project_need_summary, 8000),
+  );
 
   // Route to the candidate's CURRENT linked wallet. Candidate rows can carry
   // stale wallets from historic profile data; a task offered to a wallet the
