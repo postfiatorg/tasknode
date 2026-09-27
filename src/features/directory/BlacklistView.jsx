@@ -5,9 +5,9 @@ import { formatCompactPft } from "../hive/HiveView.jsx";
 import "./directory.css";
 
 const REASON_LABELS = {
-  value_accountability_rejected: "Failed value review",
-  value_accountability_refused: "Refused accountability task",
-  value_accountability_deadline_missed: "Missed accountability deadline",
+  value_accountability_rejected: "No checkable contribution",
+  value_accountability_refused: "Refused value check",
+  value_accountability_deadline_missed: "No response to value check",
   operator_blacklist: "Operator decision",
 };
 

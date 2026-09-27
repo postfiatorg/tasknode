@@ -41,7 +41,7 @@ export async function handleDirectoryRoute({
     json(res, 200, {
       ok: true,
       policy:
-        "Accounts paid for commentary on published writing or audit/review write-ups had to show market-cap accretion with a Discord sign-off from another member. Accounts that refused, missed the deadline or failed the review receive no network tasks and no rewards.",
+        "Accounts paid for commentary on published writing or audit/review write-ups were asked for their Discord handle and any checkable proof of a real contribution to Post Fiat. Accounts that did not respond, or showed no contribution at all, receive no network tasks and no rewards.",
       count: entries.length,
       entries,
     });
