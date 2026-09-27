@@ -14,6 +14,7 @@ export function ProfileAccountSwitcher({
 }) {
   return (
     <>
+      <div className="profile-session-state">Switch profile</div>
       {accounts.length > 0 && (
         <div className="profile-account-list" aria-label="Accounts on this browser">
           {accounts.map((account) => {

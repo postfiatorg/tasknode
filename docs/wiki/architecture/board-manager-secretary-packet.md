@@ -16,8 +16,7 @@ System Status row: `board_manager_secretary_packets`
 - Prompt: `prompts/hive/board_manager_secretary_v1.md`.
 - Runtime module: `server/board-manager-secretary-packets.js`.
 - Primary store: `board_manager_secretary_packets`.
-- Normal caller: `scripts/board-manager-model-exec.mjs` before the Board
-  Manager decision request.
+- Normal caller: `server/hive-immediate-response.js`.
 
 The packet is keyed by a semantic source digest. Generated timestamps, trigger
 names, freshness counters, and no-op Board Manager runs do not force a new
@@ -118,11 +117,10 @@ feature or provider key is not configured.
 
 ## Debug And Repair
 
-Run the packet smoke and a dry Board Manager model call:
+Run the packet smoke:
 
 ```bash
-npm run board-manager-secretary-packet-smoke
-npm run board-manager:model -- --no-execute
+node scripts/board-manager-secretary-packet-smoke.mjs
 ```
 
 Confirm `AMBIENT_API_KEY` is configured when secretary packets are enabled. If

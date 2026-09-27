@@ -32,7 +32,7 @@ Task detail keeps the current requirement visible as the user moves through the 
 
 `Request task` is not the Network Task entry point. `Request task` creates a user-requested personal task proposal. Network Tasks are routed by the production Kimi K3 manager through authorized board commands when a project needs work and a candidate is eligible. The obsolete GLM selector and legacy automatic Fly manager have been removed.
 
-Browser requests, retry and dismissal share the server's strict request-body contract, including account and attempt guards. An offer is published only after its task and submission instructions pass structural validation and a separate readiness review; a malformed model result is retried instead of appearing as an incomplete offer.
+Browser requests, retry and dismissal share the server's strict request-body contract, including account and attempt guards. An offer is published only after its task and submission instructions pass structural validation and a separate readiness review. The review must assess every step individually; metadata labels and placeholders do not count as contributor actions. Missing, duplicate, or rejected step assessments fail validation and enter the existing retry flow. Cached unpublished drafts require approval for the current review version, prompt, and exact candidate; already-published offers retain their identity.
 
 The reliability change makes the eligibility panel use the same candidate and
 account-capacity rules as task creation: linked delivery wallet, verified badge,
@@ -425,13 +425,15 @@ The task detail modal keeps its own local detail state while it is open. It seed
 The Tasks page refresh policy is driven by the shared lifecycle contract in `shared/task-lifecycle.js` and the server metadata returned by `GET /api/tasks`. Initial submissions can be advanced by the review worker into `Verification requested`; verification responses can be advanced into `Rewarded` after the authority scores the evidence and publishes the terminal `pf.reward.v1` outcome. The list and tab counts should therefore follow the projection cache without a manual browser reload.
 
 The review worker is a production dependency, not an optional enhancement. On
-Fly it runs under `npm run start:worker`; a passing public `/health` check does
+Fly it runs in the `worker-task-review` process group; a passing public `/health` check does
 not prove this loop is alive. `npm run fly:worker-guard` is the operator check
 for stuck review-loop states.
 
 Task product flags such as personal/network/alpha task enablement and daily reward cap are read from `server/task-product-config.js`, not embedded in the empty task state.
 
 Accepted tasks accept initial evidence. Verification-requested tasks accept verification evidence. Proposed tasks must be accepted or refused before evidence can be submitted.
+
+Terminal evidence submissions and verification responses accept full reports up to 120,000 characters in `summary`, matching the existing text-evidence storage limit. The complete JSON request must fit within 1 MiB, including evidence items and UTF-8 encoding. Reports above these limits are rejected before submission; callers should retain the original report rather than silently truncate it. The former 24,000-character summary cap no longer applies to the terminal evidence route. The full report is retained as the primary text artifact even when the terminal also extracts citation URLs; those links must not replace the report body.
 
 The IPFS payload limit is intentionally small enough to catch bad evidence architecture. Large binary evidence should be processed or referenced, not embedded directly in encrypted JSON. Screenshot submissions therefore carry a human-readable vision description plus file digest metadata; the digest proves which local file was processed, while the description gives the verifier useful content.
 
@@ -611,7 +613,7 @@ The detail modal is state-specific.
 
 When a task is proposed or accepted, the overview shows the original task offer: description, steps, evidence requirement, and any Hive routing context. This helps the user decide what work is being requested.
 
-When a task enters `verification_requested`, the detail view uses the compact verification layout from `mocks/verify.jsx`. The overview shows a short `Original task` summary so the user knows what work the verification belongs to, but the full offer, steps, and Hive routing context stay behind a `Show` toggle. The active `Verification requested` ask appears directly below that summary, followed by a `Respond in Submit` action and a visible lifecycle-provided cancel control. The cancel control stays secondary in styling so it does not compete with the current verification requirement.
+When a task enters `verification_requested`, the detail view uses the compact verification layout from the verification design mock. The overview shows a short `Original task` summary so the user knows what work the verification belongs to, but the full offer, steps, and Hive routing context stay behind a `Show` toggle. The active `Verification requested` ask appears directly below that summary, followed by a `Respond in Submit` action and a visible lifecycle-provided cancel control. The cancel control stays secondary in styling so it does not compete with the current verification requirement.
 
 The Submit tab repeats the current verification request in a collapsible block, then focuses on the user's response. It starts with one evidence item. A second item appears only when the user clicks `Add second evidence`; mixed evidence requirements do not auto-open a second blank card.
 
@@ -720,3 +722,25 @@ you use more than one tab. Changing accounts shows only that account's draft.
 The request queue keeps unfinished work visible. Failed requests offer **Retry**;
 older receipts remain available through pagination. A queued receipt confirms the
 request was saved. The generated task appears after its worker finishes.
+
+
+### Generation failure and routing diagnostics
+
+Personal task generation retries provider-output failures up to the configured
+attempt limit (three by default). Exhausted requests remain in Needs attention;
+retrying uses the original request and grants a fresh bounded automatic retry
+budget. Lifetime attempt numbers stay monotonic so an old Retry command cannot
+restart a newer failure. Operator request metadata retains the final
+attempt number and the typed validation reason, without storing rejected model
+content. A successful diagnostic generation alone does not publish a task.
+
+Profile and Network Task routing use the same current badge projection, including
+verified provider authorization before a badge row has been materialized. The
+routing pool discovers linked-wallet accounts as well as durable badge holders,
+then applies that shared eligibility check and the existing capacity rules.
+
+## Campaign Tracker validation
+
+Corbanu Terminal's Campaign Tracker uses `/api/terminal/tasknode/campaign-tracker`. Rejected text fields retain the `tracker_text_invalid` code and return allowlisted `validation.field`, `validation.reason` (`type`, `required`, or `max_bytes`) and `validation.maxBytes`, with correction guidance in `message`. Length limits count UTF-8 bytes, including multibyte characters. Error responses omit submitted values, prompts and credentials.
+
+Missing or blank Corbanu API credentials return `tracker_credential_required` with guidance to link Corbanu API in Providers. Existing entitlement, recording, sharing and write authorization rules remain in effect. This error response does not imply that prior writes or local outbox entries were lost. The original September 10 report did not identify its failing operation; the new errors make subsequent rejections diagnosable without exposing private request bodies.

@@ -86,6 +86,8 @@ input, textarea, select { color-scheme: inherit; }
 :root[data-theme="dark"] :is(input, textarea, select):not([type="radio"]):not([type="checkbox"]) { border-color: var(--tn-control-border) !important; }
 :root[data-theme="dark"] ::placeholder { color: var(--tn-text-muted); opacity: 1; }
 :root[data-theme="dark"] :is(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--tn-focus); outline-offset: 2px; }
+/* The composer's text field sits inside a bordered box; a second ring around it reads as a stray rectangle. */
+:root[data-theme="dark"] .composer-input:focus-visible { outline: none; }
 :root[data-theme="dark"] .app-composer-send-button:not(:disabled) { background: var(--tn-primary-bg); color: var(--tn-primary-text); }
 ::selection { background: var(--tn-dark-info-surface, #dce7fc); color: var(--tn-dark-text, #17243d); }
 :focus-visible { outline-color: var(--tn-focus); }

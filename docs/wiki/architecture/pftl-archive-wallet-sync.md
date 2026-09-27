@@ -28,7 +28,7 @@ Red means archive sync is stale or enabled with no usable archive evidence.
 Run the archive smoke:
 
 ```bash
-npm run db:pftl-cache-archive-smoke
+node scripts/run-smokes.mjs db scripts/pftl-cache-archive-postgres-smoke.mjs
 ```
 
 Inspect `pftl_sync_wallets.archive_marker`, `last_archive_sync_at`, and

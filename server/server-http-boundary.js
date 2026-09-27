@@ -1,5 +1,5 @@
 import { createReadStream, existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkRouteRateLimit, sharedRateLimitStartupIssues } from "./rate-limit.js";
@@ -203,7 +203,29 @@ export async function enforceRateLimit(req, res, { route, session = null, extra 
   return true;
 }
 
+// Browsers send Origin on every cross-origin and same-origin mutation, and
+// Sec-Fetch-Site when they omit it. SameSite=Lax alone would still admit
+// requests from any sibling *.postfiat.org host, so mutations must come from
+// this origin. Webhooks and CLI clients send neither header and are unaffected.
+export function crossOriginMutation(req, env = process.env) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return false;
+  const origin = String(req.headers.origin || "");
+  if (!origin) return ["cross-site", "same-site"].includes(String(req.headers["sec-fetch-site"] || ""));
+  const allowed = [requestOrigin(req), `${trustedProxy.requestProtocol(req, env)}://${trustedProxy.requestHost(req, env)}`];
+  if (allowed.includes(origin)) return false;
+  if (isProductionEnvironment(env)) return true;
+  try {
+    return !isLocalHostname(new URL(origin).hostname);
+  } catch {
+    return true;
+  }
+}
+
 export async function enforceRoutePolicy(req, url, res, session) {
+  if (crossOriginMutation(req)) {
+    json(res, 403, { ok: false, error: "cross_origin_request_rejected", message: "This request must come from the Task Node site." });
+    return true;
+  }
   const policy = routePolicyForPath(url.pathname);
   if (!policy) return false;
 
@@ -409,12 +431,20 @@ function staticNotFound(res, pathname = "") {
 }
 
 export async function serveStatic(url, res) {
-  const requestPath = url.pathname;
-  const decoded = decodeURIComponent(requestPath);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(url.pathname);
+  } catch {
+    staticNotFound(res, url.pathname);
+    return;
+  }
   const relative = decoded === "/" ? "/index.html" : decoded;
   const filePath = path.normalize(path.join(distDir, relative));
+  // Only regular files are streamed: a directory such as /assets/ opens but
+  // fails on read, and an unhandled stream error terminates the process.
+  const isFile = isInsideDist(filePath) && Boolean((await stat(filePath).catch(() => null))?.isFile());
 
-  if (!isInsideDist(filePath) || !existsSync(filePath)) {
+  if (!isFile) {
     if (!isInsideDist(filePath) || isStaticAssetRequest(url.pathname)) {
       staticNotFound(res, url.pathname);
       return;
@@ -441,5 +471,5 @@ export async function serveStatic(url, res) {
     "cache-control": ext === ".html" || ["theme-init.js", "theme-page.js"].includes(path.basename(filePath)) ? "no-store" : "public, max-age=31536000, immutable",
     ...securityHeaders(),
   });
-  createReadStream(filePath).pipe(res);
+  createReadStream(filePath).on("error", () => res.destroy()).pipe(res);
 }

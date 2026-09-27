@@ -41,6 +41,16 @@ const taskgenBase = {
   deadline: { accept_by: "2026-05-26T00:00:00.000Z", deadline_at: null },
 };
 assert.equal(validateTaskgenOutput(taskgenBase).task_kind, "personal");
+// The writer's verification policy is coerced, never a reason to burn a generation:
+// string booleans, aliased evidence types, missing mode, and the network default.
+assert.deepEqual(validateTaskgenOutput({ ...taskgenBase, verification_policy: { followup_required: "true", mode: "", verification_type: "pull request" } }).verification_policy,
+  { followup_required: true, mode: "standard_followup", verification_type: "github_commit" });
+assert.deepEqual(validateTaskgenOutput({ ...taskgenBase, verification_policy: { verificationType: "url", followupRequired: false, mode: "review" } }).verification_policy,
+  { followup_required: false, mode: "review", verification_type: "url" });
+assert.deepEqual(validateTaskgenOutput({ ...taskgenBase, submission_requirement: { type: "github_commit", criteria: "Submit the merged pull request link." }, verification_policy: { mode: "standard_followup", verification_type: "unknown_kind" } }, { task_class: "network" }).verification_policy,
+  { followup_required: true, mode: "standard_followup", verification_type: "github_commit" });
+assert.throws(() => validateTaskgenOutput({ ...taskgenBase, verification_policy: {} }), { message: "taskgen_verification_policy_invalid" });
+assert.throws(() => validateTaskgenOutput({ ...taskgenBase, verification_policy: null }), { message: /taskgen_output_missing:verification_policy/ });
 assert.equal(validateTaskgenOutput({ ...taskgenBase, task_kind: "alpha" }).task_kind, "alpha");
 assert.equal(validateTaskgenOutput(taskgenBase, { task_class: "network" }).task_kind, "network");
 // Step limits clamp, never reject. A thorough model output (many or long steps)

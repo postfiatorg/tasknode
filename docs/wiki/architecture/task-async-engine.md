@@ -55,12 +55,12 @@ flowchart LR
 
 | Work | State | Periodic owner |
 | --- | --- | --- |
-| Network selection | `hive_decision_runs`, selector lease | `worker-hive` |
+| Hive group chat, secretary, reports, narrator | Hive context, report, and activity-summary tables | `worker-hive` |
 | Network bundle preparation | `network_task_generation_jobs` | `worker-taskgen` |
 | Task generation | `task_requests`, `taskgen_replay_cache` | `worker-taskgen` |
 | Verification and reward | Task projections/events and `task_review_publications` | `worker-task-review` |
 | Historical pointer ingestion/replay | PFTL cache and reducer tables | `worker-pftl` |
-| Advisory board memos | `hive_board_secretary_memos` | `board-secretary` |
+| Advisory board memos | `hive_board_secretary_memos` | `worker-hive` |
 | Independent Kimi board agent | Local tmux/cron, journals and board audit records | Operator-host Corbanu runtime |
 
 `fly.toml` and `server/background-workers.js` define the split process map.

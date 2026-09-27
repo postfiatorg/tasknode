@@ -1,3 +1,4 @@
+import { runTrackedWork } from "./process-hardening.js";
 import { hostname } from "node:os";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -713,12 +714,12 @@ export function startDailyProfileNftWorker({ env = process.env, logger = console
     if (running) return;
     running = true;
     try {
-      const result = await runDailyProfileNftWorkerOnce({
+      const result = await runTrackedWork("daily_profile_nft", () => runDailyProfileNftWorkerOnce({
         env,
         logger,
         trigger: "profile_nft_daily_worker_tick",
-      });
-      if (!result.skipped && (result.queuedCount || result.generatedCount || result.failedCount)) {
+      }));
+      if (result && !result.skipped && (result.queuedCount || result.generatedCount || result.failedCount)) {
         logger.info?.("[profile-nft-daily-worker]", result.summary);
       }
     } catch (error) {

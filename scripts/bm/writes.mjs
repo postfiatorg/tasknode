@@ -27,6 +27,48 @@ function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
 }
 
+// Out-of-order lifecycle commands are permanent state conflicts, not transient
+// failures. The error carries structured fields so the API and CLI can tell the
+// agent exactly which state it is in and what to do next, and a durable count
+// of prior identical rejections so repetition is visible in the message itself.
+export async function lifecycleViolation({ taskId, boardId, taskStatus, command, requirement, nextAction = "" }) {
+  let priorRejections = 0;
+  try {
+    const counted = await query(
+      `SELECT count(*)::int AS count FROM bm_audit_log
+       WHERE actor = $1 AND command = 'lifecycle_rejected'
+         AND args_json->>'taskId' = $2 AND args_json->>'taskStatus' = $3 AND args_json->>'command' = $4
+         AND created_at > now() - interval '24 hours'`,
+      [boardAgentActor(), taskId, taskStatus, command]
+    );
+    priorRejections = Number(counted.rows[0]?.count) || 0;
+  } catch {
+    priorRejections = 0;
+  }
+  const repeated = priorRejections > 0
+    ? ` This command has already been rejected ${priorRejections} time(s) while the task stayed in '${taskStatus}'; ` +
+      `repeating it cannot succeed until the task status changes.`
+    : "";
+  const message = `lifecycle_violation: task is in '${taskStatus}'. ${requirement}` +
+    (nextAction ? ` Next action: ${nextAction}` : ` No ${command} action is available from '${taskStatus}'.`) + repeated;
+  return Object.assign(new Error(message), {
+    status: 409,
+    lifecycle: { taskId, boardId, taskStatus, command, nextAction, priorRejections },
+  });
+}
+
+// Durable record of a rejected lifecycle command. Called by the API after the
+// command transaction has rolled back, so it survives the rejection.
+export async function recordLifecycleRejection({ actor, lifecycle, argv = [] }) {
+  return appendBmAudit({
+    actor,
+    boardId: lifecycle.boardId || "",
+    command: "lifecycle_rejected",
+    args: { taskId: lifecycle.taskId, taskStatus: lifecycle.taskStatus, command: lifecycle.command, argv },
+    result: { rejection: (lifecycle.priorRejections || 0) + 1, nextAction: lifecycle.nextAction || "" },
+  });
+}
+
 async function taskContext(taskId) {
   const result = await query(
     `SELECT task_id, account_id, subject_wallet, status, title, reward_offer_pft
@@ -46,20 +88,34 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
   // cycle. A review decision is only recordable after the contributor has
   // answered a verification request. No skip paths.
   if (task.status !== "verification_response_submitted") {
-    throw new Error(
-      `lifecycle_violation: task is in '${task.status}'. A review decision requires state ` +
-        `'verification_response_submitted'. The cycle is: submitted -> bm verify request ` +
-        `-> contributor verification response -> bm review. ` +
-        (task.status === "submitted"
-          ? `Next action: bm verify request ${taskId} --ask "..."`
-          : `No review action is available from '${task.status}'.`)
-    );
+    throw await lifecycleViolation({
+      taskId,
+      boardId,
+      taskStatus: task.status,
+      command: "review",
+      requirement: `A review decision requires state 'verification_response_submitted'. The cycle is: ` +
+        `submitted -> bm verify request -> contributor verification response -> bm review.`,
+      nextAction: task.status === "submitted" ? `bm verify request ${taskId} --ask "..."` : "",
+    });
   }
   const normalizedDecision = ["reward", "partial_reward", "reject"].includes(decision)
     ? decision
     : "";
   if (!normalizedDecision) throw new Error("decision must be reward|partial_reward|reject");
   await requireBoardEvidence(taskId, { review: true });
+  if (normalizedDecision !== "reject") {
+    // Operator policy: network tasks are paid only for a PR merged into the
+    // default branch. Anything else must be rejected, not rewarded.
+    const { assertMergedPrForPayment } = await import("../../server/merged-pr-requirement.js");
+    try {
+      await assertMergedPrForPayment({ taskId });
+    } catch (error) {
+      if (error?.code !== "merged_pr_required") throw error;
+      throw Object.assign(new Error(
+        `${error.message}. This task cannot be rewarded: record \`bm review ${taskId} reject\` citing the missing merged PR.`
+      ), { status: 422, code: "merged_pr_required" });
+    }
+  }
   const requested = normalizedDecision === "reject" ? 0 : Math.max(0, Number(pft) || 0);
   const capCheck = await computeRewardCap({
     boardId,
@@ -90,7 +146,20 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
     args: { taskId, decision: normalizedDecision, requestedPft: requested, reason },
     result: { decisionId: row.id, clampedPft, capsApplied: capCheck.capsApplied, refused },
   });
-  return { decision: row, capCheck, clampedPft, refused };
+  // Value accountability: a reward or partial reward clears the case; only an
+  // explicit rejection blacklists the account.
+  let accountability = null;
+  const { VALUE_ACCOUNTABILITY_BOARD_ID, recordAccountabilityVerdict } =
+    await import("../../server/value-accountability.js");
+  if (boardId === VALUE_ACCOUNTABILITY_BOARD_ID) {
+    accountability = await recordAccountabilityVerdict({
+      taskId,
+      decision: normalizedDecision === "reject" ? "reject" : "accept",
+      reason,
+      decidedBy: boardAgentActor(),
+    });
+  }
+  return { decision: row, capCheck, clampedPft, refused, accountability };
 }
 
 export async function verifyRequest({ taskId, ask, type = "evidence", reason = "" }) {
@@ -100,11 +169,17 @@ export async function verifyRequest({ taskId, ask, type = "evidence", reason = "
   assertBoardAgentScope(boardId);
   if (!boardId) throw new Error(`task_not_board_linked:${taskId}`);
   if (task.status !== "submitted") {
-    throw new Error(
-      `lifecycle_violation: task is in '${task.status}'. A verification request is issued ` +
-        `only for state 'submitted' (after initial evidence, before the contributor's ` +
-        `verification response).`
-    );
+    throw await lifecycleViolation({
+      taskId,
+      boardId,
+      taskStatus: task.status,
+      command: "verify request",
+      requirement: `A verification request is issued only for state 'submitted' (after initial ` +
+        `evidence, before the contributor's verification response).`,
+      nextAction: task.status === "verification_response_submitted"
+        ? `bm review ${taskId} --decision reward|partial_reward|reject --pft N --reason "..."`
+        : "",
+    });
   }
   if (!safeText(ask)) throw new Error("verification ask required (--ask)");
   await requireBoardEvidence(taskId);
@@ -148,7 +223,12 @@ export async function taskCreate({
   rewardMax = 0,
   assigneeHandle = "",
   acceptWindowHours = 0,
+  retryFailed = false,
   execute = false,
+  // Operator referrals (merge and badge decisions) are duties, not contributor
+  // work: they bypass the operator's own task capacity and keep their exact
+  // band (0-1 PFT) instead of the contributor floor. Only refer-* set this.
+  operatorDuty = false,
 }) {
   if (!boardId || !accountId || !wallet || !safeText(need)) {
     throw new Error("taskCreate requires boardId, accountId, wallet, need");
@@ -171,13 +251,36 @@ export async function taskCreate({
   const perTask = budget.per_task_cap_pft;
   const cappedMax = Math.min(Number(rewardMax) || perTask, perTask, badgeCap > 0 ? badgeCap : perTask);
   const cappedMin = Math.min(Number(rewardMin) || 0, cappedMax);
+  const { assertNetworkTaskRewardFloor, normalizeNetworkTaskRewardBand } =
+    await import("../../server/repositories/network-tasks-utils.js");
+  assertNetworkTaskRewardFloor({ min: cappedMin, max: cappedMax, operatorDuty });
+  const effectiveBand = normalizeNetworkTaskRewardBand({ min: cappedMin, max: cappedMax, operatorDuty });
 
-  const { buildBoardManagerSourcePacket, startBoardManagerRun, completeBoardManagerRun } =
+  const { startBoardManagerRun, completeBoardManagerRun } =
     await import("../../server/repositories/board-manager.js");
   const { executeBoardManagerDecision } = await import("../../server/board-manager-actions.js");
 
   const trigger = "board_manager_v2_task_create";
-  const sourcePacket = await buildBoardManagerSourcePacket({ trigger, scope: "global_hive" });
+  // A targeted assignment needs this board, this candidate and this need, not
+  // the global Hive planning packet. The global packet's task-ref join can
+  // exceed the command's 15-second statement budget; a timed-out statement
+  // aborts the transaction and every later step fails with "current
+  // transaction is aborted". Kimi has already selected the work.
+  const boardRow = (await query("SELECT id,title,status,metadata_json->'routing_constraints' AS routing_constraints FROM network_projects WHERE id=$1", [boardId])).rows[0] || { id: boardId };
+  const sourcePacket = {
+    schema: "pf.hive.board_manager.source.v0",
+    trigger,
+    scope: boardId,
+    board: boardRow,
+    budget,
+    candidate: { account_id: accountId, wallet, assignee_handle: safeText(assigneeHandle, 120) },
+    need: safeText(need, 8000),
+    reward_band: { min: cappedMin, max: cappedMax },
+    work_type: workType,
+    required_badge_id: requiredBadge || "",
+    retry_failed: retryFailed === true,
+  };
+  sourcePacket.sourcePacketDigest = sha256(sourcePacket);
   const decision = {
     action: "initiate_network_task",
     target_type: "network_project",
@@ -213,7 +316,9 @@ export async function taskCreate({
         reward_min_pft: cappedMin,
         reward_max_pft: cappedMax,
         accept_window_hours: acceptWindowHours > 0 ? acceptWindowHours : 0,
-        allow_over_capacity: false,
+        allow_over_capacity: operatorDuty === true,
+        operator_duty: operatorDuty === true,
+        retry_failed: retryFailed === true,
       },
     },
   };
@@ -243,10 +348,19 @@ export async function taskCreate({
     actor: boardAgentActor(),
     boardId,
     command: "task_create",
-    args: { accountId, wallet, need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, execute },
-    result: { runId, executed: actionResult?.result?.executed ?? false, skipped: actionResult?.result?.skipped ?? false, reason: actionResult?.result?.reason || "" },
+    args: { accountId, wallet, need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, retryFailed, execute },
+    result: { runId, executed: actionResult?.result?.executed ?? false, skipped: actionResult?.result?.skipped ?? false, reason: actionResult?.result?.reason || "", rewardBandClampedFrom: effectiveBand.clampedFrom || null },
   });
-  return { runId, dryRun: !execute, rewardMin: cappedMin, rewardMax: cappedMax, actionResult };
+  // The command reports the band the offer will advertise and, when it differs
+  // from the request, what was asked for.
+  return {
+    runId,
+    dryRun: !execute,
+    rewardMin: effectiveBand.min,
+    rewardMax: effectiveBand.max,
+    ...(effectiveBand.clampedFrom ? { rewardBandClampedFrom: effectiveBand.clampedFrom } : {}),
+    actionResult,
+  };
 }
 
 export async function cancelTask({ taskId, reason = "", execute = false, staleOnly = false }) {
@@ -334,19 +448,34 @@ export async function cancelTask({ taskId, reason = "", execute = false, staleOn
   };
 }
 
-function operatorTarget({ operatorAccount = "", operatorWallet = "" } = {}) {
-  const accountId = operatorAccount || process.env.BM_OPERATOR_ACCOUNT_ID || "";
-  const wallet = operatorWallet || process.env.BM_OPERATOR_WALLET || "";
+export const OPERATOR_HANDLE = "goodalexander";
+
+// The operator who receives merge and badge referrals. Explicit flags win,
+// then environment, then the durable record: the account carrying the
+// operator handle and its current linked wallet. The scoped API has no
+// BM_OPERATOR_* environment, so the lookup is what production uses.
+async function operatorTarget({ operatorAccount = "", operatorWallet = "" } = {}) {
+  let accountId = safeText(operatorAccount, 180) || process.env.BM_OPERATOR_ACCOUNT_ID || "";
+  let wallet = safeText(operatorWallet, 120) || process.env.BM_OPERATOR_WALLET || "";
+  if (!accountId) {
+    const found = await query("SELECT account_id AS id FROM app_accounts WHERE lower(hive_handle)=lower($1) AND status='active' ORDER BY updated_at DESC LIMIT 1", [OPERATOR_HANDLE]);
+    accountId = found.rows[0]?.id || "";
+  }
+  if (accountId && !wallet) {
+    const { getLinkedWallet } = await import("../../server/repositories/account-wallets.js");
+    const linked = await getLinkedWallet({ accountId });
+    wallet = linked?.status === "linked" ? linked.address || "" : "";
+  }
   if (!accountId || !wallet) {
-    throw new Error(
-      "operator target missing: set BM_OPERATOR_ACCOUNT_ID and BM_OPERATOR_WALLET or pass --operator-account/--operator-wallet"
-    );
+    throw Object.assign(new Error(
+      `operator_target_unresolved: no active account with handle ${OPERATOR_HANDLE} and a linked wallet; pass --operator-account/--operator-wallet or set BM_OPERATOR_ACCOUNT_ID/BM_OPERATOR_WALLET`
+    ), { status: 422 });
   }
   return { accountId, wallet };
 }
 
 export async function referBadge({ accountId, badgeId, evidence = "", boardId = "board_tasknode_fixes", execute = false, operatorAccount = "", operatorWallet = "" }) {
-  const operator = operatorTarget({ operatorAccount, operatorWallet });
+  const operator = await operatorTarget({ operatorAccount, operatorWallet });
   const need = [
     `Badge approval request: grant badge \`${badgeId}\` to account \`${accountId}\`.`,
     `Screened by the board manager as worth approving. Evidence: ${safeText(evidence, 1500) || "see attached task history"}.`,
@@ -358,7 +487,11 @@ export async function referBadge({ accountId, badgeId, evidence = "", boardId = 
     wallet: operator.wallet,
     need,
     reason: `Badge referral for ${accountId}:${badgeId}`,
-    workType: "badge_approval",
+    // Badge approvals are a project-leadership decision; the badge catalog has
+    // no "badge_approval" work type, so the referral would fail the badge gate.
+    workType: "project_management",
+    requiredBadge: "project_leader",
+    operatorDuty: true,
     assigneeHandle: "goodalexander",
     rewardMin: 0,
     rewardMax: 1,
@@ -367,8 +500,8 @@ export async function referBadge({ accountId, badgeId, evidence = "", boardId = 
 }
 
 export async function referMerge({ prUrl, summary = "", boardId, execute = false, operatorAccount = "", operatorWallet = "" }) {
-  if (!safeText(prUrl)) throw new Error("--pr-url required");
-  const operator = operatorTarget({ operatorAccount, operatorWallet });
+  if (!safeText(prUrl)) throw Object.assign(new Error("--pr-url required"), { status: 400 });
+  const operator = await operatorTarget({ operatorAccount, operatorWallet });
   const need = [
     `PR merge review: ${prUrl}.`,
     `Board manager initial review passed. ${safeText(summary, 1500)}`,
@@ -380,7 +513,11 @@ export async function referMerge({ prUrl, summary = "", boardId, execute = false
     wallet: operator.wallet,
     need,
     reason: `Merge referral for ${prUrl}`,
-    workType: "merge_review",
+    // Merge review is code review by the core contributor who owns the repo.
+    // "merge_review" is not in any badge's allowed work types.
+    workType: "code_review",
+    requiredBadge: "core_contributor",
+    operatorDuty: true,
     assigneeHandle: "goodalexander",
     rewardMin: 0,
     rewardMax: 1,
@@ -401,6 +538,37 @@ export async function boardUpdate(payload = {}) {
     result: { updated: Boolean(row) },
   });
   return row;
+}
+
+// Durable operator action items. A blocker only the operator can clear is
+// recorded once with an owner and surfaced in every packet and runtime status
+// until it is explicitly resolved. It replaces the same prose blocker being
+// repeated in every round.
+export async function operatorAction({ boardId, add = "", owner = "", resolve = "", resolution = "" }) {
+  assertBoardAgentScope(boardId);
+  const row = (await query("SELECT metadata_json FROM network_projects WHERE id=$1", [boardId])).rows[0];
+  if (!row) throw Object.assign(new Error(`board_not_found:${boardId}`), { status: 404 });
+  const { normalizeOperatorActions } = await import("../../server/board-sources.js");
+  const actions = normalizeOperatorActions(row.metadata_json?.operator_actions);
+  let entry;
+  if (safeText(add)) {
+    const description = safeText(add, 600);
+    const duplicate = actions.find((item) => !item.resolved_at && item.description === description);
+    if (duplicate) return { boardId, action: duplicate, duplicate: true, open: actions.filter((item) => !item.resolved_at) };
+    entry = { id: `opact_${sha256(`${boardId}:${description}:${Date.now()}`).slice(0, 12)}`, description, owner: safeText(owner, 120) || "operator", since: new Date().toISOString(), resolved_at: null, resolution: "" };
+    actions.push(entry);
+  } else if (safeText(resolve)) {
+    entry = actions.find((item) => item.id === safeText(resolve, 80));
+    if (!entry) throw Object.assign(new Error(`operator_action_not_found:${resolve}`), { status: 404 });
+    if (!safeText(resolution)) throw Object.assign(new Error("operator_action_resolution_required"), { status: 400 });
+    entry.resolved_at = new Date().toISOString();
+    entry.resolution = safeText(resolution, 600);
+  } else {
+    throw Object.assign(new Error("operator_action_requires_add_or_resolve"), { status: 400 });
+  }
+  await query("UPDATE network_projects SET metadata_json = COALESCE(metadata_json,'{}'::jsonb) || jsonb_build_object('operator_actions', $2::jsonb), updated_at=now() WHERE id=$1", [boardId, JSON.stringify(actions.slice(-50))]);
+  await appendBmAudit({ actor: boardAgentActor(), boardId, command: "operator_action", args: { add: safeText(add, 600), owner, resolve, resolution: safeText(resolution, 600) }, result: { id: entry.id, resolved: Boolean(entry.resolved_at) } });
+  return { boardId, action: entry, open: actions.filter((item) => !item.resolved_at) };
 }
 
 function journalRoot() {
@@ -432,10 +600,9 @@ export async function journalAppend({ boardId, text }) {
 
 export async function writeHandoff({ boardId }) {
   assertBoardAgentScope(boardId);
-  const packet = await boardPacket(boardId);
+  const packet = await boardPacket(boardId, { lean: true });
   if (!packet) throw new Error(`board_not_found:${boardId}`);
   const dir = path.join(journalRoot(), boardId);
-  await mkdir(dir, { recursive: true });
   const day = new Date().toISOString().slice(0, 10);
   const file = path.join(dir, `handoff-${day}.md`);
   const lines = [
@@ -460,7 +627,9 @@ export async function writeHandoff({ boardId }) {
     "(agent: annotate threads in flight, then commit this file)",
     "",
   ];
+  // Scoped agents receive the markdown; only the local CLI writes files.
   if (boardAgentIdentity()) return { boardId, markdown: lines.join("\n"), durable: true };
+  await mkdir(dir, { recursive: true });
   await appendFile(file, lines.join("\n"));
   await appendBmAudit({
     actor: boardAgentActor(),

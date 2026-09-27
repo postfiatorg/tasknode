@@ -25,7 +25,7 @@ const { routePolicyForPath } = await import("../server/route-policies.js");
 const status = await readSystemStatus();
 assert.equal(status.ok, true);
 assert.equal(status.database.enabled, false);
-assert.equal(status.summary.total, 22);
+assert.equal(status.summary.total, 23);
 assert.equal(status.databasePool.enabled, false);
 assert.equal(status.databasePool.role, "all");
 assert.equal(status.databasePool.max, 6);
@@ -59,8 +59,8 @@ assert.deepEqual(status.boardManagerDailyCost.totals, {
 });
 
 const pricingModes = new Map(status.chatPricing.modes.map((mode) => [mode.mode, mode]));
-assert.deepEqual([...pricingModes.keys()], ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3", "Help"]);
-for (const mode of ["GPT-6 Astra", "Kimi K3"]) {
+assert.deepEqual([...pricingModes.keys()], ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3", "Claude Opus 5.5", "Help"]);
+for (const mode of ["GPT-6 Astra", "Kimi K3", "Claude Opus 5.5"]) {
   assert.equal(pricingModes.get(mode).billingPolicy, "provider_api_cost");
   assert.deepEqual(pricingModes.get(mode).providerOrder, ["vercel"]);
 }
@@ -89,6 +89,7 @@ assert.deepEqual([...categories.keys()], ["hive", "task_engine", "pftl", "memory
 
 const itemIds = new Set(status.categories.flatMap((category) => category.items.map((entry) => entry.id)));
 for (const id of [
+  "network_allocation_health",
   "hive_board_secretary",
   "board_manager_secretary_packets",
   "hive_secretary",

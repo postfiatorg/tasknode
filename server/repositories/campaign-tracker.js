@@ -22,7 +22,7 @@ export async function trackerStatus(accountId) {
   return { ok: true, accountId, handle: identity.rows[0]?.hive_handle || "", enrollments: enrollments.rows, usage: usage.rows[0], quotaBytes: TRACKER_QUOTA_BYTES, coverage: "Recorded enrolled Corbanu TUI events; other clients and offline gaps are not complete employee activity." };
 }
 export async function trackerEnroll(accountId, workspaceId, enabled) {
-  identifier(workspaceId);
+  identifier(workspaceId,"workspaceId");
   if (typeof enabled !== "boolean") throw trackerError("tracker_enrollment_invalid");
   return transaction(async client => {
     await accountLock(client, accountId);
@@ -99,7 +99,7 @@ function capabilitiesFor(grants, row) {
 }
 export async function trackerRead(actor, options = {}, env = process.env, withinClient = null) {
   const subject = options.accountId || actor;
-  identifier(subject);
+  identifier(subject,"accountId");
   const read = async client => {
     const grants = await grantsFor(client,actor,subject);
     if (!grants.length) throw trackerError("tracker_access_denied",403);
@@ -135,19 +135,19 @@ export async function trackerRead(actor, options = {}, env = process.env, within
   return withinClient ? read(withinClient) : transaction(read);
 }
 export async function trackerGrant(actor, body) {
-  const handle=text(body.handle,80,true);
+  const handle=text(body.handle,80,true,"handle");
   // Handles are looked up through the canonical account table; never accept a client subject ID.
   const normalized=handle.startsWith("@")?handle.slice(1):handle;
   const viewer=await query("SELECT account_id FROM app_accounts WHERE lower(hive_handle)=lower($1) AND status='active'",[normalized]);
   const viewerId=viewer.rows[0]?.account_id;
   if (!viewerId || viewerId===actor) throw trackerError("tracker_viewer_invalid");
-  const capabilities=stringList(body.capabilities);
+  const capabilities=stringList(body.capabilities,32,"capabilities");
   if (!capabilities.includes("summary") || capabilities.some(c=>!TRACKER_CAPABILITIES.includes(c))) throw trackerError("tracker_capabilities_invalid");
-  const from=timestamp(body.historyFrom || new Date().toISOString());
-  const to=body.historyTo?timestamp(body.historyTo):null;
-  const expires=timestamp(body.expiresAt);
+  const from=timestamp(body.historyFrom || new Date().toISOString(),"historyFrom");
+  const to=body.historyTo?timestamp(body.historyTo,"historyTo"):null;
+  const expires=timestamp(body.expiresAt,"expiresAt");
   if (Date.parse(expires)<=Date.now() || (to && Date.parse(to)<=Date.parse(from))) throw trackerError("tracker_grant_dates_invalid");
-  const workspaces=stringList(body.workspaceIds || []);
+  const workspaces=stringList(body.workspaceIds || [],32,"workspaceIds");
   return transaction(async client=>{
     const relationship=await client.query(`SELECT grant_id FROM task_history_grants WHERE status='active' AND ((subject_account_id=$1 AND viewer_account_id=$2) OR (subject_account_id=$2 AND viewer_account_id=$1)) FOR SHARE`,[actor,viewerId]);
     if (!relationship.rowCount) throw trackerError("tracker_accepted_relationship_required",403);

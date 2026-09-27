@@ -1,0 +1,8 @@
+[Unit]
+Description=Task Node value accountability sweep (blacklist refused or overdue cases)
+After=network-online.target tasknode-mpg-proxy.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pfrpc/repos/tasknode
+ExecStart=/bin/bash -c 'set -a; . /home/pfrpc/pf-boards/db.env; set +a; exec /usr/bin/node /home/pfrpc/repos/tasknode/scripts/value-accountability.mjs enforce --execute'

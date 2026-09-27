@@ -23,7 +23,7 @@ The verification smoke is:
 ```bash
 DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial \
 TASKNODE_DATABASE_ENABLED=true \
-npm run network-task-recovery-smoke
+node scripts/network-task-recovery-smoke.mjs
 ```
 
 The implementation lives in:

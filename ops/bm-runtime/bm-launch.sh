@@ -45,8 +45,8 @@ RESUME="$(node -e 'const fs=require("fs");try{console.log(JSON.parse(fs.readFile
 PROMPT="You are the production Kimi K3 Board Manager covering these boards: $BOARDS.
 Read the board-manager skill and these board skills: $SKILLS.
 Use: cd $BM_REPO && node scripts/bm.mjs <command>. Commands use your scoped Task Node API credential.
-If a supervisor work order exists, use its round id with round-status <round-id> to recover unfinished work. Otherwise wait for the first work order. Record each duty outcome with duty-result; a journal entry does not finish a duty.
-Read saved handoffs under $BM_JOURNAL_DIR for every assigned board. Wait for the supervisor's durable work order before beginning a new round."
+If a supervisor work order exists, use its round id with round-status <round-id> to recover unfinished work. Otherwise end your turn. Record each duty outcome with duty-result; a journal entry does not finish a duty.
+Read saved handoffs under $BM_JOURNAL_DIR for every assigned board. Work orders arrive only while your terminal is idle: when a round's duties are all recorded, end your turn and do nothing else. Never run sleep, polling loops, or any command that waits for a work order; a terminal that is busy waiting cannot receive one, and contributors' submissions stall."
 ARGS=( "$BM_TERMINAL_BIN" -c "model_provider=\"$BM_PROVIDER\"" -m "$BM_MODEL" -c 'approval_policy="never"' -c 'sandbox_mode="danger-full-access"' -c 'check_for_update_on_startup=false' )
 if [ -n "$RESUME" ]; then ARGS+=(resume "$RESUME"); fi
 ARGS+=("$PROMPT")

@@ -21,8 +21,7 @@ harvester were also removed.
 | Kimi board manager | Operator-host Corbanu TUI; `kimi-code` / `kimi-k3` | Inspect boards, select work, and execute authorized `bm` commands |
 | Network/task generation | Fly `worker-taskgen`; GLM 5.3 | Prepare the request and generate the concrete task |
 | Task review publication | Fly `worker-task-review` | Consume Kimi decisions and publish verification/reward transitions |
-| GLM board secretary | Fly `board-secretary` | Advisory project memos |
-| Hive support | Fly `worker-hive` | Hive context secretary, reports, and Kimi activity narrator |
+| Hive support | Fly `worker-hive` | Hive context secretary, board secretary memos, reports, and Kimi activity narrator |
 
 ## Shared routing contract
 
@@ -55,6 +54,51 @@ missing/unreadable evidence with `board_task_evidence_unavailable`; the agent mu
 record a blocked duty instead of rejecting the contributor or consuming another
 verification round. External artifact access failures are also blocked reviews.
 
+The submission sequence is initial evidence → manager verification request →
+contributor verification response → manager review. Out-of-order review and
+verification commands return HTTP 409 with the required lifecycle state and, for
+a submitted task, the next verification command. These are state conflicts, not
+transient server failures: refresh task detail and take the indicated next step
+instead of retrying the same command. Rejected commands roll back their receipt
+and cannot create a decision or reward.
+
+Repetition of a rejected command is bounded and visible. Each lifecycle rejection
+is recorded in `bm_audit_log` as `lifecycle_rejected` after the rollback; the 409
+body carries `lifecycle.taskId`, `taskStatus`, `command`, `nextAction` and
+`priorRejections`, and the message states how many times the same command was
+already refused in that status. The `bm` CLI keeps the rejection with the saved
+command key: an identical command is not resent until a fresh `task detail` shows
+the status changed, and is refused locally with the original guidance otherwise.
+
+A pending manager decision wakes its publication worker. Recording a
+`verification_request` or `review` decision clears the idle matching worker's
+`retry_after` in the same transaction, so the next worker tick publishes it. Active
+claims and published work are never touched. Worker claim state separates
+`wait_count` (successful passes that found no decision yet) from `retry_count`
+(failures); a wait resets the failure streak, so one transient error after a long
+wait gets the first-failure backoff instead of the fifteen-minute ceiling.
+
+Grounding sources are remote. Each board packet carries `sources`, one entry per
+declared repository (`github_repo`, resolved through `DEFAULT_REPO_MAP` or
+`TASKNODE_BOARD_SOURCE_REPO_MAP`), official X account (`x_account`, needs
+`X_BEARER_TOKEN`) and website. Snapshots are cached in `board_source_snapshots`
+(migration 144) for thirty minutes with `fetched_at`; a failed refresh serves the
+previous snapshot as `stale` with the error, and a source that never fetched is
+`unavailable`. Degraded sources appear in runtime status. `GITHUB_SOURCE_TOKEN`
+is optional (private repositories, higher rate limits). Local checkouts on the
+operator host are no longer a precondition for any board. Blockers that only the
+operator can clear are recorded once with `operator-action <board> --add … --owner …`
+and shown in the packet and status until `--resolve <id> --resolution …`.
+
+The intent classifier's prompt states the JSON contract by key name. Provider
+output is normalized through documented key aliases before validation; a
+contract failure gets exactly one repair turn with the rejection fed back; a
+second failure fails the job non-retryably as `network_task_intent_contract_failed`
+with both raw outputs persisted under `generationFailure.rawAttempts`. Board
+packets label each failed job with `failure_family` (`provider`, `contract`,
+`semantic`) and `classifier_output_preview`; provider and contract failures can be
+explicitly retried with `--retry-failed`, semantic holds cannot.
+
 Reward projection still updates project totals, allocations and user
 followups. It no longer enqueues the retired `board_manager_jobs` scheduler.
 Historical runs and accounting records remain available; old queued planner
@@ -79,10 +123,53 @@ Launch, supervisor, reset and status publication use that same registry.
 - A round requires a specific `completed`, `blocked` or `deferred` result for
   every duty. Completion must agree with current durable state; routing completion
   requires an actual task-creation audit. A journal entry alone is insufficient.
-- Partial results reset delivery backoff. Three unanswered deliveries alert and
-  retain the pending round. Identical completed rounds have a fifteen-minute
-  cooldown. Crash recovery resumes the saved thread. The daily reset preserves
-  pending/busy work and starts a fresh context only at an idle boundary.
+- Partial results reset delivery backoff while retaining a monotonic delivery
+  sequence. Three unanswered deliveries alert and retain the pending round.
+  Recovery probes then wait 15, 30, 60, 120, 240 and at most 360 minutes between
+  deliveries. Every probe requires a fresh ready terminal and an empty inbox.
+  Public runtime status reports cooldown, attempt count and next probe time.
+  Provider failure cannot permanently disable delivery. Results and command
+  receipts remain authoritative; no retry creates a replacement round.
+  Identical completed rounds have a fifteen-minute cooldown. Crash recovery
+  resumes the saved thread. Daily reset preserves pending/busy work.
+- Routing is answered per contributor. A `routing_due` duty result carries
+  `--dispositions`, one entry per eligible candidate: `routed` or
+  `investigation_routed` (each must match an executed `task create` for that
+  account in the round, verified against `bm_audit_log`) or `not_served` with a
+  `reason_code` (`no_badge_fit`, `source_unavailable`, `budget_exhausted`,
+  `capacity_taken_this_round`, `restricted_board`,
+  `contributor_declined_recently`, `other` with a 40+ character reason). A duty
+  that routed nobody is recorded as the outcome `not_served`, never
+  `completed`. Three consecutive `not_served` rounds for a board with candidates
+  write `duty_blocked_across_rounds` and an `ALERTS.log` line, a `Routing
+  stalled:` status line, and a work-order directive naming each unserved
+  contributor with handle, badges and reason code. A `deferred` routing duty
+  with no candidates does not escalate.
+- Allocation health is published with every runtime status: idle badge-verified
+  contributors without a live network task, executed task creates in 24h/7d,
+  distinct accounts offered in 7d, live allocations, per-board failure families
+  and `not_served` streaks. Ten or more idle with zero creates in 24h is
+  critical: the supervisor appends to `ALERTS.log` at most every six hours and
+  System Status shows a `Network Allocation Health` item separate from
+  generation-worker freshness.
+- A processed round is not a resolved task. The supervisor keeps
+  `<alias>.blockers.json` and tracks progress duties (`review_due`,
+  `verification_due`, `hive_chat_escalation`) that were reported anything but
+  completed in consecutive processed rounds, keyed by type, board and task. These
+  duties disappear as soon as the required decision or reply exists, so recurrence
+  means the task did not advance. Two consecutive rounds log
+  `duty_blocked_across_rounds`, append to `ALERTS.log`, publish a
+  `Stalled:` line and per-duty round counts in runtime status, and add an
+  escalation directive to the next work order naming each stalled duty, its last
+  reason, and the rule that a repeated identical command cannot change task
+  state. Routing, staleness and board-info duties recur legitimately and are not
+  tracked. The streak clears when the duty completes or leaves the duty set.
+- Candidate discovery returns the entire eligible idle pool on every round,
+  in stable account order, without a rewarded-history top-100 or a top-12 cut.
+  Board restrictions filter that complete pool. Discovery errors fail the read
+  instead of reporting an empty healthy board. All candidates are surfaced,
+  including newcomers; actual assignment still requires source-grounded work,
+  badge/work-type fit, wallet resolution, locked capacity and budget checks.
 - `bm-install-cron.sh` installs one user systemd supervisor and an idle-only daily
   reset timer, replacing the compatibility wake timer. Its preflight verifies the scoped
   API and installed ready terminal before changing schedules. Failed startup keeps

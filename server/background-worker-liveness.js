@@ -46,7 +46,6 @@ export function backgroundWorkerLivenessSelfCheck({ role = "", startup = {}, liv
 
 export const WORKER_HEARTBEAT_GROUPS = [
   "app",
-  "board-secretary",
   "worker-pftl",
   "worker-taskgen",
   "worker-task-review",
@@ -60,7 +59,6 @@ export const DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_MS = 5 * 60_000;
 
 const DEFAULT_GROUP_THRESHOLDS_MS = {
   app: 2 * 60_000,
-  "board-secretary": DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_MS,
   "worker-pftl": DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_MS,
   "worker-taskgen": 5 * 60_000,
   "worker-task-review": 5 * 60_000,

@@ -98,7 +98,7 @@ try {
     throw new Error("Canonical chat modes should remain enabled when the Ambient backup is configured.");
   }
   const canonicalModeLabels = chatModes().map((mode) => mode.label);
-  if (canonicalModeLabels.join(",") !== "Instant,Thinking,GPT-6 Astra,Kimi K3,Help") {
+  if (canonicalModeLabels.join(",") !== "Instant,Thinking,GPT-6 Astra,Kimi K3,Claude Opus 5.5,Help") {
     throw new Error(`Only canonical chat modes should be exposed: ${canonicalModeLabels.join(", ")}`);
   }
 

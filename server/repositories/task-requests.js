@@ -151,6 +151,7 @@ export function publicTaskRequest(row = {}) {
     workerId: row.worker_id || "",
     workerAttemptId: row.worker_attempt_id || "",
     workerAttemptCount: Number(row.worker_attempt_count || 0),
+    workerCycleAttemptCount: Math.max(0, Number(row.worker_attempt_count || 0) - Number(metadata.manualRetryAttemptBase || 0)),
     workerClaimedAt: toIso(row.worker_claimed_at),
     workerHeartbeatAt: toIso(row.worker_heartbeat_at),
     workerCompletedAt: toIso(row.worker_completed_at),
@@ -293,7 +294,7 @@ export async function reclaimStaleTaskGenerationRequests({
         SELECT request_id
         FROM task_requests
         WHERE ${stalePredicate}
-          AND worker_attempt_count < $1
+          AND worker_attempt_count - COALESCE((metadata_json->>'manualRetryAttemptBase')::integer, 0) < $1
         ORDER BY COALESCE(worker_heartbeat_at, worker_claimed_at, updated_at, created_at) ASC, request_id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT $3
@@ -327,8 +328,12 @@ export async function reclaimStaleTaskGenerationRequests({
         WITH stale AS (
           SELECT request_id
           FROM task_requests
-          WHERE ${stalePredicate}
-            AND worker_attempt_count >= $1
+          WHERE (
+              (${stalePredicate})
+              OR (status IN ('queued', 'published') AND generated_task_id = '' AND request_bundle_cid <> '')
+            )
+            AND NOT EXISTS (SELECT 1 FROM task_projections tp WHERE tp.request_id = task_requests.request_id)
+            AND worker_attempt_count - COALESCE((metadata_json->>'manualRetryAttemptBase')::integer, 0) >= $1
           ORDER BY COALESCE(worker_heartbeat_at, worker_claimed_at, updated_at, created_at) ASC, request_id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT $3
@@ -341,10 +346,11 @@ export async function reclaimStaleTaskGenerationRequests({
           worker_attempt_id = '',
           worker_heartbeat_at = NULL,
           worker_retry_after = NULL,
-          last_error = 'task_generation_stale_attempts_exhausted',
+          last_error = CASE WHEN tr.status = 'generating' THEN 'task_generation_stale_attempts_exhausted' ELSE 'task_generation_queued_attempts_exhausted' END,
           metadata_json = metadata_json || jsonb_build_object(
             'lastStaleReclaimAt', now(),
             'lastStaleReclaimAction', 'failed',
+            'exhaustedPreviousError', tr.last_error,
             'lastStaleReclaimMaxAttempts', $1,
             'lastStaleReclaimStaleSeconds', $2
           ),
@@ -378,7 +384,7 @@ export async function claimTaskGenerationRequests({
         WHERE status IN ('published', 'queued')
           AND request_bundle_cid <> ''
           AND generated_task_id = ''
-          AND worker_attempt_count < $2
+          AND worker_attempt_count - COALESCE((metadata_json->>'manualRetryAttemptBase')::integer, 0) < $2
           AND (worker_retry_after IS NULL OR worker_retry_after <= now())
         ORDER BY updated_at ASC, created_at ASC, request_id ASC
         FOR UPDATE SKIP LOCKED
@@ -632,13 +638,15 @@ export async function retryOwnedTaskRequest({ accountId, requestId, expectedAtte
   }
   const result = await query(`UPDATE task_requests SET status='queued',worker_id='',worker_attempt_id='',
     worker_claimed_at=NULL,worker_heartbeat_at=NULL,worker_completed_at=NULL,worker_retry_after=now(),
-    last_error='',updated_at=now(),metadata_json=metadata_json || jsonb_build_object('manualRetryAt',now())
+    last_error='',updated_at=now(),metadata_json=metadata_json || jsonb_build_object('manualRetryAt',now(),'manualRetryAttemptBase',worker_attempt_count)
     WHERE request_id=$1 AND account_id=$2 AND status='failed' AND coalesce(generated_task_id,'')=''
-      AND worker_attempt_count=$3 RETURNING *`, [requestId, accountId, expectedAttemptCount]);
+      AND worker_attempt_count=$3
+      AND NOT EXISTS (SELECT 1 FROM task_projections tp WHERE tp.request_id=task_requests.request_id) RETURNING *`, [requestId, accountId, expectedAttemptCount]);
   if (result.rows[0]) return publicTaskRequest(result.rows[0]);
   const existing = await getOwnedTaskRequest({ accountId, requestId });
   if (!existing) throw Object.assign(new Error("task_request_not_found"), { status: 404 });
-  // The original attempt number prevents an old retry from restarting a newer
+  // Keep the lifetime attempt count monotonic; only the automatic retry budget
+  // resets. The original attempt number prevents an old retry from restarting a newer
   // failure. Repeated delivery after a successful enqueue simply returns it.
   return existing;
 }

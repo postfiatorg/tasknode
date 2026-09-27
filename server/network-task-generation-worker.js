@@ -1,4 +1,7 @@
-import { assessTaskIntent } from "./task-intent-assessment.js";
+import { assertNetworkTaskContentAllowed } from "./network-task-content-policy.js";
+import { VALUE_ACCOUNTABILITY_BOARD_ID, assertNotBlacklisted } from "./value-accountability.js";
+import { runTrackedWork } from "./process-hardening.js";
+import { assessTaskIntent, taskIntentFailureFamily } from "./task-intent-assessment.js";
 import { offchainTaskLifecycleEnabled, offchainTaskLifecycleDualWriteEnabled } from "./offchain-task-lifecycle.js";
 import { heartbeatNetworkTaskGenerationJob, persistNetworkTaskRequest } from "./repositories/network-task-generation-jobs.js";
 import { ownsTaskGeneration } from "./process-role.js";
@@ -16,7 +19,6 @@ import {
   claimNetworkTaskGenerationJobs,
   markNetworkTaskGenerationJobFailed,
   markNetworkTaskGenerationJobGenerated,
-  normalizeNetworkTaskRewardBand,
   reclaimStaleNetworkTaskGenerationJobs,
   recoverFailedRequestNetworkTaskGenerationChains,
   repairNetworkTaskOfferLinks,
@@ -126,8 +128,29 @@ export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward =
   };
 }
 
+export function advertisedRewardBand({ min = 0, max = 0, perTaskCap = 0 } = {}) {
+  const requested = { min: Number(min) || 0, max: Number(max) || 0 };
+  const capped = perTaskCap > 0 ? Math.min(requested.max, perTaskCap) : requested.max;
+  const band = { min: Math.min(requested.min, capped), max: capped };
+  return band.min === requested.min && band.max === requested.max ? band : { ...band, clampedFrom: requested };
+}
+
 export async function createTaskRequestForNetworkJob(job = {}, { assess = assessTaskIntent } = {}) {
   const source = safeObject(job.source_payload_json);
+  // Operator content policy applies to every network job, including jobs
+  // queued before the policy existed.
+  const sourceTask = safeObject(source.networkTask || source.network_task);
+  if (safeText(job.project_id, 180) !== VALUE_ACCOUNTABILITY_BOARD_ID) {
+    assertNetworkTaskContentAllowed(
+      safeText(source.need, 8000),
+      safeText(sourceTask.projectNeedSummary || sourceTask.project_need_summary, 8000),
+    );
+  }
+  await assertNotBlacklisted({
+    accountId: job.candidate_account_id,
+    walletAddress: job.candidate_wallet_address,
+    action: "network_task",
+  });
 
   // Route to the candidate's CURRENT linked wallet. Candidate rows can carry
   // stale wallets from historic profile data; a task offered to a wallet the
@@ -164,10 +187,16 @@ export async function createTaskRequestForNetworkJob(job = {}, { assess = assess
   } catch {
     perTaskCap = 0;
   }
-  const reward = normalizeNetworkTaskRewardBand({
-    min: perTaskCap > 0 ? Math.min(Number(job.reward_min_pft) || 0, perTaskCap) : job.reward_min_pft,
-    max: perTaskCap > 0 ? Math.min(Number(job.reward_max_pft) || 0, perTaskCap) : job.reward_max_pft,
-  });
+  // The floor was applied (or waived for operator duties) when the allocation
+  // was created; here only the cap may lower the band, and a lowered band is
+  // recorded on the allocation.
+  const reward = advertisedRewardBand({ min: job.reward_min_pft, max: job.reward_max_pft, perTaskCap });
+  if (reward.clampedFrom) {
+    await query(
+      "UPDATE network_task_allocations SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) || jsonb_build_object('reward_band_clamped_from', $2::jsonb) WHERE id = $1",
+      [safeText(job.allocation_id, 180), JSON.stringify(reward.clampedFrom)]
+    );
+  }
   const requestId = safeText(job.request_id, 180) || `req_net_${sha256(job.id).slice(0, 32)}`;
   const bundleId = `bundle_net_${sha256(`${job.id}:${job.source_payload_digest}`).slice(0, 32)}`;
   const existingRequest = await getTaskRequestByRequestId(requestId);
@@ -241,10 +270,14 @@ export async function createTaskRequestForNetworkJob(job = {}, { assess = assess
   const assessedAttempt = await query(`UPDATE network_task_generation_jobs SET generated_task_payload=generated_task_payload || jsonb_build_object('intentAssessment',$3::jsonb)
     WHERE id=$1 AND worker_attempt_id=$2 AND status='running'`, [job.id, job.worker_attempt_id, JSON.stringify(assessment)]);
   if (!assessedAttempt.rowCount) throw new Error("network_task_generation_attempt_lost");
-  if (["duplicate", "uncertain"].includes(assessment.relationship) || !assessment.actionable || !assessment.scopeClear) {
-    throw new Error(`network_task_intent_needs_review:${assessment.relationship}:${assessment.reason}`);
+  // The mandatory accountability task is deliberately a follow-up to paid work.
+  const mandatoryAccountability = safeText(job.project_id, 180) === VALUE_ACCOUNTABILITY_BOARD_ID;
+  if (!mandatoryAccountability && (["duplicate", "uncertain"].includes(assessment.relationship) || !assessment.actionable || !assessment.scopeClear)) {
+    throw Object.assign(new Error(`network_task_intent_needs_review:${assessment.relationship}:${assessment.reason}`), { code: "network_task_intent_needs_review", retryable: false, family: "semantic" });
   }
-  requestBundle.network_task.intent_assessment = assessment;
+  // The bundle carries the verdict; raw provider transcripts stay on the job row.
+  const { rawAttempts: _rawAttempts, ...assessmentForBundle } = assessment;
+  requestBundle.network_task.intent_assessment = assessmentForBundle;
   requestBundle.network_task.task_lineage.lineage_task_ids = [...new Set([...requestBundle.network_task.task_lineage.lineage_task_ids, ...assessment.priorTaskIds])];
   if (direct) {
     const cid = `postgres:${requestId}`;
@@ -351,8 +384,18 @@ async function runNetworkTaskGenerationQueueOnce({ limit = 1, logger = console }
       results.push({ ok: true, jobId: job.id, ...result });
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
-      await markNetworkTaskGenerationJobFailed({ jobId: job.id, workerAttemptId: job.worker_attempt_id, error: message }).catch(() => null);
-      logger.warn?.("network_task_generation_job_failed", { jobId: job.id, error: message });
+      await markNetworkTaskGenerationJobFailed({ jobId: job.id, workerAttemptId: job.worker_attempt_id, error: message,
+        retryable: error.retryable !== false,
+        failure: {
+          code: error.code || "network_task_generation_failed", causeCode: error.causeCode || "", status: error.status || null, retryable: error.retryable !== false,
+          family: error.family || taskIntentFailureFamily({ code: error.code, causeCode: error.causeCode }) || "provider",
+          attempts: error.attempts || [],
+          // Operators must be able to read what the classifier actually said.
+          provider: error.provider || "", model: error.model || "", repairAttempted: error.repairAttempted === true,
+          rawAttempts: Array.isArray(error.rawAttempts) ? error.rawAttempts.slice(0, 2) : [],
+          failedAt: new Date().toISOString(),
+        } }).catch(() => null);
+      logger.warn?.("network_task_generation_job_failed", { jobId: job.id, error: message, family: error.family || "", causeCode: error.causeCode || "", contentPreview: error.rawAttempts?.at(-1)?.contentPreview?.slice(0, 300) || "" });
       results.push({ ok: false, jobId: job.id, error: message });
     } finally {
       clearInterval(heartbeat);
@@ -415,7 +458,7 @@ export function startNetworkTaskGenerationWorker({
     if (running) return;
     running = true;
     try {
-      await processNetworkTaskGenerationQueueOnce({ limit: safeBatch, logger });
+      await runTrackedWork("network_task_generation", () => processNetworkTaskGenerationQueueOnce({ limit: safeBatch, logger }));
     } catch (error) {
       logger.warn?.("network_task_generation_worker_tick_failed", { error: error?.message || String(error) });
     } finally {

@@ -514,6 +514,12 @@ export async function appendChatTurn({
         error.status = 404;
         throw error;
       }
+      // Retrying a message kept as unanswered reuses its row and attachments.
+      const kept = await client.query(
+        "SELECT 1 FROM chat_messages WHERE id = $1 AND conversation_id = $2 AND account_id = $3 AND role = 'user'",
+        [userId, normalizedConversationId, normalizedAccountId]
+      );
+      const retried = kept.rows.length > 0;
 
       await client.query(
         `
@@ -529,7 +535,7 @@ export async function appendChatTurn({
             last_message_preview,
             message_count
           )
-          VALUES ($1, $2, $3, $7, $4, $5, $5, $5, $6, 2)
+          VALUES ($1, $2, $3, $7, $4, $5, $5, $5, $6, $8)
           ON CONFLICT (id) DO UPDATE SET
             account_id = EXCLUDED.account_id,
             status = EXCLUDED.status,
@@ -544,7 +550,7 @@ export async function appendChatTurn({
             updated_at = EXCLUDED.updated_at,
             last_message_at = EXCLUDED.last_message_at,
             last_message_preview = EXCLUDED.last_message_preview,
-            message_count = chat_conversations.message_count + 2,
+            message_count = chat_conversations.message_count + $8,
             deleted_at = NULL
         `,
         [
@@ -555,6 +561,7 @@ export async function appendChatTurn({
           now,
           preview,
           status,
+          retried ? 1 : 2,
         ]
       );
 
@@ -571,6 +578,9 @@ export async function appendChatTurn({
             metadata_json
           )
           VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
+          ON CONFLICT (id) DO UPDATE SET metadata_json = EXCLUDED.metadata_json
+            WHERE chat_messages.account_id = EXCLUDED.account_id
+              AND chat_messages.conversation_id = EXCLUDED.conversation_id
           RETURNING *
         `,
         [
@@ -583,13 +593,16 @@ export async function appendChatTurn({
           jsonValue(userMetadata),
         ]
       );
-      const attachmentRows = await insertChatAttachments(client, attachmentRowsForInsert({
-        attachments,
-        accountId: normalizedAccountId,
-        conversationId: normalizedConversationId,
-        messageId: userId,
-        createdAt: now,
-      }));
+      if (!userInsert.rows[0]) throw Object.assign(new Error("chat_message_id_conflict"), { status: 409 });
+      const attachmentRows = retried
+        ? (await client.query("SELECT * FROM chat_attachments WHERE message_id = $1 ORDER BY ordinal", [userId])).rows
+        : await insertChatAttachments(client, attachmentRowsForInsert({
+          attachments,
+          accountId: normalizedAccountId,
+          conversationId: normalizedConversationId,
+          messageId: userId,
+          createdAt: now,
+        }));
       const assistantInsert = await client.query(
         `
           INSERT INTO chat_messages (

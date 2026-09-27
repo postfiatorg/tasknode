@@ -16,7 +16,6 @@ const trackedTables = [
   "chat_memory_jobs",
   "context_rewrite_jobs",
   "context_rewrite_provider_calls",
-  "hive_decision_runs",
   "hive_board_secretary_memos",
   "hive_project_generations",
   "hive_project_planning_jobs",

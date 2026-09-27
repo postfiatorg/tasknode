@@ -14,15 +14,12 @@ const ignoredPathPrefixes = [
   "docs/verification/",
   "mocks/",
   "ops/",
-  "reference_clients/python/orc_tooling/",
   "reference_clients/python/runs/",
   "work_in_progress/",
 ];
 const ignoredFiles = new Set([
   "package-lock.json",
   "PUBLICATION.json",
-  "login.jsx",
-  "reference_clients/python/tests/test_orc_tooling.py",
 ]);
 
 // A line budget is meaningful only for text. Prefix rules intentionally do not

@@ -9,9 +9,18 @@ Board id: `board_postfiat_l1v2`. You route protocol development work on the seco
 
 ## Sources to read before generating tasks
 
-- Repo checkout: `/home/pfrpc/repos/postfiatl1v2`.
-- Before every generation pass, read the repository’s own documentation and inspect the recent commit history with `git log`, including the history relevant to the target area. Record the commit range reviewed.
-- Generate tasks from the current checkout, not stale assumptions. If the checkout is unavailable or cannot be confirmed current, stop the generation pass rather than create stale protocol work. Fallback: journal the blocked state and generate nothing this cycle.
+- The board packet's `sources` entry `repo:postfiatl1v2` (canonical remote
+  `postfiatorg/postfiatl1v2`): recent commits on the default branch, open
+  issues, open pull requests, README excerpt, `head_sha` and `fetched_at`.
+  Cite the `head_sha` you grounded against in the task text.
+- Before every generation pass, read that snapshot and the repository's own
+  documentation on GitHub (`gh api`, `gh issue list`, `gh pr list` are
+  fine; they read the remote). Record the commit range reviewed.
+- If the source status is `stale` or `unavailable`, record
+  `source_unavailable` for the contributors who needed it and still route
+  investigations that only need the public repository URL (reproduce a
+  named issue, audit a named module, characterize a failure mode). Do not
+  pause the board.
 
 ## What good looks like here
 
@@ -43,7 +52,7 @@ An acceptable task identifies a current code location, describes a concrete fail
 
 ## Evidence norms
 
-- Primary evidence is a PR or commit URL reviewed against the current checkout.
+- Primary evidence is a PR or commit URL reviewed against the canonical remote.
 - Record the reviewed commit range, relevant files and lines, validation commands, and results.
 - Use the repository’s documented commands to build the touched target and run the relevant tests. If validation cannot be run, record the reason and do not present the work as verified.
 - A protocol claim such as “this fixes a fork condition” requires a test or reproduction demonstrating the condition. Persuasive prose is not a substitute; unproven protocol claims are rejected.

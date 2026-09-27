@@ -8,7 +8,7 @@ conversations without losing state.
 
 1. The user opens a new or recent chat.
 2. Signed-out users start in Help mode. Help is the only enabled signed-out chat mode.
-3. Signed-in users select Instant, Thinking, GPT-6 Astra, Kimi K3, or Help independently from the Jobs, ODV, Trading Coach, or Kravis personality.
+3. Signed-in users select Instant, Thinking, GPT-6 Astra, Kimi K3, Claude Opus 5.5, or Help independently from the Jobs, ODV, Trading Coach, or Kravis personality.
 4. The `+` menu owns personality selection. Its `More` submenu also exposes the restored Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A modalities. Product guidance stays in the dedicated Help mode and Help screen.
 5. The user sends text and optional attachments.
 6. The server validates both enums, assembles the selected prompt/context packet, and routes the request through Vercel with Ambient backup.
@@ -18,6 +18,8 @@ conversations without losing state.
 ## Technical Architecture
 
 The chat composer and thread live in `ChatSurface` in `src/main.jsx`. Provider routing is handled by `server/chat-router.js`. Billing and conversation persistence flow through `server/repositories/chat-billing.js` and migration `server/db/migrations/001_chat_billing.sql`. Attachment text extraction is handled by `server/chat-attachment-utils.js` and migration `server/db/migrations/002_chat_attachments.sql`. Chat accepts up to four attachments of 4 MB each; this chat-specific decoded-file limit is independent from task-evidence processing limits and is enforced during preflight before provider execution.
+
+Chat and Telegram receive a fresh, read-only task-activity snapshot on every turn. It includes the account's current tasks and the last 48 hours of recorded offers, acceptances, submissions, verification steps, and rewards. When **Include Team Context in personal context** is enabled, it also includes collaborators covered by active incoming task-history grants. Revoked, reverse-only, or unrelated accounts are excluded at query time. This shares task records only, not collaborators' private Context, Memory, or chat. UTC timestamps, capture time, and list limits distinguish current activity from the generated weekly rewarded-work summary; zero rewards must not be interpreted as zero work. Chat loads this bounded snapshot instead of running the Tasks UI's expensive eligibility and forensics aggregation on every turn. Context, Memory, and activity load before the generated Team report so those core reads do not compete with its database fan-out. The activity snapshot has a ten-second bound; Context and Memory reads have a five-second default budget. The older task-list reader is used only if the snapshot is unavailable. This prevents the former 300/250-millisecond task/memory timeouts from silently discarding useful inputs.
 
 The current account context document is injected by `server/chat-account-context.js`. It reads the saved Context document from `server/repositories/context.js` and renders it through `prompts/chat/account_context_document_v1.md`.
 
@@ -57,7 +59,7 @@ This page is the current product contract for chat prompt assembly, Jobs
 retrieval, and Context Refine behavior. Historical implementation planning has
 been folded into this surface doc and the single active production scope plan.
 
-The visible `+` menu exposes file upload, Context Refine, Context Rewrite, Request a task, Personality, and More. The Personality row expands inline to Jobs, ODV, Trading Coach, and Kravis. More expands inline to the restored chat modalities and closes after selection. The expanded menu is capped to the current viewport and scrolls as one surface, so every modality remains reachable at short desktop heights and on mobile instead of escaping into a clipped flyout. A selected modality becomes a visible composer mode chip, supplies its own question placeholder, and uses the model selected in the composer, including GPT-6 Astra and Kimi K3 at API cost. Exiting the chip restores Jobs without overwriting the saved ordinary model preference. Context Rewrite remains a separate billed async full-document context pipeline documented in [Context Rewrite](#docs/context-rewrite).
+The visible `+` menu exposes file upload, Context Refine, Context Rewrite, Request a task, Personality, and More. The Personality row expands inline to Jobs, ODV, Trading Coach, and Kravis. More expands inline to the restored chat modalities and closes after selection. The expanded menu is capped to the current viewport and scrolls as one surface, so every modality remains reachable at short desktop heights and on mobile instead of escaping into a clipped flyout. A selected modality becomes a visible composer mode chip, supplies its own question placeholder, and uses the model selected in the composer, including GPT-6 Astra, Kimi K3 and Claude Opus 5.5 at API cost. Exiting the chip restores Jobs without overwriting the saved ordinary model preference. Context Rewrite remains a separate billed async full-document context pipeline documented in [Context Rewrite](#docs/context-rewrite).
 
 I Ching requires both a private birth profile and an explicit question. On first selection, the setup dialog collects birth date, exact birth time, birth city/country, and the gender required by the traditional chart calculation. `POST /api/i-ching/profile` geocodes the place, resolves its historical timezone, adjusts the recorded time to true solar time, generates the Bā Zì and Zǐ Wēi Dòu Shù payloads, and stores them in the account-scoped `i_ching_profiles` row. A successful save does not silently dismiss the modal: it shows an explicit `Profile saved` completion state, reports the resolved timezone and true solar time, and requires the user to continue with `Ask your I Ching question`. On every later selection, the composer displays `Profile ready` after the profile GET confirms the account-scoped chart still exists. The profile and computed chart are private chat inputs; the public profile API never exposes them. Canceling setup exits the modality, and server preflight returns `i_ching_profile_required` before provider execution or billing if the chart is missing.
 
@@ -103,6 +105,7 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 | Thinking | Vercel with Ambient backup | `zai/glm-5.3` | `reasoning_text` capability | Local extraction; Kimi for image input; `xhigh` reasoning; search disabled. | Deeper analysis and Context Refine. |
 | GPT-6 Astra | Vercel | `openai/gpt-6-astra` | Exact selection; no model override or Ambient substitution | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Kimi K3 | Vercel | `moonshotai/kimi-k3` | Exact selection; no model override or Ambient substitution | Native image input, high reasoning; search disabled. | API-priced chat. |
+| Claude Opus 5.5 | Vercel | `anthropic/claude-opus-5.5` | Exact selection; zero data retention (the gateway fails rather than use a retaining provider) | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Help | Vercel with Ambient backup | `deepseek/deepseek-v4-flash-0731` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
 
 Unknown mode strings are rejected with `unknown_chat_mode`. The signed-in app
@@ -251,7 +254,7 @@ Before execution, `server/product-contracts.js` checks login, model mode, person
 
 Task Node's user tariff is 55% below the prior rates. Thinking costs $0.4725/M uncached input, $0.09/M cache-read input, and $1.98/M output. Instant and Help cost $0.063/M uncached input, $0.0126/M cache-read input, and $0.126/M output. For Instant, Thinking, and Help, `server/chat-provider-usage.js` calculates the debit from that cache-aware user tariff; provider cost is comparison metadata.
 
-GPT-6 Astra and Kimi K3 are charged at Vercel's returned API cost with no Task Node markup. Estimates and picker descriptions use base input/output rates per million tokens: Astra $10/$50 and Kimi K3 $3/$15 (catalogue checked September 7, 2026). Cache-read base rates are $1 and $0.30 respectively. Astra estimates account for the long-context tier starting at 272,001 input tokens. Final provider cost includes actual cache, context-tier, and provider pricing adjustments. Streaming preserves Gateway cost metadata. If the Gateway omits cost, the request reports `chat_provider_cost_missing` and does not create a debit; it never bills a guessed amount. A response with no cache detail remains explicitly unreported instead of being counted as a cache miss. System Status aggregates reported Vercel and Ambient chat runs over a seven-day default window and shows reporting coverage, cache-hit percentage, cache-hit tokens, and pricing-derived savings.
+GPT-6 Astra, Kimi K3 and Claude Opus 5.5 are charged at Vercel's returned API cost with no Task Node markup. Estimates and picker descriptions use base input/output rates per million tokens: Astra $10/$50, Kimi K3 $3/$15 and Opus 5.5 $4/$20 (catalogue checked September 7 and 24, 2026). Cache-read base rates are $1, $0.30 and $0.20 respectively. Astra estimates account for the long-context tier starting at 272,001 input tokens. Final provider cost includes actual cache, context-tier, and provider pricing adjustments. Streaming preserves Gateway cost metadata. If the Gateway omits cost, the request reports `chat_provider_cost_missing` and does not create a debit; it never bills a guessed amount. A response with no cache detail remains explicitly unreported instead of being counted as a cache miss. System Status aggregates reported Vercel and Ambient chat runs over a seven-day default window and shows reporting coverage, cache-hit percentage, cache-hit tokens, and pricing-derived savings.
 
 ## Data Model
 
@@ -307,3 +310,65 @@ handles and profile pictures, mentions and a periodic board bot; it is separate
 from private AI chat modes. Old Hive recent-chat links open this group. The
 member panel preserves a read-only, account-scoped previous private Hive
 archive. See [Hive](hive.md) for setup, public visibility and Kimi escalation.
+
+## Deleting a conversation
+
+Confirming Delete removes the conversation from Recents and closes the dialog immediately while the server saves the deletion. Deletion does not wait for a full app-state or wallet refresh. If the request fails, the conversation returns to the sidebar with a dismissible error. Older app-state responses cannot bring a deleted row back. Deleting the open conversation clears it after the server confirms success; opening another chat while the request is pending keeps that newer selection.
+
+## Decisions
+
+Choose **+ → Decisions** in the chat composer, pick **Budget** or **Premium** next to
+the send button, then enter a decision and the facts that matter. The
+usual chat model picker does not change these models.
+
+- **Budget** (free): one research report, three DeepSeek V4.1 Flash votes, two
+  Flash draft reviews, and a complete Kimi K3 final rewrite.
+- **Premium** (charged at cost, usually about $7): three research reports, three
+  GPT-6 Sol and three Claude Opus 5.5 votes, one Sol and one Opus review, and an
+  Opus final rewrite. It needs $10 of available chat credit to start. The actual
+  provider cost is debited once, when the finished report is first shown; a
+  failed premium decision is not charged.
+
+**Use my context and chat memory** is selected by default. Turn it off to use only
+the question and supplied text. Task Node snapshots the saved Context document,
+the latest three deep memories and 36 recent memory records when the job is
+created. These are the default memory selections used by normal chat; this does
+not attach the full chat archive. Deep memories keep their separate user,
+assistant and memory summaries; recent records keep their dates and memory text.
+The current question and latest user corrections take precedence over older
+memory and assistant recommendations.
+
+The card shows whether the document was included and how many memories were
+attached. The job retains document revision, memory IDs and an input hash, while
+the full packet contains the exact submitted context. Retries reuse that snapshot;
+later edits do not change an in-progress decision. Older jobs that sent only the
+document remain labeled as document-only. Failed memory loads stop creation
+instead of silently sending a request without memory. Markdown and text
+attachments are included; other file types must first be converted to text. The
+combined question, document and selected memories must fit within 60,000
+characters. Oversized input is rejected rather than silently shortened.
+
+The chat card shows progress. You can navigate away or close the app: Corbanu
+keeps running, and reopening the conversation resumes status updates. The
+finished report appears directly in chat, with copy, Markdown download, PDF
+download, and full execution packet links. It covers your question, context,
+five options, recommendation, reasoning, and votes. Budget's three votes are three
+runs of one model; Premium's six are three runs each of two models.
+
+A failed run keeps its completed work in the packet. Reloading the conversation
+or retrying a lost submission response does not start a new paid decision.
+Submitting a new question starts new work. There is no cancellation control for
+Decisions. Inputs, reports, and packets are restricted to the signed-in account;
+processing uses Corbanu and third-party model and research providers.
+
+Task Node uses the same signed server integration as Deep Research. It
+does not ask users for a Corbanu API key. Budget decisions are free; premium
+decisions debit the Task Node chat balance with Corbanu's reported provider cost.
+The public Corbanu Decisions API has separate prepaid billing. The Task Node
+integration accepts budget and premium modes.
+
+Decisions research progress includes finding sources, reading and analyzing them,
+writing/reviewing the research, and finalizing it. A provider capacity rejection
+shows “Waiting for model capacity”; completed work stays saved while the research
+client waits for the provider's cooldown. The same model and output allowance are
+retained. Accepted or interrupted calls are not automatically submitted again.

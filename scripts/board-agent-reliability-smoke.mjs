@@ -7,6 +7,7 @@ import { journalAppend, taskCreate } from "./bm/writes.mjs";
 import { readAgentRegistry } from "../ops/bm-runtime/registry.mjs";
 import { terminalLifecycle } from "../ops/bm-runtime/terminal-state.mjs";
 import { validateDutyResult, openAgentRound, recordDutyResult } from "../server/board-agent-rounds.js";
+process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 
 const id = `agent_fixture_${randomUUID()}`, token = randomUUID();
 const board = "board_pf_terminal";
@@ -47,7 +48,7 @@ try {
   assert.equal(finished.result.results_json[outcome.dutyId].outcome, "blocked");
   assert.equal((await scoped("quiet-backoff", () => openAgentRound([board], { computeDuties }))).result.state, "backoff");
   const registry = readAgentRegistry();
-  assert.equal(registry.agents.length, 1); assert.equal(new Set(registry.agents.flatMap((agent) => agent.boards)).size, 6);
+  assert.equal(registry.agents.length, 1); assert.equal(new Set(registry.agents.flatMap((agent) => agent.boards)).size, 7);
   const event = (type, turn_id) => ({ type: "event_msg", payload: { type, turn_id } });
   assert.equal(terminalLifecycle([event("task_started", "one"), event("agent_message"), event("task_complete", "other")]).state, "busy");
   assert.equal(terminalLifecycle([event("task_started", "one"), event("task_complete", "one")]).state, "idle");

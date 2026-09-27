@@ -5,13 +5,31 @@ const commandTransaction = new AsyncLocalStorage();
 
 // A command receipt and all nested domain writes share one commit. The active
 // flag prevents deferred jobs from retaining a released transaction connection.
-export function transactionCommand(work) {
+export function transactionCommand(work, { statementTimeoutMs: requestedTimeout } = {}) {
+  const commandTimeout = requestedTimeout === undefined ? statementTimeoutMs : Math.min(15_000, Math.max(500, Number(requestedTimeout) || statementTimeoutMs));
   return transaction(async (client) => {
-    const scope = { client, active: true };
+    await client.query("SELECT set_config('statement_timeout', $1, true)", [String(commandTimeout)]);
+    // pg starts query_timeout when a query is submitted, including time spent
+    // waiting behind other reads on this one transaction connection. Serialize
+    // at the promise boundary so each statement gets its own execution budget.
+    const execute = client.query.bind(client);
+    let pending = Promise.resolve();
+    const scopedClient = Object.create(client);
+    scopedClient.query = (...args) => {
+      const config = typeof args[0] === "string" ? { text: args[0] } : { ...args[0] };
+      config.query_timeout = commandTimeout;
+      const result = pending.then(() => execute(config, ...args.slice(1)));
+      pending = result.catch(() => {});
+      return result;
+    };
+    const scope = { client: scopedClient, active: true };
     try {
-      return await commandTransaction.run(scope, () => work(client));
+      return await commandTransaction.run(scope, () => work(scopedClient));
     } finally {
       scope.active = false;
+      // Drain already-issued reads before the outer commit/rollback can release
+      // this connection. Detached later work must use a fresh pool connection.
+      await pending;
     }
   });
 }
@@ -31,7 +49,8 @@ function defaultPoolMaxForRole(role = processRole()) {
   if (role === "worker:taskgen" || role === "worker:context-rewrite") return 4;
   if (role === "worker:pftl") return 4;
   if (role === "worker:task-review" || role === "worker:hive") return 3;
-  if (role === "worker:memory-profile" || role === "worker:airdrop") return 2;
+  if (role === "worker:memory-profile") return 3;
+  if (role === "worker:airdrop") return 2;
   return 6;
 }
 
@@ -132,6 +151,14 @@ export async function transaction(work) {
   }
 
   const client = await db.connect();
+  // pg-pool only listens for errors on idle clients. Without this, a connection
+  // lost mid-transaction (restart, failover) is an uncaught exception.
+  let connectionError;
+  const onConnectionError = (error) => {
+    connectionError = error;
+    lastError = error?.message || "database_connection_lost";
+  };
+  client.on("error", onConnectionError);
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('statement_timeout', $1, true)", [String(statementTimeoutMs)]);
@@ -147,7 +174,8 @@ export async function transaction(work) {
     lastError = error?.message || "database_transaction_failed";
     throw error;
   } finally {
-    client.release();
+    client.off("error", onConnectionError);
+    client.release(connectionError);
   }
 }
 

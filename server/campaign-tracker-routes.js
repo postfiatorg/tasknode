@@ -2,7 +2,7 @@ import { trackerMetrics } from "./campaign-tracker-metrics.js";
 import { listTeam } from "./repositories/collaboration.js";
 import * as workflows from "./repositories/campaign-tracker-workflows.js";
 import * as store from "./repositories/campaign-tracker.js";
-import { object, text, trackerError, validateEvent } from "./campaign-tracker-contract.js";
+import { object, text, trackerError, trackerErrorResponse, validateEvent } from "./campaign-tracker-contract.js";
 import { trackerEntitlement, trackerSummarize } from "./campaign-tracker-model.js";
 
 const prefix="/api/terminal/tasknode/campaign-tracker";
@@ -30,7 +30,7 @@ export async function handleCampaignTrackerRoute({json,readJson,req,res,url,sess
       else if (path==="/activity" || path==="/replay" || path==="/export") {
         const options=Object.fromEntries(url.searchParams);
         object(options,["accountId","sessionId","id","before","beforeId","workspaceId","taskId","search"]);
-        if(options.search)text(options.search,500);
+        if(options.search)text(options.search,500,false,"search");
         result=await store.trackerRead(account,{...options,replay:path==="/replay",export:path==="/export"});
       } else throw trackerError("tracker_route_not_found",404);
     } else if (method==="POST") {
@@ -75,8 +75,7 @@ export async function handleCampaignTrackerRoute({json,readJson,req,res,url,sess
     json(res,200,result);
   } catch(error) {
     const status=Number.isInteger(error.status)?error.status:500;
-    const code=error.code?.startsWith("tracker_")?error.code:"tracker_request_failed";
-    json(res,status,{ok:false,error:code,message:code.split("_").join(" ")});
+    json(res,status,trackerErrorResponse(error));
   }
   return true;
 }

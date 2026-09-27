@@ -17,6 +17,9 @@ const blocks = markdownToBlocks("## Header\n\n- **Fast**\n- `Safe`\n\nplain text
 assert.equal(blocks[0].type, "h2");
 assert.equal(blocks[1].type, "ul");
 assert.equal(plainTextFromBlocks(blocks), "Header\n\nFast\nSafe\n\nplain text");
+const titled = markdownToBlocks("# Corbanu Decision Report\n\n#hashtag stays text");
+assert.deepEqual(titled.map(block => block.type), ["h2", "p"]);
+assert.equal(plainTextFromBlocks(titled), "Corbanu Decision Report\n\n#hashtag stays text");
 
 const implicitListBlocks = markdownToBlocks(
   [

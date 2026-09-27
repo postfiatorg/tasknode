@@ -2,6 +2,8 @@ import { splitWhitespace, isAsciiDigit, isAsciiLetter } from "../../server/infer
 import { getNetworkTaskCapacityState } from "../../server/repositories/network-task-capacity.js";
 import { getAccountIdentityProfile } from "../../server/repositories/account-profiles.js";
 import { boardTaskStaleness, routingDuty } from "../../server/board-task-policy.js";
+import { taskIntentFailureFamily } from "../../server/task-intent-assessment.js";
+import { normalizeOperatorActions, readBoardSources } from "../../server/board-sources.js";
 import { listHiveGroupEscalations } from "../../server/repositories/hive-group.js";
 // Read-model queries for the `bm` board-manager CLI (Gate B).
 //
@@ -28,6 +30,8 @@ export const BOARD_ALIASES = Object.freeze({
   fixes: "board_tasknode_fixes",
   capital: "board_capital_markets",
   markets: "board_capital_markets",
+  accountability: "board_value_accountability",
+  value: "board_value_accountability",
 });
 
 export function resolveBoardId(input = "") {
@@ -153,7 +157,10 @@ const inVerificationStates = new Set(["verification_requested"]);
 const openStates = new Set(["proposed", "accepted"]);
 const terminalStates = new Set(["rewarded", "refused", "cancelled", "expired", "rejected"]);
 
-export async function boardPacket(boardId) {
+// lean: board, budget, task buckets and pending decisions only. Used by
+// handoff, which runs inside the 15-second command transaction; the full
+// packet (per-member eligibility, remote sources, Hive reads) takes longer.
+export async function boardPacket(boardId, { lean = false } = {}) {
   const [board, allocations, tasks, secretary] = await Promise.all([
     boardRow(boardId),
     allocationState(boardId),
@@ -185,20 +192,39 @@ export async function boardPacket(boardId) {
       updated_at: board.updated_at,
     },
     allocation_counts: allocations,
+    generation_queue: (await query(
+      `SELECT count(*) FILTER (WHERE status='queued')::int AS queued,
+              count(*) FILTER (WHERE status='running')::int AS running,
+              count(*) FILTER (WHERE status IN ('generated','link_failed'))::int AS awaiting_offer_or_link,
+              count(*) FILTER (WHERE status='failed')::int AS historical_failed,
+              max(updated_at) FILTER (WHERE status='published') AS last_published_at
+       FROM network_task_generation_jobs WHERE project_id=$1`, [boardId]
+    )).rows[0],
     generation_failures: (await query(
-      `SELECT id, allocation_id, candidate_account_id, status, last_error, created_at, updated_at
+      `SELECT id, allocation_id, candidate_account_id, candidate_wallet_address, status,
+              reward_min_pft, reward_max_pft, last_error, attempt_count, created_at, updated_at,
+              generated_task_payload->'generationFailure' AS failure,
+              generated_task_payload->'intentAssessment'->>'error' AS legacy_intent_provider_error,
+              source_payload_json->'networkTask' AS selected_network_task
        FROM network_task_generation_jobs WHERE project_id=$1 AND status='failed'
        ORDER BY updated_at DESC LIMIT 10`, [boardId]
-    )).rows,
+    )).rows.map((row) => describeGenerationFailure(row)),
+    generation_recovery_policy: "Historical failed jobs are terminal, not a pending worker queue. Refresh queue counts and failure causes before claiming an outage. failure_family 'provider' (timeout, rate limit, truncation) and 'contract' (the classifier returned output that violated the required JSON contract; its raw output is in failure.rawAttempts) can be explicitly retried with the unchanged task create parameters plus --retry-failed after revalidating that the work is still needed. failure_family 'semantic' (duplicate, uncertain, not actionable) requires a revised task, not an infrastructure retry.",
     tasks: buckets,
     hive_chat_digest: secretary
       ? { report_id: secretary.id, created_at: secretary.created_at, text: String(secretary.output_text || "").slice(0, 1500) }
       : null,
     budget: await boardBudgetStatus(boardId),
     pending_decisions: await pendingDecisions(boardId),
-    hive_chat_escalations: await listHiveGroupEscalations([boardId]),
-    idle_eligible_contributors: await idleEligibleContributors(),
-    source_leads: repoSourceLeads(board.metadata_json?.sources?.repos || []),
+    hive_chat_escalations: lean ? [] : await listHiveGroupEscalations([boardId]),
+    idle_eligible_contributors: lean ? [] : await idleEligibleContributors(),
+    // Canonical grounding: fetched from each source's remote and cached with a
+    // fetched_at. A source with status stale/unavailable is a missing input
+    // (reason_code source_unavailable), never a reason to route nothing.
+    sources: lean ? [] : await readBoardSources(board).catch((error) => [{ id: "sources", kind: "error", status: "unavailable", fetched_at: null, error: String(error?.message || error).slice(0, 300) }]),
+    operator_actions: normalizeOperatorActions(board.metadata_json?.operator_actions).filter((item) => !item.resolved_at),
+    source_leads: lean ? [] : repoSourceLeads(board.metadata_json?.sources?.repos || []),
+    lean,
   };
 }
 
@@ -235,24 +261,25 @@ export async function idleEligibleContributors() {
   const result = await query(
     `
     SELECT b.account_id,
-           array_agg(DISTINCT b.badge_id ORDER BY b.badge_id) AS badges,
-           max(b.badge_id) FILTER (WHERE b.selected_default) AS selected_default_badge,
            COALESCE(hist.rewarded, 0) AS rewarded_tasks,
            hist.last_active
-    FROM account_network_badges b
+    FROM (
+      SELECT account_id FROM account_network_badges
+      WHERE status = 'verified' AND revoked_at IS NULL
+      UNION
+      SELECT account_id FROM account_linked_wallets WHERE status = 'linked'
+      UNION
+      SELECT account_id FROM pftl_sync_wallets WHERE role = 'user' AND status = 'active'
+    ) b
     LEFT JOIN LATERAL (
       SELECT count(*) FILTER (WHERE tp.status = 'rewarded')::int AS rewarded,
              max(tp.last_event_at) AS last_active
       FROM task_projections tp
       WHERE tp.account_id = b.account_id
     ) hist ON true
-    WHERE b.status = 'verified'
-      AND b.revoked_at IS NULL
-    GROUP BY b.account_id, hist.rewarded, hist.last_active
-    ORDER BY COALESCE(hist.rewarded, 0) DESC
-    LIMIT 100
+    ORDER BY b.account_id
     `
-  ).catch(() => ({ rows: [] }));
+  );
   const members = result.rows.map((row) => ({
     account_id: row.account_id,
     badges: row.badges || [],
@@ -269,12 +296,17 @@ export async function idleEligibleContributors() {
   for (const member of members) {
     const verdict = await explainNetworkTaskCandidateEligibility({ accountId: member.account_id });
     const capacity = await getNetworkTaskCapacityState({ accountId: member.account_id, walletAddress: verdict.walletAddress || "" });
+    member.badges = verdict.badgeIds || [];
+    member.selected_default_badge = verdict.defaultBadge || "";
     member.free_slots = capacity.freeSlots;
     member.engine_verdict = verdict?.eligible ? "eligible" : `refused:${verdict?.reason || "unknown"}`;
     member.delivery_wallet = verdict?.walletAddress || "";
     member.public_handle = (await getAccountIdentityProfile({ accountId: member.account_id }))?.hiveHandle || "";
   }
-  return members.filter((member) => member.free_slots > 0 && member.engine_verdict === "eligible").slice(0, 12);
+  // Return the complete eligible pool. Reward rank and fixed shortlists must
+  // never hide a contributor (including a board's sole allowed assignee).
+  // Every round considers every idle member; board policy filters downstream.
+  return members.filter((member) => member.free_slots > 0 && member.engine_verdict === "eligible");
 }
 
 // Mechanical source-lead mining (demand-side raw material). The issue
@@ -583,6 +615,25 @@ export async function userPacket(accountOrWallet, { limit = 20 } = {}) {
 // Deterministic per-round duty computation (the whip's work order). Every
 // duty is derived from durable state, so two runs against the same state
 // produce the same list and the same digest.
+// Failure family for a failed generation job: provider (retry), contract
+// (classifier output violated its JSON contract; retry after revalidation) or
+// semantic (a real verdict about the work; needs a revised task).
+export function describeGenerationFailure(row = {}) {
+  const failure = row.failure && typeof row.failure === "object" ? row.failure : null;
+  const code = failure?.code || String(row.last_error || "").split(":")[0];
+  const causeCode = failure?.causeCode || String(row.last_error || "").split(":")[1] || row.legacy_intent_provider_error || "";
+  const family = failure?.family || taskIntentFailureFamily({ code, causeCode }) || (code ? "provider" : "");
+  const lastRaw = Array.isArray(failure?.rawAttempts) ? failure.rawAttempts.at(-1) : null;
+  return {
+    ...row,
+    failure_family: family,
+    failure_code: code,
+    failure_cause: causeCode,
+    classifier_output_preview: lastRaw?.contentPreview ? String(lastRaw.contentPreview).slice(0, 600) : "",
+    explicit_retry_allowed: family === "provider" || family === "contract",
+  };
+}
+
 export async function computeBoardDuties(boardIds = [], { queryImpl = query, idleContributors = idleEligibleContributors, now = Date.now() } = {}) {
   const duties = [];
   const idle = await idleContributors();

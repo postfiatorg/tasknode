@@ -66,6 +66,11 @@ assert.match(odvInstructions, /PERSONA_MEMORY_SENTINEL/);
 assert.match(odvInstructions, /PERSONA_TASK_SENTINEL/);
 assert.doesNotMatch(odvInstructions, /JOBS_VECTOR_SENTINEL/);
 assert.doesNotMatch(odvInstructions, /## Experience Promise/);
+// One identity per request: a selected personality is not also "Task Node".
+assert.ok(jobsInstructions.includes("You are Task Node"));
+assert.ok(!odvInstructions.includes("You are Task Node"));
+assert.ok(odvInstructions.includes("Stay ODV for the whole conversation"));
+assert.ok(odvInstructions.includes("explicitly says they intend or are thinking about harming themselves"));
 
 const coachInstructions = taskNodeInstructions({
   persona: "trading-coach",

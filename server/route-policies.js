@@ -549,6 +549,7 @@ export const apiRoutePolicies = [
   { id: "network_task_profile", path: "/api/memory/network-task-profile", methods: ["GET", "POST"], auth: "session", body: requestBodies.emptyRequestBody },
   { id: "directory_leaderboard", path: "/api/directory/leaderboard", methods: ["GET"], auth: "optional" },
   { id: "directory_rewarded_tasks", path: "/api/directory/rewarded-tasks", methods: ["GET"], auth: "optional" },
+  { id: "directory_blacklist", path: "/api/directory/blacklist", methods: ["GET"], auth: "optional" },
   { id: "hive_projects", path: "/api/hive/projects", methods: ["GET"], auth: "optional" },
   { id: "hive_task_detail", path: "/api/hive/task-detail", methods: ["GET"], auth: "optional" },
   {
@@ -583,7 +584,6 @@ export const apiRoutePolicies = [
     body: requestBodies.hiveReportRerunBody,
   },
   { id: "hive_reports", prefix: "/api/hive/reports", methods: ["GET"], auth: "session" },
-  { id: "hive_decision", prefix: "/api/hive/decision", methods: ["GET"], auth: "session" },
   { id: "hive_bm_feed", path: "/api/hive/bm-feed", methods: ["GET"], auth: "none" },
   { id: "hive_context", path: "/api/hive/context", methods: ["GET", "POST"], auth: "handler", body: requestBodies.hiveChatBody },
   { id:"hive_group",path:"/api/hive/group",methods:["GET"],auth:"optional" },
@@ -800,6 +800,14 @@ export const apiRoutePolicies = [
   },
   { id: "context_edit_save", path: "/api/context/edit/save", methods: ["POST"], auth: "handler", body: requestBodies.contextSaveBody },
   { id: "context_edit_proposal", prefix: "/api/context/edit/proposals/", methods: ["POST"], auth: "handler", body: requestBodies.emptyRequestBody },
+  {
+    id: "decision_create", path: "/api/decisions/jobs", methods: ["POST"], auth: "session",
+    rateLimit: { limit: 6, windowMs: tenMinutes }, body: requestBodies.decisionBody,
+  },
+  {
+    id: "decision_jobs", prefix: "/api/decisions/jobs/", methods: ["GET"], auth: "session",
+    rateLimit: { limit: 240, windowMs: tenMinutes },
+  },
   {
     id: "deep_research_create",
     path: "/api/deep-research/jobs",

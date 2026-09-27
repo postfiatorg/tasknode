@@ -23,6 +23,24 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Install ripgrep for board-manager source scans
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+      - name: Verify offchain task action event integrity
+        run: node --test scripts/offchain-task-event-integrity.test.mjs
+        env:
+          TASKNODE_DATABASE_ENABLED: "false"
+      - name: Verify board-agent lifecycle error responses
+        run: node --test scripts/board-agent-lifecycle.test.mjs
+      - name: Verify board-agent progress escalation, retry bounds and worker wake-up
+        run: node --test scripts/board-agent-progress.test.mjs
+      - name: Verify task review worker retry state
+        run: node scripts/task-review-idempotency-smoke.mjs
+      - name: Verify board grounding sources and operator actions
+        run: node --test scripts/board-sources.test.mjs
+      - name: Verify task intent classifier contract
+        run: node scripts/task-intent-assessment-smoke.mjs
+      - name: Verify request targets cannot crash or re-host the server
+        run: node --test scripts/request-url.test.mjs
       - run: npm run check
         env:
           CHROME_BIN: google-chrome
@@ -110,6 +128,16 @@ jobs:
         env:
           DATABASE_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres
           TASKNODE_DATABASE_ENABLED: "true"
+      - name: Run database smokes, each in a fresh migrated database
+        run: npm run test:db
+        env:
+          TASKNODE_TEST_ADMIN_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres
+      - name: Verify default badge preservation against PostgreSQL
+        run: |
+          psql postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tasknode_badge_test_ci'
+          node --test scripts/network-badge-default-refresh.test.mjs
+        env:
+          TASKNODE_BADGE_TEST_DATABASE_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/tasknode_badge_test_ci
       - name: Verify shared Hive routing, relay retries, bot silence and scoped Kimi handoff
         run: |
           psql postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tasknode_hive_20260906'

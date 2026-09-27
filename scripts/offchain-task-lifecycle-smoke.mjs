@@ -72,7 +72,8 @@ assert.equal(result.transition, "submitted");
 assert.equal(result.eventInserted, true);
 assert.equal(result.event.eventId, "evt_smoke_submission");
 assert.equal(result.event.sourceTxHash, "offchain:evt_smoke_submission");
-assert.equal(client.calls.length, 2);
+assert.equal(client.calls.length, 3);
+assert.equal(result.terminalMirrorSync.allocationsUpdated, 1);
 
 const [insertCall, updateCall] = client.calls;
 assert.match(insertCall.sql, /INSERT INTO task_events/i);
@@ -140,6 +141,18 @@ async function assertMirrorTransition({ taskId, previousStatus, transition, expe
   assert.equal(transitionResult.terminalMirrorSync.allocationsUpdated, 1);
 }
 
+await assertMirrorTransition({
+  taskId: "task_proposed_accepted_sync",
+  previousStatus: "proposed",
+  transition: "accepted",
+  expectedStatus: "accepted",
+});
+await assertMirrorTransition({
+  taskId: "task_submitted_verification_sync",
+  previousStatus: "submitted",
+  transition: "verification_requested",
+  expectedStatus: "verification_requested",
+});
 await assertMirrorTransition({
   taskId: "task_proposed_refused_sync",
   previousStatus: "proposed",

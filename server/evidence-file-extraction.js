@@ -145,10 +145,23 @@ function parseTarString(bytes) {
   return Buffer.from(bytes).toString("utf8").split("\u0000", 1)[0].trim();
 }
 
-function parseTarSize(bytes) {
-  const value = parseTarString(bytes) || "0";
-  const size = Number.parseInt(value, 8);
-  return Number.isFinite(size) && size >= 0 ? size : 0;
+// A size field is optional leading spaces, one or more octal digits, then only
+// spaces or NULs. Parsed by hand: this module is reachable from inference paths.
+function parseTarSize(bytes, type) {
+  const field = Buffer.from(bytes).toString("latin1");
+  const padding = (char) => char === " " || char === "\0";
+  // Some TAR writers leave the size field blank on entries without file bodies
+  // (hard links, symlinks, directories); regular files stay strict.
+  if (["1", "2", "5"].includes(type) && [...field].every(padding)) return 0;
+  let start = 0;
+  while (field[start] === " ") start += 1;
+  let end = start;
+  while (field[end] >= "0" && field[end] <= "7") end += 1;
+  const size = end > start && [...field.slice(end)].every(padding) ? Number.parseInt(field.slice(start, end), 8) : NaN;
+  if (!Number.isSafeInteger(size)) {
+    throw Object.assign(new Error("evidence_archive_invalid_tar_size"), { status: 422 });
+  }
+  return size;
 }
 
 function extractTarArchive(buffer) {
@@ -167,8 +180,8 @@ function extractTarArchive(buffer) {
     const name = [parseTarString(header.subarray(345, 500)), parseTarString(header.subarray(0, 100))]
       .filter(Boolean)
       .join("/");
-    const size = parseTarSize(header.subarray(124, 136));
     const type = String.fromCharCode(header[156] || 48);
+    const size = parseTarSize(header.subarray(124, 136), type);
     const bodyStart = offset + 512;
     const bodyEnd = bodyStart + size;
     if (bodyEnd > buffer.length) throw Object.assign(new Error("evidence_archive_invalid_tar"), { status: 422 });

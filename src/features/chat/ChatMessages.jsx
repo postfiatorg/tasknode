@@ -1,3 +1,5 @@
+import { DecisionArtifactCard } from "./DecisionArtifactCard.jsx";
+import { decisionTier } from "./decisions-client.js";
 import { useState } from "react";
 import {
   ArrowUp,
@@ -67,7 +69,11 @@ export function UserMessage({
   onSaveEdit,
   onStartEdit,
   text,
+  unanswered = false,
 }) {
+  const [expanded, setExpanded] = useState(false);
+  // Long pasted context (decisions accept up to 60,000 characters) collapses.
+  const long = String(text || "").length > 600;
   if (isEditing) {
     return (
       <article className="user-message editing">
@@ -93,7 +99,9 @@ export function UserMessage({
   return (
     <article className="user-message">
       {attachments.length > 0 && <MessageAttachmentList attachments={attachments} />}
-      <div className="user-bubble">{text}</div>
+      <div className="user-bubble"><span className={long && !expanded ? "user-bubble-clamp" : undefined}>{text}</span></div>
+      {long && <button className="user-message-more" onClick={() => setExpanded(open => !open)} type="button">{expanded ? "Show less" : "Show all"}</button>}
+      {unanswered && <p className="user-message-note">No reply was generated. Send it again to retry.</p>}
       <div className="user-message-tools">
         <ToolbarButton
           doneLabel="Copied"
@@ -256,11 +264,14 @@ export function AssistantMessage({
           {sourceLabel.meta && <span className="assistant-source-meta">{sourceLabel.meta}</span>}
         </div>
       )}
-      <div className="assistant-body">
-        {(message.blocks || []).map((block, index) => (
-          <BlockRenderer block={block} key={index} />
-        ))}
-      </div>
+      {/* A running or failed decision's card already states its progress or error. */}
+      {(!message.metadata?.decision || message.metadata.decision.status === "completed") && (
+        <div className="assistant-body">
+          {(message.blocks || []).map((block, index) => (
+            <BlockRenderer block={block} key={index} />
+          ))}
+        </div>
+      )}
       <ContextEditProposalCard
         error={message.metadata?.contextEdit?.error || proposal?.error || ""}
         onApply={onContextEditApply}
@@ -271,6 +282,7 @@ export function AssistantMessage({
       />
       <ContextRewriteArtifactCard contextRewrite={contextRewrite} />
       <DeepResearchArtifactCard deepResearch={deepResearch} />
+      <DecisionArtifactCard decision={message.metadata?.decision} onCopy={copyText} onDownload={downloadTextFile} />
       {message.error && <div className="assistant-error">Response failed</div>}
       {showToolbar && (
         <MessageToolbar
@@ -582,6 +594,9 @@ function thinkingSteps(message) {
   }
   if (message.pending && message.metadata?.kind === "context_edit") {
     return ["Reading your context document", "Locating the edit", "Preparing a proposal"];
+  }
+  if (message.pending && message.metadata?.kind === "decision") {
+    return decisionTier(message.metadata?.decision?.mode).steps;
   }
   if (message.pending && message.metadata?.kind === "deep_research") {
     const tasks = message.metadata?.deepResearch?.progress?.tasks;

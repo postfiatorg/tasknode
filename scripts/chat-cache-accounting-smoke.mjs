@@ -33,6 +33,7 @@ assert.deepEqual(cached, {
   providerCostUsd: null,
   costSource: "configured_user_cache_tariff",
   webSearchCalls: 0,
+  searchUsageReported: false,
   toolCostUsd: 0,
   costUsd: 0.004126,
 });

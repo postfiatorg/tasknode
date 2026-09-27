@@ -42,7 +42,7 @@ Red means due pending or processing jobs are stale.
 Run memory smoke and bounded backfill:
 
 ```bash
-npm run db:memory-smoke
+node scripts/run-smokes.mjs db scripts/chat-memory-postgres-smoke.mjs
 npm run memory:backfill
 ```
 

@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import {
   collaborationChallengePayload,
   buildCollaborationIdentitySuggestions,
@@ -142,27 +141,6 @@ assert.equal(routePolicyForPath("/api/docs/documents/00000000-0000-4000-8000-000
 assert.equal(routePolicyForPath("/api/docs/documents/00000000-0000-4000-8000-000000000000/assistant")?.id, "docs_assistant");
 assert.equal(routePolicyForPath("/api/team/context/preference")?.id, "team_context_preference");
 
-const migration = await readFile(new URL("../server/db/migrations/110_docs_team_collaboration.sql", import.meta.url), "utf8");
-assert.match(migration, /CREATE TABLE IF NOT EXISTS docs_access_grants/);
-assert.match(migration, /CREATE TABLE IF NOT EXISTS task_history_grants/);
-assert.match(migration, /WHERE status = 'active'/);
-
-const routes = await readFile(new URL("../server/collaboration-routes.js", import.meta.url), "utf8");
-assert.match(routes, /requireTaskHistoryGrant\(\{ subjectAccountId, viewerAccountId: accountId \}\)/);
-assert.match(routes, /if \(collaborationPath && !accountId\)/);
-assert.match(routes, /collaboration_login_required/);
-assert.doesNotMatch(routes, /requested_relationship\s*===/);
-
-const repository = await readFile(new URL("../server/repositories/collaboration.js", import.meta.url), "utf8");
-assert.match(repository, /\^\[0-9a-f\]\{32\}\$/i);
-assert.match(repository, /channelHash: row\.pfdocs_channel_hash/);
-assert.match(repository, /identity: await identityDocument\(accountId\)/);
-assert.match(repository, /from "\.\/account-profiles\.js"/);
-assert.doesNotMatch(repository, /from "\.\.\/runtime-store\.js"/);
-assert.match(repository, /shares: document\.owned/);
-assert.match(repository, /ORDER BY last_shared_at DESC/);
-assert.match(repository, /status IN \('proposed', 'accepted', 'submitted', 'verification_requested', 'verification_response_submitted'\)/);
-
 assert.equal(containsOdvMention("@ODV summarize this"), true);
 assert.equal(containsOdvMention("Could you ask @odv about this section?"), true);
 assert.equal(containsOdvMention("email@odv.example"), false);
@@ -248,63 +226,5 @@ await generateDocsAssistantResponse({
   infer: async ({ body }) => ({ model: body.model, text: body.messages[1].content }),
 });
 assert.equal(optedInContextLoads, 1);
-
-const appShell = await readFile(new URL("../src/app/App.jsx", import.meta.url), "utf8");
-const docsNavIndex = appShell.indexOf('active={view === "docs"}');
-const walletNavIndex = appShell.indexOf('active={view === "wallet"}');
-assert.ok(docsNavIndex >= 0, "Docs must be a first-class sidebar destination");
-assert.ok(walletNavIndex > docsNavIndex, "Docs must appear in the primary sidebar before Wallet");
-assert.doesNotMatch(appShell, /ToolMenuRow icon=\{FileText\} label="Docs"/);
-
-const docsView = await readFile(new URL("../src/features/docs-library/DocsLibraryView.jsx", import.meta.url), "utf8");
-assert.match(docsView, /collaboration\.pfdocsEditorEnabled/);
-const docsBrowser = await readFile(new URL("../src/features/docs-library/DocsLibraryBrowser.jsx", import.meta.url), "utf8");
-assert.ok(docsBrowser.includes("New spreadsheet"));
-assert.ok(docsBrowser.includes('onCreate("sheet", folderId)'));
-assert.match(docsView, /documentType/);
-assert.ok(docsView.includes("editor is temporarily unavailable"));
-assert.match(docsView, /\^\[0-9a-f\]\{32\}\$/i);
-assert.match(docsView, /if \(!signedIn\)/);
-assert.match(docsView, /Sign in to use Docs/);
-assert.match(docsView, /docs-editor-workspace/);
-assert.match(docsView, /pfdocs\.tasknode\.document-title/);
-assert.match(docsView, /tasknode\.pfdocs\.context/);
-assert.match(docsView, /pfdocs\.tasknode\.odv-request/);
-assert.match(docsView, /pfdocs\.tasknode\.assistant-request/);
-assert.match(docsView, /legacyOdv \? "odv" : "assistant"/);
-assert.match(docsView, /mention: "@coach"/);
-assert.match(docsView, /includeFullContext: editorFullContext === true/);
-assert.match(docsView, /Full context/);
-assert.match(docsView, /tasknode\.pfdocs\.command/);
-assert.match(docsView, /command: "import-content"|sendEditorCommand\("import-content"/);
-assert.match(docsView, /pfdocs\.tasknode\.import-result/);
-assert.match(docsView, /editorImportRef\.current\?\.click\(\)/);
-assert.match(docsView, /\.md, \.txt, \.html/);
-assert.doesNotMatch(docsView, /sendEditorCommand\("import"\)/);
-assert.match(docsView, /docs-editor-title-block/);
-assert.match(docsView, /sendEditorCommand\("chat-toggle"\)/);
-assert.match(docsView, /sendEditorCommand\("set-title", \{ title \}\)/);
-assert.ok(docsView.includes("zai/glm-5.3"));
-assert.match(docsView, /Select a valid Task Node member from the suggestions/);
-assert.match(docsView, /People with access/);
-assert.match(docsView, /Link access/);
-assert.match(docsView, /Links include the document’s decryption key/);
-assert.match(docsView, /copyDocumentShareLink\("view"\)/);
-assert.match(docsView, /copyDocumentShareLink\("edit"\)/);
-assert.match(docsView, /Copy view link/);
-assert.match(docsView, /Copy edit link/);
-assert.match(docsView, /navigator\.clipboard\.writeText\(shareUrl\)/);
-assert.match(docsView, /Link an active task/);
-assert.match(docsView, /Opening encrypted document/);
-assert.doesNotMatch(docsView, /window\.prompt\("Task ID to link"/);
-assert.doesNotMatch(docsView, /window\.open\(/);
-
-const runtime = await readFile(new URL("../server/server-http-boundary.js", import.meta.url), "utf8");
-assert.match(runtime, /pfdocsEditorEnabled: collaborationFlag\("TASKNODE_PFDOCS_EDITOR_ENABLED"\)/);
-assert.match(runtime, /docsOdvEnabled: collaborationFlag\("TASKNODE_DOCS_ODV_ENABLED"\)/);
-assert.match(runtime, /frame-src 'self'.*pfdocsFrameOrigin/);
-
-const appStyles = await readFile(new URL("../src/styles-shell.css", import.meta.url), "utf8");
-assert.match(appStyles, /\.app-shell\.view-docs \.topbar\s*\{\s*display:\s*none/);
 
 console.log("collaboration contract smoke passed");

@@ -230,6 +230,6 @@ Focused checks:
 - `npm run build`
 - `npm run lint`
 - `npm run migration-registration-smoke`
-- `npm run context-rewrite-sample-smoke`
+- `node scripts/run-smokes.mjs db scripts/context-rewrite-sample-smoke.mjs`
 
 `context-rewrite-sample-smoke` requires `DATABASE_URL` and runs against Postgres with deterministic Jobs embeddings and `CONTEXT_REWRITE_PROVIDER_MOCK=true`. It seeds the configured sample Context fixture, verifies that the artifact does not regress a local quality heuristic, verifies 15 internal score dimensions, verifies provider-call audit rows, verifies one current final artifact, verifies stale public job fields, verifies stale reclaim resumes without adding duplicate score/search rows, verifies the polish stage appears in the public progress trace, verifies public job and assistant metadata do not expose scores, and verifies a claimed running job cannot be revived, failed, or completed after cancellation.

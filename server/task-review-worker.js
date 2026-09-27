@@ -1,3 +1,4 @@
+import { runTrackedWork } from "./process-hardening.js";
 import {
   existingRewardReviewEvent,
   existingVerificationRequestEvent,
@@ -113,7 +114,7 @@ export function startTaskReviewWorker({
     if (running) return;
     running = true;
     try {
-      await processTaskReviewQueueOnce({ limit: safeBatch, logger });
+      await runTrackedWork("task_review", () => processTaskReviewQueueOnce({ limit: safeBatch, logger }));
     } catch (error) {
       logger.warn?.("task_review_worker_tick_failed", { error: error?.message || String(error) });
     } finally {

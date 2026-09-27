@@ -109,16 +109,13 @@ For a running local Node server:
 
 ```bash
 SMOKE_BASE_URL=http://127.0.0.1:8080 npm run smoke
-FRAME_BASE_URL=http://127.0.0.1:8080 npm run frame-smoke
 ```
 
-Frame smoke writes screenshots to an operating-system temporary directory
-unless `FRAME_SCREENSHOT_DIR=0` is set.
-
-The aggregate `quality` and `check` commands are not currently green because
-`file-size-check` fails. The checker also needs binary-file and exception-expiry
-repairs. A passing focused smoke must not be represented as a passing repository
-release gate.
+`npm run check` is the release gate CI runs. It includes every smoke in
+`scripts/smoke-suites.json` (`npm run test:smoke`); database smokes run with
+`TASKNODE_TEST_ADMIN_URL=<maintenance db url> npm run test:db`, each in its own
+freshly migrated `*_test` database. To run one smoke the same way:
+`node scripts/run-smokes.mjs unit scripts/<name>.mjs`.
 
 ## First Failure Triage
 

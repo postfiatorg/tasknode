@@ -75,11 +75,10 @@ If a separate database app or MPG cluster is provisioned by Fly, it should be
 documented here by database name/cluster ID, but it still is not a Task Node
 application process group.
 
-Fly dev verification on May 25, 2026 showed the app attached to pgvector-enabled
-database cluster `tasknodeofficial-dev-pgvector-202605252246` with cluster ID
-`3x9jv02yd3dr6qp7`, database `tasknodeofficial`, active table
-`jobs_corpus_chunks`, 259 chunks, embedding model `text-embedding-3-small`, and
-1536 dimensions.
+Production runs on MPG cluster `tasknode-prod-recovery-20260831`
+(`zp2wjrejjv5odn4q`), database `tasknodeofficial`, with `vector` enabled
+through the MPG extensions API. The active table is `jobs_corpus_chunks` (embedding model
+`text-embedding-3-small`, 1536 dimensions).
 
 The previous array-storage fallback was removed. Do not reintroduce:
 
@@ -129,13 +128,13 @@ fly status -a tasknodeofficial-dev
 Run the local Postgres/pgvector smoke against the configured database:
 
 ```bash
-npm run db:jobs-corpus-smoke
+node scripts/run-smokes.mjs db scripts/jobs-corpus-pgvector-smoke.mjs
 ```
 
 Focused chat injection checks:
 
 ```bash
-npm run chat-spirit-prompt-smoke
+node scripts/chat-spirit-prompt-smoke.mjs
 npm run format-check
 npm run lint
 git diff --check

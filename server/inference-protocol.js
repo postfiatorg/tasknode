@@ -74,6 +74,11 @@ export function normalizeInferenceRequest(body = {}, { provider = "vercel", capa
       if (query && !request.tool_choice) request.tool_choice = "required";
     }
     delete request.enabled_tools;
+    // Gateway spend reports group by these tags; untagged calls cannot be attributed.
+    const gateway = request.providerOptions?.gateway || {};
+    const tags = [`role:${env.TASKNODE_PROCESS_ROLE || "other"}`, `cap:${capability}`, `max:${request.max_tokens ?? "none"}`,
+      request.response_format?.json_schema?.name && `schema:${request.response_format.json_schema.name}`].filter(Boolean);
+    request.providerOptions = { ...request.providerOptions, gateway: { ...gateway, tags: [...(gateway.tags || []), ...tags] } };
   }
   if (!request.tools.length) delete request.tools;
   for (const field of ["max_completion_tokens", "provider", "plugins", "usage", "transforms", "include_reasoning", "reasoning_effort", "thinking"]) delete request[field];

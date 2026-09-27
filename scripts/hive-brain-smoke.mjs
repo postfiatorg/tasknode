@@ -24,7 +24,6 @@ const trigger = `hive_brain_smoke_${suffix}`;
 const rawDigest = `raw_hive_brain_smoke_${suffix}`;
 const secretaryPacketId = `bmsec_hive_brain_smoke_${suffix}`;
 const secretaryPacketDigest = `bmsec_digest_hive_brain_smoke_${suffix}`;
-const taskManagerRunId = `hivetaskmgr_hive_brain_smoke_${suffix}`;
 const projectId = `project_hive_brain_history_${suffix}`;
 const allocationId = `alloc_hive_brain_history_${suffix}`;
 const jobId = `nettaskjob_hive_brain_history_${suffix}`;
@@ -35,7 +34,6 @@ async function cleanup(runId = "") {
   if (runId) await query("DELETE FROM board_manager_runs WHERE id = $1", [runId]);
   await query("DELETE FROM board_manager_runs WHERE trigger = $1", [trigger]);
   await query("DELETE FROM board_manager_secretary_packets WHERE id = $1", [secretaryPacketId]);
-  await query("DELETE FROM hive_decision_runs WHERE id = $1", [taskManagerRunId]);
   await query("DELETE FROM task_projections WHERE task_id = $1", [taskId]);
   await query("DELETE FROM network_task_generation_jobs WHERE id = $1", [jobId]);
   await query("DELETE FROM network_task_allocations WHERE id = $1", [allocationId]);
@@ -252,7 +250,7 @@ async function main() {
         `job_idem_hive_brain_history_${suffix}`,
         allocationId,
         projectId,
-        taskManagerRunId,
+        `bmrun_hive_brain_history_${suffix}`,
         requestId,
         `source_digest_hive_brain_history_${suffix}`,
         JSON.stringify({
@@ -287,36 +285,8 @@ async function main() {
       `,
       [taskId, requestId]
     );
-    await query(
-      `
-        INSERT INTO hive_decision_runs (
-          id, scope, trigger, status, shadow, source_packet_digest,
-          action_payload_json, decision_json, guardrail_result_json,
-          result_json, reasoning_text, selected_action, provider, model,
-          reasoning_effort, output_text, completed_at
-        )
-        VALUES ($1, 'hive_task_manager:global_hive', $2, 'completed', false,
-          $3, $4::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7, 'create_task',
-          'mock', 'z-ai/glm-5.2', 'high', $8, now())
-      `,
-      [
-        taskManagerRunId,
-        `task_manager_history_smoke_${suffix}`,
-        `source_digest_hive_brain_history_${suffix}`,
-        JSON.stringify(selection),
-        JSON.stringify({ ok: true, blocked: false, reasons: [] }),
-        JSON.stringify({
-          executed: true,
-          executionResult: { executed: true, jobId, allocationId, requestId, taskId, status: "generated" },
-          usage: { totalTokens: 1 },
-        }),
-        selection.explanation,
-        JSON.stringify(selection),
-      ]
-    );
     const history = await listHiveBrainTaskGenerationHistory({ limit: 10 });
     assert.equal(history.ok, true);
-    assert.ok(history.items.some((item) => item.kind === "task_manager_run" && item.id === taskManagerRunId), "Task Manager run should appear in task generation history");
     assert.ok(history.items.some((item) => item.kind === "generation_job" && item.jobId === jobId && item.taskId === taskId), "generation job should appear in task generation history");
 
     console.log(`hive brain smoke ok: ${runId}`);

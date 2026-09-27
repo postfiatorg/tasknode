@@ -59,3 +59,30 @@ export async function migrateDatabase({ force = false } = {}) {
   migrated = true;
   return { ok: true, applied: appliedNow };
 }
+
+// Production runs migrations once per deploy through Fly's release_command
+// (TASKNODE_MIGRATIONS=release); processes then only verify the schema, so a
+// failing migration aborts the deploy instead of crash-looping live machines.
+export async function prepareDatabase({ env = process.env } = {}) {
+  if (env.TASKNODE_MIGRATIONS !== "release" || !databaseEnabled()) return migrateDatabase();
+  const applied = new Set((await query(`SELECT name FROM ${migrationsTable}`)).rows.map((row) => row.name));
+  const pending = (await discoverMigrationNames()).filter((name) => !applied.has(name));
+  if (pending.length > 0) throw new Error(`database_schema_behind:${pending.join(",")}`);
+  return { ok: true, verified: true };
+}
+
+// Waits for Postgres and the schema with capped backoff instead of exiting, so
+// a database outage degrades service rather than crash-looping every process.
+export async function waitForDatabase({ afterReady = async () => {}, logger = console, maxDelayMs = 30_000 } = {}) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const result = await prepareDatabase();
+      await afterReady();
+      return result;
+    } catch (error) {
+      const retryInMs = Math.min(maxDelayMs, 1000 * 2 ** attempt);
+      logger.warn?.("database_not_ready", { error: error?.message || String(error), retryInMs });
+      await new Promise((resolve) => setTimeout(resolve, retryInMs));
+    }
+  }
+}

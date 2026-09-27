@@ -352,6 +352,11 @@ export async function claimVerificationResponses({ limit = 1 } = {}) {
   });
 }
 
+// Waiting and failing are different states. A "fixed" wait is a successful
+// worker pass that found nothing to do yet (for example no manager decision);
+// it counts in wait_count and resets the failure streak. Only "exponential"
+// failures grow retry_count, so one transient error after a long wait gets the
+// first-failure backoff rather than the ceiling.
 export function nextWorkerClaimState(current = {}, {
   error = "",
   retryMode = "none",
@@ -359,7 +364,10 @@ export function nextWorkerClaimState(current = {}, {
   nowMs = Date.now(),
 } = {}) {
   const prior = safeObject(current);
-  const retryCount = Math.max(0, Number(prior.retry_count) || 0) + (retryMode === "none" ? 0 : 1);
+  const priorRetries = Math.max(0, Number(prior.retry_count) || 0);
+  const priorWaits = Math.max(0, Number(prior.wait_count) || 0);
+  const retryCount = retryMode === "exponential" ? priorRetries + 1 : retryMode === "fixed" ? 0 : priorRetries;
+  const waitCount = retryMode === "fixed" ? priorWaits + 1 : priorWaits;
   const delayMs = retryMode === "exponential"
     ? taskReviewRetryDelayMs(Math.max(0, retryCount - 1))
     : retryMode === "fixed"
@@ -371,6 +379,7 @@ export function nextWorkerClaimState(current = {}, {
     last_error: safeText(error, 1000),
     updated_at: new Date(nowMs).toISOString(),
     retry_count: retryCount,
+    wait_count: waitCount,
     retry_after: delayMs > 0 ? new Date(nowMs + delayMs).toISOString() : "",
   };
 }

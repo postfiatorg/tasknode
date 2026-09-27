@@ -13,26 +13,29 @@ retains the historical name `tasknodeofficial-dev`, but it is production. Do
 not call it “Fly dev” or assume its database, volume, workers, or credentials
 are disposable.
 
+All machines run in `iad`, the same region as the production Fly Managed
+Postgres cluster (`zp2wjrejjv5odn4q`). Keep them co-located; Managed Postgres
+is not offered in `ewr`.
+
 `fly.toml` currently defines these process groups:
 
 | Group | Command | Role |
 | --- | --- | --- |
-| `app` | `npm run start:web` | Public web/API process |
-| `worker-pftl` | `npm run start:worker:pftl` | PFTL cache/watcher/archive/reducer/retention work |
-| `worker-taskgen` | `npm run start:worker:taskgen` | Personal and network task generation |
-| `worker-task-review` | `npm run start:worker:task-review` | Verification, review, and reward transitions |
-| `worker-context-rewrite` | `npm run start:worker:context-rewrite` | Async Context rewrites |
-| `worker-hive` | `npm run start:worker:hive` | Hive context secretary, reports, and Kimi activity narrator |
-| `worker-memory-profile` | `npm run start:worker:memory-profile` | Memory and profile/recommendation work |
-| `worker-airdrop` | `npm run start:worker:airdrop` | Daily airdrop work |
-| `worker-nft-renderer` | `npm run start:worker:nft-renderer` | Isolated Profile NFT image rendering |
-| `board-secretary` | `npm run start:board-secretary` | Advisory Hive board-status memo generation |
+| `app` | `node server/index.js` (role `web`) | Public web/API process |
+| `worker-pftl` | `node server/worker-entry.js` (role `worker:pftl`) | PFTL cache/watcher/archive/reducer/retention work |
+| `worker-taskgen` | `node server/worker-entry.js` (role `worker:taskgen`) | Personal and network task generation |
+| `worker-task-review` | `node server/worker-entry.js` (role `worker:task-review`) | Verification, review, and reward transitions |
+| `worker-context-rewrite` | `node server/worker-entry.js` (role `worker:context-rewrite`) | Async Context rewrites |
+| `worker-hive` | `node server/worker-entry.js` (role `worker:hive`) | Hive context secretary, board-secretary memos, reports, and Kimi activity narrator |
+| `worker-memory-profile` | `node server/worker-entry.js` (role `worker:memory-profile`) | Memory and profile/recommendation work |
+| `worker-airdrop` | `node server/worker-entry.js` (role `worker:airdrop`) | Daily airdrop work |
+| `worker-nft-renderer` | `node server/worker-entry.js` (role `worker:nft-renderer`) | Isolated Profile NFT image rendering |
 
 Kimi K3 in the operator-host Corbanu TUI is the production task manager.
-`board-secretary` writes advisory project-status memos. The obsolete GLM Hive
+The obsolete GLM Hive
 selector, legacy automatic manager launchers, experimental project planner,
 and disabled accounting harvester have been deleted. No deployment flag can
-restart those modules. `worker-hive` retains the three support workers above.
+restart those modules. 
 
 ## Current Release Command
 
@@ -42,80 +45,39 @@ The checked-in production wrapper is:
 npm run fly:deploy:prod
 ```
 
-Its actual sequence is:
+Its sequence is:
 
-1. run the migration-registration smoke;
-2. run the Fly deploy preflight;
-3. require the explicit production-host confirmation;
-4. run remote `fly deploy` against the application/config in `package.json` and
-   `fly.toml`; and
-5. run the background guard.
+1. run the migration-discovery smoke;
+2. run the Fly deploy preflight, which requires the explicit production-host
+   confirmation and `restart=always` coverage for every process group;
+3. run remote `fly deploy`; Fly runs `node scripts/migrate-db.mjs` as the
+   release command before replacing any machine, and a failing migration
+   aborts the release; and
+4. run the background guard.
 
 The background guard is **read-only by default**. It verifies one active,
-`restart=always` machine for these eight groups:
-
-```text
-worker-pftl
-worker-taskgen
-worker-task-review
-worker-context-rewrite
-worker-hive
-worker-memory-profile
-worker-airdrop
-board-secretary
-```
-
-It does not “start or repair” machines unless the lower-level worker guard is
-explicitly invoked with `--fix`. The deploy wrapper does not pass `--fix`.
-
-The current aggregate background guard also omits `worker-nft-renderer`, and it
-does not verify the public `app` group. Until the guard is corrected, a release
-is not proven complete without separate evidence for the web process and NFT
-renderer. This is a deployment-gate defect, not an operator convention.
-
-Raw `fly deploy` bypasses the repository preflight and should not be the normal
-official release path. Conversely, the npm wrapper is not safe public tooling:
-any shell with matching Fly credentials can target the official app. Extracting
-production configuration and approval to private operations is a P0
-open-source requirement.
-
-## Release Verification
-
-A healthy HTTP response proves only the `app` process. A complete release must
-verify:
-
-- the deployed commit/image and migration registration;
-- `/health` and the expected public origin;
-- every process group in `fly.toml`, including `worker-nft-renderer`;
-- `restart=always` for active background machines;
-- required enablement flags for the worker families;
-- queue progress and recent successful rows, not merely a running process;
-- provider/RPC/IPFS/PFDocs/Nostr readiness for the changed boundary; and
-- no unexpected database, volume, or runtime-store target.
-
-`/api/system/status` is the product read model for many of these checks, but it
-does not replace Fly machine inventory, database evidence, or an external
-health probe.
-
-The current worker guard verifies required environment values only in its
-mutating `--fix` path. Read-only guard success therefore does not by itself
-prove that all required worker flags are set. The release tooling should be
-changed so read-only verification checks configuration too.
+`restart=always` machine for each of the nine background groups
+(`worker-pftl`, `worker-taskgen`, `worker-task-review`,
+`worker-context-rewrite`, `worker-hive`, `worker-memory-profile`,
+`worker-airdrop`, `worker-nft-renderer`). The `app` group is
+covered by the Fly HTTP health check on `/health`. The guard changes machines
+only when `scripts/fly-worker-guard.mjs` is invoked with `--fix`.
 
 ## State and Durability
 
 | Store | Current role | Durability requirement |
 | --- | --- | --- |
 | Postgres | Chat, billing, Context revisions, Memory, Tasks/projections, Hive, profiles, collaboration state, PFTL cache, queues | Managed database with tested backups/restores and migration control |
-| Runtime-store JSON | Sessions, account/connected identities, wallet links, OAuth/email challenges, and remaining unmigrated state | Fly volume at `/data/runtime-store.json`; never an undeclared `/tmp` path in production |
+| Runtime-store JSON | Remaining unmigrated state only (for example Telegram bot preferences and wallet-initiation grant eligibility inputs). Sessions, accounts, auth challenges, wallet links, deposit accounts, and terminal sessions must be Postgres-backed or public startup is refused (`assertDurableRuntimeAuthority`) | Fly volume at `/data/runtime-store.json`; never an undeclared `/tmp` path in production |
 | Browser state | Cookies, contact-label cache, encrypted wallet vault, same-tab unlocked session | User/browser controlled; not recovered from server backups |
 | PFTL/IPFS | Protocol transactions/pointers and applicable encrypted/public payloads | External canonical/replay boundary varies by event kind |
 | Nostr relays | Encrypted NIP-17 user-message gift wraps | Independent best-effort retention; not a guaranteed archive |
 | PFDocs deployment | Collaborative document runtime | Separate service, storage, backup, and capability boundary |
 
-The runtime store is still security-critical product state. Deleting or
-replacing its volume can invalidate sessions, identity links, wallet links, and
-other account behavior even when Postgres is intact.
+The runtime store still holds unmigrated product state. Deleting or replacing
+its volume can change Telegram preferences and wallet-initiation eligibility
+even when Postgres is intact. The volume also pins the `app` group to one
+machine; finishing the Postgres migration removes that constraint.
 
 ## Secrets and Least Privilege
 

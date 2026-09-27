@@ -7,7 +7,7 @@ import { SettingsLine, SmallPill } from "../settings/SettingsControls.jsx";
 import { IdentitySettings } from "../identity/IdentityControls.jsx";
 import { loginProviderDisplayState } from "../chat/chat-ui-state.js";
 import { isSignedInSession } from "../../session";
-import { SETTINGS_PAGES } from "../../app/app-shell-shared.jsx";
+import { clearAuthSessionHint, SETTINGS_PAGES } from "../../app/app-shell-shared.jsx";
 
 export function SettingsModal({ linkedWallet, onAppStateChange, onClose, onWalletUnlock, session, setTheme, theme, themeSessionOnly = false, walletSecret, walletVault }) {
   const [page, setPage] = useState("general");
@@ -525,6 +525,7 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
 
   async function completeAuthentication() {
     if (reloadOnSuccess) {
+      clearAuthSessionHint(window.sessionStorage);
       window.location.reload();
       return;
     }
@@ -687,6 +688,8 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
       });
       if (result.ok) return completeAuthentication();
       setMessage(result.body?.message || "Email, handle, or account password is incorrect.");
+    } catch (error) {
+      setMessage(error?.message || "Login failed. Check your connection and try again.");
     } finally {
       setPendingProvider("");
     }

@@ -1,3 +1,4 @@
+import { runTrackedWork } from "./process-hardening.js";
 import { markdownHeading } from "./inference-text.js";
 import { createHash } from "node:crypto";
 import { databaseEnabled } from "./db/pool.js";
@@ -918,7 +919,7 @@ export function startContextRewriteWorker() {
     600_000
   );
   timer = setInterval(() => {
-    runContextRewriteWorkerOnce({ limit: Number(process.env.CONTEXT_REWRITE_WORKER_LIMIT || 1) || 1 })
+    runTrackedWork("context_rewrite", () => runContextRewriteWorkerOnce({ limit: Number(process.env.CONTEXT_REWRITE_WORKER_LIMIT || 1) || 1 }))
       .catch((error) => {
         console.warn(`context rewrite worker failed: ${error?.message || error}`);
       });

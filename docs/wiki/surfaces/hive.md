@@ -117,8 +117,7 @@ imported into the Nostr room. Old Hive recent-chat links now open the group.
 
 `Hive Brain` is an operator-only audit tab under the sidebar `More` menu at
 `#hive-brain`. It exposes the current board stack in human terms: the Hive
-Reports, the Decision Agent decision trail, a deterministic Live Task Packet,
-Task generation history, system prompt documentation, and post-reward Task
+Reports, a deterministic Live Task Packet, Task generation history, system prompt documentation, and post-reward Task
 Accounting harvests. Raw legacy Board Manager JSON is not the primary operator
 surface.
 
@@ -126,12 +125,10 @@ The main read APIs are:
 
 - `GET /api/hive/reports?type=&since=` for the report secretaries
 - `GET /api/hive/reports/:id` for full report markdown plus verification phases
-- `GET /api/hive/decision/runs` and `GET /api/hive/decision/run/:id` for the
-  Decision Agent audit trail
 - `GET /api/hive/brain/live-task-packet` for the plain-English Live Task
   Packet
-- `GET /api/hive/brain/task-generation-history` for Task Manager selections
-  and Network Task generation jobs
+- `GET /api/hive/brain/task-generation-history` for Network Task generation
+  jobs
 - `GET /api/hive/brain/harvest-report` for the latest resolved-history Harvest
   Report
 - `GET /api/hive/brain/harvests` for post-reward Task Accounting harvests
@@ -157,12 +154,8 @@ plain-text copy remains available for audit, but raw JSON and markdown tables
 are not the primary view.
 
 Task generation history is also assembled without an LLM. `server/repositories/hive-brain.js`
-reads Task Manager audit rows from `hive_decision_runs` where the scope starts
-with `hive_task_manager:` and durable worker rows from
-`network_task_generation_jobs`, then merges them into a reverse-chronological
-operator view. A Task Manager selection row answers what board/operator/task
-intent was selected and whether guardrails blocked it. A generation job row
-answers what durable worker job was queued, whether it linked to a request or
+reads durable worker rows from `network_task_generation_jobs` into a
+reverse-chronological operator view. Each row answers what durable worker job was queued, whether it linked to a request or
 visible task, which badge lane and reward band were used, and any recorded
 worker error. The surface is read-only and does not itself generate, approve,
 publish, or reward tasks.
@@ -170,16 +163,13 @@ publish, or reward tasks.
 ### GLM Board Secretary
 
 `server/hive-board-secretary-worker.js` writes the Project Status memo shown in
-each Hive project About section. It runs from the `board-secretary` process
-group every 15 minutes when `TASKNODE_HIVE_BOARD_SECRETARY_ENABLED=true`, uses
+each Hive project About section. It runs in `worker-hive` hourly and writes a
+new memo only when the board's content changed and its last memo is at least
+6 hours old (`TASKNODE_HIVE_BOARD_SECRETARY_MIN_INTERVAL_SECONDS`). It uses
 Vercel `zai/glm-5.3` with Ambient backup, and stores rows in
 `hive_board_secretary_memos`. The worker is advisory only. It cannot create
 tasks, cancel tasks, send user messages, change rewards, mark work resolved, or
 mutate project state.
-
-The worker sets its own DB statement timeout from
-`TASKNODE_HIVE_BOARD_SECRETARY_DB_STATEMENT_TIMEOUT_MS` and defaults to 60s so
-large board packets can be assembled without changing the app-wide DB timeout.
 
 Each run builds one deterministic board-scoped source packet from:
 
@@ -277,7 +267,7 @@ reasoning effort in production; the `hive_intelligence` builder uses GLM 5.3
 through `TASKNODE_BOARD_MANAGER_PLANNING_REPORT_REASONING_EFFORT` and gets a
 larger default visible output budget through
 `TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS`. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
-npm run hive-reports-smoke` exercises the same storage, worker, list/detail,
+node scripts/run-smokes.mjs db scripts/hive-reports-smoke.mjs` exercises the same storage, worker, list/detail,
 and UI-facing shape without spending model tokens.
 
 Report source packets must include human-readable operator identity when it is
@@ -292,7 +282,7 @@ readability. It renders headings, lists, code blocks, horizontal rules, and
 tables. Because report models sometimes collapse markdown table rows onto one
 line, the renderer normalizes table sequences such as
 `| Metric | Value | |---|---| | Active projects | 5 |` into real table rows
-before rendering. `npm run hive-report-markdown-smoke` covers both valid
+before rendering. `node scripts/hive-report-markdown-smoke.mjs` covers both valid
 multi-line tables and collapsed report tables.
 
 ### Historical Task Accounting Harvests
@@ -380,140 +370,11 @@ The Hive Brain overview tab displays the latest Harvest Report as a card inside
 harvests have ever been resolved, the card shows how many more closeouts are
 needed before the first report is generated.
 
-#### Grashnuk follow-up loop
-
-When an actionable harvest should be handled by the Orc process, the operator
-uses the harvest row as the source of a personal task for Grashnuk instead of
-editing the original rewarded Network Task. The request text must include the
-harvest `task_id`, the stored assessment summary, and the stored suggested
-action. It should ask for one concrete follow-up artifact that closes that
-suggested action; it should not restate the row as a vague review or handoff.
-
-The live sequence is:
-
-1. Submit a signed personal task request as Grashnuk with the harvest assessment
-   and suggested action as the task source. If the row describes a product
-   defect, the request must ask Grashnuk to reproduce/inspect and fix the
-   actual problem, or prove it is not a bug. Do not request a tracker-ready QA
-   packet as the closing artifact.
-2. Check out the harvest row in Hive Brain so ownership is visible in the
-   checkout log. This still requires the checking-out account to have a verified
-   `core_contributor` badge or an active `orc_agents` row for the same linked
-   wallet; do not bypass that gate with a direct database write.
-3. Complete the generated personal task and submit evidence as Grashnuk. If the
-   self-requested task enters `verification_requested`, Grashnuk may answer the
-   reviewer follow-up as additional evidence, but it must not decide reward,
-   accounting, or enforcement outcomes.
-4. After the personal task has an independent reward decision, close the harvest
-   row from Hive Brain only when the issue is actually fixed, already fixed,
-   not a bug, or a duplicate of another fix path. The current checkout owner can
-   do this for their own checked-out row while they remain checkout-eligible.
-
-The resolution comment is an operator-facing closeout note, not an audit packet.
-Keep it short enough to scan in the Harvests card. Use 3-5 compact bullets and
-avoid copying the full reward rationale or generated task proposal unless the
-exact wording changes the closeout decision.
-
-```text
-Outcome: fixed / already fixed / not a bug / duplicate.
-Problem: 1-2 plain-English issue summaries.
-Action: actual fix, existing shipped fix, not-a-bug evidence, or duplicate path.
-Proof: generated task id, reward amount, reward tx/CID, and one short reviewer
-  sentence if it matters.
-```
-
-This process keeps the accounting row, checkout owner, Orc task request,
-submitted evidence, independent verification/reward decision, and final
-resolution note connected without changing rewards, eligibility, enforcement, or
-the original harvested Network Task. A documentation packet, tracker-ready QA
-note, or source-backed summary alone is not resolved and must stay open.
-
-Operators can hand one harvest to a separate Grashnuk Codex process instead of
-performing the loop manually in the current shell:
-
-```bash
-npm run grashnuk:harvest-codex -- \
-  --task-id task_... \
-  --execute
-```
-
-`scripts/grashnuk-harvest-codex-exec.mjs` starts `codex exec` with a constrained
-Grashnuk prompt and the JSON result schema
-`schemas/grashnuk-harvest-codex-result.schema.json`. The child process uses
-`scripts/grashnuk-harvest-tools.mjs` for signed Grashnuk actions:
-inspect/check out the harvest, request a Personal task, wait for the generated
-task, submit evidence, answer verification follow-up, wait for reward proof, and
-resolve the harvest. The helper reads local Grashnuk wallet/session files but
-redacts seeds and session tokens from output. Use `--packet-only` to inspect the
-Codex prompt without running the agent.
-
-```bash
-TASKNODE_TASK_ACCOUNTING_HARVESTER_PROVIDER_MOCK=true npm run task-accounting-harvester-smoke
-```
-
-When a Grashnuk run produces code, run a separate review/fix pass against the
-Grashnuk commit:
-
-```bash
-npm run grashnuk:review-codex -- --commit <grashnuk_commit> --execute
-```
-
-The review pass is intentionally not wallet-capable. It checks the code change,
-runs focused verification, and creates a follow-up fix commit if it finds a real
-defect.
-
 ### Hive v2 Decision Agent (removed)
 
-The executable Hive v2 Decision Agent provider, worker, action adapter, and
-launchers were removed. There is no supported scheduler or deploy flag that can
-execute that path. The current Hive runtime uses readable reports, the GLM Board
-Secretary, and Kimi K3 for board/task management.
-Historical `hive_decision_runs` rows, source-packet data, action records, and
-the raw `prompts/hive/hive_decision_agent_v1.md` display remain readable through
-the existing repository, routes, and Hive Brain prompt display for audit.
-
-Historical Decision Agent runs used the following inputs:
-
-- latest `hive_reports` documents for the report set
-- live task state from `task_projections` and pending
-  `network_task_generation_jobs`
-- idle eligible contributors from the same badge/capacity predicates used by
-  Network Task routing
-- recent board discussions and Project Leader/operator Hive chat from
-  `hive_context_entries`
-
-The historical prompt required a structured action from the v2 registry
-(`create_board`, `archive_board`, `create_task`, `cancel_task`,
-`cancel_network_task`,
-`message_user`, or `do_nothing`), a one- or two-paragraph plain-English
-explanation, options considered, and the exact reports/task-state/discussion
-references that informed the decision.
-
-The historical implementation applied deterministic guardrails after model
-output and before a run was marked complete. Its former active mode required
-these checks before action execution:
-
-- the target must be an idle badge-eligible contributor from the live source
-  packet, not merely a contributor from stale reports
-- the task must not duplicate the target's outstanding, pending, completed,
-  rewarded, or recently terminal Network Tasks
-
-When the historical `create_task` guardrail passed, that executor did not write
-a final task offer directly. It translated the recommendation into the existing
-`initiate_network_task` hook, which re-checks candidate eligibility, badge lane,
-capacity, reward cap, and semantic idempotency before queuing the normal Network
-Task generation worker. Other supported actions used the existing Board Manager
-action hooks with no legacy `board_manager_action_results` row; the historical
-execution result was persisted on the `hive_decision_runs.result_json` payload.
-
-The historical read API remains operator-gated:
-
-- `GET /api/hive/decision/runs`
-- `GET /api/hive/decision/run/:id`
-
-The former Decision Agent smoke and provider commands were removed with the
-executor; no model call or replacement executor is implied by the historical
-routes above.
+The Hive v2 Decision Agent, its routes, prompt, and `hive_decision_runs` table
+were removed (migration 146). The current Hive runtime uses readable reports,
+the GLM Board Secretary, and Kimi K3 for board/task management.
 
 ## New User Quickstart
 
@@ -572,17 +433,10 @@ Active board counts must be live execution counts, not planned or scoped counts.
 Board Manager archives are reversible unless an explicit operator archive lock
 is present.
 
-V0 now builds the current Hive source packet, optionally compresses it through a reusable secretary packet, calls the configured decision provider, validates the returned action against `schemas/board-manager-action.schema.json`, and records the decision in `board_manager_runs` when Postgres is enabled. Both the packet compressor and decision provider use Vercel `zai/glm-5.3` with Ambient backup structured output; the decision call uses high reasoning and usage reporting. Retired OpenRouter, direct DeepSeek, and OpenAI branches are not eligible providers and fail closed. It defaults to dry-run for app mutations, and executes supported action hooks only when the executor is run with `--execute`. Codex Exec remains available as a manual repo/operator tool, but it is no longer the normal Board Manager decision engine.
-
-The secretary path uses Vercel GLM 5.3 (with Ambient backup) to turn the full board packet into a reusable `board_triage` packet stored in `board_manager_secretary_packets`. The Board Manager receives that smaller packet instead of the full Hive state. The secretary digest ignores clock-only changes and no-op run churn, so quiet ticks reuse the stored packet instead of making another inference call. Operators can run the old full-source path with `--no-secretary`.
-
-The local continuous runner is `npm run board-manager:loop -- --execute`. It calls the same one-shot Board Manager executor repeatedly. If the manager selects `do_nothing`, the loop sleeps for two minutes before the next tick. If the manager changes the board, it waits only the shorter action delay and then rechecks the resulting Hive state. This is a development harness, not the production deployment model.
-
-The production target is a Fly-managed `board-manager` process group with a Postgres-backed job queue and lease. The first implementation is now in place. Web/API instances can enqueue Board Manager jobs but do not run background workers when started with `TASKNODE_PROCESS_ROLE=web`. The dedicated Board Manager worker claims one due job, calls the one-shot decision path, claims the scope lease inside that one-shot run, executes at most one validated action, writes the run/action/micro-summary audit rows, and schedules follow-up work when the action mutates state. Multiple Fly machines can exist for failover, but only claimed jobs and the Board Manager lease holder can act. Current repair instructions live in `Architecture -> Board Manager`.
-
-Official worker deployment and recovery commands live only in the private
-operations package. Public contributors can exercise the same lease and queue
-contracts against the synthetic local stack without an official cloud target.
+Board management runs as the Kimi K3 board manager on the operator host,
+through `scripts/bm.mjs` and the scoped board-agent API. The board secretary
+in `worker-hive` writes advisory per-board memos. The earlier in-app V0 decision
+worker, loop runner, scheduler, and Codex executors were removed.
 
 Allowed actions include:
 
@@ -601,6 +455,16 @@ Allowed actions include:
 Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `restore_project`, `refresh_project_document`, `assign_contributor`, and `initiate_network_task`. `archive_project` hides the row from the active board but does not hard delete it. `restore_project` reactivates a non-operator-locked archived project instead of creating a duplicate board. Autonomous Board Manager archives are soft and reversible; explicit operator archive locks are the only archive state the planner must not resurrect. `create_project` is guarded by the current project registry and skips when an active or archived similar project already exists, so new boards are the exception rather than the default append path. `message_user` writes an assistant message into the user's default Hive chat conversation, records a delivery audit row in `board_manager_user_messages`, and opens a durable `board_manager_followups` row. The target must be a Hive Context entry from the current source packet or an account/candidate present in that packet, so the model cannot invent an arbitrary recipient. Delivery is idempotent at the action-hook boundary: one Hive Context entry can receive one Board Manager response, and an account/project with an open follow-up cannot receive repeated consecutive Hive messages while waiting for the user to respond. Task-action messages are also stale-guarded: the decision must carry a structured `payload.message_precondition` naming the related task or allocation and the live statuses that must still hold, and the hook re-checks the account's live state at execution time. A message whose referenced task already reached a terminal state, or that asks the user to act when no action remains, is skipped and recorded with the skip reason instead of being delivered. `assign_contributor` has the same source-packet boundary: the wallet must appear as a validated Hive Context wallet or as an eligible Network Task candidate in the current packet before the hook can add it to a project. When the DeepSeek secretary compresses the Board Manager packet, the app carries only a small action-target registry plus open follow-up state into the compressed packet so these hooks can still validate recipients and contributors without exposing the full raw source packet to the downstream model. The Hive Mind Agent tab itself stays focused on the agent run/action feed. `refresh_project_document` writes the agent-managed Project Status shown inside a Hive project About section.
 
 `initiate_network_task` does not let the Board Manager write the final task offer. It creates a project-linked allocation row, a semantic `network_task_intents` row, and a durable generation job. The intent key is based on project, candidate, task class, normalized need, and reward band rather than the Board Manager run id, so repeated runs suppress the same task request instead of generating another copy. The gated `server/network-task-generation-worker.js` then turns that job into a normal task request bundle and schedules the existing task-generation worker. The resulting offer is still a normal encrypted `pf.task.offer.v1` task pointer from the task engine, with project metadata attached for Hive reads.
+
+Reward bands are never rewritten silently. A contributor band whose maximum is
+below the network-task floor (`TASKNODE_NETWORK_TASK_REWARD_MIN_PFT`, default
+100 PFT) is rejected with a 422 `network_task_reward_below_floor` that names the
+floor. A minimum below the floor is raised to it, and the original band is
+stored on the allocation as `metadata_json.reward_band_clamped_from` and returned
+by `task create` as `rewardBandClampedFrom`. Operator referrals (`refer-merge`,
+`refer-badge`) are operator duties: they keep their 0-1 PFT band and bypass the
+operator's own task capacity. The generation worker only lowers a band to the
+board's per-task cap, and records it when it does.
 
 If the Board Manager queues the wrong work or a generated request fails before a task offer exists, close the allocation chain instead of retrying it blindly. The task-generation worker automatically does this for failed Board Manager-generated requests before offer publication: it marks the allocation failed, marks the generation job failed, stales the semantic intent, and hides the task request receipt as operator-audit-only so it does not appear as `Needs attention` in the Tasks UI. If automatic repair did not run, use `npm run network-task-allocation-repair -- fail --allocation-id <id> --reason "<reason>" --execute` or `npm run network-task-allocation-repair -- fail --request-id <id> --reason "<reason>" --execute`. To route an operator-supplied replacement through the normal Board Manager hook, use `npm run board-manager:manual-network-task -- --project-id <id> --account-id <account> --wallet <wallet> --need "<plain-English task need>" --reason "<routing reason>" --execute`. The manual command creates an auditable Board Manager run and still uses `initiate_network_task`; it does not insert a visible task directly.
 
@@ -630,7 +494,7 @@ Network Task capacity has one canonical rule, implemented once in `listNetworkTa
 - Capacity ignores task class. An active allocation of either class (`network` or `alpha`) blocks new allocation for that wallet; cross-class blocking is explicit policy.
 - Capacity is wallet-aware. Once an outstanding task or pending generation job has a concrete candidate wallet, it consumes capacity only for that same wallet. If the user delinks that wallet and links a different active wallet, the old wallet's task stays in the audit trail but does not block the newly linked wallet from Board Manager routing (wallet-bound blockers only count while that wallet is still an active linked user wallet in `pftl_sync_wallets`). Account-only pending work still consumes account capacity until the candidate wallet is known.
 
-Because all three surfaces call the same predicate, the executor cannot double-allocate a contributor the eligibility panel calls busy, and the eligibility panel cannot say "available for routing" while the Board Manager packet marks the candidate blocked. `npm run network-task-capacity-smoke` pins the three call paths to the same verdicts.
+Because all three surfaces call the same predicate, the executor cannot double-allocate a contributor the eligibility panel calls busy, and the eligibility panel cannot say "available for routing" while the Board Manager packet marks the candidate blocked. `node scripts/network-task-capacity-smoke.mjs` pins the three call paths to the same verdicts.
 
 The source packet also includes `boardActionPressure`, a deterministic health summary. This is the guard against passive Hive decisions. If active projects have no live tasks, no contributors, no pending generation, or a recent stopped Network Task with no follow-up, the packet marks the board as action-required. It also marks action required when the latest project-linked Network Task was stopped and there is no newer replacement task or generation job, even if older work is still open. In that state the manager should route work, assign an eligible contributor, ask for the smallest missing decision input, refresh the project document with a concrete blocker, restore a matching archived project, or archive the project. `eligibleCandidateCount` means candidates still available after outstanding and pending Network Tasks are accounted for, so a busy contributor is not counted as free capacity. Personal and engineering tasks are context only; they do not make a contributor ineligible for a Network Task. Recent refusals are routing feedback, not a live capacity status; the manager should inspect refusal notes and route materially different work or ask a follow-up instead of saying the candidate is "currently refusing tasks." When capacity is unavailable, the packet includes the exact outstanding Network Task or pending generation job consuming that capacity in `boardActionPressure.candidateCapacity.activeNetworkTaskCapacityBlockers`. If `eligibleCandidateCount` is zero and there is no open user follow-up, the expected fallback is `message_user`, not `do_nothing`. If `eligibleCandidateCount` is greater than zero, stale project documents or older follow-up summaries that claim all contributors are blocked must be treated as outdated context and not as current blockers. A Project Status refresh is not live board motion; it cannot by itself clear an empty project. `do_nothing` is acceptable when the board already has live motion, a matching task/generation job is in flight, or a targeted user follow-up is waiting for a response.
 
@@ -750,20 +614,18 @@ workflow.
 
 ## Technical Architecture
 
-The production app does not import from `mocks/hive.jsx`. The mock is preserved as design input, and the app route is implemented as normal source code:
+The production app does not import design mocks, and the app route is implemented as normal source code:
 
 - `src/features/hive/HiveView.jsx` renders the Hive index and project detail drill-in.
 - `src/features/hive/hive.css` contains the isolated styling for the surface.
 - `src/main.jsx` registers `#hive`, adds the sidebar entry, and lazy-loads the view.
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
-- `server/hive-board-secretary-worker.js` runs the advisory per-board GLM 5.3 memo writer every 15 minutes.
+- `server/hive-board-secretary-worker.js` runs the advisory per-board GLM 5.3 memo writer (changed boards only, at most every 6 hours).
 - `server/repositories/hive-board-secretary.js` builds deterministic board-scoped packets, truncates rewarded task evidence, persists current memo rows, and exposes public memo reads for Hive projects.
 - `server/hive-board-secretary-provider.js` calls Vercel `zai/glm-5.3` with Ambient backup for Project Status Markdown.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
 - `server/profile-daily-airdrop-worker.js` runs recurring Daily Airdrop scoring/issuance when enabled and records internal `daily_airdrop` cards into the Hive Mind Agent feed.
-- `server/board-manager-decision-provider.js` exposes only the Vercel GLM 5.3 (with Ambient backup) decision route; retired provider values fail closed.
 - `server/repositories/board-manager-health.js` computes `boardActionPressure`, including empty active project and stopped Network Task pressure.
-- `server/repositories/board-manager-scheduler.js` owns the durable Board Manager scheduler helpers: scope setup, job enqueue, due tick enqueue, job claiming, job completion, and deferred/failed retries.
 - `server/board-manager-actions.js` executes the first Board Manager action hooks.
 - `server/process-role.js` separates `web`, `worker`, and local `all` startup roles so Fly web instances do not accidentally run background workers.
 - `server/repositories/network-tasks.js` creates project-linked Network Task and Alpha Task allocations, claims generation jobs, and links published offers back to Hive projects.
@@ -772,10 +634,6 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/network-task-recovery.js` runs the restart recovery loop for active Network Tasks and exposes operator logs through `npm run network-task-recovery`.
 - `server/network-task-generation-worker.js` consumes queued network-task generation jobs and hands them to the existing task-generation worker through `task_requests`.
 - `server/repositories/chat-assistant-messages.js` appends Board Manager `message_user` responses to existing account-owned chat conversations without creating a billed model run.
-- `scripts/board-manager-model-exec.mjs` runs one provider-backed Board Manager tick or, with `--execute`, dispatches supported action hooks.
-- `scripts/board-manager-codex-exec.mjs` remains a manual operator path for repo-aware Codex work, not the production Board Manager default.
-- `scripts/board-manager-worker.mjs` is the durable job-driven Board Manager worker entrypoint for Fly or local production-like runs.
-- `scripts/board-manager-ops.mjs` provides operator commands for status, enqueue, pause, resume, and scope setup.
 - `schemas/board-manager-action.schema.json` constrains the Board Manager model output.
 - `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
 - `server/repositories/hive-projects.js` reads active network projects, links the latest Secretary report as a project input, derives routing feed/operator rollups from project task refs when explicit contributor/activity rows are absent, and serves the public network-project task detail pop-out payload. The routing feed, project tasks, and project activity sort by event/update timestamp descending before rendering. Contributor, operator, task-assignee, and activity rows use the selected profile NFT/PFP from `profile_nfts` when available, falling back to the generated badge only when no image exists.
@@ -831,8 +689,6 @@ Board Manager target:
 - Existing workers are called only as action handlers.
 - Product Documents refresh when the manager decides a project is stale or materially changed.
 - If a Product Document identifies missing information, the manager can research, ask follow-up questions, or initiate information-gathering Network Tasks under the existing project.
-- Production runs come from a durable Fly worker process with `board_manager_jobs`, `board_manager_leases`, and auditable `board_manager_runs`, not from local tmux. The runnable entrypoints are `npm run start:web`, `npm run start:worker`, and `npm run start:board-manager`.
-- Local Docker now has a dedicated `board-manager` service. It runs `npm run board-manager:worker -- --execute`, uses the configured Board Manager provider credentials from the app environment, and consumes `board_manager_jobs` separately from the API process. Its periodic scope cadence is configured by `TASKNODE_BOARD_MANAGER_CADENCE_SECONDS` and defaults to 300 seconds in the local and Fly deployment environment. Its useful board-mutation budget is configured by `TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR` and defaults to 60 actions per rolling hour. Internal audit cards such as daily airdrop payout reports appear in Hive Mind Agent but do not consume that budget. Running jobs older than the configured stale-job threshold are recovered for retry so a killed worker cannot leave the Hive agent stuck.
 - Board Manager scope status is durable. `enabled`, `paused`, and `disabled` live in `board_manager_scopes`; worker startup can create a missing scope and update cadence/budget settings, but it must not silently flip a paused or disabled scope back to enabled unless the operator explicitly sets that status.
 - The API worker must run both `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true` and `TASKNODE_TASK_GENERATION_WORKER_ENABLED=true`. The Network Task worker consumes `network_task_generation_jobs` and creates normal encrypted task request bundles; the task-generation worker publishes the real `pf.task.offer.v1` task pointer. A queued generation job is only a pending worker input, not a visible Network Task.
 - `network_task_generation_jobs` has the same stale-job recovery as Board Manager jobs. Each queue pass reclaims `running` jobs whose lock is older than `TASKNODE_NETWORK_TASK_GENERATION_STALE_MINUTES` (default 5) back through the normal failure path, so a killed worker cannot wedge a project in pending generation or hold candidate capacity forever; repeated crashes converge to `failed` and fail the allocation and intent. Retried generation jobs are also double-publish safe: if the deterministic task request already advanced (claimed, proposed, or linked to a generated task), the retry reuses the existing request and marks the job generated instead of re-queueing the request for a second `pf.task.offer.v1`.

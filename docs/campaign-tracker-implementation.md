@@ -25,10 +25,8 @@ Every tracker route is under `/api/terminal/tasknode/campaign-tracker`, behind t
 ## Verification commands
 
 - `npm run campaign-tracker-smoke`: disposable PostgreSQL schema, actual migration and repository checks.
-- `npm run campaign-tracker-contract-smoke`: gateway/schema tests and AST guard against regex on tracker LLM paths.
+- `node scripts/campaign-tracker-contract-smoke.mjs`: gateway/schema tests and AST guard against regex on tracker LLM paths.
 - `node scripts/campaign-tracker-live-model-smoke.mjs`: explicit subscription-backed pinned-model check.
-- `node scripts/campaign-tracker-qa-server.mjs`: loopback-only PTY fixture using real PostgreSQL/routes, fixture authentication and assistant/summary responses. SIGTERM/SIGINT drops its own schema.
-- `node scripts/campaign-tracker-pty-check.mjs before|after|shared|revoked`: assertions against actions actually performed in the local TUI.
 
 Corbanu candidate evidence and PTY driver live at `CorbanuTerminal/qa/campaign-tracker/2026-09-06/`. Build products and detailed logs remain on `/mnt/HC_Volume_101713660`.
 

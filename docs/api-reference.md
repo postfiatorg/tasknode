@@ -127,6 +127,7 @@ resource membership, or other context beyond a generic identity class.
 | `network_task_profile` | `/api/memory/network-task-profile` | `GET` `POST` | `session` | strict JSON ≤ 1024 bytes | — |
 | `directory_leaderboard` | `/api/directory/leaderboard` | `GET` | `optional` | — | — |
 | `directory_rewarded_tasks` | `/api/directory/rewarded-tasks` | `GET` | `optional` | — | — |
+| `directory_blacklist` | `/api/directory/blacklist` | `GET` | `optional` | — | — |
 | `hive_projects` | `/api/hive/projects` | `GET` | `optional` | — | — |
 | `hive_task_detail` | `/api/hive/task-detail` | `GET` | `optional` | — | — |
 | `hive_capability_profile` | `/api/hive/capability-profile` | `POST` | `admin_bearer` | strict JSON ≤ 32768 bytes | 30 / 600s |
@@ -135,7 +136,6 @@ resource membership, or other context beyond a generic identity class.
 | `hive_brain` | `/api/hive/brain/…` | `GET` | `session` | — | — |
 | `hive_reports_rerun` | `/api/hive/reports/rerun` | `POST` | `session` | strict JSON ≤ 4096 bytes | — |
 | `hive_reports` | `/api/hive/reports/…` | `GET` | `session` | — | — |
-| `hive_decision` | `/api/hive/decision/…` | `GET` | `session` | — | — |
 | `hive_bm_feed` | `/api/hive/bm-feed` | `GET` | `none` | — | — |
 | `hive_context` | `/api/hive/context` | `GET` `POST` | `handler` | strict JSON ≤ 8388608 bytes | — |
 | `hive_group` | `/api/hive/group` | `GET` | `optional` | — | — |
@@ -189,6 +189,8 @@ resource membership, or other context beyond a generic identity class.
 | `context_manifest_ink` | `/api/context/manifest/ink` | `POST` | `handler` | strict JSON ≤ 1200000 bytes | 20 / 600s |
 | `context_edit_save` | `/api/context/edit/save` | `POST` | `handler` | strict JSON ≤ 65536 bytes | — |
 | `context_edit_proposal` | `/api/context/edit/proposals//…` | `POST` | `handler` | strict JSON ≤ 1024 bytes | — |
+| `decision_create` | `/api/decisions/jobs` | `POST` | `session` | strict JSON ≤ 262144 bytes | 6 / 600s |
+| `decision_jobs` | `/api/decisions/jobs//…` | `GET` | `session` | — | 240 / 600s |
 | `deep_research_create` | `/api/deep-research/jobs` | `POST` | `session` | strict JSON ≤ 131072 bytes | 6 / 600s |
 | `deep_research_jobs` | `/api/deep-research/jobs//…` | `GET` `POST` | `session` | POST: strict JSON ≤ 1024 bytes | 120 / 600s |
 | `context_rewrite_create` | `/api/context/rewrite/jobs` | `POST` | `session` | strict JSON ≤ 1200000 bytes | — |
@@ -201,4 +203,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **175 route policies** and **8 authentication modes**.
+Total: **177 route policies** and **8 authentication modes**.

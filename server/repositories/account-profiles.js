@@ -81,7 +81,7 @@ async function mutateProfile(runtimeFallback, apply, params) {
     return { ...changed, account: changed.account };
   });
   if (result.ok) {
-    await refreshDurableAccountCache();
+    await refreshDurableAccountCache([result.account.id]);
     result.account = await getAccount(result.account.id);
   }
   return result;
@@ -120,7 +120,7 @@ export async function setAccountExpertReview({ accountId = "", review = {} } = {
     await persistProfileAccount(client, account);
     return { ok: true, expertReview: normalizedReview };
   });
-  if (result.ok) await refreshDurableAccountCache();
+  if (result.ok) await refreshDurableAccountCache([normalizedAccountId]);
   return result;
 }
 export async function listAccountIdentityProfiles() {

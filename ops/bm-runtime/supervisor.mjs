@@ -13,11 +13,42 @@ const read = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } 
 const save = (file, value) => { writeFileSync(`${file}.tmp`, JSON.stringify(value, null, 2), { mode: 0o600 }); renameSync(`${file}.tmp`, file); };
 const log = (event) => appendFileSync(path.join(home, "logs", "supervisor.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`);
 
+export function recoverySchedule(pending = {}) {
+  const attempts = Number(pending?.attempts || 0);
+  const delivered = Date.parse(pending?.lastDeliveredAt);
+  const delayMs = attempts < 3 ? 5 * 60_000 : Math.min(6 * 60 * 60_000, 15 * 60_000 * 2 ** Math.min(5, attempts - 3));
+  return { attempts, delayMs, nextRetryAt: Number.isFinite(delivered) ? new Date(delivered + delayMs).toISOString() : "" };
+}
+
+// A pending round with no delivery because the terminal never reports ready
+// is a stall the delivery-attempt alert cannot see. Track how long the
+// terminal has been continuously busy while a round waits; alert, then
+// interrupt the terminal (it is almost always a self-imposed sleep or poll).
+export const BUSY_ALERT_MS = 30 * 60_000;
+export const BUSY_INTERRUPT_MS = 90 * 60_000;
+export const BUSY_INTERRUPT_REPEAT_MS = 60 * 60_000;
+
+export function busyBlockedDecision({ round, status, pending, busy = {}, now = Date.now() }) {
+  if (!round?.id || round.state !== "pending") return { state: "clear" };
+  const fresh = terminalStatusFresh(status, now);
+  if (!fresh || status.ready) return { state: "clear" };
+  // Only an undelivered round counts. A terminal busy on a delivered round is working.
+  if (Number(pending?.attempts || 0) > 0) return { state: "clear" };
+  const since = busy.roundId === round.id && busy.since ? busy.since : new Date(now).toISOString();
+  const busyMs = now - Date.parse(since);
+  const lastInterrupt = Date.parse(busy.interruptedAt);
+  if (busyMs >= BUSY_INTERRUPT_MS && (!Number.isFinite(lastInterrupt) || now - lastInterrupt >= BUSY_INTERRUPT_REPEAT_MS)) return { state: "interrupt", since, busyMs };
+  if (busyMs >= BUSY_ALERT_MS && !busy.alerted) return { state: "alert", since, busyMs };
+  return { state: "tracking", since, busyMs };
+}
+
 export function deliveryDecision({ round, status, pending, now = Date.now() }) {
   if (!round?.id || round.state !== "pending") return "quiet";
   if (!terminalStatusFresh(status, now) || !status.ready) return "wait_ready";
-  if (pending?.lastDeliveredAt && now - Date.parse(pending.lastDeliveredAt) < 5 * 60_000) return "wait_completion";
-  return Number(pending?.attempts || 0) >= 3 ? "alert_pending" : "deliver";
+  const { attempts, nextRetryAt } = recoverySchedule(pending);
+  if (attempts >= 3 && !pending?.alerted) return "alert_pending";
+  if (nextRetryAt && now < Date.parse(nextRetryAt)) return attempts >= 3 ? "wait_recovery" : "wait_completion";
+  return attempts >= 3 ? "recover" : "deliver";
 }
 
 export function terminalStatusFresh(status, now = Date.now()) {
@@ -27,11 +58,92 @@ export function terminalStatusFresh(status, now = Date.now()) {
 }
 
 export function mergeRoundProgress(pending, round) {
-  const next = { ...pending };
+  const next = { ...pending, deliveryCount: Math.max(Number(pending?.deliveryCount || 0), Number(pending?.attempts || 0)) };
   const progress = JSON.stringify(round.results_json);
   if (next.progress && next.progress !== progress) { next.attempts = 0; next.alerted = false; next.lastDeliveredAt = ""; }
   next.progress = progress;
   return next;
+}
+
+// Cross-round progress tracking. A round completes when every duty has a
+// recorded outcome; that proves the work order was answered, not that the task
+// advanced. Progress duties disappear from the duty set as soon as the manager
+// records the required decision or reply, so the same one reported anything
+// but completed in consecutive processed rounds is a stalled task and must
+// escalate instead of quietly cycling. Routing, staleness and board-info duties
+// recur legitimately (nothing routable, not yet eligible) and are not tracked.
+export const RECURRING_BLOCKER_ROUNDS = 2;
+export const PROGRESS_DUTY_TYPES = new Set(["review_due", "verification_due", "hive_chat_escalation"]);
+// Routing that serves nobody while eligible candidates exist is tracked
+// separately: a legitimately quiet round is "deferred" with zero candidates or
+// with every candidate carrying a coded reason, and does not escalate at all;
+// "not_served" with candidates present escalates after this many rounds.
+export const ROUTING_STALL_ROUNDS = 3;
+export const ROUND_OPEN_HOLDOFF_MS = 60_000;
+
+// Keyed by the stable duty identity (type, board, task). Some hashed duty ids
+// include staleness timestamps and change every round; the task does not.
+export function blockerKey(duty) { return [duty.type, duty.board_id, duty.task_id || ""].join("|"); }
+
+export function trackRecurringBlockers(previous = {}, round) {
+  const next = {};
+  for (const duty of round?.duties_json || []) {
+    const result = round.results_json?.[duty.id];
+    if (!result || result.outcome === "completed") continue;
+    const routing = duty.type === "routing_due";
+    if (!routing && !PROGRESS_DUTY_TYPES.has(duty.type)) continue;
+    if (routing && (result.outcome !== "not_served" || !Array.isArray(duty.candidate_ids) || !duty.candidate_ids.length)) continue;
+    const key = blockerKey(duty);
+    const prior = previous?.[key];
+    const entry = {
+      dutyId: duty.id, type: duty.type, board_id: duty.board_id, task_id: duty.task_id || "",
+      rounds: Number(prior?.rounds || 0) + 1,
+      firstRoundId: prior?.firstRoundId || round.id, lastRoundId: round.id,
+      lastOutcome: result.outcome, lastReason: String(result.reason || "").slice(0, 600), lastRecordedAt: result.recordedAt || "",
+      alertedRounds: Number(prior?.alertedRounds || 0),
+      threshold: routing ? ROUTING_STALL_ROUNDS : RECURRING_BLOCKER_ROUNDS,
+    };
+    if (routing) {
+      const byAccount = new Map((duty.candidates || []).map((member) => [member.account_id, member]));
+      entry.unserved = (result.dispositions || []).filter((item) => item.disposition === "not_served").map((item) => ({
+        account_id: item.account_id, handle: byAccount.get(item.account_id)?.public_handle || "", badges: byAccount.get(item.account_id)?.badges || [],
+        reason_code: item.reason_code || "other", reason: String(item.reason || "").slice(0, 200),
+      }));
+      const codes = entry.unserved.map((item) => item.reason_code);
+      entry.dominantReasonCode = codes.sort((a, b) => codes.filter((c) => c === b).length - codes.filter((c) => c === a).length)[0] || "";
+    }
+    next[key] = entry;
+  }
+  return next;
+}
+
+export function recurringBlockers(blockers = {}) {
+  return Object.values(blockers || {}).filter((item) => Number(item.rounds || 0) >= Number(item.threshold || RECURRING_BLOCKER_ROUNDS))
+    .sort((a, b) => b.rounds - a.rounds || String(a.task_id).localeCompare(String(b.task_id)));
+}
+
+export function escalationDirective(recurring = []) {
+  if (!recurring.length) return "";
+  const stalledTasks = recurring.filter((item) => item.type !== "routing_due");
+  const stalledRouting = recurring.filter((item) => item.type === "routing_due");
+  let text = "";
+  if (stalledTasks.length) {
+    const lines = stalledTasks.map((item) => `- ${item.type}${item.task_id ? ` ${item.task_id}` : ""} (${item.board_id}): ${item.lastOutcome} in ${item.rounds} consecutive rounds; last reason: ${JSON.stringify(item.lastReason.slice(0, 240))}`);
+    text += ` ESCALATION - the following duties were reported blocked or deferred in consecutive rounds without task progress:\n${lines.join("\n")}\n` +
+      `A repeated identical command cannot change a task's state. For each duty above: run task detail, compare the current status to the submission lifecycle in the skill (submitted -> verify request -> contributor verification response -> review), and issue only the command valid for that status. If the API rejects a command with lifecycle_violation, do not reissue it; quote the exact error text and the task status in the duty result. If the blocker is outside your control, name the exact dependency and who must act.`;
+  }
+  if (stalledRouting.length) {
+    const lines = stalledRouting.map((item) => `- ${item.board_id}: ${item.unserved?.length || 0} eligible contributor(s) unserved for ${item.rounds} consecutive rounds (dominant reason_code ${item.dominantReasonCode || "none"}): ${(item.unserved || []).map((member) => `${member.handle ? "@" + member.handle : member.account_id} [${(member.badges || []).join("/")}] ${member.reason_code}`).join("; ")}`);
+    text += ` ROUTING ESCALATION - these boards served nobody for ${ROUTING_STALL_ROUNDS}+ rounds while eligible contributors waited:\n${lines.join("\n")}\n` +
+      `A live offer to one contributor does not occupy a board. For every contributor listed, this round must end with either an executed task create (grounded work or an investigation that creates the grounding) or a disposition with a reason_code that a newcomer could verify. source_unavailable means a missing input, not a routing decision: route work that does not need that source. Do not reuse last round's reason text.`;
+  }
+  return text;
+}
+
+export function recurringSummary(recurring = []) {
+  if (!recurring.length) return "";
+  return JSON.stringify(recurring.map((item) => ({ type: item.type, board_id: item.board_id, task_id: item.task_id, rounds: item.rounds,
+    ...(item.type === "routing_due" ? { unserved: item.unserved?.length || 0, reason_code: item.dominantReasonCode || "" } : {}) })));
 }
 
 function processAlive(alias) {
@@ -57,10 +169,31 @@ export async function superviseOnce() {
     let pending = read(pendingFile);
     const remote = (argv) => remoteBoardCommand(argv, { tokenFile, stateDir, requestKey: `supervisor_${randomUUID()}` });
     let round = pending?.id ? await remote(["round-status", pending.id]) : null;
+    const blockersFile = path.join(stateDir, `${agent.alias}.blockers.json`);
     if (!round || round.state !== "pending") {
-      if (round) log({ alias: agent.alias, event: "round_processed", roundId: round.id, outcomes: round.results_json });
+      if (round) {
+        log({ alias: agent.alias, event: "round_processed", roundId: round.id, outcomes: round.results_json });
+        const blockers = trackRecurringBlockers(read(blockersFile) || {}, round);
+        for (const item of recurringBlockers(blockers)) {
+          if (item.alertedRounds >= item.rounds) continue;
+          item.alertedRounds = item.rounds;
+          log({ alias: agent.alias, event: "duty_blocked_across_rounds", dutyId: item.dutyId, type: item.type, boardId: item.board_id, taskId: item.task_id, rounds: item.rounds, firstRoundId: item.firstRoundId, lastRoundId: item.lastRoundId, lastOutcome: item.lastOutcome, lastReason: item.lastReason });
+          appendFileSync(path.join(home, "ALERTS.log"), item.type === "routing_due"
+            ? `${new Date().toISOString()} ${agent.alias}: routing ${item.board_id} served nobody in ${item.rounds} consecutive rounds (${item.firstRoundId}..${item.lastRoundId}); ${item.unserved?.length || 0} eligible unserved; dominant reason_code ${item.dominantReasonCode || "none"}\n`
+            : `${new Date().toISOString()} ${agent.alias}: ${item.type}${item.task_id ? ` ${item.task_id}` : ""} ${item.lastOutcome} in ${item.rounds} consecutive rounds (${item.firstRoundId}..${item.lastRoundId}); no task progress; last reason: ${item.lastReason.slice(0, 300)}\n`);
+        }
+        save(blockersFile, blockers);
+      }
       if (existsSync(pendingFile)) unlinkSync(pendingFile);
-      round = await remote(["round-open", ...agent.boards]);
+      // round-open computes every board's duties (per-member eligibility, tens of
+      // seconds) while holding the actor's command lock. During cooldown or a
+      // quiet board set, reopening every tick starves every other mutation
+      // (handoff, task create) of its 15-second budget. Hold off for a minute.
+      const openFile = path.join(stateDir, `${agent.alias}.roundopen.json`);
+      const lastOpen = read(openFile);
+      const holdOff = lastOpen && ["backoff", "quiet"].includes(lastOpen.state) && Date.now() - Date.parse(lastOpen.at) < ROUND_OPEN_HOLDOFF_MS;
+      round = holdOff ? null : await remote(["round-open", ...agent.boards]);
+      if (!holdOff) save(openFile, { at: new Date().toISOString(), state: round?.state || "" });
       pending = round?.id && round.state === "pending" ? { id: round.id, attempts: 0 } : null;
       if (pending) save(pendingFile, pending);
     }
@@ -69,12 +202,45 @@ export async function superviseOnce() {
     }
     const control = path.join(stateDir, `${agent.alias}.control`);
     const status = read(path.join(control, "status.json"));
-    const runtimeState = !terminalStatusFresh(status) ? "unavailable" : status.ready ? "ready" : "busy";
-    const projected = JSON.stringify([runtimeState, round?.id, round?.state, round?.results_json]);
+    const recovery = recoverySchedule(pending);
+    const runtimeState = !terminalStatusFresh(status) ? "unavailable" : !status.ready ? "busy" : recovery.attempts >= 3 ? "cooldown" : "ready";
+    const recurring = recurringBlockers(read(blockersFile) || {});
+    const recurringFlag = recurringSummary(recurring);
+    const projected = JSON.stringify([runtimeState, round?.id, round?.state, round?.results_json, recovery, recurringFlag]);
     const feedFile = path.join(stateDir, `${agent.alias}.feed.json`);
     if (read(feedFile)?.projected !== projected) {
-      await remote(["runtime-status", "--state", runtimeState, ...(round?.id ? ["--round", round.id] : [])]);
+      const published = await remote(["runtime-status", "--state", runtimeState, "--attempts", String(recovery.attempts), ...(recovery.nextRetryAt ? ["--next-retry", recovery.nextRetryAt] : []), ...(round?.id ? ["--round", round.id] : []), ...(recurringFlag ? ["--recurring", recurringFlag] : [])]);
       save(feedFile, { projected });
+      // Allocation health is computed by the API; the supervisor only alerts.
+      const health = published?.allocation_health;
+      if (health?.evaluation?.status === "critical") {
+        const healthFile = path.join(stateDir, `${agent.alias}.health.json`);
+        const last = Date.parse(read(healthFile)?.alertedAt);
+        if (!Number.isFinite(last) || Date.now() - last > 6 * 60 * 60_000) {
+          appendFileSync(path.join(home, "ALERTS.log"), `${new Date().toISOString()} ${agent.alias}: allocation health critical: ${health.evaluation.label}; boards not served 3+ rounds: ${(health.aggregate.boards_not_served_3_plus || []).join(", ") || "none"}\n`);
+          log({ alias: agent.alias, event: "allocation_health_critical", ...health.aggregate });
+          save(healthFile, { alertedAt: new Date().toISOString(), aggregate: health.aggregate });
+        }
+      }
+    }
+    const busyFile = path.join(stateDir, `${agent.alias}.busy.json`);
+    const busy = read(busyFile) || {};
+    const blocked = busyBlockedDecision({ round, status, pending, busy });
+    if (blocked.state === "clear") { if (existsSync(busyFile)) unlinkSync(busyFile); }
+    else {
+      const next = { roundId: round.id, since: blocked.since, alerted: busy.alerted === true && busy.roundId === round.id, interruptedAt: busy.roundId === round.id ? busy.interruptedAt || "" : "" };
+      if (blocked.state === "alert") {
+        next.alerted = true;
+        log({ alias: agent.alias, event: "terminal_busy_blocking_delivery", roundId: round.id, busyMinutes: Math.round(blocked.busyMs / 60_000) });
+        appendFileSync(path.join(home, "ALERTS.log"), `${new Date().toISOString()} ${agent.alias}: round ${round.id} undelivered; terminal busy for ${Math.round(blocked.busyMs / 60_000)} minutes (likely a sleep or polling loop)\n`);
+      }
+      if (blocked.state === "interrupt") {
+        next.interruptedAt = new Date().toISOString();
+        try { execFileSync("tmux", ["send-keys", "-t", `bm-${agent.alias}`, "Escape"], { stdio: "ignore", timeout: 10_000 }); } catch { /* pane missing; relaunch path handles it */ }
+        log({ alias: agent.alias, event: "terminal_interrupted_for_delivery", roundId: round.id, busyMinutes: Math.round(blocked.busyMs / 60_000) });
+        appendFileSync(path.join(home, "ALERTS.log"), `${new Date().toISOString()} ${agent.alias}: interrupted terminal after ${Math.round(blocked.busyMs / 60_000)} busy minutes so round ${round.id} can be delivered\n`);
+      }
+      save(busyFile, next);
     }
     const decision = deliveryDecision({ round, status, pending });
     if (decision === "alert_pending") {
@@ -85,17 +251,18 @@ export async function superviseOnce() {
       }
       continue;
     }
-    if (decision !== "deliver" || existsSync(path.join(control, "inbox.json"))) continue;
+    if (!["deliver", "recover"].includes(decision) || existsSync(path.join(control, "inbox.json"))) continue;
     const workdir = path.join(home, "duties", agent.alias);
     mkdirSync(workdir, { recursive: true, mode: 0o700 });
     const file = path.join(workdir, `${round.id}.json`);
     save(file, round); save(path.join(workdir, "latest.json"), round);
-    const id = `${round.id}_${Number(pending.attempts || 0) + 1}`;
-    save(path.join(control, "inbox.json"), { id, prompt: `Read the board-manager skill and the durable work order ${file}. Complete each unresolved duty, then report its explicit result using: node ${path.join(directory, "../../scripts/bm.mjs")} duty-result ${round.id} <duty-id> --outcome completed|blocked|deferred --reason '<specific outcome and evidence>'. Journaling alone does not finish a duty. Keep Kimi K3 as the task manager and follow the existing board rules. This is delivery ${Number(pending.attempts || 0) + 1}; reconcile existing command receipts before repeating a mutation.` });
+    pending.deliveryCount = Number(pending.deliveryCount || 0) + 1;
+    const id = `${round.id}_${pending.deliveryCount}`;
+    save(path.join(control, "inbox.json"), { id, prompt: `Read the board-manager skill and the durable work order ${file}. Complete each unresolved duty, then report its explicit result using: node ${path.join(directory, "../../scripts/bm.mjs")} duty-result ${round.id} <duty-id> --outcome completed|blocked|deferred|not_served --reason '<specific outcome and evidence>'. A routing_due duty additionally requires --dispositions '<json array>' with one entry per listed candidate: {"account_id","disposition":"routed|investigation_routed|not_served","task_id" (for routed),"reason_code" (for not_served: no_badge_fit|source_unavailable|budget_exhausted|capacity_taken_this_round|restricted_board|contributor_declined_recently|other),"reason"}. Routed entries must match an executed task create for that account this round. Journaling alone does not finish a duty. When every duty in this round has a recorded result, END YOUR TURN immediately: do not sleep, poll, watch files, or wait for contributor responses or the next work order in any way. Work orders and contributor responses are delivered only to an idle terminal; a waiting terminal blocks every submission on every board. Refresh board packets before reusing earlier blockers: generation_queue counts and generation_failures describe current work and historical terminal failures separately. A failed job will not flush itself; use the documented explicit provider-failure recovery after revalidating the original need. Keep Kimi K3 as the task manager and follow the existing board rules. This is delivery ${Number(pending.attempts || 0) + 1}; reconcile existing command receipts before repeating a mutation.${escalationDirective(recurring)}` });
     pending.attempts = Number(pending.attempts || 0) + 1;
     pending.lastDeliveredAt = new Date().toISOString();
     save(pendingFile, pending);
-    log({ alias: agent.alias, event: "work_queued_for_ready_terminal", roundId: round.id, deliveryId: id });
+    log({ alias: agent.alias, event: decision === "recover" ? "recovery_probe_queued" : "work_queued_for_ready_terminal", roundId: round.id, deliveryId: id, nextRetryAt: recoverySchedule(pending).nextRetryAt });
   }
   save(path.join(stateDir, "scoped-supervisor-tick.json"), { version: 1, pid: process.pid, completedAt: new Date().toISOString() });
 }

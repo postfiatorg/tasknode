@@ -159,7 +159,7 @@ export function approvalRecordsFromNetworkBadgeProjection({
     .filter((badge) => networkBadgeDefinitions[safeText(badge.badgeId, 80)]);
   const identityApprovals = [];
   const accountBadges = [];
-  badges.forEach((badge, index) => {
+  badges.forEach((badge) => {
     const badgeId = safeText(badge.badgeId, 80);
     const provider = approvalProviderForBadge(badgeId);
     const approvalScope = `badge:${badgeId}`;
@@ -194,7 +194,7 @@ export function approvalRecordsFromNetworkBadgeProjection({
       badgeId,
       status: "verified",
       publicVisible: true,
-      selectedDefault: index === 0,
+      selectedDefault: accountBadges.length === 0,
       verifiedByAccountId: safeText(verifiedByAccountId, 180),
       verifiedByOperator: safeText(verifiedByOperator, 120),
       evidenceTaskId: "",
@@ -217,6 +217,14 @@ function ensureDatabase() {
   const error = new Error("identity_approvals_database_not_configured");
   error.status = 503;
   throw error;
+}
+
+async function lockBadgeDefault(client, accountId) {
+  // Refresh and explicit choices must observe one account's latest selection,
+  // including when a first refresh is inserting its initial badge rows.
+  await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+    `network-badge-default:${accountId}`,
+  ]);
 }
 
 async function listIdentityApprovals({ accountId = "" } = {}) {
@@ -354,6 +362,7 @@ export async function setDefaultNetworkBadge({
     throw error;
   }
   await transaction(async (client) => {
+    await lockBadgeDefault(client, normalizedAccountId);
     const existing = await client.query(
       `
         SELECT 1
@@ -437,6 +446,7 @@ export async function approveNetworkBadge({
     selectedDefault,
   });
   await transaction(async (client) => {
+    await lockBadgeDefault(client, normalizedAccountId);
     await client.query(
       `
         INSERT INTO account_identity_approvals (
@@ -715,6 +725,42 @@ export async function refreshIdentityApprovalsFromProjection({
     verifiedByOperator,
   });
   await transaction(async (client) => {
+    await lockBadgeDefault(client, normalizedAccountId);
+    const existingDefault = await client.query(
+      `
+        SELECT badge.badge_id
+        FROM account_network_badges badge
+        JOIN network_badge_definitions definition ON definition.badge_id = badge.badge_id
+        WHERE badge.account_id = $1
+          AND badge.selected_default = true
+          AND badge.status = 'verified'
+          AND definition.active = true
+          AND badge.revoked_at IS NULL
+          AND (badge.expires_at IS NULL OR badge.expires_at > now())
+          AND (
+            COALESCE(badge.evidence_json->>'source', '') <> 'runtime_projection_refresh'
+            OR badge.badge_id = ANY($2::text[])
+          )
+        ORDER BY badge.updated_at DESC, badge.badge_id ASC
+        LIMIT 1
+        FOR UPDATE OF badge
+      `,
+      [normalizedAccountId, materialized.badgeIds]
+    );
+    const defaultBadgeId = existingDefault.rows[0]?.badge_id || materialized.badgeIds[0] || "";
+    // A refresh revalidates evidence; it is not a request to change preference.
+    // Do not OR each row with the first projected badge: that can create two defaults.
+    for (const badge of materialized.accountBadges) {
+      badge.selectedDefault = badge.badgeId === defaultBadgeId;
+    }
+    await client.query(
+      `
+        UPDATE account_network_badges
+        SET selected_default = false, updated_at = now()
+        WHERE account_id = $1 AND selected_default = true AND badge_id <> $2
+      `,
+      [normalizedAccountId, defaultBadgeId]
+    );
     for (const approval of materialized.identityApprovals) {
       await client.query(
         `

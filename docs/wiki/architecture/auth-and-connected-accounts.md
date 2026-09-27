@@ -92,7 +92,7 @@ Unlink rules:
 - Founding-identity safety: account ids are derived from the identity that
   created the account. A founding identity that has been unlinked does not
   re-enter its old account on a later login; it founds a fresh account
-  instead. `npm run account-unlink-provider-smoke` pins all of these rules.
+  instead. `node scripts/account-unlink-provider-smoke.mjs` pins all of these rules.
 
 Discord login and linking are implemented through OAuth and currently enabled in production, while remaining outside the core launch surface:
 
@@ -153,10 +153,26 @@ The current identity product contract is split between this architecture page an
 
 Password login, retained browser accounts, profile-dropdown switching, and the
 required distinct-wallet isolation boundary are specified in
-[`multi-account-password-wallet-spec.md`](./multi-account-password-wallet-spec.md).
+[`multi-account-password-wallet-spec.md`](../../plans/multi-account-password-wallet-spec.md).
 The repository implements that contract. Deployment remains conditional on the
 target environment passing the active-wallet and sync-assignment ownership
 audit; the rollout must never select or move an owner automatically.
+
+## Concurrent Profile Menus And Auth Recovery
+
+Opening the profile menu reads the existing browser account set without rotating
+its cookie or reauthenticating membership. Starting Add account likewise keeps
+that credential until independent authentication succeeds. Fresh authentication
+and a successful profile switch still rotate credentials; simultaneous switches
+serialize against the current token so a losing request cannot invalidate the
+winning response. Logout revokes membership and sessions, and an in-flight list
+request cannot restore the logged-out account.
+
+The profile menu labels the retained-account section **Switch profile**. Failed
+list refreshes preserve the last loaded profiles and show an error. Login,
+switching and logout report network failures and allow retry. Successful login
+reloads the app from its authoritative session cookie, and successful transitions
+keep the account boundary locked until navigation completes.
 
 ## Provider Configuration
 
@@ -266,7 +282,7 @@ Run:
 
 ```bash
 npm run auth-login-state-fixture
-npm run multi-account-password-wallet-smoke
+node scripts/multi-account-password-wallet-smoke.mjs
 npm run account-wallet-repository-smoke
 DATABASE_URL=... npm run wallet-account-isolation-audit
 ```
@@ -279,7 +295,7 @@ Expected final line:
 auth_login_state_fixture_passed transitions=14
 ```
 
-The script is intentionally part of `npm run quality` so future auth changes cannot silently break email, Telegram, Discord, X linking, stale state rejection, or logout.
+Run it before changing auth so email, Telegram, Discord, X linking, stale state rejection, and logout stay covered.
 
 ## Code References
 
@@ -300,3 +316,7 @@ The script is intentionally part of `npm run quality` so future auth changes can
 ## Historical Reference
 
 PFTasks implemented Telegram login through the Telegram Login Widget and verified the callback with the Telegram HMAC check in `api/src/lib/telegram_auth.js`. Task Node now uses the same cryptographic standard but keeps the product behavior simpler: Telegram and Discord are account-link providers, not signup eligibility gates.
+
+### Corbanu index X claims
+
+The registered X callback also relays `cbn1` states signed with the existing Corbanu integration secret to the fixed `https://api.corbanu.com/v2/indexes/x/callback` endpoint. This relay creates no Task Node session and accepts no caller-provided return URL. Corbanu owns the PKCE verifier, browser cookie, one-use state and exact index binding; it exchanges the code and stores the verified X user ID. Existing Task Node OAuth states retain their normal account-link/sign-in behavior. Check with `node scripts/corbanu-x-callback-smoke.mjs` and `npm run auth-login-state-fixture`.

@@ -6,7 +6,7 @@ import { apiChatModels } from "../server/chat-api-models.js";
 import { inferenceChatCompletion, inferenceChatCompletionStream } from "../server/inference.js";
 import { openRouterUsage } from "../server/chat-provider-usage.js";
 
-const labels = { "GPT-6 Astra": "vercel_astra", "Kimi K3": "vercel_kimi" };
+const labels = { "GPT-6 Astra": "vercel_astra", "Kimi K3": "vercel_kimi", "Claude Opus 5.5": "vercel_opus" };
 const results = [];
 const started = Date.now();
 for (const [mode, config] of Object.entries(apiChatModels)) {

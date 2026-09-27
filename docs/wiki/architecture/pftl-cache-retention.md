@@ -26,7 +26,7 @@ latest maintenance run failed.
 Run the retention smoke:
 
 ```bash
-npm run db:pftl-cache-health-retention-smoke
+node scripts/run-smokes.mjs db scripts/pftl-cache-health-retention-postgres-smoke.mjs
 ```
 
 Inspect `pftl_cache_maintenance_runs` and retention environment flags. Retention

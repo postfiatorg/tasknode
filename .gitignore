@@ -15,8 +15,11 @@ deathmarch.log
 deathmarch.pid
 deathmarchseed.txt
 .tasknode-evidence-*.tmp
-docs/verification/evidence/
-docs/verification/task_*.md
+docs/verification/
+# Local design-mock intake; mocks are product inputs, not repository source.
+mocks/
+login.jsx
+artifacts/
 node_modules/
 dist/
 private_prompts/

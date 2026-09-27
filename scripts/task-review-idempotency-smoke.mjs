@@ -107,6 +107,38 @@ const awaitingAgent = nextWorkerClaimState({}, {
   nowMs: Date.parse("2026-09-04T00:00:00.000Z"),
 });
 assert.equal(awaitingAgent.retry_after, "2026-09-04T00:01:00.000Z");
+assert.equal(awaitingAgent.wait_count, 1);
+assert.equal(awaitingAgent.retry_count, 0);
+// Waiting for a manager decision is not failing. Forty-four waits followed by
+// one query timeout must use the first-failure backoff, not the ceiling.
+let waited = {};
+for (let index = 0; index < 44; index += 1) {
+  waited = nextWorkerClaimState(waited, {
+    error: "awaiting_agent_review_decision",
+    retryMode: "fixed",
+    retryDelayMs: 60_000,
+    nowMs: Date.parse("2026-09-20T01:00:00.000Z") + index * 60_000,
+  });
+}
+assert.equal(waited.wait_count, 44);
+assert.equal(waited.retry_count, 0);
+const timeoutAfterWaiting = nextWorkerClaimState(waited, {
+  error: "Query read timeout",
+  retryMode: "exponential",
+  nowMs: Date.parse("2026-09-20T01:44:22.189Z"),
+});
+assert.equal(timeoutAfterWaiting.retry_count, 1);
+assert.equal(timeoutAfterWaiting.wait_count, 44);
+assert.equal(timeoutAfterWaiting.retry_after, "2026-09-20T01:45:22.189Z");
+// A successful pass that ends in a wait closes the failure streak.
+const waitAfterFailures = nextWorkerClaimState({ retry_count: 5, wait_count: 2 }, {
+  error: "awaiting_agent_review_decision",
+  retryMode: "fixed",
+  nowMs: Date.parse("2026-09-20T02:00:00.000Z"),
+});
+assert.equal(waitAfterFailures.retry_count, 0);
+assert.equal(waitAfterFailures.wait_count, 3);
+assert.equal(nextWorkerClaimState({ retry_count: 2, wait_count: 4 }, { retryMode: "none" }).retry_count, 2);
 const mixedSubmissionPayloads = [
   {
     schema: "pf.task.submission.v1",

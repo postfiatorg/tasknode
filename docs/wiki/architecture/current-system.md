@@ -88,7 +88,6 @@ scripts/                     Smoke, migration, operator, and release tooling
 prompts/                     Source-controlled runtime prompts
 docs/wiki/                   User/product and architecture documentation
 docs/archive/                Historical material
-docs/verification/           Internal evidence pending publication review
 docker-compose.dev.yml       Current local stack
 fly.toml                     Current official production topology
 ```
@@ -113,7 +112,6 @@ The current Fly process map is defined by `fly.toml`:
 | `worker-memory-profile` | Chat memory and profile/recommendation work |
 | `worker-airdrop` | Daily airdrop work |
 | `worker-nft-renderer` | Isolated Profile NFT image rendering |
-| `board-secretary` | Hive board-secretary loop |
 
 Kimi K3 runs in the operator-host Corbanu TUI and owns board/task management.
 The obsolete GLM selector and legacy Fly manager launchers are deleted. See
@@ -165,7 +163,7 @@ is already chain-native.
 
 Hive includes projects, a shared public Nostr group chat, network-task routing,
 task management, secretary/reporting work, contributor accounting and the
-board-secretary process. The group reuses Messages identities and public
+board-secretary memos. The group reuses Messages identities and public
 profile pictures. GLM 5.3 Flash periodically selects participation; GLM 5.3
 writes replies using public context. Durable escalations enter the existing
 Kimi K3 Corbanu TUI board manager inbox. Group transport runs in the existing
@@ -204,8 +202,8 @@ source does not prove its external provider or worker is healthy.
 
 Current intentional limits include:
 
-- legacy autonomous Board Manager execution is disabled; `board-secretary` is
-  the active process;
+- legacy autonomous Board Manager execution is disabled; the board secretary
+  only writes advisory memos;
 - the deployed task-pointer reducer and task-accounting harvester flags are
   disabled;
 - automatic/background Context manifest publication is not the default;
@@ -224,11 +222,9 @@ route/auth inventory is `server/route-policies.js`, and route ownership is in
 `server/index.js` plus the route modules it dispatches to. A generated public
 API/auth reference is an open-source readiness requirement.
 
-Focused regression coverage is primarily under `scripts/` and
-`reference_clients/`. The repository currently has hundreds of npm aliases and
-smoke scripts rather than a conventional discoverable JavaScript test suite,
-and no checked-in CI runs the aggregate gate. `npm run file-size-check` is
-currently failing, so `npm run quality` and `npm run check` are not green.
+Regression coverage lives under `scripts/` and `reference_clients/`.
+`npm run check` is the CI gate (`.github/workflows/ci.yml`); a smoke that
+`check` does not run is unverified.
 
 ## Documentation and Publication Boundary
 

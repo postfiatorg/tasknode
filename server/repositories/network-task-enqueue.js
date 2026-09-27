@@ -1,3 +1,7 @@
+import { assertNetworkTaskContentAllowed } from "../network-task-content-policy.js";
+import { VALUE_ACCOUNTABILITY_BOARD_ID, assertNotBlacklisted } from "../value-accountability.js";
+import { MERGED_PR_REQUIREMENT_TEXT } from "../merged-pr-requirement.js";
+import { createHash } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
   recordUserObservabilityEvent,
@@ -10,6 +14,7 @@ import {
 import {
   digestJson,
   jsonValue,
+  assertNetworkTaskRewardFloor,
   rewardBand,
   safeObject,
   safeText,
@@ -41,7 +46,10 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   if (!projectId) throw new Error("network_task_project_required");
   const project = await projectById(projectId);
   if (!project?.id) throw new Error("network_task_project_not_found");
-  const candidate = await resolveCandidate({ decision });
+  const candidate = await resolveCandidate({
+    decision,
+    requireBadge: projectId !== VALUE_ACCOUNTABILITY_BOARD_ID,
+  });
   if (!candidate?.accountId || !candidate?.walletAddress) {
     throw new Error("network_task_candidate_required");
   }
@@ -52,11 +60,24 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       networkTask.taskClass ||
       (payload.project?.type === "alpha_generation" || project.type === "alpha_generation" ? "alpha" : "network")
   );
+  const operatorDuty = networkTask.operator_duty === true;
   const band = rewardBand({
     min: networkTask.reward_min_pft ?? networkTask.rewardMinPft,
     max: networkTask.reward_max_pft ?? networkTask.rewardMaxPft,
+    operatorDuty,
   });
+  // The decision contract may already have clamped the band; judge and record
+  // the band the manager asked for, not the clamped one.
+  const rewardBandClampedFrom = networkTask.reward_band_clamped_from || band.clampedFrom || null;
+  assertNetworkTaskRewardFloor({ ...(rewardBandClampedFrom || band), operatorDuty });
   const projectNeedSummary = safeText(networkTask.project_need_summary || networkTask.projectNeedSummary || payload.summary || decision.reason, 2400);
+  const projectNeedWithPayment = projectId === VALUE_ACCOUNTABILITY_BOARD_ID || operatorDuty
+    ? projectNeedSummary
+    : `${projectNeedSummary}\n\n${MERGED_PR_REQUIREMENT_TEXT}`;
+  if (projectId !== VALUE_ACCOUNTABILITY_BOARD_ID) {
+    assertNetworkTaskContentAllowed(projectNeedSummary, safeText(payload.summary, 2400));
+  }
+  await assertNotBlacklisted({ accountId: candidate.accountId, walletAddress: candidate.walletAddress, action: "network_task" });
   const allocationReasonSummary = safeText(networkTask.allocation_reason_summary || networkTask.routing_reason || networkTask.routingReason || decision.reason, 1800);
   const cadenceReason = safeText(networkTask.cadence_reason || networkTask.cadenceReason || "board_manager_initiated", 600);
   // Accept windows are opt-in. Tasks never die by clock; the board manager
@@ -73,7 +94,21 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     120
   );
   let badgeEligibilityDecision = null;
-  try {
+  // The mandatory value accountability task is owed by the account regardless
+  // of the badges it holds; it is a verdict, not badge-gated work.
+  const badgeGateExempt = projectId === VALUE_ACCOUNTABILITY_BOARD_ID;
+  if (badgeGateExempt) {
+    badgeEligibilityDecision = {
+      schema: "pf.task_node.network_task_candidate_decision.v1",
+      eligible: true,
+      exempt: "value_accountability",
+      required_badge_id: "",
+      operating_badge_id: "",
+      work_type: "value_accountability",
+      badge_reward_cap_pft: 1,
+    };
+  }
+  if (!badgeGateExempt) try {
     badgeEligibilityDecision = await assertNetworkTaskBadgeEligibility({
       accountId: candidate.accountId,
       walletAddress: candidate.walletAddress,
@@ -193,10 +228,11 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     `,
     [idempotencyKey]
   );
-  if (existing.rows[0]) {
+  if (existing.rows[0] && !(networkTask.retry_failed === true && existing.rows[0].job_status === "failed")) {
     const row = existing.rows[0];
     return {
-      executed: true,
+      executed: row.job_status !== "failed",
+      reason: row.job_status === "failed" ? "network_task_failed_intent_requires_explicit_retry" : "network_task_existing_job",
       idempotent: true,
       allocationId: row.allocation_id || "",
       jobId: row.job_id || "",
@@ -213,6 +249,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       intentSemanticKey,
     };
   }
+  if (networkTask.retry_failed === true && !existing.rows.length) throw Object.assign(new Error("network_task_retry_target_not_found"), { status: 409 });
   // Canonical capacity predicate (shared with getNetworkTaskEligibility and
   // boardActionPressure.candidateCapacity): status-based liveness without a
   // created_at window, cross-class blocking, projection-terminal exclusion,
@@ -224,7 +261,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   const capacityState = await getNetworkTaskCapacityState({ accountId: candidate.accountId, walletAddress: candidate.walletAddress });
   const capacityLimit = capacityState.limit;
   const activeCount = capacityState.used;
-  if (activeCount >= capacityLimit && !networkTask.allow_over_capacity) {
+  if (activeCount >= capacityLimit && !networkTask.allow_over_capacity && networkTask.retry_failed !== true) {
     await recordUserObservabilityEvent({
       eventType: "user.network_task.candidate_blocked",
       accountId: candidate.accountId,
@@ -272,7 +309,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	    candidate,
 	    normalizedTaskClass,
 	    band,
-	    projectNeedSummary,
+	    projectNeedSummary: projectNeedWithPayment,
 	    allocationReasonSummary,
 	    cadenceReason,
 	    acceptWindowHours,
@@ -288,7 +325,43 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       i.request_id, i.task_id, i.status FROM network_task_intents i
       WHERE i.semantic_key=$1
       LIMIT 1`, [intentSemanticKey]);
-    if (replay.rows[0]) return replay.rows[0];
+    if (replay.rows[0]) {
+      const existing = replay.rows[0];
+      if (networkTask.retry_failed !== true || existing.status !== "failed") return existing;
+      const job = (await client.query("SELECT * FROM network_task_generation_jobs WHERE id=$1 FOR UPDATE", [existing.generation_job_id])).rows[0];
+      const failure = job?.generated_task_payload?.generationFailure;
+      const legacyCause = job?.generated_task_payload?.intentAssessment?.error;
+      // Provider failures and output-contract failures are both pre-request
+      // infrastructure outcomes; neither is a judgment about the work, so both
+      // may be explicitly retried once the need is revalidated.
+      const retryableProviderFailure = (failure?.code === "network_task_intent_assessment_failed" && failure.retryable === true) ||
+        failure?.code === "network_task_intent_contract_failed" ||
+        ["inference_timeout", "inference_response_truncated", "task_intent_assessment_schema_invalid", "task_intent_assessment_json_invalid"].includes(legacyCause);
+      if (job?.status !== "failed" || !retryableProviderFailure || job.request_id || job.task_id || job.request_bundle_cid ||
+          existing.request_id || existing.task_id) throw Object.assign(new Error("network_task_retry_requires_pre_request_provider_failure"), { status: 409 });
+      const allocation = (await client.query("SELECT * FROM network_task_allocations WHERE id=$1 FOR UPDATE", [existing.allocation_id])).rows[0];
+      if (allocation?.allocation_status !== "failed" || allocation.generated_task_id || allocation.task_request_id) throw Object.assign(new Error("network_task_retry_allocation_advanced"), { status: 409 });
+      const deterministicRequestId = "req_net_" + createHash("sha256").update(job.id).digest("hex").slice(0, 32);
+      const published = await client.query(`SELECT 1 FROM task_projections WHERE request_id=$3
+        UNION ALL SELECT 1 FROM task_requests WHERE request_id=$3
+        UNION ALL SELECT 1 FROM network_project_task_refs WHERE request_id=$3
+          OR metadata_json->>'generation_job_id'=$2 OR metadata_json->>'allocation_id'=$1 LIMIT 1`,
+      [allocation.id, job.id, deterministicRequestId]);
+      if (published.rows.length) throw Object.assign(new Error("network_task_retry_request_exists"), { status: 409 });
+      const capacity = await getNetworkTaskCapacityState({ accountId: candidate.accountId, walletAddress: candidate.walletAddress, queryImpl: client.query.bind(client) });
+      if (!capacity.available) throw new Error("network_task_candidate_at_capacity");
+      // Explicit recovery reuses all durable identities and preserves lifetime
+      // attempts and diagnostic history. The account lock serializes retries
+      // against both each other and fresh allocations.
+      await client.query(`UPDATE network_task_generation_jobs SET status='queued',next_attempt_at=now(),
+        locked_at=NULL,worker_attempt_id='',worker_heartbeat_at=NULL,lease_expires_at=NULL,
+        generated_task_payload=generated_task_payload || jsonb_build_object(
+          'manualRetryAttemptBase',attempt_count,'manualRetryAt',now(),'manualRetryRunId',$2::text),
+        updated_at=now() WHERE id=$1`, [job.id, safeText(runId, 180)]);
+      await client.query("UPDATE network_task_allocations SET allocation_status='queued',updated_at=now() WHERE id=$1", [allocation.id]);
+      await client.query("UPDATE network_task_intents SET status='queued',expires_at=now()+interval '14 days',updated_at=now() WHERE id=$1", [existing.id]);
+      return { ...existing, status: "queued", retry_requeued: true };
+    }
     const lockedCapacity = await getNetworkTaskCapacityState({ accountId: candidate.accountId, walletAddress: candidate.walletAddress, queryImpl: client.query.bind(client) });
     if (!lockedCapacity.available && !networkTask.allow_over_capacity) throw new Error("network_task_candidate_at_capacity");
     await client.query(
@@ -337,7 +410,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
         candidate.accountId,
         candidate.walletAddress,
         normalizedNeedHash,
-        projectNeedSummary,
+        projectNeedWithPayment,
         allocationReasonSummary,
         band.min,
         band.max,
@@ -418,6 +491,8 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	          idempotency_key: idempotencyKey,
 	          network_task_intelligence: intelligenceMetadata,
 	          badge_eligibility_decision: badgeEligibilityDecision,
+	          reward_band_clamped_from: rewardBandClampedFrom,
+	          operator_duty: operatorDuty,
 	        }),
 	        expiresAt ? expiresAt.toISOString() : null,
 	      ]
@@ -484,8 +559,8 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     );
   });
   if (reservation) return {
-    executed: true, idempotent: true, suppressed: true,
-    reason: "network_task_semantic_intent_exists", intentId: reservation.id,
+    executed: reservation.status !== "failed", idempotent: !reservation.retry_requeued, suppressed: !reservation.retry_requeued,
+    reason: reservation.retry_requeued ? "network_task_provider_failure_requeued" : reservation.status === "failed" ? "network_task_failed_intent_requires_explicit_retry" : "network_task_semantic_intent_exists", intentId: reservation.id,
     allocationId: reservation.allocation_id, jobId: reservation.generation_job_id,
     requestId: reservation.request_id, taskId: reservation.task_id, status: reservation.status,
     projectId, taskClass: normalizedTaskClass, candidateAccountId: candidate.accountId,
@@ -558,6 +633,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     candidateAccountId: candidate.accountId,
     candidateWalletAddress: candidate.walletAddress,
     rewardBandPft: [band.min, band.max],
+    ...(rewardBandClampedFrom ? { rewardBandClampedFrom } : {}),
     sourcePayloadDigest: sourceDigest,
     idempotencyKey,
     intentSemanticKey,

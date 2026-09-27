@@ -577,7 +577,7 @@ export async function chatSend(payload, method, options = {}) {
             ? "The chat provider timed out before returning a response."
             : "The chat provider could not complete this response.",
         actionRequired:
-          "Retry with a shorter prompt, choose another configured mode, or check provider health.",
+          "Try again in a moment, or switch to a different mode.",
         providerStatus: status,
         providerMessage: error?.providerMessage || "",
         estimate,
@@ -648,7 +648,7 @@ export function chatModes({ signedOut = false } = {}) {
       description: config.exactModel
         ? `API rates · from $${config.inputUsdPerMillion} input / $${config.outputUsdPerMillion} output per 1M tokens`
         : "",
-      privacy: config.exactModel ? "Vercel AI Gateway" : "Vercel AI Gateway with Ambient backup",
+      privacy: config.zeroDataRetention ? "Vercel AI Gateway · zero data retention" : config.exactModel ? "Vercel AI Gateway" : "Vercel AI Gateway with Ambient backup",
       latency: config.reasoningEffort ? "Deep" : "Fast",
     };
   });

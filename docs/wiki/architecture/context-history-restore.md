@@ -69,7 +69,7 @@ versions.
 ## Verification
 
 ```bash
-npm run context-history-rpc-smoke
-TASKNODE_DATABASE_ENABLED=true DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial npm run db:pftl-cache-reducer-smoke
+node scripts/context-history-rpc-smoke.mjs
+TASKNODE_DATABASE_ENABLED=true DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial node scripts/run-smokes.mjs db scripts/pftl-cache-reducer-postgres-smoke.mjs
 SMOKE_BASE_URL=http://127.0.0.1:5174 npm run smoke
 ```

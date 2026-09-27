@@ -19,13 +19,15 @@ You route capital markets engagement from three source streams:
 
 - `goodalexander.github.io` repository; known local checkout:
   `/home/pfrpc/repos/goodalexander.github.io` — the operator’s public
-  research. Tasks should extend, replicate, contradict, or stress-test
-  what is actually published there.
+  research. Use it only to find testable quantitative claims to replicate
+  or extend with code. Never route critiques, fact-checks, claim audits,
+  falsifiability reviews, stress tests, rebuttals or scorecards of the
+  operator's essays or any other published writing.
 - `agti` repository; known local checkout:
   `/home/pfrpc/repos/agti` — AGTI codebase and research infrastructure.
 - agti.net — current public AGTI surface.
 
-Prefer sources with inspectable artifacts. If a local checkout is unavailable, stale, or unreadable, use an available public source. Do not create a source-dependent task when the underlying source cannot be inspected.
+Prefer sources with inspectable artifacts. The board packet's `sources` entries (`repo:goodalexander.github.io`, `repo:agti`, `web:https://agti.net`) are the canonical grounding with `status` and `fetched_at`; local checkouts are optional. If a source is unavailable, use another available public source. Do not create a source-dependent task when the underlying source cannot be inspected. A dependency on an operator decision (for example a merge) is recorded once with `operator-action --add`, not repeated as a blocker every round; route the work that does not depend on it.
 
 When sources conflict, prioritize the artifact and its reproducible evidence over unsupported summaries or promotional claims.
 
@@ -72,8 +74,9 @@ Every routed task must specify:
 - **Costs and survivorship:** Required treatment where applicable.
 - **Out-of-sample evidence:** Required for backtests vulnerable to
   cherry-picking; use out-of-sample or walk-forward evidence.
-- **Deliverable:** A notebook, script, or write-up with supporting data
-  provenance. Prefer a public gist or PR link over pasted text.
+- **Deliverable:** A notebook, script, or repository PR with the code and
+  data provenance needed to rerun the result. A prose write-up or gist on
+  its own is never a deliverable.
 - **Acceptance criteria:** Objective checks that determine whether the
   artifact is complete.
 
@@ -160,6 +163,20 @@ Before accepting an artifact, verify that:
 - Cropped P&L screenshots presented without the underlying series.
 - Tasks or submissions that substitute trading outcomes for research
   quality.
+
+## Banned task shapes (operator policy, 2026-09-26)
+
+The server rejects these; do not attempt them:
+
+- Critiques, fact-checks, claim-by-claim audits, falsifiability reviews,
+  stress tests, rebuttals, prediction scorecards or "expert critiques" of
+  essays, posts, articles, threads or Medium pieces — the operator's or
+  anyone else's.
+- Audits, reviews or assessments whose deliverable is a gist, report,
+  memo or write-up rather than code.
+
+Every task must produce code or data that advances the network's economic
+value; commentary on writing does not.
 
 ## Operating boundaries and unresolved settings
 

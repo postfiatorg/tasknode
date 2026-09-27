@@ -21,7 +21,7 @@ export function parseAgentCommand(argv) {
     const equal = value.indexOf("=");
     const key = equal < 0 ? value.slice(2) : value.slice(2, equal);
     if (["__proto__", "constructor", "prototype"].includes(key)) throw bad("board_agent_flag_invalid");
-    flags[key] = equal >= 0 ? value.slice(equal + 1) : ["json", "execute", "stale-only"].includes(key) ? true : rest[++index];
+    flags[key] = equal >= 0 ? value.slice(equal + 1) : ["json", "execute", "stale-only", "retry-failed"].includes(key) ? true : rest[++index];
     if (flags[key] === undefined) throw bad("board_agent_flag_value_required");
   }
   return { command, args, flags };
@@ -38,7 +38,7 @@ export async function dispatchBoardAgent(argv) {
     if (typeof f[key] !== "string" || !f[key].trim()) throw bad(`board_agent_required_flag:${key}`);
     return f[key];
   };
-  if (command === "runtime-status") return publishAgentRuntimeStatus({ state: f.state, roundId: f.round || "" });
+  if (command === "runtime-status") return publishAgentRuntimeStatus({ state: f.state, roundId: f.round || "", attempts: number("attempts"), nextRetryAt: f["next-retry"] || "", recurring: f.recurring || "" });
   if (command === "boards") return identity.boards;
   if (command === "board") return boardPacket(board(args[0]));
   if (command === "digest") return boardDigest(board(args[0]));
@@ -49,7 +49,7 @@ export async function dispatchBoardAgent(argv) {
   if (command === "round-open") return openAgentRound(boards());
   if (command === "round-status") return readAgentRound(args[0]);
   if (command === "task" && args[0] === "detail") return boardTaskDetail(args[1]);
-  if (command === "duty-result") return recordDutyResult({ roundId: args[0], dutyId: args[1], outcome: f.outcome, reason: f.reason });
+  if (command === "duty-result") return recordDutyResult({ roundId: args[0], dutyId: args[1], outcome: f.outcome, reason: f.reason, dispositions: f.dispositions });
   if (command === "user") {
     // Board agents receive board-linked task history and badge evidence, not
     // the contributor's private personal tasks, chats or context document.
@@ -69,7 +69,7 @@ export async function dispatchBoardAgent(argv) {
   if (command === "review") return writes.reviewTask({ taskId: await task(args[0]), decision: f.decision, pft: number("pft"), reason: f.reason, feedback: f.feedback });
   if (command === "verify" && args[0] === "request") return writes.verifyRequest({ taskId: await task(args[1]), ask: f.ask, type: f.type || "evidence", reason: f.reason });
   if (command === "task" && args[0] === "cancel") return writes.cancelTask({ taskId: await task(args[1]), reason: f.reason, execute: f.execute === true, staleOnly: f["stale-only"] === true });
-  if (command === "task" && args[0] === "create") return writes.taskCreate({ boardId: board(args[1]), accountId: required("account"), wallet: required("wallet"), need: required("need"), reason: f.reason, workType: f["work-type"] || "code_task", requiredBadge: f["required-badge"], badgeCap: number("badge-cap"), rewardMin: number("reward-min"), rewardMax: number("reward-max"), assigneeHandle: f["assignee-handle"], acceptWindowHours: number("accept-window-hours"), execute: f.execute === true });
+  if (command === "task" && args[0] === "create") return writes.taskCreate({ boardId: board(args[1]), accountId: required("account"), wallet: required("wallet"), need: required("need"), reason: f.reason, workType: f["work-type"] || "code_task", requiredBadge: f["required-badge"], badgeCap: number("badge-cap"), rewardMin: number("reward-min"), rewardMax: number("reward-max"), assigneeHandle: f["assignee-handle"], acceptWindowHours: number("accept-window-hours"), retryFailed: f["retry-failed"] === true, execute: f.execute === true });
   if (command === "board-update") {
     const payload = { boardId: board(args[0]) };
     for (const field of ["title", "summary", "objective", "about", "status", "priority", "phase_label"]) {
@@ -78,8 +78,9 @@ export async function dispatchBoardAgent(argv) {
     return writes.boardUpdate(payload);
   }
   if (command === "journal") return writes.journalAppend({ boardId: board(args[0]), text: f.text });
+  if (command === "operator-action") return writes.operatorAction({ boardId: board(args[0]), add: f.add || "", owner: f.owner || "", resolve: f.resolve || "", resolution: f.resolution || "" });
   if (command === "handoff") return writes.writeHandoff({ boardId: board(args[0]) });
-  if (command === "refer-badge") return writes.referBadge({ accountId: args[0], badgeId: args[1], evidence: f.evidence, boardId: board(f.board || "tasknode"), execute: f.execute === true });
-  if (command === "refer-merge") return writes.referMerge({ prUrl: f["pr-url"] || args[0], summary: f.summary, boardId: board(f.board || "tasknode"), execute: f.execute === true });
+  if (command === "refer-badge") return writes.referBadge({ accountId: args[0], badgeId: args[1], evidence: f.evidence, boardId: board(f.board || "tasknode"), execute: f.execute === true, operatorAccount: f["operator-account"] || "", operatorWallet: f["operator-wallet"] || "" });
+  if (command === "refer-merge") return writes.referMerge({ prUrl: f["pr-url"] || args[0], summary: f.summary, boardId: board(f.board || "tasknode"), execute: f.execute === true, operatorAccount: f["operator-account"] || "", operatorWallet: f["operator-wallet"] || "" });
   throw bad("board_agent_command_not_supported");
 }

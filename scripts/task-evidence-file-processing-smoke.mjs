@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import "./task-evidence-tar-size-smoke.mjs";
 import { gzipSync, zipSync, strToU8 } from "fflate";
 
 import { processEvidenceFileForSubmission } from "../server/task-evidence-processing.js";

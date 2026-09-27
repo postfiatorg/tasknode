@@ -1,4 +1,4 @@
-// Vercel AI Gateway catalogue, verified 2026-09-07.
+// Vercel AI Gateway catalogue, verified 2026-09-07 (Opus 5.5: 2026-09-24).
 // Base rates estimate requests; the returned Gateway cost is the final debit.
 const common = {
   provider: "vercel",
@@ -26,5 +26,16 @@ export const apiChatModels = Object.freeze({
     inputUsdPerMillion: 3,
     inputCacheHitUsdPerMillion: 0.3,
     outputUsdPerMillion: 15,
+  },
+  // Every Anthropic route Vercel offers for Opus 5.5 supports ZDR; the gateway
+  // fails the request rather than use a retaining provider.
+  "Claude Opus 5.5": {
+    ...common,
+    defaultModel: "anthropic/claude-opus-5.5",
+    inputUsdPerMillion: 4,
+    inputCacheHitUsdPerMillion: 0.2,
+    inputCacheWriteUsdPerMillion: 5,
+    outputUsdPerMillion: 20,
+    zeroDataRetention: true,
   },
 });

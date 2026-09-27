@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {createHmac} from 'node:crypto';
+import {corbanuXCallback} from '../server/corbanu-x-callback.js';
+const secret='synthetic-shared-secret',now=Date.now(),base=`cbn1.index-id.nonce.${now+600000}`;
+const state=base+'.'+createHmac('sha256',secret).update(base).digest('base64url');
+assert.equal(corbanuXCallback({state:'normal-tasknode-state'},secret,now),null);
+const result=corbanuXCallback({state,code:'synthetic-code',redirect_uri:'https://attacker.invalid'},secret,now);
+assert.equal(result.status,302);assert.equal(new URL(result.redirectLocation).origin,'https://api.corbanu.com');
+assert.equal(result.sessionId,undefined);assert.equal(result.oauthState,undefined);
+assert.equal(corbanuXCallback({state:state+'x',code:'code'},secret,now).status,400);
+assert.equal(corbanuXCallback({state,code:'code'},secret,now+600001).status,400);
+assert.equal(corbanuXCallback({state,code:'code'},'wrong-secret',now).status,400);
+assert.equal(new URL(corbanuXCallback({state,error:'denied'},secret,now).redirectLocation).searchParams.get('error'),'access_denied');
+console.log('Corbanu X callback bridge checks passed');

@@ -1,4 +1,5 @@
 import { collapseWhitespace, isIdentifierChar, isWhitespace } from "./inference-text.js";
+import { replaceCharacterRuns, trimCharacters } from "../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 import { Wallet } from "xrpl";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
@@ -25,6 +26,18 @@ const TASKGEN_NETWORK_V2_PROMPT = {
 };
 const TASKGEN_REPLAY_ACCEPT_BY_MIN_FRESH_MS = 5 * 60 * 1000;
 const TASKGEN_REPLAY_ACCEPT_BY_FALLBACK_MS = 24 * 60 * 60 * 1000;
+// The taskgen prompts ask for 2 to 5 steps. The schema says so too; the
+// validator still clamps (TASK_MAX_STEPS) rather than rejects if a provider
+// ignores maxItems.
+const TASKGEN_MAX_STEPS = 5;
+
+function schemaKeys(schema, keys = new Set()) {
+  for (const [key, value] of Object.entries(schema?.properties || {})) {
+    keys.add(key);
+    schemaKeys(value, keys);
+  }
+  return keys;
+}
 
 const taskgenResponseFormat = {
   type: "json_schema",
@@ -39,7 +52,7 @@ const taskgenResponseFormat = {
         title: { type: "string", minLength: 5, maxLength: 240 },
         description: { type: "string", minLength: 20, maxLength: 8000 },
         task_kind: { type: "string", enum: ["personal", "network", "alpha"] },
-        steps: { type: "array", minItems: TASK_MIN_STEPS, items: { type: "string" } },
+        steps: { type: "array", minItems: TASK_MIN_STEPS, maxItems: TASKGEN_MAX_STEPS, items: { type: "string" } },
         submission_requirement: {
           type: "object",
           additionalProperties: false,
@@ -92,6 +105,10 @@ const taskgenResponseFormat = {
     },
   },
 };
+
+// Providers occasionally spill output field names ("reward_offer",
+// "deadline") into the steps array. They are never contributor actions.
+const TASKGEN_OUTPUT_KEYS = schemaKeys(taskgenResponseFormat.json_schema.schema);
 
 export function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -363,6 +380,31 @@ function normalizeTaskKind(value = "", policy = {}) {
   return "personal";
 }
 
+const VERIFICATION_TYPE_ALIASES = {
+  pr: "github_commit", pull_request: "github_commit", commit: "github_commit", github: "github_commit", github_pr: "github_commit", code: "github_commit", repository: "github_commit",
+  link: "url", links: "url", website: "url", post: "url", x_post: "url", tweet: "url",
+  image: "screenshot", screenshots: "screenshot", picture: "screenshot",
+  document: "file", attachment: "file", files: "file", report: "file",
+  written: "text", writeup: "text", description: "text", summary: "text",
+  multiple: "mixed", any: "mixed", combined: "mixed", all: "mixed",
+};
+
+export function coerceVerificationPolicy(raw, requirement = {}, policy = {}, evidenceTypes = ["text", "url", "github_commit", "screenshot", "file", "mixed"]) {
+  const source = safeObject(raw);
+  if (!Object.keys(source).length) return null;
+  const pick = (...keys) => { for (const key of keys) if (source[key] !== undefined && source[key] !== null) return source[key]; return undefined; };
+  let followup = pick("followup_required", "followupRequired", "follow_up_required", "requires_followup", "verification_required");
+  if (typeof followup === "string") followup = ["true", "yes", "required", "1"].includes(followup.trim().toLowerCase()) ? true : ["false", "no", "none", "0"].includes(followup.trim().toLowerCase()) ? false : undefined;
+  if (typeof followup !== "boolean") followup = safeText(policy.task_class || policy.requested_task_kind, 40) === "network" || requirement.type !== undefined;
+  let mode = safeText(pick("mode", "verification_mode", "followup_mode", "review_mode"), 120);
+  if (!mode) mode = "standard_followup";
+  let type = safeText(pick("verification_type", "verificationType", "type", "evidence_type", "followup_type"), 80).toLowerCase();
+  type = replaceCharacterRuns(type, (char) => isWhitespace(char) || char === "-", "_");
+  if (!evidenceTypes.includes(type)) type = VERIFICATION_TYPE_ALIASES[type] || "";
+  if (!type) type = evidenceTypes.includes(requirement.type) ? requirement.type : "mixed";
+  return { followup_required: followup, mode, verification_type: type };
+}
+
 export function validateTaskgenOutput(output = {}, policy = {}) {
   const outputText = (value, minimum, maximum) => typeof value === "string" && value.trim().length >= minimum && value.trim().length <= maximum;
   const required = ["title", "description", "task_kind", "submission_requirement", "verification_policy", "reward_offer", "deadline"];
@@ -373,10 +415,19 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
   const requirement = safeObject(output.submission_requirement);
   const evidenceTypes = ["text", "url", "github_commit", "screenshot", "file", "mixed"];
   if (!evidenceTypes.includes(requirement.type) || !outputText(requirement.criteria, 20, 4000)) throw new Error("taskgen_submission_requirement_invalid");
-  const verification = safeObject(output.verification_policy);
-  if (!evidenceTypes.includes(verification.verification_type) || !outputText(verification.mode, 1, 120) || typeof verification.followup_required !== "boolean") throw new Error("taskgen_verification_policy_invalid");
   // Clamp, never reject: a thorough model output must not burn a generation.
-  const steps = normalizeTaskSteps(output.steps, { clean: safeText });
+  // The verification policy is operational metadata, not task content, and
+  // providers routinely ignore the strict enum/boolean schema for it. Coerce
+  // documented variants; only an absent or unrecognisable policy is invalid.
+  const verification = coerceVerificationPolicy(output.verification_policy, requirement, policy, evidenceTypes);
+  if (!verification) throw new Error("taskgen_verification_policy_invalid");
+  const seenSteps = new Set();
+  const steps = normalizeTaskSteps(output.steps, { clean: safeText }).filter((step) => {
+    const key = collapseWhitespace(step).toLowerCase();
+    if (seenSteps.has(key) || TASKGEN_OUTPUT_KEYS.has(trimCharacters(key, " \"'`*:.-"))) return false;
+    seenSteps.add(key);
+    return true;
+  });
   if (steps.length < TASK_MIN_STEPS) throw new Error("taskgen_steps_invalid");
   const reward = safeObject(output.reward_offer);
   const policyAcceptBy = policyDeadlineValue(policy, "accept_by");
@@ -616,9 +667,61 @@ function mockTaskgenOutput(taskInput = {}) {
   }, policy);
 }
 
+const READINESS_CHECK_DESCRIPTIONS = {
+  actionable_task: "the description and steps must coherently explain actionable work",
+  actionable_submission: "the submission requirement must name what to submit and what evidence demonstrates completion",
+  consistent_scope: "the description, steps, and submission requirement must describe the same scope",
+};
+
+function readinessRepairInstruction(rejection = {}) {
+  const lines = ["A readiness review rejected this task before publication. Fix only these problems:"];
+  for (const step of rejection.steps || []) lines.push(`- Step ${step.step_index} ("${step.step}"): ${step.reason}`);
+  for (const check of rejection.checks || []) lines.push(`- ${check}: ${READINESS_CHECK_DESCRIPTIONS[check] || "failed"}.`);
+  lines.push("Keep the same project, deliverable, scope, reward, and deadline. Rewrite, merge, or remove the failing steps (2 to 5 steps total). Return the complete corrected JSON matching schema pf.taskgen.output.v1.");
+  return lines.join("\n");
+}
+
+async function requestTaskgenCompletion({ fetchImpl, providerTimeoutMs, model, reasoningEffort, messages }) {
+  try {
+    return await inferenceChatCompletion({
+      fetchImpl,
+      capability: "strict_json",
+      timeoutMs: providerTimeoutMs,
+      totalTimeoutMs: Math.max(1000, Number(process.env.TASKNODE_TASK_GENERATION_TOTAL_TIMEOUT_MS) || 540_000),
+      body: {
+        model,
+        messages,
+        response_format: taskgenResponseFormat,
+        max_tokens: Math.max(32768, Number(process.env.TASKNODE_TASK_GENERATION_MAX_OUTPUT_TOKENS) || 65536),
+        reasoning: { effort: reasoningEffort },
+      },
+    });
+  } catch (error) {
+    if (error?.code === "inference_timeout") {
+      throw Object.assign(new Error("taskgen_provider_timeout"), { code: "TASKGEN_PROVIDER_TIMEOUT", timeoutMs: providerTimeoutMs });
+    }
+    if (error?.code === "inference_response_truncated") {
+      throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: "taskgen_output_truncated" });
+    }
+    throw error;
+  }
+}
+
+function parseTaskgenCompletion(body, policy) {
+  try {
+    if (body?.choices?.[0]?.finish_reason === "length") throw new Error("taskgen_output_truncated");
+    return validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), policy);
+  } catch (error) {
+    // Keep what the model said so an operator can see why it was rejected.
+    throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: error.message,
+      contentPreview: String(body?.choices?.[0]?.message?.content || "").slice(0, 1500), finishReason: body?.choices?.[0]?.finish_reason || "" });
+  }
+}
+
 export async function generateTaskWithProvider(taskInput, {
   fetchImpl = fetch,
   providerTimeoutMs = taskGenerationProviderTimeoutMs(),
+  heartbeat = async () => {},
 } = {}) {
   const taskgenPrompt = taskgenPromptForInput(taskInput);
   const systemPrompt = loadPrompt(taskgenPrompt.path);
@@ -644,42 +747,36 @@ export async function generateTaskWithProvider(taskInput, {
       },
     };
   }
-  let completion;
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: baseInstruction },
+  ];
+  const requestOutput = async () => {
+    const completion = await requestTaskgenCompletion({ fetchImpl, providerTimeoutMs, model, reasoningEffort: apiConfig.reasoningEffort, messages });
+    return { completion, output: parseTaskgenCompletion(completion.body, taskInput.policy || {}) };
+  };
+  let { completion, output } = await requestOutput();
+  let readiness;
+  let repairAttempts = 0;
   try {
-    completion = await inferenceChatCompletion({
-      fetchImpl,
-      capability: "strict_json",
-      timeoutMs: providerTimeoutMs,
-      totalTimeoutMs: Math.max(1000, Number(process.env.TASKNODE_TASK_GENERATION_TOTAL_TIMEOUT_MS) || 540_000),
-      body: {
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: baseInstruction },
-        ],
-        response_format: taskgenResponseFormat,
-        max_tokens: Math.max(32768, Number(process.env.TASKNODE_TASK_GENERATION_MAX_OUTPUT_TOKENS) || 65536),
-        reasoning: { effort: apiConfig.reasoningEffort },
-      },
-    });
+    readiness = await reviewTaskGenerationReadiness(output, { fetchImpl, heartbeat });
   } catch (error) {
-    if (error?.code === "inference_timeout") {
-      throw Object.assign(new Error("taskgen_provider_timeout"), { code: "TASKGEN_PROVIDER_TIMEOUT", timeoutMs: providerTimeoutMs });
-    }
-    if (error?.code === "inference_response_truncated") {
-      throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: "taskgen_output_truncated" });
-    }
-    throw error;
+    if (!error?.readinessRejection) throw error;
+    // One repair pass: show the generator the reviewer's reasons instead of
+    // discarding the whole generation and starting again blind.
+    await heartbeat("readiness_repair");
+    repairAttempts = 1;
+    messages.push(
+      { role: "assistant", content: JSON.stringify(output) },
+      { role: "user", content: readinessRepairInstruction(error.readinessRejection) },
+    );
+    const repaired = await requestOutput();
+    completion = repaired.completion;
+    // Repair fixes wording only; reward and deadline stay as first generated.
+    output = { ...repaired.output, reward_offer: output.reward_offer, deadline: output.deadline };
+    readiness = await reviewTaskGenerationReadiness(output, { fetchImpl, heartbeat });
   }
   const body = completion.body;
-  let output;
-  try {
-    if (body?.choices?.[0]?.finish_reason === "length") throw new Error("taskgen_output_truncated");
-    output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
-  } catch (error) {
-    throw Object.assign(new Error("taskgen_provider_output_invalid"), { code: "TASKGEN_PROVIDER_OUTPUT_INVALID", validationError: error.message });
-  }
-  const readiness = await reviewTaskGenerationReadiness(output, { fetchImpl });
   return {
     output,
     metadata: {
@@ -693,7 +790,8 @@ export async function generateTaskWithProvider(taskInput, {
       latency_ms: Date.now() - startedAt,
       parse_status: "ok",
       provider_response_id: body.id || "",
-      validation_attempts: 1,
+      validation_attempts: 1 + repairAttempts,
+      readiness_repair_attempts: repairAttempts,
       readiness,
     },
   };

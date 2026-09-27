@@ -181,13 +181,22 @@ export async function selectDeviceAccount({ token = "", accountId = "" } = {}) {
   const set = await resolveDeviceAccountSet({ token });
   if (!set || !normalized) return { ok: false, error: "account_switch_membership_required" };
   if (!databaseEnabled()) {
-    const runtime = runtimeSetsById.get(set.setId);
+    const runtime = runtimeActiveSet(token);
     const member = runtime?.members.get(normalized);
     if (!member || member.revokedAt) return { ok: false, error: "account_switch_membership_required" };
     member.lastSelectedAt = new Date().toISOString();
     return { ok: true, setId: set.setId, token: rotateRuntimeSet(runtime) };
   }
   return transaction(async (client) => {
+    // Recheck under the row lock: only one concurrent switch can rotate this
+    // credential. A stale request must not invalidate the winning response.
+    const current = await client.query(
+      `SELECT set_id FROM device_account_sets
+       WHERE set_id = $1 AND token_hash = $2 AND revoked_at IS NULL AND expires_at > now()
+       FOR UPDATE`,
+      [set.setId, tokenHash(token)]
+    );
+    if (!current.rows[0]) return { ok: false, error: "account_switch_membership_required" };
     const member = await client.query(
       `SELECT account_id FROM device_account_set_members
         WHERE set_id = $1 AND account_id = $2 AND revoked_at IS NULL FOR UPDATE`,
