@@ -49,17 +49,16 @@ async function linkedWallet(accountId, fallback) {
 }
 
 function needText({ handle, entry, deadlineAt }) {
-  const titles = entry.titles.slice(0, 12).map((title, i) => `  - ${entry.taskIds[i]}: ${title}`).join("\n");
-  const more = entry.titles.length > 12 ? `\n  - …and ${entry.titles.length - 12} more` : "";
   return [
-    `MANDATORY VALUE ACCOUNTABILITY for ${handle ? `@${handle}` : "this account"}.`,
-    `Task Node paid this account ${Math.round(entry.pft).toLocaleString("en-US")} PFT for ${entry.taskIds.length} network tasks whose work type is now banned as network work (commentary on published writing, or audit/review write-ups):`,
-    titles + more,
-    `To keep earning on Task Node, show that this paid work increased Post Fiat market cap. Submit before ${deadlineAt.toISOString()}:`,
-    "1. Economic outcomes: specific, verifiable outcomes your paid work caused, such as new paying users, liquidity or trading volume, exchange listings, integrations, revenue or partnerships, each with a link a reviewer can open (on-chain transaction, exchange or DEX data, public metric, or a signed statement from the counterparty).",
-    "2. Causation: for each outcome, the chain from your specific paid tasks to that outcome. Effort, word counts, views and likes do not count.",
-    "3. Member sign-off: a link to a public message in the Post Fiat Discord from a different member (not you and not an account you control) naming the outcome they confirm and stating that it added market cap.",
-    "Refusing this task, missing the deadline, or failing to demonstrate market-cap accretion blacklists this account: no further network tasks and no reward payments. The board manager judges strictly.",
+    `VALUE CHECK for ${handle ? `@${handle}` : "this account"} (flexible; your own answer).`,
+    `Task Node assigned this account ${entry.taskIds.length} network tasks, paid ${Math.round(entry.pft).toLocaleString("en-US")} PFT in total, of a kind Task Node no longer pays for (commentary on published writing, audit or review write-ups). Task Node chose those tasks, not you, and you do not need to defend them or prove that they added value.`,
+    "Instead, show any real contribution you have made to Post Fiat, from any work at all, assigned or not.",
+    `Submit before ${deadlineAt.toISOString()}:`,
+    "1. Your Discord handle (required).",
+    "2. At least one link a reviewer can open that shows a contribution to Post Fiat's value or adoption. Any of these count: your X posts or threads about Post Fiat, Discord messages where you helped members or brought people in, merged pull requests, integrations, users, partners or liquidity you brought, community events, or anything else that can be checked.",
+    "3. One or two sentences on how it helped.",
+    "A confirming message from another Discord member is welcome but optional. An honest answer is fine: if your recent assigned tasks did not add value, say so and point to what did.",
+    "Only no response, or no checkable proof of any contribution at all, removes access to network tasks and rewards.",
   ].join("\n");
 }
 

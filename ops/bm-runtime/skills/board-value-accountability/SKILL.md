@@ -1,6 +1,6 @@
 ---
 name: board-value-accountability
-description: Board context for the Value Accountability board manager. Use with the board-manager skill when operating board_value_accountability, the mandatory justification task for accounts paid on banned task shapes. The manager is a strict judge; failure blacklists the account.
+description: Board context for the Value Accountability board manager. Use with the board-manager skill when operating board_value_accountability, the mandatory value check for accounts paid on banned task shapes. Flexible bar - Discord handle plus any checkable contribution; only no response or no proof blacklists.
 ---
 
 # Value Accountability Board
@@ -16,7 +16,7 @@ or write-up. Each such account has exactly one mandatory task on this board.
 The operator issues these tasks with `scripts/value-accountability.mjs`; you
 never create tasks on this board and you never route other work here.
 
-Your job is to judge each submission strictly. The outcome is binary:
+Your job is to judge each submission fairly against the flexible bar below. The outcome is binary, but the bar is flexible (see below):
 
 - `bm review <task> reward --pft 1` **clears** the account.
 - `bm review <task> reject` (or `partial_reward`) **blacklists** the account:
@@ -26,35 +26,37 @@ Your job is to judge each submission strictly. The outcome is binary:
 Refusal, a missed deadline, or no submission also blacklists the account (an
 hourly sweep enforces this). Do not extend deadlines.
 
-## The bar (all three are required)
+## The bar (flexible, revised 2026-09-27)
 
-1. **Economic outcome.** A specific, verifiable outcome that increased Post
-   Fiat market cap: new paying users, liquidity or trading volume, an exchange
-   listing, an integration, revenue, a partnership, or measurable growth in
-   holders. Each outcome needs a link you can open and check yourself: an
-   on-chain transaction, exchange or DEX data, a public metric page, or a
-   signed statement from the counterparty.
-2. **Causation.** For each outcome, a concrete chain from the account's own
-   paid tasks (listed in the task body) to that outcome. Timing alone is not
-   causation.
-3. **Member sign-off.** A link to a public message in the Post Fiat Discord,
-   written by a **different** member, naming the outcome they confirm and
-   stating that it added market cap. Reject if the link does not resolve, the
-   author is the submitter, the author is an obvious alt (same wallet, same
-   handle pattern, account created for the purpose, no prior history), or the
-   message is generic praise.
+Task Node assigned the flagged tasks; contributors had no way to choose their
+network tasks. Do not ask them to defend those tasks or prove those tasks
+added value. Ask only whether the account has made **any real, checkable
+contribution to Post Fiat** from any work, assigned or not.
 
-## Automatic rejections
+Clear the account (`bm review <task> reward --pft 1`) when the submission has:
 
-- Effort, hours, word counts, views, likes, impressions, followers, or
-  "engagement" presented as value.
-- The critique or audit itself presented as the value ("my critique improved
-  the essay", "the audit found issues").
-- Screenshots without a checkable source link.
-- Claims about future value, intended impact, or "raising awareness".
-- Anything you cannot verify yourself from the links provided.
+1. **A Discord handle** (required).
+2. **At least one link you can open and check** that shows a genuine
+   contribution to Post Fiat's value or adoption: X posts or threads about
+   Post Fiat, Discord messages helping members or bringing people in, merged
+   PRs, integrations, users, partners or liquidity brought in, community
+   events, or other verifiable proof.
+3. **A short explanation** of how it helped.
 
-When in doubt, reject. The burden of proof is on the submitter.
+A sign-off from another Discord member strengthens a submission but is not
+required. An honest answer ("my assigned tasks did not add value; here is
+what did") is a good answer.
+
+## Reject only when
+
+- There is no Discord handle, or
+- No link resolves or none shows any contribution to Post Fiat (for example,
+  only effort claims, or only the flagged commentary itself), or
+- The evidence is plainly fabricated or belongs to someone else.
+
+When something is missing or unclear, use one verification request listing
+exactly what is needed before deciding. Give the benefit of the doubt when the
+proof is real but modest.
 
 ## Lifecycle
 

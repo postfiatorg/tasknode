@@ -252,7 +252,7 @@ export async function recordAccountabilityVerdict({ taskId, decision, reason = "
   const blacklisted = await blacklistAccount({
     accountId: caseRow.account_id,
     reasonCode: "value_accountability_rejected",
-    reason: safeText(reason, 2000) || "Accountability submission did not demonstrate market-cap accretion.",
+    reason: safeText(reason, 2000) || "Value check submission showed no checkable contribution to Post Fiat.",
     evidence: { case_id: caseRow.id, accountability_task_id: taskId, flagged_task_ids: caseRow.flagged_task_ids },
     source: "value_accountability",
     caseId: caseRow.id,
@@ -290,7 +290,7 @@ export async function enforceExpiredCases({ execute = false, now = new Date() } 
       reasonCode,
       reason: refused
         ? "Refused the mandatory value accountability task."
-        : "Did not provide market-cap accretion evidence and a member Discord sign-off by the deadline.",
+        : "Did not respond to the value check (Discord handle plus proof of any contribution) by the deadline.",
       evidence: { case_id: row.id, accountability_task_id: row.accountability_task_id, flagged_task_ids: row.flagged_task_ids },
       source: "value_accountability",
       caseId: row.id,
