@@ -158,6 +158,7 @@
     "jobs-corpus-ingest": "node scripts/jobs-corpus-ingest.mjs",
     "memory:backfill": "node scripts/memory-backfill.mjs",
     "runtime-smoke": "node scripts/runtime-store-smoke.mjs",
+    "index-viewer-smoke": "node scripts/index-viewer-smoke.mjs",
     "pftl-cache-smoke": "node scripts/pftl-cache-smoke.mjs",
     "pftl-cache-watcher-smoke": "node scripts/pftl-cache-watcher-smoke.mjs",
     "context-publish-live-smoke": "node scripts/context-publish-live-smoke.mjs",

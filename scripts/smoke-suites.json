@@ -196,6 +196,7 @@
     "scripts/decisions-repository-smoke.mjs",
     "scripts/docs-folders-smoke.mjs",
     "scripts/hive-reports-smoke.mjs",
+    "scripts/index-viewer-smoke.mjs",
     "scripts/inference-persistence-smoke.mjs",
     "scripts/jobs-corpus-pgvector-smoke.mjs",
     "scripts/network-task-direct-intake-smoke.mjs",
