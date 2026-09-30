@@ -185,7 +185,8 @@
     "scripts/wallet-save-lock-race-smoke.mjs",
     "scripts/wallet-transactions-smoke.mjs",
     "scripts/wallet-unlocked-session-smoke.mjs",
-    "scripts/worker-crash-resilience-smoke.mjs"
+    "scripts/worker-crash-resilience-smoke.mjs",
+    "scripts/network-task-content-policy.test.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",
@@ -199,6 +200,7 @@
     "scripts/decisions-repository-smoke.mjs",
     "scripts/docs-folders-smoke.mjs",
     "scripts/hive-reports-smoke.mjs",
+    "scripts/index-viewer-smoke.mjs",
     "scripts/inference-persistence-smoke.mjs",
     "scripts/jobs-corpus-pgvector-smoke.mjs",
     "scripts/network-task-direct-intake-smoke.mjs",
