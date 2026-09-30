@@ -10,6 +10,7 @@ function harness(test, { core = null, walletAccountId = synthetic.accountId } = 
     walletAccountId, walletSecretRef: secretRef, accountBoundaryRef: boundaryRef,
     walletUnlockIntentRef: { current: 0 },
     walletUnlockSessionForAccount: walletState.walletUnlockSessionForAccount,
+    walletUnlockMatchesIdentity: walletState.walletUnlockMatchesIdentity,
     syntheticWalletCore: core || { localWalletVaultStatus: ({ accountId }) => ({ accountId, available: true, address: synthetic.address, persistence: "synthetic" }) },
     accountBoundaryCaptureIsCurrent: boundary.accountBoundaryCaptureIsCurrent,
     readUnlockedWalletSession: options => test.store.read(options),
