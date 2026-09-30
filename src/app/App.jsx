@@ -23,7 +23,7 @@ import { useAppearance } from "../theme/use-appearance.js";
 import { ProfileAccountSwitcher } from "../features/settings/ProfileAccountSwitcher.jsx";
 import { createAccountSwitcherActions } from "../features/settings/account-switch-client.js";
 import { acceptAccountBoundaryResponse, accountBoundaryCaptureIsCurrent, beginAccountBoundaryTransition, cancelAccountBoundaryTransition, initialAccountBoundary } from "../features/settings/account-transition-boundary.js";
-import { applyWalletBalanceError, applyWalletBalanceResult, formatPftBalance, markWalletBalanceChecking, mergeAppStateWithClientWalletBalance, walletUnlockSessionForAccount, walletVaultDisplayState } from "../features/wallet/wallet-state";
+import { applyWalletBalanceError, applyWalletBalanceResult, formatPftBalance, markWalletBalanceChecking, mergeAppStateWithClientWalletBalance, walletUnlockSessionForAccount, walletUnlockMatchesIdentity, walletVaultDisplayState } from "../features/wallet/wallet-state";
 import { clearAllUnlockedWalletSessions, clearOtherUnlockedWalletSessions, clearUnlockedWalletSession, readUnlockedWalletSession, saveUnlockedWalletSession, touchWalletUnlockActivity, walletUnlockIdleLockMs, walletUnlockIdleRemainingMs } from "../features/wallet/wallet-unlocked-session.js";
 import { WalletUnlockModal } from "../features/wallet/WalletUnlockModal";
 import { formatCreditUsd } from "../formatters";
@@ -306,11 +306,7 @@ export function App() {
         if (!isCurrent()) return null;
         const currentSecret = walletSecretRef.current;
         const canRestoreUnlock = Boolean(preserveUnlock && nextStatusWithPersistence?.available && nextStatusWithPersistence?.address);
-        const inMemorySecretMatches =
-          canRestoreUnlock &&
-          currentSecret?.accountId === effectiveAccountId &&
-          currentSecret?.address === nextStatusWithPersistence.address &&
-          currentSecret?.mnemonic;
+        const inMemorySecretMatches = canRestoreUnlock && walletUnlockMatchesIdentity(currentSecret, effectiveAccountId, nextStatusWithPersistence.address);
         const sessionSecret = inMemorySecretMatches
           ? null
           : canRestoreUnlock

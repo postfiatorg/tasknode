@@ -1,3 +1,7 @@
+export function walletUnlockMatchesIdentity(unlock, accountId, address) {
+  return Boolean(unlock?.accountId === accountId && unlock?.address === address && unlock?.mnemonic);
+}
+
 export function walletUnlockSessionForAccount(accountId, unlock, accountBoundary) {
   if (!accountId || !unlock?.mnemonic || !unlock?.address) return null;
   if (accountBoundary?.transitioning || accountBoundary?.accountId !== accountId
