@@ -1,3 +1,5 @@
+import { assertNetworkTaskContentAllowed } from "./network-task-content-policy.js";
+import { VALUE_ACCOUNTABILITY_BOARD_ID, assertNotBlacklisted } from "./value-accountability.js";
 import { runTrackedWork } from "./process-hardening.js";
 import { assessTaskIntent, taskIntentFailureFamily } from "./task-intent-assessment.js";
 import { offchainTaskLifecycleEnabled, offchainTaskLifecycleDualWriteEnabled } from "./offchain-task-lifecycle.js";
@@ -135,6 +137,20 @@ export function advertisedRewardBand({ min = 0, max = 0, perTaskCap = 0 } = {}) 
 
 export async function createTaskRequestForNetworkJob(job = {}, { assess = assessTaskIntent } = {}) {
   const source = safeObject(job.source_payload_json);
+  // Operator content policy applies to every network job, including jobs
+  // queued before the policy existed.
+  const sourceTask = safeObject(source.networkTask || source.network_task);
+  if (safeText(job.project_id, 180) !== VALUE_ACCOUNTABILITY_BOARD_ID) {
+    assertNetworkTaskContentAllowed(
+      safeText(source.need, 8000),
+      safeText(sourceTask.projectNeedSummary || sourceTask.project_need_summary, 8000),
+    );
+  }
+  await assertNotBlacklisted({
+    accountId: job.candidate_account_id,
+    walletAddress: job.candidate_wallet_address,
+    action: "network_task",
+  });
 
   // Route to the candidate's CURRENT linked wallet. Candidate rows can carry
   // stale wallets from historic profile data; a task offered to a wallet the
@@ -254,7 +270,9 @@ export async function createTaskRequestForNetworkJob(job = {}, { assess = assess
   const assessedAttempt = await query(`UPDATE network_task_generation_jobs SET generated_task_payload=generated_task_payload || jsonb_build_object('intentAssessment',$3::jsonb)
     WHERE id=$1 AND worker_attempt_id=$2 AND status='running'`, [job.id, job.worker_attempt_id, JSON.stringify(assessment)]);
   if (!assessedAttempt.rowCount) throw new Error("network_task_generation_attempt_lost");
-  if (["duplicate", "uncertain"].includes(assessment.relationship) || !assessment.actionable || !assessment.scopeClear) {
+  // The mandatory accountability task is deliberately a follow-up to paid work.
+  const mandatoryAccountability = safeText(job.project_id, 180) === VALUE_ACCOUNTABILITY_BOARD_ID;
+  if (!mandatoryAccountability && (["duplicate", "uncertain"].includes(assessment.relationship) || !assessment.actionable || !assessment.scopeClear)) {
     throw Object.assign(new Error(`network_task_intent_needs_review:${assessment.relationship}:${assessment.reason}`), { code: "network_task_intent_needs_review", retryable: false, family: "semantic" });
   }
   // The bundle carries the verdict; raw provider transcripts stay on the job row.

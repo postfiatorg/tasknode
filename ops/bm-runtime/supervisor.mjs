@@ -269,7 +269,13 @@ export async function superviseOnce() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   do {
-    try { await superviseOnce(); } catch (error) { log({ event: "supervisor_error", error: error.message }); }
+    try { await superviseOnce(); } catch (error) {
+      log({ event: "supervisor_error", error: error.message });
+      // The board list is imported once at startup while agents.json is read
+      // every tick; a newly added board needs fresh modules. Exit so systemd
+      // (Restart=always) restarts the supervisor instead of failing forever.
+      if (error.message === "board_agent_assignment_invalid") process.exit(1);
+    }
     if (!process.argv.includes("--watch")) break;
     await new Promise((resolve) => setTimeout(resolve, 10_000));
   } while (true);

@@ -1,3 +1,5 @@
+import { assertNotBlacklisted } from "./value-accountability.js";
+import { assertMergedPrForPayment } from "./merged-pr-requirement.js";
 import { query } from "./db/pool.js";
 import { getTaskDetail } from "./repositories/tasks.js";
 import { resolveTasknodeEncryptionKey } from "./context-publish.js";
@@ -667,6 +669,10 @@ export async function processVerificationResponse(row, { logger = console } = {}
     });
     const rewardForensicDigest = `sha256:${sha256(rewardPayload.reward_forensics || {})}`;
 
+    // Blacklisted accounts are never paid (value accountability policy).
+    await assertNotBlacklisted({ accountId: row.account_id, walletAddress: row.subject_wallet, action: "reward" });
+    // Network tasks pay only for a PR merged into the default branch.
+    await assertMergedPrForPayment({ taskId: row.task_id });
     const paymentGuard = await claimRewardPaymentGuard({
       taskId: row.task_id,
       rewardPayload,

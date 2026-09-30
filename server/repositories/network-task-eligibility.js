@@ -625,6 +625,8 @@ export async function currentProjectProductDoc(projectId = "") {
 export async function explainNetworkTaskCandidateEligibility({
   accountId = "",
   explicitWallet = "",
+  // Mandatory accountability tasks are owed by badge-less accounts too.
+  requireBadge = true,
 } = {}, { queryImpl = query, badgeProjection = networkBadgeProjectionForAccount } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) return { eligible: false, reason: "account_unresolved" };
@@ -633,7 +635,7 @@ export async function explainNetworkTaskCandidateEligibility({
   // provider-derived badges that have not yet been materialized in Postgres.
   const projection = await badgeProjection({ accountId: normalizedAccount, walletAddress: explicitWallet });
   const badgeIds = safeArray(projection?.verifiedBadgeIds).filter(Boolean);
-  if (!badgeIds.length) return { eligible: false, reason: "no_verified_badge" };
+  if (requireBadge && !badgeIds.length) return { eligible: false, reason: "no_verified_badge" };
 
   let walletAddress = "";
   const mirror = await queryImpl(
@@ -655,7 +657,7 @@ export async function explainNetworkTaskCandidateEligibility({
   return { eligible: true, reason: "", accountId: normalizedAccount, walletAddress, badgeId: badgeIds[0], badgeIds, defaultBadge: projection.defaultBadge || badgeIds[0] };
 }
 
-export async function resolveCandidate({ decision = {} } = {}) {
+export async function resolveCandidate({ decision = {}, requireBadge = true } = {}) {
   const payload = safeObject(decision.payload);
   const networkTask = safeObject(payload.network_task || payload.networkTask);
   const contributor = safeObject(payload.contributor);
@@ -700,6 +702,7 @@ export async function resolveCandidate({ decision = {} } = {}) {
   const verdict = await explainNetworkTaskCandidateEligibility({
     accountId,
     explicitWallet,
+    requireBadge,
   });
   if (!verdict.eligible) {
     const error = new Error(`network_task_candidate_not_eligible:${verdict.reason}`);

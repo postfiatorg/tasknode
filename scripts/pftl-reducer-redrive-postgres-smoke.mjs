@@ -96,10 +96,18 @@ try {
   const failure = outcomes.find(outcome => outcome.status === "rejected");
   if (failure) throw failure.reason;
   const races = outcomes.map(outcome => outcome.value);
-  assert.deepEqual(races.map(batch => batch.length), [1, 1]);
-  assert.deepEqual(races.flat().map(row => row.dedupe_key).sort(), ["race_a", "race_b"]);
-  assert.ok(races.flat().every(row => row.attempts === 3), "each failed row gets exactly one new attempt");
-  console.log("ok: two overlapping transactions claim disjoint failed rows with one increment each");
+  assert.ok(races.every(batch => batch.length <= 1), "each overlapping claim respects its limit");
+  assert.ok(races.flat().length >= 1, "an eligible row must be claimed");
+  // now() is fixed when each transaction begins. If the newer transaction
+  // re-drives both rows first, available_at can be later than the waiting
+  // transaction's clock. That older transaction may return no row; a fresh
+  // claim must collect the remaining row without duplicating either attempt.
+  const followup = await claimPftlReducerEvents({ limit: 1, databaseEnabledImpl: () => true, transactionImpl });
+  const claimedRaces = [...races.flat(), ...followup];
+  assert.deepEqual(claimedRaces.map(row => row.dedupe_key).sort(), ["race_a", "race_b"]);
+  assert.ok(claimedRaces.every(row => row.attempts === 3), "each failed row gets exactly one new attempt");
+  assert.deepEqual(await claimPftlReducerEvents({ limit: 1, databaseEnabledImpl: () => true, transactionImpl }), [], "no failed row is claimed twice");
+  console.log("ok: overlapping transactions and a fresh pass claim disjoint failed rows with one increment each");
 
   await client.query("TRUNCATE pftl_cache_reducer_events");
   await client.query(`INSERT INTO pftl_cache_reducer_events (dedupe_key,wallet_address,tx_hash,reducer_kind)

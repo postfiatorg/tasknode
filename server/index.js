@@ -73,6 +73,7 @@ const [
   { handleProfileNftImageRoute, handleProfileNftPfpRoute },
   { handleMemoryRoute },
   { handleIChingRoute },
+  { handleIndexViewerRoute },
   { handleCollaborationRoute },
   { handleDirectoryRoute },
   { handleHiveRoute },
@@ -122,6 +123,7 @@ const [
   import("./profile-nft-image-proxy.js"),
   import("./memory-routes.js"),
   import("./i-ching-routes.js"),
+  import("./index-viewer-routes.js"),
   import("./collaboration-routes.js"),
   import("./directory-routes.js"),
   import("./hive-routes.js"),
@@ -178,6 +180,11 @@ async function routeApi(req, url, res) {
     return statePromise;
   };
   const parts = url.pathname.split("/").filter(Boolean);
+  // Index viewer is called cross-origin by static research sites, so it runs
+  // ahead of the same-origin mutation guard and enforces its own narrow
+  // origin allowlist. It never trusts cookies for authorization.
+  if (await handleIndexViewerRoute({ json, readJson, req, res, session, url })) return true;
+
   if (await enforceRoutePolicy(req, url, res, session)) return true;
 
   if (url.pathname === "/api/app-state") {
