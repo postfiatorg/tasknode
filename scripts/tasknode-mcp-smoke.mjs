@@ -142,6 +142,38 @@ try {
   const viaPage = await post("/mcp", { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "tasknode_status", arguments: {} } }, { authorization: `Bearer ${pageToken}` });
   assert.equal(JSON.parse((await viaPage.json()).result.content[0].text).accountId, account.id);
 
+  // Agent outputs are compact: internal metadata (production requests carry
+  // ~160 KB each) must never reach the model; errors pass through verbatim.
+  const { mcpTools, toolText } = await import("../server/tasknode-mcp.js");
+  const tool = Object.fromEntries(mcpTools.map((entry) => [entry.name, entry]));
+  const bloat = { blob: "x".repeat(200_000) };
+  const fatTask = { taskId: "task_1", title: "T", statusKey: "outstanding", kind: "Network", pft: 25, fullDue: "Oct 2", metadata: bloat, steps: ["s"], verification: { body: "v" } };
+  const shaped = (name, body) => toolText(tool[name], { status: 200, body: JSON.stringify(body) });
+  const outputs = {
+    list: shaped("tasknode_list_tasks", { tab: "outstanding", counts: { outstanding: 1 }, tasks: [fatTask] }),
+    detail: shaped("tasknode_get_task", {
+      task: fatTask, submission: { generatedTask: fatTask }, forensics: bloat, wallets: bloat,
+      terminal: { briefText: "Task for Codex: brief", evidencePrompt: { mode: "verification_response" } },
+      actions: { canSubmitVerificationEvidence: true, browserSubmissionEnabled: true },
+      currentVerificationRequest: { body: "Show the test output." }, rewardOutcome: null,
+    }),
+    requests: shaped("tasknode_list_requests", { items: [{ requestId: "req_1", statusLabel: "Task proposed", userDetailText: "y".repeat(1000), metadata: bloat }] }),
+    rewards: shaped("tasknode_rewards", { rewards: [fatTask] }),
+    context: shaped("tasknode_get_context", { context: { title: "C", revision: 3, canEdit: true, body: "<p>b</p>", bodyText: "b", terminal: { editableBodyFormat: "html" } } }),
+  };
+  for (const [name, text] of Object.entries(outputs)) {
+    assert.ok(text.length < 2000 && !text.includes("metadata") && !text.includes("blob"), `${name} output is compact`);
+  }
+  assert.deepEqual(JSON.parse(outputs.list).tasks[0], { taskId: "task_1", title: "T", status: "outstanding", kind: "Network", pft: 25, due: "Oct 2" });
+  const detail = JSON.parse(outputs.detail);
+  assert.equal(detail.brief, "Task for Codex: brief");
+  assert.equal(detail.evidenceMode, "verification_response");
+  assert.equal(detail.actions.canSubmitVerificationEvidence, true);
+  assert.equal(detail.currentVerificationRequest.body, "Show the test output.");
+  assert.equal(JSON.parse(outputs.requests).requests[0].request.length, 300);
+  assert.deepEqual(JSON.parse(outputs.context), { title: "C", revision: 3, canEdit: true, format: "html", body: "<p>b</p>" });
+  assert.equal(toolText(tool.tasknode_list_tasks, { status: 409, body: '{"error":"wallet_not_linked"}' }), '{"error":"wallet_not_linked"}');
+
   runtime.revokeTerminalSessionByToken(token.access_token);
   assert.equal((await post("/mcp", { jsonrpc: "2.0", id: 9, method: "ping" }, auth)).status, 401);
   console.log("tasknode mcp smoke ok");
