@@ -4,15 +4,18 @@
 // terminal GitHub flow; tools re-enter the /api/terminal/tasknode routes so
 // route policy, rate limits and body contracts apply unchanged.
 import { createHash, randomBytes } from "node:crypto";
+import { appearancePageHead } from "./appearance-page.js";
 import { authStart } from "./product-contracts.js";
+import { getLinkedProviderForAccount } from "./repositories/accounts.js";
 import {
+  completeTerminalAuthRequest,
   consumeTerminalAuthRequestSession,
   createTerminalAuthRequest,
   getTerminalAuthRequest,
   getTerminalSessionByToken,
 } from "./repositories/terminal-auth.js";
 import { readValidatedJson as readJson } from "./request-validation.js";
-import { enforceRateLimit, enforceRoutePolicy, json } from "./server-http-boundary.js";
+import { enforceRateLimit, enforceRoutePolicy, json, securityHeaders } from "./server-http-boundary.js";
 import { handleTaskNodeTerminalRoute } from "./tasknode-terminal-routes.js";
 
 const protocolVersions = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -330,6 +333,64 @@ async function handleRegister({ req, res }) {
   });
 }
 
+// /connect: browser-side token for agents on any machine, including over SSH
+// where an OAuth loopback callback cannot reach the agent. The user copies one
+// command out of the browser and pastes it into the terminal.
+const escapeHtml = (value = "") => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+
+function connectPage(res, body, status = 200) {
+  res.writeHead(status, { ...securityHeaders(), "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect Codex or Claude Code · Task Node</title>${appearancePageHead}
+<style>body{font-family:system-ui,sans-serif;margin:0;padding:1.5rem;line-height:1.5}main{max-width:46rem;margin:0 auto}
+pre{white-space:pre-wrap;word-break:break-all;user-select:all;cursor:copy;padding:.75rem;border:1px solid #d8d5ca;border-radius:6px;background:#f3f1ea;font-size:.85rem}
+:root[data-theme="dark"] pre{background:#2a2b26;border-color:#3b3d35}
+.button{display:inline-block;padding:.6rem 1rem;border:0;border-radius:6px;background:#22231f;color:#faf9f6;font:inherit;cursor:pointer;text-decoration:none}</style>
+<main><h1>Connect Codex or Claude Code</h1>${body}</main>`);
+}
+
+export function agentConnectCommands(origin, token) {
+  const url = `${origin}/mcp`;
+  return {
+    codex: `codex mcp remove tasknode >/dev/null 2>&1; printf '\\n[mcp_servers.tasknode]\\nurl = "${url}"\\nhttp_headers = { Authorization = "Bearer ${token}" }\\n' >> "\${CODEX_HOME:-$HOME/.codex}/config.toml"`,
+    claude: `claude mcp add --scope user --transport http tasknode ${url} --header "Authorization: Bearer ${token}"`,
+  };
+}
+
+async function mintAgentToken(accountId, origin) {
+  const request = await createTerminalAuthRequest({ provider: "github", origin });
+  if (!(await completeTerminalAuthRequest({ requestId: request.requestId, accountId, provider: "github" })).ok) return "";
+  const issued = await consumeTerminalAuthRequestSession({ requestId: request.requestId, pollToken: request.pollToken });
+  return issued.ok ? issued.terminalToken : "";
+}
+
+async function handleConnect({ req, res, origin, session }) {
+  if (!session?.accountId) {
+    return connectPage(res, `<p>Sign in with the GitHub account linked to your Task Node account.</p><a class="button" href="/connect/login">Sign in with GitHub</a>`);
+  }
+  const github = await getLinkedProviderForAccount({ accountId: session.accountId, provider: "github" });
+  if (!github) {
+    return connectPage(res, `<p>Agents sign in through GitHub. Link GitHub to this account, then reopen this page.</p><a class="button" href="/settings/accounts/github">Link GitHub</a>`);
+  }
+  if (req.method !== "POST") {
+    return connectPage(res, `<p>Signed in as <b>${escapeHtml(github.username || session.accountId)}</b>. Create a token, then paste one command into the terminal where Codex or Claude Code runs. This works over SSH too.</p><form method="post"><button class="button" type="submit">Create token</button></form>`);
+  }
+  const token = await mintAgentToken(session.accountId, origin);
+  if (!token) return connectPage(res, `<p>The token could not be created. Reload this page and try again.</p>`, 500);
+  const commands = agentConnectCommands(origin, token);
+  return connectPage(res, `<p>Click a command to select all of it, copy it, and paste it into your terminal. This token is shown only once.</p>
+<h2>Codex</h2><pre>${escapeHtml(commands.codex)}</pre>
+<h2>Claude Code</h2><pre>${escapeHtml(commands.claude)}</pre>
+<p>Then start <code>codex</code> or <code>claude</code> and ask: "What are my outstanding Task Node tasks?"</p>
+<p class="muted">Anyone with this token can act as you in Task Node, so don't share it.</p>`);
+}
+
+async function handleConnectLogin({ req, res, origin, responseHeadersForAuthResult }) {
+  const result = await authStart("github", { origin, redirectPath: "/connect" });
+  if (result.status !== 200 || !result.body?.redirectUrl) return connectPage(res, `<p>GitHub sign-in is unavailable right now. Sign in at <a href="/">Task Node</a>, then reopen this page.</p>`, 503);
+  redirect(res, result.body.redirectUrl, responseHeadersForAuthResult(req, result));
+}
+
 export async function handleTaskNodeMcpRoute(params) {
   const { res, url, origin } = params;
   const pathname = url.pathname;
@@ -338,6 +399,8 @@ export async function handleTaskNodeMcpRoute(params) {
   else if (pathname === "/oauth/callback") await handleCallback(params);
   else if (pathname === "/oauth/token") await handleToken(params);
   else if (pathname === "/oauth/register") await handleRegister(params);
+  else if (pathname === "/connect") await handleConnect(params);
+  else if (pathname === "/connect/login") await handleConnectLogin(params);
   else if (pathname.startsWith("/.well-known/oauth-")) json(res, 200, metadata(origin, pathname));
   else return false;
   return true;

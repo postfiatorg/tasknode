@@ -282,7 +282,7 @@ async function routeApi(req, url, res) {
     origin: requestOrigin(req),
     responseHeadersForAuthResult,
   })) return true;
-  if (await handleTaskNodeMcpRoute({ req, res, url, origin: requestOrigin(req), responseHeadersForAuthResult })) return true;
+  if (await handleTaskNodeMcpRoute({ req, res, url, session, origin: requestOrigin(req), responseHeadersForAuthResult })) return true;
 
   if (url.pathname === "/api/auth/telegram/authorize") {
     if (req.method !== "GET") {

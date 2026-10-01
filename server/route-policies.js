@@ -297,6 +297,8 @@ export const apiRoutePolicies = [
   { id: "oauth_authorize", path: "/oauth/authorize", methods: ["GET"], auth: "none", rateLimit: { limit: 30, windowMs: tenMinutes } },
   { id: "oauth_callback", path: "/oauth/callback", methods: ["GET"], auth: "oauth_state" },
   { id: "oauth_metadata", prefix: "/.well-known/oauth-", methods: ["GET"], auth: "none" },
+  { id: "agent_connect", path: "/connect", methods: ["GET", "POST"], auth: "handler", rateLimit: { limit: 30, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "agent_connect_login", path: "/connect/login", methods: ["GET"], auth: "none", rateLimit: { limit: 20, windowMs: tenMinutes } },
   { id: "readiness", path: "/api/readiness", methods: ["GET"], auth: "none" },
   { id: "health", path: "/api/health", methods: ["GET"], auth: "none" },
   { id: "system_status", path: "/api/system/status", methods: ["GET"], auth: "none" },
