@@ -101,6 +101,18 @@ try {
   assert.equal(await revokeTerminalSessionByToken(issued.terminalToken), true);
   assert.equal(await getTerminalSessionByToken(issued.terminalToken), null);
 
+  // MCP OAuth requests are bound to their client; the plain poll route cannot redeem them.
+  const oauthClient = { clientId: "tnmcp_smoke", redirectUri: "http://localhost:4000/callback" };
+  const oauthRequest = await createTerminalAuthRequest({ provider: "github", pollToken: "pkce-challenge", oauth: { ...oauthClient, state: "s" } });
+  cleanupHashes.push(hashes(oauthRequest.requestId));
+  assert.deepEqual((await getTerminalAuthRequest({ requestId: oauthRequest.requestId })).oauth, { ...oauthClient, state: "s" });
+  assert.equal((await completeTerminalAuthRequest({ requestId: oauthRequest.requestId, accountId: account.id, provider: "github" })).ok, true);
+  assert.equal((await consumeTerminalAuthRequestSession({ requestId: oauthRequest.requestId, pollToken: "pkce-challenge" })).status, 401);
+  assert.equal((await consumeTerminalAuthRequestSession({ requestId: oauthRequest.requestId, pollToken: "pkce-challenge", oauthClient: { ...oauthClient, clientId: "other" } })).status, 401);
+  const oauthIssued = await consumeTerminalAuthRequestSession({ requestId: oauthRequest.requestId, pollToken: "pkce-challenge", oauthClient });
+  assert.equal(oauthIssued.ok, true);
+  cleanupHashes.push(hashes(oauthIssued.terminalToken));
+
   const direct = await createTerminalAuthRequest({ provider: "github", origin: "https://tasknode.example" });
   cleanupHashes.push(hashes(direct.requestId));
   assert.equal((await getTerminalAuthRequest({ requestId: direct.requestId })).status, "pending");

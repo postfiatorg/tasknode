@@ -225,6 +225,17 @@ export const observabilityBody = strictBody(8192, {
 }, { requiredAny: [["eventType", "event_type"]] });
 
 export const chatBody = strictBody(8 * MiB, chatProperties);
+// JSON-RPC 2.0 envelope; tool arguments are re-validated by the terminal route
+// each tool re-enters. OAuth registration follows RFC 7591 client metadata.
+export const mcpBody = strictBody(MiB, {
+  jsonrpc: text(10), id: { type: ["string", "integer", "number", "null"], maxLength: 200 }, method: text(200),
+  params: opaqueObject, result: opaqueObject, error: opaqueObject,
+});
+export const oauthRegisterBody = strictBody(16 * KiB, {
+  redirect_uris: stringArray(10, 500), grant_types: stringArray(), response_types: stringArray(), contacts: stringArray(),
+  token_endpoint_auth_method: text(80), client_name: text(200), client_uri: text(500), logo_uri: text(500),
+  tos_uri: text(500), policy_uri: text(500), scope: text(1000), software_id: text(200), software_version: text(80),
+});
 export const terminalContextBody = strictBody(256 * KiB, {
   revision: integer(0), title: text(120), body: text(250_000), source: text(80),
 }, { required: ["body"] });

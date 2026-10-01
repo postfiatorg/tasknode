@@ -64,6 +64,7 @@ const [
   { telegramAuthHeaders },
   { handleTaskReadRoute },
   { handleTaskNodeTerminalRoute },
+  { handleTaskNodeMcpRoute },
   { handleAccountRoute },
   { contextEditProposalAction },
   { handleContextRewriteRoute },
@@ -114,6 +115,7 @@ const [
   import("./auth-connected-accounts.js"),
   import("./task-routes.js"),
   import("./tasknode-terminal-routes.js"),
+  import("./tasknode-mcp.js"),
   import("./account-routes.js"),
   import("./context-edit-actions.js"),
   import("./context-rewrite-actions.js"),
@@ -280,6 +282,7 @@ async function routeApi(req, url, res) {
     origin: requestOrigin(req),
     responseHeadersForAuthResult,
   })) return true;
+  if (await handleTaskNodeMcpRoute({ req, res, url, origin: requestOrigin(req), responseHeadersForAuthResult })) return true;
 
   if (url.pathname === "/api/auth/telegram/authorize") {
     if (req.method !== "GET") {
