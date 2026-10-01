@@ -53,7 +53,11 @@ try {
   // Registration and authorization accept only local callbacks.
   assert.equal((await post("/oauth/register", { redirect_uris: ["https://attacker.example/cb"] })).status, 400);
   const redirectUri = "http://localhost:43123/callback";
-  const registered = await post("/oauth/register", { client_name: "smoke", redirect_uris: [redirectUri] });
+  // Real client payloads carry OIDC/RFC 7591 extensions (Codex: application_type).
+  const registered = await post("/oauth/register", {
+    client_name: "smoke", redirect_uris: [redirectUri], application_type: "native", grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"], token_endpoint_auth_method: "none", scope: "tasknode:read", future_extension: { any: true },
+  });
   assert.equal(registered.status, 201);
   const clientId = (await registered.json()).client_id;
   const verifier = randomBytes(32).toString("base64url");
