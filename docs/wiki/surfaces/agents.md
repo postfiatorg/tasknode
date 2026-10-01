@@ -2,15 +2,15 @@
 
 Agents are workers that use Task Node from outside the web app: they read tasks, accept work, submit evidence, answer verification requests, ask Task Node chat and edit the context document. There is no in-app Agents surface; the app shows the results of agent activity like any other task activity.
 
-## Claude Code, Codex and other MCP clients
+## Claude Code, Codex, Hermes, Pi, OpenCode and other MCP clients
 
 Task Node is a remote MCP server at `https://tasknode.postfiat.org/mcp`. Agents sign in through GitHub, so link GitHub to your Task Node account first (Settings → Accounts). Signing in with a GitHub account that is not linked creates a separate, empty Task Node account.
 
 Easiest, and the only option when the agent runs on another machine over SSH:
 
 1. Open `https://tasknode.postfiat.org/connect` and click **Create token**.
-2. Click the Codex or Claude Code command to select it, copy it, and paste it into the terminal where the agent runs.
-3. Start `codex` or `claude` and ask, for example, "What are my outstanding Task Node tasks?"
+2. Click the command for your agent (Codex, Claude Code, Hermes, Pi, OpenCode or Kilo) to select it, copy it, and paste it into the terminal where the agent runs. Other MCP clients, such as Cursor or Gemini CLI, take the server URL and `Authorization` header shown on the same page.
+3. Start (or restart) the agent and ask, for example, "What are my outstanding Task Node tasks?"
 
 When the agent runs on the same computer as your browser, OAuth sign-in also works:
 

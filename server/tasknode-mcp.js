@@ -389,12 +389,12 @@ const escapeHtml = (value = "") => String(value).replaceAll("&", "&amp;").replac
 function connectPage(res, body, status = 200) {
   res.writeHead(status, { ...securityHeaders(), "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
   res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Connect Codex or Claude Code · Task Node</title>${appearancePageHead}
+<title>Connect an agent · Task Node</title>${appearancePageHead}
 <style>body{font-family:system-ui,sans-serif;margin:0;padding:1.5rem;line-height:1.5}main{max-width:46rem;margin:0 auto}
 pre{white-space:pre-wrap;word-break:break-all;user-select:all;cursor:copy;padding:.75rem;border:1px solid #d8d5ca;border-radius:6px;background:#f3f1ea;font-size:.85rem}
 :root[data-theme="dark"] pre{background:#2a2b26;border-color:#3b3d35}
 .button{display:inline-block;padding:.6rem 1rem;border:0;border-radius:6px;background:#22231f;color:#faf9f6;font:inherit;cursor:pointer;text-decoration:none}</style>
-<main><h1>Connect Codex or Claude Code</h1>${body}</main>`);
+<main><h1>Connect an agent</h1>${body}</main>`);
 }
 
 export function agentConnectCommands(origin, token) {
@@ -402,8 +402,13 @@ export function agentConnectCommands(origin, token) {
   return {
     codex: `codex mcp remove tasknode >/dev/null 2>&1; printf '\\n[mcp_servers.tasknode]\\nurl = "${url}"\\nhttp_headers = { Authorization = "Bearer ${token}" }\\n' >> "\${CODEX_HOME:-$HOME/.codex}/config.toml"`,
     claude: `claude mcp add --scope user --transport http tasknode ${url} --header "Authorization: Bearer ${token}"`,
+    hermes: `hermes config set MCP_TASKNODE_API_KEY ${token} && hermes config set --force mcp_servers.tasknode.url ${url} && hermes config set --force mcp_servers.tasknode.headers.Authorization 'Bearer \${MCP_TASKNODE_API_KEY}'`,
+    pi: `pi mcp add tasknode --url ${url} --header "Authorization=Bearer ${token}" --exposure direct`,
+    opencode: `opencode mcp add tasknode --url ${url} --header "Authorization=Bearer ${token}"`,
   };
 }
+
+const connectClients = [["codex", "Codex"], ["claude", "Claude Code"], ["hermes", "Hermes"], ["pi", "Pi"], ["opencode", "OpenCode (for Kilo, replace opencode with kilo)"]];
 
 async function mintAgentToken(accountId, origin) {
   const request = await createTerminalAuthRequest({ provider: "github", origin });
@@ -421,15 +426,15 @@ async function handleConnect({ req, res, origin, session }) {
     return connectPage(res, `<p>Agents sign in through GitHub. Link GitHub to this account, then reopen this page.</p><a class="button" href="/settings/accounts/github">Link GitHub</a>`);
   }
   if (req.method !== "POST") {
-    return connectPage(res, `<p>Signed in as <b>${escapeHtml(github.username || session.accountId)}</b>. Create a token, then paste one command into the terminal where Codex or Claude Code runs. This works over SSH too.</p><form method="post"><button class="button" type="submit">Create token</button></form>`);
+    return connectPage(res, `<p>Signed in as <b>${escapeHtml(github.username || session.accountId)}</b>. Create a token, then paste one command into the terminal where your agent runs. This works over SSH too.</p><form method="post"><button class="button" type="submit">Create token</button></form>`);
   }
   const token = await mintAgentToken(session.accountId, origin);
   if (!token) return connectPage(res, `<p>The token could not be created. Reload this page and try again.</p>`, 500);
   const commands = agentConnectCommands(origin, token);
   return connectPage(res, `<p>Click a command to select all of it, copy it, and paste it into your terminal. This token is shown only once.</p>
-<h2>Codex</h2><pre>${escapeHtml(commands.codex)}</pre>
-<h2>Claude Code</h2><pre>${escapeHtml(commands.claude)}</pre>
-<p>Then start <code>codex</code> or <code>claude</code> and ask: "What are my outstanding Task Node tasks?"</p>
+${connectClients.map(([key, label]) => `<h2>${label}</h2><pre>${escapeHtml(commands[key])}</pre>`).join("\n")}
+<h2>Other MCP clients</h2><pre>${escapeHtml(`URL: ${origin}/mcp\nHeader: Authorization: Bearer ${token}`)}</pre>
+<p>Then start (or restart) the agent and ask: "What are my outstanding Task Node tasks?"</p>
 <p class="muted">Anyone with this token can act as you in Task Node, so don't share it.</p>`);
 }
 
