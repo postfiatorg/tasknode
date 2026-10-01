@@ -165,6 +165,7 @@
     "scripts/task-workflow-visibility-smoke.mjs",
     "scripts/taskgen-network-v2-smoke.mjs",
     "scripts/taskgen-replay-smoke.mjs",
+    "scripts/tasknode-mcp-smoke.mjs",
     "scripts/team-context-state-smoke.mjs",
     "scripts/telegram-bot-webhook-smoke.mjs",
     "scripts/terminal-account-selection-smoke.mjs",

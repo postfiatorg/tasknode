@@ -10,6 +10,7 @@ import {
   legacyTerminalAuthSnapshotForMigration,
   revokeTerminalSessionByToken as revokeRuntimeSession,
 } from "../runtime-store.js";
+import { oauthGrantMatches } from "../runtime-store-terminal-auth.js";
 import { getAccount, getLinkedProviderForAccount } from "./accounts.js";
 
 function hash(value = "") { return createHash("sha256").update(String(value || ""), "utf8").digest("hex"); }
@@ -43,7 +44,7 @@ function terminalSessionPayload(row = null) {
 export async function createTerminalAuthRequest(options = {}) {
   if (!databaseEnabled()) return createRuntimeRequest(options);
   const provider = String(options.provider || "github").trim().toLowerCase() || "github";
-  const requestId = randomToken("tnterm", 18); const pollToken = randomToken("tnpoll", 24);
+  const requestId = randomToken("tnterm", 18); const pollToken = options.pollToken || randomToken("tnpoll", 24);
   const createdAt = new Date(); const expiresAt = new Date(createdAt.getTime() + requestTtlSeconds() * 1000);
   const code = userCode();
   await query(
@@ -55,6 +56,7 @@ export async function createTerminalAuthRequest(options = {}) {
         origin: String(options.origin || "").slice(0, 500),
         userAgent: String(options.userAgent || "").slice(0, 500),
         ip: String(options.ip || "").slice(0, 120),
+        ...(options.oauth ? { oauth: options.oauth } : {}),
       }), createdAt.toISOString(), expiresAt.toISOString(),
     ]
   );
@@ -120,17 +122,17 @@ export async function completeTerminalAuthRequest({ requestId = "", accountId = 
   });
 }
 
-export async function consumeTerminalAuthRequestSession({ requestId = "", pollToken = "" } = {}) {
-  if (!databaseEnabled()) return consumeRuntimeRequest({ requestId, pollToken });
+export async function consumeTerminalAuthRequestSession({ requestId = "", pollToken = "", oauthClient = null } = {}) {
+  if (!databaseEnabled()) return consumeRuntimeRequest({ requestId, pollToken, oauthClient });
   return transaction(async (client) => {
     const current = await client.query(
-      `SELECT provider, status, user_code, poll_token_hash, account_id, error, expires_at
+      `SELECT provider, status, user_code, poll_token_hash, account_id, error, expires_at, request_json
          FROM terminal_auth_requests WHERE request_hash = $1 AND consumed_at IS NULL FOR UPDATE`,
       [hash(requestId)]
     );
     const request = current.rows[0];
     if (!request || new Date(request.expires_at).getTime() <= Date.now()) return { ok: false, status: 404, error: "terminal_auth_request_not_found" };
-    if (!safeEqual(request.poll_token_hash, hash(pollToken))) return { ok: false, status: 401, error: "terminal_auth_poll_denied" };
+    if (!safeEqual(request.poll_token_hash, hash(pollToken)) || !oauthGrantMatches(request.request_json?.oauth, oauthClient)) return { ok: false, status: 401, error: "terminal_auth_poll_denied" };
     if (request.status === "pending") return { ok: false, status: 202, error: "terminal_auth_pending", requestId, provider: request.provider, expiresAt: new Date(request.expires_at).toISOString() };
     if (request.status !== "linked" || !request.account_id) {
       await client.query("UPDATE terminal_auth_requests SET consumed_at = now() WHERE request_hash = $1", [hash(requestId)]);

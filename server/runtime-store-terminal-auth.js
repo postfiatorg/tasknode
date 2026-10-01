@@ -13,6 +13,13 @@ function tokenHash(token = "") {
   return createHash("sha256").update(String(token || ""), "utf8").digest("hex");
 }
 
+// OAuth-issued requests (the /mcp login) are bound to the client that started
+// them; plain terminal polls cannot redeem them and vice versa.
+export function oauthGrantMatches(stored = null, presented = null) {
+  if (!stored || !presented) return !stored && !presented;
+  return stored.clientId === presented.clientId && stored.redirectUri === presented.redirectUri;
+}
+
 function userCode() {
   return randomBytes(5)
     .toString("base64url")
@@ -63,13 +70,13 @@ export function createRuntimeTerminalAuthStore({
     return changed;
   }
 
-  function createTerminalAuthRequest({ provider = "github", origin = "", userAgent = "", ip = "" } = {}) {
+  function createTerminalAuthRequest({ provider = "github", origin = "", userAgent = "", ip = "", pollToken = "", oauth = null } = {}) {
     pruneExpiredTerminalAuthRequests({ save: false });
     const normalizedProvider = String(provider || "").trim().toLowerCase() || "github";
     const now = new Date();
     const expiresAt = new Date(now.getTime() + terminalAuthRequestTtlSeconds() * 1000).toISOString();
     const requestId = randomToken("tnterm", 18);
-    const pollToken = randomToken("tnpoll", 24);
+    pollToken ||= randomToken("tnpoll", 24);
     const request = {
       id: requestId,
       provider: normalizedProvider,
@@ -79,6 +86,7 @@ export function createRuntimeTerminalAuthStore({
       userAgent: String(userAgent || "").slice(0, 500),
       ip: String(ip || "").slice(0, 120),
       pollTokenHash: tokenHash(pollToken),
+      ...(oauth ? { oauth } : {}),
       createdAt: now.toISOString(),
       expiresAt,
     };
@@ -156,7 +164,7 @@ export function createRuntimeTerminalAuthStore({
     return { ok: true, token, session: terminalSessionPayload(state.terminalSessions[sessionId]) };
   }
 
-  function consumeTerminalAuthRequestSession({ requestId = "", pollToken = "" } = {}) {
+  function consumeTerminalAuthRequestSession({ requestId = "", pollToken = "", oauthClient = null } = {}) {
     pruneExpiredTerminalAuthRequests({ save: false });
     const normalizedRequestId = String(requestId || "").trim();
     const request = state.terminalAuthRequests[normalizedRequestId] || null;
@@ -164,7 +172,7 @@ export function createRuntimeTerminalAuthStore({
       saveState();
       return { ok: false, status: 404, error: "terminal_auth_request_not_found" };
     }
-    if (request.pollTokenHash !== tokenHash(pollToken)) {
+    if (request.pollTokenHash !== tokenHash(pollToken) || !oauthGrantMatches(request.oauth, oauthClient)) {
       saveState();
       return { ok: false, status: 401, error: "terminal_auth_poll_denied" };
     }

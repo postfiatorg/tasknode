@@ -1,43 +1,41 @@
 # Agents
 
-Agents are portable workers that can operate from outside the web app while still syncing with Task Node wallet identity and PFTL task state. This is essential because many users will do work in Codex or a CLI rather than inside the app.
+Agents are workers that use Task Node from outside the web app: they read tasks, accept work, submit evidence, answer verification requests, ask Task Node chat and edit the context document. There is no in-app Agents surface; the app shows the results of agent activity like any other task activity.
 
-Orcs are a specific class of external agent used by Task Node operators. For the operator workflow, shared review state, Nazgul oversight, and guardrails, see [Orc Operator Runtime](#docs/orc-operator-runtime).
+## Claude Code, Codex and other MCP clients
 
-Not Exposed: there is no in-app Agents surface. The web app sidebar has no Agents entry and no agent management panel. Agents act entirely outside the app through wallet-signed PFTL events, and the app only displays the projected results of that activity.
+Task Node is a remote MCP server at `https://tasknode.postfiat.org/mcp`. Sign-in is GitHub through your browser, so link GitHub to your Task Node account first (Settings → Accounts). Signing in with a GitHub account that is not linked creates a separate, empty Task Node account.
 
-Wallet-origin agents that converse through Task Node's product chat endpoint use the same `loadChatExecutionContext` boundary as browser chat. When the account has enabled Team Context, those agent conversations receive the current authorized team report. A standalone external PFTL worker does not receive private personal or Team Context merely by possessing a wallet; it must use an authenticated Task Node chat capability whose account boundary allows that context.
+Claude Code:
 
-## User Flow
-
-1. The user links or creates a PFT wallet.
-2. An external agent uses the user's seed or delegated capability outside the app.
-3. The agent reads task state, accepts work, submits evidence, or writes task pointers.
-4. The app displays the resulting chain-backed state through its cache.
-
-## Technical Architecture
-
-The reference implementation lives under `reference_clients/python/tasknode_pftl/`. The product app should treat agent activity as first-class replayable PFTL state, not as web-only actions.
-
-## Data Model
-
-- Agent actions: PFTL pointer events.
-- Private payloads: encrypted IPFS.
-- App cache: Postgres task projection and wallet activity.
-- Permissions: wallet seed possession or future delegated wallet capability.
-
-## Diagram
-
-```mermaid
-flowchart LR
-  Agent[External Agent] --> Wallet[User Wallet]
-  Wallet --> PFTL[PFTL Pointer Event]
-  PFTL --> Cache[Task Node Cache]
-  Cache --> UX[Web App]
+```sh
+claude mcp add --transport http tasknode https://tasknode.postfiat.org/mcp
 ```
+
+Then run `/mcp`, choose `tasknode` and authenticate.
+
+Codex:
+
+```sh
+codex mcp add tasknode --url https://tasknode.postfiat.org/mcp
+codex mcp login tasknode
+```
+
+Any other client that supports Streamable HTTP MCP with OAuth works the same way. Clients without OAuth can send an existing Task Node terminal token as `Authorization: Bearer <token>`.
+
+The server exposes tools for status, task lists and cards, accept/refuse/cancel, evidence and verification responses, task requests, the context document, chat, balance and rewards. Writes use the same rules, limits and wallet requirements as the web app. Chat calls are billed to your Task Node credits.
+
+Sign-in tokens do not expire. Treat them like passwords; `POST /api/auth/terminal/revoke` with the token revokes it.
+
+## Corbanu Terminal
+
+Corbanu Terminal users run `/tasknode link` and `/tasknode status`. It uses the same GitHub sign-in and API as the MCP server.
+
+## Wallet-signed PFTL clients
+
+Agents that hold a wallet seed can write task events directly to PFTL; Task Node replays them into its cache. The reference client is `reference_clients/python/tasknode_pftl/`. A wallet alone does not grant access to private context or Team Context; that requires an authenticated Task Node session.
 
 ## Failure Modes
 
 - The app must not assume all task actions originate from the web UX.
-- Replay should reconcile external actions into the cache.
-- Delegated permissions need a separate security design before production.
+- Replay reconciles external PFTL actions into the cache.
