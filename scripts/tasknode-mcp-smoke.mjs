@@ -4,7 +4,8 @@
 // calls that re-enter the terminal API under its route policies.
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,8 +23,9 @@ const { handleTaskNodeMcpRoute } = await import("../server/tasknode-mcp.js");
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, origin);
   try {
-    if (await enforceRoutePolicy(req, url, res, null)) return;
-    if (!(await handleTaskNodeMcpRoute({ req, res, url, origin, responseHeadersForAuthResult: () => ({}) }))) json(res, 404, { error: "not_found" });
+    const session = req.headers["x-smoke-account"] ? { accountId: req.headers["x-smoke-account"] } : null;
+    if (await enforceRoutePolicy(req, url, res, session)) return;
+    if (!(await handleTaskNodeMcpRoute({ req, res, url, origin, session, responseHeadersForAuthResult: () => ({}) }))) json(res, 404, { error: "not_found" });
   } catch (error) {
     json(res, 500, { error: error.message });
   }
@@ -123,6 +125,22 @@ try {
   assert.equal(JSON.parse(invalidBody.content[0].text).error, "request_body_field_unknown", "inner body contracts apply");
   assert.equal((await rpc("tools/call", { name: "nope" })).error.code, -32602);
   assert.equal((await rpc("resources/list")).error.code, -32601);
+
+  // /connect: signed-in browser mints a token and shows paste-ready commands.
+  assert.ok((await (await get("/connect")).text()).includes("/connect/login"), "signed out: sign-in link");
+  assert.equal(new URL((await get("/connect/login")).headers.get("location")).hostname, "github.com");
+  const browser = { "x-smoke-account": account.id, origin };
+  assert.ok((await (await fetch(`${origin}/connect`, { headers: browser })).text()).includes('method="post"'));
+  assert.equal((await fetch(`${origin}/connect`, { method: "POST", headers: { ...browser, origin: "https://evil.example" } })).status, 403);
+  const connectPage = await (await fetch(`${origin}/connect`, { method: "POST", headers: browser })).text();
+  const pageToken = connectPage.match(/Bearer (tns_[A-Za-z0-9_-]+)/)[1];
+  const { agentConnectCommands } = await import("../server/tasknode-mcp.js");
+  const codexHome = mkdtempSync(path.join(storeDir, "codex-"));
+  execFileSync("sh", ["-c", agentConnectCommands(origin, pageToken).codex], { env: { ...process.env, CODEX_HOME: codexHome, PATH: "/usr/bin:/bin" } });
+  const codexConfig = readFileSync(path.join(codexHome, "config.toml"), "utf8");
+  assert.ok(codexConfig.includes(`[mcp_servers.tasknode]\nurl = "${origin}/mcp"\nhttp_headers = { Authorization = "Bearer ${pageToken}" }\n`), "codex command writes a valid server entry");
+  const viaPage = await post("/mcp", { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "tasknode_status", arguments: {} } }, { authorization: `Bearer ${pageToken}` });
+  assert.equal(JSON.parse((await viaPage.json()).result.content[0].text).accountId, account.id);
 
   runtime.revokeTerminalSessionByToken(token.access_token);
   assert.equal((await post("/mcp", { jsonrpc: "2.0", id: 9, method: "ping" }, auth)).status, 401);
