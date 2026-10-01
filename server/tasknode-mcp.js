@@ -33,13 +33,30 @@ const text = (description, extra = {}) => ({ type: "string", description, ...ext
 const taskId = text("Task ID from tasknode_list_tasks.");
 const path = (...parts) => parts.map(encodeURIComponent).join("/");
 
-const tools = [
+// Agents get compact, decision-relevant fields; the terminal API payloads
+// carry internal metadata (up to ~160 KB per task request) that would flood
+// the model's context. Full detail stays one tasknode_get_task call away.
+const taskSummary = (task = {}) => ({
+  taskId: task.taskId || task.fullId || task.id,
+  title: task.title,
+  status: task.statusKey || task.status,
+  kind: task.kind,
+  pft: task.pft,
+  due: task.fullDue || task.due || undefined,
+});
+const contextView = ({ context: doc = {} }) => ({
+  title: doc.title, revision: doc.revision, canEdit: doc.canEdit, format: doc.terminal?.editableBodyFormat, body: doc.body,
+});
+const actionFlags = ["canAccept", "canRefuse", "canCancel", "canSubmitInitialEvidence", "canSubmitVerificationEvidence"];
+
+export const mcpTools = [
   { name: "tasknode_status", description: "Account, linked wallet and task counts.", route: () => ["GET", "status"] },
   {
     name: "tasknode_list_tasks",
     description: "List tasks in one tab.",
     properties: { tab: text("Default outstanding.", { enum: ["outstanding", "verification", "refused", "rewarded"] }) },
     route: ({ tab = "outstanding" }) => ["GET", `tasks?tab=${encodeURIComponent(tab)}`],
+    shape: ({ tab, counts, tasks = [] }) => ({ tab, counts, tasks: tasks.map(taskSummary) }),
   },
   {
     name: "tasknode_get_task",
@@ -47,6 +64,14 @@ const tools = [
     properties: { taskId },
     required: ["taskId"],
     route: (args) => ["GET", path("tasks", args.taskId)],
+    shape: ({ task, terminal = {}, actions = {}, currentVerificationRequest, rewardOutcome }) => ({
+      task: taskSummary(task),
+      brief: terminal.briefText,
+      evidenceMode: terminal.evidencePrompt?.mode,
+      actions: Object.fromEntries(actionFlags.map((flag) => [flag, actions[flag] === true])),
+      currentVerificationRequest,
+      rewardOutcome,
+    }),
   },
   {
     name: "tasknode_task_action",
@@ -85,8 +110,24 @@ const tools = [
     write: true,
     route: (body) => ["POST", "requests", body],
   },
-  { name: "tasknode_list_requests", description: "Recent task requests and their generation status.", route: () => ["GET", "requests"] },
-  { name: "tasknode_get_context", description: "Read the user's context document (operating manual).", route: () => ["GET", "context"] },
+  {
+    name: "tasknode_list_requests",
+    description: "Recent task requests and their generation status.",
+    route: () => ["GET", "requests"],
+    shape: ({ items = [], nextCursor }) => ({
+      nextCursor,
+      requests: items.map((item) => ({
+        requestId: item.requestId,
+        status: item.statusLabel || item.status,
+        kind: item.requestedTaskKind,
+        generatedTaskId: item.generatedTaskId || undefined,
+        lastError: item.lastError || undefined,
+        createdAt: item.createdAt,
+        request: String(item.userDetailText || item.requestText || "").slice(0, 300),
+      })),
+    }),
+  },
+  { name: "tasknode_get_context", description: "Read the user's context document (operating manual).", route: () => ["GET", "context"], shape: contextView },
   {
     name: "tasknode_save_context",
     description: "Replace the context document body. Pass the revision you read to avoid overwriting newer edits.",
@@ -94,6 +135,7 @@ const tools = [
     required: ["body"],
     write: true,
     route: (body) => ["POST", "context", body],
+    shape: (result) => ({ message: result.message, saved: result.saved, ...contextView(result) }),
   },
   {
     name: "tasknode_chat",
@@ -113,10 +155,11 @@ const tools = [
     description: "Recent task rewards.",
     properties: { limit: { type: "integer", minimum: 1, maximum: 50 } },
     route: ({ limit = 10 }) => ["GET", `rewards?limit=${Number(limit) || 10}`],
+    shape: ({ rewards = [] }) => ({ rewards: rewards.map((task) => ({ ...taskSummary(task), rewardedAt: task.lastEventAt || task.updatedAt })) }),
   },
 ];
-const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
-const toolList = tools.map(({ name, description, properties = {}, required = [], write }) => ({
+const toolsByName = new Map(mcpTools.map((tool) => [tool.name, tool]));
+const toolList = mcpTools.map(({ name, description, properties = {}, required = [], write }) => ({
   name,
   description,
   inputSchema: { type: "object", properties, required, additionalProperties: false },
@@ -198,6 +241,11 @@ async function callTool(tool, args, req, origin, session) {
   return out;
 }
 
+export function toolText(tool, out) {
+  if (!tool.shape || out.status >= 400) return out.body;
+  return JSON.stringify(tool.shape(JSON.parse(out.body)));
+}
+
 async function rpcResult(message, req, origin, session) {
   const { method, params = {} } = message;
   if (method === "initialize") {
@@ -214,7 +262,7 @@ async function rpcResult(message, req, origin, session) {
     const tool = toolsByName.get(params.name);
     if (!tool) throw Object.assign(new Error(`Unknown tool: ${params.name}`), { code: -32602 });
     const out = await callTool(tool, params.arguments || {}, req, origin, session);
-    return { content: [{ type: "text", text: out.body }], isError: out.status >= 400 };
+    return { content: [{ type: "text", text: toolText(tool, out) }], isError: out.status >= 400 };
   }
   throw Object.assign(new Error(`Method not found: ${method}`), { code: -32601 });
 }
