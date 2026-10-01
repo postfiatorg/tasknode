@@ -83,7 +83,7 @@ resource membership, or other context beyond a generic identity class.
 | `terminal_campaign_tracker` | `/api/terminal/tasknode/campaign-tracker/…` | `GET` `POST` | `bearer` | strict JSON ≤ 1126400 bytes | 180 / 60s |
 | `terminal_tasknode_fallback` | `/api/terminal/tasknode/…` | `GET` | `bearer` | — | — |
 | `mcp` | `/mcp` | `POST` | `handler` | strict JSON ≤ 1048576 bytes | 300 / 60s |
-| `oauth_register` | `/oauth/register` | `POST` | `none` | strict JSON ≤ 16384 bytes | 20 / 600s |
+| `oauth_register` | `/oauth/register` | `POST` | `none` | provider-shaped JSON ≤ 16384 bytes | 20 / 600s |
 | `oauth_authorize` | `/oauth/authorize` | `GET` | `none` | — | 30 / 600s |
 | `oauth_callback` | `/oauth/callback` | `GET` | `oauth_state` | — | — |
 | `oauth_metadata` | `/.well-known/oauth-/…` | `GET` | `none` | — | — |
