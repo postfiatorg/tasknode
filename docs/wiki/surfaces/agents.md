@@ -21,6 +21,17 @@ The server exposes tools for status, task lists and cards, accept/refuse/cancel,
 
 Agent tokens do not expire. Anyone with one can act as you in Task Node, so treat it like a password.
 
+### Switch accounts or sign out
+
+Each agent configuration holds one Task Node account. To switch, switch to the other account in Task Node (it needs its own linked GitHub account), open `/connect`, create a token and paste the new command. It replaces the agent's current account.
+
+To sign out, click **Sign out all agents** on `/connect`. It revokes every agent and Corbanu Terminal token for the account. Then remove the entry from each agent, for example `codex mcp remove tasknode`, `claude mcp remove --scope user tasknode`, `hermes mcp remove tasknode` or `pi mcp remove tasknode`.
+
+### Several accounts on one computer
+
+- Codex: give each extra account its own Codex home that shares your OpenAI sign-in: `mkdir -p ~/.codex-work && ln -s ~/.codex/auth.json ~/.codex-work/auth.json`. Run `export CODEX_HOME=~/.codex-work`, paste that account's `/connect` command, then start that account's sessions with `CODEX_HOME=~/.codex-work codex`.
+- Claude Code: in the folder where the other account should apply, paste its `/connect` command with `--scope user` changed to `--scope local` (both places). Claude Code uses that account only in that folder.
+
 ## Corbanu Terminal
 
 Corbanu Terminal users run `/tasknode link` and `/tasknode status`. It uses the same GitHub sign-in and API as the MCP server.

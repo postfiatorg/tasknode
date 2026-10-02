@@ -298,6 +298,7 @@ export const apiRoutePolicies = [
   { id: "oauth_callback", path: "/oauth/callback", methods: ["GET"], auth: "oauth_state" },
   { id: "oauth_metadata", prefix: "/.well-known/oauth-", methods: ["GET"], auth: "none" },
   { id: "agent_connect", path: "/connect", methods: ["GET", "POST"], auth: "handler", rateLimit: { limit: 30, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "agent_connect_signout", path: "/connect/signout", methods: ["POST"], auth: "handler", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
   { id: "agent_connect_login", path: "/connect/login", methods: ["GET"], auth: "none", rateLimit: { limit: 20, windowMs: tenMinutes } },
   { id: "readiness", path: "/api/readiness", methods: ["GET"], auth: "none" },
   { id: "health", path: "/api/health", methods: ["GET"], auth: "none" },

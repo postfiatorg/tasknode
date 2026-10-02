@@ -88,6 +88,7 @@ resource membership, or other context beyond a generic identity class.
 | `oauth_callback` | `/oauth/callback` | `GET` | `oauth_state` | — | — |
 | `oauth_metadata` | `/.well-known/oauth-/…` | `GET` | `none` | — | — |
 | `agent_connect` | `/connect` | `GET` `POST` | `handler` | strict JSON ≤ 1024 bytes | 30 / 600s |
+| `agent_connect_signout` | `/connect/signout` | `POST` | `handler` | strict JSON ≤ 1024 bytes | 10 / 600s |
 | `agent_connect_login` | `/connect/login` | `GET` | `none` | — | 20 / 600s |
 | `readiness` | `/api/readiness` | `GET` | `none` | — | — |
 | `health` | `/api/health` | `GET` | `none` | — | — |
@@ -210,4 +211,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **184 route policies** and **8 authentication modes**.
+Total: **185 route policies** and **8 authentication modes**.

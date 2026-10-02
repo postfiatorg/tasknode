@@ -64,7 +64,7 @@ try {
   assert.deepEqual(revoked.body.members,[]);
   assert.equal(revoked.body.overview,"");
   assert.equal(JSON.stringify(revoked.body).includes("Fixture shared"),false);
-  await auth.revokeTerminalSessionByToken(alice.token);
+  await auth.revokeTerminalSessions({ token: alice.token });
   assert.equal((await request(alice.token)).status,401);
   console.log("terminal Team Context: passed auth, read-only methods, web parity, account isolation, feature gate, grant revocation and session revocation");
 } finally {

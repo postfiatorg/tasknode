@@ -208,14 +208,18 @@ export function createRuntimeTerminalAuthStore({
     return terminalSessionPayload(session);
   }
 
-  function revokeTerminalSessionByToken(token = "") {
-    const hash = tokenHash(token);
-    if (!hash) return false;
-    let revoked = false;
+  // Revokes one token, or every token of an account ("sign out all agents").
+  function revokeTerminalSessions({ token = "", accountId = "" } = {}) {
+    const hash = token ? tokenHash(token) : "";
+    if (!hash && !accountId) return 0;
+    let revoked = 0;
     for (const [sessionId, session] of Object.entries(state.terminalSessions || {})) {
-      if (!session?.tokenHash || !timingSafeEqual(Buffer.from(session.tokenHash), Buffer.from(hash))) continue;
+      const match = hash
+        ? session?.tokenHash && timingSafeEqual(Buffer.from(session.tokenHash), Buffer.from(hash))
+        : session?.accountId === accountId;
+      if (!match) continue;
       delete state.terminalSessions[sessionId];
-      revoked = true;
+      revoked += 1;
     }
     if (revoked) saveState();
     return revoked;
@@ -229,6 +233,6 @@ export function createRuntimeTerminalAuthStore({
     getTerminalSessionByToken,
     pruneExpiredTerminalAuthRequests,
     pruneExpiredTerminalSessions,
-    revokeTerminalSessionByToken,
+    revokeTerminalSessions,
   };
 }
