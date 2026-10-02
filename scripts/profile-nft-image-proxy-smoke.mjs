@@ -259,11 +259,11 @@ try {
     json,
     req: { method: "GET", headers: {} },
     res: thumbnailRouteRes,
-    url: new URL(`http://tasknode.local/api/profile/nft/pfp/${thumbnailCid}?size=500`),
+    url: new URL(`http://tasknode.local/api/profile/nft/pfp/${thumbnailCid}?size=900`),
     env: { ...thumbnailEnv, TASKNODE_PROFILE_NFT_PFP_SYNC_GENERATE: "1" },
     fetchThumbnail: async ({ cid: requestedCid, size }) => {
       assert.equal(requestedCid, thumbnailCid);
-      assert.equal(size, 192);
+      assert.equal(size, 512);
       return {
         ok: true,
         cid: requestedCid,
@@ -279,9 +279,9 @@ try {
   assert.equal(thumbnailRouteRes.statusCode, 200);
   assert.equal(thumbnailRouteRes.headers["cache-control"], "public, max-age=31536000, immutable");
   assert.equal(thumbnailRouteRes.headers["content-type"], "image/webp");
-  assert.equal(thumbnailRouteRes.headers["x-profile-nft-thumbnail-size"], "192");
+  assert.equal(thumbnailRouteRes.headers["x-profile-nft-thumbnail-size"], "512");
   assert.equal(thumbnailRouteRes.headers["x-profile-nft-thumbnail-cache"], "disk");
-  assert.equal(thumbnailRouteRes.headers.etag, `"${thumbnailCid}:pfp:192:webp"`);
+  assert.equal(thumbnailRouteRes.headers.etag, `"${thumbnailCid}:pfp:512:webp"`);
 
   const thumbnailNotModifiedRes = createResponseCapture();
   const handledPfpNotModified = await handleProfileNftPfpRoute({
