@@ -22,7 +22,7 @@ const DEFAULT_THUMBNAIL_CACHE_DIR = "/data/profile-nft-thumbnails";
 const DEFAULT_THUMBNAIL_FORMAT = "webp";
 const DEFAULT_THUMBNAIL_GENERATION_CONCURRENCY = 1;
 const DEFAULT_THUMBNAIL_GENERATION_QUEUE_MAX = 32;
-const THUMBNAIL_SIZES = [48, 96, 192];
+const THUMBNAIL_SIZES = [48, 96, 192, 512]; // 512: postfiat.org community cards
 const allowedContentTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 const imageCache = new Map();
