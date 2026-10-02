@@ -89,6 +89,7 @@ try {
   const thumbnail = await readStoredProfileNftThumbnail({ cid: nft.imageCid, size: 96, format: "webp" });
   assert.equal(thumbnail.cache, "render_checkpoint");
   assert.equal((await sharp(thumbnail.bytes).metadata()).width, 96);
+  assert.equal(await readStoredProfileNftThumbnail({ cid: nft.imageCid, size: 512, format: "webp" }), null, "never upscale the 192px checkpoint");
   assert.equal((await query("SELECT status FROM profile_nft_daily_awards WHERE id=$1", [award.id])).rows[0].status,"generated");
   assert.equal((await getPublicProfileHeroNft({ accountId: withArt })).id, old.id, "Automatic artwork must preserve a chosen PFP");
   // Recover after the durable image checkpoint without changing its name or image.
