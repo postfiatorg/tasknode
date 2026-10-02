@@ -928,7 +928,7 @@ export const getTerminalAuthRequest = terminalAuthStore.getTerminalAuthRequest;
 export const getTerminalSessionByToken = terminalAuthStore.getTerminalSessionByToken;
 export const pruneExpiredTerminalAuthRequests = terminalAuthStore.pruneExpiredTerminalAuthRequests;
 export const pruneExpiredTerminalSessions = terminalAuthStore.pruneExpiredTerminalSessions;
-export const revokeTerminalSessionByToken = terminalAuthStore.revokeTerminalSessionByToken;
+export const revokeTerminalSessions = terminalAuthStore.revokeTerminalSessions;
 
 export function createDevSession({ email = "dev@tasknode.local" } = {}) {
   pruneExpiredSessions();

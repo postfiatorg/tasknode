@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -139,6 +139,7 @@ try {
   execFileSync("sh", ["-c", agentConnectCommands(origin, pageToken).codex], { env: { ...process.env, CODEX_HOME: codexHome, PATH: "/usr/bin:/bin" } });
   const codexConfig = readFileSync(path.join(codexHome, "config.toml"), "utf8");
   assert.ok(codexConfig.includes(`[mcp_servers.tasknode]\nurl = "${origin}/mcp"\nhttp_headers = { Authorization = "Bearer ${pageToken}" }\n`), "codex command writes a valid server entry");
+  assert.equal(statSync(path.join(codexHome, "config.toml")).mode & 0o777, 0o600, "codex config holding the token is private");
   // Every other client command must reach its CLI with exactly these argv
   // (shell quoting keeps the token and Hermes's ${VAR} template literal).
   const stubBin = mkdtempSync(path.join(storeDir, "bin-"));
@@ -146,7 +147,7 @@ try {
   for (const name of ["claude", "hermes", "pi", "opencode"]) writeFileSync(path.join(stubBin, name), '#!/bin/sh\nprintf "%s|" "${0##*/}" "$@" >> "$ARGV_LOG"; echo >> "$ARGV_LOG"\n', { mode: 0o755 });
   const mcpUrl = `${origin}/mcp`;
   const expectedArgv = {
-    claude: [`claude|mcp|add|--scope|user|--transport|http|tasknode|${mcpUrl}|--header|Authorization: Bearer ${pageToken}|`],
+    claude: ["claude|mcp|remove|--scope|user|tasknode|", `claude|mcp|add|--scope|user|--transport|http|tasknode|${mcpUrl}|--header|Authorization: Bearer ${pageToken}|`],
     hermes: [`hermes|config|set|MCP_TASKNODE_API_KEY|${pageToken}|`, `hermes|config|set|--force|mcp_servers.tasknode.url|${mcpUrl}|`, "hermes|config|set|--force|mcp_servers.tasknode.headers.Authorization|Bearer ${MCP_TASKNODE_API_KEY}|"],
     pi: [`pi|mcp|add|tasknode|--url|${mcpUrl}|--header|Authorization=Bearer ${pageToken}|--exposure|direct|`],
     opencode: [`opencode|mcp|add|tasknode|--url|${mcpUrl}|--header|Authorization=Bearer ${pageToken}|`],
@@ -155,7 +156,7 @@ try {
     writeFileSync(argvLog, "");
     execFileSync("sh", ["-c", agentConnectCommands(origin, pageToken)[client]], { env: { PATH: `${stubBin}:/usr/bin:/bin`, ARGV_LOG: argvLog } });
     assert.deepEqual(readFileSync(argvLog, "utf8").trim().split("\n"), lines, `${client} command argv`);
-    assert.ok(connectPage.includes(`<pre>${client === "hermes" ? "hermes config set" : `${client} mcp add`}`), `${client} command shown on /connect`);
+    assert.ok(connectPage.includes(`<pre>${client} `), `${client} command shown on /connect`);
   }
   const viaPage = await post("/mcp", { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "tasknode_status", arguments: {} } }, { authorization: `Bearer ${pageToken}` });
   assert.equal(JSON.parse((await viaPage.json()).result.content[0].text).accountId, account.id);
@@ -192,8 +193,14 @@ try {
   assert.deepEqual(JSON.parse(outputs.context), { title: "C", revision: 3, canEdit: true, format: "html", body: "<p>b</p>" });
   assert.equal(toolText(tool.tasknode_list_tasks, { status: 409, body: '{"error":"wallet_not_linked"}' }), '{"error":"wallet_not_linked"}');
 
-  runtime.revokeTerminalSessionByToken(token.access_token);
+  runtime.revokeTerminalSessions({ token: token.access_token });
   assert.equal((await post("/mcp", { jsonrpc: "2.0", id: 9, method: "ping" }, auth)).status, 401);
+
+  // "Sign out all agents" on /connect revokes every remaining token of the account.
+  assert.equal((await fetch(`${origin}/connect/signout`, { method: "POST", headers: { ...browser, origin: "https://evil.example" } })).status, 403);
+  assert.ok((await (await fetch(`${origin}/connect`, { headers: browser })).text()).includes('action="/connect/signout"'));
+  assert.ok((await (await fetch(`${origin}/connect/signout`, { method: "POST", headers: browser })).text()).includes("Signed out 1 agent"));
+  assert.equal((await post("/mcp", { jsonrpc: "2.0", id: 10, method: "ping" }, { authorization: `Bearer ${pageToken}` })).status, 401);
   console.log("tasknode mcp smoke ok");
 } finally {
   server.close();

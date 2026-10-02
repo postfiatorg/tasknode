@@ -35,7 +35,7 @@ const {
   getTerminalAuthRequest,
   getTerminalSessionByToken,
   migrateLegacyTerminalAuth,
-  revokeTerminalSessionByToken,
+  revokeTerminalSessions,
   terminalAuthStorageStatus,
 } = await import("../server/repositories/terminal-auth.js");
 
@@ -98,7 +98,7 @@ try {
   assert.equal(storedSession.rows[0].expires_at, null);
   assert.equal((await consumeTerminalAuthRequestSession({ requestId: pendingRequest.requestId, pollToken: pendingRequest.pollToken })).status, 404);
   assert.equal((await getTerminalSessionByToken(issued.terminalToken)).accountId, account.id);
-  assert.equal(await revokeTerminalSessionByToken(issued.terminalToken), true);
+  assert.equal(await revokeTerminalSessions({ token: issued.terminalToken }), 1);
   assert.equal(await getTerminalSessionByToken(issued.terminalToken), null);
 
   // MCP OAuth requests are bound to their client; the plain poll route cannot redeem them.
@@ -112,11 +112,16 @@ try {
   const oauthIssued = await consumeTerminalAuthRequestSession({ requestId: oauthRequest.requestId, pollToken: "pkce-challenge", oauthClient });
   assert.equal(oauthIssued.ok, true);
   cleanupHashes.push(hashes(oauthIssued.terminalToken));
+  // "Sign out all agents" revokes every remaining token of the account.
+  assert.ok(await revokeTerminalSessions({ accountId: account.id }) >= 2);
+  assert.equal((await query("SELECT count(*)::int AS n FROM terminal_sessions WHERE account_id = $1 AND revoked_at IS NULL", [account.id])).rows[0].n, 0);
+  assert.equal(await getTerminalSessionByToken(oauthIssued.terminalToken), null);
+  assert.equal(await getTerminalSessionByToken(historicalToken), null);
 
   const direct = await createTerminalAuthRequest({ provider: "github", origin: "https://tasknode.example" });
   cleanupHashes.push(hashes(direct.requestId));
   assert.equal((await getTerminalAuthRequest({ requestId: direct.requestId })).status, "pending");
-  console.log("terminal auth repository smoke ok: all unrevoked historical and new sessions persist, hashed secrets, lossless import, one-time exchange, durable revoke");
+  console.log("terminal auth repository smoke ok: all unrevoked historical and new sessions persist, hashed secrets, lossless import, one-time exchange, durable revoke, account-wide sign-out");
 } finally {
   await query("DELETE FROM terminal_auth_requests WHERE account_id = $1 OR request_hash = ANY($2::text[])", [account.id, [hashes(pendingRequest.requestId), ...cleanupHashes]]).catch(() => {});
   await query("DELETE FROM terminal_sessions WHERE account_id = $1", [account.id]).catch(() => {});

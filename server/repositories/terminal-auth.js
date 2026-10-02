@@ -8,7 +8,7 @@ import {
   getTerminalAuthRequest as getRuntimeRequest,
   getTerminalSessionByToken as getRuntimeSession,
   legacyTerminalAuthSnapshotForMigration,
-  revokeTerminalSessionByToken as revokeRuntimeSession,
+  revokeTerminalSessions as revokeRuntimeSessions,
 } from "../runtime-store.js";
 import { oauthGrantMatches } from "../runtime-store-terminal-auth.js";
 import { getAccount, getLinkedProviderForAccount } from "./accounts.js";
@@ -172,14 +172,15 @@ export async function getTerminalSessionByToken(token = "") {
   return session;
 }
 
-export async function revokeTerminalSessionByToken(token = "") {
-  if (!databaseEnabled()) return revokeRuntimeSession(token);
-  if (!token) return false;
+// Revokes one token, or every token of an account ("sign out all agents").
+export async function revokeTerminalSessions({ token = "", accountId = "" } = {}) {
+  if (!databaseEnabled()) return revokeRuntimeSessions({ token, accountId });
+  if (!token && !accountId) return 0;
   const result = await query(
-    "UPDATE terminal_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL RETURNING token_hash",
-    [hash(token)]
+    `UPDATE terminal_sessions SET revoked_at = now() WHERE ${token ? "token_hash" : "account_id"} = $1 AND revoked_at IS NULL`,
+    [token ? hash(token) : accountId]
   );
-  return result.rowCount > 0;
+  return result.rowCount;
 }
 
 export async function migrateLegacyTerminalAuth() {

@@ -13,6 +13,7 @@ import {
   createTerminalAuthRequest,
   getTerminalAuthRequest,
   getTerminalSessionByToken,
+  revokeTerminalSessions,
 } from "./repositories/terminal-auth.js";
 import { readValidatedJson as readJson } from "./request-validation.js";
 import { enforceRateLimit, enforceRoutePolicy, json, securityHeaders } from "./server-http-boundary.js";
@@ -400,8 +401,8 @@ pre{white-space:pre-wrap;word-break:break-all;user-select:all;cursor:copy;paddin
 export function agentConnectCommands(origin, token) {
   const url = `${origin}/mcp`;
   return {
-    codex: `codex mcp remove tasknode >/dev/null 2>&1; printf '\\n[mcp_servers.tasknode]\\nurl = "${url}"\\nhttp_headers = { Authorization = "Bearer ${token}" }\\n' >> "\${CODEX_HOME:-$HOME/.codex}/config.toml"`,
-    claude: `claude mcp add --scope user --transport http tasknode ${url} --header "Authorization: Bearer ${token}"`,
+    codex: `codex mcp remove tasknode >/dev/null 2>&1; (umask 077; printf '\\n[mcp_servers.tasknode]\\nurl = "${url}"\\nhttp_headers = { Authorization = "Bearer ${token}" }\\n' >> "\${CODEX_HOME:-$HOME/.codex}/config.toml")`,
+    claude: `claude mcp remove --scope user tasknode >/dev/null 2>&1; claude mcp add --scope user --transport http tasknode ${url} --header "Authorization: Bearer ${token}"`,
     hermes: `hermes config set MCP_TASKNODE_API_KEY ${token} && hermes config set --force mcp_servers.tasknode.url ${url} && hermes config set --force mcp_servers.tasknode.headers.Authorization 'Bearer \${MCP_TASKNODE_API_KEY}'`,
     pi: `pi mcp add tasknode --url ${url} --header "Authorization=Bearer ${token}" --exposure direct`,
     opencode: `opencode mcp add tasknode --url ${url} --header "Authorization=Bearer ${token}"`,
@@ -417,16 +418,23 @@ async function mintAgentToken(accountId, origin) {
   return issued.ok ? issued.terminalToken : "";
 }
 
-async function handleConnect({ req, res, origin, session }) {
+async function handleConnect({ req, res, url, origin, session }) {
   if (!session?.accountId) {
     return connectPage(res, `<p>Sign in with the GitHub account linked to your Task Node account.</p><a class="button" href="/connect/login">Sign in with GitHub</a>`);
+  }
+  if (url.pathname === "/connect/signout") {
+    const count = await revokeTerminalSessions({ accountId: session.accountId });
+    return connectPage(res, `<p>Signed out ${count} agent and terminal token${count === 1 ? "" : "s"}. Agents using them can no longer reach this account.</p><a class="button" href="/connect">Connect an agent</a>`);
   }
   const github = await getLinkedProviderForAccount({ accountId: session.accountId, provider: "github" });
   if (!github) {
     return connectPage(res, `<p>Agents sign in through GitHub. Link GitHub to this account, then reopen this page.</p><a class="button" href="/settings/accounts/github">Link GitHub</a>`);
   }
   if (req.method !== "POST") {
-    return connectPage(res, `<p>Signed in as <b>${escapeHtml(github.username || session.accountId)}</b>. Create a token, then paste one command into the terminal where your agent runs. This works over SSH too.</p><form method="post"><button class="button" type="submit">Create token</button></form>`);
+    return connectPage(res, `<p>Signed in as <b>${escapeHtml(github.username || session.accountId)}</b>. Create a token, then paste one command into the terminal where your agent runs. This works over SSH too.</p><form method="post"><button class="button" type="submit">Create token</button></form>
+<p class="muted">To connect a different account, switch to it in Task Node first. Pasting a new command replaces the agent's current account.</p>
+<form method="post" action="/connect/signout"><button class="button" type="submit">Sign out all agents</button></form>
+<p class="muted">Revokes every agent and Corbanu Terminal token for this account, for example after losing a laptop.</p>`);
   }
   const token = await mintAgentToken(session.accountId, origin);
   if (!token) return connectPage(res, `<p>The token could not be created. Reload this page and try again.</p>`, 500);
@@ -452,7 +460,7 @@ export async function handleTaskNodeMcpRoute(params) {
   else if (pathname === "/oauth/callback") await handleCallback(params);
   else if (pathname === "/oauth/token") await handleToken(params);
   else if (pathname === "/oauth/register") await handleRegister(params);
-  else if (pathname === "/connect") await handleConnect(params);
+  else if (pathname === "/connect" || pathname === "/connect/signout") await handleConnect(params);
   else if (pathname === "/connect/login") await handleConnectLogin(params);
   else if (pathname.startsWith("/.well-known/oauth-")) json(res, 200, metadata(origin, pathname));
   else return false;
