@@ -38,6 +38,10 @@ const AUDIT_PHRASES = ["fact check", "fact-check", "coverage map", "coverage gap
 
 const DOCUMENT_STEMS = ["gist", "writeup", "report", "memo", "scorecard"];
 const DOCUMENT_PHRASES = ["write up", "write-up", "findings doc", "findings note", "coverage map", "coverage plan", "decision gist", "public note"];
+// A merge verdict (MERGE / DO-NOT-MERGE, PASS / FAIL on someone else's PR) is
+// commentary however much code it discusses: descriptions of the PR under
+// review ("fix", "patch") must not unlock it through CODE_PHRASES.
+const VERDICT_PHRASES = ["verdict gist", "merge verdict", "merge-verdict", "do-not-merge", "do not merge"];
 
 const CODE_PHRASES = [
   "open a pull request", "open pull request", "open a pr", "open pr", "submit a pull request", "submit a pr",
@@ -97,7 +101,8 @@ export function networkTaskContentViolation(...texts) {
   const audit = matches(normalized, { stems: AUDIT_STEMS, phrases: AUDIT_PHRASES });
   const document = matches(normalized, { stems: DOCUMENT_STEMS, phrases: DOCUMENT_PHRASES });
   const code = matches(normalized, { phrases: CODE_PHRASES });
-  if (audit && document && !code) {
+  const verdict = matches(normalized, { phrases: VERDICT_PHRASES });
+  if ((audit && document && !code) || (verdict && document)) {
     return {
       code: "audit_document_deliverable",
       message:

@@ -112,6 +112,21 @@ export async function readAllocationHealth({ boardIds = [], queryImpl = defaultQ
               AND d.status IN ('pending','consumed'))
       ORDER BY since ASC`
   );
+  // Decisions the manager has recorded that the publication worker cannot
+  // publish (for example a merged-PR failure). The task drops out of
+  // "waiting" above as soon as a decision exists, so without this list a
+  // decision that never publishes leaves the contributor stuck unseen.
+  const stuck = await queryImpl(
+    `SELECT a.project_id AS board_id, p.task_id, d.kind, d.decision, d.created_at AS since,
+            EXTRACT(EPOCH FROM (now() - d.created_at))::bigint * 1000 AS wait_ms,
+            left(coalesce(p.metadata_json #>> ARRAY['workers', CASE WHEN d.kind='review' THEN 'reward_scoring' ELSE 'verification_request' END, 'last_error'], ''), 200) AS last_error
+       FROM bm_agent_decisions d
+       JOIN task_projections p ON p.task_id=d.task_id
+       JOIN network_task_allocations a ON a.generated_task_id=p.task_id
+      WHERE d.status='pending' AND d.created_at < now() - interval '2 hours'
+        AND p.status IN ('submitted','verification_response_submitted')
+      ORDER BY d.created_at ASC`
+  );
   const totalOffered = await queryImpl(
     `SELECT count(DISTINCT account_id)::int AS accounts FROM task_projections WHERE task_kind='network' AND created_at > now()-interval '7 days'`
   );
@@ -122,6 +137,11 @@ export async function readAllocationHealth({ boardIds = [], queryImpl = defaultQ
   for (const row of failures.rows) if (byBoard.has(row.board_id)) byBoard.get(row.board_id).failures_7d[row.family] = row.count;
   for (const entry of byBoard.values()) entry.consecutive_not_served_rounds = consecutiveNotServedRounds(rounds.rows, entry.board_id);
   for (const entry of byBoard.values()) entry.submissions_awaiting_manager = [];
+  for (const entry of byBoard.values()) entry.decisions_stuck_publishing = [];
+  for (const row of stuck.rows) {
+    const entry = byBoard.get(row.board_id);
+    if (entry) entry.decisions_stuck_publishing.push({ task_id: row.task_id, kind: row.kind, decision: row.decision, since: row.since, wait_ms: safeInt(row.wait_ms), last_error: row.last_error });
+  }
   for (const row of waiting.rows) {
     const entry = byBoard.get(row.board_id);
     if (entry) entry.submissions_awaiting_manager.push({ task_id: row.task_id, status: row.status, since: row.since, wait_ms: safeInt(row.wait_ms) });
@@ -137,6 +157,7 @@ export async function readAllocationHealth({ boardIds = [], queryImpl = defaultQ
     boards_not_served_3_plus: perBoard.filter((entry) => entry.consecutive_not_served_rounds >= 3).map((entry) => entry.board_id),
     submissions_awaiting_manager: waiting.rows.length,
     oldest_submission_wait_ms: waiting.rows.length ? Math.max(...waiting.rows.map((row) => safeInt(row.wait_ms))) : 0,
+    decisions_stuck_publishing: stuck.rows.length,
   };
   return { observedAt: new Date().toISOString(), aggregate, evaluation: evaluateAllocationHealth(aggregate), boards: perBoard,
     note: "idle counts badge-verified accounts without a live network task; engine eligibility (wallet, capacity, restrictions) can be lower." };
@@ -147,6 +168,8 @@ export function allocationHealthLines(health, boardId) {
   const board = (health.boards || []).find((entry) => entry.board_id === boardId);
   const lines = [`Allocation: ${health.aggregate.idle_badge_verified_no_live_task} idle badge-verified; ${health.aggregate.executed_creates_24h} created 24h / ${health.aggregate.executed_creates_7d} 7d; ${health.aggregate.distinct_accounts_offered_7d} accounts offered 7d; ${health.aggregate.live_allocations} live (${health.evaluation.status})`];
   if (health.aggregate.submissions_awaiting_manager > 0) lines.push(`Review backlog: ${health.aggregate.submissions_awaiting_manager} submission(s) awaiting a manager verification request or review, oldest ${Math.round(health.aggregate.oldest_submission_wait_ms / 60_000)} min`);
+  if (health.aggregate.decisions_stuck_publishing > 0) lines.push(`Stuck publications: ${health.aggregate.decisions_stuck_publishing} recorded decision(s) older than 2h have not published; the contributor is still waiting. Operator: scripts/operator-review-override.mjs`);
+  if (board?.decisions_stuck_publishing?.length) lines.push(`Board stuck publications: ${board.decisions_stuck_publishing.map((item) => `${item.task_id} ${item.kind}/${item.decision} ${Math.round(item.wait_ms / 3_600_000)}h ${item.last_error}`).join("; ")}`);
   if (board?.submissions_awaiting_manager?.length) lines.push(`Board review backlog: ${board.submissions_awaiting_manager.map((item) => `${item.task_id} ${item.status} ${Math.round(item.wait_ms / 60_000)}min`).join("; ")}`);
   if (board) {
     const live = Object.entries(board.live).map(([status, count]) => `${status}=${count}`).join(",") || "none";
