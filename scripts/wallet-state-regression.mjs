@@ -4,6 +4,7 @@ import {
   applyWalletBalanceResult,
   markWalletBalanceChecking,
   mergeAppStateWithClientWalletBalance,
+  walletInitiationGiftRetryState,
   walletVaultPersistenceDecision,
   walletRestoreAddressDecision,
 } from "../src/features/wallet/wallet-state.js";
@@ -107,5 +108,34 @@ const cancelled = cancelAccountBoundaryTransition(switching);
 assert.equal(accountBoundaryCaptureIsCurrent(cancelled, accountACapture), false);
 const freshCapture = { ...cancelled };
 assert.equal(acceptAccountBoundaryResponse(cancelled, freshCapture, "acct_b").error, "account_switch_session_changed");
+
+// Persistent initiation-gift retry on the Wallet page: shown only for a
+// linked wallet whose gift is still claimable; never for terminal states.
+const giftEligible = { eligible: true, reason: null, amountPft: 12, amountDrops: "12000000" };
+const giftRetry = walletInitiationGiftRetryState({ walletLinked: true, initiationGift: giftEligible });
+assert.equal(giftRetry.visible, true);
+assert.equal(giftRetry.canRetry, true);
+assert.equal(giftRetry.tone, "is-warning");
+assert.match(giftRetry.label, /12 PFT initiation gift has not been sent yet/);
+const giftClaiming = walletInitiationGiftRetryState({ walletLinked: true, initiationGift: giftEligible, claiming: true });
+assert.equal(giftClaiming.visible, true);
+assert.equal(giftClaiming.canRetry, false);
+assert.match(giftClaiming.label, /Sending the 12 PFT initiation gift/);
+assert.deepEqual(walletInitiationGiftRetryState({ walletLinked: false, initiationGift: giftEligible }), { visible: false });
+assert.deepEqual(walletInitiationGiftRetryState({ walletLinked: true, initiationGift: null }), { visible: false });
+const completedGrant = { eligible: false, reason: "account_registered", amountPft: 12, grant: { status: "completed" } };
+assert.deepEqual(walletInitiationGiftRetryState({ walletLinked: true, initiationGift: completedGrant }), { visible: false });
+const pendingGrant = { eligible: false, reason: "account_registered", amountPft: 12, grant: { status: "processing" } };
+const giftPending = walletInitiationGiftRetryState({ walletLinked: true, initiationGift: pendingGrant });
+assert.equal(giftPending.visible, true);
+assert.equal(giftPending.canRetry, false);
+assert.match(giftPending.label, /in progress/);
+for (const reason of ["email_ineligible", "not_eligible", "wallet_registered", "deleted_account_faucet_guard", "provider_required"]) {
+  assert.deepEqual(
+    walletInitiationGiftRetryState({ walletLinked: true, initiationGift: { eligible: false, reason, amountPft: 12 } }),
+    { visible: false },
+    `no retry for ${reason}`
+  );
+}
 
 console.log("wallet state regression ok");

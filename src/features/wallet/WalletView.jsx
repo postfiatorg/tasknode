@@ -29,6 +29,7 @@ import {
   formatPftBalance,
   groupWalletTransactions,
   walletBalanceStatusLabel,
+  walletInitiationGiftRetryState,
   walletVaultDisplayState,
 } from "./wallet-state";
 import {
@@ -125,6 +126,11 @@ export function WalletView({
   );
   const signedIn = isSignedInSession(session);
   const initiationGift = wallet?.initiationGift || {};
+  const giftRetry = walletInitiationGiftRetryState({
+    walletLinked,
+    initiationGift,
+    claiming: grantClaiming || creationRetrying,
+  });
   const usdcTopUpGift = wallet?.usdcTopUpInitiationGift || {};
   const pftBalance = formatPftBalance(wallet);
   const balanceStatusLabel = walletLinked ? walletBalanceStatusLabel(wallet) : "";
@@ -692,6 +698,22 @@ export function WalletView({
               : initiationGift.reason === "email_ineligible"
                 ? "Email-only accounts can receive the PFT gift after creating a wallet and crediting more than $10 USDC."
                 : initiationGift.message || "Wallet initiation gift eligibility will be checked after sign-in."}
+          </div>
+        )}
+
+        {giftRetry.visible && (
+          <div className={`wallet-inline-status is-gift-retry ${giftRetry.tone}`} role="status">
+            <span>{giftRetry.label}</span>
+            {giftRetry.canRetry && (
+              <button
+                className="dark-pill"
+                disabled={grantClaiming || creationRetrying}
+                onClick={() => claimInitiationGrant()}
+                type="button"
+              >
+                Retry gift
+              </button>
+            )}
           </div>
         )}
 
