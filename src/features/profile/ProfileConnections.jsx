@@ -14,13 +14,9 @@ export function ConnectionAvatar({ connection = {}, size = 48 } = {}) {
   return <ProfilePortrait nft={connection.heroNft} seed={connection.accountId || connection.handle || connectionLabel(connection)} label={`${connectionLabel(connection)} profile picture`} size={size} />;
 }
 
-export function walletExplorerHref(walletAddress = "", explorerBase = "") {
-  const address = String(walletAddress || "").trim();
-  const base = String(explorerBase || "").trim();
-  if (!address || !base) return "";
-  if (base.includes("{address}")) return base.replace("{address}", encodeURIComponent(address));
-  return `${base.replace(/\/+$/, "")}/${encodeURIComponent(address)}`;
-}
+import { walletExplorerHref } from "../../pftl-explorer.js";
+
+export { walletExplorerHref } from "../../pftl-explorer.js";
 
 export function ProfilePreviewPanel({ connection = null, error = "", loading = false, onClose, onCopyWallet, pftlExplorerUrl = "", profile = null } = {}) {
   if (!connection) return null;

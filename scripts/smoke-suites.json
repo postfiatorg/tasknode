@@ -93,6 +93,7 @@
     "scripts/network-badge-verifier-jobs-smoke.mjs",
     "scripts/network-task-badge-gate-smoke.mjs",
     "scripts/network-task-capacity-smoke.mjs",
+    "scripts/network-task-content-policy.test.mjs",
     "scripts/network-task-eligibility-panel-smoke.mjs",
     "scripts/network-task-generation-recovery-smoke.mjs",
     "scripts/network-task-profile-smoke.mjs",
@@ -102,6 +103,7 @@
     "scripts/offchain-task-lifecycle-smoke.mjs",
     "scripts/pftl-cache-reducer-replay-smoke.mjs",
     "scripts/pftl-cache-sync-state-smoke.mjs",
+    "scripts/pftl-explorer-links.test.mjs",
     "scripts/post-fiat-knowledge-smoke.mjs",
     "scripts/production-guards-smoke.mjs",
     "scripts/profile-daily-airdrop-debt-smoke.mjs",
@@ -182,8 +184,7 @@
     "scripts/wallet-nft-inventory-smoke.mjs",
     "scripts/wallet-transactions-smoke.mjs",
     "scripts/wallet-unlocked-session-smoke.mjs",
-    "scripts/worker-crash-resilience-smoke.mjs",
-    "scripts/network-task-content-policy.test.mjs"
+    "scripts/worker-crash-resilience-smoke.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",
