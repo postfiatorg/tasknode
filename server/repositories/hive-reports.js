@@ -130,12 +130,16 @@ export async function listHiveReports({
     filters.push(`r.type = $${params.length}`);
   }
   const sinceText = safeText(since, 80);
+  const sinceInvalid = () =>
+    Object.assign(new Error("since must be an ISO-8601 timestamp"), { status: 400, code: "hive_reports_since_invalid" });
+  if (sinceText && !Number.isFinite(Date.parse(sinceText))) throw sinceInvalid();
   if (sinceText) {
     params.push(sinceText);
     filters.push(`r.generated_at >= $${params.length}::timestamptz`);
   }
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 20, 1), 80);
-  const normalizedPage = Math.min(Math.max(Number(page) || 1, 1), 1000);
+  // Query strings arrive raw; LIMIT/OFFSET are bigint, so truncate before clamping.
+  const normalizedLimit = Math.min(Math.max(Math.trunc(Number(limit) || 20), 1), 80);
+  const normalizedPage = Math.min(Math.max(Math.trunc(Number(page) || 1), 1), 1000);
   params.push(normalizedLimit + 1, (normalizedPage - 1) * normalizedLimit);
   const result = await query(
     `
@@ -152,7 +156,11 @@ export async function listHiveReports({
       OFFSET $${params.length}
     `,
     params
-  );
+  ).catch((error) => {
+    // Date.parse accepts a few strings the ::timestamptz cast rejects ("1", "2026-02-30").
+    if (sinceText && ["22007", "22008", "22009"].includes(error?.code)) throw sinceInvalid();
+    throw error;
+  });
   let rows = result.rows.slice(0, normalizedLimit);
   const shouldIncludeLatestByType = Boolean(includeLatestByType) && !normalizedType && !sinceText && normalizedPage === 1;
   if (shouldIncludeLatestByType) {
