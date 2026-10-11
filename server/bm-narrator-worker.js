@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "./db/pool.js";
 import { DETERMINISTIC_BOARD_IDS } from "./board-config.js";
 import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "./inference.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 const defaultModel = INFERENCE_MODELS.fastText;
 let timer = null;
@@ -159,7 +160,7 @@ export async function runBmNarratorOnce({ logger = console } = {}) {
 export function startBmNarratorWorker({ logger = console } = {}) {
   if (!narratorEnabled()) return null;
   if (timer) return timer;
-  const intervalMs = Math.max(60000, Number(process.env.TASKNODE_BM_NARRATOR_INTERVAL_MS || 180000));
+  const intervalMs = envNumberAtLeast("TASKNODE_BM_NARRATOR_INTERVAL_MS", 180000, 60000);
   timer = setInterval(async () => {
     if (running) return;
     running = true;

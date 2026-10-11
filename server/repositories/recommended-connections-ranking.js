@@ -1,6 +1,7 @@
 import { stripMarkdownFence } from "../inference-text.js";
 import { inferenceProviderForResponse } from "../inference.js";
 import { INFERENCE_MODELS, inferenceConfigured, inferenceFetchCompatibility } from "../inference.js";
+import { envNumberAtLeast } from "../env-number.js";
 
 export const maxRecommendedConnections = 4;
 export const minRecommendedConnections = 3;
@@ -177,7 +178,7 @@ export async function callRecommendedConnectionsProvider({
     };
   }
   const model = process.env.TASKNODE_RECOMMENDED_CONNECTIONS_MODEL || INFERENCE_MODELS.fastText;
-  const timeoutMs = Math.max(10_000, Number(process.env.TASKNODE_RECOMMENDED_CONNECTIONS_TIMEOUT_MS || 90_000));
+  const timeoutMs = envNumberAtLeast("TASKNODE_RECOMMENDED_CONNECTIONS_TIMEOUT_MS", 90_000, 10_000);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs * 2 + 1000);
   let response;

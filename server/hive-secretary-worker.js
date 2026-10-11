@@ -10,8 +10,9 @@ import {
   normalizeHiveSecretaryOutput,
 } from "./repositories/hive-context.js";
 import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "./inference.js";
+import { envNumberAtLeast } from "./env-number.js";
 
-const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_HIVE_SECRETARY_PROVIDER_TIMEOUT_MS || 240000));
+const providerTimeoutMs = envNumberAtLeast("TASKNODE_HIVE_SECRETARY_PROVIDER_TIMEOUT_MS", 240000, 5000);
 const hiveSecretaryPrompt = loadPrompt("hive/hive_secretary_v1.md");
 let timer = null;
 let running = false;
@@ -162,7 +163,7 @@ async function fetchHiveSecretaryReportOpenRouter(source, { fetchImpl, model } =
         reasoning: { effort: hiveSecretaryReasoningEffort() },
         response_format: hiveSecretaryResponseFormat(),
         temperature: 0,
-        max_tokens: Math.max(900, Number(process.env.TASKNODE_HIVE_SECRETARY_MAX_TOKENS || 1800)),
+        max_tokens: envNumberAtLeast("TASKNODE_HIVE_SECRETARY_MAX_TOKENS", 1800, 900),
       },
   });
   const body = result.body;
@@ -249,7 +250,7 @@ export function startHiveSecretaryWorker() {
   if (timer || process.env.TASKNODE_HIVE_SECRETARY_ENABLED === "false" || !hiveSecretaryEnabled()) {
     return { ok: true, skipped: true };
   }
-  const intervalMs = Math.max(5000, Number(process.env.TASKNODE_HIVE_SECRETARY_INTERVAL_MS || 15000));
+  const intervalMs = envNumberAtLeast("TASKNODE_HIVE_SECRETARY_INTERVAL_MS", 15000, 5000);
   const tick = () => {
     processHiveSecretaryQueueOnce({ limit: Number(process.env.TASKNODE_HIVE_SECRETARY_BATCH_SIZE || 1) })
       .catch((error) => console.warn(`hive secretary worker failed: ${error?.message || error}`));

@@ -10,6 +10,7 @@ import {
 } from "./vercel-inference.js";
 import { inferenceConfigured, inferenceProviderForResponse } from "./inference.js";
 import { TEAM_CONTEXT_PROMPT_VERSION } from "./team-context-contract.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 const systemPrompt = loadPrompt(`team/${TEAM_CONTEXT_PROMPT_VERSION}.md`);
 let timer = null;
@@ -242,7 +243,7 @@ export function startTeamContextWorker() {
   if (timer || process.env.TASKNODE_TEAM_CONTEXT_ENABLED === "false" || !inferenceConfigured()) {
     return { ok: true, skipped: true };
   }
-  const intervalMs = Math.max(5000, Number(process.env.TASKNODE_TEAM_CONTEXT_INTERVAL_MS || 15_000));
+  const intervalMs = envNumberAtLeast("TASKNODE_TEAM_CONTEXT_INTERVAL_MS", 15_000, 5000);
   const tick = () => processTeamContextQueueOnce({
     limit: Number(process.env.TASKNODE_TEAM_CONTEXT_BATCH_SIZE || 2),
   }).catch((error) => console.warn("team_context_worker_failed", { error: error?.message || String(error) }));

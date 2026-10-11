@@ -32,8 +32,9 @@ import {
   enqueueMissingRewardedTaskMemoryJobs,
   failRewardedTaskMemoryJob,
 } from "./repositories/task-reward-memory.js";
+import { envNumberAtLeast, envNumberBetween } from "./env-number.js";
 
-const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_MEMORY_PROVIDER_TIMEOUT_MS || 45000));
+const providerTimeoutMs = envNumberAtLeast("TASKNODE_MEMORY_PROVIDER_TIMEOUT_MS", 45000, 5000);
 const promptVersion = "chat_memory_v1";
 const deepPromptVersion = "deep_memory_v1";
 const chatMemoryPrompt = loadPrompt("memory/chat_memory_v1.md");
@@ -66,11 +67,6 @@ function deepMemorySystemPrompt() {
 
 function networkTaskProfileSystemPrompt() {
   return networkTaskProfilePrompt;
-}
-
-function envNumberAtLeast(name, fallback, minimum) {
-  const parsed = Number(process.env[name] || fallback);
-  return Math.max(minimum, Number.isFinite(parsed) ? parsed : fallback);
 }
 
 export function turnMemoryMaxTokens() {
@@ -387,7 +383,7 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
       }
     }
     const rewardedTaskSeed = await enqueueMissingRewardedTaskMemoryJobs({
-      limit: Math.min(Math.max(Number(process.env.TASKNODE_REWARDED_TASK_MEMORY_AUTO_QUEUE_LIMIT || 3), 1), 25),
+      limit: envNumberBetween("TASKNODE_REWARDED_TASK_MEMORY_AUTO_QUEUE_LIMIT", 3, 1, 25),
     }).catch((error) => ({
       queuedCount: 0,
       failedCount: 1,
@@ -425,7 +421,7 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
       }
     }
     const seedLimit = Math.min(
-      Math.max(Number(process.env.TASKNODE_NETWORK_TASK_PROFILE_AUTO_QUEUE_LIMIT || 2), 1),
+      envNumberAtLeast("TASKNODE_NETWORK_TASK_PROFILE_AUTO_QUEUE_LIMIT", 2, 1),
       10
     );
     const routingSeedResult = await enqueueNetworkTaskProfilesForRoutingAccounts({
@@ -504,7 +500,7 @@ export function startMemoryWorker() {
   if (timer || process.env.TASKNODE_MEMORY_ENABLED === "false" || !memoryWorkerEnabled()) {
     return { ok: true, skipped: true };
   }
-  const intervalMs = Math.max(5000, Number(process.env.TASKNODE_MEMORY_INTERVAL_MS || 15000));
+  const intervalMs = envNumberAtLeast("TASKNODE_MEMORY_INTERVAL_MS", 15000, 5000);
   const tick = () => {
     processMemoryQueueOnce({ limit: Number(process.env.TASKNODE_MEMORY_BATCH_SIZE || 3) })
       .catch((error) => console.warn(`chat memory worker failed: ${error?.message || error}`));

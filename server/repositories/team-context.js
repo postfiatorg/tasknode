@@ -3,10 +3,11 @@ import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { getAccountIdentityProfile } from "./account-profiles.js";
 import { canonicalRewardedTaskProjectionSql } from "./task-projection-integrity.js";
 import { TEAM_CONTEXT_PROMPT_VERSION } from "../team-context-contract.js";
+import { envNumberAtLeast } from "../env-number.js";
 
 const recentTaskLimit = 12;
 const maxClaimLimit = 5;
-const maxAttempts = Math.max(1, Number(process.env.TASKNODE_TEAM_CONTEXT_MAX_ATTEMPTS || 5));
+const maxAttempts = envNumberAtLeast("TASKNODE_TEAM_CONTEXT_MAX_ATTEMPTS", 5, 1);
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);

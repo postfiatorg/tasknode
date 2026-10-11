@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { hiveReportTypes } from "./repositories/hive-reports.js";
 import { inferenceConfigured, inferenceFetchCompatibility } from "./inference.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 const defaultReportModel = "zai/glm-5.3";
 
@@ -56,7 +57,7 @@ function hiveReportReasoningEffort(type = "") {
 }
 
 function providerTimeoutMs() {
-  return Math.max(30000, Number(process.env.TASKNODE_HIVE_REPORT_PROVIDER_TIMEOUT_MS || 240000));
+  return envNumberAtLeast("TASKNODE_HIVE_REPORT_PROVIDER_TIMEOUT_MS", 240000, 30000);
 }
 
 function hiveReportMaxTokens(type = "") {
