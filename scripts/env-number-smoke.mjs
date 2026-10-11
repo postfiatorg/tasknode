@@ -77,6 +77,70 @@ for (const file of walk("server")) {
 }
 assert.deepEqual(offenders, [], `NaN-propagating numeric env reads:\n${offenders.join("\n")}`);
 
+// Worker/job parameters whose bare `Number(process.env.X || default)` read had
+// no NaN guard before use in its own module. They must go through envNumber;
+// the guarded bare reads elsewhere (`intervalMs || 15000`, clampInteger) and the
+// money/weight/auth settings are outside this list on purpose.
+const WORKER_PARAMETER_VARS = [
+  "TASKNODE_MEMORY_BATCH_SIZE",
+  "TASKNODE_HIVE_SECRETARY_BATCH_SIZE",
+  "TASKNODE_TEAM_CONTEXT_MAX_TOKENS",
+  "TASKNODE_TEAM_CONTEXT_PROVIDER_TIMEOUT_MS",
+  "TASKNODE_TEAM_CONTEXT_BATCH_SIZE",
+  "TASKNODE_NETWORK_TASK_GENERATION_STALE_MINUTES",
+  "PFTL_CACHE_HOT_STALE_MS",
+  "TASKNODE_SHUTDOWN_TIMEOUT_MS",
+  "TASKNODE_WORK_HANG_MS",
+  "TASKNODE_DAILY_AIRDROP_LOOKBACK_DAYS",
+  "TASKNODE_DAILY_AIRDROP_SCORE_STALE_MINUTES",
+  "TASKNODE_DAILY_AIRDROP_PRE_SUBMIT_STALE_MINUTES",
+  "TASKNODE_DAILY_AIRDROP_SUBMITTING_STALE_MINUTES",
+  "TASKNODE_DAILY_AIRDROP_MAX_PFT",
+  "TASKNODE_PROFILE_NFT_DAILY_PERSONAL_TASK_THRESHOLD",
+  "TASKNODE_PROFILE_NFT_DAILY_NETWORK_TASK_THRESHOLD",
+  "TASK_PROJECTION_REFRESH_MIN_INTERVAL_MS",
+];
+const BARE = new RegExp(`Number\\(\\s*process\\.env\\.(?:${WORKER_PARAMETER_VARS.join("|")})\\b`);
+const problems = [];
+const bareOffenders = [];
+for (const file of walk("server")) {
+  readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+    if (BARE.test(line)) bareOffenders.push(`${file}:${index + 1}: ${line.trim()}`);
+  });
+}
+if (bareOffenders.length) problems.push(`bare Number(process.env.X || default) worker reads:\n${bareOffenders.join("\n")}`);
+
+// A mistyped shutdown timeout must not skip the drain: setTimeout(fn, NaN)
+// fires at once, so the old NaN timeout exited before in-flight work drained.
+const shutdownProbe = spawnSync(
+  process.execPath,
+  [
+    "--input-type=module",
+    "-e",
+    [
+      'import { EventEmitter } from "node:events";',
+      'const { installGracefulShutdown } = await import("./server/process-hardening.js");',
+      "const processImpl = new EventEmitter();",
+      "let drained = false;",
+      "const exited = new Promise((resolve) => installGracefulShutdown({",
+      "  drain: () => new Promise((done) => setTimeout(() => { drained = true; done(); }, 200)),",
+      "  processImpl,",
+      "  exit: resolve,",
+      "}));",
+      'processImpl.emit("SIGTERM");',
+      "const code = await exited;",
+      "console.log(JSON.stringify({ code, drained }));",
+      "process.exit(0);",
+    ].join("\n"),
+  ],
+  { env: { ...process.env, TASKNODE_SHUTDOWN_TIMEOUT_MS: "40s" }, encoding: "utf8", timeout: 30000 }
+);
+const shutdownLine = String(shutdownProbe.stdout || "").trim().split("\n").pop();
+if (shutdownProbe.status !== 0 || shutdownLine !== JSON.stringify({ code: 0, drained: true })) {
+  problems.push(`TASKNODE_SHUTDOWN_TIMEOUT_MS=40s skipped the drain: ${shutdownLine} ${shutdownProbe.stderr}`);
+}
+assert.deepEqual(problems, [], problems.join("\n"));
+
 // Every module that routes a setting through the helper must still load with
 // junk values set: the module-level constants are computed at import time.
 const JUNK = {
@@ -86,11 +150,21 @@ const JUNK = {
   TASKNODE_REALTIME_MAX_STREAMS_PER_ACCOUNT: "four",
   TASKNODE_AGENT_HIVE_CHAT_RATE_LIMIT_MAX: "six",
   TASKNODE_HIVE_SECRETARY_PROVIDER_TIMEOUT_MS: "4m",
+  TASKNODE_MEMORY_BATCH_SIZE: "three",
+  TASKNODE_TEAM_CONTEXT_PROVIDER_TIMEOUT_MS: "4m",
+  PFTL_CACHE_WORKER_INTERVAL_MS: "1m",
+  PFTL_CACHE_HOT_STALE_MS: "2m",
+  TASKNODE_SHUTDOWN_TIMEOUT_MS: "40s",
+  TASKNODE_WORK_HANG_MS: "20m",
+  TASKNODE_DAILY_AIRDROP_MAX_PFT: "ten",
+  TASKNODE_PROFILE_NFT_DAILY_PERSONAL_TASK_THRESHOLD: "three",
+  TASKNODE_TASK_REVIEW_WORKER_INTERVAL_MS: "20s",
+  TASK_PROJECTION_REFRESH_MIN_INTERVAL_MS: "5s",
 };
 const routed = walk("server").filter((file) =>
   /from "(?:\.\.\/)*(?:\.\/)?env-number\.js"/.test(readFileSync(file, "utf8"))
 );
-assert.ok(routed.length >= 19, `expected the routed modules to import env-number.js, found ${routed.length}`);
+assert.ok(routed.length >= 26, `expected the routed modules to import env-number.js, found ${routed.length}`);
 for (const file of routed) {
   const result = spawnSync(
     process.execPath,

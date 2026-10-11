@@ -10,7 +10,7 @@ import {
   normalizeHiveSecretaryOutput,
 } from "./repositories/hive-context.js";
 import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "./inference.js";
-import { envNumberAtLeast } from "./env-number.js";
+import { envNumber, envNumberAtLeast } from "./env-number.js";
 
 const providerTimeoutMs = envNumberAtLeast("TASKNODE_HIVE_SECRETARY_PROVIDER_TIMEOUT_MS", 240000, 5000);
 const hiveSecretaryPrompt = loadPrompt("hive/hive_secretary_v1.md");
@@ -252,7 +252,7 @@ export function startHiveSecretaryWorker() {
   }
   const intervalMs = envNumberAtLeast("TASKNODE_HIVE_SECRETARY_INTERVAL_MS", 15000, 5000);
   const tick = () => {
-    processHiveSecretaryQueueOnce({ limit: Number(process.env.TASKNODE_HIVE_SECRETARY_BATCH_SIZE || 1) })
+    processHiveSecretaryQueueOnce({ limit: envNumber("TASKNODE_HIVE_SECRETARY_BATCH_SIZE", 1) })
       .catch((error) => console.warn(`hive secretary worker failed: ${error?.message || error}`));
   };
   const initial = setTimeout(tick, 3000);

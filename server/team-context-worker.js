@@ -10,7 +10,7 @@ import {
 } from "./vercel-inference.js";
 import { inferenceConfigured, inferenceProviderForResponse } from "./inference.js";
 import { TEAM_CONTEXT_PROMPT_VERSION } from "./team-context-contract.js";
-import { envNumberAtLeast } from "./env-number.js";
+import { envNumber, envNumberAtLeast } from "./env-number.js";
 
 const systemPrompt = loadPrompt(`team/${TEAM_CONTEXT_PROMPT_VERSION}.md`);
 let timer = null;
@@ -151,8 +151,8 @@ async function generateSingleMemberReport(source = {}, member = {}, options = {}
       { role: "system", content: systemPrompt },
       { role: "user", content: JSON.stringify(requestPacket(singleMemberSource)) },
     ],
-    maxTokens: Number(process.env.TASKNODE_TEAM_CONTEXT_MAX_TOKENS || 32_000),
-    timeoutMs: Number(process.env.TASKNODE_TEAM_CONTEXT_PROVIDER_TIMEOUT_MS || 240_000),
+    maxTokens: envNumber("TASKNODE_TEAM_CONTEXT_MAX_TOKENS", 32_000),
+    timeoutMs: envNumber("TASKNODE_TEAM_CONTEXT_PROVIDER_TIMEOUT_MS", 240_000),
     ...options,
   });
   const choice = body?.choices?.[0] || {};
@@ -245,7 +245,7 @@ export function startTeamContextWorker() {
   }
   const intervalMs = envNumberAtLeast("TASKNODE_TEAM_CONTEXT_INTERVAL_MS", 15_000, 5000);
   const tick = () => processTeamContextQueueOnce({
-    limit: Number(process.env.TASKNODE_TEAM_CONTEXT_BATCH_SIZE || 2),
+    limit: envNumber("TASKNODE_TEAM_CONTEXT_BATCH_SIZE", 2),
   }).catch((error) => console.warn("team_context_worker_failed", { error: error?.message || String(error) }));
   const initial = setTimeout(tick, 2500);
   initial.unref?.();

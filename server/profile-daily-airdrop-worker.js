@@ -21,6 +21,7 @@ import {
   listDailyAirdropCandidateAccounts,
   reclaimStaleDailyAirdropRuns,
 } from "./repositories/profile-daily-airdrop.js";
+import { envNumber } from "./env-number.js";
 
 const WORKER_SCOPE = "daily_airdrop";
 const DEFAULT_LOOKBACK_DAYS = 7;
@@ -308,14 +309,14 @@ async function latestDailyAirdropAgentRunForDate({ runDate } = {}) {
 
 export async function runDailyAirdropWorkerOnce({
   runDate = dateOnly(),
-  lookbackDays = Number(process.env.TASKNODE_DAILY_AIRDROP_LOOKBACK_DAYS || DEFAULT_LOOKBACK_DAYS),
+  lookbackDays = envNumber("TASKNODE_DAILY_AIRDROP_LOOKBACK_DAYS", DEFAULT_LOOKBACK_DAYS),
   batchLimit = Number(process.env.TASKNODE_DAILY_AIRDROP_WORKER_BATCH_LIMIT || DEFAULT_BATCH_LIMIT),
   catchupDays = Number(process.env.TASKNODE_DAILY_AIRDROP_CATCHUP_DAYS || 2),
-  scoringStaleMinutes = Number(process.env.TASKNODE_DAILY_AIRDROP_SCORE_STALE_MINUTES || 45),
-  preSubmitStaleMinutes = Number(process.env.TASKNODE_DAILY_AIRDROP_PRE_SUBMIT_STALE_MINUTES || 30),
-  submittingStaleMinutes = Number(process.env.TASKNODE_DAILY_AIRDROP_SUBMITTING_STALE_MINUTES || 30),
+  scoringStaleMinutes = envNumber("TASKNODE_DAILY_AIRDROP_SCORE_STALE_MINUTES", 45),
+  preSubmitStaleMinutes = envNumber("TASKNODE_DAILY_AIRDROP_PRE_SUBMIT_STALE_MINUTES", 30),
+  submittingStaleMinutes = envNumber("TASKNODE_DAILY_AIRDROP_SUBMITTING_STALE_MINUTES", 30),
   maxIssuanceAttempts = Number(process.env.TASKNODE_DAILY_AIRDROP_MAX_ISSUANCE_ATTEMPTS || 5),
-  maxDailyPft = Number(process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || 10000),
+  maxDailyPft = envNumber("TASKNODE_DAILY_AIRDROP_MAX_PFT", 10000),
   model = process.env.TASKNODE_DAILY_AIRDROP_MODEL || "zai/glm-5.3",
   runMode = dailyAirdropWorkerRunMode(process.env),
   trigger = "daily_airdrop_worker",

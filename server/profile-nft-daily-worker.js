@@ -22,6 +22,7 @@ import {
   upsertDailyProfileNftWorkerHeartbeat,
   verifyDailyProfileNftBackfillSlot,
 } from "./repositories/profile-nft-daily-awards.js";
+import { envNumber } from "./env-number.js";
 
 const WORKER_SCOPE = "profile_nft_daily";
 const DEFAULT_BATCH_LIMIT = 5;
@@ -206,8 +207,8 @@ export async function buildDailyProfileNftBackfillManifest({
   runDates = [],
   maxAccounts = BACKFILL_MAX_ACCOUNTS,
   selectedAt = new Date().toISOString(),
-  personalTaskThreshold = Number(process.env.TASKNODE_PROFILE_NFT_DAILY_PERSONAL_TASK_THRESHOLD || 3),
-  networkTaskThreshold = Number(process.env.TASKNODE_PROFILE_NFT_DAILY_NETWORK_TASK_THRESHOLD || 1),
+  personalTaskThreshold = envNumber("TASKNODE_PROFILE_NFT_DAILY_PERSONAL_TASK_THRESHOLD", 3),
+  networkTaskThreshold = envNumber("TASKNODE_PROFILE_NFT_DAILY_NETWORK_TASK_THRESHOLD", 1),
   dependencies = {},
 } = {}) {
   const normalizedRunDates = normalizeRunDates(runDates);

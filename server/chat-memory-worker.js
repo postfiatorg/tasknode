@@ -32,7 +32,7 @@ import {
   enqueueMissingRewardedTaskMemoryJobs,
   failRewardedTaskMemoryJob,
 } from "./repositories/task-reward-memory.js";
-import { envNumberAtLeast, envNumberBetween } from "./env-number.js";
+import { envNumber, envNumberAtLeast, envNumberBetween } from "./env-number.js";
 
 const providerTimeoutMs = envNumberAtLeast("TASKNODE_MEMORY_PROVIDER_TIMEOUT_MS", 45000, 5000);
 const promptVersion = "chat_memory_v1";
@@ -502,7 +502,7 @@ export function startMemoryWorker() {
   }
   const intervalMs = envNumberAtLeast("TASKNODE_MEMORY_INTERVAL_MS", 15000, 5000);
   const tick = () => {
-    processMemoryQueueOnce({ limit: Number(process.env.TASKNODE_MEMORY_BATCH_SIZE || 3) })
+    processMemoryQueueOnce({ limit: envNumber("TASKNODE_MEMORY_BATCH_SIZE", 3) })
       .catch((error) => console.warn(`chat memory worker failed: ${error?.message || error}`));
   };
   const initial = setTimeout(tick, 2500);
