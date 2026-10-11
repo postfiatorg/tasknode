@@ -138,6 +138,26 @@ try {
     assert.ok(clippedTypes.has(type), `latest ${type} report remains present when recent rows are clipped`);
   }
 
+  // Raw query strings: fractions truncate (LIMIT/OFFSET are bigint), a bad since is a 400.
+  const fractional = await listHiveReports({ limit: "2.5", page: "1.5" });
+  const firstPage = await listHiveReports({ limit: 2, page: 1 });
+  assert.equal(fractional.pageSize, 2, "fractional limit truncates to 2");
+  assert.equal(fractional.page, 1, "fractional page truncates to 1");
+  assert.deepEqual(
+    fractional.reports.map((report) => report.id),
+    firstPage.reports.map((report) => report.id),
+    "fractional page does not start mid-page"
+  );
+  assert.equal((await listHiveReports({ since: "2026-06-25" })).ok, true, "date-only since is accepted");
+  // The last two pass Date.parse but fail the ::timestamptz cast.
+  for (const since of ["garbage", "2026-13-45", "now()", "2026-02-30", "1"]) {
+    await assert.rejects(
+      listHiveReports({ since }),
+      (error) => error.status === 400 && error.code === "hive_reports_since_invalid",
+      `${since} is rejected as hive_reports_since_invalid`
+    );
+  }
+
   // A report that keeps failing backs off instead of retrying every tick.
   process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK = "false";
   process.env.VERCEL_AI_GATEWAY_API_KEY ||= "fixture";

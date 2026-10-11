@@ -72,6 +72,7 @@
     "scripts/hive-public-identity-smoke.mjs",
     "scripts/hive-report-identity-smoke.mjs",
     "scripts/hive-report-markdown-smoke.mjs",
+    "scripts/hive-reports-query-params-smoke.mjs",
     "scripts/hive-route-cache-observability-smoke.mjs",
     "scripts/hive-secretary-project-views-smoke.mjs",
     "scripts/hive-state-integrity-smoke.mjs",
