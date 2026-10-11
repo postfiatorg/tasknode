@@ -68,10 +68,7 @@ function hiveReportMaxTokens(type = "") {
     return Math.max(24000, Number(globalMax || 24000));
   }
   if (type === "board_manager_planning") {
-    return Math.max(
-      14000,
-      Number(process.env.TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS || globalMax || 14000)
-    );
+    return envNumberAtLeast("TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS", globalMax || 14000, 14000);
   }
   return Math.max(3000, Number(globalMax || 9000));
 }

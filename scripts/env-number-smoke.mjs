@@ -79,8 +79,8 @@ assert.deepEqual(offenders, [], `NaN-propagating numeric env reads:\n${offenders
 
 // Worker/job parameters whose bare `Number(process.env.X || default)` read had
 // no NaN guard before use in its own module. They must go through envNumber;
-// the guarded bare reads elsewhere (`intervalMs || 15000`, clampInteger) and the
-// money/weight/auth settings are outside this list on purpose.
+// the guarded bare reads elsewhere (`intervalMs || 15000`, clampInteger) are
+// outside this list on purpose, and non-worker settings are listed below.
 const WORKER_PARAMETER_VARS = [
   "TASKNODE_MEMORY_BATCH_SIZE",
   "TASKNODE_HIVE_SECRETARY_BATCH_SIZE",
@@ -100,12 +100,35 @@ const WORKER_PARAMETER_VARS = [
   "TASKNODE_PROFILE_NFT_DAILY_NETWORK_TASK_THRESHOLD",
   "TASK_PROJECTION_REFRESH_MIN_INTERVAL_MS",
 ];
-const BARE = new RegExp(`Number\\(\\s*process\\.env\\.(?:${WORKER_PARAMETER_VARS.join("|")})\\b`);
+// Settings (attempt limit, rank weights, token floor, quoted scorer runs) whose
+// bare read had no NaN guard before use: a NaN attempt limit never marks a
+// memory job final, a NaN rank weight makes every leaderboard score NaN, a NaN
+// token floor is sent as max_tokens: null and a NaN run count is quoted as null.
+const ROUTED_SETTING_VARS = [
+  "TASKNODE_MEMORY_MAX_ATTEMPTS",
+  "DIRECTORY_LEADERBOARD_NETWORK_TASK_WEIGHT",
+  "DIRECTORY_LEADERBOARD_PERSONAL_TASK_WEIGHT",
+  "DIRECTORY_LEADERBOARD_REWARD_DIVISOR",
+  "DIRECTORY_LEADERBOARD_ALIGNMENT_WEIGHT",
+  "TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS",
+  "CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL",
+];
+// Bare reads of a listed name that are finite-guarded on the next line stay as
+// they are; they are pinned by file so a new unguarded read still fails.
+const GUARDED_BARE_READS = new Set([
+  "server/context-rewrite-worker.js:CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL", // Number.isFinite(parsed) ? ... : 3
+]);
+const BARE = new RegExp(
+  `Number\\(\\s*process\\.env\\.(${[...WORKER_PARAMETER_VARS, ...ROUTED_SETTING_VARS].join("|")})\\b`
+);
 const problems = [];
 const bareOffenders = [];
 for (const file of walk("server")) {
   readFileSync(file, "utf8").split("\n").forEach((line, index) => {
-    if (BARE.test(line)) bareOffenders.push(`${file}:${index + 1}: ${line.trim()}`);
+    const match = BARE.exec(line);
+    if (match && !GUARDED_BARE_READS.has(`${file}:${match[1]}`)) {
+      bareOffenders.push(`${file}:${index + 1}: ${line.trim()}`);
+    }
   });
 }
 if (bareOffenders.length) problems.push(`bare Number(process.env.X || default) worker reads:\n${bareOffenders.join("\n")}`);
@@ -139,6 +162,44 @@ const shutdownLine = String(shutdownProbe.stdout || "").trim().split("\n").pop()
 if (shutdownProbe.status !== 0 || shutdownLine !== JSON.stringify({ code: 0, drained: true })) {
   problems.push(`TASKNODE_SHUTDOWN_TIMEOUT_MS=40s skipped the drain: ${shutdownLine} ${shutdownProbe.stderr}`);
 }
+
+// A mistyped rank weight must not turn every leaderboard score into NaN (which
+// the directory then published as null); numeric values must still apply.
+function leaderboardProbe(env) {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      [
+        'const { directoryLeaderboardScore, DIRECTORY_LEADERBOARD_RANK_FORMULA: f } = await import("./server/repositories/directory-leaderboard.js");',
+        "const score = directoryLeaderboardScore({ networkTasks: 2, personalTasks: 1, rewards: 50000, alignment: 0.5 });",
+        "console.log(JSON.stringify({ score, formula: [f.networkTaskWeight, f.personalTaskWeight, f.rewardDivisor, f.alignmentWeight] }));",
+        "process.exit(0);",
+      ].join("\n"),
+    ],
+    { env: { ...process.env, ...env }, encoding: "utf8", timeout: 30000 }
+  );
+  return `${String(result.stdout || "").trim().split("\n").pop()}${result.status === 0 ? "" : ` ${result.stderr}`}`;
+}
+const leaderboardJunk = leaderboardProbe({
+  DIRECTORY_LEADERBOARD_NETWORK_TASK_WEIGHT: "three",
+  DIRECTORY_LEADERBOARD_PERSONAL_TASK_WEIGHT: "one",
+  DIRECTORY_LEADERBOARD_REWARD_DIVISOR: "25k",
+  DIRECTORY_LEADERBOARD_ALIGNMENT_WEIGHT: "1x",
+});
+if (leaderboardJunk !== JSON.stringify({ score: 9.5, formula: [3, 1, 25000, 1] })) {
+  problems.push(`junk DIRECTORY_LEADERBOARD_* weights did not fall back to the defaults: ${leaderboardJunk}`);
+}
+const leaderboardNumeric = leaderboardProbe({
+  DIRECTORY_LEADERBOARD_NETWORK_TASK_WEIGHT: "5",
+  DIRECTORY_LEADERBOARD_PERSONAL_TASK_WEIGHT: "2",
+  DIRECTORY_LEADERBOARD_REWARD_DIVISOR: "1e4",
+  DIRECTORY_LEADERBOARD_ALIGNMENT_WEIGHT: "0",
+});
+if (leaderboardNumeric !== JSON.stringify({ score: 17, formula: [5, 2, 10000, 0] })) {
+  problems.push(`numeric DIRECTORY_LEADERBOARD_* weights were not applied: ${leaderboardNumeric}`);
+}
 assert.deepEqual(problems, [], problems.join("\n"));
 
 // Every module that routes a setting through the helper must still load with
@@ -160,11 +221,15 @@ const JUNK = {
   TASKNODE_PROFILE_NFT_DAILY_PERSONAL_TASK_THRESHOLD: "three",
   TASKNODE_TASK_REVIEW_WORKER_INTERVAL_MS: "20s",
   TASK_PROJECTION_REFRESH_MIN_INTERVAL_MS: "5s",
+  TASKNODE_MEMORY_MAX_ATTEMPTS: "five",
+  DIRECTORY_LEADERBOARD_NETWORK_TASK_WEIGHT: "three",
+  TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS: "14k",
+  CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL: "three",
 };
 const routed = walk("server").filter((file) =>
   /from "(?:\.\.\/)*(?:\.\/)?env-number\.js"/.test(readFileSync(file, "utf8"))
 );
-assert.ok(routed.length >= 26, `expected the routed modules to import env-number.js, found ${routed.length}`);
+assert.ok(routed.length >= 28, `expected the routed modules to import env-number.js, found ${routed.length}`);
 for (const file of routed) {
   const result = spawnSync(
     process.execPath,
