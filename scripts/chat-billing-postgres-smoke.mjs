@@ -157,6 +157,10 @@ await markContextEditProposalApplied({
 const messages = await getChatMessages({ accountId, conversationId });
 const summary = await usageSummary({ accountId });
 const ledger = await usageLedger({ accountId, limit: 10 });
+// Fractional limits from query strings must be truncated to an integer before they reach Postgres LIMIT.
+const fractionalMessages = await getChatMessages({ accountId, conversationId, limit: 2.5 });
+const fractionalWriteMessages = await getChatMessagesForWrite({ accountId, conversationId, limit: "199.9" });
+const fractionalLedger = await usageLedger({ accountId, limit: "2.5" });
 const modelRunCache = await query(
   `
     SELECT
@@ -221,6 +225,12 @@ if (
   summary.currentSpendUsd !== 0.0011 ||
   summary.availableCreditUsd !== 11.9989 ||
   ledger.entries.length < 2 ||
+  fractionalMessages.length === 0 ||
+  fractionalMessages.length > 2 ||
+  fractionalWriteMessages.length === 0 ||
+  fractionalWriteMessages.length > 199 ||
+  fractionalLedger.entries.length === 0 ||
+  fractionalLedger.entries.length > 2 ||
   ledger.entries[0]?.promptCacheHitTokens !== 80 ||
   ledger.entries[0]?.promptCacheMissTokens !== 20 ||
   ledger.entries[0]?.cacheUsageReported !== true ||
@@ -249,6 +259,9 @@ if (
     messages,
     summary,
     ledger,
+    fractionalMessages,
+    fractionalWriteMessages,
+    fractionalLedger,
     modelRunCache: modelRunCache.rows[0],
     cacheEfficiency,
     conversations,
