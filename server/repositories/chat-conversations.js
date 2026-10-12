@@ -395,7 +395,8 @@ export async function appendChatUserMessage({
 export async function listChatConversations({ accountId = "", limit = 30 } = {}) {
   if (!useDatabase()) return listRuntimeChatConversations({ accountId, limit });
 
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 30, 1), maxConversationLimit);
+  // LIMIT is bound as bigint, so a fractional limit ("2.5" -> LIMIT '2.5') is a 22P02 500.
+  const normalizedLimit = Math.min(Math.max(Math.trunc(Number(limit)) || 30, 1), maxConversationLimit);
   const normalizedAccountId = safeAccountId(accountId);
   const hiveId = hiveConversationIdForAccount(normalizedAccountId);
   const hiveRow = hiveId
@@ -508,7 +509,7 @@ function searchRuntimeChatConversations({ accountId = "", query: searchQuery = "
 export async function searchChatConversations({ accountId = "", query: searchQuery = "", limit = 20 } = {}) {
   const normalizedAccountId = safeAccountId(accountId);
   const normalizedQuery = replaceCharacterRuns(String(searchQuery || "").trim(),isWhitespace," ").slice(0, maxSearchQueryLength);
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 20, 1), maxSearchLimit);
+  const normalizedLimit = Math.min(Math.max(Math.trunc(Number(limit)) || 20, 1), maxSearchLimit);
   if (!normalizedAccountId || normalizedQuery.length < 2) return [];
 
   if (!useDatabase()) {

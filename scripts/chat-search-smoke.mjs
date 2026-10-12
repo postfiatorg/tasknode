@@ -1,15 +1,60 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool, databaseEnabled, query } from "../server/db/pool.js";
 import {
   appendChatUserMessage,
   deleteChatConversation,
+  listChatConversations,
   searchChatConversations,
 } from "../server/repositories/chat-conversations.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
+}
+
+// Stubbed pool, runs before the database check so the unit suite covers it: no statement reaches
+// Postgres; every call records its params. LIMIT is bound as bigint, so it must be an integer.
+{
+  const envKeys = ["DATABASE_URL", "TASKNODE_DATABASE_ENABLED", "TASKNODE_DATABASE_DISABLED", "TASKNODE_POSTGRES_DISABLED"];
+  const savedEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const realPoolQuery = pg.Pool.prototype.query;
+  const statements = [];
+  process.env.DATABASE_URL ||= "postgres://stub@127.0.0.1:1/stub";
+  process.env.TASKNODE_DATABASE_ENABLED = "true";
+  delete process.env.TASKNODE_DATABASE_DISABLED;
+  delete process.env.TASKNODE_POSTGRES_DISABLED;
+  pg.Pool.prototype.query = async (text, params) => {
+    statements.push({ text, params });
+    return { rows: [] };
+  };
+  try {
+    assert.equal(databaseEnabled(), true, "stubbed section must take the database path");
+    for (const [limit, expected] of [[undefined, 30], [30, 30], ["30", 30], ["1", 1], ["100", 100], ["500", 100], [2.5, 2], ["2.5", 2], ["49.9", 49], ["0.5", 30], ["abc", 30], ["NaN", 30]]) {
+      statements.length = 0;
+      await listChatConversations({ accountId: "acct_limit_stub", limit });
+      const main = statements.find(({ text }) => /AND id <> \$3[\s\S]*LIMIT \$2/.test(text));
+      const legacy = statements.find(({ text }) => /legacy_pftasks_chat_messages[\s\S]*LIMIT \$2/.test(text));
+      assert.equal(main?.params[1], expected, `list limit ${JSON.stringify(limit)} binds LIMIT ${expected}`);
+      assert.equal(legacy?.params[1], expected, `list limit ${JSON.stringify(limit)} passes ${expected} to the legacy list`);
+    }
+    for (const [limit, expected] of [[undefined, 20], [20, 20], ["20", 20], ["1", 1], ["50", 50], ["500", 50], [2.5, 2], ["2.5", 2], ["49.9", 49], ["0.5", 20], ["abc", 20], ["NaN", 20]]) {
+      statements.length = 0;
+      await searchChatConversations({ accountId: "acct_limit_stub", query: "zebra", limit });
+      const bound = statements.filter(({ text }) => /LIMIT \$3/.test(text)).map(({ params }) => params[2]);
+      assert.deepEqual(bound, [expected, expected], `search limit ${JSON.stringify(limit)} binds LIMIT ${expected} twice`);
+    }
+    statements.length = 0;
+    await searchChatConversations({ accountId: "acct_limit_stub", query: "zebra", limit: 20 });
+    assert.deepEqual(statements[0].params, ["acct_limit_stub", "%zebra%", 20]);
+  } finally {
+    pg.Pool.prototype.query = realPoolQuery;
+    for (const key of envKeys) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+  }
 }
 
 if (!databaseEnabled()) {
@@ -119,6 +164,14 @@ try {
   // (f) Short queries return empty.
   const shortQueryResults = await searchChatConversations({ accountId: accountA, query: "z" });
   assert.deepEqual(shortQueryResults, [], "short query must return no results");
+
+  // (g) A fractional limit is truncated; it must not reach Postgres as LIMIT '2.5' (22P02).
+  for (const [limit, truncated] of [[2.5, 2], ["49.9", 49]]) {
+    const limitedResults = await searchChatConversations({ accountId: accountA, query: "discount", limit });
+    assert.ok(limitedResults.length >= 1 && limitedResults.length <= truncated, `search limit ${limit} returns 1..${truncated} rows`);
+  }
+  const limitedConversations = await listChatConversations({ accountId: accountA, limit: 2.5 });
+  assert.ok(limitedConversations.length >= 1 && limitedConversations.length <= 2, "list limit 2.5 returns 1..2 rows");
 
   console.log("chat search smoke ok");
 } finally {
