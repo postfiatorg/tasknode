@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { taskRequestCommandIds } from "../server/task-request-command.js";
 import { closePool, databaseEnabled, query } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
@@ -45,6 +46,33 @@ try {
   assert.equal(seen.length, 111);
   assert.equal(new Set(seen).size, 111);
   await assert.rejects(listTaskRequests({ accountId, cursor: "invalid" }), { code: "task_request_cursor_invalid" });
+  // A fractional limit is truncated; it must not reach Postgres as LIMIT '3.5' (22P02).
+  for (const [limit, pageSize] of [[2.5, 2], ["49.9", 49]]) {
+    const page = await listTaskRequests({ accountId, walletAddress: "rReceiptSmoke", limit });
+    assert.ok(page.items.length <= pageSize, `limit ${limit} returns at most ${pageSize} items`);
+    assert.equal(page.items.length, pageSize, `111 rows fill a page of ${pageSize}`);
+  }
+  // Stubbed pool: these calls send no statement to Postgres; they record the LIMIT param ($3 = pageSize + 1).
+  const realPoolQuery = pg.Pool.prototype.query;
+  const limitParams = [];
+  pg.Pool.prototype.query = async (text, params) => {
+    limitParams.push(params);
+    return { rows: [] };
+  };
+  try {
+    const expected = [[undefined, 41], [40, 41], ["40", 41], ["1", 2], ["100", 101], ["500", 101], [2.5, 3], ["2.5", 3], ["49.9", 50], ["0.5", 41], ["abc", 41], ["NaN", 41]];
+    for (const [limit, limitParam] of expected) {
+      limitParams.length = 0;
+      await listTaskRequests({ accountId, walletAddress: "rReceiptSmoke", limit });
+      assert.equal(limitParams.length, 1);
+      assert.equal(limitParams[0][2], limitParam, `limit ${JSON.stringify(limit)} binds LIMIT ${limitParam}`);
+    }
+    limitParams.length = 0;
+    await listTaskRequests({ accountId, walletAddress: "rReceiptSmoke", limit: 40 });
+    assert.deepEqual(limitParams, [[accountId, "rReceiptSmoke", 41, "", 0, ""]]);
+  } finally {
+    pg.Pool.prototype.query = realPoolQuery;
+  }
   const retryId = `${accountId}_newer_1`;
   await query("UPDATE task_requests SET status='failed',worker_attempt_count=3 WHERE request_id=$1", [retryId]);
   const retry = { accountId, requestId: retryId, expectedAttemptCount: 3 };
