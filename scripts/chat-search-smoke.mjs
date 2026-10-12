@@ -170,8 +170,15 @@ try {
     const limitedResults = await searchChatConversations({ accountId: accountA, query: "discount", limit });
     assert.ok(limitedResults.length >= 1 && limitedResults.length <= truncated, `search limit ${limit} returns 1..${truncated} rows`);
   }
-  const limitedConversations = await listChatConversations({ accountId: accountA, limit: 2.5 });
-  assert.ok(limitedConversations.length >= 1 && limitedConversations.length <= 2, "list limit 2.5 returns 1..2 rows");
+  // Three active A conversations are seeded and the virtual Hive row is prepended before the slice,
+  // so a truncated limit of 2 returns exactly 2 rows ([Hive, newest ordinary]); bound by truncated.
+  for (const [limit, truncated] of [[2.5, 2], ["2.5", 2]]) {
+    const limitedConversations = await listChatConversations({ accountId: accountA, limit });
+    assert.ok(
+      limitedConversations.length >= 1 && limitedConversations.length <= truncated,
+      `list limit ${JSON.stringify(limit)} returns 1..${truncated} rows`
+    );
+  }
 
   console.log("chat search smoke ok");
 } finally {
