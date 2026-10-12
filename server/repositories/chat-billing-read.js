@@ -129,7 +129,7 @@ async function hydratedMessages({ normalizedAccountId, normalizedConversationId,
 
 async function getMessages(input, options, { forWrite = false } = {}) {
   const { accountId, conversationId, limit = 30 } = chatMessagesArgs(input, options);
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 30, 1), maxMessageLimit);
+  const normalizedLimit = Math.min(Math.max(Math.trunc(Number(limit)) || 30, 1), maxMessageLimit);
   const normalizedAccountId = safeAccountId(accountId);
   const normalizedConversationId = safeConversationId(conversationId);
   assertConversationIdAccountBoundary({ accountId: normalizedAccountId, conversationId: normalizedConversationId });
@@ -246,7 +246,7 @@ export async function usageSummary(scope = {}) {
 
 export async function usageLedger({ accountId, conversationId, limit = 50 } = {}) {
   if (!databaseEnabled()) return runtimeUsageLedger({ accountId, conversationId, limit });
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 50, 1), maxLedgerLimit);
+  const normalizedLimit = Math.min(Math.max(Math.trunc(Number(limit)) || 50, 1), maxLedgerLimit);
   const normalizedAccountId = safeAccountId(accountId);
   const normalizedConversationId = conversationId ? safeConversationId(conversationId) : "";
   if (!normalizedAccountId && !normalizedConversationId) {
