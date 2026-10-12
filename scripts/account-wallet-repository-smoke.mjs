@@ -40,6 +40,17 @@ const firstAccount = `acct_wallet_smoke_first_${suffix}`;
 const secondAccount = `acct_wallet_smoke_second_${suffix}`;
 const firstAddress = `rWalletSmokeFirst${suffix}`;
 const secondAddress = `rWalletSmokeSecond${suffix}`;
+const keepAccount = `acct_wallet_smoke_keep_${suffix}`;
+const rotateAccount = `acct_wallet_smoke_rotate_${suffix}`;
+const noKeyAccount = `acct_wallet_smoke_nokey_${suffix}`;
+const switchAccount = `acct_wallet_smoke_switch_${suffix}`;
+const keepAddress = `rWalletSmokeKeep${suffix}`;
+const rotateAddress = `rWalletSmokeRotate${suffix}`;
+const noKeyAddress = `rWalletSmokeNoKey${suffix}`;
+const switchFromAddress = `rWalletSmokeSwitchFrom${suffix}`;
+const switchToAddress = `rWalletSmokeSwitchTo${suffix}`;
+const encryptionAccounts = [keepAccount, rotateAccount, noKeyAccount, switchAccount];
+const encryptionAddresses = [keepAddress, rotateAddress, noKeyAddress, switchFromAddress, switchToAddress];
 
 try {
   assert.equal(accountWalletStorageStatus().adapter, "postgres");
@@ -96,10 +107,43 @@ try {
   assert.equal(delinked.ok, true);
   assert.equal((await getLinkedWallet({ accountId: secondAccount })).status, "not_linked");
   assert.equal(await findLinkedWalletOwner({ address: secondAddress }), null);
-  console.log("account wallet repository smoke ok: durable metadata, ownership conflict, relink, delink");
+  // Wallet login re-links without tasknodeEncryptionPubkey (auth-wallet-login.js); the stored key must survive
+  // for the same wallet address, a new key must replace it, and a different wallet must not inherit it.
+  const link = (accountId, address, tasknodeEncryptionPubkey, proofPurpose = "wallet_link") => linkWalletToAccount({
+    accountId,
+    address,
+    publicKey: "EDPUBLICFAKEKEYCASE",
+    ...(tasknodeEncryptionPubkey === undefined ? {} : { tasknodeEncryptionPubkey }),
+    challengeId: `challenge-${proofPurpose}`,
+    signature: `signature-${proofPurpose}`,
+    proofPurpose,
+  });
+  const storedKey = async (accountId) => (await getLinkedWallet({ accountId })).tasknodeEncryptionPubkey;
+
+  assert.equal((await link(keepAccount, keepAddress, "fake-enc-key-K")).ok, true);
+  const login = await link(keepAccount, keepAddress, undefined, "wallet_login");
+  assert.equal(login.ok, true);
+  assert.equal(login.wallet.tasknodeEncryptionPubkey, "fake-enc-key-K", "wallet login on the same address must keep the stored encryption key");
+  assert.equal(await storedKey(keepAccount), "fake-enc-key-K");
+  assert.equal(login.wallet.publicKey, "EDPUBLICFAKEKEYCASE");
+
+  assert.equal((await link(rotateAccount, rotateAddress, "fake-enc-key-K")).ok, true);
+  assert.equal((await link(rotateAccount, rotateAddress, "fake-enc-key-K2")).ok, true);
+  assert.equal(await storedKey(rotateAccount), "fake-enc-key-K2", "a newly supplied encryption key must replace the stored one");
+
+  assert.equal((await link(noKeyAccount, noKeyAddress, undefined)).ok, true);
+  assert.equal(await storedKey(noKeyAccount), "", "a first link without a key stores no key");
+
+  assert.equal((await link(switchAccount, switchFromAddress, "fake-enc-key-K")).ok, true);
+  const switched = await link(switchAccount, switchToAddress, undefined, "wallet_login");
+  assert.equal(switched.ok, true);
+  assert.equal(switched.wallet.address, switchToAddress);
+  assert.equal(await storedKey(switchAccount), "", "a different wallet address must not inherit the previous wallet's encryption key");
+
+  console.log("account wallet repository smoke ok: durable metadata, ownership conflict, relink, delink, encryption key on re-link");
 } finally {
-  await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = ANY($1::text[])", [[firstAddress, secondAddress]]).catch(() => {});
-  await query("DELETE FROM account_linked_wallets WHERE account_id = ANY($1::text[])", [[firstAccount, secondAccount, legacyAccount]]).catch(() => {});
+  await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = ANY($1::text[])", [[firstAddress, secondAddress, ...encryptionAddresses]]).catch(() => {});
+  await query("DELETE FROM account_linked_wallets WHERE account_id = ANY($1::text[])", [[firstAccount, secondAccount, legacyAccount, ...encryptionAccounts]]).catch(() => {});
   await query("DELETE FROM runtime_state_migrations WHERE name = 'account_wallets_to_postgres_v1'").catch(() => {});
   await closePool();
   rmSync(tempDir, { recursive: true, force: true });
