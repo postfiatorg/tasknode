@@ -677,7 +677,8 @@ export async function listTaskRequests({ accountId = "", walletAddress = "", lim
       throw Object.assign(new Error("Task request page cursor is invalid."), { status: 400, code: "task_request_cursor_invalid" });
     }
   }
-  const pageSize = Math.min(Math.max(Number(limit || 40), 1), 100);
+  // LIMIT is bound as bigint, so a fractional page size ("2.5" -> LIMIT '3.5') is a 22P02 500.
+  const pageSize = Math.min(Math.max(Math.trunc(Number(limit)) || 40, 1), 100);
   const activeRank = "CASE WHEN tr.generated_task_id='' AND tr.status IN ('signing','published','queued','generating','failed') THEN 1 ELSE 0 END";
   const result = await query(
     `
