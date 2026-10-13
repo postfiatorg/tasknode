@@ -34,12 +34,14 @@ export async function trackerAnnotate(actor,body) {
     if(await trackerStorageBytes(client,subject)+Buffer.byteLength(JSON.stringify(envelope))+100>TRACKER_QUOTA_BYTES)throw trackerError("tracker_storage_quota",413);
     await client.query("INSERT INTO campaign_tracker_annotations(annotation_id,account_id,event_id,actor_account_id,kind,source_revision,payload_envelope) VALUES($1,$2,$3,$4,$5,$6,$7)",[annotationId,subject,id,actor,body.kind,body.revision,envelope]);
     if(body.kind==="mapping") {
-      const saved=await client.query("SELECT payload_envelope FROM campaign_tracker_activity WHERE account_id=$1 AND event_id=$2",[subject,id]);
+      const saved=await client.query("SELECT payload_envelope,payload_bytes FROM campaign_tracker_activity WHERE account_id=$1 AND event_id=$2",[subject,id]);
       const activity=unseal(saved.rows[0].payload_envelope,`${subject}:${id}`);
       activity.taskIds=payload.taskIds;
       activity.mappingStatus="corrected";
       const updated=seal(activity,`${subject}:${id}`),bytes=Buffer.byteLength(JSON.stringify(updated));
-      if(await trackerStorageBytes(client,subject)+bytes>TRACKER_QUOTA_BYTES)throw trackerError("tracker_storage_quota",413);
+      // The UPDATE replaces this row, so count its old bytes out (as trackerCompleteSummary does). The account lock
+      // serializes every byte writer, and the annotation foreign key holds this row until commit.
+      if(await trackerStorageBytes(client,subject)-Number(saved.rows[0].payload_bytes)+bytes>TRACKER_QUOTA_BYTES)throw trackerError("tracker_storage_quota",413);
       await client.query("UPDATE campaign_tracker_activity SET payload_envelope=$3,payload_bytes=$4,revision=revision+1 WHERE account_id=$1 AND event_id=$2",[subject,id,updated,bytes]);
     }
     await trackerAudit(client,actor,subject,body.kind,id);
