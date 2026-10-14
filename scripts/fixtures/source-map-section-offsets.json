@@ -1,0 +1,93 @@
+[
+  {
+    "id": "valid-flat",
+    "kind": "flat",
+    "expect": "accept"
+  },
+  {
+    "id": "valid-index-zero",
+    "line": 0,
+    "column": 0,
+    "expect": "accept"
+  },
+  {
+    "id": "valid-index-small",
+    "line": 3,
+    "column": 2,
+    "expect": "accept"
+  },
+  {
+    "id": "negative-line",
+    "line": -1,
+    "column": 0,
+    "expect": "reject"
+  },
+  {
+    "id": "fractional-line",
+    "line": 0.5,
+    "column": 0,
+    "expect": "reject"
+  },
+  {
+    "id": "string-line",
+    "line": "3",
+    "column": 0,
+    "expect": "reject"
+  },
+  {
+    "id": "negative-column",
+    "line": 0,
+    "column": -1,
+    "expect": "reject"
+  },
+  {
+    "id": "fractional-column",
+    "line": 0,
+    "column": 0.5,
+    "expect": "reject"
+  },
+  {
+    "id": "string-column",
+    "line": 0,
+    "column": "1",
+    "expect": "reject"
+  },
+  {
+    "id": "line-over-upstream-bound",
+    "line": 10000001,
+    "column": 0,
+    "expect": "reject"
+  },
+  {
+    "id": "nested-total-over-bound",
+    "line": 6000000,
+    "column": 0,
+    "nestedLine": 6000000,
+    "expect": "reject"
+  },
+  {
+    "id": "valid-nested-small",
+    "line": 2,
+    "column": 0,
+    "nestedLine": 3,
+    "expect": "accept"
+  },
+  {
+    "id": "line-infinity",
+    "specialLine": "Infinity",
+    "column": 0,
+    "expect": "reject"
+  },
+  {
+    "id": "line-NaN",
+    "specialLine": "NaN",
+    "column": 0,
+    "expect": "reject"
+  },
+  {
+    "id": "valid-bound-constructor-only",
+    "line": 10000000,
+    "column": 0,
+    "expect": "accept"
+  }
+]
