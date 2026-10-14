@@ -235,7 +235,7 @@ export function createRuntimeWalletStore({
     const wallet = {
       accountId: normalizedAccountId, status: "linked", address: normalizedAddress,
       publicKey: String(publicKey || "").trim(),
-      tasknodeEncryptionPubkey: String(tasknodeEncryptionPubkey || previousWallet?.tasknodeEncryptionPubkey || "").trim(),
+      tasknodeEncryptionPubkey: String(tasknodeEncryptionPubkey || (previousWallet?.address === normalizedAddress ? previousWallet.tasknodeEncryptionPubkey : "") || "").trim(),
       custody: "local_seed_required", linkedAt: previousWallet?.linkedAt || now,
       relinkedAt: previousWallet ? now : undefined, updatedAt: now, walletCreatedInAccount,
       proof: { challengeId, purpose: proofPurpose, signatureHash: stableId(signature, "sig") },
