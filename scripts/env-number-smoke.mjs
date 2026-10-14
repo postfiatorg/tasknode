@@ -104,12 +104,15 @@ const WORKER_PARAMETER_VARS = [
 // bare read had no NaN guard before use: a NaN attempt limit never marks a
 // memory job final, a NaN rank weight makes every leaderboard score NaN, a NaN
 // token floor is sent as max_tokens: null and a NaN run count is quoted as null.
+// An Infinity global report token cap passed every `globalMax || default`
+// fallback and was sent as max_tokens: null too.
 const ROUTED_SETTING_VARS = [
   "TASKNODE_MEMORY_MAX_ATTEMPTS",
   "DIRECTORY_LEADERBOARD_NETWORK_TASK_WEIGHT",
   "DIRECTORY_LEADERBOARD_PERSONAL_TASK_WEIGHT",
   "DIRECTORY_LEADERBOARD_REWARD_DIVISOR",
   "DIRECTORY_LEADERBOARD_ALIGNMENT_WEIGHT",
+  "TASKNODE_HIVE_REPORT_MAX_TOKENS",
   "TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS",
   "CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL",
 ];
@@ -200,6 +203,94 @@ const leaderboardNumeric = leaderboardProbe({
 if (leaderboardNumeric !== JSON.stringify({ score: 17, formula: [5, 2, 10000, 0] })) {
   problems.push(`numeric DIRECTORY_LEADERBOARD_* weights were not applied: ${leaderboardNumeric}`);
 }
+
+// The global report token cap is the fallback for every report type. Through
+// the real report + inference pipeline (only the transport is replaced), the
+// provider must always receive a positive integer max_tokens, never null
+// (JSON for NaN/Infinity), and a valid specific planning value must still win.
+// Rows: [global, planning-specific, expected max_tokens for hive_intelligence,
+// board_manager_planning and executive (the default branch)].
+const DEFAULTS = [24000, 14000, 9000];
+const REPORT_TOKEN_CASES = [
+  [undefined, undefined, DEFAULTS],
+  ["", undefined, DEFAULTS],
+  ["   ", undefined, DEFAULTS],
+  ["abc", undefined, DEFAULTS],
+  ["NaN", undefined, DEFAULTS],
+  ["Infinity", undefined, DEFAULTS],
+  ["-Infinity", undefined, DEFAULTS],
+  ["1e999", undefined, DEFAULTS],
+  ["0", undefined, DEFAULTS],
+  ["-5", undefined, [24000, 14000, 3000]], // negative clamps to each floor, as before
+  ["30000", undefined, [30000, 30000, 30000]],
+  [" 30000 ", undefined, [30000, 30000, 30000]],
+  ["30000.5", undefined, [30000, 30000, 30000]],
+  ["18000.5", undefined, [24000, 18000, 18000]],
+  ["Infinity", "16000", [24000, 16000, 9000]],
+  ["1e999", "15s", DEFAULTS],
+  ["Infinity", "14000", DEFAULTS],
+  ["-Infinity", "16000.9", [24000, 16000, 9000]],
+  ["30000", "20000", [30000, 20000, 30000]],
+  [undefined, "1e999", DEFAULTS],
+];
+const reportTokenProbe = spawnSync(
+  process.execPath,
+  [
+    "--input-type=module",
+    "-e",
+    [
+      'globalThis.fetch = () => { throw new Error("network_escape_forbidden"); };',
+      'const { generateHiveReportMarkdown } = await import("./server/hive-report-provider.js");',
+      "const cases = JSON.parse(process.argv[1]);",
+      "const sent = [];",
+      "for (const [globalMax, planningMax] of cases) {",
+      '  for (const [key, value] of [["TASKNODE_HIVE_REPORT_MAX_TOKENS", globalMax], ["TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS", planningMax]]) {',
+      "    if (value === null) delete process.env[key]; else process.env[key] = value;",
+      "  }",
+      "  const row = [];",
+      '  for (const type of ["hive_intelligence", "board_manager_planning", "executive"]) {',
+      "    await generateHiveReportMarkdown({ type, sourcePacket: {}, fetchImpl: async (_url, init) => {",
+      "      row.push(JSON.parse(init.body).max_tokens);",
+      '      return new Response(JSON.stringify({ id: "synthetic", choices: [{ message: { content: "# Synthetic report" } }] }), { status: 200, headers: { "content-type": "application/json" } });',
+      "    } });",
+      "  }",
+      "  sent.push(row);",
+      "}",
+      "console.log(JSON.stringify(sent));",
+      "process.exit(0);",
+    ].join("\n"),
+    JSON.stringify(REPORT_TOKEN_CASES.map(([globalMax, planningMax]) => [globalMax ?? null, planningMax ?? null])),
+  ],
+  {
+    env: {
+      ...process.env,
+      TASKNODE_HIVE_REPORT_PROVIDER_MOCK: "false",
+      VERCEL_AI_GATEWAY_API_KEY: "synthetic-fixture",
+      INFERENCE_AMBIENT_BACKUP_ENABLED: "false",
+    },
+    encoding: "utf8",
+    timeout: 60000,
+  }
+);
+const reportTokensSent = (() => {
+  try {
+    return JSON.parse(String(reportTokenProbe.stdout || "").trim().split("\n").pop());
+  } catch {
+    return null;
+  }
+})();
+if (reportTokenProbe.status !== 0 || !Array.isArray(reportTokensSent)) {
+  problems.push(`hive report max_tokens probe failed: ${reportTokenProbe.stdout} ${reportTokenProbe.stderr}`);
+} else {
+  REPORT_TOKEN_CASES.forEach(([globalMax, planningMax, expected], index) => {
+    const sent = reportTokensSent[index];
+    if (!sent.every((value) => Number.isSafeInteger(value) && value > 0) || JSON.stringify(sent) !== JSON.stringify(expected)) {
+      problems.push(
+        `TASKNODE_HIVE_REPORT_MAX_TOKENS=${JSON.stringify(globalMax)} TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS=${JSON.stringify(planningMax)}: transport received max_tokens ${JSON.stringify(sent)}, expected ${JSON.stringify(expected)}`
+      );
+    }
+  });
+}
 assert.deepEqual(problems, [], problems.join("\n"));
 
 // Every module that routes a setting through the helper must still load with
@@ -223,6 +314,7 @@ const JUNK = {
   TASK_PROJECTION_REFRESH_MIN_INTERVAL_MS: "5s",
   TASKNODE_MEMORY_MAX_ATTEMPTS: "five",
   DIRECTORY_LEADERBOARD_NETWORK_TASK_WEIGHT: "three",
+  TASKNODE_HIVE_REPORT_MAX_TOKENS: "Infinity",
   TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS: "14k",
   CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL: "three",
 };

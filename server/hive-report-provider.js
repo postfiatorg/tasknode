@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { hiveReportTypes } from "./repositories/hive-reports.js";
 import { inferenceConfigured, inferenceFetchCompatibility } from "./inference.js";
-import { envNumberAtLeast } from "./env-number.js";
+import { envNumber, envNumberAtLeast } from "./env-number.js";
 
 const defaultReportModel = "zai/glm-5.3";
 
@@ -61,16 +61,20 @@ function providerTimeoutMs() {
 }
 
 function hiveReportMaxTokens(type = "") {
-  const globalMax = Number(process.env.TASKNODE_HIVE_REPORT_MAX_TOKENS || 0);
+  // TASKNODE_HIVE_REPORT_MAX_TOKENS is the fallback for every report type. An
+  // unset, blank, non-numeric or non-finite value (Infinity, 1e999) reads as 0,
+  // i.e. unset, so `globalMax || default` below never passes Infinity on (it
+  // was sent as max_tokens: null). max_tokens is a token count: floor it.
+  const globalMax = envNumber("TASKNODE_HIVE_REPORT_MAX_TOKENS", 0);
   // Reasoning tokens count against max_tokens; 10K truncated every run once
   // the xhigh-thinking report grew past ~8K of output (2026-09-23).
   if (type === "hive_intelligence") {
-    return Math.max(24000, Number(globalMax || 24000));
+    return Math.floor(Math.max(24000, globalMax || 24000));
   }
   if (type === "board_manager_planning") {
-    return envNumberAtLeast("TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS", globalMax || 14000, 14000);
+    return Math.floor(envNumberAtLeast("TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS", globalMax || 14000, 14000));
   }
-  return Math.max(3000, Number(globalMax || 9000));
+  return Math.floor(Math.max(3000, globalMax || 9000));
 }
 
 export function hiveReportsProviderConfigured() {
