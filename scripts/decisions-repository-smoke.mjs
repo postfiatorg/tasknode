@@ -6,6 +6,7 @@ import pg from "pg";
 import { createHash } from "node:crypto";
 import { buildDecisionContext } from "../server/decision-context.js";
 import { CONTEXT_DOCUMENT_MAX_CHARS } from "../shared/context-budget.js";
+import { normalizeContextBodyForStorage } from "../shared/context-html.js";
 
 // Pure context-packet checks (no database): decisions send the readable context text, not raw HTML.
 const sha = text => createHash("sha256").update(text).digest("hex");
@@ -23,6 +24,20 @@ const tablePacket = buildDecisionContext({ input: "Should I take job A or B?", d
 assert.ok(tablePacket.input.includes("Goal 0\nShip v0\n\nGoal 1\nShip v1") && tablePacket.input.includes("Goal 599\nShip v599") && !tablePacket.input.includes("<td>"));
 assert.ok(tablePacket.input.length < 60_000);
 const prefix = "# User proposed decision\n\nQ?\n\n# Task Node context document\n\n";
+// Bare text, numeric and header table cells keep their boundaries in the text sent,
+// both as typed and after storage normalization adds the tbody.
+for (const [html, text] of [
+  ["<table><tr><td>Ship A</td><td>Reject B</td></tr></table>", "Ship A\nReject B"],
+  ["<table><tr><td>10</td><td>20</td></tr></table>", "10\n20"],
+  ["<table><tr><th>Option</th><th>Score</th></tr><tr><td>A</td><td>10</td></tr></table>", "Option\nScore\n\nA\n10"],
+]) {
+  for (const body of [html, normalizeContextBodyForStorage(html)]) {
+    const packet = buildDecisionContext({ input: "Q?", document: { id: "t", revision: 5, body } });
+    assert.equal(packet.input, `${prefix}${text}`);
+    assert.equal(packet.snapshot.document.sha256, sha(text));
+    assert.equal(packet.snapshot.inputSha256, sha(packet.input));
+  }
+}
 const atLimit = `<p>${"y".repeat(60_000 - prefix.length)}</p>`;
 assert.equal(buildDecisionContext({ input: "Q?", document: { body: atLimit } }).input.length, 60_000);
 for (const body of [`<p>${"y".repeat(60_001 - prefix.length)}</p>`, `<p>${"x".repeat(60_000)}</p>`, "x".repeat(60_000)]) {
