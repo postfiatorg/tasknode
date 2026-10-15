@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowRight, ExternalLink, Eye, FileText, Github, Paperclip, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, ExternalLink, Eye, FileText, Paperclip, Plus, Trash2 } from "lucide-react";
+import { Github } from "../../components/GithubIcon";
 import { requestJson } from "../../api";
 import { normalizeTaskStatus, taskIsTerminal } from "../../../shared/task-lifecycle";
 import { truncateCid } from "../context/context-view-utils.jsx";
