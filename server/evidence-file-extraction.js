@@ -202,7 +202,6 @@ function extractTarArchive(buffer) {
 
 async function extractPdf(buffer) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const { createCanvas } = await import("@napi-rs/canvas");
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     disableFontFace: true,
@@ -229,9 +228,15 @@ async function extractPdf(buffer) {
         const baseViewport = page.getViewport({ scale: 1 });
         const scale = Math.min(2, 1600 / Math.max(baseViewport.width, baseViewport.height, 1));
         const viewport = page.getViewport({ scale: Math.max(0.75, scale) });
-        const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-        images.push({ name: `page-${index}.png`, mimeType: "image/png", buffer: canvas.toBuffer("image/png") });
+        // PDF.js owns its native canvas/Path2D backend. A root canvas upgrade
+        // can otherwise mix incompatible native objects across versions.
+        const surface = document.canvasFactory.create(Math.ceil(viewport.width), Math.ceil(viewport.height));
+        try {
+          await page.render({ canvasContext: surface.context, viewport }).promise;
+          images.push({ name: `page-${index}.png`, mimeType: "image/png", buffer: surface.canvas.toBuffer("image/png") });
+        } finally {
+          document.canvasFactory.destroy(surface);
+        }
       }
       if (pages.join("\n\n").length >= MAX_EXTRACTED_TEXT_CHARS) break;
     }
