@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
 import { loadChatExecutionContext } from "./chat-context-load.js";
 import { requireDocumentAccess } from "./repositories/collaboration.js";
+import { serializeDocsPacket } from "./docs-packet-budget.js";
 
 const promptRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../prompts/docs");
 
@@ -146,8 +147,8 @@ export function buildDocsAssistantRequest({
   });
   const system = `${definition.prompt.system}\n\n${detected.id === "coach" ? definition.prompt.user : ""}\n\n${runtimeBoundary()}`.trim();
   const user = detected.id === "odv"
-    ? replaceIdentifier(replaceIdentifier(definition.prompt.user, "final_string", normalizedPrompt), "full_user_context", safeJson(packet, 70_000))
-    : safeJson(packet, 100_000);
+    ? replaceIdentifier(replaceIdentifier(definition.prompt.user, "final_string", normalizedPrompt), "full_user_context", serializeDocsPacket(packet, 70_000))
+    : serializeDocsPacket(packet, 100_000);
   return {
     persona: detected.id,
     label: detected.label,
