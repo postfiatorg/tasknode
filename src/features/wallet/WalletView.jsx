@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
   ChevronRight,
-  Check,
-  Copy,
   Download,
   Eye,
   EyeOff,
@@ -23,6 +21,7 @@ import "./wallet.css";
 import { EthereumTopUpModal, topUpDataSignature, useEthereumTopUpSync } from "../billing/ethereum-top-up";
 import { WalletSeedBackupModal } from "./WalletSeedBackupModal";
 import { WalletUnlockModal } from "./WalletUnlockModal";
+import { WalletAddressCopy } from "./WalletAddressCopy";
 import { formatCreditUsd } from "../../formatters";
 import { isSignedInSession } from "../../session";
 import {
@@ -74,7 +73,7 @@ export function WalletView({
 }) {
   const [message, setMessage] = useState("");
   const [pendingAction, setPendingAction] = useState("");
-  const [copiedAddress, setCopiedAddress] = useState(false);
+  const addressCopy = useRef(null);
   const [hideBalance, setHideBalance] = useState(false);
   const [hoveredTx, setHoveredTx] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
@@ -141,7 +140,6 @@ export function WalletView({
         ? "Checking"
         : "Network live";
   const networkTone = networkLabel === "Network live" ? "live" : networkLabel === "Network issue" ? "error" : "muted";
-  const walletAddressLabel = walletLinked ? shortWalletAddress(linkedWallet.address) : "No wallet linked";
   const vaultStatusLabel = vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : walletLinked ? "Not saved" : "Seed not linked";
   const primaryActionLabel = !walletLinked ? "Create wallet" : !vaultAvailable ? "Restore vault" : vaultUnlocked ? "Lock" : "Unlock";
   const syncTopUpDeposits = useEthereumTopUpSync({
@@ -576,17 +574,6 @@ export function WalletView({
     return () => window.removeEventListener(WALLET_ACTIVITY_EVENT_NAME, handleWalletActivity);
   }, [linkedWallet.address, refreshWalletTransactions, signedIn, walletLinked]);
 
-  async function copyWalletAddress() {
-    if (!walletLinked || !linkedWallet.address) return;
-    try {
-      await navigator.clipboard?.writeText(linkedWallet.address);
-      setCopiedAddress(true);
-      window.setTimeout(() => setCopiedAddress(false), 1400);
-    } catch {
-      setMessage("Address copy failed.");
-    }
-  }
-
   return (
     <div className="route-scroll">
       <div className="wallet-view wallet-redesign">
@@ -621,16 +608,12 @@ export function WalletView({
             </div>
 
             <div className="wallet-identity-row">
-              <button
-                className="address-chip wallet-address-chip"
-                disabled={!walletLinked}
-                onClick={copyWalletAddress}
-                type="button"
-              >
-                <span className={walletLinked ? "wallet-address-dot is-linked" : "wallet-address-dot"} />
-                <span>{walletAddressLabel}</span>
-                {copiedAddress ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.8} />}
-              </button>
+              <WalletAddressCopy
+                key={JSON.stringify([session?.accountId || "", walletLinked, linkedWallet.address || ""])}
+                address={linkedWallet.address || ""}
+                copyRef={addressCopy}
+                linked={walletLinked}
+              />
               <button
                 aria-label={`${vaultStatusLabel} seed vault`}
                 className={`wallet-vault-chip is-${vaultDisplay.tone}`}
@@ -671,7 +654,7 @@ export function WalletView({
               <button
                 className="wallet-secondary-action"
                 disabled={!walletLinked}
-                onClick={copyWalletAddress}
+                onClick={() => addressCopy.current?.copyAddress()}
                 type="button"
               >
                 <Download size={16} strokeWidth={2} />

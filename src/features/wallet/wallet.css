@@ -425,6 +425,38 @@
   color: var(--tn-dark-secondary, #5d5d5d);
 }
 
+.wallet-address-copy { min-width: 0; }
+
+.wallet-copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.wallet-address-manual {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 100%;
+  color: var(--tn-dark-secondary, #5d5d5d);
+  font-size: 12px;
+}
+
+.wallet-address-manual input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--tn-dark-border, #e8e6df);
+  border-radius: 6px;
+  background: var(--tn-dark-surface, #fff);
+  color: var(--tn-dark-text, #0d0d0d);
+  font: inherit;
+  font-family: monospace;
+}
+
 .wallet-address-chip:disabled {
   cursor: default;
   opacity: 1;

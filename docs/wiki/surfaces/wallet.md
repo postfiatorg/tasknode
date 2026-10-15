@@ -12,6 +12,8 @@ Wallet is the identity and value surface. It shows PFT balance, local seed vault
 6. New eligible OAuth accounts may receive a one-time PFT initiation grant after wallet creation only after the matching encrypted local vault is saved.
 7. Email-only accounts can receive the same one-time grant after creating a wallet, saving/unlocking the matching local vault, and crediting more than `$10` USDC through the account top-up rail. The wallet page shows a subtle italic note under chat credit until that grant path is satisfied.
 
+Click the abbreviated PFT address to copy the full linked public address. The checkmark appears only after the browser confirms the copy. If browser copying is unavailable or denied, a labeled, selectable full-address field appears for manual copying. Copy feedback resets when the account or linked address changes. Copying the public address does not require unlocking the seed vault.
+
 ## Wallet Help Chat First-Run Copy
 
 This copy is ready to paste into a first-run Wallet help chat.
