@@ -63,3 +63,26 @@ await assert.rejects(()=>trackerEntitlement("secret".repeat(1000),{env,fetchImpl
   assert.deepEqual(trackerErrorResponse(error).validation,{field:"apiKey",reason:"max_bytes",maxBytes:4096});assert.ok(!JSON.stringify(trackerErrorResponse(error)).includes("secret"));return true;
 });
 console.log("Tracker validation: typed field metadata, UTF-8 boundaries, credential guidance and safe error envelopes passed.");
+
+// repository.remote: bounded https text; garbage is a 400, never a 500, and never stored as a non-string.
+const remoteEvent=remote=>validateEvent({id:"evt-1",instanceId:"inst-1",sessionId:"sess-1",turnId:"turn-1",sequence:1,workspaceId:"ws-1",kind:"tool",occurredAt:new Date(Date.now()-60_000).toISOString(),content:"x",repository:{remote}});
+const remoteBase="https://github.com/";
+for(const remote of ["https://github.com/postfiatorg/tasknode",remoteBase+"a".repeat(2048-remoteBase.length),remoteBase+"é".repeat(1014),undefined,null,""])assert.equal(remoteEvent(remote).repository.remote,remote);
+for(const [remote,code,reason] of [
+  ["not a url","tracker_remote_invalid"], ["https://","tracker_remote_invalid"], ["1".repeat(400),"tracker_remote_invalid"],
+  ["http://github.com/x","tracker_remote_invalid"], ["https://user:pw@github.com/x","tracker_remote_invalid"],
+  ["https://github.com/x?y=1","tracker_remote_invalid"], ["https://github.com/x#y","tracker_remote_invalid"],
+  [123,"tracker_text_invalid","type"], [0,"tracker_text_invalid","type"], [Infinity,"tracker_text_invalid","type"],
+  [{},"tracker_text_invalid","type"], [{href:"https://github.com/a"},"tracker_text_invalid","type"],
+  [["https://github.com/a"],"tracker_text_invalid","type"], [true,"tracker_text_invalid","type"], [false,"tracker_text_invalid","type"],
+  [remoteBase+"a".repeat(2049-remoteBase.length),"tracker_text_invalid","max_bytes"], [remoteBase+"é".repeat(1015),"tracker_text_invalid","max_bytes"],
+]) {
+  assert.throws(()=>remoteEvent(remote),error=>{
+    assert.equal(error.status,400);assert.equal(error.code,code);
+    const body=trackerErrorResponse(error);assert.equal(body.error,code);
+    if(reason){assert.deepEqual(body.validation,{field:"repository.remote",reason,maxBytes:2048});assert.ok(body.message.startsWith("Repository remote "));}
+    else assert.equal(body.validation,undefined);
+    return true;
+  },`remote ${JSON.stringify(remote)?.slice(0,60)}`);
+}
+console.log("Tracker repository.remote: bounded https text, typed 400s for non-string, oversize and unparseable remotes passed.");

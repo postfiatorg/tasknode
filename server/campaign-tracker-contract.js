@@ -22,7 +22,7 @@ const TRACKER_TEXT_FIELDS = Object.freeze({
   "event.content": "Event content", "event.sourceDigest": "Source digest", "event.taskIds": "Event task IDs",
   "event.coverage": "Event coverage", "event.model": "Event model",
   "repository.id": "Repository ID", "repository.label": "Repository label", "repository.branch": "Repository branch",
-  "repository.commit": "Repository commit", "goal.id": "Goal ID", "goal.status": "Goal status",
+  "repository.commit": "Repository commit", "repository.remote": "Repository remote", "goal.id": "Goal ID", "goal.status": "Goal status",
   "facts.action": "Action", "facts.status": "Action status", "facts.parentAgentId": "Parent agent ID",
   "facts.nativeTurnId": "Native turn ID", "facts.artifact": "Artifact",
   "summary.title": "Summary title", "summary.summary": "Summary", "summary.rationale": "Summary rationale",
@@ -89,8 +89,11 @@ export function validateEvent(input) {
   const repository = object(input.repository || {}, ["id", "label", "remote", "branch", "commit", "dirty"]);
   for (const key of ["id", "label", "branch", "commit"]) if (repository[key] != null) text(repository[key], 500, false, `repository.${key}`);
   if (repository.dirty != null && typeof repository.dirty !== "boolean") throw trackerError("tracker_repository_invalid");
-  if (repository.remote) {
-    const url = new URL(repository.remote);
+  // "" stays "no remote" as before; any other non-null value must be bounded text that parses as a URL.
+  if (repository.remote != null && repository.remote !== "") {
+    text(repository.remote, 2048, false, "repository.remote");
+    let url;
+    try { url = new URL(repository.remote); } catch { throw trackerError("tracker_remote_invalid"); }
     if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) throw trackerError("tracker_remote_invalid");
   }
   const goal = object(input.goal || {}, ["id", "active", "status"]);
