@@ -7,18 +7,19 @@ import {
   nonFixtureProfileNftSql,
   nonFixtureRecommendedProfileSql,
 } from "./task-projection-integrity.js";
+import { envNumber, envNumberAtLeast } from "../env-number.js";
 
-const leaderboardLimit = Math.max(1, Number(process.env.DIRECTORY_LEADERBOARD_LIMIT || 200));
-const leaderboardCacheMs = Math.max(0, Number(process.env.DIRECTORY_LEADERBOARD_CACHE_MS || 30_000));
+const leaderboardLimit = envNumberAtLeast("DIRECTORY_LEADERBOARD_LIMIT", 200, 1);
+const leaderboardCacheMs = envNumberAtLeast("DIRECTORY_LEADERBOARD_CACHE_MS", 30_000, 0);
 
 let cachedBaseDocument = null;
 let cachedBaseDocumentUntil = 0;
 
 export const DIRECTORY_LEADERBOARD_RANK_FORMULA = {
-  networkTaskWeight: Number(process.env.DIRECTORY_LEADERBOARD_NETWORK_TASK_WEIGHT || 3),
-  personalTaskWeight: Number(process.env.DIRECTORY_LEADERBOARD_PERSONAL_TASK_WEIGHT || 1),
-  rewardDivisor: Number(process.env.DIRECTORY_LEADERBOARD_REWARD_DIVISOR || 25_000),
-  alignmentWeight: Number(process.env.DIRECTORY_LEADERBOARD_ALIGNMENT_WEIGHT || 1),
+  networkTaskWeight: envNumber("DIRECTORY_LEADERBOARD_NETWORK_TASK_WEIGHT", 3),
+  personalTaskWeight: envNumber("DIRECTORY_LEADERBOARD_PERSONAL_TASK_WEIGHT", 1),
+  rewardDivisor: envNumber("DIRECTORY_LEADERBOARD_REWARD_DIVISOR", 25_000),
+  alignmentWeight: envNumber("DIRECTORY_LEADERBOARD_ALIGNMENT_WEIGHT", 1),
 };
 
 export function directoryLeaderboardScore({

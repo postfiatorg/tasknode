@@ -14,6 +14,7 @@ import {
   verifyDevelopmentReportRepos,
   verifyKolReportLinks,
 } from "./hive-report-provider.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 let timer = null;
 let running = false;
@@ -45,7 +46,7 @@ function safeObject(value) {
 
 function workerIntervalMs() {
   return Math.min(
-    Math.max(Number(process.env.TASKNODE_HIVE_REPORTS_WORKER_INTERVAL_MS || 60_000), 5_000),
+    envNumberAtLeast("TASKNODE_HIVE_REPORTS_WORKER_INTERVAL_MS", 60_000, 5_000),
     24 * 60 * 60 * 1000
   );
 }

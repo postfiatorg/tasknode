@@ -1,5 +1,6 @@
 import pg from "pg";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { envNumberAtLeast } from "../env-number.js";
 
 const commandTransaction = new AsyncLocalStorage();
 
@@ -36,8 +37,8 @@ export function transactionCommand(work, { statementTimeoutMs: requestedTimeout 
 
 const { Pool } = pg;
 
-const statementTimeoutMs = Math.max(500, Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS || 5000));
-const connectionTimeoutMs = Math.max(500, Number(process.env.DATABASE_CONNECTION_TIMEOUT_MS || 5000));
+const statementTimeoutMs = envNumberAtLeast("DATABASE_STATEMENT_TIMEOUT_MS", 5000, 500);
+const connectionTimeoutMs = envNumberAtLeast("DATABASE_CONNECTION_TIMEOUT_MS", 5000, 500);
 
 function processRole(env = process.env) {
   return String(env.TASKNODE_PROCESS_ROLE || env.FLY_PROCESS_GROUP || "all").trim().toLowerCase() || "all";
@@ -97,7 +98,7 @@ export function getPool() {
       connectionString: databaseUrl(),
       max: maxConnections,
       connectionTimeoutMillis: connectionTimeoutMs,
-      idleTimeoutMillis: Math.max(1000, Number(process.env.DATABASE_IDLE_TIMEOUT_MS || 30000)),
+      idleTimeoutMillis: envNumberAtLeast("DATABASE_IDLE_TIMEOUT_MS", 30000, 1000),
       query_timeout: statementTimeoutMs,
       application_name: `${process.env.TASKNODE_APP_NAME || "tasknodeofficial"}:${poolRole}`,
     });
