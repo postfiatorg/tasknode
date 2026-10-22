@@ -160,6 +160,26 @@ export async function discoverableMemberProfileIds(accountIds = []) {
   return new Set(result.rows.map((row) => safeText(row.account_id, 180)).filter(Boolean));
 }
 
+// Latest public profile (role, summary, skills) for members whose profile is
+// public and discoverable; postfiat.org community cards render it.
+export async function publicProfileSummaries({ accountIds = [], queryImpl = query } = {}) {
+  if (!accountIds.length) return new Map();
+  const result = await queryImpl(
+    `
+      SELECT DISTINCT ON (account_id) account_id, role_title, role_summary, skills
+      FROM profile_public_snapshots
+      WHERE account_id = ANY($1::text[]) AND status = 'completed'
+      ORDER BY account_id, completed_at DESC NULLS LAST
+    `,
+    [accountIds]
+  );
+  return new Map(result.rows.map((row) => [safeText(row.account_id, 180), {
+    roleTitle: safeText(row.role_title, 120),
+    summary: safeText(row.role_summary, 400),
+    skills: safeArray(row.skills).map((skill) => safeText(skill, 60)).filter(Boolean).slice(0, 6),
+  }]));
+}
+
 export async function queryDirectoryLeaderboardRows({
   accountIds = [],
   queryImpl = query,
@@ -252,6 +272,7 @@ async function buildBaseDocument() {
     discoverableMemberProfileIds(accountIds),
     listMachineOperatorDisclosures({ accountIds }).catch(() => ({})),
   ]);
+  const profiles = await publicProfileSummaries({ accountIds: [...profileIds] }).catch(() => new Map());
 
   const operators = rows
     .map((row) => {
@@ -278,6 +299,7 @@ async function buildBaseDocument() {
         alignmentRunDate: dateLabel(row.alignment_run_date),
         heroNft: heroNftFromRow(row),
         hasPublicProfile: profileIds.has(accountId),
+        profile: profiles.get(accountId) || null,
         operatorDisclosure: operatorDisclosures[accountId] || null,
         tasksRewarded: intValue(row.tasks_rewarded),
         score: directoryLeaderboardScore({ alignment, networkTasks, personalTasks, rewards }),

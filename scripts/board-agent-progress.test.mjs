@@ -213,6 +213,7 @@ test("allocation health measures tasks created against idle contributors", async
     if (sql.includes("FROM network_task_generation_jobs")) return { rows: [{ board_id: "board_tasknode_fixes", family: "contract", count: 1 }] };
     if (sql.includes("FROM board_agent_rounds")) return { rows: [routing("board_pf_terminal", "not_served"), routing("board_pf_terminal", "not_served"), routing("board_pf_terminal", "not_served")] };
     if (sql.includes("count(DISTINCT account_id)")) return { rows: [{ accounts: 3 }] };
+    if (sql.includes("WHERE d.status='pending'")) return { rows: [{ board_id: "board_pf_terminal", task_id: "task_stuck", kind: "review", decision: "reject", since: "2026-09-29T06:18:36.900Z", wait_ms: 5 * 3_600_000, last_error: "merged_pr_required:no_pull_request_url" }] };
     if (sql.includes("submitted','verification_response_submitted")) return { rows: [{ board_id: "board_pf_terminal", task_id: "task_waiting", status: "submitted", since: "2026-09-21T20:32:24.264Z", wait_ms: 4 * 60 * 60_000 }] };
     throw new Error("unexpected " + sql);
   };
@@ -231,9 +232,13 @@ test("allocation health measures tasks created against idle contributors", async
   assert.equal(health.boards.find((b) => b.board_id === "board_tasknode_fixes").failures_7d.contract, 1);
   const lines = allocationHealthLines(health, "board_pf_terminal");
   assert.ok(lines[0].startsWith("Allocation: 35 idle badge-verified; 1 created 24h / 4 7d"));
-  assert.ok(lines[1].startsWith("Review backlog: 1 submission(s)"));
-  assert.ok(lines[2].includes("task_waiting submitted 240min"));
-  assert.ok(lines[3].includes("not_served streak 3"));
+  assert.ok(lines.some((line) => line.startsWith("Review backlog: 1 submission(s)")));
+  assert.ok(lines.some((line) => line.includes("task_waiting submitted 240min")));
+  assert.ok(lines.some((line) => line.includes("not_served streak 3")));
+  // A recorded decision that never publishes must stay visible.
+  assert.equal(health.aggregate.decisions_stuck_publishing, 1);
+  assert.ok(lines.some((line) => line.startsWith("Stuck publications: 1")));
+  assert.ok(lines.some((line) => line.includes("task_stuck review/reject 5h merged_pr_required")));
   t.diagnostic(lines.join(" | "));
 });
 

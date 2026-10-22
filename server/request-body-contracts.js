@@ -225,6 +225,19 @@ export const observabilityBody = strictBody(8192, {
 }, { requiredAny: [["eventType", "event_type"]] });
 
 export const chatBody = strictBody(8 * MiB, chatProperties);
+// JSON-RPC 2.0 envelope; tool arguments are re-validated by the terminal route
+// each tool re-enters.
+export const mcpBody = strictBody(MiB, {
+  jsonrpc: text(10), id: { type: ["string", "integer", "number", "null"], maxLength: 200 }, method: text(200),
+  params: opaqueObject, result: opaqueObject, error: opaqueObject,
+});
+// RFC 7591 requires servers to ignore unrecognized client metadata, and real
+// clients send OIDC extensions (Codex sends application_type), so only the
+// fields the handler reads are typed.
+export const oauthRegisterBody = bodyPolicy(16 * KiB, {
+  allowUnknown: true,
+  properties: { redirect_uris: stringArray(10, 500), client_name: text(200) },
+});
 export const terminalContextBody = strictBody(256 * KiB, {
   revision: integer(0), title: text(120), body: text(250_000), source: text(80),
 }, { required: ["body"] });

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import {
   directoryLeaderboardScore,
+  publicProfileSummaries,
   queryDirectoryLeaderboardRows,
 } from "../server/repositories/directory-leaderboard.js";
 
@@ -44,6 +45,19 @@ assert.match(capturedSql, /COUNT\(\*\)::integer AS tasks_rewarded/);
 assert.equal((capturedSql.match(/reward_actual_pft > 0/g) || []).length, 1);
 assert.doesNotMatch(capturedSql, /user_observability_events/);
 assert.doesNotMatch(capturedSql, /latest_handle/);
+
+let profileSql = "";
+const profiles = await publicProfileSummaries({
+  accountIds: ["acct_public_one"],
+  queryImpl: async (sql) => {
+    profileSql = sql;
+    return { rows: [{ account_id: "acct_public_one", role_title: "Auditor", role_summary: "Audits.", skills: ["A", "B", "C", "D", "E", "F", "G"] }] };
+  },
+});
+assert.deepEqual(profiles.get("acct_public_one"), { roleTitle: "Auditor", summary: "Audits.", skills: ["A", "B", "C", "D", "E", "F"] });
+assert.match(profileSql, /FROM profile_public_snapshots/);
+assert.match(profileSql, /status = 'completed'/);
+assert.equal((await publicProfileSummaries({ accountIds: [], queryImpl: async () => { throw new Error("no query"); } })).size, 0);
 
 const [viewSource, repositorySource] = await Promise.all([
   readFile(new URL("../src/features/directory/DirectoryView.jsx", import.meta.url), "utf8"),

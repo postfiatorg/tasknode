@@ -179,6 +179,12 @@ export async function assertMergedPrForPayment({ taskId, fetchImpl = fetch } = {
     [taskId]
   );
   const existing = cached.rows[0]?.evidence;
+  // Operator waiver (scripts/operator-review-override.mjs --mode waive): an
+  // explicit, audited per-task ruling recorded as evidence with key
+  // operator_waiver:<taskId>, so it can never satisfy another task's check.
+  if (existing?.policy === MERGED_PR_POLICY_VERSION && existing?.waived === true && existing?.key === `operator_waiver:${taskId}`) {
+    return { required: true, waived: true, evidence: existing };
+  }
   if (existing?.policy === MERGED_PR_POLICY_VERSION && existing?.key) return { required: true, evidence: existing };
   const result = await verifyMergedPullRequest({
     taskId,

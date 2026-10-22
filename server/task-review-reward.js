@@ -671,8 +671,10 @@ export async function processVerificationResponse(row, { logger = console } = {}
 
     // Blacklisted accounts are never paid (value accountability policy).
     await assertNotBlacklisted({ accountId: row.account_id, walletAddress: row.subject_wallet, action: "reward" });
-    // Network tasks pay only for a PR merged into the default branch.
-    await assertMergedPrForPayment({ taskId: row.task_id });
+    // Network tasks pay only for a PR merged into the default branch. A reject
+    // (zero economic reward) pays nothing, so it must publish without a merged
+    // PR; asserting here used to leave rejects retrying forever as "pending".
+    if (economicRewardPft > 0) await assertMergedPrForPayment({ taskId: row.task_id });
     const paymentGuard = await claimRewardPaymentGuard({
       taskId: row.task_id,
       rewardPayload,

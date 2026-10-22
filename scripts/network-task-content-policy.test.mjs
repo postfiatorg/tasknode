@@ -10,6 +10,12 @@ const banned = [
   ["audit_document_deliverable", "Audit Vote-Counting Logic in internal_validation.rs and Publish Gist"],
   ["audit_document_deliverable", "Audit Issue 36 Operator Onboarding Gaps and Publish Coverage Gist"],
   ["audit_document_deliverable", "Assess PR #94 Merge Readiness and Publish Decision Gist"],
+  // Network tasks generated after the 2026-09-26 policy that it failed to stop.
+  ["audit_document_deliverable", "Verify PR #131 Zlib Pin Fix and Publish Verdict Gist"],
+  ["audit_document_deliverable", "Publish Merge-Verdict Gist For CorbanuTerminal PR #130"],
+  ["audit_document_deliverable", "Publish Fresh Merge-Verdict Gist for PR #103 insta Bump"],
+  ["audit_document_deliverable", "Review PR #124 Cache Marker Fix and Publish Verdict Gist"],
+  ["audit_document_deliverable", ["Verify PR #131 fix", "PR #131 ('fix(bazel): refresh rules_rs pin') updates the patch. Publish a public gist with a one-word verdict, MERGE or DO-NOT-MERGE."]],
 ];
 
 const allowed = [

@@ -28,7 +28,7 @@ import {
   createTerminalAuthRequest,
   getTerminalAuthRequest,
   getTerminalSessionByToken,
-  revokeTerminalSessionByToken,
+  revokeTerminalSessions,
 } from "./repositories/terminal-auth.js";
 import {
   getChatMessages,
@@ -458,7 +458,7 @@ async function handleTerminalAuthRoute({
 
   if (url.pathname === "/api/auth/terminal/revoke") {
     const token = bearerToken(req);
-    await revokeTerminalSessionByToken(token);
+    await revokeTerminalSessions({ token });
     json(res, 200, {
       ok: true,
       action: "terminal_session_revoked",

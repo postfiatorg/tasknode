@@ -82,6 +82,14 @@ resource membership, or other context beyond a generic identity class.
 | `terminal_tasknode_task_evidence` | `/^\/api\/terminal\/tasknode\/tasks\/[^/]+\/evidence$/` | `POST` | `bearer` | strict JSON ≤ 1048576 bytes | 20 / 60s |
 | `terminal_campaign_tracker` | `/api/terminal/tasknode/campaign-tracker/…` | `GET` `POST` | `bearer` | strict JSON ≤ 1126400 bytes | 180 / 60s |
 | `terminal_tasknode_fallback` | `/api/terminal/tasknode/…` | `GET` | `bearer` | — | — |
+| `mcp` | `/mcp` | `POST` | `handler` | strict JSON ≤ 1048576 bytes | 300 / 60s |
+| `oauth_register` | `/oauth/register` | `POST` | `none` | provider-shaped JSON ≤ 16384 bytes | 20 / 600s |
+| `oauth_authorize` | `/oauth/authorize` | `GET` | `none` | — | 30 / 600s |
+| `oauth_callback` | `/oauth/callback` | `GET` | `oauth_state` | — | — |
+| `oauth_metadata` | `/.well-known/oauth-/…` | `GET` | `none` | — | — |
+| `agent_connect` | `/connect` | `GET` `POST` | `handler` | strict JSON ≤ 1024 bytes | 30 / 600s |
+| `agent_connect_signout` | `/connect/signout` | `POST` | `handler` | strict JSON ≤ 1024 bytes | 10 / 600s |
+| `agent_connect_login` | `/connect/login` | `GET` | `none` | — | 20 / 600s |
 | `readiness` | `/api/readiness` | `GET` | `none` | — | — |
 | `health` | `/api/health` | `GET` | `none` | — | — |
 | `system_status` | `/api/system/status` | `GET` | `none` | — | — |
@@ -203,4 +211,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **177 route policies** and **8 authentication modes**.
+Total: **185 route policies** and **8 authentication modes**.
