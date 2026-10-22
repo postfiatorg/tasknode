@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import pg from "pg";
 import { databaseEnabled, databaseUrl, query } from "./db/pool.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 const { Client } = pg;
 const REALTIME_CHANNEL = "tasknode_realtime";
 const HEARTBEAT_MS = 25000;
 // Each open stream holds a proxy request slot; cap them per account.
-const MAX_STREAMS_PER_ACCOUNT = Math.max(1, Number(process.env.TASKNODE_REALTIME_MAX_STREAMS_PER_ACCOUNT || 4));
+const MAX_STREAMS_PER_ACCOUNT = envNumberAtLeast("TASKNODE_REALTIME_MAX_STREAMS_PER_ACCOUNT", 4, 1);
 const subscribersByAccount = new Map();
 const localEvents = new EventEmitter();
 

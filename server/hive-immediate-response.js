@@ -25,6 +25,7 @@ import {
   buildHiveAccountLiveState,
   formatHiveAccountLiveStateForPrompt,
 } from "./repositories/hive-account-live-state.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 const defaultHiveImmediateModel = INFERENCE_MODELS.fastText;
 const defaultTimeoutMs = 45_000;
@@ -850,7 +851,7 @@ export async function executeHiveImmediateResponse({
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    Math.max(1000, Number(process.env.TASKNODE_HIVE_IMMEDIATE_TIMEOUT_MS || defaultTimeoutMs))
+    envNumberAtLeast("TASKNODE_HIVE_IMMEDIATE_TIMEOUT_MS", defaultTimeoutMs, 1000)
   );
 
   try {
@@ -861,7 +862,7 @@ export async function executeHiveImmediateResponse({
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal,
-    }, { capability: "fast_text", timeoutMs: Math.max(1000, Number(process.env.TASKNODE_HIVE_IMMEDIATE_TIMEOUT_MS || defaultTimeoutMs)) });
+    }, { capability: "fast_text", timeoutMs: envNumberAtLeast("TASKNODE_HIVE_IMMEDIATE_TIMEOUT_MS", defaultTimeoutMs, 1000) });
     const body = await readJsonResponse(response);
     if (!response.ok) {
       const error = new Error(body?.error?.message || body?.message || `Hive DeepSeek HTTP ${response.status}`);

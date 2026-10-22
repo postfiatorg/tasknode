@@ -1,5 +1,6 @@
 import { query } from "../db/pool.js";
 import { hiveBrainLiveSnapshot } from "../hive-brain-live.js";
+import { envNumberAtLeast } from "../env-number.js";
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -378,7 +379,7 @@ export async function listHiveBrainRuns({
   let result;
   if (search) {
     const recentWindow = Math.min(
-      Math.max(Number(process.env.TASKNODE_HIVE_BRAIN_SEARCH_RECENT_LIMIT || 40), normalizedLimit),
+      envNumberAtLeast("TASKNODE_HIVE_BRAIN_SEARCH_RECENT_LIMIT", 40, normalizedLimit),
       100
     );
     params.push(recentWindow);
