@@ -1,3 +1,5 @@
+import { envNumber } from "./env-number.js";
+
 const PROCESS_HANDLER_STATES = new WeakMap();
 
 function boundedText(value, fallback = "unknown_error") {
@@ -324,8 +326,8 @@ export async function runTrackedWork(name, work) {
 
 export function installGracefulShutdown({
   drain = async () => {},
-  timeoutMs = Number(process.env.TASKNODE_SHUTDOWN_TIMEOUT_MS || 40_000),
-  hungWorkMs = Number(process.env.TASKNODE_WORK_HANG_MS || 20 * 60_000),
+  timeoutMs = envNumber("TASKNODE_SHUTDOWN_TIMEOUT_MS", 40_000),
+  hungWorkMs = envNumber("TASKNODE_WORK_HANG_MS", 20 * 60_000),
   processImpl = process,
   exit = (code) => processImpl.exit(code),
 } = {}) {

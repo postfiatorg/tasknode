@@ -17,6 +17,7 @@ import {
   normalizePriorOutputCorpusSummary,
   normalizeProjectLeaderInputs,
 } from "./board-manager-secretary-contract.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 export { normalizeBoardManagerSecretaryPacket } from "./board-manager-secretary-contract.js";
 
@@ -114,7 +115,7 @@ function secretaryReasoningEffort() {
 }
 
 function secretaryTimeoutMs() {
-  return Math.max(30000, Number(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_TIMEOUT_MS || 240000));
+  return envNumberAtLeast("TASKNODE_BOARD_MANAGER_SECRETARY_TIMEOUT_MS", 240000, 30000);
 }
 
 export function boardManagerSecretaryEnabled() {
@@ -422,7 +423,7 @@ export async function fetchBoardManagerSecretaryPacket({
           reasoning_effort: secretaryReasoningEffort(),
           response_format: { type: "json_object" },
           temperature: 0,
-          max_tokens: Math.max(2500, Number(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MAX_TOKENS || 6000)),
+          max_tokens: envNumberAtLeast("TASKNODE_BOARD_MANAGER_SECRETARY_MAX_TOKENS", 6000, 2500),
           stream: false,
         }),
       }, { capability: "strict_json", timeoutMs: secretaryTimeoutMs() });

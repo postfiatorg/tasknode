@@ -16,6 +16,7 @@ import {
   storePftlAccountTransactions,
 } from "./repositories/pftl-cache.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
+import { envNumber } from "./env-number.js";
 
 function normalizeText(value) {
   if (value === undefined || value === null) return "";
@@ -538,7 +539,7 @@ export function startPftlCacheWorker({
   enabled = process.env.PFTL_CACHE_WORKER_ENABLED === "true",
   intervalMs = Number(process.env.PFTL_CACHE_WORKER_INTERVAL_MS || 60000),
   batchLimit = Number(process.env.PFTL_CACHE_WORKER_BATCH_LIMIT || 3),
-  staleMs = Number(process.env.PFTL_CACHE_HOT_STALE_MS || 120000),
+  staleMs = envNumber("PFTL_CACHE_HOT_STALE_MS", 120000),
   previousTxnReader = readPftlAccountPreviousTxnId,
   logger = console,
 } = {}) {

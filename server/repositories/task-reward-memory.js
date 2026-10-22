@@ -5,8 +5,9 @@ import {
   canonicalRewardedTaskProjectionSql,
 } from "./task-projection-integrity.js";
 import { recordUserObservabilityEvent } from "./user-observability.js";
+import { envNumberAtLeast } from "../env-number.js";
 
-const failedAttemptLimit = Math.max(1, Number(process.env.TASKNODE_MEMORY_MAX_ATTEMPTS || 5));
+const failedAttemptLimit = envNumberAtLeast("TASKNODE_MEMORY_MAX_ATTEMPTS", 5, 1);
 const maxClaimLimit = 10;
 
 function safeText(value = "", max = 4000) {

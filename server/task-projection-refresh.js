@@ -1,5 +1,6 @@
 import { runPftlCacheReducerOnce } from "./pftl-cache-reducer.js";
 import { syncPftlWalletTransactions } from "./pftl-cache-sync.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 const inFlightRefreshes = new Map();
 const lastRefreshes = new Map();
@@ -11,10 +12,7 @@ function rememberRefresh(key, result) {
   lastRefreshes.set(key, { completedAtMs: Date.now(), result });
   if (lastRefreshes.size > MAX_REMEMBERED_REFRESHES) lastRefreshes.delete(lastRefreshes.keys().next().value);
 }
-const defaultMinIntervalMs = Math.max(
-  1000,
-  Number(process.env.TASK_PROJECTION_REFRESH_MIN_INTERVAL_MS || 5000)
-);
+const defaultMinIntervalMs = envNumberAtLeast("TASK_PROJECTION_REFRESH_MIN_INTERVAL_MS", 5000, 1000);
 
 function safeText(value = "", max = 500) {
   return String(value || "").trim().slice(0, max);
