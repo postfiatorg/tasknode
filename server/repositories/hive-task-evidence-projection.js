@@ -144,7 +144,18 @@ export function latestTimelineEvent(timeline = [], schema = "") {
 
 export function publicVerificationSummary(timeline = []) {
   const request = currentVerificationRequest(timeline);
-  const response = latestTimelineEvent(timeline, "pf.task.verification_response.v1");
+  // A later request starts a new round; an older response does not answer it.
+  let response = null;
+  for (let index = safeArray(timeline).length - 1; index >= 0; index -= 1) {
+    const event = timeline[index];
+    const transition = safeText(event?.rawPayload?.transition || event?.rawPayload?.status, 80);
+    if (event?.schema === "pf.task.verification_request.v1" ||
+        (event?.schema === "pf.task.update.v1" && transition === "verification_requested")) break;
+    if (event?.schema === "pf.task.verification_response.v1") {
+      response = event;
+      break;
+    }
+  }
   if (!request && !response) return null;
   return {
     request: request ? publicSummaryText(request.body || request.ask, 900) : "",
