@@ -100,6 +100,7 @@
     "scripts/network-task-reward-followup-smoke.mjs",
     "scripts/network-task-status-packet-smoke.mjs",
     "scripts/offchain-task-lifecycle-smoke.mjs",
+    "scripts/pftl-cache-failed-retry-smoke.mjs",
     "scripts/pftl-cache-reducer-replay-smoke.mjs",
     "scripts/pftl-cache-sync-state-smoke.mjs",
     "scripts/post-fiat-knowledge-smoke.mjs",
