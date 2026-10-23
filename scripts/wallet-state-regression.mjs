@@ -6,6 +6,7 @@ import {
   mergeAppStateWithClientWalletBalance,
   walletVaultPersistenceDecision,
   walletRestoreAddressDecision,
+  walletUnlockMatchesIdentity,
 } from "../src/features/wallet/wallet-state.js";
 import {
   acceptAccountBoundaryResponse,
@@ -107,5 +108,12 @@ const cancelled = cancelAccountBoundaryTransition(switching);
 assert.equal(accountBoundaryCaptureIsCurrent(cancelled, accountACapture), false);
 const freshCapture = { ...cancelled };
 assert.equal(acceptAccountBoundaryResponse(cancelled, freshCapture, "acct_b").error, "account_switch_session_changed");
+
+const unlock = { accountId: "acct_a", address: linkedAddress, mnemonic: "synthetic fixture" };
+assert.equal(walletUnlockMatchesIdentity(unlock, "acct_a", linkedAddress), true);
+assert.equal(walletUnlockMatchesIdentity(unlock, "acct_b", linkedAddress), false);
+assert.equal(walletUnlockMatchesIdentity(unlock, "acct_a", "rOtherWallet"), false);
+assert.equal(walletUnlockMatchesIdentity({ ...unlock, mnemonic: "" }, "acct_a", linkedAddress), false);
+assert.equal(walletUnlockMatchesIdentity(null, "acct_a", linkedAddress), false);
 
 console.log("wallet state regression ok");
