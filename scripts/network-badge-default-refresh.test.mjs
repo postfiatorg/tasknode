@@ -25,7 +25,7 @@ test("default badge survives refresh in PostgreSQL", {
   process.env.TASKNODE_POSTGRES_DISABLED = "false";
   process.env.TASKNODE_STORE_PATH = path.join(directory, "store.json");
   process.env.TASKNODE_CORE_CONTRIBUTOR_GITHUB_HANDLES = "badgefixture";
-  const { query, closePool } = await import("../server/db/pool.js");
+  const { query, closePool, getPool } = await import("../server/db/pool.js");
   t.after(async () => {
     await closePool();
     await admin.query('DROP SCHEMA "' + schema + '" CASCADE');
@@ -112,6 +112,19 @@ test("default badge survives refresh in PostgreSQL", {
     const row = (await query("SELECT status,selected_default FROM account_network_badges WHERE account_id=$1 AND badge_id='core_contributor'", [a.id])).rows[0];
     assert.deepEqual(row, { status: "revoked", selected_default: false });
   });
+  await t.test("selected KOL losing its handle falls back to a materialized badge", async () => {
+    const a = await account();
+    await refresh(a.id);
+    await expectDefault(a.id, "kol");
+    a.linkedProviders.find((provider) => provider.id === "x").username = "";
+    await query("UPDATE app_accounts SET account_json=$2::jsonb WHERE account_id=$1", [a.id, JSON.stringify(a)]);
+    const result = await refresh(a.id);
+    assert.ok(result.projection.verifiedBadgeIds.includes("kol"), "metrics still project KOL");
+    assert.ok(!result.materialized.badgeIds.includes("kol"), "missing handle prevents materialization");
+    await expectDefault(a.id, "core_contributor");
+    const row = (await query("SELECT status,selected_default FROM account_network_badges WHERE account_id=$1 AND badge_id='kol'", [a.id])).rows[0];
+    assert.deepEqual(row, { status: "revoked", selected_default: false });
+  });
   await t.test("expired manual choice is not preserved as an active default", async () => {
     const a = await account();
     await approve(a.id, "expert", true);
@@ -142,6 +155,86 @@ test("default badge survives refresh in PostgreSQL", {
       setDefaultNetworkBadge({ accountId: a.id, badgeId: "core_contributor" }),
       refresh(a.id),
     ]);
+    await expectDefault(a.id, "core_contributor");
+  });
+  await t.test("explicit choice waits for a refresh paused after its default read", async () => {
+    const a = await account();
+    await refresh(a.id);
+    await expectDefault(a.id, "kol");
+    const pool = getPool();
+    const originalConnect = pool.connect;
+    let interceptRefresh = true;
+    let selectionPid;
+    let reachedRead;
+    let releaseRead;
+    const readReached = new Promise((resolve) => { reachedRead = resolve; });
+    const readRelease = new Promise((resolve) => { releaseRead = resolve; });
+    const operations = [];
+    const track = (operation) => {
+      operations.push(operation);
+      operation.catch(() => {}); // Cleanup observes every rejection through allSettled.
+      return operation;
+    };
+    pool.connect = async (...args) => {
+      if (typeof args[0] === "function") return originalConnect.apply(pool, args);
+      const client = await originalConnect.apply(pool, args);
+      if (!interceptRefresh) {
+        selectionPid = client.processID;
+        return client;
+      }
+      interceptRefresh = false;
+      const originalQuery = client.query;
+      const originalRelease = client.release;
+      client.query = async (...queryArgs) => {
+        const result = await originalQuery.apply(client, queryArgs);
+        if (/SELECT\s+badge\.badge_id\s+FROM account_network_badges/.test(String(queryArgs[0]))) {
+          reachedRead();
+          await readRelease;
+        }
+        return result;
+      };
+      client.release = (...releaseArgs) => {
+        client.query = originalQuery;
+        client.release = originalRelease;
+        return originalRelease.apply(client, releaseArgs);
+      };
+      return client;
+    };
+    let readTimer;
+    let outcomes;
+    try {
+      const refreshing = track(refresh(a.id));
+      await Promise.race([
+        readReached,
+        refreshing.then(() => { throw new Error("refresh finished without pausing at its default read"); }),
+        new Promise((_, reject) => { readTimer = setTimeout(() => reject(new Error("default read not reached")), 3000); }),
+      ]);
+      clearTimeout(readTimer);
+      let selectionFinished = false;
+      const choosing = track(setDefaultNetworkBadge({ accountId: a.id, badgeId: "core_contributor" }));
+      choosing.then(() => { selectionFinished = true; }, () => { selectionFinished = true; });
+      const deadline = Date.now() + 3000;
+      let blocked = false;
+      while (!selectionFinished && !blocked && Date.now() < deadline) {
+        const result = await admin.query({
+          text: "SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event='advisory' AND query LIKE '%pg_advisory_xact_lock%'",
+          values: [selectionPid || 0],
+          query_timeout: 3000,
+        });
+        blocked = result.rowCount > 0;
+        if (!blocked && !selectionFinished) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.equal(selectionFinished, false, "explicit choice must not finish while refresh owns the lock");
+      assert.equal(blocked, true, "explicit choice must demonstrably wait on the account advisory lock");
+    } finally {
+      clearTimeout(readTimer);
+      releaseRead();
+      pool.connect = originalConnect;
+      outcomes = await Promise.allSettled(operations);
+    }
+    for (const outcome of outcomes) {
+      if (outcome.status === "rejected") throw outcome.reason;
+    }
     await expectDefault(a.id, "core_contributor");
   });
   await t.test("concurrent initial refreshes choose only one default", async () => {
