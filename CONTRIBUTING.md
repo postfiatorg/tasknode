@@ -7,9 +7,13 @@ retention.
 
 ## Development setup
 
-Use Node 20 and the npm version declared by `packageManager` in `package.json`.
+Use Node 24.21.0 (pinned by `.nvmrc`) and npm 11.19.0 (declared by
+`packageManager` in `package.json`). These versions satisfy the repository
+engines: Node `>=24.21.0 <25` and npm `>=11 <12`.
 
 ```bash
+node --version  # v24.21.0
+npm --version   # 11.19.0
 npm ci
 npm run check:fast
 ```
