@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Github, X } from "lucide-react";
+import { X } from "lucide-react";
+import { Github } from "../../components/GithubIcon";
 import { requestJson } from "../../api";
 import "./identity.css";
 

@@ -25,3 +25,12 @@ files and archive both SBOM outputs with the image provenance record.
 
 Non-code project assets are separately enumerated and hashed in
 `provenance/assets.json`; project marks remain governed by `TRADEMARKS.md`.
+
+## Retained GitHub icon
+
+`src/components/GithubIcon.js` retains the GitHub path geometry from
+`lucide-react` 0.562.0, `dist/esm/icons/github.js`, after Lucide 1.x removed
+brand exports. Copyright (c) Lucide Contributors 2025; portions Copyright
+(c) Cole Bemis 2013-2023. The complete ISC and Feather MIT notices are
+retained in `src/components/lucide-github-LICENSE.txt`. The installed Lucide
+factory continues to handle SVG props, accessibility and refs.

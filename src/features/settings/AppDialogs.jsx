@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, Github, Lock, Shield, X } from "lucide-react";
+import { ChevronRight, Lock, Shield, X } from "lucide-react";
+import { Github } from "../../components/GithubIcon";
 import { requestJson } from "../../api";
 import { BillingSettings } from "../billing/BillingSettings";
 import { DataSettings } from "../settings/DataSettings.jsx";
