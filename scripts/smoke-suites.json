@@ -57,6 +57,7 @@
     "scripts/device-account-concurrency-smoke.mjs",
     "scripts/directory-leaderboard-smoke.mjs",
     "scripts/directory-rewarded-tasks-smoke.mjs",
+    "scripts/docs-packet-budget-smoke.mjs",
     "scripts/docs-assistant-limits-smoke.mjs",
     "scripts/docs-chat-history-smoke.mjs",
     "scripts/ethereum-deposit-smoke.mjs",

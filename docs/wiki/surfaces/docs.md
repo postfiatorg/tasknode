@@ -53,6 +53,8 @@ Mention turns are processed sequentially per open document chat. A second `@coac
 
 Both assistants allow 32,768 completion tokens, including reasoning. A provider `finish_reason: length` triggers one retry at 65,536 tokens with the same request. Complete replies are preserved through the API, iframe bridge, and encrypted chat instead of being cut at 12,000 characters. Provider attempts have five minutes and share a nine-minute overall deadline; the iframe query and Fly connection allow ten minutes. Errors expose a readable retry or response-limit message, while server diagnostics retain only persona, provider, failure category, status, and budget—not document content or upstream error text.
 
+Dynamic reference packets stay within 70,000 serialized characters for ODV and 100,000 for coach, including JSON escaping. Long inputs shorten optional task, memory, and personal context references first, then the current document prefix while retaining up to 1,024 characters of that excerpt. If heavily escaped active chat still exceeds the packet budget, all messages remain in canonical order with a common text-prefix limit. Already-fitting packets retain their complete bounded data. The packet remains complete JSON; the separate HTTP request limit stays at 128,000 UTF-8 bytes.
+
 ## Runtime And Failure Boundaries
 
 - Native library: `src/features/docs-library/DocsLibraryView.jsx` and `GET /api/docs`.
