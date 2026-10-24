@@ -128,6 +128,7 @@
     "scripts/reliability-text-contract-smoke.mjs",
     "scripts/retired-task-loops-smoke.mjs",
     "scripts/rewarded-task-memory-smoke.mjs",
+    "scripts/route-smoke-child-process.test.mjs",
     "scripts/sybil-review-detector-smoke.mjs",
     "scripts/system-status-agent-activity-smoke.mjs",
     "scripts/system-status-network-spend-smoke.mjs",
