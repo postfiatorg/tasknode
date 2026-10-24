@@ -89,6 +89,7 @@ async function main() {
       apiServer.killProcessGroup = true;
       collectOutput(apiServer.stdout, apiOutput);
       collectOutput(apiServer.stderr, apiOutput);
+      await waitForSpawn(apiServer);
       await waitForHttp(`${apiUrl}/health`, 20000, apiOutput, apiServer);
 
       viteServer = spawn(
@@ -107,6 +108,7 @@ async function main() {
       viteServer.killProcessGroup = true;
       collectOutput(viteServer.stdout, viteOutput);
       collectOutput(viteServer.stderr, viteOutput);
+      await waitForSpawn(viteServer);
     }
 
     await waitForHttp(baseUrl, 20000, viteOutput, viteServer);
@@ -126,6 +128,7 @@ async function main() {
     );
     const chromeOutput = [];
     collectOutput(chrome.stderr, chromeOutput);
+    await waitForSpawn(chrome);
 
     const page = await waitForPage(chrome, chromeOutput);
     cdp = new CdpClient(page.webSocketDebuggerUrl);
@@ -203,6 +206,21 @@ async function main() {
   }
 }
 
+function waitForSpawn(child) {
+  return new Promise((resolve, reject) => {
+    const onSpawn = () => {
+      child.off("error", onError);
+      resolve();
+    };
+    const onError = (error) => {
+      child.off("spawn", onSpawn);
+      reject(error);
+    };
+    child.once("spawn", onSpawn);
+    child.once("error", onError);
+  });
+}
+
 function collectOutput(stream, output) {
   stream.on("data", (chunk) => {
     output.push(String(chunk));
@@ -211,7 +229,7 @@ function collectOutput(stream, output) {
 }
 
 async function stopProcess(child) {
-  if (!child || child.exitCode !== null) return;
+  if (!Number.isInteger(child?.pid) || child.pid <= 0 || child.exitCode !== null) return;
   const exited = new Promise((resolve) => child.once("exit", resolve));
   signalProcess(child, "SIGTERM");
   const stopped = await Promise.race([exited.then(() => true), sleep(1200).then(() => false)]);
