@@ -489,9 +489,9 @@ export function MfaCallout() {
         <Shield size={16} strokeWidth={1.75} />
         <i><Lock size={8} strokeWidth={2.5} /></i>
       </span>
-      <strong>Secure your account</strong>
-      <p>Add multi-factor authentication (MFA), like a hardware key or authenticator app, to help protect your account when signing in.</p>
-      <button type="button">Set up MFA</button>
+      <strong>Multi-factor authentication</strong>
+      <p>Multi-factor authentication (MFA) is not available in Task Node.</p>
+      <button type="button" disabled>MFA unavailable</button>
     </section>
   );
 }
