@@ -1,4 +1,5 @@
 import { textTokens, isWhitespace, replaceIdentifier } from "./inference-text.js";
+import { contextBodyText } from "../shared/context-line-map.js";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,8 +80,9 @@ function safeJson(value, max = 30_000) {
 }
 
 function userContextPacket(userContext = {}) {
+  const contextBody = String(userContext?.contextDocument?.body || "").split("\u0000").join("");
   return {
-    contextDocument: clippedText(userContext?.contextDocument?.body || "", 20_000),
+    contextDocument: clippedText(contextBodyText(contextBody), 20_000),
     memory: safeJson(userContext?.memoryContext, 18_000),
     recentTasks: safeJson(userContext?.taskContext, 18_000),
   };
