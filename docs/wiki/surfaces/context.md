@@ -30,7 +30,7 @@ Line numbers are generated from the same normalized HTML-to-text idea used by `s
 
 ## Current Limits
 
-- Native editor saves post to `/api/context/edit/save`, and `server/index.js` reads that request body with a 64KB cap. Requests over 64KB fail with `request_too_large` (HTTP 413), so the 120,000-character storage cap is not actually reachable through a single editor save; very large documents fail at the request boundary instead of saving partially.
+- Native editor saves post to `/api/context/edit/save`, and `server/index.js` reads that request body with a 65,536-byte cap. The editor checks the complete serialized UTF-8 request, including title and JSON overhead, before sending it. Oversized drafts remain unsaved in the editor with a message to copy the draft, shorten it or reduce formatting, and retry. A server HTTP 413 shows the same recovery message. The server cap remains unchanged, so the 120,000-character storage cap is not actually reachable through a single editor save.
 - Bodies that do exceed the storage cap on any save path are silently sliced to `CONTEXT_DOCUMENT_MAX_CHARS` by `server/repositories/context.js` before saving. There is no oversize error or visible truncation warning, so content past the cap is dropped without telling the user.
 
 ## Data Model

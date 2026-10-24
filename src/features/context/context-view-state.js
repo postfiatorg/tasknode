@@ -235,18 +235,25 @@ export async function refreshContextStateAfterSave(onContextChange) {
 }
 
 export async function requestContextSaveJson(path, payload) {
+  // The native save endpoint reads at most 65,536 bytes, including JSON and
+  // title overhead. Measure the exact UTF-8 request, not editor characters.
+  const body = JSON.stringify(payload);
+  if (new TextEncoder().encode(body).byteLength > 65_536) {
+    return contextSaveTooLargeResponse();
+  }
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   let timeoutId = 0;
   try {
     if (controller) {
       timeoutId = window.setTimeout(() => controller.abort(), 10000);
     }
-    return await requestJson(path, {
+    const result = await requestJson(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+      body,
       signal: controller?.signal,
     });
+    return result.status === 413 ? contextSaveTooLargeResponse(result) : result;
   } catch (error) {
     if (error?.name === "AbortError") {
       return {
@@ -259,4 +266,17 @@ export async function requestContextSaveJson(path, payload) {
   } finally {
     if (timeoutId) window.clearTimeout(timeoutId);
   }
+}
+
+function contextSaveTooLargeResponse(result = {}) {
+  return {
+    ...result,
+    ok: false,
+    status: 413,
+    body: {
+      ...result.body,
+      error: result.body?.error || "request_too_large",
+      message: "Context is too large to save. Your draft is still in the editor. Copy it somewhere safe, then shorten it or reduce formatting and try again.",
+    },
+  };
 }
