@@ -85,6 +85,7 @@
     "scripts/ipfs-replication-postgres-smoke.mjs",
     "scripts/ipfs-replication-smoke.mjs",
     "scripts/legacy-pftasks-history-smoke.mjs",
+    "scripts/lucide-brand-compatibility-smoke.mjs",
     "scripts/migration-registration-smoke.mjs",
     "scripts/multi-account-password-wallet-smoke.mjs",
     "scripts/network-badge-admin-route-smoke.mjs",
