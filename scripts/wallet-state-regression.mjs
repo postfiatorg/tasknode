@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import {
   applyWalletBalanceResult,
+  copyLinkedWalletAddress,
   markWalletBalanceChecking,
   mergeAppStateWithClientWalletBalance,
   walletVaultPersistenceDecision,
@@ -108,4 +109,46 @@ assert.equal(accountBoundaryCaptureIsCurrent(cancelled, accountACapture), false)
 const freshCapture = { ...cancelled };
 assert.equal(acceptAccountBoundaryResponse(cancelled, freshCapture, "acct_b").error, "account_switch_session_changed");
 
-console.log("wallet state regression ok");
+const copyOptions = {
+  address: "rSyntheticPublicAddressNoFunds111111",
+  linked: true,
+  isCurrent: () => true,
+};
+for (const clipboard of [undefined, null, {}, { writeText: true }]) {
+  assert.equal(await copyLinkedWalletAddress({ ...copyOptions, getClipboard: () => clipboard }), "manual");
+}
+assert.equal(await copyLinkedWalletAddress({
+  ...copyOptions,
+  getClipboard: () => { throw new Error("Clipboard access unavailable"); },
+}), "manual");
+assert.equal(await copyLinkedWalletAddress({
+  ...copyOptions,
+  getClipboard: () => ({ writeText: async () => { throw new Error("Permission denied"); } }),
+}), "manual");
+const writes = [];
+const clipboard = { async writeText(address) { assert.equal(this, clipboard); writes.push(address); } };
+assert.equal(await copyLinkedWalletAddress({ ...copyOptions, getClipboard: () => clipboard }), "copied");
+assert.deepEqual(writes, [copyOptions.address]);
+const mustNotAccessClipboard = () => { assert.fail("Ineligible copy accessed clipboard"); };
+for (const options of [{ linked: false }, { address: "" }]) {
+  assert.equal(await copyLinkedWalletAddress({ ...copyOptions, ...options, getClipboard: mustNotAccessClipboard }), "unlinked");
+}
+assert.equal(await copyLinkedWalletAddress({
+  ...copyOptions, getClipboard: mustNotAccessClipboard, isCurrent: () => false,
+}), "stale");
+for (const reject of [false, true]) {
+  let settle;
+  let current = true;
+  const pendingCopy = copyLinkedWalletAddress({
+    ...copyOptions,
+    getClipboard: () => ({ writeText: () => new Promise((resolve, rejectCopy) => {
+      settle = () => reject ? rejectCopy(new Error("Late denial")) : resolve();
+    }) }),
+    isCurrent: () => current,
+  });
+  current = false;
+  settle();
+  assert.equal(await pendingCopy, "stale");
+}
+
+console.log("wallet state regression ok (including clipboard failure, success and stale completion)");

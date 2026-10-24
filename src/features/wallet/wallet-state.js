@@ -224,3 +224,19 @@ export function truncateWalletNote(value) {
   if (text.length <= 46) return text;
   return `${text.slice(0, 22)}...${text.slice(-12)}`;
 }
+
+export async function copyLinkedWalletAddress({ address, linked, getClipboard, isCurrent }) {
+  if (!linked || !address) return "unlinked";
+  if (!isCurrent()) return "stale";
+  let result = "manual";
+  try {
+    const clipboard = getClipboard();
+    if (typeof clipboard?.writeText === "function") {
+      await clipboard.writeText(address);
+      result = "copied";
+    }
+  } catch {
+    // The full public address remains available for manual selection.
+  }
+  return isCurrent() ? result : "stale";
+}
