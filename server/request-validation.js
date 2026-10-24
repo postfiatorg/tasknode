@@ -54,7 +54,8 @@ function validateObjectSchema(value, schema, path = "body") {
   }
   for (const [field, entry] of Object.entries(value)) {
     if (forbiddenKeys.has(field)) throw failure("request_body_key_forbidden", `${path}.${field}`);
-    if (properties[field]) validateShape(entry, properties[field], `${path}.${field}`);
+    const fieldSchema = Object.hasOwn(properties, field) ? properties[field] : null;
+    if (fieldSchema) validateShape(entry, fieldSchema, `${path}.${field}`);
     else if (schema.allowUnknown === false) throw failure("request_body_field_unknown", `${path}.${field}`);
   }
 }
