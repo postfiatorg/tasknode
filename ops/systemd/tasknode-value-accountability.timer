@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly Task Node value accountability sweep
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=tasknode-value-accountability.service
+
+[Install]
+WantedBy=timers.target

@@ -64,6 +64,7 @@ const [
   { telegramAuthHeaders },
   { handleTaskReadRoute },
   { handleTaskNodeTerminalRoute },
+  { handleTaskNodeMcpRoute },
   { handleAccountRoute },
   { contextEditProposalAction },
   { handleContextRewriteRoute },
@@ -73,6 +74,7 @@ const [
   { handleProfileNftImageRoute, handleProfileNftPfpRoute },
   { handleMemoryRoute },
   { handleIChingRoute },
+  { handleIndexViewerRoute },
   { handleCollaborationRoute },
   { handleDirectoryRoute },
   { handleHiveRoute },
@@ -113,6 +115,7 @@ const [
   import("./auth-connected-accounts.js"),
   import("./task-routes.js"),
   import("./tasknode-terminal-routes.js"),
+  import("./tasknode-mcp.js"),
   import("./account-routes.js"),
   import("./context-edit-actions.js"),
   import("./context-rewrite-actions.js"),
@@ -122,6 +125,7 @@ const [
   import("./profile-nft-image-proxy.js"),
   import("./memory-routes.js"),
   import("./i-ching-routes.js"),
+  import("./index-viewer-routes.js"),
   import("./collaboration-routes.js"),
   import("./directory-routes.js"),
   import("./hive-routes.js"),
@@ -178,6 +182,11 @@ async function routeApi(req, url, res) {
     return statePromise;
   };
   const parts = url.pathname.split("/").filter(Boolean);
+  // Index viewer is called cross-origin by static research sites, so it runs
+  // ahead of the same-origin mutation guard and enforces its own narrow
+  // origin allowlist. It never trusts cookies for authorization.
+  if (await handleIndexViewerRoute({ json, readJson, req, res, session, url })) return true;
+
   if (await enforceRoutePolicy(req, url, res, session)) return true;
 
   if (url.pathname === "/api/app-state") {
@@ -273,6 +282,7 @@ async function routeApi(req, url, res) {
     origin: requestOrigin(req),
     responseHeadersForAuthResult,
   })) return true;
+  if (await handleTaskNodeMcpRoute({ req, res, url, session, origin: requestOrigin(req), responseHeadersForAuthResult })) return true;
 
   if (url.pathname === "/api/auth/telegram/authorize") {
     if (req.method !== "GET") {
@@ -487,6 +497,8 @@ async function routeApi(req, url, res) {
 
     const controller = new AbortController();
     const heartbeat = startChatStreamHeartbeat(res);
+    const startedAt = Date.now();
+    let firstDeltaMs = 0;
     res.on("close", () => {
       heartbeat.stop();
       if (!res.writableEnded) controller.abort();
@@ -496,7 +508,10 @@ async function routeApi(req, url, res) {
       const result = await executeChatStream({
         ...started.chat,
         signal: controller.signal,
-        onDelta: (delta) => writeSse(res, "delta", { delta }),
+        onDelta: (delta) => {
+          firstDeltaMs ||= Date.now() - startedAt;
+          writeSse(res, "delta", { delta });
+        },
       });
 
       writeSse(res, "done", {
@@ -533,6 +548,19 @@ async function routeApi(req, url, res) {
         contextStatus: result.contextStatus || started.chat.contextStatus,
       });
     } catch (error) {
+      // Abandoned streams (499) are recorded too, with timing, so a stall is visible.
+      await recordChatFailureObservability({
+        accountId: started.chat.accountId,
+        conversationId,
+        mode: started.chat.mode,
+        provider: started.estimate?.provider,
+        model: started.estimate?.model,
+        status: error?.status || 502,
+        error,
+        elapsedMs: Date.now() - startedAt,
+        firstDeltaMs,
+        sourceRoute: "server/index.js::/api/chat/stream",
+      }).catch(() => {});
       if (error?.status !== 499) {
         logChatProviderError(error, {
           action: "chat_stream",
@@ -540,16 +568,6 @@ async function routeApi(req, url, res) {
           provider: started.estimate?.provider,
           model: started.estimate?.model,
         });
-        await recordChatFailureObservability({
-          accountId: started.chat.accountId,
-          conversationId,
-          mode: started.chat.mode,
-          provider: started.estimate?.provider,
-          model: started.estimate?.model,
-          status: error?.status || 502,
-          error,
-          sourceRoute: "server/index.js::/api/chat/stream",
-        }).catch(() => {});
         writeSse(res, "error", {
           ok: false,
           error: error?.message || "chat_provider_error",

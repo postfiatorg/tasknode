@@ -35,7 +35,7 @@ async function command(t, argv, status, { outsideScope = false, databaseFailure 
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql) || sql.startsWith("SELECT set_config(") || sql.startsWith("SELECT pg_advisory_xact_lock(")) return { rows: [] };
     throw new Error("Unexpected fixture query: " + sql);
   };
-  const client = { query, release() {} };
+  const client = { query, on() {}, off() {}, release() {} };
   t.mock.method(pg.Pool.prototype, "query", query);
   t.mock.method(pg.Pool.prototype, "connect", async () => client);
   const errors = t.mock.method(console, "error", () => {});

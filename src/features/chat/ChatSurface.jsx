@@ -13,7 +13,7 @@ import { applyContextEditProposal, CONTEXT_EDIT_MODE, CONTEXT_EDIT_PLACEHOLDER, 
 import { CONTEXT_REWRITE_MODE, CONTEXT_REWRITE_PLACEHOLDER, createContextRewriteJob } from "../context/context-rewrite-client";
 import { useContextRewritePolling } from "../context/use-context-rewrite-polling.js";
 import { DEEP_RESEARCH_MODE, DEEP_RESEARCH_PLACEHOLDER, createDeepResearchJob } from "./deep-research-client.js";
-import { createDecisionJob, DECISION_MODE, DECISION_PLACEHOLDER } from "./decisions-client.js";
+import { createDecisionJob, DECISION_MODE, DECISION_PLACEHOLDER, DECISION_TIERS } from "./decisions-client.js";
 import { useDecisionPolling } from "./use-decision-polling.js";
 import { useDeepResearchPolling } from "./use-deep-research-polling.js";
 import { ComposerModeChip } from "./ComposerModeChip.jsx";
@@ -77,6 +77,7 @@ export function ChatSurface({
   const [deepResearchMode, setDeepResearchMode] = useState(false);
   const [decisionMode, setDecisionMode] = useState(false);
   const [decisionUseContext, setDecisionUseContext] = useState(true);
+  const [decisionTier, setDecisionTier] = useState("budget");
   // Composer modes are mutually exclusive; no argument clears them all.
   function selectComposerMode(mode = "") {
     setTaskRequestMode(mode === "task");
@@ -440,7 +441,7 @@ export function ChatSurface({
         }
       : undefined;
     const deepResearchMetadata = isDecision
-      ? { kind: DECISION_MODE, decision: { status: "starting", stage: "starting", mode: "budget" } }
+      ? { kind: DECISION_MODE, decision: { status: "starting", stage: "starting", mode: decisionTier } }
       : isDeepResearch
       ? {
           kind: DEEP_RESEARCH_MODE,
@@ -557,7 +558,7 @@ export function ChatSurface({
           }
         }
         const result = isDecision ? await createDecisionJob({ input: decisionInput, conversationId: requestedConversationId,
-          requestId: deepResearchRequestId, includeContext: decisionUseContext }) : await createDeepResearchJob({
+          requestId: deepResearchRequestId, includeContext: decisionUseContext, mode: decisionTier }) : await createDeepResearchJob({
           question: submittedText,
           conversationId: requestedConversationId,
           requestId: deepResearchRequestId,
@@ -987,16 +988,14 @@ export function ChatSurface({
     "composer",
     composerDragActive ? "is-drag-active" : "",
     taskRequestMode ? "is-task-request" : "",
-    deepResearchMode || decisionMode ? "is-deep-research" : "",
+    deepResearchMode ? "is-deep-research" : "",
     contextRewriteMode ? "is-context-rewrite" : "",
     contextEditMode ? "is-context-edit" : "",
     isHiveChat ? "is-hive-input" : "",
   ].filter(Boolean).join(" ");
   const modelPickerDisabled = contextEditMode || contextRewriteMode || deepResearchMode || decisionMode || isHiveChat;
   const ActivePersonaIcon = CHAT_PERSONA_ICONS[activePersona.id] || Lightbulb;
-  const modelPickerLabel = decisionMode
-    ? "Decisions · Budget"
-    : deepResearchMode
+  const modelPickerLabel = deepResearchMode
     ? "Deep Research"
     : contextRewriteMode
     ? "Context Rewrite"
@@ -1032,9 +1031,12 @@ export function ChatSurface({
         )}
         {contextEditMode && <ComposerModeChip icon={Wand2} label="Context Refine" onExit={() => setContextEditMode(false)} />}
         {decisionMode && (
-          <div className="decision-composer-options">
-            <ComposerModeChip exitLabel="Decisions" icon={Lightbulb} label="Decisions · Budget" onExit={() => setDecisionMode(false)} />
-            <label><input type="checkbox" checked={decisionUseContext} onChange={event => setDecisionUseContext(event.target.checked)} /> Use my context and chat memory</label>
+          <div className="decision-composer-head">
+            <span className="decision-composer-title"><Lightbulb size={14} strokeWidth={1.9} />Decisions</span>
+            <label className="decision-context-toggle" title="Include your saved context document and chat memory">
+              <input type="checkbox" checked={decisionUseContext} onChange={event => setDecisionUseContext(event.target.checked)} />Use my context
+            </label>
+            <button aria-label="Exit Decisions" className="decision-composer-exit" onClick={() => setDecisionMode(false)} type="button"><X size={15} strokeWidth={1.9} /></button>
           </div>
         )}
         {deepResearchMode && <ComposerModeChip icon={Search} label="Deep Research" onExit={() => setDeepResearchMode(false)} />}
@@ -1129,7 +1131,7 @@ export function ChatSurface({
                   onClick={() => {
                     setPlusMenuOpen(false);
                     selectComposerMode("decision");
-                    setSendMessage("Budget Decisions: one research report, three Flash votes, and a full Kimi K3 rewrite. You can leave and return to this chat.");
+                    setSendMessage(DECISION_TIERS[decisionTier].note);
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}
@@ -1284,6 +1286,16 @@ export function ChatSurface({
                 {activePersona.name}
               </span>
             )}
+            {decisionMode ? (
+              <div aria-label="Decision tier" className="decision-tier-control" role="radiogroup">
+                {Object.entries(DECISION_TIERS).map(([tier, option]) => (
+                  <button aria-checked={decisionTier === tier} key={tier} role="radio" type="button"
+                    onClick={() => { setDecisionTier(tier); setSendMessage(option.note); setStatusTone("muted"); }}>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
             <div className="model-picker" ref={modelRef}>
               <button
                 aria-label={`Choose model, current model: ${modelPickerLabel}`}
@@ -1328,6 +1340,7 @@ export function ChatSurface({
                 </div>
               )}
             </div>
+            )}
             <ComposerSendButton disabled={historicalReadOnly || !hasPromptInput || sending} />
           </div>
         </div>
@@ -1400,6 +1413,7 @@ export function ChatSurface({
                       setEditDraft(message.text || "");
                     }}
                     text={message.text}
+                    unanswered={Boolean(message.metadata?.reply?.state)}
                   />
                 );
               }

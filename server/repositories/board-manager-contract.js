@@ -171,9 +171,11 @@ export function normalizePayload(payload = {}) {
   const networkTask = safeObject(input.network_task || input.networkTask);
   const messagePrecondition = safeObject(input.message_precondition || input.messagePrecondition);
   const cancelTarget = safeObject(input.cancel_target || input.cancelTarget);
+  const operatorDuty = networkTask.operator_duty === true || networkTask.operatorDuty === true;
   const rewardBand = normalizeNetworkTaskRewardBand({
     min: networkTask.reward_min_pft ?? networkTask.rewardMinPft,
     max: networkTask.reward_max_pft ?? networkTask.rewardMaxPft,
+    operatorDuty,
   });
   const discordEvidenceRequired = networkTask.discord_evidence_required ?? networkTask.discordEvidenceRequired;
   return {
@@ -246,6 +248,8 @@ export function normalizePayload(payload = {}) {
       why_not_duplicate: safeText(networkTask.why_not_duplicate || networkTask.whyNotDuplicate, 1200),
       reward_min_pft: rewardBand.min,
       reward_max_pft: rewardBand.max,
+      reward_band_clamped_from: rewardBand.clampedFrom || networkTask.reward_band_clamped_from || null,
+      operator_duty: operatorDuty,
       accept_window_hours: (() => {
         const raw = Math.round(Number(networkTask.accept_window_hours ?? networkTask.acceptWindowHours ?? 0) || 0);
         return raw > 0 ? Math.min(336, Math.max(1, raw)) : 0;

@@ -1,3 +1,6 @@
+import { assertNetworkTaskContentAllowed } from "../network-task-content-policy.js";
+import { VALUE_ACCOUNTABILITY_BOARD_ID, assertNotBlacklisted } from "../value-accountability.js";
+import { MERGED_PR_REQUIREMENT_TEXT } from "../merged-pr-requirement.js";
 import { createHash } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
@@ -11,6 +14,7 @@ import {
 import {
   digestJson,
   jsonValue,
+  assertNetworkTaskRewardFloor,
   rewardBand,
   safeObject,
   safeText,
@@ -42,7 +46,10 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   if (!projectId) throw new Error("network_task_project_required");
   const project = await projectById(projectId);
   if (!project?.id) throw new Error("network_task_project_not_found");
-  const candidate = await resolveCandidate({ decision });
+  const candidate = await resolveCandidate({
+    decision,
+    requireBadge: projectId !== VALUE_ACCOUNTABILITY_BOARD_ID,
+  });
   if (!candidate?.accountId || !candidate?.walletAddress) {
     throw new Error("network_task_candidate_required");
   }
@@ -53,11 +60,24 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       networkTask.taskClass ||
       (payload.project?.type === "alpha_generation" || project.type === "alpha_generation" ? "alpha" : "network")
   );
+  const operatorDuty = networkTask.operator_duty === true;
   const band = rewardBand({
     min: networkTask.reward_min_pft ?? networkTask.rewardMinPft,
     max: networkTask.reward_max_pft ?? networkTask.rewardMaxPft,
+    operatorDuty,
   });
+  // The decision contract may already have clamped the band; judge and record
+  // the band the manager asked for, not the clamped one.
+  const rewardBandClampedFrom = networkTask.reward_band_clamped_from || band.clampedFrom || null;
+  assertNetworkTaskRewardFloor({ ...(rewardBandClampedFrom || band), operatorDuty });
   const projectNeedSummary = safeText(networkTask.project_need_summary || networkTask.projectNeedSummary || payload.summary || decision.reason, 2400);
+  const projectNeedWithPayment = projectId === VALUE_ACCOUNTABILITY_BOARD_ID || operatorDuty
+    ? projectNeedSummary
+    : `${projectNeedSummary}\n\n${MERGED_PR_REQUIREMENT_TEXT}`;
+  if (projectId !== VALUE_ACCOUNTABILITY_BOARD_ID) {
+    assertNetworkTaskContentAllowed(projectNeedSummary, safeText(payload.summary, 2400));
+  }
+  await assertNotBlacklisted({ accountId: candidate.accountId, walletAddress: candidate.walletAddress, action: "network_task" });
   const allocationReasonSummary = safeText(networkTask.allocation_reason_summary || networkTask.routing_reason || networkTask.routingReason || decision.reason, 1800);
   const cadenceReason = safeText(networkTask.cadence_reason || networkTask.cadenceReason || "board_manager_initiated", 600);
   // Accept windows are opt-in. Tasks never die by clock; the board manager
@@ -74,7 +94,21 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     120
   );
   let badgeEligibilityDecision = null;
-  try {
+  // The mandatory value accountability task is owed by the account regardless
+  // of the badges it holds; it is a verdict, not badge-gated work.
+  const badgeGateExempt = projectId === VALUE_ACCOUNTABILITY_BOARD_ID;
+  if (badgeGateExempt) {
+    badgeEligibilityDecision = {
+      schema: "pf.task_node.network_task_candidate_decision.v1",
+      eligible: true,
+      exempt: "value_accountability",
+      required_badge_id: "",
+      operating_badge_id: "",
+      work_type: "value_accountability",
+      badge_reward_cap_pft: 1,
+    };
+  }
+  if (!badgeGateExempt) try {
     badgeEligibilityDecision = await assertNetworkTaskBadgeEligibility({
       accountId: candidate.accountId,
       walletAddress: candidate.walletAddress,
@@ -275,7 +309,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	    candidate,
 	    normalizedTaskClass,
 	    band,
-	    projectNeedSummary,
+	    projectNeedSummary: projectNeedWithPayment,
 	    allocationReasonSummary,
 	    cadenceReason,
 	    acceptWindowHours,
@@ -376,7 +410,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
         candidate.accountId,
         candidate.walletAddress,
         normalizedNeedHash,
-        projectNeedSummary,
+        projectNeedWithPayment,
         allocationReasonSummary,
         band.min,
         band.max,
@@ -457,6 +491,8 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
 	          idempotency_key: idempotencyKey,
 	          network_task_intelligence: intelligenceMetadata,
 	          badge_eligibility_decision: badgeEligibilityDecision,
+	          reward_band_clamped_from: rewardBandClampedFrom,
+	          operator_duty: operatorDuty,
 	        }),
 	        expiresAt ? expiresAt.toISOString() : null,
 	      ]
@@ -597,6 +633,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     candidateAccountId: candidate.accountId,
     candidateWalletAddress: candidate.walletAddress,
     rewardBandPft: [band.min, band.max],
+    ...(rewardBandClampedFrom ? { rewardBandClampedFrom } : {}),
     sourcePayloadDigest: sourceDigest,
     idempotencyKey,
     intentSemanticKey,

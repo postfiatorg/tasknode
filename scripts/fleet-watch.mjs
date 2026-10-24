@@ -7,7 +7,6 @@ import { pathToFileURL } from "node:url";
 
 export const FLEET_GROUPS = [
   "app",
-  "board-secretary",
   "worker-pftl",
   "worker-taskgen",
   "worker-task-review",

@@ -21,7 +21,7 @@ function assertRole(role, entries) {
 }
 
 const web = assertRole("web", ["server/index.js"]);
-const worker = assertRole("worker", ["server/worker-entry.js", "scripts/hive-board-secretary-worker.mjs"]);
+const worker = assertRole("worker", ["server/worker-entry.js"]);
 
 assert.ok(!web.files.includes("server/background-workers.js"), "web runtime must not import worker orchestration");
 assert.ok(worker.files.includes("server/background-workers.js"), "worker runtime must own worker orchestration");

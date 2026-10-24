@@ -34,7 +34,6 @@
     "fly-dev:data:status": "node scripts/fly-dev-data-bridge.mjs status",
     "fly-dev:data:pull": "node scripts/fly-dev-data-bridge.mjs pull",
     "fly:worker-guard": "node scripts/fly-worker-guard.mjs",
-    "fly:board-guard": "node scripts/fly-worker-guard.mjs --process board-secretary",
     "fly:background-guard": "node scripts/fly-background-guard.mjs",
     "fly:fleet-watch": "node scripts/fleet-watch.mjs",
     "fly:fleet-watch:dry": "node scripts/fleet-watch.mjs --dry-run",
@@ -99,7 +98,6 @@
     "duplicate-reward-reconciliation-ledger": "node scripts/duplicate-reward-reconciliation-ledger.mjs",
     "board-manager-message-repair": "node scripts/board-manager-message-delivery-repair.mjs",
     "bm": "node scripts/bm.mjs",
-    "hive-board-secretary-worker": "node scripts/hive-board-secretary-worker.mjs",
     "board-manager:manual-network-task": "node scripts/board-manager-manual-network-task.mjs",
     "network-task-recovery": "node scripts/network-task-recovery.mjs",
     "network-task-allocation-repair": "node scripts/network-task-allocation-repair.mjs",
@@ -148,7 +146,6 @@
     "start:worker:memory-profile": "TASKNODE_PROCESS_ROLE=worker:memory-profile node server/worker-entry.js",
     "start:worker:airdrop": "TASKNODE_PROCESS_ROLE=worker:airdrop node server/worker-entry.js",
     "start:worker:nft-renderer": "TASKNODE_PROCESS_ROLE=worker:nft-renderer node server/worker-entry.js",
-    "start:board-secretary": "TASKNODE_PROCESS_ROLE=board-secretary node scripts/hive-board-secretary-worker.mjs",
     "db:migrate": "node scripts/migrate-db.mjs",
     "db:import-chat-billing": "node scripts/import-runtime-store-chat-billing.mjs",
     "db:import-context": "node scripts/import-runtime-store-context.mjs",
@@ -161,6 +158,7 @@
     "jobs-corpus-ingest": "node scripts/jobs-corpus-ingest.mjs",
     "memory:backfill": "node scripts/memory-backfill.mjs",
     "runtime-smoke": "node scripts/runtime-store-smoke.mjs",
+    "index-viewer-smoke": "node scripts/index-viewer-smoke.mjs",
     "pftl-cache-smoke": "node scripts/pftl-cache-smoke.mjs",
     "pftl-cache-watcher-smoke": "node scripts/pftl-cache-watcher-smoke.mjs",
     "context-publish-live-smoke": "node scripts/context-publish-live-smoke.mjs",
@@ -196,7 +194,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "ripple-keypairs": "^2.0.0",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "ws": "^8.21.3",
     "xrpl": "^4.6.0"
   },
@@ -207,11 +205,11 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.12.0",
-    "vite": "^8.3.0"
+    "vite": "^8.3.5"
   },
   "overrides": {
     "@babel/core": "7.29.7",
-    "brace-expansion": "1.1.18",
+    "brace-expansion": "1.1.21",
     "esbuild": "0.28.2",
     "flatted": "3.4.4",
     "js-yaml": "4.3.2"

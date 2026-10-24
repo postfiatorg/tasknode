@@ -138,6 +138,26 @@ try {
     assert.ok(clippedTypes.has(type), `latest ${type} report remains present when recent rows are clipped`);
   }
 
+  // A report that keeps failing backs off instead of retrying every tick.
+  process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK = "false";
+  process.env.VERCEL_AI_GATEWAY_API_KEY ||= "fixture";
+  let providerCalls = 0;
+  const truncated = async () => {
+    providerCalls += 1;
+    return Response.json({ id: "truncated", model: "zai/glm-5.3", choices: [{ message: { content: "# Partial" }, finish_reason: "length" }], usage: { prompt_tokens: 100000, completion_tokens: 24000 } });
+  };
+  const later = (minutes) => new Date(Date.now() + 7 * 24 * 3_600_000 + minutes * 60_000);
+  const failed = await runHiveReportsWorkerOnce({ types: ["hive_intelligence"], now: later(0), fetchImpl: truncated });
+  assert.equal(failed.errors.length, 1, "truncated report fails");
+  const callsAfterFailure = providerCalls;
+  assert.ok(callsAfterFailure > 0, "the failing attempt reached the provider");
+  const held = await runHiveReportsWorkerOnce({ types: ["hive_intelligence"], now: later(1), fetchImpl: truncated });
+  assert.equal(held.skipped[0]?.reason, "backing_off_after_failure", "the next tick backs off");
+  assert.equal(providerCalls, callsAfterFailure, "no provider call while backing off");
+  await runHiveReportsWorkerOnce({ types: ["hive_intelligence"], now: later(16), fetchImpl: truncated });
+  assert.ok(providerCalls > callsAfterFailure, "retries after the backoff window");
+  process.env.TASKNODE_HIVE_REPORT_PROVIDER_MOCK = "true";
+
   console.log(`hive-reports-smoke ok: generated/read ${generatedIds.length} markdown reports`);
 } finally {
   if (cleanupIds.length) {

@@ -65,11 +65,27 @@ export function networkTaskRewardPolicy() {
   return { minPft: minPft || 100, maxPft: maxPft || 50000 };
 }
 
-export function normalizeNetworkTaskRewardBand({ min = 100, max = 50000 } = {}) {
+// Operator duties (merge and badge referrals) keep their intended band, such
+// as 0-1 PFT; other bands are held to the policy. Any change is returned as
+// clampedFrom so callers record it instead of rewriting the band silently.
+export function normalizeNetworkTaskRewardBand({ min = 100, max = 50000, operatorDuty = false } = {}) {
   const policy = networkTaskRewardPolicy();
-  const normalizedMin = Math.min(policy.maxPft, Math.max(policy.minPft, numeric(min, policy.minPft)));
-  const normalizedMax = Math.min(policy.maxPft, Math.max(normalizedMin, numeric(max, policy.maxPft)));
-  return { min: normalizedMin, max: normalizedMax };
+  const floor = operatorDuty ? 0 : policy.minPft;
+  const requested = { min: numeric(min, floor), max: numeric(max, policy.maxPft) };
+  const normalizedMin = Math.min(policy.maxPft, Math.max(floor, requested.min));
+  const normalizedMax = Math.min(policy.maxPft, Math.max(normalizedMin, requested.max));
+  const band = { min: normalizedMin, max: normalizedMax };
+  return normalizedMin === requested.min && normalizedMax === requested.max ? band : { ...band, clampedFrom: requested };
+}
+
+// A contributor band entirely below the floor would be advertised at the floor,
+// which nobody approved: reject it and name the floor.
+export function assertNetworkTaskRewardFloor({ min = 0, max = 0, operatorDuty = false } = {}) {
+  const { minPft } = networkTaskRewardPolicy();
+  if (operatorDuty || numeric(max, 0) >= minPft) return;
+  throw Object.assign(new Error(
+    `network_task_reward_below_floor: band ${numeric(min, 0)}-${numeric(max, 0)} PFT is below the ${minPft} PFT network-task minimum; raise --reward-max to at least ${minPft}, or use refer-merge/refer-badge for operator referrals`
+  ), { status: 422 });
 }
 
 export function allocationStatusForTaskStatus(status = "") {
@@ -84,8 +100,8 @@ export function taskClass(value = "") {
   return taskClasses.has(normalized) ? normalized : "network";
 }
 
-export function rewardBand({ min = 100, max = 50000 } = {}) {
-  return normalizeNetworkTaskRewardBand({ min, max });
+export function rewardBand({ min = 100, max = 50000, operatorDuty = false } = {}) {
+  return normalizeNetworkTaskRewardBand({ min, max, operatorDuty });
 }
 
 export function toIso(value) {

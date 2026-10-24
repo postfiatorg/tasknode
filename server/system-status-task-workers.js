@@ -81,7 +81,7 @@ export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
     category: "hive",
     title: "GLM Board Secretary",
     description: "Per-board GLM 5.3 Project Status memo writer. Advisory only; no task, message, reward, or board mutations.",
-    owner: "board-secretary process",
+    owner: "worker-hive process",
     trigger: "periodic project status memo refresh",
     cadence: `${cadenceSeconds}s`,
     status: status.status,

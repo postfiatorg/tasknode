@@ -4,23 +4,25 @@ import { publicMessage } from "./context-rewrite-projection.js";
 import { getContextDocument } from "./context.js";
 import { getChatMemoryContext } from "./chat-memory.js";
 import { buildDecisionContext } from "../decision-context.js";
+import { DECISION_MODES } from "../corbanu-decisions.js";
 
 const terminal = new Set(["completed", "failed"]);
 const error = (message, status) => Object.assign(new Error(message), { status });
 
 export function decisionProjection(row) {
   const progress = row.progress_json || {};
+  const mode = row.mode === "premium" ? "premium" : "budget", profile = DECISION_MODES[mode];
   const decision = {
-    jobId: row.id, status: row.status, stage: row.stage, mode: "budget",
+    jobId: row.id, status: row.status, stage: row.stage, mode,
     contextIncluded: row.context_included, markdown: row.report_markdown || "",
     contextSnapshot: row.context_snapshot_json || null,
-    completedCalls: progress.completed_calls || 0, totalCalls: 10,
+    completedCalls: progress.completed_calls || 0, totalCalls: profile.totalCalls,
     researchProgress: progress.research_progress || [],
     selected: progress.selected || "", voteCounts: progress.vote_counts || {}, error: row.error || "",
   };
   const stageNames = { starting: "Connecting to Corbanu", framing: "Defining five options", planning_research: "Planning research",
-    researching: "Researching the options", voting: "Collecting three votes", drafting: "Writing the report",
-    mini_tih: "Reviewing the draft", rewriting: "Kimi K3 is rewriting the report", completed: "Decision report ready" };
+    researching: "Researching the options", voting: `Collecting ${profile.votes} votes`, drafting: "Writing the report",
+    mini_tih: "Reviewing the draft", rewriting: `${profile.rewrite} is rewriting the report`, completed: "Decision report ready" };
   return {
     job: { id: row.id, conversationId: row.conversation_id, gatewayJobId: row.gateway_job_id || "",
       status: row.status, stage: row.stage, error: row.error || "", createdAt: row.created_at, updatedAt: row.updated_at },
@@ -38,9 +40,10 @@ async function project(client, row) {
   return { job: view.job, assistant: publicMessage(saved.rows[0]) };
 }
 
-export async function createDecisionJob({ accountId, conversationId, input, requestId, includeContext = true }, { loadContext = getContextDocument, loadMemories = getChatMemoryContext } = {}) {
+export async function createDecisionJob({ accountId, conversationId, input, requestId, includeContext = true, mode = "budget" }, { loadContext = getContextDocument, loadMemories = getChatMemoryContext } = {}) {
   if (!databaseEnabled()) throw error("decisions_database_required", 503);
-  const fingerprint = createHash("sha256").update(JSON.stringify({ conversationId, input, includeContext })).digest("hex");
+  // Budget fingerprints predate modes; keep them unchanged for saved request IDs.
+  const fingerprint = createHash("sha256").update(JSON.stringify({ conversationId, input, includeContext, ...(mode === "premium" ? { mode } : {}) })).digest("hex");
   return transaction(async client => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`decision-create:${accountId}:${requestId}`]);
     const existing = (await client.query("SELECT * FROM decision_jobs WHERE account_id=$1 AND request_id=$2 FOR UPDATE", [accountId, requestId])).rows[0];
@@ -63,13 +66,13 @@ export async function createDecisionJob({ accountId, conversationId, input, requ
       WHERE chat_conversations.account_id=$2 RETURNING id`, [conversationId, accountId, title, now]);
     if (!conversation.rows.length) throw error("chat_conversation_not_found", 404);
     const row = (await client.query(`INSERT INTO decision_jobs
-      (id,account_id,conversation_id,request_id,request_fingerprint,question_message_id,assistant_message_id,input,context_included,context_snapshot_json)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [id, accountId, conversationId, requestId, fingerprint, userId, assistantId, context.input, context.included, context.snapshot])).rows[0];
+      (id,account_id,conversation_id,request_id,request_fingerprint,question_message_id,assistant_message_id,input,context_included,context_snapshot_json,mode)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [id, accountId, conversationId, requestId, fingerprint, userId, assistantId, context.input, context.included, context.snapshot, mode])).rows[0];
     const view = decisionProjection(row);
     const user = await client.query(`INSERT INTO chat_messages(id,conversation_id,account_id,role,body,mode,created_at,metadata_json)
       VALUES($1,$2,$3,'user',$4,'Decisions',$5,$6) RETURNING *`,
-    [userId, conversationId, accountId, input, now, { kind: "decision_question", contextIncluded: context.included, contextSnapshot: context.snapshot }]);
+    [userId, conversationId, accountId, input, now, { kind: "decision_question", mode, contextIncluded: context.included, contextSnapshot: context.snapshot }]);
     const assistant = await client.query(`INSERT INTO chat_messages(id,conversation_id,account_id,role,body,mode,created_at,metadata_json)
       VALUES($1,$2,$3,'assistant',$4,'Decisions',$5,$6) RETURNING *`, [assistantId, conversationId, accountId, view.body, now, view.metadata]);
     return { job: view.job, user: publicMessage(user.rows[0]), assistant: publicMessage(assistant.rows[0]), record: row };

@@ -45,6 +45,7 @@ try {
   assert.equal(routingDuty({ id: board }, [{ ...candidate, free_slots: 0 }], 0), null);
   assert.equal(routingDuty({ id: board, routing_constraints: { assignable_handles: ["another-contributor"] } }, [candidate], 0), null);
   assert.ok(routingDuty({ id: board, routing_constraints: { assignable_handles: ["FIXTURE-CONTRIBUTOR"] } }, [candidate], 10));
+  assert.equal(routingDuty({ id: board, routing_constraints: { routing_disabled: true } }, [candidate], 0), null, "operator-issued boards never get routing duties");
   assert.notEqual(dutyId(routingDuty({ id: board }, [candidate], 5)), dutyId(routingDuty({ id: board }, [{ ...candidate, account_id: "different" }], 5)), "new contributors must bypass old-round cooldown");
   assert.equal(boardTaskStaleness({ status: "accepted", created_at: ago(30), last_event_at: ago(2), updated_at: ago(0) }, now).followUp, false);
   assert.equal(boardTaskStaleness({ status: "accepted", created_at: ago(30), last_event_at: ago(15), updated_at: ago(0) }, now).cancellationEligible, true, "projection refresh is not contributor activity");

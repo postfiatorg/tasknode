@@ -1,16 +1,18 @@
-import { decisionsAvailable, fetchCorbanuDecision, startCorbanuDecision } from "./corbanu-decisions.js";
+import { DECISION_MODES, decisionCostUsd, decisionsAvailable, fetchCorbanuDecision, startCorbanuDecision } from "./corbanu-decisions.js";
 import { createDecisionJob, getDecisionJob, updateDecisionJob } from "./repositories/decisions.js";
+import { recordBillableModelRun } from "./repositories/chat-billing.js";
+import { usageSummary } from "./repositories/chat-billing-read.js";
 
 const terminal = status => ["completed", "failed"].includes(status);
 const error = (message, status) => Object.assign(new Error(message), { status });
 const publicResult = ({ record: _record, ...result }) => result;
 
 export function createDecisionRouteHandler(overrides = {}) {
-  const deps = { decisionsAvailable, fetchCorbanuDecision, startCorbanuDecision, createDecisionJob, getDecisionJob, updateDecisionJob, ...overrides };
+  const deps = { decisionsAvailable, fetchCorbanuDecision, startCorbanuDecision, createDecisionJob, getDecisionJob, updateDecisionJob, usageSummary, recordBillableModelRun, ...overrides };
   async function start(local, accountId) {
     if (local.record.gateway_job_id || terminal(local.job.status)) return local;
     try {
-      const remote = await deps.startCorbanuDecision({ accountId, requestId: local.record.request_id, input: local.record.input });
+      const remote = await deps.startCorbanuDecision({ accountId, requestId: local.record.request_id, input: local.record.input, mode: local.record.mode || "budget" });
       const updated = await sync(local, remote.body, accountId);
       return { ...updated, user: local.user };
     } catch (failure) {
@@ -28,8 +30,21 @@ export function createDecisionRouteHandler(overrides = {}) {
     if (remote.status === "completed") {
       const result = await deps.fetchCorbanuDecision({ accountId, gatewayJobId: remote.id, artifact: "result" });
       markdown = result.body.markdown;
+      // Debit before the report becomes visible; the unique key makes a retry after a failed update a no-op.
+      const costUsd = local.record.mode === "premium" ? decisionCostUsd(remote) : 0;
+      if (costUsd > 0) await deps.recordBillableModelRun({ accountId, conversationId: local.record.conversation_id,
+        requestMessageId: local.record.question_message_id, responseMessageId: local.record.assistant_message_id,
+        provider: "corbanu", model: "corbanu/decisions-premium", mode: "Decisions Premium", usage: { costUsd },
+        source: "decision_premium", note: "Premium decision", metadata: { decisionJobId: local.job.id, gatewayJobId: remote.id },
+        uniqueKey: `decision:${local.job.id}` });
     }
     return deps.updateDecisionJob({ accountId, jobId: local.job.id, remote, markdown });
+  }
+  async function refresh(local, accountId) {
+    if (!local.job.gatewayJobId) return start(local, accountId);
+    if (terminal(local.job.status)) return local;
+    const remote = await deps.fetchCorbanuDecision({ accountId, gatewayJobId: local.job.gatewayJobId });
+    return sync(local, remote.body, accountId);
   }
   return async function handleDecisionRoute({ json, readJson, req, res, session, url }) {
     const root = "/api/decisions/jobs";
@@ -42,14 +57,19 @@ export function createDecisionRouteHandler(overrides = {}) {
         if (req.method !== "POST") throw error("decision_method_not_allowed", 405);
         if (!deps.decisionsAvailable({ accountId })) throw error("Decisions is temporarily unavailable.", 503);
         const body = await readJson(req, 256 * 1024);
-        const { input, conversationId, requestId, includeContext = true } = body;
-        if (Object.keys(body).some(key => !["input", "conversationId", "requestId", "includeContext"].includes(key))
+        const { input, conversationId, requestId, includeContext = true, mode = "budget" } = body;
+        if (Object.keys(body).some(key => !["input", "conversationId", "requestId", "includeContext", "mode"].includes(key))
+          || !Object.hasOwn(DECISION_MODES, mode)
           || typeof input !== "string" || !input.trim() || input.length > 60_000
           || typeof conversationId !== "string" || !conversationId.trim() || conversationId.length > 180
           || typeof requestId !== "string" || !requestId || requestId.length > 180
           || [...requestId].some(c => !"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:".includes(c))
           || typeof includeContext !== "boolean") throw error("decision_invalid_request", 400);
-        const local = await deps.createDecisionJob({ accountId, conversationId: conversationId.trim(), input: input.trim(), requestId, includeContext });
+        const required = DECISION_MODES[mode].requiredCreditUsd || 0;
+        if (required && Number((await deps.usageSummary({ accountId })).availableCreditUsd || 0) < required) {
+          throw error(`Premium Decisions are charged at cost (usually about $7) and need $${required} of available credit. Top up, or choose Budget, which is free.`, 402);
+        }
+        const local = await deps.createDecisionJob({ accountId, conversationId: conversationId.trim(), input: input.trim(), requestId, includeContext, mode });
         const started = await start(local, accountId);
         json(res, 202, { ok: true, ...publicResult(started) });
         return true;
@@ -62,6 +82,7 @@ export function createDecisionRouteHandler(overrides = {}) {
       if (!local) throw error("decision_not_found", 404);
       if (artifact) {
         if (!local.job.gatewayJobId) throw error("decision_not_ready", 409);
+        local = await refresh(local, accountId);
         const result = await deps.fetchCorbanuDecision({ accountId, gatewayJobId: local.job.gatewayJobId, artifact });
         const extension = artifact === "pdf" ? "pdf" : "json";
         res.setHeader("Content-Type", artifact === "pdf" ? "application/pdf" : "application/json; charset=utf-8");
@@ -71,12 +92,7 @@ export function createDecisionRouteHandler(overrides = {}) {
         res.end(artifact === "pdf" ? result.body : JSON.stringify(result.body));
         return true;
       }
-      if (!local.job.gatewayJobId) local = await start(local, accountId);
-      else if (!terminal(local.job.status)) {
-        const remote = await deps.fetchCorbanuDecision({ accountId, gatewayJobId: local.job.gatewayJobId });
-        local = await sync(local, remote.body, accountId);
-      }
-      json(res, 200, { ok: true, ...publicResult(local) });
+      json(res, 200, { ok: true, ...publicResult(await refresh(local, accountId)) });
     } catch (failure) {
       json(res, Number(failure.status || 502), { ok: false, error: failure.message || "decision_request_failed", message: failure.message || "Decision status is temporarily unavailable." });
     }

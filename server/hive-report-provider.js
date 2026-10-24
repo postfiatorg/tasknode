@@ -61,8 +61,10 @@ function providerTimeoutMs() {
 
 function hiveReportMaxTokens(type = "") {
   const globalMax = Number(process.env.TASKNODE_HIVE_REPORT_MAX_TOKENS || 0);
+  // Reasoning tokens count against max_tokens; 10K truncated every run once
+  // the xhigh-thinking report grew past ~8K of output (2026-09-23).
   if (type === "hive_intelligence") {
-    return Math.max(10000, Number(globalMax || 10000));
+    return Math.max(24000, Number(globalMax || 24000));
   }
   if (type === "board_manager_planning") {
     return Math.max(

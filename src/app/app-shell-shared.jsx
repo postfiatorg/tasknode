@@ -194,7 +194,7 @@ export const SETTINGS_PAGES = [
 ];
 
 export const APP_VIEWS = new Set([
-  "chat", "tasks", "wallet", "context", "hive", "directory", "profile", "docs", "help",
+  "chat", "tasks", "wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help",
   ...appExtensionRegistry.inventory().map(({ id }) => id),
 ]);
 export const MORE_EXTENSION_VIEWS = new Set(

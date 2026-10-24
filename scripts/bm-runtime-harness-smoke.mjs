@@ -25,7 +25,7 @@ try {
 
   const registry = readAgentRegistry();
   assert.equal(registry.agents.length, 1);
-  assert.equal(registry.agents[0].boards.length, 6);
+  assert.equal(registry.agents[0].boards.length, 7);
   const duplicate = structuredClone(registry); duplicate.agents.push({ ...duplicate.agents[0], alias: "duplicate" });
   const badRegistry = path.join(root, "bad-registry.json"); writeFileSync(badRegistry, JSON.stringify(duplicate));
   assert.throws(() => readAgentRegistry(badRegistry), { message: "board_agent_assignment_invalid" });

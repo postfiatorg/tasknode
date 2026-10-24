@@ -11,7 +11,8 @@ export async function createProfileNftThumbnail(bytes) {
 // its durable asset checkpoint lets every web machine serve it immediately,
 // without waiting behind legacy IPFS downloads or sharing a local filesystem.
 export async function readStoredProfileNftThumbnail({ cid, size, format, queryImpl = query } = {}) {
-  if (!databaseEnabled()) return null;
+  // The checkpoint is 192px; larger sizes must come from the source image, not an upscale.
+  if (!databaseEnabled() || size > 192) return null;
   const result = await queryImpl(`SELECT job.render_asset->'thumbnail' AS thumbnail
     FROM profile_nft_render_jobs job JOIN profile_nfts nft ON nft.id=job.profile_nft_id
     WHERE nft.image_cid=$1 AND nft.image_cid<>'' AND nft.status IN ('generated','prepared','minted')

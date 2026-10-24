@@ -20,7 +20,6 @@ RUN npm run build \
       --out /runtime-web \
     && node scripts/build-runtime-tree.mjs \
       --entry server/worker-entry.js \
-      --entry scripts/hive-board-secretary-worker.mjs \
       --entry scripts/migrate-db.mjs \
       --include server/db/migrations \
       --include prompts \

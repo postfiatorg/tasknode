@@ -143,6 +143,7 @@
     "scripts/task-evidence-drafts-smoke.mjs",
     "scripts/task-evidence-file-processing-smoke.mjs",
     "scripts/task-evidence-report-smoke.mjs",
+    "scripts/task-evidence-tar-size-smoke.mjs",
     "scripts/task-forensics-state-smoke.mjs",
     "scripts/task-generation-reliability-smoke.mjs",
     "scripts/task-generation-step-readiness-smoke.mjs",
@@ -164,6 +165,7 @@
     "scripts/task-workflow-visibility-smoke.mjs",
     "scripts/taskgen-network-v2-smoke.mjs",
     "scripts/taskgen-replay-smoke.mjs",
+    "scripts/tasknode-mcp-smoke.mjs",
     "scripts/team-context-state-smoke.mjs",
     "scripts/telegram-bot-webhook-smoke.mjs",
     "scripts/terminal-account-selection-smoke.mjs",
@@ -180,22 +182,27 @@
     "scripts/wallet-nft-inventory-smoke.mjs",
     "scripts/wallet-transactions-smoke.mjs",
     "scripts/wallet-unlocked-session-smoke.mjs",
-    "scripts/worker-crash-resilience-smoke.mjs"
+    "scripts/worker-crash-resilience-smoke.mjs",
+    "scripts/network-task-content-policy.test.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",
     "scripts/board-routing-staleness-smoke.mjs",
     "scripts/chat-billing-postgres-smoke.mjs",
     "scripts/chat-memory-postgres-smoke.mjs",
+    "scripts/chat-unanswered-message-smoke.mjs",
     "scripts/command-transaction-queue-smoke.mjs",
     "scripts/context-postgres-smoke.mjs",
+    "scripts/db-connection-loss-smoke.mjs",
     "scripts/decisions-repository-smoke.mjs",
     "scripts/docs-folders-smoke.mjs",
     "scripts/hive-reports-smoke.mjs",
+    "scripts/index-viewer-smoke.mjs",
     "scripts/inference-persistence-smoke.mjs",
     "scripts/jobs-corpus-pgvector-smoke.mjs",
     "scripts/network-task-direct-intake-smoke.mjs",
     "scripts/network-task-explicit-retry-smoke.mjs",
+    "scripts/network-task-reward-band-smoke.mjs",
     "scripts/pftl-cache-archive-postgres-smoke.mjs",
     "scripts/pftl-cache-health-retention-postgres-smoke.mjs",
     "scripts/pftl-cache-postgres-smoke.mjs",
@@ -226,6 +233,7 @@
     "scripts/context-rewrite-sample-smoke.mjs": "reads a sample context document from the operator host",
     "scripts/smoke.mjs": "exercises a running server with live providers (SMOKE_BASE_URL)",
     "scripts/sybil-blocklist-regression.mjs": "operator audit over production blocklist data",
-    "scripts/theme-production-smoke.mjs": "read-only check against production"
+    "scripts/theme-production-smoke.mjs": "read-only check against production",
+    "scripts/chat-persona-adherence-live-smoke.mjs": "calls a live inference provider"
   }
 }

@@ -1,6 +1,7 @@
+// Fixture rows are recognized by plain columns only: reading a JSON flag
+// detoasts every row and dominated these queries' cost.
 export function nonFixtureTaskProjectionSql(alias = "p") {
   return `COALESCE(${alias}.source, '') <> 'directory_polish_local_fixture'
-    AND COALESCE(${alias}.metadata_json->>'directoryPolishFixture', 'false') <> 'true'
     AND ${alias}.task_id NOT LIKE 'directory_polish_%'
     AND ${alias}.task_id NOT LIKE 'task_cancel_paid_%'`;
 }
@@ -14,24 +15,20 @@ export function canonicalRewardedTaskProjectionSql(alias = "p") {
 }
 
 export function nonFixtureRecommendedProfileSql(alias = "profile") {
-  return `COALESCE(${alias}.packet_json->>'directoryPolishFixture', 'false') <> 'true'
-    AND COALESCE(${alias}.packet_digest, '') NOT LIKE 'directory_polish_%'
+  return `COALESCE(${alias}.packet_digest, '') NOT LIKE 'directory_polish_%'
     AND COALESCE(${alias}.network_profile_id, '') NOT LIKE 'directory_polish_%'
     AND COALESCE(${alias}.network_profile_digest, '') NOT LIKE 'directory_polish_%'
     AND COALESCE(${alias}.embedding_model, '') <> 'directory-polish-local'`;
 }
 
 export function nonFixtureProfileNftSql(alias = "nft") {
-  return `COALESCE(${alias}.metadata_json->>'directoryPolishFixture', 'false') <> 'true'
-    AND ${alias}.id NOT LIKE 'directory_polish_%'
+  return `${alias}.id NOT LIKE 'directory_polish_%'
     AND COALESCE(${alias}.model, '') <> 'directory-polish'`;
 }
 
 export function nonFixtureAirdropRunSql(alias = "run") {
   return `${alias}.id NOT LIKE 'directory_polish_%'
     AND COALESCE(${alias}.input_hash, '') NOT LIKE 'directory_polish_%'
-    AND COALESCE(${alias}.input_snapshot->>'directoryPolishFixture', 'false') <> 'true'
-    AND COALESCE(${alias}.output_json->>'directoryPolishFixture', 'false') <> 'true'
     AND COALESCE(${alias}.model, '') <> 'directory-polish'
     AND COALESCE(${alias}.prompt_version, '') <> 'local-only'`;
 }

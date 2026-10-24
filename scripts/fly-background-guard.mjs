@@ -18,15 +18,14 @@ function usage() {
     "  5. worker-hive",
     "  6. worker-memory-profile",
     "  7. worker-airdrop",
-    "  8. board-secretary",
-    "  9. worker-nft-renderer",
+    "  8. worker-nft-renderer",
     "",
     "Every group is guarded at one active replica; worker-airdrop intentionally",
     "runs a single active machine plus a cold standby so airdrops are never",
     "processed by two live workers at once.",
     "An explicit --count overrides that default for all guarded process groups.",
     "",
-    "Use npm run fly:worker-guard or npm run fly:board-guard for one process group.",
+    "Use npm run fly:worker-guard for one process group.",
   ].join("\n");
 }
 
@@ -82,7 +81,6 @@ for (const processGroup of [
   "worker-hive",
   "worker-memory-profile",
   "worker-airdrop",
-  "board-secretary",
   "worker-nft-renderer",
 ]) {
   runGuard(guardArgsForProcess(processGroup, sharedArgs), { dryRun });

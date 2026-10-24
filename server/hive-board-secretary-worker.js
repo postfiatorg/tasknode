@@ -9,6 +9,8 @@ import {
 import {
   buildHiveBoardSecretarySourcePacket,
   completeHiveBoardSecretaryMemo,
+  currentHiveBoardSecretaryMemo,
+  hiveBoardContentDigest,
   failHiveBoardSecretaryMemo,
   listHiveBoardSecretaryProjects,
 } from "./repositories/hive-board-secretary.js";
@@ -32,11 +34,24 @@ function intEnv(name, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER, env = 
 }
 
 function cadenceMs(env = process.env) {
-  return intEnv("TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS", 900, { min: 60, max: 86400, env }) * 1000;
+  return intEnv("TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS", 3600, { min: 60, max: 86400, env }) * 1000;
 }
 
 function initialDelayMs(env = process.env) {
   return intEnv("TASKNODE_HIVE_BOARD_SECRETARY_INITIAL_DELAY_MS", 15000, { min: 0, max: 900000, env });
+}
+
+function minIntervalMs(env = process.env) {
+  return intEnv("TASKNODE_HIVE_BOARD_SECRETARY_MIN_INTERVAL_SECONDS", 21600, { min: 900, max: 604800, env }) * 1000;
+}
+
+// Each memo costs ~25K input tokens. A board gets a new memo only when its
+// content changed, and at most once per interval (roster churn alone never
+// regenerates). Before this, every board regenerated every 15 minutes.
+export function boardMemoIsFresh({ packet, current, now = Date.now(), minMs = minIntervalMs() } = {}) {
+  if (!current?.source_packet_json) return false;
+  return hiveBoardContentDigest(packet) === hiveBoardContentDigest(current.source_packet_json)
+    || now - new Date(current.created_at).getTime() < minMs;
 }
 
 function projectLimit(env = process.env) {
@@ -79,6 +94,10 @@ export async function runHiveBoardSecretaryOnce({
           sourcePacketDigest: sourcePacket.sourcePacketDigest,
           counts: sourcePacket.counts,
         });
+        continue;
+      }
+      if (boardMemoIsFresh({ packet: sourcePacket, current: await currentHiveBoardSecretaryMemo(project.id), minMs: minIntervalMs(env) })) {
+        results.push({ projectId: project.id, title: project.title, skipped: true, reason: "board_unchanged" });
         continue;
       }
       const memo = await fetchHiveBoardSecretaryMemo({

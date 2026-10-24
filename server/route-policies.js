@@ -290,6 +290,16 @@ export const apiRoutePolicies = [
     auth: "bearer",
     unauthenticatedError: "terminal_login_required",
   },
+  // Remote MCP endpoint and its OAuth login (server/tasknode-mcp.js). The
+  // /oauth/token form body is parsed and rate limited by its handler.
+  { id: "mcp", path: "/mcp", methods: ["POST"], auth: "handler", rateLimit: { limit: 300, windowMs: 60_000 }, body: requestBodies.mcpBody },
+  { id: "oauth_register", path: "/oauth/register", methods: ["POST"], auth: "none", rateLimit: { limit: 20, windowMs: tenMinutes }, body: requestBodies.oauthRegisterBody },
+  { id: "oauth_authorize", path: "/oauth/authorize", methods: ["GET"], auth: "none", rateLimit: { limit: 30, windowMs: tenMinutes } },
+  { id: "oauth_callback", path: "/oauth/callback", methods: ["GET"], auth: "oauth_state" },
+  { id: "oauth_metadata", prefix: "/.well-known/oauth-", methods: ["GET"], auth: "none" },
+  { id: "agent_connect", path: "/connect", methods: ["GET", "POST"], auth: "handler", rateLimit: { limit: 30, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "agent_connect_signout", path: "/connect/signout", methods: ["POST"], auth: "handler", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "agent_connect_login", path: "/connect/login", methods: ["GET"], auth: "none", rateLimit: { limit: 20, windowMs: tenMinutes } },
   { id: "readiness", path: "/api/readiness", methods: ["GET"], auth: "none" },
   { id: "health", path: "/api/health", methods: ["GET"], auth: "none" },
   { id: "system_status", path: "/api/system/status", methods: ["GET"], auth: "none" },
@@ -549,6 +559,7 @@ export const apiRoutePolicies = [
   { id: "network_task_profile", path: "/api/memory/network-task-profile", methods: ["GET", "POST"], auth: "session", body: requestBodies.emptyRequestBody },
   { id: "directory_leaderboard", path: "/api/directory/leaderboard", methods: ["GET"], auth: "optional" },
   { id: "directory_rewarded_tasks", path: "/api/directory/rewarded-tasks", methods: ["GET"], auth: "optional" },
+  { id: "directory_blacklist", path: "/api/directory/blacklist", methods: ["GET"], auth: "optional" },
   { id: "hive_projects", path: "/api/hive/projects", methods: ["GET"], auth: "optional" },
   { id: "hive_task_detail", path: "/api/hive/task-detail", methods: ["GET"], auth: "optional" },
   {

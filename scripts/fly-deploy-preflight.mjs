@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 const PRODUCTION_HOSTS = ["tasknode.postfiat.org"];
 const REQUIRED_PROCESS_GROUPS = [
   "app",
-  "board-secretary",
   "worker-pftl",
   "worker-taskgen",
   "worker-task-review",

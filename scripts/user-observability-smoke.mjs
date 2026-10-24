@@ -115,6 +115,7 @@ try {
     recordBillingCreditAppliedEvent,
     recordChatFailureObservability,
     recordChatTurnObservability,
+    recordNetworkTaskCapacityEvent,
     recordUserObservabilityEvent,
     resolveUserIdentityVector,
     userObservabilitySince,
@@ -217,6 +218,14 @@ try {
   });
   assert.equal(skippedWrite.skipped, true);
   assert.equal(skippedWrite.reason, "database_not_configured");
+
+  // Repeated reads of an unchanged capacity decision are not re-recorded.
+  const capacityEligibility = { status: "at_capacity", accountId, walletAddress: walletOne, capacity: { available: false, blockers: [{ taskId: "task_a", state: "accepted" }] } };
+  assert.equal((await recordNetworkTaskCapacityEvent({ eligibility: capacityEligibility })).reason, "database_not_configured");
+  assert.equal((await recordNetworkTaskCapacityEvent({ eligibility: capacityEligibility })).reason, "capacity_decision_unchanged");
+  const changed = { ...capacityEligibility, capacity: { available: false, blockers: [{ taskId: "task_a", state: "submitted" }] } };
+  assert.equal((await recordNetworkTaskCapacityEvent({ eligibility: changed })).reason, "database_not_configured", "a changed decision is recorded");
+  assert.equal((await recordNetworkTaskCapacityEvent({ eligibility: { ...changed, walletAddress: walletTwo } })).reason, "database_not_configured", "decisions are tracked per wallet");
 
   const chatTurnWrite = await recordChatTurnObservability({
     accountId,

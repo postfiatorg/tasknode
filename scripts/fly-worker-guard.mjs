@@ -8,7 +8,6 @@ const DEFAULT_APP = "tasknodeofficial-dev";
 const DEFAULT_COUNT = 1;
 const PROCESS_GROUPS = [
   "app",
-  "board-secretary",
   "worker-pftl",
   "worker-taskgen",
   "worker-task-review",

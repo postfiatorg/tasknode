@@ -648,7 +648,7 @@ export function chatModes({ signedOut = false } = {}) {
       description: config.exactModel
         ? `API rates · from $${config.inputUsdPerMillion} input / $${config.outputUsdPerMillion} output per 1M tokens`
         : "",
-      privacy: config.exactModel ? "Vercel AI Gateway" : "Vercel AI Gateway with Ambient backup",
+      privacy: config.zeroDataRetention ? "Vercel AI Gateway · zero data retention" : config.exactModel ? "Vercel AI Gateway" : "Vercel AI Gateway with Ambient backup",
       latency: config.reasoningEffort ? "Deep" : "Fast",
     };
   });

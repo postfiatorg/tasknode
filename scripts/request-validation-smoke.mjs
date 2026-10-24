@@ -110,7 +110,8 @@ for (const route of apiRoutePolicies) {
   for (const declared of declaredBodies) {
     assert.ok(Number.isInteger(declared.maxBytes) && declared.maxBytes > 0, `${route.id} must declare a finite body limit`);
     assert.equal(declared.schema.type, "object", `${route.id} must accept a JSON object`);
-    if (route.id !== "telegram_bot_webhook") {
+    // External protocols whose specs require ignoring unknown fields.
+    if (!["telegram_bot_webhook", "oauth_register"].includes(route.id)) {
       assert.equal(declared.schema.allowUnknown, false, `${route.id} must reject undeclared top-level fields`);
       const validFixture = schemaFixture(declared.schema);
       assert.deepEqual(validateJsonDocument(validFixture, declared.schema), validFixture, `${route.id} schema must accept its declared minimum shape`);

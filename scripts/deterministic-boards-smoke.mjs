@@ -2,7 +2,7 @@
 //
 // Always: validates board-config + board admin route normalization/auth and
 // the model-mutation guards without a database.
-// With DATABASE_URL: runs migrations twice (idempotence) and asserts the six
+// With DATABASE_URL: runs migrations twice (idempotence) and asserts the seven
 // boards are the only active network projects.
 //
 // Usage: node scripts/deterministic-boards-smoke.mjs
@@ -23,7 +23,7 @@ const { boardAdminAuthorized, normalizeBoardAdminUpdate } = await import(
 );
 
 // --- board-config ---
-assert.equal(DETERMINISTIC_BOARD_IDS.length, 6, "exactly six boards");
+assert.equal(DETERMINISTIC_BOARD_IDS.length, 7, "exactly seven boards");
 assert.ok(isDeterministicBoardId("board_pf_terminal"));
 assert.ok(!isDeterministicBoardId("pft_distribution_v3"));
 assert.ok(deterministicBoardsEnabled({}), "deterministic boards default on");
@@ -118,7 +118,7 @@ if (process.env.DATABASE_URL) {
     "SELECT id FROM network_projects WHERE status = 'active' ORDER BY priority"
   );
   const activeIds = active.rows.map((row) => row.id);
-  assert.deepEqual(activeIds, [...DETERMINISTIC_BOARD_IDS], "active projects are exactly the six boards");
+  assert.deepEqual(activeIds, [...DETERMINISTIC_BOARD_IDS], "active projects are exactly the seven boards");
   const locked = await query(
     `SELECT count(*)::int AS n FROM network_projects
      WHERE status = 'archived' AND (metadata_json->>'operator_archived') = 'true'`

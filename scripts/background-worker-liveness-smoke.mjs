@@ -21,6 +21,7 @@ assert.deepEqual(hive.startedWorkerGroups, [
   "hive_group_chat",
   "hive_secretary",
   "hive_reports",
+  "hive_board_secretary",
   "bm_narrator",
 ]);
 const taskgen = startBackgroundWorkers({ role: "worker:taskgen", runWorker: noOpWorker });

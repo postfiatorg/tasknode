@@ -34,6 +34,10 @@ export function boardRoutingCandidates(board, contributors) {
 }
 
 export function routingDuty(board, contributors, openCount) {
+  // Boards whose tasks are issued by an operator tool (value accountability)
+  // never receive routed work.
+  const constraints = board.metadata_json?.routing_constraints || board.routing_constraints || {};
+  if (constraints.routing_disabled === true) return null;
   const candidates = boardRoutingCandidates(board, contributors);
   if (!candidates.length) return null;
   return {

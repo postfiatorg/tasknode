@@ -317,6 +317,11 @@ export async function appendChatUserMessage({
       error.status = 404;
       throw error;
     }
+    const kept = await client.query(
+      "SELECT 1 FROM chat_messages WHERE id = $1 AND conversation_id = $2 AND account_id = $3",
+      [userId, normalizedConversationId, normalizedAccountId]
+    );
+    const added = kept.rows.length ? 0 : 1;
 
     await client.query(
       `
@@ -324,7 +329,7 @@ export async function appendChatUserMessage({
           id, account_id, title, status, mode, created_at, updated_at,
           last_message_at, last_message_preview, message_count
         )
-        VALUES ($1, $2, $3, $7, $4, $5, $5, $5, $6, 1)
+        VALUES ($1, $2, $3, $7, $4, $5, $5, $5, $6, $10)
         ON CONFLICT (id) DO UPDATE SET
           account_id = EXCLUDED.account_id,
           status = EXCLUDED.status,
@@ -340,10 +345,10 @@ export async function appendChatUserMessage({
           updated_at = EXCLUDED.updated_at,
           last_message_at = EXCLUDED.last_message_at,
           last_message_preview = EXCLUDED.last_message_preview,
-          message_count = chat_conversations.message_count + 1,
+          message_count = chat_conversations.message_count + $10,
           deleted_at = NULL
       `,
-      [normalizedConversationId, normalizedAccountId, title, mode || null, now, preview, status, hive, HIVE_CHAT_TITLE]
+      [normalizedConversationId, normalizedAccountId, title, mode || null, now, preview, status, hive, HIVE_CHAT_TITLE, added]
     );
 
     const userInsert = await client.query(
@@ -356,6 +361,8 @@ export async function appendChatUserMessage({
         ON CONFLICT (id) DO UPDATE SET
           body = EXCLUDED.body,
           metadata_json = EXCLUDED.metadata_json
+          WHERE chat_messages.account_id = EXCLUDED.account_id
+            AND chat_messages.conversation_id = EXCLUDED.conversation_id
         RETURNING *
       `,
       [
@@ -370,13 +377,14 @@ export async function appendChatUserMessage({
         jsonValue(userMetadata),
       ]
     );
-    const attachmentRows = await insertChatAttachments(client, attachmentRowsForInsert({
+    if (!userInsert.rows[0]) throw Object.assign(new Error("chat_message_id_conflict"), { status: 409 });
+    const attachmentRows = added ? await insertChatAttachments(client, attachmentRowsForInsert({
       attachments,
       accountId: normalizedAccountId,
       conversationId: normalizedConversationId,
       messageId: userId,
       createdAt: now,
-    }));
+    })) : [];
 
     return {
       user: publicMessage(userInsert.rows[0], attachmentRows.map(publicAttachment)),

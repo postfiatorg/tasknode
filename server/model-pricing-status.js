@@ -203,7 +203,7 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
         : config.disableReasoning
           ? "none"
           : "",
-      privacyPolicy: config.exactModel ? "Requests use the selected model through Vercel AI Gateway." : "Requests go to Vercel AI Gateway, with Ambient as backup. OpenAI Images is isolated to sanitized profile NFT rendering.",
+      privacyPolicy: config.zeroDataRetention ? "Requests use the selected model through Vercel AI Gateway, routed only to zero-data-retention providers." : config.exactModel ? "Requests use the selected model through Vercel AI Gateway." : "Requests go to Vercel AI Gateway, with Ambient as backup. OpenAI Images is isolated to sanitized profile NFT rendering.",
       providerOrder: ["vercel", ...(!config.exactModel && process.env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" ? ["ambient"] : [])],
       liveModel,
       liveEndpoints: endpointsByModel.get(execution.model) || [],
@@ -267,7 +267,7 @@ export async function chatPricingStatus({ fetchImpl = fetch } = {}) {
     references: [],
     notes: [
       "Instant, Thinking, and Help use the configured user tariff for estimates and ledger debits.",
-      "GPT-6 Astra and Kimi K3 estimates use published base API rates; final debits equal Vercel-reported cost without markup. Missing provider cost prevents a debit.",
+      "GPT-6 Astra, Kimi K3 and Claude Opus 5.5 estimates use published base API rates; final debits equal Vercel-reported cost without markup. Missing provider cost prevents a debit.",
     ],
   };
   pricingCache = { cachedAtMs: now, value };

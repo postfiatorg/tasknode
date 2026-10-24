@@ -163,16 +163,13 @@ publish, or reward tasks.
 ### GLM Board Secretary
 
 `server/hive-board-secretary-worker.js` writes the Project Status memo shown in
-each Hive project About section. It runs from the `board-secretary` process
-group every 15 minutes when `TASKNODE_HIVE_BOARD_SECRETARY_ENABLED=true`, uses
+each Hive project About section. It runs in `worker-hive` hourly and writes a
+new memo only when the board's content changed and its last memo is at least
+6 hours old (`TASKNODE_HIVE_BOARD_SECRETARY_MIN_INTERVAL_SECONDS`). It uses
 Vercel `zai/glm-5.3` with Ambient backup, and stores rows in
 `hive_board_secretary_memos`. The worker is advisory only. It cannot create
 tasks, cancel tasks, send user messages, change rewards, mark work resolved, or
 mutate project state.
-
-The worker sets its own DB statement timeout from
-`TASKNODE_HIVE_BOARD_SECRETARY_DB_STATEMENT_TIMEOUT_MS` and defaults to 60s so
-large board packets can be assembled without changing the app-wide DB timeout.
 
 Each run builds one deterministic board-scoped source packet from:
 
@@ -437,8 +434,8 @@ Board Manager archives are reversible unless an explicit operator archive lock
 is present.
 
 Board management runs as the Kimi K3 board manager on the operator host,
-through `scripts/bm.mjs` and the scoped board-agent API. The `board-secretary`
-process group writes advisory per-board memos. The earlier in-app V0 decision
+through `scripts/bm.mjs` and the scoped board-agent API. The board secretary
+in `worker-hive` writes advisory per-board memos. The earlier in-app V0 decision
 worker, loop runner, scheduler, and Codex executors were removed.
 
 Allowed actions include:
@@ -458,6 +455,16 @@ Allowed actions include:
 Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `restore_project`, `refresh_project_document`, `assign_contributor`, and `initiate_network_task`. `archive_project` hides the row from the active board but does not hard delete it. `restore_project` reactivates a non-operator-locked archived project instead of creating a duplicate board. Autonomous Board Manager archives are soft and reversible; explicit operator archive locks are the only archive state the planner must not resurrect. `create_project` is guarded by the current project registry and skips when an active or archived similar project already exists, so new boards are the exception rather than the default append path. `message_user` writes an assistant message into the user's default Hive chat conversation, records a delivery audit row in `board_manager_user_messages`, and opens a durable `board_manager_followups` row. The target must be a Hive Context entry from the current source packet or an account/candidate present in that packet, so the model cannot invent an arbitrary recipient. Delivery is idempotent at the action-hook boundary: one Hive Context entry can receive one Board Manager response, and an account/project with an open follow-up cannot receive repeated consecutive Hive messages while waiting for the user to respond. Task-action messages are also stale-guarded: the decision must carry a structured `payload.message_precondition` naming the related task or allocation and the live statuses that must still hold, and the hook re-checks the account's live state at execution time. A message whose referenced task already reached a terminal state, or that asks the user to act when no action remains, is skipped and recorded with the skip reason instead of being delivered. `assign_contributor` has the same source-packet boundary: the wallet must appear as a validated Hive Context wallet or as an eligible Network Task candidate in the current packet before the hook can add it to a project. When the DeepSeek secretary compresses the Board Manager packet, the app carries only a small action-target registry plus open follow-up state into the compressed packet so these hooks can still validate recipients and contributors without exposing the full raw source packet to the downstream model. The Hive Mind Agent tab itself stays focused on the agent run/action feed. `refresh_project_document` writes the agent-managed Project Status shown inside a Hive project About section.
 
 `initiate_network_task` does not let the Board Manager write the final task offer. It creates a project-linked allocation row, a semantic `network_task_intents` row, and a durable generation job. The intent key is based on project, candidate, task class, normalized need, and reward band rather than the Board Manager run id, so repeated runs suppress the same task request instead of generating another copy. The gated `server/network-task-generation-worker.js` then turns that job into a normal task request bundle and schedules the existing task-generation worker. The resulting offer is still a normal encrypted `pf.task.offer.v1` task pointer from the task engine, with project metadata attached for Hive reads.
+
+Reward bands are never rewritten silently. A contributor band whose maximum is
+below the network-task floor (`TASKNODE_NETWORK_TASK_REWARD_MIN_PFT`, default
+100 PFT) is rejected with a 422 `network_task_reward_below_floor` that names the
+floor. A minimum below the floor is raised to it, and the original band is
+stored on the allocation as `metadata_json.reward_band_clamped_from` and returned
+by `task create` as `rewardBandClampedFrom`. Operator referrals (`refer-merge`,
+`refer-badge`) are operator duties: they keep their 0-1 PFT band and bypass the
+operator's own task capacity. The generation worker only lowers a band to the
+board's per-task cap, and records it when it does.
 
 If the Board Manager queues the wrong work or a generated request fails before a task offer exists, close the allocation chain instead of retrying it blindly. The task-generation worker automatically does this for failed Board Manager-generated requests before offer publication: it marks the allocation failed, marks the generation job failed, stales the semantic intent, and hides the task request receipt as operator-audit-only so it does not appear as `Needs attention` in the Tasks UI. If automatic repair did not run, use `npm run network-task-allocation-repair -- fail --allocation-id <id> --reason "<reason>" --execute` or `npm run network-task-allocation-repair -- fail --request-id <id> --reason "<reason>" --execute`. To route an operator-supplied replacement through the normal Board Manager hook, use `npm run board-manager:manual-network-task -- --project-id <id> --account-id <account> --wallet <wallet> --need "<plain-English task need>" --reason "<routing reason>" --execute`. The manual command creates an auditable Board Manager run and still uses `initiate_network_task`; it does not insert a visible task directly.
 
@@ -613,7 +620,7 @@ The production app does not import design mocks, and the app route is implemente
 - `src/features/hive/hive.css` contains the isolated styling for the surface.
 - `src/main.jsx` registers `#hive`, adds the sidebar entry, and lazy-loads the view.
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
-- `server/hive-board-secretary-worker.js` runs the advisory per-board GLM 5.3 memo writer every 15 minutes.
+- `server/hive-board-secretary-worker.js` runs the advisory per-board GLM 5.3 memo writer (changed boards only, at most every 6 hours).
 - `server/repositories/hive-board-secretary.js` builds deterministic board-scoped packets, truncates rewarded task evidence, persists current memo rows, and exposes public memo reads for Hive projects.
 - `server/hive-board-secretary-provider.js` calls Vercel `zai/glm-5.3` with Ambient backup for Project Status Markdown.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
