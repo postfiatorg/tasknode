@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronDown, Download, Eye, FileText, FileUp, History, LockKeyhole, MessageSquare, Pencil, Share2 } from "lucide-react";
 import { requestJson } from "../../api";
+import { DOCS_ASSISTANT_HTTP_SIZE_ERROR, prepareDocsAssistantHttpRequest } from "./docs-assistant-http";
 import {
   decryptFromTaskNodeWallet,
   encryptForTaskNodeWallet,
@@ -247,19 +248,13 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
         const responseTarget = event.source;
         const legacyOdv = data.type === "pfdocs.tasknode.odv-request";
         const responseType = legacyOdv ? "tasknode.pfdocs.odv-response" : "tasknode.pfdocs.assistant-response";
-        void requestJson(`/api/docs/documents/${activeEditor.documentId}/${legacyOdv ? "odv" : "assistant"}`, {
+        const prepared = prepareDocsAssistantHttpRequest(data, editorFullContext);
+        const request = prepared.ok ? requestJson(`/api/docs/documents/${activeEditor.documentId}/${legacyOdv ? "odv" : "assistant"}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            channelHash: data.channelHash,
-            persona: data.persona || "odv",
-            includeFullContext: editorFullContext === true,
-            prompt: data.prompt,
-            documentTitle: data.documentTitle,
-            documentContent: data.documentContent,
-            recentMessages: data.recentMessages,
-          }),
-        }).then((result) => {
+          body: prepared.body,
+        }) : Promise.resolve({ ok: false, status: 413, body: { error: prepared.error } });
+        void request.then((result) => {
           responseTarget.postMessage({
             type: responseType,
             requestId: data.requestId,
@@ -271,7 +266,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
             persona: result.body?.persona || data.persona || "odv",
             label: result.body?.label || (data.persona === "coach" ? "Trading Coach" : "ODV"),
             model: result.body?.model || "zai/glm-5.3",
-            error: result.ok ? "" : errorText(result, "The mentioned document assistant could not answer this request."),
+            error: result.ok ? "" : result.status === 413 ? DOCS_ASSISTANT_HTTP_SIZE_ERROR : errorText(result, "The mentioned document assistant could not answer this request."),
           }, pfdocsOrigin);
         }).catch(() => {
           responseTarget.postMessage({
