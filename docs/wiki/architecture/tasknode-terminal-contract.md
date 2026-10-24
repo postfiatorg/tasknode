@@ -90,11 +90,29 @@ deadline; streams allow 600 seconds. Credentials stay bound to their saved origi
 and selected profile. Redirects are rejected. Streaming decodes UTF-8 after byte
 framing, requires a completion event and supports frames up to 16 MiB.
 
-Before submitting, clients save the original command in the profile/account/origin
-vault. A lost response leaves it pending. `corbanu tasknode requests pending` lists
-saved commands; `requests recover <key>` resends the original command and key.
+Before creating a task request, clients save the original command in the
+profile/account/origin vault. A lost response leaves it pending.
+`corbanu tasknode requests pending` lists saved request commands;
+`requests recover <key>` reads the saved receipt when the request ID is known;
+otherwise it resends the original request command and key.
 The TUI restores its pending request text when reopened. Account, credential,
 view and request-generation checks keep stale responses out of the current view.
+
+Task evidence and verification responses use
+`POST /api/terminal/tasknode/tasks/:id/evidence`. They are not saved request
+commands, and the request-creation idempotency guarantees above do not extend to
+this endpoint. The current offchain path forwards an `idempotencyKey` through
+`server/tasknode-terminal-evidence.js`, but
+`server/offchain-task-lifecycle.js` does not use that key to derive the event
+identity. Supplying the same key therefore does not establish safe replay.
+
+After an ambiguous evidence or verification-response result, preserve the exact
+submitted body and any response or error, then refresh the owned task with
+`GET /api/terminal/tasknode/tasks/:id` and reconcile whether that submission was
+recorded before retrying. An unchanged projection alone does not prove that no
+write occurred. If the outcome remains uncertain, it needs service-side
+reconciliation. `requests recover` and `requests retry` do not recover these
+submissions.
 
 `requests list --cursor <cursor>` reads older receipts. The TUI offers older/newer
 pages and failed-request retry actions. CLI retry is
