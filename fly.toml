@@ -160,7 +160,8 @@ kill_timeout = "45s"
 [[vm]]
   cpu_kind = "shared"
   cpus = 2
-  memory_mb = 1024
+  # 1 GB ran out of heap (~480 MB) serving board-manager rounds after a backlog.
+  memory_mb = 2048
   processes = ["app"]
 
 [mounts]
