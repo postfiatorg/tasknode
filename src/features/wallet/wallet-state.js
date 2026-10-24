@@ -224,3 +224,42 @@ export function truncateWalletNote(value) {
   if (text.length <= 46) return text;
   return `${text.slice(0, 22)}...${text.slice(-12)}`;
 }
+
+const GRANT_IN_PROGRESS_STATUSES = new Set(["processing", "unknown"]);
+
+/**
+ * What the Wallet page should say about the initiation gift once a wallet is
+ * linked. The server's `wallet.initiationGift` is the account's current
+ * eligibility: `eligible: true` means the gift has not been received and can
+ * be (re)claimed; `reason: "account_registered"` with an in-progress grant
+ * means a send is pending; every other `reason` (account_registered with a
+ * completed grant, email_ineligible, not_eligible, wallet_registered,
+ * deleted_account_faucet_guard, ...) is a terminal state with no action here.
+ *
+ * Returns `{ visible: false }` or `{ visible, canRetry, label, tone }`.
+ */
+export function walletInitiationGiftRetryState({ walletLinked = false, initiationGift = null, claiming = false } = {}) {
+  if (!walletLinked || !initiationGift || typeof initiationGift !== "object") return { visible: false };
+  const amountPft = Number(initiationGift.amountPft || 0);
+  const amountLabel = amountPft > 0 ? `${amountPft.toLocaleString("en-US")} PFT ` : "";
+  const grantStatus = String(initiationGift.grant?.status || "").toLowerCase();
+  if (initiationGift.eligible === true) {
+    return {
+      visible: true,
+      canRetry: !claiming,
+      label: claiming
+        ? `Sending the ${amountLabel}initiation gift.`
+        : `Your ${amountLabel}initiation gift has not been sent yet. You can retry without creating another wallet.`,
+      tone: "is-warning",
+    };
+  }
+  if (initiationGift.reason === "account_registered" && GRANT_IN_PROGRESS_STATUSES.has(grantStatus)) {
+    return {
+      visible: true,
+      canRetry: false,
+      label: `Your ${amountLabel}initiation gift is in progress.`,
+      tone: "is-initiation",
+    };
+  }
+  return { visible: false };
+}
