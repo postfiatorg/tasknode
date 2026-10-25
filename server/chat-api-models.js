@@ -20,12 +20,13 @@ export const apiChatModels = Object.freeze({
     outputUsdPerMillion: 50,
     longContext: { threshold: 272001, inputUsdPerMillion: 20, inputCacheHitUsdPerMillion: 2, inputCacheWriteUsdPerMillion: 25, outputUsdPerMillion: 75 },
   },
-  "Kimi K3": {
+  "Kimi K3.1 Pro": {
     ...common,
-    defaultModel: "moonshotai/kimi-k3",
-    inputUsdPerMillion: 3,
-    inputCacheHitUsdPerMillion: 0.3,
-    outputUsdPerMillion: 15,
+    defaultModel: "moonshotai/kimi-k3.1-pro",
+    inputUsdPerMillion: 2,
+    inputCacheHitUsdPerMillion: 0.2,
+    inputCacheWriteUsdPerMillion: 2,
+    outputUsdPerMillion: 10,
   },
   // Every Anthropic route Vercel offers for Opus 5.5 supports ZDR; the gateway
   // fails the request rather than use a retaining provider.

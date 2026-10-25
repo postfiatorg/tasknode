@@ -9,7 +9,7 @@ export const INFERENCE_MODELS = Object.freeze({
 
 const models = new Map([
   ["openai/gpt-6-astra", { ambient: "", image: true }],
-  ["moonshotai/kimi-k3", { ambient: "", image: true }],
+  ["moonshotai/kimi-k3.1-pro", { ambient: "", image: true }],
   ["anthropic/claude-opus-5.5", { ambient: "", image: true }],
   [INFERENCE_MODELS.instantText, { ambient: "z-ai/glm-5.2", image: true }],
   [INFERENCE_MODELS.reasoningText, { ambient: "z-ai/glm-5.2", image: false }],
@@ -26,6 +26,8 @@ const aliases = new Map([
   ["glm-5.3-flash", INFERENCE_MODELS.instantText],
   ["deepseek/deepseek-v4-flash", INFERENCE_MODELS.fastText],
   ["deepseek-v4-flash", INFERENCE_MODELS.fastText],
+  ["moonshotai/kimi-k3", "moonshotai/kimi-k3.1-pro"],
+  ["kimi-k3", "moonshotai/kimi-k3.1-pro"],
   ["chat-latest", INFERENCE_MODELS.structured],
 ]);
 const capabilities = Object.freeze({
@@ -52,7 +54,7 @@ export function cleanConfig(value = "") {
 
 const modelCredentialNames = new Map([
   ["openai/gpt-6-astra", "VERCEL_ASTRA_API_KEY"],
-  ["moonshotai/kimi-k3", "VERCEL_KIMI_API_KEY"],
+  ["moonshotai/kimi-k3.1-pro", "VERCEL_KIMI_API_KEY"],
 ]);
 
 export function providerApiKey(provider, env = process.env, model = "") {
