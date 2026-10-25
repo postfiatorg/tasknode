@@ -611,10 +611,12 @@ export async function taskSubmissionAction(payload = {}, method = "POST", sessio
   }
 
   const phase = safeText(payload?.phase || "", 40).toLowerCase();
+  let submissionAttempted = false;
   try {
     if (phase === "process_evidence") return await processTaskSubmissionEvidence({ payload, session });
     if (phase === "prepare") return await prepareTaskSubmission({ payload, session });
     if (phase === "submit" || payload?.signedTxBlob || payload?.signed_tx_blob) {
+      submissionAttempted = true;
       return await submitTaskSubmission({ payload, session });
     }
     return await taskSubmissionConfig({ payload, session });
@@ -638,7 +640,9 @@ export async function taskSubmissionAction(payload = {}, method = "POST", sessio
           : evidenceMessage || error?.message || "Task evidence could not be published to PFT.",
       actionRequired: evidenceError
         ? "Choose a supported readable file or provide the evidence as text, a screenshot, or a public URL."
-        : "Check wallet unlock state, PFT balance, PFTL connectivity, and IPFS configuration, then retry.",
+        : submissionAttempted
+          ? "The submission outcome may be uncertain. Preserve the submission and response details, then refresh the task and evidence history. Do not resubmit until the outcome is reconciled; if it remains unclear, request service-side reconciliation."
+          : "Check wallet unlock state, PFT balance, PFTL connectivity, and IPFS configuration, then retry.",
       extra: {
         attempts: Array.isArray(error?.attempts) ? error.attempts : undefined,
       },

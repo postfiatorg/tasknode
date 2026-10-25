@@ -143,6 +143,7 @@
     "scripts/task-evidence-drafts-smoke.mjs",
     "scripts/task-evidence-file-processing-smoke.mjs",
     "scripts/task-evidence-report-smoke.mjs",
+    "scripts/task-submission-error-guidance.test.mjs",
     "scripts/task-evidence-tar-size-smoke.mjs",
     "scripts/task-forensics-state-smoke.mjs",
     "scripts/task-generation-reliability-smoke.mjs",
