@@ -1,5 +1,5 @@
 import React from "react";
-import { BookOpen, Brain, CandlestickChart, CreditCard, Database, Drama, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Shield, Sparkles, Trophy } from "lucide-react";
+import { BookOpen, Brain, CandlestickChart, Coins, Compass, CreditCard, Database, Drama, FileText, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Shield, Sparkles, Trophy } from "lucide-react";
 import { fetchAppState, requestJson } from "../api";
 import { appExtensionRegistry } from "../extensions/index.js";
 import { plainTextFromBlocks } from "../features/chat/chat-markdown";
@@ -33,14 +33,15 @@ export const CHAT_PERSONA_ICONS = Object.freeze({
 });
 export const TASK_REQUEST_CANONICAL_TEXT =
   "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.";
+export const AGENT_CONNECT_GUIDE_URL = "https://postfiat.org/agents/";
 export const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request";
 export const HIVE_CHAT_PLACEHOLDER = "Talk to Hive Chat";
 export const HIVE_CHAT_TITLE = "Hive Chat";
 export const CHAT_STARTER_PROMPTS = [
-  "Help me build my context document",
-  "Give me my first task",
-  "How do I earn PFT?",
-  "What should I do first?",
+  { icon: FileText, text: "Help me build my context document" },
+  { icon: ListTodo, text: "Give me my first task" },
+  { icon: Coins, text: "How do I earn PFT?" },
+  { icon: Compass, text: "What should I do first?" },
 ];
 export const SIGNED_OUT_HELP_HISTORY_LIMIT = 10;
 export const SIGNED_OUT_HELP_HISTORY_CHARS = 4000;

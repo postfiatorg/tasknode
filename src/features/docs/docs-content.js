@@ -29,6 +29,7 @@ const HELP_MARKDOWN_LOADERS = {
   defectRepairRule: () => import("../../../docs/wiki/architecture/defect-repair-rule.md?raw").then((module) => module.default),
   encryption: () => import("../../../docs/wiki/architecture/encryption.md?raw").then((module) => module.default),
   styleGuide: () => import("../../../docs/wiki/architecture/style-guide.md?raw").then((module) => module.default),
+  privacy: () => import("../../../docs/wiki/legal/privacy.md?raw").then((module) => module.default),
 };
 
 function docBody(markdown = "") {
@@ -197,6 +198,17 @@ export const DOC_GROUPS = [
         title: "Style Guide",
         summary: "Visual system and interaction rules.",
         loadMarkdown: HELP_MARKDOWN_LOADERS.styleGuide,
+      },
+    ],
+  },
+  {
+    title: "Legal",
+    pages: [
+      {
+        slug: "privacy",
+        title: "Privacy Policy",
+        summary: "Operated by Chatterwise Limited (BVI). What Task Node processes, who receives it, retention and deletion.",
+        loadMarkdown: HELP_MARKDOWN_LOADERS.privacy,
       },
     ],
   },

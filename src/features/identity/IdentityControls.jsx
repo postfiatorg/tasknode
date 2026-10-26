@@ -1,14 +1,9 @@
 import { useEffect, useState } from "react";
-import { Github, X } from "lucide-react";
+import { X } from "lucide-react";
 import { requestJson } from "../../api";
+import { ProviderIcon } from "./ProviderIcon.jsx";
 import "./identity.css";
 
-function ProviderIcon({ id }) {
-  if (id === "github") return <Github size={20} strokeWidth={1.9} />;
-  if (id === "telegram") return <span className="provider-icon telegram">T</span>;
-  if (id === "discord") return <span className="provider-icon discord">D</span>;
-  return <span className="provider-icon x-provider">X</span>;
-}
 
 function ToggleSwitch({ checked, disabled = false, initial, onChange }) {
   const controlled = checked !== undefined;
