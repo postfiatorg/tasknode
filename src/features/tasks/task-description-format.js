@@ -32,7 +32,7 @@ export function splitSentences(text = "") {
     const boundaryIndex = closingQuote ? index + 2 : index + 1;
     if (boundaryIndex < source.length && source[boundaryIndex] !== " ") continue;
     const lookahead = closingQuote ? source[index + 3] : after;
-    if (boundaryIndex < source.length && lookahead && !/[A-Z0-9"'(\[`]/.test(lookahead)) continue;
+    if (boundaryIndex < source.length && lookahead && !/[A-Z0-9"'([`]/.test(lookahead)) continue;
     const candidate = source.slice(start, boundaryIndex).trim();
     if (char === "." && ABBREVIATIONS.test(candidate)) continue;
     if (candidate) sentences.push(candidate);

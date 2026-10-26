@@ -18,7 +18,7 @@ import { TasksView } from "../features/tasks/TasksView.jsx";
 import { appendTaskActionReceipt, loadTaskActionReceipts, saveTaskActionReceipts } from "../features/tasks/task-action-receipts.js";
 import { findTaskById, mergeTaskStateWithActionReceipts, reconcileTaskVisibleState } from "../features/tasks/task-visible-state.js";
 import { mergeAppStateWithMonotonicTasks } from "../features/tasks/task-app-state-refresh.js";
-import { LoginDialog, SettingsModal, TelegramProfileMenuRow, accountLinkProvider, linkedProviderById } from "../features/settings/AppDialogs.jsx";
+import { TelegramProfileMenuRow, accountLinkProvider, linkedProviderById } from "../features/settings/account-link-rows.jsx";
 import { useAppearance } from "../theme/use-appearance.js";
 import { ProfileAccountSwitcher } from "../features/settings/ProfileAccountSwitcher.jsx";
 import { createAccountSwitcherActions } from "../features/settings/account-switch-client.js";
@@ -31,6 +31,8 @@ import { isSignedInSession } from "../session";
 import { appExtensionRegistry, ExtensionSurface } from "../extensions/index.js";
 import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, settingsPageFromLocation, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
 
+const LoginDialog = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.LoginDialog })));
+const SettingsModal = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.SettingsModal })));
 const ContextView = lazy(() => import("../features/context/ContextView.jsx").then((module) => ({ default: module.ContextView })));
 const WalletView = lazy(() => import("../features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
 const HelpView = lazy(() => import("../features/docs/DocsView").then((module) => ({ default: module.DocsView })));
@@ -983,6 +985,7 @@ export function App() {
                 {collaborationExtensions.length > 0 && <div className="menu-divider" />}
                 <ToolMenuRow icon={Wand2} label="Context Refine" onClick={openContextRefine} />
                 <ToolMenuRow icon={FileText} label="Context Rewrite" onClick={openContextRewrite} />
+                <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => { navigateToView("help"); setMoreMenuOpen(false); }} />
                 <div className="menu-divider" />
                 {insightExtensions.map((extension) => (
                   <ToolMenuRow
@@ -1093,10 +1096,7 @@ export function App() {
                 disabled={appStateLoading}
                 onClick={() => {
                   if (appStateLoading) return;
-                  if (!signedIn) {
-                    setLoginOpen(true);
-                    return;
-                  }
+                  if (!signedIn) return setLoginOpen(true);
                   setProfileMenuOpen((open) => !open);
                   if (!profileMenuOpen && signedIn) loadRetainedAccounts().catch(() => setProfileAuthMessage("Profiles could not be loaded. Check your connection and reopen this menu."));
                 }}
@@ -1192,22 +1192,9 @@ export function App() {
                           setProfileMenuOpen(false);
                         }}
                       />
-                      <ToolMenuRow
-                        icon={UserIcon}
-                        label="Profile"
-                        onClick={() => {
-                          navigateToView("profile");
-                        }}
-                      />
-                      <ToolMenuRow
-                        icon={Bot}
-                        label="Connect an agent"
-                        onClick={() => {
-                          window.open(AGENT_CONNECT_GUIDE_URL, "_blank", "noopener,noreferrer");
-                          setProfileMenuOpen(false);
-                        }}
-                        trailing={<ExternalLink size={13} strokeWidth={1.75} />}
-                      />
+                      <ToolMenuRow icon={UserIcon} label="Profile" onClick={() => navigateToView("profile")} />
+                      <ToolMenuRow icon={Bot} label="Connect an agent" trailing={<ExternalLink size={13} strokeWidth={1.75} />}
+                        onClick={() => { window.open(AGENT_CONNECT_GUIDE_URL, "_blank", "noopener,noreferrer"); setProfileMenuOpen(false); }} />
                       <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("help")} trailing={<ChevronRight size={14} />} />
                       <div className="menu-divider" />
                       {logoutConfirming ? (
@@ -1227,20 +1214,7 @@ export function App() {
                       )}
                       <ToolMenuRow icon={LogOut} label="Log out all accounts" onClick={logOutAllAccounts} />
                     </>
-                  ) : (
-                    <>
-                      <ToolMenuRow
-                        icon={Store}
-                        label="Log in or sign up"
-                        onClick={() => {
-                          setLoginOpen(true);
-                          setProfileMenuOpen(false);
-                        }}
-                        trailing={<ChevronRight size={14} />}
-                      />
-                      <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("help")} trailing={<ChevronRight size={14} />} />
-                    </>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1416,25 +1390,21 @@ export function App() {
         )}
       </section>
       {accountTransitioning && <div className="account-transition-overlay" role="status">Switching accounts securely…</div>}
-      {loginOpen && (
-        <LoginDialog
-          authLoading={appStateLoading}
-          onSessionChange={refreshAppState}
-          session={session}
-          reloadOnSuccess
-          onClose={closeAccountLogin}
-        />
-      )}
-      {settingsOpen && (
-        <SettingsModal
-          chat={appState?.chat} initialPage={initialSettingsPage || "general"} linkedWallet={linkedWallet}
-          onAppStateChange={refreshAppState}
-          onClose={() => setSettingsOpen(false)} onWalletUnlock={openWalletVaultControl}
-          session={session}
-          setTheme={setTheme}
-          theme={theme} themeSessionOnly={themeSessionOnly} walletSecret={walletSecretRef.current} walletVault={walletVaultStatus}
-        />
-      )}
+      <Suspense fallback={null}>
+        {loginOpen && (
+          <LoginDialog authLoading={appStateLoading} onClose={closeAccountLogin} onSessionChange={refreshAppState} reloadOnSuccess session={session} />
+        )}
+        {settingsOpen && (
+          <SettingsModal
+            chat={appState?.chat} initialPage={initialSettingsPage || "general"} linkedWallet={linkedWallet}
+            onAppStateChange={refreshAppState}
+            onClose={() => setSettingsOpen(false)} onWalletUnlock={openWalletVaultControl}
+            session={session}
+            setTheme={setTheme}
+            theme={theme} themeSessionOnly={themeSessionOnly} walletSecret={walletSecretRef.current} walletVault={walletVaultStatus}
+          />
+        )}
+      </Suspense>
       {identityHandleRequired && !identityPromptDismissed && !loginOpen && (
         <IdentityHandleDialog
           onClose={() => setIdentityPromptDismissed(true)}
