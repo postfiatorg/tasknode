@@ -13,7 +13,7 @@ process.env.INFERENCE_MODEL_VISION = "moonshotai/kimi-k2.7-code";
 const { apiChatModels } = await import("../server/chat-api-models.js");
 const { modelForMode, chatExecutionStatus, actualChatCost, chatProviderTimeoutMs } = await import("../server/chat-mode-runtime.js");
 const { chatModes } = await import("../server/product-chat-contracts.js");
-const { normalizeInferenceRequest, inferenceChatCompletion, inferenceChatCompletionStream } = await import("../server/inference.js");
+const { normalizeInferenceRequest, inferenceChatCompletion, inferenceChatCompletionStream, inferenceProviderConfigured } = await import("../server/inference.js");
 const { openRouterUsage } = await import("../server/chat-provider-usage.js");
 const { appendChatTurn, usageLedger } = await import("../server/repositories/chat-billing.js");
 const { chatEstimate } = await import("../server/chat-estimate.js");
@@ -79,6 +79,17 @@ try {
       return Response.json({ model: config.defaultModel, choices: [{ message: { content: "ready" }, finish_reason: "stop" }] });
     } });
   }
+  // A retired model id must still find the dedicated key: route selection runs
+  // before normalization, so an environment holding only VERCEL_KIMI_API_KEY
+  // would otherwise lose the Vercel route entirely for the legacy id.
+  for (const legacy of ["moonshotai/kimi-k3", "kimi-k3"]) {
+    assert.equal(inferenceProviderConfigured("vercel", dedicated, legacy), true, legacy);
+    await inferenceChatCompletion({ body: { model: legacy, messages: [{ role: "user", content: "ready" }] }, capability: "selected_model", env: dedicated, fetchImpl: async (_url, init) => {
+      assert.equal(init.headers.authorization, "Bearer kimi-only", legacy);
+      return Response.json({ model: "moonshotai/kimi-k3.1-pro", choices: [{ message: { content: "ready" }, finish_reason: "stop" }] });
+    } });
+  }
+
   const generic = process.env.VERCEL_AI_GATEWAY_API_KEY;
   delete process.env.VERCEL_AI_GATEWAY_API_KEY;
   Object.assign(process.env, dedicated);
