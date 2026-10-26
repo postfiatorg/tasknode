@@ -16,7 +16,7 @@ const fetchImpl = async (url, init) => {
   calls++;
   assert.ok(url.startsWith("https://ai-gateway.vercel.sh/"));
   const request = JSON.parse(init.body);
-  assert.equal(request.model, "moonshotai/kimi-k3");
+  assert.equal(request.model, "moonshotai/kimi-k3.1-pro");
   assert.equal(request.max_tokens, 32768);
   assert.equal(request.providerOptions.gateway.zeroDataRetention, true);
   assert.ok(JSON.stringify(request.messages).includes(sourcePacket.tasks[0].title));
@@ -61,7 +61,7 @@ let namedReviewCalls = 0;
 const reviewedImage = await reviewRenderedProfileNftImage({ imageBase64: "fixture", env, fetchImpl: async (_url, init) => {
   namedReviewCalls++;
   const body = JSON.parse(init.body);
-  assert.equal(body.model, "moonshotai/kimi-k3");
+  assert.equal(body.model, "moonshotai/kimi-k3.1-pro");
   assert.equal(body.providerOptions.gateway.zeroDataRetention, true);
   assert.ok(body.response_format.json_schema.schema.required.includes("title"));
   return respond({ approved: true, privacy_violations: [], art_direction_violations: [], title: "The Folded Circuit" });
@@ -76,7 +76,7 @@ for (const title of [undefined, "", "ab", "x".repeat(81), "Profile Pic NFT", "Ta
 }
 const legacyTitle = await generateProfileNftTitle({ artSpec: { ...prepared.artSpec, accountId: "private_account", evidence_refs: ["work_private"], private_source: "private source" }, env, fetchImpl: async (_url, init) => {
   const body = JSON.parse(init.body);
-  assert.equal(body.model, "moonshotai/kimi-k3");
+  assert.equal(body.model, "moonshotai/kimi-k3.1-pro");
   assert.equal(body.providerOptions.gateway.zeroDataRetention, true);
   for (const privateValue of ["private_account", "work_private", "private source"]) assert.equal(init.body.includes(privateValue), false);
   return respond({ title: "Keeper of the Bent Wing" });

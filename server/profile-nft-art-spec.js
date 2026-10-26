@@ -4,7 +4,7 @@ import { parseInferenceJson, hasPrivateLiterals, sensitiveSourceTokens } from ".
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { PROFILE_NFT_ART_VERSION, PROFILE_NFT_CREATURES, PROFILE_NFT_COLORS, PROFILE_NFT_MOMENTUM } from "../shared/profile-nft-art.js";
 
-export const PROFILE_NFT_SPEC_MODEL = "moonshotai/kimi-k3";
+export const PROFILE_NFT_SPEC_MODEL = "moonshotai/kimi-k3.1-pro";
 const references = JSON.parse(loadPrompt("profile/techno_mordor_reference_prompts.json"));
 const specPrompt = loadPrompt("profile/techno_mordor_spec_v2.md");
 const reviewPrompt = loadPrompt("profile/techno_mordor_review_v2.md");

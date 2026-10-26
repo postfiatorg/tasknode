@@ -52,6 +52,7 @@ const deprecatedChatModeAliases = Object.freeze({
   "Private Thinking": "Thinking",
   "Discount Thinking": "Thinking",
   "Frontier Thinking": "Thinking",
+  "Kimi K3": "Kimi K3.1 Pro",
 });
 export { effectiveDefaultChatMode, fallbackChatModeLabel };
 export const defaultChatMode = fallbackChatModeLabel;

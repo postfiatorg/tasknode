@@ -212,6 +212,7 @@
     "brace-expansion": "1.1.21",
     "esbuild": "0.28.2",
     "flatted": "3.4.4",
-    "js-yaml": "4.3.2"
+    "js-yaml": "4.3.2",
+    "zod": "4.6.7"
   }
 }

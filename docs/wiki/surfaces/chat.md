@@ -104,7 +104,7 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 | Instant | Vercel with Ambient backup | `zai/glm-5.3-flash` | `instant_text` capability | Local extraction and Flash image input; reasoning and search disabled. | Fast everyday chat. |
 | Thinking | Vercel with Ambient backup | `zai/glm-5.3` | `reasoning_text` capability | Local extraction; Kimi for image input; `xhigh` reasoning; search disabled. | Deeper analysis and Context Refine. |
 | GPT-6 Astra | Vercel | `openai/gpt-6-astra` | Exact selection; no model override or Ambient substitution | Native image input, high reasoning; search disabled. | API-priced chat. |
-| Kimi K3 | Vercel | `moonshotai/kimi-k3` | Exact selection; no model override or Ambient substitution | Native image input, high reasoning; search disabled. | API-priced chat. |
+| Kimi K3.1 Pro | Vercel | `moonshotai/kimi-k3.1-pro` | Exact selection; no model override or Ambient substitution | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Claude Opus 5.5 | Vercel | `anthropic/claude-opus-5.5` | Exact selection; zero data retention (the gateway fails rather than use a retaining provider) | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Help | Vercel with Ambient backup | `deepseek/deepseek-v4-flash-0731` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
 

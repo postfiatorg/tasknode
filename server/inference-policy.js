@@ -9,7 +9,7 @@ export const INFERENCE_MODELS = Object.freeze({
 
 const models = new Map([
   ["openai/gpt-6-astra", { ambient: "", image: true }],
-  ["moonshotai/kimi-k3", { ambient: "", image: true }],
+  ["moonshotai/kimi-k3.1-pro", { ambient: "", image: true }],
   ["anthropic/claude-opus-5.5", { ambient: "", image: true }],
   [INFERENCE_MODELS.instantText, { ambient: "z-ai/glm-5.2", image: true }],
   [INFERENCE_MODELS.reasoningText, { ambient: "z-ai/glm-5.2", image: false }],
@@ -26,6 +26,8 @@ const aliases = new Map([
   ["glm-5.3-flash", INFERENCE_MODELS.instantText],
   ["deepseek/deepseek-v4-flash", INFERENCE_MODELS.fastText],
   ["deepseek-v4-flash", INFERENCE_MODELS.fastText],
+  ["moonshotai/kimi-k3", "moonshotai/kimi-k3.1-pro"],
+  ["kimi-k3", "moonshotai/kimi-k3.1-pro"],
   ["chat-latest", INFERENCE_MODELS.structured],
 ]);
 const capabilities = Object.freeze({
@@ -52,12 +54,22 @@ export function cleanConfig(value = "") {
 
 const modelCredentialNames = new Map([
   ["openai/gpt-6-astra", "VERCEL_ASTRA_API_KEY"],
-  ["moonshotai/kimi-k3", "VERCEL_KIMI_API_KEY"],
+  ["moonshotai/kimi-k3.1-pro", "VERCEL_KIMI_API_KEY"],
 ]);
+
+// Route selection runs before model normalization, so a retired id must find
+// its dedicated credential here too. Otherwise an environment holding only the
+// dedicated key loses the Vercel route entirely for the legacy id.
+function credentialNameForModel(model = "") {
+  const direct = modelCredentialNames.get(model);
+  if (direct) return direct;
+  const resolved = aliases.get(cleanConfig(model));
+  return resolved ? modelCredentialNames.get(resolved) || "" : "";
+}
 
 export function providerApiKey(provider, env = process.env, model = "") {
   if (provider === "vercel") {
-    const name = modelCredentialNames.get(model);
+    const name = credentialNameForModel(model);
     return (name ? cleanConfig(env[name]) : "") || cleanConfig(env.VERCEL_AI_GATEWAY_API_KEY) || cleanConfig(env.AI_GATEWAY_API_KEY);
   }
   if (provider === "ambient") return cleanConfig(env.AMBIENT_API_KEY);
