@@ -4,7 +4,6 @@ import { ProfilePortrait } from "./ProfilePortrait.jsx";
 import { connectionLabel } from "./ProfileStudioPanels.jsx";
 import {
   C,
-  SectionHead,
   fmtDateTime,
   fmtPft,
   shortHash,
@@ -19,7 +18,8 @@ export function walletExplorerHref(walletAddress = "", explorerBase = "") {
   const base = String(explorerBase || "").trim();
   if (!address || !base) return "";
   if (base.includes("{address}")) return base.replace("{address}", encodeURIComponent(address));
-  return `${base.replace(/\/+$/, "")}/${encodeURIComponent(address)}`;
+  // The PFTL explorer routes accounts at /accounts/<address>; a bare address 404s.
+  return `${base.replace(/\/+$/, "")}/accounts/${encodeURIComponent(address)}`;
 }
 
 export function ProfilePreviewPanel({ connection = null, error = "", loading = false, onClose, onCopyWallet, pftlExplorerUrl = "", profile = null } = {}) {
@@ -354,24 +354,20 @@ export function ConnectionsCard({ accountId = "", pftlExplorerUrl = "", profileP
   const canRefresh = !isPrivate && data.available !== false && data.refresh?.allowed !== false;
   const showEmpty = !state.loading && visibleRecommendations.length === 0;
   const action = (
-    <button
-      className="tn-btn"
-      disabled={!canRefresh || state.refreshing}
-      onClick={refresh}
-      style={{ fontSize: 13, opacity: !canRefresh ? 0.45 : 1 }}
-      type="button"
-    >
-      {state.refreshing ? "Refreshing..." : "Refresh"}
+    <button className="pf-text-button" disabled={!canRefresh || state.refreshing} onClick={refresh} type="button">
+      {state.refreshing ? "Refreshing…" : "Refresh"}
     </button>
   );
 
   return (
-    <section style={{ paddingTop: 64 }}>
-      <SectionHead
-        action={action}
-        eyebrow="Recommended connections"
-        sub="People worth knowing, with the signals behind the recommendation"
-      />
+    <section className="pf-section">
+      <div className="pf-section-head" style={{ marginBottom: 8 }}>
+        <div>
+          <h2>Recommended connections</h2>
+          <p>People worth knowing, with the signals behind each recommendation.</p>
+        </div>
+        <div className="pf-section-actions">{action}</div>
+      </div>
 
       {state.loading && (
         <div className="tn-fadeIn" style={{ color: C.ink3, fontSize: 13.5, padding: "8px 0 24px" }}>

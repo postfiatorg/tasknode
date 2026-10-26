@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, CircleDashed } from "lucide-react";
 import { requestJson } from "../../api";
 import { ProfileIdentityCard } from "./ProfileIdentityCard.jsx";
 import { TodaysBriefing, latestAvatarNft } from "./ProfileBriefing.jsx";
 import { ConnectionsCard } from "./ProfileConnections.jsx";
+import { ProfileHero } from "./ProfileHero.jsx";
 import { NFTGallery, PFTTimeseries, ProfileStudio } from "./ProfileStudioPanels.jsx";
-import { mergedProviderConnections, providerConnectionState } from "./provider-connection-state.js";
+import { providerConnectionState } from "./provider-connection-state.js";
 import {
   C,
-  SectionHead,
   fmtN,
   identityApprovalBadges,
 } from "./profile-view-shared.jsx";
@@ -33,7 +32,6 @@ export function NetworkBadgesPanel({ session = null } = {}) {
   const currentIdentity = currentBadgeState?.identityProfile || session?.identityProfile;
   const aliases = Array.isArray(currentIdentity?.aliases) ? currentIdentity.aliases : [];
   const linkedProviders = currentBadgeState?.identityProfile ? [] : Array.isArray(session?.linkedProviders) ? session.linkedProviders : [];
-  const providerConnections = mergedProviderConnections({ aliases, linkedProviders });
   const durableBadges = Array.isArray(currentBadgeState?.badges) ? currentBadgeState.badges : [];
   const durableBadgeFor = (badgeId = "") => durableBadges.find((badge) => badge.badgeId === badgeId && badge.status === "verified" && !badge.revokedAt && (!badge.expiresAt || Date.parse(badge.expiresAt) > Date.now()));
   const providerAliases = {
@@ -151,9 +149,9 @@ export function NetworkBadgesPanel({ session = null } = {}) {
     }
     if (requirement.expertScore) {
       if (expertAccess.reviewedAt) {
-        return `${fmtN(expertAccess.score || 0)} / 100 GLM 5.3 expertise score (${fmtN(requirement.expertScore)}+ required)`;
+        return `${fmtN(expertAccess.score || 0)} / 100 expertise score (${fmtN(requirement.expertScore)}+ required)`;
       }
-      return "Run GLM 5.3 review over last 20 Personal tasks";
+      return "Expertise review of your last 20 Personal tasks";
     }
     if (requirement.projectLeader) {
       if (projectLeaderAccess.eligible) {
@@ -244,15 +242,8 @@ export function NetworkBadgesPanel({ session = null } = {}) {
     }
     return { label: "Needs proof", color: C.ink3, tone: "proof" };
   };
-  const topAliases = providerConnections.filter((alias) => (
-    ["x", "twitter", "github", "discord", "telegram"].includes(String(alias.provider || "").toLowerCase())
-  ));
   const xAlias = aliasForProvider("x");
-  const xFollowerCount = Number(xAlias?.metrics?.followersCount);
-  const xFollowerMetricsPresent = Number.isFinite(xFollowerCount);
   const githubAlias = aliasForProvider("github");
-  const githubAccess = coreContributorAccessFor("github");
-  const githubAccessPresent = Boolean(githubAccess.checkedAt) || Number(githubAccess.accessCount || 0) > 0;
   const telegramConnection = connectionForProvider("telegram").connection;
   const discordConnection = connectionForProvider("discord").connection;
   const expertCanEvaluate = Number(expertAccess.personalTaskCount || 0) >= Number(expertAccess.requiredPersonalTaskCount || 20) &&
@@ -388,370 +379,143 @@ export function NetworkBadgesPanel({ session = null } = {}) {
     }
   }
 
+  const verifiedCount = durableBadges.filter((badge) => badge.status === "verified").length;
+  const badgeActions = (badge, active) => {
+    if (badge.id === "kol" && !active) {
+      return (
+        <button className="pf-button" disabled={xRefreshState.pending} onClick={refreshXProof} type="button">
+          {xRefreshState.pending ? "Opening X…" : xAlias ? "Refresh X" : "Connect X"}
+        </button>
+      );
+    }
+    if (badge.id === "core_contributor" && !active) {
+      return (
+        <button className="pf-button" disabled={githubRefreshState.pending} onClick={refreshGithubProof} type="button">
+          {githubRefreshState.pending ? "Opening GitHub…" : githubAlias ? "Refresh GitHub" : "Connect GitHub"}
+        </button>
+      );
+    }
+    if (badge.id === "qa_worker" && !active) {
+      return [
+        { provider: "telegram", connection: telegramConnection },
+        { provider: "discord", connection: discordConnection },
+      ].filter(({ connection }) => !connection).map(({ provider }) => {
+        const refreshState = qaProviderRefreshState[provider] || {};
+        return (
+          <button className="pf-button" disabled={refreshState.pending} key={provider} onClick={() => refreshQaProviderProof(provider)} type="button">
+            {refreshState.pending ? `Opening ${providerLabel(provider)}…` : `Connect ${providerLabel(provider)}`}
+          </button>
+        );
+      });
+    }
+    return null;
+  };
+  const badgeMessages = (badge) => [
+    badge.id === "kol" ? xRefreshState.message : "",
+    badge.id === "core_contributor" ? githubRefreshState.message : "",
+    badge.id === "qa_worker" ? qaProviderRefreshState.telegram?.message : "",
+    badge.id === "qa_worker" ? qaProviderRefreshState.discord?.message : "",
+    badgeActionState[badge.id]?.message || "",
+  ].filter(Boolean);
+
   return (
-    <section style={{ paddingTop: 44 }}>
-      <SectionHead
-        eyebrow="Network badges"
-        sub="Pilot badges for Network Task routing: KOL amplification, Core Contributor repo work, Expert bundles, Project Leader project authority, and QA Worker product reports."
-      />
-
-      <div style={{ display: "grid", gap: 18 }}>
-        <div style={{
-          background: C.paper2,
-          border: `1px solid ${C.ruleSoft}`,
-          borderRadius: 8,
-          display: "grid",
-          gap: 16,
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          padding: 18,
-        }}>
-          <div>
-            <div style={{ color: C.ink, fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
-              Badge state
-            </div>
-            <div style={{ color: C.ink3, fontSize: 13.5, maxWidth: 540 }}>
-              Link the matching account and sync. KOL uses X follower metrics; Core Contributor uses sanctioned GitHub handles; Project Leader is set manually by the core team; QA Worker requires Telegram, Discord, and one USDC chat wallet top-up.
-            </div>
-            <div style={{ color: C.ink4, fontSize: 12.5, lineHeight: 1.5, marginTop: 8 }}>
-              {networkBadgeState.pending
-                ? "Loading durable routing state."
-                : networkBadgeState.state?.database?.enabled === false
-                  ? "Durable badge database is not enabled in this environment."
-                  : `${fmtN(durableBadges.filter((badge) => badge.status === "verified").length)} verified routing badge${durableBadges.filter((badge) => badge.status === "verified").length === 1 ? "" : "s"} recorded.`}
-            </div>
-            {networkBadgeState.message && (
-              <div style={{ color: C.rust, fontSize: 12, lineHeight: 1.45, marginTop: 6 }}>
-                {networkBadgeState.message}
-              </div>
-            )}
-            <div style={{ display: "grid", gap: 7, marginTop: 12, maxWidth: 280 }}>
-              <button
-                className="tn-btn"
-                disabled={badgeRefreshState.pending}
-                onClick={refreshNetworkBadgeState}
-                style={{ justifyContent: "center", minHeight: 34 }}
-                type="button"
-              >
-                {badgeRefreshState.pending ? "Syncing..." : "Sync routing badges"}
-              </button>
-              {badgeRefreshState.message && (
-                <div style={{
-                  color: badgeRefreshState.message.startsWith("Synced") ? C.success : C.rust,
-                  fontSize: 12,
-                  lineHeight: 1.45,
-                }}>
-                  {badgeRefreshState.message}
-                </div>
-              )}
-            </div>
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {topAliases.length ? topAliases.map((alias) => (
-              <IdentityProviderRow alias={alias} key={alias.provider} />
-            )) : (
-              <div style={{ color: C.ink4, fontSize: 13 }}>
-                No X, GitHub, Telegram, or Discord identity is linked yet.
-              </div>
-            )}
-          </div>
+    <section className="pf-section">
+      <div className="pf-section-head">
+        <div>
+          <h2>Badges</h2>
+          <p>
+            {networkBadgeState.pending && !currentBadgeState
+              ? "Loading badges."
+              : verifiedCount
+                ? `${fmtN(verifiedCount)} active. Badges route higher-value network tasks to you.`
+                : "Badges route higher-value network tasks to you."}
+          </p>
         </div>
-
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))" }}>
-          {identityApprovalBadges.map((badge) => {
-            const Icon = badge.icon;
-            const status = statusFor(badge);
-            const done = completedCount(badge.requirements);
-            const total = badge.requirements.length || 1;
-            const durableBadge = durableBadgeFor(badge.id);
-            const actionState = badgeActionState[badge.id] || {};
-            return (
-              <div
-                key={badge.id}
-                style={{
-                  background: C.paper3,
-                  border: `1px solid ${status.tone === "ready" ? "rgba(92,140,79,.45)" : C.ruleSoft}`,
-                  borderRadius: 8,
-                  display: "grid",
-                  gap: 14,
-                  padding: 16,
-                }}
-              >
-                <div style={{ alignItems: "start", display: "flex", gap: 12, justifyContent: "space-between" }}>
-                  <div style={{ alignItems: "center", display: "flex", gap: 10, minWidth: 0 }}>
-                    <span style={{
-                      alignItems: "center",
-                      background: C.paper2,
-                      border: `1px solid ${C.ruleSoft}`,
-                      borderRadius: 8,
-                      color: C.ink2,
-                      display: "inline-flex",
-                      flex: "0 0 auto",
-                      height: 34,
-                      justifyContent: "center",
-                      width: 34,
-                    }}>
-                      <Icon size={17} strokeWidth={1.9} />
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: C.ink, fontSize: 14.5, fontWeight: 700 }}>{badge.label}</div>
-                      <div style={{ color: C.ink4, fontSize: 12 }}>{badge.lane}</div>
-                    </div>
-                  </div>
-                  <span style={{
-                    border: `1px solid ${C.ruleSoft}`,
-                    borderRadius: 999,
-                    color: status.color,
-                    flex: "0 0 auto",
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    padding: "3px 7px",
-                  }}>
+        <div className="pf-section-actions">
+          <button className="pf-text-button" disabled={badgeRefreshState.pending} onClick={refreshNetworkBadgeState} type="button">
+            {badgeRefreshState.pending ? "Syncing…" : "Sync badges"}
+          </button>
+        </div>
+      </div>
+      {(networkBadgeState.message || badgeRefreshState.message) && (
+        <p className={`pf-note${badgeRefreshState.message.startsWith("Synced") ? " is-success" : " is-error"}`}>
+          {badgeRefreshState.message || networkBadgeState.message}
+        </p>
+      )}
+      <div className="pf-badges">
+        {identityApprovalBadges.map((badge) => {
+          const Icon = badge.icon;
+          const durableBadge = durableBadgeFor(badge.id);
+          const active = Boolean(durableBadge);
+          const pendingStatus = active ? null : statusFor(badge);
+          const status = active
+            ? { label: durableBadge.selectedDefault ? "Active · default" : "Active", tone: "ready" }
+            : pendingStatus.tone === "ready"
+              ? { ...pendingStatus, label: "Ready · sync to activate", tone: "proof" }
+              : pendingStatus;
+          const done = completedCount(badge.requirements);
+          const actionState = badgeActionState[badge.id] || {};
+          const messages = badgeMessages(badge);
+          const actions = badgeActions(badge, active);
+          return (
+            <div className="pf-badge" key={badge.id}>
+              <span className="pf-badge-icon"><Icon size={16} strokeWidth={1.8} /></span>
+              <div>
+                <div className="pf-badge-title">
+                  <strong>{badge.label}</strong>
+                  <span className={`pf-badge-status${status.tone === "ready" ? " is-active" : status.tone === "missing" ? " is-needs" : ""}`}>
                     {status.label}
                   </span>
                 </div>
-
-                <div>
-                  <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
-                    <span className="tn-eyebrow">Requirements</span>
-                    <span style={{ color: C.ink4, fontSize: 12 }}>{done}/{total}</span>
-                  </div>
-                  <div className="tn-progressLine">
-                    <span style={{ width: `${Math.max(8, Math.round((done / total) * 100))}%` }} />
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gap: 7 }}>
-                  {badge.requirements.map((requirement) => {
-                    const fulfilled = requirementFulfilled(requirement);
-                    const RequirementIcon = fulfilled ? CheckCircle2 : CircleDashed;
-                    return (
-                      <div
-                        key={requirement.id}
-                        style={{ alignItems: "center", color: fulfilled ? C.ink2 : C.ink4, display: "flex", fontSize: 12.5, gap: 8 }}
-                      >
-                        <RequirementIcon color={fulfilled ? C.success : C.ink5} size={14} strokeWidth={2} />
-                        <span>{requirementText(requirement)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={{ borderTop: `1px solid ${C.ruleSoft}`, color: C.ink3, fontSize: 12.5, paddingTop: 10 }}>
-                  Max payout: <span style={{ color: C.ink2, fontWeight: 700 }}>{badge.maxPayout}</span>
-                </div>
-
-                <div style={{ display: "grid", gap: 8 }}>
-                  {durableBadge ? (
-                    <>
-                      <div style={{ color: durableBadge.selectedDefault ? C.success : C.ink4, fontSize: 12, lineHeight: 1.45 }}>
-                        {durableBadge.selectedDefault ? "Default routing badge" : "Verified in durable routing state"}
-                      </div>
-                      {!durableBadge.selectedDefault && (
-                        <button
-                          className="tn-btn"
-                          disabled={actionState.pending}
-                          onClick={() => selectDefaultBadge(badge)}
-                          style={{ justifyContent: "center", minHeight: 34, width: "100%" }}
-                          type="button"
-                        >
-                          {actionState.pending ? "Saving..." : "Use by default"}
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <div style={{ color: C.ink4, fontSize: 12, lineHeight: 1.45 }}>
-                      {badge.id === "project_leader"
-                        ? "Project Leader is granted manually by the core team."
-                        : "Complete the requirements above, then sync the badge state."}
-                    </div>
-                  )}
-                  {actionState.message && (
-                    <div style={{
-                      color: /updated|created|cancelled/i.test(actionState.message) ? C.success : C.rust,
-                      fontSize: 12,
-                      lineHeight: 1.45,
-                    }}>
-                      {actionState.message}
-                    </div>
-                  )}
-                </div>
-
-                {badge.id === "kol" && (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <button
-                      className="tn-btn"
-                      disabled={xRefreshState.pending}
-                      onClick={refreshXProof}
-                      style={{ justifyContent: "center", minHeight: 34, width: "100%" }}
-                      type="button"
-                    >
-                      {xRefreshState.pending ? "Opening X..." : xFollowerMetricsPresent ? "Re-link X" : xAlias ? "Refresh X proof" : "Connect X"}
-                    </button>
-                    {!xFollowerMetricsPresent && xAlias && (
-                      <div style={{ color: C.ink4, fontSize: 12, lineHeight: 1.45 }}>
-                        Reconnect X once to import follower count.
-                      </div>
-                    )}
-                    {xRefreshState.message && (
-                      <div style={{ color: C.rust, fontSize: 12, lineHeight: 1.45 }}>
-                        {xRefreshState.message}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {badge.id === "core_contributor" && (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <button
-                      className="tn-btn"
-                      disabled={githubRefreshState.pending}
-                      onClick={refreshGithubProof}
-                      style={{ justifyContent: "center", minHeight: 34, width: "100%" }}
-                      type="button"
-                    >
-                      {githubRefreshState.pending ? "Opening GitHub..." : githubAccessPresent ? "Re-link GitHub" : githubAlias ? "Refresh GitHub proof" : "Connect GitHub"}
-                    </button>
-                    {!githubAccessPresent && githubAlias && (
-                      <div style={{ color: C.ink4, fontSize: 12, lineHeight: 1.45 }}>
-                        Task Node checks the linked GitHub handle against the current sanctioned list automatically.
-                      </div>
-                    )}
-                    {githubAccess.checkedAt && !githubAccess.sanctioned && (
-                      <div style={{ color: C.warning, fontSize: 12, lineHeight: 1.45 }}>
-                        This GitHub handle is not currently sanctioned for Core Contributor work.
-                      </div>
-                    )}
-                    {githubRefreshState.message && (
-                      <div style={{ color: C.rust, fontSize: 12, lineHeight: 1.45 }}>
-                        {githubRefreshState.message}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {badge.id === "expert" && (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <input
-                      aria-label="Expert topic"
-                      onChange={(event) => setExpertTopicInput(event.target.value)}
-                      placeholder="What are you an expert in?"
-                      style={{
-                        background: C.paper2,
-                        border: `1px solid ${C.ruleSoft}`,
-                        borderRadius: 8,
-                        color: C.ink,
-                        font: "inherit",
-                        minHeight: 36,
-                        outline: "none",
-                        padding: "8px 10px",
-                        width: "100%",
-                      }}
-                      type="text"
-                      value={expertTopicInput}
-                    />
-                    <button
-                      className="tn-btn"
-                      disabled={!expertCanEvaluate}
-                      onClick={evaluateExpertProof}
-                      style={{ justifyContent: "center", minHeight: 34, width: "100%" }}
-                      type="button"
-                    >
-                      {expertEvalState.pending ? "Evaluating..." : expertAccess.reviewedAt ? "Re-run Expert review" : "Evaluate Expert"}
-                    </button>
-                    {Number(expertAccess.personalTaskCount || 0) < Number(expertAccess.requiredPersonalTaskCount || 20) && (
-                      <div style={{ color: C.ink4, fontSize: 12, lineHeight: 1.45 }}>
-                        Complete {fmtN(Number(expertAccess.requiredPersonalTaskCount || 20) - Number(expertAccess.personalTaskCount || 0))} more Personal tasks before evaluation.
-                      </div>
-                    )}
-                    {expertAccess.summary && (
-                      <div style={{ color: C.ink3, fontSize: 12, lineHeight: 1.45 }}>
-                        {expertAccess.summary}
-                      </div>
-                    )}
-                    {Array.isArray(expertAccess.disqualifyingConcerns) && expertAccess.disqualifyingConcerns.length > 0 && (
-                      <div style={{ color: C.warning, fontSize: 12, lineHeight: 1.45 }}>
-                        {expertAccess.disqualifyingConcerns[0]}
-                      </div>
-                    )}
-                    {expertEvalState.message && (
-                      <div style={{ color: expertAccess.eligible ? C.success : C.rust, fontSize: 12, lineHeight: 1.45 }}>
-                        {expertEvalState.message}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {badge.id === "qa_worker" && (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-                      {[
-                        { provider: "telegram", connection: telegramConnection },
-                        { provider: "discord", connection: discordConnection },
-                      ].map(({ provider, connection }) => {
-                        const label = providerLabel(provider);
-                        const refreshState = qaProviderRefreshState[provider] || {};
-                        return (
-                          <button
-                            className="tn-btn"
-                            disabled={refreshState.pending}
-                            key={provider}
-                            onClick={() => refreshQaProviderProof(provider)}
-                            style={{ justifyContent: "center", minHeight: 44, width: "100%" }}
-                            type="button"
-                          >
-                            {refreshState.pending ? `Opening ${label}...` : connection ? `Re-link ${label}` : `Connect ${label}`}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {(!telegramConnection || !discordConnection) && (
-                      <div style={{ color: C.ink4, fontSize: 12, lineHeight: 1.45 }}>
-                        QA proof uses this active Task Node profile
-                        {session?.hiveHandle ? ` (@${session.hiveHandle})` : ""}. A provider linked to another Task Node account does not carry over.
-                      </div>
-                    )}
-                    {["telegram", "discord"].map((provider) => {
-                      const message = qaProviderRefreshState[provider]?.message;
-                      return message ? (
-                        <div key={provider} style={{ color: C.rust, fontSize: 12, lineHeight: 1.45 }}>
-                          {message}
-                        </div>
-                      ) : null;
-                    })}
-                  </div>
-                )}
+                <div className="pf-badge-detail">{badge.lane} · {/^\d/.test(badge.maxPayout) ? `up to ${badge.maxPayout}` : `${badge.maxPayout.toLowerCase()} payout`}</div>
               </div>
-            );
-          })}
-        </div>
+              <div className="pf-badge-actions">
+                {active && !durableBadge.selectedDefault && (
+                  <button className="pf-button" disabled={actionState.pending} onClick={() => selectDefaultBadge(badge)} type="button">
+                    {actionState.pending ? "Saving…" : "Make default"}
+                  </button>
+                )}
+                {actions}
+              </div>
+              {(!active || messages.length > 0) && (
+                <div className="pf-badge-body">
+                  {!active && (
+                    <ul className="pf-requirements" aria-label={`${badge.label} requirements, ${done} of ${badge.requirements.length} met`}>
+                      {badge.requirements.map((requirement) => (
+                        <li className={requirementFulfilled(requirement) ? "is-done" : ""} key={requirement.id}>
+                          {requirementText(requirement)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {badge.id === "expert" && !active && (
+                    <div className="pf-badge-input">
+                      <input
+                        aria-label="Expert topic"
+                        onChange={(event) => setExpertTopicInput(event.target.value)}
+                        placeholder="What are you an expert in?"
+                        type="text"
+                        value={expertTopicInput}
+                      />
+                      <button className="pf-button" disabled={!expertCanEvaluate} onClick={evaluateExpertProof} type="button">
+                        {expertEvalState.pending ? "Evaluating…" : expertAccess.reviewedAt ? "Re-run review" : "Evaluate"}
+                      </button>
+                    </div>
+                  )}
+                  {badge.id === "expert" && !active && expertAccess.summary && <p className="pf-note">{expertAccess.summary}</p>}
+                  {badge.id === "expert" && expertEvalState.message && (
+                    <p className={`pf-note${expertAccess.eligible ? " is-success" : " is-error"}`}>{expertEvalState.message}</p>
+                  )}
+                  {messages.map((message) => (
+                    <p className={`pf-note${/updated|verified/i.test(message) ? " is-success" : " is-error"}`} key={message}>{message}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
-  );
-}
-
-export function IdentityProviderRow({ alias = {} }) {
-  const label = alias.label || alias.provider || "Provider";
-  return (
-    <div style={{
-      alignItems: "center",
-      borderBottom: `1px solid ${C.ruleSoft}`,
-      display: "grid",
-      gap: 10,
-      gridTemplateColumns: "1fr auto",
-      minHeight: 38,
-      paddingBottom: 8,
-    }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ color: C.ink, fontSize: 13.5, fontWeight: 700 }}>{label}</div>
-        <div style={{ color: C.ink4, fontSize: 12 }}>
-          {alias.username ? `@${alias.username}` : alias.displayName || "Linked account"}
-        </div>
-      </div>
-      <span style={{ alignItems: "center", color: alias.verified ? C.success : C.ink4, display: "inline-flex", fontSize: 12, fontWeight: 700, gap: 5 }}>
-        {alias.verified ? <CheckCircle2 size={14} strokeWidth={2} /> : <CircleDashed size={14} strokeWidth={2} />}
-        {alias.verified ? "Verified" : "Linked"}
-      </span>
-    </div>
   );
 }
 
@@ -768,16 +532,13 @@ export function PrivateProfile({
   walletVault = {},
 } = {}) {
   const [profileNfts, setProfileNfts] = useState([]);
-  const [profileNftTotal, setProfileNftTotal] = useState(null);
   const [selectingNftId, setSelectingNftId] = useState("");
   const [nftSelectionError, setNftSelectionError] = useState("");
-  const [airdropState, setAirdropState] = useState({ loading: Boolean(accountId), error: "", latest: null });
+  const [airdropState, setAirdropState] = useState({ loading: Boolean(accountId), error: "", latest: null, alignment: null });
   const [rewardRange, setRewardRange] = useState("28d");
   const [rewardHistoryState, setRewardHistoryState] = useState({ loading: Boolean(accountId), error: "", history: null });
-  const handleNftsChange = useCallback((nextNfts = [], total = null) => {
+  const handleNftsChange = useCallback((nextNfts = []) => {
     setProfileNfts(nextNfts);
-    if (Number.isFinite(Number(total))) setProfileNftTotal(Number(total));
-    else setProfileNftTotal(nextNfts.length);
     if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(latestAvatarNft(nextNfts));
   }, [onProfileAvatarChange]);
   const scrollToNftGallery = useCallback(() => {
@@ -819,7 +580,7 @@ export function PrivateProfile({
   useEffect(() => {
     let cancelled = false;
     if (!accountId) {
-      setAirdropState({ loading: false, error: "", latest: null });
+      setAirdropState({ loading: false, error: "", latest: null, alignment: null });
       return () => {
         cancelled = true;
       };
@@ -828,13 +589,14 @@ export function PrivateProfile({
     requestJson("/api/profile/daily-airdrop").then((result) => {
       if (cancelled) return;
       if (result.ok) {
-        setAirdropState({ loading: false, error: "", latest: result.body?.latest || null });
+        setAirdropState({ loading: false, error: "", latest: result.body?.latest || null, alignment: result.body?.alignment || null });
         return;
       }
       setAirdropState({
         loading: false,
         error: result.body?.message || result.body?.error || "Daily airdrop score could not be loaded.",
         latest: null,
+        alignment: null,
       });
     });
     return () => {
@@ -870,15 +632,25 @@ export function PrivateProfile({
 
   return (
     <div>
+      <ProfileHero
+        alignment={airdropState.alignment}
+        avatarNft={latestAvatarNft(profileNfts)}
+        rewardHistory={rewardHistoryState.history}
+        rewardRange={rewardRange}
+        session={session}
+      />
       <TodaysBriefing
         airdrop={airdropState.latest}
         error={airdropState.error}
         loading={airdropState.loading}
-        rewardHistory={rewardHistoryState.history}
+        pftlExplorerUrl={pftlExplorerUrl}
       />
-      <ProfileIdentityCard
-        onProfileIdentityChange={onProfileIdentityChange}
-        session={session}
+      <PFTTimeseries
+        error={rewardHistoryState.error}
+        history={rewardHistoryState.history}
+        loading={rewardHistoryState.loading}
+        onRangeChange={setRewardRange}
+        range={rewardRange}
       />
       <NetworkBadgesPanel session={session} />
       <ProfileStudio
@@ -891,24 +663,15 @@ export function PrivateProfile({
         walletSecret={walletSecret}
         walletVault={walletVault}
       />
-      <PFTTimeseries
-        error={rewardHistoryState.error}
-        history={rewardHistoryState.history}
-        loading={rewardHistoryState.loading}
-        onRangeChange={setRewardRange}
-        range={rewardRange}
-      />
-      {nftSelectionError && (
-        <div style={{ color: C.rust, fontSize: 13.5, marginTop: 28 }}>
-          {nftSelectionError}
-        </div>
-      )}
+      {nftSelectionError && <p className="pf-note is-error">{nftSelectionError}</p>}
       <NFTGallery
-        allowMockFallback={false}
         minted={profileNfts}
         onSetProfilePicture={setProfilePicture}
         selectingNftId={selectingNftId}
-        total={profileNftTotal}
+      />
+      <ProfileIdentityCard
+        onProfileIdentityChange={onProfileIdentityChange}
+        session={session}
       />
       <ConnectionsCard accountId={accountId} pftlExplorerUrl={pftlExplorerUrl} profilePublic={profilePublic} />
     </div>
