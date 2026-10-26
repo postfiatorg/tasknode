@@ -44,6 +44,8 @@ import {
   shortProofValue,
   taskIdentityKey,
 } from "./TaskDetailPrimitives.jsx";
+import { TaskDescription, TaskParagraphs, TaskStepText } from "./TaskRichText.jsx";
+import { taskRepoFromTexts, verificationTitleLabel } from "./task-description-format.js";
 
 function signingButtonLabel(
   policy,
@@ -97,6 +99,7 @@ export function TaskOverviewPanel({
   const currentVerificationRequest = detail?.currentVerificationRequest || null;
   const verificationRequestActive = Boolean(actions.canSubmitVerificationEvidence && currentVerificationRequest);
   const acceptanceNotice = taskAcceptanceConfirmation({ actions, task: displayTask });
+  const taskRepo = taskRepoFromTexts(displayTask?.description, verification?.body, ...(steps || []));
   const lifecycleControls = (
     <TaskLifecycleActionPanel
       accountId={accountId}
@@ -150,7 +153,7 @@ export function TaskOverviewPanel({
           {actions.canAccept && lifecycleControls}
           <TaskWorkflowNotice notice={acceptanceNotice} onAction={() => onSelectTab?.("submit")} />
           <TaskSection title="Description">
-            <p>{displayTask.description}</p>
+            <TaskDescription repo={taskRepo} text={displayTask.description} />
           </TaskSection>
           {steps.length > 0 && (
             <TaskSection title="Steps">
@@ -158,15 +161,15 @@ export function TaskOverviewPanel({
                 {steps.map((step, index) => (
                   <li key={`${index}-${step}`}>
                     <span>{index + 1}</span>
-                    <p>{step}</p>
+                    <p><TaskStepText repo={taskRepo} text={step} /></p>
                   </li>
                 ))}
               </ol>
             </TaskSection>
           )}
           <TaskSection title="Verification">
-            <strong>{verification.title || "Submit evidence"}</strong>
-            <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
+            <strong>{verificationTitleLabel(verification.title) || "Submit evidence"}</strong>
+            <TaskParagraphs repo={taskRepo} text={verification.body || "Submit evidence that satisfies the task requirement."} />
           </TaskSection>
           <TaskProofSummary detail={detail} displayTask={displayTask} onSelectTab={onSelectTab} />
           {!actions.canAccept && stopDescriptor && (

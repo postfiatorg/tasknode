@@ -82,6 +82,13 @@ export async function runProfileNftRenderWorkerOnce({ env = process.env, deps = 
     return { ok: true, processed: true, jobId: job.id, profileNftId: job.profileNftId };
   } catch (error) {
     const failure = classifyProfileNftGenerationFailure(error);
+    // Codes and HTTP status only: provider messages can echo prompt text.
+    console.warn("profile_nft_render_failed", {
+      jobId: job.id,
+      attempt: job.attemptCount,
+      code: failure.code,
+      status: Number(error?.status || error?.httpStatus || 0) || null,
+    });
     try {
       await withProfileNftRenderClaim(job, async () => {
         await failProfileNftRenderJob({ job, error: failure.message, retryable: failure.retryable });

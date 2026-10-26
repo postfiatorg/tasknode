@@ -71,6 +71,7 @@
     "file-size-check": "node scripts/check-file-size.mjs",
     "format-check": "node scripts/format-check.mjs",
     "migration-registration-smoke": "node scripts/migration-registration-smoke.mjs",
+    "task-description-format-smoke": "node scripts/task-description-format-smoke.mjs",
     "nostr-messages-smoke": "node scripts/nostr-messages-smoke.mjs",
     "static-asset-fallback-smoke": "node scripts/static-asset-fallback-smoke.mjs",
     "app-state-cache-gate-smoke": "node scripts/app-state-cache-gate-smoke.mjs",
