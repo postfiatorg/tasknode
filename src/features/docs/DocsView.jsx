@@ -968,7 +968,7 @@ function normalizeTableRow(row, count) {
 
 function renderInline(text) {
   const tokens = [];
-  const pattern = /(\[[^\]]+\]\((?:https?:\/\/|#)[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*)/g;
+  const pattern = /(\[[^\]]+\]\([^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*)/g;
   let lastIndex = 0;
   let match;
 
@@ -987,7 +987,8 @@ function renderInline(text) {
             {link[1]}
           </a>
         ) : (
-          token
+          // Relative repository links have no Help page; keep the label only.
+          token.match(/^\[([^\]]+)\]/)?.[1] || token
         )
       );
     } else if (token.startsWith("`")) {

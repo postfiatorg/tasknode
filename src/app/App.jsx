@@ -29,7 +29,7 @@ import { WalletUnlockModal } from "../features/wallet/WalletUnlockModal";
 import { formatCreditUsd } from "../formatters";
 import { isSignedInSession } from "../session";
 import { appExtensionRegistry, ExtensionSurface } from "../extensions/index.js";
-import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
+import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, settingsPageFromLocation, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
 
 const ContextView = lazy(() => import("../features/context/ContextView.jsx").then((module) => ({ default: module.ContextView })));
 const WalletView = lazy(() => import("../features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
@@ -54,7 +54,8 @@ export function App() {
   const [managingAccounts, setManagingAccounts] = useState(false);
   const [logoutConfirming, setLogoutConfirming] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [initialSettingsPage] = useState(() => settingsPageFromLocation());
+  const [settingsOpen, setSettingsOpen] = useState(() => Boolean(initialSettingsPage));
   const [identityPromptDismissed, setIdentityPromptDismissed] = useState(false);
   const [profileAuthMessage, setProfileAuthMessage] = useState("");
   const [profilePendingProvider, setProfilePendingProvider] = useState("");
@@ -1426,7 +1427,7 @@ export function App() {
       )}
       {settingsOpen && (
         <SettingsModal
-          chat={appState?.chat} linkedWallet={linkedWallet}
+          chat={appState?.chat} initialPage={initialSettingsPage || "general"} linkedWallet={linkedWallet}
           onAppStateChange={refreshAppState}
           onClose={() => setSettingsOpen(false)} onWalletUnlock={openWalletVaultControl}
           session={session}

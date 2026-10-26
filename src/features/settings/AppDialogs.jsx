@@ -10,8 +10,8 @@ import { loginProviderDisplayState } from "../chat/chat-ui-state.js";
 import { isSignedInSession } from "../../session";
 import { AGENT_CONNECT_GUIDE_URL, clearAuthSessionHint, SETTINGS_PAGES } from "../../app/app-shell-shared.jsx";
 
-export function SettingsModal({ linkedWallet, onAppStateChange, onClose, onWalletUnlock, session, setTheme, theme, themeSessionOnly = false, walletSecret, walletVault }) {
-  const [page, setPage] = useState("general");
+export function SettingsModal({ initialPage = "general", linkedWallet, onAppStateChange, onClose, onWalletUnlock, session, setTheme, theme, themeSessionOnly = false, walletSecret, walletVault }) {
+  const [page, setPage] = useState(initialPage);
   const activePage = SETTINGS_PAGES.find((item) => item.key === page) || SETTINGS_PAGES[0];
 
   return (

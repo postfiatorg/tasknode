@@ -194,6 +194,16 @@ export const SETTINGS_PAGES = [
   { key: "billing", label: "Billing", icon: CreditCard },
 ];
 
+// #settings or #settings/<page> opens Settings, so server pages and docs can
+// deep-link to e.g. Security → Connected accounts.
+export function settingsPageFromLocation() {
+  if (typeof window === "undefined") return "";
+  const match = window.location.hash.replace(/^#\/?/, "").match(/^settings(?:\/([a-z-]+))?$/i);
+  if (!match) return "";
+  const page = String(match[1] || "general").toLowerCase();
+  return SETTINGS_PAGES.some((item) => item.key === page) ? page : "general";
+}
+
 export const APP_VIEWS = new Set([
   "chat", "tasks", "wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help",
   ...appExtensionRegistry.inventory().map(({ id }) => id),

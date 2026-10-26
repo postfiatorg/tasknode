@@ -39,7 +39,7 @@ The composer uses the same circular Arrow-Up send control as Task Node chat and 
 - A Nostr message never grants Team, Docs, task, wallet, Context, or Memory access.
 - Revoking Messages disables the Task Node handle binding but cannot delete copies already retained by independent relays.
 
-See [Nostr Messaging Architecture](#docs/nostr) for protocol and failure details.
+See [Nostr Messaging Architecture](https://github.com/postfiatorg/tasknode/blob/main/docs/wiki/architecture/nostr.md) for protocol and failure details.
 
 
 ## Joining Hive chat
