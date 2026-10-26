@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { requestJson } from "../../api";
 import { formatCreditUsd, formatUsageUsd } from "../../formatters";
-import { EthereumTopUpModal, useEthereumTopUpSync } from "./ethereum-top-up";
+import { useEthereumTopUpSync } from "./ethereum-top-up";
+
+const EthereumTopUpModal = lazy(() =>
+  import("./ethereum-top-up-modal").then((module) => ({ default: module.EthereumTopUpModal })),
+);
 
 const PAYMENT_METHODS = [
   { k: "eth", name: "Ether", chain: "Ethereum mainnet", accent: "#627eea", letter: "E" },
@@ -68,8 +72,8 @@ export function BillingSettings({ onAppStateChange }) {
     }
   }
 
-  async function refreshBillingTopUp() {
-    await syncBillingTopUp({ silent: false });
+  async function refreshBillingTopUp({ silent = false } = {}) {
+    await syncBillingTopUp({ silent });
   }
 
   const entries = ledger?.entries || [];
@@ -89,7 +93,7 @@ export function BillingSettings({ onAppStateChange }) {
           <h3>Payment methods</h3>
           <button onClick={openBillingTopUp} type="button">Top up</button>
         </div>
-        <p>Send ETH, USDT, or USDC to your account deposit address. No wallet connection or signature is required.</p>
+        <p>Pay with MetaMask, or send ETH, USDT, or USDC on Ethereum mainnet to your account deposit address.</p>
         <div className="payment-methods">
           {PAYMENT_METHODS.map((method) => (
             <CryptoMethodRow key={method.k} method={method} onTopUp={openBillingTopUp} />
@@ -113,11 +117,13 @@ export function BillingSettings({ onAppStateChange }) {
         )}
       </div>
       {topUpOpen && (
-        <EthereumTopUpModal
-          onClose={() => setTopUpOpen(false)}
-          onRefresh={refreshBillingTopUp}
-          state={topUpState}
-        />
+        <Suspense fallback={null}>
+          <EthereumTopUpModal
+            onClose={() => setTopUpOpen(false)}
+            onRefresh={refreshBillingTopUp}
+            state={topUpState}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -257,15 +257,6 @@
     grid-template-columns: 1fr;
   }
 
-  .eth-topup-asset {
-    grid-template-columns: 38px minmax(0, 1fr);
-  }
-
-  .eth-topup-asset em {
-    grid-column: 2 / 3;
-    justify-self: start;
-  }
-
   .wallet-tx-row {
     align-items: flex-start;
   }

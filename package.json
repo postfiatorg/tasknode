@@ -57,6 +57,7 @@
     "account-wallet-repository-smoke": "node scripts/account-wallet-repository-smoke.mjs",
     "account-repository-smoke": "node scripts/account-repository-smoke.mjs",
     "ethereum-deposit-repository-smoke": "node scripts/ethereum-deposit-repository-smoke.mjs",
+    "evm-wallet-pay-smoke": "node scripts/evm-wallet-pay-smoke.mjs",
     "terminal-auth-repository-smoke": "node scripts/terminal-auth-repository-smoke.mjs",
     "trusted-proxy-rate-limit-smoke": "node scripts/trusted-proxy-rate-limit-smoke.mjs",
     "account-data-lifecycle-smoke": "node scripts/account-data-lifecycle-smoke.mjs",
