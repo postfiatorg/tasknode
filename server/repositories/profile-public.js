@@ -7,9 +7,9 @@ import { publicNetworkBadgesForAccount } from "./network-badges.js";
 import { countProfileNfts, getPublicProfileHeroNft, listProfileNfts } from "./profile-nfts.js";
 import {
   canonicalRewardedTaskProjectionSql,
-  nonFixtureAirdropRunSql,
   nonFixtureTaskProjectionSql,
 } from "./task-projection-integrity.js";
+import { ALIGNMENT_WINDOW_DAYS, getAccountAlignment } from "./alignment-score.js";
 
 const runtimeSnapshots = new Map();
 
@@ -228,30 +228,15 @@ async function queryRewardTotals({ accountId }) {
 
 async function queryLatestAlignment({ accountId }) {
   if (!databaseEnabled()) return null;
-  const result = await query(
-    `SELECT alignment_score_7d::text AS alignment_score_7d,
-            actual_airdrop_pft_7d::text AS actual_airdrop_pft_7d,
-            max_possible_airdrop_pft_7d::text AS max_possible_airdrop_pft_7d,
-            completed_at,
-            run_date
-       FROM profile_daily_airdrop_runs
-      WHERE account_id = $1
-        AND status = 'completed'
-        AND ${nonFixtureAirdropRunSql("profile_daily_airdrop_runs")}
-      ORDER BY completed_at DESC NULLS LAST, updated_at DESC, created_at DESC
-      LIMIT 1`,
-    [safeText(accountId, 180)]
-  );
-  const row = result.rows[0] || null;
-  if (!row) return null;
-  const score = Math.max(0, Math.min(100, Math.round(toNumber(row.alignment_score_7d) * 100)));
+  const alignment = await getAccountAlignment({ accountId });
+  if (alignment.score0To100 === null) return null;
   return {
-    score0To100: score,
-    source: "profile_daily_airdrop_runs.alignment_score_7d",
-    actualAirdropPft7d: roundPft(row.actual_airdrop_pft_7d),
-    maxPossibleAirdropPft7d: roundPft(row.max_possible_airdrop_pft_7d),
-    completedAt: toIso(row.completed_at),
-    runDate: row.run_date ? String(row.run_date).slice(0, 10) : "",
+    score0To100: alignment.score0To100,
+    source: "profile_daily_airdrop_runs.retention_value_score",
+    scoredDays: alignment.scoredDays,
+    windowDays: alignment.windowDays,
+    completedAt: alignment.completedAt,
+    runDate: alignment.lastRunDate,
   };
 }
 
@@ -409,8 +394,8 @@ export async function buildPublicProfileSnapshotInput({ accountId } = {}) {
     alignment: alignment || {
       score0To100: null,
       source: "",
-      actualAirdropPft7d: 0,
-      maxPossibleAirdropPft7d: 0,
+      scoredDays: 0,
+      windowDays: ALIGNMENT_WINDOW_DAYS,
       completedAt: null,
       runDate: "",
     },
@@ -518,8 +503,8 @@ export function publicProfileFromParts({
       trailing30dTaskRewardPft: roundPft(metrics.trailing30dTaskRewardPft),
       alignmentScore0To100: alignment.score0To100 === null || alignment.score0To100 === undefined ? null : toNumber(alignment.score0To100),
       alignmentSource: safeText(alignment.source, 160),
-      actualAirdropPft7d: roundPft(alignment.actualAirdropPft7d),
-      maxPossibleAirdropPft7d: roundPft(alignment.maxPossibleAirdropPft7d),
+      alignmentScoredDays: toNumber(alignment.scoredDays),
+      alignmentWindowDays: toNumber(alignment.windowDays || ALIGNMENT_WINDOW_DAYS),
       contributionTier: safeText(tier.tier, 20),
       contributionTierMax: safeText(tier.maxTier, 20),
       contributionTierNumber: toNumber(tier.tierNumber),
