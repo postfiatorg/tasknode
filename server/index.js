@@ -903,7 +903,7 @@ const server = createServer((req, res) => {
 
   // Public, stable URL for the privacy policy; the policy itself renders in Help.
   if ((url.pathname === "/privacy" || url.pathname === "/privacy/") && (req.method === "GET" || req.method === "HEAD")) {
-    res.writeHead(302, { location: "/#docs/privacy", "cache-control": "no-store" });
+    res.writeHead(302, { location: "/#help/privacy", "cache-control": "no-store" });
     res.end();
     return;
   }

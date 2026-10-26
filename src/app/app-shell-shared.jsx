@@ -331,7 +331,11 @@ export function writeViewLocation(nextView, { replace = false } = {}) {
     url.hash = "";
   } else if (normalizedView === "docs" || normalizedView === "help") {
     const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
-    url.hash = hashPath.toLowerCase().startsWith(`${normalizedView}/`) ? hashPath : normalizedView;
+    const lowerPath = hashPath.toLowerCase();
+    if (lowerPath.startsWith(`${normalizedView}/`)) url.hash = hashPath;
+    // Old #docs/<wiki-slug> Help links keep their page instead of falling back to the Help home.
+    else if (normalizedView === "help" && lowerPath.startsWith("docs/")) url.hash = `help/${hashPath.slice(5)}`;
+    else url.hash = normalizedView;
   } else {
     url.hash = normalizedView;
   }
