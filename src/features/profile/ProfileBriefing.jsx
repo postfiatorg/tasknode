@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { transactionExplorerHref } from "../../pftl-explorer.js";
 import {
   C,
   MONO,
@@ -218,9 +219,7 @@ export function TodaysBriefing({ airdrop, error = "", loading = false, pftlExplo
   const workQuality = Number.isFinite(airdrop?.retentionValueScore)
     ? Math.round(Math.min(100, Math.max(0, airdrop.retentionValueScore)))
     : null;
-  const txHref = paidAirdrop?.txHash && pftlExplorerUrl
-    ? `${String(pftlExplorerUrl).replace(/\/+$/, "")}/transactions/${encodeURIComponent(paidAirdrop.txHash)}`
-    : "";
+  const txHref = transactionExplorerHref(paidAirdrop?.txHash, pftlExplorerUrl);
   const feedback = [
     ["What contributed", airdropFeedbackText(airdrop.whatRaisedToday)],
     ["What held it back", airdropFeedbackText(airdrop.whatKeptItLower)],

@@ -56,8 +56,8 @@ export function App() {
   const [managingAccounts, setManagingAccounts] = useState(false);
   const [logoutConfirming, setLogoutConfirming] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [initialSettingsPage] = useState(() => settingsPageFromLocation());
-  const [settingsOpen, setSettingsOpen] = useState(() => Boolean(initialSettingsPage));
+  const [settingsPage, setSettingsPage] = useState(() => settingsPageFromLocation() || "general");
+  const [settingsOpen, setSettingsOpen] = useState(() => Boolean(settingsPageFromLocation()));
   const [identityPromptDismissed, setIdentityPromptDismissed] = useState(false);
   const [profileAuthMessage, setProfileAuthMessage] = useState("");
   const [profilePendingProvider, setProfilePendingProvider] = useState("");
@@ -1396,9 +1396,9 @@ export function App() {
         )}
         {settingsOpen && (
           <SettingsModal
-            chat={appState?.chat} initialPage={initialSettingsPage || "general"} linkedWallet={linkedWallet}
+            chat={appState?.chat} initialPage={settingsPage} linkedWallet={linkedWallet}
             onAppStateChange={refreshAppState}
-            onClose={() => setSettingsOpen(false)} onWalletUnlock={openWalletVaultControl}
+            onClose={() => { setSettingsOpen(false); setSettingsPage("general"); }} onWalletUnlock={openWalletVaultControl}
             session={session}
             setTheme={setTheme}
             theme={theme} themeSessionOnly={themeSessionOnly} walletSecret={walletSecretRef.current} walletVault={walletVaultStatus}
