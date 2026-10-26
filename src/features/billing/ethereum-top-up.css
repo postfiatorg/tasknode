@@ -83,7 +83,7 @@
   padding: 3px;
   border: 1px solid var(--tn-dark-border, #e8e6df);
   border-radius: 10px;
-  background: var(--tn-dark-sidebar, #f4f3ee);
+  background: var(--tn-dark-overlay, #f4f3ee);
 }
 
 .eth-topup-segment button {
@@ -103,7 +103,7 @@
 }
 
 .eth-topup-segment button[aria-pressed="true"] {
-  background: var(--tn-dark-raised, #ffffff);
+  background: var(--tn-dark-hover, #ffffff);
   color: var(--tn-dark-text, #0d0d0d);
   box-shadow: 0 1px 2px var(--tn-dark-shadow, rgba(0, 0, 0, 0.1));
 }
@@ -417,4 +417,10 @@
     grid-column: 2 / 3;
     justify-self: start;
   }
+}
+
+/* Dark inputs sit on the modal surface instead of a near-black well. */
+:root[data-theme="dark"] .eth-topup-modal .eth-topup-amount,
+:root[data-theme="dark"] .eth-topup-modal .eth-topup-address button {
+  background: transparent;
 }
