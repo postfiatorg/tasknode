@@ -58,6 +58,7 @@ export function App() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [settingsPage, setSettingsPage] = useState(() => settingsPageFromLocation() || "general");
   const [settingsOpen, setSettingsOpen] = useState(() => Boolean(settingsPageFromLocation()));
+  useEffect(() => { if (!settingsOpen) setSettingsPage("general"); }, [settingsOpen]);
   const [identityPromptDismissed, setIdentityPromptDismissed] = useState(false);
   const [profileAuthMessage, setProfileAuthMessage] = useState("");
   const [profilePendingProvider, setProfilePendingProvider] = useState("");
@@ -559,7 +560,9 @@ export function App() {
       setView(viewFromLocation());
       setMoreMenuOpen(false);
       setProfileMenuOpen(false);
-      setSettingsOpen(false);
+      const linkedSettingsPage = settingsPageFromLocation();
+      if (linkedSettingsPage) setSettingsPage(linkedSettingsPage);
+      setSettingsOpen(Boolean(linkedSettingsPage));
       setSelectedTask(null);
       setLoginOpen(false);
       setWalletUnlockOpen(false);
@@ -1390,6 +1393,7 @@ export function App() {
         )}
       </section>
       {accountTransitioning && <div className="account-transition-overlay" role="status">Switching accounts securely…</div>}
+      <RouteErrorBoundary resetKey={`${loginOpen}-${settingsOpen}`}>
       <Suspense fallback={null}>
         {loginOpen && (
           <LoginDialog authLoading={appStateLoading} onClose={closeAccountLogin} onSessionChange={refreshAppState} reloadOnSuccess session={session} />
@@ -1398,13 +1402,14 @@ export function App() {
           <SettingsModal
             chat={appState?.chat} initialPage={settingsPage} linkedWallet={linkedWallet}
             onAppStateChange={refreshAppState}
-            onClose={() => { setSettingsOpen(false); setSettingsPage("general"); }} onWalletUnlock={openWalletVaultControl}
+            onClose={() => setSettingsOpen(false)} onWalletUnlock={openWalletVaultControl}
             session={session}
             setTheme={setTheme}
             theme={theme} themeSessionOnly={themeSessionOnly} walletSecret={walletSecretRef.current} walletVault={walletVaultStatus}
           />
         )}
       </Suspense>
+      </RouteErrorBoundary>
       {identityHandleRequired && !identityPromptDismissed && !loginOpen && (
         <IdentityHandleDialog
           onClose={() => setIdentityPromptDismissed(true)}

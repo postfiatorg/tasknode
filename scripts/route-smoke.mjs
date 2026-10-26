@@ -20,7 +20,7 @@ const routes = [
   { hash: "#tasks", labels: ["Tasks"] },
   { hash: "#hive", labels: ["Hive", "Active projects", "Routing feed", "Allotted operators", "Hive Context"] },
   { hash: "#directory", labels: ["Directory", "Leaderboard", "operators"] },
-  { hash: "#profile", labels: ["Today's airdrop", "Profile Studio", "PFT generation"] },
+  { hash: "#profile", labels: ["Daily airdrop", "Profile picture", "PFT earned"] },
   { hash: "#memory", labels: ["Memory"] },
   {
     hash: "#help",

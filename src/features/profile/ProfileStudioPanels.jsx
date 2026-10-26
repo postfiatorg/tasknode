@@ -25,6 +25,7 @@ import {
 export function ProfileStudio({
   accountId = "",
   linkedWalletAddress = "",
+  nfts: parentNfts = null,
   onNftsChange,
   onProfileAvatarChange,
   onViewGallery,
@@ -36,7 +37,7 @@ export function ProfileStudio({
   const [nfts, setNfts] = useState([]);
   const [generationStatus, setGenerationStatus] = useState("idle");
   const [generationError, setGenerationError] = useState("");
-  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const [imageIndex, setImageIndex] = useState(0);
   const [mintPhase, setMintPhase] = useState("idle");
   const [mintError, setMintError] = useState("");
   const generationFailed = profileNftFailed(generatedNft);
@@ -44,14 +45,17 @@ export function ProfileStudio({
   const generating = generationStatus === "generating" || recoveredGenerationPending;
   // A failed render never replaces the portrait on screen: show the newest
   // usable one and a one-line note instead of an error card.
+  // The parent's list carries gallery selections; fall back to our own load.
+  const avatarSource = Array.isArray(parentNfts) && parentNfts.length ? parentNfts : nfts;
   const shownNft = generationFailed || recoveredGenerationPending
-    ? latestAvatarNft(nfts)
-    : generatedNft || latestAvatarNft(nfts);
+    ? latestAvatarNft(avatarSource)
+    : generatedNft || latestAvatarNft(avatarSource);
   const minting = ["preparing", "signing", "broadcasting", "confirming"].includes(mintPhase);
   const minted = mintPhase === "success" || shownNft?.status === "minted";
   const currentStep = mintStepForPhase(mintPhase);
   const shownImageCandidates = useMemo(() => profileNftImageCandidates(shownNft || {}), [shownNft]);
-  const shownImageSrc = imageLoadFailed ? "" : shownNft?.imageDataUrl || shownImageCandidates[0] || "";
+  const shownImageSrc = shownImageCandidates[imageIndex] || "";
+  useEffect(() => setImageIndex(0), [shownNft?.id]);
   const mintReady = Boolean(shownNft?.id && shownNft?.imageCid && ["generated", "prepared"].includes(profileNftStatus(shownNft)));
   const walletReady = Boolean(
     accountId &&
@@ -130,7 +134,6 @@ export function ProfileStudio({
     if (minting || generating) return;
     setGenerationError("");
     setMintError("");
-    setImageLoadFailed(false);
     setGenerationStatus("generating");
     const result = await requestJson("/api/profile/nft/generate", {
       method: "POST",
@@ -256,8 +259,7 @@ export function ProfileStudio({
             <ExpandableProfileImage nft={shownNft}>
               <img
                 alt={shownTitle}
-                onError={() => setImageLoadFailed(true)}
-                onLoad={() => setImageLoadFailed(false)}
+                onError={() => setImageIndex((index) => index + 1)}
                 src={shownImageSrc}
               />
             </ExpandableProfileImage>

@@ -656,6 +656,7 @@ export function PrivateProfile({
       <ProfileStudio
         accountId={accountId}
         linkedWalletAddress={linkedWalletAddress}
+        nfts={profileNfts}
         onNftsChange={handleNftsChange}
         onProfileAvatarChange={onProfileAvatarChange}
         onViewGallery={scrollToNftGallery}

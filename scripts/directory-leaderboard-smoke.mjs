@@ -50,7 +50,7 @@ assert.doesNotMatch(capturedSql, /latest_handle/);
 assert.match(capturedSql, /AVG\(run\.retention_value_score\)/);
 assert.match(capturedSql, /run\.run_mode = 'production'/);
 assert.match(capturedSql, /run\.eligibility_status = 'eligible'/);
-assert.match(capturedSql, /run\.run_date >= /);
+assert.match(capturedSql, /run\.run_date > /);
 assert.doesNotMatch(capturedSql, /alignment_score_7d/);
 
 let profileSql = "";

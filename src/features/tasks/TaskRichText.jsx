@@ -29,7 +29,7 @@ function MarkdownBlocks({ markdown, repo }) {
     if (block.type === "ul" || block.type === "ol") {
       const List = block.type;
       return (
-        <List key={index}>
+        <List key={index} start={block.type === "ol" && Number(block.start) > 1 ? Number(block.start) : undefined}>
           {(block.items || []).map((item, itemIndex) => (
             <li key={itemIndex}><TaskInline parts={linkifyParts(Array.isArray(item) ? item : [{ text: item }], repo)} /></li>
           ))}
@@ -37,8 +37,14 @@ function MarkdownBlocks({ markdown, repo }) {
       );
     }
     if (block.type === "table") {
-      return (block.rows || []).map((row, rowIndex) => (
-        <p key={`${index}-${rowIndex}`}>{row.map((cell) => cell.map((part) => part.text || part.bold || part.code || "").join("")).join(" · ")}</p>
+      const cells = (row) => row.flatMap((cell, cellIndex) => [
+        ...(cellIndex ? [{ text: " · " }] : []),
+        ...linkifyParts(Array.isArray(cell) ? cell : [{ text: cell }], repo),
+      ]);
+      return [block.headers || [], ...(block.rows || [])].filter((row) => row.length).map((row, rowIndex) => (
+        <p key={`${index}-${rowIndex}`}>
+          {rowIndex === 0 && block.headers?.length ? <strong><TaskInline parts={cells(row)} /></strong> : <TaskInline parts={cells(row)} />}
+        </p>
       ));
     }
     if (block.type === "hr") return null;

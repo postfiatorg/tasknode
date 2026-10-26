@@ -6,7 +6,8 @@ import { nonFixtureAirdropRunSql } from "./task-projection-integrity.js";
 // runs in a trailing window. It is not the payout share: alignment_score_7d
 // divides airdrop PFT by a 10,000 PFT/day cap the scoring model almost never
 // approaches, so it read near zero for everyone and swung with model changes.
-export const ALIGNMENT_WINDOW_DAYS = Math.max(1, Number(process.env.TASKNODE_ALIGNMENT_WINDOW_DAYS || 30));
+const configuredWindowDays = Math.floor(Number(process.env.TASKNODE_ALIGNMENT_WINDOW_DAYS || 30));
+export const ALIGNMENT_WINDOW_DAYS = Number.isFinite(configuredWindowDays) && configuredWindowDays >= 1 ? Math.min(configuredWindowDays, 365) : 30;
 
 // One row per account: alignment_score (0-100 numeric text or NULL),
 // alignment_scored_days, alignment_last_run_date, alignment_completed_at.
@@ -23,7 +24,7 @@ export function alignmentByAccountSql(accountIdsParam = "$1") {
        AND run.status = 'completed'
        AND run.run_mode = 'production'
        AND run.eligibility_status = 'eligible'
-       AND run.run_date >= (now() AT TIME ZONE 'UTC')::date - ${ALIGNMENT_WINDOW_DAYS}
+       AND run.run_date > (now() AT TIME ZONE 'UTC')::date - ${ALIGNMENT_WINDOW_DAYS}
        AND ${nonFixtureAirdropRunSql("run")}
      GROUP BY run.account_id`;
 }
