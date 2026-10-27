@@ -72,7 +72,7 @@ assert.equal(pricingModes.get("Thinking")?.providerLabel, "Vercel AI Gateway");
 assert.equal(pricingModes.get("Thinking")?.configuredPricing?.inputUsdPerMillion, 0.4725);
 assert.equal(pricingModes.get("Thinking")?.configuredPricing?.inputCacheHitUsdPerMillion, 0.09);
 assert.equal(pricingModes.get("Thinking")?.configuredPricing?.outputUsdPerMillion, 1.98);
-assert.deepEqual(pricingModes.get("Thinking")?.providerOrder, ["vercel", "ambient"]);
+assert.deepEqual(pricingModes.get("Thinking")?.providerOrder, ["vercel"]);
 assert.match(pricingModes.get("Thinking")?.privacyPolicy || "", /Vercel AI Gateway/);
 assert.equal(pricingModes.get("Help")?.model, "deepseek/deepseek-v4-flash-0731");
 assert.equal(pricingModes.get("Help")?.providerLabel, "Vercel AI Gateway");

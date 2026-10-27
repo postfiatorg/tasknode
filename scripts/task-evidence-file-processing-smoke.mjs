@@ -23,7 +23,7 @@ async function processFile({ bytes, name, type }) {
     },
     method: "file",
     value: name,
-    env: { AMBIENT_API_KEY: "evidence-file-smoke" },
+    env: { AMBIENT_API_KEY: "evidence-file-smoke", INFERENCE_AMBIENT_BACKUP_ENABLED: "true" },
     fetchImpl: async () => new Response(JSON.stringify({
       id: "ambient_vision_document_smoke",
       model: "moonshotai/kimi-k2.7-code",

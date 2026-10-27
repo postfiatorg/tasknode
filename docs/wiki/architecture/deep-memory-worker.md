@@ -16,7 +16,7 @@ System Status row: `deep_memory`
 
 ## Provider Contract
 
-Deep memory uses the shared Ambient `fast_text` memory request contract, which
+Deep memory uses the shared `fast_text` memory request contract, which
 defaults to `deepseek/deepseek-v4-flash-0731`: reasoning is disabled,
 structured JSON output is required, and usage is reported. The default output
 cap is `TASKNODE_DEEP_MEMORY_MAX_TOKENS` or `12000`, with a floor of `3500`.

@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 
-process.env.AMBIENT_API_KEY = "readiness-fixture-key";
-delete process.env.VERCEL_AI_GATEWAY_API_KEY;
+process.env.VERCEL_AI_GATEWAY_API_KEY = "readiness-fixture-key";
 delete process.env.AI_GATEWAY_API_KEY;
-process.env.TASKNODE_INFERENCE_PROVIDER = "ambient";
+delete process.env.AMBIENT_API_KEY;
 
 const { reviewTaskGenerationReadiness, taskGenerationReadinessIsCurrent } = await import("../server/task-generation-readiness.js");
 

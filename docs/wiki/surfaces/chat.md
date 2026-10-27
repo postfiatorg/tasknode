@@ -11,7 +11,7 @@ conversations without losing state.
 3. Signed-in users select Instant, Thinking, GPT-6 Astra, Kimi K3, Claude Opus 5.5, or Help independently from the Jobs, ODV, Trading Coach, or Kravis personality.
 4. The `+` menu owns personality selection. Its `More` submenu also exposes the restored Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A modalities. Product guidance stays in the dedicated Help mode and Help screen.
 5. The user sends text and optional attachments.
-6. The server validates both enums, assembles the selected prompt/context packet, and routes the request through Vercel with Ambient backup.
+6. The server validates both enums, assembles the selected prompt/context packet, and routes the request through Vercel AI Gateway.
 7. The assistant response is streamed back when available. Long Thinking and modality requests send a progress heartbeat every 15 seconds so proxies do not treat a reasoning-only interval as an idle connection; the pending turn shows elapsed time until visible model text arrives. If the connection fails or closes without a terminal `done`/`error` event, the browser reconnects after 0.75, 2, and 5 seconds. A stable client request/message identity lets the server replay an already-committed turn instead of generating or billing it twice.
 8. Signed-in billable usage is billed to the user-facing balance, while background memory writes are not user-billed.
 
@@ -101,12 +101,12 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 
 | Mode | Provider | Default model | Selection and override rules | Tools and attachments | Intended use |
 | --- | --- | --- | --- | --- | --- |
-| Instant | Vercel with Ambient backup | `zai/glm-5.3-flash` | `instant_text` capability | Local extraction and Flash image input; reasoning and search disabled. | Fast everyday chat. |
-| Thinking | Vercel with Ambient backup | `zai/glm-5.3` | `reasoning_text` capability | Local extraction; Kimi for image input; `xhigh` reasoning; search disabled. | Deeper analysis and Context Refine. |
-| GPT-6 Astra | Vercel | `openai/gpt-6-astra` | Exact selection; no model override or Ambient substitution | Native image input, high reasoning; search disabled. | API-priced chat. |
-| Kimi K3.1 Pro | Vercel | `moonshotai/kimi-k3.1-pro` | Exact selection; no model override or Ambient substitution | Native image input, high reasoning; search disabled. | API-priced chat. |
+| Instant | Vercel | `zai/glm-5.3-flash` | `instant_text` capability | Local extraction and Flash image input; reasoning and search disabled. | Fast everyday chat. |
+| Thinking | Vercel | `zai/glm-5.3` | `reasoning_text` capability | Local extraction; Kimi for image input; `xhigh` reasoning; search disabled. | Deeper analysis and Context Refine. |
+| GPT-6 Astra | Vercel | `openai/gpt-6-astra` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
+| Kimi K3.1 Pro | Vercel | `moonshotai/kimi-k3.1-pro` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Claude Opus 5.5 | Vercel | `anthropic/claude-opus-5.5` | Exact selection; zero data retention (the gateway fails rather than use a retaining provider) | Native image input, high reasoning; search disabled. | API-priced chat. |
-| Help | Vercel with Ambient backup | `deepseek/deepseek-v4-flash-0731` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
+| Help | Vercel | `deepseek/deepseek-v4-flash-0731` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
 
 Unknown mode strings are rejected with `unknown_chat_mode`. The signed-in app
 default is Instant and the signed-out app default is Help. Historical stored
@@ -115,9 +115,8 @@ mode API or shown in a picker.
 
 ## Provider Policies
 
-All chat inference goes through `server/inference.js`. Vercel is primary;
-Ambient currently supplies GLM 5.2 text backup. Completed turns record the
-actual provider and model. See [AI Providers](../architecture/ai-providers.md)
+All chat inference goes through `server/inference.js` to Vercel AI Gateway.
+Completed turns record the actual provider and model. See [AI Providers](../architecture/ai-providers.md)
 for configuration, failover conditions, and vision availability. The OpenAI
 credential remains isolated to sanitized Profile NFT image rendering.
 
@@ -128,7 +127,7 @@ mode's configured preflight estimate and live Vercel model metadata.
 
 ## Web Search Selection
 
-The user-facing chat modes do not enable web search. Vercel server search tools and Ambient backup tools
+The user-facing chat modes do not enable web search. Vercel server search tools
 remain available to explicit research workflows outside the chat mode picker.
 
 ## Jobs pgvector Retrieval
@@ -186,7 +185,7 @@ Runtime path:
 2. `server/product-contracts.js::chatPayload` forces Context Refine through Thinking so the user does not have to choose a model for durable document edits.
 3. `server/context-edit-chat.js::executeContextEditChat` loads chat history, current context, memory, task state, and the active pending proposal for the conversation.
 4. `server/context-edit-prompts.js::renderContextEditPrompt` renders `prompts/context/context_edit_jobs_v1.xml` with the plain context document and a line-numbered copy.
-5. Vercel GLM 5.3 (with Ambient backup) is called with structured output; tools are disabled for Context Refine because editing the current document should not invoke web search.
+5. Vercel GLM 5.3 is called with structured output; tools are disabled for Context Refine because editing the current document should not invoke web search.
 6. A calibration reply or proposal is saved as an ordinary chat turn through `server/repositories/chat-billing.js`.
 7. If a proposal exists, `server/repositories/context-edit.js` stores it in `context_edit_proposals`.
 8. The assistant message renders an inline proposal card. `Accept edit` posts to `/api/context/edit/proposals/:proposalId/apply`.

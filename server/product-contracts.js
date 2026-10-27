@@ -38,6 +38,7 @@ import {
 } from "./chat-router.js";
 export { chatEstimate, chatEstimateForAccount } from "./chat-estimate.js";
 import { recordAuthEvent } from "./runtime-store.js";
+import { ambientBackupEnabled } from "./inference-policy.js";
 import { findAccountByEmail, getOrCreateEmailAccount } from "./repositories/accounts.js";
 import { createAccountSession, createDevSession } from "./repositories/auth-sessions.js";
 import {
@@ -750,11 +751,11 @@ export async function readiness() {
       ].filter(Boolean),
     },
     llm: {
-      ambientConfigured: chatProviderConfigured("ambient"),
+      ambientConfigured: ambientBackupEnabled() && chatProviderConfigured("ambient"),
       profileNftImageConfigured: process.env.TASKNODE_PROFILE_NFT_RENDERER_CONFIGURED === "true",
       aiGatewayConfigured: chatProviderConfigured("vercel"),
       defaultProvider: "vercel",
-      backupProvider: "ambient",
+      backupProvider: ambientBackupEnabled() ? "ambient" : "",
     },
   };
 }

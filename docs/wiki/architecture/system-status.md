@@ -9,8 +9,8 @@ advance tasks, or change Board Manager scheduler state.
 
 The top of the live status page also renders Chat Model Pricing. That section is
 not a worker health row. It is an audit snapshot of the current chat-mode
-provider contracts from `server/chat-router.js`, plus cached live Ambient
-model metadata from `https://api.ambient.xyz/v1/models`.
+provider contracts from `server/chat-router.js`, plus cached live model
+metadata from the Vercel AI Gateway `/models` catalog.
 
 The page also includes a collapsed Network Task spend audit toggle. It reads
 `networkTaskSpendByDay` from `/api/system/status` and shows total PFT spent on
@@ -118,7 +118,7 @@ The status page pricing block separates two values that are easy to confuse:
 
 - Configured user tariff: the per-million-token tariff in `chatModePrices`. This
   is authoritative for preflight estimates, confirmation thresholds, and ledger debits.
-- Live Ambient model metadata: the current catalog record for the model pinned
+- Live model metadata: the current Vercel catalog record for the model pinned
   to Instant, Thinking, or Help.
 
 Ambient token and cache counts determine the billable quantities, but its

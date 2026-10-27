@@ -59,7 +59,6 @@ flowchart LR
   API --> PG[(Postgres)]
   API --> Store[(Runtime-store JSON)]
   API --> Gateway[Vercel primary inference]
-  API --> Ambient[Ambient backup inference]
   API --> Workers[Task, Hive, Memory, Airdrop workers]
   Browser --> Relays[Nostr relays: encrypted gift wraps]
   Browser --> PFDocs[PFDocs service]

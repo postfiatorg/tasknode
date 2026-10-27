@@ -16,7 +16,7 @@ System Status row: `chat_turn_memory`
 
 ## Provider Contract
 
-The worker calls Ambient Chat Completions through the `fast_text` capability in
+The worker calls Chat Completions on Vercel AI Gateway through the `fast_text` capability in
 `server/chat-memory-worker.js`, pinned to DeepSeek Flash 7/31. The request keeps:
 
 - `reasoning.effort = "none"` and `reasoning.exclude = true`;

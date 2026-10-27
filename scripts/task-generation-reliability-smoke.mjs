@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 
-process.env.TASKNODE_TASKGEN_PROVIDER = "ambient";
-process.env.AMBIENT_API_KEY = "taskgen-reliability-smoke-key";
-process.env.AMBIENT_MODEL_STRUCTURED = "z-ai/glm-5.2";
-delete process.env.VERCEL_AI_GATEWAY_API_KEY;
+process.env.VERCEL_AI_GATEWAY_API_KEY = "taskgen-reliability-smoke-key";
 delete process.env.AI_GATEWAY_API_KEY;
+delete process.env.VERCEL_KIMI_API_KEY;
+delete process.env.AMBIENT_API_KEY;
 process.env.TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED = "false";
 process.env.TASKNODE_HIVE_TASK_GENERATION_V2_ENABLED = "false";
 
@@ -101,7 +100,7 @@ function providerRetryPolicySmoke() {
     }
   }
 
-  assert.equal(taskGenerationProviderTimeoutMs({}), 240_000);
+  assert.equal(taskGenerationProviderTimeoutMs({}), 600_000);
   assert.equal(taskGenerationRetryDelayMs(1, {}), 15_000);
   assert.equal(taskGenerationRetryDelayMs(2, {}), 30_000);
   assert.equal(taskGenerationRetryDelayMs(5, {}), 120_000);
@@ -155,10 +154,10 @@ function taskgenInputBudgetSmoke() {
   assert.ok(Buffer.byteLength(JSON.stringify(input)) < 45_000);
 }
 
-async function ambientRequestBodySmoke() {
+async function requestBodySmoke() {
   let requestBody = null;
   const responsePayload = {
-    id: "taskgen-reliability-ambient-request-smoke",
+    id: "taskgen-reliability-request-smoke",
     choices: [{
       message: {
         content: JSON.stringify({
@@ -185,9 +184,9 @@ async function ambientRequestBodySmoke() {
       });
     },
   });
-  assert.equal(generated.metadata.provider, "ambient");
-  assert.equal(requestBody.model, "z-ai/glm-5.2");
-  assert.deepEqual(requestBody.reasoning, { effort: "xhigh" });
+  assert.equal(generated.metadata.provider, "vercel");
+  assert.equal(requestBody.model, "moonshotai/kimi-k3.1-pro");
+  assert.deepEqual(requestBody.reasoning, { effort: "high" });
 
   const validOutput = JSON.parse(responsePayload.choices[0].message.content);
   const malformedOutputs = [
@@ -552,7 +551,7 @@ async function ownershipSmoke() {
   }
 }
 
-await ambientRequestBodySmoke();
+await requestBodySmoke();
 await readinessRecoverySmoke();
 await providerTimeoutSmoke();
 providerRetryPolicySmoke();

@@ -397,8 +397,8 @@ const routeSmokeConversationId = `account_account_hive_smoke_hive_${routeSmokeCo
 const routeSmokeUserMessageId = `msg_hive_context_smoke_${routeSmokeCorrelationId}_user`;
 const routeSmokeAssistantMessageId = `msg_hive_context_smoke_${routeSmokeCorrelationId}_assistant`;
 const originalFetch = globalThis.fetch;
-const originalAmbientKey = process.env.AMBIENT_API_KEY;
-process.env.AMBIENT_API_KEY = "sk-hive-context-smoke";
+const originalGatewayKey = process.env.VERCEL_AI_GATEWAY_API_KEY;
+process.env.VERCEL_AI_GATEWAY_API_KEY = "sk-hive-context-smoke";
 let deepSeekRequestSerialized = "";
 globalThis.fetch = async (_url, options = {}) => {
   const request = JSON.parse(String(options.body || "{}"));
@@ -453,15 +453,15 @@ await handleHiveRoute({
   url: new URL("https://tasknode.local/api/hive/context"),
 });
 globalThis.fetch = originalFetch;
-if (originalAmbientKey === undefined) {
-  delete process.env.AMBIENT_API_KEY;
+if (originalGatewayKey === undefined) {
+  delete process.env.VERCEL_AI_GATEWAY_API_KEY;
 } else {
-  process.env.AMBIENT_API_KEY = originalAmbientKey;
+  process.env.VERCEL_AI_GATEWAY_API_KEY = originalGatewayKey;
 }
 assert.equal(capturedRouteResponse.status, 200);
 assert.match(capturedRouteResponse.body.user.id, /^msg_.+_user$/);
 assert.match(capturedRouteResponse.body.assistant.id, /^msg_.+_assistant$/);
-assert.equal(capturedRouteResponse.body.assistant.provider, "ambient");
+assert.equal(capturedRouteResponse.body.assistant.provider, "vercel");
 assert.match(capturedRouteResponse.body.assistant.body, /pasted context/);
 assert.equal(capturedRouteResponse.body.immediateResponseWarning, "");
 const persistedHiveChatMessages = await getChatMessages({

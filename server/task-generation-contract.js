@@ -7,7 +7,6 @@ import { buildTaskgenReplayKey } from "./repositories/taskgen-replay-cache.js";
 import { reviewTaskGenerationReadiness } from "./task-generation-readiness.js";
 import { TASK_MIN_STEPS, normalizeTaskSteps } from "../shared/task-steps.js";
 import {
-  INFERENCE_MODELS,
   inferenceChatCompletion,
   resolveInferenceModel,
 } from "./inference.js";
@@ -128,8 +127,12 @@ function positiveInteger(value, fallback, { min = 1, max = 1_200_000 } = {}) {
   return Math.min(Math.max(parsed, min), max);
 }
 
+// Task generation runs on Kimi K3.1 Pro (2026-10-27). It reasons for several
+// thousand tokens on large packets, so attempts get a 10-minute deadline.
+export const TASKGEN_DEFAULT_MODEL = "moonshotai/kimi-k3.1-pro";
+
 export function taskGenerationProviderTimeoutMs(env = process.env) {
-  return positiveInteger(env.TASKNODE_TASK_GENERATION_PROVIDER_TIMEOUT_MS, 240_000, {
+  return positiveInteger(env.TASKNODE_TASK_GENERATION_PROVIDER_TIMEOUT_MS, 600_000, {
     min: 5_000,
     max: 20 * 60 * 1000,
   });
@@ -181,11 +184,11 @@ export function taskgenModelForInput(taskInput = {}, env = process.env) {
       env.TASKNODE_NETWORK_TASKGEN_MODEL ||
         env.TASKNODE_HIVE_TASK_GENERATION_MODEL ||
         env.TASKNODE_TASKGEN_MODEL ||
-        INFERENCE_MODELS.structured,
+        TASKGEN_DEFAULT_MODEL,
       160
     );
   } else {
-    requestedModel = safeText(env.TASKNODE_TASKGEN_MODEL || INFERENCE_MODELS.structured, 160);
+    requestedModel = safeText(env.TASKNODE_TASKGEN_MODEL || TASKGEN_DEFAULT_MODEL, 160);
   }
   return resolveInferenceModel({
     model: requestedModel,
@@ -194,17 +197,21 @@ export function taskgenModelForInput(taskInput = {}, env = process.env) {
   });
 }
 
+// Kimi at "high" passed every validation and readiness check in the
+// 2026-10-27 benchmark on production requests at half the latency of "xhigh".
+const TASKGEN_DEFAULT_REASONING_EFFORT = "high";
+
 export function taskgenReasoningEffort(taskInput = {}, env = process.env) {
   if (taskInputIsNetwork(taskInput) && networkTaskGenerationV2Enabled(env)) {
     return safeText(
       env.TASKNODE_NETWORK_TASKGEN_REASONING_EFFORT ||
         env.TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT ||
         env.TASKNODE_TASKGEN_REASONING_EFFORT ||
-        "xhigh",
+        TASKGEN_DEFAULT_REASONING_EFFORT,
       40
     );
   }
-  return safeText(env.TASKNODE_TASKGEN_REASONING_EFFORT || "xhigh", 40);
+  return safeText(env.TASKNODE_TASKGEN_REASONING_EFFORT || TASKGEN_DEFAULT_REASONING_EFFORT, 40);
 }
 
 function stableJson(value) {
@@ -687,7 +694,7 @@ async function requestTaskgenCompletion({ fetchImpl, providerTimeoutMs, model, r
       fetchImpl,
       capability: "strict_json",
       timeoutMs: providerTimeoutMs,
-      totalTimeoutMs: Math.max(1000, Number(process.env.TASKNODE_TASK_GENERATION_TOTAL_TIMEOUT_MS) || 540_000),
+      totalTimeoutMs: Math.max(1000, Number(process.env.TASKNODE_TASK_GENERATION_TOTAL_TIMEOUT_MS) || providerTimeoutMs + 60_000),
       body: {
         model,
         messages,

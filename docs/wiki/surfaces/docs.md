@@ -10,7 +10,7 @@ Docs is a first-class Task Node screen for wallet-encrypted collaborative docume
 4. Rename from Task Node or PFDocs. The owner browser synchronizes the canonical title in both directions and stores only encrypted title metadata in Task Node.
 5. Share with a validated Task Node member selected from the handle/wallet suggestions as viewer or editor. Recent recipients sort first and the most recently used valid recipient is selected when the dialog opens. A recipient must accept the encrypted capability grant.
 6. To open the document outside Task Node, use **Share document → Link access**, then copy either the view link or edit link. The unlocked browser copies the selected PFDocs capability directly to the clipboard; Task Node never receives the plaintext link.
-7. Use the document chat for human discussion. `@ODV` and `@coach` are explicit Vercel GLM 5.3 (with Ambient backup) actions.
+7. Use the document chat for human discussion. `@ODV` and `@coach` are explicit Vercel GLM 5.3 actions.
 
 The library uses compact file rows with document type, access, update date, and an action menu. Shared rows indicate pending access; the Share dialog lists every active or pending recipient, role, and acceptance state before a new capability is sent. Task links are selected from an auto-filtered list of the user's current outstanding and verification tasks; arbitrary task IDs are not accepted by the UI.
 
@@ -45,7 +45,7 @@ Normal document chat stays within the PFDocs encrypted chat channel and uses the
 - `@ODV` loads the source-controlled ODV/Lindy persona prompt.
 - `@coach` loads the source-controlled Telegram Trading Coach persona prompt.
 
-The assistant receives the current document title/content, the user's explicit mention, and up to 12 messages from that same document-chat channel in canonical order. This bounded active-conversation window makes follow-ups and requests about earlier messages work without exposing another document or conversation. Enabling **Full context** additionally permits bounded Task Node Context, Memory, and task state; it does not control active chat continuity. Both assistants use Vercel `zai/glm-5.3` with Ambient backup; the server rechecks account, document, and channel access before inference. Document content and chat are untrusted reference data, not system instructions.
+The assistant receives the current document title/content, the user's explicit mention, and up to 12 messages from that same document-chat channel in canonical order. This bounded active-conversation window makes follow-ups and requests about earlier messages work without exposing another document or conversation. Enabling **Full context** additionally permits bounded Task Node Context, Memory, and task state; it does not control active chat continuity. Both assistants use Vercel `zai/glm-5.3`; the server rechecks account, document, and channel access before inference. Document content and chat are untrusted reference data, not system instructions.
 
 For spreadsheets, the browser snapshots cell values with worksheet names and row numbers from A1:AN200 on up to eight sheets, bounded to 80,000 characters. The context identifies these bounds; cells outside them are not included. Extraction reads the current OnlyOffice workbook, without modifying cells. Explicit mention parsing and assistant header decoding use ordinary protocol parsing, with regression checks prohibiting regex in the shared chat protocol.
 

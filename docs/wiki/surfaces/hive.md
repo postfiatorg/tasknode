@@ -166,7 +166,7 @@ publish, or reward tasks.
 each Hive project About section. It runs in `worker-hive` hourly and writes a
 new memo only when the board's content changed and its last memo is at least
 6 hours old (`TASKNODE_HIVE_BOARD_SECRETARY_MIN_INTERVAL_SECONDS`). It uses
-Vercel `zai/glm-5.3` with Ambient backup, and stores rows in
+Vercel `zai/glm-5.3`, and stores rows in
 `hive_board_secretary_memos`. The worker is advisory only. It cannot create
 tasks, cancel tasks, send user messages, change rewards, mark work resolved, or
 mutate project state.
@@ -526,7 +526,7 @@ The old direct cascade where Hive Secretary automatically drives active projects
 
 Hive Context stores validated inputs and queues the context secretary.
 `server/hive-secretary-worker.js` summarizes those inputs through Vercel GLM
-5.3 with Ambient backup and stores the report in `hive_secretary_reports`.
+5.3 and stores the report in `hive_secretary_reports`.
 `GET /api/hive/context` returns both raw context and the current report.
 
 The secretary prompt is `prompts/hive/hive_secretary_v1.md`; its structured
@@ -622,7 +622,7 @@ The production app does not import design mocks, and the app route is implemente
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
 - `server/hive-board-secretary-worker.js` runs the advisory per-board GLM 5.3 memo writer (changed boards only, at most every 6 hours).
 - `server/repositories/hive-board-secretary.js` builds deterministic board-scoped packets, truncates rewarded task evidence, persists current memo rows, and exposes public memo reads for Hive projects.
-- `server/hive-board-secretary-provider.js` calls Vercel `zai/glm-5.3` with Ambient backup for Project Status Markdown.
+- `server/hive-board-secretary-provider.js` calls Vercel `zai/glm-5.3` for Project Status Markdown.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
 - `server/profile-daily-airdrop-worker.js` runs recurring Daily Airdrop scoring/issuance when enabled and records internal `daily_airdrop` cards into the Hive Mind Agent feed.
 - `server/repositories/board-manager-health.js` computes `boardActionPressure`, including empty active project and stopped Network Task pressure.

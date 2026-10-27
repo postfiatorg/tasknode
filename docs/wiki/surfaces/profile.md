@@ -132,7 +132,7 @@ The public profile role layout renders the model summary as exactly two sentence
 Provider policy:
 
 - model: Vercel `deepseek/deepseek-v4-flash-0731` by default;
-- provider: `vercel` through the shared strict-JSON capability, with Ambient backup;
+- provider: `vercel` through the shared strict-JSON capability;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.
@@ -639,8 +639,8 @@ Runtime call sites:
 
 Provider policy:
 
-- model: Vercel `zai/glm-5.3` with Ambient backup by default;
-- provider: `vercel` through the shared strict-JSON capability, with Ambient backup;
+- model: Vercel `zai/glm-5.3` by default;
+- provider: `vercel` through the shared strict-JSON capability;
 - temperature `0`;
 - structured JSON output;
 - no user billing in v1.

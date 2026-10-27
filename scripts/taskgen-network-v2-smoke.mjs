@@ -85,13 +85,13 @@ assert.equal(taskgenModelForInput(taskInput), "mock-taskgen");
 
 const defaultNetworkEnv = { TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED: "true" };
 assert.equal(taskgenProviderForInput(taskInput, defaultNetworkEnv), "vercel");
-assert.equal(taskgenModelForInput(taskInput, defaultNetworkEnv), "zai/glm-5.3");
-assert.equal(taskgenReasoningEffort(taskInput, defaultNetworkEnv), "xhigh");
+assert.equal(taskgenModelForInput(taskInput, defaultNetworkEnv), "moonshotai/kimi-k3.1-pro");
+assert.equal(taskgenReasoningEffort(taskInput, defaultNetworkEnv), "high");
 const personalInput = { request: { requestedTaskKind: "personal" }, policy: { task_class: "personal" } };
 const defaultPersonalEnv = {};
 assert.equal(taskgenProviderForInput(personalInput, defaultPersonalEnv), "vercel");
-assert.equal(taskgenModelForInput(personalInput, defaultPersonalEnv), "zai/glm-5.3");
-assert.equal(taskgenReasoningEffort(personalInput, defaultPersonalEnv), "xhigh");
+assert.equal(taskgenModelForInput(personalInput, defaultPersonalEnv), "moonshotai/kimi-k3.1-pro");
+assert.equal(taskgenReasoningEffort(personalInput, defaultPersonalEnv), "high");
 assert.throws(() => taskgenApiConfig(personalInput, {
   TASKNODE_TASKGEN_PROVIDER: "frontier",
   TASKNODE_TASKGEN_MODEL: "gpt-5.6-sol",
@@ -102,13 +102,13 @@ assert.deepEqual(taskgenApiConfig(taskInput, {
 }), {
   provider: "vercel",
   model: "zai/glm-5.3-flash",
-  reasoningEffort: "xhigh",
+  reasoningEffort: "high",
 });
 
 const productionFlyConfig = readFileSync(new URL("../fly.toml", import.meta.url), "utf8");
 for (const [key, value] of [
-  ["TASKNODE_HIVE_TASK_GENERATION_MODEL", "zai/glm-5.3"],
-  ["TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT", "xhigh"],
+  ["TASKNODE_HIVE_TASK_GENERATION_MODEL", "moonshotai/kimi-k3.1-pro"],
+  ["TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT", "high"],
 ]) {
   assert.match(
     productionFlyConfig,
