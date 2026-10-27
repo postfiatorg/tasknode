@@ -59,6 +59,8 @@ export default defineConfig({
         target: apiOrigin,
         changeOrigin: false,
       },
+      // Server-rendered agent connect pages and the MCP/OAuth endpoints.
+      ...Object.fromEntries(["/activate", "/connect", "/oauth", "/mcp", "/install", "/.well-known/oauth-", "/privacy"].map((prefix) => [prefix, { target: apiOrigin, changeOrigin: false }])),
     },
   },
 });

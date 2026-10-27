@@ -14,6 +14,7 @@ RUN npm run build \
       --entry server/index.js \
       --include server/db/migrations \
       --include docs/wiki/surfaces/user-guide.md \
+      --include packages/tasknode-cli \
       --include prompts \
       --exclude prompts/non_production \
       --include schemas \

@@ -29,6 +29,7 @@ import { WalletUnlockModal } from "../features/wallet/WalletUnlockModal";
 import { formatCreditUsd } from "../formatters";
 import { isSignedInSession } from "../session";
 import { appExtensionRegistry, ExtensionSurface } from "../extensions/index.js";
+import { pendingAgentLinkFromLocation, usePendingAgentLink } from "./pending-agent-link.js";
 import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, settingsPageFromLocation, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
 
 const LoginDialog = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.LoginDialog })));
@@ -48,6 +49,7 @@ export function App() {
   const [view, setView] = useState(() => viewFromLocation());
   const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [pendingAgentLink] = useState(() => pendingAgentLinkFromLocation());
   const [addingAccount, setAddingAccount] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [retainedAccounts, setRetainedAccounts] = useState([]);
@@ -772,6 +774,8 @@ export function App() {
     prepareTransition: () => { setSettingsOpen(false); setSelectedTask(null); setChatActionMenu(null); },
     selectedAccountId: session?.accountId || "",
   });
+  const openPendingLogin = useCallback(() => setLoginOpen(true), []);
+  usePendingAgentLink({ initialLink: pendingAgentLink, loading: appStateLoading, signedIn, onLogin: openPendingLogin, onSwitchAccount: addAccount });
   async function startTelegramLinkFromProfileMenu() {
     if (!signedIn) {
       setLoginOpen(true);

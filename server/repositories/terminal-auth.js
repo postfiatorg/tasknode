@@ -46,7 +46,7 @@ export async function createTerminalAuthRequest(options = {}) {
   const provider = String(options.provider || "github").trim().toLowerCase() || "github";
   const requestId = randomToken("tnterm", 18); const pollToken = options.pollToken || randomToken("tnpoll", 24);
   const createdAt = new Date(); const expiresAt = new Date(createdAt.getTime() + requestTtlSeconds() * 1000);
-  const code = userCode();
+  const code = options.userCode || userCode();
   await query(
     `INSERT INTO terminal_auth_requests (
        request_hash, provider, status, user_code, poll_token_hash, request_json, created_at, expires_at
@@ -57,6 +57,7 @@ export async function createTerminalAuthRequest(options = {}) {
         userAgent: String(options.userAgent || "").slice(0, 500),
         ip: String(options.ip || "").slice(0, 120),
         ...(options.oauth ? { oauth: options.oauth } : {}),
+        ...(options.device ? { device: options.device } : {}),
       }), createdAt.toISOString(), expiresAt.toISOString(),
     ]
   );
@@ -144,31 +145,49 @@ export async function consumeTerminalAuthRequestSession({ requestId = "", pollTo
     const now = new Date();
     const scopes = ["tasknode:read", "tasknode:tasks:write", "tasknode:balance:read"];
     const payload = { githubUsername: linked.username || "", account: await getAccount(request.account_id) };
+    const device = request.request_json?.device || null;
     const inserted = await client.query(
       `INSERT INTO terminal_sessions (
          token_hash, session_id, account_id, provider, provider_username,
-         scopes_json, session_json, created_at, expires_at
-       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9)
+         scopes_json, session_json, created_at, expires_at, device_label, client_name, last_used_at, last_ip
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $8, $12)
        RETURNING *`,
-      [hash(token), sessionId, request.account_id, request.provider, linked.username || "", JSON.stringify(scopes), JSON.stringify(payload), now.toISOString(), null]
+      [
+        hash(token), sessionId, request.account_id, request.provider, linked.username || "", JSON.stringify(scopes), JSON.stringify(payload),
+        now.toISOString(), null, agentDeviceLabel(device, request.request_json), String(device?.clientName || (request.request_json?.oauth ? "oauth" : "")).slice(0, 80),
+        String(device?.ip || request.request_json?.ip || "").slice(0, 120),
+      ]
     );
     await client.query("UPDATE terminal_auth_requests SET consumed_at = now() WHERE request_hash = $1", [hash(requestId)]);
     return { ok: true, status: 200, terminalToken: token, session: terminalSessionPayload(inserted.rows[0]) };
   });
 }
 
-export async function getTerminalSessionByToken(token = "") {
-  if (!databaseEnabled()) return getRuntimeSession(token);
+// Tokens idle longer than idle_expiry_days (90 by default, 0 = never) stop
+// working; use rolls the window forward. Last use is recorded at most every
+// five minutes so /mcp traffic does not write on every call.
+export async function getTerminalSessionByToken(token = "", { ip = "" } = {}) {
+  if (!databaseEnabled()) return getRuntimeSession(token, { ip });
   if (!token) return null;
   const result = await query(
     `SELECT * FROM terminal_sessions WHERE token_hash = $1
       AND revoked_at IS NULL
       AND (expires_at IS NULL OR expires_at > now())
+      AND (idle_expiry_days <= 0 OR COALESCE(last_used_at, created_at) > now() - make_interval(days => idle_expiry_days))
       LIMIT 1`,
     [hash(token)]
   );
-  const session = terminalSessionPayload(result.rows[0]);
+  const row = result.rows[0];
+  const session = terminalSessionPayload(row);
   if (!session || !(await getLinkedProviderForAccount({ accountId: session.accountId, provider: session.provider }))) return null;
+  if (!row.last_used_at || !row.first_used_at || Date.now() - new Date(row.last_used_at).getTime() > 5 * 60_000) {
+    await query(
+      `UPDATE terminal_sessions SET last_used_at = now(), first_used_at = COALESCE(first_used_at, now()),
+         last_ip = CASE WHEN $2 <> '' THEN $2 ELSE last_ip END
+       WHERE token_hash = $1`,
+      [hash(token), String(ip || "").slice(0, 120)]
+    );
+  }
   return session;
 }
 
@@ -179,6 +198,115 @@ export async function revokeTerminalSessions({ token = "", accountId = "" } = {}
   const result = await query(
     `UPDATE terminal_sessions SET revoked_at = now() WHERE ${token ? "token_hash" : "account_id"} = $1 AND revoked_at IS NULL`,
     [token ? hash(token) : accountId]
+  );
+  return result.rowCount;
+}
+
+export function agentDeviceLabel(device = null, request = {}) {
+  const clients = Array.isArray(device?.agents) && device.agents.length ? device.agents.join(", ") : String(device?.clientName || "");
+  const host = String(device?.deviceName || "").trim();
+  if (clients && host) return `${clients} on ${host}`.slice(0, 160);
+  if (clients || host) return (clients || host).slice(0, 160);
+  if (request?.oauth) return "Browser sign-in";
+  return "Agent token";
+}
+
+function deviceRequestView(row) {
+  if (!row) return null;
+  return {
+    userCode: row.user_code,
+    status: row.status,
+    error: row.error || "",
+    accountId: row.account_id || "",
+    device: row.request_json?.device || null,
+    ip: row.request_json?.ip || "",
+    expiresAt: new Date(row.expires_at).toISOString(),
+  };
+}
+
+export async function getDeviceAuthRequest({ userCode: code = "" } = {}) {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!normalized) return null;
+  if (!databaseEnabled()) {
+    const { getRuntimeDeviceAuthRequest } = await import("../runtime-store.js");
+    return getRuntimeDeviceAuthRequest({ userCode: normalized });
+  }
+  const result = await query(
+    `SELECT user_code, status, error, account_id, request_json, expires_at FROM terminal_auth_requests
+      WHERE user_code = $1 AND consumed_at IS NULL AND expires_at > now() AND request_json ? 'device'
+      ORDER BY created_at DESC LIMIT 1`,
+    [normalized]
+  );
+  return deviceRequestView(result.rows[0]);
+}
+
+// Approve or deny a pending device sign-in by the code the user typed. Approval
+// requires GitHub on the approving account, so it never creates an account.
+export async function decideDeviceAuthRequest({ userCode: code = "", accountId = "", approve = false } = {}) {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!databaseEnabled()) {
+    const { decideRuntimeDeviceAuthRequest } = await import("../runtime-store.js");
+    return decideRuntimeDeviceAuthRequest({ userCode: normalized, accountId, approve });
+  }
+  return transaction(async (client) => {
+    const current = await client.query(
+      `SELECT request_hash, status FROM terminal_auth_requests
+        WHERE user_code = $1 AND consumed_at IS NULL AND expires_at > now() AND request_json ? 'device'
+        ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+      [normalized]
+    );
+    const request = current.rows[0];
+    if (!request) return { ok: false, error: "device_code_not_found" };
+    if (request.status !== "pending") return { ok: false, error: "device_code_already_used" };
+    if (!approve) {
+      await client.query("UPDATE terminal_auth_requests SET status = 'failed', error = 'access_denied', completed_at = now() WHERE request_hash = $1", [request.request_hash]);
+      return { ok: true, approved: false };
+    }
+    if (!accountId || !(await getLinkedProviderForAccount({ accountId, provider: "github" }))) return { ok: false, error: "github_not_linked" };
+    await client.query(
+      "UPDATE terminal_auth_requests SET status = 'linked', account_id = $2, provider = 'github', completed_at = now() WHERE request_hash = $1",
+      [request.request_hash, accountId]
+    );
+    return { ok: true, approved: true };
+  });
+}
+
+export async function listAgentDevices({ accountId = "" } = {}) {
+  if (!accountId) return [];
+  if (!databaseEnabled()) {
+    const { listRuntimeAgentDevices } = await import("../runtime-store.js");
+    return listRuntimeAgentDevices({ accountId });
+  }
+  const result = await query(
+    `SELECT session_id, device_label, client_name, provider_username, created_at, first_used_at, last_used_at, last_ip, idle_expiry_days
+       FROM terminal_sessions
+      WHERE account_id = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+        AND (idle_expiry_days <= 0 OR COALESCE(last_used_at, created_at) > now() - make_interval(days => idle_expiry_days))
+      ORDER BY COALESCE(last_used_at, created_at) DESC
+      LIMIT 50`,
+    [accountId]
+  );
+  return result.rows.map((row) => ({
+    sessionId: row.session_id,
+    label: row.device_label || "Earlier agent token",
+    clientName: row.client_name || "",
+    github: row.provider_username || "",
+    createdAt: new Date(row.created_at).toISOString(),
+    // last_used_at was backfilled for pre-existing tokens; only real use counts here.
+    lastUsedAt: row.first_used_at && row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
+    lastIp: row.last_ip || "",
+  }));
+}
+
+export async function revokeAgentDevice({ accountId = "", sessionId = "" } = {}) {
+  if (!accountId || !sessionId) return 0;
+  if (!databaseEnabled()) {
+    const { revokeRuntimeAgentDevice } = await import("../runtime-store.js");
+    return revokeRuntimeAgentDevice({ accountId, sessionId });
+  }
+  const result = await query(
+    "UPDATE terminal_sessions SET revoked_at = now() WHERE account_id = $1 AND session_id = $2 AND revoked_at IS NULL",
+    [accountId, String(sessionId).slice(0, 120)]
   );
   return result.rowCount;
 }

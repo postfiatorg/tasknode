@@ -90,6 +90,12 @@ resource membership, or other context beyond a generic identity class.
 | `agent_connect` | `/connect` | `GET` `POST` | `handler` | strict JSON ≤ 1024 bytes | 30 / 600s |
 | `agent_connect_signout` | `/connect/signout` | `POST` | `handler` | strict JSON ≤ 1024 bytes | 10 / 600s |
 | `agent_connect_login` | `/connect/login` | `GET` | `none` | — | 20 / 600s |
+| `agent_connect_revoke` | `/connect/revoke` | `POST` | `handler` | strict JSON ≤ 1024 bytes | 30 / 600s |
+| `agent_connect_markdown` | `/connect.md` | `GET` | `none` | — | — |
+| `agent_activate` | `/activate` | `GET` `POST` | `handler` | strict JSON ≤ 1024 bytes | 60 / 600s |
+| `agent_installer` | `/install` | `GET` | `none` | — | — |
+| `agent_installer_cli` | `/install/tasknode.mjs` | `GET` | `none` | — | — |
+| `agent_whoami` | `/api/agent/whoami` | `GET` | `handler` | — | 120 / 60s |
 | `readiness` | `/api/readiness` | `GET` | `none` | — | — |
 | `health` | `/api/health` | `GET` | `none` | — | — |
 | `system_status` | `/api/system/status` | `GET` | `none` | — | — |
@@ -211,4 +217,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **185 route policies** and **8 authentication modes**.
+Total: **191 route policies** and **8 authentication modes**.
