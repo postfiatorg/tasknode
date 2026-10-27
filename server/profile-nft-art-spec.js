@@ -25,13 +25,21 @@ export const profileNftArtSchema = object({
 const reviewSchema = object({ approved: { type: "boolean" }, findings: { type: "array", maxItems: 6, items: { type: "string", enum: findings } }, spec: profileNftArtSchema });
 const fail = (code) => { throw Object.assign(new Error(code), { code }); };
 
+// K3.1 Pro reasons for ~7k tokens on the art spec: a real spec call took 227 s
+// on 2026-10-27, so the old 240 s deadline failed nearly every render. The
+// render lease is renewed every 30 s, so a longer per-call deadline is safe.
+export function profileNftCompletionTimeoutMs(env = process.env) {
+  const configured = Math.floor(Number(env.PROFILE_NFT_COMPLETION_TIMEOUT_MS || 600_000));
+  return Number.isFinite(configured) ? Math.max(60_000, Math.min(configured, 900_000)) : 600_000;
+}
+
 // Pinned model and ZDR at the request boundary. Neither account defaults nor
 // Ambient availability may redirect private task history to another route.
 export function privateProfileNftCompletion({ body, env = process.env, fetchImpl = fetch, signal, capability = "strict_json" } = {}) {
   if (!providerApiKey("vercel", env)) fail("profile_nft_zdr_not_configured");
   return inferenceChatCompletion({
     env: { ...env, INFERENCE_AMBIENT_BACKUP_ENABLED: "false", INFERENCE_MODEL_STRUCTURED: PROFILE_NFT_SPEC_MODEL, INFERENCE_MODEL_VISION: PROFILE_NFT_SPEC_MODEL },
-    fetchImpl, signal, capability, allowFallback: false, timeoutMs: 240_000,
+    fetchImpl, signal, capability, allowFallback: false, timeoutMs: profileNftCompletionTimeoutMs(env),
     body: { ...body, model: PROFILE_NFT_SPEC_MODEL, max_tokens: 32768,
       providerOptions: { gateway: { zeroDataRetention: true } } },
   });
