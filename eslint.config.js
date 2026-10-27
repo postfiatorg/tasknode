@@ -5,7 +5,7 @@ import react from "eslint-plugin-react";
 import globals from "globals";
 
 const appFiles = ["src/**/*.{js,jsx}", "shared/**/*.js"];
-const nodeFiles = ["server/**/*.js", "scripts/**/*.mjs"];
+const nodeFiles = ["server/**/*.js", "scripts/**/*.mjs", "packages/**/*.mjs"];
 
 const baseRules = {
   ...js.configs.recommended.rules,
