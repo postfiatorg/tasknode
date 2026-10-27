@@ -60,6 +60,7 @@
     "scripts/docs-assistant-limits-smoke.mjs",
     "scripts/docs-chat-history-smoke.mjs",
     "scripts/ethereum-deposit-smoke.mjs",
+    "scripts/evm-wallet-pay-smoke.mjs",
     "scripts/expert-badge-evaluation-smoke.mjs",
     "scripts/fleet-heartbeat-smoke.mjs",
     "scripts/hive-acceptance-gate-smoke.mjs",

@@ -1,6 +1,6 @@
 import { ProfilePortrait } from "../profile/ProfilePortrait.jsx";
 import { useState } from "react";
-import { Check, Copy, Pencil, Share, Trash2, X } from "lucide-react";
+import { Check, Copy, Pencil, Trash2, X } from "lucide-react";
 import { BlockRenderer, copyText } from "./ChatMessages.jsx";
 import { transcriptTextFromThread } from "./chat-turns";
 import { isSignedInSession } from "../../session";
@@ -11,17 +11,6 @@ export function ChatItemActionMenu({ chat, menuRef, onRename, onDelete, style })
     <div className="chat-action-menu" ref={menuRef} role="menu" style={style}>
       {!isHive && (
         <>
-          <button
-            aria-disabled="true"
-            className="chat-action-menu-item is-muted"
-            onClick={(event) => event.preventDefault()}
-            role="menuitem"
-            type="button"
-          >
-            <Share size={17} strokeWidth={1.75} />
-            <span>Share</span>
-            <small>Coming soon</small>
-          </button>
           <button className="chat-action-menu-item" onClick={onRename} role="menuitem" type="button">
             <Pencil size={17} strokeWidth={1.75} />
             <span>Rename</span>

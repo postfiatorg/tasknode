@@ -122,7 +122,7 @@ const failed = await runDailyProfileNftWorkerOnce({
 
 assert.equal(failed.generatedCount, 0);
 assert.equal(failed.failedCount, 1);
-assert.equal(failed.failed[0].error, "Artwork generation was interrupted. It will retry automatically.");
+assert.equal(failed.failed[0].error, "Artwork generation was interrupted. Generate again to retry.");
 
 const retried = await runDailyProfileNftWorkerOnce({
   runDate,

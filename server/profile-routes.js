@@ -9,6 +9,7 @@ import {
 } from "./repositories/profile-daily-airdrop.js";
 import { countProfileNfts, failStaleGeneratingProfileNfts, listProfileNfts, setSelectedProfileNft } from "./repositories/profile-nfts.js";
 import { getPublicProfile } from "./repositories/profile-public.js";
+import { getAccountAlignment } from "./repositories/alignment-score.js";
 import {
   getIdentityApprovalState,
   refreshIdentityApprovalsAfterSignal,
@@ -481,10 +482,14 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       });
       return true;
     }
-    const latest = await getLatestDailyAirdropRun({ accountId: session.accountId });
+    const [latest, alignment] = await Promise.all([
+      getLatestDailyAirdropRun({ accountId: session.accountId }),
+      getAccountAlignment({ accountId: session.accountId }),
+    ]);
     json(res, 200, {
       ok: true,
       latest,
+      alignment,
     });
     return true;
   }

@@ -257,15 +257,6 @@
     grid-template-columns: 1fr;
   }
 
-  .eth-topup-asset {
-    grid-template-columns: 38px minmax(0, 1fr);
-  }
-
-  .eth-topup-asset em {
-    grid-column: 2 / 3;
-    justify-self: start;
-  }
-
   .wallet-tx-row {
     align-items: flex-start;
   }
@@ -505,11 +496,11 @@
 
   .nav-list button small {
     min-width: 20px;
-    padding: 3px 9px;
-    background: var(--tn-dark-inverse-surface, #0d0d0d);
-    font-size: 12px;
-    font-weight: 700;
-    text-align: center;
+    padding: 0 2px;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: right;
   }
 
   .nav-list button small.nav-live-state {
@@ -537,7 +528,7 @@
   }
 
   .nav-list button small.nav-vault-state {
-    padding: 3px 9px;
+    padding: 0 2px;
     font-size: 12.5px;
   }
 

@@ -70,7 +70,7 @@ The deterministic fields come from Postgres and runtime wallet-link state:
 - lifetime task reward PFT from canonical rewarded `task_projections` rows with positive `reward_actual_pft`, nonzero `event_count`, and non-empty `last_event_tx_hash` plus `last_event_cid`;
 - lifetime daily airdrop PFT from submitted `profile_daily_airdrop_issuances`;
 - total lifetime PFT as task rewards plus issued airdrops;
-- alignment score from the latest completed `profile_daily_airdrop_runs.alignment_score_7d`;
+- alignment score: the average `retention_value_score` of eligible production `profile_daily_airdrop_runs` in the trailing 30 days (see Directory);
 - contribution tier from positive task rewards in the trailing 30 days;
 - public NFT gallery from account-scoped public `profile_nfts` rows, up to the bounded 240-row response cap.
 
@@ -554,7 +554,7 @@ Visible fields:
 - proposed daily airdrop: `daily_airdrop_pft`;
 - run mode: `run_mode`, currently usually `dry_run`;
 - score date: `completed_at` or `run_date`;
-- alignment: `alignment_score_7d * 100`;
+- alignment: average `retention_value_score` over the trailing 30 days of eligible production runs;
 - rewarded task count from `input_snapshot.reward_totals.rewarded_task_count`;
 - trailing 7-day actual/max PFT: `actual_airdrop_pft_7d` and `max_possible_airdrop_pft_7d`;
 - recipient wallet from `input_snapshot.airdrop_recipient.wallet_address`;

@@ -1312,7 +1312,7 @@ export function ChatSurface({
                 }}
                 type="button"
               >
-                <span className="model-button-label">{modelPickerDisabled ? modelPickerLabel : `Model: ${modelPickerLabel}`}</span>
+                <span className="model-button-label">{modelPickerLabel}</span>
                 <ChevronDown className={modelMenuOpen ? "is-open" : ""} size={14} strokeWidth={1.75} />
               </button>
               {modelMenuOpen && !modelPickerDisabled && (
@@ -1366,17 +1366,18 @@ export function ChatSurface({
           {composer}
           {!signedOut && !isHiveChat && (
             <div className="chat-starter-prompts">
-              {CHAT_STARTER_PROMPTS.map((prompt) => (
+              {CHAT_STARTER_PROMPTS.map(({ icon: PromptIcon, text }) => (
                 <button
-                  className="pill-button"
-                  key={prompt}
+                  className="chat-starter-prompt"
+                  key={text}
                   onClick={() => {
-                    setInput(prompt);
+                    setInput(text);
                     window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}
                   type="button"
                 >
-                  {prompt}
+                  <PromptIcon aria-hidden="true" size={16} strokeWidth={1.75} />
+                  <span>{text}</span>
                 </button>
               ))}
             </div>

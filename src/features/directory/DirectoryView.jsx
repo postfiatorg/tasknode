@@ -5,13 +5,15 @@ import { compactWallet, formatCompactPft } from "../hive/HiveView.jsx";
 import { ProfilePortrait, ProfileArtTraits } from "../profile/ProfilePortrait.jsx";
 import "./directory.css";
 
-const SORT_COLUMNS = [
-  { key: "networkTasks", label: "Network" },
-  { key: "personalTasks", label: "Personal" },
-  { key: "rewards", label: "Rewards" },
-  { key: "alignment", label: "Alignment (7d)" },
-  { key: "score", label: "Score" },
-];
+function sortColumns(windowDays = 30) {
+  return [
+    { key: "networkTasks", label: "Network" },
+    { key: "personalTasks", label: "Personal" },
+    { key: "rewards", label: "Rewards" },
+    { key: "alignment", label: `Alignment (${windowDays}d)` },
+    { key: "score", label: "Score" },
+  ];
+}
 
 function rankOperators(operators = []) {
   return [...operators]
@@ -86,7 +88,7 @@ function OperatorIdentity({ operator }) {
   );
 }
 
-function OperatorRow({ operator }) {
+function OperatorRow({ operator, windowDays = 30 }) {
   const RowTag = operator.hasPublicProfile ? "a" : "div";
   const rowProps = operator.hasPublicProfile
     ? { href: profileHref(operator.accountId), "aria-label": `Open ${operator.displayName || operator.handle} public profile` }
@@ -120,7 +122,7 @@ function OperatorRow({ operator }) {
           <i className={`tone-${alignmentTone(alignment)}`}>
             <b style={{ width: hasAlignment ? `${Math.max(0, Math.min(100, Number(alignment)))}%` : "0%" }} />
           </i>
-          <small title="Airdrop PFT received over the last 7 days as a share of the maximum possible">Alignment (7d)</small>
+          <small title={`Average daily work-quality score over the last ${windowDays} days${operator.alignmentScoredDays ? ` (${operator.alignmentScoredDays} scored days)` : ""}`}>Alignment ({windowDays}d)</small>
         </span>
         <span className="directory-stat-cell is-score">
           {Math.round(Number(operator.score || 0))}
@@ -165,6 +167,7 @@ export function DirectoryView() {
 
   const operators = useMemo(() => sortOperators(document?.operators || [], sortKey), [document?.operators, sortKey]);
   const totals = document?.totals || {};
+  const windowDays = Number(document?.rankFormula?.alignmentWindowDays) || 30;
   const readyWithRows = status === "ready" && operators.length > 0;
 
   return (
@@ -177,7 +180,7 @@ export function DirectoryView() {
               {readyWithRows ? "Live" : "Directory"}
             </div>
             <h1>Directory</h1>
-            <p>Public, discoverable operators ranked by rewarded work, PFT earned, and current alignment score.</p>
+            <p>Public operators ranked by rewarded work, PFT earned and alignment, the average daily work-quality score over the last {windowDays} days.</p>
           </div>
           <div className="directory-header-actions">
             <div className="directory-stats">
@@ -210,7 +213,7 @@ export function DirectoryView() {
           <div className="directory-row directory-row-head" role="row">
             <span>Rank</span>
             <span>Operator</span>
-            {SORT_COLUMNS.map((column) => (
+            {sortColumns(windowDays).map((column) => (
               <button
                 className={sortKey === column.key ? "is-active" : ""}
                 key={column.key}
@@ -225,7 +228,7 @@ export function DirectoryView() {
           {operators.length > 0 ? (
             <div className="directory-rows">
               {operators.map((operator) => (
-                <OperatorRow key={operator.accountId} operator={operator} />
+                <OperatorRow key={operator.accountId} operator={operator} windowDays={windowDays} />
               ))}
             </div>
           ) : (

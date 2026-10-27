@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, Github, Lock, Shield, X } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { requestJson } from "../../api";
 import { BillingSettings } from "../billing/BillingSettings";
 import { DataSettings } from "../settings/DataSettings.jsx";
 import { SettingsLine, SmallPill } from "../settings/SettingsControls.jsx";
 import { IdentitySettings } from "../identity/IdentityControls.jsx";
+import { ProviderIcon } from "../identity/ProviderIcon.jsx";
+import { linkedAccountStatus } from "./account-link-rows.jsx";
 import { loginProviderDisplayState } from "../chat/chat-ui-state.js";
 import { isSignedInSession } from "../../session";
-import { clearAuthSessionHint, SETTINGS_PAGES } from "../../app/app-shell-shared.jsx";
+import { AGENT_CONNECT_GUIDE_URL, clearAuthSessionHint, SETTINGS_PAGES } from "../../app/app-shell-shared.jsx";
 
-export function SettingsModal({ linkedWallet, onAppStateChange, onClose, onWalletUnlock, session, setTheme, theme, themeSessionOnly = false, walletSecret, walletVault }) {
-  const [page, setPage] = useState("general");
+export function SettingsModal({ initialPage = "general", linkedWallet, onAppStateChange, onClose, onWalletUnlock, session, setTheme, theme, themeSessionOnly = false, walletSecret, walletVault }) {
+  const [page, setPage] = useState(initialPage);
   const activePage = SETTINGS_PAGES.find((item) => item.key === page) || SETTINGS_PAGES[0];
 
   return (
@@ -47,6 +49,7 @@ export function SettingsModal({ linkedWallet, onAppStateChange, onClose, onWalle
               <SecuritySettings
                 linkedWallet={linkedWallet}
                 onAppStateChange={onAppStateChange}
+                onOpenWallet={() => { window.location.hash = "wallet"; onClose(); }}
                 onWalletUnlock={onWalletUnlock}
                 session={session}
                 walletSecret={walletSecret}
@@ -78,15 +81,21 @@ export function GeneralSettings({ setTheme, theme, sessionOnly = false }) {
         </div>
         {sessionOnly && <p role="status">Applied for this session. Your browser could not save this preference.</p>}
       </fieldset>
-      <MfaCallout />
-      <SettingsLine label="Contrast" right={<StaticButton value="System" />} />
-      <SettingsLine label="Accent color" right={<StaticButton value="Black" />} />
-      <SettingsLine label="Language" right={<StaticButton value="Auto-detect" />} />
+      <SettingsLine
+        desc="Let Claude Code, Codex, Hermes or any MCP client read your tasks, do the work and submit evidence."
+        label="Connect an agent"
+        right={(
+          <span className="settings-line-actions">
+            <SmallPill href={AGENT_CONNECT_GUIDE_URL}>Guide <ExternalLink size={11} /></SmallPill>
+            <SmallPill href="/connect">Create token <ExternalLink size={11} /></SmallPill>
+          </span>
+        )}
+      />
     </>
   );
 }
 
-export function SecuritySettings({ linkedWallet, onAppStateChange, onWalletUnlock, session, walletSecret, walletVault }) {
+export function SecuritySettings({ linkedWallet, onAppStateChange, onOpenWallet, onWalletUnlock, session, walletSecret, walletVault }) {
   const signedIn = isSignedInSession(session);
   const linkedProviders = session?.linkedProviders || [];
   const providers = (session?.accountLinks || []).filter((provider) =>
@@ -153,7 +162,6 @@ export function SecuritySettings({ linkedWallet, onAppStateChange, onWalletUnloc
 
   return (
     <>
-      <MfaCallout />
       <IdentitySettings onAppStateChange={onAppStateChange} session={session} />
       <PasswordSecurity
         linkedWallet={linkedWallet}
@@ -186,10 +194,8 @@ export function SecuritySettings({ linkedWallet, onAppStateChange, onWalletUnloc
           {message && <div className="inline-message">{message}</div>}
         </section>
       )}
-      <SettingsLine desc="Write down or store your recovery phrase securely." label="Backup recovery phrase" right={<SmallPill>Reveal</SmallPill>} />
-      <SettingsLine desc="Sign in with an existing recovery phrase." label="Restore wallet" right={<SmallPill>Restore</SmallPill>} />
-      <SettingsLine desc="2 devices currently signed in." label="Active sessions" right={<SmallPill>Manage</SmallPill>} />
-      <SettingsLine desc="Send a security or product report." label="Report issue" right={<SmallPill>Report</SmallPill>} />
+      <SettingsLine desc="Back up the recovery phrase or restore a wallet from Wallet." label="Wallet recovery" right={<SmallPill onClick={onOpenWallet}>Open wallet</SmallPill>} />
+      <SettingsLine desc="Report a bug or security issue on GitHub." label="Report issue" right={<SmallPill href="https://github.com/postfiatorg/tasknode/issues/new">Report <ExternalLink size={11} /></SmallPill>} />
     </>
   );
 }
@@ -416,92 +422,6 @@ export function ConnectedAccountRow({
         </button>
       )}
     </div>
-  );
-}
-
-export function TelegramProfileMenuRow({ linkedProvider, onClick, pending, provider, signedIn }) {
-  const linked = Boolean(linkedProvider);
-  const detail = linked
-    ? linkedAccountStatus(linkedProvider)
-    : provider?.enabled
-      ? "Link Telegram to use Task Node from chat."
-      : provider?.configured
-        ? "Telegram linking is temporarily disabled."
-        : "Telegram linking needs setup.";
-  const status = linked
-    ? "Linked"
-    : pending
-      ? "Checking"
-      : provider?.enabled
-        ? "Connect"
-        : "Setup";
-
-  return (
-    <button
-      className="telegram-menu-row"
-      disabled={!signedIn || pending}
-      onClick={onClick}
-      type="button"
-    >
-      <span className="telegram-menu-icon">
-        <ProviderIcon id="telegram" />
-      </span>
-      <span className="telegram-menu-copy">
-        <strong>Telegram Chat</strong>
-        <small>{detail}</small>
-      </span>
-      <span className={linked ? "telegram-menu-status linked" : "telegram-menu-status"}>
-        {status}
-      </span>
-    </button>
-  );
-}
-
-export function linkedAccountStatus(provider) {
-  if (provider.username) return `@${provider.username}`;
-  if (provider.maskedEmail) return provider.maskedEmail;
-  if (provider.email) return provider.email;
-  return "Linked";
-}
-
-export function accountLinkProvider(session, providerId) {
-  const id = String(providerId || "").trim();
-  return (
-    (session?.accountLinks || []).find((provider) => provider?.id === id) || {
-      id,
-      label: "Telegram",
-      startPath: `/api/auth/start/${id}`,
-      configured: false,
-      enabled: false,
-    }
-  );
-}
-
-export function linkedProviderById(session, providerId) {
-  const id = String(providerId || "").trim();
-  return (session?.linkedProviders || []).find((provider) => provider?.id === id) || null;
-}
-
-export function MfaCallout() {
-  return (
-    <section className="mfa-callout">
-      <span>
-        <Shield size={16} strokeWidth={1.75} />
-        <i><Lock size={8} strokeWidth={2.5} /></i>
-      </span>
-      <strong>Secure your account</strong>
-      <p>Add multi-factor authentication (MFA), like a hardware key or authenticator app, to help protect your account when signing in.</p>
-      <button type="button">Set up MFA</button>
-    </section>
-  );
-}
-
-export function StaticButton({ value }) {
-  return (
-    <button className="static-button" type="button">
-      {value}
-      <ChevronRight size={13} strokeWidth={1.75} />
-    </button>
   );
 }
 
@@ -749,7 +669,7 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
           <X size={18} strokeWidth={2} />
         </button>
         <h2 id="login-title">Log in or sign up</h2>
-        <p>You'll get smarter responses and can upload files, images, and more.</p>
+        <p>Get tasks, earn PFT and keep your context in one place.</p>
         {providerDisplayState === "loading" ? (
           <div className="login-loading-options" aria-live="polite">Checking login options</div>
         ) : (
@@ -767,11 +687,7 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
               </button>
             ))}
             {message && <div className="dialog-message">{message}</div>}
-            <div className="divider">OR</div>
-            <div className="login-method-switch">
-              <button className={loginMethod === "code" ? "active" : ""} onClick={() => { setLoginMethod("code"); setMessage(""); }} type="button">Email code</button>
-              <button className={loginMethod === "password" ? "active" : ""} onClick={() => { setLoginMethod("password"); setMessage(""); }} type="button">Password</button>
-            </div>
+            {providers.length > 0 && <div className="divider">OR</div>}
             {loginMethod === "code" && (emailStep === "email" ? (
               <>
                 <input
@@ -826,11 +742,10 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
             ))}
             {loginMethod === "password" && passwordStep === "login" && (
               <div className="email-code-step">
-                <div className="password-login-note">Use a verified email or Hive handle. Enable password login first under Settings → Security after signing in with a connected provider.</div>
+                <div className="password-login-note">Passwords work once enabled in Settings → Security.</div>
                 <input type="text" autoComplete="username" placeholder="Verified email or Hive handle" aria-label="Verified email or Hive handle" onChange={(event) => setEmail(event.target.value)} value={email} />
                 <input type="password" autoComplete="current-password" placeholder="Account password" aria-label="Account password" onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitPasswordLogin(); }} value={password} />
                 <button className="continue-button" disabled={pendingProvider === "password"} onClick={submitPasswordLogin} type="button">{pendingProvider === "password" ? "Checking" : "Continue"}</button>
-                <button className="login-text-button" onClick={startPasswordReset} type="button">Forgot password?</button>
               </div>
             )}
             {loginMethod === "password" && passwordStep === "reset" && (
@@ -843,16 +758,23 @@ export function LoginDialog({ authLoading = false, session, onClose, onSessionCh
                 <button className="continue-button" disabled={pendingProvider === "password"} onClick={verifyPasswordReset} type="button">{pendingProvider === "password" ? "Saving" : "Reset password"}</button>
               </div>
             )}
+            <div className="login-alt-methods">
+              {loginMethod === "code" ? (
+                <button className="login-text-button" onClick={() => { setLoginMethod("password"); setPasswordStep("login"); setMessage(""); }} type="button">Use a password instead</button>
+              ) : (
+                <>
+                  {passwordStep === "login" && <button className="login-text-button" onClick={startPasswordReset} type="button">Forgot password?</button>}
+                  <button className="login-text-button" onClick={() => { setLoginMethod("code"); setMessage(""); }} type="button">Email me a code instead</button>
+                </>
+              )}
+            </div>
           </>
         )}
+        <p className="login-legal">
+          <a href="/privacy" rel="noopener noreferrer" target="_blank">Privacy policy</a>
+        </p>
       </section>
     </div>
   );
 }
 
-export function ProviderIcon({ id }) {
-  if (id === "github") return <Github size={20} strokeWidth={1.9} />;
-  if (id === "telegram") return <span className="provider-icon telegram">T</span>;
-  if (id === "discord") return <span className="provider-icon discord">D</span>;
-  return <span className="provider-icon x-provider">X</span>;
-}

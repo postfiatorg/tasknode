@@ -387,15 +387,27 @@ async function handleRegister({ req, res }) {
 // command out of the browser and pastes it into the terminal.
 const escapeHtml = (value = "") => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
+const AGENT_GUIDE_URL = "https://postfiat.org/agents/";
+
 function connectPage(res, body, status = 200) {
   res.writeHead(status, { ...securityHeaders(), "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
   res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Connect an agent · Task Node</title>${appearancePageHead}
-<style>body{font-family:system-ui,sans-serif;margin:0;padding:1.5rem;line-height:1.5}main{max-width:46rem;margin:0 auto}
-pre{white-space:pre-wrap;word-break:break-all;user-select:all;cursor:copy;padding:.75rem;border:1px solid #d8d5ca;border-radius:6px;background:#f3f1ea;font-size:.85rem}
-:root[data-theme="dark"] pre{background:#2a2b26;border-color:#3b3d35}
-.button{display:inline-block;padding:.6rem 1rem;border:0;border-radius:6px;background:#22231f;color:#faf9f6;font:inherit;cursor:pointer;text-decoration:none}</style>
-<main><h1>Connect an agent</h1>${body}</main>`);
+<style>body{margin:0;padding:48px 20px;background:var(--tn-bg,#faf9f6);color:var(--tn-text,#0d0d0d);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:44rem;margin:0 auto}h1{margin:0 0 6px;font-size:26px;font-weight:600;letter-spacing:-.01em}h2{margin:28px 0 8px;font-size:15px;font-weight:600}
+p{margin:0 0 14px;color:var(--tn-text-secondary,#45463e)}.muted{color:var(--tn-text-muted,#66685d);font-size:13px}
+a{color:var(--tn-link,#315bb5)}.guide{display:block;margin:0 0 24px;padding:12px 14px;border:1px solid var(--tn-border,#e8e6df);border-radius:10px;color:inherit;text-decoration:none}
+.guide strong{display:block}.guide span{color:var(--tn-text-muted,#66685d);font-size:13px}.guide:hover{background:var(--tn-surface-hover,#eeede7)}
+pre{white-space:pre-wrap;word-break:break-all;user-select:all;cursor:copy;margin:0;padding:12px 14px;border:1px solid var(--tn-border,#e8e6df);border-radius:10px;background:var(--tn-surface,#fff);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+.button{display:inline-block;margin:0 8px 12px 0;padding:9px 16px;border:0;border-radius:10px;background:var(--tn-primary-bg,#111);color:var(--tn-primary-text,#fff);font:inherit;font-size:14px;font-weight:500;cursor:pointer;text-decoration:none}
+.button.secondary{border:1px solid var(--tn-border,#e8e6df);background:transparent;color:inherit}
+:root[data-theme="dark"] main{background:transparent}:root[data-theme="dark"] a{color:#a4c6ff}:root[data-theme="dark"] .guide{border-color:#3b3d35;color:inherit}
+:root[data-theme="dark"] .guide:hover{background:#2a2b26}:root[data-theme="dark"] pre{background:#22231f;border-color:#3b3d35}
+:root[data-theme="dark"] .button.secondary{border-color:#3b3d35;background:transparent;color:#f2f0e9}
+@media (prefers-color-scheme:dark){:root:not([data-theme]) body{background:#171816;color:#f2f0e9}}</style>
+<main><h1>Connect an agent</h1>
+<a class="guide" href="${AGENT_GUIDE_URL}" rel="noopener" target="_blank"><strong>Step-by-step guide →</strong><span>Setup for Claude Code, Codex, Hermes, Pi, OpenCode, Cursor, ChatGPT and any MCP client.</span></a>
+${body}</main>`);
 }
 
 export function agentConnectCommands(origin, token) {
@@ -428,12 +440,12 @@ async function handleConnect({ req, res, url, origin, session }) {
   }
   const github = await getLinkedProviderForAccount({ accountId: session.accountId, provider: "github" });
   if (!github) {
-    return connectPage(res, `<p>Agents sign in through GitHub. Link GitHub to this account, then reopen this page.</p><a class="button" href="/settings/accounts/github">Link GitHub</a>`);
+    return connectPage(res, `<p>Agents sign in through GitHub. Link GitHub to this account, then reopen this page.</p><a class="button" href="/#settings/security">Link GitHub</a>`);
   }
   if (req.method !== "POST") {
     return connectPage(res, `<p>Signed in as <b>${escapeHtml(github.username || session.accountId)}</b>. Create a token, then paste one command into the terminal where your agent runs. This works over SSH too.</p><form method="post"><button class="button" type="submit">Create token</button></form>
 <p class="muted">To connect a different account, switch to it in Task Node first. Pasting a new command replaces the agent's current account.</p>
-<form method="post" action="/connect/signout"><button class="button" type="submit">Sign out all agents</button></form>
+<form method="post" action="/connect/signout"><button class="button secondary" type="submit">Sign out all agents</button></form>
 <p class="muted">Revokes every agent and Corbanu Terminal token for this account, for example after losing a laptop.</p>`);
   }
   const token = await mintAgentToken(session.accountId, origin);

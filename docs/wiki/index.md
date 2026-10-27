@@ -97,7 +97,7 @@ Important rules:
 | Docs and Team permissions | [Docs](#docs/docs), [Team](#docs/team) |
 | Private user-to-user transport | [Messages](#docs/messages) |
 | Worker/provider state | [System Status](#docs/system-status-home) |
-| User-specific support investigations | [User Observability Logging](#docs/user-observability-logging) |
+| User-specific support investigations | [User Observability Logging](https://github.com/postfiatorg/tasknode/blob/main/docs/wiki/architecture/user-observability-logging.md) |
 | General defect-repair rule | [Defect Repair Rule](#docs/defect-repair-rule) |
 
 The current Deployment page is an accuracy record and extraction warning, not

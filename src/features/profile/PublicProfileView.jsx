@@ -298,15 +298,17 @@ function ProfileRole({ role = null, snapshot = null, loading = false, error = ""
 function CredentialStrip({ metrics = {}, loading = false }) {
   const alignment = metrics.alignmentScore0To100;
   const hasAlignment = alignment !== null && alignment !== undefined && Number.isFinite(Number(alignment));
+  const windowDays = Number(metrics.alignmentWindowDays) || 30;
+  const scoredDays = Number(metrics.alignmentScoredDays) || 0;
   const items = [
     {
-      label: "Alignment (7d)",
+      label: `Alignment (${windowDays}d)`,
       max: "100",
       score: loading ? "—" : hasAlignment ? String(Math.round(Number(alignment))) : "—",
-      status: hasAlignment ? "7-day airdrop share" : "Not scored yet",
+      status: hasAlignment ? "Average work-quality score" : "No scored work yet",
       sub: hasAlignment
-        ? `${fmtPft(metrics.actualAirdropPft7d)} of ${fmtPft(metrics.maxPossibleAirdropPft7d)} possible airdrop PFT over the last 7 days`
-        : "Run a daily airdrop score to populate alignment.",
+        ? `Across ${scoredDays} scored day${scoredDays === 1 ? "" : "s"} in the last ${windowDays} days`
+        : `Scored daily once rewarded work lands in the last ${windowDays} days.`,
       tone: hasAlignment ? C.success : C.ink4,
     },
     {

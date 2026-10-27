@@ -73,8 +73,8 @@ function terminalHandoffUrl(origin = "", taskId = "") {
 function linkUrl(origin = "") {
   const normalizedOrigin = safeText(origin, 500).replace(/\/+$/, "");
   return normalizedOrigin
-    ? `${normalizedOrigin}/settings/accounts/github`
-    : "/settings/accounts/github";
+    ? `${normalizedOrigin}/#settings/security`
+    : "/#settings/security";
 }
 
 function githubNotLinked(origin = "") {

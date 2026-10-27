@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { requestJson } from "../../api";
 import { formatCreditUsd, formatUsageUsd } from "../../formatters";
-import { EthereumTopUpModal, useEthereumTopUpSync } from "./ethereum-top-up";
+import { useEthereumTopUpSync } from "./ethereum-top-up";
 
-const PAYMENT_METHODS = [
-  { k: "eth", name: "Ether", chain: "Ethereum mainnet", accent: "#627eea", letter: "E" },
-  { k: "usdt", name: "USDT", chain: "Ethereum ERC-20", accent: "#26a17b", letter: "T" },
-  { k: "usdc", name: "USDC", chain: "Ethereum ERC-20", accent: "#2775ca", letter: "$" },
-];
+const EthereumTopUpModal = lazy(() =>
+  import("./ethereum-top-up-modal").then((module) => ({ default: module.EthereumTopUpModal })),
+);
 
 export function BillingSettings({ onAppStateChange }) {
   const [ledger, setLedger] = useState(null);
@@ -68,8 +66,8 @@ export function BillingSettings({ onAppStateChange }) {
     }
   }
 
-  async function refreshBillingTopUp() {
-    await syncBillingTopUp({ silent: false });
+  async function refreshBillingTopUp({ silent = false } = {}) {
+    await syncBillingTopUp({ silent });
   }
 
   const entries = ledger?.entries || [];
@@ -89,12 +87,7 @@ export function BillingSettings({ onAppStateChange }) {
           <h3>Payment methods</h3>
           <button onClick={openBillingTopUp} type="button">Top up</button>
         </div>
-        <p>Send ETH, USDT, or USDC to your account deposit address. No wallet connection or signature is required.</p>
-        <div className="payment-methods">
-          {PAYMENT_METHODS.map((method) => (
-            <CryptoMethodRow key={method.k} method={method} onTopUp={openBillingTopUp} />
-          ))}
-        </div>
+        <p>Pay with MetaMask, or send ETH, USDT, or USDC on Ethereum mainnet to your account deposit address.</p>
       </div>
       <div>
         <h3>Billing history</h3>
@@ -113,11 +106,13 @@ export function BillingSettings({ onAppStateChange }) {
         )}
       </div>
       {topUpOpen && (
-        <EthereumTopUpModal
-          onClose={() => setTopUpOpen(false)}
-          onRefresh={refreshBillingTopUp}
-          state={topUpState}
-        />
+        <Suspense fallback={null}>
+          <EthereumTopUpModal
+            onClose={() => setTopUpOpen(false)}
+            onRefresh={refreshBillingTopUp}
+            state={topUpState}
+          />
+        </Suspense>
       )}
     </div>
   );
@@ -158,17 +153,4 @@ function ledgerMeta(entry, dateLabel) {
   if (entry.provider && entry.model) return `${entry.provider} - ${entry.model} - ${dateLabel}`;
   if (entry.source) return `${entry.source.replace(/_/g, " ")} - ${dateLabel}`;
   return dateLabel;
-}
-
-function CryptoMethodRow({ method, onTopUp }) {
-  return (
-    <div className="crypto-method">
-      <span style={{ background: method.accent }}>{method.letter}</span>
-      <div>
-        <strong>{method.name}</strong>
-        <small>{method.chain}</small>
-      </div>
-      <button onClick={onTopUp} type="button">Use</button>
-    </div>
-  );
 }

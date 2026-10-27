@@ -11,7 +11,10 @@ import "./hive-navigation.css";
 import "./hive-group.css";
 
 const post = (path, body) => requestJson(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
-const profileLink = (member) => member?.accountId ? `#/profile?account=${encodeURIComponent(member.accountId)}` : `https://njump.me/${npubEncode(member.pubkey)}`;
+// Members without a Task Node account open their Nostr profile in a new tab.
+const profileLink = (member) => member?.accountId
+  ? { href: `#/profile?account=${encodeURIComponent(member.accountId)}` }
+  : { href: `https://njump.me/${npubEncode(member.pubkey)}`, rel: "noreferrer", target: "_blank" };
 const eventLink = (event, relays) => `https://njump.me/${neventEncode({ id: event.id, author: event.pubkey, relays })}`;
 
 function MessageText({ content, members }) {
@@ -19,7 +22,7 @@ function MessageText({ content, members }) {
   let position = 0;
   for (const mention of hiveMentions(content, members)) {
     pieces.push(content.slice(position, mention.start));
-    pieces.push(<a className="hgc-mention" href={profileLink(mention.member)} key={mention.start}>{content.slice(mention.start, mention.end)}</a>);
+    pieces.push(<a className="hgc-mention" {...profileLink(mention.member)} key={mention.start}>{content.slice(mention.start, mention.end)}</a>);
     position = mention.end;
   }
   pieces.push(content.slice(position));
@@ -190,8 +193,8 @@ function HiveGroupRoom({ accountId, walletSecret, onWalletUnlock, onOpenMessages
           const parent = messages.find(item => item.id === hiveEventReplyId(message.event));
           const board = message.actor !== "member";
           return <article className={`hgc-message ${board ? "hgc-bot-message" : ""}`} id={`hive-${message.id}`} key={message.id}>
-            <a href={profileLink(author)} className="hgc-avatar-link" aria-label={`View @${author.handle}`}><ProfilePortrait nft={author.heroNft} seed={author.pubkey} label={`@${author.handle} profile picture`} size={38} /></a>
-            <div className="hgc-message-main"><div className="hgc-message-meta"><a href={profileLink(author)} title={author.nip05}>@{author.handle}</a>{board && <span className="hgc-bot-label"><Bot size={11} />{message.actor === "board_manager" ? "Kimi board manager" : "Bot"}</span>}<a className="hgc-event-time" href={eventLink(message.event, data?.channel?.relays || [])} target="_blank" rel="noreferrer" title="Open signed Nostr message"><time dateTime={new Date(message.event.created_at * 1000).toISOString()}>{new Date(message.event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><ExternalLink size={10} /></a></div>
+            <a {...profileLink(author)} className="hgc-avatar-link" aria-label={`View @${author.handle}`}><ProfilePortrait nft={author.heroNft} seed={author.pubkey} label={`@${author.handle} profile picture`} size={38} /></a>
+            <div className="hgc-message-main"><div className="hgc-message-meta"><a {...profileLink(author)} title={author.nip05}>@{author.handle}</a>{board && <span className="hgc-bot-label"><Bot size={11} />{message.actor === "board_manager" ? "Kimi board manager" : "Bot"}</span>}<a className="hgc-event-time" href={eventLink(message.event, data?.channel?.relays || [])} target="_blank" rel="noreferrer" title="Open signed Nostr message"><time dateTime={new Date(message.event.created_at * 1000).toISOString()}>{new Date(message.event.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><ExternalLink size={10} /></a></div>
               {parent && <a className="hgc-reply-preview" href={`#hive-${parent.id}`} onClick={event => { event.preventDefault(); document.getElementById(`hive-${parent.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); }}><Reply size={12} />@{parent.author.handle} · {parent.event.content.slice(0, 100)}</a>}
               <p className="hgc-message-text"><MessageText content={message.event.content} members={members} /></p>
               {message.delivery === "pending" && <small className="hgc-pending">Saved · waiting for a relay. Retrying automatically.</small>}
@@ -216,7 +219,7 @@ function HiveGroupRoom({ accountId, walletSecret, onWalletUnlock, onOpenMessages
       </footer>
     </section>
     <aside className="hgc-members" aria-label="Hive members"><div className="hgc-members-heading"><h2>People in Hive</h2><button aria-label="Close members" onClick={() => setShowMembers(false)} type="button"><X size={15} /></button></div><p className="hgc-muted">Shared handles. Familiar faces.</p>
-      <div className="hgc-member-list">{members.map(member => <a href={profileLink(member)} key={member.pubkey}><ProfilePortrait nft={member.heroNft} seed={member.pubkey} size={33} /><span><strong>@{member.handle}</strong><small>{member.bot ? "Automated participant" : member.displayName || member.nip05}</small></span></a>)}</div>
+      <div className="hgc-member-list">{members.map(member => <a {...profileLink(member)} key={member.pubkey}><ProfilePortrait nft={member.heroNft} seed={member.pubkey} size={33} /><span><strong>@{member.handle}</strong><small>{member.bot ? "Automated participant" : member.displayName || member.nip05}</small></span></a>)}</div>
       <div className="hgc-about"><AtSign size={17} /><strong>One identity across Task Node</strong><p>Your Messages address and profile picture follow you here.</p><button className="hgc-button" onClick={onOpenMessages} type="button">Open Messages</button></div>
       {accountId && <button className="hgc-archive-link" onClick={() => setArchive(true)} type="button">Previous private Hive chat</button>}
     </aside>

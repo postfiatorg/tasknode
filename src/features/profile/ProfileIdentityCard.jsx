@@ -1,31 +1,6 @@
 import { useEffect, useState } from "react";
 import { requestJson } from "../../api";
-
-const C = {
-  paper3: "var(--tn-dark-bg, #FFFCF5)",
-  ink: "var(--tn-dark-text, #1F1B16)",
-  ink3: "var(--tn-dark-secondary, #6B6052)",
-  ink4: "var(--tn-dark-muted, #9B9081)",
-  ruleSoft: "var(--tn-dark-border, #EFE7D6)",
-};
-
-function SectionHead({ eyebrow, sub }) {
-  return (
-    <div style={{
-      alignItems: "baseline",
-      borderBottom: `1px solid ${C.ruleSoft}`,
-      display: "flex",
-      justifyContent: "space-between",
-      marginBottom: 28,
-      paddingBottom: 14,
-    }}>
-      <div>
-        <div className="tn-eyebrow">{eyebrow}</div>
-        {sub && <div style={{ color: C.ink3, fontSize: 13, marginTop: 4 }}>{sub}</div>}
-      </div>
-    </div>
-  );
-}
+import { ProviderIcon } from "../identity/ProviderIcon.jsx";
 
 export function ProfileIdentityCard({ onProfileIdentityChange, session }) {
   const identity = session?.identityProfile || {};
@@ -99,55 +74,49 @@ export function ProfileIdentityCard({ onProfileIdentityChange, session }) {
   }
 
   return (
-    <section style={{ paddingTop: 44 }}>
-      <SectionHead eyebrow="Hive identity" sub={identity.hiveHandle ? `@${identity.hiveHandle}` : "Choose a public handle"} />
-      <div style={{ display: "grid", gap: 14 }}>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto" }}>
-          <ProfileIdentityInput label="Handle" onChange={setHandle} placeholder="public-handle" value={handle} />
-          <ProfileIdentityInput label="Display name" onChange={setDisplayName} placeholder={handle ? `@${handle.replace(/^@+/, "")}` : "Optional"} value={displayName} />
-          <button className="tn-btn tn-btn-primary" disabled={pending === "handle"} onClick={saveHandle} style={{ alignSelf: "end", justifyContent: "center", minHeight: 40, padding: "0 16px" }} type="button">
-            {pending === "handle" ? "Saving" : "Save"}
-          </button>
+    <section className="pf-section">
+      <div className="pf-section-head">
+        <div>
+          <h2>Identity</h2>
+          <p>Your handle is how Hive, Messages and the Directory address you.</p>
         </div>
-        {identity.suggestions?.length > 0 && !identity.hiveHandle && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {identity.suggestions.map((suggestion) => (
-              <button className="tn-btn" key={suggestion} onClick={() => setHandle(suggestion)} type="button">@{suggestion}</button>
-            ))}
-          </div>
-        )}
-        {aliases.length > 0 && (
-          <div style={{ borderTop: `1px solid ${C.ruleSoft}`, display: "grid", marginTop: 8 }}>
-            {aliases.map((alias) => (
-              <ProfileIdentityAliasRow alias={alias} key={alias.provider} pending={pending === alias.provider} saveAlias={saveAlias} />
-            ))}
-          </div>
-        )}
-        {message && <div style={{ color: C.ink3, fontSize: 13 }}>{message}</div>}
       </div>
+      <div className="pf-identity-form">
+        <ProfileIdentityInput label="Handle" onChange={setHandle} placeholder="public-handle" value={handle} />
+        <ProfileIdentityInput label="Display name" onChange={setDisplayName} placeholder={handle ? `@${handle.replace(/^@+/, "")}` : "Optional"} value={displayName} />
+        <button className="pf-button is-primary" disabled={pending === "handle"} onClick={saveHandle} style={{ minHeight: 34 }} type="button">
+          {pending === "handle" ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {identity.suggestions?.length > 0 && !identity.hiveHandle && (
+        <div className="pf-studio-actions">
+          {identity.suggestions.map((suggestion) => (
+            <button className="pf-text-button" key={suggestion} onClick={() => setHandle(suggestion)} type="button">@{suggestion}</button>
+          ))}
+        </div>
+      )}
+      {aliases.length > 0 && (
+        <div>
+          {aliases.map((alias) => (
+            <ProfileIdentityAliasRow alias={alias} key={alias.provider} pending={pending === alias.provider} saveAlias={saveAlias} />
+          ))}
+        </div>
+      )}
+      {message && <p className="pf-note">{message}</p>}
     </section>
   );
 }
 
 function ProfileIdentityInput({ label, onChange, placeholder, value }) {
   return (
-    <label style={{ display: "grid", gap: 6 }}>
-      <span className="tn-eyebrow">{label}</span>
+    <label className="pf-field">
+      <span>{label}</span>
       <input
         autoCapitalize="none"
         autoComplete="off"
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         spellCheck={false}
-        style={{
-          background: C.paper3,
-          border: `1px solid ${C.ruleSoft}`,
-          borderRadius: 10,
-          color: C.ink,
-          font: "inherit",
-          minHeight: 40,
-          padding: "0 12px",
-        }}
         value={value}
       />
     </label>
@@ -156,32 +125,36 @@ function ProfileIdentityInput({ label, onChange, placeholder, value }) {
 
 function ProfileIdentityAliasRow({ alias, pending, saveAlias }) {
   const publicAlias = alias.visibility === "public";
+  const handleToggleDisabled = pending || !publicAlias || !alias.canDiscloseHandle;
   return (
-    <div style={{ alignItems: "center", borderBottom: `1px solid ${C.ruleSoft}`, display: "grid", gap: 12, gridTemplateColumns: "1fr auto auto", minHeight: 54 }}>
+    <div className="pf-alias">
+      <ProviderIcon id={String(alias.provider || "").toLowerCase() === "twitter" ? "x" : String(alias.provider || "").toLowerCase()} />
       <div>
-        <div style={{ color: C.ink, fontSize: 13.5, fontWeight: 600 }}>{alias.label}</div>
-        <div style={{ color: C.ink4, fontSize: 12 }}>{alias.username ? `@${alias.username}` : "Verified account"}</div>
+        <strong>{alias.label}</strong>
+        <small>{alias.username ? `@${alias.username}` : "Verified account"}</small>
       </div>
-      <button
-        className="tn-btn"
-        disabled={pending}
-        onClick={() => saveAlias(alias, {
-          visibility: publicAlias ? "private" : "public",
-          discloseHandle: !publicAlias && alias.canDiscloseHandle,
-          discloseVerifiedBadge: !publicAlias,
-        })}
-        type="button"
-      >
-        {publicAlias ? "Public" : "Private"}
-      </button>
-      <button
-        className="tn-btn"
-        disabled={pending || !publicAlias || !alias.canDiscloseHandle}
-        onClick={() => saveAlias(alias, { discloseHandle: !alias.discloseHandle })}
-        type="button"
-      >
-        {alias.discloseHandle ? "Handle shown" : "Handle hidden"}
-      </button>
+      <label className={`pf-check${pending ? " is-disabled" : ""}`}>
+        <input
+          checked={publicAlias}
+          disabled={pending}
+          onChange={() => saveAlias(alias, {
+            visibility: publicAlias ? "private" : "public",
+            discloseHandle: !publicAlias && alias.canDiscloseHandle,
+            discloseVerifiedBadge: !publicAlias,
+          })}
+          type="checkbox"
+        />
+        Show on public profile
+      </label>
+      <label className={`pf-check${handleToggleDisabled ? " is-disabled" : ""}`}>
+        <input
+          checked={publicAlias && Boolean(alias.discloseHandle)}
+          disabled={handleToggleDisabled}
+          onChange={() => saveAlias(alias, { discloseHandle: !alias.discloseHandle })}
+          type="checkbox"
+        />
+        Show handle
+      </label>
     </div>
   );
 }

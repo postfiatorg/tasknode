@@ -45,6 +45,13 @@ assert.match(capturedSql, /COUNT\(\*\)::integer AS tasks_rewarded/);
 assert.equal((capturedSql.match(/reward_actual_pft > 0/g) || []).length, 1);
 assert.doesNotMatch(capturedSql, /user_observability_events/);
 assert.doesNotMatch(capturedSql, /latest_handle/);
+// Alignment is the windowed average work-quality score from production runs,
+// not the payout share against the daily cap.
+assert.match(capturedSql, /AVG\(run\.retention_value_score\)/);
+assert.match(capturedSql, /run\.run_mode = 'production'/);
+assert.match(capturedSql, /run\.eligibility_status = 'eligible'/);
+assert.match(capturedSql, /run\.run_date > /);
+assert.doesNotMatch(capturedSql, /alignment_score_7d/);
 
 let profileSql = "";
 const profiles = await publicProfileSummaries({

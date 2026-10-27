@@ -189,13 +189,14 @@ button {
   white-space: nowrap;
 }
 
+/* Counts and states read as quiet trailing text, not filled pills. */
 .nav-list button small {
   margin-left: auto;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--tn-dark-inverse-surface, #0d0d0d);
-  color: var(--tn-dark-on-inverse, #ffffff);
-  font-size: 10px;
+  padding: 0 2px;
+  background: transparent;
+  color: var(--tn-dark-secondary, #45463e);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
 
@@ -203,25 +204,21 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 7px;
-  border: 1px solid var(--tn-dark-control-border, #e8e6df);
-  background: var(--tn-dark-bg, #f7f6f1);
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
   color: var(--tn-dark-muted, #6b6b66);
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 500;
   line-height: 1.2;
   text-transform: none;
 }
 
 .nav-list button small.nav-vault-state.is-unlocked {
-  border-color: var(--tn-dark-control-border, #cfe8d8);
-  background: var(--tn-dark-bg, #effaf3);
   color: var(--tn-dark-success, #047857);
 }
 
 .nav-list button small.nav-vault-state.is-locked {
-  border-color: var(--tn-dark-control-border, #eadfbd);
-  background: var(--tn-dark-bg, #fff9e8);
   color: var(--tn-dark-warning, #8a5b0a);
 }
 
