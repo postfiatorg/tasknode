@@ -300,6 +300,13 @@ export const apiRoutePolicies = [
   { id: "agent_connect", path: "/connect", methods: ["GET", "POST"], auth: "handler", rateLimit: { limit: 30, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
   { id: "agent_connect_signout", path: "/connect/signout", methods: ["POST"], auth: "handler", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
   { id: "agent_connect_login", path: "/connect/login", methods: ["GET"], auth: "none", rateLimit: { limit: 20, windowMs: tenMinutes } },
+  { id: "agent_connect_revoke", path: "/connect/revoke", methods: ["POST"], auth: "handler", rateLimit: { limit: 30, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "agent_connect_markdown", path: "/connect.md", methods: ["GET"], auth: "none" },
+  // /oauth/device_authorization parses its form or JSON body and rate limits in its handler, like /oauth/token.
+  { id: "agent_activate", path: "/activate", methods: ["GET", "POST"], auth: "handler", rateLimit: { limit: 60, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "agent_installer", path: "/install", methods: ["GET"], auth: "none" },
+  { id: "agent_installer_cli", path: "/install/tasknode.mjs", methods: ["GET"], auth: "none" },
+  { id: "agent_whoami", path: "/api/agent/whoami", methods: ["GET"], auth: "handler", rateLimit: { limit: 120, windowMs: 60_000 } },
   { id: "readiness", path: "/api/readiness", methods: ["GET"], auth: "none" },
   { id: "health", path: "/api/health", methods: ["GET"], auth: "none" },
   { id: "system_status", path: "/api/system/status", methods: ["GET"], auth: "none" },

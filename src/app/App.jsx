@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, BookOpen, Bot, Check, ChevronRight, CreditCard, ExternalLink, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
+import { Activity, BookOpen, Bot, ChevronRight, CreditCard, ExternalLink, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
 import { fetchRuntimeConfig, requestJson } from "../api";
 import { ChatSearchModal } from "../features/chat/ChatSearchModal";
 import { createChatDeletionState } from "../features/chat/chat-deletion-state.js";
@@ -29,6 +29,7 @@ import { WalletUnlockModal } from "../features/wallet/WalletUnlockModal";
 import { formatCreditUsd } from "../formatters";
 import { isSignedInSession } from "../session";
 import { appExtensionRegistry, ExtensionSurface } from "../extensions/index.js";
+import { pendingAgentLinkFromLocation, usePendingAgentLink } from "./pending-agent-link.js";
 import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, settingsPageFromLocation, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
 
 const LoginDialog = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.LoginDialog })));
@@ -48,6 +49,7 @@ export function App() {
   const [view, setView] = useState(() => viewFromLocation());
   const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [pendingAgentLink] = useState(() => pendingAgentLinkFromLocation());
   const [addingAccount, setAddingAccount] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [retainedAccounts, setRetainedAccounts] = useState([]);
@@ -772,6 +774,8 @@ export function App() {
     prepareTransition: () => { setSettingsOpen(false); setSelectedTask(null); setChatActionMenu(null); },
     selectedAccountId: session?.accountId || "",
   });
+  const openPendingLogin = useCallback(() => setLoginOpen(true), []);
+  usePendingAgentLink({ initialLink: pendingAgentLink, loading: appStateLoading, signedIn, onLogin: openPendingLogin, onSwitchAccount: addAccount });
   async function startTelegramLinkFromProfileMenu() {
     if (!signedIn) {
       setLoginOpen(true);
@@ -1111,11 +1115,7 @@ export function App() {
                     <strong>{profileName}</strong>
                     <small>{profileSubtext}</small>
                   </span>
-                  {signedIn ? (
-                    <Check className="profile-state-icon" size={14} strokeWidth={2} />
-                  ) : (
-                    <Store size={14} strokeWidth={1.75} />
-                  )}
+                  {!signedIn && <Store size={14} strokeWidth={1.75} />}
                 </>
               </button>
               {profileMenuOpen && (
@@ -1140,12 +1140,6 @@ export function App() {
                     <ChevronRight size={16} strokeWidth={1.75} />
                   </button>
                   {signedIn && (
-                    <div className="profile-session-state">
-                      <Check size={13} strokeWidth={2} />
-                      <span>Signed in</span>
-                    </div>
-                  )}
-                  {signedIn && (
                     <ProfileAccountSwitcher
                       accounts={retainedAccounts}
                       managing={managingAccounts}
@@ -1160,9 +1154,9 @@ export function App() {
                   {signedIn && linkedWalletAddress && (
                     <ToolMenuRow
                       icon={vaultDisplay.tone === "unlocked" ? Unlock : Lock}
-                      label={`Wallet ${vaultDisplay.label}`}
+                      label="Wallet"
                       onClick={openWalletVaultControl}
-                      trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                      trailing={<small className={vaultDisplay.tone === "unlocked" ? "menu-row-state is-ok" : "menu-row-state"}>{vaultDisplay.label}</small>}
                     />
                   )}
                   <div className="menu-divider" />

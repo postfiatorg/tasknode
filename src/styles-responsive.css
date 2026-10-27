@@ -520,8 +520,7 @@
   }
 
   .nav-list button small.nav-vault-state,
-  .balance-vault-state,
-  .telegram-menu-status.linked {
+  .balance-vault-state {
     border-color: var(--tn-dark-control-border, #0e7a43);
     background: transparent;
     color: var(--tn-dark-success, #0e7a43);
@@ -684,28 +683,6 @@
   .profile-menu-header {
     min-height: 54px;
     padding: 10px 12px;
-  }
-
-  .profile-session-state {
-    margin: 4px 14px 10px;
-    color: var(--tn-dark-success, #0e7a43);
-    font-size: 14.5px;
-    font-weight: 600;
-  }
-
-  .telegram-menu-row {
-    min-height: 52px;
-    padding: 9px 12px;
-    border-radius: 14px;
-  }
-
-  .telegram-menu-copy strong {
-    font-size: 15.5px;
-    font-weight: 600;
-  }
-
-  .telegram-menu-copy small {
-    font-size: 13px;
   }
 
   .topbar {

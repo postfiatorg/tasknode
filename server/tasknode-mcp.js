@@ -4,19 +4,16 @@
 // terminal GitHub flow; tools re-enter the /api/terminal/tasknode routes so
 // route policy, rate limits and body contracts apply unchanged.
 import { createHash, randomBytes } from "node:crypto";
-import { appearancePageHead } from "./appearance-page.js";
+import { agentAccountIdentity, DEVICE_GRANT, handleAgentConnectRoute, handleDeviceTokenGrant, identityName, identitySentence, connectCommand } from "./agent-connect.js";
 import { authStart } from "./product-contracts.js";
-import { getLinkedProviderForAccount } from "./repositories/accounts.js";
 import {
-  completeTerminalAuthRequest,
   consumeTerminalAuthRequestSession,
   createTerminalAuthRequest,
   getTerminalAuthRequest,
   getTerminalSessionByToken,
-  revokeTerminalSessions,
 } from "./repositories/terminal-auth.js";
 import { readValidatedJson as readJson } from "./request-validation.js";
-import { enforceRateLimit, enforceRoutePolicy, json, securityHeaders } from "./server-http-boundary.js";
+import { enforceRateLimit, enforceRoutePolicy, json, requestIp } from "./server-http-boundary.js";
 import { handleTaskNodeTerminalRoute } from "./tasknode-terminal-routes.js";
 
 const protocolVersions = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -216,7 +213,8 @@ function metadata(origin, pathname) {
     registration_endpoint: `${origin}/oauth/register`,
     scopes_supported: scopes,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code"],
+    grant_types_supported: ["authorization_code", DEVICE_GRANT],
+    device_authorization_endpoint: `${origin}/oauth/device_authorization`,
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
   };
@@ -247,14 +245,29 @@ export function toolText(tool, out) {
   return JSON.stringify(tool.shape(JSON.parse(out.body)));
 }
 
+// Every reply names the account, so an agent on the wrong account is caught
+// on its first call even if the client ignores initialize instructions.
+export function withAccount(text, identity) {
+  try {
+    const value = JSON.parse(text);
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return JSON.stringify({ ...value, account: { name: identityName(identity), github: identity.github, walletShort: identity.walletShort } });
+    }
+  } catch {
+    // Non-JSON tool output passes through unchanged.
+  }
+  return text;
+}
+
 async function rpcResult(message, req, origin, session) {
   const { method, params = {} } = message;
   if (method === "initialize") {
+    const identity = await agentAccountIdentity({ accountId: session.accountId, githubUsername: session.githubUsername });
     return {
       protocolVersion: protocolVersions.includes(params.protocolVersion) ? params.protocolVersion : protocolVersions[1],
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "tasknode", title: "Task Node", version: "1.0.0" },
-      instructions,
+      serverInfo: { name: "tasknode", title: `Task Node: ${identityName(identity)}`, version: "1.0.0" },
+      instructions: `${identitySentence(identity)} Tell the user which account this is the first time you use Task Node in a session. Never ask the user to paste a Task Node token into chat; to connect or switch accounts, run \`${connectCommand(origin)}\`.\n${instructions}`,
     };
   }
   if (method === "ping") return {};
@@ -263,16 +276,17 @@ async function rpcResult(message, req, origin, session) {
     const tool = toolsByName.get(params.name);
     if (!tool) throw Object.assign(new Error(`Unknown tool: ${params.name}`), { code: -32602 });
     const out = await callTool(tool, params.arguments || {}, req, origin, session);
-    return { content: [{ type: "text", text: toolText(tool, out) }], isError: out.status >= 400 };
+    const identity = await agentAccountIdentity({ accountId: session.accountId, githubUsername: session.githubUsername });
+    return { content: [{ type: "text", text: withAccount(toolText(tool, out), identity) }], isError: out.status >= 400 };
   }
   throw Object.assign(new Error(`Method not found: ${method}`), { code: -32601 });
 }
 
 async function handleMcp({ req, res, origin }) {
   const token = bearerToken(req);
-  const session = token ? await getTerminalSessionByToken(token) : null;
+  const session = token ? await getTerminalSessionByToken(token, { ip: requestIp(req) }) : null;
   if (!session?.accountId) {
-    json(res, 401, { error: "invalid_token", error_description: "Sign in to Task Node with GitHub." }, {
+    json(res, 401, { error: "invalid_token", error_description: `Run ${connectCommand(origin)} to connect this agent to Task Node.` }, {
       "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
     });
     return;
@@ -338,7 +352,6 @@ async function handleToken({ req, res }) {
     json(res, 405, { error: "invalid_request" }, { allow: "POST" });
     return;
   }
-  if (await enforceRateLimit(req, res, { route: "oauth_token", limit: 30, windowMs: 10 * 60_000 })) return;
   let form;
   try {
     form = await readForm(req);
@@ -346,6 +359,13 @@ async function handleToken({ req, res }) {
     json(res, error.status || 400, { error: "invalid_request" });
     return;
   }
+  // Device polling runs every 5 s for up to 10 min, so it has its own budget.
+  if (form.grant_type === DEVICE_GRANT) {
+    if (await enforceRateLimit(req, res, { route: "oauth_token_device", limit: 240, windowMs: 10 * 60_000 })) return;
+    await handleDeviceTokenGrant({ form, res });
+    return;
+  }
+  if (await enforceRateLimit(req, res, { route: "oauth_token", limit: 30, windowMs: 10 * 60_000 })) return;
   if (form.grant_type !== "authorization_code") {
     json(res, 400, { error: "unsupported_grant_type" });
     return;
@@ -382,87 +402,7 @@ async function handleRegister({ req, res }) {
   });
 }
 
-// /connect: browser-side token for agents on any machine, including over SSH
-// where an OAuth loopback callback cannot reach the agent. The user copies one
-// command out of the browser and pastes it into the terminal.
-const escapeHtml = (value = "") => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-
-const AGENT_GUIDE_URL = "https://postfiat.org/agents/";
-
-function connectPage(res, body, status = 200) {
-  res.writeHead(status, { ...securityHeaders(), "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-  res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Connect an agent · Task Node</title>${appearancePageHead}
-<style>body{margin:0;padding:48px 20px;background:var(--tn-bg,#faf9f6);color:var(--tn-text,#0d0d0d);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:44rem;margin:0 auto}h1{margin:0 0 6px;font-size:26px;font-weight:600;letter-spacing:-.01em}h2{margin:28px 0 8px;font-size:15px;font-weight:600}
-p{margin:0 0 14px;color:var(--tn-text-secondary,#45463e)}.muted{color:var(--tn-text-muted,#66685d);font-size:13px}
-a{color:var(--tn-link,#315bb5)}.guide{display:block;margin:0 0 24px;padding:12px 14px;border:1px solid var(--tn-border,#e8e6df);border-radius:10px;color:inherit;text-decoration:none}
-.guide strong{display:block}.guide span{color:var(--tn-text-muted,#66685d);font-size:13px}.guide:hover{background:var(--tn-surface-hover,#eeede7)}
-pre{white-space:pre-wrap;word-break:break-all;user-select:all;cursor:copy;margin:0;padding:12px 14px;border:1px solid var(--tn-border,#e8e6df);border-radius:10px;background:var(--tn-surface,#fff);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-.button{display:inline-block;margin:0 8px 12px 0;padding:9px 16px;border:0;border-radius:10px;background:var(--tn-primary-bg,#111);color:var(--tn-primary-text,#fff);font:inherit;font-size:14px;font-weight:500;cursor:pointer;text-decoration:none}
-.button.secondary{border:1px solid var(--tn-border,#e8e6df);background:transparent;color:inherit}
-:root[data-theme="dark"] main{background:transparent}:root[data-theme="dark"] a{color:#a4c6ff}:root[data-theme="dark"] .guide{border-color:#3b3d35;color:inherit}
-:root[data-theme="dark"] .guide:hover{background:#2a2b26}:root[data-theme="dark"] pre{background:#22231f;border-color:#3b3d35}
-:root[data-theme="dark"] .button.secondary{border-color:#3b3d35;background:transparent;color:#f2f0e9}
-@media (prefers-color-scheme:dark){:root:not([data-theme]) body{background:#171816;color:#f2f0e9}}</style>
-<main><h1>Connect an agent</h1>
-<a class="guide" href="${AGENT_GUIDE_URL}" rel="noopener" target="_blank"><strong>Step-by-step guide →</strong><span>Setup for Claude Code, Codex, Hermes, Pi, OpenCode, Cursor, ChatGPT and any MCP client.</span></a>
-${body}</main>`);
-}
-
-export function agentConnectCommands(origin, token) {
-  const url = `${origin}/mcp`;
-  return {
-    codex: `codex mcp remove tasknode >/dev/null 2>&1; (umask 077; printf '\\n[mcp_servers.tasknode]\\nurl = "${url}"\\nhttp_headers = { Authorization = "Bearer ${token}" }\\n' >> "\${CODEX_HOME:-$HOME/.codex}/config.toml")`,
-    claude: `claude mcp remove --scope user tasknode >/dev/null 2>&1; claude mcp add --scope user --transport http tasknode ${url} --header "Authorization: Bearer ${token}"`,
-    hermes: `hermes config set MCP_TASKNODE_API_KEY ${token} && hermes config set --force mcp_servers.tasknode.url ${url} && hermes config set --force mcp_servers.tasknode.headers.Authorization 'Bearer \${MCP_TASKNODE_API_KEY}'`,
-    pi: `pi mcp add tasknode --url ${url} --header "Authorization=Bearer ${token}" --exposure direct`,
-    opencode: `opencode mcp add tasknode --url ${url} --header "Authorization=Bearer ${token}"`,
-  };
-}
-
-const connectClients = [["codex", "Codex"], ["claude", "Claude Code"], ["hermes", "Hermes"], ["pi", "Pi"], ["opencode", "OpenCode (for Kilo, replace opencode with kilo)"]];
-
-async function mintAgentToken(accountId, origin) {
-  const request = await createTerminalAuthRequest({ provider: "github", origin });
-  if (!(await completeTerminalAuthRequest({ requestId: request.requestId, accountId, provider: "github" })).ok) return "";
-  const issued = await consumeTerminalAuthRequestSession({ requestId: request.requestId, pollToken: request.pollToken });
-  return issued.ok ? issued.terminalToken : "";
-}
-
-async function handleConnect({ req, res, url, origin, session }) {
-  if (!session?.accountId) {
-    return connectPage(res, `<p>Sign in with the GitHub account linked to your Task Node account.</p><a class="button" href="/connect/login">Sign in with GitHub</a>`);
-  }
-  if (url.pathname === "/connect/signout") {
-    const count = await revokeTerminalSessions({ accountId: session.accountId });
-    return connectPage(res, `<p>Signed out ${count} agent and terminal token${count === 1 ? "" : "s"}. Agents using them can no longer reach this account.</p><a class="button" href="/connect">Connect an agent</a>`);
-  }
-  const github = await getLinkedProviderForAccount({ accountId: session.accountId, provider: "github" });
-  if (!github) {
-    return connectPage(res, `<p>Agents sign in through GitHub. Link GitHub to this account, then reopen this page.</p><a class="button" href="/#settings/security">Link GitHub</a>`);
-  }
-  if (req.method !== "POST") {
-    return connectPage(res, `<p>Signed in as <b>${escapeHtml(github.username || session.accountId)}</b>. Create a token, then paste one command into the terminal where your agent runs. This works over SSH too.</p><form method="post"><button class="button" type="submit">Create token</button></form>
-<p class="muted">To connect a different account, switch to it in Task Node first. Pasting a new command replaces the agent's current account.</p>
-<form method="post" action="/connect/signout"><button class="button secondary" type="submit">Sign out all agents</button></form>
-<p class="muted">Revokes every agent and Corbanu Terminal token for this account, for example after losing a laptop.</p>`);
-  }
-  const token = await mintAgentToken(session.accountId, origin);
-  if (!token) return connectPage(res, `<p>The token could not be created. Reload this page and try again.</p>`, 500);
-  const commands = agentConnectCommands(origin, token);
-  return connectPage(res, `<p>Click a command to select all of it, copy it, and paste it into your terminal. This token is shown only once.</p>
-${connectClients.map(([key, label]) => `<h2>${label}</h2><pre>${escapeHtml(commands[key])}</pre>`).join("\n")}
-<h2>Other MCP clients</h2><pre>${escapeHtml(`URL: ${origin}/mcp\nHeader: Authorization: Bearer ${token}`)}</pre>
-<p>Then start (or restart) the agent and ask: "What are my outstanding Task Node tasks?"</p>
-<p class="muted">Anyone with this token can act as you in Task Node, so don't share it.</p>`);
-}
-
-async function handleConnectLogin({ req, res, origin, responseHeadersForAuthResult }) {
-  const result = await authStart("github", { origin, redirectPath: "/connect" });
-  if (result.status !== 200 || !result.body?.redirectUrl) return connectPage(res, `<p>GitHub sign-in is unavailable right now. Sign in at <a href="/">Task Node</a>, then reopen this page.</p>`, 503);
-  redirect(res, result.body.redirectUrl, responseHeadersForAuthResult(req, result));
-}
+export { agentConnectCommands } from "./agent-connect.js";
 
 export async function handleTaskNodeMcpRoute(params) {
   const { res, url, origin } = params;
@@ -472,9 +412,7 @@ export async function handleTaskNodeMcpRoute(params) {
   else if (pathname === "/oauth/callback") await handleCallback(params);
   else if (pathname === "/oauth/token") await handleToken(params);
   else if (pathname === "/oauth/register") await handleRegister(params);
-  else if (pathname === "/connect" || pathname === "/connect/signout") await handleConnect(params);
-  else if (pathname === "/connect/login") await handleConnectLogin(params);
   else if (pathname.startsWith("/.well-known/oauth-")) json(res, 200, metadata(origin, pathname));
-  else return false;
+  else return handleAgentConnectRoute(params);
   return true;
 }
