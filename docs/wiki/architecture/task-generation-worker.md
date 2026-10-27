@@ -34,9 +34,12 @@ is minimal; richer browser/network bundles use different assembly paths.
 Personal work selects `prompts/task_engine/taskgen_personal_v1.md`. Network/Alpha
 work selects `taskgen_network_v2.md` when the network-v2 flag is enabled, as in
 current `fly.toml`; the v1 network prompt remains a compatibility branch.
-Vercel `zai/glm-5.3` is primary through the shared `strict_json` capability,
-with Ambient backup. Requested model/configuration and actual completion
-provider/model are separate provenance.
+Generation runs on Vercel `moonshotai/kimi-k3.1-pro` (`TASKNODE_TASKGEN_MODEL`,
+`TASKNODE_NETWORK_TASKGEN_MODEL`) at `high` reasoning effort
+(`TASKNODE_TASKGEN_REASONING_EFFORT`, `TASKNODE_NETWORK_TASKGEN_REASONING_EFFORT`)
+through the shared `strict_json` capability; the readiness review stays on
+`zai/glm-5.3-flash`. Requested model/configuration
+and actual completion provider/model are separate provenance.
 
 Taskgen projects bounded context, history, memory, task queue and network
 routing facts into `pf.taskgen.input.v1`. Network packets retain project,
@@ -81,9 +84,9 @@ new live task for an unchanged replay identity. Generated output is stored
 before offer persistence, and a retry can search for the corresponding offer
 when publication metadata is incomplete.
 
-The provider timeout defaults to 240 seconds per provider attempt. Shared
-inference may try Vercel then Ambient with separate attempt deadlines. This is
-not a single 240-second outer deadline. The generation request allows 65,536
+The provider timeout defaults to 600 seconds
+(`TASKNODE_TASK_GENERATION_PROVIDER_TIMEOUT_MS`); Kimi K3.1 Pro reasons for
+several thousand tokens on large packets. The generation request allows 65,536
 output tokens by default (minimum configured allowance 32,768). Readiness has a
 separate 45-second provider/60-second total deadline and an 8,192-token allowance.
 

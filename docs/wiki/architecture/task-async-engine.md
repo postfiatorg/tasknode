@@ -26,7 +26,7 @@ preparation uses the same context builder. See the [terminal contract](tasknode-
 `server/task-generation-worker.js` claims `published` or `queued` receipts,
 reads a Postgres bundle or decrypts an IPFS bundle, projects the taskgen input,
 and checks `taskgen_replay_cache`. It calls the shared strict-JSON inference
-capability when no reusable output exists: Vercel GLM 5.3 first, Ambient backup.
+capability when no reusable output exists: Vercel GLM 5.3.
 The production network-v2 flag selects `taskgen_network_v2.md`; personal work
 uses `taskgen_personal_v1.md`.
 

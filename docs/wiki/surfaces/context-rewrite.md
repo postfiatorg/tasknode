@@ -42,7 +42,7 @@ The implementation boundary is:
 - `src/features/chat/ChatMessages.jsx`: visible progress trace and artifact card with copy/download actions.
 - `server/context-rewrite-actions.js`: authenticated route handler.
 - `server/context-rewrite-worker.js`: queued job processor.
-- `server/context-rewrite-provider.js`: Vercel structured-output and web-search tool calls with Ambient backup, plus the mock-provider smoke path. Several internal response-parser helpers retain historical OpenRouter names, but no request leaves for OpenRouter.
+- `server/context-rewrite-provider.js`: Vercel structured-output and web-search tool calls plus the mock-provider smoke path. Several internal response-parser helpers retain historical OpenRouter names, but no request leaves for OpenRouter.
 - `server/context-rewrite-source-packet.js`: source packet assembly.
 - `server/context-rewrite-scoring.js`: 15-dimension score normalization and aggregation.
 - `server/context-rewrite-search.js`: privacy-safe query selection.
@@ -107,7 +107,7 @@ Dimensions:
 14. `specificity`
 15. `downstream_task_utility`
 
-Launch scoring uses `CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL`, default `3` and capped at `3`, across two independently labelled scorer lanes. Both lanes default to Vercel `zai/glm-5.3` with Ambient backup after the provider cutover. `CONTEXT_REWRITE_GLM_MODEL` and `CONTEXT_REWRITE_SECONDARY_MODEL` may select only models supported by the shared inference adapter.
+Launch scoring uses `CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL`, default `3` and capped at `3`, across two independently labelled scorer lanes. Both lanes default to Vercel `zai/glm-5.3` after the provider cutover. `CONTEXT_REWRITE_GLM_MODEL` and `CONTEXT_REWRITE_SECONDARY_MODEL` may select only models supported by the shared inference adapter.
 
 The aggregate score is the median per dimension and the average of the 15 medians. It is stored internally on the job. Malformed scorer JSON is treated as a failed scorer packet, not as an all-zero valid score.
 
@@ -124,7 +124,7 @@ Search questions should be complete domain-level questions such as:
 - `What are best practices for goal hierarchy, milestone planning, and implementation intentions in operating plans?`
 - `What are best practices for startup product strategy, focus, tradeoffs, and customer clarity?`
 
-The search calls run concurrently through Vercel `research_text`, defaulting to `zai/glm-5.3`, with server-executed Exa search. Ambient backup uses its `websearch` tool continuation. The request body contains only the selected question. Results are stored in `context_rewrite_search_results` and used as general best-practice context, not as facts about the user. Research is optional after scoring: failed query calls are recorded, but successful query calls still feed the rewrite.
+The search calls run concurrently through Vercel `research_text`, defaulting to `zai/glm-5.3`, with server-executed Exa search. The request body contains only the selected question. Results are stored in `context_rewrite_search_results` and used as general best-practice context, not as facts about the user. Research is optional after scoring: failed query calls are recorded, but successful query calls still feed the rewrite.
 
 ## Visible Progress Trace
 
@@ -134,7 +134,7 @@ The visible trace includes:
 
 - `queued`: waiting for the worker;
 - `source_packet`: assembling context sources and Jobs retrieval;
-- `scoring`: concurrent structured scorer calls through Vercel with Ambient backup;
+- `scoring`: concurrent structured scorer calls through Vercel;
 - `research`: two concurrent gateway web-search calls;
 - `final_rewrite`: draft GLM rewrite;
 - `polish_rewrite`: second GLM 5.3 `xhigh` polish pass;

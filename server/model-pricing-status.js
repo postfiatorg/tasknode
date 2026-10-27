@@ -4,7 +4,7 @@ import {
   chatModePrices,
 } from "./chat-router.js";
 import { inferenceModels } from "./inference.js";
-import { providerBaseUrl } from "./inference-policy.js";
+import { ambientBackupEnabled, providerBaseUrl } from "./inference-policy.js";
 import { databaseEnabled, query } from "./db/pool.js";
 
 const inferenceModelsUrl = `${providerBaseUrl("vercel")}/models`;
@@ -24,9 +24,9 @@ const cacheEfficiencyWindowDays = Math.min(
 );
 
 const modeDescriptions = {
-  Instant: "GLM 5.3 Flash through Vercel AI Gateway, with Ambient as backup.",
-  Thinking: "GLM 5.3 with deep reasoning through Vercel AI Gateway, with Ambient as backup.",
-  Help: "Plain-English Task Node help through Vercel AI Gateway, with Ambient as backup.",
+  Instant: "GLM 5.3 Flash through Vercel AI Gateway.",
+  Thinking: "GLM 5.3 with deep reasoning through Vercel AI Gateway.",
+  Help: "Plain-English Task Node help through Vercel AI Gateway.",
 };
 
 function pricingEnabled() {
@@ -204,7 +204,7 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
           ? "none"
           : "",
       privacyPolicy: config.zeroDataRetention ? "Requests use the selected model through Vercel AI Gateway, routed only to zero-data-retention providers." : config.exactModel ? "Requests use the selected model through Vercel AI Gateway." : "Requests go to Vercel AI Gateway, with Ambient as backup. OpenAI Images is isolated to sanitized profile NFT rendering.",
-      providerOrder: ["vercel", ...(!config.exactModel && process.env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" ? ["ambient"] : [])],
+      providerOrder: ["vercel", ...(!config.exactModel && ambientBackupEnabled() ? ["ambient"] : [])],
       liveModel,
       liveEndpoints: endpointsByModel.get(execution.model) || [],
     };

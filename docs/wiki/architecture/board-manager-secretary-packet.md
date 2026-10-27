@@ -2,7 +2,7 @@
 
 The Board Manager Secretary Packet is a retained compression layer in front
 of the Board Manager decision contract. When invoked it uses the shared
-Vercel-first GLM 5.3 route with Ambient backup. The automatic Fly Board Manager
+Vercel GLM 5.3 route. The automatic Fly Board Manager
 is retired; this packet is separate from the live advisory board-secretary
 memo worker. It turns verbose Hive board state
 into a compact reusable packet so the Board Manager can make a decision without

@@ -30,14 +30,16 @@ const aliases = new Map([
   ["kimi-k3", "moonshotai/kimi-k3.1-pro"],
   ["chat-latest", INFERENCE_MODELS.structured],
 ]);
+// [primary override, legacy alias, default]. The legacy AMBIENT_MODEL_* aliases
+// are no longer read now that Ambient is deprecated.
 const capabilities = Object.freeze({
   instant_text: ["INFERENCE_MODEL_INSTANT", "", INFERENCE_MODELS.instantText],
-  fast_text: ["INFERENCE_MODEL_FAST_TEXT", "AMBIENT_MODEL_FAST_TEXT", INFERENCE_MODELS.fastText],
-  reasoning_text: ["INFERENCE_MODEL_REASONING", "AMBIENT_MODEL_REASONING", INFERENCE_MODELS.reasoningText],
-  strict_json: ["INFERENCE_MODEL_STRUCTURED", "AMBIENT_MODEL_STRUCTURED", INFERENCE_MODELS.structured],
-  research_text: ["INFERENCE_MODEL_RESEARCH", "AMBIENT_MODEL_RESEARCH", INFERENCE_MODELS.research],
-  vision_text: ["INFERENCE_MODEL_VISION", "AMBIENT_MODEL_VISION", INFERENCE_MODELS.vision],
-  verification_vision: ["INFERENCE_MODEL_VISION", "AMBIENT_MODEL_VISION", INFERENCE_MODELS.vision],
+  fast_text: ["INFERENCE_MODEL_FAST_TEXT", "", INFERENCE_MODELS.fastText],
+  reasoning_text: ["INFERENCE_MODEL_REASONING", "", INFERENCE_MODELS.reasoningText],
+  strict_json: ["INFERENCE_MODEL_STRUCTURED", "", INFERENCE_MODELS.structured],
+  research_text: ["INFERENCE_MODEL_RESEARCH", "", INFERENCE_MODELS.research],
+  vision_text: ["INFERENCE_MODEL_VISION", "", INFERENCE_MODELS.vision],
+  verification_vision: ["INFERENCE_MODEL_VISION", "", INFERENCE_MODELS.vision],
 });
 
 export function inferenceError(code, { status = 502, provider = "", cause } = {}) {
@@ -91,13 +93,20 @@ export function inferenceProviderConfigured(provider, env = process.env, model =
   return Boolean(providerApiKey(provider, env, model));
 }
 
+// Ambient is deprecated (2026-10-27): every request goes to Vercel AI Gateway.
+// The Ambient route stays in code only behind an explicit opt-in so it can be
+// re-enabled in an emergency; nothing falls back to it by default.
+export function ambientBackupEnabled(env = process.env) {
+  return env.INFERENCE_AMBIENT_BACKUP_ENABLED === "true";
+}
+
 export function inferenceConfigured(env = process.env) {
   return inferenceProviderConfigured("vercel", env) ||
-    (env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" && inferenceProviderConfigured("ambient", env));
+    (ambientBackupEnabled(env) && inferenceProviderConfigured("ambient", env));
 }
 
 export function inferenceRoutes(env = process.env, model = "") {
-  return ["vercel", ...(env.INFERENCE_AMBIENT_BACKUP_ENABLED !== "false" ? ["ambient"] : [])]
+  return ["vercel", ...(ambientBackupEnabled(env) ? ["ambient"] : [])]
     .filter((provider) => inferenceProviderConfigured(provider, env, model));
 }
 

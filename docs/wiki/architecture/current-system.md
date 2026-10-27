@@ -60,7 +60,7 @@ durable.
 
 ### External systems
 
-- Vercel AI Gateway handles general inference first, with Ambient backup.
+- Vercel AI Gateway handles all inference; Ambient is deprecated.
   Thinking/structured work uses GLM 5.3; Instant uses GLM 5.3 Flash. See
   [AI providers](ai-providers.md) for workload-specific models and exceptions.
   The Profile NFT renderer retains its isolated OpenAI image-generation path.

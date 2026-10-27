@@ -66,7 +66,7 @@ async function loadIdentityAndWallets() {
 const systemStatusIntro = [
   "# System Status",
   "This page renders live status returned by Task Node. A healthy web process does not prove that background workers, queues, providers, protocol endpoints, or dependent services are healthy.",
-  "Inference uses Vercel AI Gateway first, with Ambient as backup. Provider configuration and live availability are distinct states.",
+  "Inference runs on Vercel AI Gateway. Provider configuration and live availability are distinct states.",
   "Status links lead only to the public product and architecture documentation allowlist.",
 ].join("\n\n");
 

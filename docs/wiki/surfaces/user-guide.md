@@ -28,7 +28,7 @@ Chat is the main AI workspace. It can answer questions, reason through work, dra
 
 Chat does not secretly press product buttons. It cannot accept a task, refuse a task, submit evidence, mint an NFT, send PFT, edit Context, or create Hive work unless the user uses an explicit app control.
 
-The chat mode picker changes model behavior. Shared inference uses Vercel first, with Ambient backup:
+The chat mode picker changes model behavior. Shared inference runs on Vercel AI Gateway:
 
 - `Instant` uses GLM 5.3 Flash for faster responses.
 - `Thinking` uses GLM 5.3 for deeper reasoning.
@@ -78,7 +78,7 @@ Memory is a compressed record of useful chat history. It helps future chats carr
 
 Docs is the wallet-encrypted document and spreadsheet library in the primary sidebar. A locked library presents one page-level Unlock action. Encrypted folders support organizing documents in a nested hierarchy. Unlock the linked wallet to create the Docs key envelope, decrypt titles, create/open documents, and share with an exact Task Node handle or linked wallet. The editor is embedded in Task Node; a separate popup is a defect. Renaming in either Task Node or PFDocs synchronizes the owner's encrypted canonical title.
 
-Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use GLM 5.3 through Vercel first, with Ambient backup. They receive the current document, the mention, and a bounded window of the active document chat so follow-ups retain continuity. Turn on `Full context` only when the response should additionally use Task Node Context, Memory, and task state.
+Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use GLM 5.3 through Vercel AI Gateway. They receive the current document, the mention, and a bounded window of the active document chat so follow-ups retain continuity. Turn on `Full context` only when the response should additionally use Task Node Context, Memory, and task state.
 
 ### Team Screen
 

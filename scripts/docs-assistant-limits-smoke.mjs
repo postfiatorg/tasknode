@@ -3,7 +3,7 @@ import { DOCS_ASSISTANT_LIMITS, generateDocsAssistantResponse } from "../server/
 import { inferenceChatCompletion } from "../server/inference.js";
 import { matchCollaborationPath, handleCollaborationRoute } from "../server/collaboration-routes.js";
 
-const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture", AMBIENT_API_KEY: "fixture-backup" };
+const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture", AMBIENT_API_KEY: "fixture-backup", INFERENCE_AMBIENT_BACKUP_ENABLED: "true" };
 const longAnswer = "Detailed analysis with actionable next steps.\n".repeat(3000) + "END_OF_COMPLETE_ANSWER";
 const complete = () => new Response(JSON.stringify({ model: "zai/glm-5.3", choices: [{ finish_reason: "stop", message: { content: longAnswer } }] }));
 const truncated = () => new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "incomplete answer must not be delivered" } }] }));

@@ -12,6 +12,7 @@ process.env.TASKNODE_AUTH_SECRET = "expert-badge-smoke-secret";
 process.env.TASKNODE_EMAIL_DEV_DELIVERY = "true";
 process.env.TASKNODE_INITIAL_PROVIDER_CREDIT_USD = "0";
 process.env.AMBIENT_API_KEY = "expert-badge-ambient-test-key";
+process.env.INFERENCE_AMBIENT_BACKUP_ENABLED = "true";
 
 const {
   evaluateExpertBadge,

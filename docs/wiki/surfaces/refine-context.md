@@ -12,7 +12,7 @@ Refine Context cleans up an existing context document while preserving meaning. 
 
 ## Technical Architecture
 
-Context Refine is the internal `context_edit` chat mode, not a separate modal or Context page tool. `server/product-contracts.js::chatPayload` forces it through Thinking so the user does not pick a model for durable document edits. `server/context-edit-chat.js::executeContextEditChat` loads chat history, the current context document, memory context, task state, and the active pending proposal, renders `prompts/context/context_edit_jobs_v1.xml` with a plain and a line-numbered copy of the document, and calls GLM 5.3 through Vercel first, with Ambient backup with structured output and tools disabled.
+Context Refine is the internal `context_edit` chat mode, not a separate modal or Context page tool. `server/product-contracts.js::chatPayload` forces it through Thinking so the user does not pick a model for durable document edits. `server/context-edit-chat.js::executeContextEditChat` loads chat history, the current context document, memory context, task state, and the active pending proposal, renders `prompts/context/context_edit_jobs_v1.xml` with a plain and a line-numbered copy of the document, and calls GLM 5.3 through Vercel AI Gateway with structured output and tools disabled.
 
 Proposals are stored in `context_edit_proposals` through `server/repositories/context-edit.js`. `Accept edit` posts to `/api/context/edit/proposals/:proposalId/apply`, which reloads the latest context document, re-checks the proposal's base revision and body hash, and saves through `server/repositories/context.js::saveContextDocument`. A proposal generated against an older document fails with `context_edit_stale` and does not alter the document.
 

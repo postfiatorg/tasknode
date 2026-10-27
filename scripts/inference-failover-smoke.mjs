@@ -6,7 +6,7 @@ import { normalizeInferenceRequest } from "../server/inference-protocol.js";
 const graph = inferenceCallGraph(["server/inference.js", "server/hive-group-provider.js", "server/hive-group-worker.js"]);
 assert.deepEqual(graph.violations, [], "Hive inference and its reachable helpers must remain free of regular expressions");
 
-const env = { VERCEL_AI_GATEWAY_API_KEY: "vercel-fixture", AMBIENT_API_KEY: "ambient-fixture",
+const env = { VERCEL_AI_GATEWAY_API_KEY: "vercel-fixture", AMBIENT_API_KEY: "ambient-fixture", INFERENCE_AMBIENT_BACKUP_ENABLED: "true",
   VERCEL_AI_GATEWAY_BASE_URL: "https://vercel.invalid/v1", AMBIENT_BASE_URL: "https://ambient.invalid/v1" };
 const body = { model: INFERENCE_MODELS.structured, messages: [{ role: "user", content: "Return a JSON object with ok true." }], response_format: { type: "json_object" } };
 const answer = (model = body.model, text = '{"ok":true}') => new Response(JSON.stringify({ id: "response_1", model,
@@ -79,8 +79,10 @@ calls = [];
 await assert.rejects(inferenceChatCompletion({ env, body, fetchImpl: async (url) => { calls.push(url); return failure(400); } }), codeIs("inference_http_400"));
 assert.equal(calls.length, 1);
 await assert.rejects(inferenceChatCompletion({ env: {}, body }), codeIs("inference_not_configured"));
-await assert.rejects(inferenceChatCompletion({ env: { ...env, INFERENCE_AMBIENT_BACKUP_ENABLED: "false" }, body, fetchImpl: async () => failure(503) }), codeIs("inference_http_503"));
-const backupOnly = await inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL }, body, fetchImpl: async () => answer("z-ai/glm-5.2") });
+// Ambient is deprecated: without the explicit opt-in nothing falls back to it.
+await assert.rejects(inferenceChatCompletion({ env: { ...env, INFERENCE_AMBIENT_BACKUP_ENABLED: "" }, body, fetchImpl: async () => failure(503) }), codeIs("inference_http_503"));
+await assert.rejects(inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL }, body }), codeIs("inference_not_configured"));
+const backupOnly = await inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL, INFERENCE_AMBIENT_BACKUP_ENABLED: "true" }, body, fetchImpl: async () => answer("z-ai/glm-5.2") });
 assert.equal(backupOnly.provider, "ambient");
 assert.equal(backupOnly.fallbackReason, "primary_not_configured");
 const cancelled = new AbortController();
@@ -146,7 +148,7 @@ assert.equal(imageRequest.messages[0].content[0].type, "image_url");
 assertions += 7;
 
 let round = 0;
-const toolsResult = await inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL }, body: searchBody,
+const toolsResult = await inferenceChatCompletion({ env: { AMBIENT_API_KEY: "backup", AMBIENT_BASE_URL: env.AMBIENT_BASE_URL, INFERENCE_AMBIENT_BACKUP_ENABLED: "true" }, body: searchBody,
   capability: "research_text", fetchImpl: async (url) => {
     if (url.endsWith("/tools")) return new Response(JSON.stringify({ tool_calls: [{ id: "search_1", content: { success: true, results: [] } }] }));
     round += 1;

@@ -85,7 +85,7 @@ The deployment requires environment-specific classes of secrets for:
 
 - application session/auth signing;
 - database access;
-- Vercel primary inference and Ambient backup;
+- Vercel AI Gateway inference;
 - the isolated Profile NFT image renderer;
 - configured OAuth and email providers;
 - Telegram webhook authentication;

@@ -1,31 +1,29 @@
 # AI Providers
 
-Task Node routes model inference through **Vercel AI Gateway first**, with
-**Ambient as backup**. Thinking and existing GLM workers use GLM 5.3; Instant
-and Team Context use GLM 5.3 Flash. The model layer is shared by chat, Docs
+Task Node routes all model inference through **Vercel AI Gateway**. Thinking and
+existing GLM workers use GLM 5.3; Instant and Team Context use GLM 5.3 Flash;
+task generation uses Kimi K3.1 Pro. The model layer is shared by chat, Docs
 assistants, context, memory, tasks, Hive, profiles, and operator scripts.
+
+Ambient was deprecated on 2026-10-27. Nothing falls back to it; the route remains
+in code only behind `INFERENCE_AMBIENT_BACKUP_ENABLED=true` for an emergency
+re-enable, and historical completions keep their recorded `ambient` provider.
 
 ## Models
 
-| Workload | Vercel primary | Ambient backup |
-| --- | --- | --- |
-| Instant, Team Context | `zai/glm-5.3-flash` | `z-ai/glm-5.2` |
-| Thinking, structured tasks, research, GLM workers | `zai/glm-5.3` | `z-ai/glm-5.2` |
-| Help, memory, short narration | `deepseek/deepseek-v4-flash-0731` | `z-ai/glm-5.2` |
-| Evidence images | `moonshotai/kimi-k2.7-code` | `google/gemma-4-26b-a4b-it` |
+| Workload | Model on Vercel AI Gateway |
+| --- | --- |
+| Instant, Team Context | `zai/glm-5.3-flash` |
+| Thinking, structured work, research, GLM workers | `zai/glm-5.3` |
+| Task generation (personal and network) | `moonshotai/kimi-k3.1-pro`, `high` effort |
+| Task readiness review | `zai/glm-5.3-flash` |
+| Help, memory, short narration | `deepseek/deepseek-v4-flash-0731` |
+| Evidence images | `moonshotai/kimi-k2.7-code` |
 
 GLM 5.3 Flash accepts text and images and produces text. It does not generate
 images. Instant can retain Flash for image input; text-only models switch to the
 vision model when images are present. Files are extracted locally with byte,
 page, archive-entry, and expansion limits before inference.
-
-The [Ambient catalogue](https://api.ambient.xyz/v1/models), checked September 5,
-2026, lists GLM 5.2 as ready and does not list GLM 5.3, Flash, DeepSeek, or Kimi.
-Its vision entries, including Gemma 4, are not currently marked ready. Text
-failover therefore changes the model version; vision backup availability is
-limited by Ambient capacity. Failed vision analysis remains an error and never
-becomes a zero task score. Actual provider and returned model are recorded on
-completed work so a backup answer is identifiable.
 
 ## Shared Routing
 
@@ -35,38 +33,27 @@ usage helpers beside it. Feature modules use this boundary. The legacy
 also dispatch through it. Old function names are compatibility names, not
 provider selectors.
 
-Vercel is tried first when its key is configured. An enabled, configured Ambient
-backup is tried after authentication, quota, rate-limit, model-unavailable,
-network, timeout, or upstream server failures. Each provider has a bounded
-attempt deadline covering headers and body reads. Invalid input, rejected
-schemas, truncated output, and caller cancellation do not trigger failover.
-Streaming may fail over only before the first visible text delta; it never
-replays a partially delivered answer against the backup.
-
-With only an Ambient key, inference runs in backup-only mode. Status exposes
-primary and backup configuration separately. A configured key is not proof of
-successful authentication or available model capacity.
+Each request has a bounded attempt deadline covering headers and body reads.
+A stream that produced no first byte is retried once. Invalid input, rejected
+schemas, truncated output, and caller cancellation are returned as errors.
+A configured key is not proof of successful authentication or available model
+capacity.
 
 ## Configuration
 
-- `VERCEL_AI_GATEWAY_API_KEY`, or alias `AI_GATEWAY_API_KEY`, configures primary inference.
+- `VERCEL_AI_GATEWAY_API_KEY`, or alias `AI_GATEWAY_API_KEY`, configures inference. `VERCEL_KIMI_API_KEY` and `VERCEL_ASTRA_API_KEY` are dedicated keys for those models.
 - `VERCEL_AI_GATEWAY_BASE_URL` defaults to `https://ai-gateway.vercel.sh/v1`.
-- `AMBIENT_API_KEY` configures backup inference.
-- `AMBIENT_BASE_URL` defaults to `https://api.ambient.xyz/v1`.
-- `INFERENCE_AMBIENT_BACKUP_ENABLED=false` disables backup; it is enabled by default.
 - `INFERENCE_CHAT_ENABLED=false` disables chat inference.
 - Capability overrides: `INFERENCE_MODEL_INSTANT`, `INFERENCE_MODEL_FAST_TEXT`, `INFERENCE_MODEL_REASONING`, `INFERENCE_MODEL_STRUCTURED`, `INFERENCE_MODEL_RESEARCH`, and `INFERENCE_MODEL_VISION`.
-- Backup overrides: `AMBIENT_BACKUP_MODEL_INSTANT`, `AMBIENT_BACKUP_MODEL_FAST_TEXT`, `AMBIENT_BACKUP_MODEL_REASONING`, and `AMBIENT_BACKUP_MODEL_VISION`.
+- Task generation: `TASKNODE_TASKGEN_MODEL` and `TASKNODE_NETWORK_TASKGEN_MODEL` (default Kimi K3.1 Pro), `TASKNODE_TASKGEN_REASONING_EFFORT` and `TASKNODE_NETWORK_TASKGEN_REASONING_EFFORT`.
+- Deprecated: `AMBIENT_API_KEY`, `AMBIENT_BASE_URL` and `AMBIENT_BACKUP_MODEL_*` take effect only with `INFERENCE_AMBIENT_BACKUP_ENABLED=true`; `AMBIENT_MODEL_*` aliases are no longer read.
 
-Existing `AMBIENT_MODEL_*` capability overrides remain lower-priority aliases.
-Known GLM 5.2 pins resolve to GLM 5.3 on the primary route. Unknown primary model
-IDs are rejected; add a reviewed registry entry before introducing a new model.
-Model configuration never selects a different provider order.
+Known GLM 5.2 pins resolve to GLM 5.3. Unknown model IDs are rejected; add a
+reviewed registry entry before introducing a new model.
 
 ## Search, Usage, And Persistence
 
-Context Rewrite uses Vercel's server-executed search tools. Ambient backup uses
-its bounded `/tools` protocol. Search counts and provider costs come from
+Context Rewrite uses Vercel's server-executed search tools. Search counts and provider costs come from
 provider metadata when reported; missing wholesale costs remain unknown.
 The [Vercel model catalogue](https://ai-gateway.vercel.sh/v1/models) supplies live
 pricing and capability information with a short cache and last-known-good data.
