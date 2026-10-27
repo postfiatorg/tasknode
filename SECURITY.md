@@ -44,7 +44,7 @@ rollback before a full explanation is published.
   the owner can revoke it per device at `https://tasknode.postfiat.org/connect`.
   Connect agents with `curl -fsSL https://tasknode.postfiat.org/install | sh`,
   which writes tokens straight into agent config files and never prints them.
-  Secret scanners can match agent tokens with `\btns_[A-Za-z0-9_-]{43}\b`.
+  Secret scanners can match agent tokens with `tns_[A-Za-z0-9_-]{43}`.
 
 Operational runbooks, credentials, incident evidence, and production topology
 belong in the private operations system, not public reports or issues.
