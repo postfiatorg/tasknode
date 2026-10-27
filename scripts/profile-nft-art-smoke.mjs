@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { createProfileNftArtSpec, renderProfileNftArtPrompt, validateProfileNftArtSpec, privateProfileNftCompletion } from "../server/profile-nft-art-spec.js";
+import { createProfileNftArtSpec, profileNftCompletionTimeoutMs, renderProfileNftArtPrompt, validateProfileNftArtSpec, privateProfileNftCompletion } from "../server/profile-nft-art-spec.js";
 import { renderProfileNftImage } from "../server/profile-nft-image-provider.js";
 import { reviewRenderedProfileNftImage } from "../server/profile-nft-image-review.js";
 import { classifyProfileNftGenerationFailure } from "../server/profile-nft-failures.js";
@@ -46,6 +46,11 @@ let failoverCalls = 0;
 await assert.rejects(privateProfileNftCompletion({ env, body: { messages: [{ role: "user", content: "fixture" }] }, fetchImpl: async () => { failoverCalls++; return new Response("{}", { status: 503 }); } }));
 assert.equal(failoverCalls, 1, "ZDR failures must never call Ambient");
 assert.throws(() => privateProfileNftCompletion({ env: { AMBIENT_API_KEY: "fixture" }, body: {} }), { message: "profile_nft_zdr_not_configured" });
+// K3.1 Pro spec calls run past four minutes; the deadline defaults to ten and stays bounded.
+assert.equal(profileNftCompletionTimeoutMs({}), 600_000);
+assert.equal(profileNftCompletionTimeoutMs({ PROFILE_NFT_COMPLETION_TIMEOUT_MS: "1000" }), 60_000);
+assert.equal(profileNftCompletionTimeoutMs({ PROFILE_NFT_COMPLETION_TIMEOUT_MS: "5000000" }), 900_000);
+assert.equal(profileNftCompletionTimeoutMs({ PROFILE_NFT_COMPLETION_TIMEOUT_MS: "nope" }), 600_000);
 let imageRequests = 0;
 await renderProfileNftImage({ prompt: prepared.prompt, size: "1024x1024", quality: "high", outputFormat: "png", env: { PROFILE_NFT_OPENAI_API_KEY: "fixture-image" }, fetchImpl: async (url, init) => {
   imageRequests++;
