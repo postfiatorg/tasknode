@@ -12,7 +12,7 @@ delete process.env.CHAT_MODEL_HELP;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
 process.env.OPENROUTER_API_KEY = "runtime-smoke-openrouter-key";
 process.env.DEEPSEEK_API_KEY = "runtime-smoke-deepseek-key";
-process.env.AMBIENT_API_KEY = "runtime-smoke-ambient-key";
+process.env.VERCEL_AI_GATEWAY_API_KEY = "runtime-smoke-gateway-key";
 delete process.env.OPENROUTER_MODEL;
 delete process.env.DEEPSEEK_CHAT_MODEL;
 delete process.env.OPENROUTER_CHAT_ENABLED;
@@ -95,7 +95,7 @@ try {
     throw new Error("Help must default to the configured fast-text model.");
   }
   if (!chatExecutionStatus("Instant").enabled || !chatExecutionStatus("Thinking").enabled) {
-    throw new Error("Canonical chat modes should remain enabled when the Ambient backup is configured.");
+    throw new Error("Canonical chat modes should be enabled when Vercel AI Gateway is configured.");
   }
   const canonicalModeLabels = chatModes().map((mode) => mode.label);
   if (canonicalModeLabels.join(",") !== "Instant,Thinking,GPT-6 Astra,Kimi K3.1 Pro,Claude Opus 5.5,Help") {

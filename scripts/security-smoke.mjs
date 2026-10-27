@@ -8,7 +8,7 @@ process.env.TASKNODE_STORE_PATH = join(tempDir, "runtime-store.json");
 process.env.TASKNODE_ENV = "production";
 process.env.NODE_ENV = "production";
 delete process.env.TASKNODE_DEV_AUTH_ENABLED;
-process.env.AMBIENT_API_KEY = "security-smoke-ambient-key";
+process.env.VERCEL_AI_GATEWAY_API_KEY = "security-smoke-gateway-key";
 process.env.TASKNODE_ADMIN_CREDIT_TOKEN = "security-smoke-admin-token";
 delete process.env.DATABASE_URL;
 delete process.env.TASKNODE_DATABASE_ENABLED;
