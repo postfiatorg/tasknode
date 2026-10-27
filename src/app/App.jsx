@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, BookOpen, Bot, Check, ChevronRight, CreditCard, ExternalLink, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
+import { Activity, BookOpen, Bot, ChevronRight, CreditCard, ExternalLink, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
 import { fetchRuntimeConfig, requestJson } from "../api";
 import { ChatSearchModal } from "../features/chat/ChatSearchModal";
 import { createChatDeletionState } from "../features/chat/chat-deletion-state.js";
@@ -1111,11 +1111,7 @@ export function App() {
                     <strong>{profileName}</strong>
                     <small>{profileSubtext}</small>
                   </span>
-                  {signedIn ? (
-                    <Check className="profile-state-icon" size={14} strokeWidth={2} />
-                  ) : (
-                    <Store size={14} strokeWidth={1.75} />
-                  )}
+                  {!signedIn && <Store size={14} strokeWidth={1.75} />}
                 </>
               </button>
               {profileMenuOpen && (
@@ -1140,12 +1136,6 @@ export function App() {
                     <ChevronRight size={16} strokeWidth={1.75} />
                   </button>
                   {signedIn && (
-                    <div className="profile-session-state">
-                      <Check size={13} strokeWidth={2} />
-                      <span>Signed in</span>
-                    </div>
-                  )}
-                  {signedIn && (
                     <ProfileAccountSwitcher
                       accounts={retainedAccounts}
                       managing={managingAccounts}
@@ -1160,9 +1150,9 @@ export function App() {
                   {signedIn && linkedWalletAddress && (
                     <ToolMenuRow
                       icon={vaultDisplay.tone === "unlocked" ? Unlock : Lock}
-                      label={`Wallet ${vaultDisplay.label}`}
+                      label="Wallet"
                       onClick={openWalletVaultControl}
-                      trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                      trailing={<small className={vaultDisplay.tone === "unlocked" ? "menu-row-state is-ok" : "menu-row-state"}>{vaultDisplay.label}</small>}
                     />
                   )}
                   <div className="menu-divider" />

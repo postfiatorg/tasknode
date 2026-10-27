@@ -773,26 +773,34 @@ button {
   color: var(--tn-dark-muted, #6b6b66);
 }
 
-.profile-session-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 2px 12px 8px;
-  min-height: 24px;
-  padding: 0 9px;
-  border-radius: 999px;
-  background: var(--tn-dark-bg, #ecfdf5);
-  color: var(--tn-dark-success, #047857);
-  font-size: 12px;
-  font-weight: 500;
-}
-
 .profile-account-list {
   display: grid;
-  max-height: 188px;
+  max-height: 220px;
   overflow-y: auto;
+  padding: 4px 0;
   border-top: 1px solid var(--tn-dark-border, #f0eee8);
-  border-bottom: 1px solid var(--tn-dark-border, #f0eee8);
+}
+
+.profile-account-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px 2px;
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 11.5px;
+}
+
+.profile-account-heading button {
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--tn-dark-muted, #6b6b66);
+  font: inherit;
+  cursor: pointer;
+}
+
+.profile-account-heading button:hover {
+  color: var(--tn-dark-text, #0d0d0d);
 }
 
 .profile-account-row {
@@ -803,10 +811,11 @@ button {
 .profile-account-row > button:first-child {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 12px;
   min-width: 0;
   flex: 1;
-  padding: 8px 12px;
+  min-height: 34px;
+  padding: 6px 12px;
   border: 0;
   background: transparent;
   color: var(--tn-dark-text, #0d0d0d);
@@ -817,13 +826,10 @@ button {
   background: var(--tn-dark-overlay, rgba(0, 0, 0, 0.04));
 }
 
-.profile-account-row > button:first-child:disabled {
-  color: inherit;
-  cursor: default;
-}
-
-.profile-account-row > button:first-child > span:nth-child(2) {
-  display: grid;
+.profile-account-row > button:first-child > span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
   flex: 1;
 }
@@ -836,40 +842,35 @@ button {
 }
 
 .profile-account-row strong {
-  font-size: 12.5px;
-  font-weight: 550;
+  font-size: 13.5px;
+  font-weight: 400;
 }
 
 .profile-account-row small {
   color: var(--tn-dark-muted, #77736b);
-  font-size: 10.5px;
-}
-
-.profile-account-avatar {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--tn-dark-hover, #eceae4);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.profile-account-row.selected {
-  background: var(--tn-dark-hover, #f7f6f2);
+  font-size: 12px;
 }
 
 .profile-account-remove {
   width: 34px;
   border: 0;
   background: transparent;
-  color: var(--tn-dark-danger, #9b2c2c);
+  color: var(--tn-dark-muted, #77736b);
 }
 
 .profile-account-remove:hover:not(:disabled) {
-  background: var(--tn-dark-hover, #fff1f1);
+  color: var(--tn-dark-danger, #9b2c2c);
+}
+
+.menu-row-state {
+  margin-left: auto;
+  color: var(--tn-dark-muted, #6b6b66);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.menu-row-state.is-ok {
+  color: var(--tn-dark-success, #047857);
 }
 
 .menu-count {
@@ -886,80 +887,6 @@ button {
   font-weight: 600;
 }
 
-.telegram-menu-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 54px;
-  padding: 8px 12px;
-  border: 0;
-  background: transparent;
-  color: var(--tn-dark-text, #0d0d0d);
-  text-align: left;
-}
-
-.telegram-menu-row:hover:not(:disabled) {
-  background: var(--tn-dark-overlay, rgba(0, 0, 0, 0.04));
-}
-
-.telegram-menu-row:disabled {
-  cursor: default;
-}
-
-.telegram-menu-icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-}
-
-.telegram-menu-copy {
-  display: grid;
-  min-width: 0;
-  margin-right: auto;
-  gap: 2px;
-}
-
-.telegram-menu-copy strong,
-.telegram-menu-copy small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.telegram-menu-copy strong {
-  font-size: 13.5px;
-  font-weight: 500;
-}
-
-.telegram-menu-copy small {
-  color: var(--tn-dark-muted, #6b6b66);
-  font-size: 11.5px;
-}
-
-.telegram-menu-status {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  min-height: 24px;
-  padding: 0 9px;
-  border: 1px solid var(--tn-dark-border, #e8e6df);
-  border-radius: 999px;
-  background: var(--tn-dark-raised, #ffffff);
-  color: var(--tn-dark-text, #0d0d0d);
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.telegram-menu-status.linked {
-  border-color: var(--tn-dark-border, #cfe8d8);
-  background: var(--tn-dark-raised, #ecfdf5);
-  color: var(--tn-dark-success, #047857);
-}
 
 .profile-menu-message {
   margin: 2px 12px 8px 50px;

@@ -20,22 +20,10 @@ export function TelegramProfileMenuRow({ linkedProvider, onClick, pending, provi
         : "Setup";
 
   return (
-    <button
-      className="telegram-menu-row"
-      disabled={!signedIn || pending}
-      onClick={onClick}
-      type="button"
-    >
-      <span className="telegram-menu-icon">
-        <ProviderIcon id="telegram" />
-      </span>
-      <span className="telegram-menu-copy">
-        <strong>Telegram Chat</strong>
-        <small>{detail}</small>
-      </span>
-      <span className={linked ? "telegram-menu-status linked" : "telegram-menu-status"}>
-        {status}
-      </span>
+    <button className="tool-menu-row telegram-menu-row" disabled={!signedIn || pending} onClick={onClick} title={detail} type="button">
+      <ProviderIcon id="telegram" size={16} />
+      <span>Telegram</span>
+      <small className={linked ? "menu-row-state is-ok" : "menu-row-state"}>{status}</small>
     </button>
   );
 }
