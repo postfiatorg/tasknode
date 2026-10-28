@@ -13,6 +13,7 @@ import { applyContextEditProposal, CONTEXT_EDIT_MODE, CONTEXT_EDIT_PLACEHOLDER, 
 import { CONTEXT_REWRITE_MODE, CONTEXT_REWRITE_PLACEHOLDER, createContextRewriteJob } from "../context/context-rewrite-client";
 import { useContextRewritePolling } from "../context/use-context-rewrite-polling.js";
 import { DEEP_RESEARCH_MODE, DEEP_RESEARCH_PLACEHOLDER, createDeepResearchJob } from "./deep-research-client.js";
+import { CHAT_RESEARCH_DESCRIPTION, defaultChatResearchBudget } from "../../../shared/chat-research.js";
 import { createDecisionJob, DECISION_MODE, DECISION_PLACEHOLDER, DECISION_TIERS } from "./decisions-client.js";
 import { useDecisionPolling } from "./use-decision-polling.js";
 import { useDeepResearchPolling } from "./use-deep-research-polling.js";
@@ -76,7 +77,7 @@ export function ChatSurface({
   const [contextEditMode, setContextEditMode] = useState(false);
   const [contextRewriteMode, setContextRewriteMode] = useState(false);
   const [deepResearchMode, setDeepResearchMode] = useState(false);
-  const [deepResearchBudget, setDeepResearchBudget] = useState("1");
+  const [deepResearchBudget, setDeepResearchBudget] = useState(null);
   const [decisionMode, setDecisionMode] = useState(false);
   const [decisionUseContext, setDecisionUseContext] = useState(true);
   const [decisionTier, setDecisionTier] = useState("budget");
@@ -565,7 +566,7 @@ export function ChatSurface({
           conversationId: requestedConversationId,
           requestId: deepResearchRequestId,
           title: chatTitleFromPrompt(submittedText),
-          maxCostUsd: chat?.deepResearchAtCost ? Number(deepResearchBudget) : undefined,
+          maxCostUsd: chat?.deepResearchAtCost && deepResearchBudget !== null ? Number(deepResearchBudget) : undefined,
         });
         if (!result.ok || !result.body?.job) {
           throw new Error(result.body?.message || `${isDecision ? "Decisions" : "Deep Research"} returned HTTP ${result.status}.`);
@@ -1044,7 +1045,7 @@ export function ChatSurface({
           </div>
         )}
         {deepResearchMode && <ComposerModeChip icon={Search} label="Deep Research" onExit={() => setDeepResearchMode(false)} />}
-        {deepResearchMode && chat?.deepResearchAtCost && <label className="deep-research-budget">At provider cost · Maximum USD <input aria-label="Research maximum cost (USD)" type="number" min="0.01" max="5" step="0.01" value={deepResearchBudget} onChange={event => setDeepResearchBudget(event.target.value)} /></label>}
+        {deepResearchMode && chat?.deepResearchAtCost && <label className="deep-research-budget">At provider cost · Maximum USD <input aria-label="Research maximum cost (USD)" type="number" min="0.01" max="5" step="any" value={deepResearchBudget ?? defaultChatResearchBudget(usage?.availableCreditUsd)} onChange={event => setDeepResearchBudget(event.target.value)} /></label>}
         {contextRewriteMode && <ComposerModeChip icon={FileText} label="Context Rewrite" onExit={() => setContextRewriteMode(false)} />}
         {isHiveChat && <ComposerModeChip icon={Network} label={HIVE_CHAT_TITLE} />}
         {activeModality && !isHiveChat && (
@@ -1148,7 +1149,7 @@ export function ChatSurface({
                   onClick={() => {
                     setPlusMenuOpen(false);
                     selectComposerMode("research");
-                    setSendMessage(chat?.deepResearchAtCost ? "GoodAlexander research uses your credit at provider cost, rounded up to $0.000001. At least $0.50 available is required. Choose your maximum below." : "Deep Research runs privately through Corbanu and can take several minutes. You can leave and return to the chat.");
+                    setSendMessage(chat?.deepResearchAtCost ? `${CHAT_RESEARCH_DESCRIPTION}. At least $0.50 available is required. Choose your maximum below.` : "Deep Research runs privately through Corbanu and can take several minutes. You can leave and return to the chat.");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}

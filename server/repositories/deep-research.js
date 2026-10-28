@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { publicMessage, safeText } from "./context-rewrite-projection.js";
+import { chatResearchImprovement, defaultChatResearchBudget } from "../../shared/chat-research.js";
 
 const modeName = "Deep Research";
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
@@ -33,6 +34,9 @@ function metadataForJob(row = {}) {
       progress,
       usage,
       provider: row.provider || "corbanu",
+      improvementRound: row.provider === "goodalexander" ? chatResearchImprovement(result.quality?.tih) : null,
+      improvementReason: row.provider === "goodalexander" && chatResearchImprovement(result.quality?.tih) === "skipped"
+        ? safeText(result.quality.tih.skip_reason, 500) : "",
       error: safeText(row.error, 1000),
       privacy: row.provider === "goodalexander" ? "GoodAlexander research · billed at provider cost" : "Provider-backed web research",
     },
@@ -96,7 +100,7 @@ export async function createDeepResearchJob({
     if (existingJob.rows[0]) {
       const row = existingJob.rows[0];
       if (row.question !== prompt || row.conversation_id !== conversation ||
-          (row.provider === "goodalexander" && Number(row.max_cost_usd) !== Number(maxCostUsd ?? 1))) {
+          (row.provider === "goodalexander" && maxCostUsd != null && Number(row.max_cost_usd) !== Number(maxCostUsd))) {
         throw Object.assign(new Error("deep_research_request_conflict"), { status: 409 });
       }
       const messages = await client.query(
@@ -119,6 +123,13 @@ export async function createDeepResearchJob({
       throw Object.assign(new Error("chat_conversation_not_found"), { status: 404 });
     }
 
+    let budget = maxCostUsd;
+    if (provider === "goodalexander" && budget == null) {
+      const balance = (await client.query(`SELECT COALESCE((SELECT current_credit_usd-current_spend_usd
+        FROM billing_accounts WHERE account_id=$1),0) - COALESCE((SELECT SUM((request_json->>'max_cost_usd')::numeric)
+        FROM research_gateway_jobs WHERE account_id=$1 AND status IN ('submitting','queued','running') AND billed_at IS NULL),0) AS available`, [owner])).rows[0];
+      budget = defaultChatResearchBudget(balance.available);
+    }
     const jobId = `dr_${randomUUID()}`;
     const userMessageId = `msg_${randomUUID()}_deep_research_user`;
     const assistantMessageId = `msg_${randomUUID()}_deep_research_assistant`;
@@ -181,7 +192,7 @@ export async function createDeepResearchJob({
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'starting','starting',$9,$9,$10,$11)
         RETURNING *
       `,
-      [jobId, owner, conversation, idempotency, userMessageId, assistantMessageId, prompt, safeText(title, 500), now, provider, provider === "goodalexander" ? maxCostUsd ?? 1 : null],
+      [jobId, owner, conversation, idempotency, userMessageId, assistantMessageId, prompt, safeText(title, 500), now, provider, provider === "goodalexander" ? budget : null],
     );
     return {
       created: true,

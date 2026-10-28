@@ -314,6 +314,25 @@ archive. See [Hive](hive.md) for setup, public visibility and Kimi escalation.
 
 Confirming Delete removes the conversation from Recents and closes the dialog immediately while the server saves the deletion. Deletion does not wait for a full app-state or wallet refresh. If the request fails, the conversation returns to the sidebar with a dismissible error. Older app-state responses cannot bring a deleted row back. Deleting the open conversation clears it after the server confirms success; opening another chat while the request is pending keeps that newer selection.
 
+## Deep Research
+
+All signed-in accounts can select **+ → Deep Research**. GoodAlexander research,
+billed at cost (typically $0.50-1.00, about 3 minutes), uses your Task Node balance.
+At least $0.50 available is required; use **Settings → Billing → Top up** to add
+credit. Validators keep their eligible $20/month credit, while research API keys
+and GoodAlexander models remain validator-only.
+
+The default maximum is **$1.50**, reduced to your available balance when it is
+between $0.50 and $1.50. You can choose a different maximum. Pending jobs reserve
+the maximum; settlement charges actual provider cost rounded up once to six
+decimals and releases unused credit. Failed jobs may incur provider cost.
+
+The report is saved directly in chat with citations, costs and a Markdown download.
+Its card shows **Improvement round: done** or **skipped** from the service's
+metadata; an interrupted round is labeled explicitly. Older reports without that
+metadata make no round claim. Returning to a saved chat or reading its result
+again does not charge again. Existing Corbanu jobs remain readable.
+
 ## Decisions
 
 Choose **+ → Decisions** in the chat composer, pick **Budget** or **Premium** next to
@@ -360,8 +379,8 @@ Submitting a new question starts new work. There is no cancellation control for
 Decisions. Inputs, reports, and packets are restricted to the signed-in account;
 processing uses Corbanu and third-party model and research providers.
 
-Task Node uses the same signed server integration as Deep Research. It
-does not ask users for a Corbanu API key. Budget decisions are free; premium
+Task Node uses a signed server integration for Decisions. It does not ask
+users for a Corbanu API key. Budget decisions are free; premium
 decisions debit the Task Node chat balance with Corbanu's reported provider cost.
 The public Corbanu Decisions API has separate prepaid billing. The Task Node
 integration accepts budget and premium modes.

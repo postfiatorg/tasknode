@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
+import { chatResearchAccess, fetchChatResearch } from "../server/chat-research-provider.js";
+import { chatResearchImprovement, defaultChatResearchBudget } from "../shared/chat-research.js";
 
 import {
   deepResearchAvailable,
@@ -67,4 +69,27 @@ const canonical = [
 const expectedSignature = createHmac("sha256", secret).update(canonical).digest("hex");
 assert.equal(captured.options.headers["X-Corbanu-Signature"], expectedSignature);
 
-console.log("deep research boundary smoke ok: authenticated access and signed private gateway contract verified");
+const configured = { ...env, GA_RESEARCH_URL: "https://research.example.test", GA_RESEARCH_HMAC_SECRET: secret };
+for (const accountId of ["acct_validator", "acct_new_nonvalidator"]) {
+  assert.deepEqual(await chatResearchAccess({ accountId, env: configured }), { provider: "goodalexander", available: true, atCost: true });
+  assert.equal((await chatResearchAccess({ accountId, env: { ...configured, CHAT_RESEARCH_PROVIDER: "corbanu" } })).provider, "corbanu");
+  assert.equal((await chatResearchAccess({ accountId, env: { ...configured, GA_RESEARCH_URL: "" } })).available, false, "missing GA config cannot silently route to Corbanu");
+}
+assert.equal((await chatResearchAccess({ accountId: "", env: configured })).available, false);
+for (const [balance, budget] of [[20, 1.5], [1.5, 1.5], [1.234567, 1.234567], [.5, .5], [.499999, 1.5], [undefined, 1.5]]) {
+  assert.equal(defaultChatResearchBudget(balance), budget);
+}
+for (const [round_status, label] of [["completed", "done"], ["skipped_unaffordable", "skipped"], ["interrupted", "interrupted"], ["running", "running"], ["not_started", null], ["unrecognized", null], [undefined, null]]) {
+  assert.equal(chatResearchImprovement({ round_status }), label);
+}
+assert.equal(chatResearchImprovement(null), null);
+// Stored provider remains authoritative when the default changes during a job.
+let legacyReads = 0;
+const legacy = await fetchChatResearch({ accountId, job: { provider: "corbanu", gatewayJobId: "old-job" } }, {
+  getGa: () => { throw Error("legacy job sent to GA"); },
+  fetchCorbanu: async () => { legacyReads++; return { body: { status: "completed" } }; },
+  resultCorbanu: async () => { legacyReads++; return { body: { result: { markdown: "Existing legacy report" } } }; },
+});
+assert.equal(legacy.result.markdown, "Existing legacy report"); assert.equal(legacyReads, 2);
+
+console.log("deep research boundary smoke ok: all-account GA default, explicit rollback, durable legacy reads, balance-aware 1.50 default, typed round status and signed gateway contract");
