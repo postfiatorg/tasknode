@@ -1168,6 +1168,10 @@ export function App() {
                   <div className="menu-divider" />
                   {signedIn ? (
                     <>
+                      <a className="tool-menu-row" href={appState?.chat?.deepResearchAtCost ? "/api/research/bundles/ga-models/index.html" : "#settings/validator"}
+                        target={appState?.chat?.deepResearchAtCost ? "_blank" : undefined} rel="noreferrer" onClick={() => setProfileMenuOpen(false)}>
+                        <BookOpen size={16} strokeWidth={1.75} /><span>GoodAlexander models</span>
+                      </a>
                       <ToolMenuRow
                         icon={Network}
                         label="Directory"

@@ -389,6 +389,7 @@ export const decisionBody = strictBody(256 * KiB, {
   mode: text(20, 1, { enum: ["budget", "premium"] }),
 }, { required: ["input", "conversationId", "requestId"] });
 export const deepResearchBody = strictBody(128 * KiB, {
+  maxCostUsd: { type: "number", minimum: 0.01, maximum: 5 },
   question: text(50_000, 1),
   message: text(50_000, 1),
   title: text(500),

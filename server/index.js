@@ -1,5 +1,6 @@
 import { handleValidatorBundleRoute } from "./validator-bundles.js";
 import { handleValidatorResearchRoute } from "./validator-research-routes.js";
+import { handleValidatorConnectRoute } from "./validator-connect-routes.js";
 import { randomUUID } from "node:crypto";
 import { REQUEST_URL_BASE, parseRequestUrl } from "./request-url.js";
 import { handleBoardAgentRoute } from "./board-agent-routes.js";
@@ -191,6 +192,7 @@ async function routeApi(req, url, res) {
   if (await handleIndexViewerRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await enforceRoutePolicy(req, url, res, session)) return true;
+  if (await handleValidatorConnectRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleValidatorResearchRoute({ json, readJson, req, res, session, url })) return true;
 
   if (url.pathname === "/api/app-state") {

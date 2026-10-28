@@ -1,10 +1,7 @@
 import {
   cancelCorbanuDeepResearch,
-  deepResearchAvailable,
-  fetchCorbanuDeepResearch,
-  fetchCorbanuDeepResearchResult,
-  startCorbanuDeepResearch,
 } from "./corbanu-deep-research.js";
+import { chatResearchAccess, fetchChatResearch, startChatResearch } from "./chat-research-provider.js";
 import {
   attachDeepResearchGatewayJob,
   createDeepResearchJob,
@@ -32,7 +29,8 @@ function normalizedStatus(value = "") {
 async function create({ readJson, req, session }) {
   if (req.method !== "POST") return response(405, { error: "deep_research_method_not_allowed" });
   if (!session?.accountId) return response(401, { error: "deep_research_login_required" });
-  if (!deepResearchAvailable({ accountId: session.accountId })) {
+  const access = await chatResearchAccess({ accountId: session.accountId });
+  if (!access.available) {
     return response(503, {
       error: "deep_research_unavailable",
       message: "Deep Research is temporarily unavailable.",
@@ -58,6 +56,8 @@ async function create({ readJson, req, session }) {
       question,
       title,
       requestId,
+      provider: access.provider,
+      maxCostUsd: payload.maxCostUsd,
     });
   } catch (error) {
     return response(Number(error?.status || 500), {
@@ -69,8 +69,9 @@ async function create({ readJson, req, session }) {
   }
 
   try {
-    const started = await startCorbanuDeepResearch({
+    const started = await startChatResearch({
       accountId: session.accountId,
+      localJob: local.job,
       requestId,
       question,
       title,
@@ -78,9 +79,9 @@ async function create({ readJson, req, session }) {
     const updated = await attachDeepResearchGatewayJob({
       accountId: session.accountId,
       jobId: local.job.id,
-      gatewayJobId: started.body?.id,
-      status: started.body?.status,
-      stage: started.body?.stage || "queued",
+      gatewayJobId: started.id,
+      status: local.job.provider === "goodalexander" && ["completed", "failed"].includes(started.status) ? "running" : started.status,
+      stage: started.stage || "queued",
     });
     return response(202, {
       action: "deep_research_create",
@@ -88,7 +89,7 @@ async function create({ readJson, req, session }) {
       user: local.user,
       assistant: updated?.assistant || local.assistant,
       job: updated?.job || local.job,
-      privacy: started.body?.corbanu,
+      privacy: started.corbanu,
     });
   } catch (error) {
     if (Number(error?.status || 500) < 500) {
@@ -102,7 +103,7 @@ async function create({ readJson, req, session }) {
     }
     return response(Number(error?.status || 502), {
       error: error?.message || "deep_research_start_failed",
-      message: "Deep Research could not be started. Retrying the same request is safe.",
+      message: Number(error?.status) === 402 ? "Add credit in Settings → Billing. Research needs at least $0.50 available and enough for your maximum cost." : "Deep Research could not be started. Retrying the same request is safe.",
       job: local.job,
       user: local.user,
       assistant: local.assistant,
@@ -118,28 +119,17 @@ async function refresh({ session, jobId }) {
     return response(200, local);
   }
   try {
-    const remote = await fetchCorbanuDeepResearch({
-      accountId: session.accountId,
-      gatewayJobId: local.job.gatewayJobId,
-    });
-    const status = normalizedStatus(remote.body?.status);
-    let result = {};
-    if (status === "completed") {
-      const artifact = await fetchCorbanuDeepResearchResult({
-        accountId: session.accountId,
-        gatewayJobId: local.job.gatewayJobId,
-      });
-      result = artifact.body?.result || {};
-    }
+    const remote = await fetchChatResearch({ accountId: session.accountId, job: local.job });
+    const status = normalizedStatus(remote.status);
     const updated = await updateDeepResearchJob({
       accountId: session.accountId,
       jobId,
       status,
-      stage: remote.body?.stage || status,
-      usage: remote.body?.usage || {},
-      progress: remote.body?.progress || {},
-      result,
-      error: remote.body?.error?.detail || "",
+      stage: remote.stage || status,
+      usage: remote.usage || {},
+      progress: remote.progress || {},
+      result: remote.result,
+      error: remote.error || "",
     });
     return response(200, updated || local);
   } catch (error) {
@@ -156,6 +146,9 @@ async function cancel({ req, session, jobId }) {
   if (!session?.accountId) return response(401, { error: "deep_research_login_required" });
   const local = await getDeepResearchJob({ accountId: session.accountId, jobId });
   if (!local) return response(404, { error: "deep_research_job_not_found" });
+  if (local.job.provider === "goodalexander") {
+    return response(409, { error: "deep_research_cannot_cancel", message: "This research job completes in the background and charges only incurred provider cost.", ...local });
+  }
   if (!local.job.gatewayJobId) {
     const updated = await updateDeepResearchJob({
       accountId: session.accountId,

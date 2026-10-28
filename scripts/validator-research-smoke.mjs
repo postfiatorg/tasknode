@@ -72,7 +72,7 @@ assert.equal(captured.url, "https://service.example/ga-research/v1/research");
 assert.equal(captured.options.body, '{"question":"What changed?"}');
 assert.equal(captured.options.redirect, "error");
 // Guard every new prompt/provider/usage path against regex reintroduction.
-for (const file of ["server/research-billing.js", "server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js", "src/features/research/research-client.js", "src/features/research/research-sources.js", "src/features/research/ResearchView.jsx"]) {
+for (const file of ["server/research-billing.js", "server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js", "src/features/research/research-client.js", "src/features/research/research-sources.js", "server/chat-research-provider.js", "server/deep-research-routes.js", "server/repositories/deep-research.js", "src/features/chat/deep-research-client.js"]) {
   const ast = parse(await readFile(file, "utf8"), { ecmaVersion: "latest", sourceType: "module", ecmaFeatures: { jsx: true } });
   const visit = (node) => {
     if (!node || typeof node !== "object") return;

@@ -3,8 +3,8 @@ import { useCallback, useEffect, useRef } from "react";
 import {
   formatElapsedSeconds,
   normalizeChatMessage,
-  replaceTurnById,
 } from "./chat-turns.js";
+import { pendingDeepResearchTurns, replaceDeepResearchAssistant } from "./deep-research-turns.js";
 import {
   deepResearchIsTerminal,
   fetchDeepResearchJob,
@@ -48,10 +48,11 @@ export function useDeepResearchPolling({
             },
           }, pendingId);
           if (turn) {
-            callbacks.setTurns((current) => replaceTurnById(
+            callbacks.setTurns((current) => replaceDeepResearchAssistant(
               current,
+              jobId,
               pendingId,
-              { ...turn, id: pendingId, pending: !terminal },
+              { ...turn, pending: !terminal },
             ));
           }
         }
@@ -88,7 +89,7 @@ export function useDeepResearchPolling({
   }, []);
 
   useEffect(() => {
-    for (const turn of turns) {
+    for (const turn of pendingDeepResearchTurns(turns)) {
       const research = turn?.metadata?.deepResearch;
       if (!research?.jobId || deepResearchIsTerminal(research.status)) continue;
       const parsedStartedAt = Date.parse(turn.createdAt);
