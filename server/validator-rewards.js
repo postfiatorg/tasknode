@@ -2,11 +2,11 @@ import { query, transaction } from "./db/pool.js";
 import { dailyAgreement, fetchValidatorReports, findRegisteredValidator, rewardMonthWindow, validatorError } from "./validator-identity.js";
 import { insertLedgerEntry } from "./repositories/chat-billing.js";
 import { l1BindingParticipation } from "./l1-validator-identity.js";
+import { grantL1ValidatorReward } from "./l1-validator-rewards.js";
 
-export async function grantValidatorReward(binding, month, evidence) {
-  // Track E's historical participation clock is unresolved. Even a supplied
-  // eligible flag must never authorize L1 credit while that HOLD is open.
-  if (binding.network === "l1-devnet" || !evidence.eligible) return false;
+export async function grantValidatorReward(binding, month, evidence, dependencies = {}) {
+  if (binding.network === "l1-devnet") return grantL1ValidatorReward(binding, month, dependencies);
+  if (!evidence.eligible) return false;
   const key = `validator-reward:${binding.master_public_key}:${month}`;
   return transaction(async (client) => {
     const active = await client.query(`SELECT 1 FROM validator_bindings WHERE id=$1 AND account_id=$2 AND master_public_key=$3 AND network IN ('devnet','testnet') AND revoked_at IS NULL FOR UPDATE`, [binding.id, binding.account_id, binding.master_public_key]);
@@ -30,8 +30,11 @@ export async function runValidatorRewards({ month = new Date().toISOString().sli
     const item = { masterPublicKey: binding.master_public_key, accountId: binding.account_id, network: binding.network, month, eligible: false, granted: false };
     try {
       if (binding.network === "l1-devnet") {
-        Object.assign(item, { validatorId: binding.validator_id, chainId: binding.chain_id, rewardsOnHold: true,
-          eligibilityReason: "historical_clock_unavailable" }, await l1BindingParticipation(binding, end, dependencies.registryOptions));
+        Object.assign(item, { validatorId: binding.validator_id, chainId: binding.chain_id }, await l1BindingParticipation(binding, end, dependencies.registryOptions));
+        item.alreadyGranted = Boolean((await query(`SELECT 1 FROM l1_validator_reward_grants
+          WHERE network=$1 AND reward_month=$2 AND ((chain_id=$3 AND validator_id=$4) OR ml_dsa_public_key=$5)`,
+        [binding.network, month, binding.chain_id, binding.validator_id, binding.ml_dsa_public_key])).rowCount);
+        if (!dryRun && item.eligible) item.granted = await grantL1ValidatorReward(binding, month, { registryOptions: dependencies.registryOptions, now });
         report.push(item);
         continue;
       }

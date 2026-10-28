@@ -71,7 +71,7 @@ export function ValidatorSettings({ onAppStateChange }) {
       <button type="button" onClick={() => act(async () => { await navigator.clipboard.writeText(command); setMessage("Command copied. Run it on your validator host; this page will connect automatically."); })}><Copy size={15} /> Copy command</button>
       <small>{network === "l1-devnet" ? "Run as root on a Linux x86_64 L1 validator host. Signs locally with the running node’s configured key, with networking disabled."
         : "Uses your running validator token to sign locally. Your master key can stay offline."} Expires at {new Date(connect.expiresAt).toLocaleTimeString()}.</small>
-      {network === "l1-devnet" && <p>L1 research access starts when connected. Monthly credit is on hold until participation history can be verified.</p>}
+      {network === "l1-devnet" && <p>Models and research access start when connected. L1 monthly credit waits for at least 25 observed days out of the last 30 complete UTC days, with at least 95% mean participation.</p>}
       <p role="status">Waiting for your validator…</p>
       <details><summary>Download and inspect first</summary><pre className="research-wrap">{inspect}</pre><a href={`/${script}`} download>Download {script}</a></details>
     </section>}
@@ -80,8 +80,8 @@ export function ValidatorSettings({ onAppStateChange }) {
     {status?.bindings?.map(binding => <article className="research-card" key={binding.id}>
       <strong>{binding.network === "l1-devnet" ? "Post Fiat L1 devnet" : binding.network}</strong><code className="research-wrap">{binding.validator_id || binding.master_public_key}</code>
       {binding.network === "l1-devnet" ? <>
-        <p>{binding.uptime?.available ? `${(binding.uptime.meanAgreement * 100).toFixed(3)}% mean participation · ${binding.uptime.daysReported}/30 days reported` : "Participation history is not yet available."}</p>
-        <small>Monthly credit is on hold until participation history can be verified. Your research and models access is active.</small>
+        <p>{binding.uptime?.available ? `${(binding.uptime.meanAgreement * 100).toFixed(3)}% mean participation · ${binding.uptime.daysReported}/30 days observed` : binding.uptime ? `${binding.uptime.daysReported}/30 complete UTC days observed. Participation history is building.` : binding.uptimeError}</p>
+        <small>L1 monthly credit requires at least 25 observed days out of the last 30 complete UTC days and at least 95% mean participation. Next check: {status.nextRewardDate.slice(0, 10)} UTC. Your research and models access is active.</small>
         <details><summary>Public validator identity</summary><p>{binding.chain_id}</p><code className="research-wrap">{binding.ml_dsa_public_key}</code></details>
       </> : <>
         <p>{binding.uptime ? `${binding.uptime.meanAgreement === null ? "No agreement data" : `${(binding.uptime.meanAgreement * 100).toFixed(3)}% mean agreement`} · ${binding.uptime.daysReported}/30 days reported` : binding.uptimeError}</p>
@@ -89,7 +89,7 @@ export function ValidatorSettings({ onAppStateChange }) {
       </>}
     </article>)}
     <details><summary>Rewards and research billing</summary>
-      <p>Earn $20 per eligible key on the first UTC day of each month: at least 95% mean daily agreement (Ledger) or participation (L1) in the preceding 30 complete UTC days, with at least 25 reported days. L1 credit is currently on hold because historical participation cannot yet be verified.</p>
+      <p>Earn $20 per eligible key on the first UTC day of each month: at least 95% mean daily agreement (Ledger) or participation (L1) in the preceding 30 complete UTC days, with at least 25 reported days. L1 observations started on October 28, 2026; credit waits until at least 25 complete days are observed. Days without verifiable committed blocks do not count.</p>
       <p>Choose Deep Research in chat. Your credit is charged at provider cost rounded up to $0.000001 once per job. At least $0.50 available is required; pending jobs reserve their maximum cost and failed jobs may incur provider cost.</p>
     </details>
     <details><summary>Advanced</summary>

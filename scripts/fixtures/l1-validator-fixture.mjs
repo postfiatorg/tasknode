@@ -6,7 +6,7 @@ export function l1Fixture(now = new Date(), seed) {
   const spare = ml_dsa65.keygen();
   const publicKey = Buffer.from(keys.publicKey).toString('hex');
   const end = new Date(now); end.setUTCHours(0, 0, 0, 0);
-  const participation = { available: false, historical_clock_available: false, eligible: false,
+  const participation = { time_basis: 'observer_brackets', available: false, historical_clock_available: false, eligible: false,
     window_start: new Date(end - 30 * 86400000).toISOString(), window_end: end.toISOString(), daily: [] };
   const registry = { schema: 'postfiat-tasknode-l1-registry-v1', network: L1_NETWORK, chain_id: L1_CHAIN_ID,
     genesis_hash: 'a'.repeat(96), registry_root: 'b'.repeat(96), generated_at: now.toISOString(), height: 10,
