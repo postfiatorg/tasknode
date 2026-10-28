@@ -15,7 +15,7 @@ resource membership, or other context beyond a generic identity class.
 | `none` | Public route; no caller identity. |
 | `optional` | Session is used when present, but anonymous access is allowed. |
 | `session` | Valid Task Node browser session required. |
-| `bearer` | Valid terminal bearer session required. |
+| `bearer` | Valid route-specific bearer credential required. |
 | `oauth_state` | Single-use, provider-bound OAuth state required. |
 | `webhook_secret` | Configured webhook secret required. |
 | `admin_bearer` | Configured administrative bearer token required. |
@@ -25,6 +25,16 @@ resource membership, or other context beyond a generic identity class.
 
 | Policy | Path matcher | Methods | Authentication | Mutation body | Shared limit |
 | --- | --- | --- | --- | --- | --- |
+| `validator_status` | `/api/validators` | `GET` | `session` | — | 30 / 600s |
+| `validator_challenge` | `/api/validators/challenge` | `POST` | `session` | strict JSON ≤ 1024 bytes | 10 / 600s |
+| `validator_bind` | `/api/validators/bind` | `POST` | `session` | strict JSON ≤ 8192 bytes | 20 / 600s |
+| `validator_revoke` | `/api/validators//…` | `DELETE` | `session` | strict JSON ≤ 1024 bytes | — |
+| `research_keys` | `/api/research/keys` | `GET` `POST` | `session` | strict JSON ≤ 4096 bytes | 30 / 600s |
+| `research_key_revoke` | `/api/research/keys//…` | `DELETE` | `session` | strict JSON ≤ 1024 bytes | — |
+| `research_v1_create` | `/api/research/v1/jobs` | `POST` | `bearer` | strict JSON ≤ 24000 bytes | 10 / 600s |
+| `research_v1_read` | `/api/research/v1/jobs//…` | `GET` | `bearer` | — | 600 / 600s |
+| `research_ui_create` | `/api/research/ui/jobs` | `POST` | `session` | strict JSON ≤ 24000 bytes | 10 / 600s |
+| `research_ui_read` | `/api/research/ui/jobs//…` | `GET` | `session` | — | 600 / 600s |
 | `board_agent_command` | `/api/agent/board/command` | `POST` | `bearer` | strict JSON ≤ 131072 bytes | 120 / 60s |
 | `app_state` | `/api/app-state` | `GET` | `optional` | — | — |
 | `session` | `/api/session` | `GET` | `optional` | — | — |
@@ -217,4 +227,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **191 route policies** and **8 authentication modes**.
+Total: **201 route policies** and **8 authentication modes**.

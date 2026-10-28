@@ -1,3 +1,5 @@
+import { ValidatorSettings } from "../research/ValidatorSettings.jsx";
+import { ResearchKeySettings } from "../research/ResearchKeySettings.jsx";
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, X } from "lucide-react";
 import { requestJson } from "../../api";
@@ -13,6 +15,7 @@ import { AGENT_CONNECT_GUIDE_URL, clearAuthSessionHint, SETTINGS_PAGES } from ".
 
 export function SettingsModal({ initialPage = "general", linkedWallet, onAppStateChange, onClose, onWalletUnlock, session, setTheme, theme, themeSessionOnly = false, walletSecret, walletVault }) {
   const [page, setPage] = useState(initialPage);
+  useEffect(() => { setPage(initialPage); }, [initialPage]);
   const activePage = SETTINGS_PAGES.find((item) => item.key === page) || SETTINGS_PAGES[0];
 
   return (
@@ -57,6 +60,8 @@ export function SettingsModal({ initialPage = "general", linkedWallet, onAppStat
               />
             )}
             {page === "data" && <DataSettings onAccountDeleted={onClose} onAppStateChange={onAppStateChange} onOpenHiveChat={() => { window.location.hash = "/hive-chat"; onClose(); }} session={session} />}
+            {page === "validator" && <ValidatorSettings />}
+            {page === "api-keys" && <ResearchKeySettings />}
             {page === "billing" && <BillingSettings onAppStateChange={onAppStateChange} />}
           </div>
         </div>

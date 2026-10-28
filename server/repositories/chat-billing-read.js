@@ -174,7 +174,7 @@ export async function getChatMessagesForWrite(input = "dev", options = {}) {
 
 function numeric(value) {
   const parsed = Number(value || 0);
-  return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : 0;
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(12)) : 0;
 }
 
 async function aggregateUsage({ accountId = "", conversationId = "" } = {}) {
@@ -220,7 +220,7 @@ export async function usageSummary(scope = {}) {
       return {
         currentSpendUsd,
         currentCreditUsd,
-        availableCreditUsd: Number(Math.max(0, currentCreditUsd - currentSpendUsd).toFixed(6)),
+        availableCreditUsd: Number(Math.max(0, currentCreditUsd - currentSpendUsd).toFixed(12)),
         ledgerEntryCount: Number(row.ledger_entry_count || 0),
         durable: true,
         storePath: "postgres",
@@ -238,7 +238,7 @@ export async function usageSummary(scope = {}) {
   const aggregate = await aggregateUsage(scope);
   return {
     ...aggregate,
-    availableCreditUsd: Number(Math.max(0, aggregate.currentCreditUsd - aggregate.currentSpendUsd).toFixed(6)),
+    availableCreditUsd: Number(Math.max(0, aggregate.currentCreditUsd - aggregate.currentSpendUsd).toFixed(12)),
     durable: true,
     storePath: "postgres",
   };

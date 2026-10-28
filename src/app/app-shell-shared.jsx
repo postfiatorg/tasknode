@@ -192,6 +192,8 @@ export const SETTINGS_PAGES = [
   { key: "security", label: "Security", icon: Shield },
   { key: "data", label: "Data controls", icon: Database },
   { key: "billing", label: "Billing", icon: CreditCard },
+  { key: "validator", label: "Validator", icon: Shield },
+  { key: "api-keys", label: "API keys", icon: FileText },
 ];
 
 // #settings or #settings/<page> opens Settings, so server pages and docs can

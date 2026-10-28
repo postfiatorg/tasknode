@@ -14,6 +14,7 @@ export const FLEET_GROUPS = [
   "worker-hive",
   "worker-memory-profile",
   "worker-airdrop",
+  "worker-validator-research",
 ];
 
 const DEFAULT_APP = "tasknodeofficial-dev";

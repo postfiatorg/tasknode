@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { Brain, MessageSquare, Users } from "lucide-react";
+import { BookOpen, Brain, MessageSquare, Users } from "lucide-react";
 
 const HiveBrainView = lazy(() => import("../features/hive/HiveBrainView").then((module) => ({ default: module.HiveBrainView })));
 const MemoryView = lazy(() => import("../features/memory/MemoryView").then((module) => ({ default: module.MemoryView })));
@@ -7,7 +7,10 @@ const MessagesView = lazy(() => import("../features/messages/MessagesView").then
 const TeamView = lazy(() => import("../features/team/TeamView").then((module) => ({ default: module.TeamView })));
 const HiveGroupChat = lazy(() => import("../features/hive/HiveGroupChat").then((module) => ({ default: module.HiveGroupChat })));
 
+const ResearchView = lazy(() => import("../features/research/ResearchView.jsx").then((module) => ({ default: module.ResearchView })));
+
 export const builtInTaskNodeExtensions = Object.freeze([
+  { id: "research", label: "Research", icon: BookOpen, component: ResearchView, menu: "primary", group: "insight", order: 20, requiresAuth: true },
   {
     id: "hive-chat", label: "Hive chat", icon: Users, component: HiveGroupChat, menu: "primary", requiresAuth: false,
     props: ({ accountId, walletSecret, onWalletUnlock, onOpenMessages, onLoginRequired, onHiveUnreadChange }) => ({

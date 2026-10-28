@@ -82,6 +82,7 @@ for (const processGroup of [
   "worker-memory-profile",
   "worker-airdrop",
   "worker-nft-renderer",
+  "worker-validator-research",
 ]) {
   runGuard(guardArgsForProcess(processGroup, sharedArgs), { dryRun });
 }

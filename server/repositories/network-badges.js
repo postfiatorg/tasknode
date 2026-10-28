@@ -1,3 +1,4 @@
+import { hasValidatorBinding } from "./validator-bindings.js";
 import { isIdentifierChar, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 import { githubCoreContributorAccess } from "../core-contributor-authorization.js";
@@ -41,6 +42,7 @@ function ensureDatabase() {
 export const networkBadgeCatalogVersion = "network_badges_v1";
 
 export const networkBadgeDefinitions = Object.freeze({
+  validator: { badgeId: "validator", label: "Validator", symbolKey: "server", maxPayoutPft: 0, rewardCaps: {}, allowedWorkTypes: [] },
   kol: {
     badgeId: "kol",
     label: "KOL",
@@ -569,10 +571,13 @@ export async function networkBadgeProjectionForAccount({
     })
     : null;
 
+  const validatorBadge = await hasValidatorBinding(normalizedAccountId)
+    ? projectionBadge(networkBadgeDefinitions.validator, { proofMethod: "validator_master_signature" }) : null;
   if (preferDurable) {
     const durableBadges = await listDurableProjectionBadges({ accountId: normalizedAccountId });
     if (durableBadges.length) {
       const currentBadges = durableBadges.filter((badge) => {
+        if (badge.badgeId === "validator") return false;
         if (badge.badgeId !== "core_contributor") return true;
         const source = safeText(badge.evidence?.evidence?.source, 120);
         return source !== "runtime_projection_refresh" || Boolean(githubBadge);
@@ -580,6 +585,7 @@ export async function networkBadgeProjectionForAccount({
       if (githubBadge && !currentBadges.some((badge) => badge.badgeId === "core_contributor")) {
         currentBadges.push(githubBadge);
       }
+      if (validatorBadge) currentBadges.push(validatorBadge);
       return projectionFromBadges({
         accountId: normalizedAccountId,
         walletAddress: normalizedWallet,
@@ -589,6 +595,7 @@ export async function networkBadgeProjectionForAccount({
     }
   }
   const badges = [];
+  if (validatorBadge) badges.push(validatorBadge);
 
   const xAlias = aliasForProvider(identityProfile, "x");
   const xFollowers = Number(xAlias?.metrics?.followersCount);

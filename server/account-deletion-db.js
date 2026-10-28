@@ -5,7 +5,7 @@ import {
 } from "./account-deletion-audit.js";
 
 const blockingGrantStatuses = ["processing", "completed", "unknown"];
-const retainedAccountTables = ["account_deletion_audit", "billing_accounts", "billing_ledger_entries", "wallet_initiation_grants"];
+const retainedAccountTables = ["account_deletion_audit", "billing_accounts", "billing_ledger_entries", "wallet_initiation_grants", "validator_reward_grants"];
 
 function quoteIdentifier(value) {
   return `"${String(value || "").replaceAll("\"", "\"\"")}"`;
@@ -77,7 +77,7 @@ export async function deleteAccountDatabaseData({
               conversation_id = NULL,
               model_run_id = NULL,
               response_id = NULL,
-              idempotency_key = NULL,
+              idempotency_key = CASE WHEN source = 'validator_reward' THEN idempotency_key ELSE NULL END,
               metadata_json = '{"retainedAfterAccountDeletion":true}'::jsonb
         WHERE account_id = $1`,
       [accountId, archiveId]
@@ -86,6 +86,10 @@ export async function deleteAccountDatabaseData({
       "UPDATE billing_accounts SET account_id = $2, status = 'archived', updated_at = now() WHERE account_id = $1",
       [accountId, archiveId]
     );
+    // Retain the public key/month anti-replay receipt across account deletion.
+    // Otherwise a re-created account could collect the same validator reward twice.
+    await client.query(`UPDATE validator_reward_grants SET account_id=$2,
+      evidence_json='{"retainedAfterAccountDeletion":true}'::jsonb WHERE account_id=$1`, [accountId, archiveId]);
     const grants = await client.query(
       `UPDATE wallet_initiation_grants
           SET account_id = $4,
