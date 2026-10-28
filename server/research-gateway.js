@@ -1,3 +1,4 @@
+import { researchLedgerAmount } from "./research-billing.js";
 import { randomUUID } from "node:crypto";
 import { query } from "./db/pool.js";
 import { callResearchService } from "./research-provider.js";
@@ -6,7 +7,8 @@ import { validatorError } from "./validator-identity.js";
 
 export function publicResearchJob(row) {
   return { job_id: row.id, status: row.status, created_at: row.created_at, updated_at: row.updated_at,
-    usage: row.cost_usd === null ? null : { total_cost_usd: Number(row.cost_usd) }, error: row.last_error || null };
+    usage: row.cost_usd === null ? null : { total_cost_usd: Number(row.cost_usd) },
+    billing: row.billed_at ? { amount_usd: researchLedgerAmount(Number(row.cost_usd)), rounding: "up_to_usd_microdollar" } : null, error: row.last_error || null };
 }
 
 export async function refreshResearchJob(row, call = callResearchService) {

@@ -50,7 +50,7 @@ CREATE TABLE research_gateway_jobs (
   request_hash text NOT NULL,
   request_json jsonb NOT NULL,
   status text NOT NULL DEFAULT 'submitting',
-  cost_usd numeric(18,6) CHECK (cost_usd >= 0),
+  cost_usd numeric(30,12) CHECK (cost_usd >= 0),
   billed_at timestamptz,
   result_json jsonb,
   last_error text,

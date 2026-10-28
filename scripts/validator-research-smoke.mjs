@@ -1,3 +1,4 @@
+import { researchLedgerAmount } from "../server/research-billing.js";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { encodeNodePublic } from "ripple-address-codec";
@@ -8,6 +9,11 @@ import { researchHmacHeaders, callResearchService } from "../server/research-pro
 import { readFile } from "node:fs/promises";
 import { parse } from "espree";
 
+for (const [cost, expected] of [[0, 0], [0.1, 0.1], [0.100001, 0.100001], [0.123456789, 0.123457], [0.117940644, 0.117941], [0.000000000001, 0.000001], [0.01, 0.01]]) {
+  assert.equal(researchLedgerAmount(cost), expected);
+}
+assert.throws(() => researchLedgerAmount(-1), /invalid/);
+assert.throws(() => researchLedgerAmount(NaN), /invalid/);
 const now = Date.parse("2026-10-28T12:00:00Z");
 const proof = createValidatorChallenge("account-one", now);
 assert.equal(new Date(proof.expiresAt).getTime(), now + 1800000);
@@ -57,7 +63,7 @@ assert.equal(captured.url, "https://service.example/ga-research/v1/research");
 assert.equal(captured.options.body, '{"question":"What changed?"}');
 assert.equal(captured.options.redirect, "error");
 // Guard every new prompt/provider/usage path against regex reintroduction.
-for (const file of ["server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js", "src/features/research/research-client.js"]) {
+for (const file of ["server/research-billing.js", "server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js", "src/features/research/research-client.js"]) {
   const ast = parse(await readFile(file, "utf8"), { ecmaVersion: "latest", sourceType: "module" });
   const visit = (node) => {
     if (!node || typeof node !== "object") return;

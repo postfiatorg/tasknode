@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { query, transaction } from "../db/pool.js";
 import { hasValidatorBinding } from "./validator-bindings.js";
 import { validatorError } from "../validator-identity.js";
+import { researchLedgerAmount } from "../research-billing.js";
 import { insertLedgerEntry } from "./chat-billing.js";
 
 export const hashResearchKey = (value) => createHash("sha256").update(value, "utf8").digest("hex");
@@ -71,8 +72,7 @@ export async function settleResearchJob(id, upstream, result = null) {
   if (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0 || !["completed", "failed"].includes(upstream.status)) {
     throw validatorError("research_cost_invalid", 502);
   }
-  // Preserve provider-reported sub-microdollar costs without silently rounding.
-  if (Math.abs(cost * 1000000000000 - Math.round(cost * 1000000000000)) > 0.001) throw validatorError("research_cost_precision_invalid", 502);
+  const ledgerAmount = researchLedgerAmount(cost);
   return transaction(async (client) => {
     const row = (await client.query(`SELECT * FROM research_gateway_jobs WHERE id=$1 FOR UPDATE`, [id])).rows[0];
     if (!row || row.upstream_id !== upstream.job_id) throw validatorError("research_job_mismatch", 502);
@@ -80,10 +80,10 @@ export async function settleResearchJob(id, upstream, result = null) {
       if (Number(row.cost_usd) !== cost) throw validatorError("research_cost_changed", 502);
       return row;
     }
-    await insertLedgerEntry(client, { kind: "chat_debit", accountId: row.account_id, amountUsd: cost,
+    await insertLedgerEntry(client, { kind: "chat_debit", accountId: row.account_id, amountUsd: ledgerAmount,
       source: "validator_research", note: "GoodAlexander research at provider cost", uniqueKey: `research-job:${id}`,
-      onConflictUnique: true, providerCostUsd: cost, costSource: "provider_reported", responseId: row.upstream_id,
-      metadata: { researchJobId: id, upstreamJobId: row.upstream_id, usage: upstream.usage } });
+      onConflictUnique: true, providerCostUsd: ledgerAmount, costSource: "provider_cost_ceil_6dp", responseId: row.upstream_id,
+      metadata: { researchJobId: id, upstreamJobId: row.upstream_id, rounding: "up_to_usd_microdollar" } });
     return (await client.query(`UPDATE research_gateway_jobs SET status=$2,cost_usd=$3,billed_at=now(),result_json=$4::jsonb,
       last_error=$5,updated_at=now() WHERE id=$1 RETURNING *`,
     [id, upstream.status, cost, result ? JSON.stringify(result) : null, upstream.status === "failed" ? "research_job_failed" : null])).rows[0];

@@ -55,7 +55,7 @@ export async function handleValidatorResearchRoute({ json, readJson, req, res, s
         const row = await refreshResearchJob(await getResearchJob(accountId, parts[4]));
         if (parts[5] === "result") {
           if (row.status !== "completed" || !row.result_json) throw validatorError("research_result_not_ready", 409);
-          return reply(200, { ...row.result_json, job_id: row.id });
+          return reply(200, { ...row.result_json, job_id: row.id, billing: publicResearchJob(row).billing });
         }
         return reply(200, publicResearchJob(row));
       }

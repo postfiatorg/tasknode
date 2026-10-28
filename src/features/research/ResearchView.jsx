@@ -52,10 +52,10 @@ export function ResearchView() {
     }}>
       <label>Research question<textarea rows={5} value={question} maxLength={16000} onChange={(event) => setQuestion(event.target.value)} required placeholder="Ask about a company, its management, or its financial history." /></label>
       <label>Maximum cost (USD)<input type="number" min="0.01" max="5" step="0.01" value={budget} onChange={(event) => setBudget(event.target.value)} required /></label>
-      <p>Billed at actual provider cost. At least $0.50 available credit is required. <a href="#settings/billing">Manage credit</a> · <a href="#settings/api-keys">API keys</a></p>
+      <p>Provider cost is rounded up to $0.000001 per job. At least $0.50 available credit is required. <a href="#settings/billing">Manage credit</a> · <a href="#settings/api-keys">API keys</a></p>
       <button type="submit" disabled={!eligible || busy || Boolean(job && !terminal)}>{busy || (job && !terminal) ? "Researching…" : "Run research"}</button>
     </form>
-    <p role="status">{message || (job ? `Research ${job.status}${job.usage ? ` · $${job.usage.total_cost_usd}` : ""}` : "")}</p>
+    <p role="status">{message || (job ? `Research ${job.status}${job.usage ? ` · Provider $${job.usage.total_cost_usd}${job.billing ? ` · Billed $${job.billing.amount_usd.toFixed(6)}` : ""}` : ""}` : "")}</p>
     {result && <article className="research-report"><pre>{result.markdown}</pre></article>}
   </section>;
 }

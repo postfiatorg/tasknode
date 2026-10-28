@@ -7,7 +7,7 @@ function toIso(value) {
 
 function numeric(value) {
   const parsed = Number(value || 0);
-  return Number.isFinite(parsed) ? Number(parsed.toFixed(12)) : 0;
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : 0;
 }
 
 export function publicChatMessage(row, attachments = []) {

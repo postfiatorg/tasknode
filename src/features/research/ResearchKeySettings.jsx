@@ -11,7 +11,7 @@ export function ResearchKeySettings() {
   useEffect(() => { refresh().catch((error) => setMessage(error.message)); }, [refresh]);
   const act = async (fn) => { setBusy(true); setMessage(""); try { await fn(); } catch (error) { setMessage(error.message); } finally { setBusy(false); } };
   return <div className="research-panel">
-    <p>Research keys use your Task Node credit at the actual provider cost. Bind a validator before creating a key.</p>
+    <p>Research keys use your Task Node credit at provider cost rounded up to $0.000001 per job. Bind a validator before creating a key.</p>
     <form onSubmit={(event) => { event.preventDefault(); void act(async () => {
       const created = await researchRequest("/api/research/keys", { method: "POST", body: { name } }); setNewKey(created.key); await refresh();
     }); }}>
