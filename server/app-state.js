@@ -39,7 +39,7 @@ import {
 import { listTaskState } from "./repositories/tasks.js";
 import { scheduleLinkedWalletTaskProjectionRefresh } from "./task-projection-refresh.js";
 import { expertAccessFromTaskState } from "./expert-badge.js";
-import { deepResearchAvailable } from "./corbanu-deep-research.js";
+import { chatResearchAccess } from "./chat-research-provider.js";
 
 const signedOutUsageSummary = Object.freeze({
   currentSpendUsd: 0,
@@ -484,6 +484,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
     hiveConversation,
     seedMessages,
     contextDocument,
+    researchAccess,
   ] = await Promise.all([
     timed("readiness", () => readiness(), () => ({
       wallet: {
@@ -521,6 +522,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       () => getContextDocument({ accountId }),
       () => fallbackContextDocument({ accountId })
     ),
+    timed("deep_research_access", () => chatResearchAccess({ accountId }), () => ({ available: false, provider: "corbanu", atCost: false })),
   ]);
 
   const creditedUsdcUsd = Number(ethDepositAccount?.creditedBalances?.USDC?.amount || 0);
@@ -639,7 +641,9 @@ export async function appState(session = null, { refreshTaskProjection = false }
       recents: chatRecents,
       hiveConversation,
       defaultMode: signedOut ? "Help" : enabledMode?.label || "Instant",
-      deepResearchAvailable: deepResearchAvailable({ accountId }),
+      deepResearchAvailable: researchAccess.available,
+      deepResearchProvider: researchAccess.provider,
+      deepResearchAtCost: researchAccess.atCost,
       decisionsAvailable: decisionsAvailable({ accountId }),
       modes,
       seedMessages,

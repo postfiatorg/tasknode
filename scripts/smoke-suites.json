@@ -186,7 +186,9 @@
     "scripts/wallet-unlocked-session-smoke.mjs",
     "scripts/worker-crash-resilience-smoke.mjs",
     "scripts/network-task-content-policy.test.mjs",
-    "scripts/validator-research-smoke.mjs"
+    "scripts/validator-research-smoke.mjs",
+    "scripts/validator-connect-shell-smoke.mjs",
+    "scripts/deep-research-chat-smoke.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",
@@ -224,7 +226,8 @@
     "scripts/task-sync-reconciliation-smoke.mjs",
     "scripts/team-context-smoke.mjs",
     "scripts/terminal-team-context-smoke.mjs",
-    "scripts/validator-research-postgres-smoke.mjs"
+    "scripts/validator-research-postgres-smoke.mjs",
+    "scripts/validator-connect-postgres-smoke.mjs"
   ],
   "manual": {
     "scripts/ambient-cache-live-smoke.mjs": "calls a live inference provider",

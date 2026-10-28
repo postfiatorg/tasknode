@@ -1408,3 +1408,6 @@
 .decision-tier-control button { min-height: 32px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: var(--tn-dark-muted, #6b6963); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
 .decision-tier-control button[aria-checked="true"] { background: var(--tn-dark-hover, #ffffff); color: var(--tn-dark-text, #1f1f1c); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }
 .decision-tier-control button:focus-visible, .decision-composer-exit:focus-visible { outline: 2px solid var(--tn-dark-text, #1f1f1c); outline-offset: 1px; }
+
+.deep-research-budget { display: flex; align-items: center; gap: 8px; padding: 0 14px 8px; font-size: 12px; color: var(--tn-text-muted, #666); }
+.deep-research-budget input { width: 76px; padding: 4px 6px; border: 1px solid var(--tn-border, #ddd); border-radius: 6px; background: transparent; color: inherit; }

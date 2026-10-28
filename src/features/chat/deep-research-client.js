@@ -3,11 +3,11 @@ import { requestJson } from "../../api";
 export const DEEP_RESEARCH_MODE = "deep_research";
 export const DEEP_RESEARCH_PLACEHOLDER = "What should I research deeply?";
 
-export function createDeepResearchJob({ question, conversationId, requestId, title = "" }) {
+export function createDeepResearchJob({ question, conversationId, requestId, title = "", maxCostUsd }) {
   return requestJson("/api/deep-research/jobs", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ question, conversationId, requestId, title }),
+    body: JSON.stringify({ question, conversationId, requestId, title, maxCostUsd }),
   });
 }
 

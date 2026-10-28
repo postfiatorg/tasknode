@@ -4,7 +4,17 @@ The HTTP process owns validator proof, API-key, gateway, and gated-viewer routes
 
 ## Validator signing
 
-Settings → Validator issues a one-time, account-bound challenge that expires after 30 minutes. Its signature proves control of the registered devnet or testnet validator master key; Task Node verifies the signature and binds the key to the account. Nothing is submitted to the ledger. The private key stays on the validator host.
+Settings → Validator issues a one-time connect token bound to the signed-in account and valid for 30 minutes. The default command is:
+
+```sh
+curl -fsSL https://tasknode.postfiat.org/validator.sh | sh -s -- <token>
+```
+
+The public, readable `public/validator.sh` discovers the key inside `postfiatd` or in common host locations, signs locally with the running image, selects only `public_key`, and posts the proof. Append `--keyfile /existing/path/validator-keys.json` for another location. Host signing uses a read-only mount and `--network none`. The script never uploads the key file or secret fields. Download/inspect instructions and the manual signing flow remain available under disclosures.
+
+Only the SHA-256 token hash is stored. Creating a token requires a session; challenge and completion accept the token as a short-lived capability. A supplied session must belong to the token account. The challenge and token are consumed together with the binding in one transaction. Expired, reused, wrong-account and invalid-signature proofs fail. Reconnecting a key already bound to that same account confirms the existing binding without unbinding. Another account cannot take it. The owning browser polls an account-scoped status endpoint and refreshes its access after completion. Keep command tokens out of logs, screenshots intended for public sharing, and issue trackers.
+
+The signature proves control of the registered devnet or testnet validator master key. Nothing is submitted to the ledger. **Advanced** retains these manual commands.
 
 When the key is inside the running `postfiatd` container:
 
@@ -18,9 +28,11 @@ When the key file lives on the host:
 docker run --rm --network none -v /path/to/validator-keys.json:/keys/validator-keys.json:ro --entrypoint /usr/local/bin/validator-keys <postfiatd image> --keyfile /keys/validator-keys.json sign "<challenge>"
 ```
 
-Replace `<challenge>` with the complete challenge from Settings. For the host command, replace the source file path with the existing validator key path and `<postfiatd image>` with the Post Fiat image already used on that host. The ephemeral container runs without networking, with the key mounted read-only. Run only the signing command; do not inspect, copy, print or move key files or validator tokens. Submit only the master public key and returned signature to Task Node.
+Replace `<challenge>` with the complete challenge from Settings. For the host command, replace the source file path with the existing validator key path and `<postfiatd image>` with the Post Fiat image already used on that host. The ephemeral container runs without networking, with the key mounted read-only. For manual signing, do not inspect, copy, print or move key files or validator tokens. Submit only the master public key and returned signature to Task Node.
 
 ## Billing and monthly rewards
+
+Chat Deep Research selects GoodAlexander for accounts with an active validator binding; other accounts retain Corbanu. The selected provider is persisted per chat job, so polling and retries continue through the original provider even if the binding changes. GA chat jobs use the same durable reservation and settlement path as research API jobs; completed reports and exact/billed costs are saved in the conversation. The separate Research page is removed. Models are linked from the account menu and Validator settings; research API keys remain in Settings → API keys.
 
 Accounts with an active validator binding can use research with at least $0.50 available Task Node USD credit. Admission reserves the selected maximum cost. Completion debits the actual provider cost rounded up once to $0.000001, including costs incurred by failed jobs, and releases unused reserved credit. Repeated status or result reads do not charge again.
 
@@ -50,6 +62,8 @@ Static viewer code exchange requires an explicit allowlisted Origin matching the
 
 Exact provider totals remain in research_gateway_jobs.cost_usd as numeric(30,12). Ledger settlement rounds up once per job to six decimals, using integer decimal arithmetic. Existing billing tables and projections retain their six-decimal precision. Status and result expose the exact usage.total_cost_usd and billing.amount_usd.
 
-Migrations 152–153 add validator proofs, bindings, keys, jobs, grants, and encrypted bundles, and revoke old viewer grants during the origin-binding repair. Existing billing tables and the reward rollup view are not altered. Rollback retains the compatible added tables and grant receipts.
+Migrations 152–153 add validator proofs, bindings, keys, jobs, grants, and encrypted bundles, and revoke old viewer grants during the origin-binding repair. Migration 154 adds connect tokens and provider/budget columns to chat research jobs. Existing billing tables and the reward rollup view are not altered. Rollback retains the compatible added tables and grant receipts.
 
 Focused verification: `node scripts/validator-research-smoke.mjs`, then `node scripts/validator-research-postgres-smoke.mjs` and `node scripts/index-viewer-smoke.mjs` against an isolated PostgreSQL database. The DB suite exercises concurrent credit admission, concurrent completion/reward settlement, failures, origin attacks, replay, ownership, and revocation.
+
+One-command and chat verification: `node scripts/validator-connect-shell-smoke.mjs` uses synthetic keys and mocked host tools; `node scripts/validator-connect-postgres-smoke.mjs` uses an isolated PostgreSQL database and fixture providers to prove replay/expiry/account isolation, reconnection, chat routing, report persistence, and one ceil6 debit. Never point these fixture tests at production.

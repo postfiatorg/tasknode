@@ -17,4 +17,9 @@
 .research-report summary { cursor: pointer; }
 .research-report details pre { max-height: 480px; overflow: auto; font: 12px/1.6 monospace; }
 .validator-badge { display: inline-flex; align-items: center; gap: 7px; color: var(--tn-dark-success, #287842); }
+.validator-connect-panel h3 { margin: 0; font-size: 20px; }
+.validator-connect-panel details { margin: 8px 0; }
+.validator-connect-panel summary { cursor: pointer; font-size: 13px; }
+.validator-connect-panel details[open] > p { margin-top: 12px; }
+.validator-command { padding: 12px; background: var(--tn-dark-hover, #f4f4f2); border-radius: 6px; margin: 0; }
 @media (max-width: 640px) { .research-view { padding: 20px 14px; } }

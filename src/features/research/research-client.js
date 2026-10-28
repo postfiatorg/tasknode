@@ -4,6 +4,7 @@ const messages = {
   validator_signature_invalid: "The signature does not match this key and challenge.",
   validator_challenge_invalid_or_expired: "This challenge expired or was already used. Create a new challenge.",
   validator_already_bound: "This validator is already bound to a Task Node account.",
+  validator_connect_invalid_or_expired: "This command expired or was already used. Generate a new command.",
   validator_unknown: "This key is not registered on devnet or testnet.", validator_revoked: "This validator key has been revoked.",
   research_credit_required: "Add credit in Settings → Billing. Research requires at least $0.50 available.",
   research_budget_exceeds_credit: "Your maximum cost exceeds your available credit.",

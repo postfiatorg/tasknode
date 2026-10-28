@@ -25,6 +25,10 @@ resource membership, or other context beyond a generic identity class.
 
 | Policy | Path matcher | Methods | Authentication | Mutation body | Shared limit |
 | --- | --- | --- | --- | --- | --- |
+| `validator_connect_start` | `/api/validators/connect` | `POST` | `session` | strict JSON ≤ 1024 bytes | 10 / 600s |
+| `validator_connect_status` | `/api/validators/connect/status` | `GET` | `session` | — | 400 / 600s |
+| `validator_connect_challenge` | `/api/validators/connect/challenge` | `POST` | `none` | strict JSON ≤ 1024 bytes | 30 / 600s |
+| `validator_connect_complete` | `/api/validators/connect/complete` | `POST` | `none` | strict JSON ≤ 4096 bytes | 30 / 600s |
 | `validator_status` | `/api/validators` | `GET` | `session` | — | 30 / 600s |
 | `validator_challenge` | `/api/validators/challenge` | `POST` | `session` | strict JSON ≤ 1024 bytes | 10 / 600s |
 | `validator_bind` | `/api/validators/bind` | `POST` | `session` | strict JSON ≤ 8192 bytes | 20 / 600s |
@@ -227,4 +231,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **201 route policies** and **8 authentication modes**.
+Total: **205 route policies** and **8 authentication modes**.

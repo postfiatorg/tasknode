@@ -7,6 +7,10 @@ const confirmation = { type: "boolean" };
 const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const apiRoutePolicies = [
+  { id: "validator_connect_start", path: "/api/validators/connect", methods: ["POST"], auth: "session", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "validator_connect_status", path: "/api/validators/connect/status", methods: ["GET"], auth: "session", rateLimit: { limit: 400, windowMs: tenMinutes } },
+  { id: "validator_connect_challenge", path: "/api/validators/connect/challenge", methods: ["POST"], auth: "none", rateLimit: { limit: 30, windowMs: tenMinutes }, body: bodyPolicy(1024, { allowUnknown: false, required: ["token"], properties: { token: { type: "string", minLength: 68, maxLength: 68 } } }) },
+  { id: "validator_connect_complete", path: "/api/validators/connect/complete", methods: ["POST"], auth: "none", rateLimit: { limit: 30, windowMs: tenMinutes }, body: bodyPolicy(4096, { allowUnknown: false, required: ["token", "master_public_key", "signature"], properties: { token: { type: "string", minLength: 68, maxLength: 68 }, master_public_key: { type: "string", minLength: 40, maxLength: 60 }, signature: { type: "string", minLength: 128, maxLength: 144 } } }) },
   { id: "validator_status", path: "/api/validators", methods: ["GET"], auth: "session", rateLimit: { limit: 30, windowMs: tenMinutes } },
   { id: "validator_challenge", path: "/api/validators/challenge", methods: ["POST"], auth: "session", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
   { id: "validator_bind", path: "/api/validators/bind", methods: ["POST"], auth: "session", rateLimit: { limit: 20, windowMs: tenMinutes }, body: bodyPolicy(8192, { allowUnknown: false, required: ["master_public_key", "signature", "challenge"], properties: { master_public_key: { type: "string", minLength: 40, maxLength: 60 }, signature: { type: "string", minLength: 128, maxLength: 144 }, challenge: { type: "string", minLength: 30, maxLength: 500 } } }) },

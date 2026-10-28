@@ -60,7 +60,7 @@ export function SettingsModal({ initialPage = "general", linkedWallet, onAppStat
               />
             )}
             {page === "data" && <DataSettings onAccountDeleted={onClose} onAppStateChange={onAppStateChange} onOpenHiveChat={() => { window.location.hash = "/hive-chat"; onClose(); }} session={session} />}
-            {page === "validator" && <ValidatorSettings />}
+            {page === "validator" && <ValidatorSettings onAppStateChange={onAppStateChange} />}
             {page === "api-keys" && <ResearchKeySettings />}
             {page === "billing" && <BillingSettings onAppStateChange={onAppStateChange} />}
           </div>
