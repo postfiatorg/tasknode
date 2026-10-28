@@ -348,6 +348,7 @@ function DeepResearchArtifactCard({ deepResearch = null }) {
         {String(deepResearch.privacy || "Provider-backed web research")}
         {deepResearch.provider === "goodalexander" && Number.isFinite(cost) && <span> · Provider ${cost}{Number.isFinite(billed) ? ` · Billed $${billed.toFixed(6)}` : ""}</span>}
       </div>
+      {deepResearch.provider === "goodalexander" && deepResearch.improvementRound && <div className="deep-research-privacy">Improvement round: {deepResearch.improvementRound}{deepResearch.improvementReason && <span> · {deepResearch.improvementReason}</span>}</div>}
       {hasArtifact && (
         <div className="deep-research-card-actions">
           <button onClick={() => copyText(markdown)} type="button">

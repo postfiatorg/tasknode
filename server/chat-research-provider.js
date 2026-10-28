@@ -1,14 +1,12 @@
 import { deepResearchAvailable, startCorbanuDeepResearch, fetchCorbanuDeepResearch, fetchCorbanuDeepResearchResult } from "./corbanu-deep-research.js";
-import { hasValidatorBinding } from "./repositories/validator-bindings.js";
 import { getResearchJob } from "./repositories/research-gateway.js";
 import { submitResearchJob, refreshResearchJob } from "./research-gateway.js";
 import { researchLedgerAmount } from "./research-billing.js";
 
-export async function chatResearchAccess({ accountId, env = process.env, bound = hasValidatorBinding } = {}) {
-  const validator = await bound(accountId);
-  return validator
-    ? { provider: "goodalexander", available: Boolean(env.GA_RESEARCH_URL && env.GA_RESEARCH_HMAC_SECRET), atCost: true }
-    : { provider: "corbanu", available: deepResearchAvailable({ accountId, env }), atCost: false };
+export async function chatResearchAccess({ accountId, env = process.env } = {}) {
+  return env.CHAT_RESEARCH_PROVIDER === "corbanu"
+    ? { provider: "corbanu", available: deepResearchAvailable({ accountId, env }), atCost: false }
+    : { provider: "goodalexander", available: Boolean(accountId && env.GA_RESEARCH_URL && env.GA_RESEARCH_HMAC_SECRET), atCost: true };
 }
 
 export async function startChatResearch({ accountId, localJob, question, title, requestId }, {

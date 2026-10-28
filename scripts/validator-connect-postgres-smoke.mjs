@@ -15,6 +15,7 @@ import { createDeepResearchJob } from "../server/repositories/deep-research.js";
 import { chatResearchAccess } from "../server/chat-research-provider.js";
 import { insertLedgerEntry } from "../server/repositories/chat-billing.js";
 import { transaction } from "../server/db/pool.js";
+import { createResearchKey, reserveResearchJob } from "../server/repositories/research-gateway.js";
 
 const accountId = `connect_smoke_${randomUUID()}`;
 const other = `${accountId}_other`;
@@ -26,7 +27,7 @@ const lookup = async () => ({ network: "devnet", signingPublicKey });
 const signChallenge = challenge => sign(Buffer.from(challenge).toString("hex"), keypair.privateKey);
 const originalFetch = globalThis.fetch;
 const calls = [];
-const report = { markdown: "# Answer\n\nA useful research answer with financial evidence. [F1]", sources: [{ id: "F1", ticker: "EXAMPLE", rows: [{ revenue: 10 }] }] };
+const report = { markdown: "# Answer\n\nA useful research answer with financial evidence. [F1]", sources: [{ id: "F1", ticker: "EXAMPLE", rows: [{ revenue: 10 }] }], quality: { tih: { round_status: "completed" } } };
 async function route(path, { method = "GET", payload, account = accountId } = {}) {
   let status, body;
   await handleDeepResearchRoute({ req: { method }, res: {}, session: account ? { accountId: account } : null,
@@ -140,7 +141,7 @@ try {
   process.env.CORBANU_DEEP_RESEARCH_BASE_URL = "https://corbanu.example.test";
   process.env.CORBANU_TASKNODE_INTEGRATION_SECRET = "synthetic-legacy-secret";
   assert.equal((await chatResearchAccess({ accountId })).provider, "goodalexander");
-  assert.equal((await chatResearchAccess({ accountId: other })).provider, "corbanu");
+  assert.equal((await chatResearchAccess({ accountId: other })).provider, "goodalexander");
   assert.equal((await chatResearchAccess({ accountId: "" })).available, false);
   globalThis.fetch = async (url, options = {}) => {
     const parsed = new URL(url); const method = options.method || "GET";
@@ -148,9 +149,11 @@ try {
     let body;
     if (parsed.hostname === "ga.example.test") {
       const usage = { total_cost_usd: 0.123456789 };
-      body = method === "POST" ? { job_id: "ga-fixture", status: "queued" }
-        : parsed.pathname.endsWith("/result") ? { job_id: "ga-fixture", ...report, usage }
-          : { job_id: "ga-fixture", status: "completed", usage };
+      const parts = parsed.pathname.split("/");
+      const jobId = method === "POST" ? JSON.parse(options.body).request_id : parts.at(parsed.pathname.endsWith("/result") ? -2 : -1);
+      body = method === "POST" ? { job_id: jobId, status: "queued" }
+        : parsed.pathname.endsWith("/result") ? { job_id: jobId, ...report, usage }
+          : { job_id: jobId, status: "completed", usage };
     } else if (parsed.hostname === "corbanu.example.test") {
       body = method === "POST" ? { id: "legacy-fixture", status: "queued" }
         : parsed.pathname.endsWith("/result") ? { result: { markdown: "Legacy report unchanged" } }
@@ -171,6 +174,7 @@ try {
   assert.equal(result.body.assistant.body, report.markdown, "the report is readable in chat");
   assert.equal(result.body.assistant.metadata.deepResearch.usage.total_cost_usd, 0.123456789);
   assert.equal(result.body.assistant.metadata.deepResearch.usage.billed_cost_usd, 0.123457);
+  assert.equal(result.body.assistant.metadata.deepResearch.improvementRound, "done");
   assert.deepEqual((await route(`/api/deep-research/jobs/${id}`)).body, result.body);
   assert.equal((await route(`/api/deep-research/jobs/${id}`, { account: other })).status, 404);
   assert.equal((await route(`/api/deep-research/jobs/${id}/cancel`, { method: "POST" })).status, 409);
@@ -179,8 +183,36 @@ try {
   const debits = (await query("SELECT amount_usd FROM billing_ledger_entries WHERE account_id=$1 AND source='validator_research'", [accountId])).rows;
   assert.equal(debits.length, 1); assert.equal(debits[0].amount_usd, "0.123457");
   assert.equal(calls.filter(c => c.method === "POST" && c.origin === "https://ga.example.test").length, 1);
-  const legacy = await route("/api/deep-research/jobs", { method: "POST", account: other, payload: { ...request, conversationId: `${other}_conversation` } });
+  const defaultRequest = { question: "Explain the business evidence.", conversationId: `${accountId}_default`, requestId: "default-budget" };
+  const defaultJob = await route("/api/deep-research/jobs", { method: "POST", payload: defaultRequest });
+  assert.equal(defaultJob.status, 202); assert.equal(defaultJob.body.job.maxCostUsd, 1.5);
+  await route(`/api/deep-research/jobs/${defaultJob.body.job.id}`);
+  const unfunded = await route("/api/deep-research/jobs", { method: "POST", account: other, payload: { ...defaultRequest, conversationId: `${other}_unfunded`, requestId: "unfunded" } });
+  assert.equal(unfunded.status, 402); assert.ok(unfunded.body.message.includes("Add credit"));
+  await transaction(client => insertLedgerEntry(client, { accountId: other, kind: "account_credit", amountUsd: 1.234567, source: "test_fixture", uniqueKey: other }));
+  await assert.rejects(createResearchKey(other), error => error.status === 403, "non-validator API keys remain refused");
+  report.quality.tih.round_status = "skipped_unaffordable";
+  report.quality.tih.skip_reason = "Remaining budget or deadline cannot admit the complete round.";
+  const lowRequest = { ...defaultRequest, conversationId: `${other}_funded`, requestId: "low-default" };
+  const low = await route("/api/deep-research/jobs", { method: "POST", account: other, payload: lowRequest });
+  assert.equal(low.status, 202); assert.equal(low.body.job.provider, "goodalexander"); assert.equal(low.body.job.maxCostUsd, 1.234567);
+  assert.equal(calls.filter(c => c.method === "POST" && c.origin === "https://ga.example.test").at(-1).payload.max_cost_usd, 1.234567);
+  const lowResult = await route(`/api/deep-research/jobs/${low.body.job.id}`, { account: other });
+  assert.equal(lowResult.body.assistant.metadata.deepResearch.improvementRound, "skipped");
+  assert.equal(lowResult.body.assistant.metadata.deepResearch.improvementReason, report.quality.tih.skip_reason);
+  assert.deepEqual((await route(`/api/deep-research/jobs/${low.body.job.id}`, { account: other })).body, lowResult.body);
+  const otherDebits = (await query("SELECT amount_usd FROM billing_ledger_entries WHERE account_id=$1 AND source='validator_research'", [other])).rows;
+  assert.equal(otherDebits.length, 1); assert.equal(otherDebits[0].amount_usd, "0.123457");
+  assert.equal((await route("/api/deep-research/jobs", { method: "POST", account: other, payload: lowRequest })).body.job.id, low.body.job.id, "default retry retains its original cap after the balance changes");
+  assert.equal((await route("/api/deep-research/jobs", { method: "POST", account: other, payload: { ...lowRequest, maxCostUsd: 1 } })).status, 409);
+  const pending = await reserveResearchJob({ accountId: other, question: "Pending fixture", maxCostUsd: .5, requestKey: "pending-cap" });
+  const withPending = await createDeepResearchJob({ accountId: other, provider: "goodalexander", ...lowRequest, requestId: "with-pending" });
+  assert.equal(withPending.job.maxCostUsd, .611110, "default cap subtracts existing pending reservations");
+  await query("UPDATE research_gateway_jobs SET status='failed',billed_at=now(),cost_usd=0 WHERE id=$1", [pending.id]);
+  process.env.CHAT_RESEARCH_PROVIDER = "corbanu";
+  const legacy = await route("/api/deep-research/jobs", { method: "POST", account: other, payload: { ...request, requestId: "legacy", conversationId: `${other}_conversation` } });
   assert.equal(legacy.body.job.provider, "corbanu");
+  delete process.env.CHAT_RESEARCH_PROVIDER;
   assert.equal((await route(`/api/deep-research/jobs/${legacy.body.job.id}`, { account: other })).body.assistant.metadata.deepResearch.markdown, "Legacy report unchanged");
   assert.equal(calls.filter(c => c.method === "POST" && c.origin === "https://corbanu.example.test").length, 1);
   // Provider choice is durable even after the validator disconnects.
@@ -188,6 +220,7 @@ try {
   assert.equal((await route(`/api/deep-research/jobs/${id}`)).body.job.provider, "goodalexander");
   console.log("validator-connect-postgres-smoke ok: delegated signing-key proof, stale/wrong/manifest/replay/expiry refusal, durable proof audit, hashed/30-minute/single-use/account-bound tokens, concurrent proof, expiry, reconnect without unbind, chat provider routing, report persistence, single ceil6 debit, replay and owner isolation, legacy behavior");
 } finally {
+  delete process.env.CHAT_RESEARCH_PROVIDER;
   globalThis.fetch = originalFetch;
   for (const table of ["deep_research_jobs", "chat_messages", "chat_conversations", "research_gateway_jobs", "validator_connect_tokens", "validator_bindings", "validator_challenges", "billing_ledger_entries", "billing_accounts"]) {
     await query(`DELETE FROM ${table} WHERE account_id=ANY($1::text[])`, [[accountId, other]]);

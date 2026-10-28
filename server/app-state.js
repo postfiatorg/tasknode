@@ -522,7 +522,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       () => getContextDocument({ accountId }),
       () => fallbackContextDocument({ accountId })
     ),
-    timed("deep_research_access", () => chatResearchAccess({ accountId }), () => ({ available: false, provider: "corbanu", atCost: false })),
+    timed("deep_research_access", () => chatResearchAccess({ accountId }), () => ({ available: false, provider: "goodalexander", atCost: true })),
   ]);
 
   const creditedUsdcUsd = Number(ethDepositAccount?.creditedBalances?.USDC?.amount || 0);
