@@ -36,16 +36,16 @@ export async function validatorConnectChallenge(token, accountId) {
   return { challenge: row.challenge, expiresAt: row.expires_at };
 }
 
-export async function finishValidatorConnect({ token, masterPublicKey, signingPublicKey, manifest, signature, accountId }, { lookup } = {}) {
+export async function finishValidatorConnect({ token, masterPublicKey, signingPublicKey, manifest, signature, accountId, network, validatorId, mlDsaPublicKey }, { lookup, registryOptions } = {}) {
   const row = await pendingToken(token, accountId);
-  const binding = await bindValidator({ accountId: row.account_id, challenge: row.challenge, masterPublicKey, signingPublicKey, manifest, signature }, {
-    lookup, allowExisting: true,
+  const binding = await bindValidator({ accountId: row.account_id, challenge: row.challenge, masterPublicKey, signingPublicKey, manifest, signature, network, validatorId, mlDsaPublicKey }, {
+    lookup, registryOptions, allowExisting: true,
     consume: async client => {
       const consumed = await client.query(`UPDATE validator_connect_tokens SET consumed_at=now()
         WHERE id=$1 AND account_id=$2 AND consumed_at IS NULL AND expires_at>now() RETURNING id`, [row.id, row.account_id]);
       if (!consumed.rowCount) throw validatorError("validator_connect_invalid_or_expired", 403);
     },
-    onBound: (client, connected) => client.query("UPDATE validator_connect_tokens SET binding_id=$2,proof=$3::jsonb WHERE id=$1", [row.id, connected.id, JSON.stringify({ masterPublicKey, signingPublicKey, manifest, signature, network: connected.network })]),
+    onBound: (client, connected) => client.query("UPDATE validator_connect_tokens SET binding_id=$2,proof=$3::jsonb WHERE id=$1", [row.id, connected.id, JSON.stringify({ masterPublicKey, signingPublicKey, manifest, signature, network: connected.network, validatorId, mlDsaPublicKey })]),
   });
   return binding;
 }

@@ -20,9 +20,12 @@ export async function handleValidatorConnectRoute({ json, readJson, req, res, se
       return reply(200, { ok: true, ...await validatorConnectChallenge(payload.token, accountId) });
     }
     if (url.pathname === "/api/validators/connect/complete" && req.method === "POST") {
-      const payload = await readJson(req, 4096);
-      const binding = await finishValidatorConnect({ token: payload.token, masterPublicKey: payload.master_public_key, signingPublicKey: payload.signing_public_key, manifest: payload.manifest, signature: payload.signature, accountId });
+      const payload = await readJson(req, 16384);
+      const binding = await finishValidatorConnect({ token: payload.token, masterPublicKey: payload.master_public_key, signingPublicKey: payload.signing_public_key, manifest: payload.manifest, signature: payload.signature, accountId,
+        network: payload.network, validatorId: payload.validator_id, mlDsaPublicKey: payload.ml_dsa_public_key });
       invalidateCachedAppState({ accountId: binding.account_id });
+      if (binding.network === "l1-devnet") return reply(200, { ok: true, binding,
+        message: `Validator connected: ${binding.validator_id} (l1-devnet). Participation history is not yet available; rewards are on hold.` });
       let agreement = "unavailable";
       try {
         const uptime = dailyAgreement(await fetchValidatorReports(binding.master_public_key, binding.network));
