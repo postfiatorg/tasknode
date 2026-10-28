@@ -2,6 +2,7 @@ import { authenticateResearchKey, createResearchKey, getResearchJob, listResearc
 import { bindValidator, hasValidatorBinding, issueValidatorChallenge, listValidatorBindings, revokeValidatorBinding } from "./repositories/validator-bindings.js";
 import { dailyAgreement, fetchValidatorReports, validatorError } from "./validator-identity.js";
 import { publicResearchJob, refreshResearchJob, submitResearchJob } from "./research-gateway.js";
+import { l1BindingParticipation } from "./l1-validator-identity.js";
 
 export async function handleValidatorResearchRoute({ json, readJson, req, res, session, url }) {
   const path = url.pathname;
@@ -21,7 +22,8 @@ export async function handleValidatorResearchRoute({ json, readJson, req, res, s
     if (path === "/api/validators" && req.method === "GET") {
       const bindings = await listValidatorBindings(accountId);
       const enriched = await Promise.all(bindings.map(async (binding) => {
-        try { return { ...binding, uptime: dailyAgreement(await fetchValidatorReports(binding.master_public_key, binding.network)) }; }
+        try { return { ...binding, uptime: binding.network === "l1-devnet" ? await l1BindingParticipation(binding)
+          : dailyAgreement(await fetchValidatorReports(binding.master_public_key, binding.network)) }; }
         catch { return { ...binding, uptime: null, uptimeError: "Validator history is temporarily unavailable." }; }
       }));
       const now = new Date();

@@ -132,7 +132,7 @@ export const DOC_GROUPS = [
   {
     title: "Product",
     pages: [
-      { slug: "validator-research", title: "Validator Research", summary: "Connect with an Ed25519 or secp256k1 validator token, keep the master key offline, and access research, models and rewards.", loadMarkdown: HELP_MARKDOWN_LOADERS.validatorResearch },
+      { slug: "validator-research", title: "Validator Research", summary: "Connect a PFT Ledger or Post Fiat L1 validator with one command for research and models; monthly rewards depend on verified history.", loadMarkdown: HELP_MARKDOWN_LOADERS.validatorResearch },
       { slug: "chat", title: "Chat", summary: "Chat models, current task and shared team activity in web and Telegram, Deep Research, budget Decisions with context and memory, billing, and saved reports.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
       { slug: "tasks", title: "Tasks", summary: "Personal and network tasks, actionable steps, submission requirements, full evidence reports up to 120,000 characters, routing eligibility, exhausted-request retry, allocation recovery, and Campaign Tracker validation.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
       { slug: "hive", title: "Hive", summary: "Public Nostr group chat, shared handles, periodic GLM participation and Kimi board escalation.", loadMarkdown: HELP_MARKDOWN_LOADERS.hive },

@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65",
+    "@noble/post-quantum": "0.7.1",
     "@node-rs/argon2": "2.1.0",
     "@xmldom/xmldom": "0.9.12",
     "ethers": "^6.17.0",

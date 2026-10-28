@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { createValidatorChallenge, findRegisteredValidator, validatorError, verifyRegisteredValidatorProof } from "../validator-identity.js";
+import { L1_NETWORK, verifyRegisteredL1Proof } from "../l1-validator-identity.js";
+
+const bindingFields = "id, account_id, master_public_key, network, bound_at, chain_id, validator_id, ml_dsa_public_key";
 
 export async function listValidatorBindings(accountId) {
   if (!databaseEnabled()) return [];
-  return (await query(`SELECT id, account_id, master_public_key, network, bound_at FROM validator_bindings
+  return (await query(`SELECT ${bindingFields} FROM validator_bindings
     WHERE account_id=$1 AND revoked_at IS NULL ORDER BY bound_at`, [accountId])).rows;
 }
 
@@ -19,11 +22,18 @@ export async function issueValidatorChallenge(accountId) {
   return { ...value, signCommand: `docker exec postfiatd validator-keys --keyfile /root/.ripple/validator-keys.json sign "${value.challenge}"` };
 }
 
-export async function bindValidator({ accountId, masterPublicKey, signingPublicKey, manifest, signature, challenge }, { lookup = findRegisteredValidator, consume, onBound, allowExisting = false } = {}) {
+export async function bindValidator({ accountId, masterPublicKey, signingPublicKey, manifest, signature, challenge, network, validatorId, mlDsaPublicKey }, { lookup = findRegisteredValidator, registryOptions, consume, onBound, allowExisting = false } = {}) {
   const proof = await query(`SELECT 1 FROM validator_challenges WHERE challenge=$1 AND account_id=$2
     AND consumed_at IS NULL AND expires_at>now()`, [challenge, accountId]);
   if (!proof.rowCount) throw validatorError("validator_challenge_invalid_or_expired", 403);
-  const registered = await verifyRegisteredValidatorProof({ masterPublicKey, signingPublicKey, manifest, signature, challenge }, lookup);
+  const l1 = network === L1_NETWORK;
+  if ((l1 && [masterPublicKey, signingPublicKey, manifest].some(value => value !== undefined)) ||
+      (!l1 && [network, validatorId, mlDsaPublicKey].some(value => value !== undefined))) {
+    throw validatorError("validator_proof_network_invalid", 400);
+  }
+  const registered = l1
+    ? await verifyRegisteredL1Proof({ validatorId, publicKey: mlDsaPublicKey, signature, challenge }, registryOptions)
+    : await verifyRegisteredValidatorProof({ masterPublicKey, signingPublicKey, manifest, signature, challenge }, lookup);
   try {
     return await transaction(async (client) => {
       const consumed = await client.query(`UPDATE validator_challenges SET consumed_at=now()
@@ -31,17 +41,21 @@ export async function bindValidator({ accountId, masterPublicKey, signingPublicK
       if (!consumed.rowCount) throw validatorError("validator_challenge_invalid_or_expired", 403);
       if (consume) await consume(client);
       if (allowExisting) {
-        const existing = (await client.query(`SELECT id,account_id,master_public_key,network,bound_at FROM validator_bindings
-          WHERE master_public_key=$1 AND revoked_at IS NULL`, [masterPublicKey])).rows[0];
+        const existing = (await client.query(`SELECT ${bindingFields} FROM validator_bindings
+          WHERE revoked_at IS NULL AND ${l1 ? "network=$1 AND ((chain_id=$2 AND validator_id=$3) OR ml_dsa_public_key=$4)" : "master_public_key=$1"}`,
+        l1 ? [L1_NETWORK, registered.chainId, validatorId, mlDsaPublicKey] : [masterPublicKey])).rows[0];
         if (existing) {
-          if (existing.account_id !== accountId) throw validatorError("validator_already_bound", 409);
+          if (existing.account_id !== accountId || (l1 && (existing.validator_id !== validatorId || existing.ml_dsa_public_key !== mlDsaPublicKey))) {
+            throw validatorError("validator_already_bound", 409);
+          }
           if (onBound) await onBound(client, existing);
           return existing;
         }
       }
-      const result = await client.query(`INSERT INTO validator_bindings(id,account_id,master_public_key,network,signature,challenge,signing_public_key,manifest)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,account_id,master_public_key,network,bound_at`,
-      [`vb_${randomUUID()}`, accountId, masterPublicKey, registered.network, signature, challenge, signingPublicKey || null, manifest || null]);
+      const result = await client.query(`INSERT INTO validator_bindings(id,account_id,master_public_key,network,signature,challenge,signing_public_key,manifest,chain_id,validator_id,ml_dsa_public_key,registry_evidence)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING ${bindingFields}`,
+      [`vb_${randomUUID()}`, accountId, masterPublicKey || null, registered.network, signature, challenge, signingPublicKey || null, manifest || null,
+        registered.chainId || null, validatorId || null, mlDsaPublicKey || null, l1 ? JSON.stringify(registered.registryEvidence) : null]);
       if (onBound) await onBound(client, result.rows[0]);
       return result.rows[0];
     });

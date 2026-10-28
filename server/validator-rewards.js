@@ -1,12 +1,15 @@
 import { query, transaction } from "./db/pool.js";
 import { dailyAgreement, fetchValidatorReports, findRegisteredValidator, rewardMonthWindow, validatorError } from "./validator-identity.js";
 import { insertLedgerEntry } from "./repositories/chat-billing.js";
+import { l1BindingParticipation } from "./l1-validator-identity.js";
 
 export async function grantValidatorReward(binding, month, evidence) {
-  if (!evidence.eligible) return false;
+  // Track E's historical participation clock is unresolved. Even a supplied
+  // eligible flag must never authorize L1 credit while that HOLD is open.
+  if (binding.network === "l1-devnet" || !evidence.eligible) return false;
   const key = `validator-reward:${binding.master_public_key}:${month}`;
   return transaction(async (client) => {
-    const active = await client.query(`SELECT 1 FROM validator_bindings WHERE id=$1 AND account_id=$2 AND revoked_at IS NULL FOR UPDATE`, [binding.id, binding.account_id]);
+    const active = await client.query(`SELECT 1 FROM validator_bindings WHERE id=$1 AND account_id=$2 AND master_public_key=$3 AND network IN ('devnet','testnet') AND revoked_at IS NULL FOR UPDATE`, [binding.id, binding.account_id, binding.master_public_key]);
     if (!active.rowCount) return false;
     const granted = await client.query(`INSERT INTO validator_reward_grants(idempotency_key,master_public_key,account_id,reward_month,amount_usd,evidence_json)
       VALUES($1,$2,$3,$4,20,$5::jsonb) ON CONFLICT DO NOTHING RETURNING idempotency_key`,
@@ -26,6 +29,12 @@ export async function runValidatorRewards({ month = new Date().toISOString().sli
   for (const binding of rows) {
     const item = { masterPublicKey: binding.master_public_key, accountId: binding.account_id, network: binding.network, month, eligible: false, granted: false };
     try {
+      if (binding.network === "l1-devnet") {
+        Object.assign(item, { validatorId: binding.validator_id, chainId: binding.chain_id, rewardsOnHold: true,
+          eligibilityReason: "historical_clock_unavailable" }, await l1BindingParticipation(binding, end, dependencies.registryOptions));
+        report.push(item);
+        continue;
+      }
       await (dependencies.lookup || findRegisteredValidator)(binding.master_public_key, { network: binding.network });
       const reports = await (dependencies.reports || fetchValidatorReports)(binding.master_public_key, binding.network);
       const evidence = dailyAgreement(reports, end);

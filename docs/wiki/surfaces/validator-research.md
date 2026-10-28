@@ -1,8 +1,8 @@
 # Validator research
 
-Settings → Validator connects a devnet or testnet validator to your Task Node account. The signature proves control of the running validator and binds its master public key to your account. It signs a one-time challenge, not a ledger transaction: nothing is submitted to the ledger. A validator key can belong to one account; an account can bind several keys. Your validator token stays on its host; the master key can stay offline.
+Settings → Validator connects a PFT Ledger devnet/testnet or Post Fiat L1 devnet validator to your Task Node account. The signature proves control of the running validator and binds its master public key to your account. It signs a one-time challenge, not a ledger transaction: nothing is submitted to the ledger. A validator key can belong to one account; an account can bind several keys. Your validator token stays on its host; the master key can stay offline.
 
-Settings shows one command. Copy it and run it on the validator host:
+Select **PFT Ledger devnet / testnet** for the Ledger command below. For L1, see **Post Fiat L1 devnet** later on this page. Copy the complete command and run it on the validator host:
 
 ```sh
 curl -fsSL https://tasknode.postfiat.org/validator.sh | sh -s -- <token>
@@ -47,3 +47,18 @@ The job is charged to your Task Node USD credit at the provider's reported cost 
 Settings → API keys lets validator accounts create and revoke research keys. Copy each key when it is created; it is shown once. Use `Authorization: Bearer tnr_…` with `POST /api/research/v1/jobs`, then read `GET /api/research/v1/jobs/{job_id}` and `GET /api/research/v1/jobs/{job_id}/result`. The create body contains `question`, optional `max_cost_usd` (up to $5), and optional `request_id`. Reuse the same request ID and body when retrying a submission. A key only accesses its owner's jobs.
 
 Eligible validators earn $20 of Task Node credit per key per payout month. Eligibility requires mean daily agreement of at least 95%, with at least 25 reported days in the preceding 30 complete UTC days. Rewards run on the first UTC day of the month using the registered network's VHS daily reports. The month label is the payout month: November 1 uses `2026-11`, and its 30-day window is October 2 through October 31. A prior month's payout does not block a later month's payout. Settings shows current agreement and the next reward date; eligibility is checked again at payout. Repeating a payout for the same key and payout month does not grant additional credit.
+
+
+## Post Fiat L1 devnet
+
+Choose **Post Fiat L1 devnet** in Settings → Validator, then run the displayed command as root on your Linux x86_64 L1 validator host:
+
+```sh
+curl -fsSL https://tasknode.postfiat.org/l1-validator.sh | sh -s -- <token>
+```
+
+Use your Settings page's complete command. The script identifies your running node and signs the single-use challenge with its configured ML-DSA-65 key, with networking disabled during signing. It downloads a checksum-verified signer into memory; it does not install a program or create key/proof files. Only public proof leaves the host. Python 3 and network namespace support (`unshare`) are required. **Download and inspect first** lets you review the wrapper before running it.
+
+Task Node checks your public key against the current trusted L1 registry, refuses registry data older than one hour, and automatically changes the page to **Validator connected**. One validator identity can belong to one account. You can inspect its public ID, chain and public key in Settings. Reconnecting confirms the existing binding; rotating its key requires unbinding that identity first. No transaction is submitted to either chain.
+
+L1 validators immediately receive the same models link, research API key access and at-cost Deep Research in chat. **L1 monthly credit is currently on hold** because the available records cannot yet prove historical participation across complete UTC days. Settings reports unavailable history honestly. The intended threshold is at least 95% mean daily participation with at least 25 reported days out of the preceding 30 complete UTC days; no L1 reward is paid while that evidence is unavailable.
