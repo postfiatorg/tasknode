@@ -73,7 +73,7 @@ export function ValidatorSettings({ onAppStateChange }) {
         : "Uses your running validator token to sign locally. Your master key can stay offline."} Expires at {new Date(connect.expiresAt).toLocaleTimeString()}.</small>
       {network === "l1-devnet" && <p>Models and research access start when connected. L1 monthly credit waits for at least 25 observed days out of the last 30 complete UTC days, with at least 95% mean participation.</p>}
       <p role="status">Waiting for your validator…</p>
-      <details><summary>Download and inspect first</summary><pre className="research-wrap">{inspect}</pre><a href={`/${script}`} download>Download {script}</a></details>
+      <details><summary>Download and inspect first</summary>{network === "l1-devnet" && <p>The verified signer and validator registry are served by <code>research.goodalexander.com:18443</code>.</p>}<pre className="research-wrap">{inspect}</pre><a href={`/${script}`} download>Download {script}</a></details>
     </section>}
     {!connect && <button type="button" disabled={busy} onClick={() => act(async () => setConnect(await researchRequest("/api/validators/connect", { method: "POST", body: {} })))}>{bound ? "Connect another validator" : "Generate connect command"}</button>}
     {bound && <a href="/api/research/bundles/ga-models/index.html" target="_blank" rel="noreferrer">GoodAlexander models</a>}
@@ -90,7 +90,7 @@ export function ValidatorSettings({ onAppStateChange }) {
     </article>)}
     <details><summary>Rewards and research billing</summary>
       <p>Earn $20 per eligible key on the first UTC day of each month: at least 95% mean daily agreement (Ledger) or participation (L1) in the preceding 30 complete UTC days, with at least 25 reported days. L1 observations started on October 28, 2026; credit waits until at least 25 complete days are observed. Days without verifiable committed blocks do not count.</p>
-      <p>Choose Deep Research in chat. Your credit is charged at provider cost rounded up to $0.000001 once per job. At least $0.50 available is required; pending jobs reserve their maximum cost and failed jobs may incur provider cost.</p>
+      <p>Deep Research uses the GoodAlexander API at <code>research.goodalexander.com:18443</code>. Choose Deep Research in chat. Your credit is charged at provider cost rounded up to $0.000001 once per job. At least $0.50 available is required; pending jobs reserve their maximum cost and failed jobs may incur provider cost.</p>
     </details>
     <details><summary>Advanced</summary>
       <p>The command proves control of your running validator. Nothing is submitted to either chain. For PFT Ledger master-key signing, append <code>--keyfile /existing/path/validator-keys.json</code> to the Ledger command. The manual flow below is for PFT Ledger validators.</p>

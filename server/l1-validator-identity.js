@@ -3,7 +3,7 @@ import { dailyAgreement, validatorError } from "./validator-identity.js";
 
 export const L1_NETWORK = "l1-devnet";
 export const L1_CHAIN_ID = "postfiat-wan-devnet-2";
-export const L1_REGISTRY_URL = "https://178-156-143-199.sslip.io:18443/l1-registry/registry.json";
+export const L1_REGISTRY_URL = "https://research.goodalexander.com:18443/l1-registry/registry.json";
 export const L1_BINDING_CONTEXT = "postfiat-l1-v2/tasknode-validator-binding/v1";
 const MAX_REGISTRY_BYTES = 1024 * 1024;
 const context = new TextEncoder().encode(L1_BINDING_CONTEXT);

@@ -5,6 +5,7 @@ import { L1_REGISTRY_URL, fetchL1Registry, l1Participation, registeredL1Validato
 
 const vectors = JSON.parse(await readFile(new URL('./fixtures/l1-validator-vectors.json', import.meta.url))).vectors;
 for (const vector of vectors) assert.equal(verifyL1ValidatorSignature({ publicKey: vector.ml_dsa_public_key, signature: vector.signature, challenge: vector.message }), vector.expected_valid, vector.name);
+assert.equal(L1_REGISTRY_URL, 'https://research.goodalexander.com:18443/l1-registry/registry.json');
 const now = new Date('2026-10-28T16:00:00Z');
 const fixture = l1Fixture(now);
 const { registry, publicKey } = fixture;

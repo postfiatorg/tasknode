@@ -13,6 +13,7 @@ from unittest.mock import patch
 source = pathlib.Path(sys.argv[1]).read_text().split("<<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
 source = source.split('\ntry:\n    main()')[0]
 ns = {}; exec(compile(source, 'l1-validator.sh', 'exec'), ns)
+assert ns['HELPER_URL'] == 'https://research.goodalexander.com:18443/l1-registry/l1-validator-signer-linux-x86_64'
 assert ns['HELPER_SHA256'] == '63c5e3d56556447dc06cbcd9fd0b4d8e620dc17068166bb51d3cdb41f50f6eca'
 base = ns['BASE']; helper_url = ns['HELPER_URL']; helper = b'SYNTHETIC-HELPER-NO-PRIVATE-MATERIAL'
 ns['HELPER_SHA256'] = hashlib.sha256(helper).hexdigest()
