@@ -25,7 +25,7 @@ export async function handleValidatorConnectRoute({ json, readJson, req, res, se
         network: payload.network, validatorId: payload.validator_id, mlDsaPublicKey: payload.ml_dsa_public_key });
       invalidateCachedAppState({ accountId: binding.account_id });
       if (binding.network === "l1-devnet") return reply(200, { ok: true, binding,
-        message: `Validator connected: ${binding.validator_id} (l1-devnet). Participation history is not yet available; rewards are on hold.` });
+        message: `Validator connected: ${binding.validator_id} (l1-devnet). Research access is active. Monthly credit requires 25 of 30 complete UTC days observed with at least 95% mean participation.` });
       let agreement = "unavailable";
       try {
         const uptime = dailyAgreement(await fetchValidatorReports(binding.master_public_key, binding.network));

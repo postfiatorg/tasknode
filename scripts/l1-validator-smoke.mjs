@@ -57,7 +57,9 @@ p.daily = Array.from({ length: 25 }, (_, i) => ({ date: new Date(Date.parse(p.wi
   complete: true, reported: true, committed_blocks: 100, signed_blocks: 95, score: 0.95, from_height: i * 100 + 1, to_height: (i + 1) * 100 }));
 let measured = l1Participation(p, now);
 assert.equal(measured.meanAgreement, 0.95); assert.equal(measured.daysReported, 25); assert.equal(measured.qualifies, true);
-assert.equal(measured.eligible, false); assert.equal(measured.rewardsOnHold, true);
+assert.equal(measured.eligible, true); assert.equal(measured.rewardsOnHold, false);
+p.available = false; assert.equal(l1Participation(p, now).eligible, false); p.available = true;
+p.time_basis = 'untrusted'; assert.equal(l1Participation(p, now).eligible, false); p.time_basis = 'observer_brackets';
 // D1 is an unweighted mean of daily vote shares, never committee membership or a block-weighted mean.
 p.daily[0].committed_blocks = 10000; p.daily[0].signed_blocks = 9500;
 assert.equal(l1Participation(p, now).meanAgreement, 0.95);
@@ -65,4 +67,4 @@ p.daily[0].reported = false; assert.equal(l1Participation(p, now).qualifies, fal
 p.daily[0].signed_blocks = 9400; p.daily[0].score = 0.94;
 assert.equal(l1Participation(p, now).qualifies, false);
 p.daily[0].score = 0.95; assert.equal(l1Participation(p, now).available, false, 'inconsistent vote counts fail closed');
-console.log(JSON.stringify({ ok: true, vectors: vectors.length, tests: 'ML-DSA fixed context/encoding, trusted registry validation/size/freshness/identity, D1 thresholds and reward HOLD' }));
+console.log(JSON.stringify({ ok: true, vectors: vectors.length, tests: 'ML-DSA fixed context/encoding, trusted registry validation/size/freshness/identity, D1 thresholds and observed-day eligibility' }));

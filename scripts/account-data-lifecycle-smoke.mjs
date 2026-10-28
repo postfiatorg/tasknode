@@ -83,7 +83,7 @@ const deletion = await deleteAccountDatabaseData({
     query: async (sql, params = []) => {
       deletionQueries.push({ sql, params });
       if (sql.includes("information_schema.columns")) {
-        assert.deepEqual(params[0], ["account_deletion_audit", "billing_accounts", "billing_ledger_entries", "wallet_initiation_grants", "validator_reward_grants"]);
+        assert.deepEqual(params[0], ["account_deletion_audit", "billing_accounts", "billing_ledger_entries", "wallet_initiation_grants", "validator_reward_grants", "l1_validator_reward_grants"]);
         return { rows: [{ table_name: "chat_messages" }, { table_name: "context_documents" }] };
       }
       return { rows: [], rowCount: sql.startsWith("DELETE") || sql.includes("UPDATE") ? 1 : 0 };

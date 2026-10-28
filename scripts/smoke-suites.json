@@ -231,7 +231,8 @@
     "scripts/terminal-team-context-smoke.mjs",
     "scripts/validator-research-postgres-smoke.mjs",
     "scripts/validator-connect-postgres-smoke.mjs",
-    "scripts/l1-validator-postgres-smoke.mjs"
+    "scripts/l1-validator-postgres-smoke.mjs",
+    "scripts/l1-validator-rewards-postgres-smoke.mjs"
   ],
   "manual": {
     "scripts/ambient-cache-live-smoke.mjs": "calls a live inference provider",

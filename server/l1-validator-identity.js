@@ -97,14 +97,15 @@ export async function verifyRegisteredL1Proof({ validatorId, publicKey, signatur
     registryEvidence: { generatedAt: registry.generated_at, height: registry.height, registryRoot: registry.registry_root, genesisHash: registry.genesis_hash } };
 }
 
-// D52 / Track E: the historical clock HOLD is unresolved. Compute the D1
-// thresholds for inspection, but do not authorize credit from observer brackets.
+// D63 authorizes conservative, timestamped observer brackets. Never infer
+// historical coverage from a fresh registry timestamp or committee membership.
 export function l1Participation(participation, asOf = new Date()) {
   const empty = dailyAgreement([], asOf);
   const result = { ...empty, available: false, qualifies: false, eligible: false, rewardsOnHold: true,
-    eligibilityReason: "historical_clock_unavailable", metric: "participation" };
+    eligibilityReason: "insufficient_observed_days", metric: "participation", timeBasis: "observer_brackets" };
   if (!participation || Date.parse(participation.window_start) !== Date.parse(empty.windowStart) ||
-      Date.parse(participation.window_end) !== Date.parse(empty.windowEnd) || !Array.isArray(participation.daily) || participation.daily.length > 30) return result;
+      Date.parse(participation.window_end) !== Date.parse(empty.windowEnd) || participation.time_basis !== "observer_brackets" ||
+      !Array.isArray(participation.daily) || participation.daily.length > 30) return result;
   const reports = [], dates = new Set();
   for (const row of participation.daily) {
     if (!row || typeof row.date !== "string" || row.date.length !== 10 || !Number.isFinite(Date.parse(row.date)) ||
@@ -118,8 +119,10 @@ export function l1Participation(participation, asOf = new Date()) {
     reports.push({ date: row.date, score: row.signed_blocks / row.committed_blocks });
   }
   const measured = dailyAgreement(reports, asOf);
-  return { ...result, ...measured, available: participation.available === true && measured.daysReported > 0,
-    qualifies: measured.eligible, eligible: false };
+  const available = participation.available === true && measured.daysReported >= 25;
+  const eligible = available && measured.eligible;
+  return { ...result, ...measured, available, qualifies: measured.eligible, eligible, rewardsOnHold: !available,
+    eligibilityReason: !available ? "insufficient_observed_days" : eligible ? "eligible" : "participation_below_threshold" };
 }
 
 export async function l1BindingParticipation(binding, asOf = new Date(), registryOptions) {
