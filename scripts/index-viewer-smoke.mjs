@@ -55,9 +55,9 @@ try {
 
   // ------------------------------------------------------------ code is single use
   const { code } = await issueCode({ indexId, accountId, returnOrigin: "https://agti.net" });
-  const claimed = await consumeCode({ code, indexId });
+  const claimed = await consumeCode({ code, indexId, returnOrigin: "https://agti.net" });
   assert.equal(claimed.accountId, accountId);
-  assert.equal(await consumeCode({ code, indexId }), null, "a code cannot be replayed");
+  assert.equal(await consumeCode({ code, indexId, returnOrigin: "https://agti.net" }), null, "a code cannot be replayed");
 
   // A code is bound to its index.
   const other = await issueCode({ indexId, accountId });
@@ -73,8 +73,8 @@ try {
   assert.equal(await consumeCode({ code: stale.code, indexId }), null, "an expired code is refused");
 
   // ---------------------------------------------------------- token scoping
-  const { token } = await issueViewerToken({ indexId, accountId, walletAddress: "rSmokeWallet" });
-  const grant = await resolveViewerToken({ token, indexId });
+  const { token } = await issueViewerToken({ indexId, accountId, walletAddress: "rSmokeWallet", returnOrigin: "https://agti.net" });
+  const grant = await resolveViewerToken({ token, indexId, returnOrigin: "https://agti.net" });
   assert.equal(grant.accountId, accountId);
   assert.equal(grant.walletAddress, "rSmokeWallet");
 
@@ -84,7 +84,7 @@ try {
 
   // Revocation and expiry both close the token.
   await query("UPDATE index_viewer_tokens SET revoked_at = now() WHERE account_id = $1", [accountId]);
-  assert.equal(await resolveViewerToken({ token, indexId }), null, "a revoked token is refused");
+  assert.equal(await resolveViewerToken({ token, indexId, returnOrigin: "https://agti.net" }), null, "a revoked token is refused");
 
   // ------------------------------------------------------------- tier gate
   const noWallet = await accountMeetsTier({ accountId: walletAccountId });

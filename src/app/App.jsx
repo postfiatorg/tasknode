@@ -854,6 +854,7 @@ export function App() {
     onLoginRequired: () => setLoginOpen(true),
     onHiveUnreadChange: (unreadCount) => setHiveGroupStatus(current => ({ ...current, accountId: walletAccountId, unreadCount })),
   };
+  const primaryInsightExtensions = appExtensionRegistry.menu("primary", "insight", extensionContext);
   const collaborationExtensions = appExtensionRegistry.menu("more", "collaboration", extensionContext);
   const insightExtensions = appExtensionRegistry.menu("more", "insight", extensionContext);
   const activeExtension = appExtensionRegistry.forView(view);
@@ -962,6 +963,11 @@ export function App() {
             onClick={() => navigateToView("context")}
             sidebarOpen={sidebarOpen}
           />
+          {primaryInsightExtensions.map((extension) => <SidebarButton
+            key={extension.id} active={view === extension.id} icon={extension.icon} label={extension.label}
+            onClick={() => { navigateToView(extension.id); if (extension.requiresAuth && !signedIn) setLoginOpen(true); }}
+            sidebarOpen={sidebarOpen}
+          />)}
           <div className="sidebar-menu-anchor" ref={moreRef}>
             <SidebarButton
               active={moreMenuOpen || MORE_EXTENSION_VIEWS.has(view)}

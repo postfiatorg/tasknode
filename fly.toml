@@ -22,6 +22,8 @@ kill_timeout = "45s"
   worker-airdrop = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:airdrop node server/worker-entry.js"
   worker-nft-renderer = "env TASKNODE_PROCESS_ROLE=worker:nft-renderer node server/worker-entry.js"
 
+  worker-validator-research = "env -u PROFILE_NFT_OPENAI_API_KEY TASKNODE_PROCESS_ROLE=worker:validator-research node server/worker-entry.js"
+
 [env]
   PORT = "8080"
   NODE_ENV = "production"
@@ -128,7 +130,7 @@ kill_timeout = "45s"
 
 [[restart]]
   policy = "always"
-  processes = ["app", "worker-pftl", "worker-taskgen", "worker-task-review", "worker-context-rewrite", "worker-hive", "worker-memory-profile", "worker-airdrop", "worker-nft-renderer"]
+  processes = ["app", "worker-pftl", "worker-taskgen", "worker-task-review", "worker-context-rewrite", "worker-hive", "worker-memory-profile", "worker-airdrop", "worker-nft-renderer", "worker-validator-research"]
 
 [http_service]
   internal_port = 8080

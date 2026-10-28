@@ -15,7 +15,9 @@ function headerValue(headers = {}, name = "") {
 }
 
 function bearerPresent(headers = {}) {
-  return /^Bearer\s+\S+$/i.test(headerValue(headers, "authorization"));
+  const [scheme, token, ...extra] = headerValue(headers, "authorization").split(" ");
+  return scheme?.toLowerCase() === "bearer" && Boolean(token) && !extra.length &&
+    ![...token].some((character) => character.trim() === "");
 }
 
 export function validateRouteAuthPolicy(policy = {}) {

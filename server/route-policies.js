@@ -7,6 +7,17 @@ const confirmation = { type: "boolean" };
 const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const apiRoutePolicies = [
+  { id: "validator_status", path: "/api/validators", methods: ["GET"], auth: "session", rateLimit: { limit: 30, windowMs: tenMinutes } },
+  { id: "validator_challenge", path: "/api/validators/challenge", methods: ["POST"], auth: "session", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
+  { id: "validator_bind", path: "/api/validators/bind", methods: ["POST"], auth: "session", rateLimit: { limit: 20, windowMs: tenMinutes }, body: bodyPolicy(8192, { allowUnknown: false, required: ["master_public_key", "signature", "challenge"], properties: { master_public_key: { type: "string", minLength: 40, maxLength: 60 }, signature: { type: "string", minLength: 128, maxLength: 144 }, challenge: { type: "string", minLength: 30, maxLength: 500 } } }) },
+  { id: "validator_revoke", prefix: "/api/validators/", methods: ["DELETE"], auth: "session", body: requestBodies.emptyRequestBody },
+  { id: "research_keys", path: "/api/research/keys", methods: ["GET", "POST"], auth: "session", rateLimit: { limit: 30, windowMs: tenMinutes }, body: bodyPolicy(4096, { allowUnknown: false, properties: { name: { type: "string", maxLength: 80 } } }) },
+  { id: "research_key_revoke", prefix: "/api/research/keys/", methods: ["DELETE"], auth: "session", body: requestBodies.emptyRequestBody },
+  ...["v1", "ui"].flatMap((surface) => [
+    { id: `research_${surface}_create`, path: `/api/research/${surface}/jobs`, methods: ["POST"], auth: surface === "v1" ? "bearer" : "session", rateLimit: { limit: 10, windowMs: tenMinutes }, body: bodyPolicy(24000, { allowUnknown: false, required: ["question"], properties: { question: { type: "string", minLength: 1, maxLength: 16000 }, max_cost_usd: { type: "number", minimum: 0.01, maximum: 5 }, request_id: { type: "string", minLength: 1, maxLength: 180 } } }) },
+    { id: `research_${surface}_read`, prefix: `/api/research/${surface}/jobs/`, methods: ["GET"], auth: surface === "v1" ? "bearer" : "session", rateLimit: { limit: 600, windowMs: tenMinutes } },
+  ]),
+
   { id: "board_agent_command", path: "/api/agent/board/command", methods: ["POST"], auth: "bearer", unauthenticatedError: "board_agent_credential_required", rateLimit: { limit: 120, windowMs: 60_000 }, body: bodyPolicy(128 * 1024, { allowUnknown: false, required: ["requestKey", "argv"], properties: { requestKey: { type: "string", minLength: 1, maxLength: 180 }, argv: { type: "array", maxItems: 80, items: { type: "string", maxLength: 32_000 } } } }) },
   { id: "app_state", path: "/api/app-state", methods: ["GET"], auth: "optional" },
   { id: "session", path: "/api/session", methods: ["GET"], auth: "optional" },

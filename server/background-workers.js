@@ -1,3 +1,4 @@
+import { startValidatorResearchWorker } from "./validator-research-worker.js";
 import { startMemoryWorker } from "./chat-memory-worker.js";
 import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
 import { startHiveReportsWorker } from "./hive-reports-worker.js";
@@ -96,6 +97,7 @@ export function startBackgroundWorkers({ role = tasknodeProcessRole(), runWorker
     startHiveWorkers(startOne);
     startMemoryProfileWorkers(startOne);
     startAirdropWorkers(startOne);
+    startOne("validator_research", startValidatorResearchWorker);
     return { role, startedWorkerGroups };
   }
   if (role === "worker:pftl") startPftlWorkers(startOne);
@@ -106,6 +108,7 @@ export function startBackgroundWorkers({ role = tasknodeProcessRole(), runWorker
   else if (role === "worker:memory-profile") startMemoryProfileWorkers(startOne);
   else if (role === "worker:airdrop") startAirdropWorkers(startOne);
   else if (role === "worker:nft-renderer") startOne("profile_nft_renderer", startProfileNftRenderWorker);
+  else if (role === "worker:validator-research") startOne("validator_research", startValidatorResearchWorker);
   else throw new Error(`unknown_background_worker_role:${role}`);
   return { role, startedWorkerGroups };
 }

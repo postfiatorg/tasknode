@@ -176,7 +176,7 @@ async function applyBillingProjection(client, { accountId, kind, amountUsd }) {
   );
 }
 
-async function insertLedgerEntry(client, {
+export async function insertLedgerEntry(client, {
   id = `ledger_${randomUUID()}`,
   kind,
   accountId = "dev",

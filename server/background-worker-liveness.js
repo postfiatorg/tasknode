@@ -53,6 +53,7 @@ export const WORKER_HEARTBEAT_GROUPS = [
   "worker-hive",
   "worker-memory-profile",
   "worker-airdrop",
+  "worker-validator-research",
 ];
 
 export const DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_MS = 5 * 60_000;
@@ -86,6 +87,7 @@ export function inferWorkerGroup(env = process.env) {
     "worker:hive": "worker-hive",
     "worker:memory-profile": "worker-memory-profile",
     "worker:airdrop": "worker-airdrop",
+    "worker:validator-research": "worker-validator-research",
   }[raw] || raw;
 }
 

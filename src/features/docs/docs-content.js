@@ -3,6 +3,7 @@
 // boundary so private operations, verification evidence, plans, and prompts do
 // not silently become production browser assets.
 const HELP_MARKDOWN_LOADERS = {
+  validatorResearch: () => import("../../../docs/wiki/surfaces/validator-research.md?raw").then((module) => module.default),
   start: () => import("../../../docs/wiki/index.md?raw").then((module) => module.default),
   agents: () => import("../../../docs/wiki/surfaces/agents.md?raw").then((module) => module.default),
   chat: () => import("../../../docs/wiki/surfaces/chat.md?raw").then((module) => module.default),
@@ -131,6 +132,7 @@ export const DOC_GROUPS = [
   {
     title: "Product",
     pages: [
+      { slug: "validator-research", title: "Validator Research", summary: "Bind a validator, access financial models, create research API keys, and earn monthly credit.", loadMarkdown: HELP_MARKDOWN_LOADERS.validatorResearch },
       { slug: "chat", title: "Chat", summary: "Chat models, current task and shared team activity in web and Telegram, Deep Research, budget Decisions with context and memory, billing, and saved reports.", loadMarkdown: HELP_MARKDOWN_LOADERS.chat },
       { slug: "tasks", title: "Tasks", summary: "Personal and network tasks, actionable steps, submission requirements, full evidence reports up to 120,000 characters, routing eligibility, exhausted-request retry, allocation recovery, and Campaign Tracker validation.", loadMarkdown: HELP_MARKDOWN_LOADERS.tasks },
       { slug: "hive", title: "Hive", summary: "Public Nostr group chat, shared handles, periodic GLM participation and Kimi board escalation.", loadMarkdown: HELP_MARKDOWN_LOADERS.hive },

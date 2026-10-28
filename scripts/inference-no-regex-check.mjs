@@ -5,6 +5,7 @@ import { parse } from "espree";
 
 // All inference entry points, plus the audited prompt/input/output helpers.
 const helpers = [
+  "server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js",
   "server/profile-nft-generation.js", "server/profile-nft-daily-worker.js", "server/profile-nft-render-worker.js", "server/profile-nft-image-provider.js",
   "server/board-agent-dispatch.js", "ops/bm-runtime/supervisor.mjs",
   "server/task-request.js", "server/task-request-command.js", "server/task-request-context.js",

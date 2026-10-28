@@ -11,6 +11,7 @@ const workerRoles = new Set([
   "worker:memory-profile",
   "worker:airdrop",
   "worker:nft-renderer",
+  "worker:validator-research",
 ]);
 
 export function tasknodeProcessRole(env = process.env) {
