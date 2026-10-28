@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { researchRequest } from "./research-client.js";
+import { validatorSigningCommands } from "./validator-signing.js";
 import "./research.css";
 
 export function ValidatorSettings() {
@@ -17,8 +18,9 @@ export function ValidatorSettings() {
     try { await fn(); } catch (error) { setMessage(error.message); } finally { setBusy(false); }
   };
   return <div className="research-panel">
-    <p>Prove control of a devnet or testnet validator to unlock research and financial models.</p>
-    <p>Earn $20 in Task Node credit each month with at least 95% mean daily agreement and 25 reported days in the preceding 30-day window.</p>
+    <p>Your signature proves control of a devnet or testnet validator master key and binds it to this Task Node account. It signs a one-time challenge; nothing is submitted to the ledger. Your private key stays on the validator host.</p>
+    <p>Earn $20 per eligible validator key on the first UTC day of each month: at least 95% mean daily agreement across the preceding 30 complete UTC days, with at least 25 reported days. Rewards use the payout month; a November 1 payout is labeled November.</p>
+    <p>Research uses your Task Node USD credit at the reported provider cost, rounded up to $0.000001 once per job. At least $0.50 available credit is required. Pending jobs reserve their maximum cost; failed jobs may still incur provider costs.</p>
     {status?.badge && <strong className="validator-badge"><ShieldCheck size={18} /> Validator</strong>}
     {status?.bindings?.map((binding) => <article className="research-card" key={binding.id}>
       <strong>{binding.network}</strong><code className="research-wrap">{binding.master_public_key}</code>
@@ -33,10 +35,14 @@ export function ValidatorSettings() {
       await researchRequest("/api/validators/bind", { method: "POST", body: { master_public_key: key.trim(), signature: signature.trim(), challenge: challenge.challenge } });
       setChallenge(null); setSignature(""); await refresh(); setMessage("Validator bound successfully.");
     }); }}>
-      <p>Run this command on your validator host. Keep the key file on that host.</p>
-      <pre className="research-wrap">{challenge.signCommand}</pre>
-      <button type="button" onClick={() => act(() => navigator.clipboard.writeText(challenge.signCommand))}>Copy command</button>
-      <p>Expires {new Date(challenge.expiresAt).toLocaleTimeString()}.</p>
+      <p>Choose the command that matches where your existing validator key file lives. Run it on that validator host.</p>
+      {validatorSigningCommands(challenge.challenge).map((option) => <section className="research-card" key={option.id} aria-label={option.title}>
+        <strong>{option.title}</strong>
+        <pre className="research-wrap">{option.command}</pre>
+        <button type="button" onClick={() => act(() => navigator.clipboard.writeText(option.command))}>Copy {option.id} command</button>
+      </section>)}
+      <p>For the host command, replace <code>/path/to/validator-keys.json</code> with the existing file path and <code>{"<postfiatd image>"}</code> with the Post Fiat image already used on that host. It mounts the key read-only and disables container networking.</p>
+      <p>Paste only the master public key and returned signature below. Never paste the key file or a validator token. This challenge expires {new Date(challenge.expiresAt).toLocaleTimeString()} and can be used once.</p>
       <label>Validator master public key (nH…)<input value={key} onChange={(event) => setKey(event.target.value)} required autoComplete="off" /></label>
       <label>Signature<textarea value={signature} onChange={(event) => setSignature(event.target.value)} required rows={3} /></label>
       <button type="submit" disabled={busy}>Bind validator</button>
