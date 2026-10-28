@@ -1,4 +1,5 @@
 import { researchLedgerAmount } from "../server/research-billing.js";
+import { researchSources, researchSourceUrl } from "../src/features/research/research-sources.js";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { encodeNodePublic } from "ripple-address-codec";
@@ -8,6 +9,14 @@ import { safeReturnTo } from "../server/index-viewer-routes.js";
 import { researchHmacHeaders, callResearchService } from "../server/research-provider.js";
 import { readFile } from "node:fs/promises";
 import { parse } from "espree";
+
+assert.equal(researchSourceUrl("https://example.com/source?id=1"), "https://example.com/source?id=1");
+for (const value of [null, {}, "", "javascript:alert(1)", "data:text/html,test", "https://user:secret@example.com/", "file:///tmp/report"]) assert.equal(researchSourceUrl(value), null);
+assert.deepEqual(researchSources(null), []);
+assert.deepEqual(researchSources([null, [], "bad"]), []);
+const source = { id: "F1", ticker: "EXAMPLE", rows: [{ period: "2026-09-30", revenue: 100 }] };
+assert.deepEqual(researchSources([source]), [{ id: "F1", label: "EXAMPLE", url: null, evidence: source }]);
+assert.equal(researchSources([{ title: {}, date: [] }])[0].label, "Source evidence");
 
 for (const [cost, expected] of [[0, 0], [0.1, 0.1], [0.100001, 0.100001], [0.123456789, 0.123457], [0.117940644, 0.117941], [0.000000000001, 0.000001], [0.01, 0.01]]) {
   assert.equal(researchLedgerAmount(cost), expected);
@@ -63,8 +72,8 @@ assert.equal(captured.url, "https://service.example/ga-research/v1/research");
 assert.equal(captured.options.body, '{"question":"What changed?"}');
 assert.equal(captured.options.redirect, "error");
 // Guard every new prompt/provider/usage path against regex reintroduction.
-for (const file of ["server/research-billing.js", "server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js", "src/features/research/research-client.js"]) {
-  const ast = parse(await readFile(file, "utf8"), { ecmaVersion: "latest", sourceType: "module" });
+for (const file of ["server/research-billing.js", "server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js", "src/features/research/research-client.js", "src/features/research/research-sources.js", "src/features/research/ResearchView.jsx"]) {
+  const ast = parse(await readFile(file, "utf8"), { ecmaVersion: "latest", sourceType: "module", ecmaFeatures: { jsx: true } });
   const visit = (node) => {
     if (!node || typeof node !== "object") return;
     assert.ok(!node.regex, `regex prohibited: ${file}`);

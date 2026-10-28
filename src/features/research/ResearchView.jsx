@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { researchRequest } from "./research-client.js";
+import { researchSources } from "./research-sources.js";
 import "./research.css";
 
 export function ResearchView() {
@@ -18,6 +19,7 @@ export function ResearchView() {
     return () => { active = false; };
   }, []);
   const jobId = job?.job_id;
+  const sources = researchSources(result?.sources);
   const terminal = ["completed", "failed"].includes(job?.status);
   useEffect(() => {
     if (!jobId) return undefined;
@@ -56,6 +58,16 @@ export function ResearchView() {
       <button type="submit" disabled={!eligible || busy || Boolean(job && !terminal)}>{busy || (job && !terminal) ? "Researching…" : "Run research"}</button>
     </form>
     <p role="status">{message || (job ? `Research ${job.status}${job.usage ? ` · Provider $${job.usage.total_cost_usd}${job.billing ? ` · Billed $${job.billing.amount_usd.toFixed(6)}` : ""}` : ""}` : "")}</p>
-    {result && <article className="research-report"><pre>{result.markdown}</pre></article>}
+    {result && <article className="research-report">
+      <pre>{result.markdown}</pre>
+      {sources.length > 0 && <section aria-label="Report sources">
+        <h2>Sources</h2>
+        {sources.map((source, index) => <details key={`${source.id}-${index}`} className="research-card">
+          <summary>[{source.id}] {source.label}</summary>
+          {source.url && <p><a href={source.url} target="_blank" rel="noreferrer">Open source</a></p>}
+          <pre>{JSON.stringify(source.evidence, null, 2)}</pre>
+        </details>)}
+      </section>}
+    </article>}
   </section>;
 }

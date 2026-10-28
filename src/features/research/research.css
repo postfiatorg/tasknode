@@ -13,5 +13,8 @@
 .research-wrap { display: block; font-size: 12px; }
 .research-report { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--tn-dark-border, #d8d8d8); }
 .research-report pre { font: inherit; line-height: 1.7; }
+.research-report details { display: block; margin: 12px 0; }
+.research-report summary { cursor: pointer; }
+.research-report details pre { max-height: 480px; overflow: auto; font: 12px/1.6 monospace; }
 .validator-badge { display: inline-flex; align-items: center; gap: 7px; color: var(--tn-dark-success, #287842); }
 @media (max-width: 640px) { .research-view { padding: 20px 14px; } }
