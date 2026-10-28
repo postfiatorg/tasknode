@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Copy } from "lucide-react";
 import { researchRequest } from "./research-client.js";
 import { ManualValidatorConnect } from "./ManualValidatorConnect.jsx";
 import "./research.css";
 
 export function ValidatorSettings({ onAppStateChange }) {
+  const onAppStateChangeRef = useRef(onAppStateChange);
+  useEffect(() => { onAppStateChangeRef.current = onAppStateChange; }, [onAppStateChange]);
   const [status, setStatus] = useState(null);
   const [connect, setConnect] = useState(null);
   const [message, setMessage] = useState("");
@@ -37,7 +39,7 @@ export function ValidatorSettings({ onAppStateChange }) {
         if (!active) return;
         if (next.status === "connected") {
           setConnect(null); setMessage("Validator connected. You can return to chat.");
-          await refresh(); await onAppStateChange?.(); return;
+          await refresh(); await onAppStateChangeRef.current?.(); return;
         }
         if (next.status === "expired") { setConnect(null); setMessage("This command expired. Generate a new command."); return; }
       } catch (error) { if (active) setMessage(error.message); }
@@ -45,7 +47,7 @@ export function ValidatorSettings({ onAppStateChange }) {
     }
     void poll();
     return () => { active = false; clearTimeout(timer); };
-  }, [connectionId, refresh, onAppStateChange]);
+  }, [connectionId, refresh]);
   async function act(work) {
     setBusy(true); setMessage("");
     try { await work(); } catch (error) { setMessage(error.message); } finally { setBusy(false); }
@@ -61,7 +63,7 @@ export function ValidatorSettings({ onAppStateChange }) {
       <strong>Run this on your validator host</strong>
       <pre className="research-wrap validator-command">{command}</pre>
       <button type="button" onClick={() => act(async () => { await navigator.clipboard.writeText(command); setMessage("Command copied. Run it on your validator host; this page will connect automatically."); })}><Copy size={15} /> Copy command</button>
-      <small>Finds your existing key and signs locally. Your private key stays on the host. Expires at {new Date(connect.expiresAt).toLocaleTimeString()}.</small>
+      <small>Uses your running validator token to sign locally. Your master key can stay offline. Expires at {new Date(connect.expiresAt).toLocaleTimeString()}.</small>
       <p role="status">Waiting for your validator…</p>
       <details><summary>Download and inspect first</summary><pre className="research-wrap">{inspect}</pre><a href="/validator.sh" download>Download validator.sh</a></details>
     </section>}
@@ -77,7 +79,7 @@ export function ValidatorSettings({ onAppStateChange }) {
       <p>Choose Deep Research in chat. Your credit is charged at provider cost rounded up to $0.000001 once per job. At least $0.50 available is required; pending jobs reserve their maximum cost and failed jobs may incur provider cost.</p>
     </details>
     <details><summary>Advanced</summary>
-      <p>The signature proves control of your master key and binds it to this account. Nothing is submitted to the ledger. To select a file, append <code>--keyfile /existing/path/validator-keys.json</code> to the command.</p>
+      <p>The default proves control of your running validator. Nothing is submitted to the ledger. To explicitly sign with a master key file, append <code>--keyfile /existing/path/validator-keys.json</code> to the command.</p>
       <ManualValidatorConnect onConnected={async () => { setConnect(null); await refresh(); await onAppStateChange?.(); }} />
       {status?.bindings?.map(binding => <button key={binding.id} type="button" disabled={busy} onClick={() => act(async () => { await researchRequest(`/api/validators/${binding.id}`, { method: "DELETE", body: {} }); await refresh(); await onAppStateChange?.(); })}>Unbind {binding.network} validator</button>)}
     </details>

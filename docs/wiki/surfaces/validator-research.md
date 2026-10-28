@@ -1,6 +1,6 @@
 # Validator research
 
-Settings → Validator connects a devnet or testnet validator to your Task Node account. The signature proves control of the validator master key and binds that key to your account. It signs a one-time challenge, not a ledger transaction: nothing is submitted to the ledger. A validator key can belong to one account; an account can bind several keys. Your private validator key stays on its host.
+Settings → Validator connects a devnet or testnet validator to your Task Node account. The signature proves control of the running validator and binds its master public key to your account. It signs a one-time challenge, not a ledger transaction: nothing is submitted to the ledger. A validator key can belong to one account; an account can bind several keys. Your validator token stays on its host; the master key can stay offline.
 
 Settings shows one command. Copy it and run it on the validator host:
 
@@ -8,7 +8,7 @@ Settings shows one command. Copy it and run it on the validator host:
 curl -fsSL https://tasknode.postfiat.org/validator.sh | sh -s -- <token>
 ```
 
-Use the complete command from your Settings page, which includes your account's single-use token. It expires in 30 minutes. The script finds the existing key, signs locally, selects only its public key, and sends the proof. Settings changes to **Validator connected** automatically; nothing needs pasting. Keep this page open until it connects. Connecting the same validator again to its existing account confirms that binding without removing it.
+Use the complete command from your Settings page, which includes your account's single-use token. It expires in 30 minutes. The script uses the running node’s validator token to sign locally and sends only public proof. Task Node checks the signing key against the current VHS listing and verifies the master-signed delegation. Settings changes to **Validator connected** automatically; nothing needs pasting. Keep this page open until it connects. Connecting the same validator again to its existing account confirms that binding without removing it.
 
 To review the script before running it, open **Download and inspect first**:
 
@@ -18,7 +18,9 @@ cat validator.sh
 sh validator.sh <token>
 ```
 
-The host needs Docker access to its running `postfiatd` container, `curl`, and `awk`. Automatic discovery checks `/root/.ripple/validator-keys.json` inside the container, then `/root/validator-keys/validator-keys.json`, `~/.ripple/validator-keys.json`, and the standard `/etc/postfiatd` key locations on the host. For a different path, append `--keyfile /existing/path/validator-keys.json` to the command. The temporary signing container uses the running container's image, no networking, and a read-only key mount. The key file is never uploaded or printed.
+The host needs Docker access to its running `postfiatd` container, `curl`, `awk`, and `stat`; the image needs Python 3 and OpenSSL with secp256k1 support. The script reads the running node’s config path and master public key from `server_info`. A temporary container using that same image reads `[validator_token]` from the mounted config. It has no network, a read-only filesystem and volumes, no container logging or core dumps, and runs as the config file’s owner. The secret stays in memory and anonymous pipes: it is never written, printed, or sent. No packages or crypto helpers are downloaded.
+
+There is no master-key search. Only if you explicitly want master-key signing, append `--keyfile /existing/path/validator-keys.json`. The file must be on the host or in a mounted container volume. This fallback also signs offline. A stale signing key, invalid manifest, or mismatched proof is refused without consuming the connect token; wait for VHS to reflect a legitimate key rotation, then retry while the command is still valid.
 
 **Advanced** contains the manual flow and unbinding. Create a manual challenge there, then replace `<challenge>` below with the complete challenge shown in Settings. It expires after 30 minutes and can be used once.
 

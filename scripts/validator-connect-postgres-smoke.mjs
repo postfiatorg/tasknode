@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { deriveKeypair, generateSeed, sign } from "ripple-keypairs";
+import { Readable } from "node:stream";
+import { encode } from "ripple-binary-codec";
+import { handleValidatorConnectRoute } from "../server/validator-connect-routes.js";
+import { readValidatedJson } from "../server/request-validation.js";
+import { apiRoutePolicies, routeBodyPolicyForRequest } from "../server/route-policies.js";
 import { encodeNodePublic } from "ripple-address-codec";
 import { closePool, query } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
@@ -15,7 +20,9 @@ const accountId = `connect_smoke_${randomUUID()}`;
 const other = `${accountId}_other`;
 const keypair = deriveKeypair(generateSeed({ algorithm: "ed25519" }));
 const masterPublicKey = encodeNodePublic(Buffer.from(keypair.publicKey, "hex"));
-const lookup = async () => ({ network: "devnet" });
+const ephemeral = deriveKeypair(generateSeed({ algorithm: "ecdsa-secp256k1" }));
+const signingPublicKey = encodeNodePublic(Buffer.from(ephemeral.publicKey, "hex"));
+const lookup = async () => ({ network: "devnet", signingPublicKey });
 const signChallenge = challenge => sign(Buffer.from(challenge).toString("hex"), keypair.privateKey);
 const originalFetch = globalThis.fetch;
 const calls = [];
@@ -61,6 +68,69 @@ try {
   await assert.rejects(validatorConnectChallenge(expired.token));
   await assert.rejects(finishValidatorConnect({ token: expired.token, masterPublicKey, signature: payload.signature }, { lookup }));
   assert.equal((await validatorConnectStatus(accountId, expired.id)).status, "expired");
+
+  const delegated = await issueValidatorConnect(accountId);
+  const delegatedChallenge = (await validatorConnectChallenge(delegated.token)).challenge;
+  const delegatedProof = { token: delegated.token, masterPublicKey, signingPublicKey,
+    signature: sign(Buffer.from(delegatedChallenge).toString("hex"), ephemeral.privateKey) };
+  await assert.rejects(finishValidatorConnect({ ...delegatedProof, accountId: other }, { lookup }), /invalid_or_expired/);
+  await assert.rejects(finishValidatorConnect({ ...delegatedProof, signature: signChallenge(delegatedChallenge) }, { lookup }), /signature_invalid/);
+  await assert.rejects(finishValidatorConnect(delegatedProof, { lookup: async () => ({ network: "devnet", signingPublicKey: "stale-key" }) }), /signing_key_not_current/);
+  await assert.rejects(finishValidatorConnect({ ...delegatedProof, manifest: "invalid" }, { lookup }), /manifest_invalid/);
+  assert.equal((await validatorConnectStatus(accountId, delegated.id)).status, "waiting");
+  const delegatedRace = await Promise.allSettled([finishValidatorConnect(delegatedProof, { lookup }), finishValidatorConnect(delegatedProof, { lookup })]);
+  assert.equal(delegatedRace.filter(r => r.status === "fulfilled").length, 1);
+  assert.equal(delegatedRace.find(r => r.status === "fulfilled").value.id, binding.id);
+  await assert.rejects(finishValidatorConnect(delegatedProof, { lookup }), /invalid_or_expired/);
+  const audit = (await query("SELECT proof FROM validator_connect_tokens WHERE id=$1", [delegated.id])).rows[0].proof;
+  assert.equal(audit.signingPublicKey, signingPublicKey);
+  assert.equal(audit.signature, delegatedProof.signature);
+  const delegatedExpired = await issueValidatorConnect(accountId);
+  await query("UPDATE validator_connect_tokens SET expires_at=now()-interval '1 second' WHERE id=$1", [delegatedExpired.id]);
+  await assert.rejects(finishValidatorConnect({ ...delegatedProof, token: delegatedExpired.token }, { lookup }), /invalid_or_expired/);
+
+  // Exercise the actual completion route and its strict JSON schema, with VHS
+  // responses at the network boundary (no injected repository lookup).
+  const routeMaster = deriveKeypair(generateSeed({ algorithm: "ed25519" }));
+  const routeMasterPublic = encodeNodePublic(Buffer.from(routeMaster.publicKey, "hex"));
+  const fields = { Sequence: 1, PublicKey: routeMaster.publicKey, SigningPubKey: ephemeral.publicKey };
+  const manifestPayload = `4D414E00${encode(fields)}`;
+  const routeManifest = Buffer.from(encode({ ...fields, Signature: sign(manifestPayload, ephemeral.privateKey), MasterSignature: sign(manifestPayload, routeMaster.privateKey) }), "hex").toString("base64");
+  globalThis.fetch = async url => new Response(JSON.stringify(String(url).endsWith("/validators")
+    ? { result: "success", validators: [{ master_key: routeMasterPublic, signing_key: signingPublicKey, revoked: false }] }
+    : { result: "success", reports: [] }));
+  async function connectRoute(path, body, account) {
+    let code, result;
+    const req = Readable.from([Buffer.from(JSON.stringify(body))]);
+    Object.assign(req, { method: "POST", url: path, headers: { "content-type": "application/json" } });
+    const policy = routeBodyPolicyForRequest(apiRoutePolicies.find(p => p.path === path), "POST", path);
+    await handleValidatorConnectRoute({ req, res: {}, session: account ? { accountId: account } : null,
+      url: new URL(path, "http://localhost"),
+      readJson: request => readValidatedJson(request, policy.maxBytes, policy.schema),
+      json: (_res, status, value) => { code = status; result = value; } });
+    return { code, result };
+  }
+  const routeToken = await issueValidatorConnect(other);
+  const routeChallenge = (await validatorConnectChallenge(routeToken.token)).challenge;
+  const routeProof = { token: routeToken.token, master_public_key: routeMasterPublic, signing_public_key: signingPublicKey,
+    signature: sign(Buffer.from(routeChallenge).toString("hex"), ephemeral.privateKey), manifest: routeManifest };
+  const completePath = "/api/validators/connect/complete";
+  assert.equal((await connectRoute(completePath, routeProof, accountId)).code, 403);
+  assert.equal((await connectRoute(completePath, { ...routeProof, validator_token: "must-not-be-accepted" })).code, 400);
+  assert.equal((await connectRoute(completePath, { ...routeProof, master_public_key: masterPublicKey })).code, 403);
+  assert.equal((await connectRoute(completePath, { ...routeProof, signature: "0".repeat(128) })).code, 403);
+  const staleKey = deriveKeypair(generateSeed({ algorithm: "ecdsa-secp256k1" }));
+  const staleResult = await connectRoute(completePath, { ...routeProof,
+    signing_public_key: encodeNodePublic(Buffer.from(staleKey.publicKey, "hex")),
+    signature: sign(Buffer.from(routeChallenge).toString("hex"), staleKey.privateKey) });
+  assert.equal(staleResult.code, 403); assert.equal(staleResult.result.error, "validator_signing_key_not_current");
+  const routeResult = await connectRoute(completePath, routeProof);
+  assert.equal(routeResult.code, 200, JSON.stringify(routeResult.result));
+  const routeAudit = (await query("SELECT signing_public_key,manifest FROM validator_bindings WHERE id=$1", [routeResult.result.binding.id])).rows[0];
+  assert.equal(routeAudit.signing_public_key, signingPublicKey); assert.equal(routeAudit.manifest, routeManifest);
+  assert.equal((await connectRoute(completePath, routeProof)).code, 403);
+  await query("UPDATE validator_bindings SET revoked_at=now() WHERE id=$1", [routeResult.result.binding.id]);
+  globalThis.fetch = originalFetch;
 
   process.env.GA_RESEARCH_URL = "https://ga.example.test/ga-research";
   process.env.GA_RESEARCH_HMAC_SECRET = "synthetic-provider-secret";
@@ -113,7 +183,7 @@ try {
   // Provider choice is durable even after the validator disconnects.
   await query("UPDATE validator_bindings SET revoked_at=now() WHERE account_id=$1", [accountId]);
   assert.equal((await route(`/api/deep-research/jobs/${id}`)).body.job.provider, "goodalexander");
-  console.log("validator-connect-postgres-smoke ok: hashed/30-minute/single-use/account-bound tokens, concurrent proof, expiry, reconnect without unbind, chat provider routing, report persistence, single ceil6 debit, replay and owner isolation, legacy behavior");
+  console.log("validator-connect-postgres-smoke ok: delegated signing-key proof, stale/wrong/manifest/replay/expiry refusal, durable proof audit, hashed/30-minute/single-use/account-bound tokens, concurrent proof, expiry, reconnect without unbind, chat provider routing, report persistence, single ceil6 debit, replay and owner isolation, legacy behavior");
 } finally {
   globalThis.fetch = originalFetch;
   for (const table of ["deep_research_jobs", "chat_messages", "chat_conversations", "research_gateway_jobs", "validator_connect_tokens", "validator_bindings", "validator_challenges", "billing_ledger_entries", "billing_accounts"]) {

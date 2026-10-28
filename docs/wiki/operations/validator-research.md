@@ -10,11 +10,15 @@ Settings → Validator issues a one-time connect token bound to the signed-in ac
 curl -fsSL https://tasknode.postfiat.org/validator.sh | sh -s -- <token>
 ```
 
-The public, readable `public/validator.sh` discovers the key inside `postfiatd` or in common host locations, signs locally with the running image, selects only `public_key`, and posts the proof. Append `--keyfile /existing/path/validator-keys.json` for another location. Host signing uses a read-only mount and `--network none`. The script never uploads the key file or secret fields. Download/inspect instructions and the manual signing flow remain available under disclosures.
+`public/validator.sh` reads the running node's `--conf` path and `server_info.pubkey_validator`, then signs with the `[validator_token]` ephemeral secp256k1 key inside a new container using the existing image. Python stdlib parses the token; the image's OpenSSL derives the public key and signs SHA512Half. Secret input stays in memory/anonymous pipes. The signer has `--network none`, `--read-only`, read-only volumes, `--log-driver none`, `--cap-drop ALL`, `no-new-privileges`, and core dumps disabled; it runs as the input file's owner. No downloads, installs, secret files, stdout, or token transmission. Only `{token, master_public_key, signing_public_key, signature, manifest}` leaves the host; `token` here is the Task Node connect capability, never the validator token.
+
+The server checks the current `signing_key` on the master key's devnet/testnet VHS row on every delegated proof, verifies the challenge signature against that key, and validates both signatures in the public manifest when supplied. It rejects revoked masters, unknown/current-key-missing/stale signing keys and invalid manifests. The original binding retains its public signature evidence; `validator_connect_tokens.proof` records each successful connect/reconnect's public proof. Migration 155 adds only public proof fields to these validator tables.
+
+Master-key signing is available only with explicit `--keyfile /existing/path/validator-keys.json`; there is no home directory or backup search. The file must be accessible on the host or through a mounted volume. This path also uses the offline image and a read-only mount. Download/inspect instructions and manual signing remain under disclosures.
 
 Only the SHA-256 token hash is stored. Creating a token requires a session; challenge and completion accept the token as a short-lived capability. A supplied session must belong to the token account. The challenge and token are consumed together with the binding in one transaction. Expired, reused, wrong-account and invalid-signature proofs fail. Reconnecting a key already bound to that same account confirms the existing binding without unbinding. Another account cannot take it. The owning browser polls an account-scoped status endpoint and refreshes its access after completion. Keep command tokens out of logs, screenshots intended for public sharing, and issue trackers.
 
-The signature proves control of the registered devnet or testnet validator master key. Nothing is submitted to the ledger. **Advanced** retains these manual commands.
+The default signature proves control of the registered validator’s current delegated signing key. The master public key remains the stable identity. Nothing is submitted to the ledger. **Advanced** retains these manual commands.
 
 When the key is inside the running `postfiatd` container:
 

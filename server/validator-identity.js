@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { decodeNodePublic } from "ripple-address-codec";
 import { verify } from "ripple-keypairs";
+import { decode, encode } from "ripple-binary-codec";
 
 export const VHS_ORIGINS = Object.freeze({
   devnet: "https://vhs.devnet.postfiat.org",
@@ -33,6 +34,43 @@ export function verifyValidatorSignature({ masterPublicKey, signature, challenge
   }
 }
 
+// A public validator manifest is the master-signed delegation to the ephemeral
+// key. Its signing prefix is MAN\0, with both signature fields excluded.
+export function verifyValidatorManifest({ manifest, masterPublicKey, signingPublicKey }) {
+  try {
+    if (typeof manifest !== "string" || !manifest.length || manifest.length > 2048) return false;
+    const bytes = Buffer.from(manifest, "base64");
+    if (bytes.toString("base64") !== manifest) return false;
+    const hex = bytes.toString("hex").toUpperCase();
+    const row = decode(hex);
+    const allowed = ["Sequence", "PublicKey", "SigningPubKey", "Signature", "MasterSignature", "Domain", "Version"];
+    if (Object.keys(row).some(field => !allowed.includes(field)) || encode(row) !== hex ||
+        !Number.isInteger(row.Sequence) || row.Sequence < 0 || row.Sequence >= 0xffffffff ||
+        (row.Version !== undefined && row.Version !== 0)) return false;
+    const master = Buffer.from(decodeNodePublic(masterPublicKey)).toString("hex").toUpperCase();
+    const signing = Buffer.from(decodeNodePublic(signingPublicKey)).toString("hex").toUpperCase();
+    if (row.PublicKey !== master || row.SigningPubKey !== signing) return false;
+    const { Signature, MasterSignature, ...unsigned } = row;
+    const message = `4D414E00${encode(unsigned)}`;
+    return verify(message, MasterSignature, master) && verify(message, Signature, signing);
+  } catch { return false; }
+}
+
+export async function verifyRegisteredValidatorProof({ masterPublicKey, signingPublicKey, signature, challenge, manifest }, lookup = findRegisteredValidator) {
+  const delegated = signingPublicKey !== undefined;
+  if (!verifyValidatorSignature({ masterPublicKey: delegated ? signingPublicKey : masterPublicKey, signature, challenge })) {
+    throw validatorError("validator_signature_invalid", 403);
+  }
+  const registered = await lookup(masterPublicKey);
+  if (delegated && (!registered.signingPublicKey || registered.signingPublicKey !== signingPublicKey)) {
+    throw validatorError("validator_signing_key_not_current", 403);
+  }
+  if (manifest !== undefined && (!delegated || !verifyValidatorManifest({ manifest, masterPublicKey, signingPublicKey }))) {
+    throw validatorError("validator_manifest_invalid", 403);
+  }
+  return registered;
+}
+
 async function vhsJson(network, path, fetchImpl = fetch) {
   const origin = VHS_ORIGINS[network];
   if (!origin) throw validatorError("validator_network_invalid");
@@ -53,7 +91,7 @@ export async function findRegisteredValidator(masterPublicKey, { network, fetchI
     const row = value.validators.find((item) => (item.master_key || item.validation_public_key) === masterPublicKey);
     if (!row) continue;
     if (row.revoked !== false) throw validatorError("validator_revoked", 403);
-    return { network: candidate, masterPublicKey, domain: row.domain || "" };
+    return { network: candidate, masterPublicKey, signingPublicKey: row.signing_key || null, domain: row.domain || "" };
   }
   throw validatorError(unavailable ? "validator_history_unavailable" : "validator_unknown", unavailable ? 503 : 403);
 }

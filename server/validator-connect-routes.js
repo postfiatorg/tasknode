@@ -21,7 +21,7 @@ export async function handleValidatorConnectRoute({ json, readJson, req, res, se
     }
     if (url.pathname === "/api/validators/connect/complete" && req.method === "POST") {
       const payload = await readJson(req, 4096);
-      const binding = await finishValidatorConnect({ token: payload.token, masterPublicKey: payload.master_public_key, signature: payload.signature, accountId });
+      const binding = await finishValidatorConnect({ token: payload.token, masterPublicKey: payload.master_public_key, signingPublicKey: payload.signing_public_key, manifest: payload.manifest, signature: payload.signature, accountId });
       invalidateCachedAppState({ accountId: binding.account_id });
       let agreement = "unavailable";
       try {
