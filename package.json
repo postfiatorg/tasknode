@@ -197,6 +197,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "ripple-address-codec": "^5.0.0",
+    "ripple-binary-codec": "^2.7.0",
     "ripple-keypairs": "^2.0.0",
     "sharp": "^0.35.5",
     "ws": "^8.21.3",
