@@ -24,7 +24,12 @@ async function testAlgorithms(masterAlgorithm, signingAlgorithm) {
     return Buffer.from(encode({ ...fields, Signature: sign(payload, key.privateKey), MasterSignature: sign(payload, master.privateKey) }), "hex").toString("base64");
   }
   const manifest = manifestFor();
-  const fixtureToken = Buffer.from(JSON.stringify({ validation_secret_key: signing.privateKey.slice(-64), manifest })).toString("base64");
+  const fixtureValue = { validation_secret_key: signing.privateKey.slice(-64), manifest, fixturePadding: "~~~???" };
+  while (Buffer.byteLength(JSON.stringify(fixtureValue)) % 3 !== 2) fixtureValue.fixturePadding += "x";
+  const fixtureToken = Buffer.from(JSON.stringify(fixtureValue)).toString("base64");
+  assert.ok(fixtureToken.endsWith("="), "fixture requires one padding byte, matching the reported shape");
+  const urlsafeToken = fixtureToken.replaceAll("+", "-").replaceAll("/", "_");
+  assert.ok(urlsafeToken.includes("-") || urlsafeToken.includes("_"));
   const config = path.join(dir, "postfiatd.cfg");
   writeFileSync(config, `[server]\nport_rpc_admin_local\n[validator_token]\n# synthetic fixture only\n${fixtureToken.slice(0, 80)}\n${fixtureToken.slice(80)}\n[other]\nignored\n`, { mode: process.env.VALIDATOR_SIGNING_TEST_USER === "0:0" ? 0o644 : 0o600 });
   const image = process.env.VALIDATOR_SIGNING_TEST_IMAGE;
@@ -46,6 +51,18 @@ async function testAlgorithms(masterAlgorithm, signingAlgorithm) {
     const publicProof = JSON.parse(r.stdout);
     assert.deepEqual(Object.keys(publicProof).sort(), ["manifest", "master_public_key", "signature", "signing_public_key"]);
     assert.equal(publicProof.signing_public_key, signingPublicKey);
+    for (const [format, encoded] of [
+      ["single-line unpadded", fixtureToken.replaceAll("=", "")],
+      ["URL-safe padded", urlsafeToken],
+      ["URL-safe unpadded", urlsafeToken.replaceAll("=", "")],
+    ]) {
+      writeFileSync(config, `[validator_token]\n\n# ignored comment\n  ${encoded}  \n`);
+      const variant = run(config, "1"); assert.equal(variant.status, 0, `${format}: ${variant.stderr}`);
+      const submitted = JSON.parse(variant.stdout);
+      assert.equal(submitted.signing_public_key, signingPublicKey, format);
+      assert.equal(verifyValidatorSignature({ masterPublicKey: signingPublicKey, signature: submitted.signature, challenge }), true, format);
+      assert.ok(!variant.stdout.includes(encoded)); assert.ok(!variant.stderr.includes(encoded));
+    }
     const proof = { masterPublicKey, signingPublicKey, signature: publicProof.signature, challenge, manifest };
     const lookup = async () => ({ network: "testnet", masterPublicKey, signingPublicKey });
     assert.equal(verifyValidatorSignature({ masterPublicKey: signingPublicKey, signature: proof.signature, challenge }), true);
@@ -72,7 +89,7 @@ async function testAlgorithms(masterAlgorithm, signingAlgorithm) {
     writeFileSync(config, "[server]\nport_rpc_admin_local\n");
     const absent = run(); assert.notEqual(absent.status, 0); assert.ok(absent.stderr.includes("not configured"));
     const missing = run(path.join(dir, "missing.cfg"), "1"); assert.notEqual(missing.status, 0); assert.ok(missing.stderr.includes("config_read"));
-    console.log(`validator-token-signing-smoke ok: master=${masterAlgorithm} signing=${signingAlgorithm}, ${image ? "real image offline" : "local OpenSSL"}, synthetic token -> valid signature, master-signed manifest, wrong/stale/missing signing key refused, revocation/malformed/foreign manifest refused, secret non-disclosure, missing/invalid config errors`);
+    console.log(`validator-token-signing-smoke ok: master=${masterAlgorithm} signing=${signingAlgorithm}, ${image ? "real image offline" : "local OpenSSL"}, padded multi-line/unpadded single-line/URL-safe tokens -> valid signatures, master-signed manifest, wrong/stale/missing signing key refused, revocation/malformed/foreign manifest refused, secret non-disclosure, missing/invalid config errors`);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 for (const master of ["ed25519", "ecdsa-secp256k1"]) {

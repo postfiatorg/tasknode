@@ -179,7 +179,9 @@ try:
     if sections != 1 or not parts:
         error("This node is not configured with a single [validator_token].")
     stage("token_decode")
-    token_data = json.loads(base64.b64decode("".join(parts), validate=True))
+    token_text = "".join(parts).strip()
+    token_text += "=" * (-len(token_text) % 4)
+    token_data = json.loads(base64.b64decode(token_text, altchars=b"-_", validate=True))
     secret = bytes.fromhex(token_data["validation_secret_key"])
     manifest = token_data["manifest"]
     if len(secret) != 32 or not isinstance(manifest, str) or not 1 <= len(manifest) <= 2048:
