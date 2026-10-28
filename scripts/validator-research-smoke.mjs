@@ -71,6 +71,20 @@ await callResearchService({ method: "POST", path: "/v1/research", accountId: "ac
 assert.equal(captured.url, "https://service.example/ga-research/v1/research");
 assert.equal(captured.options.body, '{"question":"What changed?"}');
 assert.equal(captured.options.redirect, "error");
+// The branded base keeps the externally mounted prefix out of the signed path.
+for (const base of ["https://research.goodalexander.com:18443/ga-research", "https://research.goodalexander.com:18443/ga-research/"]) {
+  for (const method of ["GET", "POST"]) {
+    const path = method === "GET" ? "/v1/research/fixture/result" : "/v1/research";
+    const payload = method === "POST" ? { question: "Fixture question", max_cost_usd: 0.5 } : undefined;
+    await callResearchService({ method, path, accountId: "account-one", payload,
+      env: { GA_RESEARCH_URL: base, GA_RESEARCH_HMAC_SECRET: "unit-secret" },
+      fetchImpl: async (url, options) => { captured = { url, options }; return { ok: true, json: async () => ({}) }; } });
+    assert.equal(captured.url, `https://research.goodalexander.com:18443/ga-research${path}`);
+    assert.equal(captured.options.redirect, "error");
+    assert.equal(captured.options.headers["X-GA-Signature"], researchHmacHeaders({ method, path, accountId: "account-one",
+      body: payload ? JSON.stringify(payload) : "", timestamp: Number(captured.options.headers["X-GA-Timestamp"]), secret: "unit-secret" })["X-GA-Signature"]);
+  }
+}
 // Guard every new prompt/provider/usage path against regex reintroduction.
 for (const file of ["server/research-billing.js", "server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js", "src/features/research/research-client.js", "src/features/research/research-sources.js", "server/chat-research-provider.js", "server/deep-research-routes.js", "server/repositories/deep-research.js", "src/features/chat/deep-research-client.js"]) {
   const ast = parse(await readFile(file, "utf8"), { ecmaVersion: "latest", sourceType: "module", ecmaFeatures: { jsx: true } });

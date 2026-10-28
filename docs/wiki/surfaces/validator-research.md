@@ -38,7 +38,7 @@ docker run --rm --network none -v /path/to/validator-keys.json:/keys/validator-k
 
 For the host command, replace `/path/to/validator-keys.json` with the existing key file's path and `<postfiatd image>` with the Post Fiat image already used on that host. The temporary container has no networking and mounts the key read-only. Run either command on the validator host; paste only the master public key (`nH…`) and returned signature into Settings. Never paste, copy or upload the key file or a validator token.
 
-A bound validator unlocks at-cost **Deep Research in chat** and the **GoodAlexander models** link in the account menu and Settings → Validator. There is no separate Research page. Unbinding removes validator access when no bound keys remain. Other accounts keep their existing Deep Research service.
+A bound validator unlocks at-cost **Deep Research in chat** through the GoodAlexander API at `research.goodalexander.com:18443` and the **GoodAlexander models** link in the account menu and Settings → Validator. There is no separate Research page. Unbinding removes validator access when no bound keys remain. Other accounts keep their existing Deep Research service.
 
 In chat, choose **Deep Research** from the composer menu, set the maximum USD cost, and send your question. Your report appears in the conversation, with citations and a Sources section, and can be downloaded. You can close the browser and return to the chat while research continues.
 
@@ -57,7 +57,7 @@ Choose **Post Fiat L1 devnet** in Settings → Validator, then run the displayed
 curl -fsSL https://tasknode.postfiat.org/l1-validator.sh | sh -s -- <token>
 ```
 
-Use your Settings page's complete command. The script identifies your running node and signs the single-use challenge with its configured ML-DSA-65 key, with networking disabled during signing. It downloads a checksum-verified signer into memory; it does not install a program or create key/proof files. Only public proof leaves the host. Python 3 and network namespace support (`unshare`) are required. **Download and inspect first** lets you review the wrapper before running it.
+Use your Settings page's complete command. The verified signer and validator registry are served from `https://research.goodalexander.com:18443`. The script identifies your running node and signs the single-use challenge with its configured ML-DSA-65 key, with networking disabled during signing. It downloads a checksum-verified signer into memory; it does not install a program or create key/proof files. Only public proof leaves the host. Python 3 and network namespace support (`unshare`) are required. **Download and inspect first** lets you review the wrapper before running it.
 
 Task Node checks your public key against the current trusted L1 registry, refuses registry data older than one hour, and automatically changes the page to **Validator connected**. One validator identity can belong to one account. You can inspect its public ID, chain and public key in Settings. Reconnecting confirms the existing binding; rotating its key requires unbinding that identity first. No transaction is submitted to either chain.
 
