@@ -571,8 +571,6 @@ export async function networkBadgeProjectionForAccount({
     })
     : null;
 
-  const validatorBadge = await hasValidatorBinding(normalizedAccountId)
-    ? projectionBadge(networkBadgeDefinitions.validator, { proofMethod: "validator_master_signature" }) : null;
   if (preferDurable) {
     const durableBadges = await listDurableProjectionBadges({ accountId: normalizedAccountId });
     if (durableBadges.length) {
@@ -585,7 +583,6 @@ export async function networkBadgeProjectionForAccount({
       if (githubBadge && !currentBadges.some((badge) => badge.badgeId === "core_contributor")) {
         currentBadges.push(githubBadge);
       }
-      if (validatorBadge) currentBadges.push(validatorBadge);
       return projectionFromBadges({
         accountId: normalizedAccountId,
         walletAddress: normalizedWallet,
@@ -595,7 +592,6 @@ export async function networkBadgeProjectionForAccount({
     }
   }
   const badges = [];
-  if (validatorBadge) badges.push(validatorBadge);
 
   const xAlias = aliasForProvider(identityProfile, "x");
   const xFollowers = Number(xAlias?.metrics?.followersCount);
@@ -690,13 +686,17 @@ export async function publicNetworkBadgesForAccount({
   accountId = "",
   walletAddress = "",
 } = {}) {
-  const durable = await listDurablePublicBadges({ accountId });
+  // Validator membership is a public identity badge, not a network-task lane.
+  // Derive it from current bindings even when other durable badges exist.
+  const validatorBadge = await hasValidatorBinding(accountId)
+    ? publicBadgeFromDefinition({ definition: networkBadgeDefinitions.validator, status: "verified", source: "validator_binding" }) : null;
+  const durable = (await listDurablePublicBadges({ accountId })).filter((badge) => badge.badgeId !== "validator");
   if (durable.length) {
     return {
       schema: "pf.task_node.public_network_badges.v1",
       catalogVersion: networkBadgeCatalogVersion,
       source: "account_network_badges",
-      badges: durable,
+      badges: [...durable, ...(validatorBadge ? [validatorBadge] : [])],
     };
   }
   const projection = await networkBadgeProjectionForAccount({ accountId, walletAddress });
@@ -712,7 +712,7 @@ export async function publicNetworkBadgesForAccount({
     schema: "pf.task_node.public_network_badges.v1",
     catalogVersion: networkBadgeCatalogVersion,
     source: "runtime_projection",
-    badges: projectedBadges,
+    badges: [...projectedBadges, ...(validatorBadge ? [validatorBadge] : [])],
   };
 }
 

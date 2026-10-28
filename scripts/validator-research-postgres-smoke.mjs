@@ -10,6 +10,7 @@ import { issueCode, issueViewerToken, upsertIndex } from "../server/repositories
 import { handleIndexViewerRoute } from "../server/index-viewer-routes.js";
 import { runValidatorRewards } from "../server/validator-rewards.js";
 import { submitResearchJob, refreshResearchJob } from "../server/research-gateway.js";
+import { networkBadgeProjectionForAccount, publicNetworkBadgesForAccount } from "../server/repositories/network-badges.js";
 import { deleteAccountDatabaseData } from "../server/account-deletion-db.js";
 import { usageSummary } from "../server/repositories/chat-billing-read.js";
 
@@ -40,6 +41,8 @@ try {
   await assert.rejects(bindValidator({ ...payload, accountId: otherAccount }, { lookup }), /challenge_invalid/);
   const binding = await bindValidator(payload, { lookup });
   assert.equal(await hasValidatorBinding(accountId), true);
+  assert.ok((await publicNetworkBadgesForAccount({ accountId })).badges.some((badge) => badge.badgeId === "validator"));
+  assert.ok(!(await networkBadgeProjectionForAccount({ accountId })).verifiedBadgeIds.includes("validator"), "validator membership must not change task-routing eligibility");
   await assert.rejects(bindValidator(payload, { lookup }), /challenge_invalid/);
   const second = await issueValidatorChallenge(otherAccount);
   await assert.rejects(bindValidator({ ...payload, accountId: otherAccount, challenge: second.challenge, signature: signatureFor(second.challenge) }, { lookup }), /already_bound/);
