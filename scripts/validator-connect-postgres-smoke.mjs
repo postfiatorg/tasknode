@@ -91,45 +91,48 @@ try {
 
   // Exercise the actual completion route and its strict JSON schema, with VHS
   // responses at the network boundary (no injected repository lookup).
-  const routeMaster = deriveKeypair(generateSeed({ algorithm: "ed25519" }));
-  const routeMasterPublic = encodeNodePublic(Buffer.from(routeMaster.publicKey, "hex"));
-  const fields = { Sequence: 1, PublicKey: routeMaster.publicKey, SigningPubKey: ephemeral.publicKey };
-  const manifestPayload = `4D414E00${encode(fields)}`;
-  const routeManifest = Buffer.from(encode({ ...fields, Signature: sign(manifestPayload, ephemeral.privateKey), MasterSignature: sign(manifestPayload, routeMaster.privateKey) }), "hex").toString("base64");
-  globalThis.fetch = async url => new Response(JSON.stringify(String(url).endsWith("/validators")
-    ? { result: "success", validators: [{ master_key: routeMasterPublic, signing_key: signingPublicKey, revoked: false }] }
-    : { result: "success", reports: [] }));
-  async function connectRoute(path, body, account) {
-    let code, result;
-    const req = Readable.from([Buffer.from(JSON.stringify(body))]);
-    Object.assign(req, { method: "POST", url: path, headers: { "content-type": "application/json" } });
-    const policy = routeBodyPolicyForRequest(apiRoutePolicies.find(p => p.path === path), "POST", path);
-    await handleValidatorConnectRoute({ req, res: {}, session: account ? { accountId: account } : null,
-      url: new URL(path, "http://localhost"),
-      readJson: request => readValidatedJson(request, policy.maxBytes, policy.schema),
-      json: (_res, status, value) => { code = status; result = value; } });
-    return { code, result };
+  for (const routeEphemeral of [ephemeral, deriveKeypair(generateSeed({ algorithm: "ed25519" }))]) {
+    const routeSigningPublicKey = encodeNodePublic(Buffer.from(routeEphemeral.publicKey, "hex"));
+    const routeMaster = deriveKeypair(generateSeed({ algorithm: "ed25519" }));
+    const routeMasterPublic = encodeNodePublic(Buffer.from(routeMaster.publicKey, "hex"));
+    const fields = { Sequence: 1, PublicKey: routeMaster.publicKey, SigningPubKey: routeEphemeral.publicKey };
+    const manifestPayload = `4D414E00${encode(fields)}`;
+    const routeManifest = Buffer.from(encode({ ...fields, Signature: sign(manifestPayload, routeEphemeral.privateKey), MasterSignature: sign(manifestPayload, routeMaster.privateKey) }), "hex").toString("base64");
+    globalThis.fetch = async url => new Response(JSON.stringify(String(url).endsWith("/validators")
+      ? { result: "success", validators: [{ master_key: routeMasterPublic, signing_key: routeSigningPublicKey, revoked: false }] }
+      : { result: "success", reports: [] }));
+    async function connectRoute(path, body, account) {
+      let code, result;
+      const req = Readable.from([Buffer.from(JSON.stringify(body))]);
+      Object.assign(req, { method: "POST", url: path, headers: { "content-type": "application/json" } });
+      const policy = routeBodyPolicyForRequest(apiRoutePolicies.find(p => p.path === path), "POST", path);
+      await handleValidatorConnectRoute({ req, res: {}, session: account ? { accountId: account } : null,
+        url: new URL(path, "http://localhost"),
+        readJson: request => readValidatedJson(request, policy.maxBytes, policy.schema),
+        json: (_res, status, value) => { code = status; result = value; } });
+      return { code, result };
+    }
+    const routeToken = await issueValidatorConnect(other);
+    const routeChallenge = (await validatorConnectChallenge(routeToken.token)).challenge;
+    const routeProof = { token: routeToken.token, master_public_key: routeMasterPublic, signing_public_key: routeSigningPublicKey,
+      signature: sign(Buffer.from(routeChallenge).toString("hex"), routeEphemeral.privateKey), manifest: routeManifest };
+    const completePath = "/api/validators/connect/complete";
+    assert.equal((await connectRoute(completePath, routeProof, accountId)).code, 403);
+    assert.equal((await connectRoute(completePath, { ...routeProof, validator_token: "must-not-be-accepted" })).code, 400);
+    assert.equal((await connectRoute(completePath, { ...routeProof, master_public_key: masterPublicKey })).code, 403);
+    assert.equal((await connectRoute(completePath, { ...routeProof, signature: "0".repeat(128) })).code, 403);
+    const staleKey = deriveKeypair(generateSeed({ algorithm: "ecdsa-secp256k1" }));
+    const staleResult = await connectRoute(completePath, { ...routeProof,
+      signing_public_key: encodeNodePublic(Buffer.from(staleKey.publicKey, "hex")),
+      signature: sign(Buffer.from(routeChallenge).toString("hex"), staleKey.privateKey) });
+    assert.equal(staleResult.code, 403); assert.equal(staleResult.result.error, "validator_signing_key_not_current");
+    const routeResult = await connectRoute(completePath, routeProof);
+    assert.equal(routeResult.code, 200, JSON.stringify(routeResult.result));
+    const routeAudit = (await query("SELECT signing_public_key,manifest FROM validator_bindings WHERE id=$1", [routeResult.result.binding.id])).rows[0];
+    assert.equal(routeAudit.signing_public_key, routeSigningPublicKey); assert.equal(routeAudit.manifest, routeManifest);
+    assert.equal((await connectRoute(completePath, routeProof)).code, 403);
+    await query("UPDATE validator_bindings SET revoked_at=now() WHERE id=$1", [routeResult.result.binding.id]);
   }
-  const routeToken = await issueValidatorConnect(other);
-  const routeChallenge = (await validatorConnectChallenge(routeToken.token)).challenge;
-  const routeProof = { token: routeToken.token, master_public_key: routeMasterPublic, signing_public_key: signingPublicKey,
-    signature: sign(Buffer.from(routeChallenge).toString("hex"), ephemeral.privateKey), manifest: routeManifest };
-  const completePath = "/api/validators/connect/complete";
-  assert.equal((await connectRoute(completePath, routeProof, accountId)).code, 403);
-  assert.equal((await connectRoute(completePath, { ...routeProof, validator_token: "must-not-be-accepted" })).code, 400);
-  assert.equal((await connectRoute(completePath, { ...routeProof, master_public_key: masterPublicKey })).code, 403);
-  assert.equal((await connectRoute(completePath, { ...routeProof, signature: "0".repeat(128) })).code, 403);
-  const staleKey = deriveKeypair(generateSeed({ algorithm: "ecdsa-secp256k1" }));
-  const staleResult = await connectRoute(completePath, { ...routeProof,
-    signing_public_key: encodeNodePublic(Buffer.from(staleKey.publicKey, "hex")),
-    signature: sign(Buffer.from(routeChallenge).toString("hex"), staleKey.privateKey) });
-  assert.equal(staleResult.code, 403); assert.equal(staleResult.result.error, "validator_signing_key_not_current");
-  const routeResult = await connectRoute(completePath, routeProof);
-  assert.equal(routeResult.code, 200, JSON.stringify(routeResult.result));
-  const routeAudit = (await query("SELECT signing_public_key,manifest FROM validator_bindings WHERE id=$1", [routeResult.result.binding.id])).rows[0];
-  assert.equal(routeAudit.signing_public_key, signingPublicKey); assert.equal(routeAudit.manifest, routeManifest);
-  assert.equal((await connectRoute(completePath, routeProof)).code, 403);
-  await query("UPDATE validator_bindings SET revoked_at=now() WHERE id=$1", [routeResult.result.binding.id]);
   globalThis.fetch = originalFetch;
 
   process.env.GA_RESEARCH_URL = "https://ga.example.test/ga-research";

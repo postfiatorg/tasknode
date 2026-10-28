@@ -66,7 +66,8 @@ try {
   assert.ok(!container.trace.some(x => x.args.some(a => a.includes('validator-keys.json'))), "default never searches master files");
   const signing = container.trace.find(x => x.args[0] === "run");
   assert.ok(signing.args.includes("postfiatd:ro")); assert.ok(signing.args.includes("python3"));
-  const host = run("host", ["--keyfile", keyfile]); assert.equal(host.status, 0, host.stderr);
+  const diagnosed = run("diagnose", ["--diagnose"]); assert.equal(diagnosed.status, 0, diagnosed.stderr); assert.ok(diagnosed.stderr.includes("Validator diagnose:"));
+  const host = run("host", ["--diagnose", "--keyfile", keyfile]); assert.equal(host.status, 0, host.stderr);
   assert.ok(host.trace.some(x => x.args.includes(`${keyfile}:/run/tasknode-input:ro`)));
   const override = run("explicit-container", ["--keyfile", "/explicit/validator-keys.json"]); assert.equal(override.status, 0, override.stderr);
   assert.ok(override.trace.some(x => x.args[0] === "run" && x.args.includes("/usr/local/bin/validator-keys")));
