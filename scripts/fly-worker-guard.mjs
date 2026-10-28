@@ -16,6 +16,7 @@ const PROCESS_GROUPS = [
   "worker-memory-profile",
   "worker-airdrop",
   "worker-nft-renderer",
+  "worker-validator-research",
 ];
 
 function usage() {
