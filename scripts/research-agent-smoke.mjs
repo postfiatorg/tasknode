@@ -8,6 +8,12 @@ import { defaultChatResearchBudget } from "../shared/chat-research.js";
 import { researchMode, researchProgress, newerResearchProgress, researchTables } from "../shared/research-agent.js";
 import { researchInline, researchMarkdownToBlocks } from "../src/features/chat/research-markdown.js";
 import { callResearchService } from "../server/research-provider.js";
+import { chatTitleFromPrompt, agentMessageIdentity } from "../src/features/chat/chat-turns.js";
+
+assert.equal(chatTitleFromPrompt("  Compare\t\n earnings\u00a0 releases  "), "Compare earnings releases");
+assert.equal(chatTitleFromPrompt("x".repeat(60)), "x".repeat(48));
+assert.equal(chatTitleFromPrompt(" \t"), "New chat");
+assert.equal(agentMessageIdentity({ senderType: "machine_agent", agentHandle: "@@orc" }).handle, "orc");
 
 const question = "Compare management commentary across the past six quarters.";
 const fixture = { route_token: "test-route", mode: "agent", reason: "Compare several periods and sources.",

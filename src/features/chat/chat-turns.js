@@ -1,4 +1,4 @@
-import { markdownToBlocks, plainTextFromBlocks } from "./chat-markdown";
+import { markdownToBlocks, plainTextFromBlocks } from "./chat-markdown.js";
 import { researchMarkdownToBlocks } from "./research-markdown.js";
 
 export function newClientConversationId() {
@@ -69,7 +69,9 @@ export function agentMessageIdentity(metadata = {}) {
   const machineSender = metadata.senderType === "machine_agent" || origin.actorType === "machine_agent" || origin.agent === true;
   if (!machineSender) return null;
   const rawHandle = String(origin.agentHandle || origin.handle || metadata.agentHandle || "").trim();
-  const handle = rawHandle.replace(/^@+/, "").slice(0, 80);
+  let handleStart = 0;
+  while (rawHandle[handleStart] === "@") handleStart++;
+  const handle = rawHandle.slice(handleStart, handleStart + 80);
   const label = handle ? `@${handle}` : "Orc agent";
   return {
     handle,
@@ -181,7 +183,13 @@ export function createRecentPlaceholderThread(title) {
 }
 
 export function chatTitleFromPrompt(prompt) {
-  const title = String(prompt || "").trim().replace(/\s+/g, " ").slice(0, 48);
+  let title = "";
+  for (const char of String(prompt || "").trim()) {
+    if (!char.trim()) { if (!title.endsWith(" ")) title += " "; }
+    else title += char;
+    if (title.length >= 48) break;
+  }
+  title = title.slice(0, 48);
   return title || "New chat";
 }
 
