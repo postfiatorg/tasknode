@@ -23,6 +23,7 @@ import {
   recoverFailedRequestNetworkTaskGenerationChains,
   repairNetworkTaskOfferLinks,
 } from "./repositories/network-tasks.js";
+import { envNumber } from "./env-number.js";
 
 let timer = null;
 let immediateTimer = null;
@@ -362,7 +363,7 @@ export function processNetworkTaskGenerationQueueOnce(options = {}) {
   return queueRun;
 }
 async function runNetworkTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
-  const staleMinutes = Number(process.env.TASKNODE_NETWORK_TASK_GENERATION_STALE_MINUTES || 5);
+  const staleMinutes = envNumber("TASKNODE_NETWORK_TASK_GENERATION_STALE_MINUTES", 5);
   await reclaimStaleNetworkTaskGenerationJobs({ staleMinutes }).catch((error) => {
     logger.warn?.("network_task_generation_stale_reclaim_failed", { error: error?.message || String(error) });
   });

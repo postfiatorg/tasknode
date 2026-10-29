@@ -12,6 +12,7 @@ import {
 } from "./repositories/profile-daily-airdrop.js";
 import { canonicalRewardedTaskProjectionSql } from "./repositories/task-projection-integrity.js";
 import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
+import { envNumber } from "./env-number.js";
 
 const PROMPT_PATH = "profile/daily_airdrop_v1.md";
 const PROMPT_VERSION = "daily_airdrop_v1";
@@ -396,7 +397,7 @@ export async function runDailyAirdropScore({
   scenarioId = "",
   now = new Date(),
   lookbackDays = DEFAULT_LOOKBACK_DAYS,
-  maxDailyPft = Number(process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || DEFAULT_MAX_DAILY_PFT),
+  maxDailyPft = envNumber("TASKNODE_DAILY_AIRDROP_MAX_PFT", DEFAULT_MAX_DAILY_PFT),
   maxRewardFraction = dailyAirdropMaxRewardFraction(),
   model = process.env.TASKNODE_DAILY_AIRDROP_MODEL || DEFAULT_MODEL,
   scoreAttempts = Number(process.env.TASKNODE_DAILY_AIRDROP_SCORE_ATTEMPTS || 2),

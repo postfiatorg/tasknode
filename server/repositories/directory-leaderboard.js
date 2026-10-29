@@ -7,9 +7,10 @@ import {
   nonFixtureProfileNftSql,
   nonFixtureRecommendedProfileSql,
 } from "./task-projection-integrity.js";
+import { envNumberAtLeast } from "../env-number.js";
 
-const leaderboardLimit = Math.max(1, Number(process.env.DIRECTORY_LEADERBOARD_LIMIT || 200));
-const leaderboardCacheMs = Math.max(0, Number(process.env.DIRECTORY_LEADERBOARD_CACHE_MS || 30_000));
+const leaderboardLimit = envNumberAtLeast("DIRECTORY_LEADERBOARD_LIMIT", 200, 1);
+const leaderboardCacheMs = envNumberAtLeast("DIRECTORY_LEADERBOARD_CACHE_MS", 30_000, 0);
 
 let cachedBaseDocument = null;
 let cachedBaseDocumentUntil = 0;
