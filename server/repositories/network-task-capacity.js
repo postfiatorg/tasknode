@@ -1,6 +1,7 @@
 import { databaseEnabled, query } from "../db/pool.js";
 import { activeAllocationStatuses, safeText, taskClass as normalizeTaskClass, toIso } from "./network-tasks-utils.js";
 import { canonicalAllocationProjectionLinkSql } from "./network-task-allocation-sync.js";
+import { envNumberAtLeast } from "../env-number.js";
 
 // Canonical Network Task capacity rule (single source of truth).
 //
@@ -303,7 +304,7 @@ export async function listNetworkTaskCandidateCapacityChecks(candidates = []) {
 // allocation; trusted contributors can be raised by the operator.
 export async function getNetworkTaskCapacityLimit(accountId = "", { queryImpl = query, strict = false } = {}) {
   const normalized = safeText(accountId, 180);
-  const fallback = Math.max(1, Number(process.env.TASKNODE_NETWORK_TASK_DEFAULT_CAPACITY || 1));
+  const fallback = envNumberAtLeast("TASKNODE_NETWORK_TASK_DEFAULT_CAPACITY", 1, 1);
   if (!normalized) return fallback;
   try {
     const result = await queryImpl(

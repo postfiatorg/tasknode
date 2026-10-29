@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { getAccountExpertReview, setAccountExpertReview } from "./repositories/account-profiles.js";
 import { listTaskState } from "./repositories/tasks.js";
 import { INFERENCE_MODELS, inferenceChatCompletion, inferenceConfigured } from "./inference.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 export const expertRequiredPersonalTaskCount = 20;
 export const expertScoreThreshold = 80;
@@ -42,7 +43,7 @@ function expertReasoningEffort() {
 }
 
 function expertTimeoutMs() {
-  return Math.max(30000, Number(process.env.TASKNODE_EXPERT_EVALUATOR_TIMEOUT_MS || 120000));
+  return envNumberAtLeast("TASKNODE_EXPERT_EVALUATOR_TIMEOUT_MS", 120000, 30000);
 }
 
 function openRouterUsage(body = {}) {
@@ -246,7 +247,7 @@ async function fetchExpertEvaluation({ topic = "", tasks = [], fetchImpl = fetch
         reasoning: { effort: expertReasoningEffort() },
         response_format: expertResponseFormat(),
         temperature: 0,
-        max_tokens: Math.max(1200, Number(process.env.TASKNODE_EXPERT_EVALUATOR_MAX_OUTPUT_TOKENS || 2500)),
+        max_tokens: envNumberAtLeast("TASKNODE_EXPERT_EVALUATOR_MAX_OUTPUT_TOKENS", 2500, 1200),
         metadata: {
           app: "tasknodeofficial",
           worker: "expert_badge_evaluator",

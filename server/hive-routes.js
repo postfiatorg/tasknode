@@ -43,15 +43,16 @@ import {
   hiveBrainOperatorAccess,
   hiveReportRerunAccess,
 } from "./hive-operator-access.js";
+import { envNumberAtLeast, envNumberBetween } from "./env-number.js";
 
 const maxHiveAttachmentTextLength = 12_000;
 const maxHiveAttachmentExcerptLength = 800;
 const hiveProjectsFastTimeoutMs = Math.min(
-  Math.max(Number(process.env.TASKNODE_HIVE_PROJECTS_FAST_TIMEOUT_MS || 900), 100),
+  envNumberAtLeast("TASKNODE_HIVE_PROJECTS_FAST_TIMEOUT_MS", 900, 100),
   5000
 );
 const hiveProjectsColdStartTimeoutMs = Math.min(
-  Math.max(Number(process.env.TASKNODE_HIVE_PROJECTS_COLD_START_TIMEOUT_MS || 4500), hiveProjectsFastTimeoutMs),
+  envNumberAtLeast("TASKNODE_HIVE_PROJECTS_COLD_START_TIMEOUT_MS", 4500, hiveProjectsFastTimeoutMs),
   5000
 );
 
@@ -196,9 +197,9 @@ function safeText(value = "", max = 1000) {
 
 function agentHiveChatRateLimitConfig() {
   return {
-    max: Math.min(Math.max(Number(process.env.TASKNODE_AGENT_HIVE_CHAT_RATE_LIMIT_MAX || 6), 1), 100),
+    max: envNumberBetween("TASKNODE_AGENT_HIVE_CHAT_RATE_LIMIT_MAX", 6, 1, 100),
     windowMs: Math.min(
-      Math.max(Number(process.env.TASKNODE_AGENT_HIVE_CHAT_RATE_LIMIT_WINDOW_MS || 60_000), 1000),
+      envNumberAtLeast("TASKNODE_AGENT_HIVE_CHAT_RATE_LIMIT_WINDOW_MS", 60_000, 1000),
       60 * 60 * 1000
     ),
   };
