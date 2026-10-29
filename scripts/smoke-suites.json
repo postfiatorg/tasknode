@@ -217,6 +217,7 @@
     "scripts/pftl-cache-reducer-postgres-smoke.mjs",
     "scripts/profile-account-recovery-smoke.mjs",
     "scripts/profile-nft-pipeline-smoke.mjs",
+    "scripts/task-active-history-postgres-smoke.mjs",
     "scripts/task-generation-manual-retry-smoke.mjs",
     "scripts/task-hive-allocation-audit-smoke.mjs",
     "scripts/task-hive-allocation-repair-smoke.mjs",
