@@ -19,8 +19,12 @@ export async function callResearchService({ method = "GET", path, accountId, pay
   const prefix = configured.endsWith("/") ? configured.slice(0, -1) : configured;
   const response = await fetchImpl(`${prefix}${path}`, {
     method, headers: researchHmacHeaders({ method, path, accountId, body, secret: env.GA_RESEARCH_HMAC_SECRET }),
-    ...(body ? { body } : {}), signal: AbortSignal.timeout(20000), redirect: "error",
+    ...(body ? { body } : {}), signal: AbortSignal.timeout(method === "POST" ? 45000 : 20000), redirect: "error",
   });
-  if (!response.ok) throw validatorError("research_service_request_failed", response.status >= 500 ? 503 : response.status);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    const previewInvalid = response.status === 409 && [error.error, error.detail].includes("route_preview_invalid");
+    throw validatorError(previewInvalid ? "route_preview_invalid" : "research_service_request_failed", response.status >= 500 ? 503 : response.status);
+  }
   return response.json();
 }

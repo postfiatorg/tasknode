@@ -316,22 +316,34 @@ Confirming Delete removes the conversation from Recents and closes the dialog im
 
 ## Deep Research
 
-All signed-in accounts can select **+ → Deep Research**. GoodAlexander research,
-billed at cost (typically $0.50-1.00, about 3 minutes), uses your Task Node balance.
-At least $0.50 available is required; use **Settings → Billing → Top up** to add
-credit. Validators keep their eligible $20/month credit, while research API keys
-and GoodAlexander models remain validator-only.
+All signed-in accounts can select **+ → Deep Research**. GoodAlexander research
+uses your Task Node balance and bills at provider cost. At least $0.50 available
+is required; use **Settings → Billing → Top up** to add credit. Validators keep
+their eligible $20/month credit; research API keys and models remain validator-only.
 
-The default maximum is **$1.50**, reduced to your available balance when it is
-between $0.50 and $1.50. You can choose a different maximum. Pending jobs reserve
-the maximum; settlement charges actual provider cost rounded up once to six
-decimals and releases unused credit. Failed jobs may incur provider cost.
+Enter your question and select **Preview research**. The free preview chooses
+fast research (usually about 3 minutes) or exploratory agent research (up to
+10 minutes), explains the choice and shows the maximum before any job starts.
+The default is **$1.50 for fast** or **$3 for agent**, reduced to available credit
+after pending reservations when at least $0.50 remains. You can set a maximum
+from $0.05 to **$10**, with at most six decimal places. Select **Start research**
+to confirm the displayed maximum. Changing the question or letting the preview
+expire requires another preview.
 
-The report is saved directly in chat with citations, costs and a Markdown download.
-Its card shows **Improvement round: done** or **skipped** from the service's
+Pending jobs reserve their maximum. Settlement charges actual provider cost
+rounded up once to six decimals and releases unused credit. Failed jobs may incur
+provider cost. A preview or repeated result read never charges for research.
+
+The chat shows research stage, steps, documents processed, elapsed time and spend
+so far. You can leave or reload and return to the same job, including jobs lasting
+15 minutes. A slow job continues to be checked; it is not automatically submitted
+again. Finished reports appear directly in chat with citations, readable tables,
+costs and a Markdown download. Supplied structured time series also appear under
+**Research data tables**. Partial reports are labeled.
+
+The report card shows **Improvement round: done** or **skipped** from the service's
 metadata; an interrupted round is labeled explicitly. Older reports without that
-metadata make no round claim. Returning to a saved chat or reading its result
-again does not charge again. Existing Corbanu jobs remain readable.
+metadata make no round claim. Existing Corbanu jobs remain readable.
 
 ## Decisions
 

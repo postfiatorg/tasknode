@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { publicMessage, safeText } from "./context-rewrite-projection.js";
 import { chatResearchImprovement, defaultChatResearchBudget } from "../../shared/chat-research.js";
+import { researchMode, newerResearchProgress, researchTables } from "../../shared/research-agent.js";
 
 const modeName = "Deep Research";
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
@@ -34,6 +35,11 @@ function metadataForJob(row = {}) {
       progress,
       usage,
       provider: row.provider || "corbanu",
+      mode: result.mode || row.research_options?.mode || "fast",
+      startedAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      tables: researchTables(result.tables),
+      partial: result.agent?.partial === true,
+      coverage: result.agent?.coverage || null,
       improvementRound: row.provider === "goodalexander" ? chatResearchImprovement(result.quality?.tih) : null,
       improvementReason: row.provider === "goodalexander" && chatResearchImprovement(result.quality?.tih) === "skipped"
         ? safeText(result.quality.tih.skip_reason, 500) : "",
@@ -58,6 +64,7 @@ function publicJob(row = {}) {
     id: row.id || "",
     gatewayJobId: row.gateway_job_id || "",
     provider: row.provider || "corbanu",
+    mode: row.research_options?.mode || "fast",
     maxCostUsd: row.max_cost_usd === null || row.max_cost_usd === undefined ? null : Number(row.max_cost_usd),
     accountId: row.account_id || "",
     conversationId: row.conversation_id || "",
@@ -72,6 +79,13 @@ function publicJob(row = {}) {
   };
 }
 
+export async function availableResearchCredit(accountId, client = { query }) {
+  const balance = (await client.query(`SELECT COALESCE((SELECT current_credit_usd-current_spend_usd
+    FROM billing_accounts WHERE account_id=$1),0) - COALESCE((SELECT SUM((request_json->>'max_cost_usd')::numeric)
+    FROM research_gateway_jobs WHERE account_id=$1 AND status IN ('submitting','queued','running') AND billed_at IS NULL),0) AS available`, [accountId])).rows[0];
+  return Math.max(0, Math.floor(Number(balance.available) * 1e6) / 1e6);
+}
+
 export async function createDeepResearchJob({
   accountId = "",
   conversationId = "",
@@ -80,8 +94,16 @@ export async function createDeepResearchJob({
   requestId = "",
   provider = "corbanu",
   maxCostUsd = null,
+  mode,
+  routeToken,
 } = {}) {
   if (!databaseEnabled()) throw Object.assign(new Error("deep_research_database_required"), { status: 409 });
+  const selectedMode = researchMode(mode, "fast");
+  if (maxCostUsd != null && (typeof maxCostUsd !== "number" || !Number.isFinite(maxCostUsd) || maxCostUsd < 0.05 ||
+      maxCostUsd > 10 || Number(maxCostUsd.toFixed(6)) !== maxCostUsd)) {
+    throw Object.assign(new Error("research_budget_invalid"), { status: 400 });
+  }
+  if (routeToken !== undefined && (typeof routeToken !== "string" || !routeToken || routeToken.length > 8192)) throw Object.assign(new Error("research_route_token_invalid"), { status: 400 });
   const owner = safeText(accountId, 180);
   const conversation = safeText(conversationId, 180);
   const prompt = safeText(question, 50_000);
@@ -100,7 +122,8 @@ export async function createDeepResearchJob({
     if (existingJob.rows[0]) {
       const row = existingJob.rows[0];
       if (row.question !== prompt || row.conversation_id !== conversation ||
-          (row.provider === "goodalexander" && maxCostUsd != null && Number(row.max_cost_usd) !== Number(maxCostUsd))) {
+          (row.provider === "goodalexander" && ((maxCostUsd != null && Number(row.max_cost_usd) !== Number(maxCostUsd)) ||
+            (mode !== undefined && selectedMode !== (row.research_options?.mode || "fast"))))) {
         throw Object.assign(new Error("deep_research_request_conflict"), { status: 409 });
       }
       const messages = await client.query(
@@ -110,6 +133,7 @@ export async function createDeepResearchJob({
       return {
         created: false,
         job: publicJob(row),
+        researchOptions: row.research_options || {},
         user: publicMessage(messages.rows.find(item => item.id === row.question_message_id)),
         assistant: publicMessage(messages.rows.find(item => item.id === row.assistant_message_id)),
       };
@@ -125,10 +149,7 @@ export async function createDeepResearchJob({
 
     let budget = maxCostUsd;
     if (provider === "goodalexander" && budget == null) {
-      const balance = (await client.query(`SELECT COALESCE((SELECT current_credit_usd-current_spend_usd
-        FROM billing_accounts WHERE account_id=$1),0) - COALESCE((SELECT SUM((request_json->>'max_cost_usd')::numeric)
-        FROM research_gateway_jobs WHERE account_id=$1 AND status IN ('submitting','queued','running') AND billed_at IS NULL),0) AS available`, [owner])).rows[0];
-      budget = defaultChatResearchBudget(balance.available);
+      budget = defaultChatResearchBudget(await availableResearchCredit(owner, client), selectedMode);
     }
     const jobId = `dr_${randomUUID()}`;
     const userMessageId = `msg_${randomUUID()}_deep_research_user`;
@@ -187,16 +208,17 @@ export async function createDeepResearchJob({
       `
         INSERT INTO deep_research_jobs(
           id,account_id,conversation_id,request_id,question_message_id,assistant_message_id,
-          question,title,status,stage,created_at,updated_at,provider,max_cost_usd
+          question,title,status,stage,created_at,updated_at,provider,max_cost_usd,research_options
         )
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,'starting','starting',$9,$9,$10,$11)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,'starting','starting',$9,$9,$10,$11,$12::jsonb)
         RETURNING *
       `,
-      [jobId, owner, conversation, idempotency, userMessageId, assistantMessageId, prompt, safeText(title, 500), now, provider, provider === "goodalexander" ? budget : null],
+      [jobId, owner, conversation, idempotency, userMessageId, assistantMessageId, prompt, safeText(title, 500), now, provider, provider === "goodalexander" ? budget : null, JSON.stringify({ mode: selectedMode, ...(routeToken ? { route_token: routeToken } : {}) })],
     );
     return {
       created: true,
       job: publicJob(inserted.rows[0]),
+      researchOptions: inserted.rows[0].research_options || {},
       user: publicMessage(user.rows[0]),
       assistant: publicMessage(assistant.rows[0]),
     };
@@ -210,17 +232,26 @@ export async function attachDeepResearchGatewayJob({
   status = "queued",
   stage = "queued",
 } = {}) {
-  const result = await query(
-    `
-      UPDATE deep_research_jobs
-      SET gateway_job_id=$3,status=$4,stage=$5,updated_at=now()
-      WHERE id=$1 AND account_id=$2
-      RETURNING *
-    `,
-    [jobId, safeText(accountId, 180), safeText(gatewayJobId, 180), normalizedStatus(status), safeText(stage, 80)],
-  );
-  if (!result.rows[0]) return null;
-  return updateAssistant(result.rows[0]);
+  return transaction(async client => {
+    const row = (await client.query("SELECT * FROM deep_research_jobs WHERE id=$1 AND account_id=$2 FOR UPDATE", [jobId, safeText(accountId, 180)])).rows[0];
+    if (!row) return null;
+    if (row.gateway_job_id && row.gateway_job_id !== gatewayJobId) throw Object.assign(new Error("deep_research_gateway_conflict"), { status: 409 });
+    if (row.gateway_job_id || terminalStatuses.has(row.status)) {
+      const assistant = (await client.query("SELECT * FROM chat_messages WHERE id=$1 AND account_id=$2", [row.assistant_message_id, row.account_id])).rows[0];
+      return { job: publicJob(row), assistant: publicMessage(assistant) };
+    }
+    const result = await client.query(
+      `
+        UPDATE deep_research_jobs
+        SET gateway_job_id=$3,status=$4,stage=$5,updated_at=now()
+        WHERE id=$1 AND account_id=$2
+        RETURNING *
+      `,
+      [jobId, safeText(accountId, 180), safeText(gatewayJobId, 180), normalizedStatus(status), safeText(stage, 80)],
+    );
+    if (!result.rows[0]) return null;
+    return updateAssistant(result.rows[0], client);
+  });
 }
 
 export async function updateDeepResearchJob({
@@ -234,28 +265,42 @@ export async function updateDeepResearchJob({
   error = "",
 } = {}) {
   const normalized = normalizedStatus(status);
-  const updated = await query(
-    `
-      UPDATE deep_research_jobs
-      SET status=$3,stage=$4,usage_json=$5,progress_json=$6,result_json=$7,error=$8,
-          updated_at=now(),completed_at=CASE WHEN $9 THEN COALESCE(completed_at,now()) ELSE completed_at END
-      WHERE id=$1 AND account_id=$2
-      RETURNING *
-    `,
-    [
-      jobId, safeText(accountId, 180), normalized, safeText(stage, 80),
-      usage && typeof usage === "object" ? usage : {},
-      progress && typeof progress === "object" ? progress : {},
-      result && typeof result === "object" ? result : {},
-      safeText(error, 1000), terminalStatuses.has(normalized),
-    ],
-  );
-  if (!updated.rows[0]) return null;
-  return updateAssistant(updated.rows[0]);
+  return transaction(async client => {
+    const row = (await client.query("SELECT * FROM deep_research_jobs WHERE id=$1 AND account_id=$2 FOR UPDATE", [jobId, safeText(accountId, 180)])).rows[0];
+    if (!row) return null;
+    if (terminalStatuses.has(row.status) || (!terminalStatuses.has(normalized) && row.progress_json?.sequence !== undefined &&
+        newerResearchProgress(row.progress_json, progress) === row.progress_json)) {
+      const assistant = (await client.query("SELECT * FROM chat_messages WHERE id=$1 AND account_id=$2", [row.assistant_message_id, row.account_id])).rows[0];
+      return { job: publicJob(row), assistant: publicMessage(assistant) };
+    }
+    progress = newerResearchProgress(row.progress_json || {}, progress);
+    if (terminalStatuses.has(normalized) && progress.sequence !== undefined) {
+      progress = { ...progress, stage: normalized,
+        ...(typeof usage.total_cost_usd === "number" && usage.total_cost_usd >= progress.cost_usd ? { cost_usd: usage.total_cost_usd } : {}) };
+    }
+    const updated = await client.query(
+      `
+        UPDATE deep_research_jobs
+        SET status=$3,stage=$4,usage_json=$5,progress_json=$6,result_json=$7,error=$8,
+            updated_at=now(),completed_at=CASE WHEN $9 THEN COALESCE(completed_at,now()) ELSE completed_at END
+        WHERE id=$1 AND account_id=$2
+        RETURNING *
+      `,
+      [
+        jobId, safeText(accountId, 180), normalized, safeText(stage, 80),
+        usage && typeof usage === "object" ? usage : {},
+        progress && typeof progress === "object" ? progress : {},
+        result && typeof result === "object" ? result : {},
+        safeText(error, 1000), terminalStatuses.has(normalized),
+      ],
+    );
+    if (!updated.rows[0]) return null;
+    return updateAssistant(updated.rows[0], client);
+  });
 }
 
-async function updateAssistant(row) {
-  const assistant = await query(
+async function updateAssistant(row, client = { query }) {
+  const assistant = await client.query(
     `
       UPDATE chat_messages
       SET body=$3,metadata_json=$4

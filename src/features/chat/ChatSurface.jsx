@@ -13,7 +13,9 @@ import { applyContextEditProposal, CONTEXT_EDIT_MODE, CONTEXT_EDIT_PLACEHOLDER, 
 import { CONTEXT_REWRITE_MODE, CONTEXT_REWRITE_PLACEHOLDER, createContextRewriteJob } from "../context/context-rewrite-client";
 import { useContextRewritePolling } from "../context/use-context-rewrite-polling.js";
 import { DEEP_RESEARCH_MODE, DEEP_RESEARCH_PLACEHOLDER, createDeepResearchJob } from "./deep-research-client.js";
-import { CHAT_RESEARCH_DESCRIPTION, defaultChatResearchBudget } from "../../../shared/chat-research.js";
+import { ResearchMenuItems } from "./ResearchMenuItems.jsx";
+import { useResearchPreview } from "./use-research-preview.js";
+import { ResearchPreview } from "./ResearchPreview.jsx";
 import { createDecisionJob, DECISION_MODE, DECISION_PLACEHOLDER, DECISION_TIERS } from "./decisions-client.js";
 import { useDecisionPolling } from "./use-decision-polling.js";
 import { useDeepResearchPolling } from "./use-deep-research-polling.js";
@@ -99,6 +101,10 @@ export function ChatSurface({
   const [attachments, setAttachments] = useState([]);
   const [composerDragActive, setComposerDragActive] = useState(false);
   const [draftConversationId, setDraftConversationId] = useState(() => newClientConversationId());
+  const researchReview = useResearchPreview({ accountId, conversationKey: activeChat?.conversationId || activeChat?.id || draftConversationId, question: input.trim(),
+    enabled: deepResearchMode && chat?.deepResearchAtCost, availableCreditUsd: usage?.availableCreditUsd,
+    explicitBudget: deepResearchBudget });
+
   const [editingMsg, setEditingMsg] = useState(null);
   const [editDraft, setEditDraft] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
@@ -382,6 +388,7 @@ export function ChatSurface({
     }
     const message = input.trim();
     if (!message && attachments.length === 0) return;
+    if (deepResearchMode && chat?.deepResearchAtCost && !(await researchReview.prepare())) return;
     if (activeModality?.requiresQuestion && !message) {
       setSendMessage("Ask a specific question before casting the I Ching.");
       setStatusTone("error");
@@ -398,7 +405,8 @@ export function ChatSurface({
     const isContextEdit = contextEditMode && !isTaskRequest && !isDeepResearch && !isContextRewrite;
     const isHiveContext = isHiveChat && !isTaskRequest && !isDeepResearch && !isContextEdit && !isContextRewrite;
     const requestId = isTaskRequest ? newClientCorrelationId("req") : "";
-    const deepResearchRequestId = isDeepResearch ? newClientCorrelationId("deepresearch") : "";
+    const deepResearchRequestId = isDeepResearch ? (isDecision || !chat?.deepResearchAtCost
+      ? newClientCorrelationId("deepresearch") : researchReview.requestId(() => newClientCorrelationId("deepresearch"))) : "";
     const bundleId = isTaskRequest ? newClientCorrelationId("bundle") : "";
     const taskRequestMessageId = requestId ? `msg_${requestId}_request_user`.slice(0, 180) : "";
     const taskRequestAssistantId = requestId ? `msg_${requestId}_request_assistant`.slice(0, 180) : "";
@@ -566,9 +574,12 @@ export function ChatSurface({
           conversationId: requestedConversationId,
           requestId: deepResearchRequestId,
           title: chatTitleFromPrompt(submittedText),
-          maxCostUsd: chat?.deepResearchAtCost && deepResearchBudget !== null ? Number(deepResearchBudget) : undefined,
+          maxCostUsd: chat?.deepResearchAtCost ? researchReview.budget : undefined,
+          mode: researchReview.preview?.mode,
+          routeToken: researchReview.preview?.route_token,
         });
         if (!result.ok || !result.body?.job) {
+          if (result.status >= 400 && result.status < 500) researchReview.reset();
           throw new Error(result.body?.message || `${isDecision ? "Decisions" : "Deep Research"} returned HTTP ${result.status}.`);
         }
         const jobFinished = ["completed", "failed", "cancelled"].includes(result.body.job.status);
@@ -591,6 +602,7 @@ export function ChatSurface({
           }
         }
         setDeepResearchMode(false);
+        if (!isDecision) researchReview.reset();
         setDecisionMode(false);
         setSendMessage(result.body.job.status === "failed" ? result.body.job.error : result.body.message || `${isDecision ? "Decision" : "Deep Research"} queued. You can leave and return to this chat.`);
         setStatusTone(result.body.job.status === "failed" ? "error" : "muted");
@@ -1045,7 +1057,7 @@ export function ChatSurface({
           </div>
         )}
         {deepResearchMode && <ComposerModeChip icon={Search} label="Deep Research" onExit={() => setDeepResearchMode(false)} />}
-        {deepResearchMode && chat?.deepResearchAtCost && <label className="deep-research-budget">At provider cost · Maximum USD <input aria-label="Research maximum cost (USD)" type="number" min="0.01" max="5" step="any" value={deepResearchBudget ?? defaultChatResearchBudget(usage?.availableCreditUsd)} onChange={event => setDeepResearchBudget(event.target.value)} /></label>}
+        {deepResearchMode && chat?.deepResearchAtCost && <ResearchPreview review={researchReview} explicitBudget={deepResearchBudget} onBudgetChange={setDeepResearchBudget} />}
         {contextRewriteMode && <ComposerModeChip icon={FileText} label="Context Rewrite" onExit={() => setContextRewriteMode(false)} />}
         {isHiveChat && <ComposerModeChip icon={Network} label={HIVE_CHAT_TITLE} />}
         {activeModality && !isHiveChat && (
@@ -1130,26 +1142,11 @@ export function ChatSurface({
                     window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}
                 />
-                <ToolMenuRow
-                  disabled={chat?.decisionsAvailable !== true}
-                  icon={Lightbulb}
-                  label="Decisions"
-                  onClick={() => {
+                <ResearchMenuItems chat={chat} decisionTier={decisionTier}
+                  onSelect={(mode, note) => {
                     setPlusMenuOpen(false);
-                    selectComposerMode("decision");
-                    setSendMessage(DECISION_TIERS[decisionTier].note);
-                    setStatusTone("muted");
-                    window.setTimeout(() => inputRef.current?.focus(), 0);
-                  }}
-                />
-                <ToolMenuRow
-                  disabled={chat?.deepResearchAvailable !== true}
-                  icon={Search}
-                  label="Deep Research"
-                  onClick={() => {
-                    setPlusMenuOpen(false);
-                    selectComposerMode("research");
-                    setSendMessage(chat?.deepResearchAtCost ? `${CHAT_RESEARCH_DESCRIPTION}. At least $0.50 available is required. Choose your maximum below.` : "Deep Research runs privately through Corbanu and can take several minutes. You can leave and return to the chat.");
+                    selectComposerMode(mode);
+                    setSendMessage(note);
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}
@@ -1347,7 +1344,8 @@ export function ChatSurface({
               )}
             </div>
             )}
-            <ComposerSendButton disabled={historicalReadOnly || !hasPromptInput || sending} />
+            <ComposerSendButton disabled={historicalReadOnly || !hasPromptInput || sending || researchReview.loading}
+              ariaLabel={deepResearchMode && chat?.deepResearchAtCost ? researchReview.preview ? "Start research" : "Preview research" : "Send"} />
           </div>
         </div>
       </form>

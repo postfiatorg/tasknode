@@ -1,4 +1,5 @@
 import { DecisionArtifactCard } from "./DecisionArtifactCard.jsx";
+import { ResearchProgress, ResearchTables } from "./ResearchProgress.jsx";
 import { decisionTier } from "./decisions-client.js";
 import { useState } from "react";
 import {
@@ -282,6 +283,7 @@ export function AssistantMessage({
       />
       <ContextRewriteArtifactCard contextRewrite={contextRewrite} />
       <DeepResearchArtifactCard deepResearch={deepResearch} />
+      {deepResearch?.status === "completed" && <ResearchTables tables={deepResearch.tables} />}
       <DecisionArtifactCard decision={message.metadata?.decision} onCopy={copyText} onDownload={downloadTextFile} />
       {message.error && <div className="assistant-error">Response failed</div>}
       {showToolbar && (
@@ -344,6 +346,8 @@ function DeepResearchArtifactCard({ deepResearch = null }) {
           ))}
         </ol>
       )}
+      <ResearchProgress research={deepResearch} />
+      {deepResearch.partial && <p>Partial research: the report contains the supported findings collected before the limit.</p>}
       <div className="deep-research-privacy">
         {String(deepResearch.privacy || "Provider-backed web research")}
         {deepResearch.provider === "goodalexander" && Number.isFinite(cost) && <span> · Provider ${cost}{Number.isFinite(billed) ? ` · Billed $${billed.toFixed(6)}` : ""}</span>}
@@ -698,6 +702,8 @@ export function BlockRenderer({ block }) {
           </table>
         </div>
       );
+    case "code":
+      return <pre className="research-code"><code>{block.text}</code></pre>;
     case "hr":
       return <hr />;
     default:

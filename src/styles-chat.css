@@ -1030,3 +1030,14 @@
 .user-bubble-clamp { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
 .user-message-more { align-self: flex-end; min-height: 32px; padding: 0 4px; border: 0; background: transparent; color: var(--tn-dark-muted, #6b6963); font: inherit; font-size: 13px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .decision-card-progress span { transition: none; } }
+
+.research-progress { margin-top: 10px; font-size: 13px; color: var(--tn-text-muted, #666); }
+.research-progress p { margin: 5px 0; }
+.research-data-tables { margin: 14px 0; max-width: 100%; }
+.research-data-tables summary { cursor: pointer; font-weight: 600; }
+.research-code { max-width: 100%; overflow-x: auto; padding: 12px; background: var(--tn-surface, #f5f5f5); border-radius: 8px; white-space: pre; }
+.research-preview { padding: 0 14px 8px; font-size: 12px; color: var(--tn-text-muted, #666); }
+.research-preview p { margin: 5px 0; }
+.research-preview .deep-research-budget { padding: 4px 0; }
+.research-preview .deep-research-budget input { width: 116px; }
+.research-preview [role="alert"] { color: var(--tn-error, #b42318); }
