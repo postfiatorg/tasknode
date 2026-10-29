@@ -38,9 +38,9 @@ Replace `<challenge>` with the complete challenge from Settings. For the host co
 
 Chat Deep Research defaults to GoodAlexander for every signed-in account, billed at cost from its Task Node balance. `CHAT_RESEARCH_PROVIDER=corbanu` is an explicit rollback switch for new jobs only; leaving it unset selects GoodAlexander. Missing GoodAlexander configuration makes research unavailable rather than silently choosing another provider. The selected provider is persisted per chat job, so polling and retries continue through the original provider even if the binding changes. GA chat jobs use the same durable reservation and settlement path as research API jobs; completed reports and exact/billed costs are saved in the conversation. The separate Research page is removed. Models are linked from the account menu and Validator settings; research API keys remain in Settings → API keys.
 
-Every signed-in account can use chat research with at least $0.50 available Task Node USD credit. Research API keys and models remain validator-gated; validator monthly rewards are unchanged. The chat default maximum is $1.50, reduced to the available balance when it is between $0.50 and $1.50 (pending reservations are subtracted server-side). An explicit user maximum is preserved and must fit available credit. Omitted-cap retries reuse the stored maximum even if the balance or default changes. Admission reserves the selected maximum cost. Completion debits the actual provider cost rounded up once to $0.000001, including costs incurred by failed jobs, and releases unused reserved credit. Repeated status or result reads do not charge again.
+Every signed-in account can use chat research with at least $0.50 available Task Node USD credit. Research API keys and models remain validator-gated; validator monthly rewards are unchanged. Chat first requests a free routing preview: the structured research router chooses fast or agent and returns an account/question/mode-bound token valid for 15 minutes. The user reviews the maximum before a second submit starts research. The default is $1.50 for fast or $3 for agent, reduced to available credit when at least $0.50 remains after pending reservations. An explicit chat maximum accepts $0.05–$10 with at most six decimal places; it is never rounded upward. Preview failure starts no job and does not guess a mode. Editing the question invalidates the displayed preview. An explicit user maximum is preserved and must fit available credit. Omitted-cap retries reuse the stored maximum even if the balance or default changes. Admission reserves the selected maximum cost. Completion debits the actual provider cost rounded up once to $0.000001, including costs incurred by failed jobs, and releases unused reserved credit. Repeated status or result reads do not charge again.
 
-Configure `GA_RESEARCH_URL=https://research.goodalexander.com:18443/ga-research` and `GA_RESEARCH_HMAC_SECRET` as deployment secrets. The gateway, registry and pinned signer use the branded host on port 18443. The former base `https://178-156-143-199.sslip.io:18443` remains reachable as an operator rollback endpoint through November 4, 2026; preserve that TLS alias for the seven-day transition. Clients refuse redirects; rollback uses an explicit endpoint/config change. The gateway signs the internal `/v1/research` path, uppercase method, Unix timestamp, account ID, and SHA-256 of exact request bytes with newline-separated HMAC-SHA256. It sends X-GA-Account, X-GA-Timestamp, X-GA-Signature. GET bodies are empty. HTTPS redirects are refused. Provider status and result must agree on job ID and total USD cost. Failed jobs retain their incurred provider costs.
+Configure `GA_RESEARCH_URL=https://research.goodalexander.com:18443/ga-research` and `GA_RESEARCH_HMAC_SECRET` as deployment secrets. The gateway, registry and pinned signer use the branded host on port 18443. The former base `https://178-156-143-199.sslip.io:18443` remains reachable as an operator rollback endpoint through November 4, 2026; preserve that TLS alias for the seven-day transition. Clients refuse redirects; rollback uses an explicit endpoint/config change. The gateway signs the internal `/v1/research` path, uppercase method, Unix timestamp, account ID, and SHA-256 of exact request bytes with newline-separated HMAC-SHA256. It sends X-GA-Account, X-GA-Timestamp, X-GA-Signature. GET bodies are empty. HTTPS redirects are refused. POST calls allow 45 seconds and GET calls 20 seconds; these are individual request limits, not job lifetimes. Provider status and result must agree on job ID and total USD cost. Failed jobs retain their incurred provider costs.
 
 `TASKNODE_VALIDATOR_REWARDS_ENABLED=true` authorizes the worker and CLI to grant real credit. Keep it disabled until deployment approval. The existing HTTP administrative credit route remains disabled. Dry runs do not require the enable flag:
 
@@ -95,3 +95,34 @@ Migration157 adds only `l1_validator_reward_grants`, preserving existing Ledger 
 Focused checks: `node scripts/l1-validator-smoke.mjs`, `node scripts/l1-validator-shell-smoke.mjs`, `node scripts/l1-validator-postgres-smoke.mjs`, and `node scripts/l1-validator-rewards-postgres-smoke.mjs` against an isolated migrated test database. Fixtures use throwaway keys and Track E's public Rust signature vectors. The shell test checks process discovery, public-only handoff and the sealed/offline invocation; it does not prove a real host's private-key signing. Production acceptance requires an operator to run a fresh command on a Foundation L1 validator, followed by durable binding, replay, entitlement and UI checks. Never run fixture tests against production.
 
 The chat report card displays **Improvement round: done** for `quality.tih.round_status=completed` and **skipped** for `skipped_unaffordable`. An interrupted round is labeled **interrupted**, never done. Missing/unknown metadata on older jobs displays no invented round outcome. The full provider result remains in the existing result JSON; no schema migration is needed.
+
+## Research agent jobs
+
+Migration 158 adds only `research_gateway_jobs.progress_json` and
+`deep_research_jobs.research_options`. It does not change billing tables or views.
+Mode, budget and the opaque preview token are durable; token text is omitted from
+public job responses and does not change idempotency. Existing requests retain
+their saved mode/cap. A definitively expired preview releases its reservation at
+zero cost; ambiguous network failures retain the request for reconciliation.
+
+Monotonic progress persists sequence, stage, step, document counts, elapsed time
+and exact provider spend. Status polls are serialized, survive chat reloads and
+continue beyond 15 minutes without submitting a replacement job. Late polls or
+attachments cannot erase a terminal report. Provider restarts can fail jobs with
+incurred cost; settlement still debits ceil6 exactly once.
+
+Reports render safe Markdown tables, citations and code fences, with bounded typed
+result tables (20 tables, 30 columns, 500 rows each) and explicit partial-result
+labels. Chart rendering awaits a service chart schema; the current contract
+returns an empty charts array. The research path has no direct data-source tools.
+It delegates them to GoodAlexander; the import-graph regression forbids Bloomberg
+clients, bridge configuration, SQL tables, caches and URLs. Tiingo is permitted.
+
+Focused checks: `node scripts/research-agent-smoke.mjs` and
+`node scripts/research-agent-postgres-smoke.mjs` (isolated test database only).
+The database fixture checks preview without funding, reservation-aware defaults,
+agent cap 3/max 10, a 15-minute job, terminal races, preview expiry, replay, owner
+isolation and successful/failed ceil6 settlement. Browser evidence must also
+cover preview before submission, reload, mobile tables and both route defaults.
+Rollback deploys the prior image and retains the added columns and receipts; do
+not drop active job state. Production acceptance uses approved capped UI jobs.

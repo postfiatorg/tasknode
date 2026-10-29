@@ -86,7 +86,7 @@ for (const base of ["https://research.goodalexander.com:18443/ga-research", "htt
   }
 }
 // Guard every new prompt/provider/usage path against regex reintroduction.
-for (const file of ["shared/chat-research.js", "server/research-billing.js", "server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js", "src/features/research/research-client.js", "src/features/research/research-sources.js", "server/chat-research-provider.js", "server/deep-research-routes.js", "server/repositories/deep-research.js", "src/features/chat/deep-research-client.js"]) {
+for (const file of ["shared/research-agent.js", "server/research-preview.js", "src/features/chat/research-markdown.js", "src/features/chat/ResearchProgress.jsx", "src/features/chat/ResearchMenuItems.jsx", "src/features/chat/ResearchPreview.jsx", "src/features/chat/use-research-preview.js", "src/features/chat/use-deep-research-polling.js", "shared/chat-research.js", "server/research-billing.js", "server/research-provider.js", "server/research-gateway.js", "server/repositories/research-gateway.js", "server/validator-research-routes.js", "src/features/research/research-client.js", "src/features/research/research-sources.js", "server/chat-research-provider.js", "server/deep-research-routes.js", "server/repositories/deep-research.js", "src/features/chat/deep-research-client.js"]) {
   const ast = parse(await readFile(file, "utf8"), { ecmaVersion: "latest", sourceType: "module", ecmaFeatures: { jsx: true } });
   const visit = (node) => {
     if (!node || typeof node !== "object") return;

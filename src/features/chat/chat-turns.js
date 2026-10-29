@@ -1,4 +1,5 @@
 import { markdownToBlocks, plainTextFromBlocks } from "./chat-markdown";
+import { researchMarkdownToBlocks } from "./research-markdown.js";
 
 export function newClientConversationId() {
   const entropy =
@@ -55,9 +56,10 @@ export function normalizeChatMessage(message, index = 0) {
   return {
     id: message.id || `assistant-${index}`,
     role,
+    createdAt: message.createdAt,
     metadata,
     thinking: message.thinking || message.metadata?.thinking,
-    blocks: Array.isArray(message.blocks) ? message.blocks : markdownToBlocks(text),
+    blocks: metadata?.deepResearch ? researchMarkdownToBlocks(text) : Array.isArray(message.blocks) ? message.blocks : markdownToBlocks(text),
   };
 }
 

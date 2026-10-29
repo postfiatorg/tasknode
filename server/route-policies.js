@@ -841,6 +841,10 @@ export const apiRoutePolicies = [
     rateLimit: { limit: 240, windowMs: tenMinutes },
   },
   {
+    id: "deep_research_preview", path: "/api/deep-research/preview", methods: ["POST"], auth: "session",
+    rateLimit: { limit: 20, windowMs: tenMinutes }, body: requestBodies.deepResearchPreviewBody,
+  },
+  {
     id: "deep_research_create",
     path: "/api/deep-research/jobs",
     methods: ["POST"],
@@ -853,7 +857,7 @@ export const apiRoutePolicies = [
     prefix: "/api/deep-research/jobs/",
     methods: ["GET", "POST"],
     auth: "session",
-    rateLimit: { limit: 120, windowMs: tenMinutes },
+    rateLimit: { limit: 480, windowMs: tenMinutes },
     bodies: { POST: requestBodies.emptyRequestBody },
   },
   {

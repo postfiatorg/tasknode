@@ -13,7 +13,8 @@ export async function startChatResearch({ accountId, localJob, question, title, 
   ga = submitResearchJob, corbanu = startCorbanuDeepResearch,
 } = {}) {
   if (localJob.provider === "goodalexander") {
-    const row = await ga({ accountId }, { question, max_cost_usd: localJob.maxCostUsd }, `chat:${localJob.id}`);
+    const row = await ga({ accountId }, { question, max_cost_usd: localJob.maxCostUsd,
+      mode: localJob.mode, ...(localJob.routeToken ? { route_token: localJob.routeToken } : {}) }, `chat:${localJob.id}`);
     return { id: row.id, status: row.status, stage: row.status };
   }
   return (await corbanu({ accountId, question, title, requestId })).body;
@@ -27,10 +28,12 @@ export async function fetchChatResearch({ accountId, job }, {
     const row = await refreshGa(await getGa(accountId, job.gatewayJobId));
     const result = row.result_json || {};
     return {
-      status: row.status, stage: row.status,
+      status: row.status, stage: row.progress_json?.stage || row.status, progress: row.progress_json || {},
       usage: { ...(result.usage || {}), ...(row.cost_usd === null ? {} : { total_cost_usd: Number(row.cost_usd) }),
+        ...(row.cost_usd === null && row.progress_json?.cost_usd !== undefined ? { total_cost_usd: row.progress_json.cost_usd } : {}),
         ...(row.billed_at ? { billed_cost_usd: researchLedgerAmount(Number(row.cost_usd)) } : {}) },
-      result: { ...result, title: "GoodAlexander research", source_manifest: JSON.stringify(result.sources || [], null, 2) },
+      result: { ...result, mode: result.mode || row.request_json?.resolved_mode || row.request_json?.mode || "fast",
+        title: "GoodAlexander research", source_manifest: JSON.stringify(result.sources || [], null, 2) },
       error: row.last_error || "",
     };
   }

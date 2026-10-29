@@ -389,7 +389,9 @@ export const decisionBody = strictBody(256 * KiB, {
   mode: text(20, 1, { enum: ["budget", "premium"] }),
 }, { required: ["input", "conversationId", "requestId"] });
 export const deepResearchBody = strictBody(128 * KiB, {
-  maxCostUsd: { type: "number", minimum: 0.01, maximum: 5 },
+  maxCostUsd: { type: "number", minimum: 0.05, maximum: 10 },
+  mode: text(10, 1, { enum: ["auto", "fast", "agent"] }),
+  routeToken: text(8192, 1),
   question: text(50_000, 1),
   message: text(50_000, 1),
   title: text(500),
@@ -399,6 +401,9 @@ export const deepResearchBody = strictBody(128 * KiB, {
   required: ["conversationId", "requestId"],
   requiredAny: [["question", "message"]],
 });
+export const deepResearchPreviewBody = strictBody(128 * KiB, {
+  question: text(16000, 1), mode: text(10, 1, { enum: ["auto", "fast", "agent"] }),
+}, { required: ["question"] });
 export const contextSaveBody = strictBody(64 * KiB, {
   title: text(120), body: text(60_000), revision: integer(0),
 }, { required: ["body"] });

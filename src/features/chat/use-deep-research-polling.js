@@ -27,10 +27,14 @@ export function useDeepResearchPolling({
   const pollDeepResearchJob = useCallback(async (jobId, pendingId, startedAt) => {
     if (!jobId || !pendingId || pollsRef.current.has(jobId)) return;
 
+    const entry = { timer: null, cancelled: false };
+    pollsRef.current.set(jobId, entry);
     async function tick() {
+      if (entry.cancelled) return;
       const callbacks = callbacksRef.current;
       try {
         const result = await fetchDeepResearchJob(jobId);
+        if (entry.cancelled) return;
         if (!result.ok || !result.body?.job) {
           throw new Error(result.body?.message || `Deep Research returned HTTP ${result.status}.`);
         }
@@ -72,19 +76,18 @@ export function useDeepResearchPolling({
           callbacks.setStatusTone("muted");
         }
         if (terminal) {
-          const timerId = pollsRef.current.get(jobId);
-          if (timerId) window.clearInterval(timerId);
+          entry.cancelled = true;
           pollsRef.current.delete(jobId);
           await callbacks.onChatSettled?.();
         }
       } catch (error) {
+        if (entry.cancelled) return;
         callbacks.setSendMessage(error?.message || "Deep Research status is temporarily unavailable.");
         callbacks.setStatusTone("error");
+      } finally {
+        if (!entry.cancelled) entry.timer = window.setTimeout(tick, 5000);
       }
     }
-
-    const timerId = window.setInterval(tick, 5000);
-    pollsRef.current.set(jobId, timerId);
     await tick();
   }, []);
 
@@ -92,7 +95,7 @@ export function useDeepResearchPolling({
     for (const turn of pendingDeepResearchTurns(turns)) {
       const research = turn?.metadata?.deepResearch;
       if (!research?.jobId || deepResearchIsTerminal(research.status)) continue;
-      const parsedStartedAt = Date.parse(turn.createdAt);
+      const parsedStartedAt = Date.parse(turn.createdAt || research.startedAt);
       const startedAt = Number.isFinite(parsedStartedAt) ? parsedStartedAt : Date.now();
       void pollDeepResearchJob(research.jobId, turn.id, startedAt);
     }
@@ -101,7 +104,7 @@ export function useDeepResearchPolling({
   useEffect(() => {
     const polls = pollsRef.current;
     return () => {
-      for (const timerId of polls.values()) window.clearInterval(timerId);
+      for (const entry of polls.values()) { entry.cancelled = true; window.clearTimeout(entry.timer); }
       polls.clear();
     };
   }, []);

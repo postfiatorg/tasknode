@@ -2,8 +2,10 @@ import {
   cancelCorbanuDeepResearch,
 } from "./corbanu-deep-research.js";
 import { chatResearchAccess, fetchChatResearch, startChatResearch } from "./chat-research-provider.js";
+import { previewResearch } from "./research-preview.js";
 import {
   attachDeepResearchGatewayJob,
+  availableResearchCredit,
   createDeepResearchJob,
   getDeepResearchJob,
   updateDeepResearchJob,
@@ -58,20 +60,22 @@ async function create({ readJson, req, session }) {
       requestId,
       provider: access.provider,
       maxCostUsd: payload.maxCostUsd,
+      mode: payload.mode,
+      routeToken: payload.routeToken,
     });
   } catch (error) {
     return response(Number(error?.status || 500), {
       error: error?.message || "deep_research_create_failed",
     });
   }
-  if (local.job.gatewayJobId) {
-    return response(202, { action: "deep_research_create", ...local });
+  if (local.job.gatewayJobId || ["completed", "failed", "cancelled"].includes(local.job.status)) {
+    return response(202, { action: "deep_research_create", created: local.created, job: local.job, user: local.user, assistant: local.assistant });
   }
 
   try {
     const started = await startChatResearch({
       accountId: session.accountId,
-      localJob: local.job,
+      localJob: { ...local.job, mode: local.researchOptions?.mode, routeToken: local.researchOptions?.route_token },
       requestId,
       question,
       title,
@@ -103,7 +107,7 @@ async function create({ readJson, req, session }) {
     }
     return response(Number(error?.status || 502), {
       error: error?.message || "deep_research_start_failed",
-      message: Number(error?.status) === 402 ? "Add credit in Settings → Billing. Research needs at least $0.50 available and enough for your maximum cost." : "Deep Research could not be started. Retrying the same request is safe.",
+      message: Number(error?.status) === 402 ? "Add credit in Settings → Billing. Research needs at least $0.50 available and enough for your maximum cost." : error.message === "route_preview_invalid" ? "Your research preview expired. Review the question and maximum again; no research was started." : "Deep Research could not be started. Retrying the same request is safe.",
       job: local.job,
       user: local.user,
       assistant: local.assistant,
@@ -179,6 +183,22 @@ async function cancel({ req, session, jobId }) {
 }
 
 export async function handleDeepResearchRoute({ json, readJson, req, res, session, url }) {
+  if (url.pathname === "/api/deep-research/preview") {
+    try {
+      if (req.method !== "POST") throw Object.assign(new Error("deep_research_method_not_allowed"), { status: 405 });
+      if (!session?.accountId) throw Object.assign(new Error("deep_research_login_required"), { status: 401 });
+      const access = await chatResearchAccess({ accountId: session.accountId });
+      if (!access.available || access.provider !== "goodalexander") throw Object.assign(new Error("research_preview_unavailable"), { status: 503 });
+      const payload = await readJson(req, 128 * 1024);
+      const preview = await previewResearch({ accountId: session.accountId, question: payload.question, mode: payload.mode });
+      preview.availableCreditUsd = await availableResearchCredit(session.accountId);
+      json(res, 200, { ok: true, preview }, { "cache-control": "no-store" });
+    } catch (error) {
+      json(res, error.status || 503, { ok: false, error: error.status ? error.message : "research_preview_unavailable",
+        message: "Research preview is unavailable. No research has started; try again." }, { "cache-control": "no-store" });
+    }
+    return true;
+  }
   if (url.pathname === "/api/deep-research/jobs") {
     const result = await create({ readJson, req, session });
     json(res, result.status, result.body);
