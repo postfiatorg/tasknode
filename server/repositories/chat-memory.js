@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
 import { recordUserObservabilityEvent } from "./user-observability.js";
+import { envNumber } from "../env-number.js";
 import {
   getChatMemoryContext,
   getChatMemoryEntryCounts,
@@ -15,7 +16,7 @@ export {
 
 const maxListLimit = 200;
 const maxClaimLimit = 10;
-const failedAttemptLimit = Number(process.env.TASKNODE_MEMORY_MAX_ATTEMPTS || 5);
+const failedAttemptLimit = envNumber("TASKNODE_MEMORY_MAX_ATTEMPTS", 5);
 export const deepMemoryBlockSize = 36;
 const maxContextDeepLimit = 10;
 const maxContextTurnLimit = 72;

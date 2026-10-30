@@ -12,6 +12,7 @@ import {
   contextRewriteProviderConfigured,
   contextRewriteModels,
 } from "./context-rewrite-provider.js";
+import { envNumber } from "./env-number.js";
 
 function response(status, payload = {}) {
   return {
@@ -34,8 +35,8 @@ function estimatePayload() {
     currency: "USD",
     estimatedUsd: contextRewriteEstimateUsd(),
     scorerRuns: {
-      glm: Number(process.env.CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL || 3),
-      deepseek: Number(process.env.CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL || 3),
+      glm: envNumber("CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL", 3),
+      deepseek: envNumber("CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL", 3),
     },
     webSearches: 2,
     rewriteRuns: {

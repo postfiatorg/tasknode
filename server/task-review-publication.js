@@ -19,12 +19,13 @@ import {
   taskReviewRetryDelayMs,
   workerClaimStaleSeconds,
 } from "./task-review-core.js";
+import { envNumberAtLeast } from "./env-number.js";
 
 export async function callOpenAiJson({ promptPath, promptVersion, responseFormat, input, modelEnv = "TASKNODE_TASK_REVIEW_MODEL" }) {
   const systemPrompt = loadPrompt(promptPath);
   const model = safeText(process.env[modelEnv] || INFERENCE_MODELS.structured, 120);
   const startedAt = Date.now();
-  const timeoutMs = Math.max(5000, Number(process.env.TASKNODE_TASK_REVIEW_PROVIDER_TIMEOUT_MS || 45000));
+  const timeoutMs = envNumberAtLeast("TASKNODE_TASK_REVIEW_PROVIDER_TIMEOUT_MS", 45000, 5000);
   try {
     const result = await inferenceChatCompletion({
       capability: "strict_json",
