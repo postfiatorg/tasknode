@@ -30,6 +30,18 @@ const schema = {
 const valid = { name: "alice", enabled: true, public_key: "abcd", tags: ["one"], settings: { retries: 2 } };
 assert.deepEqual(validateJsonDocument(valid, schema), valid);
 
+const inheritedNames = [
+  "toString",
+  "valueOf",
+  "hasOwnProperty",
+  "__defineGetter__",
+  "__lookupGetter__",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+];
+const ownToStringSchema = { ...schema, properties: { ...schema.properties, toString: { type: "integer", minimum: 0 } } };
+
 const rejects = [
   [{ enabled: true, publicKey: "abcd" }, "request_body_field_required"],
   [{ name: "alice", enabled: true }, "request_body_field_required"],
@@ -39,8 +51,33 @@ const rejects = [
   [{ name: "alice", enabled: true, publicKey: "abcd", extra: true }, "request_body_field_unknown"],
   [{ name: "alice", enabled: true, publicKey: "abcd", tags: ["one", "two", "three"] }, "request_body_array_too_large"],
   [{ name: "alice", enabled: true, publicKey: "abcd", settings: { retries: 6 } }, "request_body_field_number_too_large"],
+  // Object.prototype member names are not declared fields of a strict schema.
+  ...inheritedNames.map((key) => [{ name: "alice", enabled: true, publicKey: "abcd", [key]: "x" }, "request_body_field_unknown", `body.${key}`]),
+  [{ name: "alice", enabled: true, publicKey: "abcd", settings: { retries: 2, toString: "x" } }, "request_body_field_unknown", "body.settings.toString"],
+  // constructor stays on the forbidden-key list ahead of schema lookup.
+  [{ name: "alice", enabled: true, publicKey: "abcd", constructor: "x" }, "request_body_key_forbidden", "body.constructor"],
+  [{ name: "alice", enabled: true, publicKey: "abcd", toString: "x" }, "request_body_field_type_invalid", "body.toString", ownToStringSchema],
 ];
-for (const [value, code] of rejects) assert.throws(() => validateJsonDocument(value, schema), new RegExp(code));
+for (const [value, code, field, rejectSchema = schema] of rejects) {
+  assert.throws(
+    () => validateJsonDocument(value, rejectSchema),
+    (error) => error.message === code && (field === undefined || error.field === field),
+    `expected ${code}${field ? ` at ${field}` : ""} for ${JSON.stringify(value)}`
+  );
+}
+
+const looseSchema = { ...schema, allowUnknown: true };
+const accepts = [
+  [valid, schema],
+  // Unknown keys are ignored when allowUnknown is not false, inherited names included.
+  ...inheritedNames.map((key) => [{ ...valid, [key]: "x" }, looseSchema]),
+  ...inheritedNames.map((key) => [{ ...valid, [key]: "x" }, { properties: schema.properties }]),
+  // A schema that declares an own property with an inherited name still validates it.
+  [{ name: "alice", enabled: true, publicKey: "abcd", toString: 3 }, ownToStringSchema],
+];
+for (const [value, acceptSchema] of accepts) {
+  assert.deepEqual(validateJsonDocument(value, acceptSchema), value, `expected acceptance for ${JSON.stringify(value)}`);
+}
 
 const polluted = JSON.parse('{"safe":{"__proto__":{"admin":true}}}');
 assert.throws(() => validateJsonDocument(polluted), /request_body_key_forbidden/);
@@ -280,6 +317,27 @@ for (const value of [-1, 1.5, "2", null]) {
 }
 assert.throws(() => validateJsonDocument({ phase: "config", expectedAccountId: {} }, requestContract.schema), (error) => error.field === "body.expectedAccountId");
 assert.throws(() => validateJsonDocument({ phase: "config", inventedField: true }, requestContract.schema), (error) => error.message === "request_body_field_unknown");
+
+const strictSchemaNames = [];
+for (const route of apiRoutePolicies) {
+  const declared = [
+    [route.id, route.body],
+    ...Object.entries(route.bodies || {}).map(([key, body]) => [`${route.id}.bodies.${key}`, body]),
+    ...(route.bodyRoutes || []).map((entry) => [`${route.id} ${entry.path}`, entry.body]),
+  ];
+  for (const [name, body] of declared) {
+    if (body?.schema?.allowUnknown !== false) continue;
+    const probe = { ...schemaFixture(body.schema), toString: "x" };
+    assert.throws(
+      () => validateJsonDocument(probe, body.schema),
+      (error) => error.message === "request_body_field_unknown" && error.field === "body.toString",
+      `${name} must reject an inherited Object.prototype name as an undeclared field`
+    );
+    strictSchemaNames.push(name);
+  }
+}
+assert.ok(strictSchemaNames.length > 70, "the strict schema inventory must not silently shrink");
+console.log(`inherited-name probe rejected toString on ${strictSchemaNames.length} allowUnknown:false schemas: ${strictSchemaNames.join(", ")}`);
 
 assert.ok(mutationPolicyCount > 70, "the mutation inventory must not silently shrink");
 console.log(`request validation smoke ok: ${apiRoutePolicies.length} route policies, ${mutationPolicyCount} fail-closed mutation policies`);
