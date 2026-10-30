@@ -3,6 +3,53 @@ import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
+import { createHash } from "node:crypto";
+import { buildDecisionContext } from "../server/decision-context.js";
+import { CONTEXT_DOCUMENT_MAX_CHARS } from "../shared/context-budget.js";
+import { normalizeContextBodyForStorage } from "../shared/context-html.js";
+
+// Pure context-packet checks (no database): decisions send the readable context text, not raw HTML.
+const sha = text => createHash("sha256").update(text).digest("hex");
+const htmlContext = "<p><strong>Focus:</strong> AI eng roles</p><ul><li><p>Remote</p></li></ul>";
+const htmlPacket = buildDecisionContext({ input: "Q?", document: { id: "d", revision: 1, body: htmlContext } });
+assert.equal(htmlPacket.input, "# User proposed decision\n\nQ?\n\n# Task Node context document\n\nFocus: AI eng roles\n- Remote");
+assert.ok(!/<\/?[a-z]/i.test(htmlPacket.input));
+assert.equal(htmlPacket.included, true);
+assert.equal(htmlPacket.snapshot.document.sha256, sha("Focus: AI eng roles\n- Remote"));
+assert.equal(htmlPacket.snapshot.inputSha256, sha(htmlPacket.input));
+let tableContext = "";
+for (let i = 0; i < 600; i++) tableContext += `<table><tbody><tr><td><p><strong>Goal ${i}</strong></p></td><td><p>Ship v${i}</p></td></tr></tbody></table>`;
+assert.ok(tableContext.length > 60_000 && tableContext.length <= CONTEXT_DOCUMENT_MAX_CHARS);
+const tablePacket = buildDecisionContext({ input: "Should I take job A or B?", document: { id: "d", revision: 2, body: tableContext } });
+assert.ok(tablePacket.input.includes("Goal 0\nShip v0\n\nGoal 1\nShip v1") && tablePacket.input.includes("Goal 599\nShip v599") && !tablePacket.input.includes("<td>"));
+assert.ok(tablePacket.input.length < 60_000);
+const prefix = "# User proposed decision\n\nQ?\n\n# Task Node context document\n\n";
+// Bare text, numeric and header table cells keep their boundaries in the text sent,
+// both as typed and after storage normalization adds the tbody.
+for (const [html, text] of [
+  ["<table><tr><td>Ship A</td><td>Reject B</td></tr></table>", "Ship A\nReject B"],
+  ["<table><tr><td>10</td><td>20</td></tr></table>", "10\n20"],
+  ["<table><tr><th>Option</th><th>Score</th></tr><tr><td>A</td><td>10</td></tr></table>", "Option\nScore\n\nA\n10"],
+]) {
+  for (const body of [html, normalizeContextBodyForStorage(html)]) {
+    const packet = buildDecisionContext({ input: "Q?", document: { id: "t", revision: 5, body } });
+    assert.equal(packet.input, `${prefix}${text}`);
+    assert.equal(packet.snapshot.document.sha256, sha(text));
+    assert.equal(packet.snapshot.inputSha256, sha(packet.input));
+  }
+}
+const atLimit = `<p>${"y".repeat(60_000 - prefix.length)}</p>`;
+assert.equal(buildDecisionContext({ input: "Q?", document: { body: atLimit } }).input.length, 60_000);
+for (const body of [`<p>${"y".repeat(60_001 - prefix.length)}</p>`, `<p>${"x".repeat(60_000)}</p>`, "x".repeat(60_000)]) {
+  assert.throws(() => buildDecisionContext({ input: "Q?", document: { body } }), { status: 400, message: "The question, saved context and chat memories exceed 60,000 characters. Shorten the input or turn off context and memory." });
+}
+const plainPacket = buildDecisionContext({ input: "Q?", document: { id: "p", revision: 3, body: "  Original saved context\n- keep <3 & a < b\n" } });
+assert.equal(plainPacket.input, "# User proposed decision\n\nQ?\n\n# Task Node context document\n\nOriginal saved context\n- keep <3 & a < b");
+assert.equal(plainPacket.snapshot.document.sha256, sha("Original saved context\n- keep <3 & a < b"));
+const emptyHtml = buildDecisionContext({ input: "Q?", document: { id: "e", revision: 4, body: "<p></p><p><br></p>" } });
+assert.equal(emptyHtml.input, "Q?");
+assert.equal(emptyHtml.included, false);
+assert.equal(emptyHtml.snapshot.document, null);
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL required; test uses an isolated temporary schema");
 const originalUrl = process.env.DATABASE_URL;
@@ -58,6 +105,12 @@ try {
   await assert.rejects(createDecisionJob({ ...request, requestId: "oversized" }, { ...opts, loadContext: async () => ({ body: "x".repeat(60_000) }) }), { status: 400 });
   await assert.rejects(createDecisionJob({ ...request, requestId: "memory-unavailable" }, { ...opts, loadMemories: async () => { throw new Error("memory unavailable"); } }), { message: "memory unavailable" });
   assert.equal(Number((await query("SELECT count(*) FROM decision_jobs WHERE request_id IN ('oversized','memory-unavailable')")).rows[0].count), 0);
+  const htmlJob = await createDecisionJob({ ...request, conversationId: "html-context", requestId: "html-context" }, { ...opts, loadContext: async () => ({ id: "fixture-html", revision: 8, body: tableContext }) });
+  assert.ok(htmlJob.record.input.includes("Goal 599\nShip v599"));
+  assert.ok(!htmlJob.record.input.includes("<td>"));
+  assert.equal(htmlJob.record.context_snapshot_json.document.revision, 8);
+  assert.equal(htmlJob.record.context_snapshot_json.document.sha256, tablePacket.snapshot.document.sha256);
+  assert.equal(htmlJob.record.context_snapshot_json.inputSha256, sha(htmlJob.record.input));
   const memoryOnly = await createDecisionJob({ ...request, conversationId: "memory-only", requestId: "memory-only" }, { ...opts, loadContext: async () => null });
   assert.equal(memoryOnly.record.context_included, true);
   assert.equal(memoryOnly.record.context_snapshot_json.document, null);

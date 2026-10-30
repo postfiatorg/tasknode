@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import { contextBodyText } from "../shared/context-line-map.js";
 
 const hash = text => createHash("sha256").update(text).digest("hex");
 
 export function buildDecisionContext({ input, document = null, memory = null }) {
-  const body = String(document?.body || "").trim();
+  const body = contextBodyText(document?.body || "");
   const deep = (memory?.deepMemories || []).map(entry => ({
     id: entry.id, kind: entry.kind, created_at: entry.createdAt,
     user_summary: entry.userRequestSummary, assistant_summary: entry.systemResponseSummary,
