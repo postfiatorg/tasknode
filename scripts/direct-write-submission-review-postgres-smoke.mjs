@@ -1,11 +1,14 @@
 // #347: a direct-write submission stored its event but left
-// `submission.summaries` empty, so recorded evidence looked missing.
+// `submission.summaries` empty, so recorded evidence looked missing, and a
+// failing verification-request worker left the task in `submitted` with both
+// evidence gates closed and nothing on the task to say why.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool, query } from "../server/db/pool.js";
 import { applyOffchainTaskTransition } from "../server/offchain-task-lifecycle.js";
-import { getTerminalTaskProjectionDetail, importTaskReplayReceipt } from "../server/repositories/tasks.js";
+import { getTaskDetail, getTerminalTaskProjectionDetail, importTaskReplayReceipt } from "../server/repositories/tasks.js";
+import { processTaskReviewQueueOnce } from "../server/task-review-worker.js";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required for the direct-write submission summary smoke.");
@@ -78,6 +81,81 @@ const replayed = await applyOffchainTaskTransition({
 assert.equal(replayed.eventInserted, false);
 assert.equal((await detail()).submission.summaries.length, 2);
 
+// No authority seed is configured, so the real worker pass fails, one of the
+// causes listed in #347.
+for (const key of [
+  "TASKNODE_AUTHORITY_SEED",
+  "TASKNODE_SERVICE_SEED",
+  "TASKNODE_ENCRYPTION_SEED",
+  "TASKNODE_PFT_FAUCET_SEED",
+  "FAUCET_SEED",
+]) {
+  delete process.env[key];
+}
+const quietLogger = { info() {}, warn() {} };
+function reviewStatus(value) {
+  const { phase, stalled, failureCount, lastErrorCode } = value.verificationRequestStatus || {};
+  return { phase, stalled, failureCount, lastErrorCode };
+}
+async function runWorkerPass() {
+  const pass = await processTaskReviewQueueOnce({ limit: 3, logger: quietLogger });
+  return pass.results.find((result) => result.taskId === taskId);
+}
+async function expireRetryBackoff() {
+  await query(
+    `UPDATE task_projections
+        SET metadata_json = jsonb_set(metadata_json, '{workers,verification_request,retry_after}', '""'::jsonb)
+      WHERE task_id = $1`,
+    [taskId]
+  );
+}
+
+assert.deepEqual(reviewStatus(await detail()), { phase: "queued", stalled: false, failureCount: 0, lastErrorCode: "" });
+
+assert.deepEqual(await runWorkerPass(), {
+  ok: false,
+  taskId,
+  phase: "verification_request",
+  error: "task_authority_seed_missing",
+});
+const afterFirstFailure = await detail();
+assert.deepEqual(reviewStatus(afterFirstFailure), {
+  phase: "retrying",
+  stalled: false,
+  failureCount: 1,
+  lastErrorCode: "task_authority_seed_missing",
+});
+assert.ok(afterFirstFailure.verificationRequestStatus.retryAfter, "retry backoff is reported");
+assert.equal(await runWorkerPass(), undefined, "backoff keeps the task out of the next pass");
+
+for (let attempt = 0; attempt < 2; attempt += 1) {
+  await expireRetryBackoff();
+  assert.equal((await runWorkerPass())?.error, "task_authority_seed_missing");
+}
+// The #1280 state: still submitted, both gates closed, no request. The task
+// now says the request is overdue instead of looking like nothing happened.
+for (const view of [await detail(), await getTaskDetail({ accountId, walletAddress, taskId })]) {
+  assert.equal(view.task.statusKey || view.task.status, "submitted");
+  assert.equal(view.actions.canSubmitInitialEvidence, false);
+  assert.equal(view.actions.canSubmitVerificationEvidence, false);
+  assert.deepEqual(reviewStatus(view), {
+    phase: "retrying",
+    stalled: true,
+    failureCount: 3,
+    lastErrorCode: "task_authority_seed_missing",
+  });
+  assert.match(view.verificationRequestStatus.message, /do not resubmit or cancel/);
+}
+
+// A worker that never ran (disabled, or never claimed the task) is caught by age alone.
+await query(
+  `UPDATE task_projections
+      SET metadata_json = metadata_json - 'workers', last_event_at = now() - interval '2 hours'
+    WHERE task_id = $1`,
+  [taskId]
+);
+assert.deepEqual(reviewStatus(await detail()), { phase: "queued", stalled: true, failureCount: 0, lastErrorCode: "" });
+
 const responded = await applyOffchainTaskTransition({
   accountId,
   walletAddress,
@@ -88,6 +166,7 @@ const responded = await applyOffchainTaskTransition({
   },
 });
 const afterResponse = await detail();
+assert.equal(afterResponse.verificationRequestStatus, null, "only submitted tasks report a pending request");
 assert.equal(afterResponse.submission.summaries.length, 3);
 assert.deepEqual(
   { type: afterResponse.submission.summaries[2].type, summary: afterResponse.submission.summaries[2].summary },
@@ -99,5 +178,5 @@ assert.equal(JSON.stringify(afterResponse.submission).includes("Private answer t
 const eventCount = await query("SELECT count(*)::int AS count FROM task_events WHERE task_id = $1", [taskId]);
 assert.equal(eventCount.rows[0].count, 2);
 
-console.log(`direct-write submission summary smoke ok: ${taskId}`);
+console.log(`direct-write submission review smoke ok: ${taskId}`);
 await closePool();
