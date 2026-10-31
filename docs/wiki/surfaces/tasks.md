@@ -609,6 +609,8 @@ Endpoints:
 
 `submission.summaries` lists replay-indexed submissions and, since #347, each recorded direct-write initial submission and verification response. A direct-write summary records the event id, CID, tx reference, timestamp, and evidence item count and types, never the evidence body. Summaries also appear on public Hive views, so only an explicit `public_summary`/`evidence_summary` (or `response_summary` for a verification response) in the event payload is copied as text. A replayed event that inserts no new row adds no summary.
 
+`verificationRequestStatus` is set while a task is `submitted` and `null` otherwise. Both evidence gates are closed in that state, and the verification request comes from the background review worker, which retries failures indefinitely. So the task reports the worker's progress from `metadata_json.workers.verification_request`: `phase` (`queued`, `processing`, `retrying`, `awaiting_agent`, `published`), `failureCount`, `retryAfter`, `submittedAt`, a user-facing `message`, and `lastErrorCode`. `lastErrorCode` is a snake_case worker code such as `task_authority_seed_missing`; any other error text is reported as `verification_request_failed` so provider details stay server-side. `stalled` is true after three consecutive worker failures, or once the submission is older than `TASKNODE_VERIFICATION_REQUEST_STALL_SECONDS` (default 3600, bounded 300 to 604800) without a published request. The Submit tab then shows "Verification request delayed" and tells the user not to resubmit or cancel. Operators see the same backlog in System Status under task review.
+
 ## Task Detail UX
 
 The detail modal is state-specific.

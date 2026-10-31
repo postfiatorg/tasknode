@@ -97,6 +97,12 @@ review/scoring can include provider calls, IPFS writes, PFTL publication, and
 projection refresh. A short stale window can reclaim the same task while the
 first transaction is still settling.
 
+Task detail exposes this worker state for `submitted` tasks as
+`verificationRequestStatus`, marked `stalled` after three failures or once the
+submission is older than `TASKNODE_VERIFICATION_REQUEST_STALL_SECONDS` (default
+3600). Only snake_case error codes reach the client (see
+`docs/wiki/surfaces/tasks.md`).
+
 Provider failures use durable exponential retry backoff rather than reclaiming
 the same projection on every worker tick. Board-linked tasks that are waiting
 for an agent-authored verification or review decision use a one-minute defer,

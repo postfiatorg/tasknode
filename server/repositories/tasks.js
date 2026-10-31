@@ -12,7 +12,7 @@ import {
   publicTransactionEntries,
 } from "../task-forensics-format.js";
 import { taskRewardOutcome } from "../task-reward-outcome.js";
-import { currentVerificationRequest } from "../task-verification-view.js";
+import { currentVerificationRequest, verificationRequestStatus } from "../task-verification-view.js";
 import { getNetworkTaskEligibility } from "./network-tasks.js";
 import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
 import { taskRefreshMetadata, taskStatusTab } from "../../shared/task-lifecycle.js";
@@ -179,6 +179,14 @@ export async function listTaskProjectionTasks({
   }
 }
 
+function projectionVerificationRequestStatus(row = {}, metadata = {}) {
+  return verificationRequestStatus({
+    status: row.status,
+    submittedAt: row.last_event_at || row.updated_at,
+    worker: safeObject(safeObject(metadata.workers).verification_request),
+  });
+}
+
 export async function getTerminalTaskProjectionDetail({
   accountId = "",
   walletAddress = "",
@@ -227,6 +235,7 @@ export async function getTerminalTaskProjectionDetail({
       verificationPolicy: safeObject(row.verification_policy_json),
     },
     currentVerificationRequest: safeObject(metadata.currentVerificationRequest),
+    verificationRequestStatus: projectionVerificationRequestStatus(row, metadata),
     rewardOutcome: null,
     forensics: {
       source: row.source || "task_projections",
@@ -722,6 +731,7 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
       verificationPolicy: safeObject(row.verification_policy_json),
     },
     currentVerificationRequest: currentVerificationRequest(timeline),
+    verificationRequestStatus: projectionVerificationRequestStatus(row, metadata),
     rewardOutcome: taskRewardOutcome({ offeredPft: row.reward_offer_pft, task, timeline }),
     forensics: {
       source: row.source || "task_projections",
