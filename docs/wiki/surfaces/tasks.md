@@ -607,6 +607,8 @@ Endpoints:
 | `POST /api/tasks/request` | Configures, pins, prepares, or submits a signed on-chain task request. |
 | `POST /api/tasks/request-intent` | Records the hidden app-side task request cache entry after chain submit, and records chat-sourced request mode turns. |
 
+`submission.summaries` lists replay-indexed submissions and, since #347, each recorded direct-write initial submission and verification response. A direct-write summary records the event id, CID, tx reference, timestamp, and evidence item count and types, never the evidence body. Summaries also appear on public Hive views, so only an explicit `public_summary`/`evidence_summary` (or `response_summary` for a verification response) in the event payload is copied as text. A replayed event that inserts no new row adds no summary.
+
 ## Task Detail UX
 
 The detail modal is state-specific.
