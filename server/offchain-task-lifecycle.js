@@ -381,6 +381,49 @@ function currentVerificationRequestPatch(eventPayload = {}) {
   };
 }
 
+// `submission.summaries` is only filled by the replay import, so a direct-write
+// submission looked missing even though its event was stored (#347). Record a
+// summary of the event, never the evidence body: summaries are also rendered on
+// public Hive views, so only an explicit public summary is copied, matching
+// publicEvidenceExcerpt.
+function directSubmissionSummary({ transition = "", event = {} } = {}) {
+  const normalizedTransition = safeText(transition, 80);
+  if (!isSubmissionTransition(normalizedTransition)) return null;
+  const payload = safeObject(event.payloadJson);
+  const evidence = safeObject(payload.evidence || payload.submission || payload.response);
+  const verificationResponse = normalizedTransition === "verification_response_submitted";
+  const publicSummary = [
+    payload.public_summary,
+    payload.publicSummary,
+    payload.evidence_summary,
+    payload.evidenceSummary,
+    evidence.public_summary,
+    evidence.publicSummary,
+    evidence.evidence_summary,
+    evidence.evidenceSummary,
+    ...(verificationResponse
+      ? [payload.response_summary, payload.responseSummary, evidence.response_summary, evidence.responseSummary]
+      : []),
+  ].map((candidate) => safeText(candidate, 900).replace(/\s+/g, " ")).find(Boolean);
+  const items = safeArray(payload.evidence_items).length > 0
+    ? safeArray(payload.evidence_items)
+    : Object.keys(evidence).length > 0 ? [evidence] : [];
+  const kinds = [...new Set(items.map((item) => safeText(safeObject(item).artifact_type, 80)).filter(Boolean))];
+  const label = verificationResponse ? "Verification response" : "Initial submission";
+  const counted = items.length > 0
+    ? ` with ${items.length} evidence item${items.length === 1 ? "" : "s"}${kinds.length ? ` (${kinds.join(", ")})` : ""}`
+    : "";
+  return {
+    type: label,
+    summary: publicSummary || `${label} recorded directly in Task Node${counted}.`,
+    eventId: event.eventId,
+    cid: event.sourceCid,
+    txHash: event.sourceTxHash,
+    recordedAt: safeObject(event.provenanceJson).recordedAt || "",
+    source: DIRECT_WRITE_SOURCE,
+  };
+}
+
 function transitionMetadataPatch({ transition = "", eventPayload = {} } = {}) {
   const normalizedTransition = safeText(transition, 80);
   if (normalizedTransition === "verification_requested") {
@@ -700,6 +743,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
     normalizedTransition === "rewarded"
       ? numeric(event.payloadJson.economic_reward_pft || event.payloadJson.reward_pft)
       : 0;
+  const submissionSummary = directSubmissionSummary({ transition: normalizedTransition, event });
   const projectionUpdate = await client.query(
     `
       WITH current_projection AS (
@@ -762,6 +806,16 @@ export async function applyOffchainTaskTransitionWithClient(client, {
                          END
                      )
                    )
+                 -- Append, so earlier summaries survive; a replayed event adds none.
+                 WHEN $9::boolean AND $14::jsonb IS NOT NULL THEN
+                   $6::jsonb || jsonb_build_object(
+                     'submissionSummaries',
+                     CASE
+                       WHEN jsonb_typeof(task_projections.metadata_json -> 'submissionSummaries') = 'array'
+                       THEN task_projections.metadata_json -> 'submissionSummaries'
+                       ELSE '[]'::jsonb
+                     END || jsonb_build_array($14::jsonb)
+                   )
                  ELSE $6::jsonb
                END,
              updated_at = now()
@@ -787,6 +841,7 @@ export async function applyOffchainTaskTransitionWithClient(client, {
       event.eventId,
       event.provenanceJson.recordedAt,
       rewardActualPft,
+      submissionSummary ? JSON.stringify(submissionSummary) : null,
     ]
   );
   if (projectionUpdate.rowCount < 1) {
