@@ -47,7 +47,7 @@ jobs:
           docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f dir /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
           docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" trufflesecurity/trufflehog@sha256:ff4c95e9df7d645daf2140e3ca1039031c63106268d5fbb25feb43ceca1bcc33 filesystem /repo --json --no-update --no-verification --results=unverified,unknown,verified --fail-on-scan-errors > "$RUNNER_TEMP/source-trufflehog.jsonl"
           node scripts/secret-scan-review.mjs "$RUNNER_TEMP/source-trufflehog.jsonl" --scope=filesystem
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version-file: .nvmrc
           cache: npm
