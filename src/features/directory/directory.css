@@ -258,7 +258,7 @@
   min-width: 0;
 }
 
-.directory-operator-copy strong,
+.directory-operator-name,
 .directory-operator-copy small {
   display: block;
   overflow: hidden;
@@ -267,10 +267,17 @@
 }
 
 .directory-operator-copy strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--directory-ink);
   font-size: 14px;
   font-weight: 600;
 }
+
+.directory-operator-name { min-width: 0; }
+.directory-operator-copy .validator-mark,
+.directory-operator-copy strong em { flex: 0 0 auto; }
 
 .directory-operator-copy strong em {
   border: 1px solid var(--directory-green);
@@ -280,7 +287,7 @@
   font-style: normal;
   font-weight: 600;
   letter-spacing: 0.08em;
-  margin-left: 8px;
+  margin-left: 0;
   padding: 1px 7px;
   text-transform: uppercase;
   vertical-align: 1px;

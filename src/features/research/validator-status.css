@@ -1,7 +1,9 @@
 .validator-mark { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid var(--tn-dark-border, #c9ddd1); border-radius: 999px; color: var(--tn-dark-success, #287842); background: var(--tn-dark-profile-surface, #f2f8f3); font-size: 11px; font-weight: 600; vertical-align: middle; white-space: nowrap; }
 .validator-avatar { position: relative; display: inline-flex; flex: 0 0 auto; }
 .validator-avatar-mark { position: absolute; bottom: -2px; right: -3px; display: grid; place-items: center; width: 19px; height: 19px; border: 2px solid var(--tn-dark-surface, #fff); border-radius: 50%; background: var(--tn-dark-success, #287842); color: #fff; }
-.validator-menu-status { margin-left: auto; font-size: 10px; border-radius: 999px; background: var(--tn-dark-hover, #f0f0ee); padding: 3px 7px; white-space: nowrap; }
+.validator-menu-row { color: inherit; text-decoration: none; }
+.validator-menu-row > svg { flex: 0 0 auto; }
+.validator-menu-status { margin-left: auto; min-width: 0; font-size: 10px; border-radius: 999px; background: var(--tn-dark-hover, #f0f0ee); padding: 3px 7px; text-align: right; }
 .validator-menu-status.is-connected { color: var(--tn-dark-success, #287842); }
 .validator-header-avatar { margin-left: auto; display: inline-flex; align-items: center; padding: 4px; text-decoration: none; }
 .validator-credit { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px; border-radius: 10px; background: var(--tn-dark-hover, #f5f6f1); color: inherit; text-decoration: none; }
