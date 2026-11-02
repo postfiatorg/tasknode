@@ -98,7 +98,12 @@ export async function linkWalletToAccount(options = {}) {
        ) VALUES ($1, $2, 'linked', $3, $4, 'local_seed_required', $5, $6, $7::jsonb, $8, now())
        ON CONFLICT (account_id) DO UPDATE SET
          wallet_address = EXCLUDED.wallet_address, status = 'linked', public_key = EXCLUDED.public_key,
-         encryption_public_key = EXCLUDED.encryption_public_key, custody = EXCLUDED.custody,
+         encryption_public_key = CASE
+           WHEN EXCLUDED.encryption_public_key <> '' THEN EXCLUDED.encryption_public_key
+           WHEN account_linked_wallets.wallet_address = EXCLUDED.wallet_address THEN account_linked_wallets.encryption_public_key
+           ELSE ''
+         END,
+         custody = EXCLUDED.custody,
          proof_purpose = EXCLUDED.proof_purpose,
          wallet_created_in_account = account_linked_wallets.wallet_created_in_account OR EXCLUDED.wallet_created_in_account,
          proof_json = EXCLUDED.proof_json, linked_at = COALESCE(account_linked_wallets.linked_at, EXCLUDED.linked_at),
