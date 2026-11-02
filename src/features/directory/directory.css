@@ -276,6 +276,14 @@
 }
 
 .directory-operator-name { min-width: 0; }
+.directory-operator-copy strong.has-validator { flex-wrap: wrap; }
+.has-validator .directory-operator-name {
+  max-width: 100%;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
 .directory-operator-copy .validator-mark,
 .directory-operator-copy strong em { flex: 0 0 auto; }
 
