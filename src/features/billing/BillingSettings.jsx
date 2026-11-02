@@ -1,3 +1,4 @@
+import { validatorRewardLedgerTitle } from "../../../shared/validator-display.js";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { requestJson } from "../../api";
 import { formatCreditUsd, formatUsageUsd } from "../../formatters";
@@ -131,7 +132,7 @@ function LedgerEntryRow({ entry }) {
     <div className="ledger-row">
       <span className={credit ? "ledger-dot credit" : "ledger-dot debit"} />
       <div>
-        <strong>{ledgerTitle(entry)}</strong>
+        <strong>{validatorRewardLedgerTitle(entry) ? <a href="#settings/validator">{validatorRewardLedgerTitle(entry)}</a> : ledgerTitle(entry)}</strong>
         <small>{ledgerMeta(entry, dateLabel)}</small>
       </div>
       <em className={credit ? "credit" : "debit"}>

@@ -1,5 +1,5 @@
 import React from "react";
-import { BookOpen, Brain, CandlestickChart, Coins, Compass, CreditCard, Database, Drama, FileText, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Shield, Sparkles, Trophy } from "lucide-react";
+import { BookOpen, Brain, CandlestickChart, Coins, Compass, CreditCard, Database, Drama, FileText, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Server, Shield, Sparkles, Trophy } from "lucide-react";
 import { fetchAppState, requestJson } from "../api";
 import { appExtensionRegistry } from "../extensions/index.js";
 import { plainTextFromBlocks } from "../features/chat/chat-markdown";
@@ -192,7 +192,7 @@ export const SETTINGS_PAGES = [
   { key: "security", label: "Security", icon: Shield },
   { key: "data", label: "Data controls", icon: Database },
   { key: "billing", label: "Billing", icon: CreditCard },
-  { key: "validator", label: "Validator", icon: Shield },
+  { key: "validator", label: "Validator", icon: Server },
   { key: "api-keys", label: "API keys", icon: FileText },
 ];
 

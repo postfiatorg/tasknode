@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Server } from "lucide-react";
+import { ValidatorMark } from "../research/ValidatorStatus.jsx";
 import { requestJson } from "../../api";
 import { compactWallet, formatCompactPft } from "../hive/HiveView.jsx";
 import { ProfilePortrait, ProfileArtTraits } from "../profile/ProfilePortrait.jsx";
@@ -76,6 +77,7 @@ function OperatorIdentity({ operator }) {
       <span className="directory-operator-copy">
         <strong>
           {operator.handle ? `@${operator.handle}` : operator.displayName || "Task Node member"}
+          <ValidatorMark bindings={operator.validator?.bindings} />
           {operator.isYou && <em>You</em>}
         </strong>
         {operator.operatorDisclosure?.isMachineOperator && (
@@ -138,6 +140,7 @@ export function DirectoryView() {
   const [status, setStatus] = useState("loading");
   const [refreshing, setRefreshing] = useState(false);
   const [sortKey, setSortKey] = useState("score");
+  const [validatorsOnly, setValidatorsOnly] = useState(false);
 
   const loadDirectory = useCallback(async ({ showLoading = false, shouldApply = () => true } = {}) => {
     if (showLoading && shouldApply()) setStatus("loading");
@@ -165,7 +168,8 @@ export function DirectoryView() {
     };
   }, [loadDirectory]);
 
-  const operators = useMemo(() => sortOperators(document?.operators || [], sortKey), [document?.operators, sortKey]);
+  const operators = useMemo(() => sortOperators(document?.operators || [], sortKey)
+    .filter(operator => !validatorsOnly || operator.validator?.bindings?.length), [document?.operators, sortKey, validatorsOnly]);
   const totals = document?.totals || {};
   const windowDays = Number(document?.rankFormula?.alignmentWindowDays) || 30;
   const readyWithRows = status === "ready" && operators.length > 0;
@@ -181,6 +185,7 @@ export function DirectoryView() {
             </div>
             <h1>Directory</h1>
             <p>Public operators ranked by rewarded work, PFT earned and alignment, the average daily work-quality score over the last {windowDays} days.</p>
+            <a className="validator-directory-cta" href="#settings/validator"><Server size={16} aria-hidden="true" />Run a validator? Link it</a>
           </div>
           <div className="directory-header-actions">
             <div className="directory-stats">
@@ -206,8 +211,12 @@ export function DirectoryView() {
             <div>
               <h2>Leaderboard</h2>
               <p>Rank score = 3x network tasks + personal tasks + rewards/25000 + alignment.</p>
+              <small>Showing public, discoverable operators only.</small>
             </div>
-            <small>Showing public, discoverable operators only.</small>
+            <div className="validator-filter" aria-label="Filter leaderboard">
+              <button type="button" aria-pressed={!validatorsOnly} onClick={() => setValidatorsOnly(false)}>All operators</button>
+              <button type="button" aria-pressed={validatorsOnly} onClick={() => setValidatorsOnly(true)}>Validators</button>
+            </div>
           </div>
 
           <div className="directory-row directory-row-head" role="row">
@@ -232,7 +241,8 @@ export function DirectoryView() {
               ))}
             </div>
           ) : (
-            <DirectoryStatus onRefresh={() => loadDirectory()} status={status} />
+            validatorsOnly && status === "ready" ? <div className="directory-empty">No publicly listed validators in this leaderboard yet.</div>
+              : <DirectoryStatus onRefresh={() => loadDirectory()} status={status} />
           )}
         </section>
 

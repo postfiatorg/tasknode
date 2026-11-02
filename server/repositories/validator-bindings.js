@@ -15,6 +15,20 @@ export async function hasValidatorBinding(accountId) {
   return Boolean(accountId && (await listValidatorBindings(accountId)).length);
 }
 
+// The public Validator badge is derived only from current, unrevoked bindings.
+// Fetch the same projection in bulk for the directory without exposing keys.
+export async function publicValidatorBindingsByAccount(accountIds = [], queryImpl = query) {
+  if (!databaseEnabled() || !accountIds.length) return new Map();
+  const rows = (await queryImpl(`SELECT account_id,network,bound_at FROM validator_bindings
+    WHERE account_id=ANY($1::text[]) AND revoked_at IS NULL ORDER BY bound_at,id`, [accountIds])).rows;
+  const result = new Map();
+  for (const row of rows) {
+    if (!result.has(row.account_id)) result.set(row.account_id, []);
+    result.get(row.account_id).push({ network: row.network, boundAt: new Date(row.bound_at).toISOString() });
+  }
+  return result;
+}
+
 export async function issueValidatorChallenge(accountId) {
   const value = createValidatorChallenge(accountId);
   await query(`INSERT INTO validator_challenges(challenge,account_id,expires_at) VALUES($1,$2,$3)`,

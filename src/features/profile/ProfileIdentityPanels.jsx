@@ -1,3 +1,4 @@
+import { ValidatorProfileBanner, ValidatorProfileCard } from "../research/ValidatorProfile.jsx";
 import { useCallback, useEffect, useState } from "react";
 import { requestJson } from "../../api";
 import { ProfileIdentityCard } from "./ProfileIdentityCard.jsx";
@@ -443,6 +444,7 @@ export function NetworkBadgesPanel({ session = null } = {}) {
         </p>
       )}
       <div className="pf-badges">
+        <ValidatorProfileCard bindings={session?.validator?.bindings} />
         {identityApprovalBadges.map((badge) => {
           const Icon = badge.icon;
           const durableBadge = durableBadgeFor(badge.id);
@@ -639,6 +641,7 @@ export function PrivateProfile({
         rewardRange={rewardRange}
         session={session}
       />
+      <ValidatorProfileBanner session={session} />
       <TodaysBriefing
         airdrop={airdropState.latest}
         error={airdropState.error}
