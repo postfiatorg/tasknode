@@ -75,11 +75,11 @@ export function OperatorIdentity({ operator }) {
     <span className="directory-operator">
       <ProfilePortrait nft={operator.heroNft} seed={operator.accountId || operator.handle} label={`${operator.displayName || operator.handle || "Member"} profile picture`} size={64} className="directory-avatar" />
       <span className="directory-operator-copy">
-        <strong>
+        <strong className={operator.validator?.bindings?.length ? "has-validator" : undefined}>
           <span className="directory-operator-name" title={operator.handle ? `@${operator.handle}` : operator.displayName}>
             {operator.handle ? `@${operator.handle}` : operator.displayName || "Task Node member"}
           </span>
-          <ValidatorMark bindings={operator.validator?.bindings} compact />
+          <ValidatorMark bindings={operator.validator?.bindings} />
           {operator.isYou && <em>You</em>}
         </strong>
         {operator.operatorDisclosure?.isMachineOperator && (
