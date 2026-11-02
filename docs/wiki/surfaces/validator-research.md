@@ -1,4 +1,10 @@
-# Validator research
+# Validator rewards and research
+
+Open **Validator** in your avatar menu to link a validator and earn **$20/month in Task Node credit** when eligible. The menu shows **Connect**, **Connected · L1**, **Connected · Ledger**, or both networks. You can also open the same page from **Run a validator? Link it** in Directory, the Validator card on your profile, or the Server-icon tab in Settings.
+
+After connecting, a Server mark appears on your avatar, your public profile and your Directory row when you appear on the public leaderboard. Directory's **Validators** filter shows linked validators; hover the mark for the network and linked date. Your own profile shows the validator identity, linked date and current participation. Unbinding removes these indicators when no bindings remain.
+
+The Validator dashboard shows each binding's observed days toward the required **25 of the last 30 complete UTC days**, mean participation against **95%**, next monthly check, and whether it is on track or still building history. Current eligibility is a preview; the worker checks again at payout. Paid reward history lists the payout month, amount and date. Only paid grants are saved: an absent month has no recorded eligibility decision. Paid receipts remain visible after unbinding. Your available credit links to **Billing**, where **Validator reward — Mon YYYY** links back to this dashboard.
 
 Settings → Validator connects a PFT Ledger devnet/testnet or Post Fiat L1 devnet validator to your Task Node account. The signature proves control of the running validator and binds its master public key to your account. It signs a one-time challenge, not a ledger transaction: nothing is submitted to the ledger. A validator key can belong to one account; an account can bind several keys. Your validator token stays on its host; the master key can stay offline.
 

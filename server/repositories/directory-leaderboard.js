@@ -1,4 +1,5 @@
 import { databaseEnabled, query } from "../db/pool.js";
+import { publicValidatorBindingsByAccount } from "./validator-bindings.js";
 import { listDiscoverableAccountWalletIdentities } from "./account-profiles.js";
 import { listMachineOperatorDisclosures } from "./capability-profiles.js";
 import { ALIGNMENT_WINDOW_DAYS, alignmentByAccountSql, alignmentScore0To100 } from "./alignment-score.js";
@@ -344,13 +345,18 @@ async function baseDocument() {
   return cachedBaseDocument;
 }
 
-export async function getDirectoryLeaderboardDocument({ viewerAccountId = "" } = {}) {
-  const document = await baseDocument();
+export async function getDirectoryLeaderboardDocument({ viewerAccountId = "" } = {}, {
+  loadBase = baseDocument, loadValidators = publicValidatorBindingsByAccount,
+} = {}) {
+  const document = await loadBase();
   const accountId = safeText(viewerAccountId, 180);
+  // Read membership after the ranking cache so unbinding removes the mark immediately.
+  const validators = await loadValidators(document.operators.map(operator => operator.accountId));
   return {
     ...document,
     operators: document.operators.map((operator) => ({
       ...operator,
+      validator: validators.has(operator.accountId) ? { bindings: validators.get(operator.accountId) } : null,
       isYou: Boolean(accountId && operator.accountId === accountId),
     })),
   };

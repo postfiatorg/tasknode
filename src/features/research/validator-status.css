@@ -1,0 +1,39 @@
+.validator-mark { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid var(--tn-dark-border, #c9ddd1); border-radius: 999px; color: var(--tn-dark-success, #287842); background: var(--tn-dark-profile-surface, #f2f8f3); font-size: 11px; font-weight: 600; vertical-align: middle; white-space: nowrap; }
+.validator-avatar { position: relative; display: inline-flex; flex: 0 0 auto; }
+.validator-avatar-mark { position: absolute; bottom: -2px; right: -3px; display: grid; place-items: center; width: 19px; height: 19px; border: 2px solid var(--tn-dark-surface, #fff); border-radius: 50%; background: var(--tn-dark-success, #287842); color: #fff; }
+.validator-menu-status { margin-left: auto; font-size: 10px; border-radius: 999px; background: var(--tn-dark-hover, #f0f0ee); padding: 3px 7px; white-space: nowrap; }
+.validator-menu-status.is-connected { color: var(--tn-dark-success, #287842); }
+.validator-header-avatar { margin-left: auto; display: inline-flex; align-items: center; padding: 4px; text-decoration: none; }
+.validator-credit { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px; border-radius: 10px; background: var(--tn-dark-hover, #f5f6f1); color: inherit; text-decoration: none; }
+.validator-credit small, .validator-credit strong { display: block; }
+.validator-credit strong { font-size: 27px; margin-top: 5px; }
+.validator-credit > span, .validator-card-heading, .validator-profile-banner header, .validator-profile-banner h2, .validator-profile-banner header a { display: flex; align-items: center; gap: 8px; }
+.validator-card-heading h3 { flex: 1; font-size: 17px; }
+.validator-card-heading > span { font-size: 12px; white-space: nowrap; }
+.validator-reward-card h4 { margin: 6px 0 0; }
+.validator-eligibility { display: grid; gap: 10px; }
+.validator-state { font-size: 13px; }
+.validator-state.is-on_track { color: var(--tn-dark-success, #287842); }
+.validator-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.validator-metrics strong, .validator-metrics span { display: block; }
+.validator-metrics strong { font-size: 23px; font-weight: 600; }
+.validator-metrics span { font-size: 11px; margin: 4px 0; color: var(--tn-dark-secondary, #62635c); }
+.validator-metrics progress { width: 100%; height: 7px; accent-color: var(--tn-dark-success, #287842); }
+.validator-history-scroll { overflow-x: auto; }
+.validator-history { width: 100%; border-collapse: collapse; font-size: 12px; }
+.validator-history th, .validator-history td { text-align: left; padding: 9px 5px; border-bottom: 1px solid var(--tn-dark-border, #e4e5df); }
+.validator-history td small { display: block; }
+.validator-history-empty { font-size: 12px; color: var(--tn-dark-secondary, #62635c); }
+.validator-profile-banner { border: 1px solid var(--tn-dark-border, #dce4d9); padding: 20px; border-radius: 12px; margin: 22px 0; background: var(--tn-dark-profile-surface, #f7faf5); }
+.validator-profile-banner header { justify-content: space-between; flex-wrap: wrap; }
+.validator-profile-banner h2 { margin: 0; font-size: 19px; }
+.validator-profile-banner header a { color: inherit; font-size: 12px; }
+.validator-profile-binding { display: grid; gap: 10px; border-top: 1px solid var(--tn-dark-border, #dce4d9); padding-top: 18px; margin-top: 18px; }
+.validator-profile-binding code { overflow-wrap: anywhere; font-size: 12px; }
+.validator-profile-card { color: inherit; text-decoration: none; }
+.validator-profile-card p { margin: 7px 0 0; font-size: 12px; }
+.validator-directory-cta { display: inline-flex; align-items: center; gap: 7px; color: inherit; font-size: 13px; margin-top: 14px; }
+.validator-filter { display: flex; gap: 6px; }
+.validator-filter button { border: 1px solid var(--tn-dark-border, #ddd); border-radius: 999px; padding: 6px 12px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; }
+.validator-filter button[aria-pressed="true"] { color: var(--tn-dark-success, #287842); background: var(--tn-dark-hover, #eef5ed); border-color: var(--tn-dark-success, #287842); }
+@media (max-width: 480px) { .validator-metrics { grid-template-columns: 1fr; gap: 12px; } .validator-credit { flex-wrap: wrap; } .validator-profile-banner { padding: 14px; } }

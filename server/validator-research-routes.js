@@ -1,8 +1,8 @@
 import { authenticateResearchKey, createResearchKey, getResearchJob, listResearchKeys, revokeResearchKey } from "./repositories/research-gateway.js";
-import { bindValidator, hasValidatorBinding, issueValidatorChallenge, listValidatorBindings, revokeValidatorBinding } from "./repositories/validator-bindings.js";
-import { dailyAgreement, fetchValidatorReports, validatorError } from "./validator-identity.js";
+import { bindValidator, hasValidatorBinding, issueValidatorChallenge, revokeValidatorBinding } from "./repositories/validator-bindings.js";
+import { validatorError } from "./validator-identity.js";
 import { publicResearchJob, refreshResearchJob, submitResearchJob } from "./research-gateway.js";
-import { l1BindingParticipation } from "./l1-validator-identity.js";
+import { validatorDashboard } from "./validator-dashboard.js";
 
 export async function handleValidatorResearchRoute({ json, readJson, req, res, session, url }) {
   const path = url.pathname;
@@ -20,15 +20,7 @@ export async function handleValidatorResearchRoute({ json, readJson, req, res, s
     }
     const { accountId } = identity;
     if (path === "/api/validators" && req.method === "GET") {
-      const bindings = await listValidatorBindings(accountId);
-      const enriched = await Promise.all(bindings.map(async (binding) => {
-        try { return { ...binding, uptime: binding.network === "l1-devnet" ? await l1BindingParticipation(binding)
-          : dailyAgreement(await fetchValidatorReports(binding.master_public_key, binding.network)) }; }
-        catch { return { ...binding, uptime: null, uptimeError: "Validator history is temporarily unavailable." }; }
-      }));
-      const now = new Date();
-      return reply(200, { ok: true, bindings: enriched, badge: bindings.length ? "Validator" : null,
-        nextRewardDate: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString() });
+      return reply(200, { ok: true, ...await validatorDashboard(accountId) });
     }
     if (path === "/api/validators/challenge" && req.method === "POST") return reply(201, { ok: true, ...await issueValidatorChallenge(accountId) });
     if (path === "/api/validators/bind" && req.method === "POST") {

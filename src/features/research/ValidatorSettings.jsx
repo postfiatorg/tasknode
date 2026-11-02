@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Copy } from "lucide-react";
 import { researchRequest } from "./research-client.js";
+import { ValidatorBindingCard, ValidatorCreditBalance, ValidatorRewardHistory } from "./ValidatorRewards.jsx";
 import { ManualValidatorConnect } from "./ManualValidatorConnect.jsx";
 import "./research.css";
 
@@ -58,9 +59,13 @@ export function ValidatorSettings({ onAppStateChange }) {
   const command = connect ? `curl -fsSL ${origin}/${script} | sh -s -- ${connect.token}` : "";
   const inspect = connect ? `curl -fsSLO ${origin}/${script}\ncat ${script}\nsh ${script} ${connect.token}` : "";
   const bound = Boolean(status?.bindings?.length);
+  const displayedRewards = new Set(status?.bindings?.flatMap(binding => binding.rewardHistory?.map(reward => reward.id) || []) || []);
+  const pastRewards = status?.rewardHistory?.filter(reward => !displayedRewards.has(reward.id)) || [];
   return <div className="research-panel validator-connect-panel">
-    {bound && !connect ? <strong className="validator-badge"><CheckCircle2 size={20} /> Validator connected</strong> : <h3>Connect your validator</h3>}
-    <p>Connect for GoodAlexander models, research API keys, and $20 monthly credit when eligible. Chat research is available to every signed-in account with sufficient balance.</p>
+    <h3>Link your validator. Earn $20/month in credit.</h3>
+    <p>Connect once, then track your participation and monthly Task Node credit here. Each validator needs 25 observed days out of the last 30 and at least 95% mean participation.</p>
+    {bound && <strong className="validator-badge"><CheckCircle2 size={20} /> Validator connected</strong>}
+    {status && <ValidatorCreditBalance availableCreditUsd={status.availableCreditUsd} />}
     {connect && <section className="research-card" aria-label="Connect with one command">
       <label>Validator network <select value={network} onChange={event => setNetwork(event.target.value)}>
         <option value="ledger">PFT Ledger devnet / testnet</option>
@@ -77,17 +82,9 @@ export function ValidatorSettings({ onAppStateChange }) {
     </section>}
     {!connect && <button type="button" disabled={busy} onClick={() => act(async () => setConnect(await researchRequest("/api/validators/connect", { method: "POST", body: {} })))}>{bound ? "Connect another validator" : "Generate connect command"}</button>}
     {bound && <a href="/api/research/bundles/ga-models/index.html" target="_blank" rel="noreferrer">GoodAlexander models</a>}
-    {status?.bindings?.map(binding => <article className="research-card" key={binding.id}>
-      <strong>{binding.network === "l1-devnet" ? "Post Fiat L1 devnet" : binding.network}</strong><code className="research-wrap">{binding.validator_id || binding.master_public_key}</code>
-      {binding.network === "l1-devnet" ? <>
-        <p>{binding.uptime?.available ? `${(binding.uptime.meanAgreement * 100).toFixed(3)}% mean participation · ${binding.uptime.daysReported}/30 days observed` : binding.uptime ? `${binding.uptime.daysReported}/30 complete UTC days observed. Participation history is building.` : binding.uptimeError}</p>
-        <small>L1 monthly credit requires at least 25 observed days out of the last 30 complete UTC days and at least 95% mean participation. Next check: {status.nextRewardDate.slice(0, 10)} UTC. Your research API and models access is active.</small>
-        <details><summary>Public validator identity</summary><p>{binding.chain_id}</p><code className="research-wrap">{binding.ml_dsa_public_key}</code></details>
-      </> : <>
-        <p>{binding.uptime ? `${binding.uptime.meanAgreement === null ? "No agreement data" : `${(binding.uptime.meanAgreement * 100).toFixed(3)}% mean agreement`} · ${binding.uptime.daysReported}/30 days reported` : binding.uptimeError}</p>
-        <small>Next reward: {status.nextRewardDate.slice(0, 10)} UTC. Eligibility is checked then.</small>
-      </>}
-    </article>)}
+    {status?.bindings?.map(binding => <ValidatorBindingCard key={binding.id} binding={binding} />)}
+    {pastRewards.length > 0 && <section className="research-card"><h3>Past validator rewards</h3><ValidatorRewardHistory entries={pastRewards} /></section>}
+    {status?.rewardHistoryNote && <small>{status.rewardHistoryNote}</small>}
     <details><summary>Rewards and research billing</summary>
       <p>Earn $20 per eligible key on the first UTC day of each month: at least 95% mean daily agreement (Ledger) or participation (L1) in the preceding 30 complete UTC days, with at least 25 reported days. L1 observations started on October 28, 2026; credit waits until at least 25 complete days are observed. Days without verifiable committed blocks do not count.</p>
       <p>Deep Research uses the GoodAlexander API at <code>research.goodalexander.com:18443</code>. Choose Deep Research in chat. Your credit is charged at provider cost rounded up to $0.000001 once per job. At least $0.50 available is required; pending jobs reserve their maximum cost and failed jobs may incur provider cost.</p>

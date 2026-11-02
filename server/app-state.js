@@ -1,3 +1,4 @@
+import { publicValidatorBindingsByAccount } from "./repositories/validator-bindings.js";
 import { decisionsAvailable } from "./corbanu-decisions.js";
 import {
   authProviders,
@@ -485,6 +486,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
     seedMessages,
     contextDocument,
     researchAccess,
+    validatorMembership,
   ] = await Promise.all([
     timed("readiness", () => readiness(), () => ({
       wallet: {
@@ -523,6 +525,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       () => fallbackContextDocument({ accountId })
     ),
     timed("deep_research_access", () => chatResearchAccess({ accountId }), () => ({ available: false, provider: "goodalexander", atCost: true })),
+    accountId ? timed("validator_membership", () => publicValidatorBindingsByAccount([accountId]), () => new Map()) : new Map(),
   ]);
 
   const creditedUsdcUsd = Number(ethDepositAccount?.creditedBalances?.USDC?.amount || 0);
@@ -633,7 +636,8 @@ export async function appState(session = null, { refreshTaskProjection = false }
 
   return {
     generatedAt: new Date().toISOString(),
-    session: sessionState(session, providers, runtimeReadiness, linkedWallet, identityProfile),
+    session: { ...sessionState(session, providers, runtimeReadiness, linkedWallet, identityProfile),
+      validator: { bindings: validatorMembership.get(accountId) || [] } },
     chat: {
       conversationId,
       conversationsPath: "/api/chat/conversations",

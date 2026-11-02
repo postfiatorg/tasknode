@@ -1,3 +1,4 @@
+import { ValidatorAvatar, ValidatorMenuLink } from "../features/research/ValidatorStatus.jsx";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, BookOpen, Bot, ChevronRight, CreditCard, ExternalLink, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
 import { fetchRuntimeConfig, requestJson } from "../api";
@@ -1115,7 +1116,7 @@ export function App() {
                 }}
                 type="button"
               >
-                <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} />
+                <ValidatorAvatar bindings={session?.validator?.bindings}><ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} /></ValidatorAvatar>
                 <>
                   <span className="profile-copy">
                     <strong>{profileName}</strong>
@@ -1138,7 +1139,7 @@ export function App() {
                     }}
                     type="button"
                   >
-                    <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} />
+                    <ValidatorAvatar bindings={session?.validator?.bindings}><ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} /></ValidatorAvatar>
                     <span className="profile-copy">
                       <strong>{profileName}</strong>
                       <small>{profileSubtext}</small>
@@ -1168,8 +1169,9 @@ export function App() {
                   <div className="menu-divider" />
                   {signedIn ? (
                     <>
-                      <a className="tool-menu-row" href={appState?.chat?.deepResearchAtCost ? "/api/research/bundles/ga-models/index.html" : "#settings/validator"}
-                        target={appState?.chat?.deepResearchAtCost ? "_blank" : undefined} rel="noreferrer" onClick={() => setProfileMenuOpen(false)}>
+                      <ValidatorMenuLink bindings={session?.validator?.bindings} onClick={() => setProfileMenuOpen(false)} />
+                      <a className="tool-menu-row" href={session?.validator?.bindings?.length ? "/api/research/bundles/ga-models/index.html" : "#settings/validator"}
+                        target={session?.validator?.bindings?.length ? "_blank" : undefined} rel="noreferrer" onClick={() => setProfileMenuOpen(false)}>
                         <BookOpen size={16} strokeWidth={1.75} /><span>GoodAlexander models</span>
                       </a>
                       <ToolMenuRow
@@ -1248,6 +1250,9 @@ export function App() {
               <span>Task Node</span>
             </button>
           </div>
+          {signedIn && session?.validator?.bindings?.length > 0 && <a className="validator-header-avatar" href="#settings/validator" aria-label="Your validator rewards">
+            <ValidatorAvatar bindings={session.validator.bindings}><ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} seed={session?.accountId} /></ValidatorAvatar>
+          </a>}
           {view === "chat" && activeChat && (
             <div className="thread-actions">
               <button aria-label="Share chat" onClick={() => setChatShareRequestKey((key) => key + 1)} title="Share" type="button">

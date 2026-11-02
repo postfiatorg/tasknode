@@ -1,4 +1,4 @@
-import { hasValidatorBinding } from "./validator-bindings.js";
+import { publicValidatorBindingsByAccount } from "./validator-bindings.js";
 import { isIdentifierChar, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash } from "node:crypto";
 import { githubCoreContributorAccess } from "../core-contributor-authorization.js";
@@ -688,7 +688,7 @@ export async function publicNetworkBadgesForAccount({
 } = {}) {
   // Validator membership is a public identity badge, not a network-task lane.
   // Derive it from current bindings even when other durable badges exist.
-  const validatorBadge = await hasValidatorBinding(accountId)
+  const validatorBadge = (await publicValidatorBindingsByAccount([accountId])).has(accountId)
     ? publicBadgeFromDefinition({ definition: networkBadgeDefinitions.validator, status: "verified", source: "validator_binding" }) : null;
   const durable = (await listDurablePublicBadges({ accountId })).filter((badge) => badge.badgeId !== "validator");
   if (durable.length) {
