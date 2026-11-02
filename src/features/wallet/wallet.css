@@ -511,6 +511,21 @@
   color: var(--tn-dark-warning, #7a4d08);
 }
 
+.wallet-inline-status.is-gift-retry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.wallet-inline-status.is-gift-retry span {
+  flex: 1 1 240px;
+}
+
+.wallet-inline-status.is-gift-retry button {
+  flex: 0 0 auto;
+}
+
 .wallet-inline-status.is-dismissible {
   padding-right: 8px;
 }
