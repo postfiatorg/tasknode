@@ -70,14 +70,16 @@ function DirectoryStatus({ status, onRefresh }) {
   return <div className="directory-empty">No operators yet.</div>;
 }
 
-function OperatorIdentity({ operator }) {
+export function OperatorIdentity({ operator }) {
   return (
     <span className="directory-operator">
       <ProfilePortrait nft={operator.heroNft} seed={operator.accountId || operator.handle} label={`${operator.displayName || operator.handle || "Member"} profile picture`} size={64} className="directory-avatar" />
       <span className="directory-operator-copy">
         <strong>
-          {operator.handle ? `@${operator.handle}` : operator.displayName || "Task Node member"}
-          <ValidatorMark bindings={operator.validator?.bindings} />
+          <span className="directory-operator-name" title={operator.handle ? `@${operator.handle}` : operator.displayName}>
+            {operator.handle ? `@${operator.handle}` : operator.displayName || "Task Node member"}
+          </span>
+          <ValidatorMark bindings={operator.validator?.bindings} compact />
           {operator.isYou && <em>You</em>}
         </strong>
         {operator.operatorDisclosure?.isMachineOperator && (

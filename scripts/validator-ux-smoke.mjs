@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
+import { verifyValidatorLayout } from "./fixtures/validator-layout.mjs";
 import { validatorDashboard } from "../server/validator-dashboard.js";
 import { getDirectoryLeaderboardDocument } from "../server/repositories/directory-leaderboard.js";
 import { validatorEligibility, validatorMenuStatus, validatorRewardLedgerTitle } from "../shared/validator-display.js";
@@ -51,6 +52,7 @@ try {
   const { ValidatorMark, ValidatorMenuLink, ValidatorAvatar } = await vite.ssrLoadModule("/src/features/research/ValidatorStatus.jsx");
   const { ValidatorBindingCard, ValidatorRewardHistory } = await vite.ssrLoadModule("/src/features/research/ValidatorRewards.jsx");
   const { ValidatorProfileCard, ValidatorProfileBanner } = await vite.ssrLoadModule("/src/features/research/ValidatorProfile.jsx");
+  const { OperatorIdentity } = await vite.ssrLoadModule("/src/features/directory/DirectoryView.jsx");
   const render = (component, props) => renderToStaticMarkup(React.createElement(component, props));
   assert.equal(render(ValidatorMark, { bindings: [] }), "");
   assert.equal(render(ValidatorProfileBanner, { session: { validator: { bindings: [] } } }), "");
@@ -69,5 +71,9 @@ try {
   const building = render(ValidatorBindingCard, { binding: status.bindings[1] });
   assert.ok(building.includes("Building history") && building.includes("5 / 25") && building.includes("No rewards paid yet"));
   assert.ok(render(ValidatorRewardHistory, { entries: [{ month: "2026-10", status: "not_eligible", reason: "Participation below 95%" }] }).includes("Not eligible"));
+  if (process.env.CHROME_BIN) await verifyValidatorLayout({
+    operator: handle => render(OperatorIdentity, { operator: { handle, isYou: true, validator: { bindings: [ledger, l1] } } }),
+    menu: render(ValidatorMenuLink, { bindings: [ledger, l1] }),
+  });
 } finally { await vite.close(); }
 console.log("validator-ux-smoke ok: both networks, eligibility/bound/unbound/outage/paid history, historical month label, private directory exclusion, revoked membership and rendered indicators");
