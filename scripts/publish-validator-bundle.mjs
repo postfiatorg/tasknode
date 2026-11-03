@@ -9,7 +9,7 @@ import { upsertIndex } from "../server/repositories/index-viewer.js";
 const args = process.argv.slice(2);
 const value = (name) => args.includes(name) ? args[args.indexOf(name) + 1] : "";
 if (args.includes("--help")) {
-  console.log("Usage: node scripts/publish-validator-bundle.mjs --directory /private/static-export --id ga-models --title 'GoodAlexander models' [--summary TEXT] [--publish]\nDefault: validate only. --publish writes an encrypted bundle and validator-tier catalog entry to DATABASE_URL. No plaintext files are written to the repository.");
+  console.log("Usage: node scripts/publish-validator-bundle.mjs --directory /private/static-export --id ga-models --title 'Finance Hub' [--summary TEXT] [--publish]\nDefault: validate only. --publish writes an encrypted bundle and validator-tier catalog entry to DATABASE_URL. No plaintext files are written to the repository.");
 } else {
   const directory = path.resolve(value("--directory"));
   const indexId = value("--id");

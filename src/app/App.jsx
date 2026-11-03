@@ -1172,7 +1172,7 @@ export function App() {
                       <ValidatorMenuLink bindings={session?.validator?.bindings} onClick={() => setProfileMenuOpen(false)} />
                       <a className="tool-menu-row" href={session?.validator?.bindings?.length ? "/api/research/bundles/ga-models/index.html" : "#settings/validator"}
                         target={session?.validator?.bindings?.length ? "_blank" : undefined} rel="noreferrer" onClick={() => setProfileMenuOpen(false)}>
-                        <BookOpen size={16} strokeWidth={1.75} /><span>GoodAlexander models</span>
+                        <BookOpen size={16} strokeWidth={1.75} /><span>Finance Hub</span>
                       </a>
                       <ToolMenuRow
                         icon={Network}

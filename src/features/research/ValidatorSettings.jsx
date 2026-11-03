@@ -81,7 +81,7 @@ export function ValidatorSettings({ onAppStateChange }) {
       <details><summary>Download and inspect first</summary>{network === "l1-devnet" && <p>The verified signer and validator registry are served by <code>research.goodalexander.com:18443</code>.</p>}<pre className="research-wrap">{inspect}</pre><a href={`/${script}`} download>Download {script}</a></details>
     </section>}
     {!connect && <button type="button" disabled={busy} onClick={() => act(async () => setConnect(await researchRequest("/api/validators/connect", { method: "POST", body: {} })))}>{bound ? "Connect another validator" : "Generate connect command"}</button>}
-    {bound && <a href="/api/research/bundles/ga-models/index.html" target="_blank" rel="noreferrer">GoodAlexander models</a>}
+    {bound && <a href="/api/research/bundles/ga-models/index.html" target="_blank" rel="noreferrer">Finance Hub</a>}
     {status?.bindings?.map(binding => <ValidatorBindingCard key={binding.id} binding={binding} />)}
     {pastRewards.length > 0 && <section className="research-card"><h3>Past validator rewards</h3><ValidatorRewardHistory entries={pastRewards} /></section>}
     {status?.rewardHistoryNote && <small>{status.rewardHistoryNote}</small>}
