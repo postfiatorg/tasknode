@@ -207,7 +207,7 @@ export function settingsPageFromLocation() {
 }
 
 export const APP_VIEWS = new Set([
-  "chat", "tasks", "wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help",
+  "chat", "tasks", "wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help", "finance-hub",
   ...appExtensionRegistry.inventory().map(({ id }) => id),
 ]);
 export const MORE_EXTENSION_VIEWS = new Set(
@@ -325,12 +325,19 @@ export function memberProfileAccountIdFromLocation(hashValue = null) {
   }
 }
 
-export function writeViewLocation(nextView, { replace = false } = {}) {
+// subPath: a route inside the view ("RKLB/summary"); "" opens the view's home. Omitted, a view with
+// deep links (docs, help, finance-hub) keeps the page already in the address bar.
+export function writeViewLocation(nextView, { replace = false, subPath } = {}) {
   if (typeof window === "undefined") return;
   const normalizedView = APP_VIEWS.has(nextView) ? nextView : "chat";
   const url = new URL(window.location.href);
   if (normalizedView === "chat") {
     url.hash = "";
+  } else if (typeof subPath === "string") {
+    url.hash = subPath ? `${normalizedView}/${subPath}` : normalizedView;
+  } else if (normalizedView === "finance-hub") {
+    const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
+    url.hash = hashPath.toLowerCase().startsWith("finance-hub/") ? hashPath : normalizedView;
   } else if (normalizedView === "docs" || normalizedView === "help") {
     const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
     const lowerPath = hashPath.toLowerCase();
