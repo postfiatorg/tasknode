@@ -320,7 +320,7 @@ All signed-in accounts can select **+ → Deep Research**. GoodAlexander researc
 billed at cost (typically $0.50-1.00, about 3 minutes), uses your Task Node balance.
 At least $0.50 available is required; use **Settings → Billing → Top up** to add
 credit. Validators keep their eligible $20/month credit, while research API keys
-and GoodAlexander models remain validator-only.
+and Finance Hub remains validator-only.
 
 The default maximum is **$1.50**, reduced to your available balance when it is
 between $0.50 and $1.50. You can choose a different maximum. Pending jobs reserve

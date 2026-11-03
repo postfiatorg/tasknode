@@ -62,8 +62,8 @@ Each eligible validator key receives $20 on the first UTC day of the payout mont
 Publish private static exports outside the public repository:
 
 ```sh
-node scripts/publish-validator-bundle.mjs --directory /private/export --id ga-models --title 'GoodAlexander models'
-node scripts/publish-validator-bundle.mjs --directory /private/export --id ga-models --title 'GoodAlexander models' --publish
+node scripts/publish-validator-bundle.mjs --directory /private/export --id ga-models --title 'Finance Hub'
+node scripts/publish-validator-bundle.mjs --directory /private/export --id ga-models --title 'Finance Hub' --publish
 ```
 
 Default mode validates without publishing. Publication compresses the static file map and encrypts it with AES-256-GCM. Ciphertext is stored in `index_viewer_bundles`; its key is held by `index_viewer_indices`. `/api/index-viewer/indices/<id>/content` serves only ciphertext. `/api/research/bundles/<id>/index.html` and every relative asset check the signed-in account's tier, then decrypt the bundle in memory. Catalog entries contain no keys. EXPORT.md and MANIFEST.sha256 are excluded. Never commit private exports, archive contents, keys, or internal research. Files must use relative URLs; the bundle is served under a prefix.
