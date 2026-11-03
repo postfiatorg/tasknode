@@ -1,6 +1,6 @@
 import { ValidatorAvatar, ValidatorMenuLink } from "../features/research/ValidatorStatus.jsx";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, BookOpen, Bot, ChevronRight, CreditCard, ExternalLink, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
+import { Activity, BookOpen, Bot, ChartLine, ChevronRight, CreditCard, ExternalLink, FileText, LifeBuoy, ListTodo, Lock, LogOut, MoreHorizontal, Network, PanelLeft, Pencil, Search, Settings as SettingsIcon, ShieldBan, Share, SquarePen, Store, Unlock, User as UserIcon, Wallet, Wand2, X } from "lucide-react";
 import { fetchRuntimeConfig, requestJson } from "../api";
 import { ChatSearchModal } from "../features/chat/ChatSearchModal";
 import { createChatDeletionState } from "../features/chat/chat-deletion-state.js";
@@ -40,6 +40,7 @@ const WalletView = lazy(() => import("../features/wallet/WalletView").then((modu
 const HelpView = lazy(() => import("../features/docs/DocsView").then((module) => ({ default: module.DocsView })));
 const DocsLibraryView = lazy(() => import("../features/docs-library/DocsLibraryView").then((module) => ({ default: module.DocsLibraryView })));
 const HiveView = lazy(() => import("../features/hive/HiveView").then((module) => ({ default: module.HiveView })));
+const FinanceHubView = lazy(() => import("../features/research/FinanceHubView.jsx").then((module) => ({ default: module.FinanceHubView })));
 const TASKS_VIEW_FRESH_STATE_MS = 2000;
 const ProfilePage = lazy(() => import("../features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
 const MemberProfilePage = lazy(() => import("../features/profile/ProfileView").then((module) => ({ default: module.MemberProfileView })));
@@ -186,6 +187,7 @@ export function App() {
     setChatActionMenu, setChatDeleteTarget, setChatResetKey,
   });
   const signedIn = canRenderWorkspaceContent && isSignedInSession(session);
+  const hasFinanceHub = signedIn && session?.validator?.bindings?.length > 0; // validator-only, as the bundle route enforces
   const [hiveGroupStatus, setHiveGroupStatus] = useHiveGroupStatus({ accountId: session?.accountId, signedIn, activeChatKind: activeChat?.kind, activeChatId, view });
   const hiveUnreadCount = hiveGroupStatus?.accountId === appState?.session?.accountId ? Number(hiveGroupStatus?.unreadCount || 0) : 0;
   const profileName = appStateLoading ? "Checking session" : profileDisplayName(session);
@@ -464,7 +466,7 @@ export function App() {
     if (isMobileViewport()) {
       setSidebarOpen(false);
     }
-    writeViewLocation(normalizedView, { replace: options.replace === true });
+    writeViewLocation(normalizedView, { replace: options.replace === true, subPath: options.subPath });
     if (typeof window !== "undefined") setLocationHash(window.location.hash);
   }, []);
   const openTaskDetail = useCallback((task) => {
@@ -964,6 +966,7 @@ export function App() {
             onClick={() => navigateToView("context")}
             sidebarOpen={sidebarOpen}
           />
+          {hasFinanceHub && <SidebarButton active={view === "finance-hub"} icon={ChartLine} label="Finance Hub" onClick={() => navigateToView("finance-hub", { subPath: "" })} sidebarOpen={sidebarOpen} />}
           {primaryInsightExtensions.map((extension) => <SidebarButton
             key={extension.id} active={view === extension.id} icon={extension.icon} label={extension.label}
             onClick={() => { navigateToView(extension.id); if (extension.requiresAuth && !signedIn) setLoginOpen(true); }}
@@ -1170,10 +1173,8 @@ export function App() {
                   {signedIn ? (
                     <>
                       <ValidatorMenuLink bindings={session?.validator?.bindings} onClick={() => setProfileMenuOpen(false)} />
-                      <a className="tool-menu-row" href={session?.validator?.bindings?.length ? "/api/research/bundles/ga-models/index.html" : "#settings/validator"}
-                        target={session?.validator?.bindings?.length ? "_blank" : undefined} rel="noreferrer" onClick={() => setProfileMenuOpen(false)}>
-                        <BookOpen size={16} strokeWidth={1.75} /><span>Finance Hub</span>
-                      </a>
+                      <ToolMenuRow icon={ChartLine} label="Finance Hub" trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                        onClick={() => { if (hasFinanceHub) navigateToView("finance-hub", { subPath: "" }); else { setSettingsPage("validator"); setSettingsOpen(true); } setProfileMenuOpen(false); }} />
                       <ToolMenuRow
                         icon={Network}
                         label="Directory"
@@ -1393,6 +1394,7 @@ export function App() {
             </Suspense>
           )}
           {activeExtension && <ExtensionSurface context={extensionContext} extension={activeExtension} />}
+          {view === "finance-hub" && <Suspense fallback={<StatusBanner>Loading Finance Hub</StatusBanner>}><FinanceHubView hasAccess={hasFinanceHub} locationHash={locationHash} onLocationChange={setLocationHash} /></Suspense>}
           {view === "help" && (
             <Suspense fallback={<StatusBanner>Loading help</StatusBanner>}>
               <HelpView />
