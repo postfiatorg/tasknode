@@ -51,7 +51,7 @@ export async function handleValidatorBundleRoute({ json, req, res, session, url 
     if (filePath.split("/").some((part) => part === "." || part === ".." || part.includes("\\")) || !Object.hasOwn(files, filePath)) throw validatorError("bundle_file_not_found", 404);
     const type = mimeTypes[filePath.split(".").at(-1).toLowerCase()] || "application/octet-stream";
     res.writeHead(200, { "content-type": type, "cache-control": "private,no-store", "x-content-type-options": "nosniff",
-      "referrer-policy": "no-referrer", "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'none'; object-src 'none'" });
+      "referrer-policy": "no-referrer", "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://api.hyperliquid.xyz; frame-ancestors 'self'; base-uri 'self'; form-action 'none'; object-src 'none'" });
     res.end(Buffer.from(files[filePath], "base64"));
   } catch (error) { json(res, error.status || 503, { ok: false, error: error.status ? error.message : "bundle_unavailable" }, { "cache-control": "no-store" }); }
   return true;
