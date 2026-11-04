@@ -1,4 +1,4 @@
-import { assertNotBlacklisted } from "./value-accountability.js";
+import { activeBlacklistEntry, assertNotBlacklisted } from "./value-accountability.js";
 import { assertMergedPrForPayment } from "./merged-pr-requirement.js";
 import { query } from "./db/pool.js";
 import { getTaskDetail } from "./repositories/tasks.js";
@@ -58,6 +58,7 @@ import {
   acquireReviewPublicationLock,
   callOpenAiJson,
   clearWorkerClaim,
+  BLACKLIST_PARK_RETRY,
   directWritePublishedRef,
   directWriteReviewTransition,
   markReviewPublicationError,
@@ -377,8 +378,25 @@ export function attachRewardForensics({
   };
 }
 
-export async function processVerificationResponse(row, { logger = console } = {}) {
+export async function processVerificationResponse(row, {
+  logger = console,
+  blacklistLookup = activeBlacklistEntry,
+  parkClaim = clearWorkerClaim,
+} = {}) {
   const workerName = "reward_scoring";
+  // Blacklisted accounts are never paid. Check before any wallet sync, evidence
+  // fetch or scoring call, and park the task instead of failing it.
+  const blacklisted = await blacklistLookup({ accountId: row.account_id, walletAddress: row.subject_wallet });
+  if (blacklisted) {
+    await parkClaim({
+      taskId: row.task_id,
+      workerName,
+      error: `account_blacklisted:reward: ${blacklisted.reason_code || "blacklisted"}`,
+      ...BLACKLIST_PARK_RETRY,
+    });
+    logger.info?.("task_reward_scoring_parked_blacklisted", { taskId: row.task_id, reasonCode: blacklisted.reason_code || "" });
+    return { ok: true, taskId: row.task_id, skipped: true, reason: "account_blacklisted_parked" };
+  }
   const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
   if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
   const authorityWallet = walletFromSeed(authoritySeed(), "task_authority_seed_missing");
