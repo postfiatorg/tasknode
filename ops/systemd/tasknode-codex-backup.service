@@ -1,0 +1,11 @@
+[Unit]
+Description=Task Node board-manager Codex backup (gpt-6.1-terra xhigh) for stalled or provider-limited Kimi rounds
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/repos/tasknode
+Environment=BM_HOME=%h/pf-boards
+Environment=PATH=%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/flock -n %h/pf-boards/state/codex-backup.lock /usr/bin/node %h/repos/tasknode/ops/bm-runtime/codex-backup.mjs
+TimeoutStartSec=50min

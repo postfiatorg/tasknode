@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { readAgentRegistry } from "./registry.mjs";
 import { remoteBoardCommand } from "../../scripts/bm/remote.mjs";
+import { deliveryHeldByBackup } from "./codex-backup.mjs";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const home = process.env.BM_HOME || path.join(process.env.HOME, "pf-boards");
@@ -241,6 +242,15 @@ export async function superviseOnce() {
         appendFileSync(path.join(home, "ALERTS.log"), `${new Date().toISOString()} ${agent.alias}: interrupted terminal after ${Math.round(blocked.busyMs / 60_000)} busy minutes so round ${round.id} can be delivered\n`);
       }
       save(busyFile, next);
+    }
+    // The Codex backup owns this round (codex-backup.mjs lease): never deliver it to Kimi as well.
+    const backupLease = read(path.join(stateDir, `${agent.alias}.backup-owner.json`));
+    if (deliveryHeldByBackup(backupLease, round)) {
+      if (pending && pending.heldFor !== backupLease.at) {
+        pending.heldFor = backupLease.at; save(pendingFile, pending);
+        log({ alias: agent.alias, event: "delivery_held_for_backup_owner", roundId: round.id, owner: backupLease.owner, leaseAt: backupLease.at });
+      }
+      continue;
     }
     const decision = deliveryDecision({ round, status, pending });
     if (decision === "alert_pending") {
