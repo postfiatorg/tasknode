@@ -137,7 +137,10 @@ kill_timeout = "45s"
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
-  min_machines_running = 1
+  # Two web machines stay up so one crash or deploy never takes Task Node down
+  # (2026-11-04 01:32 UTC outage: the only web machine aborted). Background work
+  # lives in the worker groups; web state is Postgres-authoritative.
+  min_machines_running = 2
   processes = ["app"]
 
   [http_service.http_options]
