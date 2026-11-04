@@ -890,6 +890,33 @@ export const apiRoutePolicies = [
     body: requestBodies.usageAdminCreditBody,
   },
   { id: "usage_ledger", path: "/api/usage/ledger", methods: ["GET"], auth: "session" },
+  // Finance Hub model agent: the worker (model host) pulls with a service token, checked in the handler; every
+  // operator route is session-only and the handler refuses accounts not on TASKNODE_FINANCE_AGENT_ACCOUNTS.
+  { id: "finance_agent_worker", pattern: /^\/api\/finance-agent\/worker(\/.*)?$/, methods: ["POST"], auth: "bearer",
+    unauthenticatedError: "finance_agent_worker_unauthorized", rateLimit: { limit: 1200, windowMs: tenMinutes },
+    bodyRoutes: [
+      { path: "/api/finance-agent/worker/claim", method: "POST", body: requestBodies.emptyRequestBody },
+      { path: "/api/finance-agent/worker/progress", method: "POST", body: bodyPolicy(4096, { allowUnknown: false, required: ["id", "progress"],
+        properties: { id: { type: "string", minLength: 1, maxLength: 80 }, progress: { type: "string", maxLength: 300 } } }) },
+      { path: "/api/finance-agent/worker/complete", method: "POST", body: bodyPolicy(512 * 1024, { allowUnknown: false, required: ["id", "content"],
+        properties: { id: { type: "string", minLength: 1, maxLength: 80 }, content: { type: "string", maxLength: 60_000 },
+          costUsd: { type: ["number", "null"] }, meta: { type: "object" }, proposals: { type: "array", maxItems: 5, items: { type: "object" } } } }) },
+      { path: "/api/finance-agent/worker/fail", method: "POST", body: bodyPolicy(8192, { allowUnknown: false, required: ["id", "error"],
+        properties: { id: { type: "string", minLength: 1, maxLength: 80 }, error: { type: "string", maxLength: 4000 } } }) },
+      { path: "/api/finance-agent/worker/proposal-result", method: "POST", body: bodyPolicy(64 * 1024, { allowUnknown: false, required: ["id", "status"],
+        properties: { id: { type: "string", minLength: 1, maxLength: 80 }, status: { type: "string", enum: ["applied", "failed"] },
+          result: { type: "object" }, message: { type: "string", maxLength: 20_000 } } }) },
+    ] },
+  { id: "finance_agent", pattern: /^\/api\/finance-agent(\/.*)?$/, methods: ["GET", "POST"], auth: "session",
+    unauthenticatedError: "finance_agent_login_required", rateLimit: { limit: 1200, windowMs: tenMinutes },
+    bodyRoutes: [
+      { path: "/api/finance-agent/threads", method: "POST", body: bodyPolicy(4096, { allowUnknown: false, required: ["model"],
+        properties: { model: { type: "string", minLength: 1, maxLength: 16 }, title: { type: "string", maxLength: 120 } } }) },
+      { path: "/api/finance-agent/messages", method: "POST", body: bodyPolicy(64 * 1024, { allowUnknown: false, required: ["threadId", "text"],
+        properties: { threadId: { type: "string", minLength: 1, maxLength: 80 }, text: { type: "string", minLength: 1, maxLength: 8000 }, context: { type: "object" } } }) },
+      { path: "/api/finance-agent/decisions", method: "POST", body: bodyPolicy(1024, { allowUnknown: false, required: ["proposalId", "decision"],
+        properties: { proposalId: { type: "string", minLength: 1, maxLength: 80 }, decision: { type: "string", enum: ["approve", "reject"] } } }) },
+    ] },
 ];
 
 export function routePolicyForPath(pathname) {

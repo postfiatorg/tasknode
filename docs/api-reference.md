@@ -230,5 +230,7 @@ resource membership, or other context beyond a generic identity class.
 | `usage_top_up_sync` | `/api/usage/top-up/sync` | `POST` | `handler` | strict JSON ≤ 1024 bytes | — |
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
+| `finance_agent_worker` | `/^\/api\/finance-agent\/worker(\/.*)?$/` | `POST` | `bearer` | 5 strict path-specific JSON contracts | 1200 / 600s |
+| `finance_agent` | `/^\/api\/finance-agent(\/.*)?$/` | `GET` `POST` | `session` | 3 strict path-specific JSON contracts | 1200 / 600s |
 
-Total: **205 route policies** and **8 authentication modes**.
+Total: **207 route policies** and **8 authentication modes**.
