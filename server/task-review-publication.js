@@ -284,6 +284,32 @@ export async function claimSubmittedTasks({ limit = 1 } = {}) {
   });
 }
 
+// Blacklisted accounts are never paid (value accountability policy), so the
+// reward scorer must never claim their verification responses: each claim used
+// to spend a full scoring pass and then fail at the payment-time blacklist
+// check, retrying forever and starving every other account's queue
+// (2026-11-04). Lifting the blacklist makes the task claimable again.
+export const REWARD_CLAIM_BLACKLIST_EXCLUSION_SQL = `
+          AND NOT EXISTS (
+            SELECT 1
+            FROM account_blacklist bl
+            WHERE bl.status = 'active'
+              AND (
+                (COALESCE(task_projections.account_id, '') <> '' AND bl.account_id = task_projections.account_id)
+                OR (COALESCE(task_projections.subject_wallet, '') <> '' AND task_projections.subject_wallet = ANY(bl.wallet_addresses))
+              )
+          )`;
+
+// A blacklisted task is parked, not failed: a fixed wait (no exponential
+// retry streak) long enough that it never competes for the review slot.
+export const BLACKLIST_PARK_RETRY = Object.freeze({ retryMode: "fixed", retryDelayMs: 6 * 60 * 60 * 1000 });
+
+export function isAccountBlacklistedError(error) {
+  if (!error) return false;
+  if (error.code === "account_blacklisted") return true;
+  return String(error.message || error).startsWith("account_blacklisted");
+}
+
 export async function claimVerificationResponses({ limit = 1 } = {}) {
   const staleSeconds = workerClaimStaleSeconds();
   return transaction(async (client) => {
@@ -293,6 +319,7 @@ export async function claimVerificationResponses({ limit = 1 } = {}) {
         FROM task_projections
         WHERE status = 'verification_response_submitted'
           AND COALESCE(metadata_json->'workers'->'reward_scoring'->>'published', '') <> 'true'
+          ${REWARD_CLAIM_BLACKLIST_EXCLUSION_SQL}
           AND NOT EXISTS (
             SELECT 1
             FROM task_review_publications pub

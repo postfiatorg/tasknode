@@ -24,9 +24,11 @@ import {
   resolveDiscordAnnouncementEvidenceStatus,
 } from "./task-review-evidence.js";
 import {
+  BLACKLIST_PARK_RETRY,
   claimSubmittedTasks,
   claimVerificationResponses,
   clearWorkerClaim,
+  isAccountBlacklistedError,
 } from "./task-review-publication.js";
 import { processSubmittedTask } from "./task-review-submission.js";
 import {
@@ -74,13 +76,15 @@ export async function processTaskReviewQueueOnce({ limit = 1, logger = console }
       results.push(await processVerificationResponse(row, { logger }));
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
+      // A blacklisted account can never be paid: park it instead of retrying.
+      const blacklisted = isAccountBlacklistedError(error);
       await clearWorkerClaim({
         taskId: row.task_id,
         workerName: "reward_scoring",
         error: message,
-        retryMode: "exponential",
+        ...(blacklisted ? BLACKLIST_PARK_RETRY : { retryMode: "exponential" }),
       }).catch(() => null);
-      logger.warn?.("task_reward_scoring_failed", { taskId: row.task_id, error: message });
+      logger.warn?.(blacklisted ? "task_reward_scoring_parked_blacklisted" : "task_reward_scoring_failed", { taskId: row.task_id, error: message });
       results.push({ ok: false, taskId: row.task_id, phase: "reward_scoring", error: message });
     }
   }
