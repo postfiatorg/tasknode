@@ -109,10 +109,14 @@ let ready;
 try { ready = await readiness(); } finally { globalThis.fetch = realFetch; }
 assert.equal(ready.llm.aiGatewayConfigured, true);
 assert.equal(ready.llm.gatewayCredits.lowBalance, true);
-assert.equal(ready.llm.gatewayCredits.balanceUsd, 3.2);
+assert.equal(ready.llm.gatewayCredits.status, "low");
+// public: no dollar amounts anywhere in readiness
+assert.equal(ready.llm.gatewayCredits.balanceUsd, undefined);
+assert.ok(ready.llm.gatewayCredits.credentials.every((item) => item.balanceUsd === undefined && item.totalUsedUsd === undefined));
+assert.ok(!/\$\d/.test(JSON.stringify(ready.llm)));
 assert.equal(ready.llm.warnings.length, 1);
 noKeys(ready);
-check("/api/readiness llm.gatewayCredits + llm.warnings");
+check("/api/readiness llm.gatewayCredits + llm.warnings, state only (no dollar amounts)");
 
 // 8. Transport: gateway insufficient-credit errors become inference_http_402.
 const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture", VERCEL_AI_GATEWAY_BASE_URL: "https://gateway.invalid/v1" };

@@ -39,7 +39,7 @@ import {
 export { chatEstimate, chatEstimateForAccount } from "./chat-estimate.js";
 import { recordAuthEvent } from "./runtime-store.js";
 import { ambientBackupEnabled } from "./inference-policy.js";
-import { gatewayCreditStatus } from "./inference-credits.js";
+import { gatewayCreditStatus, publicGatewayCreditView } from "./inference-credits.js";
 import { taskGenerationInferenceModels } from "./task-generation-contract.js";
 import { findAccountByEmail, getOrCreateEmailAccount } from "./repositories/accounts.js";
 import { createAccountSession, createDevSession } from "./repositories/auth-sessions.js";
@@ -692,8 +692,8 @@ export async function readiness({ creditWaitMs } = {}) {
   // Bounded: a warm cache answers immediately; a cold one waits at most
   // TASKNODE_GATEWAY_CREDIT_READINESS_WAIT_MS (app-state passes 0 and reads
   // the cached value). Never throws, never leaks keys.
-  const gatewayCredits = await Promise.resolve().then(() => gatewayCreditStatus({ models: taskGenerationInferenceModels(), maxWaitMs: creditWaitMs })).catch(() => ({
-    configured: false, status: "unknown", lowBalance: false, balanceUsd: null, warning: "", credentials: [],
+  const gatewayCredits = await Promise.resolve().then(() => gatewayCreditStatus({ models: taskGenerationInferenceModels(), maxWaitMs: creditWaitMs })).then(publicGatewayCreditView).catch(() => ({
+    configured: false, status: "unknown", lowBalance: false, warning: "", credentials: [],
   }));
   return {
     generatedAt: new Date().toISOString(),

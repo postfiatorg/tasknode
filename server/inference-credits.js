@@ -222,6 +222,21 @@ export async function gatewayCreditStatus({
   };
 }
 
+// Readiness is public: report each key's state (ok / low / exhausted / unknown)
+// without dollar amounts. Workers use gatewayCreditStatus() directly.
+export function publicGatewayCreditView(status = {}) {
+  const strip = ({ balanceUsd: _balance, totalUsedUsd: _used, ...rest }) => rest;
+  const credentials = (status.credentials || []).map(strip);
+  const low = credentials.filter((item) => item.lowBalance);
+  const unknown = credentials.filter((item) => item.status === "unknown");
+  const warning = low.length
+    ? low.map((item) => item.status === "exhausted"
+      ? `AI Gateway credits are exhausted for ${item.credential}; task generation is paused until credits are added.`
+      : `AI Gateway credit balance is low for ${item.credential}.`).join(" ")
+    : unknown.length ? `AI Gateway credit balance is unavailable for ${unknown.map((item) => item.credential).join(", ")}.` : "";
+  return { ...strip(status), warning, credentials };
+}
+
 // In-process credit-outage breaker shared by the task generation workers.
 // A 402 opens it; while open no task request is sent to the provider. The
 // worker re-checks the gateway balance on a backoff and closes the breaker as
