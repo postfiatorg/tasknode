@@ -1,0 +1,316 @@
+{
+  "schema": "tasknode-runtime-wallet-address-fixtures/v1",
+  "source_pin": {
+    "ref": "41bb94647cd2e6183d0cbe193b568d179c79a9b6",
+    "path": "server/runtime-store-wallet.js",
+    "bytes": 17081,
+    "sha256": "d22abc6b83c05f34e4266125b3fa94f34f6f8460ea244564fc61285f78271dc7",
+    "url": "https://raw.githubusercontent.com/postfiatorg/tasknode/41bb94647cd2e6183d0cbe193b568d179c79a9b6/server/runtime-store-wallet.js"
+  },
+  "dependency_contract": {
+    "databaseMirror": false,
+    "safeId": "identity for synthetic string accountId, prefix account only",
+    "stableId": "fixture-sig: + exact synthetic signature, prefix sig only",
+    "saveState": "inert, record args and full state; returns undefined",
+    "unused_callbacks": [
+      "normalizeAccountProfileVisibility",
+      "accountPayload",
+      "mergeLinkedProvider",
+      "linkedWalletProvider",
+      "displayNameFromWalletAddress",
+      "syncAccountSessions"
+    ],
+    "unused_callbacks_behavior": "persistent fatal if called",
+    "walletLoginChallengeMaxActive": 0,
+    "nativeDate": "Actual Date parsing/formatting remains native; no-argument construction bound to declared step clock. Every actual time operation is captured. Date.now and parameterized constructors are uncalled in selected path.",
+    "crypto": "Only predeclared finite randomUUID metadata seam; no cryptographic wallet/key operation or signature verification"
+  },
+  "clocks": {
+    "T0": "2026-10-14T11:00:00.000Z",
+    "T1": "2026-10-14T11:00:01.000Z"
+  },
+  "initial_state": {
+    "accounts": {
+      "account_fixture_a": {
+        "id": "account_fixture_a",
+        "status": "active",
+        "displayName": "Fixture account A"
+      },
+      "account_fixture_b": {
+        "id": "account_fixture_b",
+        "status": "active",
+        "displayName": "Fixture account B"
+      }
+    },
+    "accountWallets": {},
+    "authEvents": [],
+    "walletChallenges": {},
+    "fixtureUnchanged": {
+      "marker": "synthetic metadata fixture"
+    }
+  },
+  "sequences": [
+    {
+      "id": "same_address_omitted_key_preserve",
+      "steps": [
+        {
+          "id": "same_address_omitted_key_preserve:T0",
+          "clock_ref": "T0",
+          "uuid": "00000000-0000-4000-8000-000000000101",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_a",
+            "publicKey": "public-metadata-a",
+            "tasknodeEncryptionPubkey": "metadata-key-a",
+            "challengeId": "challenge_fixture_t0",
+            "signature": "signature_fixture_t0",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        },
+        {
+          "id": "same_address_omitted_key_preserve:T1",
+          "clock_ref": "T1",
+          "uuid": "00000000-0000-4000-8000-000000000102",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_a",
+            "challengeId": "challenge_fixture_t1",
+            "signature": "signature_fixture_t1",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_address_supplied_key_rotate",
+      "steps": [
+        {
+          "id": "same_address_supplied_key_rotate:T0",
+          "clock_ref": "T0",
+          "uuid": "00000000-0000-4000-8000-000000000201",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_a",
+            "publicKey": "public-metadata-a",
+            "tasknodeEncryptionPubkey": "metadata-key-a",
+            "challengeId": "challenge_fixture_t0",
+            "signature": "signature_fixture_t0",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        },
+        {
+          "id": "same_address_supplied_key_rotate:T1",
+          "clock_ref": "T1",
+          "uuid": "00000000-0000-4000-8000-000000000202",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_a",
+            "challengeId": "challenge_fixture_t1",
+            "signature": "signature_fixture_t1",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false,
+            "publicKey": "public-metadata-b",
+            "tasknodeEncryptionPubkey": "  metadata-key-b  "
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        }
+      ]
+    },
+    {
+      "id": "first_link_without_key_empty",
+      "steps": [
+        {
+          "id": "first_link_without_key_empty:T0",
+          "clock_ref": "T0",
+          "uuid": "00000000-0000-4000-8000-000000000301",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_a",
+            "challengeId": "challenge_fixture_t0",
+            "signature": "signature_fixture_t0",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        }
+      ]
+    },
+    {
+      "id": "different_address_omitted_key_clear",
+      "steps": [
+        {
+          "id": "different_address_omitted_key_clear:T0",
+          "clock_ref": "T0",
+          "uuid": "00000000-0000-4000-8000-000000000401",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_a",
+            "publicKey": "public-metadata-a",
+            "tasknodeEncryptionPubkey": "metadata-key-a",
+            "challengeId": "challenge_fixture_t0",
+            "signature": "signature_fixture_t0",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        },
+        {
+          "id": "different_address_omitted_key_clear:T1",
+          "clock_ref": "T1",
+          "uuid": "00000000-0000-4000-8000-000000000402",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_b",
+            "challengeId": "challenge_fixture_t1",
+            "signature": "signature_fixture_t1",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        }
+      ]
+    },
+    {
+      "id": "different_address_supplied_key_replace",
+      "steps": [
+        {
+          "id": "different_address_supplied_key_replace:T0",
+          "clock_ref": "T0",
+          "uuid": "00000000-0000-4000-8000-000000000501",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_a",
+            "publicKey": "public-metadata-a",
+            "tasknodeEncryptionPubkey": "metadata-key-a",
+            "challengeId": "challenge_fixture_t0",
+            "signature": "signature_fixture_t0",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        },
+        {
+          "id": "different_address_supplied_key_replace:T1",
+          "clock_ref": "T1",
+          "uuid": "00000000-0000-4000-8000-000000000502",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_b",
+            "challengeId": "challenge_fixture_t1",
+            "signature": "signature_fixture_t1",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false,
+            "publicKey": "public-metadata-b",
+            "tasknodeEncryptionPubkey": "metadata-key-b"
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        }
+      ]
+    },
+    {
+      "id": "trimmed_same_address_omitted_key_preserve",
+      "steps": [
+        {
+          "id": "trimmed_same_address_omitted_key_preserve:T0",
+          "clock_ref": "T0",
+          "uuid": "00000000-0000-4000-8000-000000000601",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_a",
+            "publicKey": "public-metadata-a",
+            "tasknodeEncryptionPubkey": "metadata-key-a",
+            "challengeId": "challenge_fixture_t0",
+            "signature": "signature_fixture_t0",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        },
+        {
+          "id": "trimmed_same_address_omitted_key_preserve:T1",
+          "clock_ref": "T1",
+          "uuid": "00000000-0000-4000-8000-000000000602",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "  address_fixture_a  ",
+            "challengeId": "challenge_fixture_t1",
+            "signature": "signature_fixture_t1",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false,
+            "publicKey": "  public-metadata-a-2  "
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ownership_conflict_rejected",
+      "steps": [
+        {
+          "id": "ownership_conflict_rejected:T0",
+          "clock_ref": "T0",
+          "uuid": "00000000-0000-4000-8000-000000000701",
+          "link_input": {
+            "accountId": "account_fixture_a",
+            "address": "address_fixture_a",
+            "publicKey": "public-metadata-a",
+            "tasknodeEncryptionPubkey": "metadata-key-a",
+            "challengeId": "challenge_fixture_t0",
+            "signature": "signature_fixture_t0",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false
+          },
+          "getter_input": {
+            "accountId": "account_fixture_a"
+          }
+        },
+        {
+          "id": "ownership_conflict_rejected:T1",
+          "clock_ref": "T1",
+          "uuid": null,
+          "link_input": {
+            "accountId": "account_fixture_b",
+            "address": "address_fixture_a",
+            "challengeId": "challenge_fixture_t1",
+            "signature": "signature_fixture_t1",
+            "proofPurpose": "wallet_link",
+            "databaseMirror": false,
+            "publicKey": "public-metadata-b",
+            "tasknodeEncryptionPubkey": "metadata-key-b"
+          },
+          "getter_input": {
+            "accountId": "account_fixture_b"
+          }
+        }
+      ]
+    }
+  ]
+}
