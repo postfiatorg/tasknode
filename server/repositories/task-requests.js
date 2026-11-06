@@ -1,6 +1,7 @@
 import { databaseEnabled, query } from "../db/pool.js";
 import { randomUUID } from "node:crypto";
 import { taskRequestConflict, taskRequestIntentDigest } from "../task-request-command.js";
+import { TASK_GENERATION_UNAVAILABLE_CODE, isInferenceCreditErrorText, publicTaskGenerationError } from "../inference-credits.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -80,8 +81,30 @@ export function isOperatorAuditOnlyTaskRequest(row = {}) {
     repair.user_visible === "false";
 }
 
+// A gateway credit outage is an operator problem. Users see one plain message;
+// the raw provider code stays in the database row and the worker logs.
+function publicErrorMetadata(metadata = {}) {
+  const fields = [
+    ["workerError"],
+    ["exhaustedPreviousError"],
+    ["workerRetry", "error"],
+    ["lastProviderFailure", "code"],
+    ["creditOutage", "code"],
+  ];
+  if (!fields.some(([key, nested]) => isInferenceCreditErrorText(nested ? metadata[key]?.[nested] : metadata[key]))) return metadata;
+  const result = { ...metadata };
+  for (const [key, nested] of fields) {
+    if (!nested) {
+      if (typeof result[key] === "string") result[key] = publicTaskGenerationError(result[key]);
+    } else if (result[key] && typeof result[key] === "object" && typeof result[key][nested] === "string") {
+      result[key] = { ...result[key], [nested]: nested === "code" && isInferenceCreditErrorText(result[key][nested]) ? TASK_GENERATION_UNAVAILABLE_CODE : publicTaskGenerationError(result[key][nested]) };
+    }
+  }
+  return result;
+}
+
 function publicMetadata(metadata = {}, { operatorAuditOnly = false } = {}) {
-  if (!operatorAuditOnly) return metadata;
+  if (!operatorAuditOnly) return publicErrorMetadata(metadata);
   const rest = { ...metadata };
   delete rest.operator_repair;
   delete rest.operatorRepair;
@@ -156,7 +179,8 @@ export function publicTaskRequest(row = {}) {
     workerHeartbeatAt: toIso(row.worker_heartbeat_at),
     workerCompletedAt: toIso(row.worker_completed_at),
     workerRetryAfter: toIso(row.worker_retry_after),
-    lastError: operatorAuditOnly ? "" : row.last_error || "",
+    lastError: operatorAuditOnly ? "" : publicTaskGenerationError(row.last_error || ""),
+    ...(isInferenceCreditErrorText(row.last_error) && !operatorAuditOnly ? { lastErrorCode: TASK_GENERATION_UNAVAILABLE_CODE } : {}),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
     ago: relativeAge(row.updated_at || row.created_at),
@@ -613,6 +637,145 @@ export async function retryTaskGenerationRequest({
   return result.rows[0]
     ? { ok: true, request: publicTaskRequest(result.rows[0]) }
     : { ok: false, stale: true, reason: "task_request_not_owned_by_attempt" };
+}
+
+// Credit outage: return the request to the queue without spending its
+// automatic retry budget (the attempt base moves up to the current count). The
+// worker releases parked requests as soon as gateway credits return; the delay
+// here is only the fallback when the balance cannot be read.
+export async function parkTaskGenerationRequestForCredits({
+  requestId = "",
+  error = "",
+  retryDelayMs = 60_000,
+  metadata = {},
+  workerAttemptId = "",
+  workerId = "",
+} = {}) {
+  if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const attemptGuard = safeText(workerAttemptId, 180);
+  if (!attemptGuard) return { ok: false, reason: "task_generation_attempt_required" };
+  const safeRetryDelayMs = positiveInteger(retryDelayMs, 60_000, { min: 1_000, max: 15 * 60 * 1000 });
+  const result = await query(
+    `
+      UPDATE task_requests
+      SET
+        status = 'queued',
+        worker_id = '',
+        worker_attempt_id = '',
+        worker_claimed_at = NULL,
+        worker_heartbeat_at = NULL,
+        worker_completed_at = NULL,
+        worker_retry_after = now() + ($3::text || ' milliseconds')::interval,
+        last_error = $2,
+        metadata_json = metadata_json || $4::jsonb || jsonb_build_object(
+          'manualRetryAttemptBase', worker_attempt_count,
+          'creditOutage', jsonb_build_object(
+            'since', COALESCE(metadata_json->'creditOutage'->>'since', now()::text),
+            'lastParkedAt', now(),
+            'parks', COALESCE((metadata_json->'creditOutage'->>'parks')::integer, 0) + 1,
+            'code', $2::text,
+            'retryDelayMs', $7::integer
+          )
+        ),
+        updated_at = now()
+      WHERE request_id = $1
+        AND status = 'generating'
+        AND worker_attempt_id = $5
+        AND ($6::text = '' OR worker_id = $6)
+      RETURNING *
+    `,
+    [
+      safeText(requestId, 180),
+      safeText(error, 1000),
+      safeRetryDelayMs,
+      JSON.stringify(metadata && typeof metadata === "object" ? metadata : {}),
+      attemptGuard,
+      safeText(workerId, 180),
+      safeRetryDelayMs,
+    ]
+  );
+  return result.rows[0]
+    ? { ok: true, request: publicTaskRequest(result.rows[0]) }
+    : { ok: false, stale: true, reason: "task_request_not_owned_by_attempt" };
+}
+
+// Credits are back: make every parked request claimable now.
+export async function releaseCreditParkedTaskRequests({ limit = 200 } = {}) {
+  if (!databaseEnabled()) return { released: [] };
+  const result = await query(
+    `
+      WITH parked AS (
+        SELECT request_id
+        FROM task_requests
+        WHERE status IN ('published', 'queued')
+          AND generated_task_id = ''
+          AND metadata_json ? 'creditOutage'
+        ORDER BY updated_at ASC, request_id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT $1
+      )
+      UPDATE task_requests tr
+      SET
+        worker_retry_after = now(),
+        metadata_json = (tr.metadata_json - 'creditOutage') || jsonb_build_object(
+          'creditOutageHistory', (tr.metadata_json->'creditOutage') || jsonb_build_object('releasedAt', now())
+        ),
+        updated_at = now()
+      FROM parked
+      WHERE tr.request_id = parked.request_id
+      RETURNING tr.request_id
+    `,
+    [positiveInteger(limit, 200, { min: 1, max: 1000 })]
+  );
+  return { released: result.rows.map((row) => row.request_id) };
+}
+
+// Requests that failed with a credit error before parking existed (or after a
+// parked request outlived its maximum wait) are re-queued once, with a fresh
+// automatic retry budget, when credits are available again.
+export async function requeueCreditFailedTaskRequests({ lookbackHours = 72, limit = 25 } = {}) {
+  if (!databaseEnabled()) return { requeued: [] };
+  const result = await query(
+    `
+      WITH failed AS (
+        SELECT request_id
+        FROM task_requests
+        WHERE status = 'failed'
+          AND generated_task_id = ''
+          AND request_bundle_cid <> ''
+          AND (last_error ILIKE '%inference_http_402%' OR last_error ILIKE '%insufficient_funds%' OR last_error ILIKE '%quota_for_entity_exceeded%')
+          AND updated_at > now() - ($1::text || ' hours')::interval
+          AND NOT (metadata_json ? 'creditOutageRequeuedAt')
+          AND COALESCE(metadata_json->'operator_repair'->>'action', '') <> 'fail_network_task_generation_chain'
+          AND COALESCE(metadata_json->'operator_repair'->>'public_visibility', '') <> 'hidden'
+          AND NOT EXISTS (SELECT 1 FROM task_projections tp WHERE tp.request_id = task_requests.request_id)
+        ORDER BY updated_at ASC, request_id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT $2
+      )
+      UPDATE task_requests tr
+      SET
+        status = 'queued',
+        worker_id = '',
+        worker_attempt_id = '',
+        worker_claimed_at = NULL,
+        worker_heartbeat_at = NULL,
+        worker_completed_at = NULL,
+        worker_retry_after = now(),
+        metadata_json = tr.metadata_json || jsonb_build_object(
+          'manualRetryAttemptBase', tr.worker_attempt_count,
+          'creditOutageRequeuedAt', now(),
+          'creditOutageRequeuedFromError', tr.last_error
+        ),
+        last_error = '',
+        updated_at = now()
+      FROM failed
+      WHERE tr.request_id = failed.request_id
+      RETURNING tr.request_id
+    `,
+    [positiveInteger(lookbackHours, 72, { min: 1, max: 24 * 30 }), positiveInteger(limit, 25, { min: 1, max: 200 })]
+  );
+  return { requeued: result.rows.map((row) => row.request_id) };
 }
 
 export async function dismissOwnedTaskRequest({ accountId, requestId, expectedAttemptCount, reason = "Dismissed by the request owner." }) {

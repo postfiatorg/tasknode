@@ -69,6 +69,16 @@ function credentialNameForModel(model = "") {
   return resolved ? modelCredentialNames.get(resolved) || "" : "";
 }
 
+// Name of the environment variable that supplies the Vercel credential for a
+// model. Credit checks group by this name so no key material leaves the process.
+export function vercelCredentialName(env = process.env, model = "") {
+  const name = credentialNameForModel(model);
+  if (name && cleanConfig(env[name])) return name;
+  if (cleanConfig(env.VERCEL_AI_GATEWAY_API_KEY)) return "VERCEL_AI_GATEWAY_API_KEY";
+  if (cleanConfig(env.AI_GATEWAY_API_KEY)) return "AI_GATEWAY_API_KEY";
+  return "";
+}
+
 export function providerApiKey(provider, env = process.env, model = "") {
   if (provider === "vercel") {
     const name = credentialNameForModel(model);

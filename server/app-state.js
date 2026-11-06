@@ -488,7 +488,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
     researchAccess,
     validatorMembership,
   ] = await Promise.all([
-    timed("readiness", () => readiness(), () => ({
+    timed("readiness", () => readiness({ creditWaitMs: 0 }), () => ({
       wallet: {
         seedStorageReady: true,
         challengeProofReady: true,

@@ -39,6 +39,32 @@ schemas, truncated output, and caller cancellation are returned as errors.
 A configured key is not proof of successful authentication or available model
 capacity.
 
+## Gateway Credits And Task Generation
+
+The gateway answers `402` when the team balance or a budget is exhausted
+(2026-11-06 incident: every task request failed for ~6.5 hours). Task Node now:
+
+- reports each task-generation credential's balance from `GET /v1/credits` in
+  `/api/readiness` under `llm.gatewayCredits` (cached, bounded wait, never the
+  key itself), with `lowBalance` and a `llm.warnings` entry below
+  `TASKNODE_GATEWAY_CREDIT_LOW_BALANCE_USD` (default 25);
+- shows users "task generation is temporarily unavailable" instead of the raw
+  `inference_http_402`, which stays in `task_requests.last_error` and logs;
+- parks 402-failed task requests and network generation jobs instead of failing
+  them, stops sending task generation to the provider while the balance is $0,
+  re-checks the balance on a backoff, and releases everything parked as soon as
+  credits return. Requests that failed with a 402 within
+  `TASKNODE_TASKGEN_CREDIT_REQUEUE_LOOKBACK_HOURS` (default 72) are re-queued
+  once. Parked work fails after `TASKNODE_TASKGEN_CREDIT_WAIT_MAX_HOURS`
+  (default 48);
+- records each task-generation completion against the account it served as a
+  zero-amount `taskgen_inference` billing ledger entry carrying provider, model,
+  tokens and the gateway-reported cost. Users are not debited and the entries
+  are omitted from the user billing ledger.
+
+Fallback providers for task generation are a separate, unshipped proposal:
+[taskgen-fallback-provider.md](../../proposals/taskgen-fallback-provider.md).
+
 ## Configuration
 
 - `VERCEL_AI_GATEWAY_API_KEY`, or alias `AI_GATEWAY_API_KEY`, configures inference. `VERCEL_KIMI_API_KEY` and `VERCEL_ASTRA_API_KEY` are dedicated keys for those models.

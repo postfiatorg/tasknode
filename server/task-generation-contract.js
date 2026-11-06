@@ -7,6 +7,7 @@ import { buildTaskgenReplayKey } from "./repositories/taskgen-replay-cache.js";
 import { reviewTaskGenerationReadiness } from "./task-generation-readiness.js";
 import { TASK_MIN_STEPS, normalizeTaskSteps } from "../shared/task-steps.js";
 import {
+  INFERENCE_MODELS,
   inferenceChatCompletion,
   resolveInferenceModel,
 } from "./inference.js";
@@ -195,6 +196,20 @@ export function taskgenModelForInput(taskInput = {}, env = process.env) {
     capability: "strict_json",
     env,
   });
+}
+
+// Every gateway model one task generation can call: the generator (personal
+// and network), the readiness reviewer and the network intent assessor. Their
+// credentials are the ones whose credit balance gates task generation.
+export function taskGenerationInferenceModels(env = process.env) {
+  if (env.TASKNODE_TASKGEN_PROVIDER_MOCK === "true") return [];
+  const models = [
+    taskgenModelForInput({}, env),
+    taskgenModelForInput({ network_task: { task_class: "network" }, policy: { task_class: "network" } }, env),
+    resolveInferenceModel({ model: INFERENCE_MODELS.instantText, capability: "strict_json", env }),
+    resolveInferenceModel({ model: INFERENCE_MODELS.structured, capability: "strict_json", env }),
+  ];
+  return [...new Set(models)];
 }
 
 // Kimi at "high" passed every validation and readiness check in the
