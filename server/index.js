@@ -1,5 +1,4 @@
 import { handleValidatorBundleRoute } from "./validator-bundles.js";
-import { handleFinanceAgentRoute } from "./finance-agent.js";
 import { handleValidatorResearchRoute } from "./validator-research-routes.js";
 import { handleValidatorConnectRoute } from "./validator-connect-routes.js";
 import { randomUUID } from "node:crypto";
@@ -195,7 +194,6 @@ async function routeApi(req, url, res) {
   if (await enforceRoutePolicy(req, url, res, session)) return true;
   if (await handleValidatorConnectRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleValidatorResearchRoute({ json, readJson, req, res, session, url })) return true;
-  if (await handleFinanceAgentRoute({ json, readJson, req, res, session, url })) return true;
 
   if (url.pathname === "/api/app-state") {
     json(res, 200, await getState());
