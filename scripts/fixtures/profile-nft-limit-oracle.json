@@ -1,0 +1,1402 @@
+{
+  "schema": "profile-nft-limit-independent-oracle/v1",
+  "frozen_at_utc": "2026-10-14T12:00:35.095208+00:00",
+  "main_commit": "41bb94647cd2e6183d0cbe193b568d179c79a9b6",
+  "source_pins": [
+    {
+      "path": "server/repositories/profile-nfts.js",
+      "sha256": "4f93481b354e5fb17ec42d1d6f7d1f39354a656097e0a109edeaea0109c5e03c",
+      "bytes": 26537,
+      "url": "https://github.com/postfiatorg/tasknode/blob/41bb94647cd2e6183d0cbe193b568d179c79a9b6/server/repositories/profile-nfts.js"
+    },
+    {
+      "path": "server/repositories/task-projection-integrity.js",
+      "sha256": "ad5fbbd8c555521d04c417a8a1f9c76cdd0cbc3560595be52760dbb4be641bd0",
+      "bytes": 3275,
+      "url": "https://github.com/postfiatorg/tasknode/blob/41bb94647cd2e6183d0cbe193b568d179c79a9b6/server/repositories/task-projection-integrity.js"
+    },
+    {
+      "path": "shared/profile-nft-art.js",
+      "sha256": "42f3fbdd003028c82eb4e33c516c99cedd6056459ace169c29049e276e9def6e",
+      "bytes": 719,
+      "url": "https://github.com/postfiatorg/tasknode/blob/41bb94647cd2e6183d0cbe193b568d179c79a9b6/shared/profile-nft-art.js"
+    }
+  ],
+  "case_count": 16,
+  "cases": [
+    {
+      "id": "fraction_numeric_unscoped",
+      "input_ref": "inputs.fraction_numeric_unscoped",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.fraction_numeric_unscoped"
+      },
+      "input_after": {
+        "$fixture": "inputs.fraction_numeric_unscoped"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                2.5
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                2
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "fraction_numeric_scoped",
+      "input_ref": "inputs.fraction_numeric_scoped",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.fraction_numeric_scoped"
+      },
+      "input_after": {
+        "$fixture": "inputs.fraction_numeric_scoped"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped"
+              },
+              [
+                "acct_oracle_a",
+                2.5,
+                "wallet_oracle_a",
+                true
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped"
+              },
+              [
+                "acct_oracle_a",
+                2,
+                "wallet_oracle_a",
+                true
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "fraction_string_unscoped",
+      "input_ref": "inputs.fraction_string_unscoped",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.fraction_string_unscoped"
+      },
+      "input_after": {
+        "$fixture": "inputs.fraction_string_unscoped"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                49.9
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                49
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "fraction_string_scoped_public",
+      "input_ref": "inputs.fraction_string_scoped_public",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.fraction_string_scoped_public"
+      },
+      "input_after": {
+        "$fixture": "inputs.fraction_string_scoped_public"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped_public"
+              },
+              [
+                "acct_oracle_a",
+                49.9,
+                "wallet_oracle_a",
+                false
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped_public"
+              },
+              [
+                "acct_oracle_a",
+                49,
+                "wallet_oracle_a",
+                false
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "default_limit",
+      "input_ref": "inputs.default_limit",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.default_limit"
+      },
+      "input_after": {
+        "$fixture": "inputs.default_limit"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                12
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                12
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "integer_scoped_public",
+      "input_ref": "inputs.integer_scoped_public",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.integer_scoped_public"
+      },
+      "input_after": {
+        "$fixture": "inputs.integer_scoped_public"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped_public"
+              },
+              [
+                "acct_oracle_a",
+                7,
+                "wallet_oracle_a",
+                false
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped_public"
+              },
+              [
+                "acct_oracle_a",
+                7,
+                "wallet_oracle_a",
+                false
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "negative_floor",
+      "input_ref": "inputs.negative_floor",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.negative_floor"
+      },
+      "input_after": {
+        "$fixture": "inputs.negative_floor"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                1
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                1
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "upper_cap_truthy_public_flag",
+      "input_ref": "inputs.upper_cap_truthy_public_flag",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.upper_cap_truthy_public_flag"
+      },
+      "input_after": {
+        "$fixture": "inputs.upper_cap_truthy_public_flag"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                240
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                240
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "numeric_zero_default",
+      "input_ref": "inputs.numeric_zero_default",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.numeric_zero_default"
+      },
+      "input_after": {
+        "$fixture": "inputs.numeric_zero_default"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                12
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                12
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "string_zero_floor",
+      "input_ref": "inputs.string_zero_floor",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.string_zero_floor"
+      },
+      "input_after": {
+        "$fixture": "inputs.string_zero_floor"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                1
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                1
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "own_empty_wallet_strict_flag",
+      "input_ref": "inputs.own_empty_wallet_strict_flag",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.own_empty_wallet_strict_flag"
+      },
+      "input_after": {
+        "$fixture": "inputs.own_empty_wallet_strict_flag"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped"
+              },
+              [
+                "acct_oracle_a",
+                1,
+                "",
+                false
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped"
+              },
+              [
+                "acct_oracle_a",
+                1,
+                "",
+                false
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "empty_account",
+      "input_ref": "inputs.empty_account",
+      "database_enabled": true,
+      "query_response_ref": null,
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.empty_account"
+      },
+      "input_after": {
+        "$fixture": "inputs.empty_account"
+      },
+      "response_before": null,
+      "response_after": null,
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.empty"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.empty"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "null_options",
+      "input_ref": "inputs.null_options",
+      "database_enabled": true,
+      "query_response_ref": null,
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.null_options"
+      },
+      "input_after": {
+        "$fixture": "inputs.null_options"
+      },
+      "response_before": null,
+      "response_after": null,
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.empty"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.empty"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "cold_runtime_empty",
+      "input_ref": "inputs.cold_runtime_empty",
+      "database_enabled": false,
+      "query_response_ref": null,
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.cold_runtime_empty"
+      },
+      "input_after": {
+        "$fixture": "inputs.cold_runtime_empty"
+      },
+      "response_before": null,
+      "response_after": null,
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": false
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.empty"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": false
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.empty"
+          }
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "ordinary_query_error",
+      "input_ref": "inputs.ordinary_query_error",
+      "database_enabled": true,
+      "query_response_ref": null,
+      "query_error_ref": "errors.query_refusal",
+      "input_before": {
+        "$fixture": "inputs.ordinary_query_error"
+      },
+      "input_after": {
+        "$fixture": "inputs.ordinary_query_error"
+      },
+      "response_before": null,
+      "response_after": null,
+      "error_before": {
+        "$fixture": "errors.query_refusal"
+      },
+      "error_after": {
+        "$fixture": "errors.query_refusal"
+      },
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                4
+              ]
+            ],
+            "outcome": {
+              "throw": {
+                "$fixture": "errors.query_refusal"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "error",
+          "error": {
+            "$fixture": "errors.query_refusal"
+          },
+          "same_error_object": true,
+          "same_cause_object": true
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.unscoped"
+              },
+              [
+                "acct_oracle_a",
+                4
+              ]
+            ],
+            "outcome": {
+              "throw": {
+                "$fixture": "errors.query_refusal"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "error",
+          "error": {
+            "$fixture": "errors.query_refusal"
+          },
+          "same_error_object": true,
+          "same_cause_object": true
+        },
+        "forbidden_effects": []
+      }
+    },
+    {
+      "id": "account_wallet_truncation",
+      "input_ref": "inputs.account_wallet_truncation",
+      "database_enabled": true,
+      "query_response_ref": "query_results.rows_full",
+      "query_error_ref": null,
+      "input_before": {
+        "$fixture": "inputs.account_wallet_truncation"
+      },
+      "input_after": {
+        "$fixture": "inputs.account_wallet_truncation"
+      },
+      "response_before": {
+        "$fixture": "query_results.rows_full"
+      },
+      "response_after": {
+        "$fixture": "query_results.rows_full"
+      },
+      "error_before": null,
+      "error_after": null,
+      "forbidden_effects": [],
+      "baseline": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped_public"
+              },
+              [
+                "acct_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                240,
+                "wallet_wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+                true
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      },
+      "fixed": {
+        "calls": [
+          {
+            "method": "databaseEnabled",
+            "args": [],
+            "outcome": {
+              "return": true
+            }
+          },
+          {
+            "method": "query",
+            "args": [
+              {
+                "$fixture": "sql.scoped_public"
+              },
+              [
+                "acct_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                240,
+                "wallet_wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+                true
+              ]
+            ],
+            "outcome": {
+              "return": {
+                "$fixture": "query_results.rows_full"
+              }
+            }
+          }
+        ],
+        "observed": {
+          "kind": "return",
+          "value": {
+            "$fixture": "normalized_results.rows_full"
+          }
+        },
+        "forbidden_effects": []
+      }
+    }
+  ],
+  "exact_expected_delta": {
+    "changed_case_ids": [
+      "fraction_numeric_unscoped",
+      "fraction_numeric_scoped",
+      "fraction_string_unscoped",
+      "fraction_string_scoped_public"
+    ],
+    "changed_field": "calls[1].args[1][1] only: baseline 2.5/49.9 to fixed 2/49.",
+    "all_other_case_and_stage_observations": "identical complete values",
+    "expected_integer_parameter_regression": {
+      "baseline_failed_case_ids": [
+        "fraction_numeric_unscoped",
+        "fraction_numeric_scoped",
+        "fraction_string_unscoped",
+        "fraction_string_scoped_public"
+      ],
+      "fixed_failed_case_ids": []
+    }
+  },
+  "limitations": [
+    "No actual PostgreSQL, route or HTTP execution; this proves actual repository binding behavior with an inert query, not an observed server 500/22P02.",
+    "The only runtime branch has a fresh inaccessible empty runtimeNfts map; no nonempty runtime pagination behavior is claimed.",
+    "No NaN or nonfinite policy change is required or inferred."
+  ]
+}
