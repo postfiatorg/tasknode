@@ -11,7 +11,15 @@ import { resolveTasknodeEncryptionKey } from "./context-publish.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 import { buildRequestBundle } from "./task-request-context.js";
-import { scheduleTaskGenerationQueue } from "./task-generation-worker.js";
+import {
+  scheduleTaskGenerationQueue,
+  taskGenerationCreditCheck,
+  taskGenerationCreditParkDelayMs,
+  taskGenerationCreditWaitExpired,
+} from "./task-generation-worker.js";
+import { isInferenceCreditError, noteTaskGenerationCreditOutage, noteTaskGenerationInferenceSuccess } from "./inference-credits.js";
+import { createInferenceUsageMeter } from "./inference-usage-context.js";
+import { recordTaskgenInferenceSpend } from "./repositories/taskgen-inference-ledger.js";
 import { getTaskRequestByRequestId } from "./repositories/task-requests.js";
 import { getLinkedWallet } from "./repositories/account-wallets.js";
 import { query } from "./db/pool.js";
@@ -19,6 +27,7 @@ import {
   claimNetworkTaskGenerationJobs,
   markNetworkTaskGenerationJobFailed,
   markNetworkTaskGenerationJobGenerated,
+  parkNetworkTaskGenerationJobForCredits,
   reclaimStaleNetworkTaskGenerationJobs,
   recoverFailedRequestNetworkTaskGenerationChains,
   repairNetworkTaskOfferLinks,
@@ -372,6 +381,13 @@ async function runNetworkTaskGenerationQueueOnce({ limit = 1, logger = console }
   await repairNetworkTaskOfferLinks({ limit }).catch((error) => {
     logger.warn?.("network_task_offer_link_repair_failed", { error: error?.message || String(error) });
   });
+  const credit = await taskGenerationCreditCheck({ logger }).catch((error) => {
+    logger.warn?.("network_task_generation_credit_check_failed", { error: error?.message || String(error) });
+    return { open: true };
+  });
+  if (!credit.open) {
+    return { ok: true, claimed: 0, creditOutage: { reason: credit.reason, since: credit.since, nextCheckAt: credit.nextCheckAt || null }, results: [] };
+  }
   const jobs = await claimNetworkTaskGenerationJobs({ limit: Math.min(limit, 1) });
   const results = [];
   for (const job of jobs) {
@@ -379,11 +395,35 @@ async function runNetworkTaskGenerationQueueOnce({ limit = 1, logger = console }
       heartbeatNetworkTaskGenerationJob(job).catch((error) => logger.warn?.("network_generation_heartbeat_failed", { jobId: job.id, error: error.message }));
     }, 20_000);
     heartbeat.unref?.();
+    const inference = createInferenceUsageMeter();
+    let outcome = "failed";
+    let createdRequestId = "";
     try {
-      const result = await createTaskRequestForNetworkJob(job);
+      const result = await inference.run(() => createTaskRequestForNetworkJob(job));
+      outcome = "request_created";
+      createdRequestId = result.requestId || "";
+      noteTaskGenerationInferenceSuccess();
       results.push({ ok: true, jobId: job.id, ...result });
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
+      const creditOutage = safeObject(safeObject(job.generated_task_payload).creditOutage);
+      if (isInferenceCreditError(error) && !taskGenerationCreditWaitExpired(creditOutage)) {
+        noteTaskGenerationCreditOutage(error);
+        const retryDelayMs = taskGenerationCreditParkDelayMs(Number(creditOutage.parks || 0));
+        const parked = await parkNetworkTaskGenerationJobForCredits({
+          jobId: job.id, workerAttemptId: job.worker_attempt_id, error: message, retryDelayMs,
+          failure: {
+            code: error.code || "network_task_generation_failed", causeCode: error.causeCode || "", status: error.status || null,
+            retryable: true, family: "credit_outage", failedAt: new Date().toISOString(),
+          },
+        }).catch(() => ({ ok: false }));
+        if (parked.ok) {
+          outcome = "credit_parked";
+          logger.warn?.("network_task_generation_job_credit_parked", { jobId: job.id, error: message, causeCode: error.causeCode || "", retryDelayMs });
+          results.push({ ok: false, creditOutage: true, jobId: job.id, error: message, retryDelayMs });
+          continue;
+        }
+      }
       await markNetworkTaskGenerationJobFailed({ jobId: job.id, workerAttemptId: job.worker_attempt_id, error: message,
         retryable: error.retryable !== false,
         failure: {
@@ -399,6 +439,14 @@ async function runNetworkTaskGenerationQueueOnce({ limit = 1, logger = console }
       results.push({ ok: false, jobId: job.id, error: message });
     } finally {
       clearInterval(heartbeat);
+      await recordTaskgenInferenceSpend({
+        accountId: job.candidate_account_id,
+        requestId: createdRequestId || job.request_id || "",
+        attemptId: `network_job_attempt_${job.worker_attempt_id}`,
+        source: "network_task_generation",
+        outcome,
+        completions: inference.completions,
+      }).catch((error) => logger.warn?.("taskgen_inference_attribution_failed", { jobId: job.id, error: error?.message || String(error) }));
     }
   }
   return { ok: true, claimed: jobs.length, results };

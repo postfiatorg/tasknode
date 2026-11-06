@@ -192,7 +192,8 @@
     "scripts/deep-research-chat-smoke.mjs",
     "scripts/l1-validator-smoke.mjs",
     "scripts/l1-validator-shell-smoke.mjs",
-    "scripts/validator-ux-smoke.mjs"
+    "scripts/validator-ux-smoke.mjs",
+    "scripts/gateway-credit-readiness-smoke.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",
@@ -234,7 +235,8 @@
     "scripts/validator-connect-postgres-smoke.mjs",
     "scripts/l1-validator-postgres-smoke.mjs",
     "scripts/l1-validator-rewards-postgres-smoke.mjs",
-    "scripts/validator-ux-postgres-smoke.mjs"
+    "scripts/validator-ux-postgres-smoke.mjs",
+    "scripts/taskgen-credit-outage-retry-smoke.mjs"
   ],
   "manual": {
     "scripts/ambient-cache-live-smoke.mjs": "calls a live inference provider",

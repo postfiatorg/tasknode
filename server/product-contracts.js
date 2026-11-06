@@ -39,6 +39,8 @@ import {
 export { chatEstimate, chatEstimateForAccount } from "./chat-estimate.js";
 import { recordAuthEvent } from "./runtime-store.js";
 import { ambientBackupEnabled } from "./inference-policy.js";
+import { gatewayCreditStatus } from "./inference-credits.js";
+import { taskGenerationInferenceModels } from "./task-generation-contract.js";
 import { findAccountByEmail, getOrCreateEmailAccount } from "./repositories/accounts.js";
 import { createAccountSession, createDevSession } from "./repositories/auth-sessions.js";
 import {
@@ -679,7 +681,7 @@ export async function authDevStart(payload, method) {
   };
 }
 
-export async function readiness() {
+export async function readiness({ creditWaitMs } = {}) {
   const providers = authProviders();
   const chatBilling = chatBillingStatus();
   const chatExecutionReady = anyChatProviderEnabled();
@@ -687,6 +689,12 @@ export async function readiness() {
   const authBlockers = authLaunchBlockers(providers, emailStatus);
   const ethDeposits = ethereumDepositConfigStatus();
   const publishStatus = await contextPublishStatus();
+  // Bounded: a warm cache answers immediately; a cold one waits at most
+  // TASKNODE_GATEWAY_CREDIT_READINESS_WAIT_MS (app-state passes 0 and reads
+  // the cached value). Never throws, never leaks keys.
+  const gatewayCredits = await Promise.resolve().then(() => gatewayCreditStatus({ models: taskGenerationInferenceModels(), maxWaitMs: creditWaitMs })).catch(() => ({
+    configured: false, status: "unknown", lowBalance: false, balanceUsd: null, warning: "", credentials: [],
+  }));
   return {
     generatedAt: new Date().toISOString(),
     auth: {
@@ -756,6 +764,8 @@ export async function readiness() {
       aiGatewayConfigured: chatProviderConfigured("vercel"),
       defaultProvider: "vercel",
       backupProvider: ambientBackupEnabled() ? "ambient" : "",
+      gatewayCredits,
+      warnings: gatewayCredits.warning ? [gatewayCredits.warning] : [],
     },
   };
 }

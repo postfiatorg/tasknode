@@ -1,21 +1,35 @@
 import { runTrackedWork } from "./process-hardening.js";
+import { databaseEnabled } from "./db/pool.js";
 import { buildRequestBundle } from "./task-request-context.js";
 import { reviewTaskGenerationReadiness, taskGenerationReadinessIsCurrent } from "./task-generation-readiness.js";
 import { ownsTaskGeneration } from "./process-role.js";
 import { applyOffchainTaskOffer } from "./offchain-task-lifecycle.js";
+import {
+  gatewayCreditStatus,
+  isInferenceCreditError,
+  noteTaskGenerationCreditOutage,
+  noteTaskGenerationInferenceSuccess,
+  taskGenerationCreditGate,
+} from "./inference-credits.js";
+import { createInferenceUsageMeter } from "./inference-usage-context.js";
+import { recordTaskgenInferenceSpend } from "./repositories/taskgen-inference-ledger.js";
 import {
   claimTaskGenerationRequests,
   saveTaskRequestContext,
   heartbeatTaskGenerationRequest,
   markTaskRequestFailed,
   markTaskRequestProposed,
+  parkTaskGenerationRequestForCredits,
   reclaimStaleTaskGenerationRequests,
+  releaseCreditParkedTaskRequests,
+  requeueCreditFailedTaskRequests,
   retryTaskGenerationRequest,
 } from "./repositories/task-requests.js";
 import {
   completeNetworkTaskOfferFromTaskRequest,
   failNetworkTaskGenerationChain,
   markNetworkTaskOfferLinkFailed,
+  releaseCreditParkedNetworkTaskGenerationJobs,
 } from "./repositories/network-tasks.js";
 import {
   findPublishedTaskgenOfferByTaskId,
@@ -39,6 +53,7 @@ import {
   taskAuthorityWallet,
   taskGenerationProviderTimeoutMs,
   taskgenFromReplay,
+  taskGenerationInferenceModels,
   taskgenReplayIdentity,
   validateTaskgenOutput,
 } from "./task-generation-contract.js";
@@ -120,6 +135,60 @@ export function taskGenerationFailureMetadata(error = {}, request = {}, maxAttem
       maxAttempts,
     },
   };
+}
+
+// Credit outages park requests instead of failing them. A parked request is
+// released the moment the gateway balance is positive again; this delay only
+// paces retries while the balance cannot be read. Requests stop waiting (and
+// fail) after TASKNODE_TASKGEN_CREDIT_WAIT_MAX_HOURS.
+export function taskGenerationCreditParkDelayMs(parks = 0, env = process.env) {
+  const baseMs = positiveInteger(env.TASKNODE_TASKGEN_CREDIT_PARK_BASE_MS, 60_000, { min: 1_000, max: 15 * 60 * 1000 });
+  return Math.min(15 * 60 * 1000, baseMs * (2 ** Math.max(0, Math.min(10, Number(parks || 0)))));
+}
+
+export function taskGenerationCreditWaitExpired(creditOutage = {}, { env = process.env, now = Date.now() } = {}) {
+  const since = Date.parse(creditOutage?.since || "");
+  const maxMs = positiveInteger(env.TASKNODE_TASKGEN_CREDIT_WAIT_MAX_HOURS, 48, { min: 1, max: 24 * 14 }) * 3_600_000;
+  return Number.isFinite(since) && now - since > maxMs;
+}
+
+let lastCreditFailureSweepAt = 0;
+
+// Shared by the personal and network generation workers before they claim
+// work. While a credit outage is open nothing is claimed; when the gateway
+// balance comes back every parked request and job is released, and requests
+// that had already failed with a credit error are re-queued once.
+export async function taskGenerationCreditCheck({ logger = console, env = process.env, fetchImpl = fetch, now = Date.now } = {}) {
+  const models = taskGenerationInferenceModels(env);
+  const gate = await taskGenerationCreditGate({ env, fetchImpl, models, now });
+  if (gate.recovered) {
+    const [requests, jobs] = await Promise.all([
+      releaseCreditParkedTaskRequests().catch(() => ({ released: [] })),
+      releaseCreditParkedNetworkTaskGenerationJobs().catch(() => ({ released: [] })),
+    ]);
+    logger.warn?.("task_generation_credit_outage_recovered", {
+      since: gate.since,
+      balanceUsd: gate.credits?.balanceUsd ?? null,
+      releasedRequests: requests.released.length,
+      releasedNetworkJobs: jobs.released.length,
+    });
+  }
+  const sweepIntervalMs = positiveInteger(env.TASKNODE_TASKGEN_CREDIT_SWEEP_INTERVAL_MS, 5 * 60 * 1000, { min: 0, max: 86_400_000 });
+  if (databaseEnabled() && gate.open && !gate.active && (gate.recovered || now() - lastCreditFailureSweepAt >= sweepIntervalMs)) {
+    lastCreditFailureSweepAt = now();
+    const credits = gate.credits || await gatewayCreditStatus({ env, fetchImpl, models, maxWaitMs: 0, now });
+    if (credits.status !== "exhausted") {
+      const swept = await requeueCreditFailedTaskRequests({
+        lookbackHours: positiveInteger(env.TASKNODE_TASKGEN_CREDIT_REQUEUE_LOOKBACK_HOURS, 72, { min: 1, max: 24 * 30 }),
+      }).catch((error) => {
+        logger.warn?.("task_generation_credit_requeue_failed", { error: error?.message || String(error) });
+        return { requeued: [] };
+      });
+      if (swept.requeued.length) logger.warn?.("task_generation_credit_failures_requeued", { requeued: swept.requeued.length });
+      gate.requeued = swept.requeued;
+    }
+  }
+  return gate;
 }
 
 function taskGenerationStaleSeconds(env = process.env) {
@@ -354,6 +423,21 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
     logger.warn?.("task_generation_stale_reclaim_failed", { error: error?.message || String(error) });
     return { retried: [], failed: [] };
   });
+  const credit = await taskGenerationCreditCheck({ logger }).catch((error) => {
+    logger.warn?.("task_generation_credit_check_failed", { error: error?.message || String(error) });
+    return { open: true };
+  });
+  if (!credit.open) {
+    return {
+      ok: true,
+      claimed: 0,
+      staleReclaimed: stale.retried.length + stale.failed.length,
+      staleRetried: stale.retried.length,
+      staleFailed: stale.failed.length,
+      creditOutage: { reason: credit.reason, since: credit.since, nextCheckAt: credit.nextCheckAt || null },
+      results: [],
+    };
+  }
   const requests = await claimTaskGenerationRequests({
     limit: Math.min(limit, 1),
     workerId: taskGenerationWorkerId,
@@ -365,6 +449,8 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
     let contextReadyAt = startedAt;
     let providerReadyAt = startedAt;
     let replayIdentity = null;
+    let outcome = "failed";
+    const inference = createInferenceUsageMeter();
     try {
       await heartbeatRequestAttempt(request, "fetch_request_bundle");
       const requestBundleResult = await taskRequestBundleForGeneration(request);
@@ -391,7 +477,7 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
       await heartbeatRequestAttempt(request, "provider_generation");
       let taskgen = replayedGeneratedOutput
         ? taskgenFromReplay(replay, replayIdentity)
-        : await generateTaskWithProvider(taskInput, { heartbeat: providerHeartbeat });
+        : await inference.run(() => generateTaskWithProvider(taskInput, { heartbeat: providerHeartbeat }));
       providerReadyAt = Date.now();
       let offer = replayedPublishedOffer ? offerFromReplay(replay) : null;
       await heartbeatRequestAttempt(request, "pre_publish_replay_check");
@@ -437,11 +523,11 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
         if (replayedGeneratedOutput) {
           try { validateTaskgenOutput(taskgen.output, taskInput.policy || {}); }
           catch {
-            taskgen = await generateTaskWithProvider(taskInput, { heartbeat: providerHeartbeat });
+            taskgen = await inference.run(() => generateTaskWithProvider(taskInput, { heartbeat: providerHeartbeat }));
             replayedGeneratedOutput = false;
           }
           if (replayedGeneratedOutput && !taskGenerationReadinessIsCurrent(taskgen.output, taskgen.metadata?.readiness)) {
-            taskgen.metadata.readiness = await reviewTaskGenerationReadiness(taskgen.output, { heartbeat: providerHeartbeat });
+            taskgen.metadata.readiness = await inference.run(() => reviewTaskGenerationReadiness(taskgen.output, { heartbeat: providerHeartbeat }));
             replayedGeneratedOutput = false;
           }
         }
@@ -539,6 +625,8 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
           error: error?.message || String(error),
         });
       });
+      outcome = "proposed";
+      noteTaskGenerationInferenceSuccess();
       results.push({
         ok: true,
         requestId: request.requestId,
@@ -575,6 +663,32 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
       }
       const maxAttempts = taskGenerationMaxAttempts();
       const failureMetadata = taskGenerationFailureMetadata(error, request, maxAttempts);
+      if (isInferenceCreditError(error)) {
+        noteTaskGenerationCreditOutage(error);
+        const creditOutage = safeObject(request.metadata?.creditOutage);
+        if (!taskGenerationCreditWaitExpired(creditOutage)) {
+          const retryDelayMs = taskGenerationCreditParkDelayMs(Number(creditOutage.parks || 0));
+          const parked = await parkTaskGenerationRequestForCredits({
+            requestId: request.requestId,
+            error: message,
+            retryDelayMs,
+            workerAttemptId: request.workerAttemptId,
+            workerId: request.workerId,
+            metadata: failureMetadata,
+          }).catch((parkError) => ({ ok: false, reason: parkError?.message || "task_generation_credit_park_failed" }));
+          if (parked.ok || parked.stale) {
+            outcome = parked.ok ? "credit_parked" : "stale";
+            logger.warn?.(parked.ok ? "task_generation_request_credit_parked" : "task_generation_stale_credit_park_suppressed", {
+              requestId: request.requestId,
+              error: message,
+              status: failureMetadata.lastProviderFailure.status,
+              retryDelayMs,
+            });
+            results.push({ ok: false, creditOutage: true, stale: !parked.ok, requestId: request.requestId, error: message, retryDelayMs });
+            continue;
+          }
+        }
+      }
       const cycleAttemptCount = request.workerCycleAttemptCount ?? request.workerAttemptCount;
       if (isRetryableTaskGenerationError(error) && cycleAttemptCount < maxAttempts) {
         const retryDelayMs = taskGenerationRetryDelayMs(cycleAttemptCount);
@@ -590,6 +704,7 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
           reason: retryError?.message || "task_generation_retry_schedule_failed",
         }));
         if (retry.ok) {
+          outcome = "retry_scheduled";
           logger.warn?.("task_generation_request_retry_scheduled", {
             requestId: request.requestId,
             error: message,
@@ -631,6 +746,17 @@ async function runTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) 
         ...failureMetadata.lastProviderFailure,
       });
       results.push({ ok: false, requestId: request.requestId, error: message });
+    } finally {
+      await recordTaskgenInferenceSpend({
+        accountId: request.accountId,
+        requestId: request.requestId,
+        attemptId: request.workerAttemptId,
+        source: isNetworkGeneratedRequest(request) ? "network_task_generation" : "task_generation",
+        outcome,
+        completions: inference.completions,
+      }).catch((error) => {
+        logger.warn?.("taskgen_inference_attribution_failed", { requestId: request.requestId, error: error?.message || String(error) });
+      });
     }
   }
   return {
