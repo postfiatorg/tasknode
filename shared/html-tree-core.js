@@ -8,7 +8,9 @@ export function htmlTreeText(node, { skip = hiddenHtmlTags, block = false } = {}
   if (node.tagName === "br") return "\n";
   const text = (node.childNodes || []).map((child) => htmlTreeText(child, { skip, block })).join("");
   const breaks = new Set(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "pre", "tr", "table", "ul", "ol"]);
-  return `${block && node.tagName === "li" ? "- " : ""}${text}${block && breaks.has(node.tagName) ? "\n" : ""}`;
+  // Keep adjacent cells distinct without repeating a break from a block child.
+  const cellBreak = block && (node.tagName === "td" || node.tagName === "th") && text.length > 0 && !/\n\s*$/u.test(text);
+  return `${block && node.tagName === "li" ? "- " : ""}${text}${cellBreak || (block && breaks.has(node.tagName)) ? "\n" : ""}`;
 }
 
 export function findHtmlElement(node, tag) {
