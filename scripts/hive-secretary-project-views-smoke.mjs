@@ -24,7 +24,7 @@ const secretaryResult = await fetchHiveSecretaryReport(
         ok: true,
         async text() {
           return JSON.stringify({
-            model: "zai/glm-5.3",
+            model: "deepseek/deepseek-v4.1-flash-1017",
             choices: [{ message: { content: JSON.stringify({
               title: "Hive Secretary",
               summary: "Task Node is the strongest active project signal.",
@@ -40,7 +40,7 @@ const secretaryResult = await fetchHiveSecretaryReport(
     },
   }
 );
-assert.equal(capturedSecretaryBody.model, "zai/glm-5.3");
+assert.equal(capturedSecretaryBody.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(capturedSecretaryBody.reasoning.effort, "high");
 assert.equal(capturedSecretaryBody.response_format.type, "json_schema");
 assert.equal(capturedSecretaryBody.response_format.json_schema.name, "hive_secretary_report");
@@ -51,7 +51,7 @@ assert.equal(capturedSecretaryBody.provider, undefined);
 assert.ok(capturedSecretaryBody.response_format.json_schema.schema.required.includes("project_signals"));
 assert.equal(capturedSecretaryBody.usage, undefined);
 assert.equal(secretaryResult.provider, "vercel");
-assert.equal(secretaryResult.model, "zai/glm-5.3");
+assert.equal(secretaryResult.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(secretaryResult.usage.reasoningTokens, 25);
 
 await assert.rejects(

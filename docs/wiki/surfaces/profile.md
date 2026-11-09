@@ -190,7 +190,7 @@ Recent work pace independently drives gesture, speed lines and ink pressure. The
 
 `POST /api/profile/nft/generate` acknowledges a durable job with HTTP 202. It ignores client-supplied task history, context documents and claimed scores. The background worker reads up to 200 recent non-fixture, account-owned task projections plus all-time and recent completion aggregates. It includes task titles/descriptions and relative activity ages, not raw chats, context documents, evidence blobs, wallet/account IDs or provider identities. Optional style text is untrusted input. Any identity information embedded in task prose remains within the private stage.
 
-The private spec and independent review are pinned to `moonshotai/kimi-k3.1-pro` on Vercel. The account is already configured for ZDR; every request additionally sets `providerOptions.gateway.zeroDataRetention=true`. Missing Vercel credentials, provider failure or lack of a compliant route cannot fall back to Ambient. This exception is limited to the NFT pipeline; general chat defaults remain GLM 5.3.
+The private spec and independent review are pinned to `moonshotai/kimi-k3.1-pro` on Vercel. The account is already configured for ZDR; every request additionally sets `providerOptions.gateway.zeroDataRetention=true`. Missing Vercel credentials, provider failure or lack of a compliant route cannot fall back to Ambient. This exception is limited to the NFT pipeline; general chat defaults remain DeepSeek V4.1 Flash.
 
 Kimi creates detailed anonymous visual fields and separate public scores. A second Kimi ZDR call reviews privacy, prompt injection, evidence grounding and the art contract, returning a corrected complete spec or rejection. Explicit type/bounds checks and identifier-overlap checks reject malformed or leaking results without regex. Private evidence refs are discarded. Only the reviewed visual fields, public art traits and fixed art guide form the OpenAI request. No task history, private rationale or account identifier is sent to OpenAI. Vercel ZDR applies to the private Kimi stage and does not configure the separate OpenAI account.
 
@@ -639,7 +639,7 @@ Runtime call sites:
 
 Provider policy:
 
-- model: Vercel `zai/glm-5.3` by default;
+- model: Vercel `deepseek/deepseek-v4.1-flash-1017` by default;
 - provider: `vercel` through the shared strict-JSON capability;
 - temperature `0`;
 - structured JSON output;

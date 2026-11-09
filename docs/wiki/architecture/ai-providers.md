@@ -1,8 +1,11 @@
 # AI Providers
 
-Task Node routes all model inference through **Vercel AI Gateway**. Thinking and
-existing GLM workers use GLM 5.3; Instant and Team Context use GLM 5.3 Flash;
-task generation uses Kimi K3.1 Pro. The model layer is shared by chat, Docs
+Task Node routes all model inference through **Vercel AI Gateway**. The default
+model is DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash-1017`): Instant runs it
+with reasoning off, Thinking with `xhigh` reasoning, and the former GLM workers use
+it for structured work and research. Task generation uses Kimi K3.1 Pro. GLM 5.3
+was deprecated as the default on 2026-11-09; its model IDs resolve to DeepSeek V4.1
+Flash. The model layer is shared by chat, Docs
 assistants, context, memory, tasks, Hive, profiles, and operator scripts.
 
 Ambient was deprecated on 2026-10-27. Nothing falls back to it; the route remains
@@ -13,16 +16,16 @@ re-enable, and historical completions keep their recorded `ambient` provider.
 
 | Workload | Model on Vercel AI Gateway |
 | --- | --- |
-| Instant, Team Context | `zai/glm-5.3-flash` |
-| Thinking, structured work, research, GLM workers | `zai/glm-5.3` |
+| Instant (reasoning off), Team Context | `deepseek/deepseek-v4.1-flash-1017` |
+| Thinking (`xhigh`), structured work, research, former GLM workers | `deepseek/deepseek-v4.1-flash-1017` |
 | Task generation (personal and network) | `moonshotai/kimi-k3.1-pro`, `high` effort |
-| Task readiness review | `zai/glm-5.3-flash` |
+| Task readiness review | `deepseek/deepseek-v4.1-flash-1017` |
 | Help, memory, short narration | `deepseek/deepseek-v4-flash-0731` |
 | Evidence images | `moonshotai/kimi-k2.7-code` |
 
-GLM 5.3 Flash accepts text and images and produces text. It does not generate
-images. Instant can retain Flash for image input; text-only models switch to the
-vision model when images are present. Files are extracted locally with byte,
+DeepSeek V4.1 Flash accepts text and images and produces text. It does not
+generate images. Instant and Thinking keep it for image input; text-only models
+switch to the vision model when images are present. Files are extracted locally with byte,
 page, archive-entry, and expansion limits before inference.
 
 ## Shared Routing
@@ -74,7 +77,7 @@ Fallback providers for task generation are a separate, unshipped proposal:
 - Task generation: `TASKNODE_TASKGEN_MODEL` and `TASKNODE_NETWORK_TASKGEN_MODEL` (default Kimi K3.1 Pro), `TASKNODE_TASKGEN_REASONING_EFFORT` and `TASKNODE_NETWORK_TASKGEN_REASONING_EFFORT`.
 - Deprecated: `AMBIENT_API_KEY`, `AMBIENT_BASE_URL` and `AMBIENT_BACKUP_MODEL_*` take effect only with `INFERENCE_AMBIENT_BACKUP_ENABLED=true`; `AMBIENT_MODEL_*` aliases are no longer read.
 
-Known GLM 5.2 pins resolve to GLM 5.3. Unknown model IDs are rejected; add a
+Known GLM 5.2 and GLM 5.3 pins resolve to DeepSeek V4.1 Flash. Unknown model IDs are rejected; add a
 reviewed registry entry before introducing a new model.
 
 ## Search, Usage, And Persistence

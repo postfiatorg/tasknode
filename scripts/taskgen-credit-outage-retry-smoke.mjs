@@ -211,7 +211,7 @@ try {
   assert.ok(taskgen.every((row) => Number(row.provider_cost_usd) === COST_PER_CALL_USD && row.cost_source === "gateway_reported" && row.provider === "vercel"));
   assert.ok(taskgen.every((row) => row.input_tokens === 1000 && row.output_tokens === 250 && row.total_tokens === 1250));
   assert.deepEqual(taskgen.map((row) => row.source), ["task_generation", "task_generation", "network_task_generation", "task_generation", "task_generation"]);
-  assert.deepEqual(taskgen.map((row) => row.model), ["moonshotai/kimi-k3.1-pro", "zai/glm-5.3-flash", "zai/glm-5.3", "moonshotai/kimi-k3.1-pro", "zai/glm-5.3-flash"]);
+  assert.deepEqual(taskgen.map((row) => row.model), ["moonshotai/kimi-k3.1-pro", "deepseek/deepseek-v4.1-flash-1017", "deepseek/deepseek-v4.1-flash-1017", "moonshotai/kimi-k3.1-pro", "deepseek/deepseek-v4.1-flash-1017"]);
   const account = (await query("SELECT current_spend_usd,current_credit_usd,ledger_entry_count FROM billing_accounts WHERE account_id=$1", [accountId])).rows[0];
   assert.equal(Number(account.current_spend_usd), 0, "user balance is not debited");
   assert.equal(Number(account.ledger_entry_count), taskgen.length);

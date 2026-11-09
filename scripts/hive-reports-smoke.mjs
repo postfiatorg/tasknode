@@ -144,7 +144,7 @@ try {
   let providerCalls = 0;
   const truncated = async () => {
     providerCalls += 1;
-    return Response.json({ id: "truncated", model: "zai/glm-5.3", choices: [{ message: { content: "# Partial" }, finish_reason: "length" }], usage: { prompt_tokens: 100000, completion_tokens: 24000 } });
+    return Response.json({ id: "truncated", model: "deepseek/deepseek-v4.1-flash-1017", choices: [{ message: { content: "# Partial" }, finish_reason: "length" }], usage: { prompt_tokens: 100000, completion_tokens: 24000 } });
   };
   const later = (minutes) => new Date(Date.now() + 7 * 24 * 3_600_000 + minutes * 60_000);
   const failed = await runHiveReportsWorkerOnce({ types: ["hive_intelligence"], now: later(0), fetchImpl: truncated });

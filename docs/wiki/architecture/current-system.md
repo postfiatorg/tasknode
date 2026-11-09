@@ -61,7 +61,7 @@ durable.
 ### External systems
 
 - Vercel AI Gateway handles all inference; Ambient is deprecated.
-  Thinking/structured work uses GLM 5.3; Instant uses GLM 5.3 Flash. See
+  Thinking/structured work uses DeepSeek V4.1 Flash; Instant uses DeepSeek V4.1 Flash. See
   [AI providers](ai-providers.md) for workload-specific models and exceptions.
   The Profile NFT renderer retains its isolated OpenAI image-generation path.
 - PFTL endpoints provide balance, transaction, pointer, and replay data; IPFS
@@ -164,7 +164,7 @@ is already chain-native.
 Hive includes projects, a shared public Nostr group chat, network-task routing,
 task management, secretary/reporting work, contributor accounting and the
 board-secretary memos. The group reuses Messages identities and public
-profile pictures. GLM 5.3 Flash periodically selects participation; GLM 5.3
+profile pictures. DeepSeek V4.1 Flash periodically selects participation; DeepSeek V4.1 Flash
 writes replies using public context. Durable escalations enter the existing
 Kimi K3 Corbanu TUI board manager inbox. Group transport runs in the existing
 Hive worker, independently of slow model calls. The legacy autonomous Board Manager execution flags are disabled in

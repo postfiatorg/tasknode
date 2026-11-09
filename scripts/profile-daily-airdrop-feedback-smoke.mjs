@@ -55,9 +55,9 @@ try {
     assert.deepEqual(JSON.parse(body.messages[1].content).task_reward_packet, packet, "Monetary scoring input is unchanged");
     assert.equal(body.messages[0].content, promptText);
     assert.equal(body.response_format.json_schema.strict, true);
-    return new Response(JSON.stringify({ model: "zai/glm-5.3", choices: [{ message: { content: JSON.stringify(proposal) } }] }), { headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ model: "deepseek/deepseek-v4.1-flash-1017", choices: [{ message: { content: JSON.stringify(proposal) } }] }), { headers: { "content-type": "application/json" } });
   };
-  await scoreDailyAirdropWithOpenRouter({ packet, promptText, model: "zai/glm-5.3", maxDailyPft: 10000,
+  await scoreDailyAirdropWithOpenRouter({ packet, promptText, model: "deepseek/deepseek-v4.1-flash-1017", maxDailyPft: 10000,
     env: { VERCEL_AI_GATEWAY_API_KEY: "fixture", VERCEL_AI_GATEWAY_BASE_URL: "https://vercel.invalid/v1", INFERENCE_AMBIENT_BACKUP_ENABLED: "false" } });
   assert.equal(providerCalls, 1);
   const facts = normalizeDailyAirdropOutput({ ...proposal, daily_airdrop_pft: 45 }, packet, { maxDailyPft: 10000, maxRewardFraction: null });
@@ -69,7 +69,7 @@ try {
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ...fixtureFeedback, daily_airdrop_pft: 999999, retention_value_score: 0, eligibility_status: "ineligible" }) } }] }), { headers: { "content-type": "application/json" } });
   };
   const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture", INFERENCE_AMBIENT_BACKUP_ENABLED: "false" };
-  const feedback = await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "zai/glm-5.3", env });
+  const feedback = await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "deepseek/deepseek-v4.1-flash-1017", env });
   assert.equal(feedback.status, "completed");
   assert.deepEqual(feedback.output, fixtureFeedback, "Even injected monetary/eligibility fields are discarded");
   assert.equal({ ...facts, ...feedback.output }.daily_airdrop_pft, 45);
@@ -77,12 +77,12 @@ try {
   assert.equal({ ...facts, ...feedback.output }.eligibility_status, "eligible");
   for (const content of ["not JSON", JSON.stringify({ ...fixtureFeedback, reasoning_text: "" })]) {
     globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { headers: { "content-type": "application/json" } });
-    const failed = await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "zai/glm-5.3", env });
+    const failed = await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "deepseek/deepseek-v4.1-flash-1017", env });
     assert.equal(failed.status, "unavailable");
     assert.equal({ ...facts, ...failed.output }.daily_airdrop_pft, 45);
   }
   globalThis.fetch = async () => { throw new Error("fixture_provider_unavailable"); };
-  assert.equal((await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "zai/glm-5.3", env })).status, "unavailable");
+  assert.equal((await reviewDailyAirdropFeedback({ packet, payoutFacts: facts, model: "deepseek/deepseek-v4.1-flash-1017", env })).status, "unavailable");
 } finally { globalThis.fetch = originalFetch; }
 
 if (process.argv.includes("--live")) {
@@ -96,7 +96,7 @@ if (process.argv.includes("--live")) {
   ];
   const results = await Promise.all(cases.map(async testCase => {
     const payoutFacts = normalizeDailyAirdropOutput({ ...proposal, daily_airdrop_pft: 45 }, testCase.packet, { maxDailyPft: 10000, maxRewardFraction: null });
-    const feedback = await reviewDailyAirdropFeedback({ packet: testCase.packet, payoutFacts, model: "zai/glm-5.3" });
+    const feedback = await reviewDailyAirdropFeedback({ packet: testCase.packet, payoutFacts, model: "deepseek/deepseek-v4.1-flash-1017" });
     assert.equal(feedback.status, "completed", "Live provider must produce usable feedback");
     const output = { ...payoutFacts, ...feedback.output };
     assert.equal(output.daily_airdrop_pft, testCase.id === "no_positive_rewards" ? 0 : 45);

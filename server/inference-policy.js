@@ -1,9 +1,14 @@
+// GLM 5.3 deprecated as the default (founder 2026-11-09): DeepSeek V4.1 Flash, pinned to the
+// 1017 edition on Vercel AI Gateway, now serves instant, reasoning, structured and research.
+// Instant and Thinking differ by reasoning effort, not model. Old GLM ids resolve here via aliases.
+const DEEPSEEK_V41_FLASH = "deepseek/deepseek-v4.1-flash-1017";
+
 export const INFERENCE_MODELS = Object.freeze({
-  instantText: "zai/glm-5.3-flash",
+  instantText: DEEPSEEK_V41_FLASH,
   fastText: "deepseek/deepseek-v4-flash-0731",
-  reasoningText: "zai/glm-5.3",
-  structured: "zai/glm-5.3",
-  research: "zai/glm-5.3",
+  reasoningText: DEEPSEEK_V41_FLASH,
+  structured: DEEPSEEK_V41_FLASH,
+  research: DEEPSEEK_V41_FLASH,
   vision: "moonshotai/kimi-k2.7-code",
 });
 
@@ -11,8 +16,7 @@ const models = new Map([
   ["openai/gpt-6-astra", { ambient: "", image: true }],
   ["moonshotai/kimi-k3.1-pro", { ambient: "", image: true }],
   ["anthropic/claude-opus-5.5", { ambient: "", image: true }],
-  [INFERENCE_MODELS.instantText, { ambient: "z-ai/glm-5.2", image: true }],
-  [INFERENCE_MODELS.reasoningText, { ambient: "z-ai/glm-5.2", image: false }],
+  [DEEPSEEK_V41_FLASH, { ambient: "z-ai/glm-5.2", image: true }],
   [INFERENCE_MODELS.fastText, { ambient: "z-ai/glm-5.2", image: false }],
   [INFERENCE_MODELS.vision, { ambient: "google/gemma-4-26b-a4b-it", image: true }],
 ]);
@@ -20,10 +24,14 @@ const aliases = new Map([
   ["z-ai/glm-5.2", INFERENCE_MODELS.reasoningText],
   ["zai/glm-5.2", INFERENCE_MODELS.reasoningText],
   ["glm-5.2", INFERENCE_MODELS.reasoningText],
+  ["zai/glm-5.3", INFERENCE_MODELS.reasoningText],
   ["z-ai/glm-5.3", INFERENCE_MODELS.reasoningText],
   ["glm-5.3", INFERENCE_MODELS.reasoningText],
+  ["zai/glm-5.3-flash", INFERENCE_MODELS.instantText],
   ["z-ai/glm-5.3-flash", INFERENCE_MODELS.instantText],
   ["glm-5.3-flash", INFERENCE_MODELS.instantText],
+  ["deepseek/deepseek-v4.1-flash", DEEPSEEK_V41_FLASH],
+  ["deepseek-v4.1-flash", DEEPSEEK_V41_FLASH],
   ["deepseek/deepseek-v4-flash", INFERENCE_MODELS.fastText],
   ["deepseek-v4-flash", INFERENCE_MODELS.fastText],
   ["moonshotai/kimi-k3", "moonshotai/kimi-k3.1-pro"],
@@ -152,7 +160,7 @@ export function modelForProvider(model, provider, env = process.env, capability 
   if (provider !== "ambient") throw inferenceError("inference_provider_unsupported", { status: 400 });
   if (!models.get(canonical).ambient || capability === "selected_model") throw inferenceError("inference_private_model_fallback_forbidden", { status: 400 });
   // Ambient catalogue verified 2026-09-05: text GLM 5.2; vision Gemma 4.
-  // Record actual provider/model on every completion; primary remains GLM 5.3.
+  // Record actual provider/model on every completion; primary is DeepSeek V4.1 Flash.
   const needsVision = hasImages || capability === "vision_text" || capability === "verification_vision";
   const overrideName = needsVision ? "AMBIENT_BACKUP_MODEL_VISION" : capability === "instant_text" ? "AMBIENT_BACKUP_MODEL_INSTANT"
     : models.get(canonical).image ? "AMBIENT_BACKUP_MODEL_VISION"

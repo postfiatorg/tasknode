@@ -56,7 +56,7 @@ The first implemented Profile surface is deliberately narrow:
 - `qa_worker`: product QA identity, backed by linked Telegram, linked Discord,
   and at least one recorded USDC chat wallet top-up in the billing ledger.
 - `expert`: domain expertise identity, backed by at least 20 completed Personal
-  tasks and a harsh GLM 5.3 review of the latest 20 Personal tasks against a
+  tasks and a harsh DeepSeek V4.1 Flash review of the latest 20 Personal tasks against a
   user-supplied expert topic.
 - `project_leader`: discretionary Hive project authority, backed by a backend
   allowlist of approved Hive handles. Project Leader inputs may define special
@@ -80,7 +80,7 @@ The initial catalog is:
 | --- | --- | --- | --- | --- |
 | `kol` | `megaphone` | User must link X. The X API follower count must show 5,000 or more followers. | Amplification, narrative distribution, public announcement, article distribution. | 20,000 PFT per X post; 50,000 PFT per Medium article. |
 | `core_contributor` | `git_pull_request` | User must link GitHub and the linked GitHub handle must appear in the Task Node sanctioned Core Contributor list. Repo access should be managed by Post Fiat outside broad user OAuth consent. | Private repo code tasks, production fixes, sanctioned core implementation. | 30,000 PFT per task. |
-| `expert` | `graduation_cap` | User must have at least 20 completed Personal tasks, enter a specific expert topic, and pass a harsh Vercel GLM 5.3 review over the latest 20 Personal tasks with a server-enforced score of 80 or higher and no disqualifying concerns. | Domain analysis grounded in verified personal work, expert review, domain-specific contribution bundles. | 30,000 PFT per 5-task bundle. |
+| `expert` | `graduation_cap` | User must have at least 20 completed Personal tasks, enter a specific expert topic, and pass a harsh Vercel DeepSeek V4.1 Flash review over the latest 20 Personal tasks with a server-enforced score of 80 or higher and no disqualifying concerns. | Domain analysis grounded in verified personal work, expert review, domain-specific contribution bundles. | 30,000 PFT per 5-task bundle. |
 | `project_leader` | `crown` | Discretionary backend approval through the deployment-owned Hive-handle allowlist. Source defaults to no approved handles. | Define special new projects, including open-source projects, through Hive Chat input. | Discretionary. |
 | `qa_worker` | `bug` | User must link Telegram and Discord, and backend billing must show at least one USDC chat wallet top-up from the user account. QA reports must include screenshots or equivalent repro evidence per task. | Product QA reports, repro packets, workflow friction reports. | 5,000 PFT per QA report. |
 
@@ -184,7 +184,7 @@ Badge-specific identity approval requirements:
   completed Task Node Personal work. The private Profile card asks the user for
   the topic they are expert in or want Expert rewards for. The server then sends
   the latest 20 completed Personal task packets to the shared `strict_json`
-  model (`zai/glm-5.3` on Vercel) with a harsh grading prompt and structured JSON output. The model returns a
+  model (`deepseek/deepseek-v4.1-flash-1017` on Vercel) with a harsh grading prompt and structured JSON output. The model returns a
   0-100 score, label, strengths, weaknesses, and disqualifying concerns. The
   server, not the model alone, grants the badge only when the account has 20 or
   more completed Personal tasks, the review covers the current latest-20 task
@@ -359,7 +359,7 @@ signed-in Discord account-link OAuth flow.
 
 For the Expert pilot, the private Profile card should show a text input with
 copy equivalent to "What are you an expert in?", the count of completed Personal
-tasks, the latest GLM 5.3 score, and an Evaluate/Re-run action. The action calls
+tasks, the latest DeepSeek V4.1 Flash score, and an Evaluate/Re-run action. The action calls
 `POST /api/profile/expert/evaluate` with `{ "topic": "..." }`. The endpoint must
 read task projections server-side, refuse to call the model until the account
 has at least 20 completed Personal tasks, and persist the latest Expert review

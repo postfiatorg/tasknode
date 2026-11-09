@@ -101,8 +101,8 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 
 | Mode | Provider | Default model | Selection and override rules | Tools and attachments | Intended use |
 | --- | --- | --- | --- | --- | --- |
-| Instant | Vercel | `zai/glm-5.3-flash` | `instant_text` capability | Local extraction and Flash image input; reasoning and search disabled. | Fast everyday chat. |
-| Thinking | Vercel | `zai/glm-5.3` | `reasoning_text` capability | Local extraction; Kimi for image input; `xhigh` reasoning; search disabled. | Deeper analysis and Context Refine. |
+| Instant | Vercel | `deepseek/deepseek-v4.1-flash-1017` | `instant_text` capability | Local extraction and Flash image input; reasoning and search disabled. | Fast everyday chat. |
+| Thinking | Vercel | `deepseek/deepseek-v4.1-flash-1017` | `reasoning_text` capability | Local extraction and DeepSeek image input; `xhigh` reasoning; search disabled. | Deeper analysis and Context Refine. |
 | GPT-6 Astra | Vercel | `openai/gpt-6-astra` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Kimi K3.1 Pro | Vercel | `moonshotai/kimi-k3.1-pro` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Claude Opus 5.5 | Vercel | `anthropic/claude-opus-5.5` | Exact selection; zero data retention (the gateway fails rather than use a retaining provider) | Native image input, high reasoning; search disabled. | API-priced chat. |
@@ -185,7 +185,7 @@ Runtime path:
 2. `server/product-contracts.js::chatPayload` forces Context Refine through Thinking so the user does not have to choose a model for durable document edits.
 3. `server/context-edit-chat.js::executeContextEditChat` loads chat history, current context, memory, task state, and the active pending proposal for the conversation.
 4. `server/context-edit-prompts.js::renderContextEditPrompt` renders `prompts/context/context_edit_jobs_v1.xml` with the plain context document and a line-numbered copy.
-5. Vercel GLM 5.3 is called with structured output; tools are disabled for Context Refine because editing the current document should not invoke web search.
+5. Vercel DeepSeek V4.1 Flash is called with structured output; tools are disabled for Context Refine because editing the current document should not invoke web search.
 6. A calibration reply or proposal is saved as an ordinary chat turn through `server/repositories/chat-billing.js`.
 7. If a proposal exists, `server/repositories/context-edit.js` stores it in `context_edit_proposals`.
 8. The assistant message renders an inline proposal card. `Accept edit` posts to `/api/context/edit/proposals/:proposalId/apply`.

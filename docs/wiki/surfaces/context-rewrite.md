@@ -13,7 +13,7 @@ The MVP is exposed in Chat from the `+` menu and from Sidebar -> More. It does n
 3. The composer badge changes to `Context Rewrite` and warns that the tool uses multiple model calls and web research.
 4. The user sends rewrite instructions.
 5. The server creates an async `context_rewrite_jobs` row and a pending assistant message.
-6. The background worker assembles sources, scores the current context once, runs two privacy-safe research calls using explicit domain questions, writes a draft Markdown artifact, runs a second GLM 5.3 `xhigh` polish pass, and bills actual provider usage.
+6. The background worker assembles sources, scores the current context once, runs two privacy-safe research calls using explicit domain questions, writes a draft Markdown artifact, runs a second DeepSeek V4.1 Flash `xhigh` polish pass, and bills actual provider usage.
 7. The completed assistant message shows a `Context Rewrite` artifact card with `Copy Markdown` and `Download .md`.
 
 ## Product Boundary
@@ -107,7 +107,7 @@ Dimensions:
 14. `specificity`
 15. `downstream_task_utility`
 
-Launch scoring uses `CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL`, default `3` and capped at `3`, across two independently labelled scorer lanes. Both lanes default to Vercel `zai/glm-5.3` after the provider cutover. `CONTEXT_REWRITE_GLM_MODEL` and `CONTEXT_REWRITE_SECONDARY_MODEL` may select only models supported by the shared inference adapter.
+Launch scoring uses `CONTEXT_REWRITE_SCORE_RUNS_PER_MODEL`, default `3` and capped at `3`, across two independently labelled scorer lanes. Both lanes default to Vercel `deepseek/deepseek-v4.1-flash-1017` after the provider cutover. `CONTEXT_REWRITE_GLM_MODEL` and `CONTEXT_REWRITE_SECONDARY_MODEL` may select only models supported by the shared inference adapter.
 
 The aggregate score is the median per dimension and the average of the 15 medians. It is stored internally on the job. Malformed scorer JSON is treated as a failed scorer packet, not as an all-zero valid score.
 
@@ -124,7 +124,7 @@ Search questions should be complete domain-level questions such as:
 - `What are best practices for goal hierarchy, milestone planning, and implementation intentions in operating plans?`
 - `What are best practices for startup product strategy, focus, tradeoffs, and customer clarity?`
 
-The search calls run concurrently through Vercel `research_text`, defaulting to `zai/glm-5.3`, with server-executed Exa search. The request body contains only the selected question. Results are stored in `context_rewrite_search_results` and used as general best-practice context, not as facts about the user. Research is optional after scoring: failed query calls are recorded, but successful query calls still feed the rewrite.
+The search calls run concurrently through Vercel `research_text`, defaulting to `deepseek/deepseek-v4.1-flash-1017`, with server-executed Exa search. The request body contains only the selected question. Results are stored in `context_rewrite_search_results` and used as general best-practice context, not as facts about the user. Research is optional after scoring: failed query calls are recorded, but successful query calls still feed the rewrite.
 
 ## Visible Progress Trace
 
@@ -137,7 +137,7 @@ The visible trace includes:
 - `scoring`: concurrent structured scorer calls through Vercel;
 - `research`: two concurrent gateway web-search calls;
 - `final_rewrite`: draft GLM rewrite;
-- `polish_rewrite`: second GLM 5.3 `xhigh` polish pass;
+- `polish_rewrite`: second DeepSeek V4.1 Flash `xhigh` polish pass;
 - `completed`: Markdown artifact ready.
 
 `progress_json.events` keeps the recent stage events with timestamps. Public job reads also expose `lastProgressAt`, `elapsedSinceProgressMs`, `staleAfter`, `retryCount`, `attempt`, `stalled`, and `statusMessage` so the app can distinguish a healthy long-running provider call from a stale worker lease.

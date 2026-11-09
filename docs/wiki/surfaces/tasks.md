@@ -262,7 +262,7 @@ Generated offers must match the browser UX. The task-generation prompts in
 `server/task-generation-worker.js`, enforce this contract:
 
 Personal, Network, and Alpha task generation all use the shared `strict_json`
-capability, currently `zai/glm-5.3`. The same resolved model is written into
+capability, currently `deepseek/deepseek-v4.1-flash-1017`. The same resolved model is written into
 the replay identity and provider metadata so cached generations cannot be
 labeled as a model different from the outbound request.
 
@@ -290,7 +290,7 @@ not block task creation. The retry timestamp lives on
 the request row, so a worker restart or machine replacement cannot discard the
 delay or the remaining attempt count.
 
-Network Tasks and Alpha Tasks use the separate network taskgen prompt. Kimi K3 selects the board and eligible contributor through `bm task create`, which queues the shared network generation path. The worker prepares the encrypted request bundle and `server/task-generation-worker.js` generates the title, steps, submission requirement, and verification policy. GLM 5.3 remains the downstream task generator.
+Network Tasks and Alpha Tasks use the separate network taskgen prompt. Kimi K3 selects the board and eligible contributor through `bm task create`, which queues the shared network generation path. The worker prepares the encrypted request bundle and `server/task-generation-worker.js` generates the title, steps, submission requirement, and verification policy. DeepSeek V4.1 Flash remains the downstream task generator.
 
 The network prompt treats generated tasks as coordination units for contributors
 who may not know each other. A compliant Network Task should advance Post Fiat,

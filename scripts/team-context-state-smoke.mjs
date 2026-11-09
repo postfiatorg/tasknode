@@ -149,7 +149,7 @@ const staleReport = {
   prompt_version: TEAM_CONTEXT_PROMPT_VERSION,
   generated_at: generatedAt,
   provider: "vercel",
-  model: "zai/glm-5.3-flash",
+  model: "deepseek/deepseek-v4.1-flash-1017",
   report_json: {
     overview: "Existing and revoked members shipped useful work.",
     members: [

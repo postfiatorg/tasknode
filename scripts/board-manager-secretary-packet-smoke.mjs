@@ -14,7 +14,7 @@ const {
   normalizeBoardManagerSecretaryPacket,
 } = await import("../server/board-manager-secretary-packets.js");
 
-assert.equal(boardManagerSecretaryModel(), "zai/glm-5.3");
+assert.equal(boardManagerSecretaryModel(), "deepseek/deepseek-v4.1-flash-1017");
 
 const rawSourcePacket = {
   schema: "pf.hive.board_manager.source.v0",
@@ -420,7 +420,7 @@ const result = await fetchBoardManagerSecretaryPacket({
 });
 
 assert.match(capturedUrl, /\/chat\/completions$/);
-assert.equal(capturedBody.model, "zai/glm-5.3");
+assert.equal(capturedBody.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.deepEqual(capturedBody.reasoning, { effort: "high", exclude: true });
 assert.equal(capturedBody.thinking, undefined);
 assert.equal(capturedBody.reasoning_effort, undefined);

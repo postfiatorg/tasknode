@@ -30,8 +30,8 @@ Chat does not secretly press product buttons. It cannot accept a task, refuse a 
 
 The chat mode picker changes model behavior. Shared inference runs on Vercel AI Gateway:
 
-- `Instant` uses GLM 5.3 Flash for faster responses.
-- `Thinking` uses GLM 5.3 for deeper reasoning.
+- `Instant` uses DeepSeek V4.1 Flash for faster responses.
+- `Thinking` uses DeepSeek V4.1 Flash for deeper reasoning.
 - `Help` is product help. It uses this guide plus the user's available app context to explain what the user is seeing and which surface to use.
 
 A new empty chat shows four starter prompts for signed-in users: `Help me build my context document`, `Give me my first task`, `How do I earn PFT?`, and `What should I do first?`. Clicking one fills the composer so the user can edit or send it; it does not send by itself.
@@ -78,7 +78,7 @@ Memory is a compressed record of useful chat history. It helps future chats carr
 
 Docs is the wallet-encrypted document and spreadsheet library in the primary sidebar. A locked library presents one page-level Unlock action. Encrypted folders support organizing documents in a nested hierarchy. Unlock the linked wallet to create the Docs key envelope, decrypt titles, create/open documents, and share with an exact Task Node handle or linked wallet. The editor is embedded in Task Node; a separate popup is a defect. Renaming in either Task Node or PFDocs synchronizes the owner's encrypted canonical title.
 
-Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use GLM 5.3 through Vercel AI Gateway. They receive the current document, the mention, and a bounded window of the active document chat so follow-ups retain continuity. Turn on `Full context` only when the response should additionally use Task Node Context, Memory, and task state.
+Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use DeepSeek V4.1 Flash through Vercel AI Gateway. They receive the current document, the mention, and a bounded window of the active document chat so follow-ups retain continuity. Turn on `Full context` only when the response should additionally use Task Node Context, Memory, and task state.
 
 ### Team Screen
 
@@ -134,7 +134,7 @@ Recommendations require enough public/discoverable member data to compare agains
 
 Hive is the group coordination board. It shows shared Post Fiat projects, Network Task routing, contributor activity, Hive Context, and Hive Mind Agent activity. It is where the user inspects network work, not where they accept or submit tasks.
 
-Hive chat is one public group conversation over Nostr, available from the primary sidebar. It uses your Messages handle and public profile picture, with @mentions and linked replies. A periodic GLM 5.3 Flash check decides whether the bot should participate; GLM 5.3 writes selected replies. Concrete board issues can enter the existing production Kimi K3 manager’s durable inbox. Messages do not create tasks by themselves; normal badge, capacity, board and reward checks still apply.
+Hive chat is one public group conversation over Nostr, available from the primary sidebar. It uses your Messages handle and public profile picture, with @mentions and linked replies. A periodic DeepSeek V4.1 Flash check decides whether the bot should participate; DeepSeek V4.1 Flash writes selected replies. Concrete board issues can enter the existing production Kimi K3 manager’s durable inbox. Messages do not create tasks by themselves; normal badge, capacity, board and reward checks still apply.
 
 When Hive Chat describes an active Network Task reward, the user-visible task projection reward is authoritative. Internal allocation caps are only context for not-yet-offered work and should not be reported as the accepted task reward.
 

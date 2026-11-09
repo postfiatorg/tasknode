@@ -9,7 +9,7 @@ import { generateProfileNftTitle, validateProfileNftTitle } from "../server/prof
 
 const spec = JSON.parse(await readFile(new URL("./profile-nft-art-fixture.json", import.meta.url)));
 const sourcePacket = { tasks: [{ ref: "work_1", title: "Delivered SecretProjectZephyr9081726354", description: "Private completion evidence" }], metrics: { completed_tasks: 3 } };
-const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture-vercel", AMBIENT_API_KEY: "fixture-ambient", INFERENCE_MODEL_STRUCTURED: "zai/glm-5.3", INFERENCE_MODEL_VISION: "zai/glm-5.3-flash" };
+const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture-vercel", AMBIENT_API_KEY: "fixture-ambient", INFERENCE_MODEL_STRUCTURED: "deepseek/deepseek-v4.1-flash-1017", INFERENCE_MODEL_VISION: "deepseek/deepseek-v4.1-flash-1017" };
 let calls = 0;
 const respond = (content) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
 const fetchImpl = async (url, init) => {

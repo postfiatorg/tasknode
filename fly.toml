@@ -89,7 +89,7 @@ kill_timeout = "45s"
   TASKNODE_HIVE_TASK_GENERATION_MODEL = "moonshotai/kimi-k3.1-pro"
   TASKNODE_HIVE_TASK_GENERATION_REASONING_EFFORT = "high"
   TASKNODE_HIVE_SECRETARY_PROVIDER = "vercel"
-  TASKNODE_HIVE_SECRETARY_MODEL = "zai/glm-5.3"
+  TASKNODE_HIVE_SECRETARY_MODEL = "deepseek/deepseek-v4.1-flash-1017"
   TASKNODE_HIVE_SECRETARY_REASONING_EFFORT = "high"
   # Operator authority allowlists (Hive brain, report rerun, harvest resolver)
   # are Fly secrets. Public role lists below are reviewed in code review.
