@@ -38,3 +38,68 @@ export function currentVerificationRequest(timeline = []) {
   }
   return null;
 }
+
+const DEFAULT_VERIFICATION_REQUEST_STALL_SECONDS = 3600;
+const STALLED_FAILURE_COUNT = 3;
+const AWAITING_AGENT_ERROR = "awaiting_agent_verification_request";
+
+function errorCode(error = "") {
+  if (!error) return "";
+  return /^[a-z0-9_]{1,120}$/.test(error) ? error : "verification_request_failed";
+}
+
+export function verificationRequestStallSeconds(env = process.env) {
+  const parsed = Number(env.TASKNODE_VERIFICATION_REQUEST_STALL_SECONDS || DEFAULT_VERIFICATION_REQUEST_STALL_SECONDS);
+  return Math.min(Math.max(Number.isFinite(parsed) ? parsed : DEFAULT_VERIFICATION_REQUEST_STALL_SECONDS, 300), 7 * 86_400);
+}
+
+// After initial evidence both evidence gates close and the verification
+// request comes from a background worker that retries failures indefinitely.
+// Without this, a failing or waiting worker looked the same as a request that
+// was about to appear: `currentVerificationRequest` empty and no action (#347).
+// Only error codes are exposed; provider error text stays in worker metadata.
+export function verificationRequestStatus({
+  status = "",
+  submittedAt = null,
+  worker = {},
+  nowMs = Date.now(),
+  stallSeconds = verificationRequestStallSeconds(),
+} = {}) {
+  if (safeText(status, 80) !== "submitted") return null;
+  const state = safeObject(worker);
+  const lastError = safeText(state.last_error, 1000);
+  const awaitingAgent = lastError === AWAITING_AGENT_ERROR;
+  const failureCount = Math.max(0, Number(state.retry_count) || 0);
+  const submittedMs = Date.parse(toIso(submittedAt) || "");
+  const overdue = Number.isFinite(submittedMs) && nowMs - submittedMs > stallSeconds * 1000;
+  const phase = state.published === "true"
+    ? "published"
+    : state.processing === "true"
+      ? "processing"
+      : awaitingAgent
+        ? "awaiting_agent"
+        : lastError
+          ? "retrying"
+          : "queued";
+  const stalled = phase !== "published" && (overdue || failureCount >= STALLED_FAILURE_COUNT);
+  let message = "Task Node is generating the verification request for this submission.";
+  if (phase === "published") {
+    message = "The verification request was published and will appear once the task refreshes.";
+  } else if (stalled) {
+    message =
+      "The verification request is overdue. The submitted evidence is recorded; do not resubmit or cancel the task. Report the task ID to Task Node operators if this persists.";
+  } else if (phase === "awaiting_agent") {
+    message = "This task is waiting for its board manager to write the verification request.";
+  } else if (phase === "retrying") {
+    message = "Generating the verification request failed and will be retried automatically.";
+  }
+  return {
+    phase,
+    stalled,
+    failureCount,
+    lastErrorCode: errorCode(phase === "published" || awaitingAgent ? "" : lastError),
+    retryAfter: toIso(state.retry_after) || null,
+    submittedAt: toIso(submittedAt),
+    message,
+  };
+}

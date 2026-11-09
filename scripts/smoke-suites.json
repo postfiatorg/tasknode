@@ -193,7 +193,8 @@
     "scripts/l1-validator-smoke.mjs",
     "scripts/l1-validator-shell-smoke.mjs",
     "scripts/validator-ux-smoke.mjs",
-    "scripts/gateway-credit-readiness-smoke.mjs"
+    "scripts/gateway-credit-readiness-smoke.mjs",
+    "scripts/verification-request-status.test.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",
@@ -205,6 +206,7 @@
     "scripts/context-postgres-smoke.mjs",
     "scripts/db-connection-loss-smoke.mjs",
     "scripts/decisions-repository-smoke.mjs",
+    "scripts/direct-write-submission-review-postgres-smoke.mjs",
     "scripts/docs-folders-smoke.mjs",
     "scripts/hive-reports-smoke.mjs",
     "scripts/index-viewer-smoke.mjs",
