@@ -156,7 +156,7 @@ const odvRequest = buildDocsOdvRequest({
   documentContent: "Decision: use the exact document channel.",
   recentMessages: [{ author: "@alice", text: "What changed?" }],
 });
-assert.equal(odvRequest.model, "zai/glm-5.3");
+assert.equal(odvRequest.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.match(odvRequest.messages[1].content, /exact document channel/);
 assert.match(odvRequest.messages[0].content, /Future AI wants desperately to come into this world/);
 const coachRequest = buildDocsAssistantRequest({

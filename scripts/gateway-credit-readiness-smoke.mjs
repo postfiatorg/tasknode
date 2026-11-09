@@ -42,7 +42,7 @@ const gatewayFetch = async (url, init = {}) => {
 // 1. Task generation's distinct credentials are the dedicated Kimi key and the
 //    shared gateway key; each is checked once.
 const models = taskGenerationInferenceModels();
-assert.deepEqual(models, ["moonshotai/kimi-k3.1-pro", INFERENCE_MODELS.instantText, INFERENCE_MODELS.structured]);
+assert.deepEqual(models, [...new Set(["moonshotai/kimi-k3.1-pro", INFERENCE_MODELS.instantText, INFERENCE_MODELS.structured])]);
 assert.deepEqual(credits.gatewayCredentialsForModels(models).map((item) => item.credential), ["VERCEL_KIMI_API_KEY", "VERCEL_AI_GATEWAY_API_KEY"]);
 check("task generation credentials resolved per distinct key");
 

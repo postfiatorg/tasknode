@@ -64,9 +64,9 @@ for (const mode of ["GPT-6 Astra", "Kimi K3.1 Pro", "Claude Opus 5.5"]) {
   assert.equal(pricingModes.get(mode).billingPolicy, "provider_api_cost");
   assert.deepEqual(pricingModes.get(mode).providerOrder, ["vercel"]);
 }
-assert.equal(pricingModes.get("Instant")?.model, "zai/glm-5.3-flash");
+assert.equal(pricingModes.get("Instant")?.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(pricingModes.get("Instant")?.maxOutputTokens, 16384);
-assert.equal(pricingModes.get("Thinking")?.model, "zai/glm-5.3");
+assert.equal(pricingModes.get("Thinking")?.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(pricingModes.get("Thinking")?.reasoning, "xhigh");
 assert.equal(pricingModes.get("Thinking")?.providerLabel, "Vercel AI Gateway");
 assert.equal(pricingModes.get("Thinking")?.configuredPricing?.inputUsdPerMillion, 0.4725);

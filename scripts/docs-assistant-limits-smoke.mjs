@@ -5,7 +5,7 @@ import { matchCollaborationPath, handleCollaborationRoute } from "../server/coll
 
 const env = { VERCEL_AI_GATEWAY_API_KEY: "fixture", AMBIENT_API_KEY: "fixture-backup", INFERENCE_AMBIENT_BACKUP_ENABLED: "true" };
 const longAnswer = "Detailed analysis with actionable next steps.\n".repeat(3000) + "END_OF_COMPLETE_ANSWER";
-const complete = () => new Response(JSON.stringify({ model: "zai/glm-5.3", choices: [{ finish_reason: "stop", message: { content: longAnswer } }] }));
+const complete = () => new Response(JSON.stringify({ model: "deepseek/deepseek-v4.1-flash-1017", choices: [{ finish_reason: "stop", message: { content: longAnswer } }] }));
 const truncated = () => new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "incomplete answer must not be delivered" } }] }));
 const denied = { ok: false, status: 403, error: "docs_access_required" };
 const input = (prompt) => ({ accountId: "fixture", documentId: "00000000-0000-4000-8000-000000000000", channelHash: "a".repeat(32), prompt, documentContent: "A research plan with milestones, dependencies, and unanswered questions." });
@@ -22,7 +22,7 @@ for (const prompt of ["@coach thoughts on this", "Could you review this thorough
     const request = JSON.parse(options.body);
     budgets.push(request.max_tokens);
     firstSignal ||= options.signal;
-    assert.equal(request.model, "zai/glm-5.3");
+    assert.equal(request.model, "deepseek/deepseek-v4.1-flash-1017");
     assert.ok(request.messages[1].content.includes(prompt));
     return budgets.length === 1 ? truncated() : complete();
   }));

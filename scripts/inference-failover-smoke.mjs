@@ -24,20 +24,21 @@ const finish = { choices: [{ delta: {}, finish_reason: "stop" }] };
 const codeIs = (code) => (error) => error.code === code;
 let assertions = 0;
 
-assert.equal(resolveInferenceModel({ model: "z-ai/glm-5.2", env: {} }), "zai/glm-5.3");
-assert.equal(resolveInferenceModel({ capability: "instant_text", env: {} }), "zai/glm-5.3-flash");
+assert.equal(resolveInferenceModel({ model: "z-ai/glm-5.2", env: {} }), "deepseek/deepseek-v4.1-flash-1017");
+assert.equal(resolveInferenceModel({ capability: "instant_text", env: {} }), "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(resolveInferenceModel({ capability: "fast_text", env: {} }), INFERENCE_MODELS.fastText);
-assert.equal(resolveInferenceModel({ model: body.model, hasImages: true, env: {} }), INFERENCE_MODELS.vision);
+// DeepSeek V4.1 Flash reads images itself; a text-only model still falls back to the vision model.
+assert.equal(resolveInferenceModel({ model: INFERENCE_MODELS.fastText, hasImages: true, env: {} }), INFERENCE_MODELS.vision);
 assert.equal(resolveInferenceModel({ model: INFERENCE_MODELS.instantText, hasImages: true, env: {} }), INFERENCE_MODELS.instantText);
 assert.throws(() => resolveInferenceModel({ model: "invented/model", env: {} }), codeIs("inference_model_unsupported"));
-assert.throws(() => resolveInferenceModel({ capability: "vision_text", env: { INFERENCE_MODEL_VISION: body.model } }), codeIs("inference_image_model_required"));
+assert.throws(() => resolveInferenceModel({ capability: "vision_text", env: { INFERENCE_MODEL_VISION: INFERENCE_MODELS.fastText } }), codeIs("inference_image_model_required"));
 assertions += 7;
 
 let calls = [];
 const primary = await inferenceChatCompletion({ env, body, fetchImpl: async (url, init) => {
   calls.push(url);
   assert.equal(init.headers.authorization, "Bearer vercel-fixture");
-  assert.equal(JSON.parse(init.body).model, "zai/glm-5.3");
+  assert.equal(JSON.parse(init.body).model, "deepseek/deepseek-v4.1-flash-1017");
   return answer();
 } });
 assert.equal(primary.provider, "vercel");
@@ -142,7 +143,7 @@ const backupSearch = normalizeInferenceRequest(searchBody, { provider: "ambient"
 assert.deepEqual(backupSearch.enabled_tools, ["websearch"]);
 assert.equal(Object.hasOwn(backupSearch, "providerOptions"), false);
 assert.equal(Object.hasOwn(backupSearch, "tools"), false);
-const imageRequest = normalizeInferenceRequest({ ...body, messages: [{ role: "user", content: [{ type: "input_image", url: "https://images.invalid/example.png" }] }] }, { env });
+const imageRequest = normalizeInferenceRequest({ ...body, model: INFERENCE_MODELS.fastText, messages: [{ role: "user", content: [{ type: "input_image", url: "https://images.invalid/example.png" }] }] }, { env });
 assert.equal(imageRequest.model, INFERENCE_MODELS.vision);
 assert.equal(imageRequest.messages[0].content[0].type, "image_url");
 assertions += 7;

@@ -80,7 +80,7 @@ export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
     id: "hive_board_secretary",
     category: "hive",
     title: "GLM Board Secretary",
-    description: "Per-board GLM 5.3 Project Status memo writer. Advisory only; no task, message, reward, or board mutations.",
+    description: "Per-board DeepSeek V4.1 Flash Project Status memo writer. Advisory only; no task, message, reward, or board mutations.",
     owner: "worker-hive process",
     trigger: "periodic project status memo refresh",
     cadence: `${cadenceSeconds}s`,
@@ -95,7 +95,7 @@ export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
     },
     lastError: memo?.error || "",
     details: [
-      `model=${process.env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || "zai/glm-5.3"}`,
+      `model=${process.env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || "deepseek/deepseek-v4.1-flash-1017"}`,
       memo?.id && `latestMemo=${memo.id}`,
       memo?.project_id && `latestProject=${memo.project_id}`,
       memo?.model && `latestModel=${memo.model}`,

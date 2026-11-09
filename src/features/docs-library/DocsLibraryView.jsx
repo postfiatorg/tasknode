@@ -159,7 +159,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       documentOwned: document?.owned === true,
       title: String(metadata.title || activeEditor.title || "Untitled document").trim().slice(0, 180),
       identity: docsChatIdentity(data.identity),
-      odv: { enabled: collaboration.docsOdvEnabled === true, mention: "@ODV", model: "zai/glm-5.3", provider: "vercel" },
+      odv: { enabled: collaboration.docsOdvEnabled === true, mention: "@ODV", model: "deepseek/deepseek-v4.1-flash-1017", provider: "vercel" },
       agents: collaboration.docsOdvEnabled === true ? [
         { persona: "odv", mention: "@ODV", label: "ODV" },
         { persona: "coach", mention: "@coach", label: "Trading Coach" },
@@ -270,7 +270,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
             response: result.body?.response || "",
             persona: result.body?.persona || data.persona || "odv",
             label: result.body?.label || (data.persona === "coach" ? "Trading Coach" : "ODV"),
-            model: result.body?.model || "zai/glm-5.3",
+            model: result.body?.model || "deepseek/deepseek-v4.1-flash-1017",
             error: result.ok ? "" : errorText(result, "The mentioned document assistant could not answer this request."),
           }, pfdocsOrigin);
         }).catch(() => {
@@ -284,7 +284,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
             response: "",
             persona: data.persona || "odv",
             label: data.persona === "coach" ? "Trading Coach" : "ODV",
-            model: "zai/glm-5.3",
+            model: "deepseek/deepseek-v4.1-flash-1017",
             error: "The mentioned document assistant could not answer this request.",
           }, pfdocsOrigin);
         });

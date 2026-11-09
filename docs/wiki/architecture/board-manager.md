@@ -19,7 +19,7 @@ harvester were also removed.
 | Component | Runtime | Role |
 | --- | --- | --- |
 | Kimi board manager | Operator-host Corbanu TUI; `kimi-code` / `kimi-k3` | Inspect boards, select work, and execute authorized `bm` commands |
-| Network/task generation | Fly `worker-taskgen`; GLM 5.3 | Prepare the request and generate the concrete task |
+| Network/task generation | Fly `worker-taskgen`; DeepSeek V4.1 Flash | Prepare the request and generate the concrete task |
 | Task review publication | Fly `worker-task-review` | Consume Kimi decisions and publish verification/reward transitions |
 | Hive support | Fly `worker-hive` | Hive context secretary, board secretary memos, reports, and Kimi activity narrator |
 
@@ -186,7 +186,7 @@ The scoped CLI provides local `help`/`--help` without loading a credential, and
 names `round-status <round-id>` and `duty-result`. The round ID comes from the
 supervisor work order; no work order is expected while current duties are empty.
 
-The `kimi-code` credential remains in the Corbanu vault. Shared Vercel GLM 5.3
+The `kimi-code` credential remains in the Corbanu vault. Shared Vercel DeepSeek V4.1 Flash
 models handle downstream task generation and applicable review operations;
 Kimi retains board selection and board review decisions. No retired selector is
 reintroduced. Operator fallback to another Kimi provider remains explicit.
@@ -233,7 +233,7 @@ Routing completion evidence is checked by board even if eligible-pool membership
 ## Public Hive escalation inbox
 
 The production manager remains Kimi K3 in the supervised Corbanu TUI. A public
-Hive bot uses GLM 5.3 Flash to decide whether to participate and GLM 5.3 to
+Hive bot uses DeepSeek V4.1 Flash to decide whether to participate and DeepSeek V4.1 Flash to
 compose replies. It cannot execute board tasks. Its structured escalation
 creates a `hive_group_escalations` row assigned to one existing network board.
 

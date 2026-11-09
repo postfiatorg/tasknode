@@ -73,8 +73,8 @@ for (const key of copiedKeys) {
   next[key] ||= process.env[key] || dev[key] || "";
 }
 
-next.TASKNODE_TASKGEN_MODEL ||= "zai/glm-5.3";
-next.TASKNODE_TASK_REVIEW_MODEL ||= "zai/glm-5.3";
+next.TASKNODE_TASKGEN_MODEL ||= "deepseek/deepseek-v4.1-flash-1017";
+next.TASKNODE_TASK_REVIEW_MODEL ||= "deepseek/deepseek-v4.1-flash-1017";
 
 await writeFile(targetPath, serializeEnv(next), { mode: 0o600 });
 await chmod(targetPath, 0o600);

@@ -70,14 +70,14 @@ function annotationsFromOpenRouter(body = {}) {
 
 export function contextRewriteModels() {
   return {
-    glm: process.env.CONTEXT_REWRITE_GLM_MODEL || "zai/glm-5.3",
+    glm: process.env.CONTEXT_REWRITE_GLM_MODEL || "deepseek/deepseek-v4.1-flash-1017",
     deepseek: process.env.CONTEXT_REWRITE_SECONDARY_MODEL || INFERENCE_MODELS.structured,
-    final: process.env.CONTEXT_REWRITE_FINAL_MODEL || process.env.CONTEXT_REWRITE_GLM_MODEL || "zai/glm-5.3",
+    final: process.env.CONTEXT_REWRITE_FINAL_MODEL || process.env.CONTEXT_REWRITE_GLM_MODEL || "deepseek/deepseek-v4.1-flash-1017",
     polish:
       process.env.CONTEXT_REWRITE_POLISH_MODEL ||
       process.env.CONTEXT_REWRITE_FINAL_MODEL ||
       process.env.CONTEXT_REWRITE_GLM_MODEL ||
-      "zai/glm-5.3",
+      "deepseek/deepseek-v4.1-flash-1017",
     research: process.env.CONTEXT_REWRITE_RESEARCH_MODEL || INFERENCE_MODELS.research,
   };
 }

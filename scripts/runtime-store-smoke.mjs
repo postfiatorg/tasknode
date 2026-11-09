@@ -85,11 +85,11 @@ try {
   } = await import("../src/wallet-core.js");
   const { appState } = await import("../server/app-state.js");
 
-  if (modelForMode("Instant") !== "zai/glm-5.3-flash") {
-    throw new Error("Instant must default to GLM 5.3 Flash.");
+  if (modelForMode("Instant") !== "deepseek/deepseek-v4.1-flash-1017") {
+    throw new Error("Instant must default to DeepSeek V4.1 Flash.");
   }
-  if (modelForMode("Thinking") !== "zai/glm-5.3") {
-    throw new Error("Thinking must default to GLM 5.3.");
+  if (modelForMode("Thinking") !== "deepseek/deepseek-v4.1-flash-1017") {
+    throw new Error("Thinking must default to DeepSeek V4.1 Flash.");
   }
   if (modelForMode("Help") !== "deepseek/deepseek-v4-flash-0731") {
     throw new Error("Help must default to the configured fast-text model.");

@@ -17,7 +17,7 @@ function hasFlag(name) {
 }
 
 const accountId = argValue("--account-id", process.env.TASKNODE_PUBLIC_PROFILE_ACCOUNT_ID || "");
-const model = argValue("--model", process.env.TASKNODE_PUBLIC_PROFILE_MODEL || "zai/glm-5.3");
+const model = argValue("--model", process.env.TASKNODE_PUBLIC_PROFILE_MODEL || "deepseek/deepseek-v4.1-flash-1017");
 const json = hasFlag("--json");
 
 if (!accountId) {

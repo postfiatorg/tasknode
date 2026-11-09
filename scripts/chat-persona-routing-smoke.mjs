@@ -152,7 +152,7 @@ for (const modality of CHAT_MODALITIES) {
 
 const modalityRequest = ambientChatRequest({
   mode: "Thinking",
-  model: "zai/glm-5.3",
+  model: "deepseek/deepseek-v4.1-flash-1017",
   message: "Current modality question",
   conversationId: "conversation-modality-smoke",
   historyMessages: [
@@ -164,7 +164,7 @@ const modalityRequest = ambientChatRequest({
   taskContext,
   persona: "five-mirrors",
 });
-assert.equal(modalityRequest.model, "zai/glm-5.3");
+assert.equal(modalityRequest.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.ok(modalityRequest.messages.some((message) => message.content === "PRIOR_USER_TURN_SENTINEL"));
 assert.ok(modalityRequest.messages.some((message) => message.content === "PRIOR_ASSISTANT_TURN_SENTINEL"));
 

@@ -97,7 +97,7 @@ const progressSteps = [
   {
     key: "polish_rewrite",
     label: "Polish Markdown artifact",
-    detail: "GLM 5.3 xhigh pass improves readability, persuasion, flow, formatting, and actionability.",
+    detail: "DeepSeek V4.1 Flash xhigh pass improves readability, persuasion, flow, formatting, and actionability.",
   },
   {
     key: "completed",

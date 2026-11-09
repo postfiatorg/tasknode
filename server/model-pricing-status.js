@@ -24,8 +24,8 @@ const cacheEfficiencyWindowDays = Math.min(
 );
 
 const modeDescriptions = {
-  Instant: "GLM 5.3 Flash through Vercel AI Gateway.",
-  Thinking: "GLM 5.3 with deep reasoning through Vercel AI Gateway.",
+  Instant: "DeepSeek V4.1 Flash through Vercel AI Gateway, reasoning off.",
+  Thinking: "DeepSeek V4.1 Flash with deep reasoning through Vercel AI Gateway.",
   Help: "Plain-English Task Node help through Vercel AI Gateway.",
 };
 

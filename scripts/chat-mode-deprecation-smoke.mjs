@@ -17,8 +17,8 @@ const { chatModes } = await import("../server/product-contracts.js");
 assert.deepEqual(Object.keys(chatModePrices), ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3.1 Pro", "Claude Opus 5.5", "Help"]);
 assert.deepEqual(chatModes().map((mode) => mode.label), ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3.1 Pro", "Claude Opus 5.5", "Help"]);
 
-assert.equal(modelForMode("Instant"), "zai/glm-5.3-flash");
-assert.equal(modelForMode("Thinking"), "zai/glm-5.3");
+assert.equal(modelForMode("Instant"), "deepseek/deepseek-v4.1-flash-1017");
+assert.equal(modelForMode("Thinking"), "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(modelForMode("Help"), "deepseek/deepseek-v4-flash-0731");
 assert.equal(chatExecutionStatus("Instant").provider, "vercel");
 assert.equal(chatExecutionStatus("Thinking").provider, "vercel");
@@ -41,7 +41,7 @@ const contextEditEstimate = chatEstimate(
   { contextDocument: null, memoryContext: null, taskContext: null, historyMessages: [], activeProposal: null }
 );
 assert.equal(contextEditEstimate.mode, "Thinking");
-assert.equal(contextEditEstimate.model, "zai/glm-5.3");
+assert.equal(contextEditEstimate.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(contextEditEstimate.estimatedWebSearchCalls, 0);
 
 console.log("chat mode deprecation smoke ok");
