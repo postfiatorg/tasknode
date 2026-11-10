@@ -14,7 +14,9 @@ export function dailyAirdropHasSubmissionEvidence(row = {}) {
     row.signed_tx_hash || row.tx_hash);
 }
 
-export async function assertDailyAirdropPaymentAllowed(client, { run, issuance = {}, recipientWallet }) {
+export async function assertDailyAirdropPaymentAllowed(client, { run, issuance = {}, recipientWallet }, env = process.env) {
+  const heldRuns = String(env.TASKNODE_DAILY_AIRDROP_HELD_RUN_IDS || "").split(",").map(id => id.trim());
+  if (heldRuns.includes(run.id)) throw new Error("daily_airdrop_run_operator_held");
   if (dailyAirdropHasSubmissionEvidence(issuance)) {
     throw new Error("daily_airdrop_submission_evidence_requires_reconciliation");
   }

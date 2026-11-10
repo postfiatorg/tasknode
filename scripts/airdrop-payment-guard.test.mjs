@@ -3,13 +3,18 @@ import test from "node:test";
 import pg from "pg";
 import { readFile } from "node:fs/promises";
 import { Wallet } from "xrpl";
-import { dailyAirdropHasSubmissionEvidence } from "../server/profile-daily-airdrop-guard.js";
+import { dailyAirdropHasSubmissionEvidence, assertDailyAirdropPaymentAllowed } from "../server/profile-daily-airdrop-guard.js";
 
 test("submission evidence overrides a retryable label", () => {
   for (const field of ["submission_attempted_at", "submitted_at", "signed_tx_hash", "tx_hash"]) {
     assert.equal(dailyAirdropHasSubmissionEvidence({ status: "failed_before_submit", [field]: "present" }), true);
   }
   assert.equal(dailyAirdropHasSubmissionEvidence({ status: "failed_before_submit" }), false);
+});
+
+test("an explicit scoring-debt hold blocks payment before any database or signer work", async () => {
+  await assert.rejects(assertDailyAirdropPaymentAllowed({ query: () => { throw new Error("must not query"); } },
+    { run: { id: "held-run" } }, { TASKNODE_DAILY_AIRDROP_HELD_RUN_IDS: "other, held-run" }), /operator_held/);
 });
 
 test("PostgreSQL: concurrent claims, crash/reclaim fence, markers, index and blacklists", {
