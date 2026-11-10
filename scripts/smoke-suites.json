@@ -193,7 +193,8 @@
     "scripts/l1-validator-smoke.mjs",
     "scripts/l1-validator-shell-smoke.mjs",
     "scripts/validator-ux-smoke.mjs",
-    "scripts/gateway-credit-readiness-smoke.mjs"
+    "scripts/gateway-credit-readiness-smoke.mjs",
+    "scripts/tasknode-diagnosis-regression.test.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",

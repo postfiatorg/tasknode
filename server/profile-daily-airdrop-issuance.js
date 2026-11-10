@@ -682,7 +682,7 @@ export async function reconcileDailyAirdropIssuance({
   allowDemote = false,
   forceDemoteStaleSync = false,
   fetchImpl = fetch,
-} = {}) {
+} = {}, { syncWallets = dailyAirdropReconcileSyncWatermarks } = {}) {
   const runFilter = safeText(runId, 120);
   const issueFilter = safeText(issuanceId, 120);
   if (!runFilter && !issueFilter) throw new Error("daily_airdrop_reconcile_target_required");
@@ -705,7 +705,7 @@ export async function reconcileDailyAirdropIssuance({
   const amountDrops = safeText(row.amount_drops, 80);
   const sourceWallet = safeText(row.source_wallet, 120);
   const recipientWallet = safeText(row.recipient_wallet, 120);
-  const syncWatermarks = await dailyAirdropReconcileSyncWatermarks({
+  const syncWatermarks = await syncWallets({
     row,
     sourceWallet,
     recipientWallet,
@@ -727,12 +727,15 @@ export async function reconcileDailyAirdropIssuance({
       WHERE t.account = $1
         AND t.destination = $2
         AND t.tx_json->>'Amount' = $3
-        AND COALESCE(t.transaction_result, '') IN ('', 'tesSUCCESS')
+        AND t.tx_type = 'Payment'
+        AND t.validated = true
+        AND t.transaction_result = 'tesSUCCESS'
+        AND COALESCE(t.meta_json->>'delivered_amount', t.meta_json->>'DeliveredAmount') = $3
         AND (
-          t.tx_hash = $4
-          OR t.tx_hash = $5
-          OR pm.context_id = $6
-          OR pm.cid = $7
+          ($4::text <> '' AND t.tx_hash = $4)
+          OR ($5::text <> '' AND t.tx_hash = $5)
+          OR ($6::text <> '' AND pm.context_id = $6)
+          OR ($7::text <> '' AND pm.cid = $7)
         )
       ORDER BY t.ledger_index DESC NULLS LAST, t.updated_at DESC
       LIMIT 1`,
@@ -785,55 +788,25 @@ export async function reconcileDailyAirdropIssuance({
     issuanceId: row.id,
     syncWatermarks,
   };
-  if (allowDemote && status === "submit_unknown" && syncWatermarks.staleForDemote && !forceDemoteStaleSync) {
-    // The cached negative is not trustworthy: at least one wallet's hot-sync
-    // watermark predates the submission attempt, so the payment may exist on
-    // chain without being visible in the local cache yet. Refuse the demote;
-    // operators can override with forceDemoteStaleSync after manual chain review.
-    reconciliation.status = "demote_blocked_stale_sync";
+  if (allowDemote && status === "submit_unknown") {
+    // One hot page and a recent sync watermark do not prove historical absence
+    // or that a signed transaction can no longer validate. Never authorize a
+    // second payment from a cache miss, even with the legacy force flag.
+    const reason = syncWatermarks.staleForDemote && !forceDemoteStaleSync
+      ? "daily_airdrop_demote_blocked_stale_sync"
+      : "daily_airdrop_demote_blocked_unproven_nonpayment";
+    reconciliation.status = reason.replace("daily_airdrop_", "");
+    reconciliation.forceDemoteRequested = Boolean(forceDemoteStaleSync);
     await query(
       `UPDATE profile_daily_airdrop_issuances
-          SET reconciliation_json = $2::jsonb,
-              reconciled_at = now(),
-              updated_at = now()
+          SET reconciliation_json = $2::jsonb, reconciled_at = now(), updated_at = now()
         WHERE id = $1`,
       [row.id, JSON.stringify(reconciliation)]
     );
     return {
-      ok: true,
-      found: false,
-      demoted: false,
-      demoteBlocked: true,
-      demoteBlockedReason: "daily_airdrop_demote_blocked_stale_sync",
-      status,
-      issuance: normalizeIssuance(row),
-      reconciliation,
-      syncWatermarks,
-    };
-  }
-  if (allowDemote && status === "submit_unknown") {
-    reconciliation.forcedDemoteWithStaleSync = Boolean(forceDemoteStaleSync && syncWatermarks.staleForDemote);
-    const demoted = await query(
-      `UPDATE profile_daily_airdrop_issuances
-          SET status = 'failed_before_submit',
-              error_message = 'reconciliation_not_found_operator_demoted',
-              last_error_code = 'reconciliation_not_found_operator_demoted',
-              last_error_message = 'reconciliation_not_found_operator_demoted',
-              reconciliation_json = $2::jsonb,
-              reconciled_at = now(),
-              updated_at = now()
-        WHERE id = $1
-          AND status = 'submit_unknown'
-        RETURNING *`,
-      [row.id, JSON.stringify(reconciliation)]
-    );
-    return {
-      ok: true,
-      found: false,
-      demoted: true,
-      issuance: normalizeIssuance(demoted.rows[0] || row),
-      reconciliation,
-      syncWatermarks,
+      ok: true, found: false, demoted: false, demoteBlocked: true,
+      demoteBlockedReason: reason, status, issuance: normalizeIssuance(row),
+      reconciliation, syncWatermarks,
     };
   }
   await query(

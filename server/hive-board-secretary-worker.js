@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { databaseEnabled } from "./db/pool.js";
+import { databaseEnabled, query } from "./db/pool.js";
 import {
   hiveBoardSecretaryModel,
   hiveBoardSecretaryProvider,
@@ -19,12 +19,14 @@ import {
   releaseBoardManagerLease,
 } from "./repositories/board-manager.js";
 
+import { HIVE_BOARD_SECRETARY_SCOPE, hiveBoardSecretaryCadenceSeconds } from "./hive-board-secretary-status.js";
+
 let timer = null;
 let scheduled = null;
 let running = false;
 let currentLease = null;
 
-const leaseScope = "hive_board_secretary:all_projects";
+const leaseScope = HIVE_BOARD_SECRETARY_SCOPE;
 const managerId = `hive_board_secretary_${hostname()}_${process.pid}`;
 
 function intEnv(name, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER, env = process.env } = {}) {
@@ -34,7 +36,7 @@ function intEnv(name, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER, env = 
 }
 
 function cadenceMs(env = process.env) {
-  return intEnv("TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS", 3600, { min: 60, max: 86400, env }) * 1000;
+  return hiveBoardSecretaryCadenceSeconds(env) * 1000;
 }
 
 function initialDelayMs(env = process.env) {
@@ -175,6 +177,12 @@ async function processQueue({ env = process.env, logger = console } = {}) {
     if (!lease.ok) return;
     currentLease = lease;
     const result = await runHiveBoardSecretaryOnce({ env, logger });
+    await query(`UPDATE board_manager_leases
+      SET metadata_json = metadata_json || $3::jsonb, updated_at = now()
+      WHERE scope = $1 AND manager_id = $2 AND status = 'active'`,
+    [leaseScope, managerId, JSON.stringify({ secretary_scan: {
+      ok: result.ok, completedAt: new Date().toISOString(), ...result.summary,
+    } })]);
     if (!result.ok) {
       logger.warn?.("[hive-board-secretary] run completed with failures", result.summary);
     }
