@@ -242,7 +242,8 @@
     "scripts/l1-validator-postgres-smoke.mjs",
     "scripts/l1-validator-rewards-postgres-smoke.mjs",
     "scripts/validator-ux-postgres-smoke.mjs",
-    "scripts/taskgen-credit-outage-retry-smoke.mjs"
+    "scripts/taskgen-credit-outage-retry-smoke.mjs",
+    "scripts/gui-identity-join.test.mjs"
   ],
   "manual": {
     "scripts/ambient-cache-live-smoke.mjs": "calls a live inference provider",
