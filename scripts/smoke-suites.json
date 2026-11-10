@@ -5,6 +5,7 @@
     "scripts/task-evidence-file-processing-smoke.mjs"
   ],
   "unit": [
+    "scripts/validator-encrypted-bundle.test.mjs",
     "scripts/account-unlink-provider-smoke.mjs",
     "scripts/agent-quality-gates-smoke.mjs",
     "scripts/agent-rate-limit-persistence-smoke.mjs",
