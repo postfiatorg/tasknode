@@ -57,13 +57,31 @@ export function createEncryptedBundleLoader({ fetchEncrypted, maxCached }) {
   } });
 }
 
-// The public encrypted download needs the same cold-load protection as the
-// viewer. Keep pg bytea text decoding: the deployed binary parser corrupts bytes.
-// Pin the read to the catalog version: publication may commit between reads.
+// Keep each bytea response bounded. A single ~19 MB row intermittently exceeds
+// the existing driver read timeout even with no concurrent readers. 1 MiB chunks
+// avoid the large text-protocol frame; the version hash pins every chunk.
+export async function fetchEncryptedBundle(queryImpl, indexId, index, chunkBytes = 1024 * 1024) {
+  const chunks = [];
+  let offset = 0, total;
+  do {
+    const row = (await queryImpl(`SELECT octet_length(b.encrypted_bytes) AS total_bytes,
+        substring(b.encrypted_bytes from $3 for $4) AS encrypted_bytes
+      FROM index_viewer_bundles b JOIN index_viewer_indices i ON i.index_id=b.index_id
+      WHERE b.index_id=$1 AND i.content_hash=$2`, [indexId, index.contentHash, offset + 1, chunkBytes])).rows[0];
+    if (!row) throw validatorError("bundle_not_found", 404);
+    if (!Number.isInteger(row.total_bytes) || row.total_bytes < 28 || row.total_bytes > 128 * 1024 * 1024 ||
+        (total !== undefined && total !== row.total_bytes)) throw validatorError("bundle_integrity_failed", 503);
+    total = row.total_bytes;
+    const bytes = row.encrypted_bytes;
+    if (!Buffer.isBuffer(bytes) || bytes.length !== Math.min(chunkBytes, total - offset)) throw validatorError("bundle_integrity_failed", 503);
+    chunks.push(bytes);
+    offset += bytes.length;
+  } while (offset < total);
+  return Buffer.concat(chunks, total);
+}
+
 const encryptedLoader = createEncryptedBundleLoader({
-  fetchEncrypted: async (indexId, index) => (await query(`SELECT b.encrypted_bytes FROM index_viewer_bundles b
-      JOIN index_viewer_indices i ON i.index_id=b.index_id
-      WHERE b.index_id=$1 AND i.content_hash=$2`, [indexId, index.contentHash])).rows[0]?.encrypted_bytes,
+  fetchEncrypted: (indexId, index) => fetchEncryptedBundle(query, indexId, index),
 });
 const bundleLoader = createBundleLoader({
   fetchEncrypted: (indexId, index) => encryptedLoader.load(indexId, index),
