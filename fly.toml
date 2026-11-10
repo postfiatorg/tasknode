@@ -28,6 +28,10 @@ kill_timeout = "45s"
   PORT = "8080"
   NODE_ENV = "production"
   TASKNODE_ENV = "production"
+  # Current-chain rollout: no live validator reward policy changes.
+  TASKNODE_L1_UPTIME_REWARDS_ENABLED = "false"
+  # Founder 2026-11-10: reconcile these scoring debts; do not pay them.
+  TASKNODE_DAILY_AIRDROP_HELD_RUN_IDS = "airdrop_7aa79a7c-93ed-438a-bcc3-4028d7933ba2,airdrop_26733f62-033e-4441-a8bc-3c5565e3f2c8,airdrop_787b6820-3031-47b6-aed9-b5ad2cb99466,airdrop_09f6b2a2-ce25-4d8d-82de-3ff5bf340180"
   TASKNODE_DEV_AUTH_ENABLED = "false"
   TASKNODE_DATABASE_ENABLED = "true"
   TASKNODE_MIGRATIONS = "release"

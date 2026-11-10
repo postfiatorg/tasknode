@@ -1,5 +1,6 @@
 import pg from "pg";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { transientDatabaseError } from "./transient-errors.js";
 
 const commandTransaction = new AsyncLocalStorage();
 
@@ -170,6 +171,9 @@ export async function transaction(work) {
     await client.query("COMMIT");
     return result;
   } catch (error) {
+    // A driver timeout does not cancel the server statement. Never hand this
+    // connection to another request after an uncertain transaction outcome.
+    if (transientDatabaseError(error)) connectionError ||= error;
     try {
       await client.query("ROLLBACK");
     } catch {

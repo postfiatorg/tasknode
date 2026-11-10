@@ -132,6 +132,12 @@ jobs:
         run: npm run test:db
         env:
           TASKNODE_TEST_ADMIN_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres
+      - name: Verify airdrop guards, bounded review retries and L1 uptime policy
+        run: |
+          psql postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tasknode_s6_test'
+          node --test scripts/airdrop-payment-guard.test.mjs scripts/airdrop-recovery-preview.test.mjs scripts/board-review-retry.test.mjs scripts/l1-uptime-rewards.test.mjs scripts/tasknode-diagnosis-regression.test.mjs
+        env:
+          TASKNODE_DIAG_TEST_DATABASE_URL: postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/tasknode_s6_test
       - name: Verify default badge preservation against PostgreSQL
         run: |
           psql postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5432/postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE tasknode_badge_test_ci'

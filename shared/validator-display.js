@@ -17,17 +17,18 @@ export function validatorTooltip(bindings = []) {
 }
 
 export function validatorEligibility(uptime, nextCheckDate) {
+  const metric = uptime?.metric === "uptime" ? "Uptime" : "Participation";
   const days = Number.isInteger(uptime?.daysReported) ? uptime.daysReported : 0;
   const participation = typeof uptime?.meanAgreement === "number" && Number.isFinite(uptime.meanAgreement) ? uptime.meanAgreement : null;
   const state = !uptime ? "unavailable" : uptime.eligible ? "on_track" : days < 25 ? "building_history"
     : participation !== null && participation < .95 ? "below_threshold" : "unavailable";
   const reason = {
-    unavailable: "Participation history is temporarily unavailable.",
+    unavailable: `${metric} history is temporarily unavailable.`,
     on_track: "Meets the current thresholds. Eligibility is checked again at payout.",
     building_history: `${days} of 25 required days observed in the last 30 complete UTC days.`,
-    below_threshold: "Mean participation is below the required 95%.",
+    below_threshold: `Mean ${metric.toLowerCase()} is below the required 95%.`,
   }[state];
-  return { state, reason, daysObserved: days, requiredDays: 25, windowDays: 30,
+  return { state, reason, metric: metric.toLowerCase(), daysObserved: days, requiredDays: 25, windowDays: 30,
     participation, requiredParticipation: .95, eligible: uptime?.eligible === true, nextCheckDate };
 }
 

@@ -24,6 +24,7 @@ RUN npm run build \
       --entry server/worker-entry.js \
       --entry scripts/migrate-db.mjs \
       --entry scripts/validator-rewards.mjs \
+      --entry scripts/profile-daily-airdrop-recover.mjs \
       --include server/db/migrations \
       --include prompts \
       --exclude prompts/non_production \

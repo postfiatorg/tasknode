@@ -1,5 +1,6 @@
 import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 import { dailyAgreement, validatorError } from "./validator-identity.js";
+import { l1Uptime, l1UptimeEnabled } from "./l1-validator-uptime.js";
 
 export const L1_NETWORK = "l1-devnet";
 export const L1_CHAIN_ID = "postfiat-wan-devnet-2";
@@ -128,5 +129,11 @@ export function l1Participation(participation, asOf = new Date()) {
 export async function l1BindingParticipation(binding, asOf = new Date(), registryOptions) {
   const registry = await fetchL1Registry(registryOptions);
   const row = registeredL1Validator(registry, { validatorId: binding.validator_id, publicKey: binding.ml_dsa_public_key, chainId: binding.chain_id });
-  return l1Participation(row.participation, asOf);
+  return l1RewardEligibility(row, asOf);
+}
+
+export function l1RewardEligibility(row, asOf = new Date(), env = process.env) {
+  if (l1UptimeEnabled(env)) return l1Uptime(row, asOf);
+  return { ...l1Participation(row.participation, asOf), policy: "l1-participation-v1",
+    source: "l1_observed_precommit_votes", daily: row.participation?.daily || [] };
 }
