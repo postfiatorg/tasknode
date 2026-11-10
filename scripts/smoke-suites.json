@@ -239,6 +239,7 @@
     "scripts/terminal-team-context-smoke.mjs",
     "scripts/validator-research-postgres-smoke.mjs",
     "scripts/validator-connect-postgres-smoke.mjs",
+    "scripts/l1-outside-credit-gates-postgres-smoke.mjs",
     "scripts/l1-validator-postgres-smoke.mjs",
     "scripts/l1-validator-rewards-postgres-smoke.mjs",
     "scripts/validator-ux-postgres-smoke.mjs",
