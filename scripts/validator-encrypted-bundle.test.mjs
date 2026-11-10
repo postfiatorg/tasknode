@@ -97,3 +97,37 @@ test("route preserves missing/future and integrity failures and logs transient f
   const integrity = await request(bad, path);
   assert.equal(integrity.status, 503); assert.equal(integrity.body.error, "bundle_integrity_failed");
 });
+
+const { fetchEncryptedBundle } = await import("../server/validator-bundles.js");
+test("bounded database reads reconstruct the exact payload without large bytea frames", async () => {
+  const bytes = randomBytes(2 * 1024 * 1024 + 73), ix = index(bytes), calls = [];
+  const read = async (sql, params) => {
+    assert.match(sql, /i.content_hash=\$2/);
+    assert.match(sql, /substring\(b.encrypted_bytes from \$3 for \$4\)/);
+    const [id, version, offset, size] = params;
+    assert.equal(id, "ga-models"); assert.equal(version, ix.contentHash); assert.equal(size, 1024 * 1024);
+    calls.push(offset);
+    return { rows: [{ total_bytes: bytes.length, encrypted_bytes: bytes.subarray(offset - 1, offset - 1 + size) }] };
+  };
+  const loader = createEncryptedBundleLoader({ fetchEncrypted: (id, v) => fetchEncryptedBundle(read, id, v) });
+  const results = await Promise.all(Array.from({ length: 40 }, () => loader.load("ga-models", ix)));
+  assert.deepEqual(results[0], bytes);
+  assert.ok(results.every((result) => result === results[0]));
+  assert.deepEqual(calls, [1, 1048577, 2097153]);
+});
+test("publication changes, truncation and invalid sizes never return partial or mixed bytes", async () => {
+  const bytes = Buffer.alloc(64), ix = index(bytes);
+  for (const scenario of ["changed_version", "changed_size", "truncated", "oversize", "undersize"]) {
+    let calls = 0;
+    const read = async () => {
+      calls++;
+      if (scenario === "changed_version" && calls === 2) return { rows: [] };
+      let total = bytes.length;
+      if (scenario === "changed_size" && calls === 2) total++;
+      if (scenario === "oversize") total = 128 * 1024 * 1024 + 1;
+      if (scenario === "undersize") total = 27;
+      return { rows: [{ total_bytes: total, encrypted_bytes: bytes.subarray(0, scenario === "truncated" ? 31 : 32) }] };
+    };
+    await assert.rejects(fetchEncryptedBundle(read, "ga-models", ix, 32), /bundle_(not_found|integrity_failed)/);
+  }
+});
