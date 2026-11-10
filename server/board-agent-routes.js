@@ -4,6 +4,7 @@ import { validateJsonDocument } from "./request-validation.js";
 import { withBoardAgent } from "./board-agent-context.js";
 import { dispatchBoardAgent } from "./board-agent-dispatch.js";
 import { recordLifecycleRejection } from "../scripts/bm/writes.mjs";
+import { transientDatabaseError } from "./db/transient-errors.js";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -24,7 +25,17 @@ export async function executeBoardAgentCommand({ token, payload }, { dispatch = 
   }
   const inputDigest = digest(JSON.stringify(payload.argv));
   try {
-    return await executeBoardAgentMutation({ row, payload, inputDigest, dispatch });
+    try {
+      return await executeBoardAgentMutation({ row, payload, inputDigest, dispatch });
+    } catch (error) {
+      // Review writes and their immutable receipt share a transaction. Retry
+      // exactly once with the SAME key after rollback/connection disposal. If
+      // COMMIT succeeded but its acknowledgement was lost, replay the receipt.
+      // Other mutations can have external side effects; do not retry them here.
+      if (payload.argv[0] !== "review" || !transientDatabaseError(error)) throw error;
+      console.warn("board_agent_review_retry", { reason: "transient_database_error", attempt: 1 });
+      return await executeBoardAgentMutation({ row, payload, inputDigest, dispatch });
+    }
   } catch (error) {
     // The rejected command's receipt rolled back with its transaction. Keep a
     // durable record of the lifecycle conflict so repetition is countable by
@@ -65,9 +76,9 @@ export async function handleBoardAgentRoute({ req, res, url, readJson, json }) {
     const result = await executeBoardAgentCommand({ token, payload: await readJson(req, 128 * 1024) });
     json(res, 200, result);
   } catch (error) {
-    const status = Number(error.status) || 500;
+    const status = Number(error.status) || (transientDatabaseError(error) ? 503 : 500);
     if (status >= 500) console.error("board_agent_command_failed", { error: error.message });
-    const body = { ok: false, error: status >= 500 ? "board_agent_command_failed" : error.message, message: status >= 500 ? "The command did not commit. Retry with its saved request key." : error.message };
+    const body = { ok: false, error: status >= 500 ? "board_agent_command_failed" : error.message, message: status >= 500 ? "The command outcome is not confirmed. Retry with its saved request key." : error.message };
     if (status === 409 && error.lifecycle) body.lifecycle = error.lifecycle;
     json(res, status, body);
   }

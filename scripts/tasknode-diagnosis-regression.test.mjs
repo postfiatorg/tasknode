@@ -134,6 +134,9 @@ test("PostgreSQL: cache miss never frees guard; only validated exact delivery se
     assert.equal(settled.found, true);
     assert.equal(settled.issuance.status, "submitted");
     assert.equal((await invoke()).alreadySubmitted, true, "reconciliation replays the settled issuance");
+    await client.query("UPDATE profile_daily_airdrop_issuances SET status='submit_unknown',tx_hash='',submitted_at=NULL");
+    await client.query(`UPDATE pftl_transactions SET tx_json='{"DeliverMax":"15000000"}'`);
+    assert.equal((await invoke()).found, true, "API v2 DeliverMax retains exact amount validation");
   } finally {
     await client.query("ROLLBACK");
     await client.end();

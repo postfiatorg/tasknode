@@ -8,6 +8,7 @@ import { preparePftPointerTransaction, submitSignedPftTransaction } from "./pftl
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { query, transaction } from "./db/pool.js";
 import { moneySeedFromEnv } from "./production-guards.js";
+import { assertDailyAirdropPaymentAllowed, dailyAirdropRecoveryDigest } from "./profile-daily-airdrop-guard.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 import {
@@ -71,6 +72,7 @@ export async function claimDailyAirdropIssuanceForPublish({
   accountId,
   runId = "",
   allowDryRunPromotion = false,
+  expectedRecoveryDigest = "",
 } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("daily_airdrop_account_required");
@@ -126,6 +128,11 @@ export async function claimDailyAirdropIssuanceForPublish({
     }
     if (existingIssuance && !dailyAirdropIssuanceRetryable(existingIssuance)) {
       throw new Error(`daily_airdrop_issuance_blocked:${existingStatus || "unknown"}`);
+    }
+    await assertDailyAirdropPaymentAllowed(client, { run, issuance: existingIssuance || {}, recipientWallet });
+    if (expectedRecoveryDigest && (!existingIssuance ||
+        dailyAirdropRecoveryDigest(run, existingIssuance) !== expectedRecoveryDigest)) {
+      throw new Error("daily_airdrop_recovery_preview_changed");
     }
 
     await client.query(
@@ -222,30 +229,47 @@ async function markIssuanceSubmitted({ issuanceId, cid, digest, txHash, ledgerIn
   return normalizeIssuance(result.rows[0] || null);
 }
 
-async function markIssuanceSubmitting({ issuanceId, signedTxHash = "" } = {}) {
-  const result = await query(
+export async function markIssuanceSubmitting({ issuanceId, signedTxHash = "", attemptCount, cid = "", digest = "" } = {}) {
+  if (!signedTxHash || !Number.isSafeInteger(attemptCount) || attemptCount < 1) {
+    throw new Error("daily_airdrop_submission_identity_required");
+  }
+  return transaction(async (client) => {
+    const locked = await client.query("SELECT * FROM profile_daily_airdrop_issuances WHERE id=$1 FOR UPDATE", [issuanceId]);
+    const issuance = locked.rows[0];
+    if (!issuance || issuance.status !== "processing_pre_submit" || issuance.attempt_count !== attemptCount) {
+      throw new Error("daily_airdrop_issuance_submit_claim_failed");
+    }
+    await assertDailyAirdropPaymentAllowed(client, {
+      run: { id: issuance.run_id, account_id: issuance.account_id }, issuance, recipientWallet: issuance.recipient_wallet,
+    });
+    const result = await client.query(
     `UPDATE profile_daily_airdrop_issuances
         SET status = 'submitting',
             submission_attempted_at = now(),
             signed_tx_hash = $2,
+            source_cid = $4,
+            payload_digest = $5,
             error_message = NULL,
             last_error_code = '',
             last_error_message = '',
             updated_at = now()
       WHERE id = $1
         AND status = 'processing_pre_submit'
+        AND attempt_count = $3
       RETURNING *`,
-    [safeText(issuanceId, 120), safeText(signedTxHash, 120)]
+    [safeText(issuanceId, 120), safeText(signedTxHash, 120), attemptCount, cid, digest]
   );
   const row = result.rows[0] || null;
   if (!row) throw new Error("daily_airdrop_issuance_submit_claim_failed");
   return normalizeIssuance(row);
+  });
 }
 
 export async function markDailyAirdropIssuancePublishFailure({
   issuanceId,
   error,
   submissionAttempted = false,
+  attemptCount = null,
 } = {}) {
   const message = safeText(error?.message || error || "daily_airdrop_issuance_failed", 1200);
   const code = errorCode(error);
@@ -258,8 +282,9 @@ export async function markDailyAirdropIssuancePublishFailure({
               last_error_message = $2,
               updated_at = now()
         WHERE id = $1
+          AND ($4::integer IS NULL OR attempt_count = $4)
           AND status IN ('processing_pre_submit', 'submitting')`,
-      [issuanceId, message, code]
+      [issuanceId, message, code, attemptCount]
     );
     return;
   }
@@ -272,8 +297,9 @@ export async function markDailyAirdropIssuancePublishFailure({
             updated_at = now(),
             completed_at = now()
       WHERE id = $1
+        AND ($4::integer IS NULL OR attempt_count = $4)
         AND status = 'processing_pre_submit'`,
-    [issuanceId, message, code]
+    [issuanceId, message, code, attemptCount]
   );
 }
 
@@ -304,6 +330,10 @@ export async function recoverStaleDailyAirdropIssuances({
             updated_at = now()
        FROM stale
       WHERE i.id = stale.id
+        AND i.status IN ('processing_pre_submit', 'processing')
+        AND i.submission_attempted_at IS NULL
+        AND COALESCE(i.signed_tx_hash, '') = ''
+        AND i.updated_at < now() - ($1::integer * interval '1 minute')
       RETURNING i.*`,
     [safePreSubmit, safeLimit]
   );
@@ -717,7 +747,7 @@ export async function reconcileDailyAirdropIssuance({
             t.close_time,
             t.account,
             t.destination,
-            t.tx_json->>'Amount' AS amount_drops,
+            COALESCE(t.tx_json->>'Amount', t.tx_json->>'DeliverMax') AS amount_drops,
             pm.cid,
             pm.context_id,
             pm.pointer_kind,
@@ -726,7 +756,7 @@ export async function reconcileDailyAirdropIssuance({
        LEFT JOIN pftl_pointer_memos pm ON pm.tx_hash = t.tx_hash
       WHERE t.account = $1
         AND t.destination = $2
-        AND t.tx_json->>'Amount' = $3
+        AND COALESCE(t.tx_json->>'Amount', t.tx_json->>'DeliverMax') = $3
         AND t.tx_type = 'Payment'
         AND t.validated = true
         AND t.transaction_result = 'tesSUCCESS'
@@ -820,8 +850,8 @@ export async function reconcileDailyAirdropIssuance({
   return { ok: true, found: false, status, issuance: normalizeIssuance(row), reconciliation, syncWatermarks };
 }
 
-export async function issueLatestDailyAirdrop({ accountId, runId = "", allowDryRunPromotion = false } = {}) {
-  const claim = await claimDailyAirdropIssuanceForPublish({ accountId, runId, allowDryRunPromotion });
+export async function issueLatestDailyAirdrop({ accountId, runId = "", allowDryRunPromotion = false, expectedRecoveryDigest = "" } = {}) {
+  const claim = await claimDailyAirdropIssuanceForPublish({ accountId, runId, allowDryRunPromotion, expectedRecoveryDigest });
   if (claim.alreadySubmitted) {
     return {
       ok: true,
@@ -884,6 +914,9 @@ export async function issueLatestDailyAirdrop({ accountId, runId = "", allowDryR
     await markIssuanceSubmitting({
       issuanceId: claim.issuance.id,
       signedTxHash,
+      attemptCount: claim.issuance.attempt_count,
+      cid: pin.cid,
+      digest: `sha256:${pin.sha256}`,
     });
     submissionAttempted = true;
     const submitted = await submitSignedPftTransaction({
@@ -953,6 +986,7 @@ export async function issueLatestDailyAirdrop({ accountId, runId = "", allowDryR
       issuanceId: claim.issuance.id,
       error,
       submissionAttempted,
+      attemptCount: claim.issuance.attempt_count,
     }).catch(() => null);
     throw error;
   }

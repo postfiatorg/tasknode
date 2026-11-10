@@ -28,6 +28,8 @@ kill_timeout = "45s"
   PORT = "8080"
   NODE_ENV = "production"
   TASKNODE_ENV = "production"
+  # Current-chain rollout: no live validator reward policy changes.
+  TASKNODE_L1_UPTIME_REWARDS_ENABLED = "false"
   TASKNODE_DEV_AUTH_ENABLED = "false"
   TASKNODE_DATABASE_ENABLED = "true"
   TASKNODE_MIGRATIONS = "release"

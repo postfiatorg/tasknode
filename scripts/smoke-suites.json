@@ -194,7 +194,11 @@
     "scripts/l1-validator-shell-smoke.mjs",
     "scripts/validator-ux-smoke.mjs",
     "scripts/gateway-credit-readiness-smoke.mjs",
-    "scripts/tasknode-diagnosis-regression.test.mjs"
+    "scripts/tasknode-diagnosis-regression.test.mjs",
+    "scripts/airdrop-payment-guard.test.mjs",
+    "scripts/l1-uptime-rewards.test.mjs",
+    "scripts/airdrop-recovery-preview.test.mjs",
+    "scripts/board-review-retry.test.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",
