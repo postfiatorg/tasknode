@@ -1,3 +1,4 @@
+import { HIVE_BOARD_SECRETARY_SCOPE, hiveBoardSecretaryCadenceSeconds, hiveBoardSecretaryScanStatus } from "./hive-board-secretary-status.js";
 import { contextRewriteWatchdogSnapshot } from "./repositories/context-rewrite.js";
 import { readAllocationHealth } from "./allocation-health.js";
 import {
@@ -18,9 +19,9 @@ import {
 } from "./system-status-readers.js";
 
 export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
-  const cadenceSeconds = intEnv(process.env.TASKNODE_HIVE_BOARD_SECRETARY_CADENCE_SECONDS, 900, { min: 60, max: 86400 });
+  const cadenceSeconds = hiveBoardSecretaryCadenceSeconds();
   const enabled = process.env.TASKNODE_HIVE_BOARD_SECRETARY_ENABLED !== "false";
-  const [memoResult, countsResult, projectResult, failedResult] = await Promise.all([
+  const [memoResult, countsResult, projectResult, failedResult, scanResult] = await Promise.all([
     optionalQuery(
       tables,
       ["hive_board_secretary_memos"],
@@ -63,31 +64,29 @@ export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
           )`,
       [recentFailureWindowMs]
     ),
+    optionalQuery(tables, ["board_manager_leases"],
+      "SELECT status, claimed_at, metadata_json FROM board_manager_leases WHERE scope = $1",
+      [HIVE_BOARD_SECRETARY_SCOPE]),
   ]);
   const memo = memoResult.rows[0] || null;
   const activeProjects = Number(projectResult.rows[0]?.count || 0);
   const recentFailed = Number(failedResult.rows[0]?.count || 0);
-  let status = runFreshness({
-    enabled,
-    lastSuccessAt: memo?.generated_at || null,
-    warningAfterMs: cadenceSeconds * 1000 + 5 * minute,
-    staleAfterMs: cadenceSeconds * 2000 + 5 * minute,
-    nowMs,
-    missingStatus: activeProjects > 0 ? "critical" : "unknown",
-  });
+  const lease = scanResult.rows[0] || null;
+  const scan = lease?.metadata_json?.secretary_scan;
+  let status = hiveBoardSecretaryScanStatus({ lease, enabled, cadenceSeconds, nowMs });
   status = recentFailureStatus(status, recentFailed, "Recent failed memos");
   return item({
     id: "hive_board_secretary",
     category: "hive",
-    title: "GLM Board Secretary",
+    title: "Board Secretary",
     description: "Per-board DeepSeek V4.1 Flash Project Status memo writer. Advisory only; no task, message, reward, or board mutations.",
     owner: "worker-hive process",
     trigger: "periodic project status memo refresh",
     cadence: `${cadenceSeconds}s`,
     status: status.status,
     statusLabel: status.label,
-    lastRunAt: memo?.generated_at || memo?.created_at,
-    lastSuccessAt: memo?.generated_at || null,
+    lastRunAt: lease?.status === "active" ? lease.claimed_at : scan?.completedAt,
+    lastSuccessAt: scan?.ok === true ? scan.completedAt : null,
     staleAfterMs: cadenceSeconds * 2000 + 5 * minute,
     counts: {
       ...countsFromRows(countsResult.rows),
@@ -96,6 +95,8 @@ export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
     lastError: memo?.error || "",
     details: [
       `model=${process.env.TASKNODE_HIVE_BOARD_SECRETARY_MODEL || "deepseek/deepseek-v4.1-flash-1017"}`,
+      memo?.generated_at && `latestMemoGeneratedAt=${iso(memo.generated_at)}`,
+      scan && `scanCompleted=${scan.completed} scanFailed=${scan.failed} scanScanned=${scan.scanned}`,
       memo?.id && `latestMemo=${memo.id}`,
       memo?.project_id && `latestProject=${memo.project_id}`,
       memo?.model && `latestModel=${memo.model}`,
@@ -394,11 +395,13 @@ export async function networkTaskGenerationItem(tables, nowMs) {
 
 // Generation freshness says the worker is alive. This says whether eligible
 // contributors are actually receiving work. They must never be conflated.
-export async function networkAllocationHealthItem(tables, _nowMs) {
+export async function networkAllocationHealthItem(tables, _nowMs, { readHealth = readAllocationHealth } = {}) {
   const required = ["network_task_allocations", "network_task_generation_jobs", "bm_audit_log", "board_agent_rounds", "account_network_badges", "task_projections"];
   let health = null;
-  if (required.every((name) => tables.get(name) === true)) {
-    try { health = await readAllocationHealth(); } catch { health = null; }
+  const missing = required.filter((name) => tables.get(name) !== true);
+  let healthError = missing.length ? `missing_tables:${missing.join(",")}` : "";
+  if (!missing.length) {
+    try { health = await readHealth(); } catch { healthError = "allocation_health_query_failed"; }
   }
   const aggregate = health?.aggregate || {};
   const evaluation = health?.evaluation || { status: "unknown", label: "Allocation health unavailable" };
@@ -423,7 +426,7 @@ export async function networkAllocationHealthItem(tables, _nowMs) {
       submissions_awaiting_manager: aggregate.submissions_awaiting_manager ?? 0,
       oldest_submission_wait_minutes: Math.round((aggregate.oldest_submission_wait_ms ?? 0) / 60_000),
     },
-    lastError: "",
+    lastError: healthError,
     details: [
       ...(aggregate.boards_not_served_3_plus?.length ? [`boardsNotServed3PlusRounds=${aggregate.boards_not_served_3_plus.join(",")}`] : []),
       ...((health?.boards || []).map((board) => `${board.board_id}: created24h=${board.creates_24h} offered7d=${board.accounts_offered_7d} notServedStreak=${board.consecutive_not_served_rounds}`)),
