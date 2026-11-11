@@ -1,21 +1,47 @@
-import assert from 'node:assert/strict';
-import { promptStats, createPromptActivity } from '../packages/tasknode-cli/lib/prompt-stats.mjs';
-const events = []; let clock = Date.parse('2026-11-10T23:59:58Z'); let n = 0;
-const tracker = createPromptActivity({now:() => clock,uuid:() => `session-${++n}`,emit:payload => events.push({...payload,documentId:'one',eventId:`event-${events.length}`,at:new Date(clock).toISOString()})});
-tracker.input(); tracker.input(); clock += 1000; tracker.input(); tracker.tick();
-clock += 1000; tracker.input(); tracker.tick();
-clock += 120001; tracker.tick(); tracker.input(); tracker.close();
-assert.equal(events[0].activeSeconds,2);
-assert.equal(events[1].activeSeconds,3);
-assert.equal(events[2].ended,true);
-assert.notEqual(events[2].sessionId,events[3].sessionId);
-const at = '2026-11-11T00:01:00Z';
-events.push({eventId:'create',documentId:'one',kind:'created',at},{eventId:'version',documentId:'one',kind:'version_saved',at});
+import assert from "node:assert/strict";
+import { promptStats, createPromptActivity } from "../packages/tasknode-cli/lib/prompt-stats.mjs";
+const events = [];
+let clock = Date.parse("2026-11-10T23:59:58Z");
+let n = 0;
+const tracker = createPromptActivity({
+  now: () => clock,
+  uuid: () => `session-${++n}`,
+  emit: (payload) =>
+    events.push({
+      ...payload,
+      documentId: "one",
+      eventId: `event-${events.length}`,
+      at: new Date(clock).toISOString(),
+    }),
+});
+tracker.input();
+tracker.input();
+clock += 1000;
+tracker.input();
+tracker.tick();
+clock += 1000;
+tracker.input();
+tracker.tick();
+clock += 120001;
+tracker.tick();
+tracker.input();
+tracker.close();
+assert.equal(events[0].activeSeconds, 2);
+assert.equal(events[1].activeSeconds, 3);
+assert.equal(events[2].ended, true);
+assert.notEqual(events[2].sessionId, events[3].sessionId);
+const at = "2026-11-11T00:01:00Z";
+events.push(
+  { eventId: "create", documentId: "one", kind: "created", at },
+  { eventId: "version", documentId: "one", kind: "version_saved", at },
+);
 events.push(events.at(-1));
-let stats = promptStats(events,{days:7,now:clock});
-assert.deepEqual(stats.totals,{created:1,versions:1,activeSeconds:4,activeMinutes:4/60});
-assert.equal(stats.daily.at(-2).activeSeconds,2);
-assert.equal(stats.daily.at(-1).activeSeconds,2);
-assert.equal(promptStats(events,{days:30,now:clock}).daily.length,30);
-assert.throws(() => promptStats(events,{days:8}));
-console.log('PASS prompt stats: unique input seconds, checkpoints, two-minute idle, UTC midnight, duplicate events, 7/30 days');
+let stats = promptStats(events, { days: 7, now: clock });
+assert.deepEqual(stats.totals, { created: 1, versions: 1, activeSeconds: 4, activeMinutes: 4 / 60 });
+assert.equal(stats.daily.at(-2).activeSeconds, 2);
+assert.equal(stats.daily.at(-1).activeSeconds, 2);
+assert.equal(promptStats(events, { days: 30, now: clock }).daily.length, 30);
+assert.throws(() => promptStats(events, { days: 8 }));
+console.log(
+  "PASS prompt stats: unique input seconds, checkpoints, two-minute idle, UTC midnight, duplicate events, 7/30 days",
+);

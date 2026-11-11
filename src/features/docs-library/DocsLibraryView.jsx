@@ -1,6 +1,8 @@
+import { docsRecoveryPackage } from "./prompt-recovery";
+import { PromptTimeline } from "./PromptTimeline";
 import { PromptDevices } from "./PromptDevices";
 import { createPromptActivity } from "../../../packages/tasknode-cli/lib/prompt-stats.mjs";
-import { unlockPromptLibrary, readPromptHistory, savePromptEvent } from "./prompt-library";
+import { unlockPromptLibrary, readPromptHistory, savePromptEvent, encryptedPromptBackup, createPromptHistoryEvent } from "./prompt-library";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronDown, Download, Eye, FileText, FileUp, History, LockKeyhole, MessageSquare, Pencil, Share2 } from "lucide-react";
 import { requestJson } from "../../api";
@@ -93,6 +95,8 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
   const promptKeyRef = useRef("");
   const promptActivityRef = useRef(null);
   const pendingSnapshotRef = useRef(null);
+  const [showPromptTimeline, setShowPromptTimeline] = useState(false);
+  const [promptHistoryRequested, setPromptHistoryRequested] = useState(false);
   const [promptEvents, setPromptEvents] = useState([]);
   const [promptError, setPromptError] = useState("");
   const editorReady = Boolean(collaboration.pfdocsEditorEnabled && collaboration.pfdocsOrigin);
@@ -113,10 +117,16 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     const timer = setInterval(() => tracker.tick(), 30000);
     const hide = () => { if (document.visibilityState === "hidden") tracker.tick(); };
     document.addEventListener("visibilitychange", hide);
-    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", hide); tracker.close(); promptActivityRef.current = null; };
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", hide);
+      tracker.close();
+      promptActivityRef.current = null;
+    };
   }, [editor?.documentId, editor?.channelHash, editor?.documentType, state.data]);
 
   useEffect(() => { editorRef.current = editor; }, [editor]);
+  useEffect(() => { setShowPromptTimeline(false); }, [editor?.documentId]);
   useEffect(() => { docsStateRef.current = state.data; }, [state.data]);
   useEffect(() => { decryptedRef.current = decrypted; }, [decrypted]);
 
@@ -375,10 +385,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
             const promptKey = await unlockPromptLibrary(rootKey);
             if (cancelled) return;
             promptKeyRef.current = promptKey;
-            const history = await readPromptHistory(promptKey);
-            if (cancelled) return;
-            setPromptEvents(history);
-            setPromptError("");
+            setPromptError("Prompt history has not been loaded yet.");
           } catch {
             if (cancelled) return;
             setPromptEvents([]);
@@ -396,6 +403,9 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
             const metadata = document.owned
               ? await decryptDocsMetadata(document.encryptedMetadata, document.documentType === "prompt" ? promptKeyRef.current : rootKey)
               : await decryptFromTaskNodeWallet(document.encryptedCapabilityEnvelope, walletSecret);
+            if (document.owned && document.documentType === "prompt" && metadata.documentId !== document.documentId) {
+              throw new Error("Prompt metadata identity mismatch");
+            }
             return { documentId: document.documentId, metadata };
           } catch (error) {
             return { documentId: document.documentId, error: error?.message || "decryption_failed" };
@@ -432,6 +442,23 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     hydrate();
     return () => { cancelled = true; };
   }, [signedIn, state.data, walletSecret]);
+
+  useEffect(() => {
+    const key = promptKeyRef.current;
+    if (!promptHistoryRequested || !key || !walletSecret?.mnemonic || !hydratedData) return;
+    const controller = new AbortController();
+    setPromptError("Loading prompt history…");
+    readPromptHistory(key, { summariesOnly: true, signal: controller.signal }).then(history => {
+      if (controller.signal.aborted) return;
+      setPromptEvents(history);
+      setPromptError("");
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      setPromptEvents([]);
+      setPromptError("Prompt history could not be unlocked. Refresh to retry; other Docs remain available.");
+    });
+    return () => controller.abort();
+  }, [promptHistoryRequested, hydratedData, walletSecret]);
 
   async function setupLibrary() {
     if (!walletSecret?.mnemonic) return onWalletUnlock?.();
@@ -518,13 +545,14 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       const title = documentType === "prompt" ? `Untitled prompt — ${new Date().toISOString().slice(0, 10)}` : `${documentType === "sheet" ? "Untitled spreadsheet" : "Untitled document"} ${new Date().toLocaleDateString()}`;
       const metadata = { documentId, title, documentType, editHref: capability.editHref, viewHref: capability.viewHref, createdAt: new Date().toISOString() };
       const encryptedMetadata = await encryptDocsMetadata(metadata, documentType === "prompt" ? promptKeyRef.current : rootKeyRef.current);
-      const payload = { documentId, channelHash: capability.channelHash, encryptedMetadata, ...(documentType === "prompt" ? { documentType } : {}) };
+      const created = documentType === "prompt" ? await createPromptHistoryEvent(promptKeyRef.current, documentId, { kind: "created" }) : null;
+      const payload = { documentId, channelHash: capability.channelHash, encryptedMetadata, ...(created ? { documentType, initialEvent: created.envelope } : {}) };
       const proof = await signedCollaborationProof({ action: "docs_create", resourceId: documentId, payload, walletSecret });
       const result = await requestJson("/api/docs/documents", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...payload, proof }),
       });
       if (!result.ok) throw new Error(errorText(result, "Could not save document metadata."));
-      if (documentType === "prompt") await savePromptEvent(promptKeyRef.current, documentId, { kind: "created" });
+      if (created) setPromptEvents(current => [...current, created.event]);
       let placementError = "";
       if (destinationFolder) {
         try { await saveLibrary(changeDocsLibrary(library, { action: "move", kind: "document", id: documentId, parentId: destinationFolder })); }
@@ -546,7 +574,10 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     try {
       const text = await new Promise((resolve, reject) => {
         const id = newUuid();
-        const timeout = setTimeout(() => { pendingSnapshotRef.current = null; reject(new Error("Prompt snapshot timed out")); }, 15000);
+        const timeout = setTimeout(() => {
+          pendingSnapshotRef.current = null;
+          reject(new Error("Prompt snapshot timed out"));
+        }, 15000);
         pendingSnapshotRef.current = { id, resolve, reject, timeout };
         editorFrameRef.current.contentWindow.postMessage({ type: "tasknode.pfdocs.command", command: "prompt-snapshot", requestId: active.requestId, channelHash: active.channelHash, snapshotId: id }, new URL(collaboration.pfdocsOrigin).origin);
       });
@@ -694,21 +725,23 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
     await saveDocumentTitle(document, title);
   }
 
-  function exportRecoveryPackage() {
-    const packageBody = {
-      schema: "tasknode.docs.recovery.v1",
-      exportedAt: new Date().toISOString(),
-      account: state.data.account,
-      documents: state.data.documents,
-      note: "Capabilities and metadata remain encrypted to the wallet used by this Docs library.",
-    };
-    const blob = new Blob([JSON.stringify(packageBody, null, 2)], { type: "application/json" });
-    const href = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = href;
-    anchor.download = `tasknode-docs-recovery-${new Date().toISOString().slice(0, 10)}.json`;
-    anchor.click();
-    URL.revokeObjectURL(href);
+  async function exportRecoveryPackage() {
+    setBusy("recovery");
+    try {
+      const prompts = await encryptedPromptBackup();
+      const packageBody = docsRecoveryPackage({ account: state.data.account, documents: state.data.documents, prompts });
+      const blob = new Blob([JSON.stringify(packageBody, null, 2)], { type: "application/json" });
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = `tasknode-docs-recovery-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(href);
+    } catch {
+      setState(current => ({ ...current, error: "Recovery export could not include the complete encrypted prompt history. Refresh and retry." }));
+    } finally {
+      setBusy("");
+    }
   }
 
   function openShareDialog(document) {
@@ -1026,7 +1059,8 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
           </div>
         </div>
         <div className="docs-editor-actions">
-          {editor.documentType === "prompt" && activeDocument?.owned && <button disabled={Boolean(busy) || editorLoading} onClick={savePromptVersion}>Save version</button>}
+          {editor.documentType === "prompt" && activeDocument?.owned && <button type="button" disabled={Boolean(busy) || editorLoading} onClick={savePromptVersion}>Save version</button>}
+          {editor.documentType === "prompt" && activeDocument?.owned && <button type="button" aria-expanded={showPromptTimeline} onClick={() => setShowPromptTimeline(current => !current)}><History size={14} />Prompt timeline</button>}
           {editor.documentType !== "sheet" && <div className="docs-editor-menu">
             <button aria-expanded={editorMenu === "file"} onClick={() => setEditorMenu((current) => current === "file" ? "" : "file")} type="button"><FileText size={14} />File<ChevronDown size={12} /></button>
             {editorMenu === "file" && <div className="docs-editor-menu-popover">
@@ -1055,6 +1089,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
         title={activeMetadata?.title || editor.title}
       />
       {editorLoading && <div className="docs-editor-loading" role="status"><span /><strong>Opening encrypted document…</strong></div>}
+      {editor.documentType === "prompt" && activeDocument?.owned && showPromptTimeline && <PromptTimeline documentId={editor.documentId} libraryKey={promptKeyRef.current} onClose={() => setShowPromptTimeline(false)} />}
       {shareDialog}
     </div>
   );
@@ -1064,7 +1099,8 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       <DocsLibraryBrowser
         documents={state.data.documents || []} decrypted={decrypted} library={library}
         folderId={folderId} onFolderChange={setFolderId} onLibraryChange={saveLibrary}
-        promptEvents={promptEvents} promptError={promptError}
+        promptEvents={promptEvents} promptError={promptError} onPromptView={() => setPromptHistoryRequested(true)}
+        agentAccess={<PromptDevices libraryKey={promptKeyRef.current} accountId={state.data?.identity?.accountId} walletSecret={walletSecret} />}
         busy={busy || (decryption.loading ? "unlocking" : "")} editorReady={editorReady} onCreate={createDocument} onOpen={openDocument}
         onRename={renameDocument} onArchive={archiveDocument} onShare={openShareDialog}
         onTaskLink={openTaskLinkDialog} onRefresh={load} onExport={exportRecoveryPackage}
@@ -1074,8 +1110,6 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
         {libraryError && <p className="docs-library-notice error" role="alert">{libraryError}</p>}
         {!decryption.loading && Object.keys(decryption.failures).length > 0 && <p className="docs-library-notice error">Some documents could not be unlocked with this wallet.</p>}
         {(state.data.pendingShares || []).length > 0 && <section className="collab-pending docs-pending-shares"><h2>Shared with you</h2>{state.data.pendingShares.map((grant) => <div key={grant.grantId}><span><strong>{grant.owner.displayName}</strong> shared a document · {grant.accessRole}</span><span><button disabled={Boolean(busy)} onClick={() => actOnShare(grant.grantId, "decline")} type="button">Decline</button><button disabled={Boolean(busy)} onClick={() => actOnShare(grant.grantId, "accept")} type="button">Accept</button></span></div>)}</section>}
-        {promptError && <p className="docs-library-notice error" role="alert">{promptError}</p>}
-        <PromptDevices libraryKey={promptKeyRef.current} accountId={state.data?.identity?.accountId} walletSecret={walletSecret} />
       </DocsLibraryBrowser>
       {shareDialog}
       {taskLinkDialog}

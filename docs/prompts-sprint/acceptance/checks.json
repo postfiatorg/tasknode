@@ -1,78 +1,41 @@
-[
-  {
-    "check": "prompt-history",
-    "exitCode": 0
+{
+  "round": 3,
+  "node": "24.22.1",
+  "environment": {
+    "temporaryFiles": "checkout .tmp with commonjs package metadata",
+    "browser": "installed Chromium 1234",
+    "fonts": "checkout-local Liberation Sans via .tmp/fonts.conf"
   },
-  {
-    "check": "prompt-stats",
-    "exitCode": 0
-  },
-  {
-    "check": "prompt-device",
-    "exitCode": 0
-  },
-  {
-    "check": "prompt-assistant",
-    "exitCode": 0
-  },
-  {
-    "check": "prompt-pad",
-    "exitCode": 0
-  },
-  {
-    "check": "collaboration",
-    "exitCode": 0
-  },
-  {
-    "check": "docs-folders",
-    "exitCode": 0
-  },
-  {
-    "check": "docs-assistant-limits",
-    "exitCode": 0
-  },
-  {
-    "check": "docs-chat-history",
-    "exitCode": 0
-  },
-  {
-    "check": "route-auth",
-    "exitCode": 0
-  },
-  {
-    "check": "request-validation",
-    "exitCode": 0
-  },
-  {
-    "check": "migration-registration",
-    "exitCode": 0
-  },
-  {
-    "check": "api-reference",
-    "exitCode": 0
-  },
-  {
-    "check": "smoke-registration",
-    "exitCode": 0
-  },
-  {
-    "check": "format",
-    "exitCode": 0
-  },
-  {
-    "check": "file-size",
-    "exitCode": 0
-  },
-  {
-    "check": "lint",
-    "exitCode": 0
-  },
-  {
-    "check": "build",
-    "exitCode": 0
-  },
-  {
-    "check": "tasknode-cli",
-    "exitCode": 0
-  }
-]
+  "checks": [
+    {
+      "check": "npm run check",
+      "exitCode": 0,
+      "unitSmokes": 200,
+      "build": true,
+      "bundleBudget": true,
+      "browserE2E": true
+    },
+    {
+      "check": "prompt-deletion-smoke",
+      "exitCode": 0
+    },
+    {
+      "check": "prompt-history-smoke including atomic creation rollback",
+      "exitCode": 0
+    },
+    {
+      "check": "prompt-pad-smoke",
+      "exitCode": 0
+    },
+    {
+      "check": "full local browser + installed CLI acceptance",
+      "exitCode": 0,
+      "completedAt": "2026-11-11T21:58:21.349Z"
+    },
+    {
+      "check": "PFDocs bridge/prompt/chat protocol tests",
+      "exitCode": 0,
+      "passed": 23
+    }
+  ]
+}

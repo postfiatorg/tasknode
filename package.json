@@ -182,7 +182,8 @@
     "prompt-stats-smoke": "node scripts/prompt-stats-smoke.mjs",
     "prompt-device-smoke": "node scripts/prompt-device-smoke.mjs",
     "prompt-assistant-smoke": "node scripts/prompt-assistant-smoke.mjs",
-    "prompt-history-smoke": "node scripts/prompt-history-smoke.mjs"
+    "prompt-history-smoke": "node scripts/prompt-history-smoke.mjs",
+    "prompt-deletion-smoke": "node scripts/prompt-deletion-smoke.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65",

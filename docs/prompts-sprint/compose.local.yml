@@ -16,6 +16,7 @@ services:
       - .:/app
       - ./artifacts/prompts/runtime:/data
   web:
+    user: "1000:1000"
     build: !reset null
     image: node:24
     working_dir: /app

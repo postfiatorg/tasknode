@@ -1,3 +1,4 @@
+import { handleAgentRelease } from "./agent-install.js";
 import { listPromptDevices, revokePromptDevice } from "./repositories/prompt-devices.js";
 // One-step agent connect: device-code sign-in (RFC 8628) so agents on remote
 // machines connect without a localhost callback or a copied token, the
@@ -291,8 +292,8 @@ async function handleConnect({ req, res, url, origin, session }) {
   }
   if (url.pathname === "/connect/revoke") {
     if (url.searchParams.has("prompt")) {
-      if (req.method !== "POST") return json(res,405,{error:"method_not_allowed"});
-      await revokePromptDevice(session.accountId,url.searchParams.get("prompt"));
+      if (req.method !== "POST") return json(res, 405, { error: "method_not_allowed" });
+      await revokePromptDevice(session.accountId, url.searchParams.get("prompt"));
     } else await revokeAgentDevice({ accountId: session.accountId, sessionId: safe(url.searchParams.get("session"), 120) });
     res.writeHead(303, { "cache-control": "no-store", location: "/connect" });
     return res.end();
@@ -316,7 +317,16 @@ ${connectClients.map(([key, label]) => `<h2>${label}</h2><pre>${escapeHtml(comma
   }
   const devices = await listAgentDevices({ accountId: session.accountId });
   const promptDevices = await listPromptDevices(session.accountId);
-  const promptRows = promptDevices.devices.filter(device => !device.revokedAt).map(device => `<div class="device"><div><strong>${escapeHtml(device.label)}</strong><p>${device.approvedAt ? "Prompt access approved" : "Awaiting unlocked browser approval"}</p><small style="overflow-wrap:anywhere">${escapeHtml(device.fingerprint)}</small><p><a href="/#docs">Unlock Docs to approve prompt access</a></p></div><form method="post" action="/connect/revoke?prompt=${encodeURIComponent(device.deviceId)}"><button class="button secondary">Revoke prompt access</button></form></div>`).join("");
+  const promptRows = promptDevices.devices
+    .filter(device => !device.revokedAt)
+    .map(device => `<div class="device">
+<div><strong>${escapeHtml(device.label)}</strong>
+<p>${device.approvedAt ? "Prompt access approved" : "Awaiting unlocked browser approval"}</p>
+<small style="overflow-wrap:anywhere">${escapeHtml(device.fingerprint)}</small>
+<p><a href="/#docs">Unlock Docs → Agent access to approve and pair</a></p></div>
+<form method="post" action="/connect/revoke?prompt=${encodeURIComponent(device.deviceId)}">
+<button class="button secondary">Revoke prompt access</button></form></div>`)
+    .join("");
   const deviceRows = devices.length
     ? devices.map((device) => `<div class="device"><div><strong>${escapeHtml(device.label)}</strong><br><span class="muted">Last used ${device.lastUsedAt ? escapeHtml(relative(device.lastUsedAt)) : "not yet recorded"}${device.lastIp ? ` · ${escapeHtml(device.lastIp)}` : ""} · added ${escapeHtml(String(device.createdAt).slice(0, 10))}</span></div>
 <form method="post" action="/connect/revoke?session=${encodeURIComponent(device.sessionId)}"><button class="button secondary" type="submit">Revoke</button></form></div>`).join("\n")
@@ -384,7 +394,8 @@ async function handleWhoami({ req, res }) {
 export async function handleAgentConnectRoute(params) {
   const { res, url, origin } = params;
   const pathname = url.pathname;
-  const promptInstallFiles = ['package.json','lib/prompt-crypto.mjs','lib/prompt-device.mjs','lib/prompt-stats.mjs','lib/prompt-pad.mjs','lib/prompt-client.mjs','lib/prompt-mcp.mjs'];
+  if (await handleAgentRelease(params)) return true;
+  const promptInstallFiles = ['package.json','package-lock.json','lib/prompt-crypto.mjs','lib/prompt-device.mjs','lib/prompt-stats.mjs','lib/prompt-pad.mjs','lib/prompt-client.mjs','lib/prompt-mcp.mjs','lib/prompt-agent-config.mjs'];
   if (pathname.startsWith('/install/') && promptInstallFiles.includes(pathname.slice('/install/'.length))) {
     await sendCliFile(res,pathname.slice('/install/'.length),'text/plain; charset=utf-8');
     return true;

@@ -1,15 +1,60 @@
-import { useState } from 'react';
-import { promptStats } from '../../../packages/tasknode-cli/lib/prompt-stats.mjs';
-export function PromptStatsPanel({ events, decrypted }) {
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { promptStats } from "../../../packages/tasknode-cli/lib/prompt-stats.mjs";
+
+export function PromptStatsPanel({ events }) {
   const [days, setDays] = useState(7);
-  const [documentId, setDocumentId] = useState('');
   const stats = promptStats(events, { days });
-  return <section className="prompt-stats" aria-label="Prompt statistics">
-    <h2>Prompt activity</h2>
-    <label>Period <select value={days} onChange={event => setDays(Number(event.target.value))}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option></select></label>
-    <p>{stats.totals.created} prompts created · {stats.totals.versions} versions saved · {stats.totals.activeMinutes.toFixed(1)} active minutes</p>
-    <table><thead><tr><th>Date (UTC)</th><th>Prompts created</th><th>Versions saved</th><th>Active minutes</th></tr></thead><tbody>{stats.daily.map(row => <tr key={row.day}><td>{row.day}</td><td>{row.created}</td><td>{row.versions}</td><td>{row.activeMinutes.toFixed(1)}</td></tr>)}</tbody></table>
-    <label>Prompt timeline <select value={documentId} onChange={event => setDocumentId(event.target.value)}><option value="">Choose a prompt</option>{Object.entries(decrypted).filter(([, metadata]) => metadata.documentType === 'prompt').map(([id, metadata]) => <option key={id} value={id}>{metadata.title}</option>)}</select></label>
-    {documentId && <ol>{events.filter(event => event.documentId === documentId).map(event => <li key={event.eventId}><time>{event.at}</time> · {event.kind.replaceAll('_', ' ')}{event.kind === 'version_saved' && <details><summary>Saved text</summary><pre>{event.text}</pre></details>}{event.kind === 'edit_session' && ` · ${event.activeSeconds} active seconds`}{event.kind === 'tih_run' && ` · ${event.before} → ${event.after}`}</li>)}</ol>}
-  </section>;
+  return (
+    <section className="prompt-activity" aria-label="Prompt statistics">
+      <header className="prompt-section-heading">
+        <h2>Prompt activity</h2>
+        <div className="docs-view-tabs" aria-label="Activity period" role="group">
+          {[7, 30].map((period) => (
+            <button key={period} type="button" aria-pressed={days === period} onClick={() => setDays(period)}>
+              Last {period} days
+            </button>
+          ))}
+        </div>
+      </header>
+      <p className="prompt-activity-summary">
+        <span>
+          <strong>{stats.totals.created}</strong> prompts created
+        </span>
+        <span>
+          <strong>{stats.totals.versions}</strong> versions saved
+        </span>
+        <span>
+          <strong>{stats.totals.activeMinutes.toFixed(2)}</strong> active minutes
+        </span>
+      </p>
+      <details className="prompt-daily-details">
+        <summary>
+          Daily breakdown <ChevronDown size={13} />
+        </summary>
+        <div className="prompt-table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Date (UTC)</th>
+                <th>Prompts created</th>
+                <th>Versions saved</th>
+                <th>Active minutes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.daily.map((row) => (
+                <tr key={row.day}>
+                  <td>{row.day}</td>
+                  <td>{row.created}</td>
+                  <td>{row.versions}</td>
+                  <td>{row.activeMinutes.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+  );
 }

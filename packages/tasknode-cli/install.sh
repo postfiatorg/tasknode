@@ -20,21 +20,30 @@ main() {
     return 1
   fi
 
-  # The local stdio entry needs a durable runtime after the installer exits.
-  dir="${TASKNODE_CONFIG_DIR:-$HOME/.config/tasknode}/runtime"
-  mkdir -p "$dir/bin" "$dir/lib" || return 1
-  chmod 700 "$dir"
-  cli="$dir/bin/tasknode.mjs"
+  # Each attempt gets a private directory. Never overwrite a runtime that an
+  # existing MCP entry references, including during concurrent installations.
+  umask 077
+  releases="${TASKNODE_CONFIG_DIR:-$HOME/.config/tasknode}/releases"
+  mkdir -p "$releases" || return 1
+  stage=$(mktemp -d "$releases/.staging-XXXXXXXX") || return 1
+  mkdir -p "$stage/bin" "$stage/lib" || return 1
   download() {
     if command -v curl >/dev/null 2>&1; then curl -fsSL "$1" -o "$2"
     elif command -v wget >/dev/null 2>&1; then wget -qO "$2" "$1"
     else return 1; fi
   }
-  download "$server/install/tasknode.mjs" "$cli" || return 1
-  for file in package.json lib/prompt-crypto.mjs lib/prompt-device.mjs lib/prompt-stats.mjs lib/prompt-pad.mjs lib/prompt-client.mjs lib/prompt-mcp.mjs; do
-    download "$server/install/$file" "$dir/$file" || return 1
+  download "$server/install/manifest.json" "$stage/manifest.json" || return 1
+  release=$(node -e 'const m=require(process.argv[1]); if(!/^[a-f0-9]{64}$/.test(m.releaseId)) process.exit(1); console.log(m.releaseId)' "$stage/manifest.json") || return 1
+  for file in bin/tasknode.mjs package.json package-lock.json lib/prompt-crypto.mjs lib/prompt-device.mjs lib/prompt-stats.mjs lib/prompt-pad.mjs lib/prompt-client.mjs lib/prompt-mcp.mjs lib/prompt-agent-config.mjs; do
+    download "$server/install/releases/$release/$file" "$stage/$file" || return 1
+    node -e 'const fs=require("fs"),c=require("crypto"),d=process.argv[1],f=process.argv[2],m=JSON.parse(fs.readFileSync(d+"/manifest.json")); if(c.createHash("sha256").update(fs.readFileSync(d+"/"+f)).digest("hex")!==m.files[f]) process.exit(1)' "$stage" "$file" || return 1
   done
-  npm install --prefix "$dir" --omit=dev --ignore-scripts --no-audit --no-fund >&2 || return 1
+  npm ci --prefix "$stage" --omit=dev --ignore-scripts --no-audit --no-fund >&2 || return 1
+  dir="$releases/$release-${stage##*-}"
+  mv "$stage" "$dir" || return 1
+  cli="$dir/bin/tasknode.mjs"
+  # connect atomically writes each MCP entry only after the complete runtime
+  # and locked dependencies are present. Prior runtimes remain available.
 
   TASKNODE_INVOCATION="curl -fsSL $server/install | sh -s --"
   export TASKNODE_INVOCATION

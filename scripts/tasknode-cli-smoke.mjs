@@ -64,6 +64,7 @@ const server = createServer(async (req, res) => {
   }
   if (req.method === "POST" && pathname === "/api/docs/prompts/devices") {
     if (!owners.has(bearer) || state.revoked.has(bearer)) return send(401,{error:"unauthorized"});
+    if (state.promptUnavailable) return send(503, { error: "docs_disabled" });
     const device = JSON.parse(body);
     assert.ok(device.publicKey && device.deviceId);
     assert.ok(!device.privateKey);
@@ -338,6 +339,22 @@ fs.writeFileSync(file, JSON.stringify(doc, null, 2));
   assert.match(denied.stderr, /Sign-in was declined\. Nothing changed\./);
   assert.equal(read(cursorJson), cursorBefore);
 
+  // Optional Docs enrollment must not strand a successful hosted replacement.
+  const optional = makeHome("optional-prompts", { claude: noop });
+  const oldOptional = fakeToken();
+  const newOptional = fakeToken();
+  owners.set(oldOptional, alex);
+  owners.set(newOptional, alex);
+  queueGrant(oldOptional);
+  assert.equal((await tasknode(["connect", "--agent", "claude"], optional)).code, 0);
+  state.promptUnavailable = true;
+  queueGrant(newOptional);
+  const withoutPrompts = await tasknode(["connect", "--agent", "claude"], optional);
+  assert.equal(withoutPrompts.code, 0);
+  assert.match(withoutPrompts.stdout, /Connected as goodalexander/);
+  assert.match(withoutPrompts.stderr, /Prompt enrollment is unavailable/);
+  assert.ok(state.revokeCalls.includes(oldOptional));
+  state.promptUnavailable = false;
   console.log("tasknode cli smoke ok");
 } finally {
   server.close();
