@@ -119,7 +119,7 @@ export class PromptClient {
       } finally {
         pad.close();
       }
-      const created = { eventId: crypto.randomUUID(), documentId, kind: "created", at: new Date().toISOString() };
+      const created = { eventId: crypto.randomUUID(), documentId, kind: "created", by: "agent", at: new Date().toISOString() };
       await this.request("documents", {
         documentId,
         channelHash: cap.channelHash,
@@ -138,7 +138,7 @@ export class PromptClient {
       if (name === "prompt_read")
         return { documentId: doc.documentId, title: doc.metadata.title, text: current.content };
       if (name === "prompt_save_version")
-        return this.event(doc.documentId, { kind: "version_saved", text: current.content }, key);
+        return this.event(doc.documentId, { kind: "version_saved", by: "agent", text: current.content }, key);
       if (name === "prompt_edit") {
         if (!Array.isArray(args.patches) || !args.patches.length || args.patches.length > 100)
           throw new Error("Provide text patches");

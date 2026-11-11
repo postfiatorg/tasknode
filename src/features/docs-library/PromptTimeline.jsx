@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { History, RefreshCw, X } from "lucide-react";
+import { formatActiveTime, formatEventTime } from "./prompt-format";
 import { readPromptHistory } from "./prompt-library";
 
 const eventNames = {
   created: "Prompt created",
   version_saved: "Version saved",
-  agent_edit: "Agent edit",
+  agent_edit: "Agent edited the prompt",
   edit_session: "Editing session",
   tih_run: "Text improvement scores",
 };
@@ -39,7 +40,13 @@ export function PromptTimeline({ documentId, libraryKey, onClose }) {
     };
   }, [documentId, libraryKey, revision]);
 
-  const version = events.find((event) => event.eventId === selected && event.kind === "version_saved");
+  const versionNumbers = new Map(
+    events
+      .filter((event) => event.kind === "version_saved")
+      .reverse()
+      .map((event, index) => [event.eventId, index + 1]),
+  );
+  const actor = (event) => (event.by === "agent" ? "your agent" : "you");
   return (
     <aside className="prompt-timeline" aria-label="Prompt timeline">
       <header className="prompt-section-heading">
@@ -74,20 +81,33 @@ export function PromptTimeline({ documentId, libraryKey, onClose }) {
         <ol className="prompt-timeline-events">
           {events.map((event) => (
             <li key={event.eventId}>
-              <time dateTime={event.at}>{new Date(event.at).toLocaleString()}</time>
+              <time dateTime={event.at}>{formatEventTime(event.at)}</time>
               {event.kind === "version_saved" ? (
-                <button
-                  className="prompt-version-button"
-                  type="button"
-                  aria-pressed={selected === event.eventId}
-                  onClick={() => setSelected(event.eventId)}
-                >
-                  Read saved version
-                </button>
+                <>
+                  <div className="prompt-version-row">
+                    <strong>Version {versionNumbers.get(event.eventId)}</strong>
+                    <small>saved by {actor(event)}</small>
+                    <button
+                      className="prompt-version-button"
+                      type="button"
+                      aria-expanded={selected === event.eventId}
+                      onClick={() => setSelected(selected === event.eventId ? "" : event.eventId)}
+                    >
+                      {selected === event.eventId ? "Hide" : "Read"}
+                    </button>
+                  </div>
+                  {selected === event.eventId && (
+                    <pre className="prompt-saved-version" role="region" aria-label="Saved version text">
+                      {event.text}
+                    </pre>
+                  )}
+                </>
               ) : (
-                <strong>{eventNames[event.kind] || "Prompt activity"}</strong>
+                <strong>
+                  {event.kind === "created" ? `Prompt created by ${actor(event)}` : eventNames[event.kind] || "Prompt activity"}
+                </strong>
               )}
-              {event.kind === "edit_session" && <small>{event.activeSeconds} active seconds</small>}
+              {event.kind === "edit_session" && <small>{formatActiveTime(event.activeSeconds)} of typing</small>}
               {event.kind === "tih_run" && (
                 <small>
                   {event.before} → {event.after}
@@ -96,13 +116,6 @@ export function PromptTimeline({ documentId, libraryKey, onClose }) {
             </li>
           ))}
         </ol>
-      )}
-      {!error && version && (
-        <section className="prompt-saved-version" aria-label="Saved version text">
-          <h3>Saved version</h3>
-          <time dateTime={version.at}>{new Date(version.at).toLocaleString()}</time>
-          <pre>{version.text}</pre>
-        </section>
       )}
     </aside>
   );

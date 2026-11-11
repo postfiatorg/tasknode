@@ -1,14 +1,24 @@
+import { formatEventTime } from "./prompt-format";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, X } from "lucide-react";
 import { encryptForTaskNodeWallet } from "../collaboration/collaboration-client";
 import { deviceFingerprint, promptPairingCode } from "../../../packages/tasknode-cli/lib/prompt-device.mjs";
 import { promptRequest } from "./prompt-library";
 
+function pairingMessage(pairing) {
+  return `Pair my Task Node prompt library using prompt_pair with code ${pairing.code}`;
+}
+
+function groupedFingerprint(value) {
+  return String(value || "").replace(/(.{4})/g, "$1 ").trim();
+}
+
 export function PromptDevices({ libraryKey, accountId, walletSecret }) {
   const [open, setOpen] = useState(false);
   const [devices, setDevices] = useState([]);
   const [error, setError] = useState("");
   const [pairing, setPairing] = useState(null);
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState("");
   const dialogRef = useRef(null);
   const buttonRef = useRef(null);
@@ -95,9 +105,12 @@ export function PromptDevices({ libraryKey, accountId, walletSecret }) {
           {active.map((device) => (
             <article className="prompt-device" key={device.deviceId}>
               <strong>{device.label}</strong>
-              <small>{device.approvedAt ? "Prompt access approved" : "Waiting for your approval"}</small>
+              <small>
+                {device.approvedAt ? "Prompt access approved" : "Waiting for your approval"}
+                {device.createdAt ? ` · connected ${formatEventTime(device.createdAt)}` : ""}
+              </small>
               <p className="prompt-fingerprint">
-                Fingerprint: <code>{device.fingerprint}</code>
+                Fingerprint: <code>{groupedFingerprint(device.fingerprint)}</code>
               </p>
               <div className="docs-folder-dialog-actions">
                 <button type="button" disabled={Boolean(busy)} onClick={() => act(device, false)}>
@@ -131,13 +144,19 @@ export function PromptDevices({ libraryKey, accountId, walletSecret }) {
           ))}
           {pairing && (
             <section className="prompt-pairing" aria-label="Finish agent pairing">
-              <h3>Finish pairing on your agent</h3>
-              <p>
-                Copy this command directly to your local agent. It verifies that the agent received your library key.
-              </p>
-              <pre
-                data-pairing-code={pairing.code}
-              >{`tasknode prompts-pair --device-id ${pairing.deviceId} --code ${pairing.code}`}</pre>
+              <h3>Last step: tell your agent</h3>
+              <p>Paste this line to the agent you just connected. It confirms the agent received your library key.</p>
+              <pre data-pairing-code={pairing.code}>{pairingMessage(pairing)}</pre>
+              <button
+                type="button"
+                className="prompt-version-button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(pairingMessage(pairing));
+                  setCopied(true);
+                }}
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
             </section>
           )}
           {error && (

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { formatActiveTime } from "./prompt-format";
 import { promptStats } from "../../../packages/tasknode-cli/lib/prompt-stats.mjs";
 
 export function PromptStatsPanel({ events }) {
@@ -25,7 +26,7 @@ export function PromptStatsPanel({ events }) {
           <strong>{stats.totals.versions}</strong> versions saved
         </span>
         <span>
-          <strong>{stats.totals.activeMinutes.toFixed(2)}</strong> active minutes
+          <strong>{formatActiveTime(stats.totals.activeMinutes * 60)}</strong> spent prompting
         </span>
       </p>
       <details className="prompt-daily-details">
@@ -39,7 +40,7 @@ export function PromptStatsPanel({ events }) {
                 <th>Date (UTC)</th>
                 <th>Prompts created</th>
                 <th>Versions saved</th>
-                <th>Active minutes</th>
+                <th>Time prompting</th>
               </tr>
             </thead>
             <tbody>
@@ -48,7 +49,7 @@ export function PromptStatsPanel({ events }) {
                   <td>{row.day}</td>
                   <td>{row.created}</td>
                   <td>{row.versions}</td>
-                  <td>{row.activeMinutes.toFixed(2)}</td>
+                  <td>{formatActiveTime(row.activeMinutes * 60)}</td>
                 </tr>
               ))}
             </tbody>

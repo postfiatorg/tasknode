@@ -990,8 +990,8 @@ async function connect(opts) {
       const localEntry = { command: process.execPath, args: [fileURLToPath(import.meta.url), "prompts-mcp", "--device-file", deviceFile] };
       for (const { agent } of written) await installPromptEntry(agent, ctx, localEntry);
       say(`Prompt access: unlock Docs at ${ctx.origin}/#docs and approve this fingerprint:`);
-      say(promptDevice.fingerprint);
-      say("Then finish pairing with the command shown in Docs → Agent access.");
+      say(promptDevice.fingerprint.replace(/(.{4})/g, "$1 ").trim());
+      say("Then paste the pairing line shown there to your agent (restart the agent first so it loads the prompt tools).");
     } catch {
       warn("Hosted connection saved. Prompt enrollment is unavailable; reconnect later to enable local prompt tools.");
     }

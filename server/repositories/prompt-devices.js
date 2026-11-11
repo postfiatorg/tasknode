@@ -24,7 +24,7 @@ export async function listPromptDevices(accountId) {
   // Prompt devices require Postgres; ordinary agent connections also support runtime storage.
   if (!databaseEnabled()) return { ok: true, devices: [] };
   const { rows } = await query(
-    `SELECT device_id AS "deviceId", public_key AS "publicKey", fingerprint, label, approved_at AS "approvedAt", revoked_at AS "revokedAt"
+    `SELECT device_id AS "deviceId", public_key AS "publicKey", fingerprint, label, created_at AS "createdAt", approved_at AS "approvedAt", revoked_at AS "revokedAt"
     FROM prompt_devices WHERE account_id=$1 ORDER BY created_at DESC`,
     [accountId],
   );

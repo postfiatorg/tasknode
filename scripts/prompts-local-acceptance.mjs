@@ -209,7 +209,7 @@ try {
   assert.equal(await installExit, 0);
   const deviceFile = path.join(config, "devices", readdirSync(path.join(config, "devices"))[0]);
   const device = JSON.parse(readFileSync(deviceFile, "utf8"));
-  assert.ok(installOutput.includes(device.fingerprint));
+  assert.ok(installOutput.includes(device.fingerprint.replace(/(.{4})/g, "$1 ").trim()));
   assert.ok(!installOutput.includes(device.privateKey));
   assert.ok(!installOutput.includes(device.token));
   const agentConfig = JSON.parse(readFileSync(path.join(claude, ".claude.json"), "utf8"));
@@ -223,7 +223,11 @@ try {
   await page.getByRole("button", { name: "Agent access", exact: true }).click();
   await page.getByRole("button", { name: "Approve prompt access", exact: true }).waitFor();
   await page.screenshot({ path: path.join(output, "device-approval.png"), fullPage: true });
-  assert.ok((await page.getByRole("region", { name: "Prompt devices" }).innerText()).includes(device.fingerprint));
+  assert.ok(
+    (await page.getByRole("region", { name: "Prompt devices" }).innerText()).includes(
+      device.fingerprint.replace(/(.{4})/g, "$1 ").trim(),
+    ),
+  );
   const denied = await fetch(origin + "/api/docs/prompts/documents", {
     headers: { authorization: `Bearer ${device.token}`, "x-prompt-device": device.deviceId },
   });
@@ -312,7 +316,7 @@ try {
     capabilities: {},
     clientInfo: { name: "local-acceptance", version: "1" },
   });
-  assert.equal((await rpc("tools/list")).tools.length, 8);
+  assert.equal((await rpc("tools/list")).tools.length, 9);
   const listed = await tool("prompt_list");
   assert.ok(listed.some((row) => row.documentId === doc.documentId));
   const read = await tool("prompt_read", { documentId: doc.documentId });
@@ -337,7 +341,7 @@ try {
   await page.getByText("Version saved", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Prompt timeline", exact: true }).click();
   const timeline = page.getByRole("complementary", { name: "Prompt timeline" });
-  await timeline.getByRole("button", { name: "Read saved version", exact: true }).first().click();
+  await timeline.getByRole("button", { name: "Read", exact: true }).first().click();
   assert.match(
     await page.getByRole("region", { name: "Saved version text" }).innerText(),
     /Agent edited live via local MCP/,

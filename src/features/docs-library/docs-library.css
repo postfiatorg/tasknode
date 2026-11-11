@@ -204,9 +204,9 @@
 .prompt-timeline time, .prompt-timeline small { color: var(--tn-dark-muted, #7d796f); font-size: 11px; }
 .prompt-version-button { font: inherit; padding: 7px 10px; border: 1px solid var(--tn-dark-border, #e0ded5); border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
 .prompt-version-button[aria-pressed="true"], .prompt-version-button:hover { background: var(--tn-dark-hover, #eae8e0); }
-.prompt-saved-version { border: 1px solid var(--tn-dark-border, #e0ded5); border-radius: 8px; padding: 14px; }
-.prompt-saved-version h3 { margin: 0 0 8px; font-size: 13px; }
-.prompt-saved-version pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
+.prompt-version-row { display: flex; align-items: baseline; gap: 8px; width: 100%; }
+.prompt-version-row .prompt-version-button { margin-left: auto; padding: 4px 10px; font-size: 12px; }
+.prompt-saved-version { align-self: stretch; margin: 4px 0 0; border: 1px solid var(--tn-dark-border, #e0ded5); border-radius: 8px; padding: 12px 14px; max-height: 46vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
 @media (max-width: 720px) {
   .prompt-section-heading { flex-wrap: wrap; }
   .prompt-activity-summary { gap: 12px; }
@@ -214,3 +214,5 @@
   .docs-editor-workspace:has(.prompt-timeline)>iframe { width: 100%; }
 }
 .prompt-pairing pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+
+.prompt-pairing .prompt-version-button { font-size: 12px; padding: 5px 12px; }
