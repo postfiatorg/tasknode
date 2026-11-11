@@ -5,6 +5,7 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { closePool, transactionCommand, query } from "../server/db/pool.js";
 import { upsertIndex } from "../server/repositories/index-viewer.js";
+import { BUNDLE_FILE_FORMAT, encryptBundleFile } from "../server/validator-bundle-files.js";
 
 const args = process.argv.slice(2);
 const value = (name) => args.includes(name) ? args[args.indexOf(name) + 1] : "";
@@ -42,11 +43,24 @@ if (args.includes("--help")) {
     const bytes = Buffer.concat([iv, cipher.getAuthTag(), encrypted]);
     const contentHash = createHash("sha256").update(bytes).digest("hex");
     if (args.includes("--publish")) await transactionCommand(async () => {
+      // Serialize publications of the same index, including the first one.
+      await query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`validator-bundle:${indexId}`]);
+      const previousHash = (await query(`SELECT content_hash FROM index_viewer_indices WHERE index_id=$1`, [indexId])).rows[0]?.content_hash || contentHash;
+      const contentKey = key.toString("base64");
       await upsertIndex({ indexId, title: value("--title") || indexId, summary: value("--summary"), tier: "validator",
-        contentKey: key.toString("base64"), contentHash, contentUrl: `/api/index-viewer/indices/${indexId}/content`,
-        metadata: { format: "tasknode-encrypted-static-v1", viewerUrl: `/api/research/bundles/${indexId}/index.html` } });
+        contentKey, contentHash, contentUrl: `/api/index-viewer/indices/${indexId}/content`,
+        metadata: { format: "tasknode-encrypted-static-v1", fileFormat: BUNDLE_FILE_FORMAT,
+          viewerUrl: `/api/research/bundles/${indexId}/index.html` } });
       await query(`INSERT INTO index_viewer_bundles(index_id,encrypted_bytes) VALUES($1,$2)
         ON CONFLICT(index_id) DO UPDATE SET encrypted_bytes=EXCLUDED.encrypted_bytes,updated_at=now()`, [indexId, bytes]);
+      for (const [filePath, base64] of Object.entries(files)) {
+        const file = encryptBundleFile(Buffer.from(base64, "base64"), indexId, { contentHash, contentKey }, filePath);
+        await query(`INSERT INTO index_viewer_bundle_files(index_id,bundle_hash,file_path,file_hash,encrypted_bytes)
+          VALUES($1,$2,$3,$4,$5)`, [indexId, contentHash, filePath, file.fileHash, file.encryptedBytes]);
+      }
+      // Requests that already read the preceding catalog version can finish.
+      await query(`DELETE FROM index_viewer_bundle_files WHERE index_id=$1 AND bundle_hash<>$2 AND bundle_hash<>$3`,
+        [indexId, contentHash, previousHash]);
     });
     console.log(JSON.stringify({ ok: true, published: args.includes("--publish"), indexId, fileCount: Object.keys(files).length, totalBytes, encryptedBytes: bytes.length, contentHash }));
   } finally { await closePool(); }

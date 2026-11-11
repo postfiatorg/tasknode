@@ -66,7 +66,24 @@ node scripts/publish-validator-bundle.mjs --directory /private/export --id ga-mo
 node scripts/publish-validator-bundle.mjs --directory /private/export --id ga-models --title 'Finance Hub' --publish
 ```
 
-Default mode validates without publishing. Publication compresses the static file map and encrypts it with AES-256-GCM. Ciphertext is stored in `index_viewer_bundles`; its key is held by `index_viewer_indices`. `/api/index-viewer/indices/<id>/content` serves only ciphertext. `/api/research/bundles/<id>/index.html` and every relative asset check the signed-in account's tier, then decrypt the bundle in memory. Catalog entries contain no keys. EXPORT.md and MANIFEST.sha256 are excluded. Never commit private exports, archive contents, keys, or internal research. Files must use relative URLs; the bundle is served under a prefix.
+Default mode validates without publishing. Publication compresses the static file map and encrypts it with AES-256-GCM. Ciphertext is stored in `index_viewer_bundles`; its key is held by `index_viewer_indices`. `/api/index-viewer/indices/<id>/content` serves only ciphertext. `/api/research/bundles/<id>/index.html` and every relative asset check the signed-in account's tier before decrypting content in memory. Catalog entries contain no keys. EXPORT.md and MANIFEST.sha256 are excluded. Never commit private exports, archive contents, keys, or internal research. Files must use relative URLs; the bundle is served under a prefix.
+
+New publications also write independently compressed/encrypted assets to
+`index_viewer_bundle_files` (migration 159). The viewer reads and decrypts only
+the requested asset; opening the home page does not read all company models.
+AES-GCM authenticates the index ID, archive hash and file path. Catalog metadata
+`fileFormat: tasknode-encrypted-file-v1` selects this path. Catalog, archive and
+file writes commit atomically, retaining current and preceding file versions.
+The decoded file cache is bounded to 32 MiB/256 entries and coalesces concurrent
+reads; each HTTP request still checks eligibility before accessing cached data.
+Missing/corrupt file records return an error without fetching the full archive.
+
+Rollout: deploy migration 159 and the reader/publisher, then republish the
+existing export with the command above. Older publications use the archive
+reader until republished. The public ciphertext endpoint and its legacy format
+remain compatible. A code rollback can read the retained archive; the additive
+table does not require a destructive rollback. Validate the gated home and a
+model, and measure bytes read through the file path, not the archive endpoint.
 
 Static viewer code exchange requires an explicit allowlisted Origin matching the code's stored return origin. Tokens are also origin-scoped. Configure `INDEX_VIEWER_ALLOWED_ORIGINS` only for trusted viewer origins. Redirects require that same allowlist, HTTPS (or explicitly allowed local HTTP), and no embedded credentials. Unknown tiers fail closed.
 
