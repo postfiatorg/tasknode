@@ -4,6 +4,7 @@ import { query } from "./db/pool.js";
 import { accountMeetsTier } from "./index-viewer-routes.js";
 import { getIndex } from "./repositories/index-viewer.js";
 import { validatorError } from "./validator-identity.js";
+import { BUNDLE_FILE_FORMAT, createBundleFileLoader, fetchBundleFile, validBundleFilePath } from "./validator-bundle-files.js";
 
 const MAX_CACHED_BUNDLES = 2;
 
@@ -87,6 +88,7 @@ const bundleLoader = createBundleLoader({
   fetchEncrypted: (indexId, index) => encryptedLoader.load(indexId, index),
   decrypt: (bytes, key, hash) => decryptValidatorBundle(bytes, key, hash),
 });
+const fileLoader = createBundleFileLoader({ fetchFile: (id, index, filePath) => fetchBundleFile(query, id, index, filePath) });
 const mimeTypes = { html: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", css: "text/css; charset=utf-8",
   md: "text/markdown; charset=utf-8", json: "application/json", csv: "text/csv; charset=utf-8", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg",
   jpeg: "image/jpeg", webp: "image/webp", ico: "image/x-icon", woff: "font/woff", woff2: "font/woff2", txt: "text/plain; charset=utf-8" };
@@ -103,6 +105,7 @@ export function decryptValidatorBundle(bytes, key, contentHash) {
 
 export function createValidatorBundleHandler({ readIndex = getIndex, meetsTier = accountMeetsTier,
   loadEncrypted = (id, index) => encryptedLoader.load(id, index),
+  loadFile = (id, index, filePath) => fileLoader.load(id, index, filePath),
   loadFiles = (id, index) => bundleLoader.load(id, index), logFailure = console.warn } = {}) {
   return async function handleValidatorBundleRoute({ json, req, res, session, url }) {
     const parts = url.pathname.split("/").filter(Boolean);
@@ -124,13 +127,20 @@ export function createValidatorBundleHandler({ readIndex = getIndex, meetsTier =
         res.end(bytes);
         return true;
       }
-      const files = await loadFiles(indexId, index);
       const filePath = parts.slice(4).map(decodeURIComponent).join("/") || "index.html";
-      if (filePath.split("/").some((part) => part === "." || part === ".." || part.includes("\\")) || !Object.hasOwn(files, filePath)) throw validatorError("bundle_file_not_found", 404);
+      if (!validBundleFilePath(filePath)) throw validatorError("bundle_file_not_found", 404);
+      let bytes;
+      if (index.metadata?.fileFormat === BUNDLE_FILE_FORMAT) {
+        bytes = await loadFile(indexId, index, filePath);
+      } else {
+        const files = await loadFiles(indexId, index);
+        if (!Object.hasOwn(files, filePath)) throw validatorError("bundle_file_not_found", 404);
+        bytes = files[filePath];
+      }
       const type = mimeTypes[filePath.split(".").at(-1).toLowerCase()] || "application/octet-stream";
       res.writeHead(200, { "content-type": type, "cache-control": "private,no-store", "x-content-type-options": "nosniff",
         "referrer-policy": "no-referrer", "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://api.hyperliquid.xyz; frame-ancestors 'self'; base-uri 'self'; form-action 'none'; object-src 'none'" });
-      res.end(files[filePath]);
+      res.end(bytes);
     } catch (error) {
       if (!error.status) logFailure("validator_bundle_load_failed", {
         route: content ? "content" : "viewer",
