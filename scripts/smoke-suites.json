@@ -199,7 +199,10 @@
     "scripts/airdrop-payment-guard.test.mjs",
     "scripts/l1-uptime-rewards.test.mjs",
     "scripts/airdrop-recovery-preview.test.mjs",
-    "scripts/board-review-retry.test.mjs"
+    "scripts/board-review-retry.test.mjs",
+    "scripts/prompt-stats-smoke.mjs",
+    "scripts/prompt-device-smoke.mjs",
+    "scripts/prompt-assistant-smoke.mjs"
   ],
   "db": [
     "scripts/board-agent-reliability-smoke.mjs",
@@ -242,7 +245,8 @@
     "scripts/l1-validator-postgres-smoke.mjs",
     "scripts/l1-validator-rewards-postgres-smoke.mjs",
     "scripts/validator-ux-postgres-smoke.mjs",
-    "scripts/taskgen-credit-outage-retry-smoke.mjs"
+    "scripts/taskgen-credit-outage-retry-smoke.mjs",
+    "scripts/prompt-history-smoke.mjs"
   ],
   "manual": {
     "scripts/ambient-cache-live-smoke.mjs": "calls a live inference provider",
@@ -256,6 +260,7 @@
     "scripts/smoke.mjs": "exercises a running server with live providers (SMOKE_BASE_URL)",
     "scripts/sybil-blocklist-regression.mjs": "operator audit over production blocklist data",
     "scripts/theme-production-smoke.mjs": "read-only check against production",
-    "scripts/chat-persona-adherence-live-smoke.mjs": "calls a live inference provider"
+    "scripts/chat-persona-adherence-live-smoke.mjs": "calls a live inference provider",
+    "scripts/prompt-pad-smoke.mjs": "Requires the separately packaged CLI dependencies: npm ci --prefix packages/tasknode-cli. Included in local prompt acceptance verification."
   }
 }

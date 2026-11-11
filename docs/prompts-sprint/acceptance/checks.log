@@ -1,0 +1,140 @@
+CHECK prompt-history (exit 0)
+PASS prompt history: ciphertext-only columns, envelope validation, tenant isolation, append-only, retry idempotency
+
+CHECK prompt-stats (exit 0)
+PASS prompt stats: unique input seconds, checkpoints, two-minute idle, UTC midnight, duplicate events, 7/30 days
+
+CHECK prompt-device (exit 0)
+PASS prompt device wrap: Docs grant envelope, root wrapping, correct device, wrong key/account and tamper rejection
+
+CHECK prompt-assistant (exit 0)
+PASS prompt assistant isolation: both inference paths denied, no context/provider call, browser and route guards
+
+CHECK prompt-pad (exit 0)
+PASS prompt pad: PFDocs channel vector, custom base64 alphabet, edit-only capabilities, exact origin, create/reopen agreement
+
+CHECK collaboration (exit 0)
+collaboration contract smoke passed
+
+CHECK docs-folders (exit 0)
+Docs folders: nested organization, moves, deletion preservation, encryption, stale/concurrent writes, and account isolation passed.
+
+CHECK docs-assistant-limits (exit 0)
+Docs assistants: large complete responses, both personas, token-limit recovery, bounded retries, backup, safe failures, and route validation passed.
+
+CHECK docs-chat-history (exit 0)
+docs chat history smoke: ok
+
+CHECK route-auth (exit 0)
+route auth policy smoke ok: 213 policies cover 151 registered literal paths and 8 modes
+
+CHECK request-validation (exit 0)
+request validation smoke ok: 213 route policies, 120 fail-closed mutation policies
+
+CHECK migration-registration (exit 0)
+migration discovery smoke ok: 159 migration files are ordered, unique, and concurrency-guarded
+
+CHECK api-reference (exit 0)
+API reference ok: 213 policies match the generated inventory
+
+CHECK smoke-registration (exit 0)
+smoke suites ok: 198 unit, 42 db, 13 manual
+
+CHECK format (exit 0)
+format check ok
+
+CHECK file-size (exit 0)
+file size check ok: 0 active exceptions, no file over its configured limit
+
+CHECK lint (exit 0)
+
+> tasknode@0.1.0 lint
+> eslint src server scripts shared packages
+
+
+CHECK build (exit 0)
+
+> tasknode@0.1.0 build
+> vite build
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 2160 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                        1.14 kB │ gzip:   0.47 kB
+dist/assets/FinanceHubView-BYnkdurv.css                1.02 kB │ gzip:   0.46 kB
+dist/assets/AppDialogs-C-9IAheq.css                    1.98 kB │ gzip:   0.72 kB
+dist/assets/ethereum-top-up-modal-CSFdHMwX.css         6.96 kB │ gzip:   1.71 kB
+dist/assets/directory-BITkVPIs.css                     8.46 kB │ gzip:   2.06 kB
+dist/assets/HiveGroupChat-D8bdY2SF.css                 9.19 kB │ gzip:   2.43 kB
+dist/assets/MemoryView-DVfFL2Q8.css                   10.90 kB │ gzip:   2.26 kB
+dist/assets/ProfileView-Dnq-Q8Cx.css                  12.23 kB │ gzip:   2.86 kB
+dist/assets/MessagesView-Cl1Kf81C.css                 12.92 kB │ gzip:   2.82 kB
+dist/assets/DocsView-C_l2ZHJj.css                     17.39 kB │ gzip:   3.20 kB
+dist/assets/ethereum-top-up-Bik0MllW.css              18.53 kB │ gzip:   3.52 kB
+dist/assets/DocsLibraryView-DuJEuUTQ.css              29.43 kB │ gzip:   5.74 kB
+dist/assets/TeamView-ByIpeg-6.css                     49.62 kB │ gzip:   8.97 kB
+dist/assets/hive-SAa3Ep0G.css                         93.68 kB │ gzip:  13.90 kB
+dist/assets/index-DpDaAUJ-.css                       198.19 kB │ gzip:  32.33 kB
+dist/assets/rolldown-runtime-BWaJ3C7D.js               0.91 kB │ gzip:   0.51 kB
+dist/assets/collaboration-client-IisRrbQX.js           1.00 kB │ gzip:   0.55 kB
+dist/assets/ethereum-top-up-DuinZOLi.js                2.18 kB │ gzip:   0.99 kB
+dist/assets/defect-repair-rule-DSbTbELw.js             2.24 kB │ gzip:   1.12 kB
+dist/assets/BlacklistView-DO_U45Cv.js                  2.63 kB │ gzip:   1.03 kB
+dist/assets/FinanceHubView-alZbOY1O.js                 3.11 kB │ gzip:   1.33 kB
+dist/assets/search-DJtweN0N.js                         3.42 kB │ gzip:   1.54 kB
+dist/assets/refine-context-CAsJLEuc.js                 3.47 kB │ gzip:   1.50 kB
+dist/assets/privacy-CkHiJAzf.js                        3.94 kB │ gzip:   1.80 kB
+dist/assets/messages-C9h8HECH.js                       4.46 kB │ gzip:   2.05 kB
+dist/assets/ValidatorRewards-B9pK2Jw-.js               4.50 kB │ gzip:   1.77 kB
+dist/assets/agents-ChXTccRS.js                         4.69 kB │ gzip:   2.19 kB
+dist/assets/directory-CkxDUxgI.js                      4.79 kB │ gzip:   2.22 kB
+dist/assets/encryption-BOuf7_b3.js                     5.01 kB │ gzip:   2.02 kB
+dist/assets/bootup-IAs326Xo.js                         5.57 kB │ gzip:   2.62 kB
+dist/assets/context-DLoGecnu.js                        6.42 kB │ gzip:   2.68 kB
+dist/assets/wiki--vXmcuK4.js                           6.42 kB │ gzip:   2.92 kB
+dist/assets/HiveBrainView-DwXve5_w.js                  6.83 kB │ gzip:   2.50 kB
+dist/assets/style-guide-B4T05OD7.js                    7.22 kB │ gzip:   3.29 kB
+dist/assets/team-_OELeeMj.js                           7.23 kB │ gzip:   3.19 kB
+dist/assets/ai-providers-DePatjms.js                   7.74 kB │ gzip:   3.53 kB
+dist/assets/DirectoryView-B6scwW4q.js                  8.01 kB │ gzip:   2.75 kB
+dist/assets/validator-research-BO7B64U7.js             9.87 kB │ gzip:   4.04 kB
+dist/assets/docs-QBEOkueZ.js                          10.80 kB │ gzip:   4.54 kB
+dist/assets/current-system-BeOwQSGc.js                11.66 kB │ gzip:   4.88 kB
+dist/assets/wallet-core-DAhMLhEN.js                   12.36 kB │ gzip:   4.20 kB
+dist/assets/auth-wallet-boundary-CTRrpWFQ.js          13.09 kB │ gzip:   5.25 kB
+dist/assets/wallet-BCXpCxx0.js                        13.75 kB │ gzip:   5.33 kB
+dist/assets/memory-CyKOI16q.js                        14.02 kB │ gzip:   5.07 kB
+dist/assets/MemoryView-CpmAovor.js                    15.00 kB │ gzip:   4.58 kB
+dist/assets/HiveGroupChat-DxBmLrJ8.js                 15.70 kB │ gzip:   5.69 kB
+dist/assets/ethereum-top-up-modal-FRt36c7R.js         16.02 kB │ gzip:   6.01 kB
+dist/assets/context-rewrite-CFiEOZsn.js               16.24 kB │ gzip:   6.20 kB
+dist/assets/MessagesView-Cg2yPFsO.js                  16.50 kB │ gzip:   5.28 kB
+dist/assets/auth-and-connected-accounts-BWogPvpV.js   17.78 kB │ gzip:   6.58 kB
+dist/assets/daily-airdrop-rytg4Q0z.js                 19.20 kB │ gzip:   7.38 kB
+dist/assets/TeamView-Dji_9QgF.js                      21.41 kB │ gzip:   6.10 kB
+dist/assets/ContextView-DQsDaSfk.js                   24.90 kB │ gzip:   7.73 kB
+dist/assets/icon-runtime-BZ6bHYjC.js                  25.44 kB │ gzip:   8.67 kB
+dist/assets/nostr-messages-D-bETn0U.js                30.86 kB │ gzip:   9.70 kB
+dist/assets/AppDialogs-C0MIpXg5.js                    35.47 kB │ gzip:  10.19 kB
+dist/assets/DocsView-BkOhtS_T.js                      38.97 kB │ gzip:  11.96 kB
+dist/assets/user-guide-zo5AwwRH.js                    39.83 kB │ gzip:  13.50 kB
+dist/assets/chat-oZj7_FbI.js                          41.71 kB │ gzip:  15.30 kB
+dist/assets/WalletView-CsbvD-Tp.js                    42.82 kB │ gzip:  11.63 kB
+dist/assets/profile-BdH9WUjs.js                       52.38 kB │ gzip:  19.13 kB
+dist/assets/DocsLibraryView-Cmoiup46.js               57.10 kB │ gzip:  16.17 kB
+dist/assets/hive-bVoWrE2W.js                          64.98 kB │ gzip:  22.51 kB
+dist/assets/tasks-CJF0JnUD.js                         67.37 kB │ gzip:  22.85 kB
+dist/assets/HiveView-CSVQOWxt.js                      70.24 kB │ gzip:  18.77 kB
+dist/assets/ProfileView-B7u_v9uG.js                   79.61 kB │ gzip:  22.53 kB
+dist/assets/key-cryptography-GocBfGc5.js              82.99 kB │ gzip:  33.42 kB
+dist/assets/react-runtime-Ctaik3bb.js                189.52 kB │ gzip:  59.60 kB
+dist/assets/index-BryboGko.js                        315.00 kB │ gzip:  92.89 kB
+dist/assets/libsodium-wrappers-Ck1Io6Nr.js           432.34 kB │ gzip: 152.73 kB
+dist/assets/wallet-encoding-Dk8dyxJL.js              449.20 kB │ gzip: 129.48 kB
+
+✓ built in 494ms
+
+CHECK tasknode-cli (exit 0)
+tasknode cli smoke ok

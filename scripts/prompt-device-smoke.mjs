@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { createPromptDevice,deviceFingerprint,unwrapPromptDevice } from '../packages/tasknode-cli/lib/prompt-device.mjs';
+import { newLibraryKey,encryptPrompt,decryptPrompt } from '../packages/tasknode-cli/lib/prompt-crypto.mjs';
+import { encryptTaskNodePayload } from '../src/wallet-core.js';
+const device = {...await createPromptDevice(),accountId:'synthetic-device-smoke'};
+device.fingerprint = await deviceFingerprint(device.publicKey);
+const key = newLibraryKey(); const root = newLibraryKey();
+const wrappedLibrary = await encryptPrompt({key},root);
+assert.equal((await decryptPrompt(wrappedLibrary,root)).key,key);
+await assert.rejects(decryptPrompt(wrappedLibrary,newLibraryKey()));
+const envelope = await encryptTaskNodePayload({plaintext:JSON.stringify({key,deviceId:device.deviceId,fingerprint:device.fingerprint,accountId:device.accountId}),recipientPublicKeys:[device.publicKey]});
+assert.equal(await unwrapPromptDevice(envelope,device),key);
+assert.ok(!JSON.stringify(envelope).includes(key));
+await assert.rejects(unwrapPromptDevice(envelope,{...device,privateKey:(await createPromptDevice()).privateKey}));
+await assert.rejects(unwrapPromptDevice(envelope,{...device,accountId:'other'}));
+const tampered = structuredClone(envelope); tampered.ciphertext = (tampered.ciphertext[0] === 'A' ? 'B' : 'A') + tampered.ciphertext.slice(1);
+await assert.rejects(unwrapPromptDevice(tampered,device));
+console.log('PASS prompt device wrap: Docs grant envelope, root wrapping, correct device, wrong key/account and tamper rejection');

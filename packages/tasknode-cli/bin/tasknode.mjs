@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // tasknode: connect every coding agent on this machine to Task Node with one
-// device sign-in. Single file, Node 18+ built-ins only, so the curl installer
-// can download and run it as is. Tokens go straight into agent config files
+// device sign-in. The installer keeps this entry and its local prompt modules
+// in a durable runtime directory. Node 22+ is required for the prompt client. Tokens go straight into agent config files
 // (mode 600) and are never printed.
 import { execFile, spawn } from "node:child_process";
 import {
@@ -10,6 +10,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 
 const VERSION = "0.1.0";
 const DEFAULT_SERVER = "https://tasknode.postfiat.org";
@@ -21,6 +22,7 @@ const HELP = `tasknode ${VERSION}: connect your coding agents to Task Node
 
 Usage:
   tasknode connect [--agent claude,codex] [--scope local] [--yes] [--server URL]
+  tasknode prompts-mcp --device-file FILE  Run the local encrypted prompt MCP
   tasknode status        Show which account each agent is on
   tasknode disconnect    Remove Task Node from your agents and revoke their tokens
 
@@ -935,6 +937,9 @@ async function planWrites(agents, before, { ctx, token, account, name, opts }) {
 
 async function connect(opts) {
   const ctx = context(opts);
+  const { createPromptDevice, deviceFingerprint } = await import('../lib/prompt-device.mjs');
+  const promptDevice = await createPromptDevice();
+  promptDevice.fingerprint = await deviceFingerprint(promptDevice.publicKey);
   const wanted = selectAgents(opts);
   const agents = wanted.filter((agent) => agent.detect());
   const missing = opts.agents ? wanted.filter((agent) => !agents.includes(agent)) : [];
@@ -966,6 +971,16 @@ async function connect(opts) {
   }
 
   const written = results.filter((result) => result.mark === "✓");
+  if (written.length) {
+    const response = await api(ctx.origin, '/api/docs/prompts/devices', { method:'POST', token, json:{deviceId:promptDevice.deviceId,publicKey:promptDevice.publicKey,label:os.hostname()} });
+    if (response.status !== 200) throw new CliError('Hosted connection saved, but prompt device registration failed. Reconnect to retry.');
+    const deviceFile = path.join(envDir('TASKNODE_CONFIG_DIR',path.join(home(),'.config','tasknode')), 'devices', promptDevice.deviceId + '.json');
+    writePrivate(deviceFile,JSON.stringify({...promptDevice,origin:ctx.origin,token,accountId:account.accountId}));
+    const localEntry = {command:process.execPath,args:[fileURLToPath(import.meta.url),'prompts-mcp','--device-file',deviceFile]};
+    for (const {agent} of written) await installPromptEntry(agent,ctx,localEntry);
+    say(`Prompt access: unlock Docs at ${ctx.origin}/#docs and approve this fingerprint:`);
+    say(promptDevice.fingerprint);
+  }
   const superseded = new Map();
   for (const { step } of written) if (step.oldToken && step.oldToken !== token) superseded.set(step.oldToken, step.oldOrigin);
   const inUse = tokensInUse();
@@ -983,6 +998,35 @@ async function connect(opts) {
   }
   if (results.some((result) => result.error)) return 1;
   return written.length || declined ? 0 : 1;
+}
+
+async function installPromptEntry(agent,ctx,entry) {
+  const name = 'tasknode-prompts';
+  if (agent.id === 'claude') return editJsonFile(claudeFile(),ctx.scope === 'local' ? ['projects',claudeProjectKey(ctx.cwd),'mcpServers',name] : ['mcpServers',name],{type:'stdio',...entry});
+  if (agent.id === 'codex') return writePrivate(codexFile(),tomlSetTable(readText(codexFile()) || '',['mcp_servers',name],[`command = ${JSON.stringify(entry.command)}`,`args = ${JSON.stringify(entry.args)}`]));
+  if (agent.id === 'cursor') return editJsonFile(path.join(home(),'.cursor','mcp.json'),['mcpServers',name],entry);
+  if (agent.id === 'gemini') return editJsonFile(path.join(home(),'.gemini','settings.json'),['mcpServers',name],entry);
+  if (agent.id === 'pi') return editJsonFile(piFile(),['mcpServers',name],entry);
+  if (['opencode','kilo'].includes(agent.id)) return editJsonFile(path.join(xdgConfig(),agent.id,agent.id + '.json'),['mcp',name],{type:'local',command:[entry.command,...entry.args],enabled:true});
+  if (agent.id === 'hermes') {
+    await run(onPath('hermes'),['config','set','--force',`mcp_servers.${name}.command`,entry.command]);
+    await run(onPath('hermes'),['config','set','--force',`mcp_servers.${name}.args`,JSON.stringify(entry.args)]);
+  }
+}
+
+async function removePromptEntry(agent,ctx) {
+  const name = 'tasknode-prompts';
+  if (agent.id === 'claude') {
+    removeJsonFile(claudeFile(),['projects',claudeProjectKey(ctx.cwd),'mcpServers',name]);
+    if (ctx.scope !== 'local') removeJsonFile(claudeFile(),['mcpServers',name]);
+  } else if (agent.id === 'codex') {
+    const current = readText(codexFile());
+    if (current !== null) writePrivate(codexFile(),tomlSetTable(current,['mcp_servers',name],null));
+  } else if (agent.id === 'hermes') await run(onPath('hermes'),['config','unset',`mcp_servers.${name}`]).catch(() => {});
+  else {
+    const files = {cursor:path.join(home(),'.cursor','mcp.json'),gemini:path.join(home(),'.gemini','settings.json'),pi:piFile(),opencode:path.join(xdgConfig(),'opencode','opencode.json'),kilo:path.join(xdgConfig(),'kilo','kilo.json')};
+    if (files[agent.id]) removeJsonFile(files[agent.id],[['opencode','kilo'].includes(agent.id) ? 'mcp' : 'mcpServers',name]);
+  }
 }
 
 async function describe(entry, origin) {
@@ -1029,6 +1073,7 @@ async function disconnect(opts) {
     try {
       const entries = agent.entries(ctx).filter((entry) => entry.configured);
       if (!entries.length || !(await agent.remove(ctx))) continue;
+      await removePromptEntry(agent,ctx);
       removed.push(agent);
       for (const entry of entries) if (entry.token) tokens.set(entry.token, originOf(entry.url) || ctx.origin);
     } catch (error) {
@@ -1086,6 +1131,12 @@ function parseArgs(argv) {
 }
 
 async function main(argv) {
+  if (argv[0] === 'prompts-mcp') {
+    if (argv[1] !== '--device-file' || !argv[2] || argv.length !== 3) throw new CliError('Use prompts-mcp --device-file FILE');
+    const { servePromptMcp } = await import('../lib/prompt-mcp.mjs');
+    await servePromptMcp(argv[2]);
+    return 0;
+  }
   const opts = parseArgs(argv);
   if (opts.command === "help") {
     say(HELP);

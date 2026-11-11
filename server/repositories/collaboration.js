@@ -389,6 +389,7 @@ export async function createDocument({
   documentId = "",
   channelHash = "",
   encryptedMetadata = {},
+  documentType = "rich_text",
   proof = {},
 } = {}) {
   ensureDatabase();
@@ -401,7 +402,8 @@ export async function createDocument({
   if (!metadata.ciphertext || !metadata.iv) {
     return { ok: false, status: 400, error: "docs_encrypted_metadata_invalid" };
   }
-  const payload = { documentId: normalizedId, channelHash: normalizedChannelHash, encryptedMetadata: metadata };
+  if (!["rich_text", "prompt"].includes(documentType)) return { ok: false, status: 400, error: "docs_document_type_invalid" };
+  const payload = { documentId: normalizedId, channelHash: normalizedChannelHash, encryptedMetadata: metadata, ...(documentType === "prompt" ? { documentType } : {}) };
   return transaction(async (client) => {
     await consumeCollaborationProof({
       client,
@@ -423,15 +425,16 @@ export async function createDocument({
     }
     const inserted = await client.query(
       `INSERT INTO docs_documents (
-         document_id, owner_account_id, pfdocs_channel_hash, encrypted_metadata
-       ) VALUES ($1, $2, $3, $4::jsonb)
+         document_id, owner_account_id, pfdocs_channel_hash, encrypted_metadata, document_type
+       ) VALUES ($1, $2, $3, $4::jsonb, $5)
        ON CONFLICT (document_id) DO UPDATE SET
          encrypted_metadata = EXCLUDED.encrypted_metadata,
          updated_at = now()
        WHERE docs_documents.owner_account_id = EXCLUDED.owner_account_id
          AND docs_documents.pfdocs_channel_hash = EXCLUDED.pfdocs_channel_hash
+         AND docs_documents.document_type = EXCLUDED.document_type
        RETURNING *`,
-      [normalizedId, accountId, normalizedChannelHash, JSON.stringify(metadata)]
+      [normalizedId, accountId, normalizedChannelHash, JSON.stringify(metadata), documentType]
     );
     if (!inserted.rows.length) return { ok: false, status: 409, error: "docs_document_conflict" };
     await audit({

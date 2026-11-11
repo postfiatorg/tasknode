@@ -1,0 +1,11 @@
+{"at":"2026-11-11T21:23:20.172Z","stage":"local_fixture_ready","postgres":true,"syntheticAccount":true}
+{"at":"2026-11-11T21:23:21.201Z","stage":"browser_docs_unlocked_and_initialized"}
+{"at":"2026-11-11T21:23:25.423Z","stage":"browser_prompt_created","documentId":"96506db4-96a9-4cad-8bc6-2eece4279b59","markdownEditor":true,"assistantControlsAbsent":true}
+{"at":"2026-11-11T21:23:34.099Z","stage":"device_approved","fingerprintMatched":true,"unapprovedDenied":true,"hostedAndLocalEntries":true}
+{"at":"2026-11-11T21:23:39.758Z","stage":"local_mcp_read","text":"# SYNTHETIC_PROMPT_ACCEPTANCE\nBrowser authored prompt.\nSecond input second.\n"}
+{"at":"2026-11-11T21:23:40.055Z","stage":"local_mcp_edit_visible_in_browser","live":true}
+{"at":"2026-11-11T21:23:42.516Z","stage":"versions_history_tih_and_stats","stats":{"timezone":"UTC","days":7,"daily":[{"day":"2026-11-05","created":0,"versions":0,"activeSeconds":0,"activeMinutes":0},{"day":"2026-11-06","created":0,"versions":0,"activeSeconds":0,"activeMinutes":0},{"day":"2026-11-07","created":0,"versions":0,"activeSeconds":0,"activeMinutes":0},{"day":"2026-11-08","created":0,"versions":0,"activeSeconds":0,"activeMinutes":0},{"day":"2026-11-09","created":0,"versions":0,"activeSeconds":0,"activeMinutes":0},{"day":"2026-11-10","created":0,"versions":0,"activeSeconds":0,"activeMinutes":0},{"day":"2026-11-11","created":2,"versions":2,"activeSeconds":2,"activeMinutes":0.03333333333333333}],"totals":{"created":2,"versions":2,"activeSeconds":2,"activeMinutes":0.03333333333333333}},"historyKinds":["created","edit_session","agent_edit","version_saved","version_saved","tih_run"],"agentCreate":true}
+{"at":"2026-11-11T21:23:42.569Z","stage":"database_ciphertext_only","rows":7,"columns":["event_id","account_id","document_id","created_at","ciphertext"],"plaintextCanariesAbsent":true,"assistantRoutesDenied":true}
+{"at":"2026-11-11T21:23:50.357Z","stage":"revocation_enforced","status":403}
+{"at":"2026-11-11T21:23:50.532Z","stage":"history_outage_isolated","faultInjection":true,"libraryStillAvailable":true,"incompleteStatsHidden":true}
+{"at":"2026-11-11T21:23:50.532Z","stage":"PASS","browserCreate":true,"localStdioMcp":true,"liveEdit":true,"versions":2,"promptsCreated":2,"encryptedHistory":true,"output":"artifacts/prompts/acceptance-1794432198649"}

@@ -1,3 +1,4 @@
+import { listPromptDevices, revokePromptDevice } from "./repositories/prompt-devices.js";
 // One-step agent connect: device-code sign-in (RFC 8628) so agents on remote
 // machines connect without a localhost callback or a copied token, the
 // /activate approval page, per-device token management on /connect, and the
@@ -289,7 +290,10 @@ async function handleConnect({ req, res, url, origin, session }) {
     return agentPage(res, "Connect an agent", `<h1>Connect an agent</h1><p>Signed out ${count} agent and terminal token${count === 1 ? "" : "s"}. Agents using them can no longer reach this account.</p><a class="button" href="/connect">Back</a>`);
   }
   if (url.pathname === "/connect/revoke") {
-    await revokeAgentDevice({ accountId: session.accountId, sessionId: safe(url.searchParams.get("session"), 120) });
+    if (url.searchParams.has("prompt")) {
+      if (req.method !== "POST") return json(res,405,{error:"method_not_allowed"});
+      await revokePromptDevice(session.accountId,url.searchParams.get("prompt"));
+    } else await revokeAgentDevice({ accountId: session.accountId, sessionId: safe(url.searchParams.get("session"), 120) });
     res.writeHead(303, { "cache-control": "no-store", location: "/connect" });
     return res.end();
   }
@@ -311,6 +315,8 @@ ${connectClients.map(([key, label]) => `<h2>${label}</h2><pre>${escapeHtml(comma
 <p>Then restart the agent and ask: "What are my outstanding Task Node tasks?" <a href="/connect">Back</a></p>`);
   }
   const devices = await listAgentDevices({ accountId: session.accountId });
+  const promptDevices = await listPromptDevices(session.accountId);
+  const promptRows = promptDevices.devices.filter(device => !device.revokedAt).map(device => `<div class="device"><div><strong>${escapeHtml(device.label)}</strong><p>${device.approvedAt ? "Prompt access approved" : "Awaiting unlocked browser approval"}</p><small style="overflow-wrap:anywhere">${escapeHtml(device.fingerprint)}</small><p><a href="/#docs">Unlock Docs to approve prompt access</a></p></div><form method="post" action="/connect/revoke?prompt=${encodeURIComponent(device.deviceId)}"><button class="button secondary">Revoke prompt access</button></form></div>`).join("");
   const deviceRows = devices.length
     ? devices.map((device) => `<div class="device"><div><strong>${escapeHtml(device.label)}</strong><br><span class="muted">Last used ${device.lastUsedAt ? escapeHtml(relative(device.lastUsedAt)) : "not yet recorded"}${device.lastIp ? ` · ${escapeHtml(device.lastIp)}` : ""} · added ${escapeHtml(String(device.createdAt).slice(0, 10))}</span></div>
 <form method="post" action="/connect/revoke?session=${encodeURIComponent(device.sessionId)}"><button class="button secondary" type="submit">Revoke</button></form></div>`).join("\n")
@@ -321,6 +327,7 @@ ${copyBlock(`Connect me to Task Node: run ${command} and follow the link it prin
 <p class="muted">Or run it yourself in the terminal where your agent runs. It finds Claude Code, Codex, Hermes, Pi, OpenCode, Kilo, Cursor and Gemini CLI, shows a code to approve here, and never prints the token.</p>
 ${copyBlock(command)}
 <p class="muted">Step-by-step help for every agent: <a href="${AGENT_GUIDE_URL}" rel="noopener" target="_blank">postfiat.org/agents</a></p>
+${promptRows ? `<h2>Prompt library devices</h2>${promptRows}` : ""}
 <h2>Connected devices</h2>
 ${deviceRows}
 ${devices.length ? `<form method="post" action="/connect/signout" style="margin-top:12px"><button class="button secondary" type="submit">Sign out all agents</button></form>` : ""}
@@ -377,6 +384,11 @@ async function handleWhoami({ req, res }) {
 export async function handleAgentConnectRoute(params) {
   const { res, url, origin } = params;
   const pathname = url.pathname;
+  const promptInstallFiles = ['package.json','lib/prompt-crypto.mjs','lib/prompt-device.mjs','lib/prompt-stats.mjs','lib/prompt-pad.mjs','lib/prompt-client.mjs','lib/prompt-mcp.mjs'];
+  if (pathname.startsWith('/install/') && promptInstallFiles.includes(pathname.slice('/install/'.length))) {
+    await sendCliFile(res,pathname.slice('/install/'.length),'text/plain; charset=utf-8');
+    return true;
+  }
   if (pathname === "/oauth/device_authorization") await handleDeviceAuthorization(params);
   else if (pathname === "/activate") await handleActivate(params);
   else if (pathname === "/connect" || pathname === "/connect/signout" || pathname === "/connect/revoke") await handleConnect(params);

@@ -1,0 +1,22 @@
+{
+  "acceptedAt": "2026-11-11T21:23:50.532Z",
+  "runtime": {
+    "localMcpNode": "24.22.1",
+    "taskNodeContainers": "node:24",
+    "pfdocsNode": "20.20.2"
+  },
+  "pfdocsBase": "79f8a2a98c124db88600cdc405c0707a041cc42e",
+  "productionRequestsInContinuation": false,
+  "localOnly": true,
+  "expected": {
+    "created": 2,
+    "versions": 2,
+    "activeSeconds": 2,
+    "encryptedHistoryRows": 7
+  },
+  "files": {
+    "acceptance.jsonl": "9d6c491d1707ba67fff467c4a17aec0505bb1a42e2fccb20e4b39be9691da372",
+    "history-rows.json": "576df07cc0cab885df2e0353c5e6f5fd3ec1befa12854778e534062e4b6de5c4",
+    "prompts-library.png": "96f2af8c0ca4eca90aa352e2dfb02275560cd78accfb4d71a6d3c48bdc5a1826"
+  }
+}

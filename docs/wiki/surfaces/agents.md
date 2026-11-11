@@ -49,3 +49,7 @@ Agents that hold a wallet seed can write task events directly to PFTL; Task Node
 
 - The app must not assume all task actions originate from the web UX.
 - Replay reconciles external PFTL actions into the cache.
+
+### Local encrypted prompts
+
+The installer registers a local `tasknode-prompts` stdio MCP entry beside the hosted `tasknode` entry. Match its fingerprint in unlocked Docs and approve prompt access; `/connect` lists and revokes prompt devices. Prompt tools read/edit live markdown pads, save encrypted versions, decrypt history and compute stats locally. `prompt_log_tih_run` records scores from locally run TIH; it never invokes a hosted assistant. See [prompt setup and acceptance](../../../prompts-sprint/README.md).

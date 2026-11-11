@@ -1,0 +1,78 @@
+[
+  {
+    "check": "prompt-history",
+    "exitCode": 0
+  },
+  {
+    "check": "prompt-stats",
+    "exitCode": 0
+  },
+  {
+    "check": "prompt-device",
+    "exitCode": 0
+  },
+  {
+    "check": "prompt-assistant",
+    "exitCode": 0
+  },
+  {
+    "check": "prompt-pad",
+    "exitCode": 0
+  },
+  {
+    "check": "collaboration",
+    "exitCode": 0
+  },
+  {
+    "check": "docs-folders",
+    "exitCode": 0
+  },
+  {
+    "check": "docs-assistant-limits",
+    "exitCode": 0
+  },
+  {
+    "check": "docs-chat-history",
+    "exitCode": 0
+  },
+  {
+    "check": "route-auth",
+    "exitCode": 0
+  },
+  {
+    "check": "request-validation",
+    "exitCode": 0
+  },
+  {
+    "check": "migration-registration",
+    "exitCode": 0
+  },
+  {
+    "check": "api-reference",
+    "exitCode": 0
+  },
+  {
+    "check": "smoke-registration",
+    "exitCode": 0
+  },
+  {
+    "check": "format",
+    "exitCode": 0
+  },
+  {
+    "check": "file-size",
+    "exitCode": 0
+  },
+  {
+    "check": "lint",
+    "exitCode": 0
+  },
+  {
+    "check": "build",
+    "exitCode": 0
+  },
+  {
+    "check": "tasknode-cli",
+    "exitCode": 0
+  }
+]

@@ -1,3 +1,4 @@
+import { PromptStatsPanel } from "./PromptStatsPanel";
 import { useEffect, useRef, useState } from "react";
 import { Archive, ChevronDown, ChevronRight, Download, FileText, Folder, FolderInput, FolderPlus, Link2, LockKeyhole, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Share2, Table2, Trash2, Users, X } from "lucide-react";
 import { changeDocsLibrary, folderTrail } from "./docs-folders";
@@ -23,7 +24,7 @@ function ItemMenu({ label, children }) {
 }
 
 export function DocsLibraryBrowser({ documents, decrypted, library, folderId, onFolderChange, onLibraryChange,
-  busy, editorReady, onCreate, onOpen, onRename, onArchive, onShare, onTaskLink, onRefresh, onExport, children }) {
+  promptEvents = [], promptError = "", busy, editorReady, onCreate, onOpen, onRename, onArchive, onShare, onTaskLink, onRefresh, onExport, children }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [dialog, setDialog] = useState(null);
@@ -39,6 +40,7 @@ export function DocsLibraryBrowser({ documents, decrypted, library, folderId, on
     .sort((a, b) => a.name.localeCompare(b.name));
   const visible = documents.filter((entry) => {
     if (filter === "archived" ? entry.status !== "archived" : entry.status === "archived") return false;
+    if (filter === "prompts" && decrypted[entry.documentId]?.documentType !== "prompt") return false;
     if (filter === "shared" && entry.owned && !entry.shares?.length && !entry.collaboratorCount) return false;
     if (query) return String(decrypted[entry.documentId]?.title || "").toLocaleLowerCase().includes(query);
     return filter !== "all" || (library.placements[entry.documentId] || "") === folderId;
@@ -93,22 +95,24 @@ export function DocsLibraryBrowser({ documents, decrypted, library, folderId, on
           <div className="docs-item-popover" onClick={(event) => { event.currentTarget.closest("details").open = false; }}>
             <button disabled={Boolean(busy) || !editorReady} onClick={() => onCreate("pad", folderId)}><FileText size={16} />New document</button>
             <button disabled={Boolean(busy) || !editorReady} onClick={() => onCreate("sheet", folderId)}><Table2 size={16} />New spreadsheet</button>
+            <button disabled={Boolean(busy) || !editorReady} onClick={() => onCreate("prompt", folderId)}><FileText size={16} />New prompt</button>
             <button disabled={Boolean(busy)} onClick={() => openDialog({ action: "create", id: crypto.randomUUID() })}><FolderPlus size={16} />New folder</button>
           </div>
         </details>
       </header>
       <div className="docs-library-tools">
         <div className="docs-view-tabs" aria-label="Library view" role="group">
-          {[["all", "My docs"], ["shared", "Shared"], ["archived", "Archived"]].map(([id, label]) => <button aria-pressed={filter === id} key={id} onClick={() => { setFilter(id); setSearch(""); }} type="button">{label}</button>)}
+          {[["all", "My docs"], ["prompts", "Prompts"], ["shared", "Shared"], ["archived", "Archived"]].map(([id, label]) => <button aria-pressed={filter === id} key={id} onClick={() => { setFilter(id); setSearch(""); }} type="button">{label}</button>)}
         </div>
         <label className="docs-library-search"><Search size={16} /><input aria-label="Search documents and folders" placeholder="Search docs and folders" value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14} /></button>}</label>
         <button className="docs-refresh-button" aria-label="Refresh library" disabled={Boolean(busy)} onClick={onRefresh}><RefreshCw size={16} /></button>
       </div>
       {children}
+      {filter === "prompts" && !promptError && <PromptStatsPanel events={promptEvents} decrypted={decrypted} />}
       <div className="docs-location-row">
         <nav aria-label="Folder path" className="docs-breadcrumbs">
           <button onClick={() => browse("")}>My docs</button>
-          {filter !== "all" ? <><ChevronRight size={13} /><span>{filter === "shared" ? "Shared" : "Archived"}</span></> :
+          {filter !== "all" ? <><ChevronRight size={13} /><span>{filter === "prompts" ? "Prompts" : filter === "shared" ? "Shared" : "Archived"}</span></> :
             query ? <><ChevronRight size={13} /><span>Search results</span></> : trail.map((entry) => <span key={entry.id}><ChevronRight size={13} /><button onClick={() => browse(entry.id)}>{entry.name}</button></span>)}
         </nav>
         {filter === "all" && !query && <button className="docs-add-folder" disabled={Boolean(busy)} onClick={() => openDialog({ action: "create", id: crypto.randomUUID() })}><FolderPlus size={15} />New folder</button>}
@@ -127,7 +131,7 @@ export function DocsLibraryBrowser({ documents, decrypted, library, folderId, on
           return <article className="docs-file-row" key={entry.documentId}>
             <button className="docs-file-name" disabled={!metadata || !editorReady} onClick={() => onOpen(entry)}>
               <span className={`docs-file-icon ${isSheet ? "sheet" : "document"}`}>{isSheet ? <Table2 size={20} /> : <FileText size={20} />}</span>
-              <span><strong>{title}</strong><small>{isSheet ? "Spreadsheet" : "Document"}{entry.taskIds?.length > 0 ? ` · ${entry.taskIds.length} linked ${entry.taskIds.length === 1 ? "task" : "tasks"}` : ""}{query && library.placements[entry.documentId] ? ` · ${folderTrail(library, library.placements[entry.documentId]).map((folder) => folder.name).join(" / ")}` : ""}</small></span>
+              <span><strong>{title}</strong><small>{metadata?.documentType === "prompt" ? promptError ? "Prompt · History unavailable" : `Prompt · ${promptEvents.filter(event => event.documentId === entry.documentId && event.kind === "version_saved").length} saved versions` : isSheet ? "Spreadsheet" : "Document"}{entry.taskIds?.length > 0 ? ` · ${entry.taskIds.length} linked ${entry.taskIds.length === 1 ? "task" : "tasks"}` : ""}{query && library.placements[entry.documentId] ? ` · ${folderTrail(library, library.placements[entry.documentId]).map((folder) => folder.name).join(" / ")}` : ""}</small></span>
             </button>
             <span className="docs-file-access" title={entry.owned ? entry.shares?.map((grant) => `${grant.recipient.displayName} · ${grant.accessRole} · ${grant.status}`).join(", ") : `Shared by ${entry.owner.displayName}`}>
               {shared && <Users size={13} />}{entry.owned ? shared ? `Shared${entry.shares?.some((grant) => grant.status === "pending") ? " · pending" : ""}` : "Only you" : entry.owner.displayName}

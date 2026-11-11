@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 const cli = fileURLToPath(new URL("../packages/tasknode-cli/bin/tasknode.mjs", import.meta.url));
 const pkg = JSON.parse(readFileSync(new URL("../packages/tasknode-cli/package.json", import.meta.url), "utf8"));
 const root = mkdtempSync(path.join(tmpdir(), "tasknode-cli-smoke-"));
+writeFileSync(path.join(root,"package.json"),JSON.stringify({type:"commonjs"}));
 
 // Tokens are generated per run so no token-shaped literal lives in the repo.
 const fakeToken = () => `tns_${randomBytes(18).toString("base64url")}`;
@@ -60,6 +61,13 @@ const server = createServer(async (req, res) => {
     if (step) return send(400, { error: step, error_description: `scripted ${step}` });
     devices.delete(form.get("device_code"));
     return send(200, { access_token: grant.token, token_type: "Bearer", scope: "tasknode", account: owners.get(grant.token) });
+  }
+  if (req.method === "POST" && pathname === "/api/docs/prompts/devices") {
+    if (!owners.has(bearer) || state.revoked.has(bearer)) return send(401,{error:"unauthorized"});
+    const device = JSON.parse(body);
+    assert.ok(device.publicKey && device.deviceId);
+    assert.ok(!device.privateKey);
+    return send(200,{ok:true,deviceId:device.deviceId});
   }
   if (req.method === "GET" && pathname === "/api/agent/whoami") {
     const account = !state.revoked.has(bearer) && owners.get(bearer);
@@ -183,12 +191,21 @@ try {
   assert.ok(polls[3].at - polls[2].at >= 4500, "slow_down adds 5 seconds to the interval");
   assert.deepEqual(state.revokeCalls, [tokens.a], "the replaced token is revoked once");
 
-  // Claude: only tasknode changed, formatting kept byte for byte, mode 600.
-  assert.equal(read(claudeJson), JSON.stringify({ ...claudeDoc, mcpServers: { ...claudeDoc.mcpServers, tasknode: httpEntry(tokens.b) } }, null, 2));
+  // Hosted entry and local stdio entry change; unrelated formatting is preserved.
+  const localEntry = JSON.parse(read(claudeJson)).mcpServers['tasknode-prompts'];
+  assert.equal(localEntry.command,process.execPath);
+  assert.deepEqual(localEntry.args.slice(0,3),[cli,'prompts-mcp','--device-file']);
+  assert.equal(mode(localEntry.args[3]),0o600);
+  const localDevice = JSON.parse(read(localEntry.args[3]));
+  assert.equal(localDevice.accountId,alex.accountId);
+  assert.ok(!connected.stdout.includes(localDevice.privateKey));
+  assert.equal(read(claudeJson), JSON.stringify({ ...claudeDoc, mcpServers: { ...claudeDoc.mcpServers, tasknode: httpEntry(tokens.b), "tasknode-prompts": localEntry } }, null, 2));
   assert.equal(mode(claudeJson), 0o600);
   // Codex: the table and its subtable become one table in place; the rest stays.
   const codexConnected = `${codexHead}[mcp_servers.tasknode]\nurl = "${mcpUrl}"\nhttp_headers = { Authorization = "Bearer ${tokens.b}" }\n\n${codexTail}`;
-  assert.equal(read(codexToml), codexConnected);
+  const localCodex = `[mcp_servers.tasknode-prompts]\ncommand = ${JSON.stringify(localEntry.command)}\nargs = ${JSON.stringify(localEntry.args)}\n`;
+  assert.ok(read(codexToml).includes(localCodex));
+  assert.equal(read(codexToml).replace(localCodex,'').trim(),codexConnected.trim());
   assert.equal(mode(codexToml), 0o600);
 
   const status = await tasknode(["status"], box);
@@ -205,12 +222,14 @@ try {
   assert.ok(kept.stdout.includes("Claude Code and Codex are connected as goodalexander. Left as is: no terminal to confirm. Re-run with --yes to replace, or with --scope local to use this folder only."));
   assert.ok(kept.stdout.includes("Signed in as corbanuAI (wallet rCo1…AbCd). No agent changed.\n  – Claude Code (kept goodalexander)   – Codex (kept goodalexander)\n"));
   assert.deepEqual(state.revokeCalls, [tokens.a, tokens.a2]);
-  assert.equal(read(codexToml), codexConnected);
+  assert.ok(read(codexToml).includes(localCodex));
+  assert.equal(read(codexToml).replace(localCodex,'').trim(),codexConnected.trim());
   assert.equal(JSON.parse(read(claudeJson)).mcpServers.tasknode.headers.Authorization, `Bearer ${tokens.b}`);
 
   // --scope local: corbanuAI for one folder; the user scope and Codex stay on goodalexander.
   const project = path.join(root, "project");
   mkdirSync(project);
+  mkdirSync(path.join(project,".git"));
   queueGrant(tokens.a3);
   const local = await tasknode(["connect", "--scope", "local", "--yes"], { ...box, cwd: project });
   assert.equal(local.code, 0, local.stderr);
@@ -219,12 +238,13 @@ try {
   const projectKey = realpathSync(project);
   const afterLocal = JSON.parse(read(claudeJson));
   assert.deepEqual(afterLocal.projects[projectKey], {
-    allowedTools: [], mcpContextUris: [], mcpServers: { tasknode: httpEntry(tokens.a3) }, enabledMcpjsonServers: [], disabledMcpjsonServers: [],
+    allowedTools: [], mcpContextUris: [], mcpServers: { tasknode: httpEntry(tokens.a3), "tasknode-prompts": afterLocal.projects[projectKey].mcpServers["tasknode-prompts"] }, enabledMcpjsonServers: [], disabledMcpjsonServers: [],
     hasTrustDialogAccepted: false, hasClaudeMdExternalIncludesApproved: false, hasClaudeMdExternalIncludesWarningShown: false,
   });
   assert.deepEqual(afterLocal.projects["/elsewhere"], claudeDoc.projects["/elsewhere"]);
   assert.deepEqual(afterLocal.mcpServers.tasknode, httpEntry(tokens.b));
-  assert.equal(read(codexToml), codexConnected);
+  assert.ok(read(codexToml).includes(localCodex));
+  assert.equal(read(codexToml).replace(localCodex,'').trim(),codexConnected.trim());
   assert.deepEqual(state.revokeCalls, [tokens.a, tokens.a2], "nothing replaced, nothing revoked");
 
   const localStatus = await tasknode(["status"], { ...box, cwd: project });
@@ -279,9 +299,9 @@ fs.writeFileSync(file, JSON.stringify(doc, null, 2));
   const piCalls = () => read(path.join(laptop.home, "pi-calls.jsonl")).trim().split("\n").map((line) => JSON.parse(line));
   assert.deepEqual(piCalls(), [["mcp", "add", "tasknode", "--url", mcpUrl, "--header", `Authorization=Bearer ${tokens.c}`, "--exposure", "direct"]]);
   const authHeader = { Authorization: `Bearer ${tokens.c}` };
-  assert.ok(read(cursorJson).includes("// Cursor keeps comments."));  assert.deepEqual(readJsonc(cursorJson), { mcpServers: { docs: { command: "docs-mcp" }, tasknode: { url: mcpUrl, headers: authHeader } } });
+  assert.ok(read(cursorJson).includes("// Cursor keeps comments."));  assert.deepEqual(readJsonc(cursorJson), { mcpServers: { docs: { command: "docs-mcp" }, tasknode: { url: mcpUrl, headers: authHeader }, "tasknode-prompts": readJsonc(cursorJson).mcpServers["tasknode-prompts"] } });
   assert.deepEqual(JSON.parse(read(geminiJson)), {
-    theme: "Default", security: { auth: { selectedType: "oauth-personal" } }, mcpServers: { tasknode: { httpUrl: mcpUrl, headers: authHeader } },
+    theme: "Default", security: { auth: { selectedType: "oauth-personal" } }, mcpServers: { tasknode: { httpUrl: mcpUrl, headers: authHeader }, "tasknode-prompts": JSON.parse(read(geminiJson)).mcpServers["tasknode-prompts"] },
   });
   assert.ok(read(geminiJson).endsWith("}\n"));
   assert.equal(mode(cursorJson), 0o600);

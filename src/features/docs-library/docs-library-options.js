@@ -50,7 +50,7 @@ export function pfdocsShareUrl({ access = "", href = "", origin = "" } = {}) {
   try {
     const expectedOrigin = new URL(origin).origin;
     const capabilityUrl = new URL(href, expectedOrigin);
-    const documentType = capabilityUrl.pathname === "/sheet/" ? "sheet" : capabilityUrl.pathname === "/pad/" ? "pad" : "";
+    const documentType = capabilityUrl.pathname === "/sheet/" ? "sheet" : capabilityUrl.pathname === "/pad/" ? "pad" : capabilityUrl.pathname === "/code/" ? "code" : "";
     if (capabilityUrl.origin !== expectedOrigin || !documentType) return "";
     const capabilityPattern = access === "view"
       ? new RegExp(`^#\\/[0-9]+\\/${documentType}\\/view\\/[A-Za-z0-9+/_=-]+\\/$`)
