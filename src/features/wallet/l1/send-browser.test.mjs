@@ -1,3 +1,5 @@
+const WEB=process.env.L1_WEB_ORIGIN||'http://127.0.0.1:5198';
+const EVIDENCE=process.env.L1_EVIDENCE_DIR||'/home/postfiat/repos/b23-coord/evidence/wallet';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -28,7 +30,7 @@ stub.on('connection',ws=>ws.on('message',b=>{
 const server=createServer(async(req,res)=>{try{
  if(req.url.startsWith('/api/')){res.setHeader('content-type','application/json');res.end(JSON.stringify(req.url.startsWith('/api/app-state')?{session:{status:'signed_in',accountId:'synthetic-send'},wallet:{},tasks:{},chat:{messages:[],conversations:[]}}:{}));return;}
  if(req.url.startsWith('/runtime-config')){res.setHeader('content-type','application/json');res.end('{}');return;}
- const r=await fetch('http://127.0.0.1:5198'+req.url);res.writeHead(r.status,{'content-type':r.headers.get('content-type')||'text/plain'});res.end(Buffer.from(await r.arrayBuffer()));
+ const r=await fetch(WEB+''+req.url);res.writeHead(r.status,{'content-type':r.headers.get('content-type')||'text/plain'});res.end(Buffer.from(await r.arrayBuffer()));
 }catch{res.writeHead(502);res.end();}});
 const gateway=registerL1Gateway(server,{env:{L1_WALLET_PROXY_URL:`ws://127.0.0.1:${stub.address().port}`},getSession:async token=>token==='fixture'?{status:'signed_in',accountId:'synthetic-send'}:null,sessionCookieName:'sid',cookieValue:req=>req.headers.cookie?.split('=')[1],json:(r,s,b)=>{r.writeHead(s);r.end(JSON.stringify(b));},readJson:async()=>({})});
 server.listen(0,'127.0.0.1');await once(server,'listening');const origin=`http://127.0.0.1:${server.address().port}`;
@@ -38,9 +40,9 @@ try{
  await page.getByLabel('Wallet passphrase',{exact:true}).fill('synthetic-send-password');await page.getByRole('button',{name:'Create L1 wallet',exact:true}).click();await page.getByTestId('l1-address').waitFor();
  await page.getByText('PFUSDC',{exact:true}).waitFor();
  await page.getByRole('button',{name:'Send',exact:true}).click();await page.getByLabel('Recipient pf address',{exact:true}).fill(recipient);await page.getByLabel('PFT amount',{exact:true}).fill('1');
- await page.getByRole('button',{name:'Review fee',exact:true}).click();await page.getByRole('button',{name:'Confirm and send PFT',exact:true}).click();
+ await page.getByRole('button',{name:'Review transfer',exact:true}).click();await page.getByRole('button',{name:'Confirm and send PFT',exact:true}).click();
  await page.getByText('Both balance changes match the payment and fee.',{exact:true}).waitFor({timeout:20000});
- assert.equal(submitCount,1);assert.ok(lastQuote);await page.screenshot({path:'/home/postfiat/repos/b23-coord/evidence/wallet/send-stub.png'});
+ assert.equal(submitCount,1);assert.ok(lastQuote);await page.screenshot({path:EVIDENCE+'/send-stub.png'});
  await page.getByRole('button',{name:'Activity',exact:true}).click();await page.getByText(txId,{exact:true}).waitFor();await page.getByText('Accepted',{exact:true}).waitFor();assert.deepEqual(errors,[]);
  console.log('PASS: served Task Node page -> real browser ML-DSA WASM sign -> authenticated gateway -> local stub; explicit accepted receipt, sender -1000001 atoms, recipient +1000000 atoms, activity and asset balance rendered. ONE stub submission; NO live chain transaction.');
 }finally{await browser.close();gateway.close();for(const ws of stub.clients)ws.terminate();await new Promise(r=>server.close(r));await new Promise(r=>stub.close(r));}

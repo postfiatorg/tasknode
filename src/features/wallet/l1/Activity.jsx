@@ -1,18 +1,82 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, CircleX, History, RefreshCw } from 'lucide-react';
 import { rpcResult } from './lib/rpc-client.js';
-export default function Activity({ client }) {
-  const [rows, setRows] = useState(null); const [error, setError] = useState('');
+import { Amount, Badge, Card, CopyButton, Empty, Mono, Notice, Skeleton, Spinner } from './ui.jsx';
+
+const TITLES = {
+  pftl_uniswap_primary_redeem: 'Cash in at NAV', pftl_uniswap_redemption_fund: 'Cash-in reserve funded', pftl_uniswap_route_epoch_advance: 'Cash-in fee changed',
+  nav_mint_at_nav: 'Mint at NAV', nav_reserve_submit: 'Reserve packet submitted', nav_epoch_finalize: 'NAV epoch finalized',
+};
+function titleFor(row, incoming) {
+  const kind = String(row.kind || row.transaction_kind || 'transaction');
+  if (kind === 'transfer' || kind === 'payment') return incoming ? 'Received PFT' : 'Sent PFT';
+  if (TITLES[kind]) return TITLES[kind];
+  if (kind.startsWith('vault_bridge')) return 'Bridge claim';
+  if (kind.startsWith('offer')) return kind === 'offer_cancel' ? 'Order cancelled' : 'Market order';
+  const words = kind.replace(/^pftl_uniswap_/, '').replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+export function useActivity(client, limit = 100) {
+  const [rows, setRows] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(false);
+  const load = useCallback(async active => {
+    setLoading(true);
+    try {
+      const result = rpcResult(await client.call('account_tx', { address: client.address, limit }));
+      if (active()) { setRows(Array.isArray(result) ? result : result?.rows || result?.transactions || []); setError(''); }
+    } catch (failure) { if (active()) setError(failure.message); }
+    finally { if (active()) setLoading(false); }
+  }, [client, limit]);
   useEffect(() => {
     if (!client.unlocked) return undefined;
     let active = true;
-    client.call('account_tx', { address: client.address, limit: 100 }).then(response => {
-      const result = rpcResult(response);
-      if (active) setRows(Array.isArray(result) ? result : result?.rows || result?.transactions || []);
-    }).catch(failure => { if (active) setError(failure.message); });
+    void load(() => active);
     return () => { active = false; };
-  }, [client]);
+  }, [client, load]);
+  return { rows, error, loading, reload: () => load(() => true) };
+}
+
+export function ActivityRows({ rows, address }) {
+  return <div className="l1-activity-list">{rows.map((row, index) => {
+    const from = row.from || row.source, to = row.to || row.destination;
+    const incoming = to === address && from !== address;
+    const rejected = row.accepted === false;
+    const kind = String(row.kind || row.transaction_kind || '');
+    const isTransfer = kind === 'transfer' || kind === 'payment';
+    const Icon = rejected ? CircleX : isTransfer ? (incoming ? ArrowDownLeft : ArrowUpRight) : ArrowLeftRight;
+    const counterparty = incoming ? from : to;
+    return <article key={row.tx_id || index} className="l1-tx">
+      <span className={`l1-tx-icon ${rejected ? 'is-rejected' : incoming ? 'is-in' : ''}`}><Icon size={17} aria-hidden /></span>
+      <div className="l1-tx-main">
+        <b>{titleFor(row, incoming)}</b>
+        <div className="l1-tx-meta">
+          {counterparty && <span>{incoming ? 'From' : 'To'} <Mono value={counterparty} /></span>}
+          {row.tx_id && <span className="l1-row" style={{ gap: 2 }}><Mono value={row.tx_id} /><CopyButton value={row.tx_id} label="transaction id" /></span>}
+        </div>
+        {rejected && <span className="l1-small" style={{ color: 'var(--l1-danger)' }}>Rejected: {row.reject_reason || row.code || 'execution rejected'}</span>}
+      </div>
+      <div className="l1-tx-side">
+        {row.amount != null ? <span className={incoming ? 'is-in' : ''}>{incoming ? '+' : isTransfer ? '−' : ''}<Amount atoms={row.amount} unit={isTransfer ? 'PFT' : undefined} /></span> : <span />}
+        {row.accepted === true ? <Badge tone="success">Accepted</Badge> : rejected ? <Badge tone="danger">Rejected</Badge> : <Badge>Receipt unverified</Badge>}
+      </div>
+    </article>;
+  })}</div>;
+}
+
+export default function Activity({ client }) {
+  const { rows, error, loading, reload } = useActivity(client);
   if (!client.unlocked) return <p>Unlock your L1 wallet to see activity.</p>;
-  return <div>{error && <p role="alert">{error}</p>}{rows === null && !error && <p>Loading activity…</p>}{rows?.length === 0 && <p>No account transactions.</p>}
-    {rows?.map((row, index) => <article key={row.tx_id || index} style={{ overflowWrap: 'anywhere', marginBottom: 16 }}><strong>{row.kind || row.transaction_kind || 'Transaction'}</strong><p>{row.tx_id}</p><p>{row.accepted === true ? 'Accepted' : row.accepted === false ? `Rejected: ${row.reject_reason || row.code || 'execution rejected'}` : 'Receipt unverified'}</p><p>{row.from || row.source} → {row.to || row.destination}</p><p>{row.amount != null ? `${row.amount} atoms` : ''}</p></article>)}
+  return <div className="l1-view l1-stack">
+    <div className="l1-toolbar">
+      <div>{loading ? <><Spinner size={14} />Reading transactions…</> : rows ? `${rows.length} transaction${rows.length === 1 ? '' : 's'}` : ''}</div>
+      <button type="button" className="l1-btn is-sm is-ghost" onClick={reload} disabled={loading}><RefreshCw size={14} aria-hidden />Refresh</button>
+    </div>
+    {error && <Notice tone="danger" role="alert" title="Activity could not be read from the chain">{error}</Notice>}
+    <Card>
+      {rows === null && !error && <div style={{ display: 'grid', gap: 18 }}>{[0, 1, 2].map(i => <div key={i} className="l1-row" style={{ gap: 14 }}><Skeleton width="38px" height={38} /><div style={{ flex: 1, display: 'grid', gap: 6 }}><Skeleton width="40%" /><Skeleton width="65%" height={11} /></div></div>)}</div>}
+      {rows?.length === 0 && <Empty icon={History} title="No transactions yet">Payments, market orders and cash-ins from this wallet will appear here with their receipts.</Empty>}
+      {rows === null && error && <Empty icon={History} title="Nothing to show">The chain did not return this wallet&rsquo;s history. Try again shortly.</Empty>}
+      {rows?.length > 0 && <ActivityRows rows={rows} address={client.address} />}
+    </Card>
   </div>;
 }

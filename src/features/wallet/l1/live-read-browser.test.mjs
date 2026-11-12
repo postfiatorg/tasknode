@@ -1,3 +1,4 @@
+const WEB=process.env.L1_WEB_ORIGIN||'http://127.0.0.1:5198';
 // Opt-in read-only acceptance. Never submits transactions or signs.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -5,7 +6,7 @@ import { once } from 'node:events';
 import { registerL1Gateway } from '../../../../server/l1/gateway.js';
 if (!process.env.L1_WALLET_PROXY_URL || !process.env.L1_READ_ADDRESS) throw new Error('Set the OPS contract proxy URL and public pf address');
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || '/home/postfiat/repos/postfiatl1v2-fastswap/wallet-web/node_modules/playwright/index.mjs');
-const server=createServer(async(req,res)=>{try{const r=await fetch('http://127.0.0.1:5198'+req.url);res.writeHead(r.status,{'content-type':r.headers.get('content-type')||'text/plain'});res.end(Buffer.from(await r.arrayBuffer()));}catch{res.writeHead(502);res.end();}});
+const server=createServer(async(req,res)=>{try{const r=await fetch(WEB+''+req.url);res.writeHead(r.status,{'content-type':r.headers.get('content-type')||'text/plain'});res.end(Buffer.from(await r.arrayBuffer()));}catch{res.writeHead(502);res.end();}});
 const gateway=registerL1Gateway(server,{getSession:async token=>token==='synthetic-read-session'?{authenticated:true,accountId:'synthetic-read-account'}:null,sessionCookieName:'sid',cookieValue:req=>req.headers.cookie?.split('=')[1],json:(r,s,b)=>{r.writeHead(s);r.end(JSON.stringify(b));},readJson:async()=>({})});
 server.listen(0,'127.0.0.1');await once(server,'listening');const origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});

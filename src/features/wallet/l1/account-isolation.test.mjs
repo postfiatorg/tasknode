@@ -1,8 +1,9 @@
+const WEB=process.env.L1_WEB_ORIGIN||'http://127.0.0.1:5198';
 import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || '/home/postfiat/repos/postfiatl1v2-fastswap/wallet-web/node_modules/playwright/index.mjs');
 const browser = await chromium.launch({headless:true,args:['--no-sandbox']});
 try {
- const page = await browser.newPage();await page.goto('http://127.0.0.1:5198');
+ const page = await browser.newPage();await page.goto(WEB+'');
  const result=await page.evaluate(async()=>{
   const {L1WalletCore}=await import('/src/features/wallet/l1/core.js');
   const {loadVault}=await import('/src/features/wallet/l1/lib/vault.js');

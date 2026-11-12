@@ -1,43 +1,158 @@
 import { useState } from "react";
+import { ArrowDownToLine, BookOpen, ListOrdered } from "lucide-react";
 import { units } from "./amounts.js";
-import { buildCancel, buildOffer, offerProgress, snapshot, verifyOffer } from "./model.js";
+import { buildCancel, buildOffer, lineBalance, offerProgress, snapshot, verifyOffer } from "./model.js";
 import { ActionReview, useNavcoin, WalletNotice } from "./ui.jsx";
-function Offers({ title, report, config, cancel }) {
-  return <section className="nc-card"><h3>{title}</h3>{report.truncated && <p>Showing the first {report.limit} offers; this is a partial book.</p>}
-    {!report.offers?.length ? <p>No offers in this view.</p> : <div className="nc-table-wrap"><table><thead><tr><th>Side</th><th>Original B23</th><th>Remaining B23</th><th>Remaining PFUSDC</th><th>Fill / state</th>{cancel && <th>Action</th>}</tr></thead>
-      <tbody>{report.offers.map(offer => { const sell = offer.taker_gets_asset_id === config.b23_asset_id, progress = offerProgress(offer); return <tr key={offer.offer_id} title={offer.offer_id}>
-        <td>{sell ? "Sell" : "Buy"}</td><td>{units(sell ? offer.original_taker_gets_amount : offer.original_taker_pays_amount)}</td>
-        <td>{units(sell ? offer.taker_gets_amount_remaining : offer.taker_pays_amount_remaining)}</td><td>{units(sell ? offer.taker_pays_amount_remaining : offer.taker_gets_amount_remaining)}</td>
-        <td>{progress.label} / {offer.state}</td>{cancel && <td><button type="button" disabled={offer.state !== "open"} onClick={() => cancel(offer)}>Cancel remainder</button></td>}</tr>; })}</tbody></table></div>}</section>;
+import { Amount, Badge, Card, CardHead, Details, Empty, Notice, Skeleton } from "../ui.jsx";
+import { amount, plainError, unitPrice } from "../format.js";
+
+// Plain decimal string for inputs ("10.5"), from atoms.
+const plain = atoms => units(atoms).replace(/\.?0+$/, "") || "0";
+const toAtoms = value => { const match = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,6}))?$/.exec(String(value).trim()); return match ? BigInt(match[1]) * 1000000n + BigInt((match[2] || "").padEnd(6, "0")) : null; };
+
+function levels(report, config, side) {
+  return (report?.offers || []).map(offer => {
+    const sell = offer.taker_gets_asset_id === config.b23_asset_id;
+    const size = BigInt(sell ? offer.taker_gets_amount_remaining : offer.taker_pays_amount_remaining);
+    const total = BigInt(sell ? offer.taker_pays_amount_remaining : offer.taker_gets_amount_remaining);
+    return { id: offer.offer_id, side, size, total, price: unitPrice(total, size) };
+  }).filter(level => level.size > 0n && level.price !== null)
+    .sort((a, b) => side === "ask" ? (a.price < b.price ? -1 : a.price > b.price ? 1 : 0) : (a.price > b.price ? -1 : a.price < b.price ? 1 : 0));
 }
+
+// One decimal count for the whole book so the price column lines up.
+function bookDecimals(prices) {
+  let decimals = 2;
+  for (const price of prices) { const fraction = String(price % 1000000n).padStart(6, "0").replace(/0+$/, ""); decimals = Math.max(decimals, Math.min(fraction.length, 6)); }
+  return decimals;
+}
+function Book({ book, config, nav, onPick }) {
+  const asks = levels(book.asks, config, "ask"), bids = levels(book.bids, config, "bid");
+  const places = bookDecimals([...asks, ...bids].map(level => level.price));
+  const px = value => amount(value, { min: places, max: places });
+  const maxSize = [...asks, ...bids].reduce((max, level) => level.size > max ? level.size : max, 1n);
+  const width = size => `${Math.max(4, Number((size * 1000n) / maxSize) / 10)}%`;
+  const Row = ({ level, best }) => <button type="button" className={`l1-level is-${level.side} ${best ? (level.side === "ask" ? "is-best" : "is-best-bid") : ""}`} onClick={() => onPick(level)} title={level.side === "ask" ? "Buy this offer" : "Sell into this bid"}>
+    <span className="l1-level-price">{px(level.price)}</span><span><Amount atoms={level.size} /></span><span><Amount atoms={level.total} /></span>
+    <span className="l1-level-bar" style={{ width: width(level.size) }} aria-hidden />
+  </button>;
+  const bestAsk = asks[0], bestBid = bids[0];
+  return <Card className="l1-book" aria-label="Order book">
+    <CardHead eyebrow="B23 / PFUSDC" title="Order book">{(book.asks.truncated || book.bids.truncated) && <Badge tone="warning">Partial view</Badge>}</CardHead>
+    <div className="l1-book-cols"><span>Price</span><span>Size B23</span><span>Total PFUSDC</span></div>
+    {asks.length ? [...asks].reverse().map(level => <Row key={level.id} level={level} best={level === bestAsk} />) : <p className="l1-book-empty">No one is selling B23 right now.</p>}
+    <div className="l1-spread">
+      <span className="l1-muted">{bestAsk ? "Best ask" : "NAV reference"}</span>
+      <strong>{bestAsk ? px(bestAsk.price) : nav ? `$${amount(nav, { min: 2 })}` : "—"}</strong>
+      <span className="l1-muted">{bestAsk && nav ? `NAV $${amount(nav, { min: 2 })}` : bestAsk ? "" : "No sell offers"}{bestAsk && bestBid ? ` · spread ${px(bestAsk.price - bestBid.price)}` : ""}</span>
+    </div>
+    {bids.length ? bids.map(level => <Row key={level.id} level={level} best={level === bestBid} />) : <p className="l1-book-empty">No buy offers resting.</p>}
+    <p className="l1-book-foot">{asks.length ? "Tap an offer to load it into the ticket. Prices are PFUSDC per B23." : "Place a buy offer at your price. It rests on the book and fills when a seller meets it."}</p>
+  </Card>;
+}
+
+function Orders({ report, config, cancel }) {
+  const offers = report.offers || [];
+  return <Card aria-label="Your offers">
+    <CardHead eyebrow="Yours" title="Open offers and history">{report.truncated && <Badge tone="warning">First {report.limit}</Badge>}</CardHead>
+    {!offers.length ? <Empty icon={ListOrdered} title="No offers from this wallet">Buy and sell offers you place appear here with their fill progress.</Empty> : <div className="l1-orders">{offers.map(offer => {
+      const sell = offer.taker_gets_asset_id === config.b23_asset_id, progress = offerProgress(offer);
+      const original = BigInt(sell ? offer.original_taker_gets_amount : offer.original_taker_pays_amount);
+      const remaining = BigInt(sell ? offer.taker_gets_amount_remaining : offer.taker_pays_amount_remaining);
+      const gets = BigInt(offer.original_taker_gets_amount), filledShare = gets > 0n ? Number(((gets - BigInt(offer.taker_gets_amount_remaining)) * 1000n) / gets) / 10 : 0;
+      const price = unitPrice(sell ? offer.original_taker_pays_amount : offer.original_taker_gets_amount, original);
+      return <div key={offer.offer_id} className="l1-order" title={offer.offer_id}>
+        <span className={`l1-order-side ${sell ? "is-sell" : "is-buy"}`}>{sell ? "Sell" : "Buy"}</span>
+        <div className="l1-order-main">
+          <div><b><Amount atoms={original} unit="B23" /></b><span className="l1-muted l1-small">at {price === null ? "—" : amount(price, { min: 2 })} PFUSDC · <Amount atoms={remaining} /> left</span></div>
+          <div className="l1-progress" aria-hidden><span style={{ width: `${filledShare}%` }} /></div>
+          <span className="l1-small l1-muted">{progress.label} · {offer.state}</span>
+        </div>
+        {cancel && <button type="button" className="l1-btn is-sm" disabled={offer.state !== "open"} onClick={() => cancel(offer)}>Cancel remainder</button>}
+      </div>;
+    })}</div>}
+  </Card>;
+}
+
 export default function MarketTab({ client, onNavigate }) {
-  const { data, error, loading, refresh } = useNavcoin(client, true);
+  const navcoin = useNavcoin(client, true);
+  const { data, error, loading, refresh } = navcoin;
   const [side, setSide] = useState("buy"), [quantity, setQuantity] = useState(""), [total, setTotal] = useState(""), [expiration, setExpiration] = useState("0");
   const [request, setRequest] = useState(null), [actionError, setActionError] = useState("");
-  function review(intent, description) {
-    setRequest({ id: crypto.randomUUID(), accountId: client.accountId, address: client.address, intent, description,
+  function review(intent, description, extra) {
+    setRequest({ id: crypto.randomUUID(), accountId: client.accountId, address: client.address, intent, description, ...extra,
       read: () => snapshot(client, data.config, { recipient: data.config.alice_holder_address }), verify: (intent, before, after, receipt) => verifyOffer(intent, before, after, data.config, receipt) });
   }
+  const qtyAtoms = toAtoms(quantity), totalAtoms = toAtoms(total);
+  const limit = qtyAtoms && totalAtoms ? unitPrice(totalAtoms, qtyAtoms) : null;
   function create(event) {
     event.preventDefault(); setActionError(""); setRequest(null);
-    try { review(buildOffer(data.config, client.address, side, quantity, total, expiration, data.state), side === "buy" ? "Pay up to the entered PFUSDC total for B23 on the order book. A crossing offer can fill partly or remain open. This does not mint B23." : "Offer B23 from your holder wallet for the entered PFUSDC total. Existing crossing bids may fill immediately; the unfilled remainder stays open."); }
+    try {
+      const intent = buildOffer(data.config, client.address, side, quantity, total, expiration, data.state);
+      review(intent, side === "buy" ? "A buy offer crosses sell offers at or below your price; a fill is not guaranteed. Any unfilled PFUSDC stays locked in the offer until it fills or you cancel it. This does not mint B23." : "Existing buy offers at or above your price may fill immediately; the unfilled remainder stays open until filled or cancelled.", {
+        title: side === "buy" ? "Buy B23" : "Sell B23",
+        lockedUnit: side === "buy" ? "PFUSDC" : "B23",
+        successText: effects => {
+          const filled = BigInt(effects?.received || 0), locked = BigInt(effects?.locked || 0);
+          if (side === "buy") return locked > 0n ? `${amount(filled)} B23 bought now. ${amount(locked)} PFUSDC waits on the book until a seller meets your price.` : `${amount(filled)} B23 bought. Fills were checked against your balances.`;
+          return locked > 0n ? `${amount(locked)} B23 is offered on the book${BigInt(effects?.received || 0) > 0n ? `; ${amount(effects.received)} PFUSDC received from fills so far` : ""}.` : "Sell offer filled and checked against your balances.";
+        },
+        summary: side === "buy"
+          ? [["You buy", <Amount atoms={qtyAtoms} unit="B23" />], ["Limit price", limit === null ? "—" : `${amount(limit, { min: 2 })} PFUSDC per B23`], ["You pay at most", <Amount atoms={totalAtoms} unit="PFUSDC" />, true]]
+          : [["You sell", <Amount atoms={qtyAtoms} unit="B23" />], ["Limit price", limit === null ? "—" : `${amount(limit, { min: 2 })} PFUSDC per B23`], ["You receive at least", <Amount atoms={totalAtoms} unit="PFUSDC" />, true]],
+      });
+    } catch (e) { setActionError(e.message); }
+  }
+  function cancel(offer) {
+    setActionError(""); setRequest(null);
+    try { review(buildCancel(client.address, offer), "Cancels only the unfilled remainder; earlier fills stay final.", { title: "Cancel offer", successText: "The unfilled remainder was cancelled and refunded to this wallet.", summary: [["Offer", <span className="l1-mono">{String(offer.offer_id).slice(0, 14)}…</span>], ["Refund", <Amount atoms={offer.taker_gets_amount_remaining} unit={offer.taker_gets_asset_id === data.config.b23_asset_id ? "B23" : "PFUSDC"} />, true]] }); }
     catch (e) { setActionError(e.message); }
   }
-  function cancel(offer) { setActionError(""); setRequest(null); try { review(buildCancel(client.address, offer), "Cancel only the unfilled remainder. Prior fills remain final."); } catch (e) { setActionError(e.message); } }
-  return <div className="nc"><h2>B23 / PFUSDC market</h2>
-    <ol className="nc-steps" aria-label="Bob journey"><li>Connect MetaMask in the Bridge tab.</li><li>Convert USDC to PFUSDC in the Bridge tab and verify the credited balance.</li><li>Buy B23 here from the order book.</li></ol>
-    {onNavigate && <button type="button" onClick={() => onNavigate("Bridge")}>Open Bridge for steps 1–2</button>}
-    <p>Alice step 3: use the separate holder wallet to post a sell offer after minting and funding in Issuer.</p>
-    <WalletNotice client={client} error={error} loading={loading} refresh={refresh} />
-    {data && <><section className="nc-card"><h3>{side === "buy" ? "Buy B23" : "Post sell offer"}</h3><p>Enter B23 quantity and the total PFUSDC consideration. A buy crosses asks at or below this limit price; a fill is not guaranteed. The unfilled offered amount stays locked until filled or cancelled.</p>
-      <form onSubmit={create} onChange={() => setRequest(null)}><label>Action<select aria-label="Market action" value={side} onChange={e => setSide(e.target.value)}><option value="buy">Buy B23</option><option value="sell">Post sell offer</option></select></label>
-        <label>B23 quantity<input inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)} required /></label>
-        <label>PFUSDC total<input inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} required /></label>
-        <label>Expiration height (0 = none)<input inputMode="numeric" value={expiration} onChange={e => setExpiration(e.target.value)} required /></label>
-        <button type="submit">Review {side === "buy" ? "buy offer" : "sell offer"}</button></form></section>
-      <Offers title="Sell offers (asks)" report={data.book.asks} config={data.config} /><Offers title="Buy offers (bids)" report={data.book.bids} config={data.config} />
-      <Offers title="Your offers and remainders" report={data.book.mine} config={data.config} cancel={cancel} /></>}
-    {actionError && <p role="alert">{actionError}</p>}
-    {request && request.accountId === client.accountId && request.address === client.address && client.unlocked && <ActionReview key={request.id} client={client} request={request} onComplete={refresh} />}
+  function pick(level) {
+    setRequest(null);
+    setSide(level.side === "ask" ? "buy" : "sell");
+    setQuantity(plain(level.size)); setTotal(plain(level.total));
+  }
+  let available = null;
+  try { if (data) available = lineBalance(data.balances.assets, side === "buy" ? data.config.pfusdc_asset_id : data.config.b23_asset_id); } catch { available = null; }
+  const asks = data ? levels(data.book.asks, data.config, "ask") : [];
+  const bestAsk = asks[0];
+  const tradingOpen = data && data.config.g1_passed && data.config.management_address && data.state?.pool?.spread_recipient === data.config.management_address;
+  function fillAtBestAsk() {
+    if (!bestAsk || !qtyAtoms) return;
+    setTotal(plain((qtyAtoms * bestAsk.total + bestAsk.size - 1n) / bestAsk.size));
+  }
+  const visible = request && request.accountId === client.accountId && request.address === client.address && client.unlocked;
+  return <div className="l1-view">
+    <WalletNotice client={client} error={error} loading={loading} refresh={refresh} data={data} />
+    <div className="l1-split is-ticket">
+      <div className="l1-stack">
+        {!data ? <Card>{loading ? <Skeleton height={300} /> : <Empty icon={BookOpen} title="Market not loaded">Refresh to read the B23 order book.</Empty>}</Card> : <Card className="l1-ticket">
+          <CardHead eyebrow="Order ticket" title={side === "buy" ? "Buy B23" : "Sell B23"} />
+          <form onSubmit={create} onChange={() => setRequest(null)}>
+            <div className="l1-seg" role="radiogroup" aria-label="Market action">
+              <label><input type="radio" name="market-side" value="buy" checked={side === "buy"} onChange={() => setSide("buy")} />Buy</label>
+              <label><input type="radio" name="market-side" value="sell" checked={side === "sell"} onChange={() => setSide("sell")} />Sell</label>
+            </div>
+            <label className="l1-field"><span>B23 quantity</span><span className="l1-input-wrap"><input aria-label="B23 quantity" inputMode="decimal" placeholder="0.00" value={quantity} onChange={e => setQuantity(e.target.value)} required /><span className="l1-input-suffix">B23</span></span></label>
+            <label className="l1-field"><span>PFUSDC total</span><span className="l1-input-wrap"><input aria-label="PFUSDC total" inputMode="decimal" placeholder="0.00" value={total} onChange={e => setTotal(e.target.value)} required /><span className="l1-input-suffix">{side === "buy" && bestAsk && <button type="button" className="l1-max" disabled={!qtyAtoms} onClick={fillAtBestAsk} title="Set the total from the best ask">Best ask</button>}PFUSDC</span></span>
+              <span className="l1-field-hint"><span>{side === "buy" ? "The most you will pay." : "The least you will accept."}</span><span>{available === null ? "" : <>Available <Amount atoms={available} unit={side === "buy" ? "PFUSDC" : "B23"} /></>}</span></span></label>
+            <div className="l1-ticket-price"><small>Limit price</small><strong>{limit === null ? "—" : `${amount(limit, { min: 2 })} PFUSDC`}</strong><small>{data.state?.nav ? `NAV $${amount(data.state.nav.nav_per_unit, { min: 2 })}` : ""}</small></div>
+            <Details summary="Advanced"><label className="l1-field"><span>Expires at block (0 = never)</span><input inputMode="numeric" value={expiration} onChange={e => setExpiration(e.target.value)} required /></label></Details>
+            {!tradingOpen && <Notice tone="warning" title="Market offers are switched off on this network">Order entry opens once the operator enables the B23 market.</Notice>}
+            <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={!tradingOpen}>Review {side === "buy" ? "buy offer" : "sell offer"}</button>
+          </form>
+          {onNavigate && <p className="l1-small l1-muted" style={{ marginTop: 14 }}>Need PFUSDC? <button type="button" className="l1-link" onClick={() => onNavigate("Bridge")}><ArrowDownToLine size={13} aria-hidden />Add PFUSDC from Ethereum</button></p>}
+        </Card>}
+        {actionError && <Notice tone="danger" role="alert">{plainError(actionError)}</Notice>}
+        {visible && <ActionReview key={request.id} client={client} request={request} onComplete={refresh} onCancel={() => setRequest(null)} />}
+      </div>
+      <div className="l1-stack">
+        {data ? <>
+          <Book book={data.book} config={data.config} nav={data.state?.nav?.nav_per_unit} onPick={pick} />
+          <Orders report={data.book.mine} config={data.config} cancel={cancel} />
+        </> : <Card>{loading ? <Skeleton height={300} /> : null}</Card>}
+      </div>
+    </div>
   </div>;
 }

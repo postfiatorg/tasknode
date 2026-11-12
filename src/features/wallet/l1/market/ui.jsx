@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CircleAlert, CircleCheck, RefreshCw, TriangleAlert } from "lucide-react";
 import { loadConfig } from "./constants.js";
 import { readBook, readPool } from "./model.js";
 import { prepareAction, submitAction } from "./transaction.js";
-import { units } from "./amounts.js";
-import "./navcoin.css";
+import { Amount, Badge, Card, CardHead, Details, IdChip, JsonBlock, KV, Mono, Notice, Spinner } from "../ui.jsx";
+import { amount, percentFromBps, plainError } from "../format.js";
 export function useNavcoin(client, market = false) {
   const clientRef = useRef(client); clientRef.current = client;
   const generation = useRef(0);
@@ -17,32 +18,51 @@ export function useNavcoin(client, market = false) {
     try {
       const config = await loadConfig();
       const [state, book, balances] = await Promise.all([readPool(current, config), market ? readBook(current, config) : null, current.getBalances()]);
-      if (ticket === generation.current) setData({ config, state, book, balances, address: current.address, accountId: current.accountId });
+      if (ticket === generation.current) setData({ config, state, book, balances, address: current.address, accountId: current.accountId, readAt: Date.now() });
     } catch (e) { if (ticket === generation.current) setError(e.message); }
     finally { if (ticket === generation.current) setLoading(false); }
   }, [market]);
   useEffect(() => { const token = generation; void refresh(); return () => { token.current++; }; }, [refresh, accountId, address, unlocked]);
   return { data: data?.address === address && data?.accountId === accountId && unlocked ? data : null, error, loading, refresh };
 }
-export function WalletNotice({ client, error, loading, refresh }) {
-  return <><p className="nc-muted">{client?.unlocked ? `PFTL wallet: ${client.address}` : "Unlock your L1 wallet to read balances and review actions."}</p>
-    <button type="button" onClick={refresh} disabled={loading || !client?.unlocked}>Refresh state</button>
-    {loading && <p role="status">Reading chain state…</p>}{error && <p role="alert">{error}</p>}</>;
+export function WalletNotice({ client, error, loading, refresh, data }) {
+  const time = data?.readAt ? new Date(data.readAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : null;
+  return <>
+    <div className="l1-toolbar">
+      <div>{!client?.unlocked ? "Unlock your L1 wallet to read balances and review actions." : loading ? <><Spinner size={14} />Reading chain state…</> : time ? <>Chain state read at {time}</> : null}</div>
+      <button type="button" className="l1-btn is-sm is-ghost" onClick={refresh} disabled={loading || !client?.unlocked} aria-label="Refresh state"><RefreshCw size={14} aria-hidden />Refresh</button>
+    </div>
+    {error && <div style={{ marginBottom: 16 }}><Notice tone="danger" role="alert" title="Chain state is unavailable">{plainError(error)}</Notice></div>}
+  </>;
 }
 export function PoolState({ state, config }) {
   const p = state.pool;
-  return <section className="nc-card" aria-label="Redemption pool state"><h3>Redemption pool</h3><dl className="nc-grid">
-    <div><dt>PFUSDC reserve</dt><dd>{units(p.settlement_reserve_atoms)}</dd></div>
-    <div><dt>Total B23 supply</dt><dd>{units(state.supply)}</dd></div>
-    <div><dt>B23 redeemable now</dt><dd>{units(p.available_redeem_atoms)}</dd></div>
-    <div><dt>Supply invariant holds</dt><dd>{p.invariant_holds === true ? "Yes" : p.invariant_holds === false ? "No" : "Unavailable"}</dd></div>
-    <div><dt>Current redemption fee</dt><dd>{Number.isSafeInteger(p.redeem_multiplier_bps) ? `${10000 - p.redeem_multiplier_bps} bps` : "Unavailable"}</dd></div>
-    <div><dt>NAV per B23</dt><dd>{state.nav ? `$${units(state.nav.nav_per_unit)}` : "Matching finalized NAV unavailable"}</dd></div>
-  </dl><p className="nc-address">Management address: {p.spread_recipient || "Not set on the live route"}</p>
-  {!config.g1_passed && <p role="status">Fund and redeem are blocked until G1 deployment is verified.</p>}
-  <p className="nc-muted">Capacity is the current reserve and policy limit. Larger redemptions reject; they are not partially filled.</p></section>;
+  const fee = Number.isSafeInteger(p.redeem_multiplier_bps) ? 10000 - p.redeem_multiplier_bps : null;
+  return <Card aria-label="B23 reserve state">
+    <CardHead eyebrow="Standing reserve" title="B23 reserve">{p.invariant_holds === true ? <Badge tone="success" dot>Supply balanced</Badge> : p.invariant_holds === false ? <Badge tone="danger">Supply mismatch</Badge> : null}</CardHead>
+    <div className="l1-facts-nav"><strong><Amount atoms={p.settlement_reserve_atoms} unit="PFUSDC" /></strong></div>
+    <p className="l1-muted l1-small" style={{ marginBottom: 12 }}>Available to pay cash-ins at NAV. Larger cash-ins are rejected, not partly filled.</p>
+    <KV rows={[
+      ["B23 that can be cashed in now", <Amount atoms={p.available_redeem_atoms} unit="B23" />],
+      ["B23 outstanding", <Amount atoms={state.supply} unit="B23" />],
+      ["NAV per B23", state.nav ? `$${amount(state.nav.nav_per_unit, { min: 2 })}` : "Finalized NAV unavailable"],
+      ["Cash-in fee", fee == null ? "Unavailable" : percentFromBps(fee), fee == null ? null : `${fee} bps`],
+    ]} />
+    {!config.g1_passed && <div style={{ marginTop: 14 }}><Notice tone="warning" role="status" title="Cash-ins and reserve funding are switched off">They open once the operator enables this route on the network.</Notice></div>}
+    <Details summary="On-chain details"><KV className="is-tight" rows={[
+      ["Fee recipient", p.spread_recipient ? <Mono value={p.spread_recipient} /> : "Not set on the live route"],
+      ["Route epoch / policy", `${p.route_epoch} / ${p.policy_epoch}`],
+      ["Per cash-in", p.min_order_atoms != null ? `${amount(p.min_order_atoms, { min: 0 })} – ${amount(p.max_order_atoms, { min: 0 })} B23` : "—"],
+    ]} /></Details>
+  </Card>;
 }
-export function ActionReview({ client, request, onComplete }) {
+const STEPS = ["Review", "Quote", "Sign", "Verified"];
+function stepIndex(phase) { return { review: 0, quoting: 1, quoted: 1, submitting: 2, failed: 2, complete: 3 }[phase] ?? 0; }
+function DeltaCard({ label, atoms, unit }) {
+  const value = BigInt(atoms ?? 0);
+  return <div className={`l1-delta ${value > 0n ? "is-up" : value < 0n ? "is-down" : ""}`}><small>{label}</small><span><Amount atoms={atoms} unit={unit} sign /></span></div>;
+}
+export function ActionReview({ client, request, onComplete, onCancel }) {
   const [prepared, setPrepared] = useState(null), [outcome, setOutcome] = useState(null), [error, setError] = useState(""), [phase, setPhase] = useState("review");
   const active = useRef(true), latest = useRef({ client, request }); latest.current = { client, request };
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
@@ -59,19 +79,53 @@ export function ActionReview({ client, request, onComplete }) {
       if (current()) { setOutcome(result); setPhase("complete"); onComplete?.(result); }
     } catch (e) { if (current()) { setError(e.message); setPhase("failed"); } }
   }
-  return <section className="nc-card" aria-label="Review transaction"><h3>Review exact intent</h3><p>{request.description}</p>
-    <pre>{JSON.stringify(request.intent, null, 2)}</pre>
-    {prepared && <details open><summary>Quoted transaction fee and operation</summary><pre>{JSON.stringify(prepared.quote, null, 2)}</pre></details>}
-    {phase === "review" && <button type="button" onClick={quote}>Get fee quote</button>}
-    {phase === "quoted" && <button type="button" onClick={submit}>Sign and submit</button>}
-    {phase === "quoting" && <p role="status">Reading balances and getting a fee quote…</p>}
-    {phase === "submitting" && <p role="status">Signing locally, submitting, and verifying receipt and balances…</p>}
-    {error && <p role="alert">{error} Review a fresh action before retrying.</p>}
-    {outcome && <div role="status"><h4>{outcome.verified ? "Accepted and verified" : "Accepted — balance/state verification incomplete"}</h4>
-      <p>{outcome.effects?.message || outcome.verificationError}</p><p>Transaction: {outcome.txId}</p>
-      {outcome.effects?.deltas && <p>Wallet changes: B23 {units(outcome.effects.deltas.B23)}; PFUSDC {units(outcome.effects.deltas.PFUSDC)}</p>}
-      {outcome.effects?.credits && <div><p className="nc-address">PFUSDC payout asset: {outcome.effects.payoutAssetId}</p><p>Holder credit: {units(outcome.effects.credits.settlement_value_atoms)} PFUSDC → {outcome.effects.credits.settlement_recipient}</p><p>Management credit: {units(outcome.effects.credits.spread_value_atoms)} PFUSDC → {outcome.effects.credits.spread_recipient}</p></div>}
-      <details><summary>Receipt and before/after balances</summary><pre>{JSON.stringify({ receipt: outcome.receipt, before: outcome.before?.balances, after: outcome.after?.balances, managementBefore: outcome.before?.managementLines, managementAfter: outcome.after?.managementLines, effects: outcome.effects }, null, 2)}</pre></details>
+  const at = stepIndex(phase), effects = outcome?.effects;
+  // Builder rejections read "Transaction <id> rejected: <reason>"; show the reason and the id separately.
+  const rejection = /^Transaction (\S+) rejected: ([\s\S]*)$/.exec(error || "");
+  const failureText = rejection ? `Transaction not accepted: ${rejection[2]}` : error;
+  const fee = prepared?.quote?.minimum_fee;
+  return <Card className="l1-review" aria-label="Review transaction">
+    <CardHead eyebrow={request.title || "Transaction"} title="Review and confirm">{onCancel && phase !== "submitting" && phase !== "complete" && <button type="button" className="l1-btn is-sm is-ghost" onClick={onCancel}>Discard</button>}</CardHead>
+    <ol className="l1-review-steps" aria-label="Progress">{STEPS.map((label, index) => <li key={label} className={index < at || (phase === "complete" && index === at) ? "is-done" : index === at ? "is-current" : ""}><i>{index < at || (phase === "complete" && index === at) ? "✓" : index + 1}</i>{label}</li>)}</ol>
+    {request.summary?.length > 0 && <dl className="l1-summary">{request.summary.filter(Boolean).map(([label, value, total], index) => <div key={index} className={total ? "is-total" : ""}><dt>{label}</dt><dd>{value}</dd></div>)}
+      {fee != null && <div><dt>Network fee</dt><dd><Amount atoms={fee} unit="PFT" max={6} /></dd></div>}
+    </dl>}
+    {request.description && <p className="l1-review-note">{plainError(request.description)}</p>}
+    {phase === "review" && <div className="l1-review-actions"><button type="button" className="l1-btn is-primary" onClick={quote}>Get fee quote</button><span className="l1-muted l1-small">Nothing is signed until you confirm.</span></div>}
+    {phase === "quoted" && <div className="l1-review-actions"><button type="button" className="l1-btn is-primary" onClick={submit}>Sign and submit</button><span className="l1-muted l1-small">Signed in this browser, then checked against the chain.</span></div>}
+    {phase === "quoting" && <p className="l1-status-line" role="status"><Spinner />Reading balances and getting a fee quote…</p>}
+    {phase === "submitting" && <p className="l1-status-line" role="status"><Spinner />Signing locally, submitting, and verifying the receipt and balances…</p>}
+    {error && phase !== "failed" && <Notice tone="danger" role="alert">{plainError(error)} Review a fresh action before retrying.</Notice>}
+    {phase === "failed" && <div className="l1-outcome">
+      <div className="l1-outcome-head"><span className="l1-outcome-icon is-danger"><CircleAlert size={22} aria-hidden /></span><div><h4>{rejection || /not accepted/i.test(error) ? "Rejected by the chain" : "Not completed"}</h4><p>No balance change was verified for this action.</p></div></div>
+      <Notice tone="danger" role="alert">{plainError(failureText)} Review a fresh action before retrying.</Notice>
+      {rejection && <div className="l1-row"><span className="l1-muted l1-small">Rejected transaction</span><IdChip value={rejection[1]} label="transaction id" /></div>}
     </div>}
-  </section>;
+    {outcome && <div role="status" className="l1-outcome">
+      <div className="l1-outcome-head">
+        <span className={`l1-outcome-icon ${outcome.verified ? "" : "is-warning"}`}>{outcome.verified ? <CircleCheck size={22} aria-hidden /> : <TriangleAlert size={22} aria-hidden />}</span>
+        <div><h4>{outcome.verified ? "Accepted and verified" : "Accepted — balance/state verification incomplete"}</h4><p>{outcome.verified ? ((typeof request.successText === "function" ? request.successText(effects) : request.successText) || "Receipt accepted and balances re-read from the chain.") : plainError(outcome.verificationError)}</p></div>
+      </div>
+      {effects?.credits ? <div className="l1-deltas">
+        <div className="l1-delta is-up"><small>You received</small><span><Amount atoms={effects.credits.settlement_value_atoms} unit="PFUSDC" testId="credit-holder" /></span></div>
+        <div className="l1-delta"><small>Cash-in fee</small><span><Amount atoms={effects.credits.spread_value_atoms} unit="PFUSDC" testId="credit-fee" /></span></div>
+        {effects.deltas && <DeltaCard label="B23 balance" atoms={effects.deltas.B23} unit="B23" />}
+      </div> : effects?.deltas && <div className="l1-deltas">
+        <DeltaCard label="B23 balance" atoms={effects.deltas.B23} unit="B23" />
+        <DeltaCard label="PFUSDC balance" atoms={effects.deltas.PFUSDC} unit="PFUSDC" />
+        {effects.locked && BigInt(effects.locked) > 0n && <div className="l1-delta"><small>Locked in your open offer</small><span><Amount atoms={effects.locked} unit={request.lockedUnit} /></span></div>}
+      </div>}
+      {effects?.capacityAfter != null && <KV rows={[["Cash-in capacity", <>{amount(effects.capacityBefore)} → <Amount atoms={effects.capacityAfter} unit="B23" /></>]]} />}
+      <div className="l1-row"><span className="l1-muted l1-small">Transaction</span><IdChip value={outcome.txId} label="transaction id" /></div>
+      <Details summary="Receipt and before/after balances">
+        {effects?.message && <p className="l1-small l1-muted">{plainError(effects.message)}</p>}
+        {effects?.credits && <KV className="is-tight" rows={[["Payout asset", <Mono value={effects.payoutAssetId} />], ["Paid to", <Mono value={effects.credits.settlement_recipient} />], ["Fee to", <Mono value={effects.credits.spread_recipient} />]]} />}
+        <JsonBlock value={{ receipt: outcome.receipt, before: outcome.before?.balances, after: outcome.after?.balances, managementBefore: outcome.before?.managementLines, managementAfter: outcome.after?.managementLines, effects: outcome.effects }} />
+      </Details>
+    </div>}
+    <Details summary="Exact operation">
+      <JsonBlock value={request.intent} />
+      {prepared && <><p className="l1-small l1-muted">Quoted fee and operation</p><JsonBlock value={prepared.quote} /></>}
+    </Details>
+  </Card>;
 }

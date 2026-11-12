@@ -1,3 +1,4 @@
+const WEB=process.env.L1_WEB_ORIGIN||'http://127.0.0.1:5198';
 import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || '/home/postfiat/repos/postfiatl1v2-fastswap/wallet-web/node_modules/playwright/index.mjs');
 const browser = await chromium.launch({headless:true,args:['--no-sandbox']});
@@ -5,11 +6,11 @@ try {
  const page=await browser.newPage();let account='backup-source';
  await page.route('**/api/**',r=>r.fulfill({json:r.request().url().includes('/api/app-state')?{session:{status:'signed_in',accountId:account},wallet:{},tasks:{},chat:{conversations:[],messages:[]}}:{}}));
  await page.route('**/runtime-config*',r=>r.fulfill({contentType:'application/json',body:'{}'}));
- await page.goto('http://127.0.0.1:5198/#l1-wallet');
+ await page.goto(WEB+'/#l1-wallet');
  await page.getByLabel('Wallet passphrase',{exact:true}).fill('synthetic-backup-password');
  await page.getByRole('button',{name:'Create L1 wallet',exact:true}).click();
  await page.getByTestId('l1-address').waitFor();const original=await page.getByTestId('l1-address').textContent();
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'Download encrypted backup',exact:true}).click();
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Wallet menu',exact:true}).click();await page.getByRole('button',{name:'Download encrypted backup',exact:true}).click();
  const file=await download;const stream=await file.createReadStream();const chunks=[];for await(const c of stream)chunks.push(c);const bytes=Buffer.concat(chunks);
  const parsed=JSON.parse(bytes.toString());assert.ok(parsed.vault.ciphertext);assert.ok(!parsed.seed && !parsed.passphrase && !parsed.backup_json);
  account='backup-destination';await page.reload();await page.getByRole('button',{name:'Create L1 wallet',exact:true}).waitFor();
