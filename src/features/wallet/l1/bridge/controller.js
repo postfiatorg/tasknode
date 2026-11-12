@@ -1,4 +1,5 @@
 import * as evm from "./evm.js";
+import { creditedBalance } from "./balance.js";
 import * as api from "./bridge-relay.js";
 import { parseGovernedVaultBridgeRoute } from "./bridge-route.js";
 
@@ -36,8 +37,8 @@ export class BridgeController {
     }
   }
   set(patch) { if (this.active) { Object.assign(this.state, patch); this.changed({ ...this.state }); } }
-  save(pending) {
-    this.guard();
+  save(pending, broadcast = false) {
+    if (!broadcast) this.guard();
     // Persist only public recovery data, scoped to Task Node account AND pf address.
     this.storage.setItem(this.key, JSON.stringify({ accountId: this.accountId, pending }));
     this.set({ pending });
@@ -104,9 +105,10 @@ export class BridgeController {
   async approve(amount) {
     const { route, atoms } = await this.preflight(amount);
     // Refresh immediately before invoking MetaMask, even if the displayed check was healthy.
-    await this.readiness();
+    const fresh = await this.readiness();
+    if (fresh.profileHash !== route.profileHash) throw new Error("Bridge route changed before approval. Review again.");
     this.guard();
-    const tx = await this.ethereum.approveEthereumUsdc(route.vaultAddress, atoms);
+    const tx = await this.ethereum.approveEthereumUsdc(route.vaultAddress, atoms, this.state.owner, () => this.guard());
     this.set({ approvalTx: tx });
     await this.ethereum.waitForReceipt(tx);
     await this.refreshEthereum();
@@ -118,17 +120,32 @@ export class BridgeController {
     const nonce = this.ethereum.generateNonce();
     // Verify that recovery storage works BEFORE requesting an irreversible transaction.
     const pending = { recipient: this.address, route, owner, amountAtoms: String(atoms), nonce, tx: null, jobId: null };
-    this.save(pending);
-    await this.readiness();
+    const fresh = await this.readiness();
+    if (fresh.profileHash !== route.profileHash) throw new Error("Bridge route changed before deposit. Review again.");
     this.guard();
+    this.save(pending);
     let tx;
     try {
-      tx = await this.ethereum.depositToEthereumBridge(route.vaultAddress, atoms, this.address, nonce, route.routeBinding);
+      tx = await this.ethereum.depositToEthereumBridge(route.vaultAddress, atoms, this.address, nonce, route.routeBinding, owner, () => this.guard());
     } catch (error) {
-      this.save(null);
+      this.save(null, true);
       throw error;
     }
-    this.save({ ...pending, tx });
+    // A provider can return the hash after logout; retain it under the OLD account's key.
+    try { this.save({ ...pending, tx }, true); }
+    catch { throw new Error(`Ethereum deposit broadcast: ${tx}. Recovery storage failed; retain this hash.`); }
+    this.guard();
+    await this.resume();
+  }
+  newDeposit() {
+    if (!this.state.result || this.state.result.balancePending) throw new Error("Verify the existing claim balance first.");
+    this.save(null);
+    this.set({ job: null, result: null, approvalTx: null, error: "" });
+  }
+  async recoverHash(tx) {
+    if (!/^0x[0-9a-f]{64}$/.test(tx)) throw new Error("Enter the Ethereum deposit transaction hash.");
+    if (!this.state.pending || this.state.pending.tx) throw new Error("No interrupted broadcast to recover.");
+    this.save({ ...this.state.pending, tx });
     await this.resume();
   }
   async resume() {
@@ -166,13 +183,21 @@ export class BridgeController {
         || request.route_id !== api.ROUTE_ID || request.depositor !== this.state.pending.owner) {
       throw new Error("Bridge job does not match this wallet's deposit.");
     }
-    this.set({ job });
+    this.set({ job, result: null });
     if (job.status === "failed") throw new Error(job.message || job.code || "Bridge claim failed.");
     if (job.status === "accepted") {
+      if (!/^[0-9a-f]{96}$/.test(job.route_asset_id || "")
+          || job.route_asset_id !== this.state.pending.route?.profile?.asset_id) {
+        throw new Error("Claim credited-asset identity is unverified; relay upgrade required.");
+      }
       if (job.receipt_code !== "ACCEPTED" || !/^(0x)?([0-9a-f]{64}|[0-9a-f]{96})$/.test(job.receipt_id || job.tx_id || "")) {
         throw new Error("Claim has no accepted receipt.");
       }
       this.set({ result: { receipt: job.receipt_id || job.tx_id, balancePending: true } });
+      const response = await this.client.call("account_assets", { account: this.address });
+      const balance = creditedBalance(rpcEnvelope(response), job.asset_id);
+      this.guard();
+      this.set({ result: { receipt: job.receipt_id || job.tx_id, ...balance, balancePending: false } });
     }
   }
   async run(action) {

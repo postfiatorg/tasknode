@@ -57,3 +57,51 @@ test('gateway rejects unauthenticated, cross-origin and custody fields; upstream
   await handleBridgeRoutes(context); assert.equal(responses.at(-1).body.ready, false);
   assert.equal(responses.at(-1).status, 502);
 });
+
+test('B8 reload resumes identical job and displays seven persisted stages', async () => {
+  const { stageRows, STAGES } = await import('./stages.js');
+  const { jobId, depositTx, asset } = await import('./fixtures.mjs');
+  const storage = memoryStorage();
+  const { model: original, client } = setup();
+  original.storage = storage;
+  await original.readiness();
+  const pending = { recipient: address, route: original.route, owner, amountAtoms: '1000000', tx: depositTx, jobId };
+  original.save(pending); original.dispose();
+  const requested = [];
+  const job = { job_id: jobId, asset_id: asset, status: 'proving', retryable: true,
+    request: { pftl_recipient: address, deposit_tx_hash: depositTx, amount_atoms: '1000000', route_id: 'ethereum-mainnet-usdc-v1', depositor: owner },
+    stage_history: STAGES.slice(0, 4).map(([stage], index) => ({ stage, status: index < 3 ? 'complete' : 'running', started_at_unix: 100 + index, completed_at_unix: index < 3 ? 101 + index : null })) };
+  const resumed = new BridgeController(client, { storage, service: { loadBridgeJob: async (id) => { requested.push(id); return job; } } });
+  await resumed.resume();
+  assert.deepEqual(requested, [jobId]);
+  const rows = stageRows(resumed.state.job);
+  assert.equal(rows.length, 7); assert.equal(rows[0].completed, 101); assert.equal(rows[3].status, 'running'); assert.equal(rows[6].status, 'pending');
+  const other = new BridgeController({ ...client, accountId: 'alice' }, { storage });
+  assert.equal(other.state.pending, null);
+  job.request.pftl_recipient = `pf${'99'.repeat(20)}`;
+  await assert.rejects(() => resumed.poll(), /does not match/);
+});
+test('B9 exact child asset read, zero truth, unavailable/missing/malformed balance stays unverified', async () => {
+  const { creditedBalance } = await import('./balance.js');
+  const { asset, jobId, depositTx } = await import('./fixtures.mjs');
+  const family = 'ff'.repeat(48);
+  assert.equal(creditedBalance({ ok: true, result: { assets: [{ asset_id: asset, balance: '0' }] } }, asset).atoms, '0');
+  assert.deepEqual(creditedBalance({ ok: true, result: { assets: [
+    { asset_id: family, balance: '99000000' }, { asset_id: asset, balance: '2000000' },
+  ] } }, asset), { assetId: asset, atoms: '2000000' });
+  for (const response of [{ ok: false }, { ok: true, result: { assets: [{ asset_id: family, balance: '999' }] } },
+    { ok: true, result: { assets: [{ asset_id: asset, balance: 9007199254740992 }] } }]) assert.throws(() => creditedBalance(response, asset));
+  const { model, client } = setup();
+  await model.readiness();
+  model.save({ route: model.route, recipient: address, owner, amountAtoms: '1000000', tx: depositTx, jobId });
+  const job = { status: 'accepted', receipt_code: 'ACCEPTED', receipt_id: 'aa'.repeat(48), job_id: jobId, asset_id: asset, route_asset_id: model.route.profile.asset_id,
+    request: { pftl_recipient: address, deposit_tx_hash: depositTx, amount_atoms: '1000000', route_id: 'ethereum-mainnet-usdc-v1', depositor: owner } };
+  model.service.loadBridgeJob = async () => job;
+  client.call = async () => { throw new Error('Balance RPC offline'); };
+  await assert.rejects(() => model.poll(), /offline/); assert.equal(model.state.result.balancePending, true);
+  client.call = async () => ({ ok: true, result: { assets: [{ asset_id: asset, balance: '2000000' }] } });
+  await model.poll(); assert.equal(model.state.result.atoms, '2000000'); assert.equal(model.state.result.balancePending, false);
+  job.receipt_code = 'REJECTED'; await assert.rejects(() => model.poll(), /accepted receipt/);
+  job.receipt_code = 'ACCEPTED'; delete job.route_asset_id; await assert.rejects(() => model.poll(), /identity is unverified/);
+  assert.equal(model.state.result, null);
+});

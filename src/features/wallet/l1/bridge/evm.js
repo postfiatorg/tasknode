@@ -415,11 +415,14 @@ export async function estimateEthereumBridgeDepositFee(
   });
 }
 
-export async function approveEthereumUsdc(spender, amount) {
+export async function approveEthereumUsdc(spender, amount, expectedOwner, authorize = () => {}) {
   if (!hasMetaMask()) throw new Error('MetaMask not found');
   await ensureEthereumMainnet();
   const accounts = await window.ethereum.request({ method: 'eth_accounts' });
   if (!accounts.length) throw new Error('MetaMask is not connected');
+  if (expectedOwner && accounts[0].toLowerCase() !== expectedOwner) throw new Error('MetaMask account changed');
+  if (await window.ethereum.request({ method: 'eth_chainId' }) !== '0x1') throw new Error('Ethereum mainnet required');
+  authorize();
   return window.ethereum.request({
     method: 'eth_sendTransaction',
     params: [{
@@ -436,11 +439,16 @@ export async function depositToEthereumBridge(
   pftlRecipient,
   nonce,
   routeBinding,
+  expectedOwner,
+  authorize = () => {},
 ) {
   if (!hasMetaMask()) throw new Error('MetaMask not found');
   await ensureEthereumMainnet();
   const accounts = await window.ethereum.request({ method: 'eth_accounts' });
   if (!accounts.length) throw new Error('MetaMask is not connected');
+  if (expectedOwner && accounts[0].toLowerCase() !== expectedOwner) throw new Error('MetaMask account changed');
+  if (await window.ethereum.request({ method: 'eth_chainId' }) !== '0x1') throw new Error('Ethereum mainnet required');
+  authorize();
   return window.ethereum.request({
     method: 'eth_sendTransaction',
     params: [{

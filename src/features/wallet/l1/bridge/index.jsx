@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useL1Wallet } from "../client.jsx";
 import { BridgeController, amountAtoms } from "./controller.js";
 import { atomsToUsdc } from "./evm.js";
+import { stageRows, timestamp } from "./stages.js";
 
 function BridgeSession({ client }) {
   const [view, setView] = useState(null);
   const [controller, setController] = useState(null);
   const [amount, setAmount] = useState("");
+  const [recoveryTx, setRecoveryTx] = useState("");
   useEffect(() => {
     const model = new BridgeController(client, { changed: setView });
     setController(model);
@@ -18,8 +20,15 @@ function BridgeSession({ client }) {
     const changed = () => model.providerChanged();
     window.ethereum?.on?.("accountsChanged", changed);
     window.ethereum?.on?.("chainChanged", changed);
+    let lastReadiness = Date.now();
     const timer = setInterval(() => {
-      if (model.state.busy || model.state.error) return;
+      if (model.state.busy) return;
+      if (Date.now() - lastReadiness > 15000) {
+        lastReadiness = Date.now();
+        void model.run(async () => { try { await model.readiness(); } catch { /* fail closed */ } });
+        return;
+      }
+      if (model.state.error) return;
       if (model.state.pending?.jobId && model.state.job?.status !== "accepted" && model.state.job?.status !== "failed") {
         void model.run(() => model.poll());
       }
@@ -56,9 +65,24 @@ function BridgeSession({ client }) {
     </div>
     {view.approvalTx && <a href={`https://etherscan.io/tx/${view.approvalTx}`} target="_blank" rel="noreferrer">Ethereum approval</a>}
     {tx && <a href={`https://etherscan.io/tx/${tx}`} target="_blank" rel="noreferrer">Ethereum deposit: {tx}</a>}
+    {view.pending && !tx && <div>
+      <label>Interrupted broadcast: Ethereum transaction hash <input value={recoveryTx} onChange={(event) => setRecoveryTx(event.target.value)} /></label>
+      <button disabled={view.busy} onClick={() => controller.run(() => controller.recoverHash(recoveryTx))}>Recover deposit</button>
+    </div>}
     {view.pending && <button disabled={view.busy} onClick={() => controller.run(() => controller.resume())}>Resume deposit / refresh result</button>}
-    {view.job && <p>Relay: {view.job.status}</p>}
-    {view.result && <p>PFTL accepted receipt: <code>{view.result.receipt}</code>. Checking credited balance.</p>}
+    <ol aria-label="Relay stages" style={{ display: "grid", gap: 12 }}>
+      {stageRows(view.job).map((row) => <li key={row.stage}>
+        <strong>{row.label}</strong> — {row.status}
+        <div>Started: {timestamp(row.started)} · Completed: {timestamp(row.completed)}</div>
+      </li>)}
+    </ol>
+    {view.job && <p>Job <code>{view.job.job_id}</code>: {view.job.status}{view.job.code ? ` (${view.job.code})` : ""}</p>}
+    {view.result && <div role="status">
+      <p>PFTL accepted receipt: <code>{view.result.receipt}</code></p>
+      {view.result.balancePending ? <p>Claim accepted; credited balance is unverified. Refresh the result.</p>
+        : <><strong>Claim accepted — current balance: {atomsToUsdc(view.result.atoms)} PFUSDC</strong><p>Credited asset: <code>{view.result.assetId}</code></p></>}
+    </div>}
+    {view.result && !view.result.balancePending && <button disabled={view.busy} onClick={() => controller.run(() => controller.newDeposit())}>Start another deposit</button>}
     {view.error && <p role="alert">{view.error}</p>}
   </section>;
 }

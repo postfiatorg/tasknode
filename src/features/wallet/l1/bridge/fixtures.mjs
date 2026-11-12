@@ -4,7 +4,7 @@ export const address = `pf${'33'.repeat(20)}`;
 export const owner = `0x${'44'.repeat(20)}`;
 export const asset = '6e'.repeat(48);
 export const profile = {
-  schema: 'postfiat.vault_bridge.route_profile.v1', route_id: 'ethereum-mainnet-usdc-v1', asset_id: asset,
+  schema: 'postfiat.vault_bridge.route_profile.v1', route_id: 'ethereum-mainnet-usdc-v1', asset_id: '7e'.repeat(48),
   source_chain_id: 1, vault_address: `0x${'11'.repeat(20)}`,
   vault_runtime_code_hash: '0x07ad118d6cc8642c86c03827f276d8b791a65e5c99a3845faf186be720a1455d',
   token_address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
@@ -27,7 +27,7 @@ export function routeReport() {
 }
 export function readyPayload() {
   return { ok: true, ready: true, route_id: profile.route_id, source_chain_id: 1, source_proof_kind: 'sp1-ethereum-finality-v1',
-    route_profile_hash: vaultBridgeRouteProfileHash(profile), asset_id: asset, vault_address: profile.vault_address,
+    route_profile_hash: vaultBridgeRouteProfileHash(profile), asset_id: profile.asset_id, vault_address: profile.vault_address,
     token_address: profile.token_address, vault_runtime_code_hash: profile.vault_runtime_code_hash,
     token_runtime_code_hash: profile.token_runtime_code_hash, program_vkey: profile.verifier_program_vkey,
     observer_attestor_enabled: false, prover_authenticated: true, prover_healthy: true,
