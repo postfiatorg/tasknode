@@ -1,10 +1,13 @@
 import { initWasm } from './lib/wasm-loader.js';
 import { encryptVault, decryptVault, loadVault, saveVault } from './lib/vault.js';
+import { RpcClient } from './lib/rpc-client.js';
+import { L1_READ_METHODS } from './lib/rpc-methods.js';
 import { CHAIN_ID, ACCOUNT_INDEX } from './lib/utils.js';
 
 // A controller belongs to exactly one mounted Task Node account. Private
 // signing material never enters React props, storage in plaintext, or RPC.
 export class L1WalletCore {
+  #rpc = null;
   #backup = null;
   #generation = 0;
   #disposed = false;
@@ -18,8 +21,17 @@ export class L1WalletCore {
   assertCurrent(generation = this.#generation) {
     if (this.#disposed || !this.isCurrent() || generation !== this.#generation) throw new Error('L1 account session changed or locked');
   }
-  lock() { this.#generation += 1; this.#backup = null; this.address = null; }
+  lock() { this.#generation += 1; this.#backup = null; this.address = null; this.#rpc?.close(); this.#rpc = null; }
   dispose() { this.lock(); this.#disposed = true; }
+  async call(method, params = {}) {
+    const generation = this.#generation;
+    this.assertCurrent(generation);
+    if (!L1_READ_METHODS.has(method)) throw new Error('Only wallet read and quote methods may be called directly');
+    this.#rpc ||= new RpcClient();
+    const result = await this.#rpc.call(method, params);
+    this.assertCurrent(generation);
+    return result;
+  }
   async status() { this.assertCurrent(); return loadVault(this.accountId); }
   async create(passphrase, seed = null) {
     const generation = this.#generation;

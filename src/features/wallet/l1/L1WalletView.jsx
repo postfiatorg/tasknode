@@ -57,9 +57,9 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (failure) { setError(failure.message); }
   }
+  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: unavailable, quote: unavailable, sign: unavailable, submit: unavailable, call: (method, params) => core.call(method, params), subscribe: unavailable }), [accountId, address, core]);
   if (!accountId) return <section><h1>L1 wallet</h1><p>Sign in to open your L1 wallet.</p></section>;
   const Tab = tabs[tab];
-  const client = { accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: unavailable, quote: unavailable, sign: unavailable, submit: unavailable, call: unavailable, subscribe: unavailable };
   return <L1WalletContext.Provider value={client}><section style={{ padding: 24 }}>
     <h1>L1 wallet</h1><p>Post Fiat · devnet-2</p>
     <nav aria-label="L1 wallet tabs" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>{Object.keys(tabs).map(name => <button key={name} type="button" aria-pressed={tab === name} onClick={() => setTab(name)}>{name}</button>)}</nav>
