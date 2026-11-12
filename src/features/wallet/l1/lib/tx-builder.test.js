@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { CHAIN_ID, GENESIS_HASH } from './utils.js';
-import { explicitReceipt, requireAccepted, pftInputAtoms, TxBuilder } from './tx-builder.js';
+import { explicitReceipt, requireAccepted, pftInputAtoms, TxBuilder, reviewedSignedOperation } from './tx-builder.js';
 const address = 'pf' + '1'.repeat(40), to = 'pf' + '2'.repeat(40);
 const intent = { kind: 'transfer', to, amount: '1000000' };
 const quote = { chain_id: CHAIN_ID, genesis_hash: GENESIS_HASH, protocol_version: 1, from: address, to, amount: 1000000, minimum_fee: 1, sequence: 1, sender_meets_reserve_after_transfer: true };
@@ -50,4 +50,10 @@ test('asset signer cannot silently discard new policy fields', async () => {
   const builder = new TxBuilder({ call: async () => ({ ok: true, result: { ...quote, source: address, operation, sender_meets_reserve_after_fee: true } }) });
   const q = await builder.quote(assetIntent, address);
   assert.throws(() => builder.sign(assetIntent, q, address, 'fixture', { wallet_sign_asset_transaction_fields: () => ({ unsigned: { operation: { operation: 'synthetic_policy' } } }) }), /cannot preserve/);
+});
+
+test('flattened signed operation preserves complete reviewed fields and detects omissions', () => {
+ const operation={operation:'pftl_uniswap_redemption_fund',funding_sequence:7,amount_atoms:1000000};
+ assert.deepEqual(reviewedSignedOperation({unsigned:{chain_id:CHAIN_ID,...operation}},operation),operation);
+ assert.equal(reviewedSignedOperation({unsigned:{operation:operation.operation,amount_atoms:1000000}},operation),null);
 });

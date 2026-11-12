@@ -8,6 +8,15 @@ function canonical(value, key = '') {
   if (Array.isArray(value)) return `[${value.map(item => canonical(item)).join(',')}]`;
   return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k], k)}`).join(',')}}`;
 }
+export function reviewedSignedOperation(signed, operation) {
+  const unsigned = signed?.unsigned;
+  if (!unsigned || !operation || typeof operation !== 'object') return null;
+  if (unsigned.operation && typeof unsigned.operation === 'object') return unsigned.operation;
+  // SignedAssetTransaction flattens its tagged operation into the unsigned
+  // envelope. Compare every reviewed field, including nested policy fields.
+  if (!Object.keys(operation).every(key => Object.hasOwn(unsigned, key))) return null;
+  return Object.fromEntries(Object.keys(operation).map(key => [key, unsigned[key]]));
+}
 export function safeAtoms(value) {
   if (!/^[1-9][0-9]*$/.test(String(value)) || !Number.isSafeInteger(Number(value))) throw new Error('Amount must be positive integer atoms within the safe range');
   return Number(value);
@@ -78,7 +87,7 @@ export class TxBuilder {
         method = 'mempool_submit_signed_offer_transaction'; field = 'signed_offer_json';
       }
     }
-    if (intent.kind !== 'transfer' && canonical(signed?.unsigned?.operation) !== canonical(quote.operation)) {
+    if (intent.kind !== 'transfer' && canonical(reviewedSignedOperation(signed, quote.operation)) !== canonical(quote.operation)) {
       throw new Error('Wallet WASM cannot preserve the reviewed operation; a compatible wallet artifact is required');
     }
     this.#quotes.delete(quote);

@@ -1,5 +1,3 @@
-/* global module, global */
-/* eslint-disable no-unused-vars -- generated wasm-bindgen glue */
 /* @ts-self-types="./postfiat_wallet_wasm.d.ts" */
 
 /**
@@ -534,11 +532,12 @@ export function wallet_sign_pftl_swap_intent(backup_json, intent_json) {
 }
 
 /**
- * Sign a transfer only when an RPC quote matches the exact reviewed intent.
+ * Sign transfer fields from an RPC quote only when they match the exact
+ * locally reviewed sender, recipient, and amount.
  *
  * backup_json: WalletBackupFile as JSON string
  * quote_json: TransferFeeQuoteSummary as JSON string
- * intent_json: closed object with the reviewed from, to, and amount
+ * intent_json: closed object with the reviewed `from`, `to`, and `amount`
  * Returns: SignedTransfer as JS object
  * @param {string} backup_json
  * @param {string} quote_json
@@ -546,30 +545,13 @@ export function wallet_sign_pftl_swap_intent(backup_json, intent_json) {
  * @returns {any}
  */
 export function wallet_sign_transfer(backup_json, quote_json, intent_json) {
-    let quote;
-    let intent;
-    try {
-        quote = JSON.parse(quote_json);
-        intent = JSON.parse(intent_json);
-    } catch (_) {
-        throw new Error('transfer quote and intent must be valid JSON');
-    }
-    if (
-        !intent
-        || typeof intent !== 'object'
-        || Array.isArray(intent)
-        || Object.keys(intent).sort().join(',') !== 'amount,from,to'
-        || quote?.from !== intent.from
-        || quote?.to !== intent.to
-        || quote?.amount !== intent.amount
-    ) {
-        throw new Error('transfer quote does not match the reviewed sender, recipient, and amount');
-    }
     const ptr0 = passStringToWasm0(backup_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(quote_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.wallet_sign_transfer(ptr0, len0, ptr1, len1);
+    const ptr2 = passStringToWasm0(intent_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.wallet_sign_transfer(ptr0, len0, ptr1, len1, ptr2, len2);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
