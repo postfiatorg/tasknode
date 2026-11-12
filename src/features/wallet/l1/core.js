@@ -53,6 +53,25 @@ export class L1WalletCore {
     this.address = result.address;
     return this.address;
   }
+  async importBackup(backup, passphrase) {
+    const generation = this.#generation;
+    this.assertCurrent(generation);
+    if (await loadVault(this.accountId)) throw new Error('An L1 wallet already exists for this account');
+    if (!backup?.vault || !backup?.metadata?.address) throw new Error('Invalid encrypted wallet backup');
+    if (backup.metadata.chain_id && backup.metadata.chain_id !== CHAIN_ID) throw new Error('Backup belongs to a different chain');
+    const seed = await decryptVault(backup.vault, passphrase);
+    const wasm = await initWasm();
+    this.assertCurrent(generation);
+    const result = wasm.wallet_keygen(CHAIN_ID, seed, ACCOUNT_INDEX);
+    if (result.address !== backup.metadata.address) throw new Error('Backup address does not match its seed');
+    const metadata = { address: result.address, public_key_hex: result.public_key_hex, chain_id: CHAIN_ID };
+    const { salt, iv, ciphertext } = backup.vault;
+    await saveVault(this.accountId, { salt, iv, ciphertext }, metadata);
+    this.assertCurrent(generation);
+    this.#backup = result.backup_json;
+    this.address = result.address;
+    return this.address;
+  }
   async exportBackup() {
     const stored = await this.status();
     if (!stored) throw new Error('No L1 wallet found');
