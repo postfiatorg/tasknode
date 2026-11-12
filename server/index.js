@@ -944,6 +944,8 @@ const server = createServer((req, res) => {
     .catch((error) => sendRequestFailure(req, res, url, error));
 });
 
+(await import("./l1/gateway.js")).registerL1Gateway(server, { getSession, sessionCookieName, cookieValue, json, readJson });
+
 const processRole = tasknodeProcessRole();
 if (shouldStartBackgroundWorkers(processRole) || !shouldStartHttpServer(processRole)) {
   throw new Error(`web_entry_requires_web_role:${processRole}. Use server/worker-entry.js for background workers.`);

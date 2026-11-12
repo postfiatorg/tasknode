@@ -36,6 +36,7 @@ import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, settingsPageFromLocation, EMPTY_TAS
 const LoginDialog = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.LoginDialog })));
 const SettingsModal = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.SettingsModal })));
 const ContextView = lazy(() => import("../features/context/ContextView.jsx").then((module) => ({ default: module.ContextView })));
+const L1WalletView = lazy(() => import("../features/wallet/l1/L1WalletView.jsx"));
 const WalletView = lazy(() => import("../features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
 const HelpView = lazy(() => import("../features/docs/DocsView").then((module) => ({ default: module.DocsView })));
 const DocsLibraryView = lazy(() => import("../features/docs-library/DocsLibraryView").then((module) => ({ default: module.DocsLibraryView })));
@@ -945,6 +946,7 @@ export function App() {
               sidebarOpen={sidebarOpen}
             />
           )}
+          <SidebarButton active={view === "l1-wallet"} icon={Wallet} label="L1 wallet" onClick={() => navigateToView("l1-wallet")} sidebarOpen={sidebarOpen} />
           <SidebarButton
             active={view === "wallet"}
             icon={Wallet}
@@ -1324,6 +1326,7 @@ export function App() {
             </Suspense>
           )}
           {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView /></Suspense>}
+          {view === "l1-wallet" && <Suspense fallback={<StatusBanner>Loading L1 wallet</StatusBanner>}><L1WalletView key={signedIn ? walletAccountId : "signed-out"} accountId={signedIn ? walletAccountId : ""} /></Suspense>}
           {view === "wallet" && (
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
               <WalletView

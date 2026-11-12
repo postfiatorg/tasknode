@@ -207,7 +207,7 @@ export function settingsPageFromLocation() {
 }
 
 export const APP_VIEWS = new Set([
-  "chat", "tasks", "wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help", "finance-hub",
+  "chat", "tasks", "wallet", "l1-wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help", "finance-hub",
   ...appExtensionRegistry.inventory().map(({ id }) => id),
 ]);
 export const MORE_EXTENSION_VIEWS = new Set(
