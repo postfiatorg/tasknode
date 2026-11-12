@@ -17,8 +17,8 @@
   "sourcePorts": [
     {
       "id": "l1-wallet",
-      "wasmReleaseCommit": "bbefee80b",
-      "wasmSha256": "9a88d24e49b6e1bbf574e28e30cea803469d9dd083c6f63c22134146dd2bc7c7",
+      "wasmReleaseCommit": "aba0efb7040e57dbc8ed73c87cffc753bbcfe0ed",
+      "wasmSha256": "1cf7d15469ee4a627a8587253cf0231765501da940515b2ac2937bb40472be82",
       "path": "src/features/wallet/l1/",
       "owner": "PostFiat contributors",
       "source": "https://github.com/postfiatorg/postfiatl1v2",

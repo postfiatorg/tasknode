@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 export const PACKAGE_FILES = ['postfiat_wallet_wasm.js', 'postfiat_wallet_wasm.d.ts', 'postfiat_wallet_wasm_bg.wasm', 'postfiat_wallet_wasm_bg.wasm.d.ts', 'package.json'];
 export const BUNDLED_DIRECTORY = fileURLToPath(new URL('./wasm/', import.meta.url));
-export const COORDINATED_DIRECTORY = '/home/postfiat/repos/b23-coord/artifacts/wallet-wasm';
+export const COORDINATED_DIRECTORY = '/home/postfiat/repos/b23-coord/artifacts/wallet-wasm-r2';
 export async function selectWasmDirectory({ argument, env = process.env, coordinatedDirectory = COORDINATED_DIRECTORY, bundledDirectory = BUNDLED_DIRECTORY } = {}) {
   if (argument || env.B23_WALLET_WASM_DIR) return path.resolve(argument || env.B23_WALLET_WASM_DIR);
   try { await access(path.join(coordinatedDirectory, 'SHA256SUMS')); return coordinatedDirectory; }

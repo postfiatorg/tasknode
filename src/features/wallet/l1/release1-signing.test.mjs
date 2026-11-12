@@ -29,4 +29,4 @@ for(const operation of operations){
  else assert.equal(captured.unsigned.funding_sequence,1);
  console.log('PASS:',operation.operation,'real WASM signature preserves every reviewed field');
 }
-console.log(JSON.stringify({release:'bbefee80b',wasmSha256:createHash('sha256').update(bytes).digest('hex'),signedOperations:2,submissions:0}));
+console.log(JSON.stringify({release:'aba0efb70',wasmSha256:createHash('sha256').update(bytes).digest('hex'),signedOperations:2,submissions:0}));
