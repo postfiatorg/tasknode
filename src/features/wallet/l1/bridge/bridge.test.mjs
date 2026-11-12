@@ -105,3 +105,35 @@ test('B9 exact child asset read, zero truth, unavailable/missing/malformed balan
   job.receipt_code = 'ACCEPTED'; delete job.credited_asset_id; await assert.rejects(() => model.poll(), /identity is unverified/);
   assert.equal(model.state.result, null);
 });
+
+test('B7 gateway forwards only the fixed bridge paths and public request, without browser credentials', async () => {
+  const { createServer } = await import('node:http');
+  const { profile, depositTx } = await import('./fixtures.mjs');
+  const observed = [];
+  const server = createServer(async (req, res) => {
+    let body = ''; for await (const chunk of req) body += chunk;
+    observed.push({ path: req.url, headers: req.headers, body });
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ ok: true, job_id: `0x${'ab'.repeat(32)}` }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const request = { route_id: profile.route_id, source_chain_id: 1, deposit_tx_hash: depositTx, deposit_id: `0x${'aa'.repeat(32)}`,
+      pftl_recipient: address, depositor: owner, amount_atoms: '1000000', idempotency_key: depositTx,
+      route_profile_hash: routeReport().result.profile_hash, route_epoch: 12, route_binding: `0x${routeReport().result.route_binding}` };
+    const responses = [];
+    const ctx = { req: { method: 'POST', headers: { host: 'localhost', origin: 'http://localhost', cookie: 'synthetic-cookie', authorization: 'synthetic-bearer' } },
+      res: { setHeader() {} }, url: new URL('http://localhost/api/l1/bridge/jobs'), session: { accountId: 'bob' },
+      json: (_res, status, body) => responses.push({ status, body }), readJson: async () => request,
+      proxyUrl: `http://127.0.0.1:${server.address().port}/ignored?also=ignored` };
+    await handleBridgeRoutes(ctx);
+    assert.equal(responses.at(-1).status, 200); assert.equal(observed[0].path, '/api/bridge/jobs');
+    assert.deepEqual(JSON.parse(observed[0].body), request);
+    assert.equal(observed[0].headers.cookie, undefined); assert.equal(observed[0].headers.authorization, undefined);
+    ctx.req.method = 'GET'; ctx.url.pathname = '/api/l1/bridge/readiness';
+    await handleBridgeRoutes(ctx);
+    assert.equal(observed[1].path, '/api/bridge/readiness?route=ethereum-mainnet-usdc-v1');
+    ctx.url.pathname = `/api/l1/bridge/jobs/0x${'ab'.repeat(32)}`;
+    await handleBridgeRoutes(ctx); assert.equal(observed[2].path, `/api/bridge/jobs/0x${'ab'.repeat(32)}`);
+  } finally { await new Promise((resolve) => server.close(resolve)); }
+});
