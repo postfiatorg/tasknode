@@ -22,7 +22,7 @@ Source port provenance: Post Fiat L1 wallet source from `postfiatl1v2-navcoin-pr
 
 Build artifact preparation (no committed binaries):
 `node src/features/wallet/l1/prepare-wasm.mjs /path/to/wallet-web/src/wasm/postfiat_wallet_wasm_bg.wasm`
-Run before Vite dev/build. The ignored artifact remains in the owned wasm directory and is bundled by Vite. Use Node 24 as required by Task Node package.json. Development Vite needs WebSocket forwarding for `/api` (`ws: true`); this lane cannot edit vite.config.js and has requested that change. Production built Task Node serves `/api/l1/rpc` directly.
+Run before Vite dev/build. The ignored artifact remains in the owned wasm directory and is bundled by Vite. Use Node 24 as required by Task Node package.json. Development Vite forwards WebSockets for `/api` (`ws: true`), preserving the browser Origin. Production built Task Node serves `/api/l1/rpc` directly.
 
 Final transaction behavior: quote objects are bound to the exact intent and wallet; pass the returned object unchanged to sign. A quote is consumed by signing. Signed handles are opaque, account-scoped and single-use. Neither handles nor quotes may be cloned or persisted. A submit transport failure is uncertain, never retried automatically. `client.submit` requires matching tx_id and accepted=true, including for certified rounds. Offer submissions use `mempool_submit_signed_offer_transaction`, then receipt polling; transfer and asset submissions use their finality variants. `client.subscribe` delivers the wallet_update snapshot and returns a local cleanup function. No seed or passphrase leaves the browser.
 
