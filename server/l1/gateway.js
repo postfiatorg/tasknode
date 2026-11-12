@@ -6,7 +6,7 @@ import { handleNavcoinRoutes } from './navcoin-routes.js';
 
 import { L1_READ_METHODS, L1_SUBMIT_METHODS } from '../../src/features/wallet/l1/lib/rpc-methods.js';
 const MAX_BYTES = 1024 * 1024;
-const signedIn = session => Boolean(session?.accountId && session?.status === 'signed_in');
+const signedIn = session => Boolean(session?.accountId && (session?.authenticated === true || session?.status === 'signed_in'));
 const sameOrigin = req => req.headers.origin === requestOrigin(req);
 function proxyWebSocketUrl(value) {
   const url = new URL(value);

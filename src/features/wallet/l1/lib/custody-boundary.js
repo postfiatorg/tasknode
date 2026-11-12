@@ -5,7 +5,7 @@
 
 const MAX_INSPECTION_DEPTH = 64;
 const MAX_JSON_STRING_BYTES = 1_048_576;
-const MIN_SECRET_SENTINEL_LENGTH = 16;
+const MIN_SECRET_SENTINEL_LENGTH = 10;
 
 const PRIVATE_KEY_PATTERNS = Object.freeze([
   /(^|_)backup(_json)?$/,
@@ -16,6 +16,7 @@ const PRIVATE_KEY_PATTERNS = Object.freeze([
   /(^|_)note_file(s)?$/,
   /(^|_)note_opening(s)?$/,
   /(^|_)passphrase$/,
+  /(^|_)password$/,
   /(^|_)private_key(_hex|_json)?$/,
   /(^|_)secret_key(_hex|_json)?$/,
   /(^|_)seed(_phrase|_hex)?$/,
@@ -64,8 +65,8 @@ function matchingRegisteredSecret(value) {
   return false;
 }
 
-export function registerCustodyMaterial({ seed, backupJson } = {}) {
-  for (const value of [seed, backupJson]) {
+export function registerCustodyMaterial({ seed, backupJson, passphrase } = {}) {
+  for (const value of [seed, backupJson, passphrase]) {
     if (typeof value === 'string' && value.length >= MIN_SECRET_SENTINEL_LENGTH) {
       registeredSecretValues.add(value);
     }

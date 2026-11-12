@@ -5,8 +5,10 @@ import Issuer from "./issuer/index.jsx";
 import Redeem from "./redeem/index.jsx";
 import { L1WalletContext } from "./client.jsx";
 import { L1WalletCore } from "./core.js";
-const tabs = { Home: null, Send: null, Activity: null, Bridge, Market, Issuer, Redeem };
-const unavailable = async () => { throw new Error("Unlock an L1 wallet first"); };
+import WalletHome from "./WalletHome.jsx";
+import Send from "./Send.jsx";
+import Activity from "./Activity.jsx";
+const tabs = { Home: WalletHome, Send, Activity, Bridge, Market, Issuer, Redeem };
 export default function L1WalletView({ accountId, isAccountCurrent }) {
   const [tab, setTab] = useState("Home");
   const currentCheck = useRef(isAccountCurrent);
@@ -57,7 +59,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (failure) { setError(failure.message); }
   }
-  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: unavailable, quote: unavailable, sign: unavailable, submit: unavailable, call: (method, params) => core.call(method, params), subscribe: unavailable }), [accountId, address, core]);
+  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: signed => core.submit(signed), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
   if (!accountId) return <section><h1>L1 wallet</h1><p>Sign in to open your L1 wallet.</p></section>;
   const Tab = tabs[tab];
   return <L1WalletContext.Provider value={client}><section style={{ padding: 24 }}>
