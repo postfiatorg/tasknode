@@ -162,11 +162,12 @@ export function wallet_sign_payment_v2(backup_json: string, fields_json: string)
 export function wallet_sign_pftl_swap_intent(backup_json: string, intent_json: string): any;
 
 /**
- * Sign a transfer only when an RPC quote matches the exact reviewed intent.
+ * Sign transfer fields from an RPC quote only when they match the exact
+ * locally reviewed sender, recipient, and amount.
  *
  * backup_json: WalletBackupFile as JSON string
  * quote_json: TransferFeeQuoteSummary as JSON string
- * intent_json: closed object with the reviewed from, to, and amount
+ * intent_json: closed object with the reviewed `from`, `to`, and `amount`
  * Returns: SignedTransfer as JS object
  */
 export function wallet_sign_transfer(backup_json: string, quote_json: string, intent_json: string): any;
@@ -209,7 +210,7 @@ export interface InitOutput {
     readonly wallet_sign_owned_unwrap_v3: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly wallet_sign_payment_v2: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly wallet_sign_pftl_swap_intent: (a: number, b: number, c: number, d: number) => [number, number, number];
-    readonly wallet_sign_transfer: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly wallet_sign_transfer: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly wallet_sign_transfer_fields: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly wallet_verify_fastpay_apply_ack: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;

@@ -24,7 +24,7 @@ export const wallet_sign_owned_unwrap: (a: number, b: number, c: number, d: numb
 export const wallet_sign_owned_unwrap_v3: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
 export const wallet_sign_payment_v2: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const wallet_sign_pftl_swap_intent: (a: number, b: number, c: number, d: number) => [number, number, number];
-export const wallet_sign_transfer: (a: number, b: number, c: number, d: number) => [number, number, number];
+export const wallet_sign_transfer: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
 export const wallet_sign_transfer_fields: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const wallet_verify_fastpay_apply_ack: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const __wbindgen_malloc: (a: number, b: number) => number;
