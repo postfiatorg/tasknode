@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { WebSocket, WebSocketServer } from 'ws';
+import { L1_READ_METHODS, L1_SUBMIT_METHODS } from './lib/rpc-methods.js';
 import { registerL1Gateway } from '../../../../server/l1/gateway.js';
 const upstream = new WebSocketServer({port:0,host:'127.0.0.1'});await once(upstream,'listening');
 const observed=[];upstream.on('connection',(ws,req)=>{assert.equal(req.headers.origin,origin);assert.equal(req.headers['x-forwarded-host'],new URL(origin).host);ws.on('message',data=>{const r=JSON.parse(data);observed.push(r.method);ws.send(JSON.stringify({id:r.id,ok:true,result:{chain_id:'postfiat-wan-devnet-2',account:{balance:'7000000'}}}));});});
@@ -12,6 +13,8 @@ async function denied(headers,status){const ws=new WebSocket(url,{headers});cons
 try{
  assert.equal(await (await fetch(origin+'/existing')).text(),'existing route');
  assert.equal((await fetch(origin+'/api/l1/rpc')).status,401);
+ await denied({cookie:'sid=fixture'},403);
+ for (const headers of [{cookie:'sid=fixture'},{cookie:'sid=fixture',origin:'https://attacker.invalid'}]) assert.equal((await fetch(origin+'/api/l1/rpc',{method:'POST',headers})).status,403);
  await denied({origin},401);await denied({origin:'https://attacker.invalid',cookie:'sid=fixture'},403);
  client=new WebSocket(url,{headers:{origin,cookie:'sid=fixture'}});await once(client,'open');
  async function call(method,params={}){const reply=once(client,'message');client.send(JSON.stringify({version:'postfiat-local-rpc-v1',id:method,method,params}));return JSON.parse((await reply)[0]);}
@@ -21,6 +24,8 @@ try{
  assert.equal((await call('account',{seed:'synthetic-seed-sentinel'})).error.code,'l1_custody_material_rejected');
  assert.equal((await call('account',{operation_json:'{"passphrase":"synthetic"}'})).error.code,'l1_custody_material_rejected');
  assert.deepEqual(observed,['account']);
+ for (const method of [...L1_READ_METHODS,...L1_SUBMIT_METHODS]) assert.equal((await call(method)).ok,true);
+ assert.deepEqual(observed.slice(1),[...L1_READ_METHODS,...L1_SUBMIT_METHODS]);
  account='bob';const closed=once(client,'close');client.send(JSON.stringify({version:'postfiat-local-rpc-v1',id:'stale',method:'account',params:{}}));assert.equal((await closed)[0],1008);
  account=null;await denied({origin,cookie:'sid=fixture'},401);
  console.log('PASS: local proxy stub read; signed-out and foreign Origin rejected; governance/signing RPC and nested custody material rejected; account-switched socket rejected; existing HTTP routes retained. No chain writes.');
