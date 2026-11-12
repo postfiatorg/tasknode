@@ -1326,7 +1326,7 @@ export function App() {
             </Suspense>
           )}
           {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView /></Suspense>}
-          {view === "l1-wallet" && <Suspense fallback={<StatusBanner>Loading L1 wallet</StatusBanner>}><L1WalletView key={signedIn ? walletAccountId : "signed-out"} accountId={signedIn ? walletAccountId : ""} /></Suspense>}
+          {view === "l1-wallet" && <Suspense fallback={<StatusBanner>Loading L1 wallet</StatusBanner>}><L1WalletView key={signedIn && !accountTransitioning ? walletAccountId : "signed-out"} accountId={signedIn && !accountTransitioning ? walletAccountId : ""} isAccountCurrent={() => !accountBoundaryRef.current.transitioning && accountBoundaryRef.current.accountId === walletAccountId} /></Suspense>}
           {view === "wallet" && (
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
               <WalletView

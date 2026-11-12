@@ -32,6 +32,7 @@ const buildId = process.env.VITE_BUILD_ID || process.env.BUILD_ID || "dev";
 const environment = process.env.TASKNODE_ENV || process.env.NODE_ENV || "development";
 
 const contentTypes = new Map([
+  [".wasm", "application/wasm"],
   [".html", "text/html; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
