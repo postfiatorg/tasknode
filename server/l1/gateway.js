@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { WebSocket, WebSocketServer } from 'ws';
 import { requestOrigin } from '../server-http-boundary.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
@@ -8,6 +9,14 @@ import { L1_READ_METHODS, L1_SUBMIT_METHODS } from '../../src/features/wallet/l1
 const MAX_BYTES = 1024 * 1024;
 const signedIn = session => Boolean(session?.accountId && (session?.authenticated === true || session?.status === 'signed_in'));
 const sameOrigin = req => req.headers.origin === requestOrigin(req);
+export async function readProxyToken(env = process.env) {
+  if (!env.L1_WALLET_PROXY_TOKEN_FILE) return String(env.L1_WALLET_PROXY_TOKEN || '').trim();
+  let token;
+  try { token = (await readFile(env.L1_WALLET_PROXY_TOKEN_FILE, 'utf8')).trim(); }
+  catch { throw new Error('L1 proxy credential file unavailable'); }
+  if (!token || token.length > 16384 || /[\r\n]/.test(token)) throw new Error('L1 proxy credential file invalid');
+  return token;
+}
 function proxyWebSocketUrl(value) {
   const url = new URL(value);
   if (url.protocol === 'http:') url.protocol = 'ws:';
@@ -52,11 +61,12 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
       if (!signedIn(session)) { reject('401 Unauthorized'); return; }
       if (!env.L1_WALLET_PROXY_URL) { reject('503 Service Unavailable'); return; }
       const upstreamUrl = proxyWebSocketUrl(env.L1_WALLET_PROXY_URL);
+      const proxyToken = await readProxyToken(env);
       wss.handleUpgrade(req, socket, head, client => {
         sessions.add(client);
         const upstream = new WebSocket(upstreamUrl, { maxPayload: MAX_BYTES, handshakeTimeout: 10000,
           headers: { origin: req.headers.origin, 'x-forwarded-host': new URL(requestOrigin(req)).host,
-            ...(env.L1_WALLET_PROXY_TOKEN ? { authorization: `Bearer ${env.L1_WALLET_PROXY_TOKEN}` } : {}) } });
+            ...(proxyToken ? { authorization: `Bearer ${proxyToken}` } : {}) } });
         let queue = Promise.resolve();
         const opened = new Promise((resolve, rejectOpen) => { upstream.once('open', resolve); upstream.once('error', rejectOpen); });
         opened.catch(() => {});
@@ -85,7 +95,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
             if (!await current() || client.readyState !== WebSocket.OPEN) { client.close(1008, 'L1 session changed'); return; }
             // Rebuild the envelope: browser-supplied proxy credentials and unknown fields never pass through.
             upstream.send(JSON.stringify({ version: request.version, id: request.id, method: request.method, params: request.params,
-              ...(env.L1_WALLET_PROXY_TOKEN ? { proxy_auth_token: env.L1_WALLET_PROXY_TOKEN } : {}) }));
+              ...(proxyToken ? { proxy_auth_token: proxyToken } : {}) }));
           }).catch(() => client.close(1011, 'L1 gateway unavailable')).finally(() => { queued -= 1; });
         });
       });
