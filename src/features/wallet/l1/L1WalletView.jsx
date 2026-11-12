@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Bridge from "./bridge/index.jsx";
 import Market from "./market/index.jsx";
 import Issuer from "./issuer/index.jsx";
@@ -9,7 +9,9 @@ const tabs = { Home: null, Send: null, Activity: null, Bridge, Market, Issuer, R
 const unavailable = async () => { throw new Error("Unlock an L1 wallet first"); };
 export default function L1WalletView({ accountId, isAccountCurrent }) {
   const [tab, setTab] = useState("Home");
-  const core = useMemo(() => accountId ? new L1WalletCore(accountId, isAccountCurrent) : null, [accountId, isAccountCurrent]);
+  const currentCheck = useRef(isAccountCurrent);
+  currentCheck.current = isAccountCurrent;
+  const core = useMemo(() => accountId ? new L1WalletCore(accountId, () => currentCheck.current?.() !== false) : null, [accountId]);
   const [address, setAddress] = useState(null);
   const [exists, setExists] = useState(false);
   const [passphrase, setPassphrase] = useState("");
@@ -20,6 +22,16 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
     core?.status().then(value => { if (active) setExists(Boolean(value)); }).catch(() => {});
     return () => { active = false; core?.dispose(); };
   }, [core]);
+  useEffect(() => {
+    if (!address) return undefined;
+    const lock = () => { core.lock(); setAddress(null); setPassphrase(""); };
+    let timer = setTimeout(lock, 15 * 60 * 1000);
+    const activity = () => { clearTimeout(timer); timer = setTimeout(lock, 15 * 60 * 1000); };
+    window.addEventListener("pagehide", lock);
+    window.addEventListener("pointerdown", activity);
+    window.addEventListener("keydown", activity);
+    return () => { clearTimeout(timer); window.removeEventListener("pagehide", lock); window.removeEventListener("pointerdown", activity); window.removeEventListener("keydown", activity); };
+  }, [core, address]);
   async function openWallet() {
     setBusy(true); setError("");
     try { setAddress(await (exists ? core.unlock(passphrase) : core.create(passphrase))); setExists(true); setPassphrase(""); }

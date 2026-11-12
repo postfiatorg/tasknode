@@ -223,15 +223,20 @@ function withStore(storeName, mode, callback) {
       const store = tx.objectStore(storeName);
       let result;
       tx.oncomplete = () => { db.close(); resolve(result); };
-      tx.onerror = () => { db.close(); reject(tx.error); };
+      tx.onerror = tx.onabort = () => { db.close(); reject(tx.error || new Error("Vault transaction aborted")); };
       result = callback(store);
     });
   });
 }
 
+function requireAccount(accountId) {
+  if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('Task Node account id required');
+}
+
 export async function saveVault(accountId, blob, metadata) {
+  requireAccount(accountId);
   await withStore(STORE_VAULTS, 'readwrite', (store) => {
-    store.put({
+    store.add({
       accountId,
       vault: blob,
       metadata,
@@ -240,8 +245,9 @@ export async function saveVault(accountId, blob, metadata) {
   });
 }
 
-export async function loadVault(accountId = 'default') {
-  try {
+export async function loadVault(accountId) {
+  requireAccount(accountId);
+  {
     const record = await withStore(STORE_VAULTS, 'readonly', (store) => {
       return new Promise((resolve, reject) => {
         const req = store.get(accountId);
@@ -251,12 +257,11 @@ export async function loadVault(accountId = 'default') {
     });
     if (!record) return null;
     return { blob: record.vault, metadata: record.metadata };
-  } catch (_e) {
-    return null;
   }
 }
 
-export async function removeVault(accountId = 'default') {
+export async function removeVault(accountId) {
+  requireAccount(accountId);
   await withStore(STORE_VAULTS, 'readwrite', (store) => {
     store.delete(accountId);
   });
