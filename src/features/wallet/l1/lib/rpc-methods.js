@@ -11,7 +11,7 @@ export const L1_SUBMIT_METHODS = new Set([
   'mempool_submit_signed_transfer_finality',
   'mempool_submit_signed_asset_transaction',
   'mempool_submit_signed_asset_transaction_finality',
-  'mempool_submit_signed_offer_transaction',
+  'mempool_submit_signed_offer_transaction_finality',
 ]);
 
 export function assertL1CallAllowed(method, unlocked) {

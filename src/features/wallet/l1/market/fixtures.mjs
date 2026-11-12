@@ -1,6 +1,7 @@
-export const config = { b23_asset_id: "a".repeat(96), pfusdc_asset_id: "b".repeat(96), proof_profile: "c".repeat(96), route_id: "synthetic-b23-route", issuer_address: "pf" + "1".repeat(40), alice_holder_address: "pf" + "2".repeat(40), management_address: "pf" + "3".repeat(40), g1_passed: true };
+export const config = { b23_asset_id: "a".repeat(96), pfusdc_asset_id: "b".repeat(96), market_quote_asset_id: "9".repeat(96), pfusdc_source_asset_ids: ["9".repeat(96)], proof_profile: "c".repeat(96), route_id: "synthetic-b23-route", issuer_address: "pf" + "1".repeat(40), alice_holder_address: "pf" + "2".repeat(40), management_address: "pf" + "3".repeat(40), g1_passed: true };
 export const bob = "pf" + "4".repeat(40);
-export function lines(b23 = 100_000_000, pfusdc = 200_000_000) { return { truncated: false, lines: [{ asset_id: config.b23_asset_id, balance: b23 }, { asset_id: config.pfusdc_asset_id, balance: pfusdc }] }; }
+export function lines(b23 = 100_000_000, pfusdc = 200_000_000, quote = 200_000_000) { return { truncated: false, lines: [[config.b23_asset_id, b23], [config.pfusdc_asset_id, pfusdc], [config.market_quote_asset_id, quote]].map(([asset_id, balance]) => ({ asset_id, balance, issuer: config.issuer_address, limit: 1000000000000, authorized: true, frozen: false })) }; }
+
 export function state() {
   const nav = { state: "finalized", epoch: 2, reserve_packet_hash: "d".repeat(96), nav_per_unit: 1_000_000 };
   return { supply: 1_000_000_000, nav, proof: { asset_id: config.b23_asset_id, current_height: 100, packets: [nav] },
@@ -8,7 +9,7 @@ export function state() {
       settlement_reserve_atoms: 500_000_000, available_redeem_atoms: 500_000_000, min_order_atoms: 1, max_order_atoms: 1_000_000_000,
       redeem_multiplier_bps: 9980, spread_recipient: config.management_address, pricing_nav_epoch: 2, pricing_reserve_packet_hash: nav.reserve_packet_hash,
       route_epoch: 2, policy_epoch: 2, policy_hash: "e".repeat(96), policy_valid_from_height: 1, policy_expires_at_height: 10000, active_reservation_count: 0, export_entitlement_count: 0 },
-    balances: { address: bob, pft: { balance: 500000 }, assets: lines() }, offers: { offers: [], truncated: false }, managementLines: lines(0, 0), recipientLines: null,
+    balances: { address: bob, pft: { balance: 500000 }, assets: lines() }, offers: { offers: [], truncated: false }, managementLines: lines(0, 0), recipientLines: lines(0, 0, 0),
   };
 }
 export function equityPlan() {

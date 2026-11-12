@@ -1,6 +1,6 @@
 // All deployment-specific IDs enter through this module, never through components.
 export const SCALE = 1_000_000n;
-export const B23_CONFIG_FIELDS = ["b23_asset_id", "pfusdc_asset_id", "route_id", "issuer_address", "alice_holder_address", "management_address", "proof_profile", "pfusdc_source_asset_ids", "g1_passed"];
+export const B23_CONFIG_FIELDS = ["b23_asset_id", "pfusdc_asset_id", "market_quote_asset_id", "route_id", "issuer_address", "alice_holder_address", "management_address", "proof_profile", "pfusdc_source_asset_ids", "g1_passed"];
 // Published by OPS in contracts/b23-constants.md v1; pending fields stay null.
 export const PUBLISHED_CONFIG = Object.freeze({
   b23_asset_id: "ca7845134c8e95819082fcd2f1612808e20a37dfabab98dab120f99fd2c54c18ffb50d98c0664480420c881773244627",
@@ -25,6 +25,8 @@ export function validateConfig(input) {
   if (config.b23_asset_id === config.pfusdc_asset_id) throw new Error("B23 and PFUSDC must be different assets");
   config.pfusdc_source_asset_ids ??= [];
   if (!Array.isArray(config.pfusdc_source_asset_ids) || config.pfusdc_source_asset_ids.some(id => !/^[0-9a-f]{96}$/.test(id))) throw new Error("Invalid PFUSDC source asset list");
+  config.market_quote_asset_id ??= config.pfusdc_source_asset_ids[0];
+  if (!/^[0-9a-f]{96}$/.test(config.market_quote_asset_id || "") || [config.b23_asset_id, config.pfusdc_asset_id].includes(config.market_quote_asset_id)) throw new Error("Invalid market quote asset; publish the credited PFUSDC source asset");
   return Object.freeze({ ...config, g1_passed: config.g1_passed === true });
 }
 export async function loadConfig(fetcher = fetch) {

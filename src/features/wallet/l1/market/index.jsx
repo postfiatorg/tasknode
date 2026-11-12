@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowDownToLine, BookOpen, ListOrdered } from "lucide-react";
 import { units } from "./amounts.js";
 import { buildCancel, buildOffer, lineBalance, offerProgress, snapshot, verifyOffer } from "./model.js";
-import { ActionReview, useNavcoin, WalletNotice } from "./ui.jsx";
+import { useNavcoin, WalletNotice } from "./ui.jsx";
 import { Amount, Badge, Card, CardHead, Details, Empty, Notice, Skeleton } from "../ui.jsx";
 import { amount, plainError, unitPrice } from "../format.js";
+
+import OfferReview from './OfferReview.jsx';
+import { planOfferSetup, offerPreflight } from './offer-setup.js';
 
 // Plain decimal string for inputs ("10.5"), from atoms.
 const plain = atoms => units(atoms).replace(/\.?0+$/, "") || "0";
@@ -78,19 +81,24 @@ export default function MarketTab({ client, onNavigate }) {
   const navcoin = useNavcoin(client, true);
   const { data, error, loading, refresh } = navcoin;
   const [side, setSide] = useState("buy"), [quantity, setQuantity] = useState(""), [total, setTotal] = useState(""), [expiration, setExpiration] = useState("0");
-  const [request, setRequest] = useState(null), [actionError, setActionError] = useState("");
+  const [request, setRequest] = useState(null), [actionError, setActionError] = useState(""), [planning, setPlanning] = useState(false);
+  const revision = useRef(0), latest = useRef(client); latest.current = client;
   function review(intent, description, extra) {
     setRequest({ id: crypto.randomUUID(), accountId: client.accountId, address: client.address, intent, description, ...extra,
-      read: () => snapshot(client, data.config, { recipient: data.config.alice_holder_address }), verify: (intent, before, after, receipt) => verifyOffer(intent, before, after, data.config, receipt) });
+      read: () => snapshot(client, data.config, { recipient: data.config.alice_holder_address }), preflight: (intent, current) => offerPreflight(data.config, intent, current), verify: (intent, before, after, receipt) => verifyOffer(intent, before, after, data.config, receipt) });
   }
   const qtyAtoms = toAtoms(quantity), totalAtoms = toAtoms(total);
   const limit = qtyAtoms && totalAtoms ? unitPrice(totalAtoms, qtyAtoms) : null;
-  function create(event) {
-    event.preventDefault(); setActionError(""); setRequest(null);
+  async function create(event) {
+    event.preventDefault(); setActionError(""); setRequest(null); setPlanning(true);
+    const ticket = ++revision.current, identity = { accountId: client.accountId, address: client.address };
     try {
       const intent = buildOffer(data.config, client.address, side, quantity, total, expiration, data.state);
+      const before = await snapshot(client, data.config, { recipient: data.config.alice_holder_address });
+      const setup = await planOfferSetup(client, data.config, intent, before);
+      if (ticket !== revision.current || !latest.current.unlocked || identity.address !== latest.current.address || identity.accountId !== latest.current.accountId) return;
       review(intent, side === "buy" ? "A buy offer crosses sell offers at or below your price; a fill is not guaranteed. Any unfilled PFUSDC stays locked in the offer until it fills or you cancel it. This does not mint B23." : "Existing buy offers at or above your price may fill immediately; the unfilled remainder stays open until filled or cancelled.", {
-        title: side === "buy" ? "Buy B23" : "Sell B23",
+        setup, title: side === "buy" ? "Buy B23" : "Sell B23",
         lockedUnit: side === "buy" ? "PFUSDC" : "B23",
         successText: effects => {
           const filled = BigInt(effects?.received || 0), locked = BigInt(effects?.locked || 0);
@@ -101,25 +109,29 @@ export default function MarketTab({ client, onNavigate }) {
           ? [["You buy", <Amount atoms={qtyAtoms} unit="B23" />], ["Limit price", limit === null ? "—" : `${amount(limit, { min: 2 })} PFUSDC per B23`], ["You pay at most", <Amount atoms={totalAtoms} unit="PFUSDC" />, true]]
           : [["You sell", <Amount atoms={qtyAtoms} unit="B23" />], ["Limit price", limit === null ? "—" : `${amount(limit, { min: 2 })} PFUSDC per B23`], ["You receive at least", <Amount atoms={totalAtoms} unit="PFUSDC" />, true]],
       });
-    } catch (e) { setActionError(e.message); }
+    } catch (e) { if (ticket === revision.current) setActionError(e.message); }
+    finally { setPlanning(false); }
   }
   function cancel(offer) {
+    revision.current++;
     setActionError(""); setRequest(null);
     try { review(buildCancel(client.address, offer), "Cancels only the unfilled remainder; earlier fills stay final.", { title: "Cancel offer", successText: "The unfilled remainder was cancelled and refunded to this wallet.", summary: [["Offer", <span className="l1-mono">{String(offer.offer_id).slice(0, 14)}…</span>], ["Refund", <Amount atoms={offer.taker_gets_amount_remaining} unit={offer.taker_gets_asset_id === data.config.b23_asset_id ? "B23" : "PFUSDC"} />, true]] }); }
     catch (e) { setActionError(e.message); }
   }
   function pick(level) {
+    revision.current++;
     setRequest(null);
     setSide(level.side === "ask" ? "buy" : "sell");
     setQuantity(plain(level.size)); setTotal(plain(level.total));
   }
   let available = null;
-  try { if (data) available = lineBalance(data.balances.assets, side === "buy" ? data.config.pfusdc_asset_id : data.config.b23_asset_id); } catch { available = null; }
+  try { if (data) available = lineBalance(data.balances.assets, side === "buy" ? data.config.market_quote_asset_id : data.config.b23_asset_id); } catch { available = null; }
   const asks = data ? levels(data.book.asks, data.config, "ask") : [];
   const bestAsk = asks[0];
   const tradingOpen = data && data.config.g1_passed && data.config.management_address && data.state?.pool?.spread_recipient === data.config.management_address;
   function fillAtBestAsk() {
     if (!bestAsk || !qtyAtoms) return;
+    revision.current++; setRequest(null);
     setTotal(plain((qtyAtoms * bestAsk.total + bestAsk.size - 1n) / bestAsk.size));
   }
   const visible = request && request.accountId === client.accountId && request.address === client.address && client.unlocked;
@@ -129,7 +141,7 @@ export default function MarketTab({ client, onNavigate }) {
       <div className="l1-stack">
         {!data ? <Card>{loading ? <Skeleton height={300} /> : <Empty icon={BookOpen} title="Market not loaded">Refresh to read the B23 order book.</Empty>}</Card> : <Card className="l1-ticket">
           <CardHead eyebrow="Order ticket" title={side === "buy" ? "Buy B23" : "Sell B23"} />
-          <form onSubmit={create} onChange={() => setRequest(null)}>
+          <form onSubmit={create} onChange={() => { revision.current++; setRequest(null); }}>
             <div className="l1-seg" role="radiogroup" aria-label="Market action">
               <label><input type="radio" name="market-side" value="buy" checked={side === "buy"} onChange={() => setSide("buy")} />Buy</label>
               <label><input type="radio" name="market-side" value="sell" checked={side === "sell"} onChange={() => setSide("sell")} />Sell</label>
@@ -140,12 +152,12 @@ export default function MarketTab({ client, onNavigate }) {
             <div className="l1-ticket-price"><small>Limit price</small><strong>{limit === null ? "—" : `${amount(limit, { min: 2 })} PFUSDC`}</strong><small>{data.state?.nav ? `NAV $${amount(data.state.nav.nav_per_unit, { min: 2 })}` : ""}</small></div>
             <Details summary="Advanced"><label className="l1-field"><span>Expires at block (0 = never)</span><input inputMode="numeric" value={expiration} onChange={e => setExpiration(e.target.value)} required /></label></Details>
             {!tradingOpen && <Notice tone="warning" title="Market offers are switched off on this network">Order entry opens once the operator enables the B23 market.</Notice>}
-            <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={!tradingOpen}>Review {side === "buy" ? "buy offer" : "sell offer"}</button>
+            <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={!tradingOpen || planning}>Review {side === "buy" ? "buy offer" : "sell offer"}</button>
           </form>
           {onNavigate && <p className="l1-small l1-muted" style={{ marginTop: 14 }}>Need PFUSDC? <button type="button" className="l1-link" onClick={() => onNavigate("Bridge")}><ArrowDownToLine size={13} aria-hidden />Add PFUSDC from Ethereum</button></p>}
         </Card>}
         {actionError && <Notice tone="danger" role="alert">{plainError(actionError)}</Notice>}
-        {visible && <ActionReview key={request.id} client={client} request={request} onComplete={refresh} onCancel={() => setRequest(null)} />}
+        {visible && <OfferReview key={request.id} client={client} request={request} onComplete={refresh} onCancel={() => setRequest(null)} />}
       </div>
       <div className="l1-stack">
         {data ? <>

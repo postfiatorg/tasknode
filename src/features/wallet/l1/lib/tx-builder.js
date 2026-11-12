@@ -84,7 +84,7 @@ export class TxBuilder {
         method = 'mempool_submit_signed_asset_transaction_finality'; field = 'signed_asset_transaction_json';
       } else {
         signed = wasm.wallet_sign_offer_transaction_fields(backup, JSON.stringify(fields));
-        method = 'mempool_submit_signed_offer_transaction'; field = 'signed_offer_json';
+        method = 'mempool_submit_signed_offer_transaction_finality'; field = 'signed_offer_transaction_json';
       }
     }
     if (intent.kind !== 'transfer' && canonical(reviewedSignedOperation(signed, quote.operation)) !== canonical(quote.operation)) {

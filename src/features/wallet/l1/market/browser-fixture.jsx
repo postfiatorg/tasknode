@@ -11,6 +11,9 @@ const history = [];
 const address = tab === "issuer" ? config.issuer_address : bob;
 ledger.balances.address = address;
 if (params.get("gate") === "blocked") config.g1_passed = false;
+if(params.get("missing") === "b23") ledger.balances.assets.lines=ledger.balances.assets.lines.filter(row=>row.asset_id!==config.b23_asset_id);
+if(params.get("missing") === "both") ledger.balances.assets=lines(0,0,0), ledger.balances.assets.lines=[];
+if(params.get("funds") === "reserve") ledger.balances.assets=lines(0,200000000,0);
 const allOffers = [];
 function offer(operation, id) { return { offer_id: id, owner: address, state: "open", taker_gets_asset_id: operation.taker_gets_asset_id, taker_pays_asset_id: operation.taker_pays_asset_id, original_taker_gets_amount: operation.taker_gets_amount, original_taker_pays_amount: operation.taker_pays_amount, taker_gets_amount_remaining: operation.taker_gets_amount, taker_pays_amount_remaining: operation.taker_pays_amount }; }
 function balance(assetId, delta) { ledger.balances.assets.lines.find(row => row.asset_id === assetId).balance += delta; }
@@ -21,23 +24,27 @@ const client = { accountId: "synthetic-navcoin-account", address, unlocked: true
     history.push(method);
     if (method === "navcoin_bridge_supply_status") return structuredClone(ledger.pool);
     if (method === "nav_reserve_proof_status") return structuredClone(ledger.proof);
-    if (method === "asset_info") return {asset:{asset_id:config.b23_asset_id,outstanding_supply:ledger.supply}};
+    if (method === "asset_info") return {asset:{asset_id:args.asset_id,issuer:config.issuer_address,precision:6,requires_authorization:false,asset_family_id:config.pfusdc_asset_id,outstanding_supply:ledger.supply}};
     if (method === "account_offers") return {offers:structuredClone(allOffers),truncated:false};
     if (method === "book_offers") return {offers:structuredClone(allOffers.filter(o=>o.state==="open"&&o.taker_gets_asset_id===args.taker_gets_asset_id)),truncated:false};
-    if (method === "account_lines") return structuredClone(args.account === config.management_address ? ledger.managementLines : ledger.recipientLines || lines(0,0));
+    if (method === "account_lines") return structuredClone(args.account === config.management_address ? ledger.managementLines : ledger.recipientLines || lines(0,0,0));
     throw Error(`Unexpected mock read ${method}`);
   },
   async quote(intent) { history.push("quote"); return { minimum_fee:100, operation:intent.operation, estimated_cross_count:1 }; },
   async sign(intent) { history.push("sign"); return {synthetic:true,intent:structuredClone(intent)}; },
   async submit(signed) {
-    history.push("submit"); const op=signed.intent.operation, receipt={accepted:params.get("reject")!=="yes",offer_fills:[]};
+    history.push("submit"); history.push(`submit:${signed.intent.operation.operation}`); const op=signed.intent.operation, receipt={accepted:params.get("reject")!=="yes",offer_fills:[]};
     if(!receipt.accepted) return {txId:"synthetic-rejected",receipt:{...receipt,message:"synthetic rejection"}};
-    if(op.operation==="offer_create") {
-      const resting=offer(op,`synthetic-offer-${++counter}`), buy=op.taker_gets_asset_id===config.pfusdc_asset_id;
+    if(op.operation==="trust_set") {
+      const existing=ledger.balances.assets.lines.find(row=>row.asset_id===op.asset_id);
+      if(existing) existing.limit=op.limit;
+      else ledger.balances.assets.lines.push({asset_id:op.asset_id,issuer:op.issuer,limit:op.limit,balance:0,authorized:true,frozen:false});
+    } else if(op.operation==="offer_create") {
+      const resting=offer(op,`synthetic-offer-${++counter}`), buy=op.taker_gets_asset_id===config.market_quote_asset_id;
       const spent=buy?4000000:0, received=buy?4000000:0;
       balance(op.taker_gets_asset_id,-op.taker_gets_amount);balance(op.taker_pays_asset_id,received);
       resting.taker_gets_amount_remaining-=spent;resting.taker_pays_amount_remaining-=received;allOffers.push(resting);receipt.offer_id=resting.offer_id;
-      if(spent)ledger.recipientLines=lines(0,spent);
+      if(spent)ledger.recipientLines=lines(0,0,spent);
       if(spent)receipt.offer_fills=[{taker:address,maker_owner:config.alice_holder_address,taker_sends_asset_id:op.taker_gets_asset_id,maker_sends_asset_id:op.taker_pays_asset_id,taker_sends_amount:spent,maker_sends_amount:received}];
     } else if(op.operation==="offer_cancel") {
       const resting=allOffers.find(o=>o.offer_id===op.offer_id);resting.state="canceled";balance(resting.taker_gets_asset_id,resting.taker_gets_amount_remaining);receipt.offer_id=resting.offer_id;

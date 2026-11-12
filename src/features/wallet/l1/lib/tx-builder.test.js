@@ -57,3 +57,13 @@ test('flattened signed operation preserves complete reviewed fields and detects 
  assert.deepEqual(reviewedSignedOperation({unsigned:{chain_id:CHAIN_ID,...operation}},operation),operation);
  assert.equal(reviewedSignedOperation({unsigned:{operation:operation.operation,amount_atoms:1000000}},operation),null);
 });
+
+test('offers submit only through release-2 finality with exact signed parameter and accepted receipt', async () => {
+ const operation={operation:'offer_cancel',owner:address,offer_id:'a'.repeat(96)}, calls=[];
+ const builder=new TxBuilder({call:async(method,params)=>{calls.push({method,params});return {ok:true,result:method==='offer_fee_quote'?{...quote,source:address,operation,sender_meets_reserve_after_fee:true}:{tx_id:'offer-tx',finality:{receipt:{tx_id:'offer-tx',accepted:true}}}};}});
+ const intent={kind:'offer',operation}, reviewed=await builder.quote(intent,address);
+ const handle=builder.sign(intent,reviewed,address,'fixture',{wallet_sign_offer_transaction_fields:()=>({unsigned:operation})});
+ assert.equal((await builder.submit(handle)).receipt.accepted,true);
+ assert.equal(calls[1].method,'mempool_submit_signed_offer_transaction_finality');
+ assert.deepEqual(Object.keys(calls[1].params),['signed_offer_transaction_json']);
+});

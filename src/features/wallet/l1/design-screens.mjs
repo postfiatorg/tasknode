@@ -35,7 +35,7 @@ const LEGACY = '521c6c630bb48d4a37ab4a7bd4900dd2caa2d9e99499e452da3c7ce75b3d74b6
 function account(address) {
   if (!world.lines[address]) {
     const bob = ![ISSUER, ALICE, MANAGER, PAYER].includes(address);
-    world.lines[address] = bob ? { [PFUSDC]: 2_500 * M, [B23]: 0, [CHILD]: 0, [LEGACY]: 0 } : address === ALICE ? { [PFUSDC]: 5_400 * M, [B23]: 400_000 * M } : { [PFUSDC]: 0, [B23]: 0 };
+    world.lines[address] = bob ? { [PFUSDC]: 2_500 * M, [B23]: 0, [CHILD]: 0, [LEGACY]: 0 } : address === ALICE ? { [PFUSDC]: 5_400 * M, [B23]: 400_000 * M, [CHILD]: 0 } : { [PFUSDC]: 0, [B23]: 0, [CHILD]: 0 };
     world.pft[address] = bob ? 25_400_000 : 90 * M;
     if (bob) world.history.push({ tx_id: 'b7e0c2' + '5a'.repeat(45), accepted: true, kind: 'transfer', from: PAYER, to: address, amount: 25_500_000 });
   }
@@ -44,13 +44,13 @@ function account(address) {
 const CODES = { [PFUSDC]: 'PFUSDC', [B23]: 'B23', [CHILD]: 'PFUSDC', [LEGACY]: 'A666' };
 function lineReport(address) {
   const lines = account(address);
-  return { truncated: false, lines: Object.entries(lines).map(([asset_id, balance]) => ({ asset_id, balance, code: CODES[asset_id], precision: 6, ...(asset_id === CHILD ? { asset_family_id: PFUSDC } : {}) })) };
+  return { truncated: false, lines: Object.entries(lines).map(([asset_id, balance]) => ({ asset_id, balance, issuer: ISSUER, limit: 1000000000000, authorized: true, frozen: false, code: CODES[asset_id], precision: 6, ...(asset_id === CHILD ? { asset_family_id: PFUSDC } : {}) })) };
 }
 function seedBook() {
   world.offers = [
     [ALICE, 500, 500], [ALICE, 1_200, 1_204.8], [ALICE, 2_500, 2_525],
-  ].map(([who, qty, total], i) => ({ offer_id: `ask-${i}-` + 'a1'.repeat(20), owner: who, state: 'open', taker_gets_asset_id: B23, taker_pays_asset_id: PFUSDC, original_taker_gets_amount: qty * M, original_taker_pays_amount: Math.round(total * M), taker_gets_amount_remaining: qty * M, taker_pays_amount_remaining: Math.round(total * M) }))
-    .concat([[PAYER, 300, 298.5], [PAYER, 800, 792]].map(([who, qty, total], i) => ({ offer_id: `bid-${i}-` + 'b2'.repeat(20), owner: who, state: 'open', taker_gets_asset_id: PFUSDC, taker_pays_asset_id: B23, original_taker_gets_amount: Math.round(total * M), original_taker_pays_amount: qty * M, taker_gets_amount_remaining: Math.round(total * M), taker_pays_amount_remaining: qty * M })));
+  ].map(([who, qty, total], i) => ({ offer_id: `ask-${i}-` + 'a1'.repeat(20), owner: who, state: 'open', taker_gets_asset_id: B23, taker_pays_asset_id: CHILD, original_taker_gets_amount: qty * M, original_taker_pays_amount: Math.round(total * M), taker_gets_amount_remaining: qty * M, taker_pays_amount_remaining: Math.round(total * M) }))
+    .concat([[PAYER, 300, 298.5], [PAYER, 800, 792]].map(([who, qty, total], i) => ({ offer_id: `bid-${i}-` + 'b2'.repeat(20), owner: who, state: 'open', taker_gets_asset_id: CHILD, taker_pays_asset_id: B23, original_taker_gets_amount: Math.round(total * M), original_taker_pays_amount: qty * M, taker_gets_amount_remaining: Math.round(total * M), taker_pays_amount_remaining: qty * M })));
 }
 seedBook();
 const txid = () => (++world.counter).toString(16).padStart(8, '0') + 'd3'.repeat(44);
@@ -71,7 +71,7 @@ function applySigned(method, params) {
   const source = unsigned.source || op.owner;
   const lines = account(source);
   if (op.operation === 'offer_create') {
-    const buy = op.taker_gets_asset_id === PFUSDC;
+    const buy = op.taker_gets_asset_id === CHILD;
     let budget = op.taker_gets_amount, want = op.taker_pays_amount; const fills = [];
     const limit = buy ? op.taker_gets_amount / op.taker_pays_amount : op.taker_pays_amount / op.taker_gets_amount;
     const book = world.offers.filter(o => o.state === 'open' && o.taker_gets_asset_id === op.taker_pays_asset_id).sort((a, b) => (a.taker_pays_amount_remaining / a.taker_gets_amount_remaining) - (b.taker_pays_amount_remaining / b.taker_gets_amount_remaining));
@@ -81,8 +81,8 @@ function applySigned(method, params) {
       if (price > limit + 1e-12) break;
       const qty = Math.min(want, maker.taker_gets_amount_remaining), pay = Math.round(qty * price);
       maker.taker_gets_amount_remaining -= qty; maker.taker_pays_amount_remaining -= pay; if (!maker.taker_gets_amount_remaining) maker.state = 'filled';
-      account(maker.owner)[PFUSDC] += pay; want -= qty; budget -= pay;
-      fills.push({ taker: source, maker_owner: maker.owner, taker_sends_asset_id: PFUSDC, maker_sends_asset_id: B23, taker_sends_amount: pay, maker_sends_amount: qty });
+      account(maker.owner)[CHILD] += pay; want -= qty; budget -= pay;
+      fills.push({ taker: source, maker_owner: maker.owner, taker_sends_asset_id: CHILD, maker_sends_asset_id: B23, taker_sends_amount: pay, maker_sends_amount: qty });
     }
     const spent = fills.reduce((s, f) => s + f.taker_sends_amount, 0), received = fills.reduce((s, f) => s + f.maker_sends_amount, 0);
     lines[op.taker_gets_asset_id] -= spent; lines[op.taker_pays_asset_id] += received;
@@ -92,6 +92,10 @@ function applySigned(method, params) {
     }
     receipt.offer_fills = fills;
     world.history.push({ tx_id, accepted: true, kind: 'offer_create', from: source, amount: received || op.taker_pays_amount });
+  } else if (op.operation === 'offer_cancel') {
+    const offer = world.offers.find(row => row.offer_id === op.offer_id && row.owner === source);
+    if (!offer || offer.state !== 'open') throw new Error('No open fixture offer to cancel');
+    offer.state = 'canceled'; lines[offer.taker_gets_asset_id] += offer.taker_gets_amount_remaining;
   } else if (op.operation === 'pftl_uniswap_primary_redeem') {
     const gross = Math.floor(op.nav_amount_atoms * world.nav.nav_per_unit / M), holder = Math.floor(gross * world.pool.redeem_multiplier_bps / 10000), spread = gross - holder;
     lines[B23] -= op.nav_amount_atoms; lines[PFUSDC] += holder; account(MANAGER)[PFUSDC] += spread;
@@ -114,13 +118,13 @@ function rpc(method, params = {}) {
     case 'account_tx': if (world.failActivity) throw new Error('rpc account_tx failed: receipt log is being rebuilt; try again shortly'); return { rows: world.history.filter(r => r.from === params.address || r.to === params.address).slice().reverse() };
     case 'navcoin_bridge_supply_status': return structuredClone(world.pool);
     case 'nav_reserve_proof_status': return { asset_id: B23, current_height: world.height, packets: [structuredClone(world.nav), { ...structuredClone(world.nav), epoch: 2, reserve_packet_hash: 'f'.repeat(96), submitted_at_height: 1181 }] };
-    case 'asset_info': return { asset: { asset_id: B23, code: 'B23', outstanding_supply: world.supply } };
+    case 'asset_info': return { asset: { asset_id: params.asset_id, issuer: ISSUER, precision: 6, requires_authorization: false, asset_family_id: PFUSDC, code: CODES[params.asset_id], outstanding_supply: world.supply } };
     case 'book_offers': return { truncated: false, limit: 100, offers: world.emptyBook ? [] : world.offers.filter(o => o.state === 'open' && o.taker_gets_asset_id === params.taker_gets_asset_id && o.taker_pays_asset_id === params.taker_pays_asset_id) };
     case 'account_offers': return { truncated: false, limit: 100, offers: world.offers.filter(o => o.owner === params.account) };
     case 'vault_bridge_route': return routeReport().result;
     case 'transfer_fee_quote': account(params.from); account(params.to); return { chain_id: CHAIN_ID, genesis_hash: GENESIS_HASH, protocol_version: 1, ...params, sequence: 4, sequence_source: 'ledger', sender_balance: world.pft[params.from], sender_sequence: 3, mempool_pending_for_sender: 0, recipient_exists: true, will_create_recipient_account: false, base_transfer_fee: 1, state_expansion_fee: 0, minimum_fee: 1, account_reserve: 1, transfer_account_creation_fee: 0, transfer_fee_byte_quantum: 1024, transfer_fee_per_quantum: 0, transfer_weight_bytes: 1, sender_balance_after_amount_and_fee: world.pft[params.from] - params.amount - 1, sender_meets_reserve_after_transfer: true, recipient_balance_after_amount: world.pft[params.to] + params.amount, recipient_meets_reserve_after_transfer: true };
     case 'asset_fee_quote': case 'offer_fee_quote': return { chain_id: CHAIN_ID, genesis_hash: GENESIS_HASH, protocol_version: 1, source: params.source, operation: JSON.parse(params.operation_json), minimum_fee: 120, sequence: 4, sender_meets_reserve_after_fee: true };
-    case 'mempool_submit_signed_transfer_finality': case 'mempool_submit_signed_asset_transaction_finality': case 'mempool_submit_signed_offer_transaction': case 'mempool_submit_signed_asset_transaction': return applySigned(method, params);
+    case 'mempool_submit_signed_transfer_finality': case 'mempool_submit_signed_asset_transaction_finality': case 'mempool_submit_signed_offer_transaction_finality': case 'mempool_submit_signed_asset_transaction': return applySigned(method, params);
     case 'receipts': return { receipts: [] };
     default: throw new Error(`design stub: unexpected ${method}`);
   }

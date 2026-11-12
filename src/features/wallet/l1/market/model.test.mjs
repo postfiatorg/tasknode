@@ -19,17 +19,17 @@ test("configuration permits pending management but never accepts malformed asset
 });
 test("buy pays PFUSDC, sell pays B23, issuer and pre-G1 trading reject", () => {
   const buy = buildOffer(config, bob, "buy", "10", "11", "0", state()).operation;
-  assert.equal(buy.taker_gets_asset_id, config.pfusdc_asset_id); assert.equal(buy.taker_gets_amount, 11000000);
+  assert.equal(buy.taker_gets_asset_id, config.market_quote_asset_id); assert.equal(buy.taker_gets_amount, 11000000);
   assert.equal(buildOffer(config, bob, "sell", "10", "11", "0", state()).operation.taker_gets_asset_id, config.b23_asset_id);
   assert.throws(() => buildOffer(config, config.issuer_address, "sell", "10", "11", "0", state()));
   assert.throws(() => buildOffer({ ...config, g1_passed: false }, bob, "buy", "10", "11", "0", state()));
 });
 function offerCase(received, spent, locked) {
   const intent = buildOffer(config, bob, "buy", "10", "10", "0", state());
-  const before = state(), after = state(); before.recipientLines = lines(0,0); after.recipientLines = lines(0,spent); after.balances.assets = lines(100000000 + received, 200000000 - spent - locked);
-  const offer = { offer_id: "offer-1", owner: bob, state: "open", taker_gets_asset_id: config.pfusdc_asset_id, taker_pays_asset_id: config.b23_asset_id, original_taker_gets_amount: 10000000, original_taker_pays_amount: 10000000, taker_gets_amount_remaining: locked, taker_pays_amount_remaining: 10000000 - received };
+  const before = state(), after = state(); before.recipientLines = lines(0,0,0); after.recipientLines = lines(0,0,spent); after.balances.assets = lines(100000000 + received, 200000000, 200000000 - spent - locked);
+  const offer = { offer_id: "offer-1", owner: bob, state: "open", taker_gets_asset_id: config.market_quote_asset_id, taker_pays_asset_id: config.b23_asset_id, original_taker_gets_amount: 10000000, original_taker_pays_amount: 10000000, taker_gets_amount_remaining: locked, taker_pays_amount_remaining: 10000000 - received };
   if (locked) after.offers.offers.push(offer);
-  const fills = spent ? [{ taker: bob, maker_owner: config.alice_holder_address, maker_sends_asset_id: config.b23_asset_id, taker_sends_asset_id: config.pfusdc_asset_id, maker_sends_amount: received, taker_sends_amount: spent }] : [];
+  const fills = spent ? [{ taker: bob, maker_owner: config.alice_holder_address, maker_sends_asset_id: config.b23_asset_id, taker_sends_asset_id: config.market_quote_asset_id, maker_sends_amount: received, taker_sends_amount: spent }] : [];
   return { intent, before, after, receipt: { accepted: true, offer_id: locked ? "offer-1" : null, offer_fills: fills } };
 }
 for (const [received, spent, locked, label] of [[0,0,10000000,"Unfilled"], [4000000,4000000,6000000,"Partially filled"], [10000000,9000000,0,"Filled"]]) {
@@ -41,7 +41,7 @@ for (const [received, spent, locked, label] of [[0,0,10000000,"Unfilled"], [4000
 }
 test("cancel verifies refunded locked remainder, not a reversed fill", () => {
   const c = offerCase(4000000,4000000,6000000), before = c.after, after = structuredClone(before), offer = before.offers.offers[0];
-  const intent = buildCancel(bob, offer); after.offers.offers[0].state = "canceled"; after.balances.assets = lines(104000000,196000000);
+  const intent = buildCancel(bob, offer); after.offers.offers[0].state = "canceled"; after.balances.assets = lines(104000000,200000000,196000000);
   assert.match(verifyOffer(intent,before,after,config,{accepted:true}).message,/refund/);
   assert.throws(() => buildCancel(config.issuer_address, offer));
 });
@@ -117,13 +117,14 @@ test("snapshot rejects an account mismatch instead of treating other-account dat
   const s=state();const client={address:bob,getBalances:async()=>({...s.balances,address:config.issuer_address}),call:async method=>({navcoin_bridge_supply_status:s.pool,nav_reserve_proof_status:s.proof,asset_info:{asset:{asset_id:config.b23_asset_id,outstanding_supply:s.supply}},account_offers:s.offers}[method])};
   await assert.rejects(()=>snapshot(client,config),/Wallet changed/);
 });
-test("redemption verifies the actual authorized PFUSDC source-series payout asset", () => {
+test("cash-in rejects a source-series payout when family reserve was reviewed", () => {
   const sourceId="9".repeat(96), settings={...config,pfusdc_source_asset_ids:[sourceId]}, before=state(),after=state();
   before.balances.assets.lines.push({asset_id:sourceId,balance:0});before.managementLines.lines.push({asset_id:sourceId,balance:0});
   after.balances.assets=lines(0,200000000);after.balances.assets.lines.push({asset_id:sourceId,balance:99800000});after.managementLines.lines.push({asset_id:sourceId,balance:200000});
   after.supply-=100000000;after.pool.settlement_reserve_atoms-=100000000;
   const {intent}=buildRedeem(settings,bob,before,"100",nonce),receipt={redemption_settlement:{settlement_asset_id:sourceId,settlement_recipient:bob,spread_recipient:config.management_address,settlement_value_atoms:99800000,spread_value_atoms:200000}};
-  assert.equal(verifyRedeem(settings,intent,before,after,receipt).payoutAssetId,sourceId);
+  assert.equal(Object.hasOwn(intent.operation, "settlement_source_asset_id"),false);
+  assert.throws(()=>verifyRedeem(settings,intent,before,after,receipt),/payout asset mismatch/);
   assert.throws(()=>verifyRedeem(config,intent,before,after,receipt));
 });
 test("opening packet rejects stale or fabricated cutoff times", () => {

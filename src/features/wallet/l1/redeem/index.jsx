@@ -61,7 +61,7 @@ export default function RedeemTab({ client, onNavigate }) {
             {previewError && !overReserve && data.config.g1_passed && <p className="l1-field-hint is-danger">{plainError(previewError)}</p>}
             <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={!data.config.g1_passed || Boolean(overReserve)}>Review cash-in</button>
           </form>
-          <p className="l1-small l1-muted" style={{ marginTop: 14 }}>Cash-in pays NAV minus the fee from the standing reserve. Selling on the market is a separate process at a price set by buyers{onNavigate ? <> — <button type="button" className="l1-link" onClick={() => onNavigate("Market")}><ChartCandlestick size={13} aria-hidden />open the market</button></> : ""}.</p>
+          <p className="l1-small l1-muted" style={{ marginTop: 14 }}>Cash-in pays PFUSDC from the reserve at NAV minus the fee. Selling on the market is a separate process at a price set by buyers{onNavigate ? <> — <button type="button" className="l1-link" onClick={() => onNavigate("Market")}><ChartCandlestick size={13} aria-hidden />open the market</button></> : ""}.</p>
           {estimate && visibleRequest && <p className="l1-small l1-muted" style={{ marginTop: 8 }}>Quote valid until block {Number(estimate.expiry).toLocaleString()}.</p>}
         </Card>}
         {actionError && <Notice tone="danger" role="alert">{plainError(actionError)}</Notice>}

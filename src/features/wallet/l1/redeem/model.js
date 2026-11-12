@@ -41,7 +41,7 @@ export function redeemPreflight(config, intent, current, prepared) {
 export function verifyRedeem(config, intent, before, after, receipt) {
   const op = intent.operation, credit = receipt.redemption_settlement;
   if (!credit) throw new Error("Accepted receipt lacks the two-credit redemption settlement");
-  if (credit.settlement_recipient !== op.settlement_recipient || credit.spread_recipient !== config.management_address || ![config.pfusdc_asset_id, ...(config.pfusdc_source_asset_ids || [])].includes(credit.settlement_asset_id)) throw new Error("Redemption credit recipients or payout asset mismatch");
+  if (credit.settlement_recipient !== op.settlement_recipient || credit.spread_recipient !== config.management_address || credit.settlement_asset_id !== config.pfusdc_asset_id) throw new Error("Redemption credit recipients or payout asset mismatch");
   const holder = integer(credit.settlement_value_atoms), management = integer(credit.spread_value_atoms), gross = holder + management;
   const expectedGross = integer(op.nav_amount_atoms) * integer(before.nav.nav_per_unit) / SCALE;
   const expectedHolder = expectedGross * integer(before.pool.redeem_multiplier_bps) / 10000n;

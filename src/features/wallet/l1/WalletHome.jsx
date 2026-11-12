@@ -92,8 +92,7 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
         {error && <div style={{ marginBottom: 16 }}><Notice tone="danger" role="alert" title="Balances could not be refreshed">{error} {balances && 'Last displayed balances may be stale.'}</Notice></div>}
         <div className="l1-assets" aria-label="Balances">
           <AssetRow code="PFT" name="Post Fiat" sub="pays network fees" atoms={account?.balance} loading={loading} />
-          <AssetRow code="PFUSDC" name="USDC on Post Fiat" sub="1:1" atoms={held.pfusdc} loading={loading} value={config ? (pfusdcValue ?? 0n) : undefined}
-            note={held.pfusdcBridged > 0n ? `${amount(held.pfusdcBridged)} arrived from the Ethereum bridge${held.pfusdcFamily != null ? `; ${amount(held.pfusdcFamily)} is spendable on the market now` : ''}.` : null} />
+          <AssetRow code="PFUSDC" name="USDC on Post Fiat" sub="1:1" atoms={held.pfusdc} loading={loading} value={config ? (pfusdcValue ?? 0n) : undefined} />
           <AssetRow code="B23" name="NAVCoin" sub={nav != null ? `NAV $${amount(nav, { min: 2 })}` : 'Schwab-backed'} atoms={held.b23} loading={loading} value={nav != null ? b23Value : undefined} />
         </div>
         {others.length > 0 && <div className="l1-asset-more"><Details summary={`Other assets (${others.length})`}>

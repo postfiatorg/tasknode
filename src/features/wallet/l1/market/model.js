@@ -13,11 +13,11 @@ export async function readPool(client, config) {
 }
 export async function readBook(client, config) {
   const [asks, bids, mine] = await Promise.all([
-    client.call("book_offers", { taker_gets_asset_id: config.b23_asset_id, taker_pays_asset_id: config.pfusdc_asset_id, limit: 100 }).then(resultOf),
-    client.call("book_offers", { taker_gets_asset_id: config.pfusdc_asset_id, taker_pays_asset_id: config.b23_asset_id, limit: 100 }).then(resultOf),
+    client.call("book_offers", { taker_gets_asset_id: config.b23_asset_id, taker_pays_asset_id: config.market_quote_asset_id, limit: 100 }).then(resultOf),
+    client.call("book_offers", { taker_gets_asset_id: config.market_quote_asset_id, taker_pays_asset_id: config.b23_asset_id, limit: 100 }).then(resultOf),
     client.call("account_offers", { account: client.address, limit: 100 }).then(resultOf),
   ]);
-  return { asks, bids, mine: { ...mine, offers: (mine.offers || []).filter(o => [config.b23_asset_id, config.pfusdc_asset_id].includes(o.taker_gets_asset_id) && [config.b23_asset_id, config.pfusdc_asset_id].includes(o.taker_pays_asset_id)) } };
+  return { asks, bids, mine: { ...mine, offers: (mine.offers || []).filter(o => [config.b23_asset_id, config.market_quote_asset_id].includes(o.taker_gets_asset_id) && [config.b23_asset_id, config.market_quote_asset_id].includes(o.taker_pays_asset_id)) } };
 }
 export function lineBalance(report, assetId) {
   const data = resultOf(report);
@@ -42,9 +42,9 @@ export function buildOffer(config, address, side, quantity, consideration, expir
   const b23 = atoms(quantity, "B23 amount"), pfusdc = atoms(consideration, "PFUSDC total");
   return { kind: "offer", operation: {
     operation: "offer_create", owner: address,
-    taker_gets_asset_id: side === "buy" ? config.pfusdc_asset_id : config.b23_asset_id,
+    taker_gets_asset_id: side === "buy" ? config.market_quote_asset_id : config.b23_asset_id,
     taker_gets_amount: side === "buy" ? pfusdc : b23,
-    taker_pays_asset_id: side === "buy" ? config.b23_asset_id : config.pfusdc_asset_id,
+    taker_pays_asset_id: side === "buy" ? config.b23_asset_id : config.market_quote_asset_id,
     taker_pays_amount: side === "buy" ? b23 : pfusdc,
     expiration_height: safeInteger(expiration, "Expiration height"),
   } };
@@ -58,11 +58,11 @@ export function offerProgress(offer) {
   if (remaining > original) throw new Error("Invalid offer remainder");
   return { filled: String(original - remaining), remaining: String(remaining), label: remaining === 0n ? "Filled" : remaining === original ? "Unfilled" : "Partially filled" };
 }
-export function balanceDeltas(before, after, config) {
-  return Object.fromEntries([["B23", config.b23_asset_id], ["PFUSDC", config.pfusdc_asset_id]].map(([name, id]) => [name, String(lineBalance(after.balances.assets, id) - lineBalance(before.balances.assets, id))]));
+export function balanceDeltas(before, after, config, quoteAssetId = config.pfusdc_asset_id) {
+  return Object.fromEntries([["B23", config.b23_asset_id], ["PFUSDC", quoteAssetId]].map(([name, id]) => [name, String(lineBalance(after.balances.assets, id) - lineBalance(before.balances.assets, id))]));
 }
 export function verifyOffer(intent, before, after, config, receipt) {
-  const deltas = balanceDeltas(before, after, config), op = intent.operation;
+  const deltas = balanceDeltas(before, after, config, config.market_quote_asset_id), op = intent.operation;
   if (integer(before.supply) !== integer(after.supply) || integer(before.pool.settlement_reserve_atoms) !== integer(after.pool.settlement_reserve_atoms)) throw new Error("Market transaction changed B23 supply or redemption reserve");
   if (after.offers.truncated || before.offers.truncated) throw new Error("Offer history is truncated; remainder cannot be verified");
   if (op.operation === "offer_cancel") {
@@ -92,7 +92,7 @@ export function verifyOffer(intent, before, after, config, receipt) {
   if (BigInt(buy ? deltas.PFUSDC : deltas.B23) !== -(spent + locked) || BigInt(buy ? deltas.B23 : deltas.PFUSDC) !== received) throw new Error("Offer fills and locked remainder do not match actual balance deltas");
   if (buy && op.owner !== config.alice_holder_address) {
     const aliceCredit = fills.filter(fill => fill.maker_owner === config.alice_holder_address).reduce((sum, fill) => sum + integer(fill.taker_sends_amount), 0n);
-    if (aliceCredit > 0n && lineBalance(after.recipientLines, config.pfusdc_asset_id) - lineBalance(before.recipientLines, config.pfusdc_asset_id) !== aliceCredit) throw new Error("Alice's PFUSDC credit does not match Bob's fills");
+    if (aliceCredit > 0n && lineBalance(after.recipientLines, config.market_quote_asset_id) - lineBalance(before.recipientLines, config.market_quote_asset_id) !== aliceCredit) throw new Error("Alice's PFUSDC credit does not match Bob's fills");
   }
   const label = fills.length === 0 ? "Unfilled" : offer ? "Partially filled" : "Filled";
   return { deltas, offer, fills, spent: String(spent), received: String(received), locked: String(locked), message: `${label} offer verified. Unfilled offered funds are locked until filled or cancelled. B23 supply and redemption reserve are unchanged.` };

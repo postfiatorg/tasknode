@@ -10,7 +10,7 @@ export function classifyLines(lines, config) {
     const code = line.code || line.asset_code || line.currency;
     const id = line.asset_id;
     if (config && id === config.b23_asset_id) { out.b23 = (out.b23 ?? 0n) + balance; continue; }
-    if (config && (id === config.pfusdc_asset_id || line.asset_family_id === config.pfusdc_asset_id || config.pfusdc_source_asset_ids?.includes(id))) {
+    if (config && (id === config.pfusdc_asset_id || id === config.market_quote_asset_id || line.asset_family_id === config.pfusdc_asset_id || config.pfusdc_source_asset_ids?.includes(id))) {
       out.pfusdc = (out.pfusdc ?? 0n) + balance;
       if (id === config.pfusdc_asset_id) out.pfusdcFamily = (out.pfusdcFamily ?? 0n) + balance; else out.pfusdcBridged += balance;
       continue;

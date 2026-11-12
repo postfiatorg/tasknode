@@ -15,16 +15,18 @@ try {
     const wasm = await initWasm(), wallet = wasm.wallet_keygen(CHAIN_ID, wasm.random_master_seed(), 0);
     const base = { operation: 'offer_create', owner: wallet.address, taker_gets_asset_id: 'a'.repeat(96), taker_gets_amount: 1000000, taker_pays_asset_id: 'b'.repeat(96), taker_pays_amount: 1000000 };
     const operations = [base, { ...base, expiration_height: 0 }, { ...base, expiration_height: 12345 }, { operation: 'offer_cancel', owner: wallet.address, offer_id: 'c'.repeat(96) }];
+    operations.push({operation:'trust_set',account:wallet.address,issuer:'pf'+'2'.repeat(40),asset_id:'a'.repeat(96),limit:10000000,authorized:false,frozen:false,reserve_paid:10});
     const checks = [];
     for (const operation of operations) {
       const builder = new TxBuilder({ call: async method => {
-        if (method !== 'offer_fee_quote') throw new Error('Signing test forbids submit');
+        if (method !== (operation.operation === 'trust_set' ? 'asset_fee_quote' : 'offer_fee_quote')) throw new Error('Signing test forbids submit');
         return { ok: true, result: { chain_id: CHAIN_ID, genesis_hash: GENESIS_HASH, protocol_version: 1, source: wallet.address, operation, minimum_fee: 33, sequence: 1, sender_meets_reserve_after_fee: true } };
       } });
-      const intent = { kind: 'offer', operation }, quote = await builder.quote(intent, wallet.address);
+      const intent = { kind: operation.operation === 'trust_set' ? 'asset' : 'offer', operation }, quote = await builder.quote(intent, wallet.address);
       // Observe the original returned object without changing any signed field.
       let signed;
-      const observer = { wallet_sign_offer_transaction_fields: (...args) => { signed = wasm.wallet_sign_offer_transaction_fields(...args); return signed; } };
+      const signMethod=operation.operation === 'trust_set' ? 'wallet_sign_asset_transaction_fields' : 'wallet_sign_offer_transaction_fields';
+      const observer = { [signMethod]: (...args) => { signed = wasm[signMethod](...args); return signed; } };
       builder.sign(intent, quote, wallet.address, wallet.backup_json, observer);
       const reviewed = reviewedSignedOperation(signed, operation);
       if (JSON.stringify(reviewed) !== JSON.stringify(operation) || !signed.signature_hex || !signed.public_key_hex) throw new Error('Real signature dropped reviewed fields');
@@ -33,6 +35,6 @@ try {
     }
     return { checks, signerShim: false, submissions: 0 };
   });
-  assert.equal(result.checks.length, 4);
+  assert.equal(result.checks.length, 5);
   console.log(JSON.stringify(result, null, 2));
 } finally { await browser.close(); await server.close(); }
