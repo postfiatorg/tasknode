@@ -73,7 +73,7 @@ export function verifyOffer(intent, before, after, config, receipt) {
     if (BigInt(sell ? deltas.B23 : deltas.PFUSDC) !== integer(prior.taker_gets_amount_remaining) || BigInt(sell ? deltas.PFUSDC : deltas.B23) !== 0n) throw new Error("Cancelled remainder refund does not match balances");
     return { deltas, message: "Offer cancellation and unfilled balance refund verified; prior fills are retained.", offer };
   }
-  const fills = receipt?.offer_fills;
+  const fills = receipt?.offer_fills ?? [];
   if (!Array.isArray(fills)) throw new Error("Offer receipt fill records unavailable");
   let spent = 0n, received = 0n;
   for (const fill of fills) {
@@ -90,6 +90,10 @@ export function verifyOffer(intent, before, after, config, receipt) {
   if (spent > integer(op.taker_gets_amount) || (!offer && fills.length === 0)) throw new Error("Offer fill or remainder is missing");
   const buy = op.taker_pays_asset_id === config.b23_asset_id;
   if (BigInt(buy ? deltas.PFUSDC : deltas.B23) !== -(spent + locked) || BigInt(buy ? deltas.B23 : deltas.PFUSDC) !== received) throw new Error("Offer fills and locked remainder do not match actual balance deltas");
+  if (buy && op.owner !== config.alice_holder_address) {
+    const aliceCredit = fills.filter(fill => fill.maker_owner === config.alice_holder_address).reduce((sum, fill) => sum + integer(fill.taker_sends_amount), 0n);
+    if (aliceCredit > 0n && lineBalance(after.recipientLines, config.pfusdc_asset_id) - lineBalance(before.recipientLines, config.pfusdc_asset_id) !== aliceCredit) throw new Error("Alice's PFUSDC credit does not match Bob's fills");
+  }
   const label = fills.length === 0 ? "Unfilled" : offer ? "Partially filled" : "Filled";
   return { deltas, offer, fills, spent: String(spent), received: String(received), locked: String(locked), message: `${label} offer verified. Unfilled offered funds are locked until filled or cancelled. B23 supply and redemption reserve are unchanged.` };
 }

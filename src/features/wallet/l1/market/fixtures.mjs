@@ -12,7 +12,7 @@ export function state() {
   };
 }
 export function equityPlan() {
-  const packet = { schema: "postfiat.b23.account_equity.v1", source_field: "securitiesAccount.currentBalances.liquidationValue", valuation_unit: "usd_1e6", scale_atoms_per_usd: 1000000, adjustments: [], liquidation_value_atoms: 2_000_000_000, liquidation_value_usd: "2000.00", cutoff_at_utc: "2026-11-12T18:15:00Z", observed_at_utc: "2026-11-12T18:15:06Z", account_commitment_sha256: "f".repeat(64), packet_hash: "f".repeat(96) };
+  const packet = { schema: "postfiat.b23.account_equity.v1", source_field: "securitiesAccount.currentBalances.liquidationValue", valuation_unit: "usd_1e6", scale_atoms_per_usd: 1000000, adjustments: [], liquidation_value_atoms: 2_000_000_000, liquidation_value_usd: "2000.00", cutoff_at_utc: new Date(Date.now()-30000).toISOString(), observed_at_utc: new Date(Date.now()-24000).toISOString(), account_commitment_sha256: "f".repeat(64), packet_hash: "f".repeat(96) };
   const base = { issuer: config.issuer_address, asset_id: config.b23_asset_id, epoch: 3, reserve_packet_hash: packet.packet_hash };
   return { packet, pfdep_retired: true, current_supply_atoms: 1_000_000_000, target_supply_atoms: 2_000_000_000, additional_mint_atoms: 1_000_000_000, operations: [
     { ...base, operation: "nav_reserve_submit", submitter: config.issuer_address, nav_per_unit: 1000000, circulating_supply: 2_000_000_000, verified_net_assets: 2_000_000_000, proof_profile: config.proof_profile, source_root: "a".repeat(96), attestor_root: "b".repeat(96), reserve_accounts: [], sp1_proof_bytes: [], sp1_public_values: [] },

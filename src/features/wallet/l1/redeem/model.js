@@ -41,16 +41,17 @@ export function redeemPreflight(config, intent, current, prepared) {
 export function verifyRedeem(config, intent, before, after, receipt) {
   const op = intent.operation, credit = receipt.redemption_settlement;
   if (!credit) throw new Error("Accepted receipt lacks the two-credit redemption settlement");
-  if (credit.settlement_recipient !== op.settlement_recipient || credit.spread_recipient !== config.management_address || credit.settlement_asset_id !== config.pfusdc_asset_id) throw new Error("Redemption credit recipients or payout asset mismatch");
+  if (credit.settlement_recipient !== op.settlement_recipient || credit.spread_recipient !== config.management_address || ![config.pfusdc_asset_id, ...(config.pfusdc_source_asset_ids || [])].includes(credit.settlement_asset_id)) throw new Error("Redemption credit recipients or payout asset mismatch");
   const holder = integer(credit.settlement_value_atoms), management = integer(credit.spread_value_atoms), gross = holder + management;
   const expectedGross = integer(op.nav_amount_atoms) * integer(before.nav.nav_per_unit) / SCALE;
   const expectedHolder = expectedGross * integer(before.pool.redeem_multiplier_bps) / 10000n;
   if (gross !== expectedGross || holder !== expectedHolder || holder < integer(op.min_settlement_value_atoms)) throw new Error("Receipt credits do not match the reviewed NAV-minus-fee quote");
   const deltas = balanceDeltas(before, after, config);
+  const payoutDelta = lineBalance(after.balances.assets, credit.settlement_asset_id) - lineBalance(before.balances.assets, credit.settlement_asset_id);
   const managerDelta = lineBalance(after.managementLines, credit.settlement_asset_id) - lineBalance(before.managementLines, credit.settlement_asset_id);
   const walletCredit = op.settlement_recipient === config.management_address ? gross : holder;
   const expectedManagerDelta = op.settlement_recipient === config.management_address ? gross : management;
-  if (BigInt(deltas.B23) !== -integer(op.nav_amount_atoms) || BigInt(deltas.PFUSDC) !== walletCredit || managerDelta !== expectedManagerDelta) throw new Error("Both actual payout balances and B23 debit must match the receipt");
+  if (BigInt(deltas.B23) !== -integer(op.nav_amount_atoms) || payoutDelta !== walletCredit || managerDelta !== expectedManagerDelta) throw new Error("Both actual payout balances and B23 debit must match the receipt");
   if (integer(before.supply) - integer(after.supply) !== integer(op.nav_amount_atoms) || integer(before.pool.settlement_reserve_atoms) - integer(after.pool.settlement_reserve_atoms) !== gross) throw new Error("Redemption supply or reserve delta mismatch");
-  return { deltas, credits: credit, managementDelta: String(managerDelta), message: "Redemption verified: holder and management credits, B23 burn, and reserve decrease match." };
+  return { deltas: { ...deltas, PFUSDC: String(payoutDelta) }, payoutAssetId: credit.settlement_asset_id, credits: credit, managementDelta: String(managerDelta), message: "Redemption verified: holder and management credits, B23 burn, and reserve decrease match." };
 }

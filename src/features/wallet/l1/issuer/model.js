@@ -10,7 +10,7 @@ export function verifyFund(config, intent, before, after) {
   if (BigInt(deltas.PFUSDC) !== -amount || BigInt(deltas.B23) !== 0n || integer(before.supply) !== integer(after.supply) || integer(after.pool.settlement_reserve_atoms) - integer(before.pool.settlement_reserve_atoms) !== amount) throw new Error("Funding must increase reserve by the payment and mint no B23");
   return { deltas, message: "Reserve funding verified. No B23 was minted.", capacityBefore: before.pool.available_redeem_atoms, capacityAfter: after.pool.available_redeem_atoms };
 }
-export function validateEquityPlan(plan, config) {
+export function validateEquityPlan(plan, config, now = Date.now()) {
   const p = plan?.packet;
   if (!p || p.schema !== "postfiat.b23.account_equity.v1" || p.valuation_unit !== "usd_1e6" || p.scale_atoms_per_usd !== 1000000 || p.source_field !== "securitiesAccount.currentBalances.liquidationValue" || !Array.isArray(p.adjustments) || p.adjustments.length) throw new Error("An unadjusted Schwab account-equity packet in usd_1e6 is required");
   if (!config.proof_profile) throw new Error("B23's existing proof profile is not configured");
@@ -19,6 +19,9 @@ export function validateEquityPlan(plan, config) {
   if (target !== integer(p.liquidation_value_atoms) || target <= current || additional !== target - current) throw new Error("Opening supply must count the existing B23 and wire once");
   if (BigInt(atoms(p.liquidation_value_usd)) !== target) throw new Error("Schwab decimal and atomic values disagree");
   if (!p.cutoff_at_utc || !p.observed_at_utc || !/^[0-9a-f]{96}$/.test(p.packet_hash || "")) throw new Error("Account-equity cutoff or packet commitment is missing");
+  const cutoff = Date.parse(p.cutoff_at_utc), observed = Date.parse(p.observed_at_utc);
+  if (!Number.isFinite(cutoff) || !Number.isFinite(observed) || observed < cutoff || observed - cutoff > 60000 || cutoff > now + 60000 || now - cutoff >= 86400000) throw new Error("Account-equity packet is outside its cutoff window or older than one day");
+  if (!/^[0-9a-f]{64}$/.test(p.account_commitment_sha256 || "")) throw new Error("Account identity commitment is unavailable");
   const ops = plan.operations;
   if (!Array.isArray(ops) || ops.length !== 3 || ops.map(op => op.operation).join(",") !== "nav_reserve_submit,nav_epoch_finalize,nav_mint_at_nav") throw new Error("Expected reserve submit, epoch finalize, and mint operations");
   const [reserve, finalize, mint] = ops;
@@ -33,6 +36,11 @@ export function mintPreflight(plan, config, intent, state) {
   validateEquityPlan(plan, config);
   if (integer(state.supply) !== integer(plan.current_supply_atoms)) throw new Error("B23 supply changed; obtain an updated opening plan");
   const op = intent.operation;
+  if (op.operation === "nav_reserve_submit" && state.proof.packets.some(p => p.epoch >= op.epoch)) throw new Error("Reserve epoch already exists; inspect its state and continue from the confirmed step");
+  if (op.operation === "nav_mint_at_nav") {
+    facilityReady(config, state);
+    if (state.pool.pricing_nav_epoch !== op.epoch || state.pool.pricing_reserve_packet_hash !== op.reserve_packet_hash) throw new Error("Install the route policy for the new finalized NAV before the opening top-up");
+  }
   if (op.operation !== "nav_reserve_submit") {
     const packet = state.proof.packets.find(p => p.epoch === op.epoch && p.reserve_packet_hash === op.reserve_packet_hash);
     if (!packet || (op.operation === "nav_mint_at_nav" && packet.state !== "finalized")) throw new Error("Previous opening step is not confirmed on chain");

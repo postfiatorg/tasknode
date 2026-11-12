@@ -45,7 +45,7 @@ export function PoolState({ state, config }) {
 export function ActionReview({ client, request, onComplete }) {
   const [prepared, setPrepared] = useState(null), [outcome, setOutcome] = useState(null), [error, setError] = useState(""), [phase, setPhase] = useState("review");
   const active = useRef(true), latest = useRef({ client, request }); latest.current = { client, request };
-  useEffect(() => () => { active.current = false; }, []);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const current = () => active.current && latest.current.request === request && latest.current.client.accountId === client.accountId && latest.current.client.address === client.address && latest.current.client.unlocked;
   async function quote() {
     setPhase("quoting"); setError("");
@@ -70,7 +70,7 @@ export function ActionReview({ client, request, onComplete }) {
     {outcome && <div role="status"><h4>{outcome.verified ? "Accepted and verified" : "Accepted — balance/state verification incomplete"}</h4>
       <p>{outcome.effects?.message || outcome.verificationError}</p><p>Transaction: {outcome.txId}</p>
       {outcome.effects?.deltas && <p>Wallet changes: B23 {units(outcome.effects.deltas.B23)}; PFUSDC {units(outcome.effects.deltas.PFUSDC)}</p>}
-      {outcome.effects?.credits && <div><p>Holder credit: {units(outcome.effects.credits.settlement_value_atoms)} PFUSDC → {outcome.effects.credits.settlement_recipient}</p><p>Management credit: {units(outcome.effects.credits.spread_value_atoms)} PFUSDC → {outcome.effects.credits.spread_recipient}</p></div>}
+      {outcome.effects?.credits && <div><p className="nc-address">PFUSDC payout asset: {outcome.effects.payoutAssetId}</p><p>Holder credit: {units(outcome.effects.credits.settlement_value_atoms)} PFUSDC → {outcome.effects.credits.settlement_recipient}</p><p>Management credit: {units(outcome.effects.credits.spread_value_atoms)} PFUSDC → {outcome.effects.credits.spread_recipient}</p></div>}
       <details><summary>Receipt and before/after balances</summary><pre>{JSON.stringify({ receipt: outcome.receipt, before: outcome.before?.balances, after: outcome.after?.balances, managementBefore: outcome.before?.managementLines, managementAfter: outcome.after?.managementLines, effects: outcome.effects }, null, 2)}</pre></details>
     </div>}
   </section>;

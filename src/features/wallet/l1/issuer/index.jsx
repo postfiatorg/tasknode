@@ -10,7 +10,7 @@ async function publicArtifact(path) {
   if (!response.ok) throw new Error(body.error || "Public preparation artifact is unavailable");
   return body;
 }
-export default function IssuerTab({ client }) {
+export default function IssuerTab({ client, onNavigate }) {
   const { data, error, loading, refresh } = useNavcoin(client);
   const [funding, setFunding] = useState(""), [bps, setBps] = useState("20"), [equity, setEquity] = useState(null), [request, setRequest] = useState(null), [actionError, setActionError] = useState("");
   const [preparing, setPreparing] = useState(false);
@@ -52,7 +52,7 @@ export default function IssuerTab({ client }) {
   }
   const plan = equity?.accountId === client.accountId && equity?.address === client.address ? equity.plan : null;
   const visibleRequest = request?.accountId === client.accountId && request?.address === client.address && client.unlocked;
-  return <div className="nc"><h2>B23 issuer</h2><ol className="nc-steps" aria-label="Alice journey"><li>Mint B23 at NAV against Schwab net liquidation value.</li><li>Fund the PFUSDC redemption reserve without minting.</li><li>Use the holder wallet in Market to post a sell offer.</li></ol><p>These PFTL actions do not require MetaMask.</p>
+  return <div className="nc"><h2>B23 issuer</h2><ol className="nc-steps" aria-label="Alice journey"><li>Mint B23 at NAV against Schwab net liquidation value.</li><li>Fund the PFUSDC redemption reserve without minting.</li><li>Use the holder wallet in Market to post a sell offer.</li></ol><p>These PFTL actions do not require MetaMask.</p>{onNavigate && <button type="button" onClick={() => onNavigate("Market")}>Open Market for Alice step 3</button>}
     <WalletNotice client={client} error={error} loading={loading} refresh={refresh} />
     {data && <><PoolState state={data.state} config={data.config} />
       <section className="nc-card"><h3>1. Mint B23 at NAV</h3><p>Schwab’s reported net liquidation value, with no adjustments. The existing wire and all existing B23 count toward opening supply.</p>
