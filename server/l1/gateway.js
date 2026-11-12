@@ -69,7 +69,13 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
       if (!signedIn(session)) { json(res, 401, { error: 'l1_login_required' }); return; }
       if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req)) { json(res, 403, { error: 'l1_origin_rejected' }); return; }
       const context = { req, res, url, session, json, readJson, proxyUrl: env.L1_WALLET_PROXY_URL || '' };
-      if (await handleBridgeRoutes(context) || await handleNavcoinRoutes(context)) return;
+      if (url.pathname.startsWith('/api/l1/bridge/')) {
+        const credential = await credentials;
+        if (!credential) { json(res, 503, { error: 'l1_proxy_credential_unavailable' }); return; }
+        if (await handleBridgeRoutes({ ...context, bridgeProxyUrl: env.L1_BRIDGE_PROXY_URL || '',
+          proxyToken: credential.token, proxyOrigin: env.L1_BRIDGE_PROXY_ORIGIN || proxyOrigin })) return;
+      }
+      if (await handleNavcoinRoutes(context)) return;
       json(res, url.pathname === '/api/l1/rpc' ? 426 : 404, { error: url.pathname === '/api/l1/rpc' ? 'l1_websocket_required' : 'l1_route_not_found' });
     })().catch(() => { if (!res.headersSent) json(res, 502, { error: 'l1_gateway_unavailable' }); else res.destroy(); });
   });

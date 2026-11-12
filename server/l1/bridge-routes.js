@@ -5,7 +5,7 @@ const JOB_FIELDS = new Set([
   "depositor", "amount_atoms", "idempotency_key", "route_profile_hash", "route_epoch", "route_binding",
 ]);
 
-export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl }) {
+export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "" }) {
   if (!url.pathname.startsWith(`${ROOT}/`)) return false;
   res.setHeader("Cache-Control", "no-store");
   const fail = (status, code, message) => { json(res, status, { ok: false, ready: false, code, message }); return true; };
@@ -22,9 +22,12 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
       return fail(403, "bridge_origin_mismatch", "Same-origin request required.");
     }
   }
-  if (!proxyUrl) return fail(503, "bridge_proxy_unconfigured", "Bridge blocked: wallet proxy is not configured.");
+  const target = bridgeProxyUrl || proxyUrl;
+  if (!target) return fail(503, "bridge_proxy_unconfigured", "Bridge blocked: wallet proxy is not configured.");
   try {
-    const upstream = new URL(proxyUrl);
+    const upstream = new URL(target);
+    if (upstream.protocol === "ws:") upstream.protocol = "http:";
+    if (upstream.protocol === "wss:") upstream.protocol = "https:";
     if (!["http:", "https:"].includes(upstream.protocol) || upstream.username || upstream.password) throw new Error("Invalid proxy URL");
     upstream.pathname = `/api/bridge${suffix}`;
     upstream.search = isReadiness ? `?route=${ROUTE}` : "";
@@ -49,10 +52,11 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
     }
     const response = await fetch(upstream, {
       method: req.method, redirect: "error", signal: AbortSignal.timeout(15000),
-      headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
+      headers: { Accept: "application/json", ...(proxyToken ? { Authorization: `Bearer ${proxyToken}` } : {}), ...(proxyOrigin ? { Origin: proxyOrigin } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const payload = await response.json();
+    if (proxyToken && JSON.stringify(payload).includes(proxyToken)) throw new Error("Unsafe bridge response");
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Invalid bridge response");
     json(res, response.status, payload);
     return true;
