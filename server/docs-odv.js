@@ -185,6 +185,7 @@ export async function generateDocsAssistantResponse({
 } = {}) {
   const access = await authorize({ accountId, documentId, channelHash });
   if (!access?.ok) return access;
+  if (access.document?.documentType === "prompt") return { ok: false, status: 403, error: "docs_prompt_assistant_forbidden" };
   const userContext = includeFullContext === true
     ? await loadUserContext(accountId).catch(() => ({}))
     : {};

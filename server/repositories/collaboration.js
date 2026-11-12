@@ -1,3 +1,4 @@
+import { validPromptCreationEvent, insertPromptCreationEvent } from "./prompt-history.js";
 import { isHexLength, isUuidText, isWhitespace, replaceCharacterRuns, trimCharacters } from "../../shared/text-protocol.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
@@ -389,6 +390,8 @@ export async function createDocument({
   documentId = "",
   channelHash = "",
   encryptedMetadata = {},
+  documentType = "rich_text",
+  initialEvent,
   proof = {},
 } = {}) {
   ensureDatabase();
@@ -401,7 +404,9 @@ export async function createDocument({
   if (!metadata.ciphertext || !metadata.iv) {
     return { ok: false, status: 400, error: "docs_encrypted_metadata_invalid" };
   }
-  const payload = { documentId: normalizedId, channelHash: normalizedChannelHash, encryptedMetadata: metadata };
+  if (!["rich_text", "prompt"].includes(documentType)) return { ok: false, status: 400, error: "docs_document_type_invalid" };
+  if (documentType === "prompt" && !validPromptCreationEvent(initialEvent)) return { ok: false, status: 400, error: "docs_prompt_creation_event_invalid" };
+  const payload = { documentId: normalizedId, channelHash: normalizedChannelHash, encryptedMetadata: metadata, ...(documentType === "prompt" ? { documentType, initialEvent } : {}) };
   return transaction(async (client) => {
     await consumeCollaborationProof({
       client,
@@ -423,17 +428,19 @@ export async function createDocument({
     }
     const inserted = await client.query(
       `INSERT INTO docs_documents (
-         document_id, owner_account_id, pfdocs_channel_hash, encrypted_metadata
-       ) VALUES ($1, $2, $3, $4::jsonb)
+         document_id, owner_account_id, pfdocs_channel_hash, encrypted_metadata, document_type
+       ) VALUES ($1, $2, $3, $4::jsonb, $5)
        ON CONFLICT (document_id) DO UPDATE SET
          encrypted_metadata = EXCLUDED.encrypted_metadata,
          updated_at = now()
        WHERE docs_documents.owner_account_id = EXCLUDED.owner_account_id
          AND docs_documents.pfdocs_channel_hash = EXCLUDED.pfdocs_channel_hash
+         AND docs_documents.document_type = EXCLUDED.document_type
        RETURNING *`,
-      [normalizedId, accountId, normalizedChannelHash, JSON.stringify(metadata)]
+      [normalizedId, accountId, normalizedChannelHash, JSON.stringify(metadata), documentType]
     );
     if (!inserted.rows.length) return { ok: false, status: 409, error: "docs_document_conflict" };
+    if (documentType === "prompt") await insertPromptCreationEvent(client, accountId, normalizedId, initialEvent);
     await audit({
       accountId,
       eventType: "docs.document_created",

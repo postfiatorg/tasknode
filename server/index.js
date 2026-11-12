@@ -1,3 +1,4 @@
+import { handlePromptRoute } from "./prompt-routes.js";
 import { handleValidatorBundleRoute } from "./validator-bundles.js";
 import { handleValidatorResearchRoute } from "./validator-research-routes.js";
 import { handleValidatorConnectRoute } from "./validator-connect-routes.js";
@@ -450,6 +451,7 @@ async function routeApi(req, url, res) {
 
   if (await handleIChingRoute({ json, readJson, req, res, session, url })) return true;
 
+  if (await handlePromptRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleCollaborationRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await handleAccountRoute({

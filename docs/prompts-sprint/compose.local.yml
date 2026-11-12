@@ -1,0 +1,26 @@
+# Apply after docker-compose.dev.yml using an isolated project name.
+services:
+  api:
+    build: !reset null
+    image: node:24
+    command: node server/index.js
+    working_dir: /app
+    environment:
+      TASKNODE_PUBLIC_URL: http://localhost:3195
+      VITE_SITE_ORIGIN: http://localhost:3195
+      PFDOCS_PUBLIC_ORIGIN: http://localhost:3190
+      TASKNODE_DOCS_ENABLED: "true"
+      TASKNODE_PFDOCS_EDITOR_ENABLED: "true"
+      TASKNODE_DOCS_ODV_ENABLED: "true"
+    volumes: !override
+      - .:/app
+      - ./artifacts/prompts/runtime:/data
+  web:
+    user: "1000:1000"
+    build: !reset null
+    image: node:24
+    working_dir: /app
+    environment:
+      VITE_SITE_ORIGIN: http://localhost:3195
+    volumes: !override
+      - .:/app

@@ -23,3 +23,9 @@ artifacts/
 node_modules/
 dist/
 private_prompts/
+
+.npm/
+.prompts-*.log
+artifacts-prompts-*.log
+
+.tmp/

@@ -65,3 +65,7 @@ Both assistants allow 32,768 completion tokens, including reasoning. A provider 
 `TASKNODE_DOCS_ENABLED` controls the library. `TASKNODE_PFDOCS_EDITOR_ENABLED` controls create/open transport independently, so a PFDocs outage must not erase or hide the library. `TASKNODE_DOCS_ODV_ENABLED` disables assistant mentions without disabling documents or human chat. The PFDocs apps do not run on the Task Node web/worker machines.
 
 Verification: `node scripts/docs-assistant-limits-smoke.mjs`, `node scripts/docs-folders-smoke.mjs`, `node scripts/collaboration-contract-smoke.mjs`, the PFDocs bridge tests in the `pftdocs` repository, and the production checks in [Docs and Team Deployment Runbook](https://github.com/postfiatorg/tasknode/blob/main/docs/wiki/operations/deploy-runbook.md).
+
+## Prompt documents
+
+Docs → New → New prompt creates an encrypted markdown document. The Prompts view shows saved versions, local 7/30-day stats and the per-prompt timeline. Prompt documents disable server assistants. A separate prompt-library key is wrapped by the Docs root key; approved local agents decrypt it on their own machine. See [prompt implementation and local acceptance](../../../prompts-sprint/README.md).

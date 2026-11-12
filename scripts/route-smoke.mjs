@@ -166,7 +166,7 @@ async function main() {
         throw new Error(`Runtime exception on ${route.hash || "/"}:\n${runtimeExceptions.join("\n")}`);
       }
 
-      const visibleText = String(await evaluate("document.body?.innerText || ''"));
+      const visibleText = await waitForRouteLabels(route.labels);
       const missing = route.labels.filter((label) => !visibleText.toLowerCase().includes(label.toLowerCase()));
       if (missing.length > 0) {
         throw new Error(
@@ -267,6 +267,19 @@ async function waitForPage(child, output, timeoutMs = 30000) {
     await sleep(150);
   }
   throw new Error(`No debuggable Chrome page found.\n${output.join("")}`);
+}
+
+async function waitForRouteLabels(labels) {
+  // The root shell renders before asynchronous panels (notably live status).
+  // Keep every existing assertion, but wait for those panels instead of racing
+  // a fixed 400 ms delay. On timeout the caller reports the missing labels.
+  let text = "";
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    text = String(await evaluate("document.body?.innerText || ''"));
+    if (labels.every(label => text.toLowerCase().includes(label.toLowerCase()))) return text;
+    await sleep(200);
+  }
+  return text;
 }
 
 async function waitForRootText() {

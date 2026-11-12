@@ -178,7 +178,12 @@
     "campaign-tracker-body-smoke": "node scripts/campaign-tracker-body-smoke.mjs",
     "test:smoke": "node scripts/run-smokes.mjs verify && node scripts/run-smokes.mjs unit",
     "test:db": "node scripts/run-smokes.mjs db",
-    "bm-codex-backup-smoke": "node scripts/bm-codex-backup-smoke.mjs"
+    "bm-codex-backup-smoke": "node scripts/bm-codex-backup-smoke.mjs",
+    "prompt-stats-smoke": "node scripts/prompt-stats-smoke.mjs",
+    "prompt-device-smoke": "node scripts/prompt-device-smoke.mjs",
+    "prompt-assistant-smoke": "node scripts/prompt-assistant-smoke.mjs",
+    "prompt-history-smoke": "node scripts/prompt-history-smoke.mjs",
+    "prompt-deletion-smoke": "node scripts/prompt-deletion-smoke.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65",

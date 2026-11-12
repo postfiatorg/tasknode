@@ -1,0 +1,41 @@
+{
+  "round": 3,
+  "node": "24.22.1",
+  "environment": {
+    "temporaryFiles": "checkout .tmp with commonjs package metadata",
+    "browser": "installed Chromium 1234",
+    "fonts": "checkout-local Liberation Sans via .tmp/fonts.conf"
+  },
+  "checks": [
+    {
+      "check": "npm run check",
+      "exitCode": 0,
+      "unitSmokes": 200,
+      "build": true,
+      "bundleBudget": true,
+      "browserE2E": true
+    },
+    {
+      "check": "prompt-deletion-smoke",
+      "exitCode": 0
+    },
+    {
+      "check": "prompt-history-smoke including atomic creation rollback",
+      "exitCode": 0
+    },
+    {
+      "check": "prompt-pad-smoke",
+      "exitCode": 0
+    },
+    {
+      "check": "full local browser + installed CLI acceptance",
+      "exitCode": 0,
+      "completedAt": "2026-11-11T21:58:21.349Z"
+    },
+    {
+      "check": "PFDocs bridge/prompt/chat protocol tests",
+      "exitCode": 0,
+      "passed": 23
+    }
+  ]
+}

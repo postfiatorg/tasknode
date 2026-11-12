@@ -7,6 +7,15 @@ const confirmation = { type: "boolean" };
 const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const apiRoutePolicies = [
+  ...[
+    ["key", ["GET","POST"], requestBodies.promptKeyBody],
+    ["history", ["GET","POST"], requestBodies.promptEventBody],
+    ["devices", ["GET","POST"], requestBodies.promptDeviceBody],
+    ["devices/approve", ["POST"], requestBodies.promptDeviceApprovalBody],
+    ["devices/revoke", ["POST"], requestBodies.promptDeviceRevokeBody],
+    ["documents", ["GET","POST"], requestBodies.promptDocumentBody],
+    ["device-key", ["GET"]], ["config", ["GET"]],
+  ].map(([endpoint,methods,body]) => ({ id: `prompt_${endpoint.replaceAll("/","_")}`, path: `/api/docs/prompts/${endpoint}`, methods, auth: "handler", rateLimit: {limit:600,windowMs:tenMinutes,extra:"pathname"}, ...(body ? {body} : {}) })),
   { id: "validator_connect_start", path: "/api/validators/connect", methods: ["POST"], auth: "session", rateLimit: { limit: 10, windowMs: tenMinutes }, body: requestBodies.emptyRequestBody },
   { id: "validator_connect_status", path: "/api/validators/connect/status", methods: ["GET"], auth: "session", rateLimit: { limit: 400, windowMs: tenMinutes } },
   { id: "validator_connect_challenge", path: "/api/validators/connect/challenge", methods: ["POST"], auth: "none", rateLimit: { limit: 30, windowMs: tenMinutes }, body: bodyPolicy(1024, { allowUnknown: false, required: ["token"], properties: { token: { type: "string", minLength: 68, maxLength: 68 } } }) },

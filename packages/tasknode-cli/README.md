@@ -56,3 +56,13 @@ Each agent gets the entry its own `mcp add` command would create, so the agents 
 - No telemetry. It talks only to the Task Node server: sign-in, `whoami` to show which account a token belongs to, and revoke.
 
 MIT licensed.
+
+## Encrypted prompts (Node 22+)
+
+`tasknode connect` generates a local X25519 device keypair and registers a `tasknode-prompts` stdio MCP server next to the hosted entry. Unlock Docs in the browser, match the fingerprint printed by the CLI, and approve prompt access. `/connect` lists and revokes prompt devices. Private device material stays in mode-0600 files under `TASKNODE_CONFIG_DIR` (default `~/.config/tasknode`).
+
+The local server provides `prompt_list`, `prompt_create`, `prompt_read`, `prompt_edit`, `prompt_save_version`, `prompt_history`, `prompt_stats`, and `prompt_log_tih_run`. A text patch is `{oldText, newText}` and must match exactly once; read before editing. Stats use UTC dates and accept 7 or 30 days. Run TIH locally, then log its scores. Prompt plaintext never goes to the hosted MCP or document assistants. Revocation blocks new relay access, but cannot erase previously read content or copied pad capabilities.
+
+For manual stdio registration: `tasknode prompts-mcp --device-file /absolute/path/to/device.json`. Never put private key material or tokens in agent prompts. The curl installer retains its downloaded runtime modules and installs their pinned protocol dependencies with lifecycle scripts disabled.
+
+Prompt approval also requires browser-to-agent pairing. In unlocked Docs → Agent access, approve the matching device fingerprint, then paste the displayed pairing line to the agent, which calls its local `prompt_pair` tool with the code (`tasknode prompts-pair --device-id ID --code CODE` does the same from a terminal). Local tools refuse unpaired keys and later key substitutions. The installer verifies a content-addressed runtime and committed lockfile, runs `npm ci --omit=dev --ignore-scripts`, and preserves previous runtimes if a download fails.
