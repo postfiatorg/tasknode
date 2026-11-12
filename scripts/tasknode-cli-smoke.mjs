@@ -97,7 +97,7 @@ function tasknode(args, { home, binDir, cwd = home }) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cli, ...args], {
       cwd,
-      env: { HOME: home, USERPROFILE: home, PATH: binDir, TASKNODE_URL: origin, TASKNODE_NO_BROWSER: "1" },
+      env: { HOME: home, USERPROFILE: home, PATH: binDir, TASKNODE_URL: origin, TASKNODE_NO_BROWSER: "1", TASKNODE_PROMPT_WAIT_SECONDS: "0" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -177,7 +177,13 @@ try {
   queueGrant(tokens.b, ["authorization_pending", "authorization_pending", "slow_down"]);
   const connected = await tasknode(["connect", "--yes"], box);
   assert.equal(connected.code, 0, connected.stderr);
-  assert.ok(connected.stdout.includes(`To connect, open  ${origin}/activate  and enter  WDJB-MJHT\n(or open ${origin}/activate?code=WDJB-MJHT)\nWaiting for approval…\n`));
+  assert.match(
+    connected.stdout,
+    new RegExp(
+      `To connect, open this link and press Approve:\\n  ${origin}/activate\\?code=WDJB-MJHT#p=[A-Za-z0-9_-]{43}\\.[A-Za-z0-9_-]{22}\\n` +
+        `\\(On another device you can open ${origin}/activate and enter WDJB-MJHT instead\\.\\)\\nWaiting for approval…\\n`,
+    ),
+  );
   assert.ok(connected.stdout.includes("Claude Code and Codex are connected as corbanuAI. Replacing with goodalexander."));
   assert.ok(connected.stdout.includes("Connected as goodalexander (wallet rPo8…HxNx)\n  ✓ Claude Code   ✓ Codex\n"));
   assert.ok(connected.stdout.includes("Revoked 1 old token."));

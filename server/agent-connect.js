@@ -231,7 +231,7 @@ async function handleActivate({ req, res, url, session }) {
     const approve = url.searchParams.get("decision") === "approve";
     const result = await decideDeviceAuthRequest({ userCode: code, accountId: session.accountId, approve });
     if (result.ok && result.approved) {
-      return agentPage(res, "Agent connected", `${header}<div class="card"><p><strong>Connected.</strong> Go back to your terminal; it finishes on its own and tells you which agents it set up.</p><p class="muted">Manage connected devices on <a href="/connect">/connect</a>.</p></div>`);
+      return agentPage(res, "Agent connected", `${header}<div class="card"><p><strong>Connected.</strong> Go back to your terminal; it finishes on its own and tells you which agents it set up.</p><p id="prompt-pairing-next" hidden>To let this agent work on your prompts, <a href="/#docs">open Docs</a> and unlock your wallet. Nothing else to do.</p><p class="muted">Manage connected devices on <a href="/connect">/connect</a>.</p></div>`);
     }
     if (result.ok) return agentPage(res, "Sign-in denied", `${header}<div class="card"><p>Denied. Nothing was connected.</p></div>`);
     const message = result.error === "github_not_linked"

@@ -15,8 +15,12 @@ Or tell the agent "Connect me to Task Node" and paste the line from `https://tas
 The installer finds Claude Code, Codex, Hermes, Pi, OpenCode, Kilo, Cursor and Gemini CLI, then prints a link and a code:
 
 ```
-To connect, open  https://tasknode.postfiat.org/activate  and enter  WDJB-MJHT
+To connect, open this link and press Approve:
+  https://tasknode.postfiat.org/activate?code=WDJB-MJHT#p=…
+(On another device you can open https://tasknode.postfiat.org/activate and enter WDJB-MJHT instead.)
 ```
+
+**Prompt library access is automatic.** The link carries the agent's public key and a one-time secret after the `#`, which browsers never send to a server. After you press Approve, the next time Docs is unlocked in that browser it wraps your prompt-library key to that key, and the agent's local prompt tools start working: no fingerprint to compare and no code to paste. If you type the short code on another device instead, approve the agent by hand under Docs → Prompts → Agent access.
 
 Open the link on any device, check the code and tap **Approve**. The installer writes each agent's MCP entry itself (files are mode 600), never prints the token, and finishes with `Connected as <account>`. Restart running agents, or run `/mcp` in Claude Code.
 

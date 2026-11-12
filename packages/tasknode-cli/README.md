@@ -11,8 +11,9 @@ curl -fsSL https://tasknode.postfiat.org/install | sh
 It finds your agents, prints a link and a short code, and waits while you approve on any device:
 
 ```
-To connect, open  https://tasknode.postfiat.org/activate  and enter  WDJB-MJHT
-(or open https://tasknode.postfiat.org/activate?code=WDJB-MJHT)
+To connect, open this link and press Approve:
+  https://tasknode.postfiat.org/activate?code=WDJB-MJHT#p=…
+(On another device you can open https://tasknode.postfiat.org/activate and enter WDJB-MJHT instead.)
 Waiting for approval…
 Connected as goodalexander (wallet rPo8…HxNx)
   ✓ Claude Code   ✓ Codex
@@ -65,4 +66,4 @@ The local server provides `prompt_list`, `prompt_create`, `prompt_read`, `prompt
 
 For manual stdio registration: `tasknode prompts-mcp --device-file /absolute/path/to/device.json`. Never put private key material or tokens in agent prompts. The curl installer retains its downloaded runtime modules and installs their pinned protocol dependencies with lifecycle scripts disabled.
 
-Prompt approval also requires browser-to-agent pairing. In unlocked Docs → Agent access, approve the matching device fingerprint, then paste the displayed pairing line to the agent, which calls its local `prompt_pair` tool with the code (`tasknode prompts-pair --device-id ID --code CODE` does the same from a terminal). Local tools refuse unpaired keys and later key substitutions. The installer verifies a content-addressed runtime and committed lockfile, runs `npm ci --omit=dev --ignore-scripts`, and preserves previous runtimes if a download fails.
+Prompt library access needs no extra step: the sign-in link carries the device public key and a one-time secret in its fragment (never sent to the server), and Docs wraps the library key to that key the next time it is unlocked in the approving browser. The agent accepts the key only with a proof made from that secret. If the short code was typed instead, approve the device under Docs → Agent access and give the agent the pairing code (`prompt_pair`, or `tasknode prompts-pair --device-id ID --code CODE`). Local tools refuse unpaired keys and later key substitutions. The installer verifies a content-addressed runtime and committed lockfile, runs `npm ci --omit=dev --ignore-scripts`, and preserves previous runtimes if a download fails.
