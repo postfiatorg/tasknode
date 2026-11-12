@@ -3,7 +3,7 @@ import { initWasm } from './lib/wasm-loader.js';
 import { encryptVault, decryptVault, loadVault, saveVault } from './lib/vault.js';
 import { TxBuilder } from './lib/tx-builder.js';
 import { RpcClient, rpcResult } from './lib/rpc-client.js';
-import { L1_READ_METHODS } from './lib/rpc-methods.js';
+import { assertL1CallAllowed } from './lib/rpc-methods.js';
 import { CHAIN_ID, ACCOUNT_INDEX } from './lib/utils.js';
 
 // A controller belongs to exactly one mounted Task Node account. Private
@@ -29,7 +29,7 @@ export class L1WalletCore {
   async call(method, params = {}) {
     const generation = this.#generation;
     this.assertCurrent(generation);
-    if (!L1_READ_METHODS.has(method)) throw new Error('Only wallet read and quote methods may be called directly');
+    assertL1CallAllowed(method, this.unlocked);
     this.#rpc ||= new RpcClient();
     const result = await this.#rpc.call(method, params);
     this.assertCurrent(generation);

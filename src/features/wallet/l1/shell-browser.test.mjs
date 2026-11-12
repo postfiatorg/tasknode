@@ -9,9 +9,13 @@ try {
  await page.goto('http://127.0.0.1:5198/#l1-wallet');
  await page.getByRole('navigation',{name:'L1 wallet tabs'}).waitFor();
  for(const name of ['Home','Send','Activity','Bridge','Market','Issuer','Redeem']) assert.equal(await page.getByRole('button',{name,exact:true}).count(),1);
+ for (const [step, heading] of [['1 Connect','Bridge'],['2 Convert','Bridge'],['3 Buy','Market']]) {
+  await page.getByRole('navigation',{name:'Bob journey'}).getByRole('button',{name:step,exact:true}).click();
+  await page.getByRole('heading',{name:heading,exact:true}).waitFor();
+ }
  await page.reload();
  await page.getByRole('navigation',{name:'L1 wallet tabs'}).waitFor();
- await page.screenshot({path:'/home/postfiat/repos/b23-coord/evidence/wallet/shell.png'});
+ await page.screenshot({path:'/home/postfiat/repos/b23-coord/evidence/wallet/6b-shell.png'});
  assert.deepEqual(errors,[]);
- console.log('PASS: served Task Node #l1-wallet, signed-in synthetic account, seven tabs, reload; no runtime errors. Authentication is fixture-backed.');
+ console.log('PASS: served Task Node #l1-wallet, signed-in synthetic account, seven tabs, Bob Connect/Convert/Buy navigation, reload; no runtime errors. Authentication is fixture-backed.');
 } finally {await browser.close();}

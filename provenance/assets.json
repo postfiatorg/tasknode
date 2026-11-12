@@ -13,5 +13,65 @@
     { "path": "public/og-image.png", "sha256": "8b367029a0599d8f47d015110a273cc3c5caf218ad64841a8c2652dfafc264e4", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
     { "path": "public/post-fiat-logo.svg", "sha256": "7438da8294110584da37a76eb728bb1b7f02a31a75dfb9f8083e7da591361723", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" },
     { "path": "public/telegram-app-icon.png", "sha256": "0a3c98beb3b33cbe4c96b0bcce8b713303a8073803d7fb572e69b34e98c1c680", "owner": "Post Fiat", "source": "project brand asset", "terms": "TRADEMARKS.md" }
+  ],
+  "sourcePorts": [
+    {
+      "id": "l1-wallet",
+      "path": "src/features/wallet/l1/",
+      "owner": "PostFiat contributors",
+      "source": "https://github.com/postfiatorg/postfiatl1v2",
+      "sourceCommit": "7e9c251fc",
+      "sourcePaths": [
+        "wallet-web/src/lib/vault.js",
+        "wallet-web/src/lib/custody-boundary.js",
+        "wallet-web/src/lib/rpc-client.js",
+        "wallet-web/src/lib/tx-builder.js",
+        "wallet-web/src/lib/wasm-loader.js",
+        "wallet-web/src/lib/utils.js",
+        "wallet-web/src/components/Onboard.jsx",
+        "wallet-web/src/components/WalletHome.jsx",
+        "wallet-web/src/components/Send.jsx",
+        "wallet-web/src/components/Activity.jsx",
+        "wallet-web/src/wasm/"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "selectedLicense": "MIT",
+      "terms": "https://github.com/postfiatorg/postfiatl1v2/blob/7e9c251fc/LICENSE",
+      "notes": "First-party source port authorized for B23 integration; source paths identify origins, not byte-identical copies."
+    },
+    {
+      "id": "l1-bridge",
+      "path": "src/features/wallet/l1/bridge/",
+      "owner": "PostFiat contributors",
+      "source": "https://github.com/postfiatorg/postfiatl1v2",
+      "sourceCommit": "7e9c251fc",
+      "sourcePaths": [
+        "wallet-web/src/components/Bridge.jsx",
+        "wallet-web/src/lib/evm.js",
+        "wallet-web/src/lib/bridge-route.js",
+        "wallet-web/src/lib/bridge-relay.js"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "selectedLicense": "MIT",
+      "terms": "https://github.com/postfiatorg/postfiatl1v2/blob/7e9c251fc/LICENSE",
+      "notes": "First-party source port authorized for B23 integration; source paths identify origins, not byte-identical copies."
+    },
+    {
+      "id": "l1-navcoin",
+      "path": "src/features/wallet/l1/{market,issuer,redeem}/",
+      "owner": "PostFiat contributors",
+      "source": "https://github.com/postfiatorg/postfiatl1v2",
+      "sourceCommit": "7e9c251fc",
+      "sourcePaths": [
+        "wallet-web/src/components/NavcoinMarket.jsx",
+        "wallet-web/src/components/NavcoinPrimaryMarket.jsx",
+        "wallet-web/src/lib/navcoin-creation-ops.js",
+        "wallet-web/src/lib/navcoin-secondary-market.js"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "selectedLicense": "MIT",
+      "terms": "https://github.com/postfiatorg/postfiatl1v2/blob/7e9c251fc/LICENSE",
+      "notes": "First-party source port authorized for B23 integration; source paths identify origins, not byte-identical copies."
+    }
   ]
 }
