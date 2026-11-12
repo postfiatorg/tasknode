@@ -24,8 +24,8 @@ if (name === 'test_eth_fast_lane_driver.js') {
     "execution_rpc_sources_reachable: 2, beacon_finality_current: true, beacon_anchor_authenticated: true, route_epoch: 12, beacon_anchor_route_epoch: 12, beacon_anchor_route_profile_hash: '${TEST_ROUTE_PROFILE_HASH}'");
   source = source.replace("assert.strictEqual(state.status, 'accepted');", `assert.strictEqual(state.status, 'accepted');
     assert.strictEqual(state.stage_history.length, 7);
-    assert.strictEqual(state.asset_id, '8e'.repeat(48));
-    assert.strictEqual(state.route_asset_id, TEST_ASSET_ID);
+    assert.strictEqual(state.credited_asset_id, '8e'.repeat(48));
+    assert.strictEqual(state.asset_id, TEST_ASSET_ID);
     for (const row of state.stage_history) {
       assert.strictEqual(row.status, 'complete');
       assert.ok(row.started_at_unix > 0 && row.completed_at_unix >= row.started_at_unix);
@@ -45,7 +45,7 @@ if (name === 'test_eth_fast_lane_driver.js') {
     }
     console.log('PASS missing, unauthenticated, wrong-epoch, wrong-profile anchors fail closed');`);
 } else {
-  source = source.replace('asset_id: routeRows[0].asset_id,', "asset_id: '8e'.repeat(48), route_asset_id: routeRows[0].asset_id,");
+  source = source.replace('asset_id: routeRows[0].asset_id,', "credited_asset_id: '8e'.repeat(48), asset_id: routeRows[0].asset_id,");
   source = source.replace('beacon_finality_current: route.source_chain_id === 1,', "beacon_finality_current: route.source_chain_id === 1, beacon_anchor_authenticated: true, route_epoch: 12, beacon_anchor_route_epoch: 12, beacon_anchor_route_profile_hash: route.route_profile_hash,");
 }
 const suite = new Module(file, module);

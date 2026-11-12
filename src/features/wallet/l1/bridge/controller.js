@@ -186,8 +186,8 @@ export class BridgeController {
     this.set({ job, result: null });
     if (job.status === "failed") throw new Error(job.message || job.code || "Bridge claim failed.");
     if (job.status === "accepted") {
-      if (!/^[0-9a-f]{96}$/.test(job.route_asset_id || "")
-          || job.route_asset_id !== this.state.pending.route?.profile?.asset_id) {
+      if (!/^[0-9a-f]{96}$/.test(job.credited_asset_id || "")
+          || job.asset_id !== this.state.pending.route?.profile?.asset_id) {
         throw new Error("Claim credited-asset identity is unverified; relay upgrade required.");
       }
       if (job.receipt_code !== "ACCEPTED" || !/^(0x)?([0-9a-f]{64}|[0-9a-f]{96})$/.test(job.receipt_id || job.tx_id || "")) {
@@ -195,7 +195,7 @@ export class BridgeController {
       }
       this.set({ result: { receipt: job.receipt_id || job.tx_id, balancePending: true } });
       const response = await this.client.call("account_assets", { account: this.address });
-      const balance = creditedBalance(rpcEnvelope(response), job.asset_id);
+      const balance = creditedBalance(rpcEnvelope(response), job.credited_asset_id);
       this.guard();
       this.set({ result: { receipt: job.receipt_id || job.tx_id, ...balance, balancePending: false } });
     }

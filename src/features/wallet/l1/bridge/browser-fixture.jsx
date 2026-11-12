@@ -51,7 +51,7 @@ window.fetch = async (url, options = {}) => {
   const stage = sessionStorage.getItem('mock:stage') || 'proving';
   const accepted = stage === 'accepted';
   return Response.json({ ok: true, job_id: jobId, status: stage, receipt_code: accepted ? 'ACCEPTED' : '',
-    receipt_id: accepted ? 'ab'.repeat(48) : '', asset_id: asset, route_asset_id: profile.asset_id, request: JSON.parse(localStorage.getItem('mock:job-request')),
+    receipt_id: accepted ? 'ab'.repeat(48) : '', credited_asset_id: asset, asset_id: profile.asset_id, request: JSON.parse(localStorage.getItem('mock:job-request')),
     stage_history: STAGES.slice(0, accepted ? 7 : 4).map(([name], index) => ({ stage: name,
       status: accepted || index < 3 ? 'complete' : 'running', started_at_unix: 1794480000 + index * 10,
       completed_at_unix: accepted || index < 3 ? 1794480005 + index * 10 : null })) });

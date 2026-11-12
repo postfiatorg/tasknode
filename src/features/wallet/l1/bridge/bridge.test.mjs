@@ -94,7 +94,7 @@ test('B9 exact child asset read, zero truth, unavailable/missing/malformed balan
   const { model, client } = setup();
   await model.readiness();
   model.save({ route: model.route, recipient: address, owner, amountAtoms: '1000000', tx: depositTx, jobId });
-  const job = { status: 'accepted', receipt_code: 'ACCEPTED', receipt_id: 'aa'.repeat(48), job_id: jobId, asset_id: asset, route_asset_id: model.route.profile.asset_id,
+  const job = { status: 'accepted', receipt_code: 'ACCEPTED', receipt_id: 'aa'.repeat(48), job_id: jobId, credited_asset_id: asset, asset_id: model.route.profile.asset_id,
     request: { pftl_recipient: address, deposit_tx_hash: depositTx, amount_atoms: '1000000', route_id: 'ethereum-mainnet-usdc-v1', depositor: owner } };
   model.service.loadBridgeJob = async () => job;
   client.call = async () => { throw new Error('Balance RPC offline'); };
@@ -102,6 +102,6 @@ test('B9 exact child asset read, zero truth, unavailable/missing/malformed balan
   client.call = async () => ({ ok: true, result: { assets: [{ asset_id: asset, balance: '2000000' }] } });
   await model.poll(); assert.equal(model.state.result.atoms, '2000000'); assert.equal(model.state.result.balancePending, false);
   job.receipt_code = 'REJECTED'; await assert.rejects(() => model.poll(), /accepted receipt/);
-  job.receipt_code = 'ACCEPTED'; delete job.route_asset_id; await assert.rejects(() => model.poll(), /identity is unverified/);
+  job.receipt_code = 'ACCEPTED'; delete job.credited_asset_id; await assert.rejects(() => model.poll(), /identity is unverified/);
   assert.equal(model.state.result, null);
 });
