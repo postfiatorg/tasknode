@@ -1,0 +1,18 @@
+.nc { max-width: 1080px; margin-top: 24px; color: inherit; line-height: 1.5; }
+.nc-card { padding: 20px; margin: 18px 0; border: 1px solid #76859466; border-radius: 12px; }
+.nc h3, .nc h4 { margin: 0 0 12px; }
+.nc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; }
+.nc dt, .nc-muted { opacity: .75; font-size: .9em; }
+.nc dd { margin: 4px 0 0; font-variant-numeric: tabular-nums; font-weight: 600; }
+.nc form { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; }
+.nc label { display: grid; gap: 6px; }
+.nc input, .nc select, .nc button { padding: 9px 12px; border: 1px solid #76859488; border-radius: 6px; color: inherit; background: transparent; font: inherit; }
+.nc button { cursor: pointer; }
+.nc button:disabled { opacity: .5; cursor: not-allowed; }
+.nc pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; max-height: 360px; overflow-y: auto; background: #76859412; padding: 12px; }
+.nc-table-wrap { overflow-x: auto; }
+.nc table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.nc th, .nc td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #76859444; }
+.nc-address { overflow-wrap: anywhere; font-size: .9em; }
+.nc [role=alert] { border-left: 3px solid #db8e35; padding-left: 12px; }
+.nc-steps { padding-left: 24px; }
