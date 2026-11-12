@@ -55,7 +55,8 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
       wss.handleUpgrade(req, socket, head, client => {
         sessions.add(client);
         const upstream = new WebSocket(upstreamUrl, { maxPayload: MAX_BYTES, handshakeTimeout: 10000,
-          ...(env.L1_WALLET_PROXY_TOKEN ? { headers: { authorization: `Bearer ${env.L1_WALLET_PROXY_TOKEN}` } } : {}) });
+          headers: { origin: req.headers.origin, 'x-forwarded-host': new URL(requestOrigin(req)).host,
+            ...(env.L1_WALLET_PROXY_TOKEN ? { authorization: `Bearer ${env.L1_WALLET_PROXY_TOKEN}` } : {}) } });
         let queue = Promise.resolve();
         const opened = new Promise((resolve, rejectOpen) => { upstream.once('open', resolve); upstream.once('error', rejectOpen); });
         opened.catch(() => {});

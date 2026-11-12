@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { WebSocket, WebSocketServer } from 'ws';
 import { registerL1Gateway } from '../../../../server/l1/gateway.js';
 const upstream = new WebSocketServer({port:0,host:'127.0.0.1'});await once(upstream,'listening');
-const observed=[];upstream.on('connection',ws=>ws.on('message',data=>{const r=JSON.parse(data);observed.push(r.method);ws.send(JSON.stringify({id:r.id,ok:true,result:{chain_id:'postfiat-wan-devnet-2',account:{balance:'7000000'}}}));}));
+const observed=[];upstream.on('connection',(ws,req)=>{assert.equal(req.headers.origin,origin);assert.equal(req.headers['x-forwarded-host'],new URL(origin).host);ws.on('message',data=>{const r=JSON.parse(data);observed.push(r.method);ws.send(JSON.stringify({id:r.id,ok:true,result:{chain_id:'postfiat-wan-devnet-2',account:{balance:'7000000'}}}));});});
 let account='alice';const server=createServer((_q,r)=>r.end('existing route'));
 const gateway=registerL1Gateway(server,{env:{L1_WALLET_PROXY_URL:`ws://127.0.0.1:${upstream.address().port}`},getSession:async token=>token==='fixture'&&account?{accountId:account,authenticated:true}:null,sessionCookieName:'sid',cookieValue:req=>req.headers.cookie?.split('=')[1],json:(res,status,body)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(body));},readJson:async()=>({})});
 server.listen(0,'127.0.0.1');await once(server,'listening');const origin=`http://127.0.0.1:${server.address().port}`;const url=origin.replace('http','ws')+'/api/l1/rpc';let client;
