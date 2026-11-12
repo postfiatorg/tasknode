@@ -187,10 +187,14 @@ details{margin-top:32px}summary{cursor:pointer;color:var(--tn-text-secondary,#45
 :root[data-theme="dark"] .button.secondary{border-color:#3b3d35;background:transparent;color:#f2f0e9}
 @media (prefers-color-scheme:dark){:root:not([data-theme]) body{background:#171816;color:#f2f0e9}}`;
 
+// /agent-connect.js is served immutable for a year. Bump this whenever public/agent-connect.js changes, or browsers
+// that visited /activate or /connect before keep running the old script (2026-11-12: one-click pairing never ran).
+const AGENT_CONNECT_SCRIPT_VERSION = "2026-11-12-pairing";
+
 export function agentPage(res, title, body, status = 200) {
   res.writeHead(status, { ...securityHeaders(), "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
   res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)} · Task Node</title>${appearancePageHead}<script src="/agent-connect.js" defer></script>
+<title>${escapeHtml(title)} · Task Node</title>${appearancePageHead}<script src="/agent-connect.js?v=${AGENT_CONNECT_SCRIPT_VERSION}" defer></script>
 <style>${pageStyle}</style>
 <main>${body}</main>`);
 }
