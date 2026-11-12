@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Bridge from "./bridge/index.jsx";
 import Market from "./market/index.jsx";
 import Issuer from "./issuer/index.jsx";
@@ -11,6 +11,12 @@ import Activity from "./Activity.jsx";
 const tabs = { Home: WalletHome, Send, Activity, Bridge, Market, Issuer, Redeem };
 export default function L1WalletView({ accountId, isAccountCurrent }) {
   const [tab, setTab] = useState("Home");
+  const onNavigate = useCallback(tabId => {
+    const name = Object.keys(tabs).find(candidate => candidate.toLowerCase() === String(tabId).toLowerCase());
+    if (!name) return false;
+    setTab(name);
+    return true;
+  }, []);
   const currentCheck = useRef(isAccountCurrent);
   currentCheck.current = isAccountCurrent;
   const core = useMemo(() => accountId ? new L1WalletCore(accountId, () => currentCheck.current?.() !== false) : null, [accountId]);
@@ -64,7 +70,13 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
   const Tab = tabs[tab];
   return <L1WalletContext.Provider value={client}><section style={{ padding: 24 }}>
     <h1>L1 wallet</h1><p>Post Fiat · devnet-2</p>
-    <nav aria-label="L1 wallet tabs" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>{Object.keys(tabs).map(name => <button key={name} type="button" aria-pressed={tab === name} onClick={() => setTab(name)}>{name}</button>)}</nav>
+    <nav aria-label="Bob journey" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+      <span>Bob:</span>
+      <button type="button" onClick={() => onNavigate("bridge")}>1 Connect</button>
+      <button type="button" onClick={() => onNavigate("bridge")}>2 Convert</button>
+      <button type="button" onClick={() => onNavigate("market")}>3 Buy</button>
+    </nav>
+    <nav aria-label="L1 wallet tabs" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>{Object.keys(tabs).map(name => <button key={name} type="button" aria-pressed={tab === name} onClick={() => onNavigate(name)}>{name}</button>)}</nav>
     {error && <p role="alert">{error}</p>}
     {address ? <div><p data-testid="l1-address">{address}</p><button type="button" onClick={() => { core.lock(); setAddress(null); }}>Lock L1 wallet</button><button type="button" onClick={downloadBackup}>Download encrypted backup</button><p>Save your encrypted backup and passphrase before funding this wallet.</p></div> : <div><label>Wallet passphrase<input aria-label="Wallet passphrase" type="password" autoComplete="current-password" value={passphrase} onChange={e => setPassphrase(e.target.value)} /></label><button type="button" disabled={busy} onClick={() => openWallet(false)}>{exists ? "Unlock L1 wallet" : "Create L1 wallet"}</button>{!exists && <div>
       <label>Recovery seed<input aria-label="Recovery seed" type="password" autoComplete="off" value={seed} onChange={e => setSeed(e.target.value)} /></label>
@@ -72,6 +84,6 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       <label>Encrypted backup<input aria-label="Encrypted backup" type="file" accept=".json,application/json" disabled={busy || !passphrase} onChange={restoreBackup} /></label>
       <p>Enter the backup passphrase above before selecting its file.</p>
     </div>}</div>}
-    <h2>{tab}</h2>{Tab ? <Tab client={client} /> : <p>{tab === "Home" ? "Create or unlock your browser wallet to begin." : `${tab} will be available after unlocking.`}</p>}
+    <h2>{tab}</h2>{Tab ? <Tab client={client} onNavigate={onNavigate} /> : <p>{tab === "Home" ? "Create or unlock your browser wallet to begin." : `${tab} will be available after unlocking.`}</p>}
   </section></L1WalletContext.Provider>;
 }
