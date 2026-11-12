@@ -1,0 +1,1 @@
+Default package: Post Fiat L1 wallet-web/src/wasm at source baseline 7e9c251fc (MIT OR Apache-2.0); default postfiat_wallet_wasm_bg.wasm SHA256 affd340817788d45a313e60ec512493c6c56c3acbf81a4d4159636279ea0c882. Prepared package digests are recorded in SHA256SUMS; generated JavaScript has local lint annotations.
