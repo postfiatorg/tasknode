@@ -806,10 +806,12 @@ async function signIn(origin, agents, opts) {
   const code = printable(grant.user_code);
   const uri = httpUrl(grant.verification_uri) || `${origin}/activate`;
   const complete = httpUrl(grant.verification_uri_complete) || `${uri}?code=${encodeURIComponent(code)}`;
-  say(`To connect, open  ${uri}  and enter  ${code}`);
-  say(`(or open ${complete})`);
+  const link = opts.pairingFragment ? `${complete}#${opts.pairingFragment}` : complete;
+  say("To connect, open this link and press Approve:");
+  say(`  ${link}`);
+  say(`(On another device you can open ${uri} and enter ${code} instead.)`);
   say("Waiting for approval…");
-  if (opts.browser) openBrowser(complete);
+  if (opts.browser) openBrowser(link);
   return pollForToken(origin, grant);
 }
 
@@ -937,6 +939,25 @@ async function planWrites(agents, before, { ctx, token, account, name, opts }) {
   return { plan, declined };
 }
 
+// The browser grants prompt access as soon as Docs is unlocked after the sign-in link was approved.
+async function waitForPromptAccess(deviceFile, seconds = Number(process.env.TASKNODE_PROMPT_WAIT_SECONDS ?? 90)) {
+  const { PromptClient } = await import("../lib/prompt-client.mjs");
+  const { autoPairPromptDevice } = await import("../lib/prompt-device.mjs");
+  const device = JSON.parse(readText(deviceFile));
+  const client = new PromptClient(device);
+  const until = Date.now() + seconds * 1000;
+  while (Date.now() < until) {
+    try {
+      const { envelope } = await client.request("device-key");
+      writePrivate(deviceFile, JSON.stringify(await autoPairPromptDevice(envelope, device)));
+      return true;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  }
+  return false;
+}
+
 async function connect(opts) {
   const ctx = context(opts);
   const { createPromptDevice, deviceFingerprint } = await import('../lib/prompt-device.mjs');
@@ -950,7 +971,8 @@ async function connect(opts) {
     throw new CliError(`${what}. Supported: ${SUPPORTED}. Install one, then run this again.`);
   }
   const before = new Map(agents.map((agent) => [agent, safeRead(agent, ctx)]));
-  const grant = await signIn(ctx.origin, agents, opts);
+  const { pairingFragment } = await import("../lib/prompt-device.mjs");
+  const grant = await signIn(ctx.origin, agents, { ...opts, pairingFragment: pairingFragment(promptDevice) });
   const token = remember(grant.access_token);
   if (!TOKEN_SHAPE.test(token)) throw new CliError("The server returned an unusable token. Nothing changed.");
   const account = grant.account && typeof grant.account === "object" ? grant.account : (await whoami(ctx.origin, token)).account || {};
@@ -989,9 +1011,10 @@ async function connect(opts) {
       writePrivate(deviceFile, JSON.stringify({ ...promptDevice, origin: ctx.origin, token, accountId: account.accountId }));
       const localEntry = { command: process.execPath, args: [fileURLToPath(import.meta.url), "prompts-mcp", "--device-file", deviceFile] };
       for (const { agent } of written) await installPromptEntry(agent, ctx, localEntry);
-      say(`Prompt access: unlock Docs at ${ctx.origin}/#docs and approve this fingerprint:`);
-      say(promptDevice.fingerprint.replace(/(.{4})/g, "$1 ").trim());
-      say("Then paste the pairing line shown there to your agent (restart the agent first so it loads the prompt tools).");
+      say("Prompt library: waiting for Docs to be unlocked in that browser…");
+      const paired = await waitForPromptAccess(deviceFile);
+      if (paired) say("Prompt library connected. Your agent can now work on your prompts.");
+      else say(`Prompt library: open ${ctx.origin}/#docs and unlock your wallet; access is then granted automatically.`);
     } catch {
       warn("Hosted connection saved. Prompt enrollment is unavailable; reconnect later to enable local prompt tools.");
     }

@@ -2,7 +2,10 @@ import { formatEventTime } from "./prompt-format";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, X } from "lucide-react";
 import { encryptForTaskNodeWallet } from "../collaboration/collaboration-client";
-import { deviceFingerprint, promptPairingCode } from "../../../packages/tasknode-cli/lib/prompt-device.mjs";
+import {
+  deviceFingerprint,
+  promptPairingCode,
+} from "../../../packages/tasknode-cli/lib/prompt-device.mjs";
 import { promptRequest } from "./prompt-library";
 
 function pairingMessage(pairing) {
@@ -10,7 +13,9 @@ function pairingMessage(pairing) {
 }
 
 function groupedFingerprint(value) {
-  return String(value || "").replace(/(.{4})/g, "$1 ").trim();
+  return String(value || "")
+    .replace(/(.{4})/g, "$1 ")
+    .trim();
 }
 
 export function PromptDevices({ libraryKey, accountId, walletSecret }) {
@@ -53,14 +58,26 @@ export function PromptDevices({ libraryKey, accountId, walletSecret }) {
     try {
       if (approve) {
         const fingerprint = await deviceFingerprint(device.publicKey);
-        if (fingerprint !== device.fingerprint || !libraryKey) throw new Error("Device key could not be verified");
+        if (fingerprint !== device.fingerprint || !libraryKey)
+          throw new Error("Device key could not be verified");
         const envelope = await encryptForTaskNodeWallet(
-          { key: libraryKey, deviceId: device.deviceId, fingerprint, accountId },
+          {
+            key: libraryKey,
+            deviceId: device.deviceId,
+            fingerprint,
+            accountId,
+          },
           [device.publicKey],
           walletSecret,
         );
-        await promptRequest("devices/approve", { deviceId: device.deviceId, envelope });
-        setPairing({ deviceId: device.deviceId, code: await promptPairingCode(libraryKey, { ...device, accountId }) });
+        await promptRequest("devices/approve", {
+          deviceId: device.deviceId,
+          envelope,
+        });
+        setPairing({
+          deviceId: device.deviceId,
+          code: await promptPairingCode(libraryKey, { ...device, accountId }),
+        });
       } else {
         setPairing(null);
         await promptRequest("devices/revoke", { deviceId: device.deviceId });
@@ -92,28 +109,48 @@ export function PromptDevices({ libraryKey, accountId, walletSecret }) {
         <section aria-label="Prompt devices">
           <header className="prompt-section-heading">
             <h2 id="prompt-devices-title">Agent access</h2>
-            <button type="button" className="docs-refresh-button" aria-label="Close agent access" onClick={close}>
+            <button
+              type="button"
+              className="docs-refresh-button"
+              aria-label="Close agent access"
+              onClick={close}
+            >
               <X size={18} />
             </button>
           </header>
-          <p>Match the fingerprint shown by your agent before approving access to your encrypted prompt library.</p>
+          <p>
+            Agents you connect with the installer link get access automatically
+            when you unlock Docs. Use this list to revoke an agent, or to
+            approve one by hand if you typed the short code instead of opening
+            the link.
+          </p>
           {!active.length && !error && (
             <p>
-              No prompt devices yet. Connect your agent from <a href="/connect">Connect an agent</a>.
+              No prompt devices yet. Connect your agent from{" "}
+              <a href="/connect">Connect an agent</a>.
             </p>
           )}
           {active.map((device) => (
             <article className="prompt-device" key={device.deviceId}>
               <strong>{device.label}</strong>
               <small>
-                {device.approvedAt ? "Prompt access approved" : "Waiting for your approval"}
-                {device.createdAt ? ` · connected ${formatEventTime(device.createdAt)}` : ""}
+                {device.approvedAt
+                  ? "Prompt access approved"
+                  : "Waiting for your approval"}
+                {device.createdAt
+                  ? ` · connected ${formatEventTime(device.createdAt)}`
+                  : ""}
               </small>
               <p className="prompt-fingerprint">
-                Fingerprint: <code>{groupedFingerprint(device.fingerprint)}</code>
+                Fingerprint:{" "}
+                <code>{groupedFingerprint(device.fingerprint)}</code>
               </p>
               <div className="docs-folder-dialog-actions">
-                <button type="button" disabled={Boolean(busy)} onClick={() => act(device, false)}>
+                <button
+                  type="button"
+                  disabled={Boolean(busy)}
+                  onClick={() => act(device, false)}
+                >
                   Revoke prompt access
                 </button>
                 {device.approvedAt && (
@@ -122,7 +159,10 @@ export function PromptDevices({ libraryKey, accountId, walletSecret }) {
                     onClick={async () =>
                       setPairing({
                         deviceId: device.deviceId,
-                        code: await promptPairingCode(libraryKey, { ...device, accountId }),
+                        code: await promptPairingCode(libraryKey, {
+                          ...device,
+                          accountId,
+                        }),
                       })
                     }
                   >
@@ -143,10 +183,18 @@ export function PromptDevices({ libraryKey, accountId, walletSecret }) {
             </article>
           ))}
           {pairing && (
-            <section className="prompt-pairing" aria-label="Finish agent pairing">
+            <section
+              className="prompt-pairing"
+              aria-label="Finish agent pairing"
+            >
               <h3>Last step: tell your agent</h3>
-              <p>Paste this line to the agent you just connected. It confirms the agent received your library key.</p>
-              <pre data-pairing-code={pairing.code}>{pairingMessage(pairing)}</pre>
+              <p>
+                Paste this line to the agent you just connected. It confirms the
+                agent received your library key.
+              </p>
+              <pre data-pairing-code={pairing.code}>
+                {pairingMessage(pairing)}
+              </pre>
               <button
                 type="button"
                 className="prompt-version-button"

@@ -190,6 +190,7 @@ try {
         CLAUDE_CONFIG_DIR: claude,
         TASKNODE_CONFIG_DIR: config,
         npm_config_cache: path.join(root, ".tmp/npm-cache"),
+        TASKNODE_PROMPT_WAIT_SECONDS: "0",   // this run approves by hand, without the link fragment
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -209,7 +210,6 @@ try {
   assert.equal(await installExit, 0);
   const deviceFile = path.join(config, "devices", readdirSync(path.join(config, "devices"))[0]);
   const device = JSON.parse(readFileSync(deviceFile, "utf8"));
-  assert.ok(installOutput.includes(device.fingerprint.replace(/(.{4})/g, "$1 ").trim()));
   assert.ok(!installOutput.includes(device.privateKey));
   assert.ok(!installOutput.includes(device.token));
   const agentConfig = JSON.parse(readFileSync(path.join(claude, ".claude.json"), "utf8"));

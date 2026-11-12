@@ -2,7 +2,7 @@ import { docsRecoveryPackage } from "./prompt-recovery";
 import { PromptTimeline } from "./PromptTimeline";
 import { PromptDevices } from "./PromptDevices";
 import { createPromptActivity } from "../../../packages/tasknode-cli/lib/prompt-stats.mjs";
-import { unlockPromptLibrary, readPromptHistory, savePromptEvent, encryptedPromptBackup, createPromptHistoryEvent } from "./prompt-library";
+import { unlockPromptLibrary, readPromptHistory, savePromptEvent, encryptedPromptBackup, createPromptHistoryEvent, grantPendingAgentAccess, hasPendingPairings } from "./prompt-library";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronDown, Download, Eye, FileText, FileUp, History, LockKeyhole, MessageSquare, Pencil, Share2 } from "lucide-react";
 import { requestJson } from "../../api";
@@ -99,6 +99,36 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
   const [promptHistoryRequested, setPromptHistoryRequested] = useState(false);
   const [promptEvents, setPromptEvents] = useState([]);
   const [promptError, setPromptError] = useState("");
+  const [agentNotice, setAgentNotice] = useState("");
+  const accountIdForAgents = state.data?.identity?.accountId || "";
+  // An agent approved from its sign-in link gets the prompt library key as soon as Docs is unlocked here.
+  useEffect(() => {
+    if (!walletSecret || !accountIdForAgents) return undefined;
+    let busy = false;
+    const tick = async () => {
+      if (busy || !promptKeyRef.current || !hasPendingPairings()) return;
+      busy = true;
+      try {
+        const granted = await grantPendingAgentAccess({
+          libraryKey: promptKeyRef.current,
+          accountId: accountIdForAgents,
+          encrypt: (value, recipients) => encryptForTaskNodeWallet(value, recipients, walletSecret),
+        });
+        if (granted.length) setAgentNotice(`Your agent on ${granted.join(", ")} can now work on your prompts.`);
+      } catch {
+        // retried on the next tick; manual approval under Agent access still works
+      } finally {
+        busy = false;
+      }
+    };
+    tick();
+    const timer = setInterval(tick, 4000);
+    window.addEventListener("storage", tick);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("storage", tick);
+    };
+  }, [walletSecret, accountIdForAgents]);
   const editorReady = Boolean(collaboration.pfdocsEditorEnabled && collaboration.pfdocsOrigin);
   const activeTaskOptions = useMemo(() => docsActiveTaskOptions(tasks), [tasks]);
   const filteredTaskOptions = useMemo(
@@ -1106,6 +1136,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
         onTaskLink={openTaskLinkDialog} onRefresh={load} onExport={exportRecoveryPackage}
       >
         {!editorReady && <p className="docs-library-notice">The editor is temporarily unavailable. Your files and folders are still here.</p>}
+        {agentNotice && <p className="docs-library-notice" role="status">{agentNotice}</p>}
         {state.error && <p className="docs-library-notice error" role="alert">{state.error}</p>}
         {libraryError && <p className="docs-library-notice error" role="alert">{libraryError}</p>}
         {!decryption.loading && Object.keys(decryption.failures).length > 0 && <p className="docs-library-notice error">Some documents could not be unlocked with this wallet.</p>}
