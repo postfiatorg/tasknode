@@ -48,6 +48,7 @@ export default function IssuerTab({ client, onNavigate }) {
   function fund(event) {
     event.preventDefault(); setActionError(""); setRequest(null);
     try {
+      if (client.address !== data.config.issuer_address) throw new Error("Unlock the issuer wallet to fund the reserve; the chain accepts reserve funding only from the B23 issuer");
       const intent = buildFund(data.config, client.address, data.state, funding);
       review(intent, "Moves PFUSDC from this wallet into the standing reserve that pays cash-ins. No B23 is minted.",
         (intent, before, after) => verifyFund(data.config, intent, before, after), (_intent, before) => facilityReady(data.config, before), null,
