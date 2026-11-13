@@ -98,8 +98,11 @@ test("6/6 finality or rejected receipt cannot pass; failed balance read is not s
     await assert.rejects(()=>submitAction(client,prepared,async()=>state(),()=>({})),/not accepted/);
   }
   const client=clientMock(), prepared=await prepareAction(client,{},async()=>state());let reads=0;
-  const result=await submitAction(client,prepared,async()=>{if(++reads===2)throw Error("read unavailable");return state();},()=>({}));
-  assert.equal(result.verified,false);assert.match(result.verificationError,/read unavailable/);
+  const result=await submitAction(client,prepared,async()=>{if(++reads>=2)throw Error("read unavailable");return state();},()=>({}),()=>true,()=>{},{attempts:3,delayMs:1});
+  assert.equal(result.verified,false);assert.match(result.verificationError,/read unavailable/);assert.equal(reads,4);
+  const client2=clientMock(), prepared2=await prepareAction(client2,{},async()=>state());let checks=0;
+  const late=await submitAction(client2,prepared2,async()=>state(),()=>{if(++checks<3)throw Error("stale read");return {message:"verified"};},()=>true,()=>{},{attempts:5,delayMs:1});
+  assert.equal(late.verified,true);assert.equal(checks,3);
 });
 test("account switch and stale review block signing/submission", async()=>{
   const client=clientMock(),prepared=await prepareAction(client,{},async()=>state());client.accountId="account-b";

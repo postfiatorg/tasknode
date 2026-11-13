@@ -11,7 +11,7 @@ export async function prepareAction(client, intent, read) {
   assertWallet(client, identity);
   return { identity, intent: structuredClone(intent), before, quote };
 }
-export async function submitAction(client, prepared, read, verify, isCurrent = () => true, preflight = () => {}) {
+export async function submitAction(client, prepared, read, verify, isCurrent = () => true, preflight = () => {}, retry = { attempts: 5, delayMs: 1500 }) {
   const guard = () => { if (!isCurrent()) throw new Error("Review expired; prepare this action again"); assertWallet(client, prepared.identity); };
   guard();
   const before = await read();
@@ -23,12 +23,20 @@ export async function submitAction(client, prepared, read, verify, isCurrent = (
   const submitted = await client.submit(signed);
   guard();
   if (submitted?.receipt?.accepted !== true) throw new Error(`Transaction not accepted: ${submitted?.receipt?.reject_reason || submitted?.receipt?.message || "accepted receipt missing"}`);
-  try {
-    const after = await read();
-    guard();
-    const effects = await verify(prepared.intent, before, after, submitted.receipt, submitted.txId);
-    return { verified: true, ...submitted, before, after, effects };
-  } catch (error) {
-    return { verified: false, ...submitted, before, verificationError: error.message };
+  // The read-back can land on a validator that has not applied the block yet, so a first mismatch
+  // is not final: read again a few times before reporting the result as unverified.
+  let verificationError = "";
+  for (let attempt = 0; attempt < retry.attempts; attempt++) {
+    if (attempt) await new Promise(resolve => setTimeout(resolve, retry.delayMs));
+    try {
+      const after = await read();
+      guard();
+      const effects = await verify(prepared.intent, before, after, submitted.receipt, submitted.txId);
+      return { verified: true, ...submitted, before, after, effects };
+    } catch (error) {
+      verificationError = error.message;
+      if (!isCurrent()) break;
+    }
   }
+  return { verified: false, ...submitted, before, verificationError };
 }
