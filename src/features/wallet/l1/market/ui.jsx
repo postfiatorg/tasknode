@@ -7,7 +7,7 @@ import { Amount, Badge, Card, CardHead, Details, IdChip, JsonBlock, KV, Mono, No
 import { amount, percentFromBps, plainError } from "../format.js";
 export function useNavcoin(client, market = false) {
   const clientRef = useRef(client); clientRef.current = client;
-  const generation = useRef(0);
+  const generation = useRef(0), retries = useRef(0), refreshRef = useRef(null);
   const [data, setData] = useState(null), [error, setError] = useState(""), [loading, setLoading] = useState(false);
   const accountId = client?.accountId, address = client?.address, unlocked = client?.unlocked;
   const refresh = useCallback(async () => {
@@ -19,9 +19,16 @@ export function useNavcoin(client, market = false) {
       const config = await loadConfig();
       const [state, book, balances] = await Promise.all([readPool(current, config), market ? readBook(current, config) : null, current.getBalances()]);
       if (ticket === generation.current) setData({ config, state, book, balances, address: current.address, accountId: current.accountId, readAt: Date.now() });
-    } catch (e) { if (ticket === generation.current) setError(e.message); }
+      retries.current = 0;
+    } catch (e) {
+      if (ticket !== generation.current) return;
+      setError(e.message);
+      // A dropped connection or a busy node should heal on its own, not leave the screen blank.
+      if (retries.current < 5) { retries.current++; setTimeout(() => { if (ticket === generation.current) void refreshRef.current(); }, 2000 * retries.current); }
+    }
     finally { if (ticket === generation.current) setLoading(false); }
   }, [market]);
+  refreshRef.current = refresh;
   useEffect(() => { const token = generation; void refresh(); return () => { token.current++; }; }, [refresh, accountId, address, unlocked]);
   return { data: data?.address === address && data?.accountId === accountId && unlocked ? data : null, error, loading, refresh };
 }

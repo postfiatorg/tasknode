@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import { ArrowDownToLine, ChartCandlestick, Check, ChevronRight, HandCoins, History, RefreshCw, Send as SendIcon } from 'lucide-react';
 import { useNavcoin } from './market/ui.jsx';
 import B23Facts from './B23Facts.jsx';
@@ -45,9 +45,11 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const navcoin = useNavcoin(client);
+  const navcoinRef = useRef(navcoin); navcoinRef.current = navcoin;
   const activity = useActivity(client, 5);
   const refresh = useCallback(async () => {
     setRefreshing(true);
+    if (!navcoinRef.current.data && !navcoinRef.current.loading) void navcoinRef.current.refresh();
     try { setBalances(await client.getBalances()); setError(''); }
     catch (failure) { setError(failure.message); }
     finally { setRefreshing(false); }
