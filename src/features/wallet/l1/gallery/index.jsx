@@ -19,7 +19,7 @@ function GalleryRows({ coins, onSelect }) {
     {coins.map(coin => <article key={coin.asset_id} className="l1-gallery-row" aria-label={`${coin.name} NAVCoin`}>
       <div className="l1-gallery-name"><AssetAvatar code={coin.name} /><div><button type="button" className="l1-link" onClick={() => onSelect(coin.slug)}>{coin.name}<ArrowUpRight size={13} aria-hidden /></button><p>{coin.description}</p></div></div>
       <div data-label="TVL"><strong>{usd(coin.latest?.verified_net_assets)}</strong><small>Latest finalized value</small></div>
-      <div data-label="NAV per coin"><strong title={usd(coin.latest?.nav_per_unit, { max: 6 })}>{usd(coin.latest?.nav_per_unit)}</strong><small><Change value={coin.change} />{coin.change != null ? " vs prior" : ""}</small></div>
+      <div data-label="NAV per coin"><strong>{usd(coin.latest?.nav_per_unit, { max: 6 })}</strong><small><Change value={coin.change} />{coin.change != null ? " vs prior" : ""}</small></div>
       <div data-label="Verification"><Verification split={coin.split} />{coin.split?.reportedOnly && <small>No independent proof yet</small>}</div>
       <div data-label="Latest reading"><Freshness value={coin.freshness} /></div>
       <div data-label="For sale now"><strong>{coin.depth ? `${coin.depth.partial ? "≥ " : ""}${amount(coin.depth.amount, { min: 0 })}` : "Unavailable"}</strong><small>{coin.name}{coin.depth?.partial ? " · partial book" : ""}</small></div>
