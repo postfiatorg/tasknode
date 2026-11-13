@@ -1,9 +1,15 @@
 import { atoms, integer, safeInteger, nonce } from "../market/amounts.js";
 import { balanceDeltas, lineBalance } from "../market/model.js";
 import { facilityReady } from "../redeem/model.js";
+// The chain accepts a funding only when it carries the last successful funding sequence + 1.
+function nextFundingSequence(state) {
+  const last = state?.pool?.funding_sequence ?? 0;
+  if (!Number.isSafeInteger(last) || last < 0) throw new Error("Reserve funding sequence is unavailable; refresh the route state");
+  return last + 1;
+}
 export function buildFund(config, address, state, quantity, fundingNonce = nonce()) {
   facilityReady(config, state);
-  return { kind: "asset", operation: { operation: "pftl_uniswap_redemption_fund", funder: address, route_id: config.route_id, settlement_asset_id: config.pfusdc_asset_id, funding_nonce: fundingNonce, amount_atoms: atoms(quantity, "PFUSDC funding") } };
+  return { kind: "asset", operation: { operation: "pftl_uniswap_redemption_fund", funder: address, route_id: config.route_id, settlement_asset_id: config.pfusdc_asset_id, funding_nonce: fundingNonce, amount_atoms: atoms(quantity, "PFUSDC funding"), funding_sequence: nextFundingSequence(state) } };
 }
 export function verifyFund(config, intent, before, after) {
   const amount = integer(intent.operation.amount_atoms), deltas = balanceDeltas(before, after, config);

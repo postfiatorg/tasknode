@@ -48,6 +48,8 @@ test("cancel verifies refunded locked remainder, not a reversed fill", () => {
 test("fund raises reserve without minting and fails when supply changes", () => {
   const before = state(), intent = buildFund(config,bob,before,"10",nonce), after = state();
   after.pool.settlement_reserve_atoms += 10000000; after.balances.assets = lines(100000000,190000000);
+  assert.equal(intent.operation.funding_sequence,(before.pool.funding_sequence ?? 0)+1);
+  assert.equal(buildFund(config,bob,{...before,pool:{...before.pool,funding_sequence:7}},"10",nonce).operation.funding_sequence,8);
   assert.match(verifyFund(config,intent,before,after).message,/No B23/);
   after.supply++; assert.throws(() => verifyFund(config,intent,before,after));
   assert.throws(() => buildFund({...config,g1_passed:false},bob,before,"10",nonce));
