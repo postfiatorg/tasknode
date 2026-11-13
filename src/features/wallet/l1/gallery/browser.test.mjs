@@ -33,6 +33,8 @@ try {
   assert.equal(await page.getByLabel('PFUSDC total', { exact: true }).inputValue(), '1000');
   await page.getByText('This NAV reading is stale', { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Cash in B23 at NAV' }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Cash in A666', exact: true }).isDisabled(), true);
+  await page.getByText('This coin’s cash-in route is disabled on the chain.', { exact: true }).waitFor();
   await page.screenshot({ path: `${evidence}/synthetic-a666.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: `${evidence}/synthetic-a666-mobile.png`, fullPage: true });

@@ -42,7 +42,7 @@ test('registry is authenticated, read-only and returns metadata without fabricat
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.coins.map(c => c.name), ['B23', 'A666']);
   assert.equal(result.body.coins[0].nav_per_unit, undefined);
-  assert.equal(result.body.coins[1].route_id, null);
+  assert.equal(result.body.coins[1].route_id, 'pftl-a666-ce22-sepolia-wA666-usdc-controlled-20260723-v1');
   await handleNavcoinRoutes({ ...request, session: null });
   assert.equal(result.status, 401);
   await handleNavcoinRoutes({ ...request, req: { method: 'POST' } });

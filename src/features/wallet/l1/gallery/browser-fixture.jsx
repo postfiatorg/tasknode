@@ -7,7 +7,7 @@ import { config, bob, state } from '../market/fixtures.mjs';
 const a666 = '6'.repeat(96);
 const coins = [
   { slug: 'b23', name: 'B23', asset_id: config.b23_asset_id, description: 'Backed by a Schwab brokerage account.', methodology: 'Schwab reported net liquidation value, daily 18:15 UTC, without adjustments.', market_quote_asset_id: config.market_quote_asset_id, route_id: config.route_id },
-  { slug: 'a666', name: 'A666', asset_id: a666, description: 'Synthetic reserve portfolio.', methodology: 'Synthetic methodology for browser testing.', market_quote_asset_id: config.market_quote_asset_id, route_id: null },
+  { slug: 'a666', name: 'A666', asset_id: a666, description: 'Synthetic reserve portfolio.', methodology: 'Synthetic methodology for browser testing.', market_quote_asset_id: config.market_quote_asset_id, route_id: 'synthetic-a666-route' },
 ];
 const ledger = state();
 let updated = false, calls = [];
@@ -26,7 +26,7 @@ const client = { accountId: 'synthetic-gallery', address: bob, unlocked: true,
     calls.push(method);
     if (method === 'nav_reserve_proof_status') return proof(args.asset_id);
     if (method === 'asset_info') return { asset: { asset_id: args.asset_id, issuer: config.issuer_address, precision: 6, outstanding_supply: args.asset_id === a666 ? 100000 : 400000000000 } };
-    if (method === 'navcoin_bridge_supply_status') return structuredClone(ledger.pool);
+    if (method === 'navcoin_bridge_supply_status') return args.route_id === 'synthetic-a666-route' ? { ...structuredClone(ledger.pool), route_id: args.route_id, native_nav_asset_id: a666, live_value_enabled: false } : structuredClone(ledger.pool);
     if (method === 'book_offers') return { offers: [], truncated: false };
     if (method === 'account_offers') return { offers: [], truncated: false };
     if (method === 'account_tx') return { transactions: [] };

@@ -12,7 +12,7 @@ export function navcoinRegistry(config) {
       asset_id: "300bf48a63a94770b6e67817f88cd1abf77e7f592a061e15682d7fd9973260af4c2e631e32df3c2c402b7d2fe272a293",
       description: "A NAVCoin tracking the StakeHub six-leg reserve portfolio.",
       methodology: "The operator posts a reserve portfolio valuation and circulating supply to Post Fiat. NAV per coin is the value allocated to each coin in that reading. The active chain profile identifies the source as stakehub-six-leg-reserves. A detailed asset-by-asset valuation methodology has not been published in this registry; the verification panel shows only what the chain packet actually supports.",
-      market_quote_asset_id: config.market_quote_asset_id, route_id: null,
+      market_quote_asset_id: config.market_quote_asset_id, route_id: "pftl-a666-ce22-sepolia-wA666-usdc-controlled-20260723-v1",
     },
   ];
 }
