@@ -1,8 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, ChartCandlestick, Download, Ellipsis, FileKey, HandCoins, History, House, KeyRound, Landmark, Lock, Send as SendIcon, ShieldCheck, Wallet } from "lucide-react";
+import { ArrowDownToLine, ChartCandlestick, Download, Ellipsis, FileKey, HandCoins, History, House, KeyRound, Landmark, LayoutGrid, Lock, Send as SendIcon, ShieldCheck, Wallet } from "lucide-react";
 // Secondary views load on first use so the wallet shell stays small.
 const Bridge = lazy(() => import("./bridge/index.jsx"));
 const Market = lazy(() => import("./market/index.jsx"));
+const Gallery = lazy(() => import("./gallery/index.jsx"));
 const Issuer = lazy(() => import("./issuer/index.jsx"));
 const Redeem = lazy(() => import("./redeem/index.jsx"));
 import { L1WalletContext } from "./client.jsx";
@@ -12,10 +13,11 @@ import Send from "./Send.jsx";
 import Activity from "./Activity.jsx";
 import { Badge, Card, IdChip, Notice, Spinner, ViewHeader } from "./ui.jsx";
 // View ids stay the original tab names; onNavigate("bridge" | "Market" | ...) keeps working.
-const tabs = { Home: WalletHome, Send, Activity, Bridge, Market, Issuer, Redeem };
+const tabs = { Home: WalletHome, Send, Activity, Bridge, Gallery, Market, Issuer, Redeem };
 const VIEWS = [
   { id: "Home", label: "Home", icon: House },
   { id: "Bridge", label: "Add funds", icon: ArrowDownToLine, title: "Add funds", subtitle: "Bring USDC over from Ethereum. It arrives in this wallet as PFUSDC, one for one." },
+  { id: "Gallery", label: "NAVCoins", icon: LayoutGrid },
   { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: "Buy B23 with PFUSDC from sellers on the Post Fiat order book." },
   { id: "Redeem", label: "Cash in", icon: HandCoins, title: "Cash in at NAV", subtitle: "Turn B23 into PFUSDC at net asset value, paid from the standing reserve." },
   { id: "Send", label: "Send", icon: SendIcon, title: "Send", subtitle: "Send PFT to another Post Fiat address." },
@@ -87,9 +89,11 @@ function Gate({ exists, busy, passphrase, setPassphrase, seed, setSeed, openWall
 
 export default function L1WalletView({ accountId, isAccountCurrent }) {
   const [tab, setTab] = useState("Home");
-  const onNavigate = useCallback(tabId => {
+  const [selectedCoin, setSelectedCoin] = useState(null);
+  const onNavigate = useCallback((tabId, coin = null) => {
     const name = Object.keys(tabs).find(candidate => candidate.toLowerCase() === String(tabId).toLowerCase());
     if (!name) return false;
+    setSelectedCoin(name === "Gallery" ? coin : null);
     setTab(name);
     return true;
   }, []);
@@ -166,7 +170,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       </nav>
       <div className="l1-enter" key={tab}>
         {view?.title && <ViewHeader eyebrow={view.id === ISSUER.id ? "Operator" : undefined} title={view.title} subtitle={view.subtitle}>{view.id === ISSUER.id && <Badge tone="warning">Issuer only</Badge>}</ViewHeader>}
-        {Tab && <Suspense fallback={<p className="l1-status-line"><Spinner />Loading…</p>}><Tab client={client} onNavigate={onNavigate} /></Suspense>}
+        {Tab && <Suspense fallback={<p className="l1-status-line"><Spinner />Loading…</p>}><Tab client={client} onNavigate={onNavigate} selectedCoin={selectedCoin} onSelectCoin={setSelectedCoin} /></Suspense>}
       </div>
     </>}
   </div></div></L1WalletContext.Provider>;

@@ -6,6 +6,8 @@ import { ActivityRows, useActivity } from './Activity.jsx';
 import { Amount, AssetAvatar, Card, CardHead, Details, Empty, Notice, Skeleton, Spinner } from './ui.jsx';
 import { amount, amountParts, usd, valueAt } from './format.js';
 import { classifyLines } from './portfolio.js';
+import { useGallery } from './gallery/useGallery.js';
+import { heldNavValues } from './gallery/model.js';
 
 function JourneyCard({ held, onNavigate, loaded }) {
   const hasCash = held.pfusdc > 0n, hasB23 = held.b23 > 0n;
@@ -45,6 +47,7 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const navcoin = useNavcoin(client);
+  const gallery = useGallery(client);
   const navcoinRef = useRef(navcoin); navcoinRef.current = navcoin;
   const activity = useActivity(client, 5);
   const refresh = useCallback(async () => {
@@ -66,25 +69,27 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
   const lines = Array.isArray(balances?.assets) ? balances.assets : balances?.assets?.lines || [];
   const config = navcoin.data?.config || null, state = navcoin.data?.state || null;
   const held = classifyLines(lines, config);
-  const nav = state?.nav?.nav_per_unit ?? null;
+  const navHoldings = gallery.coins ? heldNavValues(lines, gallery.coins) : null;
+  const b23Holding = navHoldings?.find(item => item.coin.asset_id === config?.b23_asset_id);
+  const nav = b23Holding?.coin.latest?.nav_per_unit ?? null;
   const pfusdcValue = config && held.pfusdc != null ? held.pfusdc : config ? 0n : null;
   const b23Value = nav != null ? valueAt(held.b23 ?? 0n, nav) : null;
-  const total = balances && config && b23Value != null ? (pfusdcValue ?? 0n) + b23Value : null;
+  const total = balances && config && navHoldings && navHoldings.every(item => item.value !== null) ? (pfusdcValue ?? 0n) + navHoldings.reduce((sum, item) => sum + item.value, 0n) : null;
   const [whole, fraction] = amountParts(total ?? 0n, { min: 2, max: 2 });
   const loading = !balances && !error;
-  const others = held.others.filter(item => item.balance > 0n);
+  const others = held.others.filter(item => item.balance > 0n && !gallery.coins?.some(coin => coin.asset_id === item.id));
   return <div className="l1-view l1-home">
     <div className="l1-stack">
       <Card className="l1-portfolio">
         <div className="l1-row" style={{ justifyContent: 'space-between' }}>
           <div className="l1-eyebrow">Total value</div>
-          <button type="button" className="l1-btn is-sm is-ghost" onClick={refresh} disabled={refreshing} aria-label="Refresh balances">{refreshing ? <Spinner size={14} /> : <RefreshCw size={14} aria-hidden />}Refresh</button>
+          <button type="button" className="l1-btn is-sm is-ghost" onClick={() => { void refresh(); gallery.refresh(); }} disabled={refreshing} aria-label="Refresh balances">{refreshing ? <Spinner size={14} /> : <RefreshCw size={14} aria-hidden />}Refresh</button>
         </div>
         <div className="l1-total" aria-live="polite">
-          {total === null ? (loading || navcoin.loading ? <Skeleton width="260px" height={48} /> : <span style={{ fontSize: 28, color: 'var(--l1-muted)', fontWeight: 600 }}>Value unavailable</span>)
+          {total === null ? (loading || navcoin.loading || gallery.loading ? <Skeleton width="260px" height={48} /> : <span style={{ fontSize: 28, color: 'var(--l1-muted)', fontWeight: 600 }}>Value unavailable</span>)
             : <><span className="l1-total-cur">$</span>{whole}<span className="l1-amt-frac">{fraction}</span></>}
         </div>
-        <p className="l1-total-note">PFUSDC counted at 1 USDC{nav != null ? `, B23 at NAV $${amount(nav, { min: 2 })}` : ''}. PFT is not included.</p>
+        <p className="l1-total-note">PFUSDC counted at 1 USDC. Each listed NAVCoin uses its own latest finalized NAV. PFT and unlisted assets are not included.{navHoldings?.some(item => item.balance > 0n && item.coin.freshness?.stale) ? ' Includes stale NAV readings.' : ''}</p>
         <div className="l1-actions">
           <button type="button" className="l1-btn is-primary" onClick={() => onNavigate('Bridge')}><ArrowDownToLine size={16} aria-hidden />Add funds</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Market')}><ChartCandlestick size={16} aria-hidden />Buy B23</button>
@@ -96,6 +101,7 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
           <AssetRow code="PFT" name="Post Fiat" sub="pays network fees" atoms={account?.balance} loading={loading} />
           <AssetRow code="PFUSDC" name="USDC on Post Fiat" sub="1:1" atoms={held.pfusdc} loading={loading} value={config ? (pfusdcValue ?? 0n) : undefined} />
           <AssetRow code="B23" name="NAVCoin" sub={nav != null ? `NAV $${amount(nav, { min: 2 })}` : 'Schwab-backed'} atoms={held.b23} loading={loading} value={nav != null ? b23Value : undefined} />
+          {navHoldings?.filter(item => item.coin.asset_id !== config?.b23_asset_id && item.balance > 0n).map(item => <AssetRow key={item.coin.asset_id} code={item.coin.name} name="NAVCoin" sub={item.coin.latest ? `NAV $${amount(item.coin.latest.nav_per_unit)}` : 'NAV unavailable'} atoms={item.balance} value={item.value} loading={loading} note={item.coin.freshness?.stale ? 'Stale NAV reading' : undefined} />)}
         </div>
         {others.length > 0 && <div className="l1-asset-more"><Details summary={`Other assets (${others.length})`}>
           {others.map(item => <div key={item.id} className="l1-row" style={{ justifyContent: 'space-between' }}><span>{item.code || 'Asset'} <span className="l1-muted l1-small">{item.id?.slice(0, 10)}…</span></span><Amount atoms={item.balance} precision={item.precision} /></div>)}
@@ -111,7 +117,7 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
     </div>
     <div className="l1-stack">
       <JourneyCard held={{ pfusdc: held.pfusdc ?? 0n, b23: held.b23 ?? 0n }} onNavigate={onNavigate} loaded={Boolean(balances)} />
-      <B23Facts state={state} config={config} error={navcoin.error} />
+      <B23Facts state={state && b23Holding?.coin.latest ? { ...state, nav: b23Holding.coin.latest } : state} config={config} error={navcoin.error} onNavigate={onNavigate} />
     </div>
   </div>;
 }

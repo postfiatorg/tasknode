@@ -19,7 +19,7 @@ export function assertMarketFunds(config, operation, state) {
   if (operation.taker_gets_asset_id === config.market_quote_asset_id && balance === 0n && lineBalance(state.balances.assets, config.pfusdc_asset_id) > 0n) {
     throw new Error('Your PFUSDC came from the cash-in reserve. To buy B23, use Add funds to convert Ethereum USDC into PFUSDC for this market. Reserve PFUSDC cannot be converted here.');
   }
-  if (balance < integer(operation.taker_gets_amount)) throw new Error(`Not enough ${operation.taker_gets_asset_id === config.b23_asset_id ? 'B23' : 'PFUSDC'} available for this offer. Add funds before signing.`);
+  if (balance < integer(operation.taker_gets_amount)) throw new Error(`Not enough ${operation.taker_gets_asset_id === config.b23_asset_id ? (config.symbol || 'B23') : 'PFUSDC'} available for this offer. Add funds before signing.`);
 }
 export async function planOfferSetup(client, config, intent, state) {
   const op = intent.operation;
@@ -36,7 +36,7 @@ export async function planOfferSetup(client, config, intent, state) {
       || (id === config.market_quote_asset_id && asset.asset_family_id !== config.pfusdc_asset_id)) throw new Error('Asset identity does not match the reviewed market configuration');
     if (asset.issuer === client.address) throw new Error('Use a holder wallet to trade these assets.');
     if (asset.requires_authorization && line?.authorized !== true) throw new Error('The asset issuer must authorize this wallet before trading.');
-    plans.push({ unit: id === config.b23_asset_id ? 'B23' : 'PFUSDC', intent: { kind: 'asset', operation: {
+    plans.push({ unit: id === config.b23_asset_id ? (config.symbol || 'B23') : 'PFUSDC', intent: { kind: 'asset', operation: {
       operation: 'trust_set', account: client.address, issuer: asset.issuer, asset_id: id,
       limit: safeInteger(limit), authorized: false, frozen: false, reserve_paid: 10,
     } } });
@@ -63,6 +63,6 @@ export function verifyTrust(intent, before, after) {
   const op = intent.operation, line = accountLine(after, op.asset_id);
   if (!line || line.issuer !== op.issuer || line.frozen || integer(line.limit) < integer(op.limit)) throw new Error('Asset setup is not yet verified on the chain');
   if (lineBalance(before.balances.assets, op.asset_id) !== lineBalance(after.balances.assets, op.asset_id)
-    || integer(before.supply) !== integer(after.supply) || integer(before.pool.settlement_reserve_atoms) !== integer(after.pool.settlement_reserve_atoms)) throw new Error('Asset setup changed balances, B23 supply or the reserve');
+    || integer(before.supply) !== integer(after.supply) || (before.pool || after.pool) && integer(before.pool?.settlement_reserve_atoms) !== integer(after.pool?.settlement_reserve_atoms)) throw new Error('Asset setup changed balances, NAVCoin supply or the reserve');
   return { message: 'Asset receiving limit verified. No assets were bought or converted.' };
 }

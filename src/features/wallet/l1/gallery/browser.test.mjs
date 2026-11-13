@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import { createServer } from 'vite';
+import { mkdir } from 'node:fs/promises';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || '/home/postfiat/repos/postfiatl1v2-fastswap/wallet-web/node_modules/playwright/index.mjs');
+const evidence = process.env.NAVCOIN_EVIDENCE_DIR || '/home/postfiat/repos/b23-coord/evidence/gallery';
+await mkdir(evidence, { recursive: true });
+const server = await createServer({ configFile: false, server: { host: '127.0.0.1', port: 0 }, appType: 'custom', plugins: [{ name: 'gallery-fixture', configureServer(server) {
+  server.middlewares.use(async (req, res, next) => { if (!req.url.startsWith('/gallery-fixture')) return next(); res.setHeader('Content-Type', 'text/html'); res.end(await server.transformIndexHtml(req.url, '<html><body style="margin:0;background:#faf9f6;font-family:system-ui"><div id="root"></div><script type="module" src="/src/features/wallet/l1/gallery/browser-fixture.jsx"></script></body></html>')); });
+} }] });
+await server.listen();
+const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } }), errors = [];
+page.on('pageerror', e => errors.push(e.message));
+try {
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/gallery-fixture`);
+  await page.getByRole('article', { name: 'B23 NAVCoin', exact: true }).waitFor();
+  assert.deepEqual(await page.locator('article').evaluateAll(rows => rows.map(row => row.getAttribute('aria-label'))), ['B23 NAVCoin', 'A666 NAVCoin']);
+  await page.getByRole('article', { name: 'B23 NAVCoin', exact: true }).getByRole('img', { name: 'Proven 0%, Attested 0%, Reported 100%' }).waitFor();
+  await page.getByRole('article', { name: 'A666 NAVCoin', exact: true }).getByText('STALE', { exact: true }).waitFor();
+  await page.screenshot({ path: `${evidence}/synthetic-gallery.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Buy B23', exact: true }).click();
+  await page.getByRole('heading', { name: 'Buy B23', exact: true }).waitFor();
+  await page.getByText('No independent proof yet — the operator posts this value', { exact: true }).first().waitFor();
+  await page.getByText('Every finalized reading', { exact: true }).click();
+  assert.equal(await page.locator('.l1-history-table tbody tr').count(), 2);
+  await page.evaluate(() => window.galleryFixture.update());
+  await page.getByRole('img', { name: 'Proven 50%, Attested 25%, Reported 25%' }).waitFor({ timeout: 25000 });
+  await page.locator('.l1-coin-nav').filter({ hasText: '$2.00' }).waitFor();
+  await page.getByRole('button', { name: 'All NAVCoins' }).click();
+  await page.getByRole('button', { name: 'Buy A666', exact: true }).click();
+  await page.getByRole('heading', { name: 'Buy A666', exact: true }).waitFor();
+  await page.getByLabel('A666 quantity', { exact: true }).fill('0.01');
+  assert.equal(await page.getByLabel('PFUSDC total', { exact: true }).inputValue(), '1000');
+  await page.getByText('This NAV reading is stale', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Cash in B23 at NAV' }).count(), 0);
+  await page.screenshot({ path: `${evidence}/synthetic-a666.png`, fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: `${evidence}/synthetic-a666-mobile.png`, fullPage: true });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'coin page fits mobile width');
+  await page.getByRole('button', { name: 'All NAVCoins' }).click();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'gallery fits mobile width');
+  await page.evaluate(() => window.galleryFixture.home());
+  await page.getByRole('button', { name: /Explore B23/ }).waitFor();
+  await page.getByText('Each listed NAVCoin uses its own latest finalized NAV.', { exact: false }).waitFor();
+  await page.locator('.l1-total').filter({ hasText: '10,600.00' }).waitFor();
+  await page.getByRole('button', { name: /Explore B23/ }).click();
+  await page.getByRole('heading', { name: 'B23', exact: true }).waitFor();
+  assert.deepEqual(errors, []);
+  console.log('PASS: sorted live model, Reported/Proven/Attested split, stale A666, full history, automatic new epoch update without navigation, correct A666 ticket, no B23 cash-in leak, mobile widths, Home facts link. Synthetic reads only.');
+} catch (e) {
+  console.error(await page.locator('body').innerText());
+  await page.screenshot({ path: `${evidence}/synthetic-gallery-failure.png`, fullPage: true });
+  throw e;
+} finally { await browser.close(); await server.close(); }

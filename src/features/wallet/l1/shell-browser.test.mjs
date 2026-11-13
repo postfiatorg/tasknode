@@ -15,7 +15,8 @@ try {
  await page.getByLabel('Wallet passphrase',{exact:true}).fill('synthetic-shell-passphrase');
  await page.getByRole('button',{name:'Create L1 wallet',exact:true}).click();
  const tabs=page.getByRole('navigation',{name:'L1 wallet tabs'});await tabs.waitFor();
- for(const name of ['Home','Add funds','Market','Cash in','Send','Activity']) assert.equal(await tabs.getByRole('button',{name,exact:true}).count(),1);
+ for(const name of ['Home','Add funds','NAVCoins','Market','Cash in','Send','Activity']) assert.equal(await tabs.getByRole('button',{name,exact:true}).count(),1);
+ assert.ok((await tabs.innerText()).indexOf('NAVCoins') < (await tabs.innerText()).indexOf('Market'));
  assert.equal(await tabs.getByRole('button',{name:'Issuer desk',exact:true}).count(),0);
  for (const [step, heading] of [['1 Connect MetaMask','Add funds'],['2 Convert USDC to PFUSDC','Add funds'],['3 Buy B23','Market']]) {
   await tabs.getByRole('button',{name:'Home',exact:true}).click();
@@ -29,5 +30,5 @@ try {
  await page.getByRole('navigation',{name:'L1 wallet tabs'}).waitFor();
  await page.screenshot({path:EVIDENCE+'/6b-shell.png'});
  assert.deepEqual(errors,[]);
- console.log('PASS: served Task Node #l1-wallet, signed-in synthetic account, locked gate, six wallet tabs and no issuer desk link, Bob Connect/Convert/Buy navigation from Home, reload and unlock; no runtime errors. Authentication and gateway are fixture-backed.');
+ console.log('PASS: served Task Node #l1-wallet, signed-in synthetic account, locked gate, seven wallet tabs with NAVCoins before Market and no issuer desk link, Bob Connect/Convert/Buy navigation from Home, reload and unlock; no runtime errors. Authentication and gateway are fixture-backed.');
 } finally {await browser.close();}

@@ -44,6 +44,7 @@
 }
 
 .l1w {
+  box-sizing: border-box;
   width: min(1120px, 100%);
   margin: 0 auto;
   padding: 36px 32px 72px;
@@ -731,3 +732,67 @@
 .l1-ticket-lines > div { display: flex; justify-content: space-between; gap: 12px; }
 .l1-ticket-lines span { color: var(--l1-muted); }
 .l1-ticket-lines b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* NAVCoin discovery and evidence. Values keep the wallet's existing type scale. */
+.l1-gallery-intro { display: grid; gap: 8px; max-width: 880px; margin-bottom: 22px; color: var(--l1-text-2); font-size: 13px; }
+.l1-gallery-card { padding: 0; overflow: hidden; }
+.l1-gallery-row { display: grid; grid-template-columns: minmax(165px, 1.8fr) minmax(105px, 1fr) minmax(110px, 1fr) minmax(175px, 1.5fr) minmax(105px, 1fr) minmax(75px, .7fr) 54px; gap: 16px; padding: 23px 20px; align-items: start; border-top: 1px solid var(--l1-border); font-variant-numeric: tabular-nums; }
+.l1-gallery-row.is-heading { border: 0; padding-block: 13px; background: var(--l1-hover); font-size: 11px; color: var(--l1-muted); }
+.l1-gallery-row > div { min-width: 0; }
+.l1-gallery-row strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.l1-gallery-row small { display: block; color: var(--l1-muted); font-size: 11px; margin-top: 5px; }
+.l1-gallery-name { display: flex; gap: 10px; }
+.l1-gallery-name p { font-size: 12px; color: var(--l1-muted); margin-top: 6px; }
+.l1-gallery-name .l1-avatar { flex-shrink: 0; width: 32px; height: 32px; font-size: 10px; }
+.l1-gallery-error { grid-column: 1 / -1; color: var(--l1-danger); }
+.l1-verification { display: grid; gap: 10px; }
+.l1-verification-bar { display: flex; height: 9px; border-radius: 9px; overflow: hidden; background: var(--l1-border); }
+.l1-verification .is-proven { background: var(--l1-success); }
+.l1-verification .is-attested { background: var(--l1-info); }
+.l1-verification .is-reported { background: var(--l1-border-strong); }
+.l1-verification-key { display: flex; flex-wrap: wrap; gap: 5px 12px; font-size: 11px; color: var(--l1-text-2); }
+.l1-verification-key > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.l1-verification-key i { width: 6px; height: 6px; border-radius: 50%; }
+.l1-verification-meanings { padding-left: 18px; margin: 5px 0; font-size: 13px; color: var(--l1-text-2); }
+.l1-verification-meanings li + li { margin-top: 8px; }
+.l1-reading-age { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.l1-reading-age small { color: var(--l1-muted); font-size: 11px; }
+.l1-gallery-back { margin: 0 0 18px; }
+.l1-coin-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr); gap: 22px; align-items: start; }
+.l1-coin-layout > .l1-stack { min-width: 0; }
+.l1-coin-layout .l1-toolbar { font-size: 11px; margin-bottom: 9px; }
+.l1-coin-nav { display: block; font-size: clamp(28px, 3.3vw, 40px); letter-spacing: -.04em; font-weight: 600; font-variant-numeric: tabular-nums; }
+.l1-coin-best { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 14px; border-top: 1px solid var(--l1-border); padding-top: 16px; margin: 18px 0 16px; }
+.l1-coin-best > span:first-child { color: var(--l1-muted); font-size: 13px; }
+.l1-coin-price .l1-notice { margin-top: 16px; }
+.l1-section-gap { margin-top: 20px !important; }
+.l1-section-gap + p { margin-top: 8px; }
+.l1-nav-plots { display: grid; gap: 12px; margin-top: 20px; }
+.l1-nav-plot { margin: 0; }
+.l1-nav-plot figcaption { display: flex; justify-content: space-between; font-size: 12px; color: var(--l1-muted); }
+.l1-nav-plot figcaption strong { color: var(--l1-text); font-variant-numeric: tabular-nums; }
+.l1-nav-plot svg { width: 100%; display: block; overflow: visible; }
+.l1-nav-plot text { fill: var(--l1-muted); font-size: 11px; }
+.l1-chart-grid { stroke: var(--l1-border); stroke-dasharray: 3 4; }
+.l1-chart-line { stroke: var(--l1-accent); stroke-width: 2; fill: none; }
+.l1-chart-point { fill: var(--l1-accent); stroke: var(--l1-surface); stroke-width: 2; }
+.l1-table-wrap { overflow-x: auto; }
+.l1-history-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; text-align: left; font-variant-numeric: tabular-nums; }
+.l1-history-table :is(td, th) { padding: 10px 12px; border-bottom: 1px solid var(--l1-border); }
+.l1-history-table th { color: var(--l1-muted); font-weight: 500; }
+@media (max-width: 1180px) {
+  .l1-gallery-row { grid-template-columns: minmax(155px, 1.5fr) 1fr 1fr minmax(150px, 1.3fr) 1fr; gap: 14px; }
+  .l1-gallery-row.is-heading { display: none; }
+  .l1-gallery-row [data-label]::before { content: attr(data-label); display: block; font-size: 10px; color: var(--l1-muted); margin-bottom: 7px; }
+}
+@media (max-width: 800px) {
+  .l1-coin-layout { grid-template-columns: 1fr; }
+  .l1-coin-layout > .l1-stack { display: contents; }
+  .l1-coin-layout > .l1-stack > * { order: 3; }
+  .l1-coin-layout .l1-coin-price { order: 0; }
+  .l1-coin-layout > .l1-stack > .l1-view { order: 1; }
+  .l1-gallery-row { grid-template-columns: 1fr 1fr; gap: 20px; }
+  .l1-gallery-name { grid-column: 1 / -1; }
+  .l1-gallery-row > button { align-self: end; }
+  .l1-coin-layout .l1-ticket .l1-price-head strong { font-size: 28px; }
+}

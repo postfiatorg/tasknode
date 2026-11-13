@@ -1,14 +1,16 @@
 import { integer, resultOf, safeInteger, atoms } from "./amounts.js";
+import { finalizedReadings } from "../gallery/model.js";
 export async function readPool(client, config) {
   const [pool, proof, asset] = await Promise.all([
-    client.call("navcoin_bridge_supply_status", { route_id: config.route_id }).then(resultOf),
+    config.market_only ? null : client.call("navcoin_bridge_supply_status", { route_id: config.route_id }).then(resultOf),
     client.call("nav_reserve_proof_status", { asset_id: config.b23_asset_id }).then(resultOf),
     client.call("asset_info", { asset_id: config.b23_asset_id }).then(resultOf),
   ]);
-  if (pool.route_id !== config.route_id || pool.native_nav_asset_id !== config.b23_asset_id || pool.settlement_asset_id !== config.pfusdc_asset_id) throw new Error("Pool asset or route binding does not match B23 configuration");
+  if (!config.market_only && (pool.route_id !== config.route_id || pool.native_nav_asset_id !== config.b23_asset_id || pool.settlement_asset_id !== config.pfusdc_asset_id)) throw new Error("Pool asset or route binding does not match B23 configuration");
   if (asset.asset?.asset_id !== config.b23_asset_id || proof.asset_id !== config.b23_asset_id) throw new Error("B23 state response mismatch");
+  if (config.market_only && (asset.asset.precision !== 6 || asset.asset.issuer !== config.issuer_address)) throw new Error("Market asset precision or issuer does not match configuration");
   integer(asset.asset.outstanding_supply, "B23 total supply");
-  const nav = proof.packets?.find(packet => packet.state === "finalized" && packet.epoch === pool.pricing_nav_epoch && packet.reserve_packet_hash === pool.pricing_reserve_packet_hash);
+  const nav = config.market_only ? finalizedReadings(proof).at(-1) : proof.packets?.find(packet => packet.state === "finalized" && packet.epoch === pool.pricing_nav_epoch && packet.reserve_packet_hash === pool.pricing_reserve_packet_hash);
   return { pool, proof, nav, supply: asset.asset.outstanding_supply };
 }
 export async function readBook(client, config) {
@@ -36,7 +38,7 @@ export async function snapshot(client, config, { management = false, recipient =
   return { ...state, balances, offers, managementLines, recipientLines };
 }
 export function buildOffer(config, address, side, quantity, consideration, expiration = "0", state) {
-  if (!config.g1_passed || !config.management_address || state?.pool?.spread_recipient !== config.management_address) throw new Error("B23 trading is blocked until G1 and the management policy are installed");
+  if (!config.market_only && (!config.g1_passed || !config.management_address || state?.pool?.spread_recipient !== config.management_address)) throw new Error("B23 trading is blocked until G1 and the management policy are installed");
   if (address === config.issuer_address) throw new Error("Use Alice's holder wallet; the issuer cannot post offers");
   if (!["buy", "sell"].includes(side)) throw new Error("Choose buy or sell");
   const b23 = atoms(quantity, "B23 amount"), pfusdc = atoms(consideration, "PFUSDC total");
@@ -63,7 +65,7 @@ export function balanceDeltas(before, after, config, quoteAssetId = config.pfusd
 }
 export function verifyOffer(intent, before, after, config, receipt) {
   const deltas = balanceDeltas(before, after, config, config.market_quote_asset_id), op = intent.operation;
-  if (integer(before.supply) !== integer(after.supply) || integer(before.pool.settlement_reserve_atoms) !== integer(after.pool.settlement_reserve_atoms)) throw new Error("Market transaction changed B23 supply or redemption reserve");
+  if (integer(before.supply) !== integer(after.supply) || (!config.market_only && integer(before.pool.settlement_reserve_atoms) !== integer(after.pool.settlement_reserve_atoms))) throw new Error("Market transaction changed NAVCoin supply or cash-in reserve");
   if (after.offers.truncated || before.offers.truncated) throw new Error("Offer history is truncated; remainder cannot be verified");
   if (op.operation === "offer_cancel") {
     const prior = before.offers.offers.find(row => row.offer_id === op.offer_id);
@@ -90,10 +92,10 @@ export function verifyOffer(intent, before, after, config, receipt) {
   if (spent > integer(op.taker_gets_amount) || (!offer && fills.length === 0)) throw new Error("Offer fill or remainder is missing");
   const buy = op.taker_pays_asset_id === config.b23_asset_id;
   if (BigInt(buy ? deltas.PFUSDC : deltas.B23) !== -(spent + locked) || BigInt(buy ? deltas.B23 : deltas.PFUSDC) !== received) throw new Error("Offer fills and locked remainder do not match actual balance deltas");
-  if (buy && op.owner !== config.alice_holder_address) {
+  if (buy && config.alice_holder_address && op.owner !== config.alice_holder_address) {
     const aliceCredit = fills.filter(fill => fill.maker_owner === config.alice_holder_address).reduce((sum, fill) => sum + integer(fill.taker_sends_amount), 0n);
     if (aliceCredit > 0n && lineBalance(after.recipientLines, config.market_quote_asset_id) - lineBalance(before.recipientLines, config.market_quote_asset_id) !== aliceCredit) throw new Error("Alice's PFUSDC credit does not match Bob's fills");
   }
   const label = fills.length === 0 ? "Unfilled" : offer ? "Partially filled" : "Filled";
-  return { deltas, offer, fills, spent: String(spent), received: String(received), locked: String(locked), message: `${label} offer verified. Unfilled offered funds are locked until filled or cancelled. B23 supply and redemption reserve are unchanged.` };
+  return { deltas, offer, fills, spent: String(spent), received: String(received), locked: String(locked), message: `${label} offer verified. Unfilled offered funds are locked until filled or cancelled. ${config.symbol || "B23"} supply${config.market_only ? " is" : " and cash-in reserve are"} unchanged.` };
 }

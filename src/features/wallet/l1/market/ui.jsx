@@ -5,7 +5,8 @@ import { readBook, readPool } from "./model.js";
 import { prepareAction, submitAction } from "./transaction.js";
 import { Amount, Badge, Card, CardHead, Details, IdChip, JsonBlock, KV, Mono, Notice, Spinner } from "../ui.jsx";
 import { amount, percentFromBps, plainError } from "../format.js";
-export function useNavcoin(client, market = false) {
+import { finalizedReadings } from "../gallery/model.js";
+export function useNavcoin(client, market = false, marketConfig = null) {
   const clientRef = useRef(client); clientRef.current = client;
   const generation = useRef(0), retries = useRef(0), refreshRef = useRef(null);
   const [data, setData] = useState(null), [error, setError] = useState(""), [loading, setLoading] = useState(false);
@@ -16,8 +17,9 @@ export function useNavcoin(client, market = false) {
     if (!current?.unlocked || !current.address) { setLoading(false); return; }
     setLoading(true);
     try {
-      const config = await loadConfig();
+      const config = marketConfig || await loadConfig();
       const [state, book, balances] = await Promise.all([readPool(current, config), market ? readBook(current, config) : null, current.getBalances()]);
+      if (market) state.nav = finalizedReadings(state.proof).at(-1);
       if (ticket === generation.current) setData({ config, state, book, balances, address: current.address, accountId: current.accountId, readAt: Date.now() });
       retries.current = 0;
     } catch (e) {
@@ -27,7 +29,7 @@ export function useNavcoin(client, market = false) {
       if (retries.current < 5) { retries.current++; setTimeout(() => { if (ticket === generation.current) void refreshRef.current(); }, 2000 * retries.current); }
     }
     finally { if (ticket === generation.current) setLoading(false); }
-  }, [market]);
+  }, [market, marketConfig]);
   refreshRef.current = refresh;
   useEffect(() => { const token = generation; void refresh(); return () => { token.current++; }; }, [refresh, accountId, address, unlocked]);
   return { data: data?.address === address && data?.accountId === accountId && unlocked ? data : null, error, loading, refresh };
@@ -118,7 +120,7 @@ export function ActionReview({ client, request, onComplete, onCancel }) {
         <div className="l1-delta"><small>Cash-in fee</small><span><Amount atoms={effects.credits.spread_value_atoms} unit="PFUSDC" testId="credit-fee" /></span></div>
         {effects.deltas && <DeltaCard label="B23 balance" atoms={effects.deltas.B23} unit="B23" />}
       </div> : effects?.deltas && <div className="l1-deltas">
-        <DeltaCard label="B23 balance" atoms={effects.deltas.B23} unit="B23" />
+        <DeltaCard label={`${request.symbol || "B23"} balance`} atoms={effects.deltas.B23} unit={request.symbol || "B23"} />
         <DeltaCard label="PFUSDC balance" atoms={effects.deltas.PFUSDC} unit="PFUSDC" />
         {effects.locked && BigInt(effects.locked) > 0n && <div className="l1-delta"><small>Locked in your open offer</small><span><Amount atoms={effects.locked} unit={request.lockedUnit} /></span></div>}
       </div>}

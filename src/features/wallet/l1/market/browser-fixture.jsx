@@ -6,6 +6,8 @@ import Issuer from "../issuer/index.jsx";
 import Redeem from "../redeem/index.jsx";
 import { config, bob, lines, state, equityPlan } from "./fixtures.mjs";
 const params = new URLSearchParams(location.search), tab = params.get("tab") || "market";
+const peerMarket = params.get("coin") === "a666";
+if (peerMarket) config.b23_asset_id = "6".repeat(96);
 let ledger = state(), counter = 0;
 const history = [];
 const address = tab === "issuer" ? config.issuer_address : bob;
@@ -71,6 +73,6 @@ function App() {
   const [,rerender]=useState(0);
   window.fixture={history,ledger,client,installOpeningPolicy:()=>{const p=equityPlan();ledger.pool.pricing_nav_epoch=3;ledger.pool.pricing_reserve_packet_hash=p.packet.packet_hash;},switchAccount:()=>{client.accountId="another-account";client.address=config.alice_holder_address;rerender(n=>n+1);}};
   const Tab={market:Market,issuer:Issuer,redeem:Redeem}[tab];
-  return <main><p>SYNTHETIC CLIENT — NO LIVE TRANSACTIONS</p><Tab client={{...client}} onNavigate={id=>history.push(`navigate:${id}`)} /></main>;
+  return <main><p>SYNTHETIC CLIENT — NO LIVE TRANSACTIONS</p><Tab client={{...client}} marketConfig={peerMarket ? { ...config, symbol: "A666", market_only: true, route_id: null, alice_holder_address: null } : null} onNavigate={id=>history.push(`navigate:${id}`)} /></main>;
 }
 createRoot(document.getElementById("root")).render(<App />);

@@ -30,7 +30,7 @@ export function navValue(state) {
   return reported != null && /^[0-9]+$/.test(String(reported)) && BigInt(reported) > 0n ? BigInt(reported) : valueAt(state.supply, state.nav.nav_per_unit);
 }
 
-export default function B23Facts({ state, config, error, compact = false }) {
+export default function B23Facts({ state, config, error, compact = false, onNavigate }) {
   const cutoff = useEquityCutoff(state?.nav);
   if (!state) return <Card className="l1-facts">
     <CardHead eyebrow="B23 · NAVCoin" />
@@ -65,5 +65,6 @@ export default function B23Facts({ state, config, error, compact = false }) {
         ["Issuer", <Mono value={config?.issuer_address} />],
       ]} />
     </Details>}
+    {onNavigate && <button type="button" className="l1-link l1-section-gap" onClick={() => onNavigate("Gallery", "b23")}>Explore B23: price, verification and history →</button>}
   </Card>;
 }
