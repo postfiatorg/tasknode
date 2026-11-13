@@ -74,7 +74,8 @@ export async function readCoin(client, coin) {
   const history = finalizedReadings(proof), latest = history.at(-1) || null;
   return { ...coin, proof, asset, pool, history, latest, errors, depth: askDepth(book, coin, proof?.current_height),
     split: verificationSplit(latest, proof?.active_profile), freshness: freshness(latest, proof?.active_profile, proof?.current_height),
-    change: changeBps(latest?.nav_per_unit, history.at(-2)?.nav_per_unit) };
+    // A prior reading with no value behind it (an opening placeholder) is not a price to compare against.
+    change: BigInt(history.at(-2)?.verified_net_assets ?? 0) > 0n ? changeBps(latest?.nav_per_unit, history.at(-2)?.nav_per_unit) : null };
 }
 
 export function sortByTvl(coins) {
