@@ -26,6 +26,10 @@ export function pftInputAtoms(value) {
   const [whole, fraction = ''] = value.split('.');
   return String(safeAtoms(BigInt(whole) * 1000000n + BigInt(fraction.padEnd(6, '0'))));
 }
+// The chain omits expiration_height from an offer quote when it is 0 (never expires).
+function quotedOperation(operation) {
+  return operation?.operation === 'offer_create' && operation.expiration_height == null ? { ...operation, expiration_height: 0 } : operation;
+}
 export function validateQuote(intent, quote, address) {
   if (quote?.chain_id !== CHAIN_ID || quote?.genesis_hash !== GENESIS_HASH || quote?.protocol_version !== PROTOCOL_VERSION) throw new Error('Fee quote does not match devnet-2');
   if (!Number.isSafeInteger(Number(quote.minimum_fee)) || Number(quote.minimum_fee) < 0 || quote.minimum_fee == null
@@ -34,7 +38,7 @@ export function validateQuote(intent, quote, address) {
     if (!isValidAddress(intent.to) || quote.from !== address || quote.to !== intent.to || String(quote.amount) !== String(safeAtoms(intent.amount))) throw new Error('Fee quote does not match reviewed payment');
     if (quote.sender_meets_reserve_after_transfer !== true) throw new Error('Insufficient PFT after payment and reserve');
   } else if (['asset', 'offer'].includes(intent.kind)) {
-    if (quote.source !== address || !quote.operation || canonical(quote.operation) !== canonical(intent.operation)) throw new Error('Fee quote does not match reviewed operation');
+    if (quote.source !== address || !quote.operation || canonical(quotedOperation(quote.operation)) !== canonical(quotedOperation(intent.operation))) throw new Error('Fee quote does not match reviewed operation');
     if (quote.sender_meets_reserve_after_fee !== true || quote.sender_meets_reserve_after_fee_and_reserve === false) throw new Error('Insufficient PFT for fee and reserve');
   } else throw new Error('Unsupported transaction kind');
 }

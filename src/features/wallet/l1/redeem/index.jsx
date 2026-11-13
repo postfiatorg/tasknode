@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChartCandlestick } from "lucide-react";
-import { units } from "../market/amounts.js";
+import { resultOf, units } from "../market/amounts.js";
 import { lineBalance, snapshot } from "../market/model.js";
 import { ActionReview, PoolState, useNavcoin, WalletNotice } from "../market/ui.jsx";
 import { Amount, Card, CardHead, Notice, Skeleton } from "../ui.jsx";
@@ -22,7 +22,16 @@ export default function RedeemTab({ client, onNavigate }) {
         description: `${amount(quote.amount)} B23 is retired. ${amount(quote.holder)} PFUSDC is paid to this wallet and the ${amount(quote.management)} PFUSDC fee to the B23 manager, in one transaction.`,
         read: () => snapshot(client, data.config, { management: true }),
         preflight: (intent, current, prepared) => redeemPreflight(data.config, intent, current, prepared),
-        verify: (intent, before, after, receipt) => verifyRedeem(data.config, intent, before, after, receipt),
+        verify: async (intent, before, after, receipt, txId) => {
+          // The generic receipt carries no payout detail; the facility receipt read holds both credits.
+          let settlement = receipt.redemption_settlement;
+          if (!settlement && txId) {
+            const facility = resultOf(await client.call("pftl_uniswap_receipt", { tx_id: txId }));
+            if (facility?.tx_id !== txId || facility.accepted !== true || facility.owner !== client.address) throw new Error("Cash-in receipt does not match this transaction");
+            settlement = facility.consensus_receipt?.redemption_settlement;
+          }
+          return verifyRedeem(data.config, intent, before, after, { ...receipt, redemption_settlement: settlement });
+        },
       });
     } catch (e) { setActionError(e.message); }
   }

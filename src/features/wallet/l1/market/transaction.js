@@ -26,7 +26,7 @@ export async function submitAction(client, prepared, read, verify, isCurrent = (
   try {
     const after = await read();
     guard();
-    const effects = verify(prepared.intent, before, after, submitted.receipt);
+    const effects = await verify(prepared.intent, before, after, submitted.receipt, submitted.txId);
     return { verified: true, ...submitted, before, after, effects };
   } catch (error) {
     return { verified: false, ...submitted, before, verificationError: error.message };
