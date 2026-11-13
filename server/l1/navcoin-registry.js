@@ -4,7 +4,7 @@ export function navcoinRegistry(config) {
     {
       slug: "b23", name: "B23", asset_id: config.b23_asset_id,
       description: "Backed by a Schwab brokerage account.",
-      methodology: "NAV is Schwab’s reported net liquidation value at the daily 18:15 UTC cutoff, with no adjustments of ours. NAV per coin is the account value allocated across the coins in the finalized reading. The separate PFUSDC cash-in reserve is not added to that account value.",
+      methodology: "NAV uses Schwab’s reported net liquidation value at the daily 18:15 UTC cutoff plus the PFUSDC cash-in reserve counted by the network. NAV per coin is this combined net asset value divided by the supply in the finalized reading. The Schwab reading is shown as Attested when supported by the enclave proof; the separate cash-in reserve is shown as Reported, not as part of the attested Schwab value.",
       market_quote_asset_id: config.market_quote_asset_id, route_id: config.route_id,
     },
     {
