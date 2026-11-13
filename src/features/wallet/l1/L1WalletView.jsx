@@ -162,7 +162,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       {backupDue && <div style={{ marginBottom: 18 }}><Notice tone="warning" title="Back up this wallet before adding funds" action={<button type="button" className="l1-btn is-sm" onClick={downloadBackup}><Download size={14} aria-hidden />Back up now</button>}>Download the encrypted backup and keep your passphrase somewhere safe. Without both, a lost browser means lost funds.</Notice></div>}
       <nav aria-label="L1 wallet tabs" className="l1-tabs">
         <div className="l1-tabs-main">{VIEWS.map(item => <button key={item.id} type="button" className="l1-tab" aria-pressed={tab === item.id} onClick={() => onNavigate(item.id)}><item.icon size={16} aria-hidden />{item.label}</button>)}</div>
-        <button type="button" className="l1-tab-issuer" aria-pressed={tab === ISSUER.id} onClick={() => onNavigate(ISSUER.id)}><Landmark size={15} aria-hidden />{ISSUER.label}</button>
+        {/* Issuer actions live on the CLI; the consumer wallet does not link to the issuer desk. */}
       </nav>
       <div className="l1-enter" key={tab}>
         {view?.title && <ViewHeader eyebrow={view.id === ISSUER.id ? "Operator" : undefined} title={view.title} subtitle={view.subtitle}>{view.id === ISSUER.id && <Badge tone="warning">Issuer only</Badge>}</ViewHeader>}
