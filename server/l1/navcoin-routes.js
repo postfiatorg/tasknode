@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { PUBLISHED_CONFIG, validateConfig } from "../../src/features/wallet/l1/market/constants.js";
+import { navcoinRegistry } from "./navcoin-registry.js";
 const PACKET_FIELDS = "schema broker_source_id account_commitment_sha256 cutoff_at_utc cutoff_time_utc observed_at_utc source_field liquidation_value_usd liquidation_value_atoms valuation_unit scale_atoms_per_usd adjustments broker_response_root_sha256 positions_root_sha256 known_posting_limits packet_hash".split(" ");
 const OP_FIELDS = {
   nav_reserve_submit: "operation issuer submitter asset_id epoch nav_per_unit circulating_supply verified_net_assets proof_profile source_root attestor_root reserve_packet_hash reserve_accounts sp1_proof_bytes sp1_public_values",
@@ -39,9 +40,10 @@ export async function handleNavcoinRoutes({ req, res, url, session, json }) {
   if (!session?.accountId) { json(res, 401, { error: "l1_login_required" }); return true; }
   if (req.method !== "GET") { json(res, 405, { error: "navcoin_read_only_route" }); return true; }
   try {
-    if (url.pathname === "/api/l1/navcoin/config") {
+    if (["/api/l1/navcoin/config", "/api/l1/navcoin/registry"].includes(url.pathname)) {
       const override = process.env.B23_NAVCOIN_CONFIG_JSON ? JSON.parse(process.env.B23_NAVCOIN_CONFIG_JSON) : {};
-      json(res, 200, validateConfig({ ...PUBLISHED_CONFIG, ...override }));
+      const config = validateConfig({ ...PUBLISHED_CONFIG, ...override });
+      json(res, 200, url.pathname.endsWith("/registry") ? { coins: navcoinRegistry(config) } : config);
     } else if (url.pathname === "/api/l1/navcoin/equity") {
       json(res, 200, publicEquity(await artifact(process.env.B23_ACCOUNT_EQUITY_PATH)));
     } else if (url.pathname === "/api/l1/navcoin/fee") {
