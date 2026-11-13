@@ -720,3 +720,14 @@
   .l1-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .l1-tab-issuer { margin-left: 8px; }
 }
+
+/* Market ticket: price first, then two linked amounts. */
+.l1-price-head { display: grid; gap: 4px; padding: 14px 16px; border-radius: 12px; background: var(--l1-bg); }
+.l1-price-head > small { color: var(--l1-muted); font-size: 12.5px; }
+.l1-price-head > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.l1-price-head strong { font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.l1-price-head > div > span { color: var(--l1-muted); font-size: 14px; }
+.l1-ticket-lines { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--l1-border); font-size: 13.5px; }
+.l1-ticket-lines > div { display: flex; justify-content: space-between; gap: 12px; }
+.l1-ticket-lines span { color: var(--l1-muted); }
+.l1-ticket-lines b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }

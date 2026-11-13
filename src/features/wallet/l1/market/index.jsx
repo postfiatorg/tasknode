@@ -8,6 +8,7 @@ import { amount, plainError, unitPrice } from "../format.js";
 
 import OfferReview from './OfferReview.jsx';
 import { planOfferSetup, offerPreflight } from './offer-setup.js';
+import { priceSource, quantityForTotal, totalForQuantity, versusNav } from "./pricing.js";
 
 // Plain decimal string for inputs ("10.5"), from atoms.
 const plain = atoms => units(atoms).replace(/\.?0+$/, "") || "0";
@@ -80,7 +81,7 @@ function Orders({ report, config, cancel }) {
 export default function MarketTab({ client, onNavigate }) {
   const navcoin = useNavcoin(client, true);
   const { data, error, loading, refresh } = navcoin;
-  const [side, setSide] = useState("buy"), [quantity, setQuantity] = useState(""), [total, setTotal] = useState(""), [expiration, setExpiration] = useState("0");
+  const [side, setSide] = useState("buy"), [quantity, setQuantity] = useState(""), [total, setTotal] = useState(""), [expiration, setExpiration] = useState("0"), [custom, setCustom] = useState("");
   const [request, setRequest] = useState(null), [actionError, setActionError] = useState(""), [planning, setPlanning] = useState(false);
   const revision = useRef(0), latest = useRef(client); latest.current = client;
   function review(intent, description, extra) {
@@ -122,18 +123,33 @@ export default function MarketTab({ client, onNavigate }) {
     revision.current++;
     setRequest(null);
     setSide(level.side === "ask" ? "buy" : "sell");
-    setQuantity(plain(level.size)); setTotal(plain(level.total));
+    setCustom(""); setQuantity(plain(level.size)); setTotal(plain(level.total));
   }
   let available = null;
   try { if (data) available = lineBalance(data.balances.assets, side === "buy" ? data.config.market_quote_asset_id : data.config.b23_asset_id); } catch { available = null; }
   const asks = data ? levels(data.book.asks, data.config, "ask") : [];
   const bestAsk = asks[0];
   const tradingOpen = data && data.config.g1_passed && data.config.management_address && data.state?.pool?.spread_recipient === data.config.management_address;
-  function fillAtBestAsk() {
-    if (!bestAsk || !qtyAtoms) return;
-    revision.current++; setRequest(null);
-    setTotal(plain((qtyAtoms * bestAsk.total + bestAsk.size - 1n) / bestAsk.size));
-  }
+  const bids = data ? levels(data.book.bids, data.config, "bid") : [];
+  const buying = side === "buy", facing = buying ? asks : bids;
+  let navAtoms = null; try { navAtoms = data?.state?.nav ? BigInt(data.state.nav.nav_per_unit) : null; } catch { navAtoms = null; }
+  const source = priceSource(facing, toAtoms(custom), navAtoms);
+  const shown = limit ?? source.price, versus = versusNav(shown, navAtoms);
+  const depth = facing.reduce((sum, level) => sum + level.size, 0n);
+  const px = value => amount(value, { min: 2 });
+  // The two amounts are linked: type either one and the other follows the price.
+  function typeQuantity(value) { setQuantity(value); const result = totalForQuantity(toAtoms(value), facing, source); if (result) setTotal(plain(result.total)); else if (!value) setTotal(""); }
+  function typeTotal(value) { setTotal(value); const result = quantityForTotal(toAtoms(value), facing, source); if (result !== null) setQuantity(plain(result)); else if (!value) setQuantity(""); }
+  function typeCustom(value) { setCustom(value); const next = priceSource(facing, toAtoms(value), navAtoms), result = totalForQuantity(qtyAtoms, facing, next); if (result) setTotal(plain(result.total)); }
+  function useMax() { if (available === null || available <= 0n) return; revision.current++; setRequest(null); if (buying) typeTotal(plain(available)); else typeQuantity(plain(available)); }
+  const beyondBook = source.kind === "book" && qtyAtoms && qtyAtoms > depth;
+  const short = available !== null && (buying ? totalAtoms : qtyAtoms) && (buying ? totalAtoms : qtyAtoms) > available;
+  const Max = <button type="button" className="l1-max" disabled={available === null || available <= 0n} onClick={useMax} title="Use everything available">Max</button>;
+  const balanceHint = available === null ? "" : <span className={short ? "is-danger" : ""}>Available <Amount atoms={available} unit={buying ? "PFUSDC" : "B23"} /></span>;
+  const quantityField = <label className="l1-field"><span>{buying ? "You receive" : "You sell"}</span><span className="l1-input-wrap"><input aria-label="B23 quantity" inputMode="decimal" placeholder="0.00" value={quantity} onChange={e => typeQuantity(e.target.value)} required /><span className="l1-input-suffix">{!buying && Max}B23</span></span>
+    {!buying && <span className="l1-field-hint"><span /><span>{balanceHint}</span></span>}</label>;
+  const totalField = <label className="l1-field"><span>{buying ? "You pay" : "You receive"}</span><span className="l1-input-wrap"><input aria-label="PFUSDC total" inputMode="decimal" placeholder="0.00" value={total} onChange={e => typeTotal(e.target.value)} required /><span className="l1-input-suffix">{buying && Max}PFUSDC</span></span>
+    {buying && <span className="l1-field-hint"><span /><span>{balanceHint}</span></span>}</label>;
   const visible = request && request.accountId === client.accountId && request.address === client.address && client.unlocked;
   return <div className="l1-view">
     <WalletNotice client={client} error={error} loading={loading} refresh={refresh} data={data} />
@@ -146,11 +162,20 @@ export default function MarketTab({ client, onNavigate }) {
               <label><input type="radio" name="market-side" value="buy" checked={side === "buy"} onChange={() => setSide("buy")} />Buy</label>
               <label><input type="radio" name="market-side" value="sell" checked={side === "sell"} onChange={() => setSide("sell")} />Sell</label>
             </div>
-            <label className="l1-field"><span>B23 quantity</span><span className="l1-input-wrap"><input aria-label="B23 quantity" inputMode="decimal" placeholder="0.00" value={quantity} onChange={e => setQuantity(e.target.value)} required /><span className="l1-input-suffix">B23</span></span></label>
-            <label className="l1-field"><span>PFUSDC total</span><span className="l1-input-wrap"><input aria-label="PFUSDC total" inputMode="decimal" placeholder="0.00" value={total} onChange={e => setTotal(e.target.value)} required /><span className="l1-input-suffix">{side === "buy" && bestAsk && <button type="button" className="l1-max" disabled={!qtyAtoms} onClick={fillAtBestAsk} title="Set the total from the best ask">Best ask</button>}PFUSDC</span></span>
-              <span className="l1-field-hint"><span>{side === "buy" ? "The most you will pay." : "The least you will accept."}</span><span>{available === null ? "" : <>Available <Amount atoms={available} unit={side === "buy" ? "PFUSDC" : "B23"} /></>}</span></span></label>
-            <div className="l1-ticket-price"><small>Limit price</small><strong>{limit === null ? "—" : `${amount(limit, { min: 2 })} PFUSDC`}</strong><small>{data.state?.nav ? `NAV $${amount(data.state.nav.nav_per_unit, { min: 2 })}` : ""}</small></div>
-            <Details summary="Advanced"><label className="l1-field"><span>Expires at block (0 = never)</span><input inputMode="numeric" value={expiration} onChange={e => setExpiration(e.target.value)} required /></label></Details>
+            <div className="l1-price-head">
+              <small>B23 price</small>
+              <div><strong>{shown === null ? "—" : px(shown)}</strong><span>PFUSDC per B23</span>{versus && <Badge tone={versus.tone}>{versus.label}</Badge>}</div>
+              <small>{navAtoms ? `NAV $${px(navAtoms)} per B23` : "NAV not reported yet"}{source.kind === "book" ? <> · <Amount atoms={depth} unit="B23" /> {buying ? "for sale" : "wanted"} now</> : source.kind === "nav" ? ` · no ${buying ? "sellers" : "buyers"} right now, so this starts at NAV` : source.kind === "custom" ? " · your own price" : ""}</small>
+            </div>
+            {buying ? <>{totalField}{quantityField}</> : <>{quantityField}{totalField}</>}
+            <div className="l1-ticket-lines">
+              <div><span>Price</span><b>{limit === null ? "—" : `1 B23 = ${px(limit)} PFUSDC`}</b></div>
+              <div><span>{buying ? "Most you pay" : "Least you receive"}</span><b>{totalAtoms ? <Amount atoms={totalAtoms} unit="PFUSDC" /> : "—"}</b></div>
+              <div><span>Network fee</span><b>Paid in PFT, shown before you sign</b></div>
+            </div>
+            {beyondBook && <p className="l1-small l1-muted">Only <Amount atoms={depth} unit="B23" /> is {buying ? "for sale" : "wanted"} right now. The rest of your order waits on the book at this price.</p>}
+            {source.kind !== "book" && limit !== null && <p className="l1-small l1-muted">Your offer waits on the book until a {buying ? "seller" : "buyer"} accepts this price. You can cancel it any time.</p>}
+            <Details summary="Advanced"><label className="l1-field"><span>Set my own price (PFUSDC per B23)</span><input aria-label="Own price" inputMode="decimal" placeholder={shown === null ? "0.00" : px(shown)} value={custom} onChange={e => typeCustom(e.target.value)} /></label><label className="l1-field"><span>Expires at block (0 = never)</span><input inputMode="numeric" value={expiration} onChange={e => setExpiration(e.target.value)} required /></label></Details>
             {!tradingOpen && <Notice tone="warning" title="Market offers are switched off on this network">Order entry opens once the operator enables the B23 market.</Notice>}
             <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={!tradingOpen || planning}>Review {side === "buy" ? "buy offer" : "sell offer"}</button>
           </form>
