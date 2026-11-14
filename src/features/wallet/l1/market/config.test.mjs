@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { validateConfig, loadConfig, assetSymbols, marketReady } from './constants.js';
 import { discoverRegistry } from '../../../../../server/l1/navcoin-registry.js';
 import { readCoin, heldNavValues, sortByTvl } from '../gallery/model.js';
+import { versusNav } from './pricing.js';
 import { buildOffer } from './model.js';
 import { labelActivity } from '../activity-model.js';
 import { classifyLines } from '../portfolio.js';
@@ -77,4 +78,9 @@ test('a newly finalized reading disables primary actions until route pricing cat
  assert.equal(coin.creation_enabled,false);
  assert.equal(coin.redemption_mode,'unsupported');
  assert.match(coin.capabilities.create.reason,/latest finalized NAV/);
+});
+
+test('a view-only coin without a quote market has no price comparison',()=>{
+ assert.equal(versusNav(undefined,1000000n),null);
+ assert.equal(versusNav(null,1000000n),null);
 });

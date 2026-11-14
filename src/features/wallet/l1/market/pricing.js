@@ -37,7 +37,7 @@ export function quantityForTotal(total, levels, source) {
 
 // "At NAV", "0.50% above NAV", "0.25% below NAV".
 export function versusNav(price, nav) {
-  if (price === null || !nav || nav <= 0n) return null;
+  if (price === null || price === undefined || !nav || nav <= 0n) return null;
   if (price === nav) return { tone: "success", label: "At NAV" };
   const above = price > nav, bps = ((above ? price - nav : nav - price) * 10000n) / nav;
   const pct = `${bps / 100n}.${String(bps % 100n).padStart(2, "0")}%`;
