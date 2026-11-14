@@ -66,6 +66,13 @@ export function createProfileReader({ rpc = createProfileRpc(), coins = getNavco
     const history = proof.packets.filter(packet => packet.state === 'finalized').sort((a, b) => Number(a.epoch) - Number(b.epoch)).map(packet => ({ ...packet, verification_url: `#l1-wallet/navcoins/${slug}/snapshots/${packet.epoch}`, evidence_url: `/api/l1/navcoin/profiles/${slug}/snapshots/${packet.epoch}` }));
     return { coin, profiles: registry.map(item => fields(item, ['slug', 'name', 'retired'])), proof, asset, route, history, latest: history.at(-1) || null, order_book: { asks: depth(asks, coin, proof.current_height), bids: depth(bids, coin, proof.current_height, 'bids'), quote_asset_id: coin.market_quote_asset_id }, errors, observed_at: new Date().toISOString() };
   }, 60000);
+  const registeredProfile = memoRead(async id => {
+    const status = await rpc('status', {});
+    const reference = status.active_nav_profiles?.find(item => item.profile_id === id);
+    if (!reference) return null;
+    const profile = (await rpc('nav_reserve_proof_status', { asset_id: reference.asset_id })).active_profile;
+    return profile?.profile_id === id && proofProfileId(profile) === id ? profile : null;
+  }, 24 * 60 * 60 * 1000);
   const nativeSnapshot = memoRead(async (slug, epoch) => {
     const data = await readBase(slug), packet = data.history.find(item => String(item.epoch) === String(epoch));
     if (!packet) throw Object.assign(Error('Finalized snapshot not found'), { status: 404 });
@@ -82,6 +89,11 @@ export function createProfileReader({ rpc = createProfileRpc(), coins = getNavco
     const submitReceipt = await receipt(submit), finalizeReceipt = await receipt(finalize);
     const op = submit?.operation;
     let profile = op?.proof_profile === data.proof.active_profile?.profile_id ? data.proof.active_profile : null;
+    // Profiles are content-addressed and may remain registered on another asset.
+    // Resolve the exact canonical ID before scanning older archive blocks.
+    if (!profile && op?.proof_profile) {
+      try { profile = await registeredProfile(op.proof_profile); } catch { /* Fall back to committed registration history. */ }
+    }
     // A replaced proof profile must not be attributed to an older snapshot.
     if (!profile && op?.proof_profile) {
       for (let h = Number(packet.submitted_at_height) - 1; h >= 1; h--) {

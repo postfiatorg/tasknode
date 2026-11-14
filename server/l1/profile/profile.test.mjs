@@ -94,3 +94,21 @@ test('actual B24 V2 Ethereum publication binds its native epoch and reserve pack
  assert.equal(decodePublication(input, coin, packet), true);
  assert.equal(decodePublication(input, coin, { ...packet, epoch: 1 }), false);
 });
+
+test('old snapshot resolves a shared registered profile by canonical ID without scanning old blocks', async () => {
+ const old = { verifier_kind: 'placeholder', source_class: 'older-source' }, id = proofProfileId(old);
+ const packet = { epoch: 1, state: 'finalized', submitted_at_height: 10, reserve_packet_hash: 'packet' };
+ const heights = [];
+ const reader = createProfileReader({ coins: () => [coin], ethereumHistory: async () => [], rpc: async (method, params) => {
+  if (method === 'nav_reserve_proof_status') return params.asset_id === 'other' ? { active_profile: { ...old, profile_id: id } } : { found: true, asset_id: 'asset', current_height: 11, packets: [packet], active_profile: { profile_id: 'new' } };
+  if (method === 'status') return { active_nav_profiles: [{ asset_id: 'other', profile_id: id }] };
+  if (method === 'asset_info') return { asset: { asset_id: 'asset' } };
+  if (method === 'book_offers') return { offers: [] };
+  if (method === 'blocks') { const h = params.from_height; heights.push(h); return [{ header: { height: h, block_hash: `h${h}`, batch_id: `b${h}`, batch_kind: 'transparent' }, receipt_ids: [`tx${h}`] }]; }
+  if (method === 'batch_archive') { const h = Number(params.batch_id.slice(1)); return [{ batch_id: params.batch_id, batch_kind: 'transparent', payload_json: JSON.stringify({ batch_id: params.batch_id, asset_transactions: [{ unsigned: { operation: h === 10 ? 'nav_reserve_submit' : 'nav_epoch_finalize', asset_id: 'asset', epoch: 1, reserve_packet_hash: 'packet', proof_profile: id } }] }) }]; }
+  if (method === 'receipts') return [{ tx_id: params.tx_id, accepted: true }];
+  throw Error('Unexpected read');
+ } });
+ const snapshot = await reader.snapshot('test', 1);
+ assert.equal(snapshot.verified, true); assert.equal(snapshot.proof_profile.source_class, 'older-source'); assert.deepEqual(heights, [10, 11]);
+});
