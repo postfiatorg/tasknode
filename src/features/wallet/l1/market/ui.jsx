@@ -1,11 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CircleAlert, CircleCheck, RefreshCw, TriangleAlert } from "lucide-react";
+import { validateConfig } from "./constants.js";
 import { readBook, readPool } from "./model.js";
 import { prepareAction, submitAction } from "./transaction.js";
 import { Amount, Badge, Card, CardHead, Details, IdChip, JsonBlock, KV, Mono, Notice, Spinner } from "../ui.jsx";
 import { amount, percentFromBps, plainError } from "../format.js";
 import { finalizedReadings } from "../gallery/model.js";
 export function useNavcoin(client, market = false, marketConfig = null) {
+  // Gallery snapshots refresh independently. Identical action configuration must
+  // not tear down a quoted or in-flight creation when only the snapshot changes.
+  const configKey = marketConfig ? JSON.stringify(validateConfig(marketConfig)) : null;
+  const selectedConfig = useMemo(() => configKey ? JSON.parse(configKey) : null, [configKey]);
   const clientRef = useRef(client); clientRef.current = client;
   const generation = useRef(0), retries = useRef(0), refreshRef = useRef(null);
   const [data, setData] = useState(null), [error, setError] = useState(""), [loading, setLoading] = useState(false);
@@ -16,8 +21,8 @@ export function useNavcoin(client, market = false, marketConfig = null) {
     if (!current?.unlocked || !current.address) { setLoading(false); return; }
     setLoading(true);
     try {
-      if (!marketConfig) throw new Error("Choose a NAVCoin first");
-      const config = marketConfig;
+      if (!selectedConfig) throw new Error("Choose a NAVCoin first");
+      const config = selectedConfig;
       const state = await readPool(current, config);
       const book = market ? await readBook(current, config) : null;
       const balances = await current.getBalances();
@@ -31,7 +36,7 @@ export function useNavcoin(client, market = false, marketConfig = null) {
       if (retries.current < 5) { retries.current++; setTimeout(() => { if (ticket === generation.current) void refreshRef.current(); }, 2000 * retries.current); }
     }
     finally { if (ticket === generation.current) setLoading(false); }
-  }, [market, marketConfig]);
+  }, [market, selectedConfig]);
   refreshRef.current = refresh;
   useEffect(() => { const token = generation; void refresh(); return () => { token.current++; }; }, [refresh, accountId, address, unlocked]);
   return { data: data?.address === address && data?.accountId === accountId && data?.config.nav_asset_id === marketConfig?.nav_asset_id && unlocked ? data : null, error, loading, refresh };
