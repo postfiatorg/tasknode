@@ -94,7 +94,7 @@ export function createProfileReader({ rpc = createProfileRpc(), coins = () => pr
       reading_time: null, finalized_time: null, attestation: { pcrs: null, image_sha256: null, reading_timestamp: null, note: 'The chain archive commits to source and attestation roots. It does not disclose the enclave PCRs, image hash or wall-clock reading timestamp.' },
       ethereum_transactions: [], ethereum_note: 'No matching Ethereum snapshot transaction has been established from the available chain archive.',
       source: 'Live validator RPC: finalized NAV state, committed blocks, signed batch archive and literal transaction receipts.', read_at: new Date().toISOString() };
-    try { result.ethereum_transactions = await ethereumSnapshotTransactions(data.coin, packet, data.route); } catch { result.ethereum_note = 'Ethereum historical publication data is not available from the public RPC. No transaction link is inferred.'; }
+    try { result.ethereum_transactions = await ethereumSnapshotTransactions(data.coin, packet, data.route); if (result.ethereum_transactions.length) result.ethereum_note = 'Successful Ethereum receipt publications with matching native asset, route, NAV epoch and reserve-packet commitment. These are not independent rereadings of the underlying assets.'; } catch { result.ethereum_note = 'Ethereum historical publication data is not available from the public RPC. No transaction link is inferred.'; }
     return result;
   }, 24 * 60 * 60 * 1000);
   async function profile(slug) {
