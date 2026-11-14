@@ -182,6 +182,7 @@ export default function MarketTab({ client, onNavigate, marketConfig = null, com
             {!tradingOpen && <Notice tone="warning" title="Market offers are switched off on this network">Order entry opens once the operator enables the {symbol} market.</Notice>}
             <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={!tradingOpen || planning}>Review {side === "buy" ? "buy offer" : "sell offer"}</button>
           </form>
+          {!data.config.market_only && data.config.redemption_mode === "unsupported" && <div className="l1-section-gap"><Notice title="Exit through the market">{data.config.cash_in_note || `Native cash-in is not available in this wallet. Sell ${symbol} on the book when a buyer is available.`}</Notice></div>}
           {onNavigate && <p className="l1-small l1-muted" style={{ marginTop: 14 }}>Need PFUSDC? <button type="button" className="l1-link" onClick={() => onNavigate("Bridge")}><ArrowDownToLine size={13} aria-hidden />Add PFUSDC from Ethereum</button></p>}
         </Card>}
         {actionError && <Notice tone="danger" role="alert">{plainError(actionError)}</Notice>}

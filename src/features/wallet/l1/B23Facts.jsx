@@ -56,7 +56,7 @@ export default function B23Facts({ state, config, error, compact = false, onNavi
       !compact && ["Cash-in fee", fee == null ? "—" : percentFromBps(fee)],
       !compact && pool.min_order_atoms != null && ["Per cash-in", `${amount(pool.min_order_atoms, { min: 0 })} – ${amount(pool.max_order_atoms, { min: 0 } )} ${symbol}`],
     ]} />
-    {config?.redemption_mode === "unsupported" && <p className="l1-small l1-muted">Native cash-in is not available in this wallet. You can offer your coins on the market.</p>}
+    {config?.redemption_mode === "unsupported" && <p className="l1-small l1-muted">{config.cash_in_note || "Native cash-in is not available in this wallet. You can offer your coins on the market."}</p>}
     {!compact && <Details summary="On-chain details">
       <KV className="is-tight" rows={[
         ["Supply check", pool.invariant_holds === true ? "Balanced" : pool.invariant_holds === false ? "Mismatch" : "Unavailable"],

@@ -54,7 +54,7 @@ export default function RedeemTab({ client, onNavigate }) {
   const fee = pool && Number.isSafeInteger(pool.redeem_multiplier_bps) ? 10000 - pool.redeem_multiplier_bps : null;
   if (data?.config.redemption_mode === "unsupported") return <div className="l1-view l1-stack">
     <WalletNotice client={client} error={error} loading={loading} refresh={refresh} data={data} />
-    <Card><CardHead title={`Cash in ${symbol}`} /><Notice title="Native cash-in is not available in this wallet">This route does not currently support a verified native cash-in for these holdings. You can sell {symbol} on the order book when a buyer is available.</Notice>
+    <Card><CardHead title={`Cash in ${symbol}`} /><Notice title="Native cash-in is not available in this wallet">{data.config.cash_in_note || `This route does not currently support a verified native cash-in for these holdings. You can sell ${symbol} on the order book when a buyer is available.`}</Notice>
       <p className="l1-section-gap">Route terms: create at NAV +{percentFromBps((pool?.issue_multiplier_bps ?? data.config.issue_multiplier_bps ?? 10000) - 10000)}; cash in at NAV −{percentFromBps(10000 - (pool?.redeem_multiplier_bps ?? data.config.redeem_multiplier_bps ?? 10000))}. These terms do not guarantee redemption availability or the market price.</p>
       <button className="l1-btn" onClick={() => onNavigate("Market")}>Open {symbol} market</button></Card>
   </div>;

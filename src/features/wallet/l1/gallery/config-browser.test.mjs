@@ -35,6 +35,8 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Buy B23', exact: true }).count(), 0);
   await page.screenshot({ path: `${evidence}/b24-home-retired.png`, fullPage: true });
   await page.getByRole('button', { name: 'Buy B24', exact: true }).click();
+  await page.getByText('Exit through the market', { exact: true }).waitFor();
+  await page.getByText('Coins bought on the order book cannot be cashed in through this route. Sell to a buyer on the book. Cash-in is limited to qualifying subscriptions.', { exact: true }).waitFor();
   await page.getByLabel('B24 quantity', { exact: true }).fill('1');
   assert.equal(await page.getByLabel('PFUSDC total', { exact: true }).inputValue(), '1');
   assert.equal(await page.getByRole('button', { name: 'Review buy offer', exact: true }).isEnabled(), true);
