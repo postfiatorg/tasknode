@@ -43,3 +43,18 @@ function readerFixture(accepted=true, wrongBlock=false){
 }
 test('snapshot verification requires literal accepted receipts, not merely commitment',async()=>{assert.equal((await readerFixture().snapshot('test',1)).verified,true);assert.equal((await readerFixture(false).snapshot('test',1)).verified,false);});
 test('snapshot refuses a mismatched receipt and unknown epochs',async()=>{await assert.rejects(readerFixture(true,true).snapshot('test',1),/conflicting transaction receipts/);await assert.rejects(readerFixture().snapshot('test',2),/not found/);});
+
+test('archive refuses payload substitution against the committed certificate',()=>{
+ const block={header:{batch_id:'b',batch_kind:'transparent',consensus_v2_commit:{precommit_qc:{block:{payload_hash:'anchored'}}}},receipt_ids:[]};
+ assert.throws(()=>transactionsInBlock(block,[{batch_id:'b',batch_kind:'transparent',payload_hash:'substituted',payload_json:'{}'}]),/payload hash/);
+});
+
+test('Ethereum publication requires exact asset, epoch, reserve packet and route bindings',async()=>{
+ const {Interface,keccak256,toUtf8Bytes}=await import('ethers');
+ const {decodePublication}=await import('./ethereum-history.js');
+ const iface=new Interface(['function verifyAndAccept(bytes,bytes)']);
+ const coin={asset_id:'11'.repeat(48),route_id:'route-a'},packet={epoch:7,reserve_packet_hash:'22'.repeat(48)};
+ const words=Array(35).fill('00'.repeat(32));words[13]=keccak256('0x'+coin.asset_id).slice(2);words[15]=(7n).toString(16).padStart(64,'0');words[16]=keccak256('0x'+packet.reserve_packet_hash).slice(2);words[10]=keccak256(toUtf8Bytes(coin.route_id)).slice(2);
+ const input=iface.encodeFunctionData('verifyAndAccept',['0x'+words.join(''),'0x01']);assert.equal(decodePublication(input,coin,packet),true);
+ assert.equal(decodePublication(input,coin,{...packet,epoch:8}),false);assert.equal(decodePublication(input,{...coin,asset_id:'33'.repeat(48)},packet),false);assert.equal(decodePublication(input,coin,{...packet,reserve_packet_hash:'44'.repeat(48)}),false);assert.equal(decodePublication(input,{...coin,route_id:'route-b'},packet),false);
+});
