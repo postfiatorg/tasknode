@@ -135,3 +135,32 @@ test("cash-in rejects a source-series payout when family reserve was reviewed", 
 test("opening packet rejects stale or fabricated cutoff times", () => {
   for(const observed of ["2020-01-01T00:00:00Z","2099-01-01T00:00:00Z","invalid"]) {const plan=equityPlan();plan.packet.cutoff_at_utc=observed;plan.packet.observed_at_utc=observed;assert.throws(()=>validateEquityPlan(plan,config));}
 });
+
+test("review snapshot bounds simultaneous RPC reads and retries only transient read failures", async () => {
+  const fixture = state(); let active = 0, peak = 0, balanceReads = 0;
+  async function read(method) {
+    active++; peak = Math.max(peak, active);
+    try {
+      if (active > 3) throw new Error("could not connect to RPC server");
+      await new Promise(resolve => setTimeout(resolve, 1));
+      if (method === "navcoin_bridge_supply_status") return fixture.pool;
+      if (method === "nav_reserve_proof_status") return fixture.proof;
+      if (method === "asset_info") return { asset: { asset_id: config.b23_asset_id, outstanding_supply: fixture.supply } };
+      if (method === "account_offers") return fixture.offers;
+      if (method === "account_lines") return lines();
+      throw new Error(`Unexpected non-read method ${method}`);
+    } finally { active--; }
+  }
+  const client = { address: bob, call: read, async getBalances() {
+    balanceReads++;
+    if (balanceReads === 1) throw new Error("could not connect to RPC server");
+    await Promise.all([read("account_lines"), read("account_lines")]);
+    return fixture.balances;
+  } };
+  const result = await snapshot(client, config, { management: true, recipient: config.alice_holder_address });
+  assert.equal(balanceReads, 2); assert.equal(peak, 3); assert.equal(result.supply, fixture.supply);
+  assert.ok(result.managementLines && result.recipientLines);
+  client.getBalances = async () => { balanceReads++; throw new Error("Wallet changed"); };
+  await assert.rejects(snapshot(client, config), /Wallet changed/);
+  assert.equal(balanceReads, 3, "permanent errors must not retry");
+});

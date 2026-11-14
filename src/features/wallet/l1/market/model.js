@@ -29,14 +29,23 @@ export function lineBalance(report, assetId) {
   return line ? integer(line.balance, "Asset balance") : 0n;
 }
 export async function snapshot(client, config, { management = false, recipient = null } = {}) {
-  const [balances, state, offers, managementLines, recipientLines] = await Promise.all([
-    client.getBalances(), readPool(client, config),
-    client.call("account_offers", { account: client.address, limit: 100 }).then(resultOf),
-    management ? client.call("account_lines", { account: config.management_address, limit: 100 }).then(resultOf) : null,
-    recipient && recipient !== client.address ? client.call("account_lines", { account: recipient, limit: 100 }).then(resultOf) : null,
-  ]);
-  if (balances.address !== client.address) throw new Error("Wallet changed during balance read");
-  return { ...state, balances, offers, managementLines, recipientLines };
+  // Keep each read group small: the wallet proxy can refuse a burst of seven
+  // upstream connections. Only connection failures in these read-only calls
+  // retry; quoting, signing and submission are outside this function.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const balances = await client.getBalances();
+      const state = await readPool(client, config);
+      const offers = resultOf(await client.call("account_offers", { account: client.address, limit: 100 }));
+      const managementLines = management ? resultOf(await client.call("account_lines", { account: config.management_address, limit: 100 })) : null;
+      const recipientLines = recipient && recipient !== client.address ? resultOf(await client.call("account_lines", { account: recipient, limit: 100 })) : null;
+      if (balances.address !== client.address) throw new Error("Wallet changed during balance read");
+      return { ...state, balances, offers, managementLines, recipientLines };
+    } catch (error) {
+      if (attempt >= 2 || !/could not connect to RPC server/.test(error.message)) throw error;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
 }
 export function buildOffer(config, address, side, quantity, consideration, expiration = "0", state) {
   if (!marketReady(config, state)) throw new Error("Trading is blocked until the configured route deployment is verified");
