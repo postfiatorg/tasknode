@@ -1,6 +1,6 @@
 import { connect } from 'node:net';
 export function createProfileRpc(env = process.env) {
-  const endpoint = new URL(env.L1_HISTORY_RPC_URL || 'tcp://127.0.0.1:39655');
+  const endpoint = new URL(env.L1_PROFILE_RPC_URL || env.L1_HISTORY_RPC_URL || 'tcp://127.0.0.1:39655');
   if (endpoint.protocol !== 'tcp:' || !['127.0.0.1', '[::1]'].includes(endpoint.hostname) || !endpoint.port || endpoint.username || endpoint.password) throw Error('Profile RPC must use a local validator tunnel');
   return (method, params = {}) => new Promise((resolve, reject) => {
     const socket = connect({ host: endpoint.hostname, port: Number(endpoint.port) });
@@ -18,7 +18,7 @@ export function createProfileRpc(env = process.env) {
       finished = true; socket.destroy();
       try {
         const response = JSON.parse(Buffer.concat(chunks).toString().split('\n')[0]); chunks = [];
-        if (!response.ok) throw Error(`Validator ${method} read unavailable`);
+        if (!response.ok) throw Error(`Validator ${method} read unavailable: ${String(response.error?.message || response.error?.code || 'unknown').slice(0, 300)}`);
         resolve(response.result);
       } catch (error) { reject(error); }
     });

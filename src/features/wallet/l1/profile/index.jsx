@@ -29,14 +29,14 @@ function useRead(path) {
       try {
         const response = await fetch(path, { signal: controller.signal, cache: 'no-store' });
         const data = await response.json(); if (!response.ok) throw Error(data.error || 'Live data unavailable');
-        setState({ data, error: '', loading: false });
-      } catch (error) { if (!controller.signal.aborted) setState({ data: null, error: error.message, loading: false }); }
+        setState({ data, error: '', loading: false, path });
+      } catch (error) { if (!controller.signal.aborted) setState({ data: null, error: error.message, loading: false, path }); }
       if (!controller.signal.aborted) timer = setTimeout(update, 60000);
     }
-    setState({ data: null, error: '', loading: true }); void update();
+    setState({ data: null, error: '', loading: true, path }); void update();
     return () => { controller.abort(); clearTimeout(timer); };
   }, [path, revision]);
-  return { ...state, refresh: () => setRevision(value => value + 1) };
+  return { ...(state.path === path ? state : { data: null, error: '', loading: true }), refresh: () => setRevision(value => value + 1) };
 }
 function NavChart({ history, decimals }) {
   if (!history.length) return null;

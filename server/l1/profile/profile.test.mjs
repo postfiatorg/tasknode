@@ -37,9 +37,9 @@ function readerFixture(accepted=true, wrongBlock=false){
   if(method==='book_offers')return{offers:[]};
   if(method==='blocks')return[block(params.from_height)];
   if(method==='batch_archive'){const h=Number(params.batch_id.slice(5));return[{batch_id:`batch${h}`,batch_kind:'transparent',payload_json:JSON.stringify({batch_id:`batch${h}`,asset_transactions:[{unsigned:{operation:h===10?'nav_reserve_submit':'nav_epoch_finalize',asset_id:'asset',epoch:1,reserve_packet_hash:'packet',proof_profile:'profile'}}]})}];}
-  if(method==='tx'){const h=Number(params.tx_id.slice(2));return{tx_id:params.tx_id,confirmed:true,block:wrongBlock?block(99):block(h),receipt:{tx_id:params.tx_id,accepted}};}
+  if(method==='receipts')return[{tx_id:wrongBlock?'wrong':params.tx_id,accepted}];
   throw Error('Unexpected read');
  }});
 }
 test('snapshot verification requires literal accepted receipts, not merely commitment',async()=>{assert.equal((await readerFixture().snapshot('test',1)).verified,true);assert.equal((await readerFixture(false).snapshot('test',1)).verified,false);});
-test('snapshot refuses receipt from a different block and unknown epochs',async()=>{await assert.rejects(readerFixture(true,true).snapshot('test',1),/identity mismatch/);await assert.rejects(readerFixture().snapshot('test',2),/not found/);});
+test('snapshot refuses a mismatched receipt and unknown epochs',async()=>{await assert.rejects(readerFixture(true,true).snapshot('test',1),/conflicting transaction receipts/);await assert.rejects(readerFixture().snapshot('test',2),/not found/);});

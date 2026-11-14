@@ -23,6 +23,8 @@ export function transactionsInBlock(block, archive) {
   if (block.header.batch_kind !== 'transparent') return [];
   const entry = archive.find(row => row.batch_id === block.header.batch_id && row.batch_kind === block.header.batch_kind);
   if (!entry) throw Error('Committed transaction archive unavailable');
+  const payloadHash = block.header.consensus_v2_commit?.precommit_qc?.block?.payload_hash;
+  if (payloadHash && payloadHash !== entry.payload_hash) throw Error('Archive payload hash does not match the committed block');
   const batch = JSON.parse(entry.payload_json);
   if (batch.batch_id !== block.header.batch_id) throw Error('Archive batch identity mismatch');
   const txs = GROUPS.flatMap(key => batch[key] || []);
@@ -40,9 +42,10 @@ export function createProfileReader({ rpc = createProfileRpc(), coins = () => pr
   }, 24 * 60 * 60 * 1000);
   const receipt = memoRead(async entry => {
     if (!entry) return null;
-    const tx = await rpc('tx', { tx_id: entry.tx_id });
-    if (tx.tx_id !== entry.tx_id || tx.block?.header?.block_hash !== entry.block.block_hash || tx.receipt?.tx_id !== entry.tx_id) throw Error('Transaction receipt identity mismatch');
-    return { tx_id: entry.tx_id, block: entry.block, receipt: tx.receipt, confirmed: tx.confirmed, receipt_index: tx.receipt_index, archive_payload_hash: entry.archive_payload_hash };
+    const receipts = await rpc('receipts', { tx_id: entry.tx_id });
+    const literal = receipts.find(row => row.tx_id === entry.tx_id);
+    if (!literal || receipts.some(row => row.tx_id !== entry.tx_id || JSON.stringify(row) !== JSON.stringify(literal))) throw Error('Missing or conflicting transaction receipts');
+    return { tx_id: entry.tx_id, block: entry.block, receipt: literal, confirmed: true, confirmation_basis: 'Transaction ID included in the committed block and matching signed batch archive', archive_payload_hash: entry.archive_payload_hash };
   }, 24 * 60 * 60 * 1000);
   const readBase = memoRead(async slug => {
     const coin = (await coins()).find(item => item.slug === slug);
@@ -93,7 +96,7 @@ export function createProfileReader({ rpc = createProfileRpc(), coins = () => pr
       source: 'Live validator RPC: finalized NAV state, committed blocks, signed batch archive and literal transaction receipts.', read_at: new Date().toISOString() };
     try { result.ethereum_transactions = await ethereumSnapshotTransactions(data.coin, packet, data.route); } catch { result.ethereum_note = 'Ethereum historical publication data is not available from the public RPC. No transaction link is inferred.'; }
     return result;
-  }, 60000);
+  }, 24 * 60 * 60 * 1000);
   async function profile(slug) {
     const data = await readBase(slug);
     let pool;
