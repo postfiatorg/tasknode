@@ -19,7 +19,7 @@ const VIEWS = [
   { id: "Home", label: "Home", icon: House },
   { id: "Bridge", label: "Add funds", icon: ArrowDownToLine, title: "Add funds", subtitle: "Bring USDC over from Ethereum. It arrives in this wallet as PFUSDC, one for one." },
   { id: "Gallery", label: "NAVCoins", icon: LayoutGrid },
-  { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: symbol => `Buy ${symbol} with PFUSDC from sellers on the Post Fiat order book.` },
+  { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: (symbol, config) => config?.creation_enabled ? `Buy ${symbol} from the order book or create new coins at NAV plus the fee.` : `Buy ${symbol} with PFUSDC from sellers on the Post Fiat order book.` },
   { id: "Redeem", label: "Cash in", icon: HandCoins, title: "Cash in at NAV", subtitle: symbol => `Review ${symbol} cash-in availability and NAV terms.` },
   { id: "Send", label: "Send", icon: SendIcon, title: "Send", subtitle: "Send PFT to another Post Fiat address." },
   { id: "Activity", label: "Activity", icon: History, title: "Activity", subtitle: "Transactions signed by this wallet and payments it received." },
@@ -173,7 +173,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
         {/* Issuer actions live on the CLI; the consumer wallet does not link to the issuer desk. */}
       </nav>
       <div className="l1-enter" key={tab}>
-        {view?.title && <ViewHeader eyebrow={view.id === ISSUER.id ? "Operator" : undefined} title={view.title} subtitle={typeof view.subtitle === "function" ? view.subtitle(symbol) : view.subtitle}>{view.id === ISSUER.id && <Badge tone="warning">Issuer only</Badge>}</ViewHeader>}
+        {view?.title && <ViewHeader eyebrow={view.id === ISSUER.id ? "Operator" : undefined} title={view.title} subtitle={typeof view.subtitle === "function" ? view.subtitle(symbol, assetConfig) : view.subtitle}>{view.id === ISSUER.id && <Badge tone="warning">Issuer only</Badge>}</ViewHeader>}
         {Tab && <Suspense fallback={<p className="l1-status-line"><Spinner />Loading…</p>}><Tab client={client} assetConfig={assetConfig} onNavigate={onNavigate} selectedCoin={selectedCoin} onSelectCoin={setSelectedCoin} /></Suspense>}
       </div>
     </>}
