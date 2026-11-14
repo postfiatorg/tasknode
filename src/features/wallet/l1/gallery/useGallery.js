@@ -19,7 +19,13 @@ export function useGallery(client) {
         }));
         if (active) setState({ coins: sortByTvl(coins), error: "", loading: false, readAt: Date.now(), address, accountId });
       } catch (error) {
-        if (active) setState({ coins: null, error: error.message, loading: false, address, accountId });
+        // A transient discovery failure must not unmount an in-flight review.
+        // Keep only this wallet's last successful list. Every transaction still
+        // performs its own fresh chain reads and preflight before signing.
+        if (active) setState(previous => ({
+          ...(previous.address === address && previous.accountId === accountId ? previous : { coins: null }),
+          error: error.message, loading: false, address, accountId,
+        }));
       } finally { if (active) timer = setTimeout(update, 15000); }
     }
     setState(previous => ({ ...previous, loading: true }));

@@ -17,7 +17,11 @@ try {
   // Remount after accepted reserve: persisted state offers Continue, never a duplicate signature.
   await p.evaluate(() => window.primaryFixture.remount()); await p.getByLabel('How to buy').selectOption('create');
   assert.equal(await p.getByRole('button', { name: 'Get fee quote', exact: true }).count(), 0);
-  await p.getByRole('button', { name: 'Continue creation', exact: true }).click(); await confirm();
+  await p.getByRole('button', { name: 'Continue creation', exact: true }).click();
+  await p.evaluate(() => window.primaryFixture.failDuringSubmit()); await confirm();
+  await p.getByText('Registry refresh unavailable', { exact: true }).waitFor();
+  assert.equal(await p.evaluate(() => window.primaryFixture.history.filter(x => x === 'submit:pftl_uniswap_primary_subscribe_v2').length), 1);
+  await p.evaluate(() => window.primaryFixture.recoverRegistry()); await p.getByText('Registry refresh unavailable', { exact: true }).waitFor({ state: 'hidden' });
   await p.getByRole('button', { name: 'Continue creation', exact: true }).click(); await confirm(); await p.screenshot({ path: `${out}/created.png`, fullPage: true });
   await p.getByRole('button', { name: 'Done creating', exact: true }).click();
   assert.deepEqual(await p.evaluate(() => window.primaryFixture.history.filter(x => x.startsWith('submit:'))), ['submit:pftl_uniswap_order_reserve', 'submit:pftl_uniswap_primary_subscribe_v2', 'submit:pftl_uniswap_order_release']);
@@ -35,5 +39,8 @@ try {
   await p.goto(url + '?uncertain=1'); await p.getByLabel('How to buy').selectOption('create'); await p.getByLabel('B24 quantity', { exact: true }).fill('1'); await p.getByRole('button', { name: 'Review creation' }).click(); await p.getByRole('button', { name: 'Get fee quote' }).click(); await p.getByRole('button', { name: 'Sign and submit' }).click(); await p.getByRole('heading', { name: 'Not completed' }).waitFor();
   await p.evaluate(() => window.primaryFixture.remount()); await p.getByLabel('How to buy').selectOption('create'); assert.equal(await p.getByRole('button', { name: 'Get fee quote' }).count(), 0); await p.getByText('This creation has an unfinished attempt', { exact: true }).waitFor();
   assert.equal(await p.evaluate(() => window.primaryFixture.history.filter(x => x.startsWith('submit:')).length), 1); console.log('PASS uncertain submission retained and never automatically replayed after remount.');
+  await p.evaluate(() => window.primaryFixture.failRegistry()); await p.getByText('Registry refresh unavailable', { exact: true }).waitFor();
+  // A different account cannot inherit a cached list from the previous wallet.
+  await p.evaluate(() => window.primaryFixture.switchAccount()); await p.getByText('Choose a NAVCoin', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
 } catch (e) { console.error(await p.locator('body').innerText()); await p.screenshot({ path: `${out}/failure.png`, fullPage: true }); throw e; } finally { await browser.close(); await server.close(); }
