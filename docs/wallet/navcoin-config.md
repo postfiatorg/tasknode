@@ -24,3 +24,5 @@ node src/features/wallet/l1/market/browser.test.mjs
 ```
 
 Browser fixtures are synthetic. A deployment requires separate real served-page verification and accepted receipts with before/after chain balances.
+
+The published B24 devnet-2 configuration is [b24-devnet-2.json](b24-devnet-2.json). TRADE independently read the asset, fresh profile, 10050/9995 route and 100-unit ask on all six validators after the Phase 5c cutover marker: height 1331, state root `887c0af9b6b0ce4b0bd9c41b6035f5b8472393f1f400fe5274d380e43ddc7a69f6555f2fc1820f75b29bc3c5e950bda2`. The earlier frozen Phase 5 handover's stopped status is historical; the matching Phase 5c marker and live reads establish activation. The finalized reading is $420,302.38 at NAV 1.000000, fully Attested in that packet. Current supply includes a later 20-unit subscription and the route has a 20-PFUSDC reserve. That reserve does not make market-bought holdings redeemable. Ethereum availability remains false.

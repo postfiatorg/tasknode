@@ -1,0 +1,37 @@
+{
+  "b23_asset_id": "52285e4ded1d58113cfaa12bbc034b8b10213f699b3224c74160450229d6bf7ccfe505c78f2599d975ae2ecf98f7d8af",
+  "pfusdc_asset_id": "02c46a36eb0da3516b4d8affea8f4028ad3f36825a3e8f0e009ea9dbbbcfb3c233f6830bd5221fe2717fb6a1a7005d7b",
+  "market_quote_asset_id": "541e451e6ae96b6680988655571a0feec59c7f1d073c9b5d29547254cab38a3be540f8767446d25baebc7081ce97aef7",
+  "route_id": "pftl-b24-ethereum-wB24-usdc-v1",
+  "issuer_address": "pffcb93d9f87a843a8aa34e1adf241f5d58143e81b",
+  "alice_holder_address": "pfab9b9228942e5c529633a13aa271d5297bec6353",
+  "management_address": null,
+  "proof_profile": "18365d7d8069dec897afc05ff74b2a910cd01c88265e35e900b0a97d1393211c8b2f6ed1c0c7a37968dee861f3ea9c8e",
+  "pfusdc_source_asset_ids": [
+    "541e451e6ae96b6680988655571a0feec59c7f1d073c9b5d29547254cab38a3be540f8767446d25baebc7081ce97aef7",
+    "2bae082a6703375b9405af44715e1e64623265392627767b040fa2c30abb100a09da403724a6f105317292d9c0073df7"
+  ],
+  "g1_passed": true,
+  "symbol": "B24",
+  "slug": "b24",
+  "description": "Backed by a Schwab brokerage account.",
+  "methodology": "NAV uses Schwab’s reported net liquidation value from the enclave-attested reading plus any native subscription reserve counted by the network. NAV per coin is the combined value divided by the supply in the finalized reading. The Schwab value is Attested; any separate native reserve is Reported. Creation is priced at NAV +0.5% and cash-in at NAV −0.05%, subject to route inventory, reserve and policy limits. Market trades exchange existing coins at the order-book price.",
+  "redemption_mode": "unsupported",
+  "cash_in_note": "Coins bought on the order book cannot be cashed in through this route. Sell to a buyer on the book. Cash-in is limited to qualifying subscriptions and available reserve.",
+  "issue_multiplier_bps": 10050,
+  "redeem_multiplier_bps": 9995,
+  "ethereum": {
+    "available": false,
+    "wrapped_token": null,
+    "pool": null
+  },
+  "retired_assets": [
+    {
+      "asset_id": "ca7845134c8e95819082fcd2f1612808e20a37dfabab98dab120f99fd2c54c18ffb50d98c0664480420c881773244627",
+      "symbol": "B23",
+      "slug": "b23",
+      "route_id": "pftl-pfdep-schwab-primary-pfusdc-v1"
+    }
+  ],
+  "nav_asset_id": "52285e4ded1d58113cfaa12bbc034b8b10213f699b3224c74160450229d6bf7ccfe505c78f2599d975ae2ecf98f7d8af"
+}
