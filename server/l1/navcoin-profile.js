@@ -33,7 +33,7 @@ export function transactionsInBlock(block, archive) {
   return txs.map((tx, i) => ({ tx_id: block.receipt_ids[i], operation: typeof tx.unsigned?.operation === 'object' ? { ...tx.unsigned, ...tx.unsigned.operation } : tx.unsigned,
     block: fields(block.header, ['height', 'block_hash', 'parent_hash', 'batch_id', 'state_root', 'timestamp', 'timestamp_ms']), archive_payload_hash: entry.payload_hash }));
 }
-export function createProfileReader({ rpc = createProfileRpc(), coins = getNavcoinRegistry, ethereum = readEthereumPool } = {}) {
+export function createProfileReader({ rpc = createProfileRpc(), coins = getNavcoinRegistry, ethereum = readEthereumPool, ethereumHistory = ethereumSnapshotTransactions } = {}) {
   const getBlock = memoRead(async height => {
     const blocks = await rpc('blocks', { from_height: height, limit: 1 });
     const block = blocks.find(item => Number(item.header.height) === height);
@@ -66,7 +66,7 @@ export function createProfileReader({ rpc = createProfileRpc(), coins = getNavco
     const history = proof.packets.filter(packet => packet.state === 'finalized').sort((a, b) => Number(a.epoch) - Number(b.epoch)).map(packet => ({ ...packet, verification_url: `#l1-wallet/navcoins/${slug}/snapshots/${packet.epoch}`, evidence_url: `/api/l1/navcoin/profiles/${slug}/snapshots/${packet.epoch}` }));
     return { coin, profiles: registry.map(item => fields(item, ['slug', 'name', 'retired'])), proof, asset, route, history, latest: history.at(-1) || null, order_book: { asks: depth(asks, coin, proof.current_height), bids: depth(bids, coin, proof.current_height, 'bids'), quote_asset_id: coin.market_quote_asset_id }, errors, observed_at: new Date().toISOString() };
   }, 60000);
-  const snapshot = memoRead(async (slug, epoch) => {
+  const nativeSnapshot = memoRead(async (slug, epoch) => {
     const data = await readBase(slug), packet = data.history.find(item => String(item.epoch) === String(epoch));
     if (!packet) throw Object.assign(Error('Finalized snapshot not found'), { status: 404 });
     const matches = op => op?.asset_id === data.coin.asset_id && Number(op.epoch) === Number(epoch) && op.reserve_packet_hash === packet.reserve_packet_hash;
@@ -101,9 +101,15 @@ export function createProfileReader({ rpc = createProfileRpc(), coins = getNavco
         note: publicValues ? 'Decoded from the archived PFNAV001 public values. Observation bounds are native block heights, not Unix timestamps. The source-policy commitment binds the approved enclave PCRs for Nitro readings; raw PCRs, image hash and UTC reading time are not included in this public packet.' : 'This packet has no PFNAV001 public values. Enclave PCRs, image hash and UTC reading time are not available.' },
       ethereum_transactions: [], ethereum_note: 'No matching Ethereum snapshot transaction has been established from the available chain archive.',
       source: 'Live validator RPC: finalized NAV state, committed blocks, signed batch archive and literal transaction receipts.', read_at: new Date().toISOString() };
-    try { result.ethereum_transactions = await ethereumSnapshotTransactions(data.coin, packet, data.route); if (result.ethereum_transactions.length) result.ethereum_note = 'Successful Ethereum receipt publications with matching native asset, route, NAV epoch and reserve-packet commitment. These are not independent rereadings of the underlying assets.'; } catch { result.ethereum_note = 'Ethereum historical publication data is not available from the public RPC. No transaction link is inferred.'; }
-    return result;
+    return { result, route: data.route };
   }, 24 * 60 * 60 * 1000);
+  async function snapshot(slug, epoch) {
+    const cached = await nativeSnapshot(slug, epoch), result = { ...cached.result, ethereum_checked_at: new Date().toISOString() };
+    // Finalized native evidence is immutable; a temporary external lookup failure
+    // must not be cached with it. Successful publication discovery has its own cache.
+    try { result.ethereum_transactions = await ethereumHistory(result.coin, result.packet, cached.route); if (result.ethereum_transactions.length) result.ethereum_note = 'Successful Ethereum receipt publications with matching native asset, route, NAV epoch and reserve-packet commitment. These are not independent rereadings of the underlying assets.'; } catch { result.ethereum_note = 'Ethereum historical publication data is temporarily unavailable from public sources. Refresh to try the read again; no transaction link is inferred.'; }
+    return result;
+  }
   async function profile(slug) {
     const data = await readBase(slug);
     let pool;

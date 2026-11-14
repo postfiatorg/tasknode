@@ -48,10 +48,10 @@ test('canonical proof ID reproduces the known live B24 profile',()=>{
  const p={verifier_kind:'sp1-nav-reserve-v1',source_class:'b23-schwab-account-equity-nitro-sp1-v1',max_snapshot_age_blocks:1000,challenge_window_blocks:1,max_epoch_gap_blocks:128,settle_deadline_blocks:256,min_challenge_bond:0,min_attestations:0,tolerance_bp:0,valuation_policy_hash:'2f994eeb09d1aea664d6da8f821b4f96c9911b715cba9ff5fb67f3469f30526c',sp1_program_vkey:'0x003aa6418ef9f87dde386129a1464ea15daf9757849aa66f63cdb779e89266c6',sp1_proof_encoding:'groth16',max_proof_bytes:356,max_public_values_bytes:584,public_values_schema:'postfiat.nav_reserve_public_values.v1',source_manifest_hash:'c01d72df74871cae7a513e51d889ca2ac56f38be0367578c22b01396262b593366c3176e3a0b95b47fa78f9815b2e161',valuation_unit_id:'6003b806e016ecb2d6cbdb34c2ca7877bbf654ba1b26948e575e441962fb038dc53615f2b3b814c7a1b6bb06df537d99',max_observation_span_blocks:1};
  assert.equal(proofProfileId(p),'18365d7d8069dec897afc05ff74b2a910cd01c88265e35e900b0a97d1393211c8b2f6ed1c0c7a37968dee861f3ea9c8e');assert.notEqual(proofProfileId({...p,sp1_program_vkey:'wrong'}),proofProfileId(p));
 });
-function readerFixture(accepted=true, wrongBlock=false){
+function readerFixture(accepted=true, wrongBlock=false, extra={}){
  const packet={epoch:1,state:'finalized',submitted_at_height:10,reserve_packet_hash:'packet'};
  const block=h=>({header:{height:h,block_hash:`hash${h}`,batch_id:`batch${h}`,batch_kind:'transparent'},receipt_ids:[`tx${h}`]});
- return createProfileReader({coins:()=>[coin],ethereum:async()=>null,rpc:async(method,params)=>{
+ return createProfileReader({...extra,coins:()=>[coin],ethereum:async()=>null,rpc:async(method,params)=>{
   if(method==='nav_reserve_proof_status')return{found:true,asset_id:'asset',current_height:11,packets:[packet],active_profile:{profile_id:'profile'}};
   if(method==='asset_info')return{asset:{asset_id:'asset',precision:6}};
   if(method==='book_offers')return{offers:[]};
@@ -77,4 +77,11 @@ test('Ethereum publication requires exact asset, epoch, reserve packet and route
  const words=Array(35).fill('00'.repeat(32));words[13]=keccak256('0x'+coin.asset_id).slice(2);words[15]=(7n).toString(16).padStart(64,'0');words[16]=keccak256('0x'+packet.reserve_packet_hash).slice(2);words[10]=keccak256(toUtf8Bytes(coin.route_id)).slice(2);
  const input=iface.encodeFunctionData('verifyAndAccept',['0x'+words.join(''),'0x01']);assert.equal(decodePublication(input,coin,packet),true);
  assert.equal(decodePublication(input,coin,{...packet,epoch:8}),false);assert.equal(decodePublication(input,{...coin,asset_id:'33'.repeat(48)},packet),false);assert.equal(decodePublication(input,coin,{...packet,reserve_packet_hash:'44'.repeat(48)}),false);assert.equal(decodePublication(input,{...coin,route_id:'route-b'},packet),false);
+});
+
+test('temporary Ethereum history failures do not poison immutable native snapshot caching', async () => {
+ let reads = 0;
+ const reader = readerFixture(true, false, { ethereumHistory: async () => { if (++reads === 1) throw Error('temporary RPC failure'); return ['0xverified']; } });
+ const first = await reader.snapshot('test', 1); assert.equal(first.verified, true); assert.deepEqual(first.ethereum_transactions, []);
+ const refreshed = await reader.snapshot('test', 1); assert.deepEqual(refreshed.ethereum_transactions, ['0xverified']); assert.equal(refreshed.submit.tx_id, first.submit.tx_id);
 });
