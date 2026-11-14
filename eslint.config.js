@@ -25,6 +25,8 @@ export default [
       "work_in_progress/**",
       "tasknodeofficial_wip/**",
       "coverage/**",
+      // wasm-bindgen output: checked by wallet artifact/signature tests.
+      "src/features/wallet/l1/wasm/postfiat_wallet_wasm.js",
     ],
   },
   {
