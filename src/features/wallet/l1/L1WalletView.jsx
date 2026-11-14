@@ -1,3 +1,4 @@
+import Profile, { useProfileLocation } from './profile/index.jsx';
 import { loadConfig } from "./market/constants.js";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, ChartCandlestick, Download, Ellipsis, FileKey, HandCoins, History, House, KeyRound, Landmark, LayoutGrid, Lock, Send as SendIcon, ShieldCheck, Wallet } from "lucide-react";
@@ -89,6 +90,7 @@ function Gate({ symbol, exists, busy, passphrase, setPassphrase, seed, setSeed, 
 }
 
 export default function L1WalletView({ accountId, isAccountCurrent }) {
+  const profileRoute = useProfileLocation();
   const [assetConfig, setAssetConfig] = useState(null);
   useEffect(() => { let active = true; loadConfig().then(config => { if (active) setAssetConfig(config); }).catch(() => {}); return () => { active = false; }; }, [accountId]);
   const symbol = assetConfig?.symbol || "NAVCoin";
@@ -153,6 +155,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
     } catch (failure) { setError(failure.message); }
   }
   const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: signed => core.submit(signed), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
+  if (profileRoute) return <Profile slug={profileRoute.slug || "b24"} epoch={profileRoute.epoch} />;
   if (!accountId) return <div className="route-scroll"><div className="l1w"><Card><ViewHeader eyebrow="Post Fiat L1" title="L1 wallet" subtitle="Sign in to open your L1 wallet." /></Card></div></div>;
   const Tab = tabs[tab];
   const view = tab === ISSUER.id ? ISSUER : VIEWS.find(item => item.id === tab);
