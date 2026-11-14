@@ -87,7 +87,7 @@ function Fees({ data }) {
   const route = data.route, eth = data.ethereum;
   const fee = (value, direction) => value == null ? missing : `NAV ${direction === 'create' ? '+' : '−'} ${((direction === 'create' ? value - 10000 : 10000 - value) / 100).toFixed(2)}%`;
   const protocol = eth?.available ? [eth.protocol_fee & 4095, eth.protocol_fee >> 12] : [];
-  return <Card><CardHead title="Advertised fees" /><KV rows={[
+  return <Card><CardHead title="Swap fees" /><KV rows={[
     ['Create', fee(route?.issue_multiplier_bps, 'create')], ['Cash in', fee(route?.redeem_multiplier_bps, 'redeem')],
     ['Uniswap liquidity provider fee', eth?.available ? `${(eth.lp_fee / 10000).toFixed(2)}%` : missing],
     ['Uniswap protocol fee', protocol.length ? protocol.map(v => `${(v / 10000).toFixed(4)}%`).join(' / ') + ' by swap direction' : missing],
