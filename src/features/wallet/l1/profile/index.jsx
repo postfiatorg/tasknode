@@ -38,6 +38,11 @@ function useRead(path) {
   }, [path, revision]);
   return { ...(state.path === path ? state : { data: null, error: '', loading: true }), refresh: () => setRevision(value => value + 1) };
 }
+function VerificationAmounts({ packet, profile, decimals }) {
+  const split = verificationSplit(packet, profile);
+  if (!split.available) return null;
+  return <><KV rows={['Proven value', 'Attested value', 'Reported value'].map((label, i) => [label, dollars(split.values[i], decimals)])} /><p className="l1-small l1-muted">Percentages are rounded; these amounts show the exact split at the reading.</p></>;
+}
 function NavChart({ history, decimals }) {
   if (!history.length) return null;
   const values = history.map(p => Number(p.nav_per_unit) / 10 ** decimals), lo = Math.min(...values), hi = Math.max(...values);
@@ -92,7 +97,7 @@ function CoinProfile({ data }) {
       ['Latest reading', latest ? `Epoch ${latest.epoch} · submitted h${latest.submitted_at_height}` : missing], ['Reading time', missing],
       ['Reading age / limit', age == null ? missing : `${age} / ${limit ?? 'no configured limit'} blocks`],
       ['Finalized net assets', dollars(latest?.verified_net_assets, d)], ['Supply at reading', number(latest?.circulating_supply, data.asset?.precision ?? 6)], ['Total valid supply now', number(data.route?.authorized_valid_supply_atoms ?? data.asset?.outstanding_supply, data.asset?.precision ?? 6)], ['Native coins outstanding now', number(data.asset?.outstanding_supply, data.asset?.precision ?? 6)],
-    ]} />{age !== null && limit !== null && age > limit && <Badge tone="warning">Stale reading</Badge>}</Card><Card><CardHead title="What supports this reading" /><Verification split={verificationSplit(latest, profile)} detail /><p className="l1-small">{coin.methodology}</p>{latest && <a className="l1-link" href={latest.verification_url}>Verify the latest snapshot →</a>}</Card></div>
+    ]} />{age !== null && limit !== null && age > limit && <Badge tone="warning">Stale reading</Badge>}</Card><Card><CardHead title="What supports this reading" /><Verification split={verificationSplit(latest, profile)} detail /><VerificationAmounts packet={latest} profile={profile} decimals={d} /><p className="l1-small">{coin.methodology}</p>{latest && <a className="l1-link" href={latest.verification_url}>Verify the latest snapshot →</a>}</Card></div>
     <History data={data} /><div className="profile-summary"><Pools data={data} /><Fees data={data} /></div><Card><Details summary="Asset, route and proof identifiers"><KV rows={[
       ['Asset', <Identifier value={coin.asset_id} />], ['Cash-in route', coin.route_id || missing], ['Proof profile', <Identifier value={profile?.profile_id} />], ['Valuation scale', `${10 ** d} units per USD`], ['Native read height', proof.current_height],
     ]} /></Details></Card>{data.errors?.length > 0 && <Notice tone="warning">{data.errors.join(' · ')}</Notice>}</>;
@@ -102,7 +107,7 @@ function Snapshot({ data }) {
   return <><a className="l1-link" href={link(data.coin.slug)}><ArrowLeft size={14} />Back to {data.coin.name}</a><header className="profile-head"><div><div className="l1-eyebrow">Check the finalized record</div><h1>{data.coin.name} · Snapshot {data.packet.epoch}</h1></div><Badge tone={data.verified ? 'success' : 'warning'}>{data.verified ? 'Accepted submit and finalize receipts' : 'Evidence incomplete'}</Badge></header><Card><CardHead title="Snapshot" /><KV rows={[
     ['NAV per coin', dollars(data.packet.nav_per_unit, d)], ['Net assets', dollars(data.packet.verified_net_assets, d)], ['Supply at reading', number(data.packet.circulating_supply)],
     ['Reading time', data.reading_time || missing], ['Finalized time', data.finalized_time || missing], ['Reserve packet hash', <Identifier value={data.packet.reserve_packet_hash} />],
-  ]} /><Verification split={verificationSplit(data.packet, data.proof_profile)} detail /><p className="l1-small l1-muted">{data.source} Accepted means the network accepted the operation under its rules. This page does not independently rerun the proof or establish that all assets exist.</p></Card>
+  ]} /><Verification split={verificationSplit(data.packet, data.proof_profile)} detail /><VerificationAmounts packet={data.packet} profile={data.proof_profile} decimals={d} /><p className="l1-small l1-muted">{data.source} Accepted means the network accepted the operation under its rules. This page does not independently rerun the proof or establish that all assets exist.</p></Card>
   {['submit', 'finalize'].map(kind => <Card key={kind}><CardHead title={kind === 'submit' ? 'Submit transaction' : 'Finalize transaction'} />{data[kind] ? <><KV rows={[
     ['Transaction ID', <Identifier value={data[kind].tx_id} />], ['Block height', data[kind].block.height], ['Block hash', <Identifier value={data[kind].block.block_hash} />], ['Accepted', String(data[kind].receipt.accepted)], ['Confirmed', String(data[kind].confirmed)], ['Receipt code', data[kind].receipt.code],
   ]} /><Details summary="Literal on-chain receipt"><pre>{JSON.stringify(data[kind].receipt, null, 2)}</pre></Details></> : <p>{missing}</p>}</Card>)}
