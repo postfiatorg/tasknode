@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 import socket
 import subprocess
+import time
 
 B23='ca7845134c8e95819082fcd2f1612808e20a37dfabab98dab120f99fd2c54c18ffb50d98c0664480420c881773244627'
 QUOTE='541e451e6ae96b6680988655571a0feec59c7f1d073c9b5d29547254cab38a3be540f8767446d25baebc7081ce97aef7'
@@ -27,11 +28,14 @@ def rpc(method, params, node=0):
         if response.get('ok') is not True: raise RpcError(response.get('error'))
         return response['result']
 
-def fleet():
-    with ThreadPoolExecutor(max_workers=6) as pool: rows=list(pool.map(lambda n:rpc('status',{},n),range(6)))
-    assert all(r['chain_id']==CHAIN and r['genesis_hash']==GENESIS for r in rows),'wrong chain'
-    assert len({(r['block_height'],r['state_root'],r['build_git_revision']) for r in rows})==1,'fleet differs'
-    return rows
+def fleet(min_height=None):
+    deadline=time.monotonic()+180
+    while True:
+        with ThreadPoolExecutor(max_workers=6) as pool: rows=list(pool.map(lambda n:rpc('status',{},n),range(6)))
+        assert all(r['chain_id']==CHAIN and r['genesis_hash']==GENESIS for r in rows),'wrong chain'
+        if len({(r['block_height'],r['state_root'],r['build_git_revision']) for r in rows})==1 and (min_height is None or rows[0]['block_height']>=min_height):return rows
+        if min_height is None or time.monotonic()>=deadline:raise RuntimeError('fleet did not converge; no further submission')
+        time.sleep(2)
 
 def latest():
     proof=rpc('nav_reserve_proof_status',{'asset_id':B23})
@@ -40,13 +44,26 @@ def latest():
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--offer-id',required=True);ap.add_argument('--live',action='store_true')
+    ap.add_argument('--resume-cancel',type=Path,help='prior evidence directory with an accepted cancel and no replacement signature')
     ap.add_argument('--key-file',type=Path);ap.add_argument('--evidence',type=Path,required=True)
     ap.add_argument('--signer',type=Path,default=Path('/home/postfiat/repos/b23-coord/artifacts/release4/postfiat-node'))
     ap.add_argument('--lock',type=Path,default=Path('/home/postfiat/repos/b23-coord/chain.lock'))
     args=ap.parse_args();args.evidence.mkdir(parents=True,exist_ok=False)
     def save(name,value): (args.evidence/(name+'.json')).write_text(json.dumps(value,indent=2)+'\n')
     save('before-six',fleet());nav=latest();offer=rpc('offer_info',{'offer_id':args.offer_id})['offer']
-    assert offer['owner']==ALICE and offer['state']=='open','not Alice open offer'
+    assert offer['owner']==ALICE and offer['state']==('canceled' if args.resume_cancel else 'open'),'not the expected Alice offer state'
+    if args.resume_cancel:
+        previous=json.loads((args.resume_cancel/'plan.json').read_text())
+        canceled=json.loads((args.resume_cancel/'cancel-finality.json').read_text())
+        assert previous['old_offer']['offer_id']==args.offer_id,'resume offer differs'
+        assert canceled['finality']['receipt']['accepted'] is True and canceled['finality']['confirmed'] is True,'cancel not accepted'
+        assert previous['quantity_atoms']==int(offer['taker_gets_amount_remaining']),'remaining quantity changed'
+        assert not (args.resume_cancel/'replace-signed.json').exists(),'replacement may have been submitted; inspect it instead'
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            receipts=list(pool.map(lambda n:rpc('receipts',{'tx_id':canceled['tx_id'],'limit':10},n),range(6)))
+        save('cancel-receipts-six',receipts)
+        assert all(len(rows)==1 and rows[0]['accepted'] is True and rows[0]['tx_id']==canceled['tx_id'] for rows in receipts),'cancel receipt read-back differs'
+        save('resume-cancel',{'evidence':str(args.resume_cancel),'tx_id':canceled['tx_id']})
     assert offer['taker_gets_asset_id']==B23 and offer['taker_pays_asset_id']==QUOTE,'wrong market'
     quantity=int(offer['taker_gets_amount_remaining']);assert quantity>0
     total=(quantity*int(nav['nav_per_unit'])+999999)//1000000
@@ -77,14 +94,14 @@ def main():
         save(name+'-finality',result);receipt=result.get('finality',{}).get('receipt',{})
         assert receipt.get('accepted') is True and result['finality'].get('confirmed') is True,'STOP: rejected or uncertain; inspect evidence before any new submission'
         assert receipt['tx_id']==result['tx_id'],'receipt transaction mismatch'
-        save(name+'-six',fleet())
+        save(name+'-six',fleet(result['finality']['block']['header']['height']))
         with ThreadPoolExecutor(max_workers=6) as pool:
             receipts=list(pool.map(lambda n:rpc('receipts',{'tx_id':result['tx_id'],'limit':10},n),range(6)))
         save(name+'-receipts-six',receipts)
         assert all(len(rows)==1 and rows[0]['accepted'] is True and rows[0]['tx_id']==result['tx_id'] for rows in receipts),'receipt read-back differs'
         return result
     locked();assert latest()['reserve_packet_hash']==nav['reserve_packet_hash'],'NAV changed'
-    submit('cancel',{'operation':'offer_cancel','owner':ALICE,'offer_id':args.offer_id})
+    if not args.resume_cancel:submit('cancel',{'operation':'offer_cancel','owner':ALICE,'offer_id':args.offer_id})
     canceled=rpc('offer_info',{'offer_id':args.offer_id})['offer'];save('canceled',canceled)
     assert canceled['state']=='canceled' and int(canceled['taker_gets_amount_remaining'])==quantity,'quantity changed during cancellation; stop'
     assert latest()['reserve_packet_hash']==nav['reserve_packet_hash'],'NAV changed after cancellation; stop'
