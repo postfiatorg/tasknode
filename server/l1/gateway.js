@@ -4,6 +4,7 @@ import { requestOrigin } from '../server-http-boundary.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
 import { handleNavcoinRoutes } from './navcoin-routes.js';
+import { createHistoryReader } from './history.js';
 
 import { L1_READ_METHODS, L1_SUBMIT_METHODS } from '../../src/features/wallet/l1/lib/rpc-methods.js';
 const MAX_BYTES = 1024 * 1024;
@@ -56,6 +57,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
   const proxyOrigin = proxyOriginFromEnv(env);
   const credentials = readProxyToken(env).then(token => ({ token })).catch(() => null);
   const sessions = new Set();
+  const readHistory = createHistoryReader(env);
   const authenticate = req => getSession(cookieValue(req, sessionCookieName));
   const handlers = server.listeners('request');
   server.removeAllListeners('request');
@@ -67,6 +69,12 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
       res.setHeader('cache-control', 'no-store');
       const session = await authenticate(req);
       if (!signedIn(session)) { json(res, 401, { error: 'l1_login_required' }); return; }
+      if (url.pathname === '/api/l1/history' && req.method === 'GET') {
+        if (!readHistory) { json(res, 503, { error: 'History recovery is unavailable' }); return; }
+        try { json(res, 200, await readHistory(url.searchParams.get('address') || '', url.searchParams.get('limit'))); }
+        catch (error) { json(res, 502, { error: error.message }); }
+        return;
+      }
       if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req)) { json(res, 403, { error: 'l1_origin_rejected' }); return; }
       const context = { req, res, url, session, json, readJson, proxyUrl: env.L1_WALLET_PROXY_URL || '' };
       if (url.pathname.startsWith('/api/l1/bridge/')) {

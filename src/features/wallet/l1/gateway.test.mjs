@@ -13,6 +13,8 @@ async function denied(headers,status){const ws=new WebSocket(url,{headers});cons
 try{
  assert.equal(await (await fetch(origin+'/existing')).text(),'existing route');
  assert.equal((await fetch(origin+'/api/l1/rpc')).status,401);
+ assert.equal((await fetch(origin+'/api/l1/history?address=pf'+'a'.repeat(40))).status,401);
+ assert.equal((await fetch(origin+'/api/l1/history?address=pf'+'a'.repeat(40),{headers:{cookie:'sid=fixture'}})).status,503);
  await denied({cookie:'sid=fixture'},403);
  for (const headers of [{cookie:'sid=fixture'},{cookie:'sid=fixture',origin:'https://attacker.invalid'}]) assert.equal((await fetch(origin+'/api/l1/rpc',{method:'POST',headers})).status,403);
  await denied({origin},401);await denied({origin:'https://attacker.invalid',cookie:'sid=fixture'},403);

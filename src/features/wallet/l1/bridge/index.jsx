@@ -188,7 +188,7 @@ function BridgeSession({ client, onNavigate }) {
             <span className="l1-step-num">{tx ? <Check size={13} aria-hidden /> : 3}</span>
             <div className="l1-bridge-step-body">
               <b>Approve, then deposit</b>
-              <p className="l1-small l1-muted">MetaMask asks twice: once to let the bridge vault take this USDC, once to deposit it.{view.allowance !== null ? <> Approved so far: <Amount atoms={view.allowance} unit="USDC" />.</> : ""}</p>
+              <p className="l1-small l1-muted">First press Approve USDC and confirm in MetaMask. After approval, you must press Deposit (step 2) and confirm again in MetaMask. Approval alone does not deposit your USDC. Allow about 25 minutes after depositing for PFUSDC to arrive; timing can vary.{view.allowance !== null ? <> Approved so far: <Amount atoms={view.allowance} unit="USDC" />.</> : ""}</p>
               <div className="l1-two">
                 <button type="button" className={`l1-btn ${approved ? "" : "is-primary"}`} disabled={!enabled} onClick={() => controller.run(() => controller.approve(amount))}>{approved ? <Check size={15} aria-hidden /> : null}Approve USDC</button>
                 <button type="button" className={`l1-btn ${approved ? "is-primary" : ""}`} disabled={!enabled || view.allowance === null || view.allowance < atoms} onClick={() => controller.run(() => controller.deposit(amount))}>Deposit</button>
