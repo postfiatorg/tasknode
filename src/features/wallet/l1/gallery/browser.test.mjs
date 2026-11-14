@@ -18,8 +18,8 @@ try {
   await page.getByRole('article', { name: 'B23 NAVCoin', exact: true }).getByRole('img', { name: 'Proven 0%, Attested 0%, Reported 100%' }).waitFor();
   await page.getByRole('article', { name: 'A666 NAVCoin', exact: true }).getByText('STALE', { exact: true }).waitFor();
   await page.screenshot({ path: `${evidence}/synthetic-gallery.png`, fullPage: true });
-  await page.getByRole('button', { name: 'Buy B23', exact: true }).click();
-  await page.getByRole('heading', { name: 'Buy B23', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'View B23', exact: true }).click();
+  await page.getByRole('heading', { name: 'B23', exact: true }).waitFor();
   await page.getByText('No independent proof yet — the operator posts this value', { exact: true }).first().waitFor();
   await page.getByText('Every finalized reading', { exact: true }).click();
   assert.equal(await page.locator('.l1-history-table tbody tr').count(), 2);
@@ -27,14 +27,13 @@ try {
   await page.getByRole('img', { name: 'Proven 50%, Attested 25%, Reported 25%' }).waitFor({ timeout: 25000 });
   await page.locator('.l1-coin-nav').filter({ hasText: '$2.00' }).waitFor();
   await page.getByRole('button', { name: 'All NAVCoins' }).click();
-  await page.getByRole('button', { name: 'Buy A666', exact: true }).click();
-  await page.getByRole('heading', { name: 'Buy A666', exact: true }).waitFor();
-  await page.getByLabel('A666 quantity', { exact: true }).fill('0.01');
-  assert.equal(await page.getByLabel('PFUSDC total', { exact: true }).inputValue(), '1000');
+  await page.getByRole('button', { name: 'View A666', exact: true }).click();
+  await page.getByRole('heading', { name: 'A666', exact: true }).waitFor();
+  assert.equal(await page.getByLabel('A666 quantity', { exact: true }).count(), 0);
   await page.getByText('This NAV reading is stale', { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Cash in B23 at NAV' }).count(), 0);
-  assert.equal(await page.getByRole('button', { name: 'Cash in A666', exact: true }).isDisabled(), true);
-  await page.getByText('This coin’s cash-in route is disabled on the chain.', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Cash in A666', exact: true }).count(), 0);
+  await page.getByText('Cash in unavailable: Fixture is read only.', { exact: true }).waitFor();
   await page.screenshot({ path: `${evidence}/synthetic-a666.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: `${evidence}/synthetic-a666-mobile.png`, fullPage: true });
@@ -42,13 +41,13 @@ try {
   await page.getByRole('button', { name: 'All NAVCoins' }).click();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'gallery fits mobile width');
   await page.evaluate(() => window.galleryFixture.home());
-  await page.getByRole('button', { name: /Explore B23/ }).waitFor();
+  await page.getByRole('button', { name: 'Explore NAVCoins', exact: true }).first().waitFor();
   await page.getByText('Each active NAVCoin uses its own latest finalized NAV.', { exact: false }).waitFor();
   await page.locator('.l1-total').filter({ hasText: '10,600.00' }).waitFor();
-  await page.getByRole('button', { name: /Explore B23/ }).click();
-  await page.getByRole('heading', { name: 'B23', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Explore NAVCoins', exact: true }).first().click();
+  await page.getByRole('heading', { name: 'NAVCoins', exact: true }).waitFor();
   assert.deepEqual(errors, []);
-  console.log('PASS: sorted live model, Reported/Proven/Attested split, stale A666, full history, automatic new epoch update without navigation, correct A666 ticket, no B23 cash-in leak, mobile widths, Home facts link. Synthetic reads only.');
+  console.log('PASS: sorted live model, Reported/Proven/Attested split, stale A666, full history, automatic new epoch update without navigation, view-only A666 without dead buttons or cash-in leak, mobile widths, Home gallery entry. Synthetic reads only.');
 } catch (e) {
   console.error(await page.locator('body').innerText());
   await page.screenshot({ path: `${evidence}/synthetic-gallery-failure.png`, fullPage: true });

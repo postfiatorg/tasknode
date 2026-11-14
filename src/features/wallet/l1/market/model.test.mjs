@@ -15,21 +15,21 @@ test("six-decimal amounts remain exact and reject unsafe or ambiguous input", ()
 });
 test("configuration permits pending management but never accepts malformed asset IDs", () => {
   assert.equal(validateConfig({ ...config, management_address: null }).management_address, null);
-  assert.throws(() => validateConfig({ ...config, b23_asset_id: "missing" }));
+  assert.throws(() => validateConfig({ ...config, nav_asset_id: "missing" }));
 });
 test("buy pays PFUSDC, sell pays B23, issuer and pre-G1 trading reject", () => {
   const buy = buildOffer(config, bob, "buy", "10", "11", "0", state()).operation;
   assert.equal(buy.taker_gets_asset_id, config.market_quote_asset_id); assert.equal(buy.taker_gets_amount, 11000000);
-  assert.equal(buildOffer(config, bob, "sell", "10", "11", "0", state()).operation.taker_gets_asset_id, config.b23_asset_id);
+  assert.equal(buildOffer(config, bob, "sell", "10", "11", "0", state()).operation.taker_gets_asset_id, config.nav_asset_id);
   assert.throws(() => buildOffer(config, config.issuer_address, "sell", "10", "11", "0", state()));
   assert.throws(() => buildOffer({ ...config, g1_passed: false }, bob, "buy", "10", "11", "0", state()));
 });
 function offerCase(received, spent, locked) {
   const intent = buildOffer(config, bob, "buy", "10", "10", "0", state());
   const before = state(), after = state(); before.recipientLines = lines(0,0,0); after.recipientLines = lines(0,0,spent); after.balances.assets = lines(100000000 + received, 200000000, 200000000 - spent - locked);
-  const offer = { offer_id: "offer-1", owner: bob, state: "open", taker_gets_asset_id: config.market_quote_asset_id, taker_pays_asset_id: config.b23_asset_id, original_taker_gets_amount: 10000000, original_taker_pays_amount: 10000000, taker_gets_amount_remaining: locked, taker_pays_amount_remaining: 10000000 - received };
+  const offer = { offer_id: "offer-1", owner: bob, state: "open", taker_gets_asset_id: config.market_quote_asset_id, taker_pays_asset_id: config.nav_asset_id, original_taker_gets_amount: 10000000, original_taker_pays_amount: 10000000, taker_gets_amount_remaining: locked, taker_pays_amount_remaining: 10000000 - received };
   if (locked) after.offers.offers.push(offer);
-  const fills = spent ? [{ taker: bob, maker_owner: config.alice_holder_address, maker_sends_asset_id: config.b23_asset_id, taker_sends_asset_id: config.market_quote_asset_id, maker_sends_amount: received, taker_sends_amount: spent }] : [];
+  const fills = spent ? [{ taker: bob, maker_owner: config.alice_holder_address, maker_sends_asset_id: config.nav_asset_id, taker_sends_asset_id: config.market_quote_asset_id, maker_sends_amount: received, taker_sends_amount: spent }] : [];
   return { intent, before, after, receipt: { accepted: true, offer_id: locked ? "offer-1" : null, offer_fills: fills } };
 }
 for (const [received, spent, locked, label] of [[0,0,10000000,"Unfilled"], [4000000,4000000,6000000,"Partially filled"], [10000000,9000000,0,"Filled"]]) {
@@ -119,7 +119,7 @@ test("server route rejects unauthenticated, writes and malformed fee without rem
   }
 });
 test("snapshot rejects an account mismatch instead of treating other-account data as zero",async()=>{
-  const s=state();const client={address:bob,getBalances:async()=>({...s.balances,address:config.issuer_address}),call:async method=>({navcoin_bridge_supply_status:s.pool,nav_reserve_proof_status:s.proof,asset_info:{asset:{asset_id:config.b23_asset_id,outstanding_supply:s.supply}},account_offers:s.offers}[method])};
+  const s=state();const client={address:bob,getBalances:async()=>({...s.balances,address:config.issuer_address}),call:async method=>({navcoin_bridge_supply_status:s.pool,nav_reserve_proof_status:s.proof,asset_info:{asset:{asset_id:config.nav_asset_id,outstanding_supply:s.supply}},account_offers:s.offers}[method])};
   await assert.rejects(()=>snapshot(client,config),/Wallet changed/);
 });
 test("cash-in rejects a source-series payout when family reserve was reviewed", () => {
@@ -145,7 +145,7 @@ test("review snapshot bounds simultaneous RPC reads and retries only transient r
       await new Promise(resolve => setTimeout(resolve, 1));
       if (method === "navcoin_bridge_supply_status") return fixture.pool;
       if (method === "nav_reserve_proof_status") return fixture.proof;
-      if (method === "asset_info") return { asset: { asset_id: config.b23_asset_id, outstanding_supply: fixture.supply } };
+      if (method === "asset_info") return { asset: { asset_id: config.nav_asset_id, outstanding_supply: fixture.supply } };
       if (method === "account_offers") return fixture.offers;
       if (method === "account_lines") return lines();
       throw new Error(`Unexpected non-read method ${method}`);

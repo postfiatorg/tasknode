@@ -17,7 +17,7 @@ export default function SubscriberRedeem({ client, data, refresh, onNavigate }) 
       const step = { kind: 'redeem', intent }, plan = { quote };
       setRequest({ id: crypto.randomUUID(), address: client.address, accountId: client.accountId, intent, symbol, title: `Cash in subscribed ${symbol}`,
         summary: [['You cash in', <Amount atoms={quote.amount} unit={symbol} />], ['Value at NAV', <Amount atoms={quote.gross} unit="PFUSDC" />], [`Cash-in fee (${percentFromBps(quote.feeBps)})`, <>−<Amount atoms={quote.fee} unit="PFUSDC" /></>], ['You receive PFUSDC (S)', <Amount atoms={quote.holder} unit="PFUSDC" />, true]],
-        description: `Retire your tracked subscription coins and receive market PFUSDC (S) from the matching reserve. The ${percentFromBps(quote.feeBps)} fee stays in route custody outside NAV. No Schwab withdrawal or Ethereum transfer occurs.`,
+        description: `Retire your tracked subscription coins and receive market PFUSDC (S) from the matching reserve. The ${percentFromBps(quote.feeBps)} fee stays in route custody outside NAV. No withdrawal from the underlying custodian or Ethereum transfer occurs.`,
         successText: 'Cash-in verified: subscribed coins retired, PFUSDC (S) credited, and the fee retained outside NAV. Supply, tracked holdings and source reserve all match.',
         read: () => snapshot(client, config),
         preflight: (op, current) => {

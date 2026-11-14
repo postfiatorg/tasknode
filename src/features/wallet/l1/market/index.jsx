@@ -19,7 +19,7 @@ const toAtoms = value => { const match = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,6}))?$/.
 
 function levels(report, config, side) {
   return (report?.offers || []).map(offer => {
-    const sell = offer.taker_gets_asset_id === config.b23_asset_id;
+    const sell = offer.taker_gets_asset_id === config.nav_asset_id;
     const size = BigInt(sell ? offer.taker_gets_amount_remaining : offer.taker_pays_amount_remaining);
     const total = BigInt(sell ? offer.taker_pays_amount_remaining : offer.taker_gets_amount_remaining);
     return { id: offer.offer_id, side, size, total, price: unitPrice(total, size) };
@@ -34,7 +34,7 @@ function bookDecimals(prices) {
   return decimals;
 }
 function Book({ book, config, nav, onPick }) {
-  const symbol = config.symbol || "B23";
+  const symbol = config.symbol || "NAVCoin";
   const asks = levels(book.asks, config, "ask"), bids = levels(book.bids, config, "bid");
   const places = bookDecimals([...asks, ...bids].map(level => level.price));
   const px = value => amount(value, { min: places, max: places });
@@ -60,12 +60,12 @@ function Book({ book, config, nav, onPick }) {
 }
 
 function Orders({ report, config, cancel }) {
-  const symbol = config.symbol || "B23";
+  const symbol = config.symbol || "NAVCoin";
   const offers = report.offers || [];
   return <Card aria-label="Your offers">
     <CardHead eyebrow="Yours" title="Open offers and history">{report.truncated && <Badge tone="warning">First {report.limit}</Badge>}</CardHead>
     {!offers.length ? <Empty icon={ListOrdered} title="No offers from this wallet">Buy and sell offers you place appear here with their fill progress.</Empty> : <div className="l1-orders">{offers.map(offer => {
-      const sell = offer.taker_gets_asset_id === config.b23_asset_id, progress = offerProgress(offer);
+      const sell = offer.taker_gets_asset_id === config.nav_asset_id, progress = offerProgress(offer);
       const original = BigInt(sell ? offer.original_taker_gets_amount : offer.original_taker_pays_amount);
       const remaining = BigInt(sell ? offer.taker_gets_amount_remaining : offer.taker_pays_amount_remaining);
       const gets = BigInt(offer.original_taker_gets_amount), filledShare = gets > 0n ? Number(((gets - BigInt(offer.taker_gets_amount_remaining)) * 1000n) / gets) / 10 : 0;
@@ -123,7 +123,7 @@ export default function MarketTab({ client, onNavigate, marketConfig = null, com
   function cancel(offer) {
     revision.current++;
     setActionError(""); setRequest(null);
-    try { review(buildCancel(client.address, offer), "Cancels only the unfilled remainder; earlier fills stay final.", { title: "Cancel offer", successText: "The unfilled remainder was cancelled and refunded to this wallet.", summary: [["Offer", <span className="l1-mono">{String(offer.offer_id).slice(0, 14)}…</span>], ["Refund", <Amount atoms={offer.taker_gets_amount_remaining} unit={offer.taker_gets_asset_id === data.config.b23_asset_id ? symbol : "PFUSDC"} />, true]] }); }
+    try { review(buildCancel(client.address, offer), "Cancels only the unfilled remainder; earlier fills stay final.", { title: "Cancel offer", successText: "The unfilled remainder was cancelled and refunded to this wallet.", summary: [["Offer", <span className="l1-mono">{String(offer.offer_id).slice(0, 14)}…</span>], ["Refund", <Amount atoms={offer.taker_gets_amount_remaining} unit={offer.taker_gets_asset_id === data.config.nav_asset_id ? symbol : "PFUSDC"} />, true]] }); }
     catch (e) { setActionError(e.message); }
   }
   function pick(level) {
@@ -133,7 +133,7 @@ export default function MarketTab({ client, onNavigate, marketConfig = null, com
     setCustom(""); setQuantity(plain(level.size)); setTotal(plain(level.total));
   }
   let available = null;
-  try { if (data) available = lineBalance(data.balances.assets, side === "buy" ? data.config.market_quote_asset_id : data.config.b23_asset_id); } catch { available = null; }
+  try { if (data) available = lineBalance(data.balances.assets, side === "buy" ? data.config.market_quote_asset_id : data.config.nav_asset_id); } catch { available = null; }
   const asks = data ? levels(data.book.asks, data.config, "ask") : [];
   const tradingOpen = data && marketReady(data.config, data.state);
   const bids = data ? levels(data.book.bids, data.config, "bid") : [];

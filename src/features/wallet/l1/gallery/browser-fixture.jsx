@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Gallery from './index.jsx';
+import { useGallery } from './useGallery.js';
 import WalletHome from '../WalletHome.jsx';
 import Market from '../market/index.jsx';
 import Redeem from '../redeem/index.jsx';
@@ -10,22 +11,26 @@ import { validateConfig } from '../market/constants.js';
 import { config, bob, state } from '../market/fixtures.mjs';
 const a666 = '6'.repeat(96);
 const isB24 = new URLSearchParams(location.search).get('coin') === 'b24';
-const retired = { asset_id: config.b23_asset_id, name: 'B23', symbol: 'B23', slug: 'b23', route_id: config.route_id, retired: true, market_quote_asset_id: config.market_quote_asset_id, description: 'Retired NAVCoin. Existing holdings remain visible.', methodology: 'Historical reading only.' };
-Object.assign(config, validateConfig({ ...config, ...(isB24 ? { b23_asset_id: '5'.repeat(96), symbol: 'B24', slug: 'b24', route_id: 'synthetic-b24-route', redemption_mode: 'unsupported', cash_in_note: 'Coins bought on the order book cannot be cashed in through this route. Sell to a buyer on the book. Cash-in is limited to qualifying subscriptions.', management_address: null, issue_multiplier_bps: 10050, redeem_multiplier_bps: 9995, retired_assets: [retired], ethereum: { available: false } } : {}) }));
+const retired = { asset_id: config.nav_asset_id, name: 'B23', symbol: 'B23', slug: 'b23', route_id: config.route_id, retired: true, market_quote_asset_id: config.market_quote_asset_id, description: 'Retired NAVCoin. Existing holdings remain visible.', methodology: 'Historical reading only.' };
+Object.assign(config, validateConfig({ ...config, ...(isB24 ? { nav_asset_id: '5'.repeat(96), symbol: 'B24', slug: 'b24', route_id: 'synthetic-b24-route', redemption_mode: 'unsupported', cash_in_note: 'Coins bought on the order book cannot be cashed in through this route. Sell to a buyer on the book. Cash-in is limited to qualifying subscriptions.', management_address: null, issue_multiplier_bps: 10050, redeem_multiplier_bps: 9995, retired_assets: [retired], ethereum: { available: false } } : {}) }));
 const coins = [
-  { slug: config.slug, name: config.symbol, asset_id: config.b23_asset_id, description: 'Backed by a Schwab brokerage account.', methodology: 'Schwab reported net liquidation value, daily 18:15 UTC, without adjustments.', market_quote_asset_id: config.market_quote_asset_id, route_id: config.route_id },
+  { slug: config.slug, name: config.symbol, asset_id: config.nav_asset_id, description: 'Backed by a Schwab brokerage account.', methodology: 'Schwab reported net liquidation value, daily 18:15 UTC, without adjustments.', market_quote_asset_id: config.market_quote_asset_id, route_id: config.route_id },
   { slug: 'a666', name: 'A666', asset_id: a666, description: 'Synthetic reserve portfolio.', methodology: 'Synthetic methodology for browser testing.', market_quote_asset_id: config.market_quote_asset_id, route_id: 'synthetic-a666-route' },
 ];
 if (isB24) coins.push(retired);
 const ledger = state();
 if (isB24) { ledger.pool.issue_multiplier_bps = 10050; ledger.pool.redeem_multiplier_bps = 9995; ledger.pool.spread_recipient = null; ledger.pool.settlement_reserve_atoms = 0; ledger.pool.available_redeem_atoms = 0; }
 let updated = false, calls = [];
+for (const coin of coins) {
+ Object.assign(coin, { ...config, ...coin, retired_assets: [], nav_asset_id: coin.asset_id, symbol: coin.name,
+ capabilities: { book: { available: false, reason: 'Fixture is read only.' }, create: { available: false, reason: 'Fixture is read only.' }, cash_in: { available: false, reason: 'Fixture is read only.' } } });
+}
 const proof = id => ({ asset_id: id, current_height: 1500, active_profile: {
-  verifier_kind: isB24 && id === config.b23_asset_id ? 'sp1-groth16' : updated && id === config.b23_asset_id ? 'sp1-groth16' : id === a666 ? 'multi-fetch-quorum' : 'placeholder',
+  verifier_kind: isB24 && id === config.nav_asset_id ? 'sp1-groth16' : updated && id === config.nav_asset_id ? 'sp1-groth16' : id === a666 ? 'multi-fetch-quorum' : 'placeholder',
   min_attestations: id === a666 ? 1 : 0, max_snapshot_age_blocks: 1000, max_epoch_gap_blocks: id === a666 ? 1000 : 128,
 }, packets: [
   { state: 'finalized', epoch: 1, submitted_at_height: 100, nav_per_unit: 1000000, circulating_supply: 1000000, verified_net_assets: 1000000, attested_value: 0, cryptographically_verified_value: 0 },
-  { state: 'finalized', epoch: updated && id !== a666 ? 3 : 2, reserve_packet_hash: ledger.nav.reserve_packet_hash, submitted_at_height: id === a666 ? 300 : 1450, nav_per_unit: id === a666 ? 100000000000 : updated ? 2000000 : 1000000, circulating_supply: id === a666 ? 200000 : 400000000000, verified_net_assets: id === a666 ? 20000000000 : 400000000000, attested_value: isB24 && id === config.b23_asset_id ? 400000000000 : updated && id !== a666 ? 100000000000 : 0, cryptographically_verified_value: updated && id !== a666 ? 200000000000 : 0 },
+  { state: 'finalized', epoch: updated && id !== a666 ? 3 : 2, reserve_packet_hash: ledger.nav.reserve_packet_hash, submitted_at_height: id === a666 ? 300 : 1450, nav_per_unit: id === a666 ? 100000000000 : updated ? 2000000 : 1000000, circulating_supply: id === a666 ? 200000 : 400000000000, verified_net_assets: id === a666 ? 20000000000 : 400000000000, attested_value: isB24 && id === config.nav_asset_id ? 400000000000 : updated && id !== a666 ? 100000000000 : 0, cryptographically_verified_value: updated && id !== a666 ? 200000000000 : 0 },
 ] });
 window.fetch = async url => Response.json(String(url).endsWith('/registry') ? { coins } : String(url).endsWith('/equity') ? {} : config);
 const client = { accountId: 'synthetic-gallery', address: bob, unlocked: true,
@@ -45,9 +50,10 @@ const client = { accountId: 'synthetic-gallery', address: bob, unlocked: true,
   quote: () => { throw Error('This gallery fixture forbids quotes and writes'); },
 };
 function App() {
+  const gallery = useGallery(client);
   const [selectedCoin, onSelectCoin] = useState(null), [view, setView] = useState("Gallery");
   window.galleryFixture = { update: () => { updated = true; }, calls, home: () => setView("Home"), view: setView };
   const navigate = (tab, coin) => { setView(tab); onSelectCoin(coin || null); };
-  return <main className="l1w"><p>SYNTHETIC GALLERY — NO CHAIN WRITES</p>{view === "Market" ? <Market client={client} onNavigate={navigate} /> : view === "Redeem" ? <Redeem client={client} onNavigate={navigate} /> : view === "Activity" ? <Activity client={client} /> : view === "Home" ? <WalletHome client={client} onNavigate={navigate} /> : <Gallery client={client} selectedCoin={selectedCoin} onSelectCoin={onSelectCoin} onNavigate={navigate} />}</main>;
+  return <main className="l1w"><p>SYNTHETIC GALLERY — NO CHAIN WRITES</p>{view === "Market" ? <Market client={client} onNavigate={navigate} /> : view === "Redeem" ? <Redeem client={client} onNavigate={navigate} /> : view === "Activity" ? <Activity client={client} /> : view === "Home" ? <WalletHome gallery={gallery} client={client} onNavigate={navigate} /> : <Gallery gallery={gallery} client={client} selectedCoin={selectedCoin} onSelectCoin={onSelectCoin} onNavigate={navigate} />}</main>;
 }
 createRoot(document.getElementById('root')).render(<App />);

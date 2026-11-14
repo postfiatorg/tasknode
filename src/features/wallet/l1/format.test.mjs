@@ -25,9 +25,9 @@ test('user-facing errors avoid redemption wording', () => {
 });
 
 test('portfolio groups PFUSDC family and bridged series, B23 by configured id', () => {
-  const config = { b23_asset_id: 'b23', pfusdc_asset_id: 'fam', pfusdc_source_asset_ids: ['child'] };
+  const config = { nav_asset_id: 'b23', pfusdc_asset_id: 'fam', pfusdc_source_asset_ids: ['child'] };
   const held = classifyLines([{ asset_id: 'fam', balance: 5 }, { asset_id: 'child', balance: 7, asset_family_id: 'fam' }, { asset_id: 'b23', balance: 3 }, { asset_id: 'x', code: 'B23', balance: 9 }], config);
-  assert.equal(held.pfusdc, 12n); assert.equal(held.pfusdcFamily, 5n); assert.equal(held.pfusdcBridged, 7n); assert.equal(held.b23, 3n);
+  assert.equal(held.pfusdc, 12n); assert.equal(held.pfusdcFamily, 5n); assert.equal(held.pfusdcBridged, 7n); assert.equal(held.nav, 3n);
   assert.equal(held.others.length, 1, 'a look-alike B23 code is not counted as B23');
   const noConfig = classifyLines([{ asset_id: 'any', code: 'PFUSDC', balance: 4 }], null);
   assert.equal(noConfig.pfusdc, 4n);

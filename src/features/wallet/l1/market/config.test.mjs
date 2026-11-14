@@ -1,85 +1,65 @@
-import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PUBLISHED_CONFIG, validateConfig, deploymentConfig, assetSymbols, marketReady } from './constants.js';
-import { navcoinRegistry } from '../../../../../server/l1/navcoin-registry.js';
-import { projectHistory } from '../../../../../server/l1/history.js';
-import { heldNavValues, sortByTvl } from '../gallery/model.js';
-import { buildOffer, readPool } from './model.js';
-import { classifyLines } from '../portfolio.js';
+import assert from 'node:assert/strict';
+import { validateConfig, loadConfig, assetSymbols, marketReady } from './constants.js';
+import { discoverRegistry } from '../../../../../server/l1/navcoin-registry.js';
+import { readCoin, heldNavValues, sortByTvl } from '../gallery/model.js';
+import { buildOffer } from './model.js';
 import { labelActivity } from '../activity-model.js';
-import { buildRedeem } from '../redeem/model.js';
-const b24 = '5'.repeat(96), owner = 'pf' + '4'.repeat(40);
-const config = validateConfig({ ...PUBLISHED_CONFIG, nav_asset_id: b24, symbol: 'B24', slug: 'b24', route_id: 'b24-route',
-  g1_passed: true, redemption_mode: 'unsupported', issue_multiplier_bps: 10050, redeem_multiplier_bps: 9995,
-  retired_assets: [{ asset_id: PUBLISHED_CONFIG.b23_asset_id, symbol: 'B23', slug: 'b23', route_id: PUBLISHED_CONFIG.route_id }],
+import { classifyLines } from '../portfolio.js';
+const id = x => x.repeat(96), address = 'pf' + '1'.repeat(40);
+function fixture() {
+  const metadata = ['a','b','c','d'].map((key,i) => ({ asset_id:id(key), slug:'coin-'+key, name:'Coin'+key, retired:i===3, issue_multiplier_bps:9999, creation_enabled:true, market_quote_asset_id:id('f') }));
+  const route = key => ({ route_id: 'route-'+key, native_nav_asset_id:id(key), settlement_asset_id:id('e'), ethereum_chain_id:1, handoff_controller:'0x'+'1'.repeat(40) });
+  const packets = [{state:'finalized',epoch:3,reserve_packet_hash:id('f'),submitted_at_height:100,nav_per_unit:2000000,verified_net_assets:10000000,circulating_supply:5000000}];
+  const rpc = async (method,params) => {
+    const key = params?.asset_id?.[0] || params?.route_id?.at(-1);
+    if(method==='status') return {active_nav_profiles: metadata.map(m=>({asset_id:m.asset_id}))};
+    if(method==='navcoin_bridge_routes') return {routes:['a','b','d'].map(route)};
+    if(method==='asset_info') return {asset:{asset_id:params.asset_id, code: key==='9'?'PFUSDC':'COIN'+key.toUpperCase(),issuer:address,precision:6,outstanding_supply:5000000,asset_family_id:key==='9'?id('e'):params.asset_id}};
+    if(method==='nav_reserve_proof_status') return {asset_id:params.asset_id,current_height:110,active_profile:{profile_id:id('f')},packets};
+    if(method==='navcoin_bridge_supply_status') return {...route(key),live_value_enabled:true,paused:false,invariant_holds:true,pricing_nav_epoch:3,pricing_reserve_packet_hash:id('f'),policy_valid_from_height:100,policy_expires_at_height:key==='b'?101:1000,max_nav_age_blocks:1000,issue_multiplier_bps:10050,redeem_multiplier_bps:9995,source_settlement_custody:[{asset_id:id('9'),enabled_for_issue:true}],settlement_reserve_atoms:0};
+    if(method==='book_offers') return {...params,offers:[]};
+    throw Error(method);
+  };
+  return {metadata,rpc};
+}
+test('registry discovers each identity and chain terms; metadata cannot override route or capabilities',async()=>{
+ const f=fixture(), coins=await discoverRegistry(f.rpc,f.metadata);
+ assert.equal(coins.length,4);
+ const [active,stale,absent,retired]=coins;
+ assert.equal(active.issue_multiplier_bps,10050); assert.equal(active.market_quote_asset_id,id('9'));
+ assert.equal(active.nav_asset_id,id('a')); assert.equal(active.symbol,'COINA');
+ assert.equal(active.capabilities.create.available,true); assert.equal(active.capabilities.book.available,true);
+ assert.equal(stale.capabilities.create.available,false); assert.match(stale.capabilities.book.reason,/stale/);
+ assert.equal(absent.route_id,null); assert.equal(absent.market_quote_asset_id,null); assert.equal(absent.capabilities.book.available,false);
+ assert.equal(retired.retired,true); assert.equal(marketReady(retired,{}),false);
+ assert.equal(active.ethereum.available,false); assert.match(active.ethereum.reason,/not verified/);
+ assert.equal('b23_asset_id' in active,false);
+ const owner='pf'+'2'.repeat(40);
+ assert.equal(buildOffer(active,owner,'buy','1','2').operation.taker_pays_asset_id,id('a'));
+ assert.throws(()=>buildOffer(stale,owner,'buy','1','2'),/blocked/);
+ const read=await readCoin({call:()=>{throw Error('No extra RPC for server snapshot');}},absent);
+ assert.equal(read.asset.asset_id,id('c')); assert.equal(read.depth,null);
 });
-test('one config switches identity, orders, fees and registry while preserving retired B23', async () => {
-  assert.equal(config.b23_asset_id, b24);
-  assert.equal(config.nav_asset_id, b24);
-  assert.equal(config.issue_multiplier_bps, 10050);
-  assert.equal(config.redeem_multiplier_bps, 9995);
-  assert.deepEqual(navcoinRegistry(config).map(c => [c.name, Boolean(c.retired)]), [['B24', false], ['B23', true], ['A666', false]]);
-  const seen = [];
-  await readPool({ call: async (method, args) => {
-    seen.push([method, args]);
-    if (method === 'navcoin_bridge_supply_status') return { route_id: config.route_id, native_nav_asset_id: b24, settlement_asset_id: config.pfusdc_asset_id };
-    if (method === 'nav_reserve_proof_status') return { asset_id: b24, packets: [] };
-    return { asset: { asset_id: b24, outstanding_supply: 1 } };
-  } }, config);
-  assert.equal(seen[0][1].route_id, 'b24-route');
-  assert.equal(seen[1][1].asset_id, b24);
-  assert.equal(seen[2][1].asset_id, b24);
-  assert.equal(buildOffer(config, owner, 'buy', '1', '1').operation.taker_pays_asset_id, b24);
-  assert.equal(buildOffer(config, owner, 'sell', '1', '1').operation.taker_gets_asset_id, b24);
+test('cross-coin route and quote responses fail closed', async()=>{
+ const f=fixture();
+ for(const method of ['asset_info','nav_reserve_proof_status','navcoin_bridge_supply_status','book_offers']) {
+  await assert.rejects(discoverRegistry(async(m,p)=>{const v=await f.rpc(m,p);if(m===method){if(m==='asset_info')v.asset.asset_id=id('0');else if(m==='nav_reserve_proof_status')v.asset_id=id('0');else if(m==='book_offers')v.taker_pays_asset_id=id('0');else v.native_nav_asset_id=id('0');}return v;},f.metadata),/identity mismatch/);
+ }
 });
-test('legacy market permission does not imply cash-in support or waive the deployment gate', () => {
-  assert.equal(marketReady(config, {}), true);
-  assert.equal(marketReady({ ...config, g1_passed: false }, {}), false);
-  assert.equal(marketReady({ ...config, redemption_mode: 'two-credit' }, {}), false);
-  assert.throws(() => buildRedeem(config, owner, {}, '1'), /not supported/);
+test('selected config has no default; response must match selected asset',async()=>{
+ await assert.rejects(loadConfig(),/Choose/);
+ await assert.rejects(loadConfig(id('a'),async()=>Response.json({nav_asset_id:id('b')})),/identity mismatch/);
+ assert.throws(()=>validateConfig({b23_asset_id:id('a')}),/Choose/);
+ assert.equal(validateConfig({nav_asset_id:id('a'),private_key:'secret'}).private_key,undefined);
 });
-test('B23 default and old env remain compatible, new config is projected without private fields', () => {
-  assert.equal(deploymentConfig().symbol, 'B23');
-  assert.equal(deploymentConfig().redemption_mode, 'two-credit');
-  assert.equal(deploymentConfig({ B23_NAVCOIN_CONFIG_JSON: '{"g1_passed":true}' }).g1_passed, true);
-  const result = deploymentConfig({ NAVCOIN_CONFIG_JSON: JSON.stringify({ ...config, private_key: 'NEVER_PUBLIC' }) });
-  assert.equal(result.symbol, 'B24');
-  assert.equal(result.private_key, undefined);
-  assert.equal(result.b23_asset_id, b24);
-});
-test('predicted contracts and partial deployment never appear as available Ethereum liquidity', () => {
-  const token = '0x' + '1'.repeat(40), pool = '0x' + '2'.repeat(40);
-  for (const ethereum of [{}, { wrapped_token: token, pool }, { available: true, wrapped_token: token }, { available: true, wrapped_token: token, pool: 'invalid' }]) {
-    assert.deepEqual(validateConfig({ ...config, ethereum }).ethereum, { available: false, wrapped_token: null, pool: null });
-  }
-  assert.equal(validateConfig({ ...config, ethereum: { available: true, wrapped_token: token, pool } }).ethereum.pool, pool);
-});
-test('retired balance remains visible but historical NAV cannot inflate current portfolio value', () => {
-  const coins = navcoinRegistry(config).map(c => ({ ...c, latest: { nav_per_unit: 1000000, verified_net_assets: c.retired ? 999999999999 : 1 } }));
-  const result = heldNavValues([{ asset_id: PUBLISHED_CONFIG.b23_asset_id, balance: 1000000 }], coins);
-  assert.equal(result.find(c => c.coin.retired).balance, 1000000n);
-  assert.equal(result.find(c => c.coin.retired).value, null);
-  assert.equal(sortByTvl(coins).at(-1).name, 'B23');
-});
-test('activity distinguishes active B24 buys and retired B23 cash-ins using config', () => {
-  const op = { owner, operation: 'offer_create', taker_pays_asset_id: b24, taker_gets_asset_id: config.market_quote_asset_id };
-  const fixture = { blocks: [{ header: { height: 1, batch_kind: 'transparent', batch_id: 'batch' }, receipt_ids: ['buy', 'cash'] }],
-    archives: [{ batch_kind: 'transparent', batch_id: 'batch', payload_json: JSON.stringify({ batch_id: 'batch', offer_transactions: [{ unsigned: op }], asset_transactions: [{ unsigned: { owner, operation: 'pftl_uniswap_primary_redeem', route_id: PUBLISHED_CONFIG.route_id, nav_amount_atoms: 1000000 } }] }) }], receipts: [] };
-  const result = projectHistory(fixture, owner, 100, assetSymbols(config), { [PUBLISHED_CONFIG.route_id]: 'B23' });
-  const buy = result.rows.find(r => r.transaction_kind === 'offer_create'), cash = result.rows.find(r => r.transaction_kind === 'pftl_uniswap_primary_redeem');
-  assert.equal(buy.market_side, 'buy'); assert.equal(buy.market_symbol, 'B24'); assert.equal(cash.unit, 'B23');
-});
-
-test('healthy RPC activity and portfolio also use IDs across the B24 transition', () => {
-  const rows = labelActivity([
-    { transaction_kind: 'issued_payment', asset_id: b24, unit: 'stale-name' },
-    { transaction_kind: 'pftl_uniswap_primary_redeem', route_id: PUBLISHED_CONFIG.route_id },
-    { transaction_kind: 'offer_create', taker_pays_asset_id: config.market_quote_asset_id, taker_gets_asset_id: b24 },
-  ], config);
-  assert.equal(rows[0].unit, 'B24'); assert.equal(rows[1].unit, 'B23');
-  assert.equal(rows[2].market_symbol, 'B24'); assert.equal(rows[2].market_side, 'sell');
-  const balances = [{ asset_id: PUBLISHED_CONFIG.b23_asset_id, code: 'B23', balance: 1000000 }, { asset_id: b24, code: 'B24', balance: 2000000 }];
-  assert.equal(classifyLines(balances, config).b23, 2000000n);
-  assert.equal(classifyLines(balances, config).others[0].balance, 1000000n);
-  assert.equal(classifyLines(balances, null).b23, null);
+test('portfolio and activity label all coins by asset and route; retired NAV excluded',async()=>{
+ const f=fixture(),coins=await discoverRegistry(f.rpc,f.metadata), lines=coins.map(c=>({asset_id:c.asset_id,balance:1000000}));
+ assert.equal(assetSymbols(coins)[id('a')],'COINA');
+ assert.equal(classifyLines(lines,coins).nav,4000000n);
+ const rows=labelActivity([{transaction_kind:'issued_payment',asset_id:id('a')},{transaction_kind:'pftl_uniswap_primary_redeem',route_id:'route-b'}],coins);
+ assert.equal(rows[0].unit,'COINA');assert.equal(rows[1].unit,'COINB');
+ const rich=await Promise.all(coins.map(c=>readCoin({},c)));
+ assert.equal(heldNavValues(lines,rich).find(c=>c.coin.retired).value,null);
+ assert.equal(sortByTvl(rich).at(-1).asset_id,id('d'));
 });

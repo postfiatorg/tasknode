@@ -93,7 +93,7 @@ export function JsonBlock({ value }) {
   return <pre className="l1-json">{JSON.stringify(value, (_key, item) => typeof item === "bigint" ? String(item) : item, 2)}</pre>;
 }
 
-const AVATAR = { PFT: "PF", PFUSDC: "$", B23: "B23", USDC: "$" };
+const AVATAR = { PFT: "PF", PFUSDC: "$", USDC: "$" };
 export function AssetAvatar({ code, size = "md" }) {
   const key = String(code || "?");
   return <span className={`l1-avatar is-${key.toLowerCase()} is-${size}`} aria-hidden>{AVATAR[key] || key.slice(0, 3).toUpperCase()}</span>;

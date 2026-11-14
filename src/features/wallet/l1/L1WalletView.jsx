@@ -1,11 +1,10 @@
-import { loadConfig } from "./market/constants.js";
+import { useGallery } from "./gallery/useGallery.js";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, ChartCandlestick, Download, Ellipsis, FileKey, HandCoins, History, House, KeyRound, Landmark, LayoutGrid, Lock, Send as SendIcon, ShieldCheck, Wallet } from "lucide-react";
 // Secondary views load on first use so the wallet shell stays small.
 const Bridge = lazy(() => import("./bridge/index.jsx"));
 const Market = lazy(() => import("./market/index.jsx"));
 const Gallery = lazy(() => import("./gallery/index.jsx"));
-const Issuer = lazy(() => import("./issuer/index.jsx"));
 const Redeem = lazy(() => import("./redeem/index.jsx"));
 import { L1WalletContext } from "./client.jsx";
 import { L1WalletCore } from "./core.js";
@@ -14,12 +13,12 @@ import Send from "./Send.jsx";
 import Activity from "./Activity.jsx";
 import { Badge, Card, IdChip, Notice, Spinner, ViewHeader } from "./ui.jsx";
 // View ids stay the original tab names; onNavigate("bridge" | "Market" | ...) keeps working.
-const tabs = { Home: WalletHome, Send, Activity, Bridge, Gallery, Market, Issuer, Redeem };
+const tabs = { Home: WalletHome, Send, Activity, Bridge, Gallery, Market, Redeem };
 const VIEWS = [
   { id: "Home", label: "Home", icon: House },
   { id: "Bridge", label: "Add funds", icon: ArrowDownToLine, title: "Add funds", subtitle: "Bring USDC over from Ethereum. It arrives in this wallet as PFUSDC, one for one." },
   { id: "Gallery", label: "NAVCoins", icon: LayoutGrid },
-  { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: (symbol, config) => config?.creation_enabled ? `Buy ${symbol} from the order book or create new coins at NAV plus the fee.` : `Buy ${symbol} with PFUSDC from sellers on the Post Fiat order book.` },
+  { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: "Choose a NAVCoin to see its market and available actions." },
   { id: "Redeem", label: "Cash in", icon: HandCoins, title: "Cash in at NAV", subtitle: symbol => `Review ${symbol} cash-in availability and NAV terms.` },
   { id: "Send", label: "Send", icon: SendIcon, title: "Send", subtitle: "Send PFT to another Post Fiat address." },
   { id: "Activity", label: "Activity", icon: History, title: "Activity", subtitle: "Transactions signed by this wallet and payments it received." },
@@ -47,14 +46,14 @@ function WalletMenu({ onBackup, onLock }) {
   </div>;
 }
 
-function Gate({ symbol, exists, busy, passphrase, setPassphrase, seed, setSeed, openWallet, restoreBackup }) {
+function Gate({ exists, busy, passphrase, setPassphrase, seed, setSeed, openWallet, restoreBackup }) {
   return <>
     <Card className="l1-gate">
       <div className="l1-gate-art">
         <div>
           <div className="l1-eyebrow">Post Fiat L1</div>
           <h2>A wallet built for the quantum era.</h2>
-          <p>Hold PFT, bring dollars over from Ethereum, and own {symbol}: a NAVCoin priced at the net asset value of a Schwab brokerage account.</p>
+          <p>Hold PFT, bring dollars over from Ethereum, and explore NAVCoins priced from their underlying net asset value.</p>
         </div>
         <ul className="l1-gate-points">
           <li><ShieldCheck size={16} aria-hidden /><span>Every transaction is signed with ML-DSA, a post-quantum signature scheme.</span></li>
@@ -83,23 +82,21 @@ function Gate({ symbol, exists, busy, passphrase, setPassphrase, seed, setSeed, 
     <div className="l1-howto" aria-label="How it works">
       <div><span className="l1-step-num">1</span><span><b>Connect MetaMask</b><p>Link the Ethereum account that holds your USDC.</p></span></div>
       <div><span className="l1-step-num">2</span><span><b>Convert USDC to PFUSDC</b><p>Deposit on Ethereum; it is credited here once proven.</p></span></div>
-      <div><span className="l1-step-num">3</span><span><b>Buy {symbol}</b><p>Use PFUSDC on the order book. Review available exit options before buying.</p></span></div>
+      <div><span className="l1-step-num">3</span><span><b>Choose a NAVCoin</b><p>Use PFUSDC on the order book. Review available exit options before buying.</p></span></div>
     </div>
   </>;
 }
 
 export default function L1WalletView({ accountId, isAccountCurrent }) {
-  const [assetConfig, setAssetConfig] = useState(null);
-  useEffect(() => { let active = true; loadConfig().then(config => { if (active) setAssetConfig(config); }).catch(() => {}); return () => { active = false; }; }, [accountId]);
-  const symbol = assetConfig?.symbol || "NAVCoin";
   const [tab, setTab] = useState("Home");
   const [selectedCoin, setSelectedCoin] = useState(null);
+  const [selectedAssetId, setSelectedAssetId] = useState(null);
   const onNavigate = useCallback((tabId, coin = null) => {
     const name = Object.keys(tabs).find(candidate => candidate.toLowerCase() === String(tabId).toLowerCase());
     if (!name) return false;
-    setSelectedCoin(name === "Gallery" ? coin : null);
-    setTab(name);
-    return true;
+    if (name === 'Gallery') setSelectedCoin(typeof coin === 'string' ? coin : coin?.slug || null);
+    if (coin?.asset_id) setSelectedAssetId(coin.asset_id);
+    setTab(name); return true;
   }, []);
   const currentCheck = useRef(isAccountCurrent);
   currentCheck.current = isAccountCurrent;
@@ -153,6 +150,9 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
     } catch (failure) { setError(failure.message); }
   }
   const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: signed => core.submit(signed), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
+  const gallery = useGallery(client);
+  const assetConfig = gallery.coins?.find(coin => coin.asset_id === selectedAssetId) || null;
+  const symbol = assetConfig?.symbol || 'NAVCoin';
   if (!accountId) return <div className="route-scroll"><div className="l1w"><Card><ViewHeader eyebrow="Post Fiat L1" title="L1 wallet" subtitle="Sign in to open your L1 wallet." /></Card></div></div>;
   const Tab = tabs[tab];
   const view = tab === ISSUER.id ? ISSUER : VIEWS.find(item => item.id === tab);
@@ -166,7 +166,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       </div>}
     </header>
     {error && <div style={{ marginBottom: 16 }}><Notice tone="danger" role="alert">{error}</Notice></div>}
-    {!address ? <Gate {...{ symbol, exists, busy, passphrase, setPassphrase, seed, setSeed, openWallet, restoreBackup }} /> : <>
+    {!address ? <Gate {...{ exists, busy, passphrase, setPassphrase, seed, setSeed, openWallet, restoreBackup }} /> : <>
       {backupDue && <div style={{ marginBottom: 18 }}><Notice tone="warning" title="Back up this wallet before adding funds" action={<button type="button" className="l1-btn is-sm" onClick={downloadBackup}><Download size={14} aria-hidden />Back up now</button>}>Download the encrypted backup and keep your passphrase somewhere safe. Without both, a lost browser means lost funds.</Notice></div>}
       <nav aria-label="L1 wallet tabs" className="l1-tabs">
         <div className="l1-tabs-main">{VIEWS.map(item => <button key={item.id} type="button" className="l1-tab" aria-pressed={tab === item.id} onClick={() => onNavigate(item.id)}><item.icon size={16} aria-hidden />{item.label}</button>)}</div>
@@ -174,7 +174,10 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       </nav>
       <div className="l1-enter" key={tab}>
         {view?.title && <ViewHeader eyebrow={view.id === ISSUER.id ? "Operator" : undefined} title={view.title} subtitle={typeof view.subtitle === "function" ? view.subtitle(symbol, assetConfig) : view.subtitle}>{view.id === ISSUER.id && <Badge tone="warning">Issuer only</Badge>}</ViewHeader>}
-        {Tab && <Suspense fallback={<p className="l1-status-line"><Spinner />Loading…</p>}><Tab client={client} assetConfig={assetConfig} onNavigate={onNavigate} selectedCoin={selectedCoin} onSelectCoin={setSelectedCoin} /></Suspense>}
+        {['Market', 'Redeem'].includes(tab) && <label className="l1-field"><span>NAVCoin</span><select aria-label="Select NAVCoin" value={selectedAssetId || ''} onChange={event => setSelectedAssetId(event.target.value || null)}>
+          <option value="">Choose a NAVCoin</option>{gallery.coins?.map(coin => <option key={coin.asset_id} value={coin.asset_id}>{coin.name}{coin.retired ? ' · Retired' : ''}</option>)}
+        </select></label>}
+        {['Market', 'Redeem', 'Issuer'].includes(tab) && (!assetConfig || (tab === 'Market' && !assetConfig.capabilities?.book.available && !assetConfig.capabilities?.create.available) || (tab === 'Redeem' && !assetConfig.capabilities?.cash_in.available)) ? <Card><Notice title={assetConfig ? `${symbol} · View only` : 'Choose a NAVCoin'}>{assetConfig ? (tab === 'Redeem' ? assetConfig.capabilities?.cash_in.reason : assetConfig.capabilities?.book.reason) : 'Pick a coin above or explore the NAVCoin gallery.'}</Notice><button className="l1-link" onClick={() => onNavigate('Gallery', assetConfig)}>View NAVCoin page</button>{gallery.error && <Notice>{gallery.error}</Notice>}</Card> : Tab && <Suspense fallback={<p className="l1-status-line"><Spinner />Loading…</p>}><Tab key={assetConfig?.asset_id || "none"} client={client} gallery={gallery} marketConfig={assetConfig} assetConfig={assetConfig} onNavigate={onNavigate} selectedCoin={selectedCoin} onSelectCoin={slug => { setSelectedCoin(slug); const coin = gallery.coins?.find(c => c.slug === slug); if (coin) setSelectedAssetId(coin.asset_id); }} /></Suspense>}
       </div>
     </>}
   </div></div></L1WalletContext.Provider>;

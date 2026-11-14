@@ -1,4 +1,4 @@
-// B23 at-a-glance panel. Reads nothing itself except the public opening-plan
+// NAVCoin at-a-glance panel. Reads nothing itself except the public opening-plan
 // artifact, used only to show the Schwab cutoff when it matches the live NAV.
 import { useEffect, useState } from "react";
 import { Landmark } from "lucide-react";
@@ -30,7 +30,7 @@ export function navValue(state) {
   return reported != null && /^[0-9]+$/.test(String(reported)) && BigInt(reported) > 0n ? BigInt(reported) : valueAt(state.supply, state.nav.nav_per_unit);
 }
 
-export default function B23Facts({ state, config, error, compact = false, onNavigate }) {
+export default function NavcoinFacts({ state, config, error, compact = false, onNavigate }) {
   const cutoff = useEquityCutoff(state?.nav);
   const symbol = config?.symbol || "NAVCoin";
   if (!state) return <Card className="l1-facts">
@@ -63,7 +63,7 @@ export default function B23Facts({ state, config, error, compact = false, onNavi
         ["Route", <Mono value={pool.route_id} />],
         ["Route epoch / policy", `${pool.route_epoch} / ${pool.policy_epoch}`],
         nav && ["Reserve packet", <Mono value={nav.reserve_packet_hash} />],
-        [`${symbol} asset`, <Mono value={config?.b23_asset_id} />],
+        [`${symbol} asset`, <Mono value={config?.nav_asset_id} />],
         ["Issuer", <Mono value={config?.issuer_address} />],
       ]} />
     </Details>}

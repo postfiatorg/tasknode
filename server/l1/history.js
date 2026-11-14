@@ -1,32 +1,11 @@
 // Read-only recovery for nodes whose account_tx index rejects duplicate receipts.
 // Reads committed blocks and their archived transactions; never edits node data.
-import { connect } from 'node:net';
-import { deploymentConfig, assetSymbols } from '../../src/features/wallet/l1/market/constants.js';
+import { readRpc } from './read-rpc.js';
+import { getNavcoinRegistry } from './navcoin-registry.js';
+import { assetSymbols, routeSymbols } from '../../src/features/wallet/l1/market/constants.js';
 const GROUPS = ['transactions', 'payments_v2', 'asset_transactions', 'atomic_swap_transactions', 'escrow_transactions', 'nft_transactions', 'offer_transactions'];
 const ADDRESS_FIELDS = ['source', 'from', 'to', 'owner', 'account', 'recipient', 'native_recipient', 'settlement_recipient', 'spread_recipient'];
-function readRpc(endpoint, method, params) {
-  return new Promise((resolve, reject) => {
-    const socket = connect({ host: endpoint.hostname, port: Number(endpoint.port) });
-    let chunks = [], size = 0, complete = false;
-    const fail = error => { socket.destroy(); reject(error); };
-    socket.setTimeout(60000, () => fail(Error('History read timed out')));
-    socket.on('error', fail);
-    socket.on('close', () => { if (!complete) reject(Error(`History ${method} connection ended before a complete response`)); });
-    socket.on('connect', () => socket.write(JSON.stringify({ version: 'postfiat-local-rpc-v1', id: 'wallet-history', method, params }) + '\n'));
-    socket.on('data', chunk => {
-      size += chunk.length;
-      if (size > 64 * 1024 * 1024) { fail(Error('History response too large')); return; }
-      chunks.push(chunk);
-      if (!chunk.includes(10)) return;
-      complete = true;
-      socket.destroy();
-      try { const response = JSON.parse(Buffer.concat(chunks).toString().split('\n')[0]); chunks = [];
-        if (response.ok !== true) throw Error(`History ${method} could not be read`);
-        resolve(response.result);
-      } catch (error) { reject(error); }
-    });
-  });
-}
+
 const canonical = value => JSON.stringify(value, Object.keys(value).sort());
 export function projectHistory({ blocks, archives, receipts }, address, limit = 100, symbols = {}, routes = {}) {
   const batches = new Map(archives.map(entry => [`${entry.batch_kind}:${entry.batch_id}`, entry]));
@@ -79,8 +58,7 @@ export function createHistoryReader(env = process.env, injectedRpc) {
   const endpoint = new URL(env.L1_HISTORY_RPC_URL);
   if (endpoint.protocol !== 'tcp:' || !['127.0.0.1', '[::1]'].includes(endpoint.hostname) || !endpoint.port || endpoint.username || endpoint.password) throw Error('History RPC must be a loopback TCP endpoint');
   const rpc = injectedRpc || ((method, params) => readRpc(endpoint, method, params));
-  const config = deploymentConfig(env), symbols = assetSymbols(config);
-  const routes = { [config.route_id]: config.symbol, ...Object.fromEntries(config.retired_assets.filter(coin => coin.route_id).map(coin => [coin.route_id, coin.symbol])) };
+
   let cached = null, pending = null;
   async function snapshot() {
     const status = await rpc('status', {});
@@ -103,6 +81,9 @@ export function createHistoryReader(env = process.env, injectedRpc) {
   return async (address, limit = 100) => {
     if (!/^pf[0-9a-f]{40}$/.test(address)) throw Error('Invalid history address');
     if (!pending) pending = snapshot().finally(() => { pending = null; });
-    return projectHistory(await pending, address, Math.max(1, Math.min(100, Number(limit) || 100)), symbols, routes);
+    const history = await pending;
+    const coins = await getNavcoinRegistry();
+    const symbols = assetSymbols(coins), routes = routeSymbols(coins);
+    return projectHistory(history, address, Math.max(1, Math.min(100, Number(limit) || 100)), symbols, routes);
   };
 }

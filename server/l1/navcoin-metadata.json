@@ -1,0 +1,34 @@
+[
+  {
+    "asset_id": "52285e4ded1d58113cfaa12bbc034b8b10213f699b3224c74160450229d6bf7ccfe505c78f2599d975ae2ecf98f7d8af",
+    "slug": "b24",
+    "name": "B24",
+    "retired": false,
+    "description": "Backed by a Schwab brokerage account.",
+    "methodology": "NAV uses the finalized reserve valuation and circulating supply recorded on Post Fiat. Verification coverage is taken from each packet; finalization alone does not prove the reserves. The brokerage reading is attested; a separate native subscription reserve is reported."
+  },
+  {
+    "asset_id": "521c6c630bb48d4a37ab4a7bd4900dd2caa2d9e99499e452da3c7ce75b3d74b62d20e18555642bec32174498cbee5e2c",
+    "slug": "a666",
+    "name": "A666",
+    "retired": false,
+    "description": "A NAVCoin linked to an Ethereum wrapped token.",
+    "methodology": "NAV uses the finalized reserve valuation and circulating supply recorded on Post Fiat. Verification coverage is taken from each packet; finalization alone does not prove the reserves. The chain profile and packet identify the valuation source. A detailed asset-by-asset valuation methodology has not been published here."
+  },
+  {
+    "asset_id": "43b9ba500a8cc04b13a10f35c3187ff09fdf52a3accfb507226144dcbe2ef14f4b2e1d555c62bbdf63e5cf3e7e8231cc",
+    "slug": "bmnrc",
+    "name": "BMNRC",
+    "retired": false,
+    "description": "A NAVCoin linked to an Ethereum wrapped token.",
+    "methodology": "NAV uses the finalized reserve valuation and circulating supply recorded on Post Fiat. Verification coverage is taken from each packet; finalization alone does not prove the reserves. The chain profile and packet identify the valuation source. A detailed asset-by-asset valuation methodology has not been published here."
+  },
+  {
+    "asset_id": "ca7845134c8e95819082fcd2f1612808e20a37dfabab98dab120f99fd2c54c18ffb50d98c0664480420c881773244627",
+    "slug": "b23",
+    "name": "B23",
+    "retired": true,
+    "description": "Backed by a Schwab brokerage account.",
+    "methodology": "NAV uses the finalized reserve valuation and circulating supply recorded on Post Fiat. Verification coverage is taken from each packet; finalization alone does not prove the reserves. The brokerage reading is attested; a separate native subscription reserve is reported."
+  }
+]

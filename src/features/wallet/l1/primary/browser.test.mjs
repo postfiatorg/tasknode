@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { mkdir } from 'node:fs/promises';
 const { chromium } = await import('/home/postfiat/repos/postfiatl1v2-fastswap/wallet-web/node_modules/playwright/index.mjs');
-const out = '/home/postfiat/repos/b23-coord/evidence/trade/phase2/primary-synthetic'; await mkdir(out, { recursive: true });
+const out = process.env.NAVCOIN_EVIDENCE_DIR || '/tmp/navcoin-primary-synthetic'; await mkdir(out, { recursive: true });
 const server = await createServer({ configFile: false, server: { host: '127.0.0.1', port: 0 }, appType: 'custom', plugins: [{ name: 'primary-fixture', configureServer(server) { server.middlewares.use(async (req, res, next) => { if (!req.url.startsWith('/primary-fixture')) return next(); res.setHeader('Content-Type', 'text/html'); res.end(await server.transformIndexHtml(req.url, '<html><body><div id="root"></div><script type="module" src="/src/features/wallet/l1/primary/browser-fixture.jsx"></script></body></html>')); }); } }] });
 await server.listen(); const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] }), errors = [];
 const p = await browser.newPage({ viewport: { width: 1440, height: 1100 } }); p.setDefaultTimeout(10000); p.on('pageerror', e => errors.push(e.message));

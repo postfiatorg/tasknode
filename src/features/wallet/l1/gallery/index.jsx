@@ -1,11 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowUpRight, RefreshCw } from "lucide-react";
 import { Amount, AssetAvatar, Badge, Card, CardHead, Details, IdChip, KV, Notice, Skeleton, Spinner, ViewHeader } from "../ui.jsx";
 import { amount, percentFromBps, usd } from "../format.js";
-import { loadConfig } from "../market/constants.js";
-import Market from "../market/index.jsx";
 import { versusNav } from "../market/pricing.js";
-import { useGallery } from "./useGallery.js";
 import { Freshness, Verification } from "./Verification.jsx";
 import NavHistory from "./History.jsx";
 
@@ -23,22 +19,17 @@ function GalleryRows({ coins, onSelect }) {
       <div data-label="Verification"><Verification split={coin.split} />{coin.split?.reportedOnly && <small>No independent proof yet</small>}</div>
       <div data-label="Latest reading"><Freshness value={coin.freshness} /></div>
       <div data-label="For sale now"><strong>{coin.depth ? `${coin.depth.partial ? "≥ " : ""}${amount(coin.depth.amount, { min: 0 })}` : "Unavailable"}</strong><small>{coin.name}{coin.depth?.partial ? " · partial book" : ""}</small></div>
-      <button type="button" className="l1-btn is-sm" onClick={() => onSelect(coin.slug)} aria-label={`${coin.retired ? "View retired" : "Buy"} ${coin.name}`}>{coin.retired ? "View" : "Buy"}</button>
+      <button type="button" className="l1-btn is-sm" onClick={() => onSelect(coin.slug)} aria-label={`${coin.retired ? "View retired" : "View"} ${coin.name}`}>View</button>
       {coin.errors?.length > 0 && <p className="l1-gallery-error l1-small">{coin.errors.join(" · ")}</p>}
     </article>)}
   </Card>;
 }
 
-function CoinPage({ coin, client, config, onNavigate, onBack }) {
+function CoinPage({ coin, onNavigate, onBack }) {
   const profile = coin.proof?.active_profile, nav = coin.latest;
   const premium = versusNav(coin.depth?.best, nav?.nav_per_unit != null ? BigInt(nav.nav_per_unit) : null);
-  const isActive = coin.asset_id === config?.b23_asset_id;
-  const issuer = coin.asset?.issuer;
-  const epoch = nav?.epoch;
-  const marketConfig = useMemo(() => !config || !issuer ? null : isActive ? { ...config, reading_epoch: epoch } : {
-    ...config, symbol: coin.name, b23_asset_id: coin.asset_id, market_quote_asset_id: coin.market_quote_asset_id,
-    route_id: coin.route_id, issuer_address: issuer, alice_holder_address: null, market_only: true, reading_epoch: epoch,
-  }, [config, isActive, coin.name, coin.asset_id, coin.market_quote_asset_id, coin.route_id, issuer, epoch]);
+  const config = coin;
+  const isActive = !coin.retired;
   return <>
     <button type="button" className="l1-link l1-gallery-back" onClick={onBack}><ArrowLeft size={15} aria-hidden />All NAVCoins</button>
     {coin.retired && <Notice tone="warning" title={`${coin.name} is retired`}>Existing balances remain visible. NAV and verification below are historical. Trading and cash-in are disabled here; contact the issuer about any remaining holding or reserved payout.</Notice>}
@@ -74,11 +65,14 @@ function CoinPage({ coin, client, config, onNavigate, onBack }) {
           ["Create", coin.pool?.issue_multiplier_bps != null || config.issue_multiplier_bps != null ? `NAV +${percentFromBps((coin.pool?.issue_multiplier_bps ?? config.issue_multiplier_bps) - 10000)}` : "Unavailable"],
           ["Cash in", coin.pool?.redeem_multiplier_bps != null || config.redeem_multiplier_bps != null ? `NAV −${percentFromBps(10000 - (coin.pool?.redeem_multiplier_bps ?? config.redeem_multiplier_bps))}` : "Unavailable"],
         ]} /><p className="l1-small l1-muted">Creation and cash-in terms are separate from order-book prices. Network fees apply. {["unsupported", "subscription"].includes(config.redemption_mode) ? (config.cash_in_note || "Native cash-in is not available in this wallet; exit through a matching market buyer.") : "Cash-in depends on live reserve capacity and route policy."}</p></Card>}
-        {isActive && <Card><CardHead title="Ethereum / Uniswap" />{config.ethereum?.available ? <KV rows={[["Wrapped token", <IdChip value={config.ethereum.wrapped_token} label="wrapped token" />], ["Pool", <IdChip value={config.ethereum.pool} label="Uniswap pool" />]]} /> : <><Badge>Not available yet</Badge><p className="l1-section-gap l1-small l1-muted">The wrapped token and pool are not both available. No Ethereum trading link is published.</p></>}</Card>}
+        {isActive && <Card><CardHead title="Ethereum / Uniswap" />{config.ethereum?.available ? <KV rows={[["Wrapped token", <IdChip value={config.ethereum.wrapped_token} label="wrapped token" />], ["Pool", <IdChip value={config.ethereum.pool} label="Uniswap pool" />]]} /> : <><Badge>Trading availability unverified</Badge><p className="l1-section-gap l1-small l1-muted">{config.ethereum?.reason}</p>{config.ethereum?.wrapped_token && <a className="l1-link" target="_blank" rel="noreferrer" href={`https://etherscan.io/token/${config.ethereum.wrapped_token}`}>Registered Ethereum token</a>}</>}</Card>}
         <NavHistory coin={coin} />
       </div>
       <div className="l1-stack">
-        {!coin.retired && (marketConfig ? <Market key={coin.asset_id} client={client} marketConfig={marketConfig} onNavigate={onNavigate} compact /> : <Card><Notice title="Buy ticket unavailable">Market configuration or asset information could not be read.</Notice></Card>)}
+        <Card><CardHead title={`Trade ${coin.name}`} />
+          {coin.capabilities?.book.available || coin.capabilities?.create.available ? <button className="l1-btn is-primary" onClick={() => onNavigate('Market', coin)}>Buy {coin.name}</button> : <Notice title="View only">{coin.capabilities?.book.reason}</Notice>}
+          <p className="l1-section-gap l1-small">{coin.capabilities?.create.available ? 'Create new coins at the current NAV plus the route fee.' : coin.capabilities?.create.reason}</p>
+        </Card>
         <Card>
           <CardHead title="Size and availability" />
           <KV rows={[
@@ -89,11 +83,12 @@ function CoinPage({ coin, client, config, onNavigate, onBack }) {
             coin.route_id && ["Cash-in reserve", coin.pool ? <Amount atoms={coin.pool.settlement_reserve_atoms} unit="PFUSDC" /> : "Unavailable"],
           ]} />
           <p className="l1-small l1-muted">TVL is the latest finalized reading’s net assets. It is not market liquidity or a promise of independent verification. Current supply can change after a reading.</p>
-          {isActive && coin.route_id && config.redemption_mode !== "unsupported" ? <button type="button" className="l1-link l1-section-gap" onClick={() => onNavigate("Redeem")}>Cash in {coin.name} at NAV<ArrowUpRight size={14} aria-hidden /></button> : <div className="l1-section-gap"><button type="button" className="l1-btn is-sm" disabled>Cash in {coin.name}</button><p className="l1-small l1-muted">{coin.retired ? "This retired coin is read-only in this wallet." : coin.pool?.live_value_enabled === false || coin.pool?.paused ? "This coin’s cash-in route is disabled on the chain." : "Cash in is not supported for this coin in this wallet."}</p></div>}
+          {coin.capabilities?.cash_in.available ? <button type="button" className="l1-link l1-section-gap" onClick={() => onNavigate("Redeem", coin)}>Cash in {coin.name} at NAV<ArrowUpRight size={14} aria-hidden /></button> : <p className="l1-section-gap l1-small l1-muted">Cash in unavailable: {coin.capabilities?.cash_in.reason}</p>}
+
         </Card>
         <Card><Details summary="Asset and source identifiers"><KV rows={[
           ["Asset", <IdChip value={coin.asset_id} label="asset id" />],
-          ["Market quote asset", <IdChip value={coin.market_quote_asset_id} label="quote asset id" />],
+          ["Market quote asset", coin.market_quote_asset_id ? <IdChip value={coin.market_quote_asset_id} label="quote asset id" /> : "None discovered"],
           coin.route_id && ["Cash-in route", coin.route_id],
           profile && ["Profile", <IdChip value={profile.profile_id} label="profile id" />],
           profile && ["Source", profile.source_class],
@@ -105,17 +100,14 @@ function CoinPage({ coin, client, config, onNavigate, onBack }) {
   </>;
 }
 
-export default function Gallery({ client, onNavigate, selectedCoin = null, onSelectCoin }) {
-  const gallery = useGallery(client);
-  const [config, setConfig] = useState(null);
-  useEffect(() => { let active = true; loadConfig().then(value => { if (active) setConfig(value); }).catch(() => {}); return () => { active = false; }; }, []);
+export default function Gallery({ gallery, onNavigate, selectedCoin = null, onSelectCoin }) {
   const coin = gallery.coins?.find(item => item.slug === selectedCoin);
   return <div className="l1-view l1-gallery">
     {!selectedCoin && <ViewHeader eyebrow="Discover" title="NAVCoins" subtitle="See the value behind each coin, how it is verified, and what you can buy." />}
     <div className="l1-toolbar"><span>{gallery.loading ? <><Spinner size={14} />Reading chain state…</> : gallery.readAt ? `Live chain data · read ${new Date(gallery.readAt).toLocaleTimeString()} · refreshes every 15 seconds` : "Live chain data"}</span><button type="button" className="l1-btn is-sm is-ghost" onClick={gallery.refresh} disabled={gallery.loading}><RefreshCw size={14} aria-hidden />Refresh NAVCoins</button></div>
     {gallery.error && <Notice tone="danger" role="alert">{gallery.error}</Notice>}
     {!gallery.coins && !gallery.error && <Card><Skeleton height={240} /></Card>}
-    {coin ? <CoinPage coin={coin} client={client} config={config} onNavigate={onNavigate} onBack={() => onSelectCoin(null)} /> : gallery.coins && <>
+    {coin ? <CoinPage coin={coin} onNavigate={onNavigate} onBack={() => onSelectCoin(null)} /> : gallery.coins && <>
       <div className="l1-gallery-intro"><p><b>NAV</b> is the reported net asset value per coin. <b>TVL</b> is the total net assets in its latest finalized reading. Sorted by largest TVL.</p><p>Proven = cryptographic verification · Attested = signed statements · Reported = no independent proof credited. Finalized does not mean proven.</p></div>
       <GalleryRows coins={gallery.coins} onSelect={onSelectCoin} />
       <p className="l1-small l1-muted l1-section-gap">Changes compare consecutive finalized readings, not daily returns. Ages use block heights; historical block timestamps are unavailable from the wallet RPC. Availability is sell offers in each coin’s PFUSDC market.</p>

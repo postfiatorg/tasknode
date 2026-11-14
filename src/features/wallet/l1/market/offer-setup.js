@@ -17,9 +17,9 @@ function neededLimit(state, operation, id) {
 export function assertMarketFunds(config, operation, state) {
   const balance = lineBalance(state.balances.assets, operation.taker_gets_asset_id);
   if (operation.taker_gets_asset_id === config.market_quote_asset_id && balance === 0n && lineBalance(state.balances.assets, config.pfusdc_asset_id) > 0n) {
-    throw new Error(`Your PFUSDC came from the cash-in reserve. To buy ${config.symbol || "B23"}, use Add funds to convert Ethereum USDC into PFUSDC for this market. Reserve PFUSDC cannot be converted here.`);
+    throw new Error(`Your PFUSDC came from the cash-in reserve. To buy ${config.symbol || "NAVCoin"}, use Add funds to convert Ethereum USDC into PFUSDC for this market. Reserve PFUSDC cannot be converted here.`);
   }
-  if (balance < integer(operation.taker_gets_amount)) throw new Error(`Not enough ${operation.taker_gets_asset_id === config.b23_asset_id ? (config.symbol || 'B23') : 'PFUSDC'} available for this offer. Add funds before signing.`);
+  if (balance < integer(operation.taker_gets_amount)) throw new Error(`Not enough ${operation.taker_gets_asset_id === config.nav_asset_id ? (config.symbol || 'NAVCoin') : 'PFUSDC'} available for this offer. Add funds before signing.`);
 }
 export async function planOfferSetup(client, config, intent, state) {
   const op = intent.operation;
@@ -27,7 +27,7 @@ export async function planOfferSetup(client, config, intent, state) {
   // A reserve-only balance needs guidance before any setup transaction.
   if (op.taker_gets_asset_id === config.market_quote_asset_id && lineBalance(state.balances.assets, config.market_quote_asset_id) === 0n && lineBalance(state.balances.assets, config.pfusdc_asset_id) > 0n) assertMarketFunds(config, op, state);
   const plans = [];
-  for (const id of [config.b23_asset_id, config.market_quote_asset_id]) {
+  for (const id of [config.nav_asset_id, config.market_quote_asset_id]) {
     const line = accountLine(state, id), limit = neededLimit(state, op, id);
     if (line?.frozen) throw new Error('A required asset balance is frozen; contact its issuer before trading.');
     if (line && integer(line.limit, 'Trust-line limit') >= limit) continue;
@@ -36,7 +36,7 @@ export async function planOfferSetup(client, config, intent, state) {
       || (id === config.market_quote_asset_id && asset.asset_family_id !== config.pfusdc_asset_id)) throw new Error('Asset identity does not match the reviewed market configuration');
     if (asset.issuer === client.address) throw new Error('Use a holder wallet to trade these assets.');
     if (asset.requires_authorization && line?.authorized !== true) throw new Error('The asset issuer must authorize this wallet before trading.');
-    plans.push({ unit: id === config.b23_asset_id ? (config.symbol || 'B23') : 'PFUSDC', intent: { kind: 'asset', operation: {
+    plans.push({ unit: id === config.nav_asset_id ? (config.symbol || 'NAVCoin') : 'PFUSDC', intent: { kind: 'asset', operation: {
       operation: 'trust_set', account: client.address, issuer: asset.issuer, asset_id: id,
       limit: safeInteger(limit), authorized: false, frozen: false, reserve_paid: 10,
     } } });
@@ -46,7 +46,7 @@ export async function planOfferSetup(client, config, intent, state) {
 export function offerPreflight(config, intent, state) {
   if (intent.operation.operation !== 'offer_create') return;
   assertMarketFunds(config, intent.operation, state);
-  for (const id of [config.b23_asset_id, config.market_quote_asset_id]) {
+  for (const id of [config.nav_asset_id, config.market_quote_asset_id]) {
     const line = accountLine(state, id);
     if (!line || line.frozen || integer(line.limit, 'Trust-line limit') < neededLimit(state, intent.operation, id)) throw new Error('Asset setup changed; review this offer again before signing.');
   }

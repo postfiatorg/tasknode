@@ -7,13 +7,13 @@ import Redeem from "../redeem/index.jsx";
 import { config, bob, lines, state, equityPlan } from "./fixtures.mjs";
 const params = new URLSearchParams(location.search), tab = params.get("tab") || "market";
 const peerMarket = params.get("coin") === "a666";
-if (peerMarket) config.b23_asset_id = "6".repeat(96);
+if (peerMarket) config.nav_asset_id = "6".repeat(96);
 let ledger = state(), counter = 0;
 const history = [];
 const address = tab === "issuer" ? config.issuer_address : bob;
 ledger.balances.address = address;
 if (params.get("gate") === "blocked") config.g1_passed = false;
-if(params.get("missing") === "b23") ledger.balances.assets.lines=ledger.balances.assets.lines.filter(row=>row.asset_id!==config.b23_asset_id);
+if(params.get("missing") === "b23") ledger.balances.assets.lines=ledger.balances.assets.lines.filter(row=>row.asset_id!==config.nav_asset_id);
 if(params.get("missing") === "both") ledger.balances.assets=lines(0,0,0), ledger.balances.assets.lines=[];
 if(params.get("funds") === "reserve") ledger.balances.assets=lines(0,200000000,0);
 const allOffers = [];
@@ -53,7 +53,7 @@ const client = { accountId: "synthetic-navcoin-account", address, unlocked: true
     } else if(op.operation==="pftl_uniswap_redemption_fund") { balance(config.pfusdc_asset_id,-op.amount_atoms);ledger.pool.settlement_reserve_atoms+=op.amount_atoms;ledger.pool.available_redeem_atoms+=op.amount_atoms;
     } else if(op.operation==="pftl_uniswap_primary_redeem") {
       const gross=op.nav_amount_atoms, holder=Math.floor(gross*ledger.pool.redeem_multiplier_bps/10000), spread=gross-holder;
-      balance(config.b23_asset_id,-op.nav_amount_atoms);balance(config.pfusdc_asset_id,holder);ledger.supply-=op.nav_amount_atoms;ledger.pool.settlement_reserve_atoms-=gross;ledger.pool.available_redeem_atoms-=op.nav_amount_atoms;ledger.managementLines=lines(0,spread);
+      balance(config.nav_asset_id,-op.nav_amount_atoms);balance(config.pfusdc_asset_id,holder);ledger.supply-=op.nav_amount_atoms;ledger.pool.settlement_reserve_atoms-=gross;ledger.pool.available_redeem_atoms-=op.nav_amount_atoms;ledger.managementLines=lines(0,spread);
       receipt.redemption_settlement={settlement_asset_id:config.pfusdc_asset_id,settlement_recipient:address,settlement_value_atoms:holder,spread_recipient:config.management_address,spread_value_atoms:spread};
     } else if(op.operation==="pftl_uniswap_route_epoch_advance") { Object.assign(ledger.pool,{route_epoch:op.next_route_epoch,policy_epoch:op.next_primary_market_policy.policy_epoch,policy_hash:op.next_primary_market_policy.policy_hash,redeem_multiplier_bps:op.next_primary_market_policy.redeem_multiplier_bps});
     } else if(op.operation==="nav_reserve_submit") { ledger.proof.packets.unshift({...op,state:"pending"});
@@ -73,6 +73,6 @@ function App() {
   const [,rerender]=useState(0);
   window.fixture={history,ledger,client,installOpeningPolicy:()=>{const p=equityPlan();ledger.pool.pricing_nav_epoch=3;ledger.pool.pricing_reserve_packet_hash=p.packet.packet_hash;},switchAccount:()=>{client.accountId="another-account";client.address=config.alice_holder_address;rerender(n=>n+1);}};
   const Tab={market:Market,issuer:Issuer,redeem:Redeem}[tab];
-  return <main><p>SYNTHETIC CLIENT — NO LIVE TRANSACTIONS</p><Tab client={{...client}} marketConfig={peerMarket ? { ...config, symbol: "A666", market_only: true, route_id: null, alice_holder_address: null } : null} onNavigate={id=>history.push(`navigate:${id}`)} /></main>;
+  return <main><p>SYNTHETIC CLIENT — NO LIVE TRANSACTIONS</p><Tab client={{...client}} marketConfig={peerMarket ? { ...config, symbol: "A666", market_only: true, route_id: null, alice_holder_address: null } : config} onNavigate={id=>history.push(`navigate:${id}`)} /></main>;
 }
 createRoot(document.getElementById("root")).render(<App />);

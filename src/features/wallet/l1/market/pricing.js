@@ -1,5 +1,5 @@
 // Pure price maths for the simple buy/sell ticket. All values are BigInt atoms (6 decimals).
-// A level is { size: B23 atoms, total: PFUSDC atoms } taken from the order book, best price first.
+// A level is { size: NAVCoin atoms, total: PFUSDC atoms } taken from the order book, best price first.
 const UNIT = 1000000n;
 const ceilDiv = (a, b) => (a + b - 1n) / b;
 
@@ -11,7 +11,7 @@ export function priceSource(levels, customPrice, nav) {
   return { kind: "none", price: null };
 }
 
-// PFUSDC for a B23 quantity. Against the book the limit is the worst level touched, so the whole
+// PFUSDC for a NAVCoin quantity. Against the book the limit is the worst level touched, so the whole
 // quantity can fill; `filled` is how much of it resting offers cover right now.
 export function totalForQuantity(quantity, levels, source) {
   if (!quantity || quantity <= 0n || source.price === null) return null;
@@ -21,7 +21,7 @@ export function totalForQuantity(quantity, levels, source) {
   return { total: ceilDiv(quantity * worst.total, worst.size), filled: quantity - left, depth };
 }
 
-// B23 quantity for a PFUSDC amount (the inverse; rounds the quantity down so the amount is never exceeded).
+// NAVCoin quantity for a PFUSDC amount (the inverse; rounds the quantity down so the amount is never exceeded).
 export function quantityForTotal(total, levels, source) {
   if (!total || total <= 0n || source.price === null) return null;
   if (source.kind !== "book") return (total * UNIT) / source.price;

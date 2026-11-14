@@ -43,7 +43,7 @@ export async function createPlan(client, config, quantity) {
     }
     throw new Error('Not enough market PFUSDC (S). Add funds before creating coins.');
   }
-  const setup = await planOfferSetup(client, config, { operation: { operation: 'offer_create', taker_gets_asset_id: config.market_quote_asset_id, taker_gets_amount: quote.due, taker_pays_asset_id: config.b23_asset_id, taker_pays_amount: quote.amount } }, before);
+  const setup = await planOfferSetup(client, config, { operation: { operation: 'offer_create', taker_gets_asset_id: config.market_quote_asset_id, taker_gets_amount: quote.due, taker_pays_asset_id: config.nav_asset_id, taker_pays_amount: quote.amount } }, before);
   const id = nonce() + nonce().slice(0, 32), p = before.pool;
   const release = { kind: 'asset', operation: { operation: 'pftl_uniswap_order_release', releaser: client.address, route_id: config.route_id, reservation_id: id } };
   return { version: 1, address: client.address, route: config.route_id, quote, binding: Object.fromEntries(bindings.map(k => [k, p[k]])),
@@ -58,8 +58,8 @@ export function primaryPreflight(config, plan, step, current, reviewed) {
   primaryReady(config, current);
   for (const key of bindings) if (current.pool[key] !== plan.binding[key]) throw new Error('NAV or route policy changed; cancel the reservation and review again');
   if (integer(current.proof.current_height) + 1n >= BigInt(plan.quote.expiry)) throw new Error('Reservation expired; release it and review again');
-  const line = accountLine(current, config.b23_asset_id);
-  if (!line || line.frozen || integer(line.limit) < lineBalance(current.balances.assets, config.b23_asset_id) + BigInt(plan.quote.amount)) throw new Error('Receiving limit is insufficient for creation');
+  const line = accountLine(current, config.nav_asset_id);
+  if (!line || line.frozen || integer(line.limit) < lineBalance(current.balances.assets, config.nav_asset_id) + BigInt(plan.quote.amount)) throw new Error('Receiving limit is insufficient for creation');
   if (step.kind === 'reserve' && lineBalance(current.balances.assets, config.market_quote_asset_id) < BigInt(plan.quote.due)) throw new Error('Insufficient market PFUSDC for the reservation');
 }
 export async function verifyPrimary(client, config, plan, step, before, after, receipt, txId) {
@@ -77,7 +77,7 @@ export async function verifyPrimary(client, config, plan, step, before, after, r
   const expectedCash = step.kind === 'reserve' ? -due : step.kind === 'cancel' ? due : step.kind === 'redeem' ? BigInt(q.holder) : 0n;
   const expectedReserve = step.kind === 'subscribe' ? gross : step.kind === 'redeem' ? -gross : 0n;
   const expectedSpread = ['subscribe', 'redeem'].includes(step.kind) ? fee : 0n;
-  if (BigInt(delta.B23) !== expectedCoin || BigInt(delta.PFUSDC) !== expectedCash || integer(after.supply) - integer(before.supply) !== expectedCoin || d('settlement_reserve_atoms') !== expectedReserve || d('non_nav_spread_atoms') !== expectedSpread || custodyDelta('principal_atoms') !== expectedReserve || custodyDelta('spread_atoms') !== expectedSpread || trackedBalance(after, client.address) - trackedBalance(before, client.address) !== expectedCoin) throw new Error('Subscription balances, supply, tracked inventory or source reserve do not match the accepted receipt');
+  if (BigInt(delta.NAVCoin) !== expectedCoin || BigInt(delta.PFUSDC) !== expectedCash || integer(after.supply) - integer(before.supply) !== expectedCoin || d('settlement_reserve_atoms') !== expectedReserve || d('non_nav_spread_atoms') !== expectedSpread || custodyDelta('principal_atoms') !== expectedReserve || custodyDelta('spread_atoms') !== expectedSpread || trackedBalance(after, client.address) - trackedBalance(before, client.address) !== expectedCoin) throw new Error('Subscription balances, supply, tracked inventory or source reserve do not match the accepted receipt');
   const reservations = step.kind === 'reserve' ? 1n : ['subscribe', 'cancel'].includes(step.kind) ? -1n : 0n;
   const entitlements = step.kind === 'subscribe' ? 1n : step.kind === 'release' ? -1n : 0n;
   if (d('active_reservation_count') !== reservations || d('export_entitlement_count') !== entitlements || after.pool.invariant_holds !== true) throw new Error('Reservation lifecycle or supply invariant did not verify');
@@ -86,7 +86,7 @@ export async function verifyPrimary(client, config, plan, step, before, after, r
 export function subscriberQuote(config, state, quantity, address) {
   primaryReady(config, state);
   const amount = BigInt(atoms(quantity)), p = state.pool;
-  if (amount > trackedBalance(state, address) || amount > lineBalance(state.balances.assets, config.b23_asset_id)) throw new Error('Only your tracked subscription holdings can be cashed in. Book purchases must be sold on the market.');
+  if (amount > trackedBalance(state, address) || amount > lineBalance(state.balances.assets, config.nav_asset_id)) throw new Error('Only your tracked subscription holdings can be cashed in. Book purchases must be sold on the market.');
   const gross = ceil(amount * integer(state.nav.nav_per_unit), 1000000n), bps = integer(p.redeem_multiplier_bps);
   if (bps < 9500n || bps > 10000n) throw new Error('Invalid cash-in multiplier');
   if (amount < integer(p.min_order_atoms) || amount > integer(p.max_order_atoms) || amount > integer(p.available_redeem_atoms) || gross > integer(sourceCustody(config, state).principal_atoms)) throw new Error('The matching PFUSDC reserve or route capacity cannot cover this cash-in');

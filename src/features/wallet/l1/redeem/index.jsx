@@ -8,8 +8,8 @@ import { Amount, Card, CardHead, Notice, Skeleton } from "../ui.jsx";
 import { amount, percentFromBps, plainError } from "../format.js";
 import { buildRedeem, redeemPreflight, redemptionQuote, verifyRedeem } from "./model.js";
 const plain = atoms => units(atoms).replace(/\.?0+$/, "") || "0";
-export default function RedeemTab({ client, onNavigate }) {
-  const { data, error, loading, refresh } = useNavcoin(client);
+export default function RedeemTab({ client, onNavigate, marketConfig }) {
+  const { data, error, loading, refresh } = useNavcoin(client, false, marketConfig);
   const symbol = data?.config?.symbol || "NAVCoin";
   const [quantity, setQuantity] = useState(""), [request, setRequest] = useState(null), [estimate, setEstimate] = useState(null), [actionError, setActionError] = useState("");
   function review(event) {
@@ -40,7 +40,7 @@ export default function RedeemTab({ client, onNavigate }) {
   const visibleRequest = request?.accountId === client.accountId && request?.address === client.address && client.unlocked;
   let held = null, preview = null, previewError = "";
   if (data) {
-    try { held = lineBalance(data.balances.assets, data.config.b23_asset_id); } catch { held = null; }
+    try { held = lineBalance(data.balances.assets, data.config.nav_asset_id); } catch { held = null; }
     if (quantity.trim()) { try { preview = redemptionQuote(data.config, data.state, quantity); } catch (e) { previewError = e.message; } }
   }
   const pool = data?.state?.pool;

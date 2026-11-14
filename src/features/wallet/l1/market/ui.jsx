@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleAlert, CircleCheck, RefreshCw, TriangleAlert } from "lucide-react";
-import { loadConfig } from "./constants.js";
 import { readBook, readPool } from "./model.js";
 import { prepareAction, submitAction } from "./transaction.js";
 import { Amount, Badge, Card, CardHead, Details, IdChip, JsonBlock, KV, Mono, Notice, Spinner } from "../ui.jsx";
@@ -17,8 +16,11 @@ export function useNavcoin(client, market = false, marketConfig = null) {
     if (!current?.unlocked || !current.address) { setLoading(false); return; }
     setLoading(true);
     try {
-      const config = marketConfig || await loadConfig();
-      const [state, book, balances] = await Promise.all([readPool(current, config), market ? readBook(current, config) : null, current.getBalances()]);
+      if (!marketConfig) throw new Error("Choose a NAVCoin first");
+      const config = marketConfig;
+      const state = await readPool(current, config);
+      const book = market ? await readBook(current, config) : null;
+      const balances = await current.getBalances();
       if (market) state.nav = finalizedReadings(state.proof).at(-1);
       if (ticket === generation.current) setData({ config, state, book, balances, address: current.address, accountId: current.accountId, readAt: Date.now() });
       retries.current = 0;
@@ -32,7 +34,7 @@ export function useNavcoin(client, market = false, marketConfig = null) {
   }, [market, marketConfig]);
   refreshRef.current = refresh;
   useEffect(() => { const token = generation; void refresh(); return () => { token.current++; }; }, [refresh, accountId, address, unlocked]);
-  return { data: data?.address === address && data?.accountId === accountId && unlocked ? data : null, error, loading, refresh };
+  return { data: data?.address === address && data?.accountId === accountId && data?.config.nav_asset_id === marketConfig?.nav_asset_id && unlocked ? data : null, error, loading, refresh };
 }
 export function WalletNotice({ client, error, loading, refresh, data }) {
   const time = data?.readAt ? new Date(data.readAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : null;
@@ -45,7 +47,7 @@ export function WalletNotice({ client, error, loading, refresh, data }) {
   </>;
 }
 export function PoolState({ state, config }) {
-  const p = state.pool, symbol = config.symbol || "B23";
+  const p = state.pool, symbol = config.symbol || "NAVCoin";
   const fee = Number.isSafeInteger(p.redeem_multiplier_bps) ? 10000 - p.redeem_multiplier_bps : null;
   return <Card aria-label={`${symbol} reserve state`}>
     <CardHead eyebrow="Standing reserve" title={`${symbol} reserve`}>{p.invariant_holds === true ? <Badge tone="success" dot>Supply balanced</Badge> : p.invariant_holds === false ? <Badge tone="danger">Supply mismatch</Badge> : null}</CardHead>
@@ -119,13 +121,13 @@ export function ActionReview({ client, request, onComplete, onCancel }) {
       {effects?.credits ? <div className="l1-deltas">
         <div className="l1-delta is-up"><small>You received</small><span><Amount atoms={effects.credits.settlement_value_atoms} unit="PFUSDC" testId="credit-holder" /></span></div>
         <div className="l1-delta"><small>Cash-in fee</small><span><Amount atoms={effects.credits.spread_value_atoms} unit="PFUSDC" testId="credit-fee" /></span></div>
-        {effects.deltas && <DeltaCard label={`${request.symbol || "B23"} balance`} atoms={effects.deltas.B23} unit={request.symbol || "B23"} />}
+        {effects.deltas && <DeltaCard label={`${request.symbol || "NAVCoin"} balance`} atoms={effects.deltas.NAVCoin} unit={request.symbol || "NAVCoin"} />}
       </div> : effects?.deltas && <div className="l1-deltas">
-        <DeltaCard label={`${request.symbol || "B23"} balance`} atoms={effects.deltas.B23} unit={request.symbol || "B23"} />
+        <DeltaCard label={`${request.symbol || "NAVCoin"} balance`} atoms={effects.deltas.NAVCoin} unit={request.symbol || "NAVCoin"} />
         <DeltaCard label="PFUSDC balance" atoms={effects.deltas.PFUSDC} unit="PFUSDC" />
         {effects.locked && BigInt(effects.locked) > 0n && <div className="l1-delta"><small>Locked in your open offer</small><span><Amount atoms={effects.locked} unit={request.lockedUnit} /></span></div>}
       </div>}
-      {effects?.capacityAfter != null && <KV rows={[["Cash-in capacity", <>{amount(effects.capacityBefore)} → <Amount atoms={effects.capacityAfter} unit={request.symbol || "B23"} /></>]]} />}
+      {effects?.capacityAfter != null && <KV rows={[["Cash-in capacity", <>{amount(effects.capacityBefore)} → <Amount atoms={effects.capacityAfter} unit={request.symbol || "NAVCoin"} /></>]]} />}
       <div className="l1-row"><span className="l1-muted l1-small">Transaction</span><IdChip value={outcome.txId} label="transaction id" /></div>
       <Details summary="Receipt and before/after balances">
         {effects?.message && <p className="l1-small l1-muted">{plainError(effects.message)}</p>}

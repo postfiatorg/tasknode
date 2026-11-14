@@ -22,7 +22,7 @@ const CHILD = '6e'.repeat(48);
 const ISSUER = 'pffcb93d9f87a843a8aa34e1adf241f5d58143e81b', ALICE = 'pfab9b9228942e5c529633a13aa271d5297bec6353', MANAGER = 'pfee68d0a5a89e8f554bcd942d2f38659f45bfab1b', PAYER = 'pf7c41e2a09b3d55f6e18a2c7d90b4e3f12a6c8d05';
 const ROUTE = 'pftl-pfdep-schwab-primary-pfusdc-v1';
 const PACKET = 'c7ce34807fe97962793973a36133f23fc7b523867b25266b0ae58e6c5ff3e01aafc1aa5327056d2209acc167b9b142df';
-const config = { b23_asset_id: B23, pfusdc_asset_id: PFUSDC, route_id: ROUTE, issuer_address: ISSUER, alice_holder_address: ALICE, management_address: MANAGER, proof_profile: '15bdad1e278ef0a146abd64d537c557d136fbcc95925f1db105ef4956ba2c55a51cb8c7eb980f2bed4281f24bd946ce9', g1_passed: true, pfusdc_source_asset_ids: [CHILD] };
+const config = { nav_asset_id: B23, pfusdc_asset_id: PFUSDC, route_id: ROUTE, issuer_address: ISSUER, alice_holder_address: ALICE, management_address: MANAGER, proof_profile: '15bdad1e278ef0a146abd64d537c557d136fbcc95925f1db105ef4956ba2c55a51cb8c7eb980f2bed4281f24bd946ce9', g1_passed: true, pfusdc_source_asset_ids: [CHILD] };
 const cutoff = new Date(Date.now() - 50 * 60 * 1000);
 const world = {
   supply: 419_234_350_000, height: 1240,
@@ -180,7 +180,7 @@ async function makePage({ scheme = 'light', width = 1440, height = 1000 } = {}) 
     if (url.pathname.startsWith('/api/app-state')) return route.fulfill({ json: { session: { status: 'signed_in', accountId: 'design-review-bob' }, wallet: {}, tasks: {}, chat: { conversations: [], messages: [] } } });
     if (url.pathname === '/api/l1/navcoin/config') return route.fulfill({ json: config });
     if (url.pathname === '/api/l1/navcoin/equity') {
-      const packet = { schema: 'postfiat.b23.account_equity.v1', source_field: 'securitiesAccount.currentBalances.liquidationValue', valuation_unit: 'usd_1e6', scale_atoms_per_usd: 1000000, adjustments: [], liquidation_value_atoms: 419_234_350_000, liquidation_value_usd: '419234.35', cutoff_at_utc: cutoff.toISOString(), observed_at_utc: new Date(cutoff.getTime() + 20000).toISOString(), account_commitment_sha256: '4f'.repeat(32), packet_hash: PACKET };
+      const packet = { schema: 'postfiat.nav.account_equity.v1', source_field: 'securitiesAccount.currentBalances.liquidationValue', valuation_unit: 'usd_1e6', scale_atoms_per_usd: 1000000, adjustments: [], liquidation_value_atoms: 419_234_350_000, liquidation_value_usd: '419234.35', cutoff_at_utc: cutoff.toISOString(), observed_at_utc: new Date(cutoff.getTime() + 20000).toISOString(), account_commitment_sha256: '4f'.repeat(32), packet_hash: PACKET };
       const base = { issuer: ISSUER, asset_id: B23, epoch: 3, reserve_packet_hash: PACKET };
       return route.fulfill({ json: { packet, pfdep_retired: true, current_supply_atoms: world.supply, target_supply_atoms: 419_234_350_000, additional_mint_atoms: 419_234_350_000 - world.supply, operations: [
         { ...base, operation: 'nav_reserve_submit', submitter: ISSUER, nav_per_unit: M, circulating_supply: 419_234_350_000, verified_net_assets: 419_234_350_000, proof_profile: config.proof_profile, source_root: 'a'.repeat(96), attestor_root: 'b'.repeat(96), reserve_accounts: [], sp1_proof_bytes: [], sp1_public_values: [] },

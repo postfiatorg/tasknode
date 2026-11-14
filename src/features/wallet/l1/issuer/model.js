@@ -13,7 +13,7 @@ export function buildFund(config, address, state, quantity, fundingNonce = nonce
 }
 export function verifyFund(config, intent, before, after) {
   const amount = integer(intent.operation.amount_atoms), deltas = balanceDeltas(before, after, config);
-  if (BigInt(deltas.PFUSDC) !== -amount || BigInt(deltas.B23) !== 0n || integer(before.supply) !== integer(after.supply) || integer(after.pool.settlement_reserve_atoms) - integer(before.pool.settlement_reserve_atoms) !== amount) throw new Error("Funding must increase reserve by the payment and mint no B23");
+  if (BigInt(deltas.PFUSDC) !== -amount || BigInt(deltas.NAVCoin) !== 0n || integer(before.supply) !== integer(after.supply) || integer(after.pool.settlement_reserve_atoms) - integer(before.pool.settlement_reserve_atoms) !== amount) throw new Error("Funding must increase reserve by the payment and mint no B23");
   return { deltas, message: "Reserve funding verified. No B23 was minted.", capacityBefore: before.pool.available_redeem_atoms, capacityAfter: after.pool.available_redeem_atoms };
 }
 export function validateEquityPlan(plan, config, now = Date.now()) {
@@ -32,7 +32,7 @@ export function validateEquityPlan(plan, config, now = Date.now()) {
   if (!Array.isArray(ops) || ops.length !== 3 || ops.map(op => op.operation).join(",") !== "nav_reserve_submit,nav_epoch_finalize,nav_mint_at_nav") throw new Error("Expected reserve submit, epoch finalize, and mint operations");
   const [reserve, finalize, mint] = ops;
   for (const op of ops) {
-    if (op.issuer !== config.issuer_address || op.asset_id !== config.b23_asset_id || op.reserve_packet_hash !== p.packet_hash || op.epoch !== reserve.epoch) throw new Error("Opening operations do not bind the configured B23 packet and epoch");
+    if (op.issuer !== config.issuer_address || op.asset_id !== config.nav_asset_id || op.reserve_packet_hash !== p.packet_hash || op.epoch !== reserve.epoch) throw new Error("Opening operations do not bind the configured B23 packet and epoch");
   }
   if (reserve.proof_profile !== config.proof_profile || reserve.nav_per_unit !== 1000000 || integer(reserve.verified_net_assets) !== target || integer(reserve.circulating_supply) !== target || integer(mint.amount) !== additional || mint.to !== config.alice_holder_address || reserve.submitter !== config.issuer_address) throw new Error("Opening operations disagree with equity or existing B23 proof settings");
   safeInteger(finalize.epoch);
@@ -56,7 +56,7 @@ export function verifyMint(config, intent, before, after) {
   const op = intent.operation, deltas = balanceDeltas(before, after, config);
   if (op.operation === "nav_mint_at_nav") {
     const from = before.recipientLines || before.balances.assets, to = after.recipientLines || after.balances.assets;
-    if (integer(after.supply) - integer(before.supply) !== integer(op.amount) || lineBalance(to, config.b23_asset_id) - lineBalance(from, config.b23_asset_id) !== integer(op.amount)) throw new Error("Opening mint supply and holder credit are not verified");
+    if (integer(after.supply) - integer(before.supply) !== integer(op.amount) || lineBalance(to, config.nav_asset_id) - lineBalance(from, config.nav_asset_id) !== integer(op.amount)) throw new Error("Opening mint supply and holder credit are not verified");
   } else {
     const packet = after.proof.packets.find(p => p.epoch === op.epoch && p.reserve_packet_hash === op.reserve_packet_hash);
     if (!packet || (op.operation === "nav_epoch_finalize" && packet.state !== "finalized")) throw new Error("Reserve packet state is not verified");
@@ -77,6 +77,6 @@ export function validateFeeOperation(operation, config, state, bps) {
 export function verifyFee(config, intent, before, after) {
   const op = intent.operation, deltas = balanceDeltas(before, after, config);
   if (after.pool.route_epoch !== op.next_route_epoch || after.pool.policy_hash !== op.next_primary_market_policy.policy_hash || after.pool.redeem_multiplier_bps !== op.next_primary_market_policy.redeem_multiplier_bps || after.pool.spread_recipient !== config.management_address) throw new Error("New fee policy is not visible on the live route");
-  if (integer(before.supply) !== integer(after.supply) || integer(before.pool.settlement_reserve_atoms) !== integer(after.pool.settlement_reserve_atoms) || BigInt(deltas.B23) || BigInt(deltas.PFUSDC)) throw new Error("Fee change unexpectedly moved assets");
+  if (integer(before.supply) !== integer(after.supply) || integer(before.pool.settlement_reserve_atoms) !== integer(after.pool.settlement_reserve_atoms) || BigInt(deltas.NAVCoin) || BigInt(deltas.PFUSDC)) throw new Error("Fee change unexpectedly moved assets");
   return { deltas, message: "New redemption fee verified on the advanced route epoch. No redeploy was required." };
 }

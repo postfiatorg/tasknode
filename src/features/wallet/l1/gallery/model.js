@@ -55,15 +55,15 @@ export async function loadRegistry(fetcher = fetch) {
   const response = await fetcher("/api/l1/navcoin/registry", { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) throw new Error("NAVCoin registry is unavailable");
   const { coins } = await response.json();
-  if (!Array.isArray(coins) || !coins.length || coins.some(c => !/^[0-9a-f]{96}$/.test(c.asset_id) || !/^[0-9a-f]{96}$/.test(c.market_quote_asset_id) || !/^[a-z0-9-]+$/.test(c.slug))) throw new Error("Invalid NAVCoin registry");
+  if (!Array.isArray(coins) || !coins.length || coins.some(c => !/^[0-9a-f]{96}$/.test(c.asset_id) || (c.nav_asset_id != null && c.nav_asset_id !== c.asset_id) || (c.market_quote_asset_id != null && !/^[0-9a-f]{96}$/.test(c.market_quote_asset_id)) || !/^[a-z0-9-]+$/.test(c.slug))) throw new Error("Invalid NAVCoin registry");
   return coins;
 }
 
 export async function readCoin(client, coin) {
-  const [proofRead, assetRead, bookRead, poolRead] = await Promise.allSettled([
+  const [proofRead, assetRead, bookRead, poolRead] = coin.chain ? [coin.chain.proof, coin.chain.asset, coin.chain.book, coin.chain.pool].map(value => ({ status: "fulfilled", value })) : await Promise.allSettled([
     client.call("nav_reserve_proof_status", { asset_id: coin.asset_id }).then(resultOf),
     client.call("asset_info", { asset_id: coin.asset_id }).then(resultOf),
-    client.call("book_offers", { taker_gets_asset_id: coin.asset_id, taker_pays_asset_id: coin.market_quote_asset_id, limit: 100 }).then(resultOf),
+    coin.market_quote_asset_id ? client.call("book_offers", { taker_gets_asset_id: coin.asset_id, taker_pays_asset_id: coin.market_quote_asset_id, limit: 100 }).then(resultOf) : Promise.resolve(null),
     coin.route_id ? client.call("navcoin_bridge_supply_status", { route_id: coin.route_id }).then(resultOf) : Promise.resolve(null),
   ]);
   const errors = [];

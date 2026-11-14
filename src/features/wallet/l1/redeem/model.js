@@ -11,7 +11,7 @@ export function redemptionQuote(config, state, quantity) {
   facilityReady(config, state);
   if (!config.management_address || state.pool.spread_recipient !== config.management_address) throw new Error("Live management recipient has not been verified");
   if (!state.nav) throw new Error("Finalized NAV matching the route policy is unavailable");
-  const amount = BigInt(atoms(quantity, `${config.symbol || "B23"} redemption`)), pool = state.pool;
+  const amount = BigInt(atoms(quantity, `${config.symbol || "NAVCoin"} redemption`)), pool = state.pool;
   const nav = integer(state.nav.nav_per_unit, "NAV"), bps = integer(pool.redeem_multiplier_bps, "Redemption multiplier");
   if (nav === 0n || bps < 9500n || bps > 10000n) throw new Error("Invalid NAV or redemption fee");
   if (amount > integer(pool.available_redeem_atoms) || amount > integer(pool.max_order_atoms) || amount < integer(pool.min_order_atoms)) throw new Error("Amount is outside the currently redeemable capacity and order bounds");
@@ -52,7 +52,7 @@ export function verifyRedeem(config, intent, before, after, receipt) {
   const managerDelta = lineBalance(after.managementLines, credit.settlement_asset_id) - lineBalance(before.managementLines, credit.settlement_asset_id);
   const walletCredit = op.settlement_recipient === config.management_address ? gross : holder;
   const expectedManagerDelta = op.settlement_recipient === config.management_address ? gross : management;
-  if (BigInt(deltas.B23) !== -integer(op.nav_amount_atoms) || payoutDelta !== walletCredit || managerDelta !== expectedManagerDelta) throw new Error("Both actual payout balances and NAVCoin debit must match the receipt");
+  if (BigInt(deltas.NAVCoin) !== -integer(op.nav_amount_atoms) || payoutDelta !== walletCredit || managerDelta !== expectedManagerDelta) throw new Error("Both actual payout balances and NAVCoin debit must match the receipt");
   if (integer(before.supply) - integer(after.supply) !== integer(op.nav_amount_atoms) || integer(before.pool.settlement_reserve_atoms) - integer(after.pool.settlement_reserve_atoms) !== gross) throw new Error("Redemption supply or reserve delta mismatch");
   return { deltas: { ...deltas, PFUSDC: String(payoutDelta) }, payoutAssetId: credit.settlement_asset_id, credits: credit, managementDelta: String(managerDelta), message: "Redemption verified: holder and management credits, NAVCoin burn, and reserve decrease match." };
 }

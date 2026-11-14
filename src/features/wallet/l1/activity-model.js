@@ -1,10 +1,10 @@
-import { assetSymbols } from './market/constants.js';
+import { assetSymbols, routeSymbols } from './market/constants.js';
 
 // Label current and historical assets by ID; a reused ticker is not identity.
 export function labelActivity(rows, config) {
   if (!config) return rows;
   const symbols = assetSymbols(config);
-  const routes = { [config.route_id]: config.symbol, ...Object.fromEntries(config.retired_assets.filter(coin => coin.route_id).map(coin => [coin.route_id, coin.symbol])) };
+  const routes = routeSymbols(config);
   return rows.map(row => {
     const next = { ...row }, kind = row.kind || row.transaction_kind;
     if (symbols[row.asset_id]) next.unit = symbols[row.asset_id];

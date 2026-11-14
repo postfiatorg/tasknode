@@ -15,13 +15,13 @@ async function publicArtifact(path) {
 const MINT_STEPS = [
   ["Submit reserve packet", "Publishes the Schwab account value for the new NAV epoch.", "Review reserve submit"],
   ["Finalize NAV epoch", "Locks the NAV the mint is priced at.", "Review epoch finalize"],
-  ["Mint B23 at NAV", "Credits the new B23 to the holder wallet.", "Review mint at NAV"],
+  ["Mint NAVCoin at NAV", "Credits the new NAVCoin to the holder wallet.", "Review mint at NAV"],
 ];
 function OpHead({ n, title, children }) {
   return <div className="l1-op-head"><span className="l1-step-num">{n}</span><div><h3>{title}</h3>{children && <p>{children}</p>}</div></div>;
 }
-export default function IssuerTab({ client, onNavigate }) {
-  const { data, error, loading, refresh } = useNavcoin(client);
+export default function IssuerTab({ client, onNavigate, marketConfig }) {
+  const { data, error, loading, refresh } = useNavcoin(client, false, marketConfig);
   const [funding, setFunding] = useState(""), [bps, setBps] = useState("20"), [equity, setEquity] = useState(null), [request, setRequest] = useState(null), [actionError, setActionError] = useState("");
   const [preparing, setPreparing] = useState(false);
   function review(intent, description, verify, preflight, recipient = null, extra = {}) {
@@ -36,23 +36,23 @@ export default function IssuerTab({ client, onNavigate }) {
   function mint(operation, index) {
     setActionError(""); setRequest(null);
     try {
-      if (client.address !== data.config.issuer_address) throw new Error("Unlock the B23 issuer wallet for the opening mint");
+      if (client.address !== data.config.issuer_address) throw new Error("Unlock the NAVCoin issuer wallet for the opening mint");
       const plan = equity.plan, intent = { kind: "asset", operation };
       mintPreflight(plan, data.config, intent, data.state);
-      review(intent, "The opening mint counts the current B23 supply, including the earlier wire, once. Each of the three steps needs its own accepted receipt and state read-back.",
+      review(intent, "The opening mint counts the current NAVCoin supply, including the earlier wire, once. Each of the three steps needs its own accepted receipt and state read-back.",
         (intent, before, after) => verifyMint(data.config, intent, before, after),
         (intent, before) => mintPreflight(plan, data.config, intent, before), data.config.alice_holder_address,
-        { title: MINT_STEPS[index]?.[0] || "Mint at NAV", summary: [["Step", `${index + 1} of 3 · ${MINT_STEPS[index]?.[0]}`], ["NAV epoch", String(operation.epoch)], index === 2 && ["B23 minted", <Amount atoms={operation.amount} unit="B23" />, true], index === 2 && ["To holder wallet", <Mono value={operation.to} />]] });
+        { title: MINT_STEPS[index]?.[0] || "Mint at NAV", summary: [["Step", `${index + 1} of 3 · ${MINT_STEPS[index]?.[0]}`], ["NAV epoch", String(operation.epoch)], index === 2 && ["NAVCoin minted", <Amount atoms={operation.amount} unit="NAVCoin" />, true], index === 2 && ["To holder wallet", <Mono value={operation.to} />]] });
     } catch (e) { setActionError(e.message); }
   }
   function fund(event) {
     event.preventDefault(); setActionError(""); setRequest(null);
     try {
-      if (client.address !== data.config.issuer_address) throw new Error("Unlock the issuer wallet to fund the reserve; the chain accepts reserve funding only from the B23 issuer");
+      if (client.address !== data.config.issuer_address) throw new Error("Unlock the issuer wallet to fund the reserve; the chain accepts reserve funding only from the NAVCoin issuer");
       const intent = buildFund(data.config, client.address, data.state, funding);
-      review(intent, "Moves PFUSDC from this wallet into the standing reserve that pays cash-ins. No B23 is minted.",
+      review(intent, "Moves PFUSDC from this wallet into the standing reserve that pays cash-ins. No NAVCoin is minted.",
         (intent, before, after) => verifyFund(data.config, intent, before, after), (_intent, before) => facilityReady(data.config, before), null,
-        { title: "Fund the cash-in reserve", successText: "The reserve grew by exactly this payment and no B23 was minted.", summary: [["Add to reserve", <Amount atoms={intent.operation.amount_atoms} unit="PFUSDC" />, true], ["Reserve after", <Amount atoms={BigInt(data.state.pool.settlement_reserve_atoms) + BigInt(intent.operation.amount_atoms)} unit="PFUSDC" />]] });
+        { title: "Fund the cash-in reserve", successText: "The reserve grew by exactly this payment and no NAVCoin was minted.", summary: [["Add to reserve", <Amount atoms={intent.operation.amount_atoms} unit="PFUSDC" />, true], ["Reserve after", <Amount atoms={BigInt(data.state.pool.settlement_reserve_atoms) + BigInt(intent.operation.amount_atoms)} unit="PFUSDC" />]] });
     } catch (e) { setActionError(e.message); }
   }
   async function fee(event) {
@@ -75,22 +75,22 @@ export default function IssuerTab({ client, onNavigate }) {
   const mintDone = [Boolean(epochPacket), epochPacket?.state === "finalized", plan && data && BigInt(data.state.supply) >= BigInt(plan.target_supply_atoms)];
   const currentFee = data && Number.isSafeInteger(data.state.pool.redeem_multiplier_bps) ? 10000 - data.state.pool.redeem_multiplier_bps : null;
   return <div className="l1-view">
-    <div className="l1-desk-banner"><Landmark size={20} aria-hidden /><div><strong>For the B23 issuer and its holder wallet.</strong> Buying B23 and cashing in at NAV happen under Market and Cash in; nothing here is needed for that.</div></div>
+    <div className="l1-desk-banner"><Landmark size={20} aria-hidden /><div><strong>For the NAVCoin issuer and its holder wallet.</strong> Buying NAVCoin and cashing in at NAV happen under Market and Cash in; nothing here is needed for that.</div></div>
     <WalletNotice client={client} error={error} loading={loading} refresh={refresh} data={data} />
-    {data && role === "other" && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="This wallet is not the B23 issuer">Mint and fee changes need the issuer wallet; posting B23 for sale needs the holder wallet. The chain refuses them from any other wallet.</Notice></div>}
+    {data && role === "other" && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="This wallet is not the NAVCoin issuer">Mint and fee changes need the issuer wallet; posting NAVCoin for sale needs the holder wallet. The chain refuses them from any other wallet.</Notice></div>}
       <div className="l1-split">
         <div className="l1-stack">
-          {!data ? <Card>{loading ? <Skeleton height={320} /> : <p className="l1-muted">Refresh to read the B23 route state.</p>}</Card> : <>
+          {!data ? <Card>{loading ? <Skeleton height={320} /> : <p className="l1-muted">Refresh to read the NAVCoin route state.</p>}</Card> : <>
           <Card className="l1-op">
-            <OpHead n="1" title="Mint B23 at NAV">Raise supply to match the Schwab account&rsquo;s reported net liquidation value at NAV $1.00. Existing B23 and the earlier wire count once.</OpHead>
+            <OpHead n="1" title="Mint NAVCoin at NAV">Raise supply to match the Schwab account&rsquo;s reported net liquidation value at NAV $1.00. Existing NAVCoin and the earlier wire count once.</OpHead>
             {!plan && <div className="l1-row"><button type="button" className="l1-btn" disabled={preparing} onClick={loadEquity}>Load account-equity opening plan</button><span className="l1-muted l1-small">Reads the latest Schwab account snapshot prepared for this mint.</span></div>}
             {plan && <>
               <KV rows={[
                 ["Schwab net liquidation value", `$${Number(plan.packet.liquidation_value_usd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, `as of ${dateTime(plan.packet.cutoff_at_utc)}`],
-                ["NAV per B23", "$1.00"],
-                ["B23 outstanding now", <Amount atoms={plan.current_supply_atoms} unit="B23" />],
-                ["B23 after mint", <Amount atoms={plan.target_supply_atoms} unit="B23" />],
-                ["To mint", <b style={{ color: "var(--l1-b23)" }}><Amount atoms={plan.additional_mint_atoms} unit="B23" sign /></b>],
+                ["NAV per NAVCoin", "$1.00"],
+                ["NAVCoin outstanding now", <Amount atoms={plan.current_supply_atoms} unit="NAVCoin" />],
+                ["NAVCoin after mint", <Amount atoms={plan.target_supply_atoms} unit="NAVCoin" />],
+                ["To mint", <b style={{ color: "var(--l1-navcoin)" }}><Amount atoms={plan.additional_mint_atoms} unit="NAVCoin" sign /></b>],
               ]} />
               <div className="l1-mint-steps">{plan.operations.map((op, i) => <div key={op.operation} className="l1-mint-step">
                 <span className="l1-step-num" style={mintDone[i] ? { background: "var(--l1-accent)", color: "var(--l1-on-ink)" } : undefined}>{mintDone[i] ? "✓" : i + 1}</span>
@@ -101,7 +101,7 @@ export default function IssuerTab({ client, onNavigate }) {
             </>}
           </Card>
           <Card className="l1-op">
-            <OpHead n="2" title="Fund the cash-in reserve">PFUSDC added here pays holders who cash in at NAV. Funding mints no B23.</OpHead>
+            <OpHead n="2" title="Fund the cash-in reserve">PFUSDC added here pays holders who cash in at NAV. Funding mints no NAVCoin.</OpHead>
             <form onSubmit={fund} onChange={() => setRequest(null)}>
               <label className="l1-field"><span>PFUSDC to add</span><span className="l1-input-wrap"><input aria-label="PFUSDC to add" inputMode="decimal" placeholder="0.00" value={funding} onChange={e => setFunding(e.target.value)} required /><span className="l1-input-suffix">PFUSDC</span></span>
                 <span className="l1-field-hint"><span>{pfusdc === null ? "" : <>This wallet holds <Amount atoms={pfusdc} unit="PFUSDC" /></>}</span></span></label>
@@ -109,7 +109,7 @@ export default function IssuerTab({ client, onNavigate }) {
             </form>
           </Card>
           <Card className="l1-op">
-            <OpHead n="3" title="Post B23 for sale">Sell offers come from the holder wallet, not the issuer. Unlock the holder wallet, then place a sell offer on the market.</OpHead>
+            <OpHead n="3" title="Post NAVCoin for sale">Sell offers come from the holder wallet, not the issuer. Unlock the holder wallet, then place a sell offer on the market.</OpHead>
             <div className="l1-row"><span className="l1-muted l1-small">Holder wallet</span><IdChip value={data.config.alice_holder_address} label="holder address" />{role === "holder" && <Badge tone="success">This wallet</Badge>}</div>
             {onNavigate && <div><button type="button" className="l1-btn" onClick={() => onNavigate("Market")}><ChartCandlestick size={16} aria-hidden />Open the market</button></div>}
           </Card>
