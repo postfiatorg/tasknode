@@ -62,7 +62,7 @@ export function createProfileReader({ rpc = createProfileRpc(), coins = () => pr
     const bids = coin.market_quote_asset_id ? await optional('Buy offers', 'book_offers', { taker_gets_asset_id: coin.market_quote_asset_id, taker_pays_asset_id: coin.asset_id, limit: 512 }) : null;
     const history = proof.packets.filter(packet => packet.state === 'finalized').sort((a, b) => Number(a.epoch) - Number(b.epoch)).map(packet => ({ ...packet, verification_url: `#l1-wallet/navcoins/${slug}/snapshots/${packet.epoch}`, evidence_url: `/api/l1/navcoin/profiles/${slug}/snapshots/${packet.epoch}` }));
     return { coin, proof, asset, route, history, latest: history.at(-1) || null, order_book: { asks: depth(asks, coin, proof.current_height), bids: depth(bids, coin, proof.current_height, 'bids'), quote_asset_id: coin.market_quote_asset_id }, errors, observed_at: new Date().toISOString() };
-  }, 15000);
+  }, 60000);
   const snapshot = memoRead(async (slug, epoch) => {
     const data = await readBase(slug), packet = data.history.find(item => String(item.epoch) === String(epoch));
     if (!packet) throw Object.assign(Error('Finalized snapshot not found'), { status: 404 });
