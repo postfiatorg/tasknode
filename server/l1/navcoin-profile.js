@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createProfileRpc, memoRead } from './profile/rpc.js';
 import { proofProfileId } from './profile/proof-profile.js';
+import { boundPublicValues } from './profile/public-values.js';
 import { profileCoins } from './profile/coins.js';
 import { readEthereumPool } from './profile/ethereum.js';
 import { ethereumSnapshotTransactions } from './profile/ethereum-history.js';
@@ -86,12 +87,16 @@ export function createProfileReader({ rpc = createProfileRpc(), coins = () => pr
         if (registration) { const r = await receipt(registration); if (r.receipt.accepted) profile = { ...(registration.operation.profile || registration.operation), profile_id: op.proof_profile }; break; }
       }
     }
+    const publicValues = boundPublicValues(op, data.proof.genesis_hash);
     const result = { schema: 'navcoin-snapshot-verification-v1', coin: data.coin, chain_id: data.proof.chain_id, genesis_hash: data.proof.genesis_hash, packet,
       verified: Boolean(submitReceipt?.confirmed && submitReceipt?.receipt.accepted === true && finalizeReceipt?.confirmed && finalizeReceipt?.receipt.accepted === true),
       submit: submitReceipt, finalize: finalizeReceipt, proof_profile_id: op?.proof_profile ?? null, proof_profile: profile,
       proof_program_key: profile?.sp1_program_vkey ?? null, proof_sha256: digest(op?.sp1_proof_bytes), public_values_sha256: digest(op?.sp1_public_values),
       proof_bytes: op?.sp1_proof_bytes?.length ?? null, public_values_bytes: op?.sp1_public_values?.length ?? null,
-      reading_time: null, finalized_time: null, attestation: { pcrs: null, image_sha256: null, reading_timestamp: null, note: 'The chain archive commits to source and attestation roots. It does not disclose the enclave PCRs, image hash or wall-clock reading timestamp.' },
+      decoded_public_values: publicValues,
+      reading_time: null, finalized_time: null, attestation: { pcrs: null, image_sha256: null, reading_timestamp: null, source_policy_commitment: publicValues?.source_manifest_hash ?? null,
+        observation_not_before_height: publicValues?.observation_not_before ?? null, observation_not_after_height: publicValues?.observation_not_after ?? null, attested_value: publicValues?.attested_value ?? null,
+        note: publicValues ? 'Decoded from the archived PFNAV001 public values. Observation bounds are native block heights, not Unix timestamps. The source-policy commitment binds the approved enclave PCRs for Nitro readings; raw PCRs, image hash and UTC reading time are not included in this public packet.' : 'This packet has no PFNAV001 public values. Enclave PCRs, image hash and UTC reading time are not available.' },
       ethereum_transactions: [], ethereum_note: 'No matching Ethereum snapshot transaction has been established from the available chain archive.',
       source: 'Live validator RPC: finalized NAV state, committed blocks, signed batch archive and literal transaction receipts.', read_at: new Date().toISOString() };
     try { result.ethereum_transactions = await ethereumSnapshotTransactions(data.coin, packet, data.route); if (result.ethereum_transactions.length) result.ethereum_note = 'Successful Ethereum receipt publications with matching native asset, route, NAV epoch and reserve-packet commitment. These are not independent rereadings of the underlying assets.'; } catch { result.ethereum_note = 'Ethereum historical publication data is not available from the public RPC. No transaction link is inferred.'; }

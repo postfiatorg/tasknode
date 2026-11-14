@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowUpRight, RefreshCw } from 'lucide-react';
 import { Badge, Card, CardHead, Details, KV, Notice, Spinner } from '../ui.jsx';
-import { Verification } from '../gallery/Verification.jsx';
+import { precisePercentages } from './verification.js';
 import { verificationSplit } from '../gallery/model.js';
 import './profile.css';
 export function profileLocation(hash = window.location.hash) {
@@ -38,10 +38,15 @@ function useRead(path) {
   }, [path, revision]);
   return { ...(state.path === path ? state : { data: null, error: '', loading: true }), refresh: () => setRevision(value => value + 1) };
 }
+function Verification({ split, detail = false }) {
+  if (!split?.available) return <p className="l1-small l1-muted">Verification split unavailable.</p>;
+  const labels = ['Proven', 'Attested', 'Reported'], percentages = precisePercentages(split.values);
+  return <div className="l1-verification"><div className="l1-verification-bar" role="img" aria-label={labels.map((label, i) => `${percentages[i]} ${label}`).join(' · ')}>{labels.map((label, i) => <span key={label} className={`is-${label.toLowerCase()}`} style={{ width: `${split.bps[i] / 100}%` }} />)}</div><div className="l1-verification-key">{labels.map((label, i) => <span key={label}><i className={`is-${label.toLowerCase()}`} /><b>{percentages[i]}</b> {label}</span>)}</div>{detail && <ul className="l1-verification-meanings"><li><b>Proven:</b> checked by cryptographic proof.</li><li><b>Attested:</b> read and signed by a secure enclave or attestor.</li><li><b>Reported:</b> stated by the operator.</li></ul>}{split.reason && <p className="l1-small">{split.reason}</p>}</div>;
+}
 function VerificationAmounts({ packet, profile, decimals }) {
   const split = verificationSplit(packet, profile);
   if (!split.available) return null;
-  return <><KV rows={['Proven value', 'Attested value', 'Reported value'].map((label, i) => [label, dollars(split.values[i], decimals)])} /><p className="l1-small l1-muted">Percentages are rounded; these amounts show the exact split at the reading.</p></>;
+  return <><KV rows={['Proven value', 'Attested value', 'Reported value'].map((label, i) => [label, dollars(split.values[i], decimals)])} /><p className="l1-small l1-muted">Amounts show the exact split at the reading.</p></>;
 }
 function NavChart({ history, decimals }) {
   if (!history.length) return null;
@@ -51,7 +56,7 @@ function NavChart({ history, decimals }) {
 }
 function History({ data }) {
   const d = data.coin.valuation_decimals ?? 6;
-  return <Card><CardHead eyebrow="Recorded on Post Fiat" title="Historical NAV snapshots" /><p className="l1-small l1-muted">Every finalized reading has its own verification page. Wall-clock reading and block times are not available from the chain archive; heights identify the readings.</p><NavChart history={data.history} decimals={d} /><div className="l1-table-wrap"><table className="l1-history-table"><thead><tr><th>Epoch / time</th><th>NAV</th><th>Net assets</th><th>Supply at reading</th><th>Verification</th><th>Evidence</th></tr></thead><tbody>{[...data.history].reverse().map(p => <tr key={p.epoch}><td><strong>{p.epoch}</strong><small>Time not available</small><small>Submitted h{p.submitted_at_height}</small></td><td>{dollars(p.nav_per_unit, d)}</td><td>{dollars(p.verified_net_assets, d)}</td><td>{number(p.circulating_supply, data.asset?.precision ?? 6)}</td><td><Verification split={verificationSplit(p, { verifier_kind: p.cryptographically_verified_value || p.attested_value ? 'packet-trust-values' : 'placeholder' })} /></td><td><a className="l1-link" href={p.verification_url} aria-label={`Verify ${data.coin.name} epoch ${p.epoch}`}>Verify →</a></td></tr>)}</tbody></table></div></Card>;
+  return <Card><CardHead eyebrow="Recorded on Post Fiat" title="Historical NAV snapshots" /><p className="l1-small l1-muted">Every finalized reading has its own verification page. These public packets include observation block heights, but no UTC reading time. Each verification page decodes the available proof fields.</p><NavChart history={data.history} decimals={d} /><div className="l1-table-wrap"><table className="l1-history-table"><thead><tr><th>Epoch / time</th><th>NAV</th><th>Net assets</th><th>Supply at reading</th><th>Verification</th><th>Evidence</th></tr></thead><tbody>{[...data.history].reverse().map(p => <tr key={p.epoch}><td><strong>{p.epoch}</strong><small>Time not available</small><small>Submitted h{p.submitted_at_height}</small></td><td>{dollars(p.nav_per_unit, d)}</td><td>{dollars(p.verified_net_assets, d)}</td><td>{number(p.circulating_supply, data.asset?.precision ?? 6)}</td><td><Verification split={verificationSplit(p, { verifier_kind: p.cryptographically_verified_value || p.attested_value ? 'packet-trust-values' : 'placeholder' })} /></td><td><a className="l1-link" href={p.verification_url} aria-label={`Verify ${data.coin.name} epoch ${p.epoch}`}>Verify →</a></td></tr>)}</tbody></table></div></Card>;
 }
 function Pools({ data }) {
   const { coin, route, order_book: book, ethereum: eth } = data, d = coin.valuation_decimals ?? 6;
@@ -94,11 +99,11 @@ function CoinProfile({ data }) {
   const limits = [profile?.max_snapshot_age_blocks, profile?.max_epoch_gap_blocks].filter(n => n > 0), limit = limits.length ? Math.min(...limits) : null;
   return <><header className="profile-head"><div><div className="l1-eyebrow">Post Fiat · devnet-2 · NAVCoin profile</div><h1>{coin.name}{coin.retired ? ' · Retired' : ''}</h1><p>{coin.description}</p></div><a className="l1-btn" href="#l1-wallet">Open wallet</a></header>{coin.retired && <Notice tone="warning" title="Historical profile">This coin is retired. Its last NAV is not a current cash-in price.</Notice>}
     <div className="profile-summary"><Card><CardHead title={coin.retired ? 'Last finalized NAV' : 'Current finalized NAV'} /><div className="profile-nav">{dollars(latest?.nav_per_unit, d)}</div><span className="l1-small l1-muted">per {coin.name}</span><KV rows={[
-      ['Latest reading', latest ? `Epoch ${latest.epoch} · submitted h${latest.submitted_at_height}` : missing], ['Reading time', missing],
+      ['Latest reading', latest ? `Epoch ${latest.epoch} · submitted h${latest.submitted_at_height}` : missing], ['Reading time', 'Not included in the public packet'],
       ['Reading age / limit', age == null ? missing : `${age} / ${limit ?? 'no configured limit'} blocks`],
       ['Finalized net assets', dollars(latest?.verified_net_assets, d)], ['Supply at reading', number(latest?.circulating_supply, data.asset?.precision ?? 6)], ['Total valid supply now', number(data.route?.authorized_valid_supply_atoms ?? data.asset?.outstanding_supply, data.asset?.precision ?? 6)], ['Native coins outstanding now', number(data.asset?.outstanding_supply, data.asset?.precision ?? 6)],
     ]} />{age !== null && limit !== null && age > limit && <Badge tone="warning">Stale reading</Badge>}</Card><Card><CardHead title="What supports this reading" /><Verification split={verificationSplit(latest, profile)} detail /><VerificationAmounts packet={latest} profile={profile} decimals={d} /><p className="l1-small">{coin.methodology}</p>{latest && <a className="l1-link" href={latest.verification_url}>Verify the latest snapshot →</a>}</Card></div>
-    <History data={data} /><div className="profile-summary"><Pools data={data} /><Fees data={data} /></div><Card><Details summary="Asset, route and proof identifiers"><KV rows={[
+    <div className="profile-summary"><Pools data={data} /><Fees data={data} /></div><History data={data} /><Card><Details summary="Asset, route and proof identifiers"><KV rows={[
       ['Asset', <Identifier value={coin.asset_id} />], ['Cash-in route', coin.route_id || missing], ['Proof profile', <Identifier value={profile?.profile_id} />], ['Valuation scale', `${10 ** d} units per USD`], ['Native read height', proof.current_height],
     ]} /></Details></Card>{data.errors?.length > 0 && <Notice tone="warning">{data.errors.join(' · ')}</Notice>}</>;
 }
@@ -114,8 +119,9 @@ function Snapshot({ data }) {
   <Card><CardHead title="Proof and attestation" /><KV rows={[
     ['Proof profile ID', <Identifier value={data.proof_profile_id} />], ['Proof program key', <Identifier value={data.proof_program_key} />],
     ['Proof SHA-256', <Identifier value={data.proof_sha256} />], ['Public values SHA-256', <Identifier value={data.public_values_sha256} />],
+    ['Source-policy commitment', <Identifier value={data.attestation.source_policy_commitment} />], ['Proof observation heights', data.attestation.observation_not_before_height ? `${data.attestation.observation_not_before_height}–${data.attestation.observation_not_after_height}` : missing], ['Attested value in proof', dollars(data.attestation.attested_value, d)],
     ['Enclave PCRs', data.attestation.pcrs || missing], ['Enclave image hash', data.attestation.image_sha256 || missing], ['Enclave reading timestamp', data.attestation.reading_timestamp || missing],
-  ]} /><p className="l1-small l1-muted">{data.attestation.note} SHA-256 hashes above are calculated from the proof and public-value bytes in the archived signed transaction.</p><Details summary="Proof profile and finalized packet"><pre>{JSON.stringify({ proof_profile: data.proof_profile, packet: data.packet }, null, 2)}</pre></Details></Card>
+  ]} /><p className="l1-small l1-muted">{data.attestation.note} SHA-256 hashes above are calculated from the proof and public-value bytes in the archived signed transaction.</p><Details summary="Proof profile and finalized packet"><pre>{JSON.stringify({ decoded_public_values: data.decoded_public_values, proof_profile: data.proof_profile, packet: data.packet }, null, 2)}</pre></Details></Card>
   <Card><CardHead title="Ethereum publication" />{data.ethereum_transactions.length ? data.ethereum_transactions.map(tx => <p key={tx}><External href={`https://etherscan.io/tx/${tx}`}>{tx}</External></p>) : <p>{data.ethereum_note}</p>}</Card><p><a className="l1-link" href={data.packet.evidence_url} target="_blank" rel="noreferrer">Open raw verification JSON →</a></p></>;
 }
 export default function Profile({ slug = 'b24', epoch = null }) {

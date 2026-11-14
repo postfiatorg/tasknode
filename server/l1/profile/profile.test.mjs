@@ -3,7 +3,27 @@ import assert from 'node:assert/strict';
 import { depth, transactionsInBlock, createProfileReader } from '../navcoin-profile.js';
 import { principalFromTicks } from './ethereum.js';
 import { proofProfileId } from './proof-profile.js';
+import { readFileSync } from 'node:fs';
+import { decodePublicValues, boundPublicValues } from './public-values.js';
+import { precisePercentages } from '../../../src/features/wallet/l1/profile/verification.js';
 const coin = {slug:'test',asset_id:'asset',market_quote_asset_id:'quote'};
+test('archived B24 PFNAV001 decodes attested amount, source policy and block heights without inventing a timestamp', () => {
+ const bytes = [...Buffer.from(readFileSync(new URL('./fixtures/b24-epoch1.hex', import.meta.url), 'utf8').trim(), 'hex')];
+ const v = decodePublicValues(bytes);
+ assert.equal(v.attested_value, '420302380000'); assert.equal(v.observation_not_before, '1310'); assert.equal(v.observation_not_after, '1310');
+ assert.equal(v.source_manifest_hash, 'c01d72df74871cae7a513e51d889ca2ac56f38be0367578c22b01396262b593366c3176e3a0b95b47fa78f9815b2e161');
+ assert.equal(v.reading_timestamp, undefined);
+ const op = { sp1_public_values: bytes, asset_id: v.nav_asset_id, proof_profile: v.proof_profile_id };
+ assert.deepEqual(boundPublicValues(op, v.pftl_genesis_hash), v);
+ assert.throws(() => boundPublicValues({ ...op, asset_id: 'wrong' }, v.pftl_genesis_hash), /do not match/);
+ assert.throws(() => decodePublicValues(bytes.slice(1)), /schema/);
+ const corrupt = [...bytes]; corrupt[400] ^= 1; assert.throws(() => decodePublicValues(corrupt), /Inconsistent/);
+});
+test('trust percentages preserve small reported amounts and a total of 100 percent', () => {
+ assert.deepEqual(precisePercentages([0n, 420302380000n, 20000000n]), ['0%', '99.995%', '0.005%']);
+ assert.deepEqual(precisePercentages([1n, 1n, 1n]), ['33.334%', '33.333%', '33.333%']);
+ assert.equal(precisePercentages([1n, 1000000000n, 0n])[0], '<0.001%');
+});
 test('depth excludes expired, closed and unrelated offers and preserves quote amounts',()=>{
  const offer={state:'open',taker_gets_asset_id:'asset',taker_pays_asset_id:'quote',taker_gets_amount_remaining:'1500000',taker_pays_amount_remaining:'1600000'};
  assert.deepEqual(depth({offers:[offer,{...offer,state:'filled'},{...offer,expiration_height:20},{...offer,taker_gets_asset_id:'other'}],truncated:true},coin,20),{coin_atoms:'1500000',quote_atoms:'1600000',offers:1,partial:true});
