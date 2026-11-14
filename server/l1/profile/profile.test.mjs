@@ -85,3 +85,12 @@ test('temporary Ethereum history failures do not poison immutable native snapsho
  const first = await reader.snapshot('test', 1); assert.equal(first.verified, true); assert.deepEqual(first.ethereum_transactions, []);
  const refreshed = await reader.snapshot('test', 1); assert.deepEqual(refreshed.ethereum_transactions, ['0xverified']); assert.equal(refreshed.submit.tx_id, first.submit.tx_id);
 });
+
+test('actual B24 V2 Ethereum publication binds its native epoch and reserve packet', async () => {
+ const { decodePublication } = await import('./ethereum-history.js');
+ const input = readFileSync(new URL('./fixtures/b24-mainnet-publication.hex', import.meta.url), 'utf8').trim();
+ const coin = { asset_id: '52285e4ded1d58113cfaa12bbc034b8b10213f699b3224c74160450229d6bf7ccfe505c78f2599d975ae2ecf98f7d8af', route_id: 'pftl-b24-ethereum-wB24-usdc-v1' };
+ const packet = { epoch: 2, reserve_packet_hash: '72d72a20dd2a00ba325175968ee0dcee680d5354bd2ebac6b18c5f324215bc7fdba5bf5569b516e51ba6351e2bad178a' };
+ assert.equal(decodePublication(input, coin, packet), true);
+ assert.equal(decodePublication(input, coin, { ...packet, epoch: 1 }), false);
+});

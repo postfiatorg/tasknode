@@ -8,7 +8,7 @@ async function rpc(method, params) {
 export function decodePublication(input, coin, packet) {
   const parsed = iface.parseTransaction({ data: input }); if (parsed?.name !== 'verifyAndAccept') return false;
   const bytes = parsed.args[0];
-  // The legacy V1 receipt schema is 35 static ABI words. Match all three
+  // The V1 and V2 receipt schemas share these 35 static ABI words. Match all
   // bindings, rather than attaching an arbitrary export to a NAV snapshot.
   if ((bytes.length - 2) / 2 !== 35 * 32) return false;
   const word = n => `0x${bytes.slice(2 + n * 64, 2 + (n + 1) * 64)}`;
@@ -43,6 +43,6 @@ const publications = memoRead(async controller => {
   return rows;
 }, 60 * 60 * 1000);
 export async function ethereumSnapshotTransactions(coin, packet, route) {
-  if (!['a666', 'bmnrc'].includes(coin.slug) || route?.ethereum_chain_id !== 1) return [];
+  if (coin.retired || route?.ethereum_chain_id !== 1) return [];
   return (await publications(route.handoff_controller)).filter(row => decodePublication(row.input, coin, packet)).map(row => row.tx_id);
 }
