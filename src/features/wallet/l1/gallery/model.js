@@ -81,7 +81,9 @@ export async function readCoin(client, coin) {
 export function sortByTvl(coins) {
   return [...coins].sort((a, b) => {
     if (Boolean(a.retired) !== Boolean(b.retired)) return a.retired ? 1 : -1;
-    const av = exact(a.latest?.verified_net_assets), bv = exact(b.latest?.verified_net_assets);
+    const avRaw = exact(a.latest?.verified_net_assets), bvRaw = exact(b.latest?.verified_net_assets);
+    const av = avRaw === null ? null : avRaw * 10n ** BigInt(b.valuation_decimals ?? 6);
+    const bv = bvRaw === null ? null : bvRaw * 10n ** BigInt(a.valuation_decimals ?? 6);
     return av === bv ? a.name.localeCompare(b.name) : av === null ? 1 : bv === null ? -1 : av > bv ? -1 : 1;
   });
 }

@@ -6,6 +6,7 @@ import { handleBridgeRoutes } from './bridge-routes.js';
 import { handleNavcoinRoutes } from './navcoin-routes.js';
 import { createHistoryReader } from './history.js';
 import { createSubmitRecovery } from './submit-recovery.js';
+import { createProfileHandler } from './navcoin-profile.js';
 
 import { L1_READ_METHODS, L1_SUBMIT_METHODS } from '../../src/features/wallet/l1/lib/rpc-methods.js';
 const MAX_BYTES = 1024 * 1024;
@@ -59,6 +60,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
   const credentials = readProxyToken(env).then(token => ({ token })).catch(() => null);
   const sessions = new Set();
   const readHistory = createHistoryReader(env);
+  const handleProfile = createProfileHandler();
   const authenticate = req => getSession(cookieValue(req, sessionCookieName));
   const handlers = server.listeners('request');
   server.removeAllListeners('request');
@@ -68,6 +70,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
     if (!url.pathname.startsWith('/api/l1/')) { for (const handler of handlers) handler(req, res); return; }
     void (async () => {
       res.setHeader('cache-control', 'no-store');
+      if (await handleProfile({ req, res, url, json })) return;
       const session = await authenticate(req);
       if (!signedIn(session)) { json(res, 401, { error: 'l1_login_required' }); return; }
       if (url.pathname === '/api/l1/history' && req.method === 'GET') {

@@ -1,4 +1,5 @@
 import { useGallery } from "./gallery/useGallery.js";
+import Profile, { useProfileLocation } from './profile/index.jsx';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, ChartCandlestick, Download, Ellipsis, FileKey, HandCoins, History, House, KeyRound, Landmark, LayoutGrid, Lock, Send as SendIcon, ShieldCheck, Wallet } from "lucide-react";
 // Secondary views load on first use so the wallet shell stays small.
@@ -88,6 +89,7 @@ function Gate({ exists, busy, passphrase, setPassphrase, seed, setSeed, openWall
 }
 
 export default function L1WalletView({ accountId, isAccountCurrent }) {
+  const profileRoute = useProfileLocation();
   const [tab, setTab] = useState("Home");
   const [selectedCoin, setSelectedCoin] = useState(null);
   const [selectedAssetId, setSelectedAssetId] = useState(null);
@@ -153,6 +155,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
   const gallery = useGallery(client);
   const assetConfig = gallery.coins?.find(coin => coin.asset_id === selectedAssetId) || null;
   const symbol = assetConfig?.symbol || 'NAVCoin';
+  if (profileRoute) return <Profile slug={profileRoute.slug || "b24"} epoch={profileRoute.epoch} />;
   if (!accountId) return <div className="route-scroll"><div className="l1w"><Card><ViewHeader eyebrow="Post Fiat L1" title="L1 wallet" subtitle="Sign in to open your L1 wallet." /></Card></div></div>;
   const Tab = tabs[tab];
   const view = tab === ISSUER.id ? ISSUER : VIEWS.find(item => item.id === tab);

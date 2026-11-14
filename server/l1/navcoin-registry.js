@@ -28,7 +28,7 @@ export async function discoverRegistry(rpc, metadata) {
       const asks = await rpc('book_offers', { taker_gets_asset_id: asset.asset_id, taker_pays_asset_id: source.asset_id, limit: 100 });
       const bids = await rpc('book_offers', { taker_gets_asset_id: source.asset_id, taker_pays_asset_id: asset.asset_id, limit: 100 });
       if (asks.taker_gets_asset_id !== asset.asset_id || asks.taker_pays_asset_id !== source.asset_id || bids.taker_gets_asset_id !== source.asset_id || bids.taker_pays_asset_id !== asset.asset_id) throw Error('Registry book identity mismatch');
-      markets.push({ asset_id: source.asset_id, enabled: source.enabled_for_issue, asks, bids, offers: activeOffers(asks, proof.current_height).length + activeOffers(bids, proof.current_height).length });
+      markets.push({ asset_id: source.asset_id, symbol: quote.code, enabled: source.enabled_for_issue, asks, bids, offers: activeOffers(asks, proof.current_height).length + activeOffers(bids, proof.current_height).length });
     }
     const market = markets.find(m => m.offers > 0) || markets.find(m => m.enabled) || markets[0];
     const nav = proof.packets?.find(p => p.state === 'finalized' && p.epoch === pool?.pricing_nav_epoch && p.reserve_packet_hash === pool?.pricing_reserve_packet_hash);
@@ -48,7 +48,7 @@ export async function discoverRegistry(rpc, metadata) {
     const bookReason = entry.retired ? 'This NAVCoin is retired.' : !market ? 'No native PFUSDC quote market was discovered.' : 'No live native offers were found. ' + reason;
     const capabilities = { book: capability(book, bookReason), create: capability(primary, reason), cash_in: { ...capability(primary, reason), mode: primary ? 'subscription' : 'unsupported' }, ethereum };
     const config = validateConfig({ ...base, creation_enabled: primary, redemption_mode: primary ? 'subscription' : 'unsupported', market_only: !primary, capabilities });
-    coins.push({ ...config, asset_id: asset.asset_id, name: entry.name || asset.code, capabilities, chain: { asset: { asset }, proof, pool, book: market?.asks ?? null, bids: market?.bids ?? null }, read_at: new Date().toISOString() });
+    coins.push({ ...config, valuation_decimals: entry.valuation_decimals ?? 6, market_quote_symbol: market?.symbol ?? null, asset_id: asset.asset_id, name: entry.name || asset.code, capabilities, chain: { asset: { asset }, proof, pool, book: market?.asks ?? null, bids: market?.bids ?? null }, read_at: new Date().toISOString() });
   }
   if (new Set(coins.map(c => c.slug)).size !== coins.length || new Set(coins.map(c => c.asset_id)).size !== coins.length) throw Error('Duplicate registry identity');
   const end = await rpc('status', {});

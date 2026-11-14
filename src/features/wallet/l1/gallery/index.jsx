@@ -13,9 +13,9 @@ function GalleryRows({ coins, onSelect }) {
   return <Card className="l1-gallery-card">
     <div className="l1-gallery-row is-heading" aria-hidden><span>NAVCoin</span><span>Total value / TVL</span><span>NAV / change</span><span>Verification</span><span>Latest reading</span><span>For sale now</span><span /></div>
     {coins.map(coin => <article key={coin.asset_id} className="l1-gallery-row" aria-label={`${coin.name} NAVCoin`}>
-      <div className="l1-gallery-name"><AssetAvatar code={coin.name} /><div><button type="button" className="l1-link" onClick={() => onSelect(coin.slug)}>{coin.name}{coin.retired ? " · Retired" : ""}<ArrowUpRight size={13} aria-hidden /></button><p>{coin.description}</p></div></div>
-      <div data-label="TVL"><strong>{usd(coin.latest?.verified_net_assets)}</strong><small>{coin.retired ? "Historical value · retired" : "Latest finalized value"}</small></div>
-      <div data-label="NAV per coin"><strong>{usd(coin.latest?.nav_per_unit, { max: 6 })}</strong><small><Change value={coin.change} />{coin.change != null ? " vs prior" : ""}</small></div>
+      <div className="l1-gallery-name"><AssetAvatar code={coin.name} /><div><button type="button" className="l1-link" onClick={() => onSelect(coin.slug)}>{coin.name}{coin.retired ? " · Retired" : ""}<ArrowUpRight size={13} aria-hidden /></button><p>{coin.description}</p><a className="l1-link l1-small" href={`#l1-wallet/navcoins/${coin.slug}`}>Public profile</a></div></div>
+      <div data-label="TVL"><strong>{usd(coin.latest?.verified_net_assets, { precision: coin.valuation_decimals ?? 6 })}</strong><small>{coin.retired ? "Historical value · retired" : "Latest finalized value"}</small></div>
+      <div data-label="NAV per coin"><strong>{usd(coin.latest?.nav_per_unit, { precision: coin.valuation_decimals ?? 6, max: 8 })}</strong><small><Change value={coin.change} />{coin.change != null ? " vs prior" : ""}</small></div>
       <div data-label="Verification"><Verification split={coin.split} />{coin.split?.reportedOnly && <small>No independent proof yet</small>}</div>
       <div data-label="Latest reading"><Freshness value={coin.freshness} /></div>
       <div data-label="For sale now"><strong>{coin.depth ? `${coin.depth.partial ? "≥ " : ""}${amount(coin.depth.amount, { min: 0 })}` : "Unavailable"}</strong><small>{coin.name}{coin.depth?.partial ? " · partial book" : ""}</small></div>
@@ -33,11 +33,11 @@ function CoinPage({ coin, onNavigate, onBack }) {
   return <>
     <button type="button" className="l1-link l1-gallery-back" onClick={onBack}><ArrowLeft size={15} aria-hidden />All NAVCoins</button>
     {coin.retired && <Notice tone="warning" title={`${coin.name} is retired`}>Existing balances remain visible. NAV and verification below are historical. Trading and cash-in are disabled here; contact the issuer about any remaining holding or reserved payout.</Notice>}
-    <ViewHeader eyebrow="NAVCoin" title={coin.name} subtitle={coin.description} />
+    <ViewHeader eyebrow="NAVCoin" title={coin.name} subtitle={coin.description} /><p><a className="l1-link" href={`#l1-wallet/navcoins/${coin.slug}`}>View public profile, liquidity and verified history →</a></p>
     <div className="l1-coin-layout">
       <div className="l1-stack">
         <Card className="l1-coin-price">
-          <div className="l1-eyebrow">NAV per {coin.name}</div><strong className="l1-coin-nav">{usd(nav?.nav_per_unit, { max: 6 })}</strong>
+          <div className="l1-eyebrow">NAV per {coin.name}</div><strong className="l1-coin-nav">{usd(nav?.nav_per_unit, { precision: coin.valuation_decimals ?? 6, max: 8 })}</strong>
           <p className="l1-muted l1-small"><Change value={coin.change} />{coin.change != null ? " since the previous finalized reading" : ""}</p>
           {coin.history.length > 1 && BigInt(coin.history.at(-2).circulating_supply ?? 0) === 0n && <p className="l1-small l1-muted">The previous reading had no coins outstanding; this change is not an investment return.</p>}
           <div className="l1-coin-best"><span>Best price to buy now</span><b>{coin.depth?.best != null ? `${amount(coin.depth.best)} PFUSDC` : coin.depth ? "No sell offers" : "Order book unavailable"}</b>{premium && <Badge tone={premium.tone}>{premium.label}</Badge>}</div>
@@ -76,7 +76,7 @@ function CoinPage({ coin, onNavigate, onBack }) {
         <Card>
           <CardHead title="Size and availability" />
           <KV rows={[
-            ["Total value (TVL)", usd(nav?.verified_net_assets)],
+            ["Total value (TVL)", usd(nav?.verified_net_assets, { precision: coin.valuation_decimals ?? 6 })],
             ["Coins outstanding now", coin.asset ? <Amount atoms={coin.asset.outstanding_supply} unit={coin.name} precision={coin.asset.precision} /> : "Unavailable"],
             ["Coins at latest NAV reading", nav ? <Amount atoms={nav.circulating_supply} unit={coin.name} /> : "Unavailable"],
             [coin.depth?.partial ? "On offer (partial book)" : "On offer now", coin.depth ? <Amount atoms={coin.depth.amount} unit={coin.name} /> : "Unavailable"],

@@ -64,3 +64,8 @@ test("live re-read updates finalized NAV and trust; a failed book does not hide 
   assert.equal(updated.depth, null);
   assert.match(updated.errors[0], /book offline/);
 });
+
+ test('gallery TVL ordering compares dollars across valuation scales', () => {
+  const coins = [{ name: 'Higher', valuation_decimals: 6, latest: { verified_net_assets: '2000000' } }, { name: 'Lower', valuation_decimals: 8, latest: { verified_net_assets: '100000000' } }];
+  assert.equal(sortByTvl(coins)[0].name, 'Higher');
+ });
