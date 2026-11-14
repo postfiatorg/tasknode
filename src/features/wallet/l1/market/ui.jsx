@@ -115,7 +115,7 @@ export function ActionReview({ client, request, onComplete, onCancel }) {
     {error && phase !== "failed" && <Notice tone="danger" role="alert">{plainError(error)} Review a fresh action before retrying.</Notice>}
     {phase === "failed" && <div className="l1-outcome">
       <div className="l1-outcome-head"><span className="l1-outcome-icon is-danger"><CircleAlert size={22} aria-hidden /></span><div><h4>{rejection || /not accepted/i.test(error) ? "Rejected by the chain" : "Not completed"}</h4><p>No balance change was verified for this action.</p></div></div>
-      <Notice tone="danger" role="alert">{plainError(failureText)} Review a fresh action before retrying.</Notice>
+      <Notice tone="danger" role="alert">{plainError(failureText)} {rejection ? "Review a fresh action before retrying." : "A connection error can occur after acceptance. Check Activity and balances before creating another transaction."}</Notice>
       {rejection && <div className="l1-row"><span className="l1-muted l1-small">Rejected transaction</span><IdChip value={rejection[1]} label="transaction id" /></div>}
     </div>}
     {outcome && <div role="status" className="l1-outcome">

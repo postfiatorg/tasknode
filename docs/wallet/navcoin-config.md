@@ -13,3 +13,11 @@ Native creation reserves source PFUSDC, subscribes, then releases the unused exp
 Ethereum capability currently reports the native route's registered token/controller and chain ID, with liquidity explicitly unverified. Registered addresses are not proof of deployment or usable pool liquidity. No Ethereum swap action is enabled by a metadata flag or predicted address.
 
 The consumer entry point is NAVCoins. Its Buy and Cash in links select that asset; Market and Cash in also have a coin selector. Home values each held NAVCoin from its own finalized reading and excludes retired NAV from its total. Activity labels every registered asset and route by ID.
+
+If the proxy reports a connection error after submission, the gateway can recover
+an exact public signed envelope from the last eight committed blocks. Recovery
+requires a single-transaction batch, a matching native `tx` report and a literal
+accepted/rejected receipt. It only reads; it never repeats the submission. Native
+selected-block verification is retained as such, without claiming a replay of the
+entire historical log. Unresolved submissions remain uncertain and the wallet
+instructs the user to check Activity and balances before another transaction.

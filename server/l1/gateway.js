@@ -5,6 +5,7 @@ import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-bo
 import { handleBridgeRoutes } from './bridge-routes.js';
 import { handleNavcoinRoutes } from './navcoin-routes.js';
 import { createHistoryReader } from './history.js';
+import { createSubmitRecovery } from './submit-recovery.js';
 
 import { L1_READ_METHODS, L1_SUBMIT_METHODS } from '../../src/features/wallet/l1/lib/rpc-methods.js';
 const MAX_BYTES = 1024 * 1024;
@@ -52,7 +53,7 @@ function validateRequest(request) {
   if (findCustodyMaterial(request.params).length) return 'l1_custody_material_rejected';
   return null;
 }
-export function registerL1Gateway(server, { getSession, sessionCookieName, cookieValue, json, readJson, env = process.env }) {
+export function registerL1Gateway(server, { getSession, sessionCookieName, cookieValue, json, readJson, env = process.env, recoverSubmit = createSubmitRecovery(env) }) {
   // Snapshot credentials at registration/startup, never from browser input.
   const proxyOrigin = proxyOriginFromEnv(env);
   const credentials = readProxyToken(env).then(token => ({ token })).catch(() => null);
@@ -105,9 +106,10 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
         const upstream = new WebSocket(upstreamUrl, { maxPayload: MAX_BYTES, handshakeTimeout: 10000,
           ...(proxyOrigin ? { origin: proxyOrigin } : {}) });
         let queue = Promise.resolve();
+        const submissions = new Map();
         const opened = new Promise((resolve, rejectOpen) => { upstream.once('open', resolve); upstream.once('error', rejectOpen); });
         opened.catch(() => {});
-        const stop = () => { sessions.delete(client); if (upstream.readyState === WebSocket.CONNECTING) upstream.terminate(); else upstream.close(); };
+        const stop = () => { submissions.clear(); sessions.delete(client); if (upstream.readyState === WebSocket.CONNECTING) upstream.terminate(); else upstream.close(); };
         client.on('close', stop);
         client.on('error', stop);
         upstream.on('error', () => client.close(1011, 'L1 proxy unavailable'));
@@ -116,8 +118,15 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
         upstream.on('message', data => {
           void (async () => {
             if (!await current()) { client.close(1008, 'L1 session changed'); return; }
-            const payload = data.toString();
+            let payload = data.toString();
             if (proxyToken && payload.includes(proxyToken)) { client.close(1011, 'Unsafe L1 proxy response'); return; }
+            const response = JSON.parse(payload), submitted = submissions.get(response.id);
+            submissions.delete(response.id);
+            if (submitted && response.ok === false && response.error?.code === 'proxy_connection_error' && recoverSubmit) {
+              const recovered = await recoverSubmit(submitted).catch(() => null);
+              if (!await current()) { client.close(1008, 'L1 session changed'); return; }
+              if (recovered) payload = JSON.stringify({ version: response.version, id: response.id, ok: true, result: recovered });
+            }
             if (client.readyState === WebSocket.OPEN) client.send(payload);
           })().catch(() => client.close(1011, 'L1 session unavailable'));
         });
@@ -132,6 +141,11 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
             if (error) { client.send(JSON.stringify({ version: 'postfiat-local-rpc-v1', id: request?.id ?? null, ok: false, error: { code: error, message: error } })); return; }
             await opened;
             if (!await current() || client.readyState !== WebSocket.OPEN) { client.close(1008, 'L1 session changed'); return; }
+            if (submissions.has(request.id)) { client.close(1008, 'Duplicate L1 request id'); return; }
+            if (L1_SUBMIT_METHODS.has(request.method)) {
+              if (submissions.size >= 8) { client.close(1008, 'Too many pending submissions'); return; }
+              submissions.set(request.id, request);
+            }
             // Rebuild the envelope: browser-supplied proxy credentials and unknown fields never pass through.
             upstream.send(JSON.stringify({ version: request.version, id: request.id, method: request.method, params: request.params,
               ...(proxyToken ? { proxy_auth_token: proxyToken } : {}) }));

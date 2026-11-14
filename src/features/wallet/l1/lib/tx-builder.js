@@ -104,7 +104,9 @@ export class TxBuilder {
     const signed = this.#signed.get(handle);
     if (!signed) throw new Error('Signed transaction is stale or already submitted');
     this.#signed.delete(handle); // Never replay automatically after transport uncertainty.
-    const result = rpcResult(await this.rpc.call(signed.method, signed.params));
+    // Allow finality plus bounded read-only recovery after a proxy error. This
+    // handle has already been consumed; neither layer retries the submission.
+    const result = rpcResult(await this.rpc.call(signed.method, signed.params, 180000));
     const txId = result?.tx_id;
     if (typeof txId !== 'string' || !txId) throw new Error('Submission returned no transaction id; check activity before retrying');
     const deadline = Date.now() + timeoutMs;
