@@ -1,3 +1,4 @@
+import { finalizedReadings } from '../gallery/model.js';
 import { atoms, integer, nonce, resultOf, safeInteger } from '../market/amounts.js';
 import { balanceDeltas, lineBalance, snapshot } from '../market/model.js';
 import { accountLine, planOfferSetup, trustPreflight, verifyTrust } from '../market/offer-setup.js';
@@ -5,6 +6,8 @@ const ceil = (a, b) => (a + b - 1n) / b;
 const bindings = ['route_epoch', 'policy_epoch', 'policy_hash', 'pricing_nav_epoch', 'pricing_reserve_packet_hash'];
 export function primaryReady(config, state) {
   const p = state.pool;
+  const latest = finalizedReadings(state.proof).at(-1);
+  if (latest && (latest.epoch !== p?.pricing_nav_epoch || latest.reserve_packet_hash !== p?.pricing_reserve_packet_hash)) throw new Error('The latest finalized NAV has not been applied to this route. Wait for its policy update.');
   if (!config.creation_enabled || !config.g1_passed || config.market_only || !p?.live_value_enabled || p.paused || p.invariant_holds !== true || p.spread_recipient) throw new Error('Native creation is unavailable on this route');
   if (!state.nav || state.nav.epoch !== p.pricing_nav_epoch || state.nav.reserve_packet_hash !== p.pricing_reserve_packet_hash) throw new Error('The active policy has no matching finalized NAV');
   const height = integer(state.proof.current_height);

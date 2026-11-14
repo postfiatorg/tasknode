@@ -63,3 +63,18 @@ test('portfolio and activity label all coins by asset and route; retired NAV exc
  assert.equal(heldNavValues(lines,rich).find(c=>c.coin.retired).value,null);
  assert.equal(sortByTvl(rich).at(-1).asset_id,id('d'));
 });
+
+test('a newly finalized reading disables primary actions until route pricing catches up',async()=>{
+ const f=fixture();
+ const rpc=async(method,params)=>{
+  const v=await f.rpc(method,params);
+  if(method==='nav_reserve_proof_status')v.packets=[...v.packets,{...v.packets[0],epoch:4,reserve_packet_hash:id('0')}];
+  if(method==='book_offers' && params.taker_gets_asset_id===id('a'))v.offers=[{state:'open',expiration_height:0}];
+  return v;
+ };
+ const [coin]=await discoverRegistry(rpc,f.metadata);
+ assert.equal(coin.capabilities.book.available,true);
+ assert.equal(coin.creation_enabled,false);
+ assert.equal(coin.redemption_mode,'unsupported');
+ assert.match(coin.capabilities.create.reason,/latest finalized NAV/);
+});
