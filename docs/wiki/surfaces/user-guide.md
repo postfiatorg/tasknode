@@ -42,7 +42,7 @@ The `More` or thinking disclosure on assistant messages can show the source cont
 
 The `+` menu is where chat becomes an explicit product action.
 
-`Personality` opens Jobs, ODV, Trading Coach, and Kravis. `More` opens Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A. For product guidance, select `Help` from the model picker or open the Help screen; product help is kept in one current source rather than duplicated as an App Help modality.
+`Personality` opens Jobs, ODV, Trading Coach, Kravis, and BasedGPT. `More` opens Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A. For product guidance, select `Help` from the model picker or open the Help screen; product help is kept in one current source rather than duplicated as an App Help modality.
 
 `Request task` turns the next message into a signed personal task request. It requires a signed-in account, linked wallet, and unlocked wallet vault because the request is published as a wallet-bound task request. The generated task appears later as a proposed task card in Tasks.
 

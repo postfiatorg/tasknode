@@ -1,5 +1,5 @@
 import React from "react";
-import { BookOpen, Brain, CandlestickChart, Coins, Compass, CreditCard, Database, Drama, FileText, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Server, Shield, Sparkles, Trophy } from "lucide-react";
+import { BookOpen, Brain, CandlestickChart, Coins, Compass, CreditCard, Database, Drama, FileText, Flame, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Server, Shield, Sparkles, Trophy } from "lucide-react";
 import { fetchAppState, requestJson } from "../api";
 import { appExtensionRegistry } from "../extensions/index.js";
 import { plainTextFromBlocks } from "../features/chat/chat-markdown";
@@ -23,6 +23,7 @@ export const CHAT_PERSONA_ICONS = Object.freeze({
   "trading-coach": CandlestickChart,
   jobs: Lightbulb,
   kravis: Landmark,
+  basedgpt: Flame,
   brainstorming: Brain,
   motivation: Trophy,
   "five-mirrors": Drama,

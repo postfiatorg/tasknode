@@ -22,6 +22,8 @@ reviewed, versioned, and replayed.
   receive Jobs pgvector excerpts.
 - `kravis.md`: Canonical downside-first private-equity personality prompt used
   by the primary chat personality router.
+- `basedgpt.md`: Canonical BasedGPT blunt strategic-counsel personality prompt
+  used by the primary chat personality router.
 - `context/`: Context document editing prompts used by the chat-based Context
   Refine mode.
 - `memory/`: Async memory and deep-memory summarization prompts.
