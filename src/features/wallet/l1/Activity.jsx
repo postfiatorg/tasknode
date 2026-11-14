@@ -1,3 +1,5 @@
+import { loadConfig } from './market/constants.js';
+import { labelActivity } from './activity-model.js';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, CircleX, History, RefreshCw } from 'lucide-react';
 import { rpcResult } from './lib/rpc-client.js';
@@ -31,8 +33,9 @@ export function useActivity(client, limit = 100) {
         result = await response.json();
         if (!response.ok) throw Error(result.error || 'History recovery unavailable');
       }
+      const config = await loadConfig().catch(() => null);
       if (active()) {
-        setRows(Array.isArray(result) ? result : result?.rows || result?.transactions || []); setError('');
+        setRows(labelActivity(Array.isArray(result) ? result : result?.rows || result?.transactions || [], config)); setError('');
         setCoverage(result?.source === 'committed_archive' ? `Recent history from blocks ${result.from_height}–${result.to_height}. ${result.coverage}` : '');
       }
     } catch (failure) { if (active()) setError(failure.message); }

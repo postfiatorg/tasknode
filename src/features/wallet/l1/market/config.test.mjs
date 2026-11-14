@@ -5,6 +5,8 @@ import { navcoinRegistry } from '../../../../../server/l1/navcoin-registry.js';
 import { projectHistory } from '../../../../../server/l1/history.js';
 import { heldNavValues, sortByTvl } from '../gallery/model.js';
 import { buildOffer, readPool } from './model.js';
+import { classifyLines } from '../portfolio.js';
+import { labelActivity } from '../activity-model.js';
 import { buildRedeem } from '../redeem/model.js';
 const b24 = '5'.repeat(96), owner = 'pf' + '4'.repeat(40);
 const config = validateConfig({ ...PUBLISHED_CONFIG, nav_asset_id: b24, symbol: 'B24', slug: 'b24', route_id: 'b24-route',
@@ -66,4 +68,18 @@ test('activity distinguishes active B24 buys and retired B23 cash-ins using conf
   const result = projectHistory(fixture, owner, 100, assetSymbols(config), { [PUBLISHED_CONFIG.route_id]: 'B23' });
   const buy = result.rows.find(r => r.transaction_kind === 'offer_create'), cash = result.rows.find(r => r.transaction_kind === 'pftl_uniswap_primary_redeem');
   assert.equal(buy.market_side, 'buy'); assert.equal(buy.market_symbol, 'B24'); assert.equal(cash.unit, 'B23');
+});
+
+test('healthy RPC activity and portfolio also use IDs across the B24 transition', () => {
+  const rows = labelActivity([
+    { transaction_kind: 'issued_payment', asset_id: b24, unit: 'stale-name' },
+    { transaction_kind: 'pftl_uniswap_primary_redeem', route_id: PUBLISHED_CONFIG.route_id },
+    { transaction_kind: 'offer_create', taker_pays_asset_id: config.market_quote_asset_id, taker_gets_asset_id: b24 },
+  ], config);
+  assert.equal(rows[0].unit, 'B24'); assert.equal(rows[1].unit, 'B23');
+  assert.equal(rows[2].market_symbol, 'B24'); assert.equal(rows[2].market_side, 'sell');
+  const balances = [{ asset_id: PUBLISHED_CONFIG.b23_asset_id, code: 'B23', balance: 1000000 }, { asset_id: b24, code: 'B24', balance: 2000000 }];
+  assert.equal(classifyLines(balances, config).b23, 2000000n);
+  assert.equal(classifyLines(balances, config).others[0].balance, 1000000n);
+  assert.equal(classifyLines(balances, null).b23, null);
 });

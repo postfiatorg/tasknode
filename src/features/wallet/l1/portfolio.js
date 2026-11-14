@@ -2,7 +2,7 @@
 const big = value => (value === null || value === undefined ? null : BigInt(value));
 
 // Group raw account lines into the three assets this wallet is about, using the
-// published B23 configuration when it is available and asset codes otherwise.
+// published active-asset configuration. Unconfigured NAV assets remain unclassified.
 export function classifyLines(lines, config) {
   const out = { b23: null, pfusdc: null, pfusdcFamily: null, pfusdcBridged: 0n, others: [], matched: Boolean(config) };
   for (const line of lines) {
@@ -15,7 +15,6 @@ export function classifyLines(lines, config) {
       if (id === config.pfusdc_asset_id) out.pfusdcFamily = (out.pfusdcFamily ?? 0n) + balance; else out.pfusdcBridged += balance;
       continue;
     }
-    if (!config && code === 'B23') { out.b23 = (out.b23 ?? 0n) + balance; continue; }
     if (!config && code === 'PFUSDC') { out.pfusdc = (out.pfusdc ?? 0n) + balance; continue; }
     out.others.push({ code: code || null, id, balance, precision: Number.isSafeInteger(line.precision) ? line.precision : 6 });
   }
