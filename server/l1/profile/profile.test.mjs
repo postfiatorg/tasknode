@@ -112,3 +112,16 @@ test('old snapshot resolves a shared registered profile by canonical ID without 
  const snapshot = await reader.snapshot('test', 1);
  assert.equal(snapshot.verified, true); assert.equal(snapshot.proof_profile.source_class, 'older-source'); assert.deepEqual(heights, [10, 11]);
 });
+
+test('Ethereum history retries an incomplete receipt read instead of caching absence', async () => {
+ const { readPublicationRpc } = await import('./ethereum-history.js'); let reads = 0;
+ const result = await readPublicationRpc('eth_getTransactionReceipt', ['0xpublic'], async () => Response.json({ result: ++reads === 1 ? null : { transactionHash: '0xpublic' } }));
+ assert.equal(reads, 2); assert.equal(result.transactionHash, '0xpublic');
+});
+test('Ethereum publication rejects missing receipts and mismatched requested transaction identities', async () => {
+ const { publicationAccepted } = await import('./ethereum-history.js');
+ const tx = { hash: '0xabc', blockHash: 'block', to: '0xverifier' }, receipt = { transactionHash: '0xabc', blockHash: 'block', status: '0x0', logs: [] };
+ assert.equal(publicationAccepted(tx, receipt, '0xabc', '0xverifier'), false);
+ assert.throws(() => publicationAccepted(tx, null, '0xabc', '0xverifier'), /incomplete/);
+ assert.throws(() => publicationAccepted(tx, { ...receipt, transactionHash: '0xwrong' }, '0xabc', '0xverifier'), /inconsistent/);
+});
