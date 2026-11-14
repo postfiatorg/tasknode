@@ -21,7 +21,7 @@ test('peer market reads its own asset without a B23 reserve and binds precision 
   const offer = buildOffer(peer, bob, 'buy', '2', '3', '0', read);
   assert.equal(offer.operation.taker_pays_asset_id, peer.b23_asset_id);
   assert.equal(offer.operation.taker_gets_asset_id, peer.market_quote_asset_id);
-  assert.throws(() => buildOffer({ ...config, g1_passed: false }, bob, 'buy', '2', '3', '0', read), /G1/);
+  assert.throws(() => buildOffer({ ...config, g1_passed: false }, bob, 'buy', '2', '3', '0', read), /deployment/);
   assert.throws(() => buildOffer(peer, peer.issuer_address, 'buy', '2', '3', '0', read), /issuer/);
 });
 test('peer fills verify exact balances and unchanged supply with no cash-in reserve', () => {

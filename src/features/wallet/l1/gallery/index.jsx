@@ -17,13 +17,13 @@ function GalleryRows({ coins, onSelect }) {
   return <Card className="l1-gallery-card">
     <div className="l1-gallery-row is-heading" aria-hidden><span>NAVCoin</span><span>Total value / TVL</span><span>NAV / change</span><span>Verification</span><span>Latest reading</span><span>For sale now</span><span /></div>
     {coins.map(coin => <article key={coin.asset_id} className="l1-gallery-row" aria-label={`${coin.name} NAVCoin`}>
-      <div className="l1-gallery-name"><AssetAvatar code={coin.name} /><div><button type="button" className="l1-link" onClick={() => onSelect(coin.slug)}>{coin.name}<ArrowUpRight size={13} aria-hidden /></button><p>{coin.description}</p></div></div>
-      <div data-label="TVL"><strong>{usd(coin.latest?.verified_net_assets)}</strong><small>Latest finalized value</small></div>
+      <div className="l1-gallery-name"><AssetAvatar code={coin.name} /><div><button type="button" className="l1-link" onClick={() => onSelect(coin.slug)}>{coin.name}{coin.retired ? " · Retired" : ""}<ArrowUpRight size={13} aria-hidden /></button><p>{coin.description}</p></div></div>
+      <div data-label="TVL"><strong>{usd(coin.latest?.verified_net_assets)}</strong><small>{coin.retired ? "Historical value · retired" : "Latest finalized value"}</small></div>
       <div data-label="NAV per coin"><strong>{usd(coin.latest?.nav_per_unit, { max: 6 })}</strong><small><Change value={coin.change} />{coin.change != null ? " vs prior" : ""}</small></div>
       <div data-label="Verification"><Verification split={coin.split} />{coin.split?.reportedOnly && <small>No independent proof yet</small>}</div>
       <div data-label="Latest reading"><Freshness value={coin.freshness} /></div>
       <div data-label="For sale now"><strong>{coin.depth ? `${coin.depth.partial ? "≥ " : ""}${amount(coin.depth.amount, { min: 0 })}` : "Unavailable"}</strong><small>{coin.name}{coin.depth?.partial ? " · partial book" : ""}</small></div>
-      <button type="button" className="l1-btn is-sm" onClick={() => onSelect(coin.slug)} aria-label={`Buy ${coin.name}`}>Buy</button>
+      <button type="button" className="l1-btn is-sm" onClick={() => onSelect(coin.slug)} aria-label={`${coin.retired ? "View retired" : "Buy"} ${coin.name}`}>{coin.retired ? "View" : "Buy"}</button>
       {coin.errors?.length > 0 && <p className="l1-gallery-error l1-small">{coin.errors.join(" · ")}</p>}
     </article>)}
   </Card>;
@@ -32,15 +32,16 @@ function GalleryRows({ coins, onSelect }) {
 function CoinPage({ coin, client, config, onNavigate, onBack }) {
   const profile = coin.proof?.active_profile, nav = coin.latest;
   const premium = versusNav(coin.depth?.best, nav?.nav_per_unit != null ? BigInt(nav.nav_per_unit) : null);
-  const isB23 = coin.asset_id === config?.b23_asset_id;
+  const isActive = coin.asset_id === config?.b23_asset_id;
   const issuer = coin.asset?.issuer;
   const epoch = nav?.epoch;
-  const marketConfig = useMemo(() => !config || !issuer ? null : isB23 ? { ...config, reading_epoch: epoch } : {
+  const marketConfig = useMemo(() => !config || !issuer ? null : isActive ? { ...config, reading_epoch: epoch } : {
     ...config, symbol: coin.name, b23_asset_id: coin.asset_id, market_quote_asset_id: coin.market_quote_asset_id,
     route_id: coin.route_id, issuer_address: issuer, alice_holder_address: null, market_only: true, reading_epoch: epoch,
-  }, [config, isB23, coin.name, coin.asset_id, coin.market_quote_asset_id, coin.route_id, issuer, epoch]);
+  }, [config, isActive, coin.name, coin.asset_id, coin.market_quote_asset_id, coin.route_id, issuer, epoch]);
   return <>
     <button type="button" className="l1-link l1-gallery-back" onClick={onBack}><ArrowLeft size={15} aria-hidden />All NAVCoins</button>
+    {coin.retired && <Notice tone="warning" title={`${coin.name} is retired`}>Existing balances remain visible. NAV and verification below are historical. Trading and cash-in are disabled here; contact the issuer about any remaining holding or reserved payout.</Notice>}
     <ViewHeader eyebrow="NAVCoin" title={coin.name} subtitle={coin.description} />
     <div className="l1-coin-layout">
       <div className="l1-stack">
@@ -69,10 +70,15 @@ function CoinPage({ coin, client, config, onNavigate, onBack }) {
           ]} />
           <p className="l1-small l1-muted">{profile?.verifier_kind === "placeholder" ? "Placeholder means the chain accepts an operator-posted value without independent proof." : profile?.verifier_kind === "multi-fetch-quorum" ? "A multi-fetch quorum setting uses attestations; the setting alone does not establish attested coverage in this packet." : profile?.verifier_kind?.includes("sp1") ? "This setting uses a zero-knowledge proof verifier. Only the value credited as cryptographically verified is counted as Proven." : "The proof setting describes the verification mechanism. The split above comes from this finalized packet’s trust values."} Finalized means recorded on the chain; it does not by itself prove the assets exist.</p>
         </Card>
+        {isActive && <Card><CardHead title="Route terms" /><KV rows={[
+          ["Create", coin.pool?.issue_multiplier_bps != null || config.issue_multiplier_bps != null ? `NAV +${percentFromBps((coin.pool?.issue_multiplier_bps ?? config.issue_multiplier_bps) - 10000)}` : "Unavailable"],
+          ["Cash in", coin.pool?.redeem_multiplier_bps != null || config.redeem_multiplier_bps != null ? `NAV −${percentFromBps(10000 - (coin.pool?.redeem_multiplier_bps ?? config.redeem_multiplier_bps))}` : "Unavailable"],
+        ]} /><p className="l1-small l1-muted">Creation and cash-in terms are separate from order-book prices. Network fees apply. {config.redemption_mode === "unsupported" ? "Native cash-in is not available in this wallet; exit through a matching market buyer." : "Cash-in depends on live reserve capacity and route policy."}</p></Card>}
+        {isActive && <Card><CardHead title="Ethereum / Uniswap" />{config.ethereum?.available ? <KV rows={[["Wrapped token", <IdChip value={config.ethereum.wrapped_token} label="wrapped token" />], ["Pool", <IdChip value={config.ethereum.pool} label="Uniswap pool" />]]} /> : <><Badge>Not available yet</Badge><p className="l1-section-gap l1-small l1-muted">The wrapped token and pool are not both available. No Ethereum trading link is published.</p></>}</Card>}
         <NavHistory coin={coin} />
       </div>
       <div className="l1-stack">
-        {marketConfig ? <Market key={coin.asset_id} client={client} marketConfig={marketConfig} onNavigate={onNavigate} compact /> : <Card><Notice title="Buy ticket unavailable">Market configuration or asset information could not be read.</Notice></Card>}
+        {!coin.retired && (marketConfig ? <Market key={coin.asset_id} client={client} marketConfig={marketConfig} onNavigate={onNavigate} compact /> : <Card><Notice title="Buy ticket unavailable">Market configuration or asset information could not be read.</Notice></Card>)}
         <Card>
           <CardHead title="Size and availability" />
           <KV rows={[
@@ -83,7 +89,7 @@ function CoinPage({ coin, client, config, onNavigate, onBack }) {
             coin.route_id && ["Cash-in reserve", coin.pool ? <Amount atoms={coin.pool.settlement_reserve_atoms} unit="PFUSDC" /> : "Unavailable"],
           ]} />
           <p className="l1-small l1-muted">TVL is the latest finalized reading’s net assets. It is not market liquidity or a promise of independent verification. Current supply can change after a reading.</p>
-          {isB23 && coin.route_id ? <button type="button" className="l1-link l1-section-gap" onClick={() => onNavigate("Redeem")}>Cash in {coin.name} at NAV<ArrowUpRight size={14} aria-hidden /></button> : <div className="l1-section-gap"><button type="button" className="l1-btn is-sm" disabled>Cash in {coin.name}</button><p className="l1-small l1-muted">{coin.pool?.live_value_enabled === false || coin.pool?.paused ? "This coin’s cash-in route is disabled on the chain." : "Cash in is not supported for this coin in this wallet."}</p></div>}
+          {isActive && coin.route_id && config.redemption_mode !== "unsupported" ? <button type="button" className="l1-link l1-section-gap" onClick={() => onNavigate("Redeem")}>Cash in {coin.name} at NAV<ArrowUpRight size={14} aria-hidden /></button> : <div className="l1-section-gap"><button type="button" className="l1-btn is-sm" disabled>Cash in {coin.name}</button><p className="l1-small l1-muted">{coin.retired ? "This retired coin is read-only in this wallet." : coin.pool?.live_value_enabled === false || coin.pool?.paused ? "This coin’s cash-in route is disabled on the chain." : "Cash in is not supported for this coin in this wallet."}</p></div>}
         </Card>
         <Card><Details summary="Asset and source identifiers"><KV rows={[
           ["Asset", <IdChip value={coin.asset_id} label="asset id" />],

@@ -7,13 +7,13 @@ const TITLES = {
   pftl_uniswap_primary_redeem: 'Cash in at NAV', pftl_uniswap_redemption_fund: 'Cash-in reserve funded', pftl_uniswap_route_epoch_advance: 'Cash-in fee changed',
   nav_mint_at_nav: 'Mint at NAV', nav_reserve_submit: 'Reserve packet submitted', nav_epoch_finalize: 'NAV epoch finalized',
 };
-function titleFor(row, incoming) {
+export function titleFor(row, incoming) {
   const kind = String(row.kind || row.transaction_kind || 'transaction');
   if (['transfer', 'transparent_transfer', 'payment', 'payment_v2'].includes(kind)) return incoming ? 'Received PFT' : 'Sent PFT';
-  if (TITLES[kind]) return TITLES[kind];
+  if (TITLES[kind]) return `${TITLES[kind]}${row.unit ? ` · ${row.unit}` : ''}`;
   if (kind === 'issued_payment') return incoming ? 'Asset deposit received' : 'Asset sent';
   if (kind.startsWith('vault_bridge')) return 'Bridge deposit';
-  if (kind.startsWith('offer')) return kind === 'offer_cancel' ? 'Order cancelled' : row.market_side === 'buy' ? 'Market buy' : row.market_side === 'sell' ? 'Market sell' : 'Market order';
+  if (kind.startsWith('offer')) return kind === 'offer_cancel' ? 'Order cancelled' : row.market_side === 'buy' ? `Market buy${row.market_symbol ? ` · ${row.market_symbol}` : ''}` : row.market_side === 'sell' ? `Market sell${row.market_symbol ? ` · ${row.market_symbol}` : ''}` : 'Market order';
   const words = kind.replace(/^pftl_uniswap_/, '').replace(/_/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
 }

@@ -1,7 +1,7 @@
 // Read-only recovery for nodes whose account_tx index rejects duplicate receipts.
 // Reads committed blocks and their archived transactions; never edits node data.
 import { connect } from 'node:net';
-import { PUBLISHED_CONFIG } from '../../src/features/wallet/l1/market/constants.js';
+import { deploymentConfig, assetSymbols } from '../../src/features/wallet/l1/market/constants.js';
 const GROUPS = ['transactions', 'payments_v2', 'asset_transactions', 'atomic_swap_transactions', 'escrow_transactions', 'nft_transactions', 'offer_transactions'];
 const ADDRESS_FIELDS = ['source', 'from', 'to', 'owner', 'account', 'recipient', 'native_recipient', 'settlement_recipient', 'spread_recipient'];
 function readRpc(endpoint, method, params) {
@@ -28,7 +28,7 @@ function readRpc(endpoint, method, params) {
   });
 }
 const canonical = value => JSON.stringify(value, Object.keys(value).sort());
-export function projectHistory({ blocks, archives, receipts }, address, limit = 100, symbols = {}) {
+export function projectHistory({ blocks, archives, receipts }, address, limit = 100, symbols = {}, routes = {}) {
   const batches = new Map(archives.map(entry => [`${entry.batch_kind}:${entry.batch_id}`, entry]));
   const byTx = new Map(), conflicts = new Set();
   for (const receipt of receipts) {
@@ -59,8 +59,12 @@ export function projectHistory({ blocks, archives, receipts }, address, limit = 
         accepted: conflicts.has(txId) ? null : receipt?.accepted ?? null,
         receipt_code: conflicts.has(txId) ? 'conflicting_receipts' : receipt?.code };
       if (['transfer', 'payment', 'payment_v2', 'issued_payment'].includes(kind)) row.amount = op.amount;
-      if (kind === 'pftl_uniswap_primary_redeem') { row.amount = op.nav_amount_atoms; row.unit = 'B23'; }
-      if (kind === 'offer_create' && [op.taker_pays_asset_id, op.taker_gets_asset_id].includes(PUBLISHED_CONFIG.b23_asset_id)) row.market_side = op.taker_pays_asset_id === PUBLISHED_CONFIG.b23_asset_id ? 'buy' : 'sell';
+      if (kind === 'pftl_uniswap_primary_redeem') { row.amount = op.nav_amount_atoms; row.unit = routes[op.route_id]; }
+      if (kind === 'offer_create') {
+        const buying = symbols[op.taker_pays_asset_id], selling = symbols[op.taker_gets_asset_id];
+        if (buying && buying !== 'PFUSDC') { row.market_side = 'buy'; row.market_symbol = buying; }
+        else if (selling && selling !== 'PFUSDC') { row.market_side = 'sell'; row.market_symbol = selling; }
+      }
       rows.push(row);
     });
   }
@@ -74,8 +78,8 @@ export function createHistoryReader(env = process.env, injectedRpc) {
   const endpoint = new URL(env.L1_HISTORY_RPC_URL);
   if (endpoint.protocol !== 'tcp:' || !['127.0.0.1', '[::1]'].includes(endpoint.hostname) || !endpoint.port || endpoint.username || endpoint.password) throw Error('History RPC must be a loopback TCP endpoint');
   const rpc = injectedRpc || ((method, params) => readRpc(endpoint, method, params));
-  const config = { ...PUBLISHED_CONFIG, ...JSON.parse(env.B23_NAVCOIN_CONFIG_JSON || '{}') };
-  const symbols = { [config.b23_asset_id]: 'B23', [config.pfusdc_asset_id]: 'PFUSDC', ...Object.fromEntries((config.pfusdc_source_asset_ids || []).map(id => [id, 'PFUSDC'])) };
+  const config = deploymentConfig(env), symbols = assetSymbols(config);
+  const routes = { [config.route_id]: config.symbol, ...Object.fromEntries(config.retired_assets.filter(coin => coin.route_id).map(coin => [coin.route_id, coin.symbol])) };
   let cached = null, pending = null;
   async function snapshot() {
     const status = await rpc('status', {});
@@ -98,6 +102,6 @@ export function createHistoryReader(env = process.env, injectedRpc) {
   return async (address, limit = 100) => {
     if (!/^pf[0-9a-f]{40}$/.test(address)) throw Error('Invalid history address');
     if (!pending) pending = snapshot().finally(() => { pending = null; });
-    return projectHistory(await pending, address, Math.max(1, Math.min(100, Number(limit) || 100)), symbols);
+    return projectHistory(await pending, address, Math.max(1, Math.min(100, Number(limit) || 100)), symbols, routes);
   };
 }

@@ -1,0 +1,51 @@
+import assert from 'node:assert/strict';
+import { createServer } from 'vite';
+import { mkdir } from 'node:fs/promises';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || '/home/postfiat/repos/postfiatl1v2-fastswap/wallet-web/node_modules/playwright/index.mjs');
+const evidence = process.env.NAVCOIN_EVIDENCE_DIR || '/home/postfiat/repos/b23-coord/evidence/trade/phase2/synthetic';
+await mkdir(evidence, { recursive: true });
+const server = await createServer({ configFile: false, server: { host: '127.0.0.1', port: 0 }, appType: 'custom', plugins: [{ name: 'config-fixture', configureServer(server) {
+  server.middlewares.use(async (req, res, next) => { if (!req.url.startsWith('/config-fixture')) return next(); res.setHeader('Content-Type', 'text/html'); res.end(await server.transformIndexHtml(req.url, '<html><body><div id="root"></div><script type="module" src="/src/features/wallet/l1/gallery/browser-fixture.jsx"></script></body></html>')); });
+} }] });
+await server.listen();
+const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } }), errors = [];
+page.on('pageerror', e => errors.push(e.message));
+try {
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/config-fixture?coin=b24`);
+  await page.getByRole('article', { name: 'B24 NAVCoin', exact: true }).waitFor();
+  await page.getByRole('article', { name: 'B24 NAVCoin', exact: true }).getByRole('img', { name: 'Proven 0%, Attested 100%, Reported 0%' }).waitFor();
+  await page.getByRole('button', { name: 'View retired B23', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Buy B24', exact: true }).click();
+  await page.getByRole('heading', { name: 'Buy B24', exact: true }).waitFor();
+  await page.getByText('NAV +0.50%', { exact: true }).waitFor();
+  await page.getByText('NAV −0.05%', { exact: true }).waitFor();
+  const eth = page.locator('section').filter({ has: page.getByText('Ethereum / Uniswap', { exact: true }) });
+  await page.getByText('Not available yet', { exact: true }).waitFor();
+  assert.equal(await eth.locator('a').count(), 0);
+  await page.screenshot({ path: `${evidence}/b24-detail.png`, fullPage: true });
+  await page.getByRole('button', { name: 'All NAVCoins' }).click();
+  await page.getByRole('button', { name: 'View retired B23', exact: true }).click();
+  await page.getByText('B23 is retired', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Review buy offer', exact: true }).count(), 0);
+  await page.evaluate(() => window.galleryFixture.home());
+  await page.getByRole('button', { name: 'Buy B24', exact: true }).waitFor();
+  await page.getByText('Retired · historical NAV excluded', { exact: false }).waitFor();
+  await page.locator('.l1-total').filter({ hasText: '10,500.00' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Buy B23', exact: true }).count(), 0);
+  await page.screenshot({ path: `${evidence}/b24-home-retired.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Buy B24', exact: true }).click();
+  await page.getByLabel('B24 quantity', { exact: true }).fill('1');
+  assert.equal(await page.getByLabel('PFUSDC total', { exact: true }).inputValue(), '1');
+  assert.equal(await page.getByRole('button', { name: 'Review buy offer', exact: true }).isEnabled(), true);
+  await page.evaluate(() => window.galleryFixture.view('Redeem'));
+  await page.getByText('Native cash-in is not available in this wallet', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Review cash-in', exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Open B24 market', exact: true }).waitFor();
+  await page.evaluate(() => window.galleryFixture.view('Activity'));
+  await page.getByText('Market buy · B24', { exact: true }).waitFor();
+  await page.getByText('Cash in at NAV · B23', { exact: true }).waitFor();
+  assert.deepEqual(errors, []);
+  console.log('PASS synthetic B24 Home, gallery, detail, market, cash-in unavailable, Activity, retired B23 preservation/value exclusion, configured fees, no fake Ethereum links. No chain writes.');
+} catch (e) { console.error(await page.locator('body').innerText()); await page.screenshot({ path: `${evidence}/failure.png`, fullPage: true }); throw e; }
+finally { await browser.close(); await server.close(); }

@@ -45,23 +45,23 @@ export function WalletNotice({ client, error, loading, refresh, data }) {
   </>;
 }
 export function PoolState({ state, config }) {
-  const p = state.pool;
+  const p = state.pool, symbol = config.symbol || "B23";
   const fee = Number.isSafeInteger(p.redeem_multiplier_bps) ? 10000 - p.redeem_multiplier_bps : null;
-  return <Card aria-label="B23 reserve state">
-    <CardHead eyebrow="Standing reserve" title="B23 reserve">{p.invariant_holds === true ? <Badge tone="success" dot>Supply balanced</Badge> : p.invariant_holds === false ? <Badge tone="danger">Supply mismatch</Badge> : null}</CardHead>
+  return <Card aria-label={`${symbol} reserve state`}>
+    <CardHead eyebrow="Standing reserve" title={`${symbol} reserve`}>{p.invariant_holds === true ? <Badge tone="success" dot>Supply balanced</Badge> : p.invariant_holds === false ? <Badge tone="danger">Supply mismatch</Badge> : null}</CardHead>
     <div className="l1-facts-nav"><strong><Amount atoms={p.settlement_reserve_atoms} unit="PFUSDC" /></strong></div>
     <p className="l1-muted l1-small" style={{ marginBottom: 12 }}>Available to pay cash-ins at NAV. Larger cash-ins are rejected, not partly filled.</p>
     <KV rows={[
-      ["B23 that can be cashed in now", <Amount atoms={p.available_redeem_atoms} unit="B23" />],
-      ["B23 outstanding", <Amount atoms={state.supply} unit="B23" />],
-      ["NAV per B23", state.nav ? `$${amount(state.nav.nav_per_unit, { min: 2 })}` : "Finalized NAV unavailable"],
+      [`${symbol} that can be cashed in now`, <Amount atoms={p.available_redeem_atoms} unit={symbol} />],
+      [`${symbol} outstanding`, <Amount atoms={state.supply} unit={symbol} />],
+      [`NAV per ${symbol}`, state.nav ? `$${amount(state.nav.nav_per_unit, { min: 2 })}` : "Finalized NAV unavailable"],
       ["Cash-in fee", fee == null ? "Unavailable" : percentFromBps(fee), fee == null ? null : `${fee} bps`],
     ]} />
     {!config.g1_passed && <div style={{ marginTop: 14 }}><Notice tone="warning" role="status" title="Cash-ins and reserve funding are switched off">They open once the operator enables this route on the network.</Notice></div>}
     <Details summary="On-chain details"><KV className="is-tight" rows={[
       ["Fee recipient", p.spread_recipient ? <Mono value={p.spread_recipient} /> : "Not set on the live route"],
       ["Route epoch / policy", `${p.route_epoch} / ${p.policy_epoch}`],
-      ["Per cash-in", p.min_order_atoms != null ? `${amount(p.min_order_atoms, { min: 0 })} – ${amount(p.max_order_atoms, { min: 0 })} B23` : "—"],
+      ["Per cash-in", p.min_order_atoms != null ? `${amount(p.min_order_atoms, { min: 0 })} – ${amount(p.max_order_atoms, { min: 0 } )} ${symbol}` : "—"],
     ]} /></Details>
   </Card>;
 }
@@ -118,13 +118,13 @@ export function ActionReview({ client, request, onComplete, onCancel }) {
       {effects?.credits ? <div className="l1-deltas">
         <div className="l1-delta is-up"><small>You received</small><span><Amount atoms={effects.credits.settlement_value_atoms} unit="PFUSDC" testId="credit-holder" /></span></div>
         <div className="l1-delta"><small>Cash-in fee</small><span><Amount atoms={effects.credits.spread_value_atoms} unit="PFUSDC" testId="credit-fee" /></span></div>
-        {effects.deltas && <DeltaCard label="B23 balance" atoms={effects.deltas.B23} unit="B23" />}
+        {effects.deltas && <DeltaCard label={`${request.symbol || "B23"} balance`} atoms={effects.deltas.B23} unit={request.symbol || "B23"} />}
       </div> : effects?.deltas && <div className="l1-deltas">
         <DeltaCard label={`${request.symbol || "B23"} balance`} atoms={effects.deltas.B23} unit={request.symbol || "B23"} />
         <DeltaCard label="PFUSDC balance" atoms={effects.deltas.PFUSDC} unit="PFUSDC" />
         {effects.locked && BigInt(effects.locked) > 0n && <div className="l1-delta"><small>Locked in your open offer</small><span><Amount atoms={effects.locked} unit={request.lockedUnit} /></span></div>}
       </div>}
-      {effects?.capacityAfter != null && <KV rows={[["Cash-in capacity", <>{amount(effects.capacityBefore)} → <Amount atoms={effects.capacityAfter} unit="B23" /></>]]} />}
+      {effects?.capacityAfter != null && <KV rows={[["Cash-in capacity", <>{amount(effects.capacityBefore)} → <Amount atoms={effects.capacityAfter} unit={request.symbol || "B23"} /></>]]} />}
       <div className="l1-row"><span className="l1-muted l1-small">Transaction</span><IdChip value={outcome.txId} label="transaction id" /></div>
       <Details summary="Receipt and before/after balances">
         {effects?.message && <p className="l1-small l1-muted">{plainError(effects.message)}</p>}

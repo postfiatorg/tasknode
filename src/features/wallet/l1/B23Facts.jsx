@@ -32,39 +32,41 @@ export function navValue(state) {
 
 export default function B23Facts({ state, config, error, compact = false, onNavigate }) {
   const cutoff = useEquityCutoff(state?.nav);
+  const symbol = config?.symbol || "NAVCoin";
   if (!state) return <Card className="l1-facts">
-    <CardHead eyebrow="B23 · NAVCoin" />
-    {error ? <p className="l1-muted">B23 market data is unavailable right now.</p> : <div style={{ display: "grid", gap: 10 }}><Skeleton width="45%" height={30} /><Skeleton height={56} /><Skeleton width="80%" /><Skeleton width="70%" /></div>}
+    <CardHead eyebrow={`${symbol} · NAVCoin`} />
+    {error ? <p className="l1-muted">{symbol} market data is unavailable right now.</p> : <div style={{ display: "grid", gap: 10 }}><Skeleton width="45%" height={30} /><Skeleton height={56} /><Skeleton width="80%" /><Skeleton width="70%" /></div>}
   </Card>;
   const pool = state.pool, nav = state.nav, fee = feeBps(pool);
   const value = navValue(state);
-  return <Card className="l1-facts" aria-label="B23 summary">
-    <CardHead eyebrow="B23 · NAVCoin">{nav ? <Badge tone="accent" dot>NAV final</Badge> : <Badge tone="warning">NAV pending</Badge>}</CardHead>
+  return <Card className="l1-facts" aria-label={`${symbol} summary`}>
+    <CardHead eyebrow={`${symbol} · NAVCoin`}>{nav ? <Badge tone="accent" dot>NAV final</Badge> : <Badge tone="warning">NAV pending</Badge>}</CardHead>
     <div className="l1-facts-nav">
       <strong>{nav ? `$${amount(nav.nav_per_unit, { min: 2 })}` : "—"}</strong>
-      <span className="l1-muted">NAV per B23{nav ? ` · epoch ${nav.epoch}` : ""}</span>
+      <span className="l1-muted">NAV per {symbol}{nav ? ` · epoch ${nav.epoch}` : ""}</span>
     </div>
     <div className="l1-facts-backing"><Landmark size={16} aria-hidden /><div>
       <strong>Backed by a Schwab brokerage account.</strong>{" "}
       {nav ? <>Priced at the account&rsquo;s reported net asset value{cutoff ? <> as of {dateTime(cutoff)}</> : <>, finalized on Post Fiat{nav.submitted_at_height ? ` at block ${Number(nav.submitted_at_height).toLocaleString()}` : ""}</>}.</> : "The next NAV is being finalized."}
     </div></div>
     <KV rows={[
-      ["B23 outstanding", <Amount atoms={state.supply} />],
+      [`${symbol} outstanding`, <Amount atoms={state.supply} />],
       value != null && ["Net assets at last NAV", usd(value)],
-      ["Reserve for cash-ins", <Amount atoms={pool.settlement_reserve_atoms} unit="PFUSDC" />],
+      [config?.redemption_mode === "unsupported" ? "Route settlement reserve" : "Reserve for cash-ins", <Amount atoms={pool.settlement_reserve_atoms} unit="PFUSDC" />],
       !compact && ["Cash-in fee", fee == null ? "—" : percentFromBps(fee)],
-      !compact && pool.min_order_atoms != null && ["Per cash-in", `${amount(pool.min_order_atoms, { min: 0 })} – ${amount(pool.max_order_atoms, { min: 0 })} B23`],
+      !compact && pool.min_order_atoms != null && ["Per cash-in", `${amount(pool.min_order_atoms, { min: 0 })} – ${amount(pool.max_order_atoms, { min: 0 } )} ${symbol}`],
     ]} />
+    {config?.redemption_mode === "unsupported" && <p className="l1-small l1-muted">Native cash-in is not available in this wallet. You can offer your coins on the market.</p>}
     {!compact && <Details summary="On-chain details">
       <KV className="is-tight" rows={[
         ["Supply check", pool.invariant_holds === true ? "Balanced" : pool.invariant_holds === false ? "Mismatch" : "Unavailable"],
         ["Route", <Mono value={pool.route_id} />],
         ["Route epoch / policy", `${pool.route_epoch} / ${pool.policy_epoch}`],
         nav && ["Reserve packet", <Mono value={nav.reserve_packet_hash} />],
-        ["B23 asset", <Mono value={config?.b23_asset_id} />],
+        [`${symbol} asset`, <Mono value={config?.b23_asset_id} />],
         ["Issuer", <Mono value={config?.issuer_address} />],
       ]} />
     </Details>}
-    {onNavigate && <button type="button" className="l1-link l1-section-gap" onClick={() => onNavigate("Gallery", "b23")}>Explore B23: price, verification and history →</button>}
+    {onNavigate && <button type="button" className="l1-link l1-section-gap" onClick={() => onNavigate("Gallery", config.slug)}>Explore {symbol}: price, verification and history →</button>}
   </Card>;
 }

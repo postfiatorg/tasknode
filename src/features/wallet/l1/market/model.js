@@ -1,3 +1,4 @@
+import { marketReady } from "./constants.js";
 import { integer, resultOf, safeInteger, atoms } from "./amounts.js";
 import { finalizedReadings } from "../gallery/model.js";
 export async function readPool(client, config) {
@@ -6,10 +7,10 @@ export async function readPool(client, config) {
     client.call("nav_reserve_proof_status", { asset_id: config.b23_asset_id }).then(resultOf),
     client.call("asset_info", { asset_id: config.b23_asset_id }).then(resultOf),
   ]);
-  if (!config.market_only && (pool.route_id !== config.route_id || pool.native_nav_asset_id !== config.b23_asset_id || pool.settlement_asset_id !== config.pfusdc_asset_id)) throw new Error("Pool asset or route binding does not match B23 configuration");
-  if (asset.asset?.asset_id !== config.b23_asset_id || proof.asset_id !== config.b23_asset_id) throw new Error("B23 state response mismatch");
+  if (!config.market_only && (pool.route_id !== config.route_id || pool.native_nav_asset_id !== config.b23_asset_id || pool.settlement_asset_id !== config.pfusdc_asset_id)) throw new Error("Pool asset or route binding does not match NAVCoin configuration");
+  if (asset.asset?.asset_id !== config.b23_asset_id || proof.asset_id !== config.b23_asset_id) throw new Error("NAVCoin state response mismatch");
   if (config.market_only && (asset.asset.precision !== 6 || asset.asset.issuer !== config.issuer_address)) throw new Error("Market asset precision or issuer does not match configuration");
-  integer(asset.asset.outstanding_supply, "B23 total supply");
+  integer(asset.asset.outstanding_supply, "NAVCoin total supply");
   const nav = config.market_only ? finalizedReadings(proof).at(-1) : proof.packets?.find(packet => packet.state === "finalized" && packet.epoch === pool.pricing_nav_epoch && packet.reserve_packet_hash === pool.pricing_reserve_packet_hash);
   return { pool, proof, nav, supply: asset.asset.outstanding_supply };
 }
@@ -38,10 +39,10 @@ export async function snapshot(client, config, { management = false, recipient =
   return { ...state, balances, offers, managementLines, recipientLines };
 }
 export function buildOffer(config, address, side, quantity, consideration, expiration = "0", state) {
-  if (!config.market_only && (!config.g1_passed || !config.management_address || state?.pool?.spread_recipient !== config.management_address)) throw new Error("B23 trading is blocked until G1 and the management policy are installed");
+  if (!marketReady(config, state)) throw new Error("Trading is blocked until the configured route deployment is verified");
   if (address === config.issuer_address) throw new Error("Use Alice's holder wallet; the issuer cannot post offers");
   if (!["buy", "sell"].includes(side)) throw new Error("Choose buy or sell");
-  const b23 = atoms(quantity, "B23 amount"), pfusdc = atoms(consideration, "PFUSDC total");
+  const b23 = atoms(quantity, `${config.symbol || "B23"} amount`), pfusdc = atoms(consideration, "PFUSDC total");
   return { kind: "offer", operation: {
     operation: "offer_create", owner: address,
     taker_gets_asset_id: side === "buy" ? config.market_quote_asset_id : config.b23_asset_id,

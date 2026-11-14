@@ -9,17 +9,17 @@ import { classifyLines } from './portfolio.js';
 import { useGallery } from './gallery/useGallery.js';
 import { heldNavValues } from './gallery/model.js';
 
-function JourneyCard({ held, onNavigate, loaded }) {
+function JourneyCard({ held, onNavigate, loaded, symbol }) {
   const hasCash = held.pfusdc > 0n, hasB23 = held.b23 > 0n;
   const done = loaded ? [hasCash || hasB23, hasCash || hasB23, hasB23] : [false, false, false];
   const next = loaded ? done.findIndex(value => !value) : -2;
   const steps = [
     ['Bridge', 'Connect MetaMask', 'Link the Ethereum account that holds your USDC.'],
     ['Bridge', 'Convert USDC to PFUSDC', 'Deposit on Ethereum; credited here once proven.'],
-    ['Market', 'Buy B23', 'Pay with PFUSDC on the order book.'],
+    ['Market', `Buy ${symbol}`, 'Pay with PFUSDC on the order book.'],
   ];
   return <Card className="l1-journey">
-    <CardHead eyebrow={next === -2 ? 'Three steps' : next < 0 ? 'All set' : `Step ${next + 1} of 3`} title={next === -1 ? 'You hold B23' : 'Get started'} />
+    <CardHead eyebrow={next === -2 ? 'Three steps' : next < 0 ? 'All set' : `Step ${next + 1} of 3`} title={next === -1 ? `You hold ${symbol}` : 'Get started'} />
     <nav aria-label="Bob journey"><ol>{steps.map(([target, title, hint], index) => <li key={title}>
       <button type="button" aria-label={`${index + 1} ${title}`} className={`l1-journey-step ${done[index] ? 'is-done' : index === next ? 'is-next' : ''}`} onClick={() => onNavigate(target)}>
         <span className="l1-step-num">{done[index] ? <Check size={13} aria-hidden /> : index + 1}</span>
@@ -68,13 +68,14 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
   const account = balances?.pft?.account || balances?.pft;
   const lines = Array.isArray(balances?.assets) ? balances.assets : balances?.assets?.lines || [];
   const config = navcoin.data?.config || null, state = navcoin.data?.state || null;
+  const symbol = config?.symbol || "NAVCoin";
   const held = classifyLines(lines, config);
   const navHoldings = gallery.coins ? heldNavValues(lines, gallery.coins) : null;
   const b23Holding = navHoldings?.find(item => item.coin.asset_id === config?.b23_asset_id);
   const nav = b23Holding?.coin.latest?.nav_per_unit ?? null;
   const pfusdcValue = config && held.pfusdc != null ? held.pfusdc : config ? 0n : null;
   const b23Value = nav != null ? valueAt(held.b23 ?? 0n, nav) : null;
-  const total = balances && config && navHoldings && navHoldings.every(item => item.value !== null) ? (pfusdcValue ?? 0n) + navHoldings.reduce((sum, item) => sum + item.value, 0n) : null;
+  const total = balances && config && navHoldings && navHoldings.filter(item => !item.coin.retired).every(item => item.value !== null) ? (pfusdcValue ?? 0n) + navHoldings.filter(item => !item.coin.retired).reduce((sum, item) => sum + item.value, 0n) : null;
   const [whole, fraction] = amountParts(total ?? 0n, { min: 2, max: 2 });
   const loading = !balances && !error;
   const others = held.others.filter(item => item.balance > 0n && !gallery.coins?.some(coin => coin.asset_id === item.id));
@@ -89,10 +90,10 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
           {total === null ? (loading || navcoin.loading || gallery.loading ? <Skeleton width="260px" height={48} /> : <span style={{ fontSize: 28, color: 'var(--l1-muted)', fontWeight: 600 }}>Value unavailable</span>)
             : <><span className="l1-total-cur">$</span>{whole}<span className="l1-amt-frac">{fraction}</span></>}
         </div>
-        <p className="l1-total-note">PFUSDC counted at 1 USDC. Each listed NAVCoin uses its own latest finalized NAV. PFT and unlisted assets are not included.{navHoldings?.some(item => item.balance > 0n && item.coin.freshness?.stale) ? ' Includes stale NAV readings.' : ''}</p>
+        <p className="l1-total-note">PFUSDC counted at 1 USDC. Each active NAVCoin uses its own latest finalized NAV. Retired holdings are excluded. PFT and unlisted assets are not included.{navHoldings?.some(item => item.balance > 0n && item.coin.freshness?.stale) ? ' Includes stale NAV readings.' : ''}</p>
         <div className="l1-actions">
           <button type="button" className="l1-btn is-primary" onClick={() => onNavigate('Bridge')}><ArrowDownToLine size={16} aria-hidden />Add funds</button>
-          <button type="button" className="l1-btn" onClick={() => onNavigate('Market')}><ChartCandlestick size={16} aria-hidden />Buy B23</button>
+          <button type="button" className="l1-btn" onClick={() => onNavigate('Market')}><ChartCandlestick size={16} aria-hidden />Buy {symbol}</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Redeem')}><HandCoins size={16} aria-hidden />Cash in at NAV</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Send')}><SendIcon size={16} aria-hidden />Send PFT</button>
         </div>
@@ -100,8 +101,8 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
         <div className="l1-assets" aria-label="Balances">
           <AssetRow code="PFT" name="Post Fiat" sub="pays network fees" atoms={account?.balance} loading={loading} />
           <AssetRow code="PFUSDC" name="USDC on Post Fiat" sub="1:1" atoms={held.pfusdc} loading={loading} value={config ? (pfusdcValue ?? 0n) : undefined} />
-          <AssetRow code="B23" name="NAVCoin" sub={nav != null ? `NAV $${amount(nav, { min: 2 })}` : 'Schwab-backed'} atoms={held.b23} loading={loading} value={nav != null ? b23Value : undefined} />
-          {navHoldings?.filter(item => item.coin.asset_id !== config?.b23_asset_id && item.balance > 0n).map(item => <AssetRow key={item.coin.asset_id} code={item.coin.name} name="NAVCoin" sub={item.coin.latest ? `NAV $${amount(item.coin.latest.nav_per_unit)}` : 'NAV unavailable'} atoms={item.balance} value={item.value} loading={loading} note={item.coin.freshness?.stale ? 'Stale NAV reading' : undefined} />)}
+          <AssetRow code={symbol} name="NAVCoin" sub={nav != null ? `NAV $${amount(nav, { min: 2 })}` : 'Schwab-backed'} atoms={held.b23} loading={loading} value={nav != null ? b23Value : undefined} />
+          {navHoldings?.filter(item => item.coin.asset_id !== config?.b23_asset_id && item.balance > 0n).map(item => <AssetRow key={item.coin.asset_id} code={item.coin.name} name="NAVCoin" sub={item.coin.retired ? 'Retired · historical NAV excluded' : item.coin.latest ? `NAV $${amount(item.coin.latest.nav_per_unit)}` : 'NAV unavailable'} atoms={item.balance} value={item.value} loading={loading} note={item.coin.freshness?.stale ? 'Stale NAV reading' : undefined} />)}
         </div>
         {others.length > 0 && <div className="l1-asset-more"><Details summary={`Other assets (${others.length})`}>
           {others.map(item => <div key={item.id} className="l1-row" style={{ justifyContent: 'space-between' }}><span>{item.code || 'Asset'} <span className="l1-muted l1-small">{item.id?.slice(0, 10)}…</span></span><Amount atoms={item.balance} precision={item.precision} /></div>)}
@@ -116,7 +117,7 @@ export default function WalletHome({ client, onNavigate = () => {} }) {
       </Card>
     </div>
     <div className="l1-stack">
-      <JourneyCard held={{ pfusdc: held.pfusdc ?? 0n, b23: held.b23 ?? 0n }} onNavigate={onNavigate} loaded={Boolean(balances)} />
+      <JourneyCard held={{ pfusdc: held.pfusdc ?? 0n, b23: held.b23 ?? 0n }} onNavigate={onNavigate} loaded={Boolean(balances && config)} symbol={symbol} />
       <B23Facts state={state && b23Holding?.coin.latest ? { ...state, nav: b23Holding.coin.latest } : state} config={config} error={navcoin.error} onNavigate={onNavigate} />
     </div>
   </div>;

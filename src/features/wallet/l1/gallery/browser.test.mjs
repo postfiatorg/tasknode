@@ -43,7 +43,7 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'gallery fits mobile width');
   await page.evaluate(() => window.galleryFixture.home());
   await page.getByRole('button', { name: /Explore B23/ }).waitFor();
-  await page.getByText('Each listed NAVCoin uses its own latest finalized NAV.', { exact: false }).waitFor();
+  await page.getByText('Each active NAVCoin uses its own latest finalized NAV.', { exact: false }).waitFor();
   await page.locator('.l1-total').filter({ hasText: '10,600.00' }).waitFor();
   await page.getByRole('button', { name: /Explore B23/ }).click();
   await page.getByRole('heading', { name: 'B23', exact: true }).waitFor();

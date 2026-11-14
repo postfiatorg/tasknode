@@ -80,6 +80,7 @@ export async function readCoin(client, coin) {
 
 export function sortByTvl(coins) {
   return [...coins].sort((a, b) => {
+    if (Boolean(a.retired) !== Boolean(b.retired)) return a.retired ? 1 : -1;
     const av = exact(a.latest?.verified_net_assets), bv = exact(b.latest?.verified_net_assets);
     return av === bv ? a.name.localeCompare(b.name) : av === null ? 1 : bv === null ? -1 : av > bv ? -1 : 1;
   });
@@ -88,6 +89,6 @@ export function sortByTvl(coins) {
 export function heldNavValues(lines, coins) {
   return coins.map(coin => {
     const balance = lines.filter(line => line.asset_id === coin.asset_id).reduce((sum, line) => sum + integer(line.balance ?? line.balance_atoms ?? 0), 0n);
-    return { coin, balance, value: balance === 0n ? 0n : valueAt(balance, coin.latest?.nav_per_unit, coin.asset?.precision ?? 6) };
+    return { coin, balance, value: coin.retired ? null : balance === 0n ? 0n : valueAt(balance, coin.latest?.nav_per_unit, coin.asset?.precision ?? 6) };
   });
 }

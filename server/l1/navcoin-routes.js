@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { PUBLISHED_CONFIG, validateConfig } from "../../src/features/wallet/l1/market/constants.js";
+import { deploymentConfig } from "../../src/features/wallet/l1/market/constants.js";
 import { navcoinRegistry } from "./navcoin-registry.js";
 const PACKET_FIELDS = "schema broker_source_id account_commitment_sha256 cutoff_at_utc cutoff_time_utc observed_at_utc source_field liquidation_value_usd liquidation_value_atoms valuation_unit scale_atoms_per_usd adjustments broker_response_root_sha256 positions_root_sha256 known_posting_limits packet_hash".split(" ");
 const OP_FIELDS = {
@@ -41,8 +41,7 @@ export async function handleNavcoinRoutes({ req, res, url, session, json }) {
   if (req.method !== "GET") { json(res, 405, { error: "navcoin_read_only_route" }); return true; }
   try {
     if (["/api/l1/navcoin/config", "/api/l1/navcoin/registry"].includes(url.pathname)) {
-      const override = process.env.B23_NAVCOIN_CONFIG_JSON ? JSON.parse(process.env.B23_NAVCOIN_CONFIG_JSON) : {};
-      const config = validateConfig({ ...PUBLISHED_CONFIG, ...override });
+      const config = deploymentConfig(process.env);
       json(res, 200, url.pathname.endsWith("/registry") ? { coins: navcoinRegistry(config) } : config);
     } else if (url.pathname === "/api/l1/navcoin/equity") {
       json(res, 200, publicEquity(await artifact(process.env.B23_ACCOUNT_EQUITY_PATH)));
@@ -54,6 +53,6 @@ export async function handleNavcoinRoutes({ req, res, url, session, json }) {
       if (operation.operation !== "pftl_uniswap_route_epoch_advance" || operation.next_primary_market_policy?.redeem_multiplier_bps !== 10000 - Number(bps)) throw new Error("Missing prepared fee");
       json(res, 200, { operation });
     } else json(res, 404, { error: "navcoin_route_not_found" });
-  } catch { json(res, 503, { error: "Public B23 preparation unavailable; operator must publish the matching configuration or unsigned plan." }); }
+  } catch { json(res, 503, { error: "Public NAVCoin preparation unavailable; operator must publish the matching configuration or unsigned plan." }); }
   return true;
 }

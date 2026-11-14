@@ -1,3 +1,4 @@
+import { loadConfig } from "./market/constants.js";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, ChartCandlestick, Download, Ellipsis, FileKey, HandCoins, History, House, KeyRound, Landmark, LayoutGrid, Lock, Send as SendIcon, ShieldCheck, Wallet } from "lucide-react";
 // Secondary views load on first use so the wallet shell stays small.
@@ -18,12 +19,12 @@ const VIEWS = [
   { id: "Home", label: "Home", icon: House },
   { id: "Bridge", label: "Add funds", icon: ArrowDownToLine, title: "Add funds", subtitle: "Bring USDC over from Ethereum. It arrives in this wallet as PFUSDC, one for one." },
   { id: "Gallery", label: "NAVCoins", icon: LayoutGrid },
-  { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: "Buy B23 with PFUSDC from sellers on the Post Fiat order book." },
-  { id: "Redeem", label: "Cash in", icon: HandCoins, title: "Cash in at NAV", subtitle: "Turn B23 into PFUSDC at net asset value, paid from the standing reserve." },
+  { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: symbol => `Buy ${symbol} with PFUSDC from sellers on the Post Fiat order book.` },
+  { id: "Redeem", label: "Cash in", icon: HandCoins, title: "Cash in at NAV", subtitle: symbol => `Review ${symbol} cash-in availability and NAV terms.` },
   { id: "Send", label: "Send", icon: SendIcon, title: "Send", subtitle: "Send PFT to another Post Fiat address." },
   { id: "Activity", label: "Activity", icon: History, title: "Activity", subtitle: "Transactions signed by this wallet and payments it received." },
 ];
-const ISSUER = { id: "Issuer", label: "Issuer desk", icon: Landmark, title: "Issuer desk", subtitle: "Operator controls for the B23 issuer: mint at NAV, fund the cash-in reserve, post B23 for sale." };
+const ISSUER = { id: "Issuer", label: "Issuer desk", icon: Landmark, title: "Issuer desk", subtitle: symbol => `Operator controls for the ${symbol} issuer.` };
 
 function WalletMenu({ onBackup, onLock }) {
   const [open, setOpen] = useState(false);
@@ -46,14 +47,14 @@ function WalletMenu({ onBackup, onLock }) {
   </div>;
 }
 
-function Gate({ exists, busy, passphrase, setPassphrase, seed, setSeed, openWallet, restoreBackup }) {
+function Gate({ symbol, exists, busy, passphrase, setPassphrase, seed, setSeed, openWallet, restoreBackup }) {
   return <>
     <Card className="l1-gate">
       <div className="l1-gate-art">
         <div>
           <div className="l1-eyebrow">Post Fiat L1</div>
           <h2>A wallet built for the quantum era.</h2>
-          <p>Hold PFT, bring dollars over from Ethereum, and own B23: a NAVCoin priced at the net asset value of a Schwab brokerage account.</p>
+          <p>Hold PFT, bring dollars over from Ethereum, and own {symbol}: a NAVCoin priced at the net asset value of a Schwab brokerage account.</p>
         </div>
         <ul className="l1-gate-points">
           <li><ShieldCheck size={16} aria-hidden /><span>Every transaction is signed with ML-DSA, a post-quantum signature scheme.</span></li>
@@ -82,12 +83,15 @@ function Gate({ exists, busy, passphrase, setPassphrase, seed, setSeed, openWall
     <div className="l1-howto" aria-label="How it works">
       <div><span className="l1-step-num">1</span><span><b>Connect MetaMask</b><p>Link the Ethereum account that holds your USDC.</p></span></div>
       <div><span className="l1-step-num">2</span><span><b>Convert USDC to PFUSDC</b><p>Deposit on Ethereum; it is credited here once proven.</p></span></div>
-      <div><span className="l1-step-num">3</span><span><b>Buy B23</b><p>Use PFUSDC on the order book. Cash in at NAV any time.</p></span></div>
+      <div><span className="l1-step-num">3</span><span><b>Buy {symbol}</b><p>Use PFUSDC on the order book. Review available exit options before buying.</p></span></div>
     </div>
   </>;
 }
 
 export default function L1WalletView({ accountId, isAccountCurrent }) {
+  const [assetConfig, setAssetConfig] = useState(null);
+  useEffect(() => { let active = true; loadConfig().then(config => { if (active) setAssetConfig(config); }).catch(() => {}); return () => { active = false; }; }, [accountId]);
+  const symbol = assetConfig?.symbol || "NAVCoin";
   const [tab, setTab] = useState("Home");
   const [selectedCoin, setSelectedCoin] = useState(null);
   const onNavigate = useCallback((tabId, coin = null) => {
@@ -162,14 +166,14 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       </div>}
     </header>
     {error && <div style={{ marginBottom: 16 }}><Notice tone="danger" role="alert">{error}</Notice></div>}
-    {!address ? <Gate {...{ exists, busy, passphrase, setPassphrase, seed, setSeed, openWallet, restoreBackup }} /> : <>
+    {!address ? <Gate {...{ symbol, exists, busy, passphrase, setPassphrase, seed, setSeed, openWallet, restoreBackup }} /> : <>
       {backupDue && <div style={{ marginBottom: 18 }}><Notice tone="warning" title="Back up this wallet before adding funds" action={<button type="button" className="l1-btn is-sm" onClick={downloadBackup}><Download size={14} aria-hidden />Back up now</button>}>Download the encrypted backup and keep your passphrase somewhere safe. Without both, a lost browser means lost funds.</Notice></div>}
       <nav aria-label="L1 wallet tabs" className="l1-tabs">
         <div className="l1-tabs-main">{VIEWS.map(item => <button key={item.id} type="button" className="l1-tab" aria-pressed={tab === item.id} onClick={() => onNavigate(item.id)}><item.icon size={16} aria-hidden />{item.label}</button>)}</div>
         {/* Issuer actions live on the CLI; the consumer wallet does not link to the issuer desk. */}
       </nav>
       <div className="l1-enter" key={tab}>
-        {view?.title && <ViewHeader eyebrow={view.id === ISSUER.id ? "Operator" : undefined} title={view.title} subtitle={view.subtitle}>{view.id === ISSUER.id && <Badge tone="warning">Issuer only</Badge>}</ViewHeader>}
+        {view?.title && <ViewHeader eyebrow={view.id === ISSUER.id ? "Operator" : undefined} title={view.title} subtitle={typeof view.subtitle === "function" ? view.subtitle(symbol) : view.subtitle}>{view.id === ISSUER.id && <Badge tone="warning">Issuer only</Badge>}</ViewHeader>}
         {Tab && <Suspense fallback={<p className="l1-status-line"><Spinner />Loading…</p>}><Tab client={client} onNavigate={onNavigate} selectedCoin={selectedCoin} onSelectCoin={setSelectedCoin} /></Suspense>}
       </div>
     </>}

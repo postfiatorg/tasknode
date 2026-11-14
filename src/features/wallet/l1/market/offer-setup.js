@@ -17,7 +17,7 @@ function neededLimit(state, operation, id) {
 export function assertMarketFunds(config, operation, state) {
   const balance = lineBalance(state.balances.assets, operation.taker_gets_asset_id);
   if (operation.taker_gets_asset_id === config.market_quote_asset_id && balance === 0n && lineBalance(state.balances.assets, config.pfusdc_asset_id) > 0n) {
-    throw new Error('Your PFUSDC came from the cash-in reserve. To buy B23, use Add funds to convert Ethereum USDC into PFUSDC for this market. Reserve PFUSDC cannot be converted here.');
+    throw new Error(`Your PFUSDC came from the cash-in reserve. To buy ${config.symbol || "B23"}, use Add funds to convert Ethereum USDC into PFUSDC for this market. Reserve PFUSDC cannot be converted here.`);
   }
   if (balance < integer(operation.taker_gets_amount)) throw new Error(`Not enough ${operation.taker_gets_asset_id === config.b23_asset_id ? (config.symbol || 'B23') : 'PFUSDC'} available for this offer. Add funds before signing.`);
 }

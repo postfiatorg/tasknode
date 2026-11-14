@@ -1,3 +1,4 @@
+import { marketReady } from "./constants.js";
 import { useRef, useState } from "react";
 import { ArrowDownToLine, BookOpen, ListOrdered } from "lucide-react";
 import { units } from "./amounts.js";
@@ -82,7 +83,7 @@ function Orders({ report, config, cancel }) {
 
 export default function MarketTab({ client, onNavigate, marketConfig = null, compact = false }) {
   const navcoin = useNavcoin(client, true, marketConfig);
-  const symbol = marketConfig?.symbol || "B23";
+  const symbol = marketConfig?.symbol || navcoin.data?.config?.symbol || "NAVCoin";
   const { data, error, loading, refresh } = navcoin;
   const [side, setSide] = useState("buy"), [quantity, setQuantity] = useState(""), [total, setTotal] = useState(""), [expiration, setExpiration] = useState("0"), [custom, setCustom] = useState("");
   const [request, setRequest] = useState(null), [actionError, setActionError] = useState(""), [planning, setPlanning] = useState(false);
@@ -131,7 +132,7 @@ export default function MarketTab({ client, onNavigate, marketConfig = null, com
   let available = null;
   try { if (data) available = lineBalance(data.balances.assets, side === "buy" ? data.config.market_quote_asset_id : data.config.b23_asset_id); } catch { available = null; }
   const asks = data ? levels(data.book.asks, data.config, "ask") : [];
-  const tradingOpen = data && (data.config.market_only || (data.config.g1_passed && data.config.management_address && data.state?.pool?.spread_recipient === data.config.management_address));
+  const tradingOpen = data && marketReady(data.config, data.state);
   const bids = data ? levels(data.book.bids, data.config, "bid") : [];
   const buying = side === "buy", facing = buying ? asks : bids;
   let navAtoms = null; try { navAtoms = data?.state?.nav ? BigInt(data.state.nav.nav_per_unit) : null; } catch { navAtoms = null; }
