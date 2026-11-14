@@ -67,7 +67,7 @@ export function projectHistory({ blocks, archives, receipts }, address, limit = 
   rows.sort((a, b) => b.block_height - a.block_height || b.transaction_index - a.transaction_index);
   return { rows: rows.slice(0, limit), source: 'committed_archive', from_height: blocks.at(0)?.header.height,
     to_height: blocks.at(-1)?.header.height, truncated: rows.length > limit || (blocks.at(0)?.header.height || 0) > 1,
-    coverage: 'Recent signed transactions and direct credits; maker fills and indirect credits may require the native history index.' };
+    coverage: 'Signed transactions and direct payments. Older activity, fills of resting orders and indirect credits may be missing.' };
 }
 export function createHistoryReader(env = process.env, injectedRpc) {
   if (!env.L1_HISTORY_RPC_URL) return null;
