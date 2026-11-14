@@ -43,7 +43,7 @@ function phaseState(rows, phase, credited) {
   return "pending";
 }
 
-function Track({ view, controller, client, onNavigate }) {
+function Track({ view, controller, client, onNavigate, symbol }) {
   const job = view.job, pending = view.pending, result = view.result;
   const rows = stageRows(job);
   const credited = Boolean(result && !result.balancePending);
@@ -97,7 +97,7 @@ function Track({ view, controller, client, onNavigate }) {
       </>}
       <div className="l1-row" style={{ marginTop: 6 }}><span className="l1-muted l1-small">Post Fiat receipt</span><IdChip value={result.receipt} label="receipt id" /></div>
       {!result.balancePending && <div className="l1-row" style={{ marginTop: 8 }}>
-        {onNavigate && <button type="button" className="l1-btn is-primary" onClick={() => onNavigate("Market")}><ChartCandlestick size={16} aria-hidden />Buy B23 with PFUSDC</button>}
+        {onNavigate && <button type="button" className="l1-btn is-primary" onClick={() => onNavigate("Market")}><ChartCandlestick size={16} aria-hidden />Buy {symbol} with PFUSDC</button>}
         <button type="button" className="l1-btn" disabled={view.busy} onClick={() => controller.run(() => controller.newDeposit())}>Start another deposit</button>
       </div>}
     </div>}
@@ -112,7 +112,7 @@ function Track({ view, controller, client, onNavigate }) {
   </Card>;
 }
 
-function BridgeSession({ client, onNavigate }) {
+function BridgeSession({ client, onNavigate, symbol }) {
   const [view, setView] = useState(null);
   const [controller, setController] = useState(null);
   const [amount, setAmount] = useState("");
@@ -209,11 +209,11 @@ function BridgeSession({ client, onNavigate }) {
       </Card>
       {view.error && <Notice tone="danger" role="alert">{view.error}</Notice>}
     </div>
-    <Track view={view} controller={controller} client={client} onNavigate={onNavigate} />
+    <Track view={view} controller={controller} client={client} onNavigate={onNavigate} symbol={symbol} />
   </section>;
 }
-export default function BridgeTab({ onNavigate } = {}) {
+export default function BridgeTab({ onNavigate, assetConfig } = {}) {
   const client = useL1Wallet();
   if (!client.unlocked || !client.address) return <p>Unlock your Post Fiat wallet to bridge USDC.</p>;
-  return <BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} />;
+  return <BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} symbol={assetConfig?.symbol || "NAVCoins"} />;
 }

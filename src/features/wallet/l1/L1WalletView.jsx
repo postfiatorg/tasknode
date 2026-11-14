@@ -174,7 +174,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       </nav>
       <div className="l1-enter" key={tab}>
         {view?.title && <ViewHeader eyebrow={view.id === ISSUER.id ? "Operator" : undefined} title={view.title} subtitle={typeof view.subtitle === "function" ? view.subtitle(symbol) : view.subtitle}>{view.id === ISSUER.id && <Badge tone="warning">Issuer only</Badge>}</ViewHeader>}
-        {Tab && <Suspense fallback={<p className="l1-status-line"><Spinner />Loading…</p>}><Tab client={client} onNavigate={onNavigate} selectedCoin={selectedCoin} onSelectCoin={setSelectedCoin} /></Suspense>}
+        {Tab && <Suspense fallback={<p className="l1-status-line"><Spinner />Loading…</p>}><Tab client={client} assetConfig={assetConfig} onNavigate={onNavigate} selectedCoin={selectedCoin} onSelectCoin={setSelectedCoin} /></Suspense>}
       </div>
     </>}
   </div></div></L1WalletContext.Provider>;
