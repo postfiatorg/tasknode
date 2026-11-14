@@ -1,3 +1,4 @@
+import SubscriberRedeem from '../primary/SubscriberRedeem.jsx';
 import { useState } from "react";
 import { ChartCandlestick } from "lucide-react";
 import { resultOf, units } from "../market/amounts.js";
@@ -52,6 +53,7 @@ export default function RedeemTab({ client, onNavigate }) {
   }
   const nav = data?.state?.nav?.nav_per_unit;
   const fee = pool && Number.isSafeInteger(pool.redeem_multiplier_bps) ? 10000 - pool.redeem_multiplier_bps : null;
+  if (data?.config.redemption_mode === "subscription") return <SubscriberRedeem key={client.address} client={client} data={data} refresh={refresh} onNavigate={onNavigate} />;
   if (data?.config.redemption_mode === "unsupported") return <div className="l1-view l1-stack">
     <WalletNotice client={client} error={error} loading={loading} refresh={refresh} data={data} />
     <Card><CardHead title={`Cash in ${symbol}`} /><Notice title="Native cash-in is not available in this wallet">{data.config.cash_in_note || `This route does not currently support a verified native cash-in for these holdings. You can sell ${symbol} on the order book when a buyer is available.`}</Notice>

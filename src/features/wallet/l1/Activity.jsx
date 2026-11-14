@@ -6,6 +6,7 @@ import { rpcResult } from './lib/rpc-client.js';
 import { Amount, Badge, Card, CopyButton, Empty, Mono, Notice, Skeleton, Spinner } from './ui.jsx';
 
 const TITLES = {
+  pftl_uniswap_order_reserve: 'Creation funds reserved', pftl_uniswap_primary_subscribe_v2: 'Created at NAV', pftl_uniswap_order_release: 'Creation reservation released',
   pftl_uniswap_primary_redeem: 'Cash in at NAV', pftl_uniswap_redemption_fund: 'Cash-in reserve funded', pftl_uniswap_route_epoch_advance: 'Cash-in fee changed',
   nav_mint_at_nav: 'Mint at NAV', nav_reserve_submit: 'Reserve packet submitted', nav_epoch_finalize: 'NAV epoch finalized',
 };

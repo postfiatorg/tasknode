@@ -83,6 +83,7 @@ export function ActionReview({ client, request, onComplete, onCancel }) {
   }
   async function submit() {
     setPhase("submitting"); setError("");
+    request.onSubmitting?.();
     try {
       const result = await submitAction(client, prepared, request.read, request.verify, current, request.preflight);
       if (current()) { setOutcome(result); setPhase("complete"); onComplete?.(result); }

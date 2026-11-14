@@ -60,6 +60,7 @@ export function projectHistory({ blocks, archives, receipts }, address, limit = 
         receipt_code: conflicts.has(txId) ? 'conflicting_receipts' : receipt?.code };
       if (['transfer', 'payment', 'payment_v2', 'issued_payment'].includes(kind)) row.amount = op.amount;
       if (kind === 'pftl_uniswap_primary_redeem') { row.amount = op.nav_amount_atoms; row.unit = routes[op.route_id]; }
+      if (['pftl_uniswap_order_reserve', 'pftl_uniswap_primary_subscribe_v2', 'pftl_uniswap_order_release'].includes(kind)) row.unit = routes[op.route_id];
       if (kind === 'offer_create') {
         const buying = symbols[op.taker_pays_asset_id], selling = symbols[op.taker_gets_asset_id];
         if (buying && buying !== 'PFUSDC') { row.market_side = 'buy'; row.market_symbol = buying; }

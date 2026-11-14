@@ -1,6 +1,6 @@
 // All deployment-specific IDs enter through this module, never through components.
 export const SCALE = 1_000_000n;
-export const B23_CONFIG_FIELDS = ["b23_asset_id", "pfusdc_asset_id", "market_quote_asset_id", "route_id", "issuer_address", "alice_holder_address", "management_address", "proof_profile", "pfusdc_source_asset_ids", "g1_passed", "symbol", "slug", "description", "methodology", "redemption_mode", "cash_in_note", "issue_multiplier_bps", "redeem_multiplier_bps", "ethereum", "retired_assets"];
+export const B23_CONFIG_FIELDS = ["b23_asset_id", "pfusdc_asset_id", "market_quote_asset_id", "route_id", "issuer_address", "alice_holder_address", "management_address", "proof_profile", "pfusdc_source_asset_ids", "g1_passed", "symbol", "slug", "description", "methodology", "redemption_mode", "cash_in_note", "issue_multiplier_bps", "redeem_multiplier_bps", "ethereum", "retired_assets", "creation_enabled", "subscription_recipient"];
 // Published by OPS in contracts/b23-constants.md v1; pending fields stay null.
 export const PUBLISHED_CONFIG = Object.freeze({
   symbol: "B23", slug: "b23", redemption_mode: "two-credit",
@@ -25,9 +25,11 @@ export function validateConfig(input) {
   config.cash_in_note ??= "";
   config.redemption_mode ??= config.symbol === "B23" ? "two-credit" : "unsupported";
   if (!/^[A-Z0-9]{2,12}$/.test(config.symbol) || !/^[a-z0-9-]+$/.test(config.slug)) throw new Error("Invalid NAVCoin name");
-  if (!["two-credit", "unsupported"].includes(config.redemption_mode)) throw new Error("Unsupported redemption mode");
+  if (!["two-credit", "unsupported", "subscription"].includes(config.redemption_mode)) throw new Error("Unsupported redemption mode");
   for (const key of ["description", "methodology", "cash_in_note"]) if (typeof config[key] !== "string" || config[key].length > 4000) throw new Error("Invalid NAVCoin description");
   for (const key of ["issue_multiplier_bps", "redeem_multiplier_bps"]) if (config[key] != null && (!Number.isSafeInteger(config[key]) || config[key] < 9500 || config[key] > 10500)) throw new Error("Invalid NAVCoin fee terms");
+  config.creation_enabled = config.creation_enabled === true;
+  if (config.creation_enabled && (config.redemption_mode !== "subscription" || !/^0x[0-9a-f]{40}$/.test(config.subscription_recipient || "") || /^0x0{40}$/.test(config.subscription_recipient))) throw new Error("Native creation requires a verified subscription configuration");
   const eth = input?.ethereum;
   const address = value => /^0x[0-9a-fA-F]{40}$/.test(value || "") && !/^0x0{40}$/.test(value);
   const available = eth?.available === true && address(eth.wrapped_token) && address(eth.pool);

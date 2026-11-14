@@ -8,7 +8,7 @@ export function labelActivity(rows, config) {
   return rows.map(row => {
     const next = { ...row }, kind = row.kind || row.transaction_kind;
     if (symbols[row.asset_id]) next.unit = symbols[row.asset_id];
-    if (kind === 'pftl_uniswap_primary_redeem' && routes[row.route_id]) next.unit = routes[row.route_id];
+    if (['pftl_uniswap_primary_redeem', 'pftl_uniswap_order_reserve', 'pftl_uniswap_primary_subscribe_v2', 'pftl_uniswap_order_release'].includes(kind) && routes[row.route_id]) next.unit = routes[row.route_id];
     if (kind === 'offer_create') {
       const buying = symbols[row.taker_pays_asset_id], selling = symbols[row.taker_gets_asset_id];
       if (buying && buying !== 'PFUSDC') { next.market_side = 'buy'; next.market_symbol = buying; }

@@ -15,9 +15,9 @@
   "symbol": "B24",
   "slug": "b24",
   "description": "Backed by a Schwab brokerage account.",
-  "methodology": "NAV uses Schwab’s reported net liquidation value from the enclave-attested reading plus any native subscription reserve counted by the network. NAV per coin is the combined value divided by the supply in the finalized reading. The Schwab value is Attested; any separate native reserve is Reported. Creation is priced at NAV +0.5% and cash-in at NAV −0.05%, subject to route inventory, reserve and policy limits. Market trades exchange existing coins at the order-book price.",
-  "redemption_mode": "unsupported",
-  "cash_in_note": "Coins bought on the order book cannot be cashed in through this route. Sell to a buyer on the book. Cash-in is limited to qualifying subscriptions and available reserve.",
+  "methodology": "NAV uses Schwab\u2019s reported net liquidation value from the enclave-attested reading plus any native subscription reserve counted by the network. NAV per coin is the combined value divided by the supply in the finalized reading. The Schwab value is Attested; any separate native reserve is Reported. Creation is priced at NAV +0.5% and cash-in at NAV \u22120.05%, subject to route inventory, reserve and policy limits. Market trades exchange existing coins at the order-book price.",
+  "redemption_mode": "subscription",
+  "cash_in_note": "Create at NAV +0.5% with PFUSDC (S) for tracked subscription holdings. Cash in those holdings at NAV \u22120.05% while the matching reserve and current policy permit. Book purchases cannot cash in; sell them to a buyer on the book.",
   "issue_multiplier_bps": 10050,
   "redeem_multiplier_bps": 9995,
   "ethereum": {
@@ -33,5 +33,7 @@
       "route_id": "pftl-pfdep-schwab-primary-pfusdc-v1"
     }
   ],
-  "nav_asset_id": "52285e4ded1d58113cfaa12bbc034b8b10213f699b3224c74160450229d6bf7ccfe505c78f2599d975ae2ecf98f7d8af"
+  "nav_asset_id": "52285e4ded1d58113cfaa12bbc034b8b10213f699b3224c74160450229d6bf7ccfe505c78f2599d975ae2ecf98f7d8af",
+  "creation_enabled": true,
+  "subscription_recipient": "0xf77b1876803c01967c5a62ef28c5f6de4574f7e1"
 }

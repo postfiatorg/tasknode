@@ -1,3 +1,5 @@
+import CreateReview from '../primary/CreateReview.jsx';
+import { creationQuote, defaultBuyMode } from '../primary/model.js';
 import { marketReady } from "./constants.js";
 import { useRef, useState } from "react";
 import { ArrowDownToLine, BookOpen, ListOrdered } from "lucide-react";
@@ -86,6 +88,7 @@ export default function MarketTab({ client, onNavigate, marketConfig = null, com
   const symbol = marketConfig?.symbol || navcoin.data?.config?.symbol || "NAVCoin";
   const { data, error, loading, refresh } = navcoin;
   const [side, setSide] = useState("buy"), [quantity, setQuantity] = useState(""), [total, setTotal] = useState(""), [expiration, setExpiration] = useState("0"), [custom, setCustom] = useState("");
+  const [buyMode, setBuyMode] = useState("auto");
   const [request, setRequest] = useState(null), [actionError, setActionError] = useState(""), [planning, setPlanning] = useState(false);
   const revision = useRef(0), latest = useRef(client); latest.current = client;
   function review(intent, description, extra) {
@@ -95,7 +98,7 @@ export default function MarketTab({ client, onNavigate, marketConfig = null, com
   const qtyAtoms = toAtoms(quantity), totalAtoms = toAtoms(total);
   const limit = qtyAtoms && totalAtoms ? unitPrice(totalAtoms, qtyAtoms) : null;
   async function create(event) {
-    event.preventDefault(); setActionError(""); setRequest(null); setPlanning(true);
+    event.preventDefault(); if (creating) return; setActionError(""); setRequest(null); setPlanning(true);
     const ticket = ++revision.current, identity = { accountId: client.accountId, address: client.address };
     try {
       const intent = buildOffer(data.config, client.address, side, quantity, total, expiration, data.state);
@@ -139,6 +142,10 @@ export default function MarketTab({ client, onNavigate, marketConfig = null, com
   const source = priceSource(facing, toAtoms(custom), navAtoms);
   const shown = limit ?? source.price, versus = versusNav(shown, navAtoms);
   const depth = facing.reduce((sum, level) => sum + level.size, 0n);
+  const creationEnabled = data?.config.creation_enabled && !data.config.market_only;
+  const creating = buying && creationEnabled && (buyMode === "create" || (buyMode === "auto" && defaultBuyMode(qtyAtoms, depth, creationEnabled, data.book.asks.truncated) === "create"));
+  let creation = null, creationError = "";
+  if (creating && quantity) { try { creation = creationQuote(data.config, data.state, quantity); } catch (e) { creationError = e.message; } }
   const px = value => amount(value, { min: 2 });
   // The two amounts are linked: type either one and the other follows the price.
   function typeQuantity(value) { setQuantity(value); const result = totalForQuantity(toAtoms(value), facing, source); if (result) setTotal(plain(result.total)); else if (!value) setTotal(""); }
@@ -151,7 +158,7 @@ export default function MarketTab({ client, onNavigate, marketConfig = null, com
   const balanceHint = available === null ? "" : <span className={short ? "is-danger" : ""}>Available <Amount atoms={available} unit={buying ? "PFUSDC" : symbol} /></span>;
   const quantityField = <label className="l1-field"><span>{buying ? "You receive" : "You sell"}</span><span className="l1-input-wrap"><input aria-label={`${symbol} quantity`} inputMode="decimal" placeholder="0.00" value={quantity} onChange={e => typeQuantity(e.target.value)} required /><span className="l1-input-suffix">{!buying && Max}{symbol}</span></span>
     {!buying && <span className="l1-field-hint"><span /><span>{balanceHint}</span></span>}</label>;
-  const totalField = <label className="l1-field"><span>{buying ? "You pay" : "You receive"}</span><span className="l1-input-wrap"><input aria-label="PFUSDC total" inputMode="decimal" placeholder="0.00" value={total} onChange={e => typeTotal(e.target.value)} required /><span className="l1-input-suffix">{buying && Max}PFUSDC</span></span>
+  const totalField = <label className="l1-field"><span>{buying ? "You pay" : "You receive"}</span><span className="l1-input-wrap"><input aria-label="PFUSDC total" inputMode="decimal" placeholder="0.00" value={creating ? (creation ? units(creation.due) : "") : total} readOnly={creating} onChange={e => typeTotal(e.target.value)} required /><span className="l1-input-suffix">{buying && !creating && Max}PFUSDC</span></span>
     {buying && <span className="l1-field-hint"><span /><span>{balanceHint}</span></span>}</label>;
   const visible = request && request.accountId === client.accountId && request.address === client.address && client.unlocked;
   return <div className="l1-view">
@@ -165,26 +172,31 @@ export default function MarketTab({ client, onNavigate, marketConfig = null, com
               <label><input type="radio" name="market-side" value="buy" checked={side === "buy"} onChange={() => setSide("buy")} />Buy</label>
               <label><input type="radio" name="market-side" value="sell" checked={side === "sell"} onChange={() => setSide("sell")} />Sell</label>
             </div>
+            {buying && creationEnabled && <label className="l1-field"><span>How to buy</span><select aria-label="How to buy" value={buyMode} onChange={e => setBuyMode(e.target.value)}><option value="auto">Automatic: create when the book is too small</option><option value="book">Buy from the book</option><option value="create">Create at NAV</option></select></label>}
+            {creating && <Notice title="Create at NAV selected">Your full amount will be newly created at NAV plus the creation fee. Book prices do not apply.</Notice>}
             <div className="l1-price-head">
               <small>{symbol} price</small>
-              <div><strong>{shown === null ? "—" : px(shown)}</strong><span>PFUSDC per {symbol}</span>{versus && <Badge tone={versus.tone}>{versus.label}</Badge>}</div>
+              <div><strong>{creating ? (creation ? px(BigInt(creation.due) * 1000000n / BigInt(creation.amount)) : "—") : shown === null ? "—" : px(shown)}</strong><span>PFUSDC per {symbol}</span>{!creating && versus && <Badge tone={versus.tone}>{versus.label}</Badge>}</div>
               <small>{navAtoms ? `NAV $${px(navAtoms)} per ${symbol}` : "NAV not reported yet"}{source.kind === "book" ? <> · <Amount atoms={depth} unit={symbol} /> {buying ? "for sale" : "wanted"} now</> : source.kind === "nav" ? ` · no ${buying ? "sellers" : "buyers"} right now, so this starts at NAV` : source.kind === "custom" ? " · your own price" : ""}</small>
             </div>
             {buying ? <>{totalField}{quantityField}</> : <>{quantityField}{totalField}</>}
-            <div className="l1-ticket-lines">
+            {!creating && <div className="l1-ticket-lines">
               <div><span>Price</span><b>{limit === null ? "—" : `1 ${symbol} = ${px(limit)} PFUSDC`}</b></div>
               <div><span>{buying ? "Most you pay" : "Least you receive"}</span><b>{totalAtoms ? <Amount atoms={totalAtoms} unit="PFUSDC" /> : "—"}</b></div>
               <div><span>Network fee</span><b>Paid in PFT, shown before you sign</b></div>
             </div>
-            {beyondBook && <p className="l1-small l1-muted">Only <Amount atoms={depth} unit={symbol} /> is {buying ? "for sale" : "wanted"} right now. The rest of your order waits on the book at this price.</p>}
-            {source.kind !== "book" && limit !== null && <p className="l1-small l1-muted">Your offer waits on the book until a {buying ? "seller" : "buyer"} accepts this price. You can cancel it any time.</p>}
-            <Details summary="Advanced"><label className="l1-field"><span>Set my own price (PFUSDC per {symbol})</span><input aria-label="Own price" inputMode="decimal" placeholder={shown === null ? "0.00" : px(shown)} value={custom} onChange={e => typeCustom(e.target.value)} /></label><label className="l1-field"><span>Expires at block (0 = never)</span><input inputMode="numeric" value={expiration} onChange={e => setExpiration(e.target.value)} required /></label></Details>
+            }
+            {!creating && beyondBook && <p className="l1-small l1-muted">Only <Amount atoms={depth} unit={symbol} /> is {buying ? "for sale" : "wanted"} right now. The rest of your order waits on the book at this price.</p>}
+            {!creating && source.kind !== "book" && limit !== null && <p className="l1-small l1-muted">Your offer waits on the book until a {buying ? "seller" : "buyer"} accepts this price. You can cancel it any time.</p>}
+            {!creating && <Details summary="Advanced"><label className="l1-field"><span>Set my own price (PFUSDC per {symbol})</span><input aria-label="Own price" inputMode="decimal" placeholder={shown === null ? "0.00" : px(shown)} value={custom} onChange={e => typeCustom(e.target.value)} /></label><label className="l1-field"><span>Expires at block (0 = never)</span><input inputMode="numeric" value={expiration} onChange={e => setExpiration(e.target.value)} required /></label></Details>}
             {!tradingOpen && <Notice tone="warning" title="Market offers are switched off on this network">Order entry opens once the operator enables the {symbol} market.</Notice>}
-            <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={!tradingOpen || planning}>Review {side === "buy" ? "buy offer" : "sell offer"}</button>
+            {!creating && <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={!tradingOpen || planning}>Review {side === "buy" ? "buy offer" : "sell offer"}</button>}
           </form>
-          {!data.config.market_only && data.config.redemption_mode === "unsupported" && <div className="l1-section-gap"><Notice title="Exit through the market">{data.config.cash_in_note || `Native cash-in is not available in this wallet. Sell ${symbol} on the book when a buyer is available.`}</Notice></div>}
+          {creationError && <Notice tone="warning">{creationError}</Notice>}
+          {!data.config.market_only && ["unsupported", "subscription"].includes(data.config.redemption_mode) && <div className="l1-section-gap"><Notice title={data.config.creation_enabled ? "Exit options" : "Exit through the market"}>{data.config.cash_in_note || `Native cash-in is not available in this wallet. Sell ${symbol} on the book when a buyer is available.`}</Notice></div>}
           {onNavigate && <p className="l1-small l1-muted" style={{ marginTop: 14 }}>Need PFUSDC? <button type="button" className="l1-link" onClick={() => onNavigate("Bridge")}><ArrowDownToLine size={13} aria-hidden />Add PFUSDC from Ethereum</button></p>}
         </Card>}
+        {creating && data && <CreateReview key={`${client.address}:${data.config.route_id}`} client={client} config={data.config} quantity={quantity} onComplete={refresh} />}
         {actionError && <Notice tone="danger" role="alert">{plainError(actionError)}</Notice>}
         {visible && <OfferReview key={request.id} client={client} request={request} onComplete={refresh} onCancel={() => setRequest(null)} />}
       </div>
