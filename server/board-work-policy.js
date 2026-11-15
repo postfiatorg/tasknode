@@ -8,7 +8,10 @@
 //                          Task Node and Discord; amplification of
 //                          goodalexander content; community events.
 //   PostfiatL1V2           merged code changes and code reviews of the L1.
-//   Task Node Fixes        merged Task Node pull requests.
+//   Task Node Fixes        merged Task Node pull requests; reproduced bug
+//                          reports on Task Node.
+//   (Community & Promotion also takes reproduced bug reports on the Post Fiat
+//   website and blog, the goodalexander site and other public surfaces.)
 //   Capital Markets        actionable alpha and amplification of existing
 //                          goodalexander research. High bar, no busywork.
 //
@@ -23,11 +26,13 @@ const POSTS = ["amplification", "amplification_x", "public_announcement", "artic
 // Written code review: "code_review" for core contributors, "expert_review"
 // for expert badge holders.
 const REVIEWS = ["code_review", "expert_review"];
+// Bug reports on public surfaces: a reproduced defect filed as a public issue.
+const QA = ["qa_report", "product_qa", "repro_packet"];
 
 export const BOARD_WORK_POLICY = Object.freeze({
-  board_community_promotion: { open: true, workTypes: POSTS },
+  board_community_promotion: { open: true, workTypes: [...POSTS, ...QA] },
   board_postfiat_l1v2: { open: true, workTypes: [...CODE_CHANGE, ...REVIEWS] },
-  board_tasknode_fixes: { open: true, workTypes: CODE_CHANGE },
+  board_tasknode_fixes: { open: true, workTypes: [...CODE_CHANGE, ...QA] },
   board_capital_markets: { open: true, workTypes: ["domain_analysis", ...POSTS] },
   board_pf_terminal: { open: false, workTypes: [] },
   board_ai_l1_governance: { open: false, workTypes: [] },
@@ -39,7 +44,7 @@ export const BOARD_WORK_POLICY = Object.freeze({
 export const PUBLIC_PROOF_WORK_TYPES = Object.freeze(new Set([...POSTS, ...REVIEWS, "domain_analysis"]));
 
 export const PUBLIC_PROOF_REQUIREMENT_TEXT =
-  "Payment requirement: this task pays only for public proof you produced after this task was created. Submit the link to the published post, review, event page or research note, from the account linked to your Task Node profile. A draft, a private document, a screenshot without a public link, or work that already paid another task is not evidence and will not be paid.";
+  "Payment requirement: this task pays only for public proof you produced after this task was created. Submit the link to the published post, review, bug report, event page or research note, from the account linked to your Task Node profile. A draft, a private document, a screenshot without a public link, or work that already paid another task is not evidence and will not be paid.";
 
 function clean(value = "") {
   return String(value || "").trim().toLowerCase();
@@ -55,12 +60,22 @@ export function boardOpenForNewWork(boardId = "") {
   return policy ? policy.open : true;
 }
 
-export function mergedPrRequiredForWork({ workType = "" } = {}) {
+// A bug report is paid on the public issue, on the boards that take QA today.
+// QA tasks issued earlier on other boards keep their merged pull request terms.
+function qaOnOpenBoard({ boardId = "", workType = "" } = {}) {
+  const policy = boardWorkPolicy(boardId);
+  return QA.includes(clean(workType)) && Boolean(policy?.open) && policy.workTypes.includes(clean(workType));
+}
+
+export function mergedPrRequiredForWork({ boardId = "", workType = "" } = {}) {
+  if (qaOnOpenBoard({ boardId, workType })) return false;
   return !PUBLIC_PROOF_WORK_TYPES.has(clean(workType));
 }
 
-// A code review is paid for its written findings, on the L1 board only.
+// Written findings are the work in two cases: a code review on the L1 board,
+// and a bug report on a board that takes QA.
 export function reviewDocumentAllowed({ boardId = "", workType = "" } = {}) {
+  if (qaOnOpenBoard({ boardId, workType })) return true;
   return String(boardId || "").trim() === "board_postfiat_l1v2" && REVIEWS.includes(clean(workType));
 }
 

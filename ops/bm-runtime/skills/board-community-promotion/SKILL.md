@@ -19,8 +19,15 @@ This board pays for:
 3. **Community building**: events, masterminds, onboarding sessions the
    contributor actually runs (`--work-type public_announcement`).
 
-All of it requires a verified `kol` badge (check with `user`). No badge, no
-paid task.
+4. **Bug reports on public surfaces** (`--work-type qa_report`, `product_qa`
+   or `repro_packet`, `qa_worker` badge): reproduced defects on the Post Fiat
+   website and blog, the goodalexander site, or any other public Post Fiat
+   surface. Broken links, wrong commands, pages that fail to load or render,
+   factual errors against the product. Not Task Node (that is the Task Node
+   Fixes board) and not PF Terminal.
+
+Items 1-3 require a verified `kol` badge and item 4 a verified `qa_worker`
+badge (check with `user`). No badge, no paid task.
 
 ## Sources
 
@@ -44,6 +51,13 @@ If a source is unavailable, do not substitute a scraper or a mirror; defer.
   or a demo.
 - **Event:** what the event is, who it is for, and the minimum that counts as
   held (date, attendance, recap). Pay after it happened, on the public recap.
+
+- **Bug report:** the surface to test (a named site or section). The
+  contributor files one public issue per defect on that site's repository
+  with the page URL, exact steps, expected and actual result, and a
+  screenshot. Reproduce it yourself before paying: 100-500 PFT per confirmed
+  defect by severity. Reject duplicates, cosmetic opinions and anything you
+  cannot reproduce.
 
 ## Review
 

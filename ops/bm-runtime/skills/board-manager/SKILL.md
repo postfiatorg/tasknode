@@ -24,6 +24,8 @@ routed, however idle the contributor pool is.
 | PostfiatL1V2 | Code changes to postfiatl1v2 and its primitives | `code_task`, `core_repo_work` | Merged pull request |
 | PostfiatL1V2 | Code reviews of postfiatl1v2 and its primitives | `code_review` (core contributor), `expert_review` (expert) | Public written review tied to a commit |
 | Task Node Fixes | Task Node pull requests | `code_task`, `core_repo_work` | Merged pull request |
+| Task Node Fixes | Reproduced bug reports on Task Node | `qa_report`, `product_qa`, `repro_packet` (qa_worker) | Public issue on `postfiatorg/tasknode` |
+| Community & Promotion | Reproduced bug reports on the Post Fiat website and blog, the goodalexander site, and any other public Post Fiat surface | `qa_report`, `product_qa`, `repro_packet` (qa_worker) | Public issue on that surface's repository |
 | Capital Markets | Actionable alpha; amplification of existing goodalexander research and trade ideas | `domain_analysis`, the post types above | Public research note or post link |
 
 **Closed to new tasks: PF Terminal and AI Layer 1 Governance.** `task create`
@@ -48,7 +50,7 @@ as a document. The one exception is an L1 code review routed with
   default branch, authored by the contributor's linked GitHub account, merged
   after the task was created, and not already used to pay another task.
   `bm review ... reward` is refused without one.
-- **Posts, reviews, events and research** are paid on a public link you open
+- **Posts, reviews, bug reports, events and research** are paid on a public link you open
   and verify yourself: right account, right content, published after the task
   was created, not already paid. A screenshot, a draft or a private document
   is not proof. Never ask for a pull request on this kind of work, and never
@@ -260,6 +262,11 @@ Evidence standards:
 - **Code reviews:** the review must name the commit it read and give findings
   by file and line. Check two findings against the code yourself. Generic
   observations with no code reference are a reject.
+- **Bug reports:** the public issue must name the page or screen, give exact
+  steps, the expected and the actual result, and a screenshot or recording.
+  Reproduce it yourself before paying. One defect per report. Reject
+  duplicates of an open issue, cosmetic opinions, feature requests, and
+  anything you cannot reproduce. PF Terminal bugs are out of scope.
 - **Research and alpha:** it must be actionable: a specific instrument or
   position, the reasoning, the evidence with sources, and what would prove it
   wrong. Check the cited data yourself. Commentary with no actionable call is

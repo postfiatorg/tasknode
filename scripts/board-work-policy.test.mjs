@@ -62,3 +62,21 @@ test("written review findings are paid only as an L1 code review", () => {
   // Amplifying a post is not a critique of it.
   assert.equal(networkTaskContentViolation("Quote-post the latest goodalexander blog post on X with your own one-line takeaway."), null);
 });
+
+test("reproduced bug reports are paid on public surfaces, on a public issue", () => {
+  for (const board of ["board_tasknode_fixes", "board_community_promotion"]) {
+    for (const type of ["qa_report", "product_qa", "repro_packet"]) {
+      assert.equal(boardWorkViolation({ boardId: board, workType: type }), null, `${board} ${type}`);
+      assert.equal(mergedPrRequiredForWork({ boardId: board, workType: type }), false);
+      assert.equal(reviewDocumentAllowed({ boardId: board, workType: type }), true);
+    }
+  }
+  // Not on the L1 or Capital Markets boards, and never on a closed board.
+  assert.equal(boardWorkViolation({ boardId: "board_capital_markets", workType: "qa_report" }).code, "work_type_not_in_board_scope");
+  assert.equal(boardWorkViolation({ boardId: "board_pf_terminal", workType: "qa_report" }).code, "board_closed_to_new_work");
+  // QA tasks already issued on PF Terminal keep the merged pull request terms they were offered under.
+  assert.equal(mergedPrRequiredForWork({ boardId: "board_pf_terminal", workType: "qa_report" }), true);
+  assert.equal(reviewDocumentAllowed({ boardId: "board_pf_terminal", workType: "qa_report" }), false);
+  const need = "Reproduce one defect on tasknode.postfiat.org and file a public issue report with exact steps, expected and actual result.";
+  assert.equal(networkTaskContentViolation(need, { allowReviewDocument: true }), null);
+});

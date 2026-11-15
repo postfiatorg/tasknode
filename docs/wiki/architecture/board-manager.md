@@ -40,7 +40,8 @@ a payment needs.
 | --- | --- | --- |
 | Community & Promotion | Education and onboarding posts, amplification, community events | Public link |
 | PostfiatL1V2 | Code changes; code reviews | Merged pull request; public written review |
-| Task Node Fixes | Task Node pull requests | Merged pull request |
+| Task Node Fixes | Task Node pull requests; reproduced bug reports | Merged pull request; public issue |
+| Community & Promotion | Reproduced bug reports on the website, blog, goodalexander site and other public surfaces | Public issue |
 | Capital Markets | Actionable alpha; amplification of goodalexander research | Public link |
 
 PF Terminal and AI Layer 1 Governance are closed to new tasks; their in-flight
