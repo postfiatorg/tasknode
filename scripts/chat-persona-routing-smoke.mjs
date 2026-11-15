@@ -283,7 +283,7 @@ assert.ok(frontendSource.includes('mode: isContextEdit ? "Thinking" : signedOut 
 assert.match(frontendSource, /Ask a specific question before casting the I Ching/);
 assert.match(frontendSource, /IChingSetupDialog/);
 assert.match(frontendSource, /kravis: Landmark/);
-assert.ok(frontendSource.includes("basedgpt: Flame"));
+assert.ok(frontendSource.includes("basedgpt: HoodIcon"));
 assert.match(chatDocsSource, /Validator \| Operate and troubleshoot Post Fiat validators/);
 assert.doesNotMatch(chatDocsSource, /Validator \| Stress-test an idea, claim, or plan/);
 
