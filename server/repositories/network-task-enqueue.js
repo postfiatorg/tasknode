@@ -74,7 +74,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   const projectNeedSummary = safeText(networkTask.project_need_summary || networkTask.projectNeedSummary || payload.summary || decision.reason, 2400);
   const scopeWorkType = safeText(networkTask.task_work_type || networkTask.taskWorkType || networkTask.badge_work_type || networkTask.badgeWorkType, 120);
   assertBoardAcceptsWork({ boardId: projectId, workType: scopeWorkType, operatorDuty });
-  const paymentRequirement = mergedPrRequiredForWork({ workType: scopeWorkType }) ? MERGED_PR_REQUIREMENT_TEXT : PUBLIC_PROOF_REQUIREMENT_TEXT;
+  const paymentRequirement = mergedPrRequiredForWork({ boardId: projectId, workType: scopeWorkType }) ? MERGED_PR_REQUIREMENT_TEXT : PUBLIC_PROOF_REQUIREMENT_TEXT;
   const projectNeedWithPayment = projectId === VALUE_ACCOUNTABILITY_BOARD_ID || operatorDuty
     ? projectNeedSummary
     : `${projectNeedSummary}\n\n${paymentRequirement}`;

@@ -163,7 +163,7 @@ export async function mergedPrRequiredForTask(taskId) {
   const exempt = MERGED_PR_EXEMPT_BOARDS.has(row.project_id || "") || row.handle === MERGED_PR_OPERATOR_HANDLE;
   // Posts, reviews and research are paid on public proof; everything else
   // needs a merged pull request (server/board-work-policy.js).
-  const codeChange = mergedPrRequiredForWork({ workType: row.work_type });
+  const codeChange = mergedPrRequiredForWork({ boardId: row.project_id, workType: row.work_type });
   return { required: isNetwork && !exempt && codeChange, row };
 }
 
