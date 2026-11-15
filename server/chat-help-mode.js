@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
 import { taskNodeInstructions } from "./chat-memory-context.js";
+import { formatPostFiatKnowledgeBrief } from "./post-fiat-knowledge.js";
 
 const helpModePrompt = loadPrompt("chat/help_mode_v1.md");
 const userGuideMarkdown = readUserGuideMarkdown();
@@ -60,6 +61,7 @@ export function isHelpChatMode(mode = "") {
 }
 
 export function helpModeInstructions({
+  message = "",
   contextDocument = null,
   memoryContext = null,
   taskContext = null,
@@ -76,5 +78,6 @@ export function helpModeInstructions({
     }),
     HELP_ACCOUNT_STATE: formatHelpAccountState(deliveryContext),
     TASK_NODE_USER_GUIDE: userGuideMarkdown,
+    POST_FIAT_KNOWLEDGE: formatPostFiatKnowledgeBrief({ message }),
   });
 }
