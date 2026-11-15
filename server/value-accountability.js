@@ -13,6 +13,7 @@ import {
   NETWORK_TASK_CONTENT_POLICY_VERSION,
   networkTaskContentViolation,
 } from "./network-task-content-policy.js";
+import { reviewDocumentAllowed } from "./board-work-policy.js";
 
 export const VALUE_ACCOUNTABILITY_BOARD_ID = "board_value_accountability";
 export const VALUE_ACCOUNTABILITY_COHORT_POLICY = NETWORK_TASK_CONTENT_POLICY_VERSION;
@@ -161,15 +162,21 @@ export async function computeValueAccountabilityCohort() {
   );
   const operatorIds = new Set(operator.rows.map((row) => row.account_id));
   const tasks = await query(
-    `SELECT task_id, account_id, subject_wallet, title, description, reward_actual_pft::float AS pft
-       FROM task_projections
-      WHERE task_kind = 'network' AND status = 'rewarded' AND coalesce(reward_actual_pft, 0) > 0
-        AND account_id IS NOT NULL`
+    `SELECT t.task_id, t.account_id, t.subject_wallet, t.title, t.description, t.reward_actual_pft::float AS pft,
+            a.project_id, a.work_type
+       FROM task_projections t
+       LEFT JOIN LATERAL (
+         SELECT project_id, metadata_json->'network_task_intelligence'->>'taskWorkType' AS work_type
+           FROM network_task_allocations WHERE generated_task_id = t.task_id ORDER BY updated_at DESC LIMIT 1
+       ) a ON true
+      WHERE t.task_kind = 'network' AND t.status = 'rewarded' AND coalesce(t.reward_actual_pft, 0) > 0
+        AND t.account_id IS NOT NULL`
   );
   const byAccount = new Map();
   for (const task of tasks.rows) {
     if (operatorIds.has(task.account_id)) continue;
-    if (!networkTaskContentViolation(task.title, task.description)) continue;
+    const allowReviewDocument = reviewDocumentAllowed({ boardId: task.project_id, workType: task.work_type });
+    if (!networkTaskContentViolation(task.title, task.description, { allowReviewDocument })) continue;
     const entry = byAccount.get(task.account_id) || { accountId: task.account_id, wallet: task.subject_wallet || "", taskIds: [], titles: [], pft: 0 };
     entry.taskIds.push(task.task_id);
     entry.titles.push(safeText(task.title, 160));

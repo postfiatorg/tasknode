@@ -49,7 +49,7 @@ export async function dispatchBoardAgent(argv) {
   if (command === "round-open") return openAgentRound(boards());
   if (command === "round-status") return readAgentRound(args[0]);
   if (command === "task" && args[0] === "detail") return boardTaskDetail(args[1]);
-  if (command === "duty-result") return recordDutyResult({ roundId: args[0], dutyId: args[1], outcome: f.outcome, reason: f.reason, dispositions: f.dispositions });
+  if (command === "duty-result") return recordDutyResult({ roundId: args[0], dutyId: args[1], outcome: f.outcome, reason: f.reason });
   if (command === "user") {
     // Board agents receive board-linked task history and badge evidence, not
     // the contributor's private personal tasks, chats or context document.

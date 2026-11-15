@@ -15,9 +15,10 @@ process.env.TASKNODE_POSTGRES_DISABLED = "false";
 const { recordAgentDecision, wakeDecisionWorker, workerForDecisionKind } = await import("../server/repositories/bm-decisions.js");
 const { parseRecurringBlockers } = await import("../server/board-agent-runtime-status.js");
 const { remoteBoardCommand } = await import("../scripts/bm/remote.mjs");
-const { trackRecurringBlockers, recurringBlockers, escalationDirective, recurringSummary, RECURRING_BLOCKER_ROUNDS, ROUTING_STALL_ROUNDS, busyBlockedDecision, BUSY_ALERT_MS, BUSY_INTERRUPT_MS } = await import("../ops/bm-runtime/supervisor.mjs");
-const { validateRoutingDispositions, routingOutcome, ROUTING_REASON_CODES } = await import("../server/board-agent-rounds.js");
-const { evaluateAllocationHealth, consecutiveNotServedRounds, readAllocationHealth, allocationHealthLines } = await import("../server/allocation-health.js");
+const { trackRecurringBlockers, recurringBlockers, escalationDirective, recurringSummary, RECURRING_BLOCKER_ROUNDS, busyBlockedDecision, BUSY_ALERT_MS, BUSY_INTERRUPT_MS } = await import("../ops/bm-runtime/supervisor.mjs");
+const { recentRoutingBoards, ROUTING_INVITE_COOLDOWN_HOURS, DUTY_OUTCOMES } = await import("../server/board-agent-rounds.js");
+const { routingDuty } = await import("../server/board-task-policy.js");
+const { evaluateAllocationHealth, readAllocationHealth, allocationHealthLines } = await import("../server/allocation-health.js");
 const { closePool } = await import("../server/db/pool.js");
 
 const taskId = "task_progress_fixture";
@@ -147,71 +148,38 @@ test("the supervisor detects a duty blocked across consecutive processed rounds"
   assert.equal(trackRecurringBlockers(cleared, blocked("round_f", "new blocker"))["verification_due|board_pf_terminal|" + taskId].rounds, 1);
 });
 
-test("a routing duty answers for every candidate and cannot complete without routing anyone", () => {
-  const duty = { id: "r1", type: "routing_due", board_id: "board_pf_terminal", candidate_ids: ["acct_a", "acct_b", "acct_c"] };
-  const served = [
-    { account_id: "acct_a", disposition: "routed", task_id: "task_new", reason: "Grounded defect in the TUI." },
-    { account_id: "acct_b", disposition: "not_served", reason_code: "no_badge_fit", reason: "kol badge only." },
-    { account_id: "acct_c", disposition: "investigation_routed", task_id: "task_inv", reason: "Audit of the renderer." },
-  ];
-  assert.equal(validateRoutingDispositions(duty, JSON.stringify(served)).length, 3);
-  assert.equal(routingOutcome(validateRoutingDispositions(duty, served), "completed"), "completed");
-  assert.throws(() => validateRoutingDispositions(duty, served.slice(0, 2)), { message: /board_agent_dispositions_incomplete: missing acct_c/ });
-  assert.throws(() => validateRoutingDispositions(duty, undefined), { message: /board_agent_dispositions_required/ });
-  assert.throws(() => validateRoutingDispositions(duty, [...served, { account_id: "acct_zzz", disposition: "not_served", reason_code: "other", reason: "x".repeat(50) }]), { message: /unknown_candidate/ });
-  assert.throws(() => validateRoutingDispositions(duty, [{ ...served[1], reason_code: "vibes" }, served[0], served[2]]), { message: /reason_code_required/ });
-  assert.throws(() => validateRoutingDispositions(duty, [{ ...served[1], reason_code: "other", reason: "too short" }, served[0], served[2]]), { message: /reason_too_short/ });
-  assert.throws(() => validateRoutingDispositions(duty, [{ ...served[0], task_id: "" }, served[1], served[2]]), { message: /task_id_required/ });
-  const nobody = duty.candidate_ids.map((account_id) => ({ account_id, disposition: "not_served", reason_code: "source_unavailable", reason: "Nitter feed empty." }));
-  assert.throws(() => routingOutcome(validateRoutingDispositions(duty, nobody), "completed"), { status: 409 });
-  assert.equal(routingOutcome(validateRoutingDispositions(duty, nobody), "deferred"), "not_served");
-  assert.equal(routingOutcome(validateRoutingDispositions(duty, nobody), "blocked"), "not_served");
-  // No candidates: the legacy shape keeps its reported outcome.
-  assert.equal(routingOutcome(validateRoutingDispositions({ ...duty, candidate_ids: [] }, undefined), "deferred"), "deferred");
-  assert.ok(ROUTING_REASON_CODES.includes("source_unavailable"));
-});
-
-test("the supervisor escalates a board that serves nobody for three consecutive rounds", () => {
-  const duty = { id: "r1", type: "routing_due", board_id: "board_pf_terminal", candidate_ids: ["acct_a", "acct_b"],
-    candidates: [{ account_id: "acct_a", public_handle: "alice", badges: ["core_contributor"] }, { account_id: "acct_b", public_handle: "bob", badges: ["qa_worker"] }] };
-  const unserved = (roundId, code) => ({ id: roundId, state: "complete", duties_json: [duty], results_json: { r1: { outcome: "not_served", reason: "lane covered by live offer", reported_outcome: "deferred",
-    dispositions: [{ account_id: "acct_a", disposition: "not_served", reason_code: code, reason: "x" }, { account_id: "acct_b", disposition: "not_served", reason_code: "no_badge_fit", reason: "y" }] } } });
+test("routing is an invitation: declining it never escalates and is not re-asked for a day", () => {
+  const duty = { id: "r1", type: "routing_due", board_id: "board_capital_markets", candidate_ids: ["acct_a", "acct_b"] };
+  const deferred = { id: "round_1", state: "complete", duties_json: [duty], results_json: { r1: { outcome: "deferred", reason: "No actionable alpha to route today." } } };
   let blockers = {};
-  for (const [index, id] of ["round_1", "round_2"].entries()) { blockers = trackRecurringBlockers(blockers, unserved(id, "source_unavailable")); assert.equal(recurringBlockers(blockers).length, 0, `round ${index + 1} does not escalate yet`); }
-  blockers = trackRecurringBlockers(blockers, unserved("round_3", "source_unavailable"));
-  assert.equal(ROUTING_STALL_ROUNDS, 3);
-  const recurring = recurringBlockers(blockers);
-  assert.equal(recurring.length, 1);
-  assert.equal(recurring[0].unserved.length, 2);
-  assert.equal(recurring[0].unserved[0].handle, "alice");
-  const directive = escalationDirective(recurring);
-  assert.ok(directive.includes("ROUTING ESCALATION"));
-  assert.ok(directive.includes("@alice [core_contributor] source_unavailable"));
-  assert.ok(directive.includes("@bob [qa_worker] no_badge_fit"));
-  assert.ok(directive.includes("does not occupy a board"));
-  assert.deepEqual(parseRecurringBlockers(recurringSummary(recurring))[0], { type: "routing_due", board_id: "board_pf_terminal", task_id: "", rounds: 3, unserved: 2, reason_code: "source_unavailable" });
-  // A deferred routing round (legacy shape, or no candidates) never escalates; a routed round clears the streak.
-  const deferred = { id: "round_4", state: "complete", duties_json: [duty], results_json: { r1: { outcome: "deferred", reason: "Nothing routable." } } };
-  assert.deepEqual(trackRecurringBlockers(blockers, deferred), {});
-  const routed = { id: "round_5", state: "complete", duties_json: [duty], results_json: { r1: { outcome: "completed", reason: "Routed.", dispositions: [] } } };
-  assert.deepEqual(trackRecurringBlockers(blockers, routed), {});
-  assert.deepEqual(trackRecurringBlockers(blockers, { ...unserved("round_6", "other"), duties_json: [{ ...duty, candidate_ids: [] }] }), {}, "no candidates means nobody was starved");
+  for (const id of ["round_1", "round_2", "round_3", "round_4"]) blockers = trackRecurringBlockers(blockers, { ...deferred, id });
+  assert.deepEqual(blockers, {}, "a declined routing invitation is never a blocker");
+  assert.equal(escalationDirective(recurringBlockers(blockers)), "");
+  assert.deepEqual([...recentRoutingBoards([deferred])], ["board_capital_markets"]);
+  assert.deepEqual([...recentRoutingBoards([{ ...deferred, results_json: {} }])], [], "an unanswered invitation does not start the cooldown");
+  assert.equal(ROUTING_INVITE_COOLDOWN_HOURS, 24);
+  assert.deepEqual(DUTY_OUTCOMES, ["completed", "blocked", "deferred"]);
 });
 
-test("allocation health measures tasks created against idle contributors", async (t) => {
-  assert.equal(evaluateAllocationHealth({ idle_badge_verified_no_live_task: 12, executed_creates_24h: 0, executed_creates_7d: 4 }).status, "critical");
-  assert.equal(evaluateAllocationHealth({ idle_badge_verified_no_live_task: 9, executed_creates_24h: 0, executed_creates_7d: 4 }).status, "warning");
+test("closed boards get no routing invitation and open boards are told not to invent work", () => {
+  const member = { account_id: "acct_a", engine_verdict: "eligible", free_slots: 1, public_handle: "alice" };
+  assert.equal(routingDuty({ id: "board_pf_terminal" }, [member], 0), null);
+  assert.equal(routingDuty({ id: "board_ai_l1_governance" }, [member], 0), null);
+  const open = routingDuty({ id: "board_capital_markets" }, [member], 2);
+  assert.equal(open.type, "routing_due");
+  assert.ok(open.detail.includes("record the duty as deferred"));
+  assert.ok(open.detail.includes("Never create a task to keep someone busy"));
+});
+
+test("allocation health alarms on unanswered submissions, never on idle contributors", async (t) => {
+  assert.equal(evaluateAllocationHealth({ idle_badge_verified_no_live_task: 12, executed_creates_24h: 0, executed_creates_7d: 0 }).status, "ok", "idle contributors and zero new tasks are a normal state");
   assert.equal(evaluateAllocationHealth({ idle_badge_verified_no_live_task: 12, executed_creates_24h: 3, executed_creates_7d: 9, distinct_accounts_offered_7d: 5 }).status, "ok");
-  const routing = (board, outcome) => ({ duties_json: [{ id: "r", type: "routing_due", board_id: board }], results_json: { r: { outcome } } });
-  assert.equal(consecutiveNotServedRounds([routing("b", "not_served"), routing("b", "not_served"), routing("b", "completed"), routing("b", "not_served")], "b"), 2);
-  assert.equal(consecutiveNotServedRounds([routing("other", "not_served")], "b"), 0);
   const queryImpl = async (sql) => {
     if (sql.includes("FROM account_network_badges")) return { rows: [{ idle: 35 }] };
     if (sql.includes("FROM bm_audit_log")) return { rows: [{ board_id: "board_tasknode_fixes", creates_24h: 1, creates_7d: 3, last_create_at: new Date("2026-09-21T01:41:58.183Z") }, { board_id: "board_pf_terminal", creates_24h: 0, creates_7d: 1, last_create_at: new Date("2026-09-06T19:04:33.860Z") }] };
     if (sql.includes("count(DISTINCT p.account_id)")) return { rows: [{ board_id: "board_tasknode_fixes", accounts_offered_7d: 1 }] };
     if (sql.includes("GROUP BY a.project_id, p.status")) return { rows: [{ board_id: "board_pf_terminal", status: "proposed", count: 1 }] };
     if (sql.includes("FROM network_task_generation_jobs")) return { rows: [{ board_id: "board_tasknode_fixes", family: "contract", count: 1 }] };
-    if (sql.includes("FROM board_agent_rounds")) return { rows: [routing("board_pf_terminal", "not_served"), routing("board_pf_terminal", "not_served"), routing("board_pf_terminal", "not_served")] };
     if (sql.includes("count(DISTINCT account_id)")) return { rows: [{ accounts: 3 }] };
     if (sql.includes("WHERE d.status='pending'")) return { rows: [{ board_id: "board_pf_terminal", task_id: "task_stuck", kind: "review", decision: "reject", since: "2026-09-29T06:18:36.900Z", wait_ms: 5 * 3_600_000, last_error: "merged_pr_required:no_pull_request_url" }] };
     if (sql.includes("submitted','verification_response_submitted")) return { rows: [{ board_id: "board_pf_terminal", task_id: "task_waiting", status: "submitted", since: "2026-09-21T20:32:24.264Z", wait_ms: 4 * 60 * 60_000 }] };
@@ -221,7 +189,6 @@ test("allocation health measures tasks created against idle contributors", async
   assert.equal(health.aggregate.idle_badge_verified_no_live_task, 35);
   assert.equal(health.aggregate.executed_creates_24h, 1);
   assert.equal(health.aggregate.distinct_accounts_offered_7d, 3);
-  assert.deepEqual(health.aggregate.boards_not_served_3_plus, ["board_pf_terminal"]);
   assert.equal(health.aggregate.last_create_at, "2026-09-21T01:41:58.183Z", "latest by time, not by string order of Date objects");
   assert.equal(health.aggregate.submissions_awaiting_manager, 1);
   assert.equal(health.evaluation.status, "critical", "a four-hour unreviewed submission is critical even when routing is healthy");
@@ -234,7 +201,6 @@ test("allocation health measures tasks created against idle contributors", async
   assert.ok(lines[0].startsWith("Allocation: 35 idle badge-verified; 1 created 24h / 4 7d"));
   assert.ok(lines.some((line) => line.startsWith("Review backlog: 1 submission(s)")));
   assert.ok(lines.some((line) => line.includes("task_waiting submitted 240min")));
-  assert.ok(lines.some((line) => line.includes("not_served streak 3")));
   // A recorded decision that never publishes must stay visible.
   assert.equal(health.aggregate.decisions_stuck_publishing, 1);
   assert.ok(lines.some((line) => line.startsWith("Stuck publications: 1")));

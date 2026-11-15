@@ -1,20 +1,20 @@
 ---
 name: board-tasknode-fixes
-description: Board context for the Task Node Fixes board manager. Use together with the board-manager skill when operating board_tasknode_fixes - defects and hardening for the Task Node app, assignable only to goodalexander.
+description: Board context for the Task Node Fixes board manager. Use together with the board-manager skill when operating board_tasknode_fixes - defects and hardening for the Task Node app, fixed through merged pull requests to the public repository.
 ---
 
 # Task Node Fixes Board
 
-Board id: `board_tasknode_fixes`. You track defects and hardening work on the Task Node app itself. **Every task on this board is assignable only to goodalexander** because only he holds code access to the Task Node deployment. Include `--assignee-handle goodalexander` when creating a task; the CLI refuses any other assignee.
+Board id: `board_tasknode_fixes`. You track defects and hardening work on the Task Node app itself. The repository is public (`postfiatorg/tasknode`). Route fixes to contributors with a verified `core_contributor` badge using `--work-type code_task`; payment requires a pull request merged into `main`. Only goodalexander merges and deploys: when a pull request is ready, use `refer-merge`.
 
 ## Your actual job here
 
-This board is different: you are not reviewing community submissions. You are the network's bug tracker with judgment.
+You are the network's bug tracker with judgment. File a task only for a defect you reproduced; an empty board is fine.
 
 1. **Collect defects.** Monitor the hive chat digest, other boards' journals, and your own use of the `bm` CLI and Task Node surfaces.
 2. **Check for duplicates.** Search `history` before investigating or creating a task. Reports of the same defect through multiple channels belong in one task.
 3. **Reproduce and triage.** Verify that the defect is real, identify the failing boundary, and estimate its blast radius. The repo checkout is `/home/pfrpc/repos/tasknode`; read the code to localize the defect, but never modify it yourself.
-4. **File a precise task.** Assign it to goodalexander and record the symptom, reproduction steps, suspected boundary, blast radius, and severity. File one defect per task.
+4. **File a precise task.** Record the symptom, reproduction steps, suspected boundary, blast radius, and severity. File one defect per task.
 5. **Verify the fix.** Require a commit or PR, repeat the original reproduction yourself, and confirm that the defect no longer reproduces before rewarding.
 
 If a report cannot yet be reproduced or localized, do not present it as a confirmed defect. File it explicitly as a triage task with the available symptom and investigation steps.
@@ -26,7 +26,6 @@ Use this structure for every defect task:
 ```markdown
 Title: [specific symptom or failing boundary]
 
-Assignee: goodalexander
 Source: [hive chat digest, board journal, bm CLI, or Task Node surface]
 Symptom: [observed defective behavior]
 Reproduction:

@@ -30,12 +30,31 @@ code through `scripts/bm/writes.mjs`. That path records network intents,
 allocations and generation jobs. Final task wording comes from
 `server/task-generation-worker.js`. See [network generation](network-task-generation-worker.md).
 
-Eligible contributors with free account capacity create a routing duty even when
-the board already has three or more proposed/accepted tasks. Board-specific
-`assignable_handles` restrictions filter the candidate packet; badge/work fit,
-account capacity and reward budgets remain mandatory. The candidate set is part
-of the duty identity, so an earlier round's cooldown cannot hide a newly eligible
-contributor. Board task counts are context, not a fixed allocation ceiling.
+## Scope and proof (2026-11-15)
+
+`server/board-work-policy.js` is the single table for what the manager may pay
+for: which boards take new work, which work types each takes, and what proof
+a payment needs.
+
+| Board | Work | Proof |
+| --- | --- | --- |
+| Community & Promotion | Education and onboarding posts, amplification, community events | Public link |
+| PostfiatL1V2 | Code changes; code reviews | Merged pull request; public written review |
+| Task Node Fixes | Task Node pull requests | Merged pull request |
+| Capital Markets | Actionable alpha; amplification of goodalexander research | Public link |
+
+PF Terminal and AI Layer 1 Governance are closed to new tasks; their in-flight
+work is still reviewed and paid. `task create` rejects a closed board or an
+out-of-scope work type with `board_work_policy_rejected`. Tasks issued before
+this policy keep the merged pull request rule they were offered under.
+
+Routing is an invitation, not an obligation. A `routing_due` duty tells the
+manager who has capacity, at most once a day per board. It is answered
+`completed` only when a task was created on that board in the round, and
+`deferred` otherwise. Deferring is never escalated, idle contributors raise no
+alarm, and an empty board is a normal state. The earlier per-candidate
+dispositions, `not_served` outcome, investigation tasks and routing-stall
+alerts were removed because they forced the manager to invent work.
 
 The scheduler also emits explicit follow-ups for seven-day unaccepted proposals,
 accepted tasks with seven days without recorded activity, and verification
@@ -132,30 +151,14 @@ Launch, supervisor, reset and status publication use that same registry.
   receipts remain authoritative; no retry creates a replacement round.
   Identical completed rounds have a fifteen-minute cooldown. Crash recovery
   resumes the saved thread. Daily reset preserves pending/busy work.
-- Routing is answered per contributor. A `routing_due` duty result carries
-  `--dispositions`, one entry per eligible candidate: `routed` or
-  `investigation_routed` (each must match an executed `task create` for that
-  account in the round, verified against `bm_audit_log`) or `not_served` with a
-  `reason_code` (`no_badge_fit`, `source_unavailable`, `budget_exhausted`,
-  `capacity_taken_this_round`, `restricted_board`,
-  `contributor_declined_recently`, `other` with a 40+ character reason). A duty
-  that routed nobody is recorded as the outcome `not_served`, never
-  `completed`. Three consecutive `not_served` rounds for a board with candidates
-  write `duty_blocked_across_rounds` and an `ALERTS.log` line, a `Routing
-  stalled:` status line, and a work-order directive naming each unserved
-  contributor with handle, badges and reason code. A `deferred` routing duty
-  with no candidates does not escalate.
-- Allocation health is published with every runtime status: idle badge-verified
-  contributors without a live network task, executed task creates in 24h/7d,
-  distinct accounts offered in 7d, live allocations, per-board failure families
-  and `not_served` streaks. Ten or more idle with zero creates in 24h is
-  critical: the supervisor appends to `ALERTS.log` at most every six hours and
-  System Status shows a `Network Allocation Health` item separate from
-  generation-worker freshness.
+- Allocation health is published with every runtime status: tasks created,
+  accounts offered, live allocations, per-board failure families, and
+  submissions waiting on the manager. Only an unanswered submission or a
+  decision that cannot publish is a warning or critical state.
 - A processed round is not a resolved task. The supervisor keeps
   `<alias>.blockers.json` and tracks progress duties (`review_due`,
   `verification_due`, `hive_chat_escalation`) that were reported anything but
-  completed in consecutive processed rounds, keyed by type, board and task. These
+  completed in consecutive processed rounds, keyed by type, board and task. Routing invitations are never tracked. These
   duties disappear as soon as the required decision or reply exists, so recurrence
   means the task did not advance. Two consecutive rounds log
   `duty_blocked_across_rounds`, append to `ALERTS.log`, publish a

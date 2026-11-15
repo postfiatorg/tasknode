@@ -1,3 +1,5 @@
+import { boardOpenForNewWork, boardWorkPolicy } from "./board-work-policy.js";
+
 const dayMs = 24 * 60 * 60 * 1000;
 
 // Existing manager policy, shared by scheduling and guarded cancellation.
@@ -33,13 +35,17 @@ export function boardRoutingCandidates(board, contributors) {
     (!handles.length || handles.includes(String(member.public_handle || "").toLowerCase())));
 }
 
+// An invitation, not an obligation. Idle contributors are not a defect and an
+// empty board is a normal state: the manager routes only when it can name real
+// work inside the board's scope, and otherwise defers. Closed boards and
+// operator-issued boards never get one.
 export function routingDuty(board, contributors, openCount) {
-  // Boards whose tasks are issued by an operator tool (value accountability)
-  // never receive routed work.
   const constraints = board.metadata_json?.routing_constraints || board.routing_constraints || {};
   if (constraints.routing_disabled === true) return null;
+  if (!boardOpenForNewWork(board.id)) return null;
   const candidates = boardRoutingCandidates(board, contributors);
   if (!candidates.length) return null;
+  const scope = boardWorkPolicy(board.id)?.workTypes || [];
   return {
     priority: 4,
     type: "routing_due",
@@ -47,6 +53,6 @@ export function routingDuty(board, contributors, openCount) {
     candidate_ids: candidates.map((member) => member.account_id).sort(),
     candidates,
     open_count: openCount,
-    detail: `${candidates.length} eligible contributor(s) have free capacity. This board has ${openCount} proposed or accepted tasks; there is no fixed three-task board ceiling. Review the listed contributors and route grounded, badge-matched work using the board sources. Check current per-account capacity, board assignment restrictions, and reward budgets before each assignment. If a contributor cannot be served, record the specific reason; do not report quiet while eligible contributors remain. Candidates: ${candidates.map((member) => `${member.account_id} @${member.public_handle || "unknown"} badges=${member.badges.join("/")} free_slots=${member.free_slots} wallet=${member.delivery_wallet}`).join("; ")}.`,
+    detail: `${candidates.length} contributor(s) have free capacity and this board has ${openCount} proposed or accepted tasks. Route a task only if you can name specific work inside this board's scope${scope.length ? ` (work types: ${scope.join(", ")})` : ""} that moves Task Node, NAVCoins, goodalexander or the L1. If there is none, record the duty as deferred. Never create a task to keep someone busy.`,
   };
 }
