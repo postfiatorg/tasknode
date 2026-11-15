@@ -20,7 +20,7 @@ To connect, open this link and press Approve:
 (On another device you can open https://tasknode.postfiat.org/activate and enter WDJB-MJHT instead.)
 ```
 
-**Prompt library access is automatic.** The link carries the agent's public key and a one-time secret after the `#`, which browsers never send to a server. After you press Approve, the next time Docs is unlocked in that browser it wraps your prompt-library key to that key, and the agent's local prompt tools start working: no fingerprint to compare and no code to paste. If you type the short code on another device instead, approve the agent by hand under Docs → Prompts → Agent access.
+**Prompt library access is automatic.** The link carries the agent's public key and a one-time secret after the `#`, which browsers never send to a server. After you press Approve, the page continues to Docs and opens the wallet unlock (accounts without a Docs library skip this). Once unlocked, the browser wraps your prompt-library key to that key, and the agent's local prompt tools start working: no fingerprint to compare and no code to paste. If you type the short code on another device instead, approve the agent by hand under Docs → Prompts → Agent access.
 
 Open the link on any device, check the code and tap **Approve**. The installer writes each agent's MCP entry itself (files are mode 600), never prints the token, and finishes with `Connected as <account>`. Restart running agents, or run `/mcp` in Claude Code.
 

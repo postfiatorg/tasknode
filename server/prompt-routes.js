@@ -1,4 +1,5 @@
 import { getTerminalSessionByToken } from "./repositories/terminal-auth.js";
+import { getDocsAccount } from "./repositories/collaboration.js";
 import {
   registerPromptDevice,
   listPromptDevices,
@@ -79,6 +80,8 @@ export async function handlePromptRoute({ req, res, url, session, json, readJson
     if (bearer) {
       if (endpoint === "devices" && req.method === "POST") {
         result = await registerPromptDevice(accountId, terminal.id, await readJson(req, 10_000));
+        // Lets the installer wait for the browser's Docs unlock only when this account has a Docs library.
+        if (result?.ok !== false) result = { ...result, usesDocs: Boolean(await getDocsAccount({ accountId }).catch(() => null)) };
       } else {
         const deviceId = String(req.headers["x-prompt-device"] || "");
         const envelope = await authorizePromptDevice(accountId, terminal.id, deviceId);

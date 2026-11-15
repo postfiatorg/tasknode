@@ -13,7 +13,10 @@
     }
     localStorage.setItem(key, JSON.stringify(pending));
     var next = document.getElementById("prompt-pairing-next");
-    if (next && pending.length) next.hidden = false;
+    if (next && pending.length) {
+      next.hidden = false;
+      setTimeout(function () { location.assign("/#docs"); }, 900);
+    }
   } catch (error) { /* storage unavailable: manual approval in Docs still works */ }
 
   document.addEventListener("click", function (event) {

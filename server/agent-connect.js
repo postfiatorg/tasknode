@@ -1,5 +1,6 @@
 import { handleAgentRelease } from "./agent-install.js";
 import { listPromptDevices, revokePromptDevice } from "./repositories/prompt-devices.js";
+import { getDocsAccount } from "./repositories/collaboration.js";
 // One-step agent connect: device-code sign-in (RFC 8628) so agents on remote
 // machines connect without a localhost callback or a copied token, the
 // /activate approval page, per-device token management on /connect, and the
@@ -189,7 +190,7 @@ details{margin-top:32px}summary{cursor:pointer;color:var(--tn-text-secondary,#45
 
 // /agent-connect.js is served immutable for a year. Bump this whenever public/agent-connect.js changes, or browsers
 // that visited /activate or /connect before keep running the old script (2026-11-12: one-click pairing never ran).
-const AGENT_CONNECT_SCRIPT_VERSION = "2026-11-12-pairing";
+const AGENT_CONNECT_SCRIPT_VERSION = "2026-11-15-docs-continue";
 
 export function agentPage(res, title, body, status = 200) {
   res.writeHead(status, { ...securityHeaders(), "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -235,7 +236,12 @@ async function handleActivate({ req, res, url, session }) {
     const approve = url.searchParams.get("decision") === "approve";
     const result = await decideDeviceAuthRequest({ userCode: code, accountId: session.accountId, approve });
     if (result.ok && result.approved) {
-      return agentPage(res, "Agent connected", `${header}<div class="card"><p><strong>Connected.</strong> Go back to your terminal; it finishes on its own and tells you which agents it set up.</p><p id="prompt-pairing-next" hidden>To let this agent work on your prompts, <a href="/#docs">open Docs</a> and unlock your wallet. Nothing else to do.</p><p class="muted">Manage connected devices on <a href="/connect">/connect</a>.</p></div>`);
+      // Accounts that use Docs go straight there: the link's pairing key gives the agent their prompts once the wallet is unlocked.
+      const usesDocs = Boolean(await getDocsAccount({ accountId: session.accountId }).catch(() => null));
+      const finish = usesDocs
+        ? `<p id="prompt-pairing-next" hidden><strong>One more click:</strong> opening Docs so this agent can use your prompts… <a class="button" href="/#docs">Continue</a></p>`
+        : "";
+      return agentPage(res, "Agent connected", `${header}<div class="card"><p><strong>Connected.</strong> Your terminal finishes on its own and tells you which agents it set up.</p>${finish}<p class="muted">Manage connected devices on <a href="/connect">/connect</a>.</p></div>`);
     }
     if (result.ok) return agentPage(res, "Sign-in denied", `${header}<div class="card"><p>Denied. Nothing was connected.</p></div>`);
     const message = result.error === "github_not_linked"
