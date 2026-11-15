@@ -148,7 +148,7 @@ export const DOC_GROUPS = [
       { slug: "daily-airdrop", title: "Daily Airdrop", summary: "Alignment score, rewarded contributions, and payout status.", loadMarkdown: HELP_MARKDOWN_LOADERS.dailyAirdrop },
       { slug: "refine-context", title: "Refine Context", summary: "Targeted Context editing.", loadMarkdown: HELP_MARKDOWN_LOADERS.refineContext },
       { slug: "context-rewrite", title: "Context Rewrite", summary: "Asynchronous full-document rewrite.", loadMarkdown: HELP_MARKDOWN_LOADERS.contextRewrite },
-      { slug: "agents", title: "Agents", summary: "External wallet-native workers.", loadMarkdown: HELP_MARKDOWN_LOADERS.agents },
+      { slug: "agents", title: "Agents", summary: "Connect Claude Code, Codex and other AI agents with one command.", loadMarkdown: HELP_MARKDOWN_LOADERS.agents },
     ],
   },
   {
