@@ -939,8 +939,9 @@ async function planWrites(agents, before, { ctx, token, account, name, opts }) {
   return { plan, declined };
 }
 
-// The browser grants prompt access as soon as Docs is unlocked after the sign-in link was approved.
-async function waitForPromptAccess(deviceFile, seconds = Number(process.env.TASKNODE_PROMPT_WAIT_SECONDS ?? 90)) {
+// After Approve the browser moves on to Docs and grants prompt access once the wallet is unlocked there.
+// The agents are already connected by then; this only reports the result, and the local tools pair on first use anyway.
+async function waitForPromptAccess(deviceFile, seconds = Number(process.env.TASKNODE_PROMPT_WAIT_SECONDS ?? 120)) {
   const { PromptClient } = await import("../lib/prompt-client.mjs");
   const { autoPairPromptDevice } = await import("../lib/prompt-device.mjs");
   const device = JSON.parse(readText(deviceFile));
@@ -995,6 +996,8 @@ async function connect(opts) {
   }
 
   const written = results.filter((result) => result.mark === "✓");
+  let promptDeviceFile = "";
+  let promptUsesDocs = false;
   if (written.length) {
     try {
       const response = await api(ctx.origin, "/api/docs/prompts/devices", {
@@ -1011,10 +1014,8 @@ async function connect(opts) {
       writePrivate(deviceFile, JSON.stringify({ ...promptDevice, origin: ctx.origin, token, accountId: account.accountId }));
       const localEntry = { command: process.execPath, args: [fileURLToPath(import.meta.url), "prompts-mcp", "--device-file", deviceFile] };
       for (const { agent } of written) await installPromptEntry(agent, ctx, localEntry);
-      say("Prompt library: waiting for Docs to be unlocked in that browser…");
-      const paired = await waitForPromptAccess(deviceFile);
-      if (paired) say("Prompt library connected. Your agent can now work on your prompts.");
-      else say(`Prompt library: open ${ctx.origin}/#docs and unlock your wallet; access is then granted automatically.`);
+      promptDeviceFile = deviceFile;
+      promptUsesDocs = response.data?.usesDocs === true;
     } catch {
       warn("Hosted connection saved. Prompt enrollment is unavailable; reconnect later to enable local prompt tools.");
     }
@@ -1033,6 +1034,12 @@ async function connect(opts) {
   if (revoked) say(`Revoked ${plural(revoked, "old token")}.`);
   if (written.length) {
     say(written.some((result) => result.agent === claude) ? "Restart running agents, or run /mcp in Claude Code, to pick it up." : "Restart running agents to pick it up.");
+  }
+  if (promptDeviceFile && promptUsesDocs && Number(process.env.TASKNODE_PROMPT_WAIT_SECONDS ?? 120) > 0) {
+    say("Docs prompts: unlock your wallet in the browser tab that just approved, and your agent gets your prompts. (Ctrl+C to skip.)");
+    say((await waitForPromptAccess(promptDeviceFile).catch(() => false))
+      ? "Docs prompts connected."
+      : `Docs prompts not connected yet. Open ${ctx.origin}/#docs and unlock any time; nothing to redo here.`);
   }
   if (results.some((result) => result.error)) return 1;
   return written.length || declined ? 0 : 1;
