@@ -110,8 +110,22 @@ try {
     taskContext: { outstanding: [{ title: "Finish the task loop", status: "Accepted" }] },
   });
   assert.equal(runtime.ok, true);
-  assert.equal(runtime.chunks.length, 3);
-  assert.ok(runtime.text.includes("<jobs_retrieval_context count=\"3\">"));
+  assert.ok(runtime.chunks.length >= 3 && runtime.chunks.length <= 5);
+  assert.ok(runtime.text.includes(`<jobs_retrieval_context count="${runtime.chunks.length}">`));
+
+  // A semantic provider that cannot answer must not cost the turn its Jobs
+  // material: retrieval falls back to the keyword search.
+  process.env.TASKNODE_JOBS_RETRIEVAL_EMBEDDING_PROVIDER = "gateway";
+  const savedKeys = [process.env.VERCEL_AI_GATEWAY_API_KEY, process.env.AI_GATEWAY_API_KEY];
+  delete process.env.VERCEL_AI_GATEWAY_API_KEY;
+  delete process.env.AI_GATEWAY_API_KEY;
+  const fallback = await jobsRetrievalForChat({ message: "Help me cut this product down to one real loop." });
+  assert.equal(fallback.ok, true);
+  assert.equal(fallback.embeddingModel, "deterministic-bag-of-words-v1");
+  assert.ok(fallback.chunks.length >= 3);
+  delete process.env.TASKNODE_JOBS_RETRIEVAL_EMBEDDING_PROVIDER;
+  if (savedKeys[0]) process.env.VERCEL_AI_GATEWAY_API_KEY = savedKeys[0];
+  if (savedKeys[1]) process.env.AI_GATEWAY_API_KEY = savedKeys[1];
 
   await query("DELETE FROM jobs_corpus_sources WHERE raw_sha256 = $1", [rawSha256]);
   console.log("jobs corpus pgvector smoke ok");

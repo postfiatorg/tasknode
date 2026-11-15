@@ -8,6 +8,8 @@ import {
   jobsEmbeddingDimensions,
   jobsEmbeddingModel,
   jobsEmbeddingProvider,
+  jobsRetrievalEmbeddingModel,
+  jobsRetrievalEmbeddingProvider,
 } from "./embedding-provider.js";
 
 export const defaultJobsCorpusUrl = "";
@@ -15,10 +17,14 @@ export const defaultJobsCorpusUrl = "";
 const maxChunkChars = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_CHUNK_MAX_CHARS) || 1600, 600), 3200);
 const chunkOverlapChars = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_CHUNK_OVERLAP_CHARS) || 180, 0), 500);
 const maxRetrievalChunkChars = Math.min(
-  Math.max(Number(process.env.TASKNODE_JOBS_RETRIEVAL_CHUNK_MAX_CHARS) || 950, 300),
+  Math.max(Number(process.env.TASKNODE_JOBS_RETRIEVAL_CHUNK_MAX_CHARS) || 1600, 300),
   1600
 );
-const defaultRetrievalLimit = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_RETRIEVAL_LIMIT) || 3, 1), 5);
+const defaultRetrievalLimit = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_RETRIEVAL_LIMIT) || 5, 1), 5);
+// Budget for embedding the user's message when retrieval searches by meaning.
+// A miss falls back to the keyword search, so this stays well inside the
+// overall retrieval timeout below.
+const semanticEmbeddingTimeoutMs = Math.min(Math.max(Number(process.env.TASKNODE_JOBS_RETRIEVAL_EMBEDDING_TIMEOUT_MS) || 2500, 250), 4000);
 // 2500ms proved too tight in production: embedding-provider tail latency
 // (cold starts) intermittently exceeded it and dropped the Jobs corpus from
 // live turns. Retrieval is worth a slightly longer wait; 8000ms clamp holds.
@@ -455,6 +461,37 @@ export function buildJobsRetrievalQuery({ message = "", contextDocument = null, 
   return parts.filter(Boolean).join("\n\n").slice(0, 7000);
 }
 
+// Searches by the meaning of the user's message when a semantic provider is
+// configured. Account context is left out of that query on purpose: it is the
+// same on every turn and drags every question to the same excerpts. Any
+// failure or empty result falls back to the keyword search over the full query.
+async function retrieveJobsChunks({ message = "", queryText = "" } = {}) {
+  const provider = jobsRetrievalEmbeddingProvider();
+  const question = safeText(message, 1200);
+  if (provider !== "deterministic" && question) {
+    try {
+      const embedded = await embedTexts([question], {
+        provider,
+        model: jobsRetrievalEmbeddingModel(),
+        dimensions: jobsEmbeddingDimensions(),
+        batchSize: 1,
+        timeoutMs: semanticEmbeddingTimeoutMs,
+      });
+      const result = await searchJobsCorpus({
+        queryText: question,
+        embedding: embedded.embeddings[0],
+        model: embedded.model,
+        provider: embedded.provider,
+      });
+      if (result.chunks.length > 0) return result;
+      console.warn(`jobs semantic retrieval found no chunks for ${embedded.model}; using keyword search`);
+    } catch (error) {
+      console.warn(`jobs semantic retrieval failed, using keyword search: ${error?.message || error}`);
+    }
+  }
+  return searchJobsCorpus({ queryText });
+}
+
 export async function jobsRetrievalForChat({ message = "", contextDocument = null, memoryContext = null, taskContext = null } = {}) {
   if (!chatSpiritEnabled()) {
     return { ok: false, skipped: true, reason: "chat_spirit_disabled", text: "", chunks: [] };
@@ -468,7 +505,7 @@ export async function jobsRetrievalForChat({ message = "", contextDocument = nul
   const startedAt = Date.now();
   try {
     const result = await Promise.race([
-      searchJobsCorpus({ queryText }),
+      retrieveJobsChunks({ message, queryText }),
       new Promise((resolve) => {
         const timer = setTimeout(
           () => resolve({ ok: false, skipped: true, reason: "jobs_retrieval_timeout", chunks: [] }),
