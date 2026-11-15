@@ -234,6 +234,9 @@ export async function taskCreate({
     throw new Error("taskCreate requires boardId, accountId, wallet, need");
   }
   assertBoardAgentScope(boardId);
+  // Scope is checked before anything else so a dry run fails the same way.
+  const { assertBoardAcceptsWork } = await import("../../server/board-work-policy.js");
+  assertBoardAcceptsWork({ boardId, workType, operatorDuty });
   const constraints = await boardRoutingConstraints(boardId);
   const allowedHandles = Array.isArray(constraints.assignable_handles)
     ? constraints.assignable_handles.map((handle) => String(handle).toLowerCase())

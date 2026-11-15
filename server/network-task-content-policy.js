@@ -82,7 +82,12 @@ function matches({ tokens, text }, { stems = [], words = [], phrases = [] }) {
   return tokens.some((token) => stems.some((stem) => token.startsWith(stem)));
 }
 
-export function networkTaskContentViolation(...texts) {
+// Pass { allowReviewDocument: true } as the last argument for the one case
+// where written findings are the work: a code review on the L1 board.
+export function networkTaskContentViolation(...args) {
+  const last = args.at(-1);
+  const options = last && typeof last === "object" && !Array.isArray(last) ? args.pop() : {};
+  const texts = args;
   const raw = texts
     .flat()
     .filter((value) => typeof value === "string" && value.trim())
@@ -102,6 +107,7 @@ export function networkTaskContentViolation(...texts) {
   const document = matches(normalized, { stems: DOCUMENT_STEMS, phrases: DOCUMENT_PHRASES });
   const code = matches(normalized, { phrases: CODE_PHRASES });
   const verdict = matches(normalized, { phrases: VERDICT_PHRASES });
+  if (options.allowReviewDocument === true) return null;
   if ((audit && document && !code) || (verdict && document)) {
     return {
       code: "audit_document_deliverable",
@@ -112,8 +118,8 @@ export function networkTaskContentViolation(...texts) {
   return null;
 }
 
-export function assertNetworkTaskContentAllowed(...texts) {
-  const violation = networkTaskContentViolation(...texts);
+export function assertNetworkTaskContentAllowed(...args) {
+  const violation = networkTaskContentViolation(...args);
   if (!violation) return;
   throw Object.assign(
     new Error(`network_task_content_policy_rejected: ${violation.code}: ${violation.message}`),

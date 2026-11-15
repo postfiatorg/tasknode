@@ -1,110 +1,64 @@
 ---
 name: board-community-promotion
-description: Board context for the Community & Promotion board manager. Use together with the board-manager skill when operating board_community_promotion - amplification and promotion of official Post Fiat X content and the public website, with X links and screenshots as evidence.
+description: Board context for the Community & Promotion board manager. Use with the board-manager skill when operating board_community_promotion - education and onboarding posts, amplification of official and goodalexander content, and community events, proven by public links.
 ---
 
 # Community & Promotion Board
 
-Board id: `board_community_promotion`.
+Board id: `board_community_promotion`. Everything here is proven by a public
+link. Never ask for a pull request on this board.
 
-Use this context together with the board-manager skill. This board routes:
+This board pays for:
 
-- Amplification of official Post Fiat X content from @PostFiatOrg.
-- Improvements to the public site at postfiatorg.github.io.
+1. **Education and onboarding posts** about Post Fiat, Task Node or joining
+   the Discord: blog posts, articles, threads and walkthroughs a newcomer
+   could follow (`--work-type medium_article`, `article_distribution`,
+   `amplification_x`).
+2. **Amplification** of official Post Fiat content and of goodalexander
+   content (`--work-type amplification_x`, `amplification`).
+3. **Community building**: events, masterminds, onboarding sessions the
+   contributor actually runs (`--work-type public_announcement`).
 
-## Sources to read before generating tasks
+All of it requires a verified `kol` badge (check with `user`). No badge, no
+paid task.
 
-- The board packet's `sources` entry `x:PostFiatOrg`: the official account's
-  recent posts with URLs, timestamps and metrics, fetched from the X API.
-  Identify what is live and worth amplifying now. Every amplification task
-  must reference one specific official post URL, not a generic request to
-  “post about Post Fiat.” If that source is `unavailable`, record
-  `source_unavailable` for amplification candidates; do not substitute a
-  scraper or a mirror.
-- The board packet's `sources` entries `repo:postfiatorg.github.io` (open
-  issues, recent commits) and `web:https://postfiatorg.github.io` (live
-  status). Content gaps, stale pages, and broken links are legitimate task
-  material and do not depend on the X source.
+## Sources
 
-## What good looks like here
+- `x:PostFiatOrg` in the board packet: the official account's recent posts
+  with URLs and metrics.
+- The Post Fiat blog and site (`repo:postfiatorg.github.io`,
+  `web:https://postfiatorg.github.io`): the posts worth explaining and
+  amplifying, and the gaps a newcomer hits.
+- The operator's published work for amplification of goodalexander content.
 
-### X amplification
+If a source is unavailable, do not substitute a scraper or a mirror; defer.
 
-- Quote-posts and threads that add context, numbers, or a demo.
-- Public posts from accounts with real audiences.
-- One official source post and one resulting amplification post per task.
-- Paid amplification routed only after running `user` and checking the `kol` badge. The KOL lane exists for paid amplification; 5k PFT to an account with 40 followers is waste.
+## What a task must name
 
-Emoji replies, “great project ser,” generic campaign claims, and posts that add no context do not meet the quality bar.
+- **Education post:** the exact topic and the source material it must be
+  accurate to (a named blog post, the Task Node guide, the agents page), the
+  audience, and the format. The contributor publishes it under their own
+  name; the public URL is the proof.
+- **Amplification:** the URL of one specific post published in the last 14
+  days, and a request for a quote-post or thread that adds context, a number
+  or a demo.
+- **Event:** what the event is, who it is for, and the minimum that counts as
+  held (date, attendance, recap). Pay after it happened, on the public recap.
 
-### Public site contributions
+## Review
 
-- Focused fixes for content gaps, stale pages, or broken links.
-- Contributions submitted as PRs to postfiatorg.github.io.
-- PRs reviewed like code, including inspection with `gh pr diff`.
+Approve only after opening the link and confirming: it is public, it is the
+contributor's own account, it was published after the task was created, it
+does what the task asked, and it is accurate about Post Fiat.
 
-## Task and acceptance checklist
+Reject: emoji replies and generic praise; posts that get the product wrong;
+identical wording from different accounts (reject all of them); cropped
+screenshots instead of a link; old content presented as new; an event
+announcement with no evidence it took place.
 
-### X task creation
+## Rewards
 
-A well-formed amplification task must include:
-
-- The URL of one specific, recent @PostFiatOrg post.
-- A request for a quote-post or thread that adds context, numbers, or a demo.
-- A requirement for the resulting public post URL as primary evidence.
-- Paid-amplification routing based on the `user` result and `kol` badge.
-
-### X review
-
-Approve only after confirming:
-
-- The evidence URL opens to the actual public post.
-- The submitting account and post content match the task.
-- The amplification references the assigned official post.
-- The post adds substance rather than an emoji reply or generic praise.
-- The post date is consistent with the task creation date.
-- The submission is not part of identical-text amplification across different wallets.
-
-Reject:
-
-- Campaign claims without a link for each post.
-- Screenshots offered instead of the public post URL.
-- Identical wording submitted by many small accounts or different wallets.
-- Cropped evidence that hides the account or date.
-- Old official content presented as new amplification.
-
-### Site task creation and review
-
-A well-formed site task must identify a content gap, stale page, or broken link in `postfiatorg/postfiatorg.github.io` by file or page URL.
-
-Completion requires:
-
-- A PR link.
-- Review of the change with `gh pr diff`.
-- Confirmation that the PR addresses the assigned site issue.
-
-## Evidence norms
-
-- X primary evidence is the actual public post URL. Open it and verify the account, content, visibility, and date.
-- Screenshots of analytics are supporting evidence only. They never replace the public post URL.
-- One post equals one task.
-- Site primary evidence is the PR link, reviewed through `gh pr diff`.
-
-## Watch for
-
-- **Sybil amplification:** many small accounts posting identical text. Check follower counts and account age in the evidence. Identical wording across submissions from different wallets is a reject-all.
-- **Engagement farming:** screenshots cropped to hide the account or date.
-- **Recycled content:** old official posts presented as new amplification. Compare the official post date, amplification post date, and task creation date.
-
-## Board-specific thresholds
-
-These board-specific standards are authoritative; apply them as written:
-
-- Maximum age of a “recent” official post for amplification: 14 days.
-- Paid amplification requires a verified `kol` badge (check with `user`); no badge, no paid amplification — route unpaid community shoutouts to the journal instead.
-- Reward bands (per-task cap is 5,000 PFT): routine amplification 250–1,000; high-effort thread or article distribution 1,000–3,000; exceptional verified-reach campaigns 3,000–5,000; site PRs priced like code (see evidence norms).
-- Cadence: route to eligible contributors with free account capacity; generate only from a named post or site defect. Existing open board tasks do not impose a fixed numerical ceiling. Preserve reward budgets.
-- Priority: time-sensitive amplification of live official posts first, then site defects, then evergreen content.
-- Borderline evidence: follow the board-manager skill — one concrete `verify request`, then a final decision; unresolved conflicts go to the operator via a referral task.
-
-Where a case falls outside these values, apply the evidence, KOL, quality, and anti-abuse rules above rather than inventing new thresholds, and journal the gap for the operator.
+Per-task cap 5,000 PFT. Routine amplification 250-1,000. A substantial
+education article or thread 1,000-3,000. An event that verifiably brought new
+people in 1,000-5,000. 5,000 PFT to an account with 40 followers is waste:
+size to real reach.

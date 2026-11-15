@@ -13,7 +13,7 @@ import { executeBoardAgentCommand } from "../server/board-agent-routes.js";
 process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 assert.ok(new URL(process.env.DATABASE_URL).pathname.endsWith("_test"), "Use a disposable *_test database");
 
-const id = "reward_band_" + randomUUID(), wallet = "rRewardBandFixture", board = "board_pf_terminal";
+const id = "reward_band_" + randomUUID(), wallet = "rRewardBandFixture", board = "board_postfiat_l1v2";
 // Decisions pass through the same contract normalization as production.
 const decision = (min, max, extra = {}) => normalizeBoardManagerDecision({ action: "initiate_network_task", target_type: "network_project", target_id: board, reason: "reward band smoke", confidence: 1,
   payload: { network_task: { candidate_account_id: id, candidate_wallet_address: wallet, task_class: "network", task_work_type: "code_task",
