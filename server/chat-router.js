@@ -234,6 +234,7 @@ function loggedUsage(usage = null) {
 
 function chatInstructionsOverride({
   mode,
+  message = "",
   contextDocument = null,
   memoryContext = null,
   taskContext = null,
@@ -244,6 +245,7 @@ function chatInstructionsOverride({
   if (!chatPersonaUsesJobsRetrieval(persona)) return "";
   if (!isHelpChatMode(mode)) return "";
   return helpModeInstructions({
+    message,
     contextDocument,
     memoryContext,
     taskContext,
@@ -411,7 +413,16 @@ export async function executeAmbient({
     taskContext,
     jobsEssence,
     deliveryContext,
-    instructionsOverride,
+    instructionsOverride: instructionsOverride || chatInstructionsOverride({
+      mode,
+      message,
+      contextDocument,
+      memoryContext,
+      taskContext,
+      jobsEssence,
+      deliveryContext,
+      persona,
+    }),
     responseInstructionBlock,
     responseFormat,
     toolsEnabled,
@@ -469,6 +480,7 @@ async function streamAmbient({
     deliveryContext,
     instructionsOverride: instructionsOverride || chatInstructionsOverride({
       mode,
+      message,
       contextDocument,
       memoryContext,
       taskContext,

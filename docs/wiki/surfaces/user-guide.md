@@ -152,7 +152,7 @@ Billing shows app usage credit and model-run ledger entries. Chat and model feat
 
 ### Help
 
-Help mode in Chat answers product questions using this guide and available runtime context. The Help screen exposes user-facing documentation and prompt/source maps. It is separate from the first-class Docs document library. Use Help when the user does not know which page to use or why they are seeing a state.
+Help mode in Chat answers product questions using this guide and available runtime context. Help and the `Post Fiat Q&A` personality (under `More`) also answer questions about Post Fiat itself — the L1 v2 whitepaper, blog posts, PF Terminal, validators and how to get access to the Finance Hub — from the same source-linked knowledge base. The Help screen exposes user-facing documentation and prompt/source maps. It is separate from the first-class Docs document library. Use Help when the user does not know which page to use or why they are seeing a state.
 
 ### Search And Agents
 
