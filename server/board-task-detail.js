@@ -2,6 +2,7 @@ import { query } from "./db/pool.js";
 import { assertBoardAgentScope } from "./board-agent-context.js";
 import { boardForTask } from "./repositories/bm-decisions.js";
 import { boardTaskStaleness } from "./board-task-policy.js";
+import { boardDiscordEvidence } from "./board-discord-evidence.js";
 
 const object = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const textPresent = (value) => typeof value === "string" && value.trim().length > 0;
@@ -20,7 +21,7 @@ export function hasReadableEvidence(payload) {
   });
 }
 
-export async function boardTaskDetail(taskId) {
+export async function boardTaskDetail(taskId, { discordEvidence = boardDiscordEvidence } = {}) {
   const boardId = await boardForTask(taskId);
   if (!boardId) throw Object.assign(new Error("board_task_not_found"), { status: 404 });
   assertBoardAgentScope(boardId);
@@ -41,9 +42,17 @@ export async function boardTaskDetail(taskId) {
   const verificationResponse = latest("pf.task.verification_response.v1");
   const submissionReadable = hasReadableEvidence(submission?.payload_json);
   const verificationReadable = hasReadableEvidence(verificationResponse?.payload_json);
+  // The manager cannot open Discord itself; the server's bot checks the
+  // announcement and reports who posted it. A failed check never hides the task.
+  const discord = await discordEvidence({
+    accountId: task.account_id,
+    taskCreatedAt: task.created_at,
+    payloads: [submission?.payload_json, verificationResponse?.payload_json].filter(Boolean),
+  }).catch((error) => ({ state: "check_failed", announcements: [], verdict: "unchecked", detail: String(error?.message || error).slice(0, 160) }));
   return {
     board_id: boardId,
     task,
+    discord_announcement: discord,
     staleness: boardTaskStaleness({ ...task, has_submission: Boolean(submission || verificationResponse) }),
     submission,
     verification_response: verificationResponse,
