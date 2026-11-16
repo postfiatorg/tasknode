@@ -209,7 +209,7 @@ export function settingsPageFromLocation() {
 }
 
 export const APP_VIEWS = new Set([
-  "chat", "tasks", "wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help", "finance-hub",
+  "chat", "tasks", "wallet", "l1-wallet", "context", "hive", "directory", "blacklist", "profile", "docs", "help", "finance-hub",
   ...appExtensionRegistry.inventory().map(({ id }) => id),
 ]);
 export const MORE_EXTENSION_VIEWS = new Set(
@@ -337,6 +337,8 @@ export function writeViewLocation(nextView, { replace = false, subPath } = {}) {
     url.hash = "";
   } else if (typeof subPath === "string") {
     url.hash = subPath ? `${normalizedView}/${subPath}` : normalizedView;
+  } else if (normalizedView === "l1-wallet" && window.location.hash.replace(/^#\/?/, "").startsWith("l1-wallet/")) {
+    url.hash = window.location.hash;
   } else if (normalizedView === "finance-hub") {
     const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
     url.hash = hashPath.toLowerCase().startsWith("finance-hub/") ? hashPath : normalizedView;

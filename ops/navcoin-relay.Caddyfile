@@ -1,0 +1,9 @@
+# Set NAVCOIN_RELAY_HOST on the TLS proxy host after provisioning its DNS record.
+{$NAVCOIN_RELAY_HOST} {
+    request_body {
+        max_size 1MB
+    }
+    # Keep the public Host and Origin. WebSocket upgrades are forwarded by Caddy.
+    # No request/body/access logging: Authorization carries a service credential.
+    reverse_proxy 127.0.0.1:8870
+}
