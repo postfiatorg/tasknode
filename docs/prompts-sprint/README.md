@@ -2,7 +2,7 @@
 
 A prompt is a deliberate Docs document backed by a CryptPad markdown pad. **Docs → New → New prompt** creates an `Untitled prompt — YYYY-MM-DD` document. Rename it in the editor. The **Prompts** library view shows titles, last edits, saved-version counts, UTC 7/30-day statistics, and a compact activity summary. Open a prompt and select **Prompt timeline** to read saved versions. **Agent access** is a secondary control below the library. **Save version** snapshots the current editor text; CryptPad revision history remains available in **File → Version history**.
 
-Prompt documents suppress Task Node assistants. Both assistant endpoints reject prompt document IDs, and the browser and PFDocs bridge block assistant dispatch. Human document sharing still uses the existing Docs capability grants. Personal prompt history and device access are separate from those grants.
+Prompt documents have the Docs chat sidebar with one assistant, `@prompt` (Prompt Assistant). The prompt text is sent only when a member mentions `@prompt`, under gateway zero data retention and without Task Node context or memory. `@ODV` and `@coach` stay unavailable on prompt documents: the assistant endpoint refuses them, the legacy ODV endpoint rejects prompt document IDs, and the browser and PFDocs bridge dispatch only the prompt persona. See [Docs → Prompt documents](../wiki/surfaces/docs.md#prompt-documents). Human document sharing still uses the existing Docs capability grants. Personal prompt history and device access are separate from those grants.
 
 ## Encryption and persistence
 

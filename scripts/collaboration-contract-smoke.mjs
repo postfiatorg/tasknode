@@ -147,6 +147,9 @@ assert.equal(containsOdvMention("email@odv.example"), false);
 assert.equal(detectDocsPersonaMention("@coach review my risk process")?.id, "coach");
 assert.equal(detectDocsPersonaMention("email@coach.example"), null);
 assert.equal(detectDocsPersonaMention("@coach ask @ODV to compare")?.id, "coach");
+assert.equal(detectDocsPersonaMention("@prompt then @coach compare")?.id, "coach");
+assert.equal(detectDocsPersonaMention("@prompt tighten this", { promptDocument: true })?.id, "prompt");
+assert.equal(detectDocsPersonaMention("@coach then @prompt compare", { promptDocument: true })?.id, "prompt");
 assert.throws(() => buildDocsAssistantRequest({
   persona: "coach", prompt: "@ODV summarize", documentContent: "body",
 }), /docs_persona_mismatch/);
