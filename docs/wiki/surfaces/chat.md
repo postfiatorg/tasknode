@@ -8,7 +8,7 @@ conversations without losing state.
 
 1. The user opens a new or recent chat.
 2. Signed-out users start in Help mode. Help is the only enabled signed-out chat mode.
-3. Signed-in users select Instant, Thinking, GPT-6 Astra, Kimi K3, Claude Opus 5.5, or Help independently from the Jobs, ODV, Trading Coach, Kravis, or BasedGPT personality.
+3. Signed-in users select Instant, Thinking, GPT-6 Astra, Kimi K3.1 Pro, Claude Opus 5.5, Gemini 4 Hydrogen, or Help independently from the Jobs, ODV, Trading Coach, Kravis, or BasedGPT personality.
 4. The `+` menu owns personality selection. Its `More` submenu also exposes the restored Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A modalities. Product guidance stays in the dedicated Help mode and Help screen.
 5. The user sends text and optional attachments.
 6. The server validates both enums, assembles the selected prompt/context packet, and routes the request through Vercel AI Gateway.
@@ -107,7 +107,8 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 | GPT-6 Astra | Vercel | `openai/gpt-6-astra` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Kimi K3.1 Pro | Vercel | `moonshotai/kimi-k3.1-pro` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Claude Opus 5.5 | Vercel | `anthropic/claude-opus-5.5` | Exact selection; zero data retention (the gateway fails rather than use a retaining provider) | Native image input, high reasoning; search disabled. | API-priced chat. |
-| Help | Vercel | `deepseek/deepseek-v4-flash-0731` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
+| Gemini 4 Hydrogen | Vercel | `google/gemini-4-hydrogen` | Exact selection; zero data retention (Vertex only; the gateway fails rather than use a retaining provider) | Native image input, high reasoning; search disabled. | API-priced chat. |
+| Help | Vercel | `deepseek/deepseek-v4.1-flash-1017` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
 
 Unknown mode strings are rejected with `unknown_chat_mode`. The signed-in app
 default is Instant and the signed-out app default is Help. Historical stored
@@ -254,7 +255,7 @@ Before execution, `server/product-contracts.js` checks login, model mode, person
 
 Task Node's user tariff is 55% below the prior rates. Thinking costs $0.4725/M uncached input, $0.09/M cache-read input, and $1.98/M output. Instant and Help cost $0.063/M uncached input, $0.0126/M cache-read input, and $0.126/M output. For Instant, Thinking, and Help, `server/chat-provider-usage.js` calculates the debit from that cache-aware user tariff; provider cost is comparison metadata.
 
-GPT-6 Astra, Kimi K3 and Claude Opus 5.5 are charged at Vercel's returned API cost with no Task Node markup. Estimates and picker descriptions use base input/output rates per million tokens: Astra $10/$50, Kimi K3 $3/$15 and Opus 5.5 $4/$20 (catalogue checked September 7 and 24, 2026). Cache-read base rates are $1, $0.30 and $0.20 respectively. Astra estimates account for the long-context tier starting at 272,001 input tokens. Final provider cost includes actual cache, context-tier, and provider pricing adjustments. Streaming preserves Gateway cost metadata. If the Gateway omits cost, the request reports `chat_provider_cost_missing` and does not create a debit; it never bills a guessed amount. A response with no cache detail remains explicitly unreported instead of being counted as a cache miss. System Status aggregates reported Vercel and Ambient chat runs over a seven-day default window and shows reporting coverage, cache-hit percentage, cache-hit tokens, and pricing-derived savings.
+GPT-6 Astra, Kimi K3.1 Pro, Claude Opus 5.5 and Gemini 4 Hydrogen are charged at Vercel's returned API cost with no Task Node markup. Gemini 4 Hydrogen's base rates are $1.50/$7.50 with $0.075 cache reads (catalogue checked November 16, 2026). Estimates and picker descriptions use base input/output rates per million tokens: Astra $10/$50, Kimi K3 $3/$15 and Opus 5.5 $4/$20 (catalogue checked September 7 and 24, 2026). Cache-read base rates are $1, $0.30 and $0.20 respectively. Astra estimates account for the long-context tier starting at 272,001 input tokens. Final provider cost includes actual cache, context-tier, and provider pricing adjustments. Streaming preserves Gateway cost metadata. If the Gateway omits cost, the request reports `chat_provider_cost_missing` and does not create a debit; it never bills a guessed amount. A response with no cache detail remains explicitly unreported instead of being counted as a cache miss. System Status aggregates reported Vercel and Ambient chat runs over a seven-day default window and shows reporting coverage, cache-hit percentage, cache-hit tokens, and pricing-derived savings.
 
 ## Data Model
 

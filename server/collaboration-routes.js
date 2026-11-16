@@ -269,8 +269,6 @@ export async function handleCollaborationRoute({ json, readJson, req, res, sessi
     if (assistantMatch) {
       if (!featureEnabled("TASKNODE_DOCS_ODV_ENABLED")) return routeResult(json, res, featureError("docs_assistant")), true;
       if (req.method !== "POST") return routeResult(json, res, methodError("docs_assistant")), true;
-      const forbidden = await rejectPromptAssistant(accountId, assistantMatch[1]);
-      if (forbidden) return routeResult(json, res, forbidden), true;
       const payload = await readJson(req, 128_000);
       await run(json, res, async () => generateDocsAssistantResponse({
         accountId,

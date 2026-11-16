@@ -20,7 +20,7 @@ re-enable, and historical completions keep their recorded `ambient` provider.
 | Thinking (`xhigh`), structured work, research, former GLM workers | `deepseek/deepseek-v4.1-flash-1017` |
 | Task generation (personal and network) | `moonshotai/kimi-k3.1-pro`, `high` effort |
 | Task readiness review | `deepseek/deepseek-v4.1-flash-1017` |
-| Help, memory, short narration | `deepseek/deepseek-v4-flash-0731` |
+| Help, memory, short narration | `deepseek/deepseek-v4.1-flash-1017` |
 | Evidence images | `moonshotai/kimi-k2.7-code` |
 
 DeepSeek V4.1 Flash accepts text and images and produces text. It does not

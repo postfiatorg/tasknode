@@ -194,7 +194,7 @@ assert.equal(metadata.path, "chat/jobs_standard_chat_codex_style_draft.md", "Job
 assert.match(metadata.digest, /^[a-f0-9]{64}$/);
 
 for (const [mode, model] of [
-  ["Instant", "deepseek/deepseek-v4-flash-0731"],
+  ["Instant", "deepseek/deepseek-v4.1-flash-1017"],
   ["Thinking", "z-ai/glm-5.2"],
 ]) {
   const request = ambientChatRequest({
@@ -248,7 +248,7 @@ assert.equal(
 
 const helpRequest = ambientChatRequest({
   mode: "Help",
-  model: "deepseek/deepseek-v4-flash-0731",
+  model: "deepseek/deepseek-v4.1-flash-1017",
   message: userSentinel,
   conversationId: "jobs-smoke-Help",
   contextDocument,
@@ -291,7 +291,7 @@ assert.ok(
 process.env.TASKNODE_CHAT_SPIRIT_ENABLED = "false";
 const disabledRequest = ambientChatRequest({
   mode: "Instant",
-  model: "deepseek/deepseek-v4-flash-0731",
+  model: "deepseek/deepseek-v4.1-flash-1017",
   message: userSentinel,
   conversationId: "jobs-smoke-disabled",
   contextDocument,

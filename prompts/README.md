@@ -20,7 +20,9 @@ reviewed, versioned, and replayed.
 - `i_ching/`: The canonical 64-hexagram lookup dataset used to resolve fresh
   three-coin casts before the I Ching prompt runs.
 - `docs/`: Canonical ODV and Trading Coach personality prompts shared by the
-  primary chat personality router and PFDocs mentions. Jobs remains in
+  primary chat personality router and PFDocs mentions, plus
+  `prompt_assistant_v1.md`, the Prompt Assistant used only by `@prompt`
+  mentions on prompt documents. Jobs remains in
   `chat/jobs_standard_chat_codex_style_draft.md`; only that personality may
   receive Jobs pgvector excerpts.
 - `kravis.md`: Canonical downside-first private-equity personality prompt used

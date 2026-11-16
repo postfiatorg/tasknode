@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
 import { loadChatExecutionContext } from "./chat-context-load.js";
 import { requireDocumentAccess } from "./repositories/collaboration.js";
+import { loadPrompt } from "./prompt-registry.js";
 
 const promptRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../prompts/docs");
 
@@ -46,7 +47,20 @@ const personaDefinitions = Object.freeze({
     label: "Trading Coach",
     prompt: promptSections("trading_coach_v1.md"),
   }),
+  // The only assistant on prompt documents, and never offered anywhere else.
+  // It sees the prompt text and the document chat under zero data retention.
+  prompt: Object.freeze({
+    id: "prompt",
+    mention: "@prompt",
+    label: "Prompt Assistant",
+    promptDocument: true,
+    system: loadPrompt("docs/prompt_assistant_v1.md"),
+  }),
 });
+
+function personaAvailable(id, promptDocument) {
+  return Object.hasOwn(personaDefinitions, id) && (personaDefinitions[id].promptDocument === true) === (promptDocument === true);
+}
 
 export const DOCS_PERSONAS = Object.freeze(Object.fromEntries(
   Object.entries(personaDefinitions).map(([id, definition]) => [id, {
@@ -56,12 +70,12 @@ export const DOCS_PERSONAS = Object.freeze(Object.fromEntries(
   }])
 ));
 
-export function detectDocsPersonaMention(value = "") {
+export function detectDocsPersonaMention(value = "", { promptDocument = false } = {}) {
     const text = String(value || "");
     for (const token of textTokens(text)) {
       if (text[token.start - 1] !== "@" || (token.start > 1 && !isWhitespace(text[token.start - 2]))) continue;
       const persona = token.value.toLowerCase();
-      if (Object.hasOwn(DOCS_PERSONAS, persona)) return DOCS_PERSONAS[persona];
+      if (personaAvailable(persona, promptDocument)) return DOCS_PERSONAS[persona];
     }
     return null;
   }
@@ -104,6 +118,17 @@ function dynamicPacket({ normalizedPrompt, requester, title, content, conversati
   };
 }
 
+// The prompt assistant receives the document, the chat, and the request as
+// plain delimited text so it can quote lines verbatim. Nothing else is added.
+function promptDocumentMessage({ normalizedPrompt, title, content, conversation }) {
+  return [
+    `Document title: ${title}`,
+    `<prompt_document>\n${content}\n</prompt_document>`,
+    `<recent_chat>\n${conversation.map((message) => `${message.author}: ${message.text}`).join("\n\n")}\n</recent_chat>`,
+    `<request>\n${normalizedPrompt}\n</request>`,
+  ].join("\n\n");
+}
+
 export function buildDocsAssistantRequest({
   persona = "",
   prompt = "",
@@ -113,9 +138,10 @@ export function buildDocsAssistantRequest({
   identity = {},
   userContext = {},
   includeFullContext = false,
+  promptDocument = false,
 } = {}) {
   const normalizedPrompt = clippedText(prompt, 4000);
-  const detected = detectDocsPersonaMention(normalizedPrompt);
+  const detected = detectDocsPersonaMention(normalizedPrompt, { promptDocument });
   if (!detected) {
     throw Object.assign(new Error("docs_persona_mention_required"), { code: "docs_persona_mention_required", status: 400 });
   }
@@ -134,6 +160,21 @@ export function buildDocsAssistantRequest({
   const content = clippedText(documentContent, 80_000);
   if (!content) {
     throw Object.assign(new Error("docs_assistant_document_content_required"), { code: "docs_assistant_document_content_required", status: 400 });
+  }
+  if (definition.promptDocument) {
+    return {
+      persona: detected.id,
+      label: detected.label,
+      model: INFERENCE_MODELS.reasoningText,
+      messages: [
+        { role: "system", content: definition.system },
+        { role: "user", content: promptDocumentMessage({ normalizedPrompt, title, content, conversation }) },
+      ],
+      reasoning: { effort: "medium", exclude: true },
+      max_tokens: DOCS_ASSISTANT_LIMITS.completionTokens,
+      temperature: 0.1,
+      providerOptions: { gateway: { zeroDataRetention: true } },
+    };
   }
   const requester = clippedText(identity?.displayName || identity?.hiveHandle || identity?.walletAddress || "Task Node member", 120);
   const packet = dynamicPacket({
@@ -185,8 +226,14 @@ export async function generateDocsAssistantResponse({
 } = {}) {
   const access = await authorize({ accountId, documentId, channelHash });
   if (!access?.ok) return access;
-  if (access.document?.documentType === "prompt") return { ok: false, status: 403, error: "docs_prompt_assistant_forbidden" };
-  const userContext = includeFullContext === true
+  const promptDocument = access.document?.documentType === "prompt";
+  const requestedPersona = clippedText(persona, 20).toLowerCase();
+  const allowed = promptDocument
+    ? (requestedPersona || detectDocsPersonaMention(prompt, { promptDocument })?.id) === "prompt"
+    : requestedPersona !== "prompt";
+  if (!allowed) return { ok: false, status: 403, error: "docs_prompt_assistant_forbidden" };
+  // Prompt documents never load account context, memory, or tasks.
+  const userContext = includeFullContext === true && !promptDocument
     ? await loadUserContext(accountId).catch(() => ({}))
     : {};
   const body = buildDocsAssistantRequest({
@@ -198,8 +245,14 @@ export async function generateDocsAssistantResponse({
     identity,
     userContext,
     includeFullContext,
+    promptDocument,
   });
   const { persona: resolvedPersona, label, ...providerBody } = body;
+  // A zero-data-retention request stays on the gateway; it is never retried on
+  // a backup provider that would drop the retention requirement.
+  const zeroRetention = providerBody.providerOptions?.gateway?.zeroDataRetention === true
+    ? { allowFallback: false, env: { ...process.env, INFERENCE_AMBIENT_BACKUP_ENABLED: "false" } }
+    : {};
   const signal = AbortSignal.timeout(DOCS_ASSISTANT_LIMITS.totalTimeoutMs);
   let completionTokens = providerBody.max_tokens;
   while (true) {
@@ -209,6 +262,7 @@ export async function generateDocsAssistantResponse({
         capability: "reasoning_text",
         timeoutMs: DOCS_ASSISTANT_LIMITS.providerTimeoutMs,
         signal,
+        ...zeroRetention,
       });
       // The provider token budget bounds output. Preserve the entire answer.
       const response = typeof result?.text === "string" ? result.text.trim() : "";
