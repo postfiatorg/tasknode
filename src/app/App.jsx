@@ -32,7 +32,6 @@ import { isSignedInSession } from "../session";
 import { appExtensionRegistry, ExtensionSurface } from "../extensions/index.js";
 import { pendingAgentLinkFromLocation, usePendingAgentLink } from "./pending-agent-link.js";
 import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, settingsPageFromLocation, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
-
 const LoginDialog = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.LoginDialog })));
 const SettingsModal = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.SettingsModal })));
 const ContextView = lazy(() => import("../features/context/ContextView.jsx").then((module) => ({ default: module.ContextView })));
@@ -47,7 +46,6 @@ const ProfilePage = lazy(() => import("../features/profile/ProfileView").then((m
 const MemberProfilePage = lazy(() => import("../features/profile/ProfileView").then((module) => ({ default: module.MemberProfileView })));
 const DirectoryView = lazy(() => import("../features/directory/DirectoryView").then((module) => ({ default: module.DirectoryView })));
 const BlacklistView = lazy(() => import("../features/directory/BlacklistView").then((module) => ({ default: module.BlacklistView })));
-
 export function App() {
   const [view, setView] = useState(() => viewFromLocation());
   const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
@@ -946,7 +944,7 @@ export function App() {
               sidebarOpen={sidebarOpen}
             />
           )}
-          <SidebarButton active={view === "l1-wallet"} icon={Wallet} label="L1 wallet" onClick={() => navigateToView("l1-wallet")} sidebarOpen={sidebarOpen} />
+          {runtimeConfig?.l1Wallet?.enabled === true && <SidebarButton active={view === "l1-wallet"} icon={Wallet} label="L1 wallet" onClick={() => navigateToView("l1-wallet")} sidebarOpen={sidebarOpen} />}
           <SidebarButton
             active={view === "wallet"}
             icon={Wallet}
@@ -1326,7 +1324,7 @@ export function App() {
             </Suspense>
           )}
           {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView /></Suspense>}
-          {view === "l1-wallet" && <Suspense fallback={<StatusBanner>Loading L1 wallet</StatusBanner>}><L1WalletView key={signedIn && !accountTransitioning ? walletAccountId : "signed-out"} accountId={signedIn && !accountTransitioning ? walletAccountId : ""} isAccountCurrent={() => !accountBoundaryRef.current.transitioning && accountBoundaryRef.current.accountId === walletAccountId} /></Suspense>}
+          {view === "l1-wallet" && (runtimeConfig?.l1Wallet?.enabled === true ? <Suspense fallback={<StatusBanner>Loading L1 wallet</StatusBanner>}><L1WalletView key={signedIn && !accountTransitioning ? walletAccountId : "signed-out"} accountId={signedIn && !accountTransitioning ? walletAccountId : ""} isAccountCurrent={() => !accountBoundaryRef.current.transitioning && accountBoundaryRef.current.accountId === walletAccountId} /></Suspense> : <StatusBanner>The L1 wallet is unavailable.</StatusBanner>)}
           {view === "wallet" && (
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
               <WalletView

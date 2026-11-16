@@ -1,4 +1,5 @@
 import { connect } from 'node:net';
+import { relayRead } from './release-config.js';
 export function readRpc(endpoint, method, params, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
     const socket = connect({ host: endpoint.hostname, port: Number(endpoint.port) });
@@ -23,6 +24,8 @@ export function readRpc(endpoint, method, params, timeoutMs = 60000) {
   });
 }
 export function localRpc(env = process.env, timeoutMs = 60000) {
+ const remote = relayRead(env, timeoutMs);
+ if (remote) return remote;
  const endpoint = new URL(env.L1_HISTORY_RPC_URL);
  if (endpoint.protocol !== 'tcp:' || !['127.0.0.1', '[::1]'].includes(endpoint.hostname) || !endpoint.port || endpoint.username || endpoint.password) throw Error('NAVCoin RPC must be a loopback TCP endpoint');
  return (method, params = {}) => readRpc(endpoint, method, params, timeoutMs);

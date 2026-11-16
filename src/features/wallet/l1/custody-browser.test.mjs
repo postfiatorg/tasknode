@@ -7,7 +7,7 @@ try {
  const page = await browser.newPage();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/**',route=>route.fulfill({json:route.request().url().includes('/api/app-state')?{session:{status:'signed_in',accountId:'synthetic-l1-account'},wallet:{},tasks:{},chat:{conversations:[],messages:[]}}:{}}));
- await page.route('**/runtime-config*',route=>route.fulfill({contentType:'application/json',body:'{}'}));
+ await page.route('**/runtime-config*',route=>route.fulfill({contentType:'application/json',body:'{"l1Wallet":{"enabled":true}}'}));
  await page.goto(WEB+'/#l1-wallet');
  await page.getByLabel('Wallet passphrase',{exact:true}).fill('synthetic-test-only-passphrase');
  await page.getByRole('button',{name:'Create L1 wallet',exact:true}).click();

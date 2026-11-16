@@ -1,5 +1,8 @@
 import { connect } from 'node:net';
+import { relayRead } from '../release-config.js';
 export function createProfileRpc(env = process.env) {
+  const remote = relayRead(env, 45000);
+  if (remote) return remote;
   const endpoint = new URL(env.L1_PROFILE_RPC_URL || env.L1_HISTORY_RPC_URL || 'tcp://127.0.0.1:39655');
   if (endpoint.protocol !== 'tcp:' || !['127.0.0.1', '[::1]'].includes(endpoint.hostname) || !endpoint.port || endpoint.username || endpoint.password) throw Error('Profile RPC must use a local validator tunnel');
   return (method, params = {}) => new Promise((resolve, reject) => {

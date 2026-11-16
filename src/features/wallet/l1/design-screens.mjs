@@ -174,7 +174,7 @@ async function makePage({ scheme = 'light', width = 1440, height = 1000 } = {}) 
   page.on('pageerror', error => console.error('PAGE ERROR', error.message));
   await page.exposeFunction('designEthereum', request => { try { return { ok: true, value: JSON.parse(JSON.stringify(ethereum(request), (_k, v) => typeof v === 'bigint' ? '0x' + v.toString(16) : v)) }; } catch (error) { return { ok: false, error: error.message }; } });
   await page.addInitScript(() => { window.ethereum = { on() {}, removeListener() {}, async request(request) { const r = await window.designEthereum(request); if (!r.ok) throw new Error(r.error); return r.value; } }; });
-  await page.route('**/runtime-config*', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
+  await page.route('**/runtime-config*', route => route.fulfill({ contentType: 'application/json', body: '{"l1Wallet":{"enabled":true}}' }));
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname.startsWith('/api/app-state')) return route.fulfill({ json: { session: { status: 'signed_in', accountId: 'design-review-bob' }, wallet: {}, tasks: {}, chat: { conversations: [], messages: [] } } });

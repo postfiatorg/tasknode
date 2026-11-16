@@ -1,6 +1,5 @@
 import { Interface } from 'ethers';
 import { memoRead } from './rpc.js';
-const RPC = 'https://ethereum-rpc.publicnode.com';
 export const POOL_MANAGER = '0x000000000004444c5dc75cb358380d2e3de08a90';
 const STATE_VIEW = '0x7ffe42c4a5deea5b0fec41c94c136cf115597227';
 const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
@@ -13,7 +12,7 @@ const abi = new Interface([
 ]);
 const multi = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
 export async function ethRpc(method, params) {
-  const response = await fetch(RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(20000) });
+  const response = await fetch(process.env.L1_ETHEREUM_RPC_URL || 'https://ethereum-rpc.publicnode.com', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(20000) });
   if (!response.ok) throw Error('Ethereum public RPC unavailable');
   const body = await response.json();
   if (body.error || body.result === undefined) throw Error(`Ethereum ${method} unavailable`);

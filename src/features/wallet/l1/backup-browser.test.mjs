@@ -5,7 +5,7 @@ const browser = await chromium.launch({headless:true,args:['--no-sandbox']});
 try {
  const page=await browser.newPage();let account='backup-source';
  await page.route('**/api/**',r=>r.fulfill({json:r.request().url().includes('/api/app-state')?{session:{status:'signed_in',accountId:account},wallet:{},tasks:{},chat:{conversations:[],messages:[]}}:{}}));
- await page.route('**/runtime-config*',r=>r.fulfill({contentType:'application/json',body:'{}'}));
+ await page.route('**/runtime-config*',r=>r.fulfill({contentType:'application/json',body:'{"l1Wallet":{"enabled":true}}'}));
  await page.goto(WEB+'/#l1-wallet');
  await page.getByLabel('Wallet passphrase',{exact:true}).fill('synthetic-backup-password');
  await page.getByRole('button',{name:'Create L1 wallet',exact:true}).click();

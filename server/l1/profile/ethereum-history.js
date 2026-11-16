@@ -6,7 +6,7 @@ export async function readPublicationRpc(method, params, fetcher = fetch) {
   let failure;
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      const response = await fetcher('https://ethereum-rpc.publicnode.com', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(15000) });
+      const response = await fetcher(process.env.L1_ETHEREUM_RPC_URL || 'https://ethereum-rpc.publicnode.com', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(15000) });
       const value = await response.json();
       // Public RPC backends intermittently return null for indexed, mined receipts.
       // An incomplete read is never a negative publication result to cache.

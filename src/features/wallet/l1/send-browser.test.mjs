@@ -29,7 +29,7 @@ stub.on('connection',ws=>ws.on('message',b=>{
 }));
 const server=createServer(async(req,res)=>{try{
  if(req.url.startsWith('/api/')){res.setHeader('content-type','application/json');res.end(JSON.stringify(req.url.startsWith('/api/app-state')?{session:{status:'signed_in',accountId:'synthetic-send'},wallet:{},tasks:{},chat:{messages:[],conversations:[]}}:{}));return;}
- if(req.url.startsWith('/runtime-config')){res.setHeader('content-type','application/json');res.end('{}');return;}
+ if(req.url.startsWith('/runtime-config')){res.setHeader('content-type','application/json');res.end('{"l1Wallet":{"enabled":true}}');return;}
  const r=await fetch(WEB+''+req.url);res.writeHead(r.status,{'content-type':r.headers.get('content-type')||'text/plain'});res.end(Buffer.from(await r.arrayBuffer()));
 }catch{res.writeHead(502);res.end();}});
 const gateway=registerL1Gateway(server,{env:{L1_WALLET_PROXY_URL:`ws://127.0.0.1:${stub.address().port}`},getSession:async token=>token==='fixture'?{status:'signed_in',accountId:'synthetic-send'}:null,sessionCookieName:'sid',cookieValue:req=>req.headers.cookie?.split('=')[1],json:(r,s,b)=>{r.writeHead(s);r.end(JSON.stringify(b));},readJson:async()=>({})});

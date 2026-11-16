@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import metadata from './navcoin-metadata.json' with { type: 'json' };
 import { localRpc } from './read-rpc.js';
 import { validateConfig } from '../../src/features/wallet/l1/market/constants.js';
 import { primaryReady } from '../../src/features/wallet/l1/primary/model.js';
@@ -59,7 +59,6 @@ let cached, pending;
 export async function getNavcoinRegistry() {
   if (cached && Date.now() - cached.at < 15000) return cached.coins;
   if (!pending) pending = (async () => {
-    const metadata = JSON.parse(await readFile(new URL('./navcoin-metadata.json', import.meta.url), 'utf8'));
     const coins = await discoverRegistry(localRpc(), metadata);
     cached = { coins, at: Date.now() }; return coins;
   })().finally(() => { pending = null; });

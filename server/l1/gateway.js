@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { WebSocket, WebSocketServer } from 'ws';
-import { requestOrigin } from '../server-http-boundary.js';
+import { requestOriginFromBoundary } from '../trusted-proxy.js';
+import { l1Enabled, relaySettings } from './release-config.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
 import { handleNavcoinRoutes } from './navcoin-routes.js';
@@ -11,7 +12,7 @@ import { createProfileHandler } from './navcoin-profile.js';
 import { L1_READ_METHODS, L1_SUBMIT_METHODS } from '../../src/features/wallet/l1/lib/rpc-methods.js';
 const MAX_BYTES = 1024 * 1024;
 const signedIn = session => Boolean(session?.accountId && (session?.authenticated === true || session?.status === 'signed_in'));
-const sameOrigin = req => req.headers.origin === requestOrigin(req);
+const sameOrigin = (req, env) => req.headers.origin === requestOriginFromBoundary(req, env);
 export async function readProxyToken(env = process.env) {
   let token = String(env.L1_WALLET_PROXY_TOKEN || '').trim();
   if (env.L1_WALLET_PROXY_TOKEN_FILE) {
@@ -55,9 +56,11 @@ function validateRequest(request) {
   return null;
 }
 export function registerL1Gateway(server, { getSession, sessionCookieName, cookieValue, json, readJson, env = process.env, recoverSubmit = createSubmitRecovery(env) }) {
+  const enabled = l1Enabled(env);
+  const relay = enabled ? relaySettings(env) : null;
   // Snapshot credentials at registration/startup, never from browser input.
   const proxyOrigin = proxyOriginFromEnv(env);
-  const credentials = readProxyToken(env).then(token => ({ token })).catch(() => null);
+  const credentials = (relay ? Promise.resolve('') : readProxyToken(env)).then(token => ({ token })).catch(() => null);
   const sessions = new Set();
   const readHistory = createHistoryReader(env);
   const handleProfile = createProfileHandler();
@@ -68,6 +71,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
     let url;
     try { url = new URL(req.url, 'http://localhost'); } catch { json(res, 400, { error: 'l1_invalid_url' }); return; }
     if (!url.pathname.startsWith('/api/l1/')) { for (const handler of handlers) handler(req, res); return; }
+    if (!enabled) { json(res, 404, { error: 'l1_unavailable' }); return; }
     void (async () => {
       res.setHeader('cache-control', 'no-store');
       if (await handleProfile({ req, res, url, json })) return;
@@ -79,13 +83,14 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
         catch (error) { json(res, 502, { error: error.message }); }
         return;
       }
-      if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req)) { json(res, 403, { error: 'l1_origin_rejected' }); return; }
+      if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req, env)) { json(res, 403, { error: 'l1_origin_rejected' }); return; }
       const context = { req, res, url, session, json, readJson, proxyUrl: env.L1_WALLET_PROXY_URL || '' };
       if (url.pathname.startsWith('/api/l1/bridge/')) {
         const credential = await credentials;
         if (!credential) { json(res, 503, { error: 'l1_proxy_credential_unavailable' }); return; }
-        if (await handleBridgeRoutes({ ...context, bridgeProxyUrl: env.L1_BRIDGE_PROXY_URL || '',
-          proxyToken: credential.token, proxyOrigin: env.L1_BRIDGE_PROXY_ORIGIN || proxyOrigin })) return;
+        if (await handleBridgeRoutes({ ...context, bridgeProxyUrl: relay?.origin || env.L1_BRIDGE_PROXY_URL || '',
+          proxyToken: relay?.token || credential.token, proxyOrigin: relay?.origin || env.L1_BRIDGE_PROXY_ORIGIN || proxyOrigin,
+          bridgePathPrefix: relay ? '/api/l1/bridge' : '/api/bridge' })) return;
       }
       if (await handleNavcoinRoutes(context)) return;
       json(res, url.pathname === '/api/l1/rpc' ? 426 : 404, { error: url.pathname === '/api/l1/rpc' ? 'l1_websocket_required' : 'l1_route_not_found' });
@@ -94,20 +99,20 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_BYTES, perMessageDeflate: false });
   server.on('upgrade', (req, socket, head) => {
     const reject = status => { socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`); };
-    if (req.url !== '/api/l1/rpc') { reject('404 Not Found'); return; }
+    if (!enabled || req.url !== '/api/l1/rpc') { reject('404 Not Found'); return; }
     void (async () => {
-      if (!sameOrigin(req)) { reject('403 Forbidden'); return; }
+      if (!sameOrigin(req, env)) { reject('403 Forbidden'); return; }
       const session = await authenticate(req);
       if (!signedIn(session)) { reject('401 Unauthorized'); return; }
-      if (!env.L1_WALLET_PROXY_URL) { reject('503 Service Unavailable'); return; }
-      const upstreamUrl = proxyWebSocketUrl(env.L1_WALLET_PROXY_URL);
+      if (!relay && !env.L1_WALLET_PROXY_URL) { reject('503 Service Unavailable'); return; }
+      const upstreamUrl = proxyWebSocketUrl(relay ? `${relay.origin}/api/l1/rpc` : env.L1_WALLET_PROXY_URL);
       const authentication = await credentials;
       if (!authentication) { reject('503 Service Unavailable'); return; }
       const proxyToken = authentication.token;
       wss.handleUpgrade(req, socket, head, client => {
         sessions.add(client);
         const upstream = new WebSocket(upstreamUrl, { maxPayload: MAX_BYTES, handshakeTimeout: 10000,
-          ...(proxyOrigin ? { origin: proxyOrigin } : {}) });
+          ...(relay ? { origin: relay.origin, headers: { Authorization: `Bearer ${relay.token}` } } : proxyOrigin ? { origin: proxyOrigin } : {}) });
         let queue = Promise.resolve();
         const submissions = new Map();
         const opened = new Promise((resolve, rejectOpen) => { upstream.once('open', resolve); upstream.once('error', rejectOpen); });
@@ -122,7 +127,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
           void (async () => {
             if (!await current()) { client.close(1008, 'L1 session changed'); return; }
             let payload = data.toString();
-            if (proxyToken && payload.includes(proxyToken)) { client.close(1011, 'Unsafe L1 proxy response'); return; }
+            if ((proxyToken && payload.includes(proxyToken)) || (relay && payload.includes(relay.token))) { client.close(1011, 'Unsafe L1 proxy response'); return; }
             const response = JSON.parse(payload), submitted = submissions.get(response.id);
             submissions.delete(response.id);
             if (submitted && response.ok === false && response.error?.code === 'proxy_connection_error' && recoverSubmit) {

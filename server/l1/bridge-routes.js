@@ -5,7 +5,7 @@ const JOB_FIELDS = new Set([
   "depositor", "amount_atoms", "idempotency_key", "route_profile_hash", "route_epoch", "route_binding",
 ]);
 
-export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "" }) {
+export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "", bridgePathPrefix = "/api/bridge" }) {
   if (!url.pathname.startsWith(`${ROOT}/`)) return false;
   res.setHeader("Cache-Control", "no-store");
   const fail = (status, code, message) => { json(res, status, { ok: false, ready: false, code, message }); return true; };
@@ -29,7 +29,7 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
     if (upstream.protocol === "ws:") upstream.protocol = "http:";
     if (upstream.protocol === "wss:") upstream.protocol = "https:";
     if (!["http:", "https:"].includes(upstream.protocol) || upstream.username || upstream.password) throw new Error("Invalid proxy URL");
-    upstream.pathname = `/api/bridge${suffix}`;
+    upstream.pathname = `${bridgePathPrefix}${suffix}`;
     upstream.search = isReadiness ? `?route=${ROUTE}` : "";
     upstream.hash = "";
     let body;

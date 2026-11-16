@@ -11,7 +11,7 @@ const GROUPS = ['transactions', 'payments_v2', 'asset_transactions', 'atomic_swa
 // A transport error can follow admission. Recover by reading an exact public
 // signed envelope from a committed single-transaction batch. Never resubmit.
 export function createSubmitRecovery(env = process.env, injectedRpc) {
-  if (!env.L1_HISTORY_RPC_URL) return null;
+  if (!env.L1_HISTORY_RPC_URL && !env.L1_RELAY_URL) return null;
   const rpc = injectedRpc || localRpc(env, 15000);
   return async request => {
     const field = FIELDS[request.method];

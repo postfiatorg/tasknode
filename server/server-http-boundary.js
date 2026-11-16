@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { checkRouteRateLimit, sharedRateLimitStartupIssues } from "./rate-limit.js";
 import { readValidatedJson as readJson } from "./request-validation.js";
 import * as trustedProxy from "./trusted-proxy.js";
+import { l1Enabled } from "./l1/release-config.js";
 import {
   isProductionEnvironment,
   moneySeedStartupIssues,
@@ -111,6 +112,7 @@ export function runtimeConfig() {
     posthogHost: process.env.VITE_POSTHOG_HOST || process.env.POSTHOG_UI_HOST || "",
     posthogKeyPresent: Boolean(process.env.POSTHOG_KEY || process.env.VITE_POSTHOG_KEY),
     walletUnlockIdleLockMinutes: process.env.TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES || "",
+    l1Wallet: { enabled: l1Enabled() },
     collaboration: {
       docsEnabled: collaborationFlag("TASKNODE_DOCS_ENABLED"),
       teamEnabled: collaborationFlag("TASKNODE_TEAM_ENABLED"),

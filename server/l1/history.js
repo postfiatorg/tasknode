@@ -1,6 +1,6 @@
 // Read-only recovery for nodes whose account_tx index rejects duplicate receipts.
 // Reads committed blocks and their archived transactions; never edits node data.
-import { readRpc } from './read-rpc.js';
+import { localRpc } from './read-rpc.js';
 import { getNavcoinRegistry } from './navcoin-registry.js';
 import { assetSymbols, routeSymbols } from '../../src/features/wallet/l1/market/constants.js';
 const GROUPS = ['transactions', 'payments_v2', 'asset_transactions', 'atomic_swap_transactions', 'escrow_transactions', 'nft_transactions', 'offer_transactions'];
@@ -54,10 +54,8 @@ export function projectHistory({ blocks, archives, receipts }, address, limit = 
     coverage: 'Signed transactions and direct payments. Older activity, fills of resting orders and indirect credits may be missing.' };
 }
 export function createHistoryReader(env = process.env, injectedRpc) {
-  if (!env.L1_HISTORY_RPC_URL) return null;
-  const endpoint = new URL(env.L1_HISTORY_RPC_URL);
-  if (endpoint.protocol !== 'tcp:' || !['127.0.0.1', '[::1]'].includes(endpoint.hostname) || !endpoint.port || endpoint.username || endpoint.password) throw Error('History RPC must be a loopback TCP endpoint');
-  const rpc = injectedRpc || ((method, params) => readRpc(endpoint, method, params));
+  if (!env.L1_HISTORY_RPC_URL && !env.L1_RELAY_URL) return null;
+  const rpc = injectedRpc || localRpc(env);
 
   let cached = null, pending = null;
   async function snapshot() {
