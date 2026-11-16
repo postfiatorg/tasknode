@@ -118,12 +118,21 @@ function dynamicPacket({ normalizedPrompt, requester, title, content, conversati
   };
 }
 
+// The editor sends each prompt line prefixed with its line number ("12| text")
+// so references match the gutter the user sees. Content from a client that did
+// not number its lines is numbered here instead.
+export function numberedPromptLines(content = "") {
+  const text = String(content || "");
+  if (text.startsWith("1| ")) return text;
+  return text.split("\n").map((line, index) => `${index + 1}| ${line}`).join("\n");
+}
+
 // The prompt assistant receives the document, the chat, and the request as
 // plain delimited text so it can quote lines verbatim. Nothing else is added.
 function promptDocumentMessage({ normalizedPrompt, title, content, conversation }) {
   return [
     `Document title: ${title}`,
-    `<prompt_document>\n${content}\n</prompt_document>`,
+    `<prompt_document>\n${numberedPromptLines(content)}\n</prompt_document>`,
     `<recent_chat>\n${conversation.map((message) => `${message.author}: ${message.text}`).join("\n\n")}\n</recent_chat>`,
     `<request>\n${normalizedPrompt}\n</request>`,
   ].join("\n\n");
