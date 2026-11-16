@@ -6,6 +6,7 @@ import { atomsToUsdc } from "./evm.js";
 import { stageRows, timestamp } from "./stages.js";
 import { Amount, AssetAvatar, Badge, Card, CardHead, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
 import { duration } from "../format.js";
+import Withdraw from "./Withdraw.jsx";
 
 // Presentation labels for the relay's wire stages (contract: UI labels may differ).
 const LABELS = {
@@ -215,5 +216,8 @@ function BridgeSession({ client, onNavigate, symbol }) {
 export default function BridgeTab({ onNavigate, assetConfig } = {}) {
   const client = useL1Wallet();
   if (!client.unlocked || !client.address) return <p>Unlock your Post Fiat wallet to bridge USDC.</p>;
-  return <BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} symbol={assetConfig?.symbol || "NAVCoins"} />;
+  return <>
+    <BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} symbol={assetConfig?.symbol || "NAVCoins"} />
+    <Withdraw key={`w:${client.accountId}:${client.address}`} client={client} />
+  </>;
 }
