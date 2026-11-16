@@ -1,5 +1,6 @@
 const ROOT = "/api/l1/bridge";
 const ROUTE = "ethereum-mainnet-usdc-v1";
+const WITHDRAW_SERVICE = (process.env.L1_WITHDRAW_SERVICE_URL || "http://127.0.0.1:18084").replace(/\/$/, "");
 const JOB_FIELDS = new Set([
   "route_id", "source_chain_id", "deposit_tx_hash", "deposit_id", "pftl_recipient",
   "depositor", "amount_atoms", "idempotency_key", "route_profile_hash", "route_epoch", "route_binding",
@@ -11,6 +12,36 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
   const fail = (status, code, message) => { json(res, status, { ok: false, ready: false, code, message }); return true; };
   if (!session?.accountId) return fail(401, "l1_login_required", "Sign in to use the bridge.");
   const suffix = url.pathname.slice(ROOT.length);
+  if (suffix === "/withdrawals" || suffix.startsWith("/withdrawals/")) {
+    // PFUSDC -> USDC. The holder burns from their own wallet; this only starts and reads the payout job.
+    const wReady = req.method === "GET" && suffix === "/withdrawals/readiness";
+    const wJob = req.method === "GET" && /^\/withdrawals\/[0-9a-f]{96}$/.test(suffix);
+    const wCreate = req.method === "POST" && suffix === "/withdrawals";
+    if (!wReady && !wJob && !wCreate) return fail(404, "bridge_route_not_found", "Unknown bridge endpoint.");
+    let body;
+    if (wCreate) {
+      let origin;
+      try { origin = new URL(req.headers.origin); } catch { return fail(403, "bridge_origin_required", "Same-origin request required."); }
+      if (origin.host !== req.headers.host || req.headers["sec-fetch-site"] === "cross-site") return fail(403, "bridge_origin_mismatch", "Same-origin request required.");
+      body = await readJson(req, 4 * 1024);
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((key) => key !== "burn_tx_id") || !/^[0-9a-f]{96}$/.test(body.burn_tx_id || "")) {
+        return fail(400, "invalid_withdrawal_request", "Invalid withdrawal request.");
+      }
+    }
+    try {
+      const response = await fetch(`${WITHDRAW_SERVICE}/api/bridge${suffix}`, {
+        method: req.method, redirect: "error", signal: AbortSignal.timeout(45000),
+        headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const payload = await response.json();
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Invalid withdrawal response");
+      json(res, response.status, payload);
+      return true;
+    } catch {
+      return fail(502, "withdrawal_service_unavailable", "Withdrawals are unavailable: the payout service is unreachable.");
+    }
+  }
   const isReadiness = req.method === "GET" && suffix === "/readiness";
   const isJob = req.method === "GET" && /^\/jobs\/0x[0-9a-f]{64}$/.test(suffix);
   const isCreate = req.method === "POST" && suffix === "/jobs";
