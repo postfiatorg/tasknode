@@ -1,4 +1,4 @@
-// Vercel AI Gateway catalogue, verified 2026-09-07 (Opus 5.5: 2026-09-24).
+// Vercel AI Gateway catalogue, verified 2026-09-07 (Opus 5.5: 2026-09-24; Gemini 4 Hydrogen: 2026-11-16).
 // Base rates estimate requests; the returned Gateway cost is the final debit.
 const common = {
   provider: "vercel",
@@ -37,6 +37,17 @@ export const apiChatModels = Object.freeze({
     inputCacheHitUsdPerMillion: 0.2,
     inputCacheWriteUsdPerMillion: 5,
     outputUsdPerMillion: 20,
+    zeroDataRetention: true,
+  },
+  // Vercel routes Gemini 4 Hydrogen to Vertex under ZDR; Google AI Studio does
+  // not support it and is skipped. Caching is implicit, with no write charge.
+  "Gemini 4 Hydrogen": {
+    ...common,
+    defaultModel: "google/gemini-4-hydrogen",
+    inputUsdPerMillion: 1.5,
+    inputCacheHitUsdPerMillion: 0.075,
+    inputCacheWriteUsdPerMillion: 1.5,
+    outputUsdPerMillion: 7.5,
     zeroDataRetention: true,
   },
 });

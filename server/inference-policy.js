@@ -18,6 +18,7 @@ const models = new Map([
   ["openai/gpt-6-astra", { ambient: "", image: true }],
   ["moonshotai/kimi-k3.1-pro", { ambient: "", image: true }],
   ["anthropic/claude-opus-5.5", { ambient: "", image: true }],
+  ["google/gemini-4-hydrogen", { ambient: "", image: true }],
   [DEEPSEEK_V41_FLASH, { ambient: "z-ai/glm-5.2", image: true }],
   [INFERENCE_MODELS.vision, { ambient: "google/gemma-4-26b-a4b-it", image: true }],
 ]);

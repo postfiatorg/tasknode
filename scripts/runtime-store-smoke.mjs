@@ -98,7 +98,7 @@ try {
     throw new Error("Canonical chat modes should be enabled when Vercel AI Gateway is configured.");
   }
   const canonicalModeLabels = chatModes().map((mode) => mode.label);
-  if (canonicalModeLabels.join(",") !== "Instant,Thinking,GPT-6 Astra,Kimi K3.1 Pro,Claude Opus 5.5,Help") {
+  if (canonicalModeLabels.join(",") !== "Instant,Thinking,GPT-6 Astra,Kimi K3.1 Pro,Claude Opus 5.5,Gemini 4 Hydrogen,Help") {
     throw new Error(`Only canonical chat modes should be exposed: ${canonicalModeLabels.join(", ")}`);
   }
 
