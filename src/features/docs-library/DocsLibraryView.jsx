@@ -114,7 +114,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
           accountId: accountIdForAgents,
           encrypt: (value, recipients) => encryptForTaskNodeWallet(value, recipients, walletSecret),
         });
-        if (granted.length) setAgentNotice(`Your agent on ${granted.join(", ")} can now work on your prompts.`);
+        if (granted.length) setAgentNotice(`Agent connected: ${granted.join(", ")} can now read and edit your prompts. You can go back to your terminal.`);
       } catch {
         // retried on the next tick; manual approval under Agent access still works
       } finally {
@@ -129,6 +129,14 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       window.removeEventListener("storage", tick);
     };
   }, [walletSecret, accountIdForAgents]);
+  // Arriving from an agent sign-in link with the wallet locked: open the unlock dialog right away, once.
+  const agentWaiting = signedIn && !walletSecret?.mnemonic && hasPendingPairings();
+  const unlockAskedRef = useRef(false);
+  useEffect(() => {
+    if (!agentWaiting || unlockAskedRef.current) return;
+    unlockAskedRef.current = true;
+    onWalletUnlock?.();
+  }, [agentWaiting, onWalletUnlock]);
   const editorReady = Boolean(collaboration.pfdocsEditorEnabled && collaboration.pfdocsOrigin);
   const activeTaskOptions = useMemo(() => docsActiveTaskOptions(tasks), [tasks]);
   const filteredTaskOptions = useMemo(
@@ -1035,8 +1043,8 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       <header className="docs-library-heading"><div><h1>Docs</h1><p>Your private workspace for documents and spreadsheets.</p></div></header>
       <section className="docs-unlock-panel">
         <div className="docs-unlock-icon"><LockKeyhole size={26} /></div>
-        <h2>Unlock your Docs</h2>
-        <p>Unlock your wallet to open your documents, spreadsheets, and folders.</p>
+        <h2>{agentWaiting ? "Unlock to finish connecting your agent" : "Unlock your Docs"}</h2>
+        <p>{agentWaiting ? "Your agent is connected. Unlock your wallet once and it can read and edit your prompts." : "Unlock your wallet to open your documents, spreadsheets, and folders."}</p>
         <button className="docs-solid-button" onClick={onWalletUnlock} type="button"><LockKeyhole size={15} />Unlock</button>
         <small>End-to-end encrypted. Only you hold the key.</small>
       </section>

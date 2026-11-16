@@ -1,4 +1,6 @@
-// Merged-PR payment requirement for network tasks (operator policy, 2026-09-26).
+// Merged-PR payment requirement for network tasks (operator policy,
+// 2026-09-26). Since 2026-11-15 posts, reviews and research are exempt and
+// paid on public proof instead; see server/board-work-policy.js.
 //
 // A network task is paid only for a GitHub pull request that is MERGED into the
 // repository's default branch. An open, closed or draft PR is not evidence.
@@ -11,6 +13,7 @@
 // work) and operator duty referrals routed to the operator account.
 
 import { query } from "./db/pool.js";
+import { mergedPrRequiredForWork } from "./board-work-policy.js";
 
 export const MERGED_PR_POLICY_VERSION = "network_task_merged_pr_v1";
 export const MERGED_PR_EXEMPT_BOARDS = new Set(["board_value_accountability"]);
@@ -144,10 +147,11 @@ export async function verifyMergedPullRequest({ taskId, accountId, taskCreatedAt
 // Decide whether a task is subject to the requirement.
 export async function mergedPrRequiredForTask(taskId) {
   const result = await query(
-    `SELECT t.task_kind, t.account_id, t.created_at, a.project_id, lower(coalesce(acc.hive_handle, '')) AS handle
+    `SELECT t.task_kind, t.account_id, t.created_at, a.project_id, a.work_type, lower(coalesce(acc.hive_handle, '')) AS handle
        FROM task_projections t
        LEFT JOIN LATERAL (
-         SELECT project_id FROM network_task_allocations WHERE generated_task_id = t.task_id ORDER BY updated_at DESC LIMIT 1
+         SELECT project_id, metadata_json->'network_task_intelligence'->>'taskWorkType' AS work_type
+           FROM network_task_allocations WHERE generated_task_id = t.task_id ORDER BY updated_at DESC LIMIT 1
        ) a ON true
        LEFT JOIN app_accounts acc ON acc.account_id = t.account_id
       WHERE t.task_id = $1`,
@@ -157,7 +161,10 @@ export async function mergedPrRequiredForTask(taskId) {
   if (!row) return { required: false, row: null };
   const isNetwork = row.task_kind === "network" || Boolean(row.project_id);
   const exempt = MERGED_PR_EXEMPT_BOARDS.has(row.project_id || "") || row.handle === MERGED_PR_OPERATOR_HANDLE;
-  return { required: isNetwork && !exempt, row };
+  // Posts, reviews and research are paid on public proof; everything else
+  // needs a merged pull request (server/board-work-policy.js).
+  const codeChange = mergedPrRequiredForWork({ boardId: row.project_id, workType: row.work_type });
+  return { required: isNetwork && !exempt && codeChange, row };
 }
 
 async function evidencePayloadsForTask(taskId, accountId) {

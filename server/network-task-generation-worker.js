@@ -1,4 +1,5 @@
 import { assertNetworkTaskContentAllowed } from "./network-task-content-policy.js";
+import { reviewDocumentAllowed } from "./board-work-policy.js";
 import { VALUE_ACCOUNTABILITY_BOARD_ID, assertNotBlacklisted } from "./value-accountability.js";
 import { runTrackedWork } from "./process-hardening.js";
 import { assessTaskIntent, taskIntentFailureFamily } from "./task-intent-assessment.js";
@@ -153,6 +154,7 @@ export async function createTaskRequestForNetworkJob(job = {}, { assess = assess
     assertNetworkTaskContentAllowed(
       safeText(source.need, 8000),
       safeText(sourceTask.projectNeedSummary || sourceTask.project_need_summary, 8000),
+      { allowReviewDocument: reviewDocumentAllowed({ boardId: job.project_id, workType: sourceTask.taskWorkType || sourceTask.task_work_type }) },
     );
   }
   await assertNotBlacklisted({

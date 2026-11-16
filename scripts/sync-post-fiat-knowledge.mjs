@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -200,8 +200,70 @@ for (const sourcePath of blogPaths) {
   chunks.push(...markdownChunks({ sourceId, sourceType: "blog", title, sourcePath, url, date, draft, tags, body }));
 }
 
+// Public site pages outside the blog archive: product and operator guides.
+// `legacy` marks material about postfiatd / PFT Ledger, the XRPL-derived chain being deprecated in favour of L1 v2.
+const sitePages = [
+  { path: "content/about.md", legacy: false },
+  { path: "content/task-node.md", legacy: false },
+  { path: "content/agents.md", legacy: false },
+  { path: "content/community.md", legacy: false },
+  { path: "content/introducing-post-fiat-terminal.md", legacy: false },
+  { path: "content/validator-setup.md", legacy: true },
+  { path: "content/validator-sidecar.md", legacy: true },
+  { path: "content/whitepaper-legacy-governance.md", legacy: true },
+];
+const siteSources = [];
+for (const page of sitePages) {
+  const source = git(blogRepo, ["show", `${blogRef}:${page.path}`]);
+  const { frontMatter, body } = parseMarkdownDocument(source);
+  const slug = path.basename(page.path, ".md");
+  const title = String(frontMatter.title || slug).trim();
+  const publicPath = String(frontMatter.url || `/${slug}/`).trim();
+  const url = `https://postfiat.org${publicPath.startsWith("/") ? publicPath : `/${publicPath}`}`;
+  const summary = compactMarkdown(frontMatter.summary || frontMatter.description || body).slice(0, 500);
+  const sourceId = `site:${slug}`;
+  siteSources.push({ id: sourceId, title, summary, legacy: page.legacy, sourcePath: page.path, url, sha256: sourceHash(source) });
+  chunks.push(
+    ...markdownChunks({ sourceId, sourceType: "site", title, sourcePath: page.path, url, date: String(frontMatter.date || "").trim(), body })
+      .map((chunk) => ({ ...chunk, legacy: page.legacy }))
+  );
+}
+
+// Task Node product documentation: exactly the user-facing pages the Help screen already shows.
+const productDocs = [
+  ["user-guide", "User Guide"],
+  ["agents", "Agents"],
+  ["validator-research", "Validator Rewards & Research"],
+  ["chat", "Chat"],
+  ["tasks", "Tasks"],
+  ["hive", "Hive"],
+  ["docs", "Docs"],
+  ["team", "Team"],
+  ["messages", "Messages"],
+  ["wallet", "Wallet"],
+  ["context", "Context"],
+  ["memory", "Memory"],
+  ["profile", "Profile"],
+  ["directory", "Directory"],
+  ["search", "Search"],
+  ["daily-airdrop", "Daily Airdrop"],
+  ["refine-context", "Refine Context"],
+  ["context-rewrite", "Context Rewrite"],
+];
+const productSources = [];
+for (const [slug, label] of productDocs) {
+  const sourcePath = `docs/wiki/surfaces/${slug}.md`;
+  const source = readFileSync(path.join(repoRoot, sourcePath), "utf8");
+  const { body } = parseMarkdownDocument(source);
+  const title = `Task Node: ${label}`;
+  const url = `https://tasknode.postfiat.org/#help/${slug}`;
+  const sourceId = `product:${slug}`;
+  productSources.push({ id: sourceId, title, sourcePath, url, sha256: sourceHash(source) });
+  chunks.push(...markdownChunks({ sourceId, sourceType: "product", title, sourcePath, url, body }));
+}
+
 const payload = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   sources: {
     whitepaper: {
       id: "whitepaper",
@@ -219,6 +281,8 @@ const payload = {
       articleCount: blogSources.length,
       articles: blogSources,
     },
+    sitePages: siteSources,
+    productDocs: productSources,
   },
   chunks,
 };
@@ -226,5 +290,5 @@ const payload = {
 mkdirSync(path.dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(payload)}\n`, "utf8");
 console.log(
-  `post fiat knowledge synced: whitepaper=${whitepaperCommit.slice(0, 8)} blogs=${blogCommit.slice(0, 8)} articles=${blogSources.length} chunks=${chunks.length}`
+  `post fiat knowledge synced: whitepaper=${whitepaperCommit.slice(0, 8)} blogs=${blogCommit.slice(0, 8)} articles=${blogSources.length} site=${siteSources.length} product=${productSources.length} chunks=${chunks.length}`
 );

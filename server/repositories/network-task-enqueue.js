@@ -1,6 +1,7 @@
 import { assertNetworkTaskContentAllowed } from "../network-task-content-policy.js";
 import { VALUE_ACCOUNTABILITY_BOARD_ID, assertNotBlacklisted } from "../value-accountability.js";
 import { MERGED_PR_REQUIREMENT_TEXT } from "../merged-pr-requirement.js";
+import { PUBLIC_PROOF_REQUIREMENT_TEXT, assertBoardAcceptsWork, mergedPrRequiredForWork, reviewDocumentAllowed } from "../board-work-policy.js";
 import { createHash } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
@@ -71,11 +72,16 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   const rewardBandClampedFrom = networkTask.reward_band_clamped_from || band.clampedFrom || null;
   assertNetworkTaskRewardFloor({ ...(rewardBandClampedFrom || band), operatorDuty });
   const projectNeedSummary = safeText(networkTask.project_need_summary || networkTask.projectNeedSummary || payload.summary || decision.reason, 2400);
+  const scopeWorkType = safeText(networkTask.task_work_type || networkTask.taskWorkType || networkTask.badge_work_type || networkTask.badgeWorkType, 120);
+  assertBoardAcceptsWork({ boardId: projectId, workType: scopeWorkType, operatorDuty });
+  const paymentRequirement = mergedPrRequiredForWork({ boardId: projectId, workType: scopeWorkType }) ? MERGED_PR_REQUIREMENT_TEXT : PUBLIC_PROOF_REQUIREMENT_TEXT;
   const projectNeedWithPayment = projectId === VALUE_ACCOUNTABILITY_BOARD_ID || operatorDuty
     ? projectNeedSummary
-    : `${projectNeedSummary}\n\n${MERGED_PR_REQUIREMENT_TEXT}`;
+    : `${projectNeedSummary}\n\n${paymentRequirement}`;
   if (projectId !== VALUE_ACCOUNTABILITY_BOARD_ID) {
-    assertNetworkTaskContentAllowed(projectNeedSummary, safeText(payload.summary, 2400));
+    assertNetworkTaskContentAllowed(projectNeedSummary, safeText(payload.summary, 2400), {
+      allowReviewDocument: reviewDocumentAllowed({ boardId: projectId, workType: scopeWorkType }),
+    });
   }
   await assertNotBlacklisted({ accountId: candidate.accountId, walletAddress: candidate.walletAddress, action: "network_task" });
   const allocationReasonSummary = safeText(networkTask.allocation_reason_summary || networkTask.routing_reason || networkTask.routingReason || decision.reason, 1800);

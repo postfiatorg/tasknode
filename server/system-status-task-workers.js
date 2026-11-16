@@ -428,8 +428,7 @@ export async function networkAllocationHealthItem(tables, _nowMs, { readHealth =
     },
     lastError: healthError,
     details: [
-      ...(aggregate.boards_not_served_3_plus?.length ? [`boardsNotServed3PlusRounds=${aggregate.boards_not_served_3_plus.join(",")}`] : []),
-      ...((health?.boards || []).map((board) => `${board.board_id}: created24h=${board.creates_24h} offered7d=${board.accounts_offered_7d} notServedStreak=${board.consecutive_not_served_rounds}`)),
+      ...((health?.boards || []).map((board) => `${board.board_id}: created24h=${board.creates_24h} offered7d=${board.accounts_offered_7d}`)),
     ],
   });
 }

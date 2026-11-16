@@ -14,7 +14,13 @@ const board = "board_pf_terminal";
 try {
   await migrateDatabase();
   await query("INSERT INTO board_agent_credentials(id,token_hash,actor,board_ids,expires_at) VALUES($1,$2,$1,$3::jsonb,now()+interval '1 hour')", [id, createHash("sha256").update(token).digest("hex"), JSON.stringify([board])]);
-  await assert.rejects(taskCreate({boardId:"board_tasknode_fixes",accountId:id,wallet:"rFixture",need:"Fixture task",assigneeHandle:"ineligible-fixture"}), {status:422});
+  // A board can still be restricted to named assignees; no production board is today.
+  await query(`UPDATE network_projects SET metadata_json=jsonb_set(coalesce(metadata_json,'{}'::jsonb),'{routing_constraints,assignable_handles}','["goodalexander"]'::jsonb,true) WHERE id='board_tasknode_fixes'`);
+  try {
+    await assert.rejects(taskCreate({boardId:"board_tasknode_fixes",accountId:id,wallet:"rFixture",need:"Fixture task",assigneeHandle:"ineligible-fixture"}), {status:422, message: /board_routing_constraint/});
+  } finally {
+    await query(`UPDATE network_projects SET metadata_json=metadata_json #- '{routing_constraints,assignable_handles}' WHERE id='board_tasknode_fixes'`);
+  }
   const user = await executeBoardAgentCommand({token,payload:{requestKey:"user-scope",argv:["user",id]}});
   assert.deepEqual(user.result.history_scope.board_ids,[board]);
   assert.equal(user.result.history_scope.includes_legacy_boards,false);
@@ -46,7 +52,8 @@ try {
   const finished = await scoped("finish-round", () => recordDutyResult({ ...outcome, dutyId: round.duties_json[1].id, reason: "The fixture task is no longer awaiting review in durable state." }, { computeDuties: async () => ({ duties: [duties[0]] }) }));
   assert.equal(finished.result.state, "complete");
   assert.equal(finished.result.results_json[outcome.dutyId].outcome, "blocked");
-  assert.equal((await scoped("quiet-backoff", () => openAgentRound([board], { computeDuties }))).result.state, "backoff");
+  // A routing invitation that was just answered is not repeated for a day.
+  assert.equal((await scoped("quiet-backoff", () => openAgentRound([board], { computeDuties: async () => ({ duties: [duties[0]] }) }))).result.state, "quiet");
   const registry = readAgentRegistry();
   assert.equal(registry.agents.length, 1); assert.equal(new Set(registry.agents.flatMap((agent) => agent.boards)).size, 7);
   const event = (type, turn_id) => ({ type: "event_msg", payload: { type, turn_id } });

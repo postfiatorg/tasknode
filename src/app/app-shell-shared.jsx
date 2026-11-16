@@ -1,6 +1,7 @@
 import React from "react";
 import { BookOpen, Brain, CandlestickChart, Coins, Compass, CreditCard, Database, Drama, FileText, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Server, Shield, Sparkles, Trophy } from "lucide-react";
 import { fetchAppState, requestJson } from "../api";
+import { HoodIcon } from "./HoodIcon.jsx";
 import { appExtensionRegistry } from "../extensions/index.js";
 import { plainTextFromBlocks } from "../features/chat/chat-markdown";
 import { isSignedInSession } from "../session";
@@ -23,6 +24,7 @@ export const CHAT_PERSONA_ICONS = Object.freeze({
   "trading-coach": CandlestickChart,
   jobs: Lightbulb,
   kravis: Landmark,
+  basedgpt: HoodIcon,
   brainstorming: Brain,
   motivation: Trophy,
   "five-mirrors": Drama,

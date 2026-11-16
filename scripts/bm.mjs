@@ -91,8 +91,8 @@ const usage = [
       "  journal <board> --text ...",
       "  handoff <board>",
       "  round-status <round-id>     recover a supervisor work order (scoped API)",
-      "  duty-result <round-id> <duty-id> --outcome completed|blocked|deferred|not_served --reason ...",
-      "      routing_due also requires --dispositions '[{\"account_id\":..,\"disposition\":\"routed|investigation_routed|not_served\",\"task_id\":..,\"reason_code\":..,\"reason\":..}]' for every candidate",
+      "  duty-result <round-id> <duty-id> --outcome completed|blocked|deferred --reason ...",
+      "      routing_due: completed only after a task create on that board this round; deferred when there is no work worth routing",
       "  --request-key <key>         explicit immutable mutation key (scoped API)",
     ].join("\n");
 

@@ -11,7 +11,8 @@ process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 
 assert.ok(new URL(process.env.DATABASE_URL).pathname.endsWith("_test"), "Use a disposable *_test database");
 const prefix = `routing_fixture_${randomUUID()}`;
-const board = "board_pf_terminal", otherBoard = "board_capital_markets";
+// PF Terminal is closed to new tasks; fixtures run on a board that is open.
+const board = "board_postfiat_l1v2", otherBoard = "board_capital_markets";
 const account = `${prefix}_account`, token = randomUUID();
 const now = Date.now(), day = 86400000;
 const ago = (days) => new Date(now - days * day).toISOString();
@@ -41,7 +42,8 @@ const scoped = (argv) => executeBoardAgentCommand({ token, payload: { requestKey
 
 try {
   await migrateDatabase();
-  for (const count of [0, 3, 5, 20]) assert.ok(routingDuty({ id: board }, [candidate], count), `full board with ${count} tasks must still expose idle contributors`);
+  for (const count of [0, 3, 5, 20]) assert.ok(routingDuty({ id: board }, [candidate], count), `a board with ${count} tasks still invites routing when someone has capacity`);
+  assert.equal(routingDuty({ id: "board_pf_terminal" }, [candidate], 0), null, "closed boards never invite routing");
   assert.equal(routingDuty({ id: board }, [{ ...candidate, free_slots: 0 }], 0), null);
   assert.equal(routingDuty({ id: board, routing_constraints: { assignable_handles: ["another-contributor"] } }, [candidate], 0), null);
   assert.ok(routingDuty({ id: board, routing_constraints: { assignable_handles: ["FIXTURE-CONTRIBUTOR"] } }, [candidate], 10));
@@ -112,10 +114,19 @@ try {
   });
   await assert.rejects(executeBoardAgentCommand({ token, payload: { requestKey: randomUUID(), argv: ["duty-result"] } }, {
     dispatch: () => recordDutyResult({ roundId: opened.result.id, dutyId: dutyId(originalDuty), outcome: "completed", reason: "The candidate pool changed but no task was actually routed",
-      dispositions: [{ account_id: candidate.account_id, disposition: "routed", task_id: "task_claimed_but_never_created", reason: "Claimed without an audit." }] }, {
+ }, {
       computeDuties: async () => ({ duties: [routingDuty({ id: board }, [candidate, { ...candidate, account_id: `${account}_new` }], 5)] }),
     }),
-  }), { status: 409 }, "changing candidate pools must not bypass actual routing proof");
+  }), { status: 409 }, "completed routing needs an executed task create in the round");
+  const declined = await executeBoardAgentCommand({ token, payload: { requestKey: randomUUID(), argv: ["duty-result"] } }, {
+    dispatch: () => recordDutyResult({ roundId: opened.result.id, dutyId: dutyId(originalDuty), outcome: "deferred", reason: "No work in scope worth paying for this round." }),
+  });
+  assert.equal(declined.result.state, "complete", "declining a routing invitation closes the duty");
+  assert.equal(declined.result.results_json[dutyId(originalDuty)].outcome, "deferred");
+  const reopened = await executeBoardAgentCommand({ token, payload: { requestKey: randomUUID(), argv: ["round-open"] } }, {
+    dispatch: () => openAgentRound([board], { computeDuties: async () => ({ duties: [originalDuty] }) }),
+  });
+  assert.equal(reopened.result.state, "quiet", "an answered routing invitation is not repeated the same day");
   const scopedStale = await task("scoped_stale", "accepted", 30);
   const dryCancel = await scoped(["task", "cancel", scopedStale, "--stale-only", "--reason", "Stale accepted task with no recent contact or submission"]);
   assert.equal(dryCancel.result.phase, "dry_run");

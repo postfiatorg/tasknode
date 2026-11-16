@@ -95,6 +95,7 @@ export function chatEstimate(
       }).length
     : isHelpChatMode(mode) && chatPersonaUsesJobsRetrieval(persona)
       ? helpModeInstructions({
+          message,
           contextDocument,
           memoryContext,
           taskContext,
