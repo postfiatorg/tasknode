@@ -8,6 +8,11 @@ import {
 import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
 
 const SCREENSHOT_PROMPT_PATH = "task_engine/evidence_screenshot_read_v1.md";
+// The vision model's reasoning is billed against max_tokens before the visible
+// description. At 700, text-dense screenshots ran out mid-reasoning and failed
+// as inference_response_truncated on every retry. The prompt keeps the
+// description itself concise; this only leaves room to think.
+const EVIDENCE_VISION_MAX_TOKENS = 4000;
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -86,7 +91,7 @@ async function describeScreenshotWithOpenAi({
             ],
           },
         ],
-        max_tokens: Number(env.TASKNODE_EVIDENCE_VISION_MAX_TOKENS || 700),
+        max_tokens: Number(env.TASKNODE_EVIDENCE_VISION_MAX_TOKENS || EVIDENCE_VISION_MAX_TOKENS),
       },
     });
     const body = result.body;
