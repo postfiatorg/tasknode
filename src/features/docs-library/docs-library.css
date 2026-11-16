@@ -115,6 +115,7 @@
 .docs-file-icon.folder{background:var(--tn-dark-bg, #f5efdf);color:var(--tn-dark-warning, #ab8d4e)}
 .docs-file-icon.sheet{background:var(--tn-dark-bg, #edf2e9);color:var(--tn-dark-success, #638267)}
 .docs-file-icon.document{background:var(--tn-dark-bg, #eeeff0);color:var(--tn-dark-muted, #778394)}
+.docs-file-icon.prompt{background:var(--tn-dark-bg, #efeaf4);color:var(--tn-dark-muted, #7a6a96)}
 .docs-file-name>span:last-child{display:flex;flex-direction:column;gap:5px;min-width:0}
 .docs-file-name strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:550;color:var(--tn-dark-secondary, #38372f)}
 .docs-file-name small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;color:var(--tn-dark-muted, #999488)}
