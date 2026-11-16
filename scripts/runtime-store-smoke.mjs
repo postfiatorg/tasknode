@@ -91,7 +91,7 @@ try {
   if (modelForMode("Thinking") !== "deepseek/deepseek-v4.1-flash-1017") {
     throw new Error("Thinking must default to DeepSeek V4.1 Flash.");
   }
-  if (modelForMode("Help") !== "deepseek/deepseek-v4-flash-0731") {
+  if (modelForMode("Help") !== "deepseek/deepseek-v4.1-flash-1017") {
     throw new Error("Help must default to the configured fast-text model.");
   }
   if (!chatExecutionStatus("Instant").enabled || !chatExecutionStatus("Thinking").enabled) {

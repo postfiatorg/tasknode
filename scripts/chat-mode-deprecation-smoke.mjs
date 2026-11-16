@@ -19,7 +19,7 @@ assert.deepEqual(chatModes().map((mode) => mode.label), ["Instant", "Thinking", 
 
 assert.equal(modelForMode("Instant"), "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(modelForMode("Thinking"), "deepseek/deepseek-v4.1-flash-1017");
-assert.equal(modelForMode("Help"), "deepseek/deepseek-v4-flash-0731");
+assert.equal(modelForMode("Help"), "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(chatExecutionStatus("Instant").provider, "vercel");
 assert.equal(chatExecutionStatus("Thinking").provider, "vercel");
 

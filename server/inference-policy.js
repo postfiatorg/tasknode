@@ -1,11 +1,13 @@
 // GLM 5.3 deprecated as the default (founder 2026-11-09): DeepSeek V4.1 Flash, pinned to the
 // 1017 edition on Vercel AI Gateway, now serves instant, reasoning, structured and research.
 // Instant and Thinking differ by reasoning effort, not model. Old GLM ids resolve here via aliases.
+// Help, memory, narration, Hive immediate replies, profile snapshots and connection ranking were
+// left on DeepSeek V4 Flash 0731 by that change. They now run V4.1 Flash; old V4 Flash ids resolve here.
 const DEEPSEEK_V41_FLASH = "deepseek/deepseek-v4.1-flash-1017";
 
 export const INFERENCE_MODELS = Object.freeze({
   instantText: DEEPSEEK_V41_FLASH,
-  fastText: "deepseek/deepseek-v4-flash-0731",
+  fastText: DEEPSEEK_V41_FLASH,
   reasoningText: DEEPSEEK_V41_FLASH,
   structured: DEEPSEEK_V41_FLASH,
   research: DEEPSEEK_V41_FLASH,
@@ -17,7 +19,6 @@ const models = new Map([
   ["moonshotai/kimi-k3.1-pro", { ambient: "", image: true }],
   ["anthropic/claude-opus-5.5", { ambient: "", image: true }],
   [DEEPSEEK_V41_FLASH, { ambient: "z-ai/glm-5.2", image: true }],
-  [INFERENCE_MODELS.fastText, { ambient: "z-ai/glm-5.2", image: false }],
   [INFERENCE_MODELS.vision, { ambient: "google/gemma-4-26b-a4b-it", image: true }],
 ]);
 const aliases = new Map([
@@ -32,6 +33,8 @@ const aliases = new Map([
   ["glm-5.3-flash", INFERENCE_MODELS.instantText],
   ["deepseek/deepseek-v4.1-flash", DEEPSEEK_V41_FLASH],
   ["deepseek-v4.1-flash", DEEPSEEK_V41_FLASH],
+  ["deepseek/deepseek-v4-flash-0731", INFERENCE_MODELS.fastText],
+  ["deepseek-v4-flash-0731", INFERENCE_MODELS.fastText],
   ["deepseek/deepseek-v4-flash", INFERENCE_MODELS.fastText],
   ["deepseek-v4-flash", INFERENCE_MODELS.fastText],
   ["moonshotai/kimi-k3", "moonshotai/kimi-k3.1-pro"],

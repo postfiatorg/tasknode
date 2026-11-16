@@ -107,7 +107,7 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 | GPT-6 Astra | Vercel | `openai/gpt-6-astra` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Kimi K3.1 Pro | Vercel | `moonshotai/kimi-k3.1-pro` | Exact selection; no model override | Native image input, high reasoning; search disabled. | API-priced chat. |
 | Claude Opus 5.5 | Vercel | `anthropic/claude-opus-5.5` | Exact selection; zero data retention (the gateway fails rather than use a retaining provider) | Native image input, high reasoning; search disabled. | API-priced chat. |
-| Help | Vercel | `deepseek/deepseek-v4-flash-0731` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
+| Help | Vercel | `deepseek/deepseek-v4.1-flash-1017` | `fast_text` plus the Help prompt and User Guide | Local extraction; vision routing for images; 1,200-token response cap. | Plain-English Task Node product help. |
 
 Unknown mode strings are rejected with `unknown_chat_mode`. The signed-in app
 default is Instant and the signed-out app default is Help. Historical stored
