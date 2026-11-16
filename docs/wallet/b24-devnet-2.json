@@ -1,0 +1,3 @@
+{
+  "notice": "Historical singleton configuration retired. Use /api/l1/navcoin/registry and select an asset ID. Editorial registration is in server/l1/navcoin-metadata.json."
+}

@@ -1,0 +1,100 @@
+const ROOT = "/api/l1/bridge";
+const ROUTE = "ethereum-mainnet-usdc-v1";
+const WITHDRAW_SERVICE = (process.env.L1_WITHDRAW_SERVICE_URL || "http://127.0.0.1:18084").replace(/\/$/, "");
+const JOB_FIELDS = new Set([
+  "route_id", "source_chain_id", "deposit_tx_hash", "deposit_id", "pftl_recipient",
+  "depositor", "amount_atoms", "idempotency_key", "route_profile_hash", "route_epoch", "route_binding",
+]);
+
+export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "", bridgePathPrefix = "/api/bridge", withdrawViaRelay = false }) {
+  if (!url.pathname.startsWith(`${ROOT}/`)) return false;
+  res.setHeader("Cache-Control", "no-store");
+  const fail = (status, code, message) => { json(res, status, { ok: false, ready: false, code, message }); return true; };
+  if (!session?.accountId) return fail(401, "l1_login_required", "Sign in to use the bridge.");
+  const suffix = url.pathname.slice(ROOT.length);
+  if (suffix === "/withdrawals" || suffix.startsWith("/withdrawals/")) {
+    // PFUSDC -> USDC. The holder burns from their own wallet; this only starts and reads the payout job.
+    const wReady = req.method === "GET" && suffix === "/withdrawals/readiness";
+    const wJob = req.method === "GET" && /^\/withdrawals\/[0-9a-f]{96}$/.test(suffix);
+    const wCreate = req.method === "POST" && suffix === "/withdrawals";
+    if (!wReady && !wJob && !wCreate) return fail(404, "bridge_route_not_found", "Unknown bridge endpoint.");
+    let body;
+    if (wCreate) {
+      let origin;
+      try { origin = new URL(req.headers.origin); } catch { return fail(403, "bridge_origin_required", "Same-origin request required."); }
+      if (origin.host !== req.headers.host || req.headers["sec-fetch-site"] === "cross-site") return fail(403, "bridge_origin_mismatch", "Same-origin request required.");
+      body = await readJson(req, 4 * 1024);
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((key) => key !== "burn_tx_id") || !/^[0-9a-f]{96}$/.test(body.burn_tx_id || "")) {
+        return fail(400, "invalid_withdrawal_request", "Invalid withdrawal request.");
+      }
+    }
+    try {
+      // Through the relay on Fly; straight to the local payout service on the relay host.
+      const target = withdrawViaRelay ? `${String(bridgeProxyUrl).replace(/\/$/, "")}${bridgePathPrefix}${suffix}` : `${WITHDRAW_SERVICE}/api/bridge${suffix}`;
+      const response = await fetch(target, {
+        method: req.method, redirect: "error", signal: AbortSignal.timeout(45000),
+        headers: { Accept: "application/json", ...(withdrawViaRelay && proxyToken ? { Authorization: `Bearer ${proxyToken}` } : {}), ...(withdrawViaRelay && proxyOrigin ? { Origin: proxyOrigin } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const payload = await response.json();
+      if (withdrawViaRelay && proxyToken && JSON.stringify(payload).includes(proxyToken)) throw new Error("Unsafe withdrawal response");
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Invalid withdrawal response");
+      json(res, response.status, payload);
+      return true;
+    } catch {
+      return fail(502, "withdrawal_service_unavailable", "Withdrawals are unavailable: the payout service is unreachable.");
+    }
+  }
+  const isReadiness = req.method === "GET" && suffix === "/readiness";
+  const isJob = req.method === "GET" && /^\/jobs\/0x[0-9a-f]{64}$/.test(suffix);
+  const isCreate = req.method === "POST" && suffix === "/jobs";
+  if (!isReadiness && !isJob && !isCreate) return fail(404, "bridge_route_not_found", "Unknown bridge endpoint.");
+  if (isCreate) {
+    let origin;
+    try { origin = new URL(req.headers.origin); } catch { return fail(403, "bridge_origin_required", "Same-origin request required."); }
+    if (origin.host !== req.headers.host || req.headers["sec-fetch-site"] === "cross-site") {
+      return fail(403, "bridge_origin_mismatch", "Same-origin request required.");
+    }
+  }
+  const target = bridgeProxyUrl || proxyUrl;
+  if (!target) return fail(503, "bridge_proxy_unconfigured", "Bridge blocked: wallet proxy is not configured.");
+  try {
+    const upstream = new URL(target);
+    if (upstream.protocol === "ws:") upstream.protocol = "http:";
+    if (upstream.protocol === "wss:") upstream.protocol = "https:";
+    if (!["http:", "https:"].includes(upstream.protocol) || upstream.username || upstream.password) throw new Error("Invalid proxy URL");
+    upstream.pathname = `${bridgePathPrefix}${suffix}`;
+    upstream.search = isReadiness ? `?route=${ROUTE}` : "";
+    upstream.hash = "";
+    let body;
+    if (isCreate) {
+      body = await readJson(req, 16 * 1024);
+      if (!body || typeof body !== "object" || Array.isArray(body)
+          || Object.keys(body).some((key) => !JOB_FIELDS.has(key))
+          || body.route_id !== ROUTE || body.source_chain_id !== 1
+          || !/^pf[0-9a-f]{40}$/.test(body.pftl_recipient || "")
+          || !/^0x[0-9a-f]{64}$/.test(body.deposit_tx_hash || "")
+          || !/^0x[0-9a-f]{64}$/.test(body.deposit_id || "")
+          || !/^0x[0-9a-f]{40}$/.test(body.depositor || "")
+          || !/^[1-9][0-9]{0,19}$/.test(body.amount_atoms || "")
+          || !/^[0-9a-f]{96}$/.test(body.route_profile_hash || "")
+          || !Number.isSafeInteger(body.route_epoch) || body.route_epoch < 1
+          || !/^0x[0-9a-f]{64}$/.test(body.route_binding || "")
+          || !/^[a-zA-Z0-9:_-]{1,128}$/.test(body.idempotency_key || "")) {
+        return fail(400, "invalid_bridge_request", "Invalid bridge deposit request.");
+      }
+    }
+    const response = await fetch(upstream, {
+      method: req.method, redirect: "error", signal: AbortSignal.timeout(15000),
+      headers: { Accept: "application/json", ...(proxyToken ? { Authorization: `Bearer ${proxyToken}` } : {}), ...(proxyOrigin ? { Origin: proxyOrigin } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const payload = await response.json();
+    if (proxyToken && JSON.stringify(payload).includes(proxyToken)) throw new Error("Unsafe bridge response");
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Invalid bridge response");
+    json(res, response.status, payload);
+    return true;
+  } catch {
+    return fail(502, "bridge_upstream_unavailable", "Bridge blocked: readiness or job service is unreachable.");
+  }
+}

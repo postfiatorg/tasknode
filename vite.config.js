@@ -45,6 +45,7 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: apiOrigin,
+        ws: true,
         changeOrigin: false,
       },
       "/health": {
