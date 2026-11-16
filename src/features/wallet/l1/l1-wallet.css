@@ -796,3 +796,5 @@
   .l1-gallery-row > button { align-self: end; }
   .l1-coin-layout .l1-ticket .l1-price-head strong { font-size: 28px; }
 }
+
+.l1-experimental { margin-bottom: 16px; }

@@ -6,7 +6,7 @@ const JOB_FIELDS = new Set([
   "depositor", "amount_atoms", "idempotency_key", "route_profile_hash", "route_epoch", "route_binding",
 ]);
 
-export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "", bridgePathPrefix = "/api/bridge" }) {
+export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "", bridgePathPrefix = "/api/bridge", withdrawViaRelay = false }) {
   if (!url.pathname.startsWith(`${ROOT}/`)) return false;
   res.setHeader("Cache-Control", "no-store");
   const fail = (status, code, message) => { json(res, status, { ok: false, ready: false, code, message }); return true; };
@@ -29,12 +29,15 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
       }
     }
     try {
-      const response = await fetch(`${WITHDRAW_SERVICE}/api/bridge${suffix}`, {
+      // Through the relay on Fly; straight to the local payout service on the relay host.
+      const target = withdrawViaRelay ? `${String(bridgeProxyUrl).replace(/\/$/, "")}${bridgePathPrefix}${suffix}` : `${WITHDRAW_SERVICE}/api/bridge${suffix}`;
+      const response = await fetch(target, {
         method: req.method, redirect: "error", signal: AbortSignal.timeout(45000),
-        headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
+        headers: { Accept: "application/json", ...(withdrawViaRelay && proxyToken ? { Authorization: `Bearer ${proxyToken}` } : {}), ...(withdrawViaRelay && proxyOrigin ? { Origin: proxyOrigin } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       const payload = await response.json();
+      if (withdrawViaRelay && proxyToken && JSON.stringify(payload).includes(proxyToken)) throw new Error("Unsafe withdrawal response");
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Invalid withdrawal response");
       json(res, response.status, payload);
       return true;

@@ -10,6 +10,7 @@ const Redeem = lazy(() => import("./redeem/index.jsx"));
 import { L1WalletContext } from "./client.jsx";
 import { L1WalletCore } from "./core.js";
 import WalletHome from "./WalletHome.jsx";
+import Experimental from "./Experimental.jsx";
 import Send from "./Send.jsx";
 import Activity from "./Activity.jsx";
 import { Badge, Card, IdChip, Notice, Spinner, ViewHeader } from "./ui.jsx";
@@ -160,6 +161,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
   const Tab = tabs[tab];
   const view = tab === ISSUER.id ? ISSUER : VIEWS.find(item => item.id === tab);
   return <L1WalletContext.Provider value={client}><div className="route-scroll"><div className="l1w">
+    <Experimental />
     <header className="l1-head">
       <div><div className="l1-eyebrow">Post Fiat · quantum-resistant L1</div><h1>L1 wallet</h1></div>
       {address && <div className="l1-head-side">

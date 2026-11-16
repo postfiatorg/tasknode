@@ -944,7 +944,7 @@ export function App() {
               sidebarOpen={sidebarOpen}
             />
           )}
-          {runtimeConfig?.l1Wallet?.enabled === true && <SidebarButton active={view === "l1-wallet"} icon={Wallet} label="L1 wallet" onClick={() => navigateToView("l1-wallet")} sidebarOpen={sidebarOpen} />}
+          {runtimeConfig?.l1Wallet?.enabled === true && <SidebarButton active={view === "l1-wallet"} icon={Wallet} label="L1 wallet (experimental)" onClick={() => navigateToView("l1-wallet")} sidebarOpen={sidebarOpen} />}
           <SidebarButton
             active={view === "wallet"}
             icon={Wallet}

@@ -90,7 +90,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
         if (!credential) { json(res, 503, { error: 'l1_proxy_credential_unavailable' }); return; }
         if (await handleBridgeRoutes({ ...context, bridgeProxyUrl: relay?.origin || env.L1_BRIDGE_PROXY_URL || '',
           proxyToken: relay?.token || credential.token, proxyOrigin: relay?.origin || env.L1_BRIDGE_PROXY_ORIGIN || proxyOrigin,
-          bridgePathPrefix: relay ? '/api/l1/bridge' : '/api/bridge' })) return;
+          bridgePathPrefix: relay ? '/api/l1/bridge' : '/api/bridge', withdrawViaRelay: Boolean(relay) })) return;
       }
       if (await handleNavcoinRoutes(context)) return;
       json(res, url.pathname === '/api/l1/rpc' ? 426 : 404, { error: url.pathname === '/api/l1/rpc' ? 'l1_websocket_required' : 'l1_route_not_found' });

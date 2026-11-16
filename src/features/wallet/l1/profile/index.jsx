@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Experimental from '../Experimental.jsx';
 import { ArrowLeft, ArrowUpRight, RefreshCw } from 'lucide-react';
 import { Badge, Card, CardHead, Details, KV, Notice, Spinner } from '../ui.jsx';
 import { precisePercentages } from './verification.js';
@@ -126,5 +127,5 @@ function Snapshot({ data }) {
 }
 export default function Profile({ slug = 'b24', epoch = null }) {
   const state = useRead(`/api/l1/navcoin/profiles/${slug}${epoch ? `/snapshots/${epoch}` : ''}`);
-  return <div className="route-scroll"><main className="l1w navcoin-profile"><nav className="profile-coins" aria-label="NAVCoin profiles">{state.data?.profiles?.map(coin => <a key={coin.slug} href={link(coin.slug)} aria-current={coin.slug === slug ? 'page' : undefined}>{coin.name}{coin.retired ? ' · Retired' : ''}</a>)}</nav><div className="l1-toolbar"><span>Public profile · no wallet unlock needed</span><button className="l1-btn is-sm" type="button" onClick={state.refresh} disabled={state.loading}><RefreshCw size={14} />Refresh</button></div>{state.loading && <Card><p role="status"><Spinner /> Reading finalized chain data…</p></Card>}{state.error && <Notice tone="danger" title="Live data could not be read">{state.error}</Notice>}{state.data && <>{epoch ? <Snapshot data={state.data} /> : <CoinProfile data={state.data} />}<p className="l1-small l1-muted">Read {state.data.observed_at || state.data.read_at}. Refreshes every minute. Native network: devnet-2; Ethereum pools: mainnet.</p></>}</main></div>;
+  return <div className="route-scroll"><main className="l1w navcoin-profile"><Experimental /><nav className="profile-coins" aria-label="NAVCoin profiles">{state.data?.profiles?.map(coin => <a key={coin.slug} href={link(coin.slug)} aria-current={coin.slug === slug ? 'page' : undefined}>{coin.name}{coin.retired ? ' · Retired' : ''}</a>)}</nav><div className="l1-toolbar"><span>Public profile · no wallet unlock needed</span><button className="l1-btn is-sm" type="button" onClick={state.refresh} disabled={state.loading}><RefreshCw size={14} />Refresh</button></div>{state.loading && <Card><p role="status"><Spinner /> Reading finalized chain data…</p></Card>}{state.error && <Notice tone="danger" title="Live data could not be read">{state.error}</Notice>}{state.data && <>{epoch ? <Snapshot data={state.data} /> : <CoinProfile data={state.data} />}<p className="l1-small l1-muted">Read {state.data.observed_at || state.data.read_at}. Refreshes every minute. Native network: devnet-2; Ethereum pools: mainnet.</p></>}</main></div>;
 }
