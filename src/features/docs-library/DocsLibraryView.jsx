@@ -39,6 +39,22 @@ function pfdocsBridgeUrl({ action, documentType = "pad", href = "", origin, brid
   return target.toString();
 }
 
+// Prompt documents get exactly one assistant; other documents never get it.
+const DOCS_ASSISTANTS = [
+  { persona: "odv", mention: "@ODV", label: "ODV" },
+  { persona: "coach", mention: "@coach", label: "Trading Coach" },
+  { persona: "prompt", mention: "@prompt", label: "Prompt Assistant" },
+];
+
+function docsAssistantAgents(documentType, enabled) {
+  if (!enabled) return [];
+  return DOCS_ASSISTANTS.filter((agent) => (agent.persona === "prompt") === (documentType === "prompt"));
+}
+
+function docsAssistantLabel(persona) {
+  return DOCS_ASSISTANTS.find((agent) => agent.persona === persona)?.label || "ODV";
+}
+
 function docsChatIdentity(identity = {}) {
   const rawHandle = String(identity.hiveHandle || "").trim();
   const handle = rawHandle.startsWith("@") ? rawHandle.slice(1) : rawHandle;
@@ -229,10 +245,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       title: String(metadata.title || activeEditor.title || "Untitled document").trim().slice(0, 180),
       identity: docsChatIdentity(data.identity),
       odv: { enabled: activeEditor.documentType !== "prompt" && collaboration.docsOdvEnabled === true, mention: "@ODV", model: "deepseek/deepseek-v4.1-flash-1017", provider: "vercel" },
-      agents: activeEditor.documentType !== "prompt" && collaboration.docsOdvEnabled === true ? [
-        { persona: "odv", mention: "@ODV", label: "ODV" },
-        { persona: "coach", mention: "@coach", label: "Trading Coach" },
-      ] : [],
+      agents: docsAssistantAgents(activeEditor.documentType, collaboration.docsOdvEnabled === true),
     }, new URL(collaboration.pfdocsOrigin).origin);
   }, [collaboration.docsOdvEnabled, collaboration.pfdocsOrigin]);
 
@@ -327,9 +340,11 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
       if (["pfdocs.tasknode.assistant-request", "pfdocs.tasknode.odv-request"].includes(data.type)) {
         const activeEditor = editorRef.current;
         if (!activeEditor?.documentId || data.requestId !== activeEditor.requestId || data.channelHash !== activeEditor.channelHash) return;
-        if (activeEditor.documentType === "prompt") return;
-        const responseTarget = event.source;
         const legacyOdv = data.type === "pfdocs.tasknode.odv-request";
+        // A prompt document talks only to the prompt assistant, and only when mentioned.
+        const promptDocument = activeEditor.documentType === "prompt";
+        if (promptDocument !== (data.persona === "prompt") || (promptDocument && legacyOdv)) return;
+        const responseTarget = event.source;
         const responseType = legacyOdv ? "tasknode.pfdocs.odv-response" : "tasknode.pfdocs.assistant-response";
         void requestJson(`/api/docs/documents/${activeEditor.documentId}/${legacyOdv ? "odv" : "assistant"}`, {
           method: "POST",
@@ -337,7 +352,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
           body: JSON.stringify({
             channelHash: data.channelHash,
             persona: data.persona || "odv",
-            includeFullContext: editorFullContext === true,
+            includeFullContext: !promptDocument && editorFullContext === true,
             prompt: data.prompt,
             documentTitle: data.documentTitle,
             documentContent: data.documentContent,
@@ -353,7 +368,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
             ok: result.ok,
             response: result.body?.response || "",
             persona: result.body?.persona || data.persona || "odv",
-            label: result.body?.label || (data.persona === "coach" ? "Trading Coach" : "ODV"),
+            label: result.body?.label || docsAssistantLabel(data.persona),
             model: result.body?.model || "deepseek/deepseek-v4.1-flash-1017",
             error: result.ok ? "" : errorText(result, "The mentioned document assistant could not answer this request."),
           }, pfdocsOrigin);
@@ -367,7 +382,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
             ok: false,
             response: "",
             persona: data.persona || "odv",
-            label: data.persona === "coach" ? "Trading Coach" : "ODV",
+            label: docsAssistantLabel(data.persona),
             model: "deepseek/deepseek-v4.1-flash-1017",
             error: "The mentioned document assistant could not answer this request.",
           }, pfdocsOrigin);
@@ -1114,7 +1129,7 @@ export function DocsLibraryView({ collaboration = {}, onLogin, onWalletUnlock, s
             <input aria-label="Include full Task Node context" checked={editorFullContext} onChange={(event) => setEditorFullContext(event.target.checked)} type="checkbox" />
             <span>Full context</span>
           </label>}
-          {editor.documentType !== "prompt" && <button className="docs-editor-chat" disabled={editorLoading || !editor.channelHash} onClick={() => sendEditorCommand("chat-toggle")} type="button"><MessageSquare size={14} />Chat</button>}
+          <button className="docs-editor-chat" disabled={editorLoading || !editor.channelHash} onClick={() => sendEditorCommand("chat-toggle")} type="button"><MessageSquare size={14} />Chat</button>
         </div>
       </header>
       {state.error && <p className="collab-error docs-editor-error">{state.error}</p>}
