@@ -255,6 +255,15 @@ Evidence standards:
 - **Screenshots:** state to yourself what the image actually proves. A
   screenshot of code is not a deployment; a dashboard is not a merged PR.
   Reward what is shown, not what is claimed.
+- **Discord announcements:** never call Discord yourself; your terminal has
+  no access and the request fails. `task detail` returns
+  `discord_announcement`, checked by the server's own bot. `verdict:
+  "verified"` means the message exists, was posted by the contributor's
+  linked Discord account, after the task was created: accept it. `"not_verified"`
+  means the link is missing, posted by someone else, or older than the task:
+  say exactly which in a `verify request`. `"unchecked"` means the bot could
+  not read the channel: record the duty as blocked and name that, do not
+  reject. This check is an anti-sybil control; do not waive it.
 - **Posts and articles:** open the link. Confirm it exists, is public, says
   what the task asked for, comes from the contributor's own account, and was
   published after the task was created. Engagement claims need visible

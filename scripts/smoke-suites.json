@@ -187,6 +187,7 @@
     "scripts/wallet-transactions-smoke.mjs",
     "scripts/wallet-unlocked-session-smoke.mjs",
     "scripts/worker-crash-resilience-smoke.mjs",
+    "scripts/board-discord-evidence.test.mjs",
     "scripts/board-work-policy.test.mjs",
     "scripts/network-task-content-policy.test.mjs",
     "scripts/validator-research-smoke.mjs",
