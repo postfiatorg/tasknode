@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { registerL1Gateway } from './gateway.js';
 import { localRpc } from './read-rpc.js';
+import { getNavcoinRegistry } from './navcoin-registry.js';
 import { L1_SERVER_READ_METHODS, relaySettings } from './release-config.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
 
@@ -41,11 +42,22 @@ export function createRelayServer(env = process.env, injectedRead) {
     getSession: async () => ({ accountId: 'relay-service', authenticated: true }),
     cookieValue: () => '', json, readJson, recoverSubmit: null,
   });
+  // The coin list is read here, beside the validators, and kept warm so the public site gets it in one request.
+  const registry = () => injectedRead ? Promise.reject(Error('unavailable')) : getNavcoinRegistry({ ...env, L1_RELAY_URL: '' });
+  const warm = injectedRead ? null : setInterval(() => { registry().catch(() => {}); }, 10000);
+  warm?.unref();
   let activeReads = 0;
   const sockets = new Set();
   const server = createServer((req, res) => {
     if (!authorized(req)) { json(res, 401, { error: 'relay_auth_required' }); return; }
     if (req.url === '/health' && req.method === 'GET') { json(res, 200, { ok: true }); return; }
+    if (req.url === '/registry' && req.method === 'GET') {
+      registry().then(coins => {
+        if (JSON.stringify(coins).includes(settings.token)) throw Error('Unsafe response');
+        json(res, 200, { ok: true, coins });
+      }).catch(() => { if (!res.headersSent) json(res, 502, { error: 'relay_registry_unavailable' }); else res.destroy(); });
+      return;
+    }
     if (req.url === '/read' && req.method === 'POST') {
       if (activeReads >= 16) { json(res, 429, { error: 'relay_busy' }); return; }
       activeReads++;
@@ -78,7 +90,7 @@ export function createRelayServer(env = process.env, injectedRead) {
   });
   server.requestTimeout = 20000;
   server.headersTimeout = 10000;
-  server.on('close', () => gateway.close());
+  server.on('close', () => { clearInterval(warm); gateway.close(); });
   return server;
 }
 
