@@ -1,10 +1,7 @@
 const ROOT = "/api/l1/bridge";
 const ROUTE = "ethereum-mainnet-usdc-v1";
 const WITHDRAW_SERVICE = (process.env.L1_WITHDRAW_SERVICE_URL || "http://127.0.0.1:18084").replace(/\/$/, "");
-<<<<<<< HEAD
-=======
 const FAUCET_SERVICE = (process.env.L1_FAUCET_SERVICE_URL || "http://127.0.0.1:18085").replace(/\/$/, "");
->>>>>>> origin/main
 const JOB_FIELDS = new Set([
   "route_id", "source_chain_id", "deposit_tx_hash", "deposit_id", "pftl_recipient",
   "depositor", "amount_atoms", "idempotency_key", "route_profile_hash", "route_epoch", "route_binding",
@@ -16,8 +13,6 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
   const fail = (status, code, message) => { json(res, status, { ok: false, ready: false, code, message }); return true; };
   if (!session?.accountId) return fail(401, "l1_login_required", "Sign in to use the bridge.");
   const suffix = url.pathname.slice(ROOT.length);
-<<<<<<< HEAD
-=======
   if (suffix === "/faucet") {
     // Starter PFT for a new wallet. The account id is set here from the session, never by the browser;
     // on the relay host the caller is the authenticated Task Node server, which forwards it.
@@ -51,7 +46,6 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
       return fail(502, "faucet_service_unavailable", "Starter PFT is unavailable right now.");
     }
   }
->>>>>>> origin/main
   if (suffix === "/withdrawals" || suffix.startsWith("/withdrawals/")) {
     // PFUSDC -> USDC. The holder burns from their own wallet; this only starts and reads the payout job.
     const wReady = req.method === "GET" && suffix === "/withdrawals/readiness";
