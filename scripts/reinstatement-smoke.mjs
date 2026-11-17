@@ -1,0 +1,90 @@
+import assert from "node:assert/strict";
+import { query, closePool } from "../server/db/pool.js";
+import { contributorAction, dispatchDue, personalStatus, reviewCase } from "../server/reinstatement.js";
+import { operatorQueue, overrideAction } from "../server/reinstatement-routes.js";
+import { claimVerificationResponses } from "../server/task-review-publication.js";
+
+assert.match(new URL(process.env.DATABASE_URL).pathname, /_test$/, "use a disposable test database");
+const seed = (id, owner, age) => query(`INSERT INTO account_blacklist(id,account_id,reason_code,reason,created_at)
+  VALUES ($1,$2,'operator_blacklist','Fixture',now()-$3::interval)`, [id, owner, age]);
+const act = (action, revision, evidence) => contributorAction({ owner: "author", id: "old", action, revision, evidence });
+const operator = (actor, action, request) => overrideAction({ actor, action, entry: "early", request, reason: "Ownership confirmed" });
+
+try {
+  await seed("old", "author", "3 days");
+  await seed("early", "other", "23 hours");
+  await seed("boundary", "exact", "24 hours");
+  await Promise.all([dispatchDue(), dispatchDue()]);
+  const offer = await personalStatus("author");
+  assert.equal(offer.stage, "offered");
+  assert.equal((await personalStatus("exact")).stage, "offered");
+  assert.equal((await personalStatus("other")).stage, "waiting");
+  assert.equal((await query("SELECT FROM task_events WHERE task_id=$1", [offer.task_id])).rowCount, 1);
+  assert.equal((await query("SELECT FROM network_task_allocations WHERE generated_task_id=$1 AND reward_max_pft=0", [offer.task_id])).rowCount, 1);
+  await assert.rejects(query("UPDATE account_blacklist SET status='lifted' WHERE id='early'"), /resolution_required/);
+  await assert.rejects(contributorAction({ owner:"other", id:"old", action:"accept", revision:0 }), { status:404 });
+  await act("accept", 0);
+  await act("pause", 0);
+  await act("resume", 0);
+  await act("submit", 0, "A verifiable community contribution");
+  const review = (action, revision, token) => reviewCase({ id:"old", actor:"board-reviewer", action, revision, token, reason:"Evidence reviewed" });
+  const claim = await review("claim", 1);
+  assert.equal(claim.evidence, "A verifiable community contribution");
+  await query("UPDATE reinstatement_cases SET lease_until=now()-interval '1 second',submitted_at=now()-interval '25 hours' WHERE blacklist_id='old'");
+  await dispatchDue();
+  assert.ok((await personalStatus("author")).review_escalated_at);
+  await assert.rejects(review("reinstate", 1, claim.lease_token), { status:409 });
+  await review("revise", 1, (await review("claim", 1)).lease_token);
+  await act("submit", 1, "Updated evidence");
+  await assert.rejects(review("reinstate", 1, claim.lease_token), { status:409 });
+  const fresh = await review("claim", 2);
+  await review("reinstate", 2, fresh.lease_token);
+  assert.equal((await personalStatus("author")).resolved_via, "task");
+  assert.equal((await query("SELECT status FROM task_projections WHERE task_id=$1", [offer.task_id])).rows[0].status, "reinstatement_completed");
+  assert.equal((await claimVerificationResponses({ limit:10 })).some(row => row.task_id === offer.task_id), false);
+  assert.equal((await query("SELECT FROM task_review_publications WHERE task_id=$1", [offer.task_id])).rowCount, 0);
+
+  for (const id of ["A","B","C","D","other"]) {
+    await query("INSERT INTO app_accounts(account_id,account_json) VALUES ($1,'{}')", [id]);
+    await query("INSERT INTO reinstatement_operators(account_id) VALUES ($1)", [id]);
+  }
+  await query("UPDATE account_blacklist SET wallet_addresses=ARRAY['r-fixture'] WHERE id='early'");
+  await query("INSERT INTO account_linked_wallets(account_id,wallet_address) VALUES ('wallet-owner','r-fixture')");
+  const conflict = await personalStatus("wallet-owner");
+  assert.equal(conflict.wallet_restricted, true);
+  assert.equal(conflict.id, null);
+  assert.equal((await operatorQueue("A")).find(row => row.id === "early").wallet_reviews[0].account, "wallet-owner");
+  await assert.rejects(operatorQueue("unknown"), { status:403 });
+  const { request } = await operator("A");
+  assert.equal((await operator("A", "approve", request)).approvals, 1);
+  await assert.rejects(operator("other", "approve", request), { status:403 });
+  assert.equal((await operator("A", "approve", request)).approvals, 1);
+  await operator("B", "approve", request);
+  assert.equal((await operator("B", "withdraw", request)).approvals, 1);
+  await operator("B", "approve", request);
+  await query("DELETE FROM reinstatement_operators WHERE account_id='B'");
+  assert.equal((await personalStatus("other")).approvals, 1);
+  await Promise.all([operator("C", "approve", request), operator("D", "approve", request)]);
+  assert.equal((await personalStatus("other")).resolved_via, "override");
+  assert.equal((await query("SELECT FROM reinstatement_history WHERE blacklist_id='early' AND action='lifted'")).rowCount, 1);
+  await seed("again", "other", "1 hour");
+  await assert.rejects(operator("A","approve",request), { status:409 });
+  assert.equal((await personalStatus("other")).id, "again");
+  assert.equal((await personalStatus("other")).status, "active");
+  await seed("race", "racing-owner", "25 hours");
+  await dispatchDue();
+  const action = (name, evidence) => contributorAction({ owner:"racing-owner", id:"race", action:name, revision:0, evidence });
+  await action("accept");
+  await action("submit", "Independent evidence");
+  const reviewer = { id:"race", actor:"board-reviewer", revision:1 };
+  const lease = await reviewCase({ ...reviewer, action:"claim" });
+  const manual = { entry:"race", reason:"Independent review" };
+  const opened = await overrideAction({ ...manual, actor:"A" });
+  const vote = actor => overrideAction({ ...manual, actor, request:opened.request, action:"approve" });
+  await Promise.all([vote("A"), vote("C")]);
+  const outcomes = await Promise.allSettled([vote("D"), reviewCase({ ...reviewer, token:lease.lease_token, action:"reinstate", reason:"Verified" })]);
+  assert.equal(outcomes.filter(item => item.status === "fulfilled").length, 1);
+  assert.equal(outcomes.find(item => item.status === "rejected").reason.status, 409);
+  assert.equal((await query("SELECT FROM reinstatement_history WHERE blacklist_id='race' AND action='lifted'")).rowCount, 1);
+  console.log("Reinstatement clock, issuance, walletless revisions, lease recovery, unpaid resolution and operator quorum passed.");
+} finally { await closePool(); }

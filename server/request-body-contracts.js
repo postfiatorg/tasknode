@@ -107,6 +107,7 @@ const chatProperties = {
 };
 
 const taskProperties = {
+  reinstatementRevision: integer(0),
   phase: text(40),
   expectedAccountId: text(180),
   expectedAttemptCount: integer(),

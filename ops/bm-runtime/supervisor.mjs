@@ -74,7 +74,7 @@ export function mergeRoundProgress(pending, round) {
 // escalate instead of quietly cycling. Routing, staleness and board-info duties
 // recur legitimately (nothing routable, not yet eligible) and are not tracked.
 export const RECURRING_BLOCKER_ROUNDS = 2;
-export const PROGRESS_DUTY_TYPES = new Set(["review_due", "verification_due", "hive_chat_escalation"]);
+export const PROGRESS_DUTY_TYPES = new Set(["review_due", "verification_due", "hive_chat_escalation", "reinstatement_review"]);
 export const ROUND_OPEN_HOLDOFF_MS = 60_000;
 
 // Keyed by the stable duty identity (type, board, task). Some hashed duty ids
@@ -176,7 +176,10 @@ export async function superviseOnce() {
       if (pending) save(pendingFile, pending);
     }
     if (pending && round?.state === "pending") {
-      pending = mergeRoundProgress(pending, round); save(pendingFile, pending);
+      pending = mergeRoundProgress(pending, round);
+      pending.overdueReinstatement = round.duties_json?.some(duty => duty.type === "reinstatement_review" &&
+        !round.results_json?.[duty.id] && Date.now() - Date.parse(duty.submitted_at) >= 86400000);
+      save(pendingFile, pending);
     }
     const control = path.join(stateDir, `${agent.alias}.control`);
     const status = read(path.join(control, "status.json"));

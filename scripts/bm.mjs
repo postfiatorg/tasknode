@@ -77,6 +77,7 @@ const usage = [
       "  user <account|wallet>       task history + badges",
       "  history <board> [--limit N] terminal task history",
       "  duties [board...]           current mandatory duties",
+      "  reinstatement claim|revise|reinstate <entry> --revision N [--lease TOKEN --reason TEXT] (scoped API)",
       "  hive-inbox [board...]       public Hive escalations (scoped API)",
       "  hive-reply <id> --message <public text> --outcome resolved|declined (scoped API)",
       "  task detail <taskId>        scoped task, submission and verification evidence",

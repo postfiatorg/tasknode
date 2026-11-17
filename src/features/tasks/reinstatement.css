@@ -1,0 +1,7 @@
+.reinstatement-card { margin: 1rem; padding: 1rem 1.25rem; border: 1px solid currentColor; border-radius: .5rem; }
+.reinstatement-card h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
+.reinstatement-card p { margin: .5rem 0; overflow-wrap: anywhere; }
+.reinstatement-card fieldset { min-width: 0; padding: 0; border: 0; margin: .75rem 0 0; }
+.reinstatement-card label, .reinstatement-card textarea { display: block; }
+.reinstatement-card textarea { width: 100%; min-height: 5rem; }
+.reinstatement-card button { margin: .25rem .5rem .25rem 0; }

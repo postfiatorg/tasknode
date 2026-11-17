@@ -319,6 +319,7 @@ export async function claimVerificationResponses({ limit = 1 } = {}) {
         FROM task_projections
         WHERE status = 'verification_response_submitted'
           AND COALESCE(metadata_json->'workers'->'reward_scoring'->>'published', '') <> 'true'
+          AND NOT EXISTS (SELECT FROM reinstatement_cases rc WHERE rc.task_id=task_projections.task_id)
           ${REWARD_CLAIM_BLACKLIST_EXCLUSION_SQL}
           AND NOT EXISTS (
             SELECT 1

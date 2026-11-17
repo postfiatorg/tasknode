@@ -6,6 +6,7 @@ import { computeBoardDuties } from "../scripts/bm/lib.mjs";
 export function dutyId(duty) {
   const identity = [duty.type, duty.board_id, duty.task_id || ""];
   if (duty.escalation_id) identity.push(duty.escalation_id);
+  if (duty.revision) identity.push(duty.revision);
   if (Array.isArray(duty.candidate_ids)) identity.push([...duty.candidate_ids].sort());
   if (duty.staleness) identity.push(duty.staleness.lastActivityAt, duty.staleness.cancellationEligible);
   return createHash("sha256").update(JSON.stringify(identity)).digest("hex").slice(0, 24);

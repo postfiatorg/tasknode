@@ -31,7 +31,7 @@ import { formatCreditUsd } from "../formatters";
 import { isSignedInSession } from "../session";
 import { appExtensionRegistry, ExtensionSurface } from "../extensions/index.js";
 import { pendingAgentLinkFromLocation, usePendingAgentLink } from "./pending-agent-link.js";
-import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, settingsPageFromLocation, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
+import { AGENT_CONNECT_GUIDE_URL, APP_VIEWS, BlacklistView, DirectoryView, settingsPageFromLocation, EMPTY_TASKS, EMPTY_WALLET_VAULT_STATUS, MORE_EXTENSION_VIEWS, RouteErrorBoundary, StatusBanner, TASK_ACTION_RECEIPTS_STORAGE_KEY, WALLET_ACTIVITY_EVENT_NAME, WALLET_BALANCE_REFRESH_MS, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS, fallbackConfig, fetchAppStateWithSessionRetry, initialSidebarOpen, isMobileViewport, memberProfileAccountIdFromLocation, profileNftImageCandidates, taskIdFromLocation, taskLifecycleDirectOffchain, taskSelectionFingerprint, viewFromLocation, writeAuthSessionHint, writeTaskLocation, writeViewLocation } from "./app-shell-shared.jsx";
 const LoginDialog = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.LoginDialog })));
 const SettingsModal = lazy(() => import("../features/settings/AppDialogs.jsx").then((module) => ({ default: module.SettingsModal })));
 const ContextView = lazy(() => import("../features/context/ContextView.jsx").then((module) => ({ default: module.ContextView })));
@@ -44,8 +44,7 @@ const FinanceHubView = lazy(() => import("../features/research/FinanceHubView.js
 const TASKS_VIEW_FRESH_STATE_MS = 2000;
 const ProfilePage = lazy(() => import("../features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
 const MemberProfilePage = lazy(() => import("../features/profile/ProfileView").then((module) => ({ default: module.MemberProfileView })));
-const DirectoryView = lazy(() => import("../features/directory/DirectoryView").then((module) => ({ default: module.DirectoryView })));
-const BlacklistView = lazy(() => import("../features/directory/BlacklistView").then((module) => ({ default: module.BlacklistView })));
+import { ReinstatementCard } from "../features/tasks/ReinstatementCard.jsx";
 export function App() {
   const [view, setView] = useState(() => viewFromLocation());
   const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
@@ -1269,6 +1268,7 @@ export function App() {
           )}
         </header>
         {chatDeleteBanner}
+        {signedIn && !accountTransitioning && <ReinstatementCard key={session.accountId} view={view} navigate={navigateToView} onResolved={refreshAppState} />}
         {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
         {appStateLoading && <StatusBanner>Loading product state</StatusBanner>}
         {signedIn && hiveGroupStatus?.accountId === session?.accountId && hiveGroupStatus?.messaging && !hiveGroupStatus.messaging.binding && messagesPromptDismissed !== session.accountId && !["messages", "hive-chat"].includes(view) && (
@@ -1323,7 +1323,7 @@ export function App() {
               <DirectoryView />
             </Suspense>
           )}
-          {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView /></Suspense>}
+          {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView key={session?.accountId} accountId={session?.accountId} /></Suspense>}
           {view === "l1-wallet" && (runtimeConfig?.l1Wallet?.enabled === true ? <Suspense fallback={<StatusBanner>Loading L1 wallet</StatusBanner>}><L1WalletView key={signedIn && !accountTransitioning ? walletAccountId : "signed-out"} accountId={signedIn && !accountTransitioning ? walletAccountId : ""} isAccountCurrent={() => !accountBoundaryRef.current.transitioning && accountBoundaryRef.current.accountId === walletAccountId} /></Suspense> : <StatusBanner>The L1 wallet is unavailable.</StatusBanner>)}
           {view === "wallet" && (
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>

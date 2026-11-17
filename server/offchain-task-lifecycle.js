@@ -258,6 +258,7 @@ function normalizeDirectSubmissionPayload({ payload = {}, providedPayload = {}, 
 }
 
 export function offchainTaskEventPayload({
+  systemReinstatementOffer = false,
   accountId = "",
   walletAddress = "",
   task = {},
@@ -308,7 +309,7 @@ export function offchainTaskEventPayload({
   const signatureJson = signatureRecord({
     payload: eventPayload,
     signature: payload?.actorSignature || payload?.actor_signature || rawProvidedPayload.actor_signature || {},
-    required: taskTransitionSignatureRequired(),
+    required: !systemReinstatementOffer && taskTransitionSignatureRequired(),
   });
   const result = {
     eventId,
@@ -398,12 +399,19 @@ export async function applyOffchainTaskOfferWithClient(client, {
   offerPayload = {},
   metadata = {},
   requestAttempt = null,
+  reinstatementId = null,
 } = {}) {
   const payload = safeObject(offerPayload);
   const taskId = safeText(payload.task_id, 180);
   const subjectWallet = safeText(walletAddress || payload.subject_wallet, 180);
   if (!taskId) throw new Error("offchain_offer_task_id_required");
-  if (!subjectWallet) throw new Error("offchain_offer_subject_wallet_required");
+  if (!subjectWallet) {
+    if (!reinstatementId) throw new Error("offchain_offer_subject_wallet_required");
+    const bound = await client.query(`SELECT FROM reinstatement_cases c JOIN account_blacklist b ON b.id=c.blacklist_id
+      WHERE c.blacklist_id=$1 AND c.task_id=$2 AND b.account_id=$3 AND c.stage='offered' AND b.status='active'`,
+      [reinstatementId, taskId, accountId]);
+    if (!bound.rowCount) throw new Error("reinstatement_offer_not_bound");
+  }
   if (requestAttempt) {
     const owned = await client.query(`SELECT request_id FROM task_requests
       WHERE request_id=$1 AND account_id=$2 AND status='generating' AND worker_attempt_id=$3
@@ -420,6 +428,7 @@ export async function applyOffchainTaskOfferWithClient(client, {
     walletAddress: subjectWallet,
     task,
     transition: "proposed",
+    systemReinstatementOffer: Boolean(reinstatementId && !subjectWallet),
     payload: { offchainPayload: payload },
     metadata,
   });

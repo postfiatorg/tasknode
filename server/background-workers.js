@@ -1,4 +1,5 @@
 import { startValidatorResearchWorker } from "./validator-research-worker.js";
+import { startReinstatementWorker } from "./reinstatement.js";
 import { startMemoryWorker } from "./chat-memory-worker.js";
 import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
 import { startHiveReportsWorker } from "./hive-reports-worker.js";
@@ -46,6 +47,7 @@ function startTaskgenWorkers(startOne) {
 
 function startTaskReviewWorkers(startOne) {
   startOne("task_review", startTaskReviewWorker);
+  startOne("reinstatement", startReinstatementWorker);
 }
 
 function startContextRewriteWorkers(startOne) {

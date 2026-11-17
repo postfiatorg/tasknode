@@ -79,6 +79,7 @@ async function taskContext(taskId) {
 }
 
 export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedback = "" }) {
+  if (String(taskId).startsWith("task_reinstate_")) throw new Error("Use the reinstatement command for this unpaid task");
   const task = await taskContext(taskId);
   if (!task) throw new Error(`task_not_found:${taskId}`);
   const boardId = await boardForTask(taskId);
@@ -163,6 +164,7 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
 }
 
 export async function verifyRequest({ taskId, ask, type = "evidence", reason = "" }) {
+  if (String(taskId).startsWith("task_reinstate_")) throw new Error("Use the reinstatement command for this unpaid task");
   const task = await taskContext(taskId);
   if (!task) throw new Error(`task_not_found:${taskId}`);
   const boardId = await boardForTask(taskId);
@@ -367,6 +369,7 @@ export async function taskCreate({
 }
 
 export async function cancelTask({ taskId, reason = "", execute = false, staleOnly = false }) {
+  if (String(taskId).startsWith("task_reinstate_")) throw new Error("Use the reinstatement command for this unpaid task");
   if (!safeText(taskId)) throw new Error("taskId required");
   if (!safeText(reason)) throw new Error("--reason required: cancellations are public audit events");
   const task = await query(
