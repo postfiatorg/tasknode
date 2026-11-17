@@ -28,8 +28,9 @@ function JourneyCard({ held, onNavigate, loaded }) {
   </Card>;
 }
 
-function AssetRow({ code, name, sub, atoms, value, note, loading }) {
-  return <div className="l1-asset">
+function AssetRow({ code, name, sub, atoms, value, note, loading, href }) {
+  const Row = href ? 'a' : 'div';
+  return <Row className={`l1-asset${href ? ' is-link' : ''}`} href={href} aria-label={href ? `Open ${code} profile` : undefined}>
     <AssetAvatar code={code} />
     <div className="l1-asset-name"><span>{code}</span><small>{name}{sub ? ` · ${sub}` : ''}</small></div>
     <div className="l1-asset-val">
@@ -37,7 +38,7 @@ function AssetRow({ code, name, sub, atoms, value, note, loading }) {
       {value !== undefined && <small>{value === null ? '—' : usd(value)}</small>}
     </div>
     {note && <div className="l1-asset-sub">{note}</div>}
-  </div>;
+  </Row>;
 }
 
 export default function WalletHome({ client, gallery, onNavigate = () => {} }) {
@@ -114,7 +115,7 @@ export default function WalletHome({ client, gallery, onNavigate = () => {} }) {
         <div className="l1-assets" aria-label="Balances">
           <AssetRow code="PFT" name="Post Fiat" sub="pays network fees" atoms={account?.balance} loading={loading} />
           <AssetRow code="PFUSDC" name="USDC on Post Fiat" sub="1:1" atoms={held.pfusdc} loading={loading} value={coins ? (pfusdcValue ?? 0n) : undefined} />
-          {navHoldings?.filter(item => item.balance > 0n).map(item => <AssetRow key={item.coin.asset_id} code={item.coin.name} name="NAVCoin" sub={item.coin.retired ? 'Retired · historical NAV excluded' : item.coin.latest ? `NAV $${amount(item.coin.latest.nav_per_unit)}` : 'NAV unavailable'} atoms={item.balance} value={item.value} loading={loading} note={item.coin.freshness?.stale ? 'Stale NAV reading' : undefined} />)}
+          {navHoldings?.filter(item => item.balance > 0n).map(item => <AssetRow key={item.coin.asset_id} href={`#l1-wallet/navcoins/${item.coin.slug}`} code={item.coin.name} name="NAVCoin" sub={item.coin.retired ? 'Retired · historical NAV excluded' : item.coin.latest ? `NAV $${amount(item.coin.latest.nav_per_unit)}` : 'NAV unavailable'} atoms={item.balance} value={item.value} loading={loading} note={item.coin.freshness?.stale ? 'Stale NAV reading' : undefined} />)}
         </div>
         {others.length > 0 && <div className="l1-asset-more"><Details summary={`Other assets (${others.length})`}>
           {others.map(item => <div key={item.id} className="l1-row" style={{ justifyContent: 'space-between' }}><span>{item.code || 'Asset'} <span className="l1-muted l1-small">{item.id?.slice(0, 10)}…</span></span><Amount atoms={item.balance} precision={item.precision} /></div>)}
