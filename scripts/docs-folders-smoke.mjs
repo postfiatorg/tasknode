@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { changeDocsLibrary, emptyDocsLibrary, folderTrail, readDocsLibrary } from "../src/features/docs-library/docs-folders.js";
+import { changeDocsLibrary, emptyDocsLibrary, folderScope, folderTrail, readDocsLibrary } from "../src/features/docs-library/docs-folders.js";
 import { createDocsRootKey, decryptDocsMetadata, encryptDocsMetadata } from "../src/features/docs-library/docs-crypto.js";
 import { routePolicyForPath } from "../server/route-policies.js";
 
@@ -87,4 +87,22 @@ try {
   await query("UPDATE docs_accounts SET status='locked' WHERE account_id='folder_bob'");
   assert.equal((await updateDocsLibrary({ accountId: "folder_bob", expectedVersion: 0, encryptedLibraryMetadata: envelope })).status, 409);
 } finally { await getPool()?.end(); }
+// Prompts keeps its own folders: same names can exist in both spaces, children inherit the space, and folders never cross.
+{
+  let scoped = emptyDocsLibrary();
+  scoped = changeDocsLibrary(scoped, { action: "create", id: "docs-a", name: "Drafts", parentId: "" });
+  scoped = changeDocsLibrary(scoped, { action: "create", id: "prompts-a", name: "Drafts", parentId: "", scope: "prompts" });
+  scoped = changeDocsLibrary(scoped, { action: "create", id: "prompts-b", name: "Hive", parentId: "prompts-a" });
+  assert.equal(folderScope(scoped.folders.find(f => f.id === "docs-a")), "docs");
+  assert.equal(scoped.folders.find(f => f.id === "docs-a").scope, undefined);
+  assert.equal(folderScope(scoped.folders.find(f => f.id === "prompts-a")), "prompts");
+  assert.equal(folderScope(scoped.folders.find(f => f.id === "prompts-b")), "prompts");
+  assert.throws(() => changeDocsLibrary(scoped, { action: "create", id: "dup", name: "drafts", parentId: "", scope: "prompts" }), /already exists/);
+  assert.throws(() => changeDocsLibrary(scoped, { action: "move", kind: "folder", id: "prompts-b", parentId: "docs-a" }), /cannot move between/);
+  assert.throws(() => readDocsLibrary({ version: 1, placements: {}, folders: [{ id: "x", name: "X", parentId: "", scope: "other" }] }), /Invalid folder organization/);
+  assert.throws(() => readDocsLibrary({ version: 1, placements: {}, folders: [{ id: "p", name: "P", parentId: "", scope: "prompts" }, { id: "c", name: "C", parentId: "p" }] }), /Invalid folder hierarchy/);
+  scoped = changeDocsLibrary(scoped, { action: "move", kind: "document", id: "prompt-doc", parentId: "prompts-b" });
+  scoped = changeDocsLibrary(scoped, { action: "remove", id: "prompts-b" });
+  assert.equal(scoped.placements["prompt-doc"], "prompts-a");
+}
 console.log("Docs folders: nested organization, moves, deletion preservation, encryption, stale/concurrent writes, and account isolation passed.");
