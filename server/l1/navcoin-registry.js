@@ -1,5 +1,6 @@
 import metadata from './navcoin-metadata.json' with { type: 'json' };
 import { localRpc } from './read-rpc.js';
+import { relaySettings } from './release-config.js';
 import { validateConfig } from '../../src/features/wallet/l1/market/constants.js';
 import { primaryReady } from '../../src/features/wallet/l1/primary/model.js';
 const activeOffers = (book, height) => (book?.offers || []).filter(o => o.state === 'open' && (!o.expiration_height || o.expiration_height > height));
@@ -55,12 +56,26 @@ export async function discoverRegistry(rpc, metadata) {
   if (status.block_tip_hash !== end.block_tip_hash) throw Error('Chain changed during registry read; refresh to read the new state.');
   return coins;
 }
+// Building the list takes two dozen sequential chain reads. Serve the last good copy at once and
+// rebuild behind it; every transaction still does its own fresh reads before signing.
+const FRESH_MS = 8000, USABLE_MS = 120000;
 let cached, pending;
-export async function getNavcoinRegistry() {
-  if (cached && Date.now() - cached.at < 15000) return cached.coins;
-  if (!pending) pending = (async () => {
-    const coins = await discoverRegistry(localRpc(), metadata);
-    cached = { coins, at: Date.now() }; return coins;
-  })().finally(() => { pending = null; });
+async function build(env) {
+  const relay = relaySettings(env);
+  if (relay) {
+    // One request to the relay host, which keeps its own warm copy next to the validators.
+    try {
+      const response = await fetch(`${relay.origin}/registry`, { redirect: 'error', signal: AbortSignal.timeout(20000), headers: { Authorization: `Bearer ${relay.token}` } });
+      const body = response.ok ? await response.json() : null;
+      if (body?.ok === true && Array.isArray(body.coins)) return body.coins;
+    } catch { /* older relay: fall through to per-read discovery */ }
+  }
+  return discoverRegistry(localRpc(env), metadata);
+}
+export async function getNavcoinRegistry(env = process.env) {
+  const age = cached ? Date.now() - cached.at : Infinity;
+  if (age < FRESH_MS) return cached.coins;
+  if (!pending) pending = build(env).then(coins => { cached = { coins, at: Date.now() }; return coins; }).finally(() => { pending = null; });
+  if (age < USABLE_MS) { pending.catch(() => {}); return cached.coins; }
   return pending;
 }
