@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { registerL1Gateway } from './gateway.js';
 import { localRpc } from './read-rpc.js';
 import { getNavcoinRegistry } from './navcoin-registry.js';
+import { explorerTarget } from './explorer-proxy.js';
 import { L1_SERVER_READ_METHODS, relaySettings } from './release-config.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
 
@@ -46,11 +47,30 @@ export function createRelayServer(env = process.env, injectedRead) {
   const registry = () => injectedRead ? Promise.reject(Error('unavailable')) : getNavcoinRegistry({ ...env, L1_RELAY_URL: '' });
   const warm = injectedRead ? null : setInterval(() => { registry().catch(() => {}); }, 10000);
   warm?.unref();
-  let activeReads = 0;
+  let activeReads = 0, activeExplorer = 0;
+  const explorerUrl = (env.L1_EXPLORER_URL || 'http://127.0.0.1:18086/api/explorer/v1').replace(/\/$/, '');
   const sockets = new Set();
   const server = createServer((req, res) => {
     if (!authorized(req)) { json(res, 401, { error: 'relay_auth_required' }); return; }
     if (req.url === '/health' && req.method === 'GET') { json(res, 200, { ok: true }); return; }
+    if (req.url.startsWith('/explorer/') && req.method === 'GET') {
+      // Block explorer reads for the public site. The path was already checked by the Task Node server;
+      // check it again here, then pass it to the loopback explorer service.
+      const parsed = new URL(req.url, 'http://relay');
+      const target = explorerTarget(`/api/l1/explorer/v1${parsed.pathname.slice('/explorer'.length)}`, parsed.searchParams);
+      if (!target || activeExplorer >= 16) { json(res, target ? 429 : 404, { error: target ? 'relay_busy' : 'relay_route_not_found' }); return; }
+      activeExplorer++;
+      fetch(`${explorerUrl}${target}`, { signal: AbortSignal.timeout(12000), redirect: 'error' })
+        .then(async upstream => {
+          const body = await upstream.text();
+          if (body.includes(settings.token)) throw Error('Unsafe response');
+          res.writeHead([200, 400, 404].includes(upstream.status) ? upstream.status : 502, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+          res.end(body);
+        })
+        .catch(() => { if (!res.headersSent) json(res, 502, { error: 'relay_explorer_unavailable' }); else res.destroy(); })
+        .finally(() => { activeExplorer--; });
+      return;
+    }
     if (req.url === '/registry' && req.method === 'GET') {
       registry().then(coins => {
         if (JSON.stringify(coins).includes(settings.token)) throw Error('Unsafe response');

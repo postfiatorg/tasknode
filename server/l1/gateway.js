@@ -9,6 +9,7 @@ import { createHistoryReader } from './history.js';
 import { createSubmitRecovery } from './submit-recovery.js';
 import { createProfileHandler } from './navcoin-profile.js';
 
+import { createExplorerHandler } from './explorer-proxy.js';
 import { L1_READ_METHODS, L1_SUBMIT_METHODS } from '../../src/features/wallet/l1/lib/rpc-methods.js';
 const MAX_BYTES = 1024 * 1024;
 const signedIn = session => Boolean(session?.accountId && (session?.authenticated === true || session?.status === 'signed_in'));
@@ -64,6 +65,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
   const sessions = new Set();
   const readHistory = createHistoryReader(env);
   const handleProfile = createProfileHandler();
+  const handleExplorer = createExplorerHandler(env);
   const authenticate = req => getSession(cookieValue(req, sessionCookieName));
   const handlers = server.listeners('request');
   server.removeAllListeners('request');
@@ -73,6 +75,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
     if (!url.pathname.startsWith('/api/l1/')) { for (const handler of handlers) handler(req, res); return; }
     if (!enabled) { json(res, 404, { error: 'l1_unavailable' }); return; }
     void (async () => {
+      if (await handleExplorer({ req, res, url })) return;
       res.setHeader('cache-control', 'no-store');
       if (await handleProfile({ req, res, url, json })) return;
       const session = await authenticate(req);

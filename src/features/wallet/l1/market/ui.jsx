@@ -133,7 +133,7 @@ export function ActionReview({ client, request, onComplete, onCancel }) {
         {effects.locked && BigInt(effects.locked) > 0n && <div className="l1-delta"><small>Locked in your open offer</small><span><Amount atoms={effects.locked} unit={request.lockedUnit} /></span></div>}
       </div>}
       {effects?.capacityAfter != null && <KV rows={[["Cash-in capacity", <>{amount(effects.capacityBefore)} → <Amount atoms={effects.capacityAfter} unit={request.symbol || "NAVCoin"} /></>]]} />}
-      <div className="l1-row"><span className="l1-muted l1-small">Transaction</span><IdChip value={outcome.txId} label="transaction id" /></div>
+      <div className="l1-row"><span className="l1-muted l1-small">Transaction</span><IdChip value={outcome.txId} label="transaction id" />{/^[0-9a-f]{96}$/.test(outcome.txId || "") && <a className="l1-link l1-small" href={`https://postfiat.org/explorer/#/tx/${outcome.txId}`} target="_blank" rel="noreferrer">View in explorer</a>}</div>
       <Details summary="Receipt and before/after balances">
         {effects?.message && <p className="l1-small l1-muted">{plainError(effects.message)}</p>}
         {effects?.credits && <KV className="is-tight" rows={[["Payout asset", <Mono value={effects.payoutAssetId} />], ["Paid to", <Mono value={effects.credits.settlement_recipient} />], ["Fee to", <Mono value={effects.credits.spread_recipient} />]]} />}
