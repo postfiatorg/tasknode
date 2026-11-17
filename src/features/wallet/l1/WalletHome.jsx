@@ -5,6 +5,7 @@ import { Amount, AssetAvatar, Card, CardHead, Details, Empty, Notice, Skeleton, 
 import { amount, amountParts, usd } from './format.js';
 import { classifyLines } from './portfolio.js';
 import { heldNavValues } from './gallery/model.js';
+import { bridgeJson } from './bridge/bridge-relay.js';
 
 function JourneyCard({ held, onNavigate, loaded }) {
   const hasCash = held.pfusdc > 0n, hasNav = held.nav > 0n;
@@ -57,6 +58,26 @@ export default function WalletHome({ client, gallery, onNavigate = () => {} }) {
     client.subscribe(() => { if (active) void refresh(); }).then(unsubscribe => { if (active) off = unsubscribe; else unsubscribe(); }).catch(() => {});
     return () => { active = false; off?.(); };
   }, [client, refresh]);
+  // A new wallet holds no PFT and cannot pay a network fee. Ask once for starter PFT, then watch for it.
+  const [starter, setStarter] = useState('');
+  const pftAccount = balances?.pft?.account || balances?.pft;
+  const emptyWallet = Boolean(balances) && client.unlocked && /^pf[0-9a-f]{40}$/.test(client.address || '') && BigInt(pftAccount?.balance ?? 0) === 0n && Number(pftAccount?.sequence ?? 0) === 0;
+  useEffect(() => {
+    if (!emptyWallet) { if (starter === 'sending') setStarter('sent'); return undefined; }
+    let active = true, timer, tries = 0;
+    const ask = async () => {
+      try {
+        const grant = await bridgeJson('/faucet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: client.address }) });
+        if (!active) return;
+        if (grant.stage === 'failed') { setStarter('failed'); return; }
+        setStarter('sending'); void refresh();
+        if (++tries < 30) timer = setTimeout(ask, 8000);
+      } catch { if (active) setStarter('failed'); }
+    };
+    void ask();
+    return () => { active = false; clearTimeout(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emptyWallet, client.address]);
   if (!client.unlocked) return <p>Unlock your L1 wallet to see balances.</p>;
   const account = balances?.pft?.account || balances?.pft;
   const lines = Array.isArray(balances?.assets) ? balances.assets : balances?.assets?.lines || [];
@@ -87,6 +108,9 @@ export default function WalletHome({ client, gallery, onNavigate = () => {} }) {
           <button type="button" className="l1-btn" onClick={() => onNavigate('Send')}><SendIcon size={16} aria-hidden />Send PFT</button>
         </div>
         {error && <div style={{ marginBottom: 16 }}><Notice tone="danger" role="alert" title="Balances could not be refreshed">{error} {balances && 'Last displayed balances may be stale.'}</Notice></div>}
+        {starter === 'sending' && <div style={{ marginBottom: 16 }}><Notice tone="info" title="Sending starter PFT">New wallets get a small amount of PFT to pay network fees. It arrives in about two minutes.</Notice></div>}
+        {starter === 'sent' && <div style={{ marginBottom: 16 }}><Notice tone="success" title="Starter PFT received">Your wallet can now pay network fees.</Notice></div>}
+        {starter === 'failed' && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="Starter PFT was not sent">This wallet has no PFT for network fees yet. Refresh the page to try again.</Notice></div>}
         <div className="l1-assets" aria-label="Balances">
           <AssetRow code="PFT" name="Post Fiat" sub="pays network fees" atoms={account?.balance} loading={loading} />
           <AssetRow code="PFUSDC" name="USDC on Post Fiat" sub="1:1" atoms={held.pfusdc} loading={loading} value={coins ? (pfusdcValue ?? 0n) : undefined} />

@@ -63,7 +63,7 @@ export function createRelayServer(env = process.env, injectedRead) {
         .finally(() => { activeReads--; });
       return;
     }
-    if (/^\/api\/l1\/bridge\/(?:readiness(?:\?route=ethereum-mainnet-usdc-v1)?|jobs(?:\/0x[0-9a-f]{64})?|withdrawals(?:\/readiness|\/[0-9a-f]{96})?)$/.test(req.url)) {
+    if (/^\/api\/l1\/bridge\/(?:readiness(?:\?route=ethereum-mainnet-usdc-v1)?|jobs(?:\/0x[0-9a-f]{64})?|withdrawals(?:\/readiness|\/[0-9a-f]{96})?|faucet)$/.test(req.url)) {
       inner.emit('request', req, res); return;
     }
     json(res, 404, { error: 'relay_route_not_found' });
