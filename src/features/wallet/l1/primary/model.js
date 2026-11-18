@@ -2,6 +2,7 @@ import { finalizedReadings } from '../gallery/model.js';
 import { atoms, integer, nonce, resultOf, safeInteger } from '../market/amounts.js';
 import { balanceDeltas, lineBalance, snapshot } from '../market/model.js';
 import { accountLine, planOfferSetup, trustPreflight, verifyTrust } from '../market/offer-setup.js';
+import { chainTxStatus } from '../lib/tx-status.js';
 const ceil = (a, b) => (a + b - 1n) / b;
 const bindings = ['route_epoch', 'policy_epoch', 'policy_hash', 'pricing_nav_epoch', 'pricing_reserve_packet_hash'];
 export function primaryReady(config, state) {
@@ -85,6 +86,26 @@ export async function verifyPrimary(client, config, plan, step, before, after, r
   const entitlements = step.kind === 'subscribe' ? 1n : step.kind === 'release' ? -1n : 0n;
   if (d('active_reservation_count') !== reservations || d('export_entitlement_count') !== entitlements || after.pool.invariant_holds !== true) throw new Error('Reservation lifecycle or supply invariant did not verify');
   return { deltas: delta, message: 'Accepted execution receipt, source PFUSDC balances, tracked inventory, supply and reserve verified.', feeRetained: String(expectedSpread), confirmedTxId: txId };
+}
+// A creation step normally ends within a few minutes: each RPC call gives up after 60 s and the read-back
+// retries five times. An attempt still unfinished 10 minutes after signing started is stuck.
+export const CREATE_STUCK_AFTER_MS = 10 * 60 * 1000;
+// Discard is only for a stuck attempt: no transaction id after a reload or the limit, or a transaction the
+// chain reports missing or rejected after the limit. An accepted or unconfirmed transaction is never discarded.
+export function canDiscardAttempt(journal, restored, status, now = Date.now()) {
+  if (!journal?.pending) return false;
+  const late = !(now - journal.attemptAt < CREATE_STUCK_AFTER_MS);
+  if (!journal.uncertainTxId) return restored || late;
+  return late && (status === 'missing' || status === 'rejected');
+}
+// Checks the chain again, then returns the journal without the attempt; the plan and earlier receipts stay.
+export async function discardAttempt(client, journal, restored, now = Date.now()) {
+  const status = journal?.uncertainTxId ? await chainTxStatus(client, journal.uncertainTxId) : null;
+  if (status === 'accepted') throw new Error(`Transaction ${journal.uncertainTxId} was accepted on the chain, so this attempt cannot be discarded. Check Activity.`);
+  if (!canDiscardAttempt(journal, restored, status, now)) throw new Error('This attempt is not stuck. Check Activity before continuing.');
+  const next = { ...journal, pending: false };
+  delete next.uncertainTxId; delete next.attemptAt;
+  return next;
 }
 export function subscriberQuote(config, state, quantity, address) {
   primaryReady(config, state);

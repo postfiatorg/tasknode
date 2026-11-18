@@ -5,6 +5,7 @@ import { amountAtoms } from "./controller.js";
 import { lineBalance } from "../market/model.js";
 import { Amount, Badge, Card, CardHead, KV, Mono, Notice, Spinner } from "../ui.jsx";
 import { plainError } from "../format.js";
+import { canDiscardBurn, resendBurn, stalledAction, withdrawalStalled } from "./withdraw-recovery.js";
 
 // PFUSDC -> USDC on Ethereum. The wallet signs one burn; the payout job needs no further signature.
 const STAGES = { queued: "Waiting to start", reading: "Reading your burn from the network", catching_up: "Bringing the Ethereum checker up to date", proving: "Building the withdrawal proof", paying: "Sending USDC on Ethereum", paid: "USDC paid", failed: "Stopped" };
@@ -16,6 +17,7 @@ export default function Withdraw({ client }) {
   const [amount, setAmount] = useState(""), [recipient, setRecipient] = useState("");
   const [review, setReview] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [burn, setBurn] = useState(() => stored(client)), [job, setJob] = useState(null);
+  const [since, setSince] = useState(() => Date.now()), [now, setNow] = useState(() => Date.now()), [stall, setStall] = useState(null), [confirmDiscard, setConfirmDiscard] = useState(false);
   const refresh = useCallback(async () => {
     try {
       const value = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) });
@@ -34,11 +36,19 @@ export default function Withdraw({ client }) {
         catch { value = await bridgeJson("/withdrawals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ burn_tx_id: burn }) }); }
         if (active) setJob(value);
       } catch (failure) { if (active) setError(plainError(failure.message)); }
+      if (active) setNow(Date.now());
     };
     void poll();
     const timer = setInterval(() => { if (job?.stage !== "paid") void poll(); }, 8000);
     return () => { active = false; clearInterval(timer); };
   }, [burn, job?.stage]);
+  const stalled = withdrawalStalled(burn, job, since, now);
+  useEffect(() => {
+    if (!stalled) return undefined;
+    let active = true;
+    stalledAction(client, burn).then((action) => { if (active) setStall(action); }, () => {});
+    return () => { active = false; };
+  }, [stalled, burn, client, now]);
   async function useMetaMask() {
     setError("");
     try { const [account] = await window.ethereum.request({ method: "eth_requestAccounts" }); if (account) setRecipient(account); }
@@ -65,12 +75,17 @@ export default function Withdraw({ client }) {
       const signed = await client.sign(approved.intent, approved.quote);
       const result = await client.submit(signed);
       try { localStorage.setItem(key(client), result.txId); } catch { /* tracking still works this session */ }
-      setJob(null); setBurn(result.txId); setAmount("");
+      setJob(null); setStall(null); setSince(Date.now()); setBurn(result.txId); setAmount("");
       await bridgeJson("/withdrawals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ burn_tx_id: result.txId }) });
       void refresh();
     } catch (failure) { setError(plainError(failure.message)); } finally { setBusy(false); }
   }
-  function another() { try { localStorage.removeItem(key(client)); } catch { /* ignore */ } setBurn(""); setJob(null); setError(""); void refresh(); }
+  function another() { try { localStorage.removeItem(key(client)); } catch { /* ignore */ } setBurn(""); setJob(null); setStall(null); setConfirmDiscard(false); setError(""); void refresh(); }
+  function tryAgain() { setError(""); void resendBurn(burn).then(setJob).catch((failure) => setError(plainError(failure.message))); }
+  async function discard() {
+    setConfirmDiscard(false); setError("");
+    try { await canDiscardBurn(client, burn); another(); } catch (failure) { setError(plainError(failure.message)); }
+  }
   const tracking = Boolean(burn);
   return <section aria-label="USDC withdrawal" className="l1-view l1-split is-ticket">
     <div className="l1-stack">
@@ -107,6 +122,10 @@ export default function Withdraw({ client }) {
             job?.recipient && ["Recipient", <Mono value={job.recipient} />],
             job?.ethereum_tx && ["Ethereum payout", <a href={`https://etherscan.io/tx/${job.ethereum_tx}`} target="_blank" rel="noreferrer">View on Etherscan<ExternalLink size={12} aria-hidden /></a>],
           ].filter(Boolean)} />
+          {stalled && stall === "retry" && <Notice tone="warning" title="The payout service has not taken this burn" action={<button type="button" className="l1-btn is-primary" onClick={tryAgain}>Try again</button>}>Burn <Mono value={burn} /> is accepted on the chain. Try again sends this same burn id to the service; nothing is burned again.</Notice>}
+          {stalled && stall === "discard" && <Notice tone="warning" title="This burn is not on the chain" action={confirmDiscard
+            ? <div className="l1-two"><button type="button" className="l1-btn" onClick={() => setConfirmDiscard(false)}>Keep it</button><button type="button" className="l1-btn is-primary" onClick={discard}>Discard</button></div>
+            : <button type="button" className="l1-btn" onClick={() => setConfirmDiscard(true)}>Discard this withdrawal</button>}>The chain has no accepted burn <Mono value={burn} />, so no PFUSDC was burned for it. Discarding clears only this pending withdrawal.</Notice>}
           <div className="l1-two">
             {job?.stage === "failed" && <button type="button" className="l1-btn is-primary" disabled={busy} onClick={() => { setError(""); void bridgeJson("/withdrawals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ burn_tx_id: burn }) }).then(setJob).catch((failure) => setError(plainError(failure.message))); }}>Retry payout</button>}
             {(job?.stage === "paid" || job?.stage === "failed") && <button type="button" className="l1-btn" onClick={another}>Start another withdrawal</button>}
