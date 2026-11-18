@@ -239,9 +239,12 @@ function BridgeSession({ client, onNavigate, symbol }) {
 export default function BridgeTab({ onNavigate, assetConfig } = {}) {
   const client = useL1Wallet();
   if (!client.unlocked || !client.address) return <p>Unlock your Post Fiat wallet to bridge USDC.</p>;
+  // The Solana pilot is hidden until it has been timed with real funds; a tester opts in on their own browser.
+  let solanaPilot = false;
+  try { solanaPilot = globalThis.localStorage?.getItem("tn:l1:solana-pilot") === "1"; } catch { /* storage unavailable */ }
   return <>
     <BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} symbol={assetConfig?.symbol || "NAVCoins"} />
-    <SolanaDeposit key={`s:${client.accountId}:${client.address}`} client={client} />
+    {solanaPilot && <SolanaDeposit key={`s:${client.accountId}:${client.address}`} client={client} />}
     <Withdraw key={`w:${client.accountId}:${client.address}`} client={client} />
   </>;
 }

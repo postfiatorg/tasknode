@@ -70,6 +70,10 @@ with sync_playwright() as p:
     # Solana pilot: Phantom signs the server-built transfer, then the advance is polled until paid.
     page.evaluate("localStorage.clear(); sessionStorage.clear()")
     page.goto(f'{base}?mode=ready')
+    expect(page.get_by_text('Bridge ready', exact=True)).to_be_visible()
+    assert page.get_by_text('Pilot ready', exact=True).count() == 0  # hidden unless a tester opts in
+    page.evaluate("localStorage.setItem('tn:l1:solana-pilot', '1')")
+    page.goto(f'{base}?mode=ready')
     expect(page.get_by_text('Pilot ready', exact=True)).to_be_visible()
     page.get_by_role('button', name='Connect Phantom', exact=True).click()
     expect(page.get_by_test_id('solana-owner')).to_be_visible()
