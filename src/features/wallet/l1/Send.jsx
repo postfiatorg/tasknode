@@ -15,15 +15,17 @@ export default function Send({ client }) {
   const unit = line ? 'PFUSDC' : 'PFT';
   useEffect(() => {
     if (!client.unlocked) return undefined;
-    let active = true;
-    client.getBalances().then(value => {
+    let active = true, timer;
+    const load = (attempt = 0) => client.getBalances().then(value => {
       if (!active) return;
       setAvailable((value.pft?.account || value.pft)?.balance ?? null);
       const held = Array.isArray(value.assets) ? value.assets : value.assets?.assets || value.assets?.lines || [];
-      // Bridged PFUSDC is held as a series line (it names its family); legacy family-level balances are not offered.
-      setLines(held.filter(item => item.code === 'PFUSDC' && item.asset_family_id && /^[0-9a-f]{96}$/.test(item.asset_id || '') && BigInt(item.balance ?? 0) > 0n && item.frozen !== true));
-    }).catch(() => {});
-    return () => { active = false; };
+      // Bridged PFUSDC is held as a series line (it names its family) and is listed first.
+      setLines(held.filter(item => (item.code || item.asset_code) === 'PFUSDC' && /^[0-9a-f]{96}$/.test(item.asset_id || '') && /^pf[0-9a-f]{40}$/.test(item.issuer || '') && BigInt(item.balance ?? 0) > 0n && item.frozen !== true)
+        .sort((x, y) => Number(Boolean(y.asset_family_id)) - Number(Boolean(x.asset_family_id))));
+    }).catch(() => { if (active && attempt < 5) timer = setTimeout(() => load(attempt + 1), 1500); });
+    void load();
+    return () => { active = false; clearTimeout(timer); };
   }, [client, result]);
   async function quote() {
     setBusy(true); setError(''); setResult(null); setReview(null);
@@ -70,8 +72,9 @@ export default function Send({ client }) {
     <Card className="l1-ticket">
       <CardHead eyebrow="Transfer" title={`Send ${unit}`} />
       <form style={{ display: 'grid', gap: 14 }} onSubmit={event => { event.preventDefault(); if (!busy) void quote(); }}>
-        {lines.length > 0 && <label className="l1-field"><span>Asset</span><select aria-label="Asset to send" value={assetId} disabled={busy} onChange={e => { setAssetId(e.target.value); setReview(null); }}>
-          <option value="">PFT</option>{lines.map(item => <option key={item.asset_id} value={item.asset_id}>PFUSDC</option>)}</select></label>}
+        <label className="l1-field"><span>Asset</span><select aria-label="Asset to send" value={assetId} disabled={busy} onChange={e => { setAssetId(e.target.value); setReview(null); }}>
+          <option value="">PFT</option>{lines.map(item => <option key={item.asset_id} value={item.asset_id}>PFUSDC{lines.length > 1 ? ` · ${item.asset_id.slice(0, 6)}` : ''}</option>)}</select>
+          {lines.length === 0 && <span className="l1-field-hint"><span>PFUSDC appears here once this wallet's balance has loaded and holds some.</span></span>}</label>
         <label className="l1-field"><span>Recipient</span><input aria-label="Recipient pf address" placeholder="pf…" spellCheck={false} autoComplete="off" className="l1-mono-input" value={to} disabled={busy} onChange={e => { setTo(e.target.value); setReview(null); }} />
           {recipientLooksWrong && <span className="l1-field-hint is-danger">A Post Fiat address starts with pf followed by 40 hex characters.</span>}</label>
         <label className="l1-field"><span>Amount</span><span className="l1-input-wrap"><input aria-label={`${unit} amount`} inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={e => { setAmount(e.target.value); setReview(null); }} /><span className="l1-input-suffix">PFT</span></span>

@@ -34,8 +34,16 @@ export class L1WalletCore {
     // Public timing only (method name, duration, outcome), kept for the diagnostics copy.
     const started = Date.now(), log = (globalThis.__l1Timings ||= []);
     let result;
-    try { result = await this.#rpc.call(method, params); }
-    catch (error) { log.push({ method, ms: Date.now() - started, error: String(error?.message || error).slice(0, 120) }); if (log.length > 80) log.shift(); throw error; }
+    // The wallet proxy can refuse a burst of connections at page load. A read is safe to repeat; a submission is never retried here.
+    for (let attempt = 0; ; attempt++) {
+      try { result = await this.#rpc.call(method, params); break; }
+      catch (error) {
+        log.push({ method, ms: Date.now() - started, attempt, error: String(error?.message || error).slice(0, 120) }); if (log.length > 80) log.shift();
+        if (attempt >= 3 || method.startsWith('mempool_') || !/could not connect to RPC server/.test(String(error?.message))) throw error;
+        await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)));
+        this.assertCurrent(generation);
+      }
+    }
     log.push({ method, ms: Date.now() - started }); if (log.length > 80) log.shift();
     this.assertCurrent(generation);
     return result;

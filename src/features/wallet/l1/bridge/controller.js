@@ -37,7 +37,9 @@ export class BridgeController {
     this.state = { ready: false, blocked: "Checking bridge readiness.", owner: "", balance: null, allowance: null, busy: false, quiet: false, checked: false, error: "", pending: null, checkFailed: false, job: null, result: null };
     try {
       const saved = JSON.parse(storage.getItem(this.key));
-      if (saved?.pending?.recipient === this.address && saved.accountId === this.accountId) this.state.pending = saved.pending;
+      // A deposit already shown as credited is history: it is not replayed on the next visit.
+      if (saved?.done === true) storage.removeItem(this.key);
+      else if (saved?.pending?.recipient === this.address && saved.accountId === this.accountId) this.state.pending = saved.pending;
     } catch { /* no saved public job */ }
   }
   guard() {
@@ -255,6 +257,8 @@ export class BridgeController {
       const balance = creditedBalance(rpcEnvelope(response), job.credited_asset_id);
       this.guard();
       this.set({ result: { receipt: job.receipt_id || job.tx_id, ...balance, balancePending: false } });
+      // Mark the stored record finished without touching what this visit shows.
+      try { this.storage.setItem(this.key, JSON.stringify({ accountId: this.accountId, pending: this.state.pending, done: true })); } catch { /* shown state is unaffected */ }
     }
   }
   // quiet: a background check. It still excludes other actions but does not grey out the form.

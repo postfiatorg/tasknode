@@ -52,7 +52,7 @@ function Track({ view, controller, client, onNavigate, symbol }) {
   const inFlight = Boolean(pending) && !credited && job?.status !== "failed";
   const now = useNow(inFlight);
   const phases = PHASES.map(phase => ({ ...phase, state: phaseState(rows, phase, credited) }));
-  if (pending?.tx && !job && !credited) phases[0].state = "active";
+  if (pending?.tx && !job && !credited && view.checked) phases[0].state = "active";
   const currentIndex = rows.findIndex(row => ACTIVE.has(row.status));
   const started = job?.created_at_unix || rows.find(row => row.started)?.started || null;
   const finished = credited ? Math.max(...rows.map(row => row.completed || 0)) || null : null;
@@ -63,6 +63,7 @@ function Track({ view, controller, client, onNavigate, symbol }) {
   else if (job?.status === "failed") { headline = "The bridge could not finish this deposit"; detail = job.message || job.code || "Claim failed."; }
   else if (pending && !pending.tx && view.busy && !view.quiet) { headline = "Confirm the deposit in MetaMask"; detail = "Waiting for you to confirm in MetaMask."; }
   else if (pending && !pending.tx) { headline = "Deposit broadcast was interrupted"; detail = "Enter the Ethereum transaction hash below to recover it."; }
+  else if (pending?.tx && !job && !view.checked) { headline = "Checking your last deposit"; detail = "Reading its status from the bridge."; }
   else if (pending?.tx && !job) { headline = "Waiting for Ethereum to confirm your deposit"; detail = "This page keeps checking; you can leave and come back."; }
   else if (job && currentIndex >= 0) { headline = LABELS[rows[currentIndex].stage]; detail = `Stage ${currentIndex + 1} of ${rows.length}. ${rows[currentIndex].stage === "proving" ? "Proof generation is the longest step and can take several minutes." : "Progress updates every few seconds."}${rows[currentIndex].status === "retrying" ? " Retrying after a temporary error." : ""}`; }
   else if (job) { headline = "Deposit received by the bridge"; detail = "Queued for proving."; }
