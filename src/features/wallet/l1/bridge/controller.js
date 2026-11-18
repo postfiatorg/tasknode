@@ -142,24 +142,45 @@ export class BridgeController {
     this.save(null);
     this.set({ job: null, result: null, approvalTx: null, error: "" });
   }
+  storedJobId() {
+    try { return JSON.parse(this.storage.getItem(this.key))?.pending?.jobId || null; } catch { return null; }
+  }
+  // Clears a deposit that never reached the bridge. A record with a bridge job is never discarded.
+  discard() {
+    this.guard();
+    if (!this.state.pending) return;
+    if (this.state.pending.jobId || this.storedJobId()) throw new Error("This deposit has a bridge job and cannot be discarded.");
+    this.save(null);
+    this.set({ job: null, result: null, approvalTx: null, error: "" });
+  }
   async recoverHash(tx) {
     if (!/^0x[0-9a-f]{64}$/.test(tx)) throw new Error("Enter the Ethereum deposit transaction hash.");
-    if (!this.state.pending || this.state.pending.tx) throw new Error("No interrupted broadcast to recover.");
-    this.save({ ...this.state.pending, tx });
+    const pending = this.state.pending;
+    if (!pending || pending.jobId || this.storedJobId()) throw new Error("No interrupted broadcast to recover.");
+    this.guard();
+    // Check the candidate before saving it; a wrong hash is never stored.
+    await this.depositEvent(pending, tx);
+    this.guard();
+    if (this.state.pending !== pending) throw new Error("Deposit changed during recovery. Reload the bridge.");
+    this.save({ ...pending, tx });
     await this.resume();
+  }
+  async depositEvent(pending, tx) {
+    await this.ethereum.ensureEthereumMainnet();
+    await this.ethereum.waitForReceipt(tx);
+    const event = await this.ethereum.watchDepositEvent(pending.route.vaultAddress, tx, pending.route.routeBinding);
+    if (!event || event.pftl_recipient !== this.address || event.depositor.toLowerCase() !== pending.owner
+        || String(event.amount) !== pending.amountAtoms || event.nonce !== pending.nonce
+        || Number(event.source_chain_id) !== 1 || event.vault !== pending.route.vaultAddress
+        || event.token !== pending.route.tokenAddress) throw new Error("Deposit event does not match the reviewed request.");
+    return event;
   }
   async resume() {
     this.guard();
     let pending = this.state.pending;
     if (!pending?.tx) throw new Error("No broadcast deposit to resume. If MetaMask broadcast during reload, enter its transaction hash.");
     if (!pending.jobId) {
-      await this.ethereum.ensureEthereumMainnet();
-      await this.ethereum.waitForReceipt(pending.tx);
-      const event = await this.ethereum.watchDepositEvent(pending.route.vaultAddress, pending.tx, pending.route.routeBinding);
-      if (!event || event.pftl_recipient !== this.address || event.depositor.toLowerCase() !== pending.owner
-          || String(event.amount) !== pending.amountAtoms || event.nonce !== pending.nonce
-          || Number(event.source_chain_id) !== 1 || event.vault !== pending.route.vaultAddress
-          || event.token !== pending.route.tokenAddress) throw new Error("Deposit event does not match the reviewed request.");
+      const event = await this.depositEvent(pending, pending.tx);
       const request = {
         route_id: api.ROUTE_ID, source_chain_id: 1, deposit_tx_hash: pending.tx, deposit_id: event.deposit_id,
         pftl_recipient: this.address, depositor: pending.owner, amount_atoms: pending.amountAtoms,

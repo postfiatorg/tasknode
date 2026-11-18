@@ -118,6 +118,9 @@ function BridgeSession({ client, onNavigate, symbol }) {
   const [controller, setController] = useState(null);
   const [amount, setAmount] = useState("");
   const [recoveryTx, setRecoveryTx] = useState("");
+  const [discarding, setDiscarding] = useState(false);
+  const pendingRecord = view?.pending;
+  useEffect(() => setDiscarding(false), [pendingRecord]);
   useEffect(() => {
     const model = new BridgeController(client, { changed: setView });
     setController(model);
@@ -202,10 +205,18 @@ function BridgeSession({ client, onNavigate, symbol }) {
             </div>
           </div>
         </div>
-        {view.pending && !tx && <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
-          <Notice tone="warning" title="Deposit broadcast was interrupted">If MetaMask sent the deposit, paste its Ethereum transaction hash to resume tracking it.</Notice>
+        {view.pending && !view.pending.jobId && <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
+          {!tx && <Notice tone="warning" title="Deposit broadcast was interrupted">If MetaMask sent the deposit, paste its Ethereum transaction hash to resume tracking it.</Notice>}
           <label className="l1-field"><span>Interrupted broadcast: Ethereum transaction hash</span><input className="l1-mono" value={recoveryTx} onChange={(event) => setRecoveryTx(event.target.value)} placeholder="0x…" /></label>
-          <div><button type="button" className="l1-btn" disabled={view.busy} onClick={() => controller.run(() => controller.recoverHash(recoveryTx))}>Recover deposit</button></div>
+          <div className="l1-row"><button type="button" className="l1-btn" disabled={view.busy} onClick={() => controller.run(() => controller.recoverHash(recoveryTx))}>Recover deposit</button>
+            {!discarding && <button type="button" className="l1-btn is-ghost" disabled={view.busy} onClick={() => setDiscarding(true)}>Discard this unfinished deposit</button>}</div>
+          {discarding && <Notice tone="warning" title="Discard this unfinished deposit?">
+            Open MetaMask and check the activity of <Mono value={view.pending.owner} /> for a deposit of <Amount atoms={view.pending.amountAtoms} unit="USDC" />. If MetaMask shows no transaction, nothing was sent and you can discard this record and start again. If it shows a confirmed deposit, do not discard it; paste its transaction hash above instead.
+            <div className="l1-row" style={{ marginTop: 10 }}>
+              <button type="button" className="l1-btn is-danger" disabled={view.busy} onClick={() => controller.run(() => { controller.discard(); setRecoveryTx(""); })}>Discard deposit</button>
+              <button type="button" className="l1-btn" disabled={view.busy} onClick={() => setDiscarding(false)}>Keep it</button>
+            </div>
+          </Notice>}
         </div>}
       </Card>
       {view.error && <Notice tone="danger" role="alert">{view.error}</Notice>}
