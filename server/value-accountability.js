@@ -119,18 +119,6 @@ export async function blacklistAccount({
   return { created: Boolean(result.rows[0]), entry: result.rows[0] || (await activeBlacklistEntry({ accountId: account })) };
 }
 
-export async function liftBlacklist({ accountId, reason, liftedBy = "" } = {}) {
-  if (!safeText(reason)) throw new Error("liftBlacklist requires a reason");
-  const result = await query(
-    `UPDATE account_blacklist
-        SET status = 'lifted', lifted_at = now(), lifted_by = $2, lift_reason = $3
-      WHERE account_id = $1 AND status = 'active'
-      RETURNING id`,
-    [safeText(accountId, 180), safeText(liftedBy, 180), safeText(reason, 2000)]
-  );
-  return { lifted: result.rowCount > 0 };
-}
-
 export async function listPublicBlacklist({ limit = 500 } = {}) {
   const result = await query(
     `SELECT b.public_handle, b.reason_code, b.reason, b.source, b.created_at,

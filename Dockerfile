@@ -22,6 +22,7 @@ RUN npm run build \
       --out /runtime-web \
     && node scripts/build-runtime-tree.mjs \
       --entry server/worker-entry.js \
+      --entry scripts/reinstatement-roster.mjs \
       --entry scripts/migrate-db.mjs \
       --entry scripts/validator-rewards.mjs \
       --entry scripts/profile-daily-airdrop-recover.mjs \

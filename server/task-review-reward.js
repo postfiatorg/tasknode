@@ -384,6 +384,7 @@ export async function processVerificationResponse(row, {
   parkClaim = clearWorkerClaim,
 } = {}) {
   const workerName = "reward_scoring";
+  if (String(row.task_id).startsWith("task_reinstate_")) return { ok: true, skipped: true, reason: "unpaid_reinstatement" };
   // Blacklisted accounts are never paid. Check before any wallet sync, evidence
   // fetch or scoring call, and park the task instead of failing it.
   const blacklisted = await blacklistLookup({ accountId: row.account_id, walletAddress: row.subject_wallet });

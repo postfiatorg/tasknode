@@ -49,6 +49,7 @@ async function main() {
   const reason = flag("--reason");
   const feedback = flag("--feedback");
   const operator = flag("--operator", "goodalexander");
+  if (taskId.startsWith("task_reinstate_")) throw new Error("Reinstatement tasks have no monetary review");
   const execute = process.argv.includes("--execute");
   if (!taskId.startsWith("task_") || !["waive", "hold"].includes(mode) || !reason) {
     console.error("Usage: operator-review-override.mjs <taskId> --mode waive|hold --reason \"...\" [--feedback ...] [--pft N] [--execute]");

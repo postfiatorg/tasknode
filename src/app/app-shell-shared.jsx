@@ -1,4 +1,4 @@
-import React from "react";
+import React, { lazy } from "react";
 import { BookOpen, Brain, CandlestickChart, Coins, Compass, CreditCard, Database, Drama, FileText, Landmark, Lightbulb, ListTodo, Network, Settings as SettingsIcon, Server, Shield, Sparkles, Trophy } from "lucide-react";
 import { fetchAppState, requestJson } from "../api";
 import { HoodIcon } from "./HoodIcon.jsx";
@@ -397,3 +397,6 @@ export function initialSidebarOpen() {
 export function StatusBanner({ children, tone = "default" }) {
   return <div className={`status-banner ${tone}`}>{children}</div>;
 }
+
+export const DirectoryView = lazy(() => import("../features/directory/DirectoryView").then((module) => ({ default: module.DirectoryView })));
+export const BlacklistView = lazy(() => import("../features/directory/BlacklistView").then((module) => ({ default: module.BlacklistView })));

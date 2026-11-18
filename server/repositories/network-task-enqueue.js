@@ -45,6 +45,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
   if (!useDatabase()) return { executed: false, reason: "database_not_configured" };
   const projectId = safeText(decision.target_id || decision.payload?.project?.id, 180);
   if (!projectId) throw new Error("network_task_project_required");
+  if (projectId === "board_reinstatement") throw new Error("reinstatement_issuer_required");
   const project = await projectById(projectId);
   if (!project?.id) throw new Error("network_task_project_not_found");
   const candidate = await resolveCandidate({

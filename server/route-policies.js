@@ -7,6 +7,9 @@ const confirmation = { type: "boolean" };
 const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const apiRoutePolicies = [
+  { id: "reinstatement_status", path: "/api/me/reinstatement", methods: ["GET"], auth: "session" },
+  { id: "reinstatement_operator_queue", path: "/api/operator/blacklist", methods: ["GET"], auth: "session" },
+  { id: "reinstatement_override", prefix: "/api/operator/blacklist/", methods: ["POST"], auth: "session", rateLimit: { limit: 50, windowMs: tenMinutes }, body: bodyPolicy(12000, { allowUnknown: false, properties: { reason: { type: "string", maxLength: 2000 } } }) },
   ...[
     ["key", ["GET","POST"], requestBodies.promptKeyBody],
     ["history", ["GET","POST"], requestBodies.promptEventBody],

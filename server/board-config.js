@@ -13,6 +13,7 @@ export const DETERMINISTIC_BOARD_IDS = Object.freeze([
   "board_tasknode_fixes",
   "board_capital_markets",
   "board_value_accountability",
+  "board_reinstatement",
 ]);
 
 export function deterministicBoardsEnabled(env = process.env) {

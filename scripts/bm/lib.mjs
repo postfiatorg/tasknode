@@ -645,6 +645,15 @@ export async function computeBoardDuties(boardIds = [], { queryImpl = query, idl
       [boardId]
     );
     const boardRowData = board.rows[0];
+    if (boardId === "board_reinstatement") {
+      const pending = await queryImpl(`SELECT blacklist_id,task_id,revision,submitted_at FROM reinstatement_cases
+        WHERE stage='submitted' ORDER BY submitted_at LIMIT 32`);
+      for (const item of pending.rows) {
+        duties.push({ priority: 1, type: "reinstatement_review", board_id: boardId, task_id: item.task_id, revision: item.revision, submitted_at: item.submitted_at,
+          detail: `Review submission v${item.revision}. Run bm reinstatement claim ${item.blacklist_id} --revision ${item.revision}, then apply the board rubric and record the verdict using the returned lease.` });
+      }
+      continue;
+    }
     if (!boardRowData || ["archived", "completed", "cancelled", "rejected"].includes(boardRowData.status)) continue;
     for (const item of escalations.filter(item => item.board_id === boardId)) {
       duties.push({ priority: 3, type: "hive_chat_escalation", board_id: boardId, escalation_id: item.id,
