@@ -60,6 +60,7 @@ function Track({ view, controller, client, onNavigate, symbol }) {
   if (credited) { headline = "PFUSDC credited"; detail = "The deposit is proven on Post Fiat and the PFUSDC is in this wallet."; }
   else if (result?.balancePending) { headline = "Claim accepted"; detail = "Reading the credited balance from the chain."; }
   else if (job?.status === "failed") { headline = "The bridge could not finish this deposit"; detail = job.message || job.code || "Claim failed."; }
+  else if (pending && !pending.tx && view.busy && !view.quiet) { headline = "Confirm the deposit in MetaMask"; detail = "Waiting for you to confirm in MetaMask."; }
   else if (pending && !pending.tx) { headline = "Deposit broadcast was interrupted"; detail = "Enter the Ethereum transaction hash below to recover it."; }
   else if (pending?.tx && !job) { headline = "Waiting for Ethereum to confirm your deposit"; detail = "This page keeps checking; you can leave and come back."; }
   else if (job && currentIndex >= 0) { headline = LABELS[rows[currentIndex].stage]; detail = `Stage ${currentIndex + 1} of ${rows.length}. ${rows[currentIndex].stage === "proving" ? "Proof generation is the longest step and can take several minutes." : "Progress updates every few seconds."}${rows[currentIndex].status === "retrying" ? " Retrying after a temporary error." : ""}`; }
@@ -215,7 +216,7 @@ function BridgeSession({ client, onNavigate, symbol }) {
             </div>
           </div>
         </div>
-        {needsRecovery(view.pending, view.checkFailed) && <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
+        {!working && needsRecovery(view.pending, view.checkFailed) && <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
           {!tx && <Notice tone="warning" title="Deposit broadcast was interrupted">If MetaMask sent the deposit, paste its Ethereum transaction hash to resume tracking it.</Notice>}
           <label className="l1-field"><span>Interrupted broadcast: Ethereum transaction hash</span><input className="l1-mono" value={recoveryTx} onChange={(event) => setRecoveryTx(event.target.value)} placeholder="0x…" /></label>
           <div className="l1-row"><button type="button" className="l1-btn" disabled={view.busy} onClick={() => controller.run(() => controller.recoverHash(recoveryTx))}>Recover deposit</button>

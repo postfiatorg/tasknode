@@ -31,7 +31,12 @@ export class L1WalletCore {
     this.assertCurrent(generation);
     assertL1CallAllowed(method, this.unlocked);
     this.#rpc ||= new RpcClient();
-    const result = await this.#rpc.call(method, params);
+    // Public timing only (method name, duration, outcome), kept for the diagnostics copy.
+    const started = Date.now(), log = (globalThis.__l1Timings ||= []);
+    let result;
+    try { result = await this.#rpc.call(method, params); }
+    catch (error) { log.push({ method, ms: Date.now() - started, error: String(error?.message || error).slice(0, 120) }); if (log.length > 80) log.shift(); throw error; }
+    log.push({ method, ms: Date.now() - started }); if (log.length > 80) log.shift();
     this.assertCurrent(generation);
     return result;
   }

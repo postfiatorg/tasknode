@@ -178,6 +178,9 @@ export class BridgeController {
       pending: pending && { tx: pending.tx, jobId: pending.jobId, amountAtoms: pending.amountAtoms, owner: pending.owner },
       job: job && { id: job.job_id, status: job.status, code: job.code || null },
       result: result && { receipt: result.receipt, balancePending: result.balancePending },
+      rpcTimings: (globalThis.__l1Timings || []).slice(-40),
+      apiTimings: (globalThis.performance?.getEntriesByType?.("resource") || []).filter(entry => entry.name.includes("/api/"))
+        .slice(-40).map(entry => ({ path: new URL(entry.name).pathname, startMs: Math.round(entry.startTime), ms: Math.round(entry.duration) })),
     };
   }
   async recoverHash(tx) {
