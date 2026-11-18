@@ -67,4 +67,24 @@ with sync_playwright() as p:
     page.screenshot(path=str(out / 'B11-credited-form-unlocked.png'), full_page=True)
     print('PASS B11 credited earlier deposit leaves the amount box usable; typing survives background checks')
     print('PASS B9 accepted receipt + exact child balance 2.000000; family 99.000000 ignored; failed read never complete')
+    # Solana pilot: Phantom signs the server-built transfer, then the advance is polled until paid.
+    page.evaluate("localStorage.clear(); sessionStorage.clear()")
+    page.goto(f'{base}?mode=ready')
+    expect(page.get_by_text('Pilot ready', exact=True)).to_be_visible()
+    page.get_by_role('button', name='Connect Phantom', exact=True).click()
+    expect(page.get_by_test_id('solana-owner')).to_be_visible()
+    page.get_by_label('Solana USDC amount', exact=True).fill('30')
+    expect(page.get_by_test_id('solana-send')).to_be_disabled()  # above what the float can pay
+    page.get_by_label('Solana USDC amount', exact=True).fill('2.5')
+    page.get_by_test_id('solana-send').click()
+    expect(page.get_by_test_id('solana-paid')).to_contain_text('+2.50', timeout=15000)
+    calls = page.evaluate('window.mockSolana')
+    intent = next(c for c in calls if c.get('url', '').endswith('/solana/intent'))
+    assert intent['body'] == {'owner': 'So1anaOwner1111111111111111111111111111111', 'amount_atoms': '2500000', 'pftl_account': 'pf' + '33' * 20}, intent
+    assert [c for c in calls if c.get('phantom')] == [{'phantom': 'signAndSendTransaction', 'message': '3mJr7AoUXx2Wqd'}]
+    page.reload()
+    expect(page.get_by_test_id('solana-paid')).to_be_visible()
+    assert not [c for c in page.evaluate('window.mockSolana') if c.get('phantom')]
+    page.screenshot(path=str(out / 'B12-solana-paid.png'), full_page=True)
+    print('PASS B12 Solana pilot: one Phantom send of the server-built message, paid result survives reload with no resend')
     browser.close()
