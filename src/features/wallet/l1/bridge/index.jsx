@@ -129,7 +129,7 @@ function BridgeSession({ client, onNavigate, symbol }) {
     void model.run(async () => {
       try { await model.readiness(); } catch { /* blocked reason is visible */ }
       if (model.state.pending?.tx) await model.resume();
-    });
+    }, { quiet: true });
     const changed = () => model.providerChanged();
     window.ethereum?.on?.("accountsChanged", changed);
     window.ethereum?.on?.("chainChanged", changed);
@@ -138,12 +138,12 @@ function BridgeSession({ client, onNavigate, symbol }) {
       if (model.state.busy) return;
       if (Date.now() - lastReadiness > 15000) {
         lastReadiness = Date.now();
-        void model.run(async () => { try { await model.readiness(); } catch { /* fail closed */ } });
+        void model.run(async () => { try { await model.readiness(); } catch { /* fail closed */ } }, { quiet: true });
         return;
       }
       if (model.state.error) return;
       if (model.state.pending?.jobId && model.state.job?.status !== "accepted" && model.state.job?.status !== "failed") {
-        void model.run(() => model.poll());
+        void model.run(() => model.poll(), { quiet: true });
       }
     }, 3000);
     return () => {
@@ -158,6 +158,9 @@ function BridgeSession({ client, onNavigate, symbol }) {
   // A credited deposit does not lock the form; only one that is still unresolved does.
   const credited = Boolean(view.pending && view.result && !view.result.balancePending);
   const locked = Boolean(view.pending) && !credited;
+  const working = view.busy && !view.quiet;
+  // Until the first check of a saved deposit returns, its state is unknown: say so instead of "in progress".
+  const checkingSaved = locked && Boolean(view.pending.tx) && !view.job && !view.checked;
   const enabled = view.ready && !!view.owner && !!atoms && !view.busy && !locked;
   const tx = view.pending?.tx;
   const approved = view.allowance !== null && atoms && view.allowance >= atoms;
@@ -171,7 +174,8 @@ function BridgeSession({ client, onNavigate, symbol }) {
           <button type="button" className="l1-icon-btn" aria-label="Check readiness" title="Check readiness" disabled={view.busy} onClick={() => controller.run(async () => { await controller.readiness(); await controller.refreshEthereum(); })}><RefreshCw size={14} aria-hidden /></button>
         </CardHead>
         {!view.ready && !checking && view.blocked && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="Deposits are paused">{view.blocked} Approve and deposit stay off until the bridge reports ready.</Notice></div>}
-        {locked && view.pending.tx && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="A deposit is still in progress">Your deposit of <Amount atoms={view.pending.amountAtoms} unit="USDC" /> has not finished. The amount box unlocks when it is credited. Follow it under Bridge progress.</Notice></div>}
+        {checkingSaved && <p className="l1-status-line" role="status"><Spinner size={14} />Checking your last deposit…</p>}
+        {locked && view.pending.tx && !checkingSaved && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="A deposit is still in progress">Your deposit of <Amount atoms={view.pending.amountAtoms} unit="USDC" /> has not finished. The amount box unlocks when it is credited. Follow it under Bridge progress.</Notice></div>}
         {credited && <div style={{ marginBottom: 16 }}><Notice tone="success" title="Your last deposit is complete">Enter an amount to start another.</Notice></div>}
         <div className="l1-bridge-steps">
           <div className={`l1-bridge-step ${view.owner ? "is-done" : ""}`}>
@@ -183,7 +187,7 @@ function BridgeSession({ client, onNavigate, symbol }) {
                 <span className="l1-small l1-muted">{view.balance === null ? "USDC balance unavailable" : <>Balance <b style={{ color: "var(--l1-text)" }}><Amount atoms={view.balance} unit="USDC" /></b></>}</span>
               </div> : hasProvider ? <p className="l1-small l1-muted">Use the Ethereum account that holds your USDC. Nothing is sent until you approve and deposit.</p>
                 : <p className="l1-small l1-muted">MetaMask was not detected in this browser. <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">Install MetaMask</a>, then reload.</p>}
-              <div><button type="button" className={`l1-btn ${view.owner ? "is-sm" : "is-primary"}`} disabled={view.busy} onClick={() => controller.run(() => controller.connect())}>{view.owner ? "Reconnect" : "Connect MetaMask"}</button></div>
+              <div><button type="button" className={`l1-btn ${view.owner ? "is-sm" : "is-primary"}`} disabled={working} onClick={() => controller.run(() => controller.connect())}>{view.owner ? "Reconnect" : "Connect MetaMask"}</button></div>
             </div>
           </div>
           <div className={`l1-bridge-step ${atoms ? "is-done" : ""}`}>
@@ -207,7 +211,7 @@ function BridgeSession({ client, onNavigate, symbol }) {
                 {view.approvalTx && <a href={`https://etherscan.io/tx/${view.approvalTx}`} target="_blank" rel="noreferrer">Approval on Etherscan<ExternalLink size={12} aria-hidden /></a>}
                 {tx && <a href={`https://etherscan.io/tx/${tx}`} target="_blank" rel="noreferrer">Deposit on Etherscan<ExternalLink size={12} aria-hidden /></a>}
               </div>}
-              {view.busy && <p className="l1-status-line" role="status"><Spinner size={14} />Working… confirm in MetaMask if it asks.</p>}
+              {working && <p className="l1-status-line" role="status"><Spinner size={14} />Working… confirm in MetaMask if it asks.</p>}
             </div>
           </div>
         </div>

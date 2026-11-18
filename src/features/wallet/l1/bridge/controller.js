@@ -34,7 +34,7 @@ export class BridgeController {
     this.key = `tn:l1:bridge:v1:${this.accountId}:${this.address}`;
     this.active = true;
     this.abort = new AbortController();
-    this.state = { ready: false, blocked: "Checking bridge readiness.", owner: "", balance: null, allowance: null, busy: false, error: "", pending: null, checkFailed: false, job: null, result: null };
+    this.state = { ready: false, blocked: "Checking bridge readiness.", owner: "", balance: null, allowance: null, busy: false, quiet: false, checked: false, error: "", pending: null, checkFailed: false, job: null, result: null };
     try {
       const saved = JSON.parse(storage.getItem(this.key));
       if (saved?.pending?.recipient === this.address && saved.accountId === this.accountId) this.state.pending = saved.pending;
@@ -54,7 +54,8 @@ export class BridgeController {
   }
   dispose() { this.active = false; this.abort.abort(); }
   async readiness() {
-    this.set({ ready: false, blocked: "Checking bridge readiness." });
+    // A recheck of a ready bridge keeps the badge steady; any failure below still fails closed.
+    if (!this.state.ready) this.set({ ready: false, blocked: "Checking bridge readiness." });
     try {
       this.guard();
       const ready = await this.service.loadBridgeReadiness();
@@ -253,10 +254,11 @@ export class BridgeController {
       this.set({ result: { receipt: job.receipt_id || job.tx_id, ...balance, balancePending: false } });
     }
   }
-  async run(action) {
+  // quiet: a background check. It still excludes other actions but does not grey out the form.
+  async run(action, { quiet = false } = {}) {
     if (this.state.busy) return;
-    this.set({ busy: true, error: "" });
+    this.set({ busy: true, quiet, error: "" });
     try { return await action(); } catch (error) { this.set({ error: error.message }); }
-    finally { this.set({ busy: false }); }
+    finally { this.set({ busy: false, quiet: false, checked: true }); }
   }
 }
