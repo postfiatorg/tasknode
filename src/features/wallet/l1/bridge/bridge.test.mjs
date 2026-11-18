@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BridgeController, amountAtoms } from './controller.js';
+import { BridgeController, STUCK_AFTER_MS, amountAtoms, needsRecovery } from './controller.js';
 import * as api from './bridge-relay.js';
 import { handleBridgeRoutes } from '../../../../../server/l1/bridge-routes.js';
 import { address, owner, memoryStorage, routeReport, readyPayload } from './fixtures.mjs';
@@ -200,4 +200,41 @@ test('a record with a bridge job is never discarded', async () => {
   assert.throws(() => other.model.discard(), /cannot be discarded/);
   await assert.rejects(() => other.model.recoverHash(depositTx), /No interrupted broadcast/);
   assert.equal(other.stored().jobId, jobId);
+});
+test('recovery area stays hidden while a valid hash waits, and appears once the deposit is stuck', async () => {
+  const { model, events, event, depositTx, jobId } = await unfinished();
+  model.discard(); await model.readiness(); await model.connect();
+  const nonce = `0x${'99'.repeat(32)}`;
+  events.set(depositTx, { ...event, nonce });
+  let confirm;
+  model.ethereum.depositToEthereumBridge = async () => depositTx;
+  model.ethereum.waitForReceipt = () => new Promise((resolve) => { confirm = resolve; });
+  const running = model.deposit('1');
+  while (!confirm) await new Promise((resolve) => setImmediate(resolve));
+  const waiting = model.state.pending;
+  assert.equal(waiting.tx, depositTx); assert.equal(waiting.jobId, null);
+  assert.equal(needsRecovery(waiting, model.state.checkFailed), false);
+  assert.equal(needsRecovery(waiting, false, waiting.txSavedAt + STUCK_AFTER_MS - 1), false);
+  assert.equal(needsRecovery(waiting, false, waiting.txSavedAt + STUCK_AFTER_MS), true);
+  assert.equal(needsRecovery({ ...waiting, txSavedAt: undefined }, false), true);
+  assert.equal(needsRecovery({ ...waiting, tx: null }, false), true);
+  confirm({ status: '0x1' }); await running;
+  assert.equal(model.state.pending.jobId, jobId);
+  assert.equal(needsRecovery(model.state.pending, true, Date.now() + STUCK_AFTER_MS), false);
+  for (const [fail, pattern] of [
+    [(m) => { m.ethereum.waitForReceipt = async () => { throw new Error(`Transaction ${depositTx} not confirmed within 120s`); }; }, /not confirmed/],
+    [(m) => { m.ethereum.waitForReceipt = async () => { throw new Error('Transaction failed (status 0x0)'); }; }, /failed/],
+    [(m, map) => { map.delete(depositTx); }, /does not match/],
+  ]) {
+    const young = await unfinished({ tx: depositTx, txSavedAt: Date.now() });
+    assert.equal(needsRecovery(young.model.state.pending, young.model.state.checkFailed), false);
+    fail(young.model, young.events);
+    await assert.rejects(() => young.model.resume(), pattern);
+    assert.equal(young.model.state.checkFailed, true);
+    assert.equal(needsRecovery(young.model.state.pending, young.model.state.checkFailed), true);
+  }
+  const offline = await unfinished({ tx: depositTx, txSavedAt: Date.now() });
+  offline.model.ethereum.ensureEthereumMainnet = async () => { throw new Error('Switch MetaMask to Ethereum mainnet'); };
+  await assert.rejects(() => offline.model.resume(), /mainnet/);
+  assert.equal(needsRecovery(offline.model.state.pending, offline.model.state.checkFailed), false);
 });

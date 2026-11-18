@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Check, ChartCandlestick, CircleAlert, Clock, ExternalLink, FileCheck, Landmark, RefreshCw, Wallet } from "lucide-react";
 import { useL1Wallet } from "../client.jsx";
-import { BridgeController, amountAtoms } from "./controller.js";
+import { BridgeController, amountAtoms, needsRecovery } from "./controller.js";
 import { atomsToUsdc } from "./evm.js";
 import { stageRows, timestamp } from "./stages.js";
 import { Amount, AssetAvatar, Badge, Card, CardHead, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
@@ -205,7 +205,7 @@ function BridgeSession({ client, onNavigate, symbol }) {
             </div>
           </div>
         </div>
-        {view.pending && !view.pending.jobId && <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
+        {needsRecovery(view.pending, view.checkFailed) && <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
           {!tx && <Notice tone="warning" title="Deposit broadcast was interrupted">If MetaMask sent the deposit, paste its Ethereum transaction hash to resume tracking it.</Notice>}
           <label className="l1-field"><span>Interrupted broadcast: Ethereum transaction hash</span><input className="l1-mono" value={recoveryTx} onChange={(event) => setRecoveryTx(event.target.value)} placeholder="0x…" /></label>
           <div className="l1-row"><button type="button" className="l1-btn" disabled={view.busy} onClick={() => controller.run(() => controller.recoverHash(recoveryTx))}>Recover deposit</button>

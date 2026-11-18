@@ -10,6 +10,15 @@ export function amountAtoms(value) {
   const atoms = evm.usdcToAtoms(value);
   return atoms > 0n && atoms <= (1n << 64n) - 1n ? atoms : null;
 }
+// A broadcast deposit normally gets its bridge job within a few minutes: the receipt wait gives up after
+// 120 s and job creation follows at once. 15 minutes is well past that and past Ethereum finality (about 13 minutes).
+export const STUCK_AFTER_MS = 15 * 60 * 1000;
+// Recovery controls are only for a stuck deposit: no hash, a failed check of the hash, or no job after STUCK_AFTER_MS.
+export function needsRecovery(pending, checkFailed, now = Date.now()) {
+  if (!pending || pending.jobId) return false;
+  if (!pending.tx || checkFailed) return true;
+  return !(now - pending.txSavedAt < STUCK_AFTER_MS);
+}
 export function rpcEnvelope(response) {
   return response?.ok === undefined ? { ok: true, result: response } : response;
 }
@@ -25,7 +34,7 @@ export class BridgeController {
     this.key = `tn:l1:bridge:v1:${this.accountId}:${this.address}`;
     this.active = true;
     this.abort = new AbortController();
-    this.state = { ready: false, blocked: "Checking bridge readiness.", owner: "", balance: null, allowance: null, busy: false, error: "", pending: null, job: null, result: null };
+    this.state = { ready: false, blocked: "Checking bridge readiness.", owner: "", balance: null, allowance: null, busy: false, error: "", pending: null, checkFailed: false, job: null, result: null };
     try {
       const saved = JSON.parse(storage.getItem(this.key));
       if (saved?.pending?.recipient === this.address && saved.accountId === this.accountId) this.state.pending = saved.pending;
@@ -41,7 +50,7 @@ export class BridgeController {
     if (!broadcast) this.guard();
     // Persist only public recovery data, scoped to Task Node account AND pf address.
     this.storage.setItem(this.key, JSON.stringify({ accountId: this.accountId, pending }));
-    this.set({ pending });
+    this.set({ pending, checkFailed: false });
   }
   dispose() { this.active = false; this.abort.abort(); }
   async readiness() {
@@ -132,7 +141,7 @@ export class BridgeController {
       throw error;
     }
     // A provider can return the hash after logout; retain it under the OLD account's key.
-    try { this.save({ ...pending, tx }, true); }
+    try { this.save({ ...pending, tx, txSavedAt: Date.now() }, true); }
     catch { throw new Error(`Ethereum deposit broadcast: ${tx}. Recovery storage failed; retain this hash.`); }
     this.guard();
     await this.resume();
@@ -162,18 +171,24 @@ export class BridgeController {
     await this.depositEvent(pending, tx);
     this.guard();
     if (this.state.pending !== pending) throw new Error("Deposit changed during recovery. Reload the bridge.");
-    this.save({ ...pending, tx });
+    this.save({ ...pending, tx, txSavedAt: pending.txSavedAt || Date.now() });
     await this.resume();
   }
   async depositEvent(pending, tx) {
     await this.ethereum.ensureEthereumMainnet();
-    await this.ethereum.waitForReceipt(tx);
-    const event = await this.ethereum.watchDepositEvent(pending.route.vaultAddress, tx, pending.route.routeBinding);
-    if (!event || event.pftl_recipient !== this.address || event.depositor.toLowerCase() !== pending.owner
-        || String(event.amount) !== pending.amountAtoms || event.nonce !== pending.nonce
-        || Number(event.source_chain_id) !== 1 || event.vault !== pending.route.vaultAddress
-        || event.token !== pending.route.tokenAddress) throw new Error("Deposit event does not match the reviewed request.");
-    return event;
+    try {
+      await this.ethereum.waitForReceipt(tx);
+      const event = await this.ethereum.watchDepositEvent(pending.route.vaultAddress, tx, pending.route.routeBinding);
+      if (!event || event.pftl_recipient !== this.address || event.depositor.toLowerCase() !== pending.owner
+          || String(event.amount) !== pending.amountAtoms || event.nonce !== pending.nonce
+          || Number(event.source_chain_id) !== 1 || event.vault !== pending.route.vaultAddress
+          || event.token !== pending.route.tokenAddress) throw new Error("Deposit event does not match the reviewed request.");
+      return event;
+    } catch (error) {
+      // Only a failed check of the stored hash marks the deposit stuck; a rejected candidate hash does not.
+      if (this.state.pending?.tx === tx) this.set({ checkFailed: true });
+      throw error;
+    }
   }
   async resume() {
     this.guard();
