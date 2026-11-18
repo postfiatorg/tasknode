@@ -254,7 +254,8 @@ export async function superviseOnce() {
     save(pendingFile, pending);
     log({ alias: agent.alias, event: decision === "recover" ? "recovery_probe_queued" : "work_queued_for_ready_terminal", roundId: round.id, deliveryId: id, nextRetryAt: recoverySchedule(pending).nextRetryAt });
   }
-  save(path.join(stateDir, "scoped-supervisor-tick.json"), { version: 1, pid: process.pid, completedAt: new Date().toISOString() });
+  save(path.join(stateDir, "scoped-supervisor-tick.json"), { version: 1, pid: process.pid, completedAt: new Date().toISOString(),
+    boards: registry.agents.flatMap(agent => agent.boards).sort() });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

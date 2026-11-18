@@ -5,8 +5,10 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$DIR/bm-env.sh"
 # Fail before touching live schedules when credentials/API/candidate are absent.
 node "$DIR/cutover-check.mjs"
-mkdir -p "$HOME/.config/systemd/user"
-cat > "$HOME/.config/systemd/user/tasknode-kimi-supervisor.service" <<EOF
+bash "$DIR/bm-install-skills.sh"
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+mkdir -p "$UNIT_DIR"
+cat > "$UNIT_DIR/tasknode-kimi-supervisor.service" <<EOF
 [Unit]
 Description=Task Node production Kimi duty supervisor
 After=network-online.target
@@ -22,7 +24,7 @@ RestartSec=10
 [Install]
 WantedBy=default.target
 EOF
-cat > "$HOME/.config/systemd/user/tasknode-kimi-reset.service" <<EOF
+cat > "$UNIT_DIR/tasknode-kimi-reset.service" <<EOF
 [Unit]
 Description=Refresh an idle Task Node Kimi context
 After=network-online.target
@@ -33,7 +35,7 @@ Environment=BM_TERMINAL_BIN=$BM_TERMINAL_BIN
 Environment=BM_TERMINAL_HOME=$BM_TERMINAL_HOME
 ExecStart=/bin/bash $DIR/bm-reset.sh
 EOF
-cat > "$HOME/.config/systemd/user/tasknode-kimi-reset.timer" <<'EOF'
+cat > "$UNIT_DIR/tasknode-kimi-reset.timer" <<'EOF'
 [Unit]
 Description=Task Node Kimi daily idle refresh
 [Timer]
@@ -65,18 +67,22 @@ file.write_text('\n'.join(lines)+'\n')
 PY
 systemctl --user daemon-reload
 if ! systemctl --user is-active --quiet tasknode-kimi-supervisor.service; then STARTED_NEW=true; fi
-systemctl --user enable --now tasknode-kimi-supervisor.service
+systemctl --user enable tasknode-kimi-supervisor.service
+RESTARTED_AT="$(node -p 'Date.now()')"
+systemctl --user restart tasknode-kimi-supervisor.service
 systemctl --user is-active --quiet tasknode-kimi-supervisor.service
 # Keep the working production cron until the new process completes a tick.
 # A failed or slow startup leaves the previous schedule available for recovery.
-node - "$BM_STATE_DIR/scoped-supervisor-tick.json" <<'JS'
+node - "$BM_STATE_DIR/scoped-supervisor-tick.json" "$DIR/agents.json" "$RESTARTED_AT" <<'JS'
 const fs = require('node:fs');
+const expectedBoards = JSON.parse(fs.readFileSync(process.argv[3], "utf8")).agents.flatMap(agent => agent.boards).sort();
 const started = Date.now();
 (async () => {
   while (Date.now() - started < 60_000) {
     try {
       const status = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-      if (status.version === 1 && Date.parse(status.completedAt) >= started) return;
+      if (status.version === 1 && Date.parse(status.completedAt) >= Number(process.argv[4]) &&
+          JSON.stringify(status.boards) === JSON.stringify(expectedBoards)) return;
     } catch {}
     await new Promise(resolve => setTimeout(resolve, 1_000));
   }

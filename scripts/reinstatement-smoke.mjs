@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { updateReinstatementRoster } from "./reinstatement-roster.mjs";
 import { query, closePool } from "../server/db/pool.js";
 import { contributorAction, dispatchDue, personalStatus, reviewCase } from "../server/reinstatement.js";
 import { operatorQueue, overrideAction } from "../server/reinstatement-routes.js";
@@ -46,8 +47,12 @@ try {
 
   for (const id of ["A","B","C","D","other"]) {
     await query("INSERT INTO app_accounts(account_id,account_json) VALUES ($1,'{}')", [id]);
-    await query("INSERT INTO reinstatement_operators(account_id) VALUES ($1)", [id]);
   }
+  await assert.rejects(updateReinstatementRoster("enroll", ["A","missing"]), /active account/);
+  assert.deepEqual((await updateReinstatementRoster("status")).members, []);
+  const roster = await updateReinstatementRoster("enroll", ["A","B","C","D","other"]);
+  assert.equal(roster.openEntriesWithoutQuorum, 0);
+  assert.deepEqual(await updateReinstatementRoster("enroll", ["A","B"]), roster);
   await query("UPDATE account_blacklist SET wallet_addresses=ARRAY['r-fixture'] WHERE id='early'");
   await query("INSERT INTO account_linked_wallets(account_id,wallet_address) VALUES ('wallet-owner','r-fixture')");
   const conflict = await personalStatus("wallet-owner");
