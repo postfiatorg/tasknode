@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CircleCheck, Send as SendIcon, TriangleAlert } from 'lucide-react';
+import { ArrowUpRight, CircleCheck, TriangleAlert } from 'lucide-react';
 import { pftInputAtoms } from './lib/tx-builder.js';
 import { isValidAddress } from './lib/utils.js';
 import { rpcResult } from './lib/rpc-client.js';
@@ -65,7 +65,7 @@ export default function Send({ client }) {
       setResult({ ...receipt, senderDelta: String(balance(after.pft) - balance(before.pft)), receiverDelta: String(balance(receiverAfter) - balance(receiverBefore)), amount: approved.intent.amount, fee: String(approved.quote.minimum_fee) });
     } catch (failure) { setError(failure.message); } finally { setBusy(false); }
   }
-  if (!client.unlocked) return <p>Unlock your L1 wallet to send PFT.</p>;
+  if (!client.unlocked) return <p>Unlock your L1 wallet to send.</p>;
   const recipientLooksWrong = to.trim() && !isValidAddress(to.trim());
   const matched = result && !result.pendingBalances && result.receiverDelta === result.amount && result.senderDelta === String(-BigInt(result.amount) - BigInt(result.fee));
   return <div className="l1-view l1-split is-even">
@@ -77,14 +77,14 @@ export default function Send({ client }) {
           {lines.length === 0 && <span className="l1-field-hint"><span>PFUSDC appears here once this wallet's balance has loaded and holds some.</span></span>}</label>
         <label className="l1-field"><span>Recipient</span><input aria-label="Recipient pf address" placeholder="pf…" spellCheck={false} autoComplete="off" className="l1-mono-input" value={to} disabled={busy} onChange={e => { setTo(e.target.value); setReview(null); }} />
           {recipientLooksWrong && <span className="l1-field-hint is-danger">A Post Fiat address starts with pf followed by 40 hex characters.</span>}</label>
-        <label className="l1-field"><span>Amount</span><span className="l1-input-wrap"><input aria-label={`${unit} amount`} inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={e => { setAmount(e.target.value); setReview(null); }} /><span className="l1-input-suffix">PFT</span></span>
+        <label className="l1-field"><span>Amount</span><span className="l1-input-wrap"><input aria-label={`${unit} amount`} inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={e => { setAmount(e.target.value); setReview(null); }} /><span className="l1-input-suffix">{unit}</span></span>
           <span className="l1-field-hint"><span>{line ? <>Available <Amount atoms={line.balance} unit="PFUSDC" /></> : available != null ? <>Available <Amount atoms={available} unit="PFT" /></> : ''}</span><span>Fee quoted before you confirm</span></span></label>
         <button type="submit" className="l1-btn is-primary is-lg is-block" disabled={busy}>Review transfer</button>
       </form>
       {error && <div style={{ marginTop: 14 }}><Notice tone="danger" role="alert">{error}</Notice></div>}
     </Card>
     <div className="l1-stack">
-      {!review && !result && !busy && <Card><Empty icon={SendIcon} title="Review before anything is signed">Enter a recipient and amount. You will see the network fee and the total before confirming.</Empty></Card>}
+      {!review && !result && !busy && <Card><Empty icon={ArrowUpRight} title="Review before anything is signed">Enter a recipient and amount. You will see the network fee and the total before confirming.</Empty></Card>}
       {busy && !result && <Card><p className="l1-status-line" role="status"><Spinner />Waiting for wallet operation…</p></Card>}
       {review && <Card className="l1-review" aria-label="Review transfer">
         <CardHead eyebrow={`Send ${review.intent.unit || 'PFT'}`} title="Review and confirm"><button type="button" className="l1-btn is-sm is-ghost" onClick={() => setReview(null)} disabled={busy}>Discard</button></CardHead>
