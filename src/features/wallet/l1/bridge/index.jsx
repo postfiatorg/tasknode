@@ -109,6 +109,7 @@ function Track({ view, controller, client, onNavigate, symbol }) {
         result && !result.balancePending && ["Credited asset", <Mono value={result.assetId} testId="bridge-credited-asset" />],
         ["Recipient", <Mono value={client.address} />],
       ]} />
+      <div style={{ marginTop: 10 }}><button type="button" className="l1-btn is-sm" data-testid="bridge-diagnostics" onClick={() => navigator.clipboard?.writeText(JSON.stringify(controller.diagnostics(), null, 2))}>Copy diagnostics</button></div>
     </Details>
   </Card>;
 }
@@ -154,7 +155,10 @@ function BridgeSession({ client, onNavigate, symbol }) {
   }, [client]);
   if (!view || !controller) return <p className="l1-status-line"><Spinner />Loading bridge…</p>;
   const atoms = amountAtoms(amount);
-  const enabled = view.ready && !!view.owner && !!atoms && !view.busy && !view.pending;
+  // A credited deposit does not lock the form; only one that is still unresolved does.
+  const credited = Boolean(view.pending && view.result && !view.result.balancePending);
+  const locked = Boolean(view.pending) && !credited;
+  const enabled = view.ready && !!view.owner && !!atoms && !view.busy && !locked;
   const tx = view.pending?.tx;
   const approved = view.allowance !== null && atoms && view.allowance >= atoms;
   const checking = !view.ready && view.blocked === "Checking bridge readiness.";
@@ -167,6 +171,8 @@ function BridgeSession({ client, onNavigate, symbol }) {
           <button type="button" className="l1-icon-btn" aria-label="Check readiness" title="Check readiness" disabled={view.busy} onClick={() => controller.run(async () => { await controller.readiness(); await controller.refreshEthereum(); })}><RefreshCw size={14} aria-hidden /></button>
         </CardHead>
         {!view.ready && !checking && view.blocked && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="Deposits are paused">{view.blocked} Approve and deposit stay off until the bridge reports ready.</Notice></div>}
+        {locked && view.pending.tx && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="A deposit is still in progress">Your deposit of <Amount atoms={view.pending.amountAtoms} unit="USDC" /> has not finished. The amount box unlocks when it is credited. Follow it under Bridge progress.</Notice></div>}
+        {credited && <div style={{ marginBottom: 16 }}><Notice tone="success" title="Your last deposit is complete">Enter an amount to start another.</Notice></div>}
         <div className="l1-bridge-steps">
           <div className={`l1-bridge-step ${view.owner ? "is-done" : ""}`}>
             <span className="l1-step-num">{view.owner ? <Check size={13} aria-hidden /> : 1}</span>
@@ -184,7 +190,7 @@ function BridgeSession({ client, onNavigate, symbol }) {
             <span className="l1-step-num">{atoms ? <Check size={13} aria-hidden /> : 2}</span>
             <div className="l1-bridge-step-body">
               <b>Choose an amount</b>
-              <label className="l1-field"><span className="l1-sr">USDC amount</span><span className="l1-input-wrap"><input aria-label="USDC amount" inputMode="decimal" placeholder="0.00" value={amount} disabled={!!view.pending || view.busy} onChange={(event) => setAmount(event.target.value)} /><span className="l1-input-suffix">{view.balance ? <button type="button" className="l1-max" disabled={!!view.pending || view.busy} onClick={() => setAmount(atomsToUsdc(view.balance))}>Max</button> : null}USDC</span></span>
+              <label className="l1-field"><span className="l1-sr">USDC amount</span><span className="l1-input-wrap"><input aria-label="USDC amount" inputMode="decimal" placeholder="0.00" value={amount} disabled={locked} onChange={(event) => setAmount(event.target.value)} /><span className="l1-input-suffix">{view.balance ? <button type="button" className="l1-max" disabled={locked} onClick={() => setAmount(atomsToUsdc(view.balance))}>Max</button> : null}USDC</span></span>
                 <span className="l1-field-hint"><span>{atoms ? <>You receive <Amount atoms={atoms} unit="PFUSDC" /> on Post Fiat</> : "1 USDC becomes 1 PFUSDC."}</span><span>{amount && !atoms ? "Up to six decimals" : ""}</span></span></label>
             </div>
           </div>

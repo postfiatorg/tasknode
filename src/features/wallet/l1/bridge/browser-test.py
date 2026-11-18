@@ -36,6 +36,8 @@ with sync_playwright() as p:
     page.screenshot(path=str(out / 'B8-proving-stages.png'), full_page=True)
     page.reload()
     expect(page.get_by_test_id('bridge-job')).to_have_text(job_before)
+    expect(page.get_by_label('USDC amount', exact=True)).to_be_disabled()
+    expect(page.get_by_text('A deposit is still in progress', exact=True)).to_be_visible()
     assert page.evaluate('window.mockSends.length') == 0
     page.screenshot(path=str(out / 'B8-reloaded-same-job.png'), full_page=True)
     print('PASS B7/B8 connect, approval/deposit ABI, seven stages, reload same job; no repeat send')
@@ -51,5 +53,18 @@ with sync_playwright() as p:
     expect(page.get_by_test_id('bridge-credited-asset')).to_have_text('6e' * 48)
     assert '99.00' not in page.locator('body').text_content()
     page.screenshot(path=str(out / 'B9-credited-child-balance.png'), full_page=True)
+    # A finished earlier deposit must not lock the form on a later visit.
+    expect(page.get_by_text('Your last deposit is complete', exact=True)).to_be_visible()
+    page.get_by_role('button', name='Connect MetaMask', exact=True).click()
+    amount = page.get_by_label('USDC amount', exact=True)
+    expect(amount).to_be_enabled()
+    amount.click(); page.keyboard.type('2.5', delay=400)
+    expect(amount).to_have_value('2.5')
+    expect(page.get_by_role('button', name='Approve USDC', exact=True)).to_be_enabled()
+    page.wait_for_timeout(17000)  # across a background readiness check
+    amount.click(); page.keyboard.type('1', delay=100)
+    expect(amount).to_have_value('2.51')
+    page.screenshot(path=str(out / 'B11-credited-form-unlocked.png'), full_page=True)
+    print('PASS B11 credited earlier deposit leaves the amount box usable; typing survives background checks')
     print('PASS B9 accepted receipt + exact child balance 2.000000; family 99.000000 ignored; failed read never complete')
     browser.close()

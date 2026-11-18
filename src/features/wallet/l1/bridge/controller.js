@@ -123,7 +123,12 @@ export class BridgeController {
     await this.refreshEthereum();
   }
   async deposit(amount) {
-    if (this.state.pending) throw new Error("Resume the existing deposit before starting another.");
+    if (this.state.pending) {
+      // A credited deposit no longer blocks the form: starting a new one replaces its record.
+      const done = this.state.result && !this.state.result.balancePending;
+      if (!done) throw new Error("Resume the existing deposit before starting another.");
+      this.newDeposit();
+    }
     const { route, atoms, owner } = await this.preflight(amount);
     if (this.state.allowance < atoms) throw new Error("Approve this amount first.");
     const nonce = this.ethereum.generateNonce();
@@ -161,6 +166,18 @@ export class BridgeController {
     if (this.state.pending.jobId || this.storedJobId()) throw new Error("This deposit has a bridge job and cannot be discarded.");
     this.save(null);
     this.set({ job: null, result: null, approvalTx: null, error: "" });
+  }
+  // Public state only: no keys, no wallet secrets.
+  diagnostics() {
+    const { ready, blocked, owner, busy, error, pending, job, result } = this.state;
+    return {
+      at: new Date().toISOString(), recipient: this.address, ready, blocked, owner, busy, error,
+      balance: this.state.balance === null ? null : String(this.state.balance),
+      allowance: this.state.allowance === null ? null : String(this.state.allowance),
+      pending: pending && { tx: pending.tx, jobId: pending.jobId, amountAtoms: pending.amountAtoms, owner: pending.owner },
+      job: job && { id: job.job_id, status: job.status, code: job.code || null },
+      result: result && { receipt: result.receipt, balancePending: result.balancePending },
+    };
   }
   async recoverHash(tx) {
     if (!/^0x[0-9a-f]{64}$/.test(tx)) throw new Error("Enter the Ethereum deposit transaction hash.");
