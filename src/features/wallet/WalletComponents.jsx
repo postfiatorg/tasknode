@@ -582,6 +582,25 @@ export function WalletLinkModal({
       const verifiedAccountId = String(verify.body?.wallet?.accountId || "").trim();
       const currentSessionResult = await requestJson("/api/session");
       const currentAccountId = String(currentSessionResult.body?.accountId || "").trim();
+      // The wallet belonged to the member's existing account, so the server moved this sign-in there.
+      // Keep the vault under that account and reload into it.
+      if (
+        verify.body?.accountSwitched === true
+        && verifiedAccountId
+        && currentSessionResult.ok
+        && currentAccountId === verifiedAccountId
+        && verify.body?.wallet?.address === walletSummary.address
+      ) {
+        setMessage(verify.body?.message || "This wallet belongs to your existing account. Opening it now.");
+        try {
+          await walletCore.saveEncryptedMnemonicVault({ accountId: verifiedAccountId, mnemonic: normalized, password: vaultPassword });
+        } catch {
+          // The account still opens; the member can unlock the wallet with the recovery phrase there.
+        }
+        setMnemonic("");
+        window.location.reload();
+        return;
+      }
       const persistenceDecision = walletVaultPersistenceDecision({
         challengeAccountId: start.body.challenge.accountId,
         capturedAccountId: activeSession.accountId,

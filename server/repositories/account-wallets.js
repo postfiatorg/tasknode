@@ -112,7 +112,7 @@ export async function linkWalletToAccount(options = {}) {
     return { wallet: walletFromRow(saved.rows[0]) };
   });
   if (result.conflict) {
-    return { ok: false, status: 409, error: "wallet_owned_by_other_account" };
+    return { ok: false, status: 409, error: "wallet_owned_by_other_account", ownerAccountId: result.ownerAccountId };
   }
   try { linkRuntimeWallet({ ...options, databaseMirror: false }); } catch { /* Postgres remains authoritative. */ }
   return { ok: true, wallet: result.wallet, reclaimedWalletCount: 0 };

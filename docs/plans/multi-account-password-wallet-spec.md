@@ -447,7 +447,7 @@ Required stable error classes include:
 | `password_login_rate_limited` | Login attempts exceeded the allowed window |
 | `account_switch_membership_required` | Target is not an authenticated member of this browser's account set |
 | `account_switch_session_changed` | The selected account changed during the request |
-| `wallet_owned_by_other_account` | Wallet is actively linked to a different account |
+| `wallet_owned_by_other_account` | Wallet is actively linked to a different account, and the selected account holds a wallet or work of its own |
 | `wallet_account_changed` | Wallet flow started under another selected account |
 | `wallet_vault_account_mismatch` | Local vault account does not match selected account |
 | `wallet_vault_address_mismatch` | Derived or saved wallet differs from the selected account's linked wallet |
@@ -552,6 +552,11 @@ dedicated isolation review. It is not required by this specification.
 - Wallet A's recovery phrase is rejected while B is selected.
 - Attempting to link wallet A to B returns `wallet_owned_by_other_account` and
   does not change either account.
+- Exception, empty duplicates: when the selected account holds no wallet, work,
+  content, spend or blacklist entry, a valid proof of wallet A moves that
+  account's sign-ins and the current session to account A and retires the empty
+  account as merged. Linking a sign-in that sits on such an empty account does
+  the same. The wallet never changes account.
 - Switching while link, create, relink, delink, unlock, send, or task signing is
   pending cannot write to the new account or old account's local vault.
 - Server requests for wallet balance, activity, history, and signing preparation
