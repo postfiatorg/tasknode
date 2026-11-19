@@ -106,7 +106,10 @@ export async function getSession(sessionId = "") {
        FROM auth_sessions
       WHERE token_hash = $1
         AND revoked_at IS NULL
-        AND expires_at > now()`,
+        AND expires_at > now()
+        AND NOT EXISTS (
+          SELECT 1 FROM app_accounts WHERE app_accounts.account_id = auth_sessions.account_id AND app_accounts.status = 'merged'
+        )`,
     [tokenHash(sessionId)]
   );
   return rowSession(result.rows[0], sessionId);

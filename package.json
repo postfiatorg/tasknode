@@ -58,6 +58,7 @@
     "auth-state-migration-smoke": "node scripts/auth-state-migration-smoke.mjs",
     "account-wallet-repository-smoke": "node scripts/account-wallet-repository-smoke.mjs",
     "account-repository-smoke": "node scripts/account-repository-smoke.mjs",
+    "duplicate-account-absorb-smoke": "node scripts/duplicate-account-absorb-smoke.mjs",
     "ethereum-deposit-repository-smoke": "node scripts/ethereum-deposit-repository-smoke.mjs",
     "evm-wallet-pay-smoke": "node scripts/evm-wallet-pay-smoke.mjs",
     "terminal-auth-repository-smoke": "node scripts/terminal-auth-repository-smoke.mjs",

@@ -259,6 +259,13 @@ try {
   assert.equal((await query("SELECT status FROM billing_accounts WHERE account_id = $1", [splitSourceId])).rows[0].status, "merged");
   assert.equal((await recoverSplitProviderAccount(recoveryOptions)).alreadyMerged, true, "recovery must be idempotent");
 
+  // An account that holds a wallet is never folded into another one by linking; empty duplicates
+  // are covered in duplicate-account-absorb-smoke.mjs.
+  const heldWallet = `rAccountHeld${suffix}`;
+  recoveryWallets.push(heldWallet);
+  assert.equal((await linkWalletToAccount({ accountId: oauthAccounts[0].id, address: heldWallet })).ok, true);
+  assert.equal((await linkWalletToAccount({ accountId: emailAccounts[0].id, address: `rAccountHeldOther${suffix}` })).ok, true);
+  recoveryWallets.push(`rAccountHeldOther${suffix}`);
   const conflict = await linkProviderToAccount({
     accountId: emailAccounts[0].id,
     provider: "discord",

@@ -447,7 +447,7 @@ Required stable error classes include:
 | `password_login_rate_limited` | Login attempts exceeded the allowed window |
 | `account_switch_membership_required` | Target is not an authenticated member of this browser's account set |
 | `account_switch_session_changed` | The selected account changed during the request |
-| `wallet_owned_by_other_account` | Wallet is actively linked to a different account |
+| `wallet_owned_by_other_account` | Wallet is actively linked to a different account, and the selected account holds a wallet or work of its own |
 | `wallet_account_changed` | Wallet flow started under another selected account |
 | `wallet_vault_account_mismatch` | Local vault account does not match selected account |
 | `wallet_vault_address_mismatch` | Derived or saved wallet differs from the selected account's linked wallet |
@@ -552,6 +552,14 @@ dedicated isolation review. It is not required by this specification.
 - Wallet A's recovery phrase is rejected while B is selected.
 - Attempting to link wallet A to B returns `wallet_owned_by_other_account` and
   does not change either account.
+- Exception, empty duplicates: linking a sign-in that sits on an account with
+  no wallet, work, content, credit beyond the sign-up credit, spend or blacklist
+  entry folds that account into the other one and retires it as merged.
+- Exception, restored accounts with no sign-in: when account A has a wallet but
+  no provider, email or password sign-in, a valid proof of wallet A from an
+  empty account moves that account's sign-ins and the current session to A. If A
+  has any sign-in of its own, the phrase is rejected as above. The wallet never
+  changes account.
 - Switching while link, create, relink, delink, unlock, send, or task signing is
   pending cannot write to the new account or old account's local vault.
 - Server requests for wallet balance, activity, history, and signing preparation
