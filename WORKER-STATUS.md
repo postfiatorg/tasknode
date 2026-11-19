@@ -1,4 +1,6 @@
-DONE
+IN PROGRESS
+
+## Earlier record (task F)
 
 The Phantom vault deposit implementation was tested at `47c08b9` on `wallet/solana-trustless-20261119`, using Node v24.22.1 and npm 11.19.1. [Pull request 416](https://github.com/postfiatorg/tasknode/pull/416) targets `main`.
 
