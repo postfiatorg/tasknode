@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { solanaPath } from './solana-bridge.js';
 import { registerL1Gateway } from './gateway.js';
 import { localRpc } from './read-rpc.js';
 import { getNavcoinRegistry } from './navcoin-registry.js';
@@ -75,7 +76,8 @@ export function createRelayServer(env = process.env, injectedRead) {
         .finally(() => { activeReads--; });
       return;
     }
-    if (/^\/api\/l1\/bridge\/(?:readiness(?:\?route=ethereum-mainnet-usdc-v1)?|jobs(?:\/0x[0-9a-f]{64})?|withdrawals(?:\/readiness|\/[0-9a-f]{96})?|faucet|solana\/(?:readiness|intent|advances(?:\/[1-9A-HJ-NP-Za-km-z]{64,88})?))$/.test(req.url)) {
+    if (/^\/api\/l1\/bridge\/(?:readiness(?:\?route=ethereum-mainnet-usdc-v1)?|jobs(?:\/0x[0-9a-f]{64})?|withdrawals(?:\/readiness|\/[0-9a-f]{96})?|faucet)$/.test(req.url) ||
+        (req.url.startsWith('/api/l1/bridge/solana/') && solanaPath(req.url.slice('/api/l1/bridge'.length)))) {
       inner.emit('request', req, res); return;
     }
     json(res, 404, { error: 'relay_route_not_found' });
