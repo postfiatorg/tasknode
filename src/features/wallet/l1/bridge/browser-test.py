@@ -87,7 +87,7 @@ with sync_playwright() as p:
     intent = next(c for c in calls if c.get('url', '').endswith('/solana/intent'))
     assert intent['body'] == {'owner': '6' * 43, 'amount_atoms': '2500000', 'pftl_recipient': 'pf' + '33' * 20}
     assert [c for c in calls if c.get('phantom')] == [{'phantom': 'signAndSendTransaction', 'message': '3mJr7AoUXx2Wqd'}]
-    for i, stage in enumerate(['capture', 'proof', 'credit'], start=1):
+    for i, stage in enumerate(['capture', 'witness', 'proof', 'sign', 'submit', 'credit'], start=1):
         page.evaluate("(value) => sessionStorage.setItem('mock:solana-stage', value)", stage)
         expect(stages.nth(i)).to_contain_text('running')
         expect(stages.nth(i - 1)).to_contain_text('complete')
@@ -97,7 +97,7 @@ with sync_playwright() as p:
             assert not any(c.get('phantom') or c.get('url', '').endswith('/jobs') for c in page.evaluate('window.mockSolana'))
     page.evaluate("sessionStorage.setItem('mock:solana-stage', 'accepted')")
     expect(sol.get_by_text('Solana deposit credited')).to_be_visible()
-    for i, seconds in enumerate(['0.25 s', '0.5 s', '0.75 s', '1 s']):
+    for i, seconds in enumerate(['0.25 s', '0.5 s', '0.75 s', '1 s', '1.25 s', '1.5 s', '1.75 s']):
         expect(stages.nth(i)).to_contain_text('complete')
         expect(stages.nth(i).locator('.l1-stage-time')).to_have_text(seconds)
     frozen = clock.inner_text()
@@ -106,7 +106,7 @@ with sync_playwright() as p:
     expect(clock).to_have_text(frozen)
     assert page.evaluate("localStorage.getItem('mock:phantom-sends')") == '1'
     page.screenshot(path=str(out / 'solana-credited.png'), full_page=True)
-    print('PASS Solana: one Phantom send, four stages to credited, live clock, measured stage times, reload in flight and after credit')
+    print('PASS Solana: one Phantom send, seven measured stages to credited, live clock, measured stage times, reload in flight and after credit')
 
     page.evaluate("localStorage.clear(); sessionStorage.clear(); sessionStorage.setItem('mock:solana-stage', 'failed')")
     page.goto(f'{base}?mode=interrupted')
@@ -115,7 +115,7 @@ with sync_playwright() as p:
     sol.get_by_test_id('solana-send').click()
     expect(sol.get_by_text('Solana deposit failed')).to_be_visible()
     expect(sol.get_by_text('Deposit proof rejected.')).to_be_visible()
-    expect(stages.nth(2)).to_contain_text('failed')
+    expect(stages.nth(3)).to_contain_text('failed')
     assert any(c.get('url', '').endswith('/recovery') for c in page.evaluate('window.mockSolana'))
     page.reload()
     expect(sol.get_by_text('Solana deposit failed')).to_be_visible()

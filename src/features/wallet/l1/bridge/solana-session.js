@@ -38,12 +38,13 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
   });
 }
 
-export async function advanceDeposit(record) {
+export async function advanceDeposit(record, client) {
   if (!record.signature) {
-    const recovered = await postSolana("recovery", { nonce: record.nonce, last_valid_block_height: record.last_valid_block_height });
+    const recovered = await postSolana("recovery", { nonce: record.nonce, vault_program_id: record.vault_program_id,
+      last_valid_block_height: record.last_valid_block_height, before: record.before });
     if (signature.test(recovered.signature || "")) return { ...record, signature: recovered.signature };
     if (recovered.expired === true) return { ...record, terminal: "expired", finished: Date.now() };
-    return record;
+    return record.before === recovered.before ? record : { ...record, before: recovered.before };
   }
   if (!record.jobId) {
     const job = await postSolana("jobs", { signature: record.signature });
@@ -55,6 +56,14 @@ export async function advanceDeposit(record) {
   let terminal;
   if (job.status === "accepted") {
     if (job.receipt_code !== "ACCEPTED" || !/^[0-9a-f]{96}$/.test(job.receipt_id || "")) throw Error("Awaiting the Post Fiat credit receipt.");
+    const matches = job.receipts?.some(row => ["vault_program_id", "nonce", "owner", "pftl_recipient", "amount_atoms"]
+      .every(field => row[field] === record[field]));
+    if (!matches) throw Error("The proven vault receipt does not match this deposit.");
+    const response = await client.call("receipts", { tx_id: job.receipt_id, limit: 1 });
+    const receipts = response?.result ?? response;
+    if (!Array.isArray(receipts) || !receipts.some(row => row.tx_id === job.receipt_id && row.accepted === true && row.code === "accepted")) {
+      throw Error("Waiting for the accepted Post Fiat receipt.");
+    }
     terminal = "credited";
   }
   if (job.status === "failed") terminal = "failed";

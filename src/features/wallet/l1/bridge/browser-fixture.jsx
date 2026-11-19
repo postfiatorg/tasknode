@@ -14,7 +14,7 @@ const iface = new Interface([
 ]);
 const solanaOwner = '6'.repeat(43), solanaSignature = '5'.repeat(87), solanaProgram = '7'.repeat(43);
 const solanaNonce = 'ab'.repeat(32), solanaJob = '0x' + '30'.repeat(32);
-const solanaStages = ['finality', 'capture', 'proof', 'credit'];
+const solanaStages = ['finality', 'capture', 'witness', 'proof', 'sign', 'submit', 'credit'];
 window.mockSolana = [];
 window.phantom = { solana: { isPhantom: true, publicKey: null,
   async connect() { this.publicKey = solanaOwner; return { publicKey: solanaOwner }; },
@@ -58,19 +58,21 @@ window.fetch = async (url, options = {}) => {
     const path = String(url).split('/solana/')[1];
     if (path === 'readiness') return Response.json({ ok: true, ready: mode !== 'blocked', message: 'Vault paused',
       vault_program_id: solanaProgram, light_client_epoch: 100, per_deposit_cap_atoms: '25000000', total_cap_atoms: '100000000', available_atoms: '25000000' });
+    if (path === 'intent') localStorage.setItem('mock:solana-request', JSON.stringify(body));
     if (path === 'intent') return Response.json({ ok: true, ...body, message_b58: '3mJr7AoUXx2Wqd', vault_program_id: solanaProgram,
       nonce: solanaNonce, last_valid_block_height: 1234 });
     if (path === 'recovery') return Response.json({ ok: true, signature: solanaSignature });
     if (path === 'jobs' && body.signature === solanaSignature) return Response.json({ ok: true, job_id: solanaJob });
     if (path !== 'jobs/' + solanaJob) throw Error('Unexpected Solana request');
     const stage = sessionStorage.getItem('mock:solana-stage') || 'finality';
-    const end = stage === 'accepted', failed = stage === 'failed', active = failed ? 2 : solanaStages.indexOf(stage);
+    const end = stage === 'accepted', failed = stage === 'failed', active = failed ? 3 : solanaStages.indexOf(stage);
     const start = Number(sessionStorage.getItem('mock:solana-time') || Date.now() / 1000);
     sessionStorage.setItem('mock:solana-time', String(start));
     return Response.json({ ok: true, signature: solanaSignature, job_id: solanaJob, status: stage,
+      receipts: end ? [{ ...JSON.parse(localStorage.getItem('mock:solana-request')), nonce: solanaNonce, vault_program_id: solanaProgram }] : [],
       receipt_id: end ? 'dc'.repeat(48) : '', receipt_code: end ? 'ACCEPTED' : '',
       updated_at_unix: end || failed ? start + 10 : start, message: failed ? 'Deposit proof rejected.' : '',
-      stage_history: solanaStages.slice(0, end ? 4 : active + 1).map((stage, i) => ({
+      stage_history: solanaStages.slice(0, end ? solanaStages.length : active + 1).map((stage, i) => ({
         stage, status: end || i < active ? 'complete' : failed ? 'failed' : 'running',
         started_at_unix: start + i, completed_at_unix: end || i < active ? start + i + (i + 1) / 4 : null,
       })) });
@@ -95,6 +97,7 @@ window.fetch = async (url, options = {}) => {
 };
 const client = { address, accountId: 'synthetic-bob', unlocked: true,
   async call(method) {
+    if (method === 'receipts') return { ok: true, result: [{ tx_id: 'dc'.repeat(48), code: 'accepted', accepted: true }] };
     if (method === 'vault_bridge_route') return routeReport();
     if (method === 'account_assets') {
       if (mode === 'balance-fail') throw new Error('Mock balance RPC unavailable');

@@ -5,8 +5,9 @@ import { bridgeJson } from "./bridge-relay.js";
 import { advanceDeposit, readSaved, sendDeposit } from "./solana-session.js";
 import { Amount, Badge, Card, CardHead, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
 
-const stages = [["finality", "Solana finality"], ["capture", "Capture deposit"], ["proof", "Generate proof"], ["credit", "Credit on Post Fiat"]];
-const elapsed = ms => (Math.max(0, ms) / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " s";
+const stages = [["finality", "Solana finality"], ["capture", "Capture deposit"], ["witness", "Build witness"], ["proof", "Generate proof"],
+  ["sign", "Sign Post Fiat transaction"], ["submit", "Submit proof"], ["credit", "Credit on Post Fiat"]];
+const elapsed = ms => (Math.max(0, ms) / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }) + " s";
 
 function Progress({ deposit, reset }) {
   const [now, setNow] = useState(Date.now);
@@ -21,7 +22,7 @@ function Progress({ deposit, reset }) {
       <span className="l1-clock"><Clock size={14} aria-hidden /> <span data-testid="solana-clock">{elapsed((deposit.finished ?? now) - deposit.started)}</span></span>
     </CardHead>
     <ol className="l1-stages" aria-label="Solana deposit stages">{stages.map(([stage, label]) => {
-      const row = job?.stage_history?.find(item => item.stage === stage);
+      const row = job?.stage_history?.findLast(item => item.stage === stage);
       const status = row?.status || "pending";
       const start = row?.started_at_unix, end = row?.completed_at_unix;
       const time = Number.isFinite(start) && Number.isFinite(end) ? elapsed((end - start) * 1000)
@@ -89,7 +90,7 @@ export default function SolanaDeposit({ client }) {
     let stopped = false, timer;
     async function poll() {
       try {
-        const next = await advanceDeposit(deposit);
+        const next = await advanceDeposit(deposit, client);
         if (stopped) return;
         setError("");
         const current = readSaved(key);
@@ -102,7 +103,7 @@ export default function SolanaDeposit({ client }) {
     // Advance immediately between recovery, job creation and the first status read.
     timer = setTimeout(poll, deposit.job && !deposit.terminal ? 1000 : 0);
     return () => { stopped = true; clearTimeout(timer); };
-  }, [deposit, busy, save, key]);
+  }, [deposit, busy, save, key, client]);
 
   const atoms = amountAtoms(amount);
   const available = /^[0-9]{1,20}$/.test(ready?.available_atoms) ? BigInt(ready.available_atoms) : 0n;

@@ -71,7 +71,8 @@ export async function buildVaultDeposit({ rpc, program, mint }, ready, request) 
 
 // Phantom may have broadcast before its reply reached the tab. Only the vault can create
 // this permanent receipt. Read a finalized bank after blockhash expiry before releasing the form.
-export async function recoverDeposit({ rpc, program }, { nonce, last_valid_block_height: lastHeight }) {
+export async function recoverDeposit({ rpc, program }, { nonce, last_valid_block_height: lastHeight, vault_program_id: expected, before }) {
+  if (program.toBase58() !== expected) throw new DepositError(409, 'This deposit belongs to a different vault configuration.');
   const receipt = pda(program, 'receipt', Buffer.from(nonce, 'hex'));
   const epoch = await rpc.getEpochInfo('finalized');
   const account = await rpc.getAccountInfo(receipt, { commitment: 'finalized', minContextSlot: epoch.absoluteSlot });
@@ -81,7 +82,7 @@ export async function recoverDeposit({ rpc, program }, { nonce, last_valid_block
     return { ok: true, expired: epoch.blockHeight > lastHeight };
   }
   // Ignore unrelated references to the PDA. Look for the successful deposit instruction.
-  const signatures = await rpc.getSignaturesForAddress(receipt, { limit: 8 }, 'finalized');
+  const signatures = await rpc.getSignaturesForAddress(receipt, { limit: 8, before }, 'finalized');
   for (const { signature, err } of signatures) {
     if (err) continue;
     const tx = await rpc.getParsedTransaction(signature, { commitment: 'finalized', maxSupportedTransactionVersion: 0 });
@@ -91,5 +92,5 @@ export async function recoverDeposit({ rpc, program }, { nonce, last_valid_block
       return data.length === 61 && data[0] === 1 && data.toString('hex', 29) === nonce;
     })) return { ok: true, signature };
   }
-  return { ok: true, expired: false };
+  return { ok: true, expired: false, ...(signatures.length === 8 && { before: signatures.at(-1).signature }) };
 }

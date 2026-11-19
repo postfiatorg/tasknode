@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import bs58 from 'bs58';
 import { Message, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import { buildVaultDeposit, readVault, recoverDeposit } from './solana-vault.js';
@@ -76,7 +79,7 @@ test('readiness refuses mismatched program, mint, binding, epoch, config owner, 
 });
 
 test('lost Phantom reply recovers only a finalized successful vault deposit for the nonce', async () => {
-  const nonce = '45'.repeat(32), recovery = { nonce, last_valid_block_height: 98 };
+  const nonce = '45'.repeat(32), recovery = { nonce, vault_program_id: program.toBase58(), last_valid_block_height: 98 };
   const receipt = pda('receipt', Buffer.from(nonce, 'hex'));
   const rpc = { getEpochInfo: async () => ({ absoluteSlot: 100, blockHeight: 99 }), getAccountInfo: async (id, options) => {
     assert.ok(id.equals(receipt)); assert.equal(options.minContextSlot, 100); return null;
@@ -124,19 +127,37 @@ test('Solana write endpoints enforce session, same origin, exact field shapes an
   assert.equal((await route('jobs/bogus')).status, 404);
 });
 
+async function relayFiles(t) {
+  const dir = await mkdtemp(join(tmpdir(), 'solana-relay-test-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const config = join(dir, 'relay.json');
+  await writeFile(join(dir, 'http-token'), 'fixture-only');
+  await writeFile(config, JSON.stringify({ ledger: 'node', vault_program: program.toBuffer().toString('hex'),
+    deposit_vkey: '0x' + '42'.repeat(32), http_token_file: 'http-token', state: dir, current_epoch: 3 }));
+  return config;
+}
+
 test('Solana proxy forwards job create and status to configured endpoints and guards relay credentials', async t => {
   const calls = [], id = '0x' + 'ab'.repeat(32);
-  let payload = { ok: true, job_id: id };
+  const jobRequest = { kind: 'deposit', route_id: 'solana-mainnet-usdc-v1', deposit_tx_hash: signature };
+  let payload = { ok: true, job_id: id, ledger: 'node', request: jobRequest };
   t.mock.method(globalThis, 'fetch', async (url, options) => {
-    calls.push({ href: url.href, ...options }); return Response.json(payload);
+    calls.push({ href: url.href, ...options }); return Response.json(payload, { status: options.method === 'POST' ? 202 : 200 });
   });
-  const env = { L1_SOLANA_RELAY_URL: 'http://local.test' };
-  assert.equal((await route('jobs', { env, readJson: async () => ({ signature }) })).status, 200);
-  assert.equal(calls[0].href, 'http://local.test/api/bridge/solana/jobs');
-  assert.deepEqual(JSON.parse(calls[0].body), { signature });
+  const env = { L1_SOLANA_RELAY_CONFIG: await relayFiles(t), L1_SOLANA_RELAY_URL: 'http://local.test' };
+  assert.equal((await route('jobs', { env, readJson: async () => ({ signature }) })).status, 202);
+  assert.equal(calls[0].href, 'http://local.test/api/bridge/jobs');
+  assert.deepEqual(JSON.parse(calls[0].body), { route_id: jobRequest.route_id, deposit_tx_hash: signature, idempotency_key: signature });
+  assert.equal(calls[0].headers.Authorization, 'Bearer fixture-only');
+  payload = { ...payload, ledger: 'node', observer_attestor_enabled: false, request: {
+    kind: 'deposit', route_id: 'solana-mainnet-usdc-v1', deposit_tx_hash: signature }, status: 'running',
+    stage_history: [{ stage: 'proof_done', status: 'running', started_at: 100.25, started_at_unix: 100 }] };
   const read = { req: { method: 'GET', headers: {} }, env };
-  assert.equal((await route('jobs/' + id, read)).status, 200);
-  assert.equal(calls[1].href, 'http://local.test/api/bridge/solana/jobs/' + id);
+  const result = await route('jobs/' + id, read);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.signature, signature);
+  assert.deepEqual(result.body.stage_history[0], { stage: 'proof', status: 'running', started_at_unix: 100.25, completed_at_unix: undefined });
+  assert.equal(calls[1].href, 'http://local.test/api/bridge/jobs/' + id);
   const remote = { ...read, withdrawViaRelay: true, bridgeProxyUrl: 'https://relay.test', proxyToken: 'test-token', proxyOrigin: 'https://relay.test' };
   assert.equal((await route('readiness', remote)).status, 200);
   assert.equal(calls[2].href, 'https://relay.test/api/l1/bridge/solana/readiness');
@@ -145,4 +166,39 @@ test('Solana proxy forwards job create and status to configured endpoints and gu
   const refused = await route('readiness', remote);
   assert.equal(refused.status, 502);
   assert.ok(!JSON.stringify(refused).includes('test-token'));
+  payload = { ...result.body, ledger: 'stub' };
+  assert.equal((await route('jobs/' + id, read)).status, 502);
+});
+
+test('readiness and intent use the same current route through the Solana JSON-RPC transport', async t => {
+  const { account, health } = fixture();
+  let epoch = 3;
+  const env = { L1_SOLANA_RELAY_CONFIG: await relayFiles(t), L1_SOLANA_RELAY_URL: 'http://jobs.test', L1_SOLANA_RPC_URL: 'http://solana.test',
+    L1_SOLANA_VAULT_PROGRAM_ID: program.toBase58(), L1_SOLANA_USDC_MINT: mint.toBase58(), L1_SOLANA_ROUTE_BINDING: binding };
+  t.mock.method(globalThis, 'fetch', async (url, opt) => {
+    if (new URL(url).host === 'jobs.test') {
+      assert.equal(url.pathname + url.search, '/api/bridge/readiness?route=solana-mainnet-usdc-v1');
+      return Response.json({ ...health, ledger: 'node', route_id: 'solana-mainnet-usdc-v1', source_proof_kind: 'sp1-solana-alpenglow-finality-v1',
+        program_vkey: '0x' + '42'.repeat(32), observer_attestor_enabled: false });
+    }
+    const { id, method } = JSON.parse(opt.body);
+    const info = { lamports: 100000, executable: false, rentEpoch: 2 };
+    const context = { slot: 100 };
+    const results = {
+      getEpochInfo: { epoch, absoluteSlot: 100, slotsInEpoch: 50, slotIndex: 12 },
+      getAccountInfo: { context, value: { ...info, owner: program.toBase58(), data: [account.data.toString('base64'), 'base64'] } },
+      getLatestBlockhash: { context, value: { blockhash: pub(12).toBase58(), lastValidBlockHeight: 1234 } },
+      getTokenAccountsByOwner: { context, value: [{ pubkey: source.toBase58(), account: { ...info, owner: token.toBase58(),
+        data: { program: 'spl-token', space: 165, parsed: { type: 'account', info: { owner: request.owner, mint: mint.toBase58(),
+          state: 'initialized', tokenAmount: { decimals: 6, amount: '9999999' } } } } } }] },
+    };
+    assert.ok(method in results);
+    return Response.json({ jsonrpc: '2.0', id, result: results[method] });
+  });
+  const readiness = await route('readiness', { req: { method: 'GET' }, env });
+  assert.equal(readiness.body.light_client_epoch, 3);
+  assert.equal(readiness.body.available_atoms, '5000000');
+  assert.equal((await route('intent', { env })).status, 200);
+  epoch++;
+  assert.equal((await route('intent', { env })).status, 503);
 });
