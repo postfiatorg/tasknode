@@ -204,12 +204,16 @@ export async function getOrCreateProviderAccount(options = {}) {
     if (email) await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`email:${email}`]);
     const identity = await client.query("SELECT account_id FROM account_provider_identities WHERE provider = $1 AND provider_user_id = $2 FOR UPDATE", [provider, userId]);
     const emailOwner = email ? await client.query("SELECT account_id FROM account_email_identities WHERE email_canonical = $1 FOR UPDATE", [email]) : { rows: [] };
-    const now = new Date().toISOString(); let accountId = identity.rows[0]?.account_id || emailOwner.rows[0]?.account_id || "";
+    const now = new Date().toISOString(); let accountId = identity.rows[0]?.account_id || "";
     if (!accountId) {
       const derived = stableId(identityKey(provider, userId), "acct_oauth");
       const derivedAccount = await lookupAccount(client, derived);
       const isRecoveredAccount = derivedAccount?.recoverySource === "durable_profile_census";
-      accountId = derivedAccount && !isRecoveredAccount ? stableId(`${identityKey(provider, userId)}:refound:${now}`, "acct_oauth") : derived;
+      // A recovered account shell belongs to the identity that founded it, and that claim outranks an
+      // email match. Otherwise a member who signed in with another provider first (same verified email)
+      // has this login absorbed into that newer account and can never reach their wallet and history.
+      if (isRecoveredAccount) accountId = derived;
+      else accountId = emailOwner.rows[0]?.account_id || (derivedAccount ? stableId(`${identityKey(provider, userId)}:refound:${now}`, "acct_oauth") : derived);
     }
     let account = await lookupAccount(client, accountId);
     if (!account) account = { id: accountId, status: "active", displayName: options.displayName || options.username || providerLabel(provider), primaryProvider: provider, assurance: "medium", profileVisibility: "public", linkedProviders: [], createdAt: now };
