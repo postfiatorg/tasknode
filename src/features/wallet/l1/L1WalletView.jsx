@@ -1,7 +1,7 @@
 import { useGallery } from "./gallery/useGallery.js";
 import Profile, { useProfileLocation } from './profile/index.jsx';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownToLine, ChartCandlestick, Download, Ellipsis, FileKey, HandCoins, History, House, KeyRound, Landmark, LayoutGrid, Lock, Send as SendIcon, ShieldCheck, Wallet } from "lucide-react";
+import { ArrowDownToLine, ArrowUpRight, ChartCandlestick, Download, Ellipsis, FileKey, HandCoins, History, House, KeyRound, Landmark, LayoutGrid, Lock, ShieldCheck, Wallet } from "lucide-react";
 // Secondary views load on first use so the wallet shell stays small.
 const Bridge = lazy(() => import("./bridge/index.jsx"));
 const Market = lazy(() => import("./market/index.jsx"));
@@ -22,7 +22,7 @@ const VIEWS = [
   { id: "Gallery", label: "NAVCoins", icon: LayoutGrid },
   { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: "Choose a NAVCoin to see its market and available actions." },
   { id: "Redeem", label: "Cash in", icon: HandCoins, title: "Cash in at NAV", subtitle: symbol => `Review ${symbol} cash-in availability and NAV terms.` },
-  { id: "Send", label: "Send", icon: SendIcon, title: "Send", subtitle: "Send PFT to another Post Fiat address." },
+  { id: "Send", label: "Send", icon: ArrowUpRight, title: "Send", subtitle: "Send PFT or PFUSDC to another Post Fiat address." },
   { id: "Activity", label: "Activity", icon: History, title: "Activity", subtitle: "Transactions signed by this wallet and payments it received." },
 ];
 const ISSUER = { id: "Issuer", label: "Issuer desk", icon: Landmark, title: "Issuer desk", subtitle: symbol => `Operator controls for the ${symbol} issuer.` };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDownToLine, ChartCandlestick, Check, ChevronRight, HandCoins, History, RefreshCw, Send as SendIcon } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpRight, ChartCandlestick, Check, ChevronRight, HandCoins, History, RefreshCw } from 'lucide-react';
 import { ActivityRows, useActivity } from './Activity.jsx';
 import { Amount, AssetAvatar, Card, CardHead, Details, Empty, Notice, Skeleton, Spinner } from './ui.jsx';
 import { amount, amountParts, usd } from './format.js';
@@ -106,7 +106,7 @@ export default function WalletHome({ client, gallery, onNavigate = () => {} }) {
           <button type="button" className="l1-btn is-primary" onClick={() => onNavigate('Bridge')}><ArrowDownToLine size={16} aria-hidden />Add funds</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Gallery')}><ChartCandlestick size={16} aria-hidden />Explore NAVCoins</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Gallery')}><HandCoins size={16} aria-hidden />Cash in at NAV</button>
-          <button type="button" className="l1-btn" onClick={() => onNavigate('Send')}><SendIcon size={16} aria-hidden />Send PFT</button>
+          <button type="button" className="l1-btn" onClick={() => onNavigate('Send')}><ArrowUpRight size={16} aria-hidden />Send</button>
         </div>
         {error && <div style={{ marginBottom: 16 }}><Notice tone="danger" role="alert" title="Balances could not be refreshed">{error} {balances && 'Last displayed balances may be stale.'}</Notice></div>}
         {starter === 'sending' && <div style={{ marginBottom: 16 }}><Notice tone="info" title="Sending starter PFT">New wallets get a small amount of PFT to pay network fees. It arrives in about two minutes.</Notice></div>}

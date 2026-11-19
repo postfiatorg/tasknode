@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BridgeController, amountAtoms } from './controller.js';
+import { BridgeController, STUCK_AFTER_MS, amountAtoms, needsRecovery } from './controller.js';
 import * as api from './bridge-relay.js';
 import { handleBridgeRoutes } from '../../../../../server/l1/bridge-routes.js';
 import { address, owner, memoryStorage, routeReport, readyPayload } from './fixtures.mjs';
@@ -136,4 +136,105 @@ test('B7 gateway forwards only the fixed bridge paths and public request, withou
     ctx.url.pathname = `/api/l1/bridge/jobs/0x${'ab'.repeat(32)}`;
     await handleBridgeRoutes(ctx); assert.equal(observed[2].path, `/api/bridge/jobs/0x${'ab'.repeat(32)}`);
   } finally { await new Promise((resolve) => server.close(resolve)); }
+});
+
+async function unfinished(pendingPatch = {}) {
+  const { jobId, depositTx } = await import('./fixtures.mjs');
+  const storage = memoryStorage();
+  const { model: original, client, sent } = setup();
+  original.storage = storage;
+  await original.readiness();
+  const nonce = `0x${'5e'.repeat(32)}`;
+  original.save({ recipient: address, route: original.route, owner, amountAtoms: '1000000', nonce, tx: null, jobId: null, ...pendingPatch });
+  original.dispose();
+  const created = [];
+  const service = { ...api, loadBridgeReadiness: async () => readyPayload(),
+    createBridgeJob: async (request) => { created.push(request); return { job_id: jobId }; },
+    loadBridgeJob: async () => ({ job_id: jobId, status: 'proving', request: created.at(-1) }) };
+  const event = { pftl_recipient: address, depositor: owner, amount: 1000000n, nonce, source_chain_id: 1,
+    vault: original.route.vaultAddress, token: original.route.tokenAddress, deposit_id: `0x${'aa'.repeat(32)}` };
+  const events = new Map([[depositTx, event]]);
+  const ethereum = { ...original.ethereum, ensureEthereumMainnet: async () => {}, waitForReceipt: async () => ({ status: '0x1' }),
+    watchDepositEvent: async (_vault, tx) => events.get(tx) || null, generateNonce: () => `0x${'99'.repeat(32)}`,
+    depositToEthereumBridge: async () => { sent.push('deposit'); throw new Error('User rejected the request.'); } };
+  const model = new BridgeController(client, { ethereum, service, storage });
+  const stored = () => JSON.parse(storage.getItem(model.key)).pending;
+  return { model, storage, stored, created, events, event, sent, depositTx, jobId };
+}
+test('reload with tx: null can be discarded, which re-enables a new deposit', async () => {
+  const { model, stored, sent } = await unfinished();
+  assert.equal(model.state.pending.tx, null);
+  await assert.rejects(() => model.resume(), /No broadcast deposit/);
+  await assert.rejects(() => model.deposit('1'), /Resume the existing deposit/);
+  model.discard();
+  assert.equal(model.state.pending, null); assert.equal(stored(), null);
+  await model.readiness(); await model.connect();
+  await assert.rejects(() => model.deposit('1'), /User rejected/);
+  assert.deepEqual(sent, ['deposit']);
+});
+test('a wrong recovery hash is refused and not stored', async () => {
+  const { model, stored, events, event } = await unfinished();
+  const unknown = `0x${'ef'.repeat(32)}`, otherNonce = `0x${'01'.repeat(32)}`;
+  await assert.rejects(() => model.recoverHash(unknown), /does not match/);
+  events.set(otherNonce, { ...event, nonce: `0x${'77'.repeat(32)}` });
+  await assert.rejects(() => model.recoverHash(otherNonce), /does not match/);
+  model.ethereum.waitForReceipt = async () => { throw new Error('Transaction failed (status 0x0)'); };
+  await assert.rejects(() => model.recoverHash(otherNonce), /failed/);
+  assert.equal(model.state.pending.tx, null); assert.equal(stored().tx, null);
+});
+test('a matching recovery hash is accepted, and replaces a stored hash that has no job', async () => {
+  const stale = `0x${'12'.repeat(32)}`;
+  const { model, stored, created, depositTx, jobId } = await unfinished({ tx: stale });
+  await model.recoverHash(depositTx);
+  assert.equal(stored().tx, depositTx); assert.equal(stored().jobId, jobId);
+  assert.equal(created.length, 1); assert.equal(created[0].deposit_tx_hash, depositTx);
+  assert.equal(model.state.job.status, 'proving');
+  await assert.rejects(() => model.recoverHash(stale), /No interrupted broadcast/);
+});
+test('a record with a bridge job is never discarded', async () => {
+  const { model, stored, depositTx, jobId } = await unfinished({ tx: `0x${'cd'.repeat(32)}`, jobId: `0x${'ab'.repeat(32)}` });
+  assert.throws(() => model.discard(), /cannot be discarded/);
+  assert.equal(stored().jobId, jobId); assert.equal(model.state.pending.tx, depositTx);
+  const other = await unfinished();
+  other.storage.setItem(other.model.key, JSON.stringify({ accountId: 'bob', pending: { ...other.stored(), tx: depositTx, jobId } }));
+  assert.throws(() => other.model.discard(), /cannot be discarded/);
+  await assert.rejects(() => other.model.recoverHash(depositTx), /No interrupted broadcast/);
+  assert.equal(other.stored().jobId, jobId);
+});
+test('recovery area stays hidden while a valid hash waits, and appears once the deposit is stuck', async () => {
+  const { model, events, event, depositTx, jobId } = await unfinished();
+  model.discard(); await model.readiness(); await model.connect();
+  const nonce = `0x${'99'.repeat(32)}`;
+  events.set(depositTx, { ...event, nonce });
+  let confirm;
+  model.ethereum.depositToEthereumBridge = async () => depositTx;
+  model.ethereum.waitForReceipt = () => new Promise((resolve) => { confirm = resolve; });
+  const running = model.deposit('1');
+  while (!confirm) await new Promise((resolve) => setImmediate(resolve));
+  const waiting = model.state.pending;
+  assert.equal(waiting.tx, depositTx); assert.equal(waiting.jobId, null);
+  assert.equal(needsRecovery(waiting, model.state.checkFailed), false);
+  assert.equal(needsRecovery(waiting, false, waiting.txSavedAt + STUCK_AFTER_MS - 1), false);
+  assert.equal(needsRecovery(waiting, false, waiting.txSavedAt + STUCK_AFTER_MS), true);
+  assert.equal(needsRecovery({ ...waiting, txSavedAt: undefined }, false), true);
+  assert.equal(needsRecovery({ ...waiting, tx: null }, false), true);
+  confirm({ status: '0x1' }); await running;
+  assert.equal(model.state.pending.jobId, jobId);
+  assert.equal(needsRecovery(model.state.pending, true, Date.now() + STUCK_AFTER_MS), false);
+  for (const [fail, pattern] of [
+    [(m) => { m.ethereum.waitForReceipt = async () => { throw new Error(`Transaction ${depositTx} not confirmed within 120s`); }; }, /not confirmed/],
+    [(m) => { m.ethereum.waitForReceipt = async () => { throw new Error('Transaction failed (status 0x0)'); }; }, /failed/],
+    [(m, map) => { map.delete(depositTx); }, /does not match/],
+  ]) {
+    const young = await unfinished({ tx: depositTx, txSavedAt: Date.now() });
+    assert.equal(needsRecovery(young.model.state.pending, young.model.state.checkFailed), false);
+    fail(young.model, young.events);
+    await assert.rejects(() => young.model.resume(), pattern);
+    assert.equal(young.model.state.checkFailed, true);
+    assert.equal(needsRecovery(young.model.state.pending, young.model.state.checkFailed), true);
+  }
+  const offline = await unfinished({ tx: depositTx, txSavedAt: Date.now() });
+  offline.model.ethereum.ensureEthereumMainnet = async () => { throw new Error('Switch MetaMask to Ethereum mainnet'); };
+  await assert.rejects(() => offline.model.resume(), /mainnet/);
+  assert.equal(needsRecovery(offline.model.state.pending, offline.model.state.checkFailed), false);
 });
