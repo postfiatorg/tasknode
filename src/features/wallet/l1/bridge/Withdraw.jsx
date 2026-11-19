@@ -18,7 +18,13 @@ export default function Withdraw({ client }) {
   const [burn, setBurn] = useState(() => stored(client)), [job, setJob] = useState(null);
   const refresh = useCallback(async () => {
     try {
-      const value = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) });
+      // The payout service's chain read can fail briefly under a burst of page-load requests; retry before saying paused.
+      let value;
+      for (let attempt = 0; ; attempt++) {
+        try { value = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); if (value.ready || attempt >= 2) break; }
+        catch (failure) { if (attempt >= 2) throw failure; }
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
       setReady(value);
       if (value.ready) { const balances = await client.getBalances(); setHeld(lineBalance(balances.assets, value.series_asset_id)); }
     } catch (failure) { setReady({ ready: false, message: plainError(failure.message) }); }

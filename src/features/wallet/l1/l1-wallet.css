@@ -153,6 +153,15 @@
   font-variant-numeric: tabular-nums;
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
+/* Native select arrows sit flush against the border; draw the chevron with the same inset as the text. */
+.l1-field select {
+  appearance: none; -webkit-appearance: none;
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2366685d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center; background-size: 16px 16px;
+  cursor: pointer;
+}
+.l1-field select:disabled { opacity: .6; cursor: not-allowed; }
 .l1-field input:focus-visible, .l1-field select:focus-visible { outline: none; border-color: var(--l1-accent); box-shadow: 0 0 0 3px var(--l1-accent-soft); }
 .l1-field input:disabled { opacity: .6; }
 .l1-input-wrap input { padding-right: 84px; }
@@ -482,6 +491,9 @@
   padding: 14px 28px;
   border-top: 1px solid var(--l1-border);
 }
+a.l1-asset.is-link { color: inherit; text-decoration: none; cursor: pointer; }
+a.l1-asset.is-link:hover, a.l1-asset.is-link:focus-visible { background: color-mix(in srgb, currentColor 6%, transparent); }
+
 .l1-asset:first-child { border-top: 0; }
 .l1-asset-name { display: grid; gap: 1px; min-width: 0; }
 .l1-asset-name > span:first-child { font-weight: 650; font-size: 15px; }

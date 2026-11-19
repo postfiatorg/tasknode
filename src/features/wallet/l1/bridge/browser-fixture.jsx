@@ -12,6 +12,11 @@ const iface = new Interface([
   'function depositV2(uint256 amount,string recipient,bytes32 nonce,bytes32 binding)',
   'event ERC20BridgeDepositedV2(bytes32 indexed depositId,address indexed depositor,bytes32 indexed recipientHash,string recipient,uint256 amount,bytes32 nonce,bytes32 binding,uint256 chain,address vault,address token)',
 ]);
+window.mockSolana = [];
+window.phantom = { solana: { isPhantom: true,
+  async connect() { return { publicKey: { toString: () => 'So1anaOwner1111111111111111111111111111111' } }; },
+  async request({ method, params }) { window.mockSolana.push({ phantom: method, message: params.message }); return { signature: '5'.repeat(87) }; },
+} };
 const sends = [];
 window.mockSends = sends;
 window.ethereum = {
@@ -38,6 +43,15 @@ window.ethereum = {
 const realFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}) => {
   if (!String(url).startsWith('/api/l1/bridge')) return realFetch(url, options);
+  if (String(url).includes('/solana/')) {
+    const body = options.body ? JSON.parse(options.body) : null;
+    window.mockSolana.push({ url: String(url), body });
+    if (String(url).endsWith('/solana/readiness')) return Response.json({ ok: true, ready: true, available_atoms: '25000000', max_deposit_atoms: '500000000' });
+    if (String(url).endsWith('/solana/intent')) return Response.json({ ok: true, message_b58: '3mJr7AoUXx2Wqd', message_b64: btoa('unsigned-message'), amount_atoms: body.amount_atoms, pftl_account: body.pftl_account });
+    const polls = window.mockSolana.filter(call => call.url?.endsWith('/solana/advances')).length;
+    return Response.json(polls < 2 ? { ok: true, signature: body.signature, status: 'waiting_for_finality' }
+      : { ok: true, signature: body.signature, status: 'paid', amount_atoms: '2500000', pftl_account: address, payment_tx_id: 'cd'.repeat(48) });
+  }
   if (String(url).includes('readiness')) {
     if (mode === 'offline') throw new Error('Mock endpoint unreachable');
     const payload = mode === 'blocked' ? { ok: false, ready: false, message: 'Authenticated on-ledger beacon anchor is missing.' } : readyPayload();

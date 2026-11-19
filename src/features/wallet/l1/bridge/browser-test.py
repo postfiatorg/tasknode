@@ -36,6 +36,8 @@ with sync_playwright() as p:
     page.screenshot(path=str(out / 'B8-proving-stages.png'), full_page=True)
     page.reload()
     expect(page.get_by_test_id('bridge-job')).to_have_text(job_before)
+    expect(page.get_by_label('USDC amount', exact=True)).to_be_disabled()
+    expect(page.get_by_text('A deposit is still in progress', exact=True)).to_be_visible()
     assert page.evaluate('window.mockSends.length') == 0
     page.screenshot(path=str(out / 'B8-reloaded-same-job.png'), full_page=True)
     print('PASS B7/B8 connect, approval/deposit ABI, seven stages, reload same job; no repeat send')
@@ -51,5 +53,42 @@ with sync_playwright() as p:
     expect(page.get_by_test_id('bridge-credited-asset')).to_have_text('6e' * 48)
     assert '99.00' not in page.locator('body').text_content()
     page.screenshot(path=str(out / 'B9-credited-child-balance.png'), full_page=True)
+    # A finished earlier deposit must not lock the form on a later visit.
+    expect(page.get_by_text('Your last deposit is complete', exact=True)).to_be_visible()
+    page.get_by_role('button', name='Connect MetaMask', exact=True).click()
+    amount = page.get_by_label('USDC amount', exact=True)
+    expect(amount).to_be_enabled()
+    amount.click(); page.keyboard.type('2.5', delay=400)
+    expect(amount).to_have_value('2.5')
+    expect(page.get_by_role('button', name='Approve USDC', exact=True)).to_be_enabled()
+    page.wait_for_timeout(17000)  # across a background readiness check
+    amount.click(); page.keyboard.type('1', delay=100)
+    expect(amount).to_have_value('2.51')
+    page.screenshot(path=str(out / 'B11-credited-form-unlocked.png'), full_page=True)
+    print('PASS B11 credited earlier deposit leaves the amount box usable; typing survives background checks')
     print('PASS B9 accepted receipt + exact child balance 2.000000; family 99.000000 ignored; failed read never complete')
+    # Solana pilot: Phantom signs the server-built transfer, then the advance is polled until paid.
+    page.evaluate("localStorage.clear(); sessionStorage.clear()")
+    page.goto(f'{base}?mode=ready')
+    expect(page.get_by_text('Bridge ready', exact=True)).to_be_visible()
+    assert page.get_by_text('Pilot ready', exact=True).count() == 0  # hidden unless a tester opts in
+    page.evaluate("localStorage.setItem('tn:l1:solana-pilot', '1')")
+    page.goto(f'{base}?mode=ready')
+    expect(page.get_by_text('Pilot ready', exact=True)).to_be_visible()
+    page.get_by_role('button', name='Connect Phantom', exact=True).click()
+    expect(page.get_by_test_id('solana-owner')).to_be_visible()
+    page.get_by_label('Solana USDC amount', exact=True).fill('30')
+    expect(page.get_by_test_id('solana-send')).to_be_disabled()  # above what the float can pay
+    page.get_by_label('Solana USDC amount', exact=True).fill('2.5')
+    page.get_by_test_id('solana-send').click()
+    expect(page.get_by_test_id('solana-paid')).to_contain_text('+2.50', timeout=15000)
+    calls = page.evaluate('window.mockSolana')
+    intent = next(c for c in calls if c.get('url', '').endswith('/solana/intent'))
+    assert intent['body'] == {'owner': 'So1anaOwner1111111111111111111111111111111', 'amount_atoms': '2500000', 'pftl_account': 'pf' + '33' * 20}, intent
+    assert [c for c in calls if c.get('phantom')] == [{'phantom': 'signAndSendTransaction', 'message': '3mJr7AoUXx2Wqd'}]
+    page.reload()
+    expect(page.get_by_test_id('solana-paid')).to_be_visible()
+    assert not [c for c in page.evaluate('window.mockSolana') if c.get('phantom')]
+    page.screenshot(path=str(out / 'B12-solana-paid.png'), full_page=True)
+    print('PASS B12 Solana pilot: one Phantom send of the server-built message, paid result survives reload with no resend')
     browser.close()

@@ -90,6 +90,7 @@ export function assertNetworkTaskRewardFloor({ min = 0, max = 0, operatorDuty = 
 
 export function allocationStatusForTaskStatus(status = "") {
   const normalized = safeText(status, 80).toLowerCase();
+  if (["reinstatement_completed", "reinstatement_superseded"].includes(normalized)) return "completed";
   if (allocationStatuses.has(normalized)) return normalized;
   if (normalized === "unknown") return "failed";
   return "accepted";

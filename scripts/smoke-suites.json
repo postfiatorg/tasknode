@@ -210,6 +210,7 @@
     "scripts/prompt-installer-smoke.mjs"
   ],
   "db": [
+    "scripts/reinstatement-smoke.mjs",
     "scripts/board-agent-reliability-smoke.mjs",
     "scripts/board-routing-staleness-smoke.mjs",
     "scripts/chat-billing-postgres-smoke.mjs",

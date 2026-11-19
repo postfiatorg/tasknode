@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Check, ChartCandlestick, CircleAlert, Clock, ExternalLink, FileCheck, Landmark, RefreshCw, Wallet } from "lucide-react";
 import { useL1Wallet } from "../client.jsx";
-import { BridgeController, amountAtoms } from "./controller.js";
+import { BridgeController, amountAtoms, needsRecovery } from "./controller.js";
 import { atomsToUsdc } from "./evm.js";
 import { stageRows, timestamp } from "./stages.js";
 import { Amount, AssetAvatar, Badge, Card, CardHead, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
 import { duration } from "../format.js";
 import Withdraw from "./Withdraw.jsx";
+import SolanaDeposit from "./SolanaDeposit.jsx";
 
 // Presentation labels for the relay's wire stages (contract: UI labels may differ).
 const LABELS = {
@@ -51,7 +52,7 @@ function Track({ view, controller, client, onNavigate, symbol }) {
   const inFlight = Boolean(pending) && !credited && job?.status !== "failed";
   const now = useNow(inFlight);
   const phases = PHASES.map(phase => ({ ...phase, state: phaseState(rows, phase, credited) }));
-  if (pending?.tx && !job && !credited) phases[0].state = "active";
+  if (pending?.tx && !job && !credited && view.checked) phases[0].state = "active";
   const currentIndex = rows.findIndex(row => ACTIVE.has(row.status));
   const started = job?.created_at_unix || rows.find(row => row.started)?.started || null;
   const finished = credited ? Math.max(...rows.map(row => row.completed || 0)) || null : null;
@@ -60,7 +61,9 @@ function Track({ view, controller, client, onNavigate, symbol }) {
   if (credited) { headline = "PFUSDC credited"; detail = "The deposit is proven on Post Fiat and the PFUSDC is in this wallet."; }
   else if (result?.balancePending) { headline = "Claim accepted"; detail = "Reading the credited balance from the chain."; }
   else if (job?.status === "failed") { headline = "The bridge could not finish this deposit"; detail = job.message || job.code || "Claim failed."; }
+  else if (pending && !pending.tx && view.busy && !view.quiet) { headline = "Confirm the deposit in MetaMask"; detail = "Waiting for you to confirm in MetaMask."; }
   else if (pending && !pending.tx) { headline = "Deposit broadcast was interrupted"; detail = "Enter the Ethereum transaction hash below to recover it."; }
+  else if (pending?.tx && !job && !view.checked) { headline = "Checking your last deposit"; detail = "Reading its status from the bridge."; }
   else if (pending?.tx && !job) { headline = "Waiting for Ethereum to confirm your deposit"; detail = "This page keeps checking; you can leave and come back."; }
   else if (job && currentIndex >= 0) { headline = LABELS[rows[currentIndex].stage]; detail = `Stage ${currentIndex + 1} of ${rows.length}. ${rows[currentIndex].stage === "proving" ? "Proof generation is the longest step and can take several minutes." : "Progress updates every few seconds."}${rows[currentIndex].status === "retrying" ? " Retrying after a temporary error." : ""}`; }
   else if (job) { headline = "Deposit received by the bridge"; detail = "Queued for proving."; }
@@ -109,6 +112,7 @@ function Track({ view, controller, client, onNavigate, symbol }) {
         result && !result.balancePending && ["Credited asset", <Mono value={result.assetId} testId="bridge-credited-asset" />],
         ["Recipient", <Mono value={client.address} />],
       ]} />
+      <div style={{ marginTop: 10 }}><button type="button" className="l1-btn is-sm" data-testid="bridge-diagnostics" onClick={() => navigator.clipboard?.writeText(JSON.stringify(controller.diagnostics(), null, 2))}>Copy diagnostics</button></div>
     </Details>
   </Card>;
 }
@@ -118,6 +122,9 @@ function BridgeSession({ client, onNavigate, symbol }) {
   const [controller, setController] = useState(null);
   const [amount, setAmount] = useState("");
   const [recoveryTx, setRecoveryTx] = useState("");
+  const [discarding, setDiscarding] = useState(false);
+  const pendingRecord = view?.pending;
+  useEffect(() => setDiscarding(false), [pendingRecord]);
   useEffect(() => {
     const model = new BridgeController(client, { changed: setView });
     setController(model);
@@ -125,7 +132,7 @@ function BridgeSession({ client, onNavigate, symbol }) {
     void model.run(async () => {
       try { await model.readiness(); } catch { /* blocked reason is visible */ }
       if (model.state.pending?.tx) await model.resume();
-    });
+    }, { quiet: true });
     const changed = () => model.providerChanged();
     window.ethereum?.on?.("accountsChanged", changed);
     window.ethereum?.on?.("chainChanged", changed);
@@ -134,12 +141,12 @@ function BridgeSession({ client, onNavigate, symbol }) {
       if (model.state.busy) return;
       if (Date.now() - lastReadiness > 15000) {
         lastReadiness = Date.now();
-        void model.run(async () => { try { await model.readiness(); } catch { /* fail closed */ } });
+        void model.run(async () => { try { await model.readiness(); } catch { /* fail closed */ } }, { quiet: true });
         return;
       }
       if (model.state.error) return;
       if (model.state.pending?.jobId && model.state.job?.status !== "accepted" && model.state.job?.status !== "failed") {
-        void model.run(() => model.poll());
+        void model.run(() => model.poll(), { quiet: true });
       }
     }, 3000);
     return () => {
@@ -151,7 +158,13 @@ function BridgeSession({ client, onNavigate, symbol }) {
   }, [client]);
   if (!view || !controller) return <p className="l1-status-line"><Spinner />Loading bridge…</p>;
   const atoms = amountAtoms(amount);
-  const enabled = view.ready && !!view.owner && !!atoms && !view.busy && !view.pending;
+  // A credited deposit does not lock the form; only one that is still unresolved does.
+  const credited = Boolean(view.pending && view.result && !view.result.balancePending);
+  const locked = Boolean(view.pending) && !credited;
+  const working = view.busy && !view.quiet;
+  // Until the first check of a saved deposit returns, its state is unknown: say so instead of "in progress".
+  const checkingSaved = locked && Boolean(view.pending.tx) && !view.job && !view.checked;
+  const enabled = view.ready && !!view.owner && !!atoms && !view.busy && !locked;
   const tx = view.pending?.tx;
   const approved = view.allowance !== null && atoms && view.allowance >= atoms;
   const checking = !view.ready && view.blocked === "Checking bridge readiness.";
@@ -164,6 +177,9 @@ function BridgeSession({ client, onNavigate, symbol }) {
           <button type="button" className="l1-icon-btn" aria-label="Check readiness" title="Check readiness" disabled={view.busy} onClick={() => controller.run(async () => { await controller.readiness(); await controller.refreshEthereum(); })}><RefreshCw size={14} aria-hidden /></button>
         </CardHead>
         {!view.ready && !checking && view.blocked && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="Deposits are paused">{view.blocked} Approve and deposit stay off until the bridge reports ready.</Notice></div>}
+        {checkingSaved && <p className="l1-status-line" role="status"><Spinner size={14} />Checking your last deposit…</p>}
+        {locked && view.pending.tx && !checkingSaved && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="A deposit is still in progress">Your deposit of <Amount atoms={view.pending.amountAtoms} unit="USDC" /> has not finished. The amount box unlocks when it is credited. Follow it under Bridge progress.</Notice></div>}
+        {credited && <div style={{ marginBottom: 16 }}><Notice tone="success" title="Your last deposit is complete">Enter an amount to start another.</Notice></div>}
         <div className="l1-bridge-steps">
           <div className={`l1-bridge-step ${view.owner ? "is-done" : ""}`}>
             <span className="l1-step-num">{view.owner ? <Check size={13} aria-hidden /> : 1}</span>
@@ -174,14 +190,14 @@ function BridgeSession({ client, onNavigate, symbol }) {
                 <span className="l1-small l1-muted">{view.balance === null ? "USDC balance unavailable" : <>Balance <b style={{ color: "var(--l1-text)" }}><Amount atoms={view.balance} unit="USDC" /></b></>}</span>
               </div> : hasProvider ? <p className="l1-small l1-muted">Use the Ethereum account that holds your USDC. Nothing is sent until you approve and deposit.</p>
                 : <p className="l1-small l1-muted">MetaMask was not detected in this browser. <a href="https://metamask.io/download/" target="_blank" rel="noreferrer">Install MetaMask</a>, then reload.</p>}
-              <div><button type="button" className={`l1-btn ${view.owner ? "is-sm" : "is-primary"}`} disabled={view.busy} onClick={() => controller.run(() => controller.connect())}>{view.owner ? "Reconnect" : "Connect MetaMask"}</button></div>
+              <div><button type="button" className={`l1-btn ${view.owner ? "is-sm" : "is-primary"}`} disabled={working} onClick={() => controller.run(() => controller.connect())}>{view.owner ? "Reconnect" : "Connect MetaMask"}</button></div>
             </div>
           </div>
           <div className={`l1-bridge-step ${atoms ? "is-done" : ""}`}>
             <span className="l1-step-num">{atoms ? <Check size={13} aria-hidden /> : 2}</span>
             <div className="l1-bridge-step-body">
               <b>Choose an amount</b>
-              <label className="l1-field"><span className="l1-sr">USDC amount</span><span className="l1-input-wrap"><input aria-label="USDC amount" inputMode="decimal" placeholder="0.00" value={amount} disabled={!!view.pending || view.busy} onChange={(event) => setAmount(event.target.value)} /><span className="l1-input-suffix">{view.balance ? <button type="button" className="l1-max" disabled={!!view.pending || view.busy} onClick={() => setAmount(atomsToUsdc(view.balance))}>Max</button> : null}USDC</span></span>
+              <label className="l1-field"><span className="l1-sr">USDC amount</span><span className="l1-input-wrap"><input aria-label="USDC amount" inputMode="decimal" placeholder="0.00" value={amount} disabled={locked} onChange={(event) => setAmount(event.target.value)} /><span className="l1-input-suffix">{view.balance ? <button type="button" className="l1-max" disabled={locked} onClick={() => setAmount(atomsToUsdc(view.balance))}>Max</button> : null}USDC</span></span>
                 <span className="l1-field-hint"><span>{atoms ? <>You receive <Amount atoms={atoms} unit="PFUSDC" /> on Post Fiat</> : "1 USDC becomes 1 PFUSDC."}</span><span>{amount && !atoms ? "Up to six decimals" : ""}</span></span></label>
             </div>
           </div>
@@ -198,14 +214,22 @@ function BridgeSession({ client, onNavigate, symbol }) {
                 {view.approvalTx && <a href={`https://etherscan.io/tx/${view.approvalTx}`} target="_blank" rel="noreferrer">Approval on Etherscan<ExternalLink size={12} aria-hidden /></a>}
                 {tx && <a href={`https://etherscan.io/tx/${tx}`} target="_blank" rel="noreferrer">Deposit on Etherscan<ExternalLink size={12} aria-hidden /></a>}
               </div>}
-              {view.busy && <p className="l1-status-line" role="status"><Spinner size={14} />Working… confirm in MetaMask if it asks.</p>}
+              {working && <p className="l1-status-line" role="status"><Spinner size={14} />Working… confirm in MetaMask if it asks.</p>}
             </div>
           </div>
         </div>
-        {view.pending && !tx && <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
-          <Notice tone="warning" title="Deposit broadcast was interrupted">If MetaMask sent the deposit, paste its Ethereum transaction hash to resume tracking it.</Notice>
+        {!working && needsRecovery(view.pending, view.checkFailed) && <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
+          {!tx && <Notice tone="warning" title="Deposit broadcast was interrupted">If MetaMask sent the deposit, paste its Ethereum transaction hash to resume tracking it.</Notice>}
           <label className="l1-field"><span>Interrupted broadcast: Ethereum transaction hash</span><input className="l1-mono" value={recoveryTx} onChange={(event) => setRecoveryTx(event.target.value)} placeholder="0x…" /></label>
-          <div><button type="button" className="l1-btn" disabled={view.busy} onClick={() => controller.run(() => controller.recoverHash(recoveryTx))}>Recover deposit</button></div>
+          <div className="l1-row"><button type="button" className="l1-btn" disabled={view.busy} onClick={() => controller.run(() => controller.recoverHash(recoveryTx))}>Recover deposit</button>
+            {!discarding && <button type="button" className="l1-btn is-ghost" disabled={view.busy} onClick={() => setDiscarding(true)}>Discard this unfinished deposit</button>}</div>
+          {discarding && <Notice tone="warning" title="Discard this unfinished deposit?">
+            Open MetaMask and check the activity of <Mono value={view.pending.owner} /> for a deposit of <Amount atoms={view.pending.amountAtoms} unit="USDC" />. If MetaMask shows no transaction, nothing was sent and you can discard this record and start again. If it shows a confirmed deposit, do not discard it; paste its transaction hash above instead.
+            <div className="l1-row" style={{ marginTop: 10 }}>
+              <button type="button" className="l1-btn is-danger" disabled={view.busy} onClick={() => controller.run(() => { controller.discard(); setRecoveryTx(""); })}>Discard deposit</button>
+              <button type="button" className="l1-btn" disabled={view.busy} onClick={() => setDiscarding(false)}>Keep it</button>
+            </div>
+          </Notice>}
         </div>}
       </Card>
       {view.error && <Notice tone="danger" role="alert">{view.error}</Notice>}
@@ -216,8 +240,12 @@ function BridgeSession({ client, onNavigate, symbol }) {
 export default function BridgeTab({ onNavigate, assetConfig } = {}) {
   const client = useL1Wallet();
   if (!client.unlocked || !client.address) return <p>Unlock your Post Fiat wallet to bridge USDC.</p>;
+  // The Solana pilot is hidden until it has been timed with real funds; a tester opts in on their own browser.
+  let solanaPilot = false;
+  try { solanaPilot = globalThis.localStorage?.getItem("tn:l1:solana-pilot") === "1"; } catch { /* storage unavailable */ }
   return <>
     <BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} symbol={assetConfig?.symbol || "NAVCoins"} />
+    {solanaPilot && <SolanaDeposit key={`s:${client.accountId}:${client.address}`} client={client} />}
     <Withdraw key={`w:${client.accountId}:${client.address}`} client={client} />
   </>;
 }

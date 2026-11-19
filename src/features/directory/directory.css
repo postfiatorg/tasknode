@@ -173,7 +173,7 @@
   color: inherit;
   display: grid;
   gap: 12px;
-  grid-template-columns: 36px minmax(0, 2.2fr) repeat(5, minmax(0, 1fr));
+  grid-template-columns: 36px minmax(11rem, 2.2fr) repeat(5, minmax(0, 1fr));
   min-height: 66px;
   padding: 14px 8px;
   text-decoration: none;

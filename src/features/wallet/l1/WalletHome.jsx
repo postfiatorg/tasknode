@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDownToLine, ChartCandlestick, Check, ChevronRight, HandCoins, History, RefreshCw, Send as SendIcon } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpRight, ChartCandlestick, Check, ChevronRight, HandCoins, History, RefreshCw } from 'lucide-react';
 import { ActivityRows, useActivity } from './Activity.jsx';
 import { Amount, AssetAvatar, Card, CardHead, Details, Empty, Notice, Skeleton, Spinner } from './ui.jsx';
 import { amount, amountParts, usd } from './format.js';
@@ -28,8 +28,9 @@ function JourneyCard({ held, onNavigate, loaded }) {
   </Card>;
 }
 
-function AssetRow({ code, name, sub, atoms, value, note, loading }) {
-  return <div className="l1-asset">
+function AssetRow({ code, name, sub, atoms, value, note, loading, href }) {
+  const Row = href ? 'a' : 'div';
+  return <Row className={`l1-asset${href ? ' is-link' : ''}`} href={href} aria-label={href ? `Open ${code} profile` : undefined}>
     <AssetAvatar code={code} />
     <div className="l1-asset-name"><span>{code}</span><small>{name}{sub ? ` · ${sub}` : ''}</small></div>
     <div className="l1-asset-val">
@@ -37,7 +38,7 @@ function AssetRow({ code, name, sub, atoms, value, note, loading }) {
       {value !== undefined && <small>{value === null ? '—' : usd(value)}</small>}
     </div>
     {note && <div className="l1-asset-sub">{note}</div>}
-  </div>;
+  </Row>;
 }
 
 export default function WalletHome({ client, gallery, onNavigate = () => {} }) {
@@ -105,7 +106,7 @@ export default function WalletHome({ client, gallery, onNavigate = () => {} }) {
           <button type="button" className="l1-btn is-primary" onClick={() => onNavigate('Bridge')}><ArrowDownToLine size={16} aria-hidden />Add funds</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Gallery')}><ChartCandlestick size={16} aria-hidden />Explore NAVCoins</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Gallery')}><HandCoins size={16} aria-hidden />Cash in at NAV</button>
-          <button type="button" className="l1-btn" onClick={() => onNavigate('Send')}><SendIcon size={16} aria-hidden />Send PFT</button>
+          <button type="button" className="l1-btn" onClick={() => onNavigate('Send')}><ArrowUpRight size={16} aria-hidden />Send</button>
         </div>
         {error && <div style={{ marginBottom: 16 }}><Notice tone="danger" role="alert" title="Balances could not be refreshed">{error} {balances && 'Last displayed balances may be stale.'}</Notice></div>}
         {starter === 'sending' && <div style={{ marginBottom: 16 }}><Notice tone="info" title="Sending starter PFT">New wallets get a small amount of PFT to pay network fees. It arrives in about two minutes.</Notice></div>}
@@ -114,7 +115,7 @@ export default function WalletHome({ client, gallery, onNavigate = () => {} }) {
         <div className="l1-assets" aria-label="Balances">
           <AssetRow code="PFT" name="Post Fiat" sub="pays network fees" atoms={account?.balance} loading={loading} />
           <AssetRow code="PFUSDC" name="USDC on Post Fiat" sub="1:1" atoms={held.pfusdc} loading={loading} value={coins ? (pfusdcValue ?? 0n) : undefined} />
-          {navHoldings?.filter(item => item.balance > 0n).map(item => <AssetRow key={item.coin.asset_id} code={item.coin.name} name="NAVCoin" sub={item.coin.retired ? 'Retired · historical NAV excluded' : item.coin.latest ? `NAV $${amount(item.coin.latest.nav_per_unit)}` : 'NAV unavailable'} atoms={item.balance} value={item.value} loading={loading} note={item.coin.freshness?.stale ? 'Stale NAV reading' : undefined} />)}
+          {navHoldings?.filter(item => item.balance > 0n).map(item => <AssetRow key={item.coin.asset_id} href={`#l1-wallet/navcoins/${item.coin.slug}`} code={item.coin.name} name="NAVCoin" sub={item.coin.retired ? 'Retired · historical NAV excluded' : item.coin.latest ? `NAV $${amount(item.coin.latest.nav_per_unit)}` : 'NAV unavailable'} atoms={item.balance} value={item.value} loading={loading} note={item.coin.freshness?.stale ? 'Stale NAV reading' : undefined} />)}
         </div>
         {others.length > 0 && <div className="l1-asset-more"><Details summary={`Other assets (${others.length})`}>
           {others.map(item => <div key={item.id} className="l1-row" style={{ justifyContent: 'space-between' }}><span>{item.code || 'Asset'} <span className="l1-muted l1-small">{item.id?.slice(0, 10)}…</span></span><Amount atoms={item.balance} precision={item.precision} /></div>)}

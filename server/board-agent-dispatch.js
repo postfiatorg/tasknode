@@ -1,4 +1,5 @@
 import { publishAgentRuntimeStatus } from "./board-agent-runtime-status.js";
+import { reinstatementBoard, reviewCase } from "./reinstatement.js";
 import { boardTaskDetail } from "./board-task-detail.js";
 import { query } from "./db/pool.js";
 import { assertBoardAgentScope, boardAgentIdentity } from "./board-agent-context.js";
@@ -39,6 +40,11 @@ export async function dispatchBoardAgent(argv) {
     return f[key];
   };
   if (command === "runtime-status") return publishAgentRuntimeStatus({ state: f.state, roundId: f.round || "", attempts: number("attempts"), nextRetryAt: f["next-retry"] || "", recurring: f.recurring || "" });
+  if (command === "reinstatement") {
+    if (!identity?.credentialId) throw Object.assign(new Error("board_agent_credential_required"), { status: 403 });
+    assertBoardAgentScope(reinstatementBoard);
+    return reviewCase({ id: args[1], revision: number("revision"), action: args[0], actor: identity.actor, token: f.lease, reason: f.reason });
+  }
   if (command === "boards") return identity.boards;
   if (command === "board") return boardPacket(board(args[0]));
   if (command === "digest") return boardDigest(board(args[0]));
