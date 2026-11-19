@@ -167,7 +167,10 @@ export async function getOrCreateEmailAccount(options = {}) {
     let account = owner.rows[0] ? await lookupAccount(client, owner.rows[0].account_id) : null;
     if (!account) {
       const id = stableId(canonical, "acct_email");
-      account = await lookupAccount(client, id) || {
+      const shell = await lookupAccount(client, id);
+      // A retired duplicate is never signed into again; the email opens the account it was folded into.
+      const successor = shell?.status === "merged" && shell.mergedIntoAccountId ? await lookupAccount(client, shell.mergedIntoAccountId) : null;
+      account = (successor?.status === "active" ? successor : null) || (shell?.status === "merged" ? null : shell) || {
         id, status: "active", displayName: displayNameFromEmail(canonical), primaryEmailOriginal: options.email,
         primaryEmailCanonical: canonical, primaryEmailVerified: true, primaryProvider: "email", assurance: "low",
         profileVisibility: "public", linkedProviders: [],
@@ -246,7 +249,7 @@ export async function linkProviderToAccount(options = {}) {
   const email = options.emailInfo?.verified === true ? String(options.emailInfo.email || "").trim().toLowerCase() : "";
   const result = await transaction(async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`identity:${identityKey(provider, userId)}`]);
-    const account = await lookupAccount(client, accountId); if (!account) return { ok: false, error: "account_not_found" };
+    const account = await lookupAccount(client, accountId); if (!account || account.status === "merged") return { ok: false, error: "account_not_found" };
     const owner = await client.query("SELECT account_id FROM account_provider_identities WHERE provider = $1 AND provider_user_id = $2 FOR UPDATE", [provider, userId]);
     if (owner.rows[0] && owner.rows[0].account_id !== accountId) return { ok: false, error: "provider_identity_conflict", ownerAccountId: owner.rows[0].account_id };
     if (email) {
@@ -268,19 +271,30 @@ export async function linkProviderToAccount(options = {}) {
   // The member is signed in to this account and has just proven the provider identity as well. If the
   // identity (or its verified email) sits on an empty duplicate, fold that duplicate in and link again.
   if (!result.ok && result.ownerAccountId && options.absorbedDuplicate !== true) {
+    const expectations = [result.error === "provider_email_conflict"
+      ? { kind: "email", email, accountId: result.ownerAccountId }
+      : { kind: "identity", provider, providerUserId: userId, accountId: result.ownerAccountId }];
+    // Once a duplicate has been folded in the identity is on the right account. If the email then
+    // turns out to belong to a third account, finish the link without claiming the email.
+    const finish = async (linkAccountId) => {
+      const again = await linkProviderToAccount({ ...options, accountId: linkAccountId, absorbedDuplicate: true });
+      return again.ok || again.error !== "provider_email_conflict"
+        ? again
+        : linkProviderToAccount({ ...options, accountId: linkAccountId, emailInfo: null, absorbedDuplicate: true });
+    };
     const absorbed = await absorbEmptyDuplicateAccount({
-      sourceAccountId: result.ownerAccountId, targetAccountId: accountId, actorAccountId: accountId,
+      sourceAccountId: result.ownerAccountId, targetAccountId: accountId, actorAccountId: accountId, expectations,
       reason: `member linked ${provider} that was held by an empty duplicate account`,
     });
-    if (absorbed.ok) return linkProviderToAccount({ ...options, absorbedDuplicate: true });
+    if (absorbed.ok) return finish(accountId);
     // The other way round: the member is signed in to the empty duplicate and the identity belongs
     // to their real account. Move this account's sign-ins and sessions there instead.
     if (absorbed.error === "duplicate_account_has_activity") {
       const reversed = await absorbEmptyDuplicateAccount({
-        sourceAccountId: accountId, targetAccountId: result.ownerAccountId, actorAccountId: accountId, moveSessions: true,
+        sourceAccountId: accountId, targetAccountId: result.ownerAccountId, actorAccountId: accountId, moveSessions: true, expectations,
         reason: `member linked ${provider} from an empty duplicate of the account that holds it`,
       });
-      if (reversed.ok) return linkProviderToAccount({ ...options, accountId: result.ownerAccountId, absorbedDuplicate: true });
+      if (reversed.ok) return finish(result.ownerAccountId);
     }
   }
   if (!result.ok) return { ok: false, error: result.error };
@@ -389,6 +403,9 @@ export async function absorbEmptyDuplicateAccount(options = {}) {
   const targetAccountId = String(options.targetAccountId || "").trim();
   const reason = String(options.reason || "").trim();
   const moveSessions = options.moveSessions === true;
+  // Facts the caller observed before asking for the merge. They are checked again inside the
+  // transaction, so a change in between cancels the merge instead of acting on stale ownership.
+  const expectations = Array.isArray(options.expectations) ? options.expectations : [];
   if (!sourceAccountId || !targetAccountId || sourceAccountId === targetAccountId || !reason) {
     return { ok: false, error: "duplicate_account_merge_invalid" };
   }
@@ -405,12 +422,37 @@ export async function absorbEmptyDuplicateAccount(options = {}) {
       [[sourceAccountId, targetAccountId]]
     );
     if (blacklisted.rows[0]) return { ok: false, error: "duplicate_account_blacklisted" };
+    for (const expected of expectations) {
+      const owner = expected.kind === "identity"
+        ? await client.query("SELECT account_id FROM account_provider_identities WHERE provider = $1 AND provider_user_id = $2 FOR UPDATE", [expected.provider, expected.providerUserId])
+        : expected.kind === "email"
+          ? await client.query("SELECT account_id FROM account_email_identities WHERE email_canonical = $1 FOR UPDATE", [expected.email])
+          : await client.query("SELECT account_id FROM account_linked_wallets WHERE wallet_address = $1 AND status = 'linked' FOR UPDATE", [expected.address]);
+      if (owner.rows.length !== 1 || owner.rows[0].account_id !== expected.accountId) return { ok: false, error: "duplicate_account_ownership_changed" };
+    }
+    if (options.requireTargetWithoutSignIn === true) {
+      // A wallet signature alone does not open an account that has a sign-in of its own; that
+      // member can sign in normally. It only reconnects an account nobody can sign in to.
+      const signIns = await client.query(
+        `SELECT
+           (SELECT count(*)::integer FROM account_provider_identities WHERE account_id = $1)
+           + (SELECT count(*)::integer FROM account_email_identities WHERE account_id = $1)
+           + (SELECT count(*)::integer FROM account_password_credentials WHERE account_id = $1 AND disabled_at IS NULL) AS count`,
+        [targetAccountId]
+      );
+      if (Number(signIns.rows[0].count) > 0) return { ok: false, error: "duplicate_account_target_has_sign_in" };
+    }
+    // Only the untouched sign-up credit may be left behind; any other balance or spend is the
+    // member's and is not retired with the account.
     const held = await client.query(
       `SELECT
          (SELECT count(*)::integer FROM account_linked_wallets WHERE account_id = $1) AS wallets,
          (SELECT count(*)::integer FROM pftl_sync_wallets WHERE account_id = $1) AS sync_wallets,
          (SELECT count(*)::integer FROM pftl_pointer_observations WHERE account_id = $1) AS pointers,
-         (SELECT count(*)::integer FROM billing_accounts WHERE account_id = $1 AND current_spend_usd <> 0) AS spent`,
+         (SELECT count(*)::integer FROM billing_accounts WHERE account_id = $1 AND current_spend_usd <> 0) AS spent,
+         (SELECT count(*)::integer FROM billing_ledger_entries
+           WHERE account_id = $1 AND NOT (kind = 'account_credit' AND source = 'initial_provider_credit')) AS other_ledger,
+         (SELECT greatest(count(*)::integer - 1, 0) FROM billing_ledger_entries WHERE account_id = $1) AS extra_credits`,
       [sourceAccountId]
     );
     const unexpected = await unexpectedAccountOwnershipRows(client, sourceAccountId, duplicateLoginByproducts);
@@ -544,8 +586,9 @@ export async function recoverSplitProviderAccount(options = {}) {
   }
 
   const result = await transaction(async (client) => {
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`account-recovery:${sourceAccountId}`]);
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`account-recovery:${targetAccountId}`]);
+    for (const id of [sourceAccountId, targetAccountId].sort()) {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`account-recovery:${id}`]);
+    }
 
     const priorMerge = await client.query(
       `SELECT id, created_at FROM account_merge_events

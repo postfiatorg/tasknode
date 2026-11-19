@@ -526,9 +526,10 @@ export async function walletLinkVerify(payload, method, session = null) {
   let result = await linkWalletToAccount({ accountId: session.accountId, ...linkOptions });
   let accountSwitched = false;
 
-  // The signature proves the member owns the wallet, so the account that holds it is theirs too.
-  // When the account they are signed in to is an empty duplicate, move its sign-ins and this session
-  // to the wallet's account instead of refusing. The wallet itself never changes account.
+  // Some restored accounts hold a wallet but no sign-in, so nobody can open them. The signature
+  // proves the member owns that wallet. When the account they are signed in to is an empty duplicate,
+  // move its sign-ins and this session to the wallet's account. An account that has a sign-in of its
+  // own is never opened this way, and the wallet itself never changes account.
   if (
     !result.ok && result.error === "wallet_owned_by_other_account" && result.ownerAccountId
     && challengeResult.challenge.purpose !== "wallet_create"
@@ -538,7 +539,9 @@ export async function walletLinkVerify(payload, method, session = null) {
       targetAccountId: result.ownerAccountId,
       actorAccountId: session.accountId,
       moveSessions: true,
-      reason: "member proved the wallet of their existing account from an empty duplicate account",
+      requireTargetWithoutSignIn: true,
+      expectations: [{ kind: "wallet", address, accountId: result.ownerAccountId }],
+      reason: "member proved the wallet of an account with no sign-in from an empty duplicate account",
     });
     if (absorbed.ok) {
       accountSwitched = true;
@@ -566,11 +569,11 @@ export async function walletLinkVerify(payload, method, session = null) {
       action: "wallet_link_verify",
       message:
         result.error === "wallet_owned_by_other_account"
-          ? "That wallet belongs to another Task Node account, and this account already has its own wallet or work, so the two were not combined."
+          ? "That wallet belongs to another Task Node account."
           : "Wallet link could not be saved.",
       actionRequired:
         result.error === "wallet_owned_by_other_account"
-          ? "If both accounts are yours, sign in with the method you first used for the wallet's account, or ask support to merge them."
+          ? "If that account is yours, sign in with the method you used for it, then add this sign-in from Profile. If you cannot, ask support to merge the accounts."
           : "Start wallet linking again and sign a fresh challenge.",
     });
   }

@@ -71,6 +71,10 @@ export async function linkWalletToAccount(options = {}) {
   if (!address) return { ok: false, status: 400, error: "wallet_address_required" };
   const result = await transaction(async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wallet:${address}`]);
+    // Shares the account row with the duplicate-account merge, so a wallet can never land on an
+    // account that is being retired, and a retired account can never take one.
+    const holder = await client.query("SELECT status FROM app_accounts WHERE account_id = $1 FOR SHARE", [accountId]);
+    if (holder.rows[0]?.status === "merged") return { retired: true };
     const owner = await client.query(
       `SELECT ${selectColumns} FROM account_linked_wallets
         WHERE wallet_address = $1 AND account_id <> $2 AND status = 'linked'
@@ -111,6 +115,7 @@ export async function linkWalletToAccount(options = {}) {
     );
     return { wallet: walletFromRow(saved.rows[0]) };
   });
+  if (result.retired) return { ok: false, status: 409, error: "wallet_account_retired" };
   if (result.conflict) {
     return { ok: false, status: 409, error: "wallet_owned_by_other_account", ownerAccountId: result.ownerAccountId };
   }

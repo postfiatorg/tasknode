@@ -115,44 +115,105 @@ try {
   assert.equal((await link(real6.id, "discord", "six", `six-${suffix}@example.test`)).error, "provider_email_conflict", "two different GitHub identities are never folded into one account");
   assert.equal((await status(other6.id)).status, "active");
 
-  // 7. The wallet path, with a real signature: signed in to an empty duplicate, proving the wallet
-  //    of the real account. The sign-in and the session move to the wallet's account.
-  const mnemonic = generateTaskNodeMnemonic();
-  const real7 = await signIn("github", "seven");
-  const real7Session = await createAccountSession(real7, { provider: "github", assurance: "medium" });
-  const start7 = await walletLinkStart("POST", real7Session.session);
-  const proof7 = signWalletChallenge(mnemonic, start7.body.challenge.message);
-  wallets.push(proof7.address);
-  const first7 = await walletLinkVerify({ challengeId: start7.body.challenge.id, address: proof7.address, publicKey: proof7.publicKey, signature: proof7.signature }, "POST", real7Session.session);
-  assert.equal(first7.status, 200);
-  assert.equal(first7.body.accountSwitched, false);
+  // 7. The wallet path, with real signatures. A restored account holds a wallet but no sign-in, so
+  //    nobody can open it. Proving that wallet from an empty duplicate moves the sign-in and the
+  //    session to it.
+  const prove = async (session, mnemonic) => {
+    const start = await walletLinkStart("POST", session.session);
+    const proof = signWalletChallenge(mnemonic, start.body.challenge.message);
+    return walletLinkVerify({ challengeId: start.body.challenge.id, address: proof.address, publicKey: proof.publicKey, signature: proof.signature }, "POST", session.session);
+  };
+  const addressOf = (mnemonic) => signWalletChallenge(mnemonic, "address").address;
+  const orphanMnemonic = generateTaskNodeMnemonic();
+  const orphanId = `acct_oauth_orphan_${suffix}`;
+  const orphanAt = new Date().toISOString();
+  await query(
+    "INSERT INTO app_accounts (account_id, account_json, status, created_at, updated_at) VALUES ($1,$2::jsonb,'active',$3,$3)",
+    [orphanId, JSON.stringify({ id: orphanId, status: "active", displayName: "Restored Work", profileVisibility: "public", linkedProviders: [], assurance: "low", recoverySource: "durable_profile_census", createdAt: orphanAt, updatedAt: orphanAt }), orphanAt]
+  );
+  accountIds.push(orphanId);
+  wallets.push(addressOf(orphanMnemonic));
+  assert.equal((await linkWalletToAccount({ accountId: orphanId, address: addressOf(orphanMnemonic) })).ok, true);
   const stray7 = await signIn("x", "seven");
   const stray7Session = await createAccountSession(stray7, { provider: "x", assurance: "medium" });
-  const startStray = await walletLinkStart("POST", stray7Session.session);
-  const proofStray = signWalletChallenge(mnemonic, startStray.body.challenge.message);
-  const switched = await walletLinkVerify({ challengeId: startStray.body.challenge.id, address: proofStray.address, publicKey: proofStray.publicKey, signature: proofStray.signature }, "POST", stray7Session.session);
+  const switched = await prove(stray7Session, orphanMnemonic);
   assert.equal(switched.status, 200, JSON.stringify(switched.body));
   assert.equal(switched.body.accountSwitched, true);
-  assert.equal(switched.body.wallet.accountId, real7.id);
-  assert.equal((await getSession(stray7Session.sessionId)).accountId, real7.id, "the session that proved the wallet now belongs to the wallet's account");
-  assert.equal((await findAccountByIdentity("x", `x-seven-${suffix}`)).id, real7.id);
+  assert.equal(switched.body.wallet.accountId, orphanId);
+  assert.equal((await getSession(stray7Session.sessionId)).accountId, orphanId, "the session that proved the wallet now belongs to the wallet's account");
+  assert.equal((await findAccountByIdentity("x", `x-seven-${suffix}`)).id, orphanId);
   assert.equal((await status(stray7.id)).status, "merged");
-  assert.ok((await getAccount(real7.id)).linkedProviders.some((provider) => provider.id === "x"));
+  assert.equal((await status(orphanId)).account_json.recoverySource, undefined, "a reconnected account is no longer waiting to be reclaimed");
+  assert.ok((await getAccount(orphanId)).linkedProviders.some((provider) => provider.id === "x"));
 
-  // 8. The wallet path still refuses when the signed-in account has its own wallet.
-  const busy8 = await signIn("discord", "eight");
-  await giveWallet(busy8.id, "Eight");
-  const busy8Session = await createAccountSession(busy8, { provider: "discord", assurance: "medium" });
-  const start8 = await walletLinkStart("POST", busy8Session.session);
-  const proof8 = signWalletChallenge(mnemonic, start8.body.challenge.message);
-  const refused8 = await walletLinkVerify({ challengeId: start8.body.challenge.id, address: proof8.address, publicKey: proof8.publicKey, signature: proof8.signature }, "POST", busy8Session.session);
+  // 8. A seed phrase alone never opens an account that has a sign-in of its own.
+  const ownedMnemonic = generateTaskNodeMnemonic();
+  const owned8 = await signIn("github", "eight");
+  const owned8Session = await createAccountSession(owned8, { provider: "github", assurance: "medium" });
+  wallets.push(addressOf(ownedMnemonic));
+  const first8 = await prove(owned8Session, ownedMnemonic);
+  assert.equal(first8.status, 200);
+  assert.equal(first8.body.accountSwitched, false);
+  const intruder8 = await signIn("discord", "eight-intruder");
+  const intruder8Session = await createAccountSession(intruder8, { provider: "discord", assurance: "medium" });
+  const refused8 = await prove(intruder8Session, ownedMnemonic);
   assert.equal(refused8.status, 409);
   assert.equal(refused8.body.error, "wallet_owned_by_other_account");
-  assert.equal(JSON.stringify(refused8.body).includes(real7.id), false, "a refusal never names the other account");
-  assert.equal((await getSession(busy8Session.sessionId)).accountId, busy8.id);
-  assert.equal((await status(busy8.id)).status, "active");
+  assert.equal(JSON.stringify(refused8.body).includes(owned8.id), false, "a refusal never names the other account");
+  assert.equal((await getSession(intruder8Session.sessionId)).accountId, intruder8.id, "the intruder's session stays on their own account");
+  assert.equal((await status(intruder8.id)).status, "active");
+  assert.equal((await findAccountByIdentity("discord", `discord-eight-intruder-${suffix}`)).id, intruder8.id);
 
-  console.log("duplicate account absorb smoke ok: sign-in and wallet links fold an empty duplicate into the real account in both directions; accounts with a wallet, content, a blacklist entry or a clashing login stay separate");
+  // 9. An account with a wallet of its own is not folded into a restored account either.
+  const orphan9Mnemonic = generateTaskNodeMnemonic();
+  const orphan9Id = `acct_oauth_orphan9_${suffix}`;
+  await query(
+    "INSERT INTO app_accounts (account_id, account_json, status, created_at, updated_at) VALUES ($1,$2::jsonb,'active',$3,$3)",
+    [orphan9Id, JSON.stringify({ id: orphan9Id, status: "active", displayName: "Restored Work", profileVisibility: "public", linkedProviders: [], assurance: "low", createdAt: orphanAt, updatedAt: orphanAt }), orphanAt]
+  );
+  accountIds.push(orphan9Id);
+  wallets.push(addressOf(orphan9Mnemonic));
+  assert.equal((await linkWalletToAccount({ accountId: orphan9Id, address: addressOf(orphan9Mnemonic) })).ok, true);
+  const busy9 = await signIn("discord", "nine");
+  await giveWallet(busy9.id, "Nine");
+  const busy9Session = await createAccountSession(busy9, { provider: "discord", assurance: "medium" });
+  assert.equal((await prove(busy9Session, orphan9Mnemonic)).body.error, "wallet_owned_by_other_account");
+  assert.equal((await status(busy9.id)).status, "active");
+
+  // 10. Credit beyond the untouched sign-up credit is the member's, so that account is kept.
+  const real10 = await signIn("github", "ten");
+  const credited10 = await signIn("discord", "ten");
+  await query(
+    `INSERT INTO billing_accounts (account_id, current_credit_usd, ledger_entry_count) VALUES ($1,25,1)
+     ON CONFLICT (account_id) DO UPDATE SET current_credit_usd = 25`,
+    [credited10.id]
+  );
+  await query(
+    "INSERT INTO billing_ledger_entries (id, account_id, kind, amount_usd, source) VALUES ($1,$2,'account_credit',20,'admin_credit')",
+    [`ledger_dup_${suffix}`, credited10.id]
+  );
+  assert.equal((await absorbEmptyDuplicateAccount({ sourceAccountId: credited10.id, targetAccountId: real10.id, reason: "smoke" })).error, "duplicate_account_has_activity");
+  const kept10 = await link(real10.id, "discord", "ten");
+  assert.equal(kept10.account.id, credited10.id, "the account holding the credit is the one that survives");
+  assert.equal(Number((await query("SELECT current_credit_usd FROM billing_accounts WHERE account_id = $1", [credited10.id])).rows[0].current_credit_usd), 25);
+  assert.equal((await query("SELECT status FROM billing_accounts WHERE account_id = $1", [credited10.id])).rows[0].status, "active");
+
+  // 11. Ownership seen before the merge is checked again inside it.
+  const real11 = await signIn("github", "eleven");
+  const stray11 = await signIn("discord", "eleven");
+  assert.equal((await absorbEmptyDuplicateAccount({
+    sourceAccountId: stray11.id, targetAccountId: real11.id, reason: "smoke",
+    expectations: [{ kind: "identity", provider: "discord", providerUserId: `discord-eleven-${suffix}`, accountId: real11.id }],
+  })).error, "duplicate_account_ownership_changed");
+  assert.equal((await status(stray11.id)).status, "active");
+
+  // 12. A retired account is closed for good: no session, no wallet, no sign-in can attach to it.
+  const lateSession = await createAccountSession(stray, { provider: "discord", assurance: "medium" });
+  assert.equal(await getSession(lateSession.sessionId), null, "a session issued for a retired account is not honoured");
+  assert.equal((await linkWalletToAccount({ accountId: stray.id, address: `rDuplicateLate${suffix}` })).error, "wallet_account_retired");
+  assert.equal((await link(stray.id, "telegram", "late")).error, "account_not_found");
+
+  console.log("duplicate account absorb smoke ok: sign-in and wallet links fold an empty duplicate into the real account in both directions; a wallet proof reconnects only an account with no sign-in; accounts with a wallet, content, credit, a blacklist entry or a clashing login stay separate, and retired accounts stay closed");
 } finally {
   await query("DELETE FROM account_merge_events WHERE source_account_id = ANY($1::text[]) OR target_account_id = ANY($1::text[])", [accountIds]).catch(() => {});
   await query("DELETE FROM user_observability_events WHERE account_id = ANY($1::text[])", [accountIds]).catch(() => {});
