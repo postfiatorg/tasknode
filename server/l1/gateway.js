@@ -88,7 +88,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
       if (url.pathname.startsWith('/api/l1/bridge/')) {
         const credential = await credentials;
         if (!credential) { json(res, 503, { error: 'l1_proxy_credential_unavailable' }); return; }
-        if (await handleBridgeRoutes({ ...context, bridgeProxyUrl: relay?.origin || env.L1_BRIDGE_PROXY_URL || '',
+        if (await handleBridgeRoutes({ ...context, env, bridgeProxyUrl: relay?.origin || env.L1_BRIDGE_PROXY_URL || '',
           proxyToken: relay?.token || credential.token, proxyOrigin: relay?.origin || env.L1_BRIDGE_PROXY_ORIGIN || proxyOrigin,
           bridgePathPrefix: relay ? '/api/l1/bridge' : '/api/bridge', withdrawViaRelay: Boolean(relay) })) return;
       }

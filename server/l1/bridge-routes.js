@@ -1,15 +1,14 @@
+import { handleSolana } from './solana-bridge.js';
 const ROOT = "/api/l1/bridge";
 const ROUTE = "ethereum-mainnet-usdc-v1";
 const WITHDRAW_SERVICE = (process.env.L1_WITHDRAW_SERVICE_URL || "http://127.0.0.1:18084").replace(/\/$/, "");
 const FAUCET_SERVICE = (process.env.L1_FAUCET_SERVICE_URL || "http://127.0.0.1:18085").replace(/\/$/, "");
-const SOL_SERVICE = (process.env.L1_SOL_ADVANCE_SERVICE_URL || "http://127.0.0.1:18096").replace(/\/$/, "");
-const SOL_SIGNATURE = "[1-9A-HJ-NP-Za-km-z]{64,88}";
 const JOB_FIELDS = new Set([
   "route_id", "source_chain_id", "deposit_tx_hash", "deposit_id", "pftl_recipient",
   "depositor", "amount_atoms", "idempotency_key", "route_profile_hash", "route_epoch", "route_binding",
 ]);
 
-export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "", bridgePathPrefix = "/api/bridge", withdrawViaRelay = false }) {
+export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "", bridgePathPrefix = "/api/bridge", withdrawViaRelay = false, env = process.env }) {
   if (!url.pathname.startsWith(`${ROOT}/`)) return false;
   res.setHeader("Cache-Control", "no-store");
   const fail = (status, code, message) => { json(res, status, { ok: false, ready: false, code, message }); return true; };
@@ -49,39 +48,7 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
     }
   }
   if (suffix.startsWith("/solana/")) {
-    // Solana USDC -> PFUSDC pilot. The user signs the Solana transfer in their own wallet; this builds it and reads the advance.
-    const sReady = req.method === "GET" && suffix === "/solana/readiness";
-    const sRead = req.method === "GET" && new RegExp(`^/solana/advances/${SOL_SIGNATURE}$`).test(suffix);
-    const sIntent = req.method === "POST" && suffix === "/solana/intent";
-    const sAdvance = req.method === "POST" && suffix === "/solana/advances";
-    if (!sReady && !sRead && !sIntent && !sAdvance) return fail(404, "bridge_route_not_found", "Unknown bridge endpoint.");
-    let body;
-    if (sIntent || sAdvance) {
-      let origin;
-      try { origin = new URL(req.headers.origin); } catch { return fail(403, "bridge_origin_required", "Same-origin request required."); }
-      if (origin.host !== req.headers.host || req.headers["sec-fetch-site"] === "cross-site") return fail(403, "bridge_origin_mismatch", "Same-origin request required.");
-      body = await readJson(req, 4 * 1024);
-      const keys = body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).sort().join(",") : "";
-      const valid = sIntent
-        ? keys === "amount_atoms,owner,pftl_account" && /^[1-9][0-9]{0,11}$/.test(body.amount_atoms) && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(body.owner) && /^pf[0-9a-f]{40}$/.test(body.pftl_account)
-        : keys === "signature" && new RegExp(`^${SOL_SIGNATURE}$`).test(body.signature);
-      if (!valid) return fail(400, "invalid_solana_request", "Invalid Solana deposit request.");
-    }
-    try {
-      const target = withdrawViaRelay ? `${String(bridgeProxyUrl).replace(/\/$/, "")}${bridgePathPrefix}${suffix}` : `${SOL_SERVICE}/api/bridge${suffix}`;
-      const response = await fetch(target, {
-        method: req.method, redirect: "error", signal: AbortSignal.timeout(45000),
-        headers: { Accept: "application/json", ...(withdrawViaRelay && proxyToken ? { Authorization: `Bearer ${proxyToken}` } : {}), ...(withdrawViaRelay && proxyOrigin ? { Origin: proxyOrigin } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      });
-      const payload = await response.json();
-      if (withdrawViaRelay && proxyToken && JSON.stringify(payload).includes(proxyToken)) throw new Error("Unsafe Solana response");
-      if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Invalid Solana response");
-      json(res, response.status, payload);
-      return true;
-    } catch {
-      return fail(502, "solana_service_unavailable", "Solana deposits are unavailable: the pilot service is unreachable.");
-    }
+    return handleSolana({ req, res, json, readJson, fail, suffix, env, bridgeProxyUrl, proxyToken, proxyOrigin, withdrawViaRelay });
   }
   if (suffix === "/withdrawals" || suffix.startsWith("/withdrawals/")) {
     // PFUSDC -> USDC. The holder burns from their own wallet; this only starts and reads the payout job.
