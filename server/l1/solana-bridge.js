@@ -1,9 +1,9 @@
 // Wallet HTTP contract and the single adapter for the Solana relay service.
 import bs58 from 'bs58';
-import { buildVaultDeposit, DepositError, readVault, vaultSettings } from './solana-vault.js';
+import { buildVaultDeposit, DepositError, readVault, recoverDeposit, vaultSettings } from './solana-vault.js';
 
 const JOB = /^\/solana\/jobs\/0x[0-9a-f]{64}$/;
-export const solanaPath = path => ['/solana/readiness', '/solana/intent', '/solana/jobs'].includes(path) || JOB.test(path);
+export const solanaPath = path => ['/solana/readiness', '/solana/intent', '/solana/recovery', '/solana/jobs'].includes(path) || JOB.test(path);
 
 function b58(value, size) {
   if (typeof value !== 'string' || value.length > 88) return false;
@@ -12,6 +12,8 @@ function b58(value, size) {
 function validBody(path, body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
   const keys = Object.keys(body).sort().join(',');
+  if (path === '/solana/recovery') return keys === 'last_valid_block_height,nonce' && typeof body.nonce === 'string' &&
+    /^[0-9a-f]{64}$/.test(body.nonce) && Number.isSafeInteger(body.last_valid_block_height) && body.last_valid_block_height > 0;
   if (path === '/solana/jobs') return keys === 'signature' && b58(body.signature, 64);
   return keys === 'amount_atoms,owner,pftl_recipient' && b58(body.owner, 32) &&
     typeof body.pftl_recipient === 'string' && /^pf[0-9a-f]{40}$/.test(body.pftl_recipient) &&
@@ -31,7 +33,7 @@ async function upstream(base, path, body, token, origin) {
 }
 
 export async function handleSolana({ req, res, json, readJson, fail, suffix, env, bridgeProxyUrl, proxyToken, proxyOrigin, withdrawViaRelay }) {
-  const post = suffix === '/solana/intent' || suffix === '/solana/jobs';
+  const post = ['/solana/intent', '/solana/jobs', '/solana/recovery'].includes(suffix);
   if (!solanaPath(suffix) || req.method !== (post ? 'POST' : 'GET')) return fail(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   let body;
   if (post) {
@@ -45,6 +47,8 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     let result;
     if (withdrawViaRelay) {
       result = await upstream(bridgeProxyUrl, '/api/l1/bridge' + suffix, body, proxyToken, proxyOrigin);
+    } else if (suffix === '/solana/recovery') {
+      result = { status: 200, payload: await recoverDeposit(vaultSettings(env), body) };
     } else {
       const service = env.L1_SOLANA_RELAY_URL;
       if (!service) throw new DepositError(503, 'The Solana proof relay is awaiting configuration.');

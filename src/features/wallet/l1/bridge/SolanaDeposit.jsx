@@ -1,115 +1,147 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { bridgeJson } from "./bridge-relay.js";
+import { ArrowUpRight, Check, CircleAlert, Clock } from "lucide-react";
 import { amountAtoms } from "./controller.js";
-import { Amount, Badge, Card, CardHead, IdChip, Notice, Spinner } from "../ui.jsx";
+import { bridgeJson } from "./bridge-relay.js";
+import { advanceDeposit, readSaved, sendDeposit } from "./solana-session.js";
+import { Amount, Badge, Card, CardHead, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
 
-// Solana USDC -> PFUSDC pilot. The server builds the transfer; Phantom signs and sends it;
-// the pilot float pays PFUSDC once Solana reports the transfer final.
-const saved = (client) => `tn:l1:solana:v1:${client.accountId}:${client.address}`;
-const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-const phantom = () => (typeof window !== "undefined" && window.phantom?.solana?.isPhantom ? window.phantom.solana : null);
+const stages = [["finality", "Solana finality"], ["capture", "Capture deposit"], ["proof", "Generate proof"], ["credit", "Credit on Post Fiat"]];
+const elapsed = ms => (Math.max(0, ms) / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " s";
 
-async function sendWithPhantom(provider, intent) {
-  try {
-    const sent = await provider.request({ method: "signAndSendTransaction", params: { message: intent.message_b58 } });
-    if (sent?.signature) return sent.signature;
-    throw new Error("Phantom returned no signature");
-  } catch (error) {
-    if (error?.code === 4001) throw new Error("You rejected the request in Phantom.");
-    // Older builds take a transaction object. Give them the same unsigned bytes.
-    const message = bytes(intent.message_b64);
-    const sent = await provider.signAndSendTransaction({
-      serializeMessage: () => message,
-      serialize: () => Uint8Array.from([1, ...new Uint8Array(64), ...message]),
-    });
-    if (!sent?.signature) throw error;
-    return sent.signature;
-  }
+function Progress({ deposit, reset }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (deposit.terminal) return undefined;
+    const clock = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(clock);
+  }, [deposit.terminal]);
+  const { job, terminal } = deposit;
+  return <Card className="l1-track-card" aria-label="Solana bridge progress">
+    <CardHead eyebrow="Solana → Post Fiat" title="Deposit progress">
+      <span className="l1-clock"><Clock size={14} aria-hidden /> <span data-testid="solana-clock">{elapsed((deposit.finished ?? now) - deposit.started)}</span></span>
+    </CardHead>
+    <ol className="l1-stages" aria-label="Solana deposit stages">{stages.map(([stage, label]) => {
+      const row = job?.stage_history?.find(item => item.stage === stage);
+      const status = row?.status || "pending";
+      const start = row?.started_at_unix, end = row?.completed_at_unix;
+      const time = Number.isFinite(start) && Number.isFinite(end) ? elapsed((end - start) * 1000)
+        : Number.isFinite(start) && status === "running" && !terminal ? elapsed(now - start * 1000) : "";
+      return <li key={stage} className={`l1-stage is-${status}`}>
+        <span className="l1-stage-dot">{status === "complete" ? <Check size={12} /> : status === "running" ? <Spinner size={12} /> : status === "failed" ? <CircleAlert size={12} /> : null}</span>
+        <span><b>{label}</b><small className="l1-muted"> · {status}</small></span><span className="l1-stage-time">{time}</span>
+      </li>;
+    })}</ol>
+    {terminal === "credited" && <Notice tone="success" title="Solana deposit credited">+<Amount atoms={deposit.amount_atoms} unit="PFUSDC" /> in this wallet.</Notice>}
+    {terminal === "failed" && <Notice tone="danger" title="Solana deposit failed">{job.message || job.code || "The proof relay could not credit this deposit."}</Notice>}
+    {terminal === "expired" && <Notice tone="warning" title="Deposit expired">The blockhash expired without a vault receipt.</Notice>}
+    {!terminal && !job && <p className="l1-status-line" role="status"><Spinner size={14} />{deposit.signature ? "Opening the proof job…" : "Waiting for the Solana transaction…"}</p>}
+    <KV className="is-tight" rows={[
+      ["Recipient", <Mono value={deposit.pftl_recipient} />],
+      deposit.signature && ["Solana transaction", <IdChip value={deposit.signature} label="transaction signature" />],
+      job?.receipt_id && ["Post Fiat receipt", <IdChip value={job.receipt_id} label="credit receipt" />],
+    ]} />
+    {terminal && <button type="button" className="l1-btn is-sm" onClick={reset}>Start another Solana deposit</button>}
+  </Card>;
 }
 
 export default function SolanaDeposit({ client }) {
+  const key = `tn:l1:solana-vault:v1:${client.accountId}:${client.address}`;
+  const [deposit, setDeposit] = useState(() => { try { return readSaved(key); } catch { return null; } });
   const [ready, setReady] = useState(null), [owner, setOwner] = useState("");
   const [amount, setAmount] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const [deposit, setDeposit] = useState(() => { try { return JSON.parse(localStorage.getItem(saved(client))); } catch { return null; } });
-  const [now, setNow] = useState(Date.now());
-  const active = useRef(true);
-  useEffect(() => () => { active.current = false; }, []);
-  const refresh = useCallback(async () => {
-    try { const value = await bridgeJson("/solana/readiness"); if (active.current) setReady(value); }
-    catch (failure) { if (active.current) setReady({ ready: false, message: failure.message }); }
-  }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
-  const keep = useCallback((value) => {
-    if (value) localStorage.setItem(saved(client), JSON.stringify(value)); else localStorage.removeItem(saved(client));
-    setDeposit(value);
-  }, [client]);
-  const open = deposit && deposit.status !== "paid" && deposit.status !== "refused";
+  const active = useRef(false);
+  const provider = window.phantom?.solana?.isPhantom ? window.phantom.solana : null;
   useEffect(() => {
-    if (!open) return undefined;
-    let stop = false, timer;
-    const poll = async () => {
-      try {
-        const record = await bridgeJson("/solana/advances", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ signature: deposit.signature }), signal: AbortSignal.timeout(45000) });
-        if (stop) return;
-        if (record.status === "paid" || record.status === "refused") { keep({ ...deposit, ...record, finishedAt: Date.now() }); void refresh(); return; }
-        setError("");
-      } catch (failure) { if (!stop) setError(failure.message); }
-      if (!stop) timer = setTimeout(poll, 2000);
+    active.current = true;
+    const sync = event => { if (event.key === key || event.key === null) setDeposit(readSaved(key)); };
+    const changed = pubkey => setOwner(pubkey?.toString() || "");
+    const disconnected = () => setOwner("");
+    window.addEventListener("storage", sync);
+    provider?.on?.("accountChanged", changed);
+    provider?.on?.("disconnect", disconnected);
+    return () => {
+      active.current = false;
+      window.removeEventListener("storage", sync);
+      provider?.removeListener?.("accountChanged", changed);
+      provider?.removeListener?.("disconnect", disconnected);
     };
-    void poll();
-    const clock = setInterval(() => setNow(Date.now()), 500);
-    return () => { stop = true; clearTimeout(timer); clearInterval(clock); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, deposit?.signature]);
+  }, [key, provider]);
+  const save = useCallback(record => {
+    if (record) localStorage.setItem(key, JSON.stringify(record));
+    else localStorage.removeItem(key);
+    if (active.current) setDeposit(record);
+  }, [key]);
+  useEffect(() => {
+    let stopped = false, timer;
+    async function refresh() {
+      try {
+        const route = await bridgeJson("/solana/readiness");
+        if (!stopped) setReady(route);
+      } catch (failure) { if (!stopped) setReady({ ready: false, message: failure.message }); }
+      if (!stopped) timer = setTimeout(refresh, 15000);
+    }
+    void refresh();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, []);
+
+  useEffect(() => {
+    if (!deposit || busy || deposit.terminal) return undefined;
+    let stopped = false, timer;
+    async function poll() {
+      try {
+        const next = await advanceDeposit(deposit);
+        if (stopped) return;
+        setError("");
+        const current = readSaved(key);
+        // Another tab may already have completed this job or opened the next deposit.
+        if (JSON.stringify(current) !== JSON.stringify(deposit)) { setDeposit(current); return; }
+        if (JSON.stringify(next) !== JSON.stringify(deposit)) { save(next); return; }
+      } catch (failure) { if (!stopped) setError(failure.message); }
+      if (!stopped) timer = setTimeout(poll, 1000);
+    }
+    // Advance immediately between recovery, job creation and the first status read.
+    timer = setTimeout(poll, deposit.job && !deposit.terminal ? 1000 : 0);
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [deposit, busy, save, key]);
 
   const atoms = amountAtoms(amount);
-  const provider = phantom();
-  const connect = async () => {
+  const available = /^[0-9]{1,20}$/.test(ready?.available_atoms) ? BigInt(ready.available_atoms) : 0n;
+  async function run(action) {
     setBusy(true); setError("");
-    try { const connected = await provider.connect(); setOwner(connected.publicKey.toString()); }
-    catch (failure) { setError(failure?.code === 4001 ? "You rejected the request in Phantom." : failure.message); }
-    finally { setBusy(false); }
-  };
-  const send = async () => {
-    setBusy(true); setError("");
-    try {
-      const intent = await bridgeJson("/solana/intent", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner, amount_atoms: String(atoms), pftl_account: client.address }), signal: AbortSignal.timeout(45000) });
-      if (intent.pftl_account !== client.address || intent.amount_atoms !== String(atoms)) throw new Error("The prepared transfer does not match your request.");
-      const signature = await sendWithPhantom(provider, intent);
-      keep({ signature, amount_atoms: intent.amount_atoms, sentAt: Date.now(), status: "sent" });
-      setAmount("");
-    } catch (failure) { setError(failure.message); }
-    finally { setBusy(false); }
-  };
-  const seconds = deposit ? Math.max(0, Math.round(((deposit.finishedAt || now) - deposit.sentAt) / 100) / 10) : 0;
-  const available = ready?.available_atoms ? BigInt(ready.available_atoms) : 0n;
-  return <section aria-label="Solana USDC deposit" className="l1-view">
+    try { await action(); } catch (failure) { if (active.current) setError(failure.message); }
+    finally { if (active.current) setBusy(false); }
+  }
+  const send = () => run(() => sendDeposit({ key, provider, request: { owner, amount_atoms: String(atoms), pftl_recipient: client.address },
+    ready, save, active: () => active.current && client.unlocked }));
+  return <section aria-label="Solana USDC deposit" className="l1-view l1-split is-ticket">
     <Card className="l1-ticket">
-      <CardHead eyebrow="Pilot · Solana" title="USDC on Solana to PFUSDC in seconds">
-        {ready === null ? <Badge><Spinner size={12} />Checking</Badge> : <Badge tone={ready.ready ? "success" : "warning"} dot>{ready.ready ? "Pilot ready" : "Pilot unavailable"}</Badge>}
+      <CardHead eyebrow="Deposit from Solana" title="USDC to PFUSDC">
+        <Badge tone={ready?.ready ? "success" : "neutral"}>{ready === null ? "Checking vault…" : ready.ready ? "Vault ready" : "Vault unavailable"}</Badge>
       </CardHead>
-      <p className="l1-small l1-muted">Send USDC from Phantom. A pilot float pays the same amount of PFUSDC to this wallet as soon as Solana finalizes the transfer. This pilot relies on Post Fiat's own watcher, not a proof, and is limited to small amounts.</p>
-      {ready && !ready.ready && <Notice tone="warning" title="Solana deposits are paused">{ready.message || "The pilot is not ready."}</Notice>}
-      {!provider ? <p className="l1-small l1-muted">Phantom was not detected in this browser. <a href="https://phantom.com/download" target="_blank" rel="noreferrer">Install Phantom</a>, then reload.</p> : <>
-        <div className="l1-row" style={{ justifyContent: "space-between", margin: "12px 0" }}>
-          {owner ? <IdChip value={owner} label="Solana address" testId="solana-owner" /> : <span className="l1-small l1-muted">Use the Phantom account that holds your USDC.</span>}
-          <button type="button" className={`l1-btn ${owner ? "is-sm" : "is-primary"}`} disabled={busy} onClick={connect}>{owner ? "Reconnect" : "Connect Phantom"}</button>
-        </div>
-        <label className="l1-field"><span className="l1-sr">Solana USDC amount</span><span className="l1-input-wrap"><input aria-label="Solana USDC amount" inputMode="decimal" placeholder="0.00" value={amount} disabled={open} onChange={(event) => setAmount(event.target.value)} /><span className="l1-input-suffix">USDC</span></span>
-          <span className="l1-field-hint"><span>{ready?.ready ? <>Up to <Amount atoms={available} unit="USDC" /> right now.</> : "1 USDC becomes 1 PFUSDC."}</span></span></label>
-        <div style={{ marginTop: 12 }}><button type="button" className="l1-btn is-primary" data-testid="solana-send" disabled={busy || open || !owner || !atoms || !ready?.ready || atoms > available} onClick={send}>Send with Phantom</button></div>
+      <p className="l1-small">Confirm one vault deposit in Phantom. Post Fiat verifies the proof and credits PFUSDC to this wallet.</p>
+      {ready && !ready.ready && <Notice tone="warning">{ready.message}</Notice>}
+      {!deposit && <>
+        {provider ? <div className="l1-row">
+          {owner && <IdChip value={owner} label="Solana address" testId="solana-owner" />}
+          <button type="button" className="l1-btn" disabled={busy} onClick={() => run(async () => setOwner((await provider.connect()).publicKey.toString()))}>{owner ? "Reconnect Phantom" : "Connect Phantom"}</button>
+        </div> : <a href="https://phantom.com/download" target="_blank" rel="noreferrer">Install Phantom to deposit USDC</a>}
+        <label className="l1-field"><span>Solana USDC amount</span><span className="l1-input-wrap"><input aria-label="Solana USDC amount" inputMode="decimal" value={amount} disabled={busy}
+          onChange={e => setAmount(e.target.value)} placeholder="0.00" /><span className="l1-input-suffix">USDC</span></span>
+          {ready?.ready && <span className="l1-field-hint">Available to deposit · <Amount atoms={available} unit="USDC" /></span>}</label>
+        <KV rows={[["Recipient", <Mono value={client.address} />]]} />
+        <button type="button" className="l1-btn is-primary" data-testid="solana-send" onClick={send}
+          disabled={!provider || busy || !owner || !ready?.ready || !atoms || atoms > available}><ArrowUpRight size={16} aria-hidden />Send with Phantom</button>
       </>}
-      {busy && <p className="l1-status-line" role="status"><Spinner size={14} />Working… confirm in Phantom if it asks.</p>}
-      {deposit && <div className="l1-credit" role="status" style={{ marginTop: 16 }}>
-        {deposit.status === "paid" ? <><span className="l1-eyebrow">Paid on Post Fiat</span><strong data-testid="solana-paid">+<Amount atoms={deposit.amount_atoms} unit="PFUSDC" /> in {seconds} s</strong></>
-          : deposit.status === "refused" ? <Notice tone="danger" title="This deposit was not paid">Reason: {deposit.code}. Your USDC is held in the pilot account and will be refunded by the operator.</Notice>
-          : <p className="l1-status-line"><Spinner size={14} />Sent. Waiting for Solana to finalize and the float to pay… {seconds} s</p>}
-        <div className="l1-row" style={{ marginTop: 6 }}><span className="l1-muted l1-small">Solana transaction</span><a href={`https://solscan.io/tx/${deposit.signature}`} target="_blank" rel="noreferrer"><IdChip value={deposit.signature} label="Solana signature" /></a></div>
-        {deposit.payment_tx_id && <div className="l1-row" style={{ marginTop: 6 }}><span className="l1-muted l1-small">Post Fiat payment</span><IdChip value={deposit.payment_tx_id} label="payment id" /></div>}
-        {!open && <div style={{ marginTop: 8 }}><button type="button" className="l1-btn is-sm" onClick={() => keep(null)}>Start another</button></div>}
-      </div>}
+      {ready?.ready && <Details summary="Vault details"><KV rows={[
+        ["Vault program", <Mono value={ready.vault_program_id} />], ["Light-client epoch", ready.light_client_epoch],
+        ["Per-deposit cap", <Amount atoms={ready.per_deposit_cap_atoms} unit="USDC" />],
+        ["Total vault cap", <Amount atoms={ready.total_cap_atoms} unit="USDC" />],
+      ]} /></Details>}
       {error && <Notice tone="danger" role="alert">{error}</Notice>}
     </Card>
+    {deposit && <Progress deposit={deposit} reset={() => {
+      if (readSaved(key)?.nonce === deposit.nonce) save(null);
+      setAmount(""); setError("");
+    }} />}
   </section>;
 }

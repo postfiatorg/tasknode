@@ -66,5 +66,30 @@ export async function buildVaultDeposit({ rpc, program, mint }, ready, request) 
     keys: accountsInOrder.map((pubkey, i) => ({ pubkey, isSigner: i === 0, isWritable: [0, 1, 2, 3, 5].includes(i) })) });
   const transaction = new Transaction({ feePayer: owner, recentBlockhash: block.blockhash }).add(instruction);
   return { ok: true, ...request, vault_program_id: program.toBase58(), receipt: receipt.toBase58(),
-    nonce: nonce.toString('hex'), message_b58: bs58.encode(transaction.serializeMessage()) };
+    nonce: nonce.toString('hex'), last_valid_block_height: block.lastValidBlockHeight, message_b58: bs58.encode(transaction.serializeMessage()) };
+}
+
+// Phantom may have broadcast before its reply reached the tab. Only the vault can create
+// this permanent receipt. Read a finalized bank after blockhash expiry before releasing the form.
+export async function recoverDeposit({ rpc, program }, { nonce, last_valid_block_height: lastHeight }) {
+  const receipt = pda(program, 'receipt', Buffer.from(nonce, 'hex'));
+  const epoch = await rpc.getEpochInfo('finalized');
+  const account = await rpc.getAccountInfo(receipt, { commitment: 'finalized', minContextSlot: epoch.absoluteSlot });
+  if (!account) return { ok: true, expired: epoch.blockHeight > lastHeight };
+  if (!account.owner.equals(program) || account.data.length !== 132 || account.data.toString('ascii', 0, 8) !== 'PFSOLRC1' ||
+      account.data.toString('hex', 68, 100) !== nonce) {
+    return { ok: true, expired: epoch.blockHeight > lastHeight };
+  }
+  // Ignore unrelated references to the PDA. Look for the successful deposit instruction.
+  const signatures = await rpc.getSignaturesForAddress(receipt, { limit: 8 }, 'finalized');
+  for (const { signature, err } of signatures) {
+    if (err) continue;
+    const tx = await rpc.getParsedTransaction(signature, { commitment: 'finalized', maxSupportedTransactionVersion: 0 });
+    if (tx?.meta && !tx.meta.err && tx.transaction.message.instructions.some(ix => {
+      if (!ix.programId.equals(program) || !ix.accounts?.[5]?.equals(receipt)) return false;
+      const data = Buffer.from(bs58.decode(ix.data));
+      return data.length === 61 && data[0] === 1 && data.toString('hex', 29) === nonce;
+    })) return { ok: true, signature };
+  }
+  return { ok: true, expired: false };
 }
