@@ -12,10 +12,19 @@ const iface = new Interface([
   'function depositV2(uint256 amount,string recipient,bytes32 nonce,bytes32 binding)',
   'event ERC20BridgeDepositedV2(bytes32 indexed depositId,address indexed depositor,bytes32 indexed recipientHash,string recipient,uint256 amount,bytes32 nonce,bytes32 binding,uint256 chain,address vault,address token)',
 ]);
+const solanaOwner = '6'.repeat(43), solanaSignature = '5'.repeat(87), solanaProgram = '7'.repeat(43);
+const solanaNonce = 'ab'.repeat(32), solanaJob = '0x' + '30'.repeat(32);
+const solanaStages = ['finality', 'capture', 'witness', 'proof', 'sign', 'submit', 'credit'];
 window.mockSolana = [];
-window.phantom = { solana: { isPhantom: true,
-  async connect() { return { publicKey: { toString: () => 'So1anaOwner1111111111111111111111111111111' } }; },
-  async request({ method, params }) { window.mockSolana.push({ phantom: method, message: params.message }); return { signature: '5'.repeat(87) }; },
+window.phantom = { solana: { isPhantom: true, publicKey: null,
+  async connect() { this.publicKey = solanaOwner; return { publicKey: solanaOwner }; },
+  async request({ method, params }) {
+    window.mockSolana.push({ phantom: method, message: params.message });
+    const calls = Number(localStorage.getItem('mock:phantom-sends') || 0) + 1;
+    localStorage.setItem('mock:phantom-sends', String(calls));
+    if (mode === 'interrupted') throw Error('Lost response after broadcast');
+    return { signature: solanaSignature };
+  },
 } };
 const sends = [];
 window.mockSends = sends;
@@ -46,11 +55,27 @@ window.fetch = async (url, options = {}) => {
   if (String(url).includes('/solana/')) {
     const body = options.body ? JSON.parse(options.body) : null;
     window.mockSolana.push({ url: String(url), body });
-    if (String(url).endsWith('/solana/readiness')) return Response.json({ ok: true, ready: true, available_atoms: '25000000', max_deposit_atoms: '500000000' });
-    if (String(url).endsWith('/solana/intent')) return Response.json({ ok: true, message_b58: '3mJr7AoUXx2Wqd', message_b64: btoa('unsigned-message'), amount_atoms: body.amount_atoms, pftl_account: body.pftl_account });
-    const polls = window.mockSolana.filter(call => call.url?.endsWith('/solana/advances')).length;
-    return Response.json(polls < 2 ? { ok: true, signature: body.signature, status: 'waiting_for_finality' }
-      : { ok: true, signature: body.signature, status: 'paid', amount_atoms: '2500000', pftl_account: address, payment_tx_id: 'cd'.repeat(48) });
+    const path = String(url).split('/solana/')[1];
+    if (path === 'readiness') return Response.json({ ok: true, ready: mode !== 'blocked', message: 'Vault paused',
+      vault_program_id: solanaProgram, light_client_epoch: 100, per_deposit_cap_atoms: '25000000', total_cap_atoms: '100000000', available_atoms: '25000000' });
+    if (path === 'intent') localStorage.setItem('mock:solana-request', JSON.stringify(body));
+    if (path === 'intent') return Response.json({ ok: true, ...body, message_b58: '3mJr7AoUXx2Wqd', vault_program_id: solanaProgram,
+      nonce: solanaNonce, last_valid_block_height: 1234 });
+    if (path === 'recovery') return Response.json(mode === 'interrupted' ? { ok: true, expired: false } : { ok: true, signature: solanaSignature });
+    if (path === 'jobs' && body.signature === solanaSignature) return Response.json({ ok: true, job_id: solanaJob });
+    if (path !== 'jobs/' + solanaJob) throw Error('Unexpected Solana request');
+    const stage = sessionStorage.getItem('mock:solana-stage') || 'finality';
+    const end = stage === 'accepted', failed = stage === 'failed', active = failed ? 3 : solanaStages.indexOf(stage);
+    const start = Number(sessionStorage.getItem('mock:solana-time') || Date.now() / 1000);
+    sessionStorage.setItem('mock:solana-time', String(start));
+    return Response.json({ ok: true, signature: solanaSignature, job_id: solanaJob, status: stage,
+      receipts: end ? [{ ...JSON.parse(localStorage.getItem('mock:solana-request')), nonce: mode === 'wrong-receipt' ? '88'.repeat(32) : solanaNonce, vault_program_id: solanaProgram }] : [],
+      receipt_id: end ? 'dc'.repeat(48) : '', receipt_code: end ? 'ACCEPTED' : '',
+      updated_at_unix: end || failed ? start + 10 : start, message: failed ? 'Deposit proof rejected.' : '',
+      stage_history: solanaStages.slice(0, end ? solanaStages.length : active + 1).map((stage, i) => ({
+        stage, status: end || i < active ? 'complete' : failed ? 'failed' : 'running',
+        started_at_unix: start + i * (i + 1) / 8, completed_at_unix: end || i < active ? start + (i + 1) * (i + 2) / 8 : null,
+      })) });
   }
   if (String(url).includes('readiness')) {
     if (mode === 'offline') throw new Error('Mock endpoint unreachable');
@@ -72,6 +97,7 @@ window.fetch = async (url, options = {}) => {
 };
 const client = { address, accountId: 'synthetic-bob', unlocked: true,
   async call(method) {
+    if (method === 'receipts') return { ok: true, result: mode === 'missing-ledger-receipt' ? [] : [{ tx_id: 'dc'.repeat(48), code: 'accepted', accepted: true }] };
     if (method === 'vault_bridge_route') return routeReport();
     if (method === 'account_assets') {
       if (mode === 'balance-fail') throw new Error('Mock balance RPC unavailable');
