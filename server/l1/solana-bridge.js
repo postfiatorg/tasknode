@@ -2,6 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import bs58 from 'bs58';
+import { governedRouteBinding } from '../../src/features/wallet/l1/bridge/evm.js';
 import { buildVaultDeposit, DepositError, readVault, recoverDeposit, vaultSettings } from './solana-vault.js';
 
 const ROUTE = 'solana-mainnet-usdc-v1';
@@ -71,9 +72,9 @@ async function relayConfig(env) {
 async function localRoute(env, suffix, body) {
   const base = env.L1_SOLANA_RELAY_URL || 'http://127.0.0.1:8187';
   const { config, path } = await relayConfig(env);
+  const token = body ? (await readFile(path(config.http_token_file), 'utf8')).trim() : '';
+  if (body && !token) throw Error();
   if (suffix === '/solana/jobs') {
-    const token = (await readFile(path(config.http_token_file), 'utf8')).trim();
-    if (!token) throw Error();
     const request = { route_id: ROUTE, deposit_tx_hash: body.signature, idempotency_key: body.signature };
     const { status, payload } = await upstream(base, '/api/bridge/jobs', request, token);
     if (status !== 202 || payload.request?.deposit_tx_hash !== body.signature || payload.request?.route_id !== ROUTE ||
@@ -86,17 +87,23 @@ async function localRoute(env, suffix, body) {
     return result;
   }
   const settings = vaultSettings(env);
-  const { status, payload } = await upstream(base, '/api/bridge/readiness?route=' + ROUTE);
-  if (status !== 200 || payload.ok !== true || payload.ready !== true || payload.route_id !== ROUTE ||
+  const [health, session] = await Promise.all([
+    upstream(base, '/api/bridge/readiness?route=' + ROUTE),
+    body && upstream(base, '/api/bridge/jobs?recipient=' + body.pftl_recipient + '&limit=1', undefined, token),
+  ]);
+  if (body && (session.status !== 200 || session.payload.ok !== true)) throw new DepositError(503, 'The proof relay cannot register deposits.');
+  const { status, payload } = health;
+  const binding = governedRouteBinding(config.profile_hash, Number(env.L1_SOLANA_ROUTE_EPOCH || 1)).slice(2);
+  if (binding !== settings.binding || status !== 200 || payload.ok !== true || payload.ready !== true || payload.route_id !== ROUTE ||
       payload.ledger !== 'node' || payload.observer_attestor_enabled !== false ||
       payload.source_proof_kind !== 'sp1-solana-alpenglow-finality-v1' || !config.deposit_vkey ||
-      payload.program_vkey !== config.deposit_vkey || config.vault_program !== settings.program.toBuffer().toString('hex')) {
+      payload.program_vkey !== config.deposit_vkey || config.vault_program !== Buffer.from(bs58.decode(settings.program)).toString('hex')) {
     throw new DepositError(503, 'The Solana proof relay does not match the configured vault and verifier.');
   }
   let epoch;
   try { epoch = JSON.parse(await readFile(path(config.state + '/epoch.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; epoch = config.current_epoch; }
-  const ready = await readVault(settings, { ready: true, vault_program_id: settings.program.toBase58(), light_client_epoch: epoch });
+  const ready = await readVault(settings, { ready: true, vault_program_id: settings.program, light_client_epoch: epoch });
   return { status: 200, payload: body ? await buildVaultDeposit(settings, ready, body) : ready };
 }
 

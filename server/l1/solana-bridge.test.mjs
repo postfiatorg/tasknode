@@ -4,34 +4,37 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import bs58 from 'bs58';
-import { Message, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { getProgramDerivedAddress } from '@solana/addresses';
+import { isSignerRole, isWritableRole } from '@solana/instructions';
+import { getCompiledTransactionMessageDecoder, decompileTransactionMessage } from '@solana/transaction-messages';
 import { buildVaultDeposit, readVault, recoverDeposit } from './solana-vault.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
 
-const pub = byte => new PublicKey(Buffer.alloc(32, byte));
+const pub = byte => bs58.encode(Buffer.alloc(32, byte));
 const program = pub(2), owner = pub(5), mint = pub(7), source = pub(9);
-const token = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-const binding = '23'.repeat(32);
-const request = { owner: owner.toBase58(), amount_atoms: '2500000', pftl_recipient: 'pf' + 'ab'.repeat(20) };
+const token = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+// Independent route-binding vector from the ledger's vault_bridge_route_binding test.
+const binding = 'bceb5f7d7b32245250a394adb9f4a29c83e8806f805d6427caa4e055aa17473a';
+const request = { owner: owner, amount_atoms: '2500000', pftl_recipient: 'pf' + 'ab'.repeat(20) };
 const signature = bs58.encode(Buffer.alloc(64, 4));
-const pda = (...seeds) => PublicKey.findProgramAddressSync(seeds.map(s => Buffer.from(s)), program)[0];
+const pda = async (...seeds) => (await getProgramDerivedAddress({ programAddress: program, seeds }))[0];
 
 function fixture() {
   const data = Buffer.alloc(96);
-  mint.toBuffer().copy(data);
+  Buffer.from(bs58.decode(mint)).copy(data);
   Buffer.from(binding, 'hex').copy(data, 32);
   data.writeBigUInt64LE(10000000n, 64);
   data.writeBigUInt64LE(20000000n, 72);
   data.writeBigUInt64LE(15000000n, 80);
   data.writeBigUInt64LE(10n, 88);
   const account = { owner: program, data };
-  const health = { ok: true, ready: true, vault_program_id: program.toBase58(), light_client_epoch: 3 };
+  const health = { ok: true, ready: true, vault_program_id: program, light_client_epoch: 3 };
   const rpc = {
-    getAccountInfo: async key => { assert.ok(key.equals(pda('config'))); return account; },
+    getAccountInfo: async key => { assert.ok(key === await pda('config')); return account; },
     getEpochInfo: async () => ({ epoch: 3, absoluteSlot: 100 }),
-    getLatestBlockhash: async () => ({ blockhash: pub(12).toBase58(), lastValidBlockHeight: 1234 }),
-    getParsedTokenAccountsByOwner: async () => ({ value: [{ pubkey: source, account: { owner: token, data: { parsed: { info: {
-      state: 'initialized', owner: request.owner, mint: mint.toBase58(), tokenAmount: { amount: '5000000', decimals: 6 },
+    getLatestBlockhash: async () => ({ blockhash: pub(12), lastValidBlockHeight: 1234 }),
+    getTokenAccounts: async () => ({ value: [{ pubkey: source, account: { owner: token, data: { parsed: { info: {
+      state: 'initialized', owner: request.owner, mint: mint, tokenAmount: { amount: '5000000', decimals: 6 },
     } } } } }] }),
   };
   return { settings: { rpc, program, binding, mint }, account, health };
@@ -47,29 +50,29 @@ test('unsigned Phantom message matches the vault ABI, account order, privileges 
   assert.notEqual(first.nonce, second.nonce);
   assert.notEqual(first.receipt, second.receipt);
   const nonce = Buffer.from(first.nonce, 'hex');
-  const tx = Transaction.populate(Message.from(bs58.decode(first.message_b58)));
-  assert.deepEqual(tx.feePayer, owner);
-  assert.equal(tx.recentBlockhash, pub(12).toBase58());
+  const tx = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(bs58.decode(first.message_b58)));
+  assert.deepEqual(tx.feePayer.address, owner);
+  assert.equal(tx.lifetimeConstraint.blockhash, pub(12));
   assert.equal(tx.instructions.length, 1);
   const [ix] = tx.instructions;
-  assert.deepEqual(ix.programId, program);
-  assert.deepEqual(ix.keys.map(k => k.pubkey), [owner, source, pda('config'), pda('custody'), mint, pda('receipt', nonce), token, SystemProgram.programId]);
-  assert.deepEqual(ix.keys.map(k => k.isWritable), [true, true, true, true, false, true, false, false]);
-  assert.deepEqual(ix.keys.filter(k => k.isSigner).map(k => k.pubkey), [owner]);
-  assert.equal(ix.data.toString('hex'), '01a025260000000000' + 'ab'.repeat(20) + first.nonce);
-  assert.equal(pda('receipt', nonce).toBase58(), first.receipt);
+  assert.deepEqual(ix.programAddress, program);
+  assert.deepEqual(ix.accounts.map(k => k.address), [owner, source, await pda('config'), await pda('custody'), mint, await pda('receipt', nonce), token, '11111111111111111111111111111111']);
+  assert.deepEqual(ix.accounts.map(k => isWritableRole(k.role)), [true, true, true, true, false, true, false, false]);
+  assert.deepEqual(ix.accounts.filter(k => isSignerRole(k.role)).map(k => k.address), [owner]);
+  assert.equal(Buffer.from(ix.data).toString('hex'), '01a025260000000000' + 'ab'.repeat(20) + first.nonce);
+  assert.equal(await pda('receipt', nonce), first.receipt);
   await assert.rejects(buildVaultDeposit(settings, ready, { ...request, amount_atoms: '5000001' }), /exceeds/);
-  settings.rpc.getParsedTokenAccountsByOwner = async () => ({ value: [] });
+  settings.rpc.getTokenAccounts = async () => ({ value: [] });
   await assert.rejects(buildVaultDeposit(settings, ready, request), /No USDC account/);
 });
 
 test('readiness refuses mismatched program, mint, binding, epoch, config owner, cap and initialization slot', async () => {
   for (const change of [
-    ({ health }) => { health.vault_program_id = pub(11).toBase58(); },
+    ({ health }) => { health.vault_program_id = pub(11); },
     ({ account }) => { account.data[0] ^= 1; },
     ({ account }) => { account.data[32] ^= 1; },
     ({ health }) => { health.light_client_epoch++; },
-    ({ account }) => { account.owner = SystemProgram.programId; },
+    ({ account }) => { account.owner = '11111111111111111111111111111111'; },
     ({ account }) => account.data.writeBigUInt64LE(20000000n, 80),
     ({ account }) => account.data.writeBigUInt64LE(100n, 88),
   ]) {
@@ -79,10 +82,10 @@ test('readiness refuses mismatched program, mint, binding, epoch, config owner, 
 });
 
 test('lost Phantom reply recovers only a finalized successful vault deposit for the nonce', async () => {
-  const nonce = '45'.repeat(32), recovery = { nonce, vault_program_id: program.toBase58(), last_valid_block_height: 98 };
-  const receipt = pda('receipt', Buffer.from(nonce, 'hex'));
+  const nonce = '45'.repeat(32), recovery = { nonce, vault_program_id: program, last_valid_block_height: 98 };
+  const receipt = await pda('receipt', Buffer.from(nonce, 'hex'));
   const rpc = { getEpochInfo: async () => ({ absoluteSlot: 100, blockHeight: 99 }), getAccountInfo: async (id, options) => {
-    assert.ok(id.equals(receipt)); assert.equal(options.minContextSlot, 100); return null;
+    assert.ok(id === receipt); assert.equal(options.minContextSlot, 100); return null;
   } };
   assert.deepEqual(await recoverDeposit({ rpc, program }, recovery), { ok: true, expired: true });
   assert.deepEqual(await recoverDeposit({ rpc, program }, { ...recovery, last_valid_block_height: 99 }), { ok: true, expired: false });
@@ -90,7 +93,7 @@ test('lost Phantom reply recovers only a finalized successful vault deposit for 
   rpc.getAccountInfo = async () => ({ owner: program, data: account });
   rpc.getSignaturesForAddress = async () => [{ signature: 'unrelated', err: null }, { signature, err: null }];
   rpc.getParsedTransaction = async sig => ({ meta: { err: null }, transaction: { message: { instructions: [{
-    programId: sig === signature ? program : mint, accounts: [owner, source, pda('config'), pda('custody'), mint, receipt],
+    programId: sig === signature ? program : mint, accounts: [owner, source, await pda('config'), await pda('custody'), mint, receipt],
     data: bs58.encode(Buffer.concat([Buffer.from([1]), Buffer.alloc(28), Buffer.from(nonce, 'hex')])),
   }] } } });
   assert.deepEqual(await recoverDeposit({ rpc, program }, recovery), { ok: true, signature });
@@ -132,8 +135,8 @@ async function relayFiles(t) {
   t.after(() => rm(dir, { recursive: true, force: true }));
   const config = join(dir, 'relay.json');
   await writeFile(join(dir, 'http-token'), 'fixture-only');
-  await writeFile(config, JSON.stringify({ ledger: 'node', vault_program: program.toBuffer().toString('hex'),
-    deposit_vkey: '0x' + '42'.repeat(32), http_token_file: 'http-token', state: dir, current_epoch: 3 }));
+  await writeFile(config, JSON.stringify({ ledger: 'node', vault_program: Buffer.from(bs58.decode(program)).toString('hex'),
+    deposit_vkey: '0x' + '42'.repeat(32), profile_hash: '11'.repeat(48), http_token_file: 'http-token', state: dir, current_epoch: 3 }));
   return config;
 }
 
@@ -173,10 +176,15 @@ test('Solana proxy forwards job create and status to configured endpoints and gu
 test('readiness and intent use the same current route through the Solana JSON-RPC transport', async t => {
   const { account, health } = fixture();
   let epoch = 3;
-  const env = { L1_SOLANA_RELAY_CONFIG: await relayFiles(t), L1_SOLANA_RELAY_URL: 'http://jobs.test', L1_SOLANA_RPC_URL: 'http://solana.test',
-    L1_SOLANA_VAULT_PROGRAM_ID: program.toBase58(), L1_SOLANA_USDC_MINT: mint.toBase58(), L1_SOLANA_ROUTE_BINDING: binding };
+  const env = { L1_SOLANA_RELAY_CONFIG: await relayFiles(t), L1_SOLANA_RELAY_URL: 'http://jobs.test', L1_SOLANA_ROUTE_EPOCH: '7', L1_SOLANA_RPC_URL: 'http://solana.test',
+    L1_SOLANA_VAULT_PROGRAM_ID: program, L1_SOLANA_USDC_MINT: mint, L1_SOLANA_ROUTE_BINDING: binding };
   t.mock.method(globalThis, 'fetch', async (url, opt) => {
     if (new URL(url).host === 'jobs.test') {
+      if (url.pathname === '/api/bridge/jobs') {
+        assert.equal(url.searchParams.get('recipient'), request.pftl_recipient);
+        assert.equal(opt.headers.Authorization, 'Bearer fixture-only');
+        return Response.json({ ok: true, jobs: [] });
+      }
       assert.equal(url.pathname + url.search, '/api/bridge/readiness?route=solana-mainnet-usdc-v1');
       return Response.json({ ...health, ledger: 'node', route_id: 'solana-mainnet-usdc-v1', source_proof_kind: 'sp1-solana-alpenglow-finality-v1',
         program_vkey: '0x' + '42'.repeat(32), observer_attestor_enabled: false });
@@ -186,10 +194,10 @@ test('readiness and intent use the same current route through the Solana JSON-RP
     const context = { slot: 100 };
     const results = {
       getEpochInfo: { epoch, absoluteSlot: 100, slotsInEpoch: 50, slotIndex: 12 },
-      getAccountInfo: { context, value: { ...info, owner: program.toBase58(), data: [account.data.toString('base64'), 'base64'] } },
-      getLatestBlockhash: { context, value: { blockhash: pub(12).toBase58(), lastValidBlockHeight: 1234 } },
-      getTokenAccountsByOwner: { context, value: [{ pubkey: source.toBase58(), account: { ...info, owner: token.toBase58(),
-        data: { program: 'spl-token', space: 165, parsed: { type: 'account', info: { owner: request.owner, mint: mint.toBase58(),
+      getAccountInfo: { context, value: { ...info, owner: program, data: [account.data.toString('base64'), 'base64'] } },
+      getLatestBlockhash: { context, value: { blockhash: pub(12), lastValidBlockHeight: 1234 } },
+      getTokenAccountsByOwner: { context, value: [{ pubkey: source, account: { ...info, owner: token,
+        data: { program: 'spl-token', space: 165, parsed: { type: 'account', info: { owner: request.owner, mint: mint,
           state: 'initialized', tokenAmount: { decimals: 6, amount: '9999999' } } } } } }] },
     };
     assert.ok(method in results);

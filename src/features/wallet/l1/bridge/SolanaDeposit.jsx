@@ -9,7 +9,7 @@ const stages = [["finality", "Solana finality"], ["capture", "Capture deposit"],
   ["sign", "Sign Post Fiat transaction"], ["submit", "Submit proof"], ["credit", "Credit on Post Fiat"]];
 const elapsed = ms => (Math.max(0, ms) / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }) + " s";
 
-function Progress({ deposit, reset }) {
+function Progress({ deposit, reset, retry }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (deposit.terminal) return undefined;
@@ -41,6 +41,7 @@ function Progress({ deposit, reset }) {
       deposit.signature && ["Solana transaction", <IdChip value={deposit.signature} label="transaction signature" />],
       job?.receipt_id && ["Post Fiat receipt", <IdChip value={job.receipt_id} label="credit receipt" />],
     ]} />
+    {terminal === "failed" && job.retryable && <button type="button" className="l1-btn" onClick={retry}>Retry proof job</button>}
     {terminal && <button type="button" className="l1-btn is-sm" onClick={reset}>Start another Solana deposit</button>}
   </Card>;
 }
@@ -93,10 +94,16 @@ export default function SolanaDeposit({ client }) {
         const next = await advanceDeposit(deposit, client);
         if (stopped) return;
         setError("");
-        const current = readSaved(key);
-        // Another tab may already have completed this job or opened the next deposit.
-        if (JSON.stringify(current) !== JSON.stringify(deposit)) { setDeposit(current); return; }
-        if (JSON.stringify(next) !== JSON.stringify(deposit)) { save(next); return; }
+        if (JSON.stringify(next) !== JSON.stringify(deposit)) {
+          await navigator.locks.request(key, async () => {
+            if (stopped) return;
+            const current = readSaved(key);
+            // Another tab may have received Phantom's reply, or finished this job.
+            if (JSON.stringify(current) === JSON.stringify(deposit)) save(next);
+            else setDeposit(current);
+          });
+          return;
+        }
       } catch (failure) { if (!stopped) setError(failure.message); }
       if (!stopped) timer = setTimeout(poll, 1000);
     }
@@ -140,9 +147,17 @@ export default function SolanaDeposit({ client }) {
       ]} /></Details>}
       {error && <Notice tone="danger" role="alert">{error}</Notice>}
     </Card>
-    {deposit && <Progress deposit={deposit} reset={() => {
-      if (readSaved(key)?.nonce === deposit.nonce) save(null);
-      setAmount(""); setError("");
-    }} />}
+    {deposit && <Progress deposit={deposit}
+      retry={() => run(() => navigator.locks.request(key, () => {
+        const current = readSaved(key);
+        if (current?.nonce === deposit.nonce && current.terminal === "failed") {
+          save({ ...current, terminal: undefined, finished: undefined, jobId: undefined, job: undefined });
+        }
+      }))}
+      reset={() => run(() => navigator.locks.request(key, () => {
+        const current = readSaved(key);
+        if (current?.nonce === deposit.nonce && current.terminal) save(null);
+        setAmount("");
+      }))} />}
   </section>;
 }
