@@ -126,7 +126,7 @@ export default function SolanaDeposit({ client }) {
       <CardHead eyebrow="Deposit from Solana" title="USDC to PFUSDC">
         <Badge tone={ready?.ready ? "success" : "neutral"}>{ready === null ? "Checking vault…" : ready.ready ? "Vault ready" : "Vault unavailable"}</Badge>
       </CardHead>
-      <p className="l1-small">Confirm one vault deposit in Phantom. Post Fiat verifies the proof and credits PFUSDC to this wallet.</p>
+      <p className="l1-small">Confirm one vault deposit in Phantom. Post Fiat verifies the proof and credits PFUSDC to this wallet, usually in about two minutes. Phantom also needs about 0.003 SOL for the Solana fee and storage.</p>
       {ready && !ready.ready && <Notice tone="warning">{ready.message}</Notice>}
       {!deposit && <>
         {provider ? <div className="l1-row">

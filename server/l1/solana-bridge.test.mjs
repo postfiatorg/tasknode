@@ -136,7 +136,7 @@ async function relayFiles(t) {
   const config = join(dir, 'relay.json');
   await writeFile(join(dir, 'http-token'), 'fixture-only');
   await writeFile(config, JSON.stringify({ ledger: 'node', vault_program: Buffer.from(bs58.decode(program)).toString('hex'),
-    deposit_vkey: '0x' + '42'.repeat(32), profile_hash: '11'.repeat(48), http_token_file: 'http-token', state: dir, current_epoch: 3 }));
+    deposit_vkey: '0x' + '42'.repeat(32), profile_hash: '11'.repeat(48), route_binding: binding, http_token_file: 'http-token', state: dir, current_epoch: 3 }));
   return config;
 }
 

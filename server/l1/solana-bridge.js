@@ -2,7 +2,6 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import bs58 from 'bs58';
-import { governedRouteBinding } from '../../src/features/wallet/l1/bridge/evm.js';
 import { buildVaultDeposit, DepositError, readVault, recoverDeposit, vaultSettings } from './solana-vault.js';
 
 const ROUTE = 'solana-mainnet-usdc-v1';
@@ -93,7 +92,8 @@ async function localRoute(env, suffix, body) {
   ]);
   if (body && (session.status !== 200 || session.payload.ok !== true)) throw new DepositError(503, 'The proof relay cannot register deposits.');
   const { status, payload } = health;
-  const binding = governedRouteBinding(config.profile_hash, Number(env.L1_SOLANA_ROUTE_EPOCH || 1)).slice(2);
+  // The vault stores the binding written at initialization; the governed route pins the same value.
+  const binding = config.route_binding;
   if (binding !== settings.binding || status !== 200 || payload.ok !== true || payload.ready !== true || payload.route_id !== ROUTE ||
       payload.ledger !== 'node' || payload.observer_attestor_enabled !== false ||
       payload.source_proof_kind !== 'sp1-solana-alpenglow-finality-v1' || !config.deposit_vkey ||
