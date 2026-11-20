@@ -1,5 +1,6 @@
 // Vault ABI: pfusdc-vault/src/lib.rs, deposit tag 1, classic SPL Token.
-import { randomBytes } from 'node:crypto';
+import { createPrivateKey, randomBytes, sign } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { address, getProgramDerivedAddress } from '@solana/addresses';
 import { AccountRole } from '@solana/instructions';
 import { compileTransactionMessage, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder } from '@solana/transaction-messages';
@@ -8,6 +9,11 @@ import bs58 from 'bs58';
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const SYSTEM = '11111111111111111111111111111111';
+const RECENT_BLOCKHASHES = 'SysvarRecentB1ockHashes11111111111111111111';
+// A depositor may hold a nonce for this long before it is offered to someone else.
+const NONCE_LEASE_MS = 11 * 60 * 1000;
+const leases = new Map();
+let leasing = Promise.resolve();
 const pda = async (programAddress, ...seeds) => (await getProgramDerivedAddress({ programAddress, seeds }))[0];
 
 function solanaRpc(url) {
@@ -47,6 +53,7 @@ export function vaultSettings(env) {
   return {
     program: address(env.L1_SOLANA_VAULT_PROGRAM_ID), mint: address(env.L1_SOLANA_USDC_MINT || USDC),
     binding: env.L1_SOLANA_ROUTE_BINDING, rpc: solanaRpc(env.L1_SOLANA_RPC_URL),
+    nonceFile: env.L1_SOLANA_NONCE_FILE, nonceKey: env.L1_SOLANA_NONCE_AUTHORITY_KEY,
   };
 }
 
@@ -69,7 +76,32 @@ export async function readVault({ rpc, program, mint, binding }, relay) {
     available_atoms: String(remaining < cap ? remaining : cap) };
 }
 
-export async function buildVaultDeposit({ rpc, program, mint }, ready, request) {
+// A transaction on a recent blockhash is valid for 150 blocks, about half a minute, which is
+// less than a careful approval in Phantom takes. A durable nonce keeps it valid until used.
+// Returns a free nonce account, or null when none is configured or all are out.
+function leaseNonce({ rpc, nonceFile, nonceKey }) {
+  if (!nonceFile || !nonceKey) return null;
+  const turn = leasing.then(async () => {
+    const { authority, accounts } = JSON.parse(await readFile(nonceFile, 'utf8'));
+    for (const account of accounts) {
+      const info = await rpc.getAccountInfo(account, { commitment: 'confirmed' });
+      // Nonce account: version u32, state u32 (1 = initialized), authority, nonce value, fee.
+      if (info?.owner !== SYSTEM || info.data.length !== 80 || info.data.readUInt32LE(4) !== 1 ||
+          bs58.encode(info.data.subarray(8, 40)) !== authority) continue;
+      const value = bs58.encode(info.data.subarray(40, 72));
+      const lease = leases.get(account);
+      if (lease?.value === value && lease.until > Date.now()) continue;
+      leases.set(account, { value, until: Date.now() + NONCE_LEASE_MS });
+      return { account: address(account), authority: address(authority), value };
+    }
+    return null;
+  });
+  leasing = turn.catch(() => null);
+  return turn.catch(() => null);
+}
+
+export async function buildVaultDeposit(settings, ready, request) {
+  const { rpc, program, mint } = settings;
   const amount = BigInt(request.amount_atoms), owner = address(request.owner);
   if (amount > BigInt(ready.available_atoms)) throw new DepositError(409, 'The amount exceeds the current vault cap.');
   const [tokenAccounts, block] = await Promise.all([
@@ -88,29 +120,46 @@ export async function buildVaultDeposit({ rpc, program, mint }, ready, request) 
   data.writeBigUInt64LE(amount, 1);
   Buffer.from(request.pftl_recipient.slice(2), 'hex').copy(data, 9);
   nonce.copy(data, 29);
-  const { WRITABLE_SIGNER, WRITABLE, READONLY } = AccountRole;
+  const { WRITABLE_SIGNER, READONLY_SIGNER, WRITABLE, READONLY } = AccountRole;
   const accounts = [[owner, WRITABLE_SIGNER], [source.pubkey, WRITABLE], [config, WRITABLE], [custody, WRITABLE],
     [mint, READONLY], [receipt, WRITABLE], [TOKEN, READONLY], [SYSTEM, READONLY]].map(([address, role]) => ({ address, role }));
+  const deposit = { programAddress: program, accounts, data };
+  const durable = await leaseNonce(settings);
+  // System AdvanceNonceAccount (4) must come first, signed by the nonce authority.
+  const advance = durable && { programAddress: address(SYSTEM), data: Buffer.from([4, 0, 0, 0]), accounts: [
+    { address: durable.account, role: WRITABLE }, { address: address(RECENT_BLOCKHASHES), role: READONLY },
+    { address: durable.authority, role: READONLY_SIGNER }] };
   const message = compileTransactionMessage({ version: 'legacy', feePayer: { address: owner },
-    lifetimeConstraint: { blockhash: block.blockhash, lastValidBlockHeight: BigInt(block.lastValidBlockHeight) },
-    instructions: [{ programAddress: program, accounts, data }] });
-  // Phantom's request API deserializes this as a whole transaction: a signature count, one
+    lifetimeConstraint: { blockhash: durable ? durable.value : block.blockhash, lastValidBlockHeight: BigInt(block.lastValidBlockHeight) },
+    instructions: durable ? [advance, deposit] : [deposit] });
+  // Phantom's request API deserializes this as a whole transaction: a signature count, an
   // empty slot for the depositor's signature, then the message. A bare message is misparsed.
   const compiled = Buffer.from(getCompiledTransactionMessageEncoder().encode(message));
-  const unsigned = bs58.encode(Buffer.concat([Buffer.from([1]), Buffer.alloc(64), compiled]));
+  let slots = [Buffer.alloc(64)];
+  if (durable) {
+    if (getCompiledTransactionMessageDecoder().decode(compiled).staticAccounts[1] !== durable.authority) throw Error('unexpected signer order');
+    const seed = Buffer.from(JSON.parse(await readFile(settings.nonceKey, 'utf8'))).subarray(0, 32);
+    const key = createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]), format: 'der', type: 'pkcs8' });
+    slots.push(sign(null, compiled, key));
+  }
+  const unsigned = bs58.encode(Buffer.concat([Buffer.from([slots.length]), ...slots, compiled]));
+  // The card stops waiting at this height. With a nonce that is about ten minutes away.
+  const deadline = block.lastValidBlockHeight + (durable ? 2650 : 0);
   return { ok: true, ...request, vault_program_id: program, receipt,
-    nonce: nonce.toString('hex'), last_valid_block_height: block.lastValidBlockHeight, message_b58: unsigned };
+    nonce: nonce.toString('hex'), last_valid_block_height: deadline, message_b58: unsigned };
 }
 
 // Broadcast the transaction the depositor signed in Phantom. A Solana transaction is valid for
 // 150 blocks, about half a minute, so keep re-sending until a bank reports it.
 export async function sendDeposit({ rpc, program }, { transaction_b64: encoded, nonce }, resend = { every: 2000, times: 14 }) {
   const bytes = Buffer.from(encoded, 'base64');
-  if (bytes.length < 66 || bytes.length > 1232 || bytes[0] !== 1 || bytes.subarray(1, 65).every(b => b === 0)) {
+  // One signature (the depositor) or two (the depositor, then the nonce authority).
+  const signers = bytes[0], start = 1 + 64 * signers;
+  if (![1, 2].includes(signers) || bytes.length <= start || bytes.length > 1232 || bytes.subarray(1, 65).every(b => b === 0)) {
     throw new DepositError(400, 'Phantom did not return a signed deposit.');
   }
   let keys;
-  try { keys = getCompiledTransactionMessageDecoder().decode(bytes.subarray(65)).staticAccounts; }
+  try { keys = getCompiledTransactionMessageDecoder().decode(bytes.subarray(start)).staticAccounts; }
   catch { throw new DepositError(400, 'Phantom returned an unreadable deposit.'); }
   // Relay only this vault's deposit for the prepared receipt.
   const receipt = await pda(program, 'receipt', Buffer.from(nonce, 'hex'));
