@@ -19,12 +19,14 @@ export const RESEND_SIGNED_MS = 10000;
 export const RECOVERY_POLL_MS = 30_000;
 export const RECOVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const pollDelay = record => record.lapsed && !record.signature ? RECOVERY_POLL_MS : 1000;
-// The user started another deposit: the open one is kept aside, once, and still checked. The list keeps
-// at most MAX_SET_ASIDE rows, dropping the oldest ended ones first, then the oldest.
+// The user started another deposit: the open one is kept aside, once, and still checked. Past MAX_SET_ASIDE
+// rows the oldest ended ones go first, then the oldest past their day; a row that can still land is never dropped.
 export const MAX_SET_ASIDE = 10;
 export function setAside(earlier, record) {
   const list = [...(earlier ?? []).filter(row => row.nonce !== record.nonce), record];
-  while (list.length > MAX_SET_ASIDE) list.splice(Math.max(0, list.findIndex(row => row.terminal)), 1);
+  for (const done of [row => row.terminal, row => dayOver(row)]) {
+    for (let i; list.length > MAX_SET_ASIDE && (i = list.findIndex(done)) >= 0;) list.splice(i, 1);
+  }
   return list;
 }
 // Give the server's nonce lease back; a failure here only delays its expiry.
@@ -32,7 +34,7 @@ const release = nonce => postSolana("release", { nonce }).catch(() => {});
 const base64 = bytes => { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); };
 // A record that reached a signature or an end no longer needs the signed copy.
 const settled = ({ transaction_b64: _bytes, resent: _resent, ...record }) => record;
-// A deposit Solana has not recorded RECOVERY_WINDOW_MS after its lease went ends here, whatever the server answers.
+// A deposit Solana has not recorded RECOVERY_WINDOW_MS after its lease went ends once a read finds nothing or fails.
 const dayOver = record => record.lapsed && !record.signature && Date.now() - record.lapsed >= RECOVERY_WINDOW_MS
   ? { ...settled(record), terminal: "lapsed", finished: Date.now() } : null;
 
@@ -136,9 +138,16 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
   });
 }
 
+// One check of a deposit. Past its day, a failed read ends it; within the day the failure is reported.
 export async function advanceDeposit(record, client) {
-  const over = dayOver(record);
-  if (over) return over;
+  try { return await advance(record, client); } catch (error) {
+    const over = dayOver(record);
+    if (over) return over;
+    throw error;
+  }
+}
+
+async function advance(record, client) {
   if (!record.signature) {
     const recovered = await postSolana("recovery", { nonce: record.nonce, vault_program_id: record.vault_program_id,
       last_valid_block_height: record.last_valid_block_height, before: record.before,
@@ -148,6 +157,8 @@ export async function advanceDeposit(record, client) {
     // The lease ended with the nonce unchanged and no receipt: it can still land, so keep checking, slowly,
     // for RECOVERY_WINDOW_MS. The signed copy is not sent again.
     if (recovered.lapsed === true && record.nonce_account) {
+      const over = dayOver(record);
+      if (over) return over;
       const lapsed = record.lapsed ?? Date.now();
       if (record.lapsed && record.before === recovered.before) return record;
       return { ...settled(record), lapsed, ...(recovered.before !== undefined && { before: recovered.before }) };
@@ -185,5 +196,5 @@ export async function advanceDeposit(record, client) {
   return { ...record, job, terminal, finished: terminal ? (job.updated_at_unix * 1000 || Date.now()) : undefined };
 }
 
-// One check of a set-aside deposit. A failed check keeps the row, unless its day ended meanwhile.
-export const checkEarlier = (row, client) => advanceDeposit(row, client).catch(() => dayOver(row) ?? row);
+// One check of a set-aside deposit. A failed check within the day keeps the row.
+export const checkEarlier = (row, client) => advanceDeposit(row, client).catch(() => row);
