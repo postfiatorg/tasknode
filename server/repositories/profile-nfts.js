@@ -371,7 +371,7 @@ export async function listProfileNfts(options = {}) {
   if (!normalizedAccountId) return [];
   const hasWalletFilter = Object.hasOwn(options, "walletAddress");
   const walletAddress = safeText(options.walletAddress, 120);
-  const boundedLimit = Math.min(Math.max(Number(limit || 12), 1), 240);
+  const boundedLimit = Math.trunc(Math.min(Math.max(Number(limit || 12), 1), 240));
   const publicFilter = publicOnly === true
     ? `AND lower(status) IN ('minted', 'prepared', 'generated')
        AND (

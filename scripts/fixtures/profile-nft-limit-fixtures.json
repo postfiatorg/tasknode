@@ -1,0 +1,373 @@
+{
+  "schema": "profile-nft-limit-fixtures/v1",
+  "source_pins": [
+    {
+      "path": "server/repositories/profile-nfts.js",
+      "sha256": "4f93481b354e5fb17ec42d1d6f7d1f39354a656097e0a109edeaea0109c5e03c",
+      "bytes": 26537,
+      "url": "https://github.com/postfiatorg/tasknode/blob/41bb94647cd2e6183d0cbe193b568d179c79a9b6/server/repositories/profile-nfts.js"
+    },
+    {
+      "path": "server/repositories/task-projection-integrity.js",
+      "sha256": "ad5fbbd8c555521d04c417a8a1f9c76cdd0cbc3560595be52760dbb4be641bd0",
+      "bytes": 3275,
+      "url": "https://github.com/postfiatorg/tasknode/blob/41bb94647cd2e6183d0cbe193b568d179c79a9b6/server/repositories/task-projection-integrity.js"
+    },
+    {
+      "path": "shared/profile-nft-art.js",
+      "sha256": "42f3fbdd003028c82eb4e33c516c99cedd6056459ace169c29049e276e9def6e",
+      "bytes": 719,
+      "url": "https://github.com/postfiatorg/tasknode/blob/41bb94647cd2e6183d0cbe193b568d179c79a9b6/shared/profile-nft-art.js"
+    }
+  ],
+  "constant": {
+    "PROFILE_NFT_TITLE": "Profile Pic NFT"
+  },
+  "sql": {
+    "unscoped": "SELECT *\n           FROM profile_nfts\n          WHERE account_id = $1\n            \n            AND profile_nfts.id NOT LIKE 'directory_polish_%'\n    AND COALESCE(profile_nfts.model, '') <> 'directory-polish'\n          ORDER BY created_at DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC\n          LIMIT $2",
+    "unscoped_public": "SELECT *\n           FROM profile_nfts\n          WHERE account_id = $1\n            AND lower(status) IN ('minted', 'prepared', 'generated')\n       AND (\n         COALESCE(image_gateway_url, '') <> ''\n         OR COALESCE(image_cid, '') <> ''\n       )\n            AND profile_nfts.id NOT LIKE 'directory_polish_%'\n    AND COALESCE(profile_nfts.model, '') <> 'directory-polish'\n          ORDER BY created_at DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC\n          LIMIT $2",
+    "scoped": "SELECT *\n           FROM profile_nfts\n          WHERE account_id = $1\n            AND (\n              wallet_address = $3\n              OR ($4::boolean = true AND wallet_address = '')\n            )\n            \n            AND profile_nfts.id NOT LIKE 'directory_polish_%'\n    AND COALESCE(profile_nfts.model, '') <> 'directory-polish'\n          ORDER BY created_at DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC\n          LIMIT $2",
+    "scoped_public": "SELECT *\n           FROM profile_nfts\n          WHERE account_id = $1\n            AND (\n              wallet_address = $3\n              OR ($4::boolean = true AND wallet_address = '')\n            )\n            AND lower(status) IN ('minted', 'prepared', 'generated')\n       AND (\n         COALESCE(image_gateway_url, '') <> ''\n         OR COALESCE(image_cid, '') <> ''\n       )\n            AND profile_nfts.id NOT LIKE 'directory_polish_%'\n    AND COALESCE(profile_nfts.model, '') <> 'directory-polish'\n          ORDER BY created_at DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC\n          LIMIT $2"
+  },
+  "inputs": {
+    "fraction_numeric_unscoped": {
+      "accountId": "acct_oracle_a",
+      "limit": 2.5
+    },
+    "fraction_numeric_scoped": {
+      "accountId": "acct_oracle_a",
+      "limit": 2.5,
+      "walletAddress": "wallet_oracle_a"
+    },
+    "fraction_string_unscoped": {
+      "accountId": "acct_oracle_a",
+      "limit": "49.9"
+    },
+    "fraction_string_scoped_public": {
+      "accountId": "acct_oracle_a",
+      "limit": "49.9",
+      "walletAddress": "wallet_oracle_a",
+      "includeWalletless": false,
+      "publicOnly": true
+    },
+    "default_limit": {
+      "accountId": "  acct_oracle_a  ",
+      "untouched": {
+        "fixture": true
+      }
+    },
+    "integer_scoped_public": {
+      "accountId": "acct_oracle_a",
+      "limit": 7,
+      "walletAddress": "wallet_oracle_a",
+      "includeWalletless": false,
+      "publicOnly": true
+    },
+    "negative_floor": {
+      "accountId": "acct_oracle_a",
+      "limit": -9.75
+    },
+    "upper_cap_truthy_public_flag": {
+      "accountId": "acct_oracle_a",
+      "limit": 500.9,
+      "publicOnly": "true"
+    },
+    "numeric_zero_default": {
+      "accountId": "acct_oracle_a",
+      "limit": 0
+    },
+    "string_zero_floor": {
+      "accountId": "acct_oracle_a",
+      "limit": "0"
+    },
+    "own_empty_wallet_strict_flag": {
+      "accountId": "acct_oracle_a",
+      "limit": 1,
+      "walletAddress": null,
+      "includeWalletless": "true"
+    },
+    "empty_account": {
+      "accountId": "  ",
+      "limit": 2.5,
+      "walletAddress": "wallet_oracle_a",
+      "publicOnly": true
+    },
+    "null_options": null,
+    "cold_runtime_empty": {
+      "accountId": "acct_oracle_a",
+      "limit": 2.5,
+      "walletAddress": "wallet_oracle_a",
+      "publicOnly": true
+    },
+    "ordinary_query_error": {
+      "accountId": "acct_oracle_a",
+      "limit": 4
+    },
+    "account_wallet_truncation": {
+      "accountId": "  acct_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaTAIL  ",
+      "walletAddress": "  wallet_wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwTAIL  ",
+      "limit": 240,
+      "includeWalletless": true,
+      "publicOnly": true
+    }
+  },
+  "query_results": {
+    "rows_full": {
+      "command": "SELECT",
+      "rowCount": 3,
+      "rows": [
+        {
+          "id": "nft_oracle_snake",
+          "account_id": "acct_oracle_a",
+          "accountId": "ignored_camel_account",
+          "wallet_address": "wallet_oracle_a",
+          "walletAddress": "ignored_camel_wallet",
+          "title": "Snake title",
+          "description": "Synthetic metadata",
+          "status": "prepared",
+          "image_cid": "  cid oracle/a  ",
+          "imageCid": "ignored_camel_cid",
+          "image_gateway_url": "",
+          "image_mime_type": "image/png",
+          "image_size_bytes": "123",
+          "image_sha256": "sha_oracle_snake",
+          "metadata_cid": "  meta oracle/a  ",
+          "metadata_uri": "",
+          "metadata_json": {
+            "kind": "snake",
+            "nested": [
+              1,
+              {
+                "flag": false
+              }
+            ]
+          },
+          "prompt_source": "synthetic",
+          "prompt_digest": "prompt_snake",
+          "template_digest": "template_snake",
+          "model": "synthetic-model",
+          "size": "1024x1024",
+          "quality": "high",
+          "output_format": "png",
+          "mint_tx_json": {
+            "purpose": "synthetic-fixture"
+          },
+          "tx_hash": "tx_oracle_snake",
+          "nft_token_id": "token_oracle_snake",
+          "selected": 1,
+          "error": "",
+          "generated_at": "2026-10-14T00:00:00.000Z",
+          "prepared_at": "2026-10-14T00:00:01.000Z",
+          "minted_at": null,
+          "created_at": "2026-10-14T00:00:00.000Z",
+          "updated_at": "2026-10-14T00:00:02.000Z"
+        },
+        {
+          "id": "nft_oracle_camel",
+          "accountId": "acct_oracle_a",
+          "walletAddress": "",
+          "title": "",
+          "description": false,
+          "status": "",
+          "imageCid": "  cid+camel  ",
+          "imageGatewayUrl": "https://fixture.invalid/camel.png",
+          "imageMimeType": "image/webp",
+          "imageSizeBytes": "0",
+          "imageSha256": "sha_oracle_camel",
+          "metadataCid": "  metadata-camel  ",
+          "metadataUri": "ipfs://explicit-camel",
+          "metadataJson": {
+            "kind": "camel",
+            "nested": [
+              2,
+              {
+                "flag": true
+              }
+            ]
+          },
+          "promptSource": "synthetic-camel",
+          "promptDigest": "prompt_camel",
+          "templateDigest": "template_camel",
+          "model": "synthetic-camel-model",
+          "size": "512x512",
+          "quality": "low",
+          "outputFormat": "webp",
+          "mintTxJson": {
+            "purpose": "synthetic-camel"
+          },
+          "txHash": "tx_oracle_camel",
+          "nftTokenId": "token_oracle_camel",
+          "selected": "false",
+          "error": "synthetic_record_error",
+          "generatedAt": "2026-10-14T00:00:03.000Z",
+          "preparedAt": null,
+          "mintedAt": "2026-10-14T00:00:04.000Z",
+          "createdAt": "2026-10-14T00:00:03.000Z",
+          "updatedAt": "2026-10-14T00:00:05.000Z"
+        },
+        {}
+      ],
+      "fields": [
+        {
+          "name": "synthetic_rows",
+          "dataTypeID": 25
+        }
+      ],
+      "fixture_marker": "constant_response_not_filtered_or_sliced"
+    }
+  },
+  "normalized_results": {
+    "rows_full": [
+      {
+        "id": "nft_oracle_snake",
+        "accountId": "acct_oracle_a",
+        "walletAddress": "wallet_oracle_a",
+        "title": "Snake title",
+        "description": "Synthetic metadata",
+        "status": "prepared",
+        "imageCid": "cid oracle/a",
+        "imageGatewayUrl": "https://dweb.link/ipfs/cid%20oracle%2Fa",
+        "imageMimeType": "image/png",
+        "imageSizeBytes": 123,
+        "imageSha256": "sha_oracle_snake",
+        "metadataCid": "meta oracle/a",
+        "metadataUri": "ipfs://meta oracle/a",
+        "metadataJson": {
+          "kind": "snake",
+          "nested": [
+            1,
+            {
+              "flag": false
+            }
+          ]
+        },
+        "promptSource": "synthetic",
+        "promptDigest": "prompt_snake",
+        "templateDigest": "template_snake",
+        "model": "synthetic-model",
+        "size": "1024x1024",
+        "quality": "high",
+        "outputFormat": "png",
+        "mintTxJson": {
+          "purpose": "synthetic-fixture"
+        },
+        "txHash": "tx_oracle_snake",
+        "nftTokenId": "token_oracle_snake",
+        "selected": true,
+        "error": "",
+        "generatedAt": "2026-10-14T00:00:00.000Z",
+        "preparedAt": "2026-10-14T00:00:01.000Z",
+        "mintedAt": null,
+        "createdAt": "2026-10-14T00:00:00.000Z",
+        "updatedAt": "2026-10-14T00:00:02.000Z"
+      },
+      {
+        "id": "nft_oracle_camel",
+        "accountId": "acct_oracle_a",
+        "walletAddress": "",
+        "title": "Profile Pic NFT",
+        "description": "",
+        "status": "generated",
+        "imageCid": "cid+camel",
+        "imageGatewayUrl": "https://fixture.invalid/camel.png",
+        "imageMimeType": "image/webp",
+        "imageSizeBytes": 0,
+        "imageSha256": "sha_oracle_camel",
+        "metadataCid": "metadata-camel",
+        "metadataUri": "ipfs://explicit-camel",
+        "metadataJson": {
+          "kind": "camel",
+          "nested": [
+            2,
+            {
+              "flag": true
+            }
+          ]
+        },
+        "promptSource": "synthetic-camel",
+        "promptDigest": "prompt_camel",
+        "templateDigest": "template_camel",
+        "model": "synthetic-camel-model",
+        "size": "512x512",
+        "quality": "low",
+        "outputFormat": "webp",
+        "mintTxJson": {
+          "purpose": "synthetic-camel"
+        },
+        "txHash": "tx_oracle_camel",
+        "nftTokenId": "token_oracle_camel",
+        "selected": true,
+        "error": "synthetic_record_error",
+        "generatedAt": "2026-10-14T00:00:03.000Z",
+        "preparedAt": null,
+        "mintedAt": "2026-10-14T00:00:04.000Z",
+        "createdAt": "2026-10-14T00:00:03.000Z",
+        "updatedAt": "2026-10-14T00:00:05.000Z"
+      },
+      {
+        "id": "",
+        "accountId": "",
+        "walletAddress": "",
+        "title": "Profile Pic NFT",
+        "description": "",
+        "status": "generated",
+        "imageCid": "",
+        "imageGatewayUrl": "",
+        "imageMimeType": "",
+        "imageSizeBytes": 0,
+        "imageSha256": "",
+        "metadataCid": "",
+        "metadataUri": "",
+        "metadataJson": {},
+        "promptSource": "",
+        "promptDigest": "",
+        "templateDigest": "",
+        "model": "",
+        "size": "",
+        "quality": "",
+        "outputFormat": "",
+        "mintTxJson": {},
+        "txHash": "",
+        "nftTokenId": "",
+        "selected": false,
+        "error": "",
+        "generatedAt": null,
+        "preparedAt": null,
+        "mintedAt": null,
+        "createdAt": null,
+        "updatedAt": null
+      }
+    ],
+    "empty": []
+  },
+  "errors": {
+    "query_refusal": {
+      "name": "Error",
+      "message": "oracle_query_refusal",
+      "constructor_name": "Error",
+      "own_properties": {
+        "message": "oracle_query_refusal",
+        "cause": {
+          "name": "Error",
+          "message": "oracle_query_cause",
+          "constructor_name": "Error",
+          "own_properties": {
+            "message": "oracle_query_cause",
+            "code": "ORACLE_CAUSE"
+          }
+        },
+        "code": "ORACLE_QUERY_REFUSAL",
+        "status": 503,
+        "details": {
+          "origin": "synthetic_profile_metadata_query",
+          "retryable": false
+        }
+      }
+    }
+  },
+  "error_construction": {
+    "cause": "new Error(\"oracle_query_cause\"); cause.code=\"ORACLE_CAUSE\";",
+    "error": "new Error(\"oracle_query_refusal\", {cause}); assign code, status and details exactly from errors.query_refusal.",
+    "stack_policy": "Do not compare native caller-specific stack against an invented literal. Preserve raw diagnostics separately if captured; the original error and cause identity and all other own properties are required."
+  }
+}
