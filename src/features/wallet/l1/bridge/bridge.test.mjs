@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BridgeController, STUCK_AFTER_MS, amountAtoms, needsRecovery } from './controller.js';
 import * as api from './bridge-relay.js';
-import { sendDeposit as sendSolanaDeposit } from './solana-session.js';
+import bs58 from 'bs58';
+import { advanceDeposit, sendDeposit as sendSolanaDeposit } from './solana-session.js';
+import { pub, solanaDeposit, transfer } from './solana-fixtures.mjs';
 import { handleBridgeRoutes } from '../../../../../server/l1/bridge-routes.js';
 import { address, owner, memoryStorage, routeReport, readyPayload } from './fixtures.mjs';
 function setup(overrides = {}) {
@@ -240,31 +242,106 @@ test('recovery area stays hidden while a valid hash waits, and appears once the 
   assert.equal(needsRecovery(offline.model.state.pending, offline.model.state.checkFailed), false);
 });
 
-test('Solana send refused because deposits closed: the saved deposit is cleared and the closed message is kept', async t => {
-  const closed = 'Solana deposits are closed right now. Nothing was sent; please try again later.';
-  const store = new Map();
-  // The session module reads the browser's Web Locks and localStorage.
+// A browser with Web Locks and localStorage, a Phantom that signs whatever it is shown, and a server
+// that returns `intent` and answers /send with `reply`. Records what the browser does.
+function solanaBrowser(t, { intent, reply = sent => ({ ok: true, signature: sent.signature }), phantom } = {}) {
+  const store = new Map(), saved = [], posted = [], opened = [];
   const navigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   Object.defineProperty(globalThis, 'navigator', { value: { locks: { request: async (key, options, fn) => fn({}) } }, configurable: true });
   Object.defineProperty(globalThis, 'localStorage', { value: { getItem: key => store.get(key) ?? null }, configurable: true });
   t.after(() => { Object.defineProperty(globalThis, 'navigator', navigator); delete globalThis.localStorage; });
-  const request = { owner: '7'.repeat(43), amount_atoms: '1000000', pftl_recipient: address };
-  const ready = { vault_program_id: '9'.repeat(43) };
-  t.mock.method(globalThis, 'fetch', async url => {
-    if (url.endsWith('/solana/intent')) {
-      return Response.json({ ok: true, ...request, vault_program_id: ready.vault_program_id, nonce: 'ab'.repeat(32),
-        last_valid_block_height: 1234, message_b58: '3'.repeat(80) });
-    }
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    const body = JSON.parse(options.body);
+    posted.push({ path: url.slice(url.lastIndexOf('/solana/') + 8), body });
+    if (url.endsWith('/solana/intent')) return Response.json(intent);
+    if (url.endsWith('/solana/release')) return Response.json({ ok: true, released: true });
     if (url.endsWith('/solana/send')) {
-      return Response.json({ ok: false, code: 'solana_deposits_closed', message: closed }, { status: 503 });
+      const bytes = Buffer.from(body.transaction_b64, 'base64');
+      const result = reply({ signature: bs58.encode(bytes.subarray(1, 65)) });
+      return Response.json(result, { status: result.ok ? 200 : 503 });
     }
+    if (url.endsWith('/solana/recovery')) return Response.json({ ok: true, expired: false });
     throw Error('unexpected ' + url);
   });
-  const saved = [];
   const save = record => { saved.push(record); if (record) store.set('k', JSON.stringify(record)); else store.delete('k'); };
-  const provider = { publicKey: { toString: () => request.owner },
-    request: async () => ({ serialize: () => Uint8Array.from([1, 2, 3]) }) };
-  await assert.rejects(sendSolanaDeposit({ key: 'k', provider, request, ready, save, active: () => true }), { message: closed });
-  assert.equal(saved.at(-1), null, 'nothing was sent, so no pending deposit is kept');
-  assert.equal(store.has('k'), false);
+  const provider = { publicKey: { toString: () => solana.request.owner }, request: async ({ params }) => {
+    opened.push(params.message);
+    if (phantom) return phantom();
+    const bytes = Buffer.from(bs58.decode(params.message));
+    bytes.fill(9, 1, 65);
+    return { serialize: () => Uint8Array.from(bytes) };
+  } };
+  const run = () => sendSolanaDeposit({ key: 'k', provider, request: solana.request, ready: solana.ready, save, active: () => true });
+  return { run, saved, posted, opened };
+}
+const solana = { program: pub(2), mint: pub(7), owner: pub(5), source: pub(9), nonce: 'ab'.repeat(32) };
+solana.request = { owner: solana.owner, amount_atoms: '1000000', pftl_recipient: address };
+solana.ready = { vault_program_id: solana.program, mint: solana.mint };
+solana.durable = { nonce_account: pub(20), nonce_authority: pub(21), nonce_value: pub(22) };
+const solanaShape = { ...solana, ...solana.request };
+async function solanaIntent(overrides = {}, durable = false) {
+  const nonce = durable ? { nonceAccount: solana.durable.nonce_account, authority: solana.durable.nonce_authority, lifetime: solana.durable.nonce_value } : {};
+  const bytes = await solanaDeposit({ ...solanaShape, ...nonce, ...overrides });
+  if (durable) bytes.fill(8, 65, 129);
+  return { ok: true, ...solana.request, vault_program_id: solana.program, nonce: solana.nonce, last_valid_block_height: 1234,
+    message_b58: bs58.encode(bytes), ...(durable && solana.durable) };
+}
+const notOpened = 'The prepared deposit does not match your request, so Phantom was not opened. Nothing was signed or sent.';
+
+test('Phantom opens only for the exact deposit transaction the request describes', async t => {
+  for (const [label, intent] of [
+    ['another Post Fiat recipient', await solanaIntent({ pftl_recipient: 'pf' + '99'.repeat(20) })],
+    ['another amount', await solanaIntent({ amount_atoms: '1000001' })],
+    ['another mint', await solanaIntent({ mint: pub(32) })],
+    ['PDAs of another program', await solanaIntent({ pdaProgram: pub(33) })],
+    ['another vault program', await solanaIntent({ program: pub(33), pdaProgram: solana.program })],
+    ['another fee payer', await solanaIntent({ feePayer: pub(34) })],
+    ['an extra instruction', await solanaIntent({ extra: [transfer(solana.owner, pub(35))] })],
+    ['a nonce account other than the one named', await solanaIntent({ nonceAccount: pub(36) }, true)],
+    ['a nonce value other than the one named', await solanaIntent({ lifetime: pub(37) }, true)],
+    ['an advance the intent does not name', { ...await solanaIntent({}, true), nonce_account: undefined, nonce_authority: undefined, nonce_value: undefined }],
+  ]) {
+    const browser = solanaBrowser(t, { intent });
+    await assert.rejects(browser.run(), { message: notOpened }, label);
+    assert.deepEqual(browser.opened, [], label + ': Phantom stays closed');
+    assert.deepEqual(browser.saved.filter(Boolean), [], label + ': no pending deposit');
+    assert.deepEqual(browser.posted.at(-1), { path: 'release', body: { nonce: solana.nonce } }, label + ': the nonce lease is given back');
+    t.mock.restoreAll();
+  }
+  for (const durable of [false, true]) {
+    const browser = solanaBrowser(t, { intent: await solanaIntent({}, durable) });
+    await browser.run();
+    assert.equal(browser.opened.length, 1);
+    const record = browser.saved.at(-1);
+    assert.equal(record.signature, bs58.encode(Buffer.alloc(64, 9)));
+    assert.deepEqual([record.nonce_account, record.nonce_value], durable ? [solana.durable.nonce_account, solana.durable.nonce_value] : [undefined, undefined]);
+    t.mock.restoreAll();
+  }
+});
+
+test('the signature returned by /solana/send must be the one in the bytes Phantom signed', async t => {
+  const browser = solanaBrowser(t, { intent: await solanaIntent(), reply: () => ({ ok: true, signature: bs58.encode(Buffer.alloc(64, 7)) }) });
+  await assert.rejects(browser.run(), /different transaction signature/);
+  assert.equal(browser.saved.at(-1).signature, undefined, 'the card checks the vault instead of trusting the reply');
+});
+
+test('a decline in Phantom gives the nonce lease back; recovery sends the signed nonce', async t => {
+  const browser = solanaBrowser(t, { intent: await solanaIntent({}, true), phantom: () => { throw Object.assign(Error('declined'), { code: 4001 }); } });
+  await assert.rejects(browser.run(), { message: 'You declined the deposit in Phantom.' });
+  assert.equal(browser.saved.at(-1), null);
+  assert.deepEqual(browser.posted.at(-1), { path: 'release', body: { nonce: solana.nonce } });
+  t.mock.restoreAll();
+  const recovering = solanaBrowser(t, { intent: await solanaIntent({}, true) });
+  const record = { ...solana.request, nonce: solana.nonce, last_valid_block_height: 1234, vault_program_id: solana.program, ...solana.durable, started: 1 };
+  delete record.nonce_authority;
+  await advanceDeposit(record, {});
+  assert.deepEqual(recovering.posted.at(-1), { path: 'recovery', body: { nonce: solana.nonce, vault_program_id: solana.program,
+    last_valid_block_height: 1234, nonce_account: solana.durable.nonce_account, nonce_value: solana.durable.nonce_value } });
+});
+
+test('Solana send refused because deposits closed: the saved deposit is cleared and the closed message is kept', async t => {
+  const closed = 'Solana deposits are closed right now. Nothing was sent; please try again later.';
+  const browser = solanaBrowser(t, { intent: await solanaIntent(), reply: () => ({ ok: false, code: 'solana_deposits_closed', message: closed }) });
+  await assert.rejects(browser.run(), { message: closed });
+  assert.equal(browser.saved.at(-1), null, 'nothing was sent, so no pending deposit is kept');
 });
