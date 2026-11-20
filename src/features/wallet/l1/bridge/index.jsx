@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Check, ChartCandlestick, CircleAlert, Clock, ExternalLink, FileCheck, Landmark, RefreshCw, Wallet } from "lucide-react";
 import { useL1Wallet } from "../client.jsx";
 import { BridgeController, amountAtoms, needsRecovery } from "./controller.js";
@@ -117,7 +117,7 @@ function Track({ view, controller, client, onNavigate, symbol }) {
   </Card>;
 }
 
-function BridgeSession({ client, onNavigate, symbol }) {
+function BridgeSession({ client, onNavigate, symbol, onBusy }) {
   const [view, setView] = useState(null);
   const [controller, setController] = useState(null);
   const [amount, setAmount] = useState("");
@@ -156,6 +156,8 @@ function BridgeSession({ client, onNavigate, symbol }) {
       window.ethereum?.removeListener?.("chainChanged", changed);
     };
   }, [client]);
+  const unfinished = Boolean(view?.pending) && !(view.result && !view.result.balancePending);
+  useEffect(() => { onBusy?.(unfinished); }, [unfinished, onBusy]);
   if (!view || !controller) return <p className="l1-status-line"><Spinner />Loading bridge…</p>;
   const atoms = amountAtoms(amount);
   // A credited deposit does not lock the form; only one that is still unresolved does.
@@ -237,12 +239,32 @@ function BridgeSession({ client, onNavigate, symbol }) {
     <Track view={view} controller={controller} client={client} onNavigate={onNavigate} symbol={symbol} />
   </section>;
 }
+// One deposit form at a time. Both stay mounted, so a deposit on the other source keeps being
+// tracked while it is hidden; its option says so.
+const SOURCES = [["ethereum", "Ethereum", "MetaMask"], ["solana", "Solana", "Phantom"]];
+const SOURCE_KEY = "l1.bridge.deposit-source";
+const savedSource = () => { try { const value = localStorage.getItem(SOURCE_KEY); return SOURCES.some(([id]) => id === value) ? value : null; } catch { return null; } };
+
 export default function BridgeTab({ onNavigate, assetConfig } = {}) {
   const client = useL1Wallet();
+  const [chosen, setChosen] = useState(savedSource);
+  const [busy, setBusy] = useState({});
+  const ethereumBusy = useCallback(value => setBusy(current => ({ ...current, ethereum: value })), []);
+  const solanaBusy = useCallback(value => setBusy(current => ({ ...current, solana: value })), []);
   if (!client.unlocked || !client.address) return <p>Unlock your Post Fiat wallet to bridge USDC.</p>;
+  // Until the user picks, open on a source with an unfinished deposit.
+  const source = chosen || (busy.solana && !busy.ethereum ? "solana" : "ethereum");
+  const choose = id => { setChosen(id); try { localStorage.setItem(SOURCE_KEY, id); } catch { /* the choice lasts for this visit */ } };
   return <>
-    <BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} symbol={assetConfig?.symbol || "NAVCoins"} />
-    <SolanaDeposit key={`s:${client.accountId}:${client.address}`} client={client} />
+    <Card as="div" className="l1-view l1-source">
+      <span className="l1-eyebrow">Deposit USDC from</span>
+      <div className="l1-seg" role="radiogroup" aria-label="Deposit source">
+        {SOURCES.map(([id, chain, wallet]) => <label key={id}><input type="radio" name="bridge-source" value={id} checked={source === id} onChange={() => choose(id)} />
+          <span>{chain} <small>· {wallet}</small>{busy[id] && source !== id && <small className="l1-source-busy"> · deposit in progress</small>}</span></label>)}
+      </div>
+    </Card>
+    <div className="l1-source-pane" hidden={source !== "ethereum"}><BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} symbol={assetConfig?.symbol || "NAVCoins"} onBusy={ethereumBusy} /></div>
+    <div className="l1-source-pane" hidden={source !== "solana"}><SolanaDeposit key={`s:${client.accountId}:${client.address}`} client={client} onBusy={solanaBusy} /></div>
     <Withdraw key={`w:${client.accountId}:${client.address}`} client={client} />
   </>;
 }

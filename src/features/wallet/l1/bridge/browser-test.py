@@ -69,6 +69,11 @@ with sync_playwright() as p:
     print('PASS B9 accepted receipt + exact child balance 2.000000; family 99.000000 ignored; failed read never complete')
     page.evaluate("localStorage.clear(); sessionStorage.clear()")
     page.goto(f'{base}?mode=ready')
+    # One deposit form shows at a time: Ethereum first, Solana after the user picks it.
+    expect(page.get_by_role('region', name='USDC bridge', exact=True)).to_be_visible()
+    expect(page.get_by_role('region', name='Solana USDC deposit', exact=True)).to_have_count(0)
+    page.get_by_role('radio', name='Solana').check()
+    expect(page.get_by_role('region', name='USDC bridge', exact=True)).to_have_count(0)
     sol = page.get_by_role('region', name='Solana USDC deposit', exact=True)
     expect(sol).to_have_count(1)
     expect(sol.get_by_text('Vault ready')).to_be_visible()
@@ -120,6 +125,7 @@ with sync_playwright() as p:
 
     page.evaluate("localStorage.clear(); sessionStorage.clear(); sessionStorage.setItem('mock:solana-stage', 'failed')")
     page.goto(f'{base}?mode=interrupted')
+    page.get_by_role('radio', name='Solana').check()
     sol.get_by_role('button', name='Connect Phantom').click()
     amount.fill('1')
     sol.get_by_test_id('solana-send').click()
