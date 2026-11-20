@@ -25,7 +25,7 @@ export const unitPrice = (microLamports, accounts) => {
 // Signature count, signature slots (zero, or filled with `signed`), then the legacy message:
 // [...first, AdvanceNonce?, ...budget, deposit, ...extra].
 export async function solanaDeposit({ program, mint, owner, source, nonce, amount_atoms, pftl_recipient, feePayer = owner,
-  pdaProgram = program, nonceAccount, authority, lifetime = pub(12), first = [], budget = [], extra = [], signed }) {
+  pdaProgram = program, nonceAccount, authority, lifetime = pub(12), first = [], budget = [], extra = [], signed, sourceRole = WRITABLE }) {
   const seed = Buffer.from(nonce, 'hex');
   const [config, custody, receipt] = await Promise.all([pda(pdaProgram, 'config'), pda(pdaProgram, 'custody'), pda(pdaProgram, 'receipt', seed)]);
   const data = Buffer.alloc(61);
@@ -33,7 +33,7 @@ export async function solanaDeposit({ program, mint, owner, source, nonce, amoun
   data.writeBigUInt64LE(BigInt(amount_atoms), 1);
   Buffer.from(pftl_recipient.slice(2), 'hex').copy(data, 9);
   seed.copy(data, 29);
-  const accounts = [[owner, WRITABLE_SIGNER], [source, WRITABLE], [config, WRITABLE], [custody, WRITABLE], [mint, READONLY],
+  const accounts = [[owner, WRITABLE_SIGNER], [source, sourceRole], [config, WRITABLE], [custody, WRITABLE], [mint, READONLY],
     [receipt, WRITABLE], [TOKEN, READONLY], [SYSTEM, READONLY]].map(([address, role]) => ({ address, role }));
   const advance = nonceAccount && { programAddress: SYSTEM, data: Buffer.from([4, 0, 0, 0]), accounts: [
     { address: nonceAccount, role: WRITABLE }, { address: RECENT_BLOCKHASHES, role: READONLY }, { address: authority, role: READONLY_SIGNER }] };
@@ -45,6 +45,22 @@ export async function solanaDeposit({ program, mint, owner, source, nonce, amoun
   if (signed) slots.fill(signed);
   return Buffer.concat([Buffer.from([signers]), slots, Buffer.from(getCompiledTransactionMessageEncoder().encode(message))]);
 }
+
+// Lighthouse assertions as Phantom appends them, laid out as in github.com/Jac0xb/lighthouse
+// (programs/lighthouse/src/instruction.rs): a Borsh enum tag, LogLevel (u8, 0 = Silent), then the assertion.
+export const LIGHTHOUSE = 'L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95';
+// AssertAccountInfo (5): AccountInfoAssertion::Lamports (0) { value: u64, IntegerOperator::GreaterThanOrEqual (4) }.
+export const assertLamports = (target, atLeast, { role = READONLY, programAddress = LIGHTHOUSE } = {}) => {
+  const data = Buffer.alloc(12); data[0] = 5; data[2] = 0; data.writeBigUInt64LE(BigInt(atLeast), 3); data[11] = 4;
+  return { programAddress, data, accounts: [{ address: target, role }] };
+};
+// AssertTokenAccountMulti (10): a LEB128 count, then TokenAccountAssertion::Owner (1) { Pubkey, EquatableOperator::Equal (0) }
+// and TokenAccountAssertion::Amount (2) { u64, IntegerOperator::GreaterThanOrEqual (4) }.
+export const assertTokenAccount = (target, owner, atLeast, { role = READONLY, programAddress = LIGHTHOUSE } = {}) => {
+  const amount = Buffer.alloc(8); amount.writeBigUInt64LE(BigInt(atLeast));
+  const data = Buffer.concat([Buffer.from([10, 0, 2, 1]), Buffer.from(bs58.decode(owner)), Buffer.from([0, 2]), amount, Buffer.from([4])]);
+  return { programAddress, data, accounts: [{ address: target, role }] };
+};
 
 // A System transfer from the owner, for "no other instruction" cases.
 export const transfer = (from, to) => ({ programAddress: SYSTEM, data: Buffer.from([2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]),

@@ -9,10 +9,10 @@ import { isSignerRole, isWritableRole } from '@solana/instructions';
 import { getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder, decompileTransactionMessage } from '@solana/transaction-messages';
 import { createPrivateKey, createPublicKey, verify } from 'node:crypto';
 import * as vault from './solana-vault.js';
-import { buildVaultDeposit, readVault, recoverDeposit, sendDeposit, DEPOSIT_COMPUTE_UNIT_LIMIT, MIN_COMPUTE_UNIT_PRICE, USDC } from './solana-vault.js';
+import { buildVaultDeposit, readVault, recoverDeposit, sendDeposit, DEPOSIT_COMPUTE_UNIT_LIMIT, MIN_COMPUTE_UNIT_PRICE, UNSCOPED_FEE_PERCENTILE, USDC } from './solana-vault.js';
 import { MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
-import { solanaDeposit, transfer, unitLimit, unitPrice, COMPUTE_BUDGET, RECENT_BLOCKHASHES } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
+import { assertLamports, assertTokenAccount, solanaDeposit, transfer, unitLimit, unitPrice, COMPUTE_BUDGET, RECENT_BLOCKHASHES } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
 
 const pub = byte => bs58.encode(Buffer.alloc(32, byte));
 const program = pub(2), owner = pub(5), mint = pub(7), source = pub(9);
@@ -591,7 +591,35 @@ test('/solana/send: a wallet-added compute budget passes on the one-signer path 
   await assert.rejects(sendDeposit(f.settings, sendBody(bs58.decode(intent.message_b58), intent.nonce), quick), shapeRefused);
 });
 
-test('the server price is the median recent priority fee on the deposit\'s writable accounts, clamped, or the minimum when unread', async () => {
+test('/solana/send: Lighthouse assertions pass on the one-signer path as signed; another program, a durable deposit or a changed role is refused', async t => {
+  const f = await durableFixture(t, 210);
+  const sent = [];
+  f.settings.rpc.sendTransaction = async (encoded, options) => { if (!options.skipPreflight) sent.push(encoded); };
+  f.settings.rpc.getSignatureStatus = async () => ({ slot: 1 });
+  const quick = { every: 5, times: 1 };
+  const nonce = '49'.repeat(32);
+  const shape = { program, mint, owner, source, nonce, amount_atoms: request.amount_atoms, pftl_recipient: request.pftl_recipient, signed: 9,
+    budget: [unitLimit(DEPOSIT_COMPUTE_UNIT_LIMIT), unitPrice(MIN_COMPUTE_UNIT_PRICE)] };
+  const lighthouse = [assertLamports(owner, 4_000_000), assertTokenAccount(source, owner, 0)];
+  const bytes = await solanaDeposit({ ...shape, extra: lighthouse });
+  assert.equal((await sendDeposit(f.settings, sendBody(bytes, nonce), quick)).ok, true);
+  assert.deepEqual(sent, [Buffer.from(bytes).toString('base64')], 'broadcast as signed');
+  const intent = await buildVaultDeposit(f.settings, f.ready, request, 'durable-lighthouse');
+  for (const [label, body] of [
+    ['another program', sendBody(await solanaDeposit({ ...shape, extra: [assertLamports(owner, 1, { programAddress: pub(43) })] }), nonce)],
+    ['a writable mint', sendBody(await solanaDeposit({ ...shape, extra: [assertLamports(mint, 1, { role: 1 })] }), nonce)],
+    ['an added signer', sendBody(await solanaDeposit({ ...shape, extra: [assertLamports(pub(44), 1, { role: 2 })] }), nonce)],
+    ['a durable deposit', sendBody(recompile(signed(intent), m => ({ ...m, staticAccounts: [...m.staticAccounts, 'L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95'],
+      header: { ...m.header, numReadonlyNonSignerAccounts: m.header.numReadonlyNonSignerAccounts + 1 },
+      instructions: [...m.instructions, { programAddressIndex: m.staticAccounts.length, accountIndices: [0], data: assertLamports(owner, 1).data }] })), intent.nonce)],
+  ]) {
+    await assert.rejects(sendDeposit(f.settings, body, quick), shapeRefused, label);
+  }
+  assert.equal(sent.length, 1, 'no refused transaction was broadcast');
+});
+
+test('the server price is the larger of the median fee on the deposit\'s accounts and a percentile of all recent fees, clamped, or the minimum when unread', async () => {
+  assert.equal(UNSCOPED_FEE_PERCENTILE, 75);
   const { settings, health } = fixture();
   const ready = await readVault(settings, health);
   const priceOf = async () => {
@@ -599,14 +627,28 @@ test('the server price is the median recent priority fee on the deposit\'s writa
     const compiled = getCompiledTransactionMessageDecoder().decode(bs58.decode(intent.message_b58).subarray(65));
     return Buffer.from(compiled.instructions[1].data).readBigUInt64LE(1);
   };
-  let asked;
-  settings.rpc.getRecentPrioritizationFees = async accounts => { asked = accounts; return [5, 70000, 40000].map(fee => ({ slot: 1, prioritizationFee: fee })); };
-  assert.equal(await priceOf(), 40000n);
-  assert.ok(asked.includes(owner) && asked.includes(source) && asked.includes(await pda('config')) && asked.includes(await pda('custody')));
-  settings.rpc.getRecentPrioritizationFees = async () => [{ slot: 1, prioritizationFee: 10 ** 12 }];
+  const rows = fees => fees.map(fee => ({ slot: 1, prioritizationFee: fee }));
+  const fees = (scoped, unscoped) => async accounts => {
+    const answer = accounts.length ? scoped : unscoped;
+    if (answer instanceof Error) throw answer;
+    return rows(answer);
+  };
+  const asked = [];
+  settings.rpc.getRecentPrioritizationFees = async accounts => { asked.push(accounts); return rows(accounts.length ? [0, 0, 0] : [0, 10, 50000, 90000]); };
+  assert.equal(await priceOf(), 50000n, 'the 75th percentile of all recent fees lifts a quiet scoped median');
+  const scoped = asked.find(accounts => accounts.length);
+  assert.ok(scoped.includes(owner) && scoped.includes(source) && scoped.includes(await pda('config')) && scoped.includes(await pda('custody')));
+  assert.ok(asked.some(accounts => accounts.length === 0), 'one read is not scoped to any account');
+  settings.rpc.getRecentPrioritizationFees = fees([5, 70000, 40000], [0, 0, 0, 20000]);
+  assert.equal(await priceOf(), 40000n, 'the scoped median when it is higher');
+  settings.rpc.getRecentPrioritizationFees = fees([0], [10 ** 12]);
   assert.equal(await priceOf(), BigInt(MAX_COMPUTE_UNIT_PRICE));
-  settings.rpc.getRecentPrioritizationFees = async () => [{ slot: 1, prioritizationFee: 0 }];
+  settings.rpc.getRecentPrioritizationFees = fees([0], [0]);
   assert.equal(await priceOf(), BigInt(MIN_COMPUTE_UNIT_PRICE));
+  settings.rpc.getRecentPrioritizationFees = fees([30000], Error('Solana RPC unavailable'));
+  assert.equal(await priceOf(), 30000n, 'one unread list leaves the other');
+  settings.rpc.getRecentPrioritizationFees = fees(Error('Solana RPC unavailable'), [0, 0, 25000, 30000]);
+  assert.equal(await priceOf(), 25000n);
   settings.rpc.getRecentPrioritizationFees = async () => { throw Error('Solana RPC unavailable'); };
   assert.equal(await priceOf(), BigInt(MIN_COMPUTE_UNIT_PRICE));
 });
