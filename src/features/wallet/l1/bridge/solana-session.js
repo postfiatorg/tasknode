@@ -63,9 +63,11 @@ export async function advanceDeposit(record, client) {
     const matches = job.receipts?.some(row => ["vault_program_id", "nonce", "owner", "pftl_recipient", "amount_atoms"]
       .every(field => row[field] === record[field]));
     if (!matches) throw Error("The proven vault receipt does not match this deposit.");
-    const response = await client.call("receipts", { tx_id: job.receipt_id, limit: 1 });
+    // The bridge receipt ID names the credit; the ledger receipt is filed under the transaction ID.
+    if (!/^[0-9a-f]{96}$/.test(job.ledger_tx_id || "")) throw Error("Awaiting the Post Fiat transaction ID.");
+    const response = await client.call("receipts", { tx_id: job.ledger_tx_id, limit: 1 });
     const receipts = response?.result ?? response;
-    if (!Array.isArray(receipts) || !receipts.some(row => row.tx_id === job.receipt_id && row.accepted === true && row.code === "accepted")) {
+    if (!Array.isArray(receipts) || !receipts.some(row => row.tx_id === job.ledger_tx_id && row.accepted === true && row.code === "accepted")) {
       throw Error("Waiting for the accepted Post Fiat receipt.");
     }
     terminal = "credited";
