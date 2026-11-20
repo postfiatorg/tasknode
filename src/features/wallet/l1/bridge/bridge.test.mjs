@@ -3,8 +3,9 @@ import test from 'node:test';
 import { BridgeController, STUCK_AFTER_MS, amountAtoms, needsRecovery } from './controller.js';
 import * as api from './bridge-relay.js';
 import bs58 from 'bs58';
-import { advanceDeposit, sendDeposit as sendSolanaDeposit } from './solana-session.js';
-import { pub, solanaDeposit, transfer } from './solana-fixtures.mjs';
+import { advanceDeposit, sendDeposit as sendSolanaDeposit, RESEND_SIGNED_MS } from './solana-session.js';
+import { pub, solanaDeposit, transfer, unitLimit, unitPrice } from './solana-fixtures.mjs';
+import { MAX_COMPUTE_UNIT_PRICE } from './solana-shape.js';
 import { handleBridgeRoutes } from '../../../../../server/l1/bridge-routes.js';
 import { address, owner, memoryStorage, routeReport, readyPayload } from './fixtures.mjs';
 function setup(overrides = {}) {
@@ -244,7 +245,7 @@ test('recovery area stays hidden while a valid hash waits, and appears once the 
 
 // A browser with Web Locks and localStorage, a Phantom that signs whatever it is shown, and a server
 // that returns `intent` and answers /send with `reply`. Records what the browser does.
-function solanaBrowser(t, { intent, reply = sent => ({ ok: true, signature: sent.signature }), phantom } = {}) {
+function solanaBrowser(t, { intent, reply = sent => ({ ok: true, signature: sent.signature }), phantom, recovery = () => ({ ok: true, expired: false }) } = {}) {
   const store = new Map(), saved = [], posted = [], opened = [];
   const navigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   Object.defineProperty(globalThis, 'navigator', { value: { locks: { request: async (key, options, fn) => fn({}) } }, configurable: true });
@@ -258,9 +259,9 @@ function solanaBrowser(t, { intent, reply = sent => ({ ok: true, signature: sent
     if (url.endsWith('/solana/send')) {
       const bytes = Buffer.from(body.transaction_b64, 'base64');
       const result = reply({ signature: bs58.encode(bytes.subarray(1, 65)) });
-      return Response.json(result, { status: result.ok ? 200 : 503 });
+      return Response.json(result, { status: result.ok ? 200 : result.status ?? 503 });
     }
-    if (url.endsWith('/solana/recovery')) return Response.json({ ok: true, expired: false });
+    if (url.endsWith('/solana/recovery')) return Response.json(recovery());
     throw Error('unexpected ' + url);
   });
   const save = record => { saved.push(record); if (record) store.set('k', JSON.stringify(record)); else store.delete('k'); };
@@ -279,9 +280,12 @@ solana.request = { owner: solana.owner, amount_atoms: '1000000', pftl_recipient:
 solana.ready = { vault_program_id: solana.program, mint: solana.mint };
 solana.durable = { nonce_account: pub(20), nonce_authority: pub(21), nonce_value: pub(22) };
 const solanaShape = { ...solana, ...solana.request };
+const serverBudget = [unitLimit(200450), unitPrice(10000)];
+const phantomSigned = bytes => () => { const copy = Buffer.from(bytes); copy.fill(9, 1, 65); return { serialize: () => Uint8Array.from(copy) }; };
 async function solanaIntent(overrides = {}, durable = false) {
   const nonce = durable ? { nonceAccount: solana.durable.nonce_account, authority: solana.durable.nonce_authority, lifetime: solana.durable.nonce_value } : {};
-  const bytes = await solanaDeposit({ ...solanaShape, ...nonce, ...overrides });
+  // The server's own compute budget, as it builds every deposit.
+  const bytes = await solanaDeposit({ ...solanaShape, ...nonce, budget: serverBudget, ...overrides });
   if (durable) bytes.fill(8, 65, 129);
   return { ok: true, ...solana.request, vault_program_id: solana.program, nonce: solana.nonce, last_valid_block_height: 1234,
     message_b58: bs58.encode(bytes), ...(durable && solana.durable) };
@@ -344,4 +348,92 @@ test('Solana send refused because deposits closed: the saved deposit is cleared 
   const browser = solanaBrowser(t, { intent: await solanaIntent(), reply: () => ({ ok: false, code: 'solana_deposits_closed', message: closed }) });
   await assert.rejects(browser.run(), { message: closed });
   assert.equal(browser.saved.at(-1), null, 'nothing was sent, so no pending deposit is kept');
+});
+
+const changed = 'Phantom returned a transaction that does not match your deposit, so it was not sent.';
+
+test('Phantom may replace or add the compute budget of a one-signer deposit within the caps; it is sent as signed', async t => {
+  for (const [label, edit] of [
+    ['limit and price prepended', { budget: [], first: [unitLimit(61000), unitPrice(150000)] }],
+    ['limit and price appended', { budget: [], extra: [unitPrice(150000), unitLimit(61000)] }],
+    ['the server budget kept', {}],
+  ]) {
+    const browser = solanaBrowser(t, { intent: await solanaIntent(), phantom: phantomSigned(await solanaDeposit({ ...solanaShape, budget: serverBudget, ...edit })) });
+    await browser.run();
+    const send = browser.posted.find(row => row.path === 'send');
+    assert.ok(send, label + ': sent');
+    assert.equal(browser.saved.at(-1).signature, bs58.encode(Buffer.alloc(64, 9)), label);
+    t.mock.restoreAll();
+  }
+});
+
+test('Phantom\'s signed bytes are checked before /send: a mismatch is refused, the record dropped and the lease given back', async t => {
+  const durable = await solanaIntent({}, true);
+  const durableWith = async overrides => {
+    const bytes = await solanaDeposit({ ...solanaShape, nonceAccount: solana.durable.nonce_account, authority: solana.durable.nonce_authority,
+      lifetime: solana.durable.nonce_value, budget: serverBudget, ...overrides });
+    bytes.fill(8, 65, 129);
+    return bytes;
+  };
+  for (const [label, intent, bytes] of [
+    ['a third compute-budget instruction', await solanaIntent(), await solanaDeposit({ ...solanaShape, budget: serverBudget, extra: [unitLimit(70000)] })],
+    ['a compute-budget instruction with an account', await solanaIntent(), await solanaDeposit({ ...solanaShape, budget: [unitPrice(5, [{ address: pub(40), role: 0 }])] })],
+    ['a price over the cap', await solanaIntent(), await solanaDeposit({ ...solanaShape, budget: [unitPrice(MAX_COMPUTE_UNIT_PRICE + 1)] })],
+    ['another amount', await solanaIntent(), await solanaDeposit({ ...solanaShape, budget: serverBudget, amount_atoms: '1000001' })],
+    ['another recipient', await solanaIntent(), await solanaDeposit({ ...solanaShape, budget: serverBudget, pftl_recipient: 'pf' + '99'.repeat(20) })],
+    ['a durable deposit with another price', durable, await durableWith({ budget: [unitLimit(200450), unitPrice(20000)] })],
+    ['a durable deposit with a wallet-added limit', durable, await durableWith({ extra: [unitLimit(61000)] })],
+    ['a durable deposit with the authority signature changed', durable, (await durableWith({})).fill(7, 65, 129)],
+  ]) {
+    const browser = solanaBrowser(t, { intent, phantom: phantomSigned(bytes) });
+    await assert.rejects(browser.run(), { message: changed }, label);
+    assert.equal(browser.saved.at(-1), null, label + ': no pending deposit');
+    assert.ok(!browser.posted.some(row => row.path === 'send'), label + ': nothing sent');
+    assert.deepEqual(browser.posted.at(-1), { path: 'release', body: { nonce: solana.nonce } }, label + ': the lease is given back');
+    t.mock.restoreAll();
+  }
+  const browser = solanaBrowser(t, { intent: durable });
+  await browser.run();
+  assert.ok(browser.posted.some(row => row.path === 'send'), 'the unchanged durable deposit is sent');
+});
+
+test('an unreadable Phantom reply and a /send shape refusal give the lease back and drop the record', async t => {
+  const unreadable = solanaBrowser(t, { intent: await solanaIntent({}, true), phantom: () => ({ serialize: () => { throw Error('bad'); } }) });
+  await assert.rejects(unreadable.run(), { message: 'Phantom returned an unreadable transaction. Nothing was sent.' });
+  assert.equal(unreadable.saved.at(-1), null);
+  assert.deepEqual(unreadable.posted.at(-1), { path: 'release', body: { nonce: solana.nonce } });
+  t.mock.restoreAll();
+  const refused = solanaBrowser(t, { intent: await solanaIntent(), reply: () => ({ ok: false, status: 400, code: 'solana_deposit_shape_mismatch',
+    message: 'The signed transaction is not this vault deposit.' }) });
+  await assert.rejects(refused.run(), { message: 'The signed transaction is not this vault deposit.' });
+  assert.equal(refused.saved.at(-1), null, 'nothing reached Solana');
+  assert.deepEqual(refused.posted.at(-1), { path: 'release', body: { nonce: solana.nonce } });
+});
+
+test('a signed durable deposit that never landed: recovery re-sends its copy while the lease is held, then ends once the lease is gone', async t => {
+  let answer = { ok: true, expired: false, resend: true };
+  const intent = await solanaIntent({}, true);
+  // /send fails without an answer: the record keeps the signed copy and no signature.
+  const browser = solanaBrowser(t, { intent, recovery: () => answer, reply: () => ({ ok: false, status: 502, code: 'solana_bridge_unavailable', message: 'unreachable' }) });
+  await assert.rejects(browser.run(), /unreachable/);
+  let record = JSON.parse(JSON.stringify(browser.saved.at(-1)));
+  assert.ok(record.transaction_b64 && !record.signature, 'the signed copy is kept');
+  record = await advanceDeposit(record, {});
+  assert.deepEqual(browser.posted.slice(-2).map(row => row.path), ['recovery', 'send'], 'recovery first, then the signed copy again');
+  assert.equal(browser.posted.at(-1).body.transaction_b64, record.transaction_b64);
+  assert.ok(record.resent && !record.signature, 'the send failed again: throttled, still waiting');
+  const posts = browser.posted.length;
+  record = await advanceDeposit(record, {});
+  assert.equal(browser.posted.length, posts + 1, `no second send within ${RESEND_SIGNED_MS} ms`);
+  answer = { ok: true, expired: false, lapsed: true };
+  record = await advanceDeposit(record, {});
+  assert.equal(record.terminal, 'lapsed', 'a definite end state, with the reset every end state has');
+  assert.equal(record.transaction_b64, undefined, 'the signed copy is dropped');
+  t.mock.restoreAll();
+  const sent = solanaBrowser(t, { intent, recovery: () => ({ ok: true, expired: false, resend: true }) });
+  const stored = { ...JSON.parse(JSON.stringify(browser.saved.at(-1))) };
+  const next = await advanceDeposit(stored, {});
+  assert.equal(next.signature, bs58.encode(Buffer.alloc(64, 9)), 'a re-send the server accepts moves on to the proof job');
+  assert.equal(next.transaction_b64, undefined);
+  assert.deepEqual(sent.posted.map(row => row.path), ['recovery', 'send']);
 });

@@ -8,12 +8,24 @@ export const pub = byte => bs58.encode(Buffer.alloc(32, byte));
 export const SYSTEM = '11111111111111111111111111111111';
 export const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 export const RECENT_BLOCKHASHES = 'SysvarRecentB1ockHashes11111111111111111111';
+export const COMPUTE_BUDGET = 'ComputeBudget111111111111111111111111111111';
 const { WRITABLE_SIGNER, READONLY_SIGNER, WRITABLE, READONLY } = AccountRole;
 const pda = async (programAddress, ...seeds) => (await getProgramDerivedAddress({ programAddress, seeds }))[0];
 
-// Signature count, signature slots (zero, or filled with `signed`), then the legacy message.
+// Compute-budget instructions as a wallet writes them: SetComputeUnitLimit (2, u32) and SetComputeUnitPrice (3, u64).
+export const unitLimit = (units, accounts) => {
+  const data = Buffer.alloc(5); data[0] = 2; data.writeUInt32LE(units, 1);
+  return { programAddress: COMPUTE_BUDGET, data, ...(accounts && { accounts }) };
+};
+export const unitPrice = (microLamports, accounts) => {
+  const data = Buffer.alloc(9); data[0] = 3; data.writeBigUInt64LE(BigInt(microLamports), 1);
+  return { programAddress: COMPUTE_BUDGET, data, ...(accounts && { accounts }) };
+};
+
+// Signature count, signature slots (zero, or filled with `signed`), then the legacy message:
+// [...first, AdvanceNonce?, ...budget, deposit, ...extra].
 export async function solanaDeposit({ program, mint, owner, source, nonce, amount_atoms, pftl_recipient, feePayer = owner,
-  pdaProgram = program, nonceAccount, authority, lifetime = pub(12), extra = [], signed }) {
+  pdaProgram = program, nonceAccount, authority, lifetime = pub(12), first = [], budget = [], extra = [], signed }) {
   const seed = Buffer.from(nonce, 'hex');
   const [config, custody, receipt] = await Promise.all([pda(pdaProgram, 'config'), pda(pdaProgram, 'custody'), pda(pdaProgram, 'receipt', seed)]);
   const data = Buffer.alloc(61);
@@ -27,7 +39,7 @@ export async function solanaDeposit({ program, mint, owner, source, nonce, amoun
     { address: nonceAccount, role: WRITABLE }, { address: RECENT_BLOCKHASHES, role: READONLY }, { address: authority, role: READONLY_SIGNER }] };
   const message = compileTransactionMessage({ version: 'legacy', feePayer: { address: feePayer },
     lifetimeConstraint: { blockhash: lifetime, lastValidBlockHeight: 1n },
-    instructions: [...(advance ? [advance] : []), { programAddress: program, accounts, data }, ...extra] });
+    instructions: [...first, ...(advance ? [advance] : []), ...budget, { programAddress: program, accounts, data }, ...extra] });
   const signers = message.header.numSignerAccounts;
   const slots = Buffer.alloc(64 * signers);
   if (signed) slots.fill(signed);
