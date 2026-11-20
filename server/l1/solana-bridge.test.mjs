@@ -367,6 +367,21 @@ test('nonce leases: one per holder, fallback when all are held, released on decl
   assert.equal((await lease('f')).nonce_account, n1);
 });
 
+test('a new intent takes the nonce account whose lapsed lease was the same holder\'s, so it replaces that holder\'s own deposit', async t => {
+  const f = await durableFixture(t, 244);
+  f.settings.rpc.sendTransaction = async () => {};
+  f.settings.rpc.getSignatureStatus = async () => ({ slot: 1 });
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const lease = holder => buildVaultDeposit(f.settings, f.ready, request, holder);
+  const [n0, n1] = f.nonceAccounts;
+  const other = await lease('other'), mine = await lease('mine');
+  assert.deepEqual([other.nonce_account, mine.nonce_account], [n0, n1]);
+  await sendDeposit(f.settings, sendBody(signed(mine), mine.nonce), { every: 5, times: 1 });
+  t.mock.timers.tick(11 * 60 * 1000 + 1);
+  assert.equal((await lease('mine')).nonce_account, n1, 'not the other holder\'s lapsed account, first in the file');
+  assert.equal((await lease('third')).nonce_account, n0);
+});
+
 test('a nonce authority key that does not match the nonce file: no nonce, logged once', async t => {
   const f = await durableFixture(t, 80, { keySeed: Buffer.alloc(32, 81) });
   const warn = t.mock.method(console, 'warn', () => {});
@@ -618,8 +633,10 @@ test('/solana/send: Lighthouse assertions pass on the one-signer path as signed;
   assert.equal(sent.length, 1, 'no refused transaction was broadcast');
 });
 
-test('the server price is the larger of the median fee on the deposit\'s accounts and a percentile of all recent fees, clamped, or the minimum when unread', async () => {
+test('the server price is at least 100,000 micro-lamports, the larger of the median fee on the deposit\'s accounts and a percentile of all recent fees, clamped, or the minimum when unread', async () => {
   assert.equal(UNSCOPED_FEE_PERCENTILE, 75);
+  assert.equal(MIN_COMPUTE_UNIT_PRICE, 100_000);
+  assert.equal(MIN_COMPUTE_UNIT_PRICE * DEPOSIT_COMPUTE_UNIT_LIMIT / 1e6, 20_045, 'lamports at the minimum: about 0.00002 SOL');
   const { settings, health } = fixture();
   const ready = await readVault(settings, health);
   const priceOf = async () => {
@@ -634,21 +651,24 @@ test('the server price is the larger of the median fee on the deposit\'s account
     return rows(answer);
   };
   const asked = [];
-  settings.rpc.getRecentPrioritizationFees = async accounts => { asked.push(accounts); return rows(accounts.length ? [0, 0, 0] : [0, 10, 50000, 90000]); };
-  assert.equal(await priceOf(), 50000n, 'the 75th percentile of all recent fees lifts a quiet scoped median');
+  settings.rpc.getRecentPrioritizationFees = async accounts => { asked.push(accounts); return rows(accounts.length ? [0, 0, 0] : Array(150).fill(0)); };
+  assert.equal(await priceOf(), BigInt(MIN_COMPUTE_UNIT_PRICE), 'a quiet Solana: every slot\'s lowest landed fee is 0, so the minimum');
   const scoped = asked.find(accounts => accounts.length);
   assert.ok(scoped.includes(owner) && scoped.includes(source) && scoped.includes(await pda('config')) && scoped.includes(await pda('custody')));
   assert.ok(asked.some(accounts => accounts.length === 0), 'one read is not scoped to any account');
-  settings.rpc.getRecentPrioritizationFees = fees([5, 70000, 40000], [0, 0, 0, 20000]);
-  assert.equal(await priceOf(), 40000n, 'the scoped median when it is higher');
+  const busy = [...Array(100).fill(0), ...Array(50).fill(250_000)];
+  settings.rpc.getRecentPrioritizationFees = fees([0, 0, 0], busy);
+  assert.equal(await priceOf(), 250_000n, 'congestion lifts the lowest landed fee in a quarter of the slots: the 75th percentile follows it');
+  settings.rpc.getRecentPrioritizationFees = fees([5, 400_000, 300_000], busy.slice(0, 120));
+  assert.equal(await priceOf(), 300_000n, 'the scoped median when it is higher');
   settings.rpc.getRecentPrioritizationFees = fees([0], [10 ** 12]);
   assert.equal(await priceOf(), BigInt(MAX_COMPUTE_UNIT_PRICE));
   settings.rpc.getRecentPrioritizationFees = fees([0], [0]);
   assert.equal(await priceOf(), BigInt(MIN_COMPUTE_UNIT_PRICE));
-  settings.rpc.getRecentPrioritizationFees = fees([30000], Error('Solana RPC unavailable'));
-  assert.equal(await priceOf(), 30000n, 'one unread list leaves the other');
-  settings.rpc.getRecentPrioritizationFees = fees(Error('Solana RPC unavailable'), [0, 0, 25000, 30000]);
-  assert.equal(await priceOf(), 25000n);
+  settings.rpc.getRecentPrioritizationFees = fees([300_000], Error('Solana RPC unavailable'));
+  assert.equal(await priceOf(), 300_000n, 'one unread list leaves the other');
+  settings.rpc.getRecentPrioritizationFees = fees(Error('Solana RPC unavailable'), busy);
+  assert.equal(await priceOf(), 250_000n);
   settings.rpc.getRecentPrioritizationFees = async () => { throw Error('Solana RPC unavailable'); };
   assert.equal(await priceOf(), BigInt(MIN_COMPUTE_UNIT_PRICE));
 });

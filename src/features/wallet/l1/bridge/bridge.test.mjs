@@ -4,7 +4,7 @@ import { BridgeController, STUCK_AFTER_MS, amountAtoms, needsRecovery } from './
 import * as api from './bridge-relay.js';
 import bs58 from 'bs58';
 import { getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder } from '@solana/transaction-messages';
-import { advanceDeposit, pollDelay, RECOVERY_POLL_MS, RECOVERY_WINDOW_MS, sendDeposit as sendSolanaDeposit, RESEND_SIGNED_MS, setAside } from './solana-session.js';
+import { advanceDeposit, checkEarlier, MAX_SET_ASIDE, pollDelay, RECOVERY_POLL_MS, RECOVERY_WINDOW_MS, sendDeposit as sendSolanaDeposit, RESEND_SIGNED_MS, setAside } from './solana-session.js';
 import { assertLamports, assertTokenAccount, LIGHTHOUSE, pub, solanaDeposit, transfer, unitLimit, unitPrice } from './solana-fixtures.mjs';
 import { LIGHTHOUSE_PROGRAM, MAX_COMPUTE_UNIT_PRICE } from './solana-shape.js';
 import { handleBridgeRoutes } from '../../../../../server/l1/bridge-routes.js';
@@ -281,7 +281,7 @@ solana.request = { owner: solana.owner, amount_atoms: '1000000', pftl_recipient:
 solana.ready = { vault_program_id: solana.program, mint: solana.mint };
 solana.durable = { nonce_account: pub(20), nonce_authority: pub(21), nonce_value: pub(22) };
 const solanaShape = { ...solana, ...solana.request };
-const serverBudget = [unitLimit(200450), unitPrice(10000)];
+const serverBudget = [unitLimit(200450), unitPrice(100000)];
 const phantomSigned = bytes => () => { const copy = Buffer.from(bytes); copy.fill(9, 1, 65); return { serialize: () => Uint8Array.from(copy) }; };
 async function solanaIntent(overrides = {}, durable = false) {
   const nonce = durable ? { nonceAccount: solana.durable.nonce_account, authority: solana.durable.nonce_authority, lifetime: solana.durable.nonce_value } : {};
@@ -520,4 +520,39 @@ test('a durable deposit the server no longer holds is checked slowly for a day, 
   const earlier = setAside([{ nonce: 'cd'.repeat(32) }], open);
   assert.deepEqual(earlier.map(row => row.nonce), ['cd'.repeat(32), solana.nonce]);
   assert.equal(setAside(earlier, { ...open, before: 'x' }).length, 2);
+});
+
+test('a deposit kept open for a day ends without asking the server, even when its checks keep failing', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  let failing = () => { throw Error('This deposit belongs to a different vault configuration.'); };
+  const browser = solanaBrowser(t, { recovery: () => failing() });
+  const open = { ...solana.request, nonce: solana.nonce, last_valid_block_height: 1234, vault_program_id: solana.program,
+    nonce_account: solana.durable.nonce_account, nonce_value: solana.durable.nonce_value, started: 1, lapsed: Date.now() - RECOVERY_WINDOW_MS + 60_000 };
+  await assert.rejects(advanceDeposit(open, {}), 'within the day a failed check is reported');
+  assert.equal(await checkEarlier(open, {}), open, 'an earlier card keeps the row and checks again');
+  const posts = browser.posted.length;
+  const over = await advanceDeposit({ ...open, lapsed: Date.now() - RECOVERY_WINDOW_MS }, {});
+  assert.equal(over.terminal, 'lapsed');
+  assert.equal(over.finished, Date.now());
+  assert.equal(browser.posted.length, posts, 'no server call once the day is over');
+  // The day ends while a failing check is under way.
+  failing = () => { t.mock.timers.tick(60_000); throw Error('Solana RPC unavailable'); };
+  const ended = await checkEarlier(open, {});
+  assert.deepEqual([ended.terminal, ended.lapsed], ['lapsed', open.lapsed]);
+  // Once Solana recorded the deposit, the day no longer applies: its proof job goes on.
+  const landed = { ...open, lapsed: Date.now() - 2 * RECOVERY_WINDOW_MS, signature: bs58.encode(Buffer.alloc(64, 6)) };
+  await assert.rejects(advanceDeposit(landed, {}), /unexpected/);
+  assert.equal(browser.posted.at(-1).path, 'jobs');
+});
+
+test(`the set-aside list keeps at most ${MAX_SET_ASIDE} deposits, dropping the oldest ended ones first`, () => {
+  assert.equal(MAX_SET_ASIDE, 10);
+  const row = (i, terminal) => ({ nonce: i.toString(16).padStart(64, '0'), ...(terminal && { terminal }) });
+  const nonces = list => list.map(item => parseInt(item.nonce, 16));
+  const mixed = Array.from({ length: 10 }, (_, i) => row(i, [1, 4].includes(i) ? 'expired' : undefined));
+  assert.deepEqual(nonces(setAside(mixed, row(10))), [0, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.deepEqual(nonces(setAside([...mixed, row(10), row(11)], row(12))), [2, 3, 5, 6, 7, 8, 9, 10, 11, 12], 'a longer stored list is cut back too: both ended rows, then the oldest');
+  const open = Array.from({ length: 10 }, (_, i) => row(i));
+  assert.deepEqual(nonces(setAside(open, row(10))), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'no ended row: the oldest goes');
+  assert.equal(setAside(open, row(3)).length, 10, 'the same deposit is not added twice');
 });
