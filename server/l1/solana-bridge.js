@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import bs58 from 'bs58';
-import { buildVaultDeposit, DepositError, readVault, recoverDeposit, sendDeposit, vaultSettings } from './solana-vault.js';
+import { buildVaultDeposit, DepositError, readVault, recoverDeposit, releaseDeposit, sendDeposit, vaultSettings } from './solana-vault.js';
 
 const ROUTE = 'solana-mainnet-usdc-v1';
 const STAGES = { finality_seen: 'finality', capture_done: 'capture', witness_built: 'witness', proof_done: 'proof',
@@ -30,7 +30,9 @@ function jobView(job) {
     message: job.status === 'failed' ? 'The proof relay could not complete this deposit.' : undefined };
 }
 const JOB = /^\/solana\/jobs\/0x[0-9a-f]{64}$/;
-export const solanaPath = path => ['/solana/readiness', '/solana/intent', '/solana/recovery', '/solana/jobs', '/solana/send'].includes(path) || JOB.test(path);
+export const solanaPath = path => ['/solana/readiness', '/solana/intent', '/solana/recovery', '/solana/jobs', '/solana/send', '/solana/release'].includes(path) || JOB.test(path);
+// The signed-in account that holds a nonce lease. The Task Node server forwards it to the relay host.
+const HOLDER = /^[A-Za-z0-9:_@.-]{1,128}$/;
 
 function b58(value, size) {
   if (typeof value !== 'string' || value.length > 88) return false;
@@ -39,7 +41,12 @@ function b58(value, size) {
 function validBody(path, body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
   const keys = Object.keys(body).sort().join(',');
-  if (path === '/solana/recovery') return ['last_valid_block_height,nonce,vault_program_id', 'before,last_valid_block_height,nonce,vault_program_id'].includes(keys) &&
+  const hex32 = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+  if (path === '/solana/release') return keys === 'nonce' && hex32(body.nonce);
+  // A durable-nonce deposit also names the nonce account and the value it signed.
+  if (path === '/solana/recovery') return ['last_valid_block_height,nonce,vault_program_id', 'before,last_valid_block_height,nonce,vault_program_id']
+    .some(base => keys === base || keys === [...base.split(','), 'nonce_account', 'nonce_value'].sort().join(',')) &&
+    (!('nonce_account' in body) || (b58(body.nonce_account, 32) && b58(body.nonce_value, 32))) &&
     b58(body.vault_program_id, 32) && (!('before' in body) || b58(body.before, 64)) && typeof body.nonce === 'string' &&
     /^[0-9a-f]{64}$/.test(body.nonce) && Number.isSafeInteger(body.last_valid_block_height) && body.last_valid_block_height > 0;
   if (path === '/solana/jobs') return keys === 'signature' && b58(body.signature, 64);
@@ -50,12 +57,12 @@ function validBody(path, body) {
     typeof body.amount_atoms === 'string' && /^[1-9][0-9]{0,19}$/.test(body.amount_atoms) && BigInt(body.amount_atoms) < 2n ** 64n;
 }
 
-async function upstream(base, path, body, token, origin) {
+async function upstream(base, path, body, token, origin, holder) {
   const url = new URL(path, base);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw Error();
   const response = await fetch(url, { method: body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(15000),
     headers: { Accept: 'application/json', ...(body && { 'Content-Type': 'application/json' }),
-      ...(token && { Authorization: `Bearer ${token}` }), ...(origin && { Origin: origin }) },
+      ...(token && { Authorization: `Bearer ${token}` }), ...(origin && { Origin: origin }), ...(holder && { 'X-Tasknode-Account': holder }) },
     ...(body && { body: JSON.stringify(body) }) });
   const payload = await response.json();
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || (token && JSON.stringify(payload).includes(token))) throw Error();
@@ -98,7 +105,7 @@ async function sendWhenOpen(env, body) {
   return { status: 200, payload: await sendDeposit(settings, body) };
 }
 
-async function localRoute(env, suffix, body) {
+async function localRoute(env, suffix, body, holder) {
   const base = env.L1_SOLANA_RELAY_URL || 'http://127.0.0.1:8187';
   const { config, path } = await relayConfig(env);
   const token = body ? (await readFile(path(config.http_token_file), 'utf8')).trim() : '';
@@ -126,11 +133,14 @@ async function localRoute(env, suffix, body) {
   try { epoch = JSON.parse(await readFile(path(config.state + '/epoch.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; epoch = config.current_epoch; }
   const ready = await readVault(settings, { ready: true, vault_program_id: settings.program, light_client_epoch: epoch });
-  return { status: 200, payload: body ? await buildVaultDeposit(settings, ready, body) : ready };
+  return { status: 200, payload: body ? await buildVaultDeposit(settings, ready, body, holder) : ready };
 }
 
-export async function handleSolana({ req, res, json, readJson, fail, suffix, env, bridgeProxyUrl, proxyToken, proxyOrigin, withdrawViaRelay }) {
-  const post = ['/solana/intent', '/solana/jobs', '/solana/recovery', '/solana/send'].includes(suffix);
+export async function handleSolana({ req, res, json, readJson, fail, suffix, env, session, bridgeProxyUrl, proxyToken, proxyOrigin, withdrawViaRelay }) {
+  const post = ['/solana/intent', '/solana/jobs', '/solana/recovery', '/solana/send', '/solana/release'].includes(suffix);
+  const forwarded = req.headers?.['x-tasknode-account'];
+  const holder = session?.accountId === 'relay-service' ? (HOLDER.test(forwarded || '') ? forwarded : null)
+    : session?.accountId ? String(session.accountId).replace(/[^A-Za-z0-9:_@.-]/g, '_').slice(0, 128) : null;
   if (!solanaPath(suffix) || req.method !== (post ? 'POST' : 'GET')) return fail(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   let body;
   if (post) {
@@ -143,13 +153,15 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
   try {
     let result;
     if (withdrawViaRelay) {
-      result = await upstream(bridgeProxyUrl, '/api/l1/bridge' + suffix, body, proxyToken, proxyOrigin);
+      result = await upstream(bridgeProxyUrl, '/api/l1/bridge' + suffix, body, proxyToken, proxyOrigin, holder);
+    } else if (suffix === '/solana/release') {
+      result = { status: 200, payload: releaseDeposit(holder, body.nonce) };
     } else if (suffix === '/solana/send') {
       result = await sendWhenOpen(env, body);
     } else if (suffix === '/solana/recovery') {
       result = { status: 200, payload: await recoverDeposit(vaultSettings(env), body) };
     } else {
-      result = await localRoute(env, suffix, body);
+      result = await localRoute(env, suffix, body, holder);
     }
     json(res, result.status, result.payload);
     return true;

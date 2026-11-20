@@ -48,7 +48,7 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
     }
   }
   if (suffix.startsWith("/solana/")) {
-    return handleSolana({ req, res, json, readJson, fail, suffix, env, bridgeProxyUrl, proxyToken, proxyOrigin, withdrawViaRelay });
+    return handleSolana({ req, res, json, readJson, fail, suffix, env, session, bridgeProxyUrl, proxyToken, proxyOrigin, withdrawViaRelay });
   }
   if (suffix === "/withdrawals" || suffix.startsWith("/withdrawals/")) {
     // PFUSDC -> USDC. The holder burns from their own wallet; this only starts and reads the payout job.
