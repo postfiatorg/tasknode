@@ -86,7 +86,10 @@ with sync_playwright() as p:
     calls = page.evaluate('window.mockSolana')
     intent = next(c for c in calls if c.get('url', '').endswith('/solana/intent'))
     assert intent['body'] == {'owner': '6' * 43, 'amount_atoms': '2500000', 'pftl_recipient': 'pf' + '33' * 20}
-    assert [c for c in calls if c.get('phantom')] == [{'phantom': 'signAndSendTransaction', 'message': '3mJr7AoUXx2Wqd'}]
+    # Phantom only signs. This site's server broadcasts the signed transaction.
+    assert [c for c in calls if c.get('phantom')] == [{'phantom': 'signTransaction', 'message': '3mJr7AoUXx2Wqd'}]
+    sent = next(c for c in calls if c.get('url', '').endswith('/solana/send'))
+    assert sorted(sent['body']) == ['nonce', 'transaction_b64'] and sent['body']['nonce'] == 'ab' * 32
     for i, stage in enumerate(['capture', 'witness', 'proof', 'sign', 'submit', 'credit'], start=1):
         page.evaluate("(value) => sessionStorage.setItem('mock:solana-stage', value)", stage)
         expect(stages.nth(i)).to_contain_text('running')

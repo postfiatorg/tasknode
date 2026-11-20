@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import bs58 from 'bs58';
-import { buildVaultDeposit, DepositError, readVault, recoverDeposit, vaultSettings } from './solana-vault.js';
+import { buildVaultDeposit, DepositError, readVault, recoverDeposit, sendDeposit, vaultSettings } from './solana-vault.js';
 
 const ROUTE = 'solana-mainnet-usdc-v1';
 const STAGES = { finality_seen: 'finality', capture_done: 'capture', witness_built: 'witness', proof_done: 'proof',
@@ -25,10 +25,12 @@ function jobView(job) {
   return { ok: true, job_id: job.job_id, signature: request.deposit_tx_hash, status: job.status, retryable: job.retryable === true,
     stage_history: history, updated_at_unix: history.at(-1)?.completed_at_unix ?? job.updated_at_unix,
     receipt_code: job.receipt_code, receipt_id: job.receipt_id, receipts,
+    // The Post Fiat transaction that carried the proof: the wallet reads its ledger receipt by this ID.
+    ledger_tx_id: typeof job.tx_id === 'string' && /^[0-9a-f]{96}$/.test(job.tx_id) ? job.tx_id : undefined,
     message: job.status === 'failed' ? 'The proof relay could not complete this deposit.' : undefined };
 }
 const JOB = /^\/solana\/jobs\/0x[0-9a-f]{64}$/;
-export const solanaPath = path => ['/solana/readiness', '/solana/intent', '/solana/recovery', '/solana/jobs'].includes(path) || JOB.test(path);
+export const solanaPath = path => ['/solana/readiness', '/solana/intent', '/solana/recovery', '/solana/jobs', '/solana/send'].includes(path) || JOB.test(path);
 
 function b58(value, size) {
   if (typeof value !== 'string' || value.length > 88) return false;
@@ -41,6 +43,8 @@ function validBody(path, body) {
     b58(body.vault_program_id, 32) && (!('before' in body) || b58(body.before, 64)) && typeof body.nonce === 'string' &&
     /^[0-9a-f]{64}$/.test(body.nonce) && Number.isSafeInteger(body.last_valid_block_height) && body.last_valid_block_height > 0;
   if (path === '/solana/jobs') return keys === 'signature' && b58(body.signature, 64);
+  if (path === '/solana/send') return keys === 'nonce,transaction_b64' && typeof body.nonce === 'string' && /^[0-9a-f]{64}$/.test(body.nonce) &&
+    typeof body.transaction_b64 === 'string' && /^[A-Za-z0-9+/]{88,1644}={0,2}$/.test(body.transaction_b64);
   return keys === 'amount_atoms,owner,pftl_recipient' && b58(body.owner, 32) &&
     typeof body.pftl_recipient === 'string' && /^pf[0-9a-f]{40}$/.test(body.pftl_recipient) &&
     typeof body.amount_atoms === 'string' && /^[1-9][0-9]{0,19}$/.test(body.amount_atoms) && BigInt(body.amount_atoms) < 2n ** 64n;
@@ -108,7 +112,7 @@ async function localRoute(env, suffix, body) {
 }
 
 export async function handleSolana({ req, res, json, readJson, fail, suffix, env, bridgeProxyUrl, proxyToken, proxyOrigin, withdrawViaRelay }) {
-  const post = ['/solana/intent', '/solana/jobs', '/solana/recovery'].includes(suffix);
+  const post = ['/solana/intent', '/solana/jobs', '/solana/recovery', '/solana/send'].includes(suffix);
   if (!solanaPath(suffix) || req.method !== (post ? 'POST' : 'GET')) return fail(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   let body;
   if (post) {
@@ -122,6 +126,8 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     let result;
     if (withdrawViaRelay) {
       result = await upstream(bridgeProxyUrl, '/api/l1/bridge' + suffix, body, proxyToken, proxyOrigin);
+    } else if (suffix === '/solana/send') {
+      result = { status: 200, payload: await sendDeposit(vaultSettings(env), body) };
     } else if (suffix === '/solana/recovery') {
       result = { status: 200, payload: await recoverDeposit(vaultSettings(env), body) };
     } else {

@@ -23,16 +23,20 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
     const record = { ...request, nonce: intent.nonce, last_valid_block_height: intent.last_valid_block_height,
       vault_program_id: intent.vault_program_id, started: Date.now() };
     save(record);
-    let sent;
+    // Phantom signs; this site's server broadcasts and re-sends within the short validity window.
+    let signed;
     try {
-      sent = await provider.request({ method: "signAndSendTransaction", params: { message: intent.message_b58 } });
+      signed = await provider.request({ method: "signTransaction", params: { message: intent.message_b58 } });
     } catch (error) {
-      if (error.code === 4001) {
-        save(null);
-        throw Error("You declined the deposit in Phantom.");
-      }
-      throw Error("Phantom disconnected. Checking the vault for your deposit.");
+      save(null);
+      throw Error(error.code === 4001 ? "You declined the deposit in Phantom." : "Phantom could not sign the deposit. Nothing was sent.");
     }
+    let bytes;
+    try { bytes = signed.serialize(); } catch { bytes = null; }
+    if (!bytes?.length) { save(null); throw Error("Phantom returned an unreadable transaction. Nothing was sent."); }
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const sent = await postSolana("send", { nonce: intent.nonce, transaction_b64: btoa(binary) });
     if (!signature.test(sent?.signature || "")) throw Error("Checking the vault for your transaction signature.");
     save({ ...record, signature: sent.signature });
   });
@@ -59,9 +63,11 @@ export async function advanceDeposit(record, client) {
     const matches = job.receipts?.some(row => ["vault_program_id", "nonce", "owner", "pftl_recipient", "amount_atoms"]
       .every(field => row[field] === record[field]));
     if (!matches) throw Error("The proven vault receipt does not match this deposit.");
-    const response = await client.call("receipts", { tx_id: job.receipt_id, limit: 1 });
+    // The bridge receipt ID names the credit; the ledger receipt is filed under the transaction ID.
+    if (!/^[0-9a-f]{96}$/.test(job.ledger_tx_id || "")) throw Error("Awaiting the Post Fiat transaction ID.");
+    const response = await client.call("receipts", { tx_id: job.ledger_tx_id, limit: 1 });
     const receipts = response?.result ?? response;
-    if (!Array.isArray(receipts) || !receipts.some(row => row.tx_id === job.receipt_id && row.accepted === true && row.code === "accepted")) {
+    if (!Array.isArray(receipts) || !receipts.some(row => row.tx_id === job.ledger_tx_id && row.accepted === true && row.code === "accepted")) {
       throw Error("Waiting for the accepted Post Fiat receipt.");
     }
     terminal = "credited";

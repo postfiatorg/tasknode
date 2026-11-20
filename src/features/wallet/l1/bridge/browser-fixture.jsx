@@ -22,8 +22,7 @@ window.phantom = { solana: { isPhantom: true, publicKey: null,
     window.mockSolana.push({ phantom: method, message: params.message });
     const calls = Number(localStorage.getItem('mock:phantom-sends') || 0) + 1;
     localStorage.setItem('mock:phantom-sends', String(calls));
-    if (mode === 'interrupted') throw Error('Lost response after broadcast');
-    return { signature: solanaSignature };
+    return { serialize: () => new Uint8Array([1, ...Array(64).fill(7), 1, 2, 3]) };
   },
 } };
 const sends = [];
@@ -61,6 +60,8 @@ window.fetch = async (url, options = {}) => {
     if (path === 'intent') localStorage.setItem('mock:solana-request', JSON.stringify(body));
     if (path === 'intent') return Response.json({ ok: true, ...body, message_b58: '3mJr7AoUXx2Wqd', vault_program_id: solanaProgram,
       nonce: solanaNonce, last_valid_block_height: 1234 });
+    if (path === 'send' && mode === 'interrupted') throw Error('Lost response after broadcast');
+    if (path === 'send') return Response.json({ ok: true, signature: solanaSignature });
     if (path === 'recovery') return Response.json(mode === 'interrupted' ? { ok: true, expired: false } : { ok: true, signature: solanaSignature });
     if (path === 'jobs' && body.signature === solanaSignature) return Response.json({ ok: true, job_id: solanaJob });
     if (path !== 'jobs/' + solanaJob) throw Error('Unexpected Solana request');
@@ -70,7 +71,7 @@ window.fetch = async (url, options = {}) => {
     sessionStorage.setItem('mock:solana-time', String(start));
     return Response.json({ ok: true, signature: solanaSignature, job_id: solanaJob, status: stage,
       receipts: end ? [{ ...JSON.parse(localStorage.getItem('mock:solana-request')), nonce: mode === 'wrong-receipt' ? '88'.repeat(32) : solanaNonce, vault_program_id: solanaProgram }] : [],
-      receipt_id: end ? 'dc'.repeat(48) : '', receipt_code: end ? 'ACCEPTED' : '',
+      receipt_id: end ? 'dc'.repeat(48) : '', receipt_code: end ? 'ACCEPTED' : '', ledger_tx_id: end ? 'ee'.repeat(48) : undefined,
       updated_at_unix: end || failed ? start + 10 : start, message: failed ? 'Deposit proof rejected.' : '',
       stage_history: solanaStages.slice(0, end ? solanaStages.length : active + 1).map((stage, i) => ({
         stage, status: end || i < active ? 'complete' : failed ? 'failed' : 'running',
@@ -97,7 +98,7 @@ window.fetch = async (url, options = {}) => {
 };
 const client = { address, accountId: 'synthetic-bob', unlocked: true,
   async call(method) {
-    if (method === 'receipts') return { ok: true, result: mode === 'missing-ledger-receipt' ? [] : [{ tx_id: 'dc'.repeat(48), code: 'accepted', accepted: true }] };
+    if (method === 'receipts') return { ok: true, result: mode === 'missing-ledger-receipt' ? [] : [{ tx_id: 'ee'.repeat(48), code: 'accepted', accepted: true }] };
     if (method === 'vault_bridge_route') return routeReport();
     if (method === 'account_assets') {
       if (mode === 'balance-fail') throw new Error('Mock balance RPC unavailable');
