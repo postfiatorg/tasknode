@@ -50,7 +50,9 @@ test('unsigned Phantom message matches the vault ABI, account order, privileges 
   assert.notEqual(first.nonce, second.nonce);
   assert.notEqual(first.receipt, second.receipt);
   const nonce = Buffer.from(first.nonce, 'hex');
-  const tx = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(bs58.decode(first.message_b58)));
+  // One empty signature slot precedes the message, as Phantom's transaction decoder requires.
+  assert.deepEqual([...bs58.decode(first.message_b58).subarray(0, 65)], [1, ...Array(64).fill(0)]);
+  const tx = decompileTransactionMessage(getCompiledTransactionMessageDecoder().decode(bs58.decode(first.message_b58).subarray(65)));
   assert.deepEqual(tx.feePayer.address, owner);
   assert.equal(tx.lifetimeConstraint.blockhash, pub(12));
   assert.equal(tx.instructions.length, 1);
