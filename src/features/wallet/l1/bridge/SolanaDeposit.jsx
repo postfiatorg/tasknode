@@ -53,7 +53,7 @@ function Progress({ deposit, reset, retry, earlier = false }) {
   </Card>;
 }
 
-export default function SolanaDeposit({ client }) {
+export default function SolanaDeposit({ client, onBusy }) {
   const key = `tn:l1:solana-vault:v1:${client.accountId}:${client.address}`, earlierKey = key + ":earlier";
   const [deposit, setDeposit] = useState(() => { try { return readSaved(key); } catch { return null; } });
   const [earlier, setEarlier] = useState(() => readList(earlierKey));
@@ -146,6 +146,9 @@ export default function SolanaDeposit({ client }) {
     timer = setTimeout(poll, RECOVERY_POLL_MS);
     return () => { stopped = true; clearTimeout(timer); };
   }, [earlier, client, updateEarlier]);
+
+  const unfinished = Boolean(deposit && !deposit.terminal);
+  useEffect(() => { onBusy?.(unfinished); }, [unfinished, onBusy]);
 
   const atoms = amountAtoms(amount);
   const available = /^[0-9]{1,20}$/.test(ready?.available_atoms) ? BigInt(ready.available_atoms) : 0n;

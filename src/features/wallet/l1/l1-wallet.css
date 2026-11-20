@@ -597,6 +597,10 @@ a.l1-asset.is-link:hover, a.l1-asset.is-link:focus-visible { background: color-m
 .l1-seg input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .l1-seg label:has(input:checked) { background: var(--l1-surface); color: var(--l1-text); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
 .l1-seg label:has(input:focus-visible) { outline: 2px solid var(--l1-accent); outline-offset: 1px; }
+.l1-source { display: grid; gap: 10px; box-sizing: border-box; max-width: 500px; margin-bottom: 18px; }
+.l1-source-pane:not([hidden]) { margin-bottom: 18px; }
+.l1-source small { font-weight: 500; }
+.l1-source-busy { color: var(--l1-accent); }
 .l1-ticket form { display: grid; gap: 14px; }
 .l1-ticket-price { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--l1-bg); }
 .l1-ticket-price small { color: var(--l1-muted); font-size: 12.5px; }
