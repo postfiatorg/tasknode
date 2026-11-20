@@ -522,7 +522,7 @@ test('a durable deposit the server no longer holds is checked slowly for a day, 
   assert.equal(setAside(earlier, { ...open, before: 'x' }).length, 2);
 });
 
-test('a deposit kept open for a day ends without asking the server, even when its checks keep failing', async t => {
+test('a failing read after the day ends the row', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   let failing = () => { throw Error('This deposit belongs to a different vault configuration.'); };
   const browser = solanaBrowser(t, { recovery: () => failing() });
@@ -532,27 +532,50 @@ test('a deposit kept open for a day ends without asking the server, even when it
   assert.equal(await checkEarlier(open, {}), open, 'an earlier card keeps the row and checks again');
   const posts = browser.posted.length;
   const over = await advanceDeposit({ ...open, lapsed: Date.now() - RECOVERY_WINDOW_MS }, {});
+  assert.equal(browser.posted.length, posts + 1, 'the server is read once more after the day');
   assert.equal(over.terminal, 'lapsed');
   assert.equal(over.finished, Date.now());
-  assert.equal(browser.posted.length, posts, 'no server call once the day is over');
-  // The day ends while a failing check is under way.
+  // The day ends while a failing check is under way, on the main card and on an earlier card.
   failing = () => { t.mock.timers.tick(60_000); throw Error('Solana RPC unavailable'); };
-  const ended = await checkEarlier(open, {});
-  assert.deepEqual([ended.terminal, ended.lapsed], ['lapsed', open.lapsed]);
+  for (const check of [advanceDeposit, checkEarlier]) {
+    const row = { ...open, lapsed: Date.now() - RECOVERY_WINDOW_MS + 60_000 };
+    const ended = await check(row, {});
+    assert.deepEqual([ended.terminal, ended.lapsed], ['lapsed', row.lapsed], check.name);
+  }
   // Once Solana recorded the deposit, the day no longer applies: its proof job goes on.
   const landed = { ...open, lapsed: Date.now() - 2 * RECOVERY_WINDOW_MS, signature: bs58.encode(Buffer.alloc(64, 6)) };
   await assert.rejects(advanceDeposit(landed, {}), /unexpected/);
   assert.equal(browser.posted.at(-1).path, 'jobs');
 });
 
-test(`the set-aside list keeps at most ${MAX_SET_ASIDE} deposits, dropping the oldest ended ones first`, () => {
+test('a read after the day that returns a signature continues to the proof job', async t => {
+  const signature = bs58.encode(Buffer.alloc(64, 5));
+  let answer = { ok: true, signature };
+  const browser = solanaBrowser(t, { recovery: () => answer });
+  // The page was closed while the deposit landed and reopened more than a day after its lease went.
+  const open = { ...solana.request, nonce: solana.nonce, last_valid_block_height: 1234, vault_program_id: solana.program,
+    nonce_account: solana.durable.nonce_account, nonce_value: solana.durable.nonce_value, started: 1, lapsed: Date.now() - RECOVERY_WINDOW_MS - 3_600_000 };
+  for (const check of [advanceDeposit, checkEarlier]) {
+    const next = await check(open, {});
+    assert.deepEqual([next.signature, next.terminal], [signature, undefined], check.name);
+  }
+  assert.deepEqual(browser.posted.map(row => row.path), ['recovery', 'recovery']);
+  answer = { ok: true, expired: false, lapsed: true };
+  const over = await advanceDeposit(open, {});
+  assert.deepEqual([over.terminal, over.lapsed], ['lapsed', open.lapsed], 'a read that still finds nothing ends the row');
+});
+
+test(`the set-aside list keeps at most ${MAX_SET_ASIDE} deposits by dropping ended ones, then ones past their day, never one that can still land`, () => {
   assert.equal(MAX_SET_ASIDE, 10);
   const row = (i, terminal) => ({ nonce: i.toString(16).padStart(64, '0'), ...(terminal && { terminal }) });
   const nonces = list => list.map(item => parseInt(item.nonce, 16));
   const mixed = Array.from({ length: 10 }, (_, i) => row(i, [1, 4].includes(i) ? 'expired' : undefined));
   assert.deepEqual(nonces(setAside(mixed, row(10))), [0, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-  assert.deepEqual(nonces(setAside([...mixed, row(10), row(11)], row(12))), [2, 3, 5, 6, 7, 8, 9, 10, 11, 12], 'a longer stored list is cut back too: both ended rows, then the oldest');
+  const late = { ...row(0), lapsed: Date.now() - RECOVERY_WINDOW_MS };
+  assert.deepEqual(nonces(setAside([late, ...mixed.slice(1)], row(10))), [0, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'an ended row goes before a row past its day');
+  assert.deepEqual(nonces(setAside([late, ...mixed.slice(1), row(10), row(11)], row(12))), [2, 3, 5, 6, 7, 8, 9, 10, 11, 12], 'a longer stored list is cut back too: both ended rows, then the row past its day');
   const open = Array.from({ length: 10 }, (_, i) => row(i));
-  assert.deepEqual(nonces(setAside(open, row(10))), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'no ended row: the oldest goes');
+  assert.deepEqual(nonces(setAside(open, row(10))), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'every row can still land: none goes and the list grows past the cap');
+  assert.deepEqual(nonces(setAside([...open.slice(1), { ...row(10), lapsed: Date.now() - RECOVERY_WINDOW_MS + 60_000 }], row(11))), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 'a row inside its day stays');
   assert.equal(setAside(open, row(3)).length, 10, 'the same deposit is not added twice');
 });
