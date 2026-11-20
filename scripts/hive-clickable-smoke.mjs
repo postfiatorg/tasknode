@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import "./verification-round-summary-smoke.mjs";
 
 import {
   getPublicHiveTaskDetail,
