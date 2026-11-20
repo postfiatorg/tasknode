@@ -36,7 +36,14 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
     if (!bytes?.length) { save(null); throw Error("Phantom returned an unreadable transaction. Nothing was sent."); }
     let binary = "";
     for (const byte of bytes) binary += String.fromCharCode(byte);
-    const sent = await postSolana("send", { nonce: intent.nonce, transaction_b64: btoa(binary) });
+    let sent;
+    try {
+      sent = await postSolana("send", { nonce: intent.nonce, transaction_b64: btoa(binary) });
+    } catch (error) {
+      // The server refused before broadcasting and keeps no copy; the signed bytes die here.
+      if (error.code === "solana_deposits_closed") save(null);
+      throw error;
+    }
     if (!signature.test(sent?.signature || "")) throw Error("Checking the vault for your transaction signature.");
     save({ ...record, signature: sent.signature });
   });

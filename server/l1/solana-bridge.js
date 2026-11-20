@@ -72,6 +72,32 @@ async function relayConfig(env) {
   return { config, path: name => resolve(dirname(file), name) };
 }
 
+// Deposits are open only while the relay reports ready for the configured vault and verifier.
+// It closes them ahead of planned maintenance, so an intent prepared now cannot be broadcast
+// into a window where it would not be credited.
+function assertOpen(config, settings, { status, payload }) {
+  if (status !== 200 || payload.ok !== true || payload.ready !== true) {
+    // Its own code: the wallet drops its pending deposit, since nothing reached Solana.
+    throw new DepositError(503, 'Solana deposits are closed right now. Nothing was sent; please try again later.', 'solana_deposits_closed');
+  }
+  // The vault stores the binding written at initialization; the governed route pins the same value.
+  if (config.route_binding !== settings.binding || payload.route_id !== ROUTE ||
+      payload.ledger !== 'node' || payload.observer_attestor_enabled !== false ||
+      payload.source_proof_kind !== 'sp1-solana-alpenglow-finality-v1' || !config.deposit_vkey ||
+      payload.program_vkey !== config.deposit_vkey || config.vault_program !== Buffer.from(bs58.decode(settings.program)).toString('hex')) {
+    throw new DepositError(503, 'The Solana proof relay does not match the configured vault and verifier.');
+  }
+}
+
+// Broadcast a signed deposit only while deposits are open: a durable-nonce transaction signed
+// earlier stays valid for minutes and must not land after the relay has closed deposits.
+async function sendWhenOpen(env, body) {
+  const { config } = await relayConfig(env);
+  const settings = vaultSettings(env);
+  assertOpen(config, settings, await upstream(env.L1_SOLANA_RELAY_URL || 'http://127.0.0.1:8187', '/api/bridge/readiness?route=' + ROUTE));
+  return { status: 200, payload: await sendDeposit(settings, body) };
+}
+
 async function localRoute(env, suffix, body) {
   const base = env.L1_SOLANA_RELAY_URL || 'http://127.0.0.1:8187';
   const { config, path } = await relayConfig(env);
@@ -95,15 +121,7 @@ async function localRoute(env, suffix, body) {
     body && upstream(base, '/api/bridge/jobs?recipient=' + body.pftl_recipient + '&limit=1', undefined, token),
   ]);
   if (body && (session.status !== 200 || session.payload.ok !== true)) throw new DepositError(503, 'The proof relay cannot register deposits.');
-  const { status, payload } = health;
-  // The vault stores the binding written at initialization; the governed route pins the same value.
-  const binding = config.route_binding;
-  if (binding !== settings.binding || status !== 200 || payload.ok !== true || payload.ready !== true || payload.route_id !== ROUTE ||
-      payload.ledger !== 'node' || payload.observer_attestor_enabled !== false ||
-      payload.source_proof_kind !== 'sp1-solana-alpenglow-finality-v1' || !config.deposit_vkey ||
-      payload.program_vkey !== config.deposit_vkey || config.vault_program !== Buffer.from(bs58.decode(settings.program)).toString('hex')) {
-    throw new DepositError(503, 'The Solana proof relay does not match the configured vault and verifier.');
-  }
+  assertOpen(config, settings, health);
   let epoch;
   try { epoch = JSON.parse(await readFile(path(config.state + '/epoch.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; epoch = config.current_epoch; }
@@ -127,7 +145,7 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     if (withdrawViaRelay) {
       result = await upstream(bridgeProxyUrl, '/api/l1/bridge' + suffix, body, proxyToken, proxyOrigin);
     } else if (suffix === '/solana/send') {
-      result = { status: 200, payload: await sendDeposit(vaultSettings(env), body) };
+      result = await sendWhenOpen(env, body);
     } else if (suffix === '/solana/recovery') {
       result = { status: 200, payload: await recoverDeposit(vaultSettings(env), body) };
     } else {
@@ -136,7 +154,7 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     json(res, result.status, result.payload);
     return true;
   } catch (error) {
-    return fail(error instanceof DepositError ? error.status : 502, 'solana_bridge_unavailable',
+    return fail(error instanceof DepositError ? error.status : 502, error instanceof DepositError ? error.code : 'solana_bridge_unavailable',
       error instanceof DepositError ? error.message : 'The Solana vault or proof relay is unreachable.');
   }
 }

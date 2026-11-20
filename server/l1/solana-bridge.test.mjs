@@ -212,3 +212,60 @@ test('readiness and intent use the same current route through the Solana JSON-RP
   epoch++;
   assert.equal((await route('intent', { env })).status, 503);
 });
+
+test('deposits closed by the relay: no intent, no nonce lease and no broadcast of an earlier signed deposit', async t => {
+  const { account } = fixture();
+  let open = true;
+  const rpcCalls = [], sent = [];
+  const env = { L1_SOLANA_RELAY_CONFIG: await relayFiles(t), L1_SOLANA_RELAY_URL: 'http://jobs.test', L1_SOLANA_RPC_URL: 'http://solana.test',
+    L1_SOLANA_VAULT_PROGRAM_ID: program, L1_SOLANA_USDC_MINT: mint, L1_SOLANA_ROUTE_BINDING: binding };
+  t.mock.method(globalThis, 'fetch', async (url, opt) => {
+    if (new URL(url).host === 'jobs.test') {
+      if (url.pathname === '/api/bridge/jobs') return Response.json({ ok: true, jobs: [] });
+      if (!open) return Response.json({ ok: false, ready: false, route_id: 'solana-mainnet-usdc-v1', message: 'deposits closed' }, { status: 503 });
+      return Response.json({ ok: true, ready: true, ledger: 'node', route_id: 'solana-mainnet-usdc-v1',
+        source_proof_kind: 'sp1-solana-alpenglow-finality-v1', program_vkey: '0x' + '42'.repeat(32), observer_attestor_enabled: false });
+    }
+    const { id, method, params } = JSON.parse(opt.body);
+    rpcCalls.push(method);
+    const info = { lamports: 100000, executable: false, rentEpoch: 2 };
+    const context = { slot: 100 };
+    const results = {
+      getEpochInfo: { epoch: 3, absoluteSlot: 100, slotsInEpoch: 50, slotIndex: 12 },
+      getAccountInfo: { context, value: { ...info, owner: program, data: [account.data.toString('base64'), 'base64'] } },
+      getLatestBlockhash: { context, value: { blockhash: pub(12), lastValidBlockHeight: 1234 } },
+      getTokenAccountsByOwner: { context, value: [{ pubkey: source, account: { ...info, owner: token,
+        data: { program: 'spl-token', space: 165, parsed: { type: 'account', info: { owner: request.owner, mint: mint,
+          state: 'initialized', tokenAmount: { decimals: 6, amount: '9999999' } } } } } }] },
+      sendTransaction: signature,
+      getSignatureStatuses: { context, value: [{ slot: 101, confirmations: 0, err: null, confirmationStatus: 'processed' }] },
+    };
+    if (method === 'sendTransaction') sent.push(params[0]);
+    assert.ok(method in results);
+    return Response.json({ jsonrpc: '2.0', id, result: results[method] });
+  });
+  open = false;
+  const closedIntent = await route('intent', { env });
+  assert.equal(closedIntent.status, 503);
+  assert.equal(closedIntent.body.code, 'solana_deposits_closed');
+  assert.deepEqual(rpcCalls, [], 'a closed relay prepares nothing and leases no nonce');
+  open = true;
+  const intent = await route('intent', { env });
+  assert.equal(intent.status, 200);
+  // The depositor signed while deposits were open; the relay closes before the wallet sends it.
+  const signed = Buffer.from(bs58.decode(intent.body.message_b58));
+  signed.fill(9, 1, 65);
+  const body = { nonce: intent.body.nonce, transaction_b64: signed.toString('base64') };
+  open = false;
+  const refused = await route('send', { env, readJson: async () => body });
+  assert.equal(refused.status, 503);
+  assert.equal(refused.body.code, 'solana_deposits_closed');
+  assert.match(refused.body.message, /closed.*Nothing was sent/);
+  assert.deepEqual(sent, []);
+  open = true;
+  const accepted = await route('send', { env, readJson: async () => body });
+  assert.equal(accepted.status, 200);
+  assert.equal(sent.length, 1);
+  // The re-send loop sees the landed status after one interval; let it stop under the mock.
+  await new Promise(resolve => setTimeout(resolve, 2200));
+});
