@@ -1,0 +1,370 @@
+[
+  {
+    "id": "empty",
+    "history": 0,
+    "live": []
+  },
+  {
+    "id": "199-history-accepted",
+    "history": 199,
+    "live": [
+      "accepted"
+    ]
+  },
+  {
+    "id": "200-history-accepted",
+    "history": 200,
+    "live": [
+      "accepted"
+    ]
+  },
+  {
+    "id": "201-history-verifier",
+    "history": 201,
+    "live": [
+      "accepted",
+      "verification_requested"
+    ]
+  },
+  {
+    "id": "260-history-all-nonterminal",
+    "history": 260,
+    "live": [
+      "proposed",
+      "accepted",
+      "submitted",
+      "verification_requested",
+      "verification_response_submitted",
+      "reward_decided",
+      "unknown",
+      " ACCEPTED ",
+      "future_status"
+    ]
+  },
+  {
+    "id": "recent-live-no-duplicates",
+    "history": 205,
+    "live": [
+      "accepted",
+      "verification_requested"
+    ],
+    "liveRecent": true
+  },
+  {
+    "id": "newest-reward-receipt",
+    "history": 260,
+    "live": [
+      "accepted"
+    ],
+    "newReward": true
+  },
+  {
+    "id": "owner-account-isolation",
+    "history": 205,
+    "live": [
+      "accepted",
+      "verification_requested"
+    ],
+    "foreignAccount": true
+  },
+  {
+    "id": "owner-wallet-isolation",
+    "history": 205,
+    "live": [
+      "accepted",
+      "verification_requested"
+    ],
+    "foreignWallet": true
+  },
+  {
+    "id": "wallet-only-existing-scope",
+    "history": 205,
+    "live": [
+      "accepted"
+    ],
+    "foreignAccount": true,
+    "walletOnly": true
+  },
+  {
+    "id": "200-mixed-terminal-history",
+    "history": 205,
+    "live": [
+      "accepted",
+      "verification_requested"
+    ],
+    "mixedTerminal": true
+  },
+  {
+    "id": "all-active-over-200",
+    "history": 205,
+    "live": [
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted",
+      "accepted"
+    ]
+  },
+  {
+    "id": "explicit-list-limit-three",
+    "history": 205,
+    "live": [
+      "accepted",
+      "verification_requested"
+    ],
+    "listLimit": 3
+  },
+  {
+    "id": "explicit-list-limit-fifty",
+    "history": 205,
+    "live": [
+      "accepted",
+      "verification_requested"
+    ],
+    "listLimit": 50
+  },
+  {
+    "id": "old-accepted-becomes-terminal",
+    "history": 205,
+    "live": [
+      "rewarded"
+    ]
+  },
+  {
+    "id": "newly-rewarded-transition",
+    "history": 205,
+    "live": [
+      "rewarded"
+    ],
+    "liveRecent": true
+  },
+  {
+    "id": "old-terminal-status-controls",
+    "history": 205,
+    "live": [
+      "rewarded",
+      "refused",
+      "rejected",
+      "expired",
+      "cancelled"
+    ]
+  },
+  {
+    "id": "old-padded-terminal-controls",
+    "history": 205,
+    "live": [
+      " REWARDED ",
+      "\trefused\n",
+      "\u00a0cancelled\u00a0"
+    ]
+  },
+  {
+    "id": "timestamp-tie-order",
+    "history": 205,
+    "live": [
+      "accepted",
+      "verification_requested"
+    ],
+    "tieDates": true
+  }
+]

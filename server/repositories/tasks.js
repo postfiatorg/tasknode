@@ -15,7 +15,7 @@ import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
 import { getNetworkTaskEligibility } from "./network-tasks.js";
 import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
-import { taskRefreshMetadata, taskStatusTab } from "../../shared/task-lifecycle.js";
+import { TASK_STATUS, taskIsTerminal, taskRefreshMetadata, taskStatusTab } from "../../shared/task-lifecycle.js";
 import { getLegacyTaskDetail, listLegacyTasks } from "./legacy-pftasks-history.js";
 
 import {
@@ -44,7 +44,14 @@ export {
 export { importTaskReplayReceipt } from "./task-replay-import.js";
 
 
-async function listTaskProjectionRows({ accountId = "", walletAddress = "", limit = 200 } = {}) {
+// Keep the recent history window stable while retaining older live work. Derive
+// terminal statuses from the lifecycle contract; reward_decided still needs
+// refresh even though it is displayed in the Rewarded tab.
+const terminalTaskStatuses = Object.values(TASK_STATUS).filter(taskIsTerminal);
+// PostgreSQL btrim defaults to ASCII space; match normalizeTaskStatus's JS trim.
+const taskStatusWhitespace = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff";
+
+async function listTaskProjectionRows({ accountId = "", walletAddress = "", limit = 200, includeActive = true } = {}) {
   const normalizedLimit = Math.min(Math.max(Number(limit || 200), 1), 500);
   if (!String(walletAddress || "").trim()) {
     return {
@@ -73,14 +80,26 @@ async function listTaskProjectionRows({ accountId = "", walletAddress = "", limi
 
   const result = await query(
     `
-      SELECT *
-      FROM task_projections
-      WHERE subject_wallet = $1
+      WITH recent AS (
+        SELECT *
+        FROM task_projections
+        WHERE subject_wallet = $1
+          AND ($2::text = '' OR account_id = $2)
+        ORDER BY updated_at DESC, task_id DESC
+        LIMIT $3
+      )
+      SELECT * FROM recent
+      UNION ALL
+      SELECT projections.*
+      FROM task_projections projections
+      WHERE $4::boolean
+        AND subject_wallet = $1
         AND ($2::text = '' OR account_id = $2)
+        AND lower(btrim(status, $6)) <> ALL($5::text[])
+        AND NOT EXISTS (SELECT 1 FROM recent WHERE recent.task_id = projections.task_id)
       ORDER BY updated_at DESC, task_id DESC
-      LIMIT $3
     `,
-    [walletAddress, accountId || "", normalizedLimit]
+    [walletAddress, accountId || "", normalizedLimit, includeActive, terminalTaskStatuses, taskStatusWhitespace]
   );
   return {
     rows: result.rows,
@@ -89,6 +108,7 @@ async function listTaskProjectionRows({ accountId = "", walletAddress = "", limi
       status: result.rows.length > 0 ? "ready" : "empty",
       walletAddress,
       projectionCount: result.rows.length,
+      historyWindowLimit: normalizedLimit,
       lastSyncedAt: result.rows[0]?.updated_at ? toIso(result.rows[0].updated_at) : null,
     },
   };
@@ -122,7 +142,7 @@ export async function listTaskProjectionRewards({
 } = {}) {
   const normalizedLimit = Math.min(Math.max(Number(limit || 10), 1), 50);
   try {
-    const { rows, sync } = await listTaskProjectionRows({ accountId, walletAddress, limit: 200 });
+    const { rows, sync } = await listTaskProjectionRows({ accountId, walletAddress, limit: 200, includeActive: false });
     return {
       rewards: rows
         .map((row) => publicTask(row))
@@ -447,17 +467,8 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
     };
   }
 
-  const result = await query(
-    `
-      SELECT *
-      FROM task_projections
-      WHERE subject_wallet = $1
-        AND ($2::text = '' OR account_id = $2)
-      ORDER BY updated_at DESC, task_id DESC
-      LIMIT 200
-    `,
-    [walletAddress, accountId || ""]
-  ).catch((error) => ({ error }));
+  const result = await listTaskProjectionRows({ accountId, walletAddress })
+    .catch((error) => ({ error }));
   if (result.error) {
     return taskProjectionReadErrorState({
       error: result.error,
@@ -537,6 +548,7 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
       status: syncStatus,
       walletAddress,
       projectionCount: rows.length,
+      historyWindowLimit: result.sync.historyWindowLimit,
       legacyHistoryCount: legacyTasks.length,
       lastSyncedAt,
       pendingReducerCount: integrity.totals.pendingReducerCount,

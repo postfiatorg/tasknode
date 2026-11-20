@@ -308,6 +308,9 @@ export function TasksView({
                 <>
                   <span aria-hidden="true">.</span>
                   <span>{tasks.sync.projectionCount} task records synced</span>
+                  {tasks.sync.historyWindowLimit > 0 && (
+                    <span> (latest {tasks.sync.historyWindowLimit} records plus active tasks)</span>
+                  )}
                 </>
               )}
               {tasks?.sync?.legacyHistoryCount > 0 && (
