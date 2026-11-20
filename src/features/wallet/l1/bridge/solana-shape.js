@@ -10,9 +10,11 @@ export const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 export const SYSTEM_PROGRAM = "11111111111111111111111111111111";
 export const RECENT_BLOCKHASHES = "SysvarRecentB1ockHashes11111111111111111111";
 export const COMPUTE_BUDGET_PROGRAM = "ComputeBudget111111111111111111111111111111";
-// Phantom appends assertions from this program on mainnet. They only read accounts and fail the
-// transaction when a check fails; the header and role checks below keep them from adding a signer or
-// changing the role of any account the deposit uses.
+// Phantom appends assertions from this program on mainnet. Its instructions are accepted without
+// reading their accounts or data. That is acceptable because they sit inside the user's own signature,
+// so the wallet could broadcast them itself, and Lighthouse has no token instruction, so it cannot move
+// USDC. The header and role checks below still keep them from adding a signer or changing the role of
+// any account the deposit uses.
 export const LIGHTHOUSE_PROGRAM = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
 // Caps on a compute budget, whether the server set it or a wallet replaced or added it on the
 // one-signer path. The priority fee is at most limit × price: 400,000 × 2,000,000 micro-lamports = 0.0008 SOL.

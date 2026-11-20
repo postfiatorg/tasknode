@@ -20,8 +20,10 @@ export const DEPOSIT_COMPUTE_UNIT_LIMIT = 200_000 + 3 * 150;
 // Price in micro-lamports per unit: the larger of the median recent priority fee on the deposit's
 // writable accounts and the UNSCOPED_FEE_PERCENTILE of recent fees across Solana, clamped to
 // [MIN_COMPUTE_UNIT_PRICE, MAX_COMPUTE_UNIT_PRICE]. The deposit's own accounts are mostly fresh and
-// quiet, so their median alone stays at the minimum during congestion. An unread list counts as none.
-export const MIN_COMPUTE_UNIT_PRICE = 10_000;
+// quiet, and the fees across Solana are each slot's lowest landed price, usually 0, so in normal
+// conditions both stay below the minimum, which sets the price: 100,000 × the limit ≈ 0.00002 SOL.
+// An unread list counts as none.
+export const MIN_COMPUTE_UNIT_PRICE = 100_000;
 export const UNSCOPED_FEE_PERCENTILE = 75;
 // Background re-send loops, each kind with its own budget so durable loops cannot crowd out the
 // short blockhash ones. Calls over a budget are broadcast once.
@@ -137,11 +139,14 @@ const held = ({ nonce_account: account, nonce_value: value }, intent) => taken(a
 // A transaction on a recent blockhash is valid for 150 blocks, about half a minute, which is
 // less than a careful approval in Phantom takes. A durable nonce keeps it valid until used.
 // Returns a free nonce account, or null when all are out. A holder keeps at most one unsent lease;
-// a lease marked sent stays until its nonce moves or it ends.
+// a lease marked sent stays until its nonce moves or it ends. The holder's own lapsed lease comes
+// first, so a new deposit replaces that holder's old one rather than another holder's.
 function leaseNonce({ rpc }, signer, holder, intent) {
   const turn = leasing.then(async () => {
+    const now = Date.now();
+    const own = new Set(holder ? [...leases].filter(([, lease]) => lease.holder === holder && lease.until <= now).map(([account]) => account) : []);
     if (holder) for (const [account, lease] of leases) if (lease.holder === holder && !lease.sent) leases.delete(account);
-    for (const account of signer.accounts) {
+    for (const account of [...signer.accounts].sort((a, b) => own.has(b) - own.has(a))) {
       const value = await nonceValue(rpc, account, signer.authority, { commitment: 'confirmed' });
       if (!value || taken(account, value)) continue;
       leases.set(account, { value, until: Date.now() + NONCE_LEASE_MS, holder, intent });

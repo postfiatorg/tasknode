@@ -19,13 +19,22 @@ export const RESEND_SIGNED_MS = 10000;
 export const RECOVERY_POLL_MS = 30_000;
 export const RECOVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const pollDelay = record => record.lapsed && !record.signature ? RECOVERY_POLL_MS : 1000;
-// The user started another deposit: the open one is kept aside, once, and still checked.
-export const setAside = (earlier, record) => [...(earlier ?? []).filter(row => row.nonce !== record.nonce), record];
+// The user started another deposit: the open one is kept aside, once, and still checked. The list keeps
+// at most MAX_SET_ASIDE rows, dropping the oldest ended ones first, then the oldest.
+export const MAX_SET_ASIDE = 10;
+export function setAside(earlier, record) {
+  const list = [...(earlier ?? []).filter(row => row.nonce !== record.nonce), record];
+  while (list.length > MAX_SET_ASIDE) list.splice(Math.max(0, list.findIndex(row => row.terminal)), 1);
+  return list;
+}
 // Give the server's nonce lease back; a failure here only delays its expiry.
 const release = nonce => postSolana("release", { nonce }).catch(() => {});
 const base64 = bytes => { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); };
 // A record that reached a signature or an end no longer needs the signed copy.
 const settled = ({ transaction_b64: _bytes, resent: _resent, ...record }) => record;
+// A deposit Solana has not recorded RECOVERY_WINDOW_MS after its lease went ends here, whatever the server answers.
+const dayOver = record => record.lapsed && !record.signature && Date.now() - record.lapsed >= RECOVERY_WINDOW_MS
+  ? { ...settled(record), terminal: "lapsed", finished: Date.now() } : null;
 
 // The fields of the intent that name a durable nonce, all three or none.
 function nonceFields(intent) {
@@ -128,6 +137,8 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
 }
 
 export async function advanceDeposit(record, client) {
+  const over = dayOver(record);
+  if (over) return over;
   if (!record.signature) {
     const recovered = await postSolana("recovery", { nonce: record.nonce, vault_program_id: record.vault_program_id,
       last_valid_block_height: record.last_valid_block_height, before: record.before,
@@ -138,7 +149,6 @@ export async function advanceDeposit(record, client) {
     // for RECOVERY_WINDOW_MS. The signed copy is not sent again.
     if (recovered.lapsed === true && record.nonce_account) {
       const lapsed = record.lapsed ?? Date.now();
-      if (Date.now() - lapsed >= RECOVERY_WINDOW_MS) return { ...settled(record), lapsed, terminal: "lapsed", finished: Date.now() };
       if (record.lapsed && record.before === recovered.before) return record;
       return { ...settled(record), lapsed, ...(recovered.before !== undefined && { before: recovered.before }) };
     }
@@ -174,3 +184,6 @@ export async function advanceDeposit(record, client) {
   if (job.status === "failed") terminal = "failed";
   return { ...record, job, terminal, finished: terminal ? (job.updated_at_unix * 1000 || Date.now()) : undefined };
 }
+
+// One check of a set-aside deposit. A failed check keeps the row, unless its day ended meanwhile.
+export const checkEarlier = (row, client) => advanceDeposit(row, client).catch(() => dayOver(row) ?? row);

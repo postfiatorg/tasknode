@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Check, CircleAlert, Clock } from "lucide-react";
 import { amountAtoms } from "./controller.js";
 import { bridgeJson } from "./bridge-relay.js";
-import { advanceDeposit, pollDelay, readSaved, RECOVERY_POLL_MS, sendDeposit, setAside } from "./solana-session.js";
+import { advanceDeposit, checkEarlier, pollDelay, readSaved, RECOVERY_POLL_MS, sendDeposit, setAside } from "./solana-session.js";
 import { Amount, Badge, Card, CardHead, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
 
 const stages = [["finality", "Solana finality"], ["capture", "Capture deposit"], ["witness", "Build witness"], ["proof", "Generate proof"],
@@ -38,9 +38,9 @@ function Progress({ deposit, reset, retry, earlier = false }) {
     {terminal === "credited" && <Notice tone="success" title="Solana deposit credited">+<Amount atoms={deposit.amount_atoms} unit="PFUSDC" /> in this wallet.</Notice>}
     {terminal === "failed" && <Notice tone="danger" title="Solana deposit failed">{job.message || job.code || "The proof relay could not credit this deposit."}</Notice>}
     {terminal === "expired" && <Notice tone="warning" title="Deposit expired">{deposit.nonce_account
-      ? "Solana did not record this deposit, and it can no longer go through. No USDC left your wallet."
+      ? "Solana did not record this deposit, and it can no longer go through. No USDC left your wallet for this deposit."
       : "The blockhash expired without a vault receipt."}</Notice>}
-    {!terminal && open && <Notice tone="warning" title="Deposit not recorded yet">Solana has not recorded this deposit yet, but it can still go through. While this page is open, it checks again every 30 seconds for 24 hours and shows the credit if it arrives. Starting another deposit does not cancel this one.</Notice>}
+    {!terminal && open && <Notice tone="warning" title="Deposit not recorded yet">Solana has not recorded this deposit yet, but it can still go through. While this page is open, it checks again every 30 seconds for 24 hours and shows the credit if it arrives. If you start another deposit, this one may still go through, or the new one may replace it. Each card shows what happened.</Notice>}
     {terminal === "lapsed" && <Notice tone="warning" title="Deposit not recorded">Solana had not recorded this deposit after 24 hours, so this page stopped checking. Check Phantom&apos;s activity before you deposit again.</Notice>}
     {!terminal && !job && <p className="l1-status-line" role="status"><Spinner size={14} />{deposit.signature ? "Opening the proof job…" : "Waiting for the Solana transaction…"}</p>}
     <KV className="is-tight" rows={[
@@ -135,7 +135,7 @@ export default function SolanaDeposit({ client }) {
     let stopped = false, timer;
     async function poll() {
       for (const row of earlier.filter(item => !item.terminal)) {
-        const next = await advanceDeposit(row, client).catch(() => row);
+        const next = await checkEarlier(row, client);
         if (stopped) return;
         if (JSON.stringify(next) !== JSON.stringify(row)) {
           await updateEarlier(row.nonce, current => JSON.stringify(current) === JSON.stringify(row) ? next : current);
