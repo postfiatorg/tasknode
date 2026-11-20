@@ -91,8 +91,12 @@ export async function buildVaultDeposit({ rpc, program, mint }, ready, request) 
   const message = compileTransactionMessage({ version: 'legacy', feePayer: { address: owner },
     lifetimeConstraint: { blockhash: block.blockhash, lastValidBlockHeight: BigInt(block.lastValidBlockHeight) },
     instructions: [{ programAddress: program, accounts, data }] });
+  // Phantom's request API deserializes this as a whole transaction: a signature count, one
+  // empty slot for the depositor's signature, then the message. A bare message is misparsed.
+  const compiled = Buffer.from(getCompiledTransactionMessageEncoder().encode(message));
+  const unsigned = bs58.encode(Buffer.concat([Buffer.from([1]), Buffer.alloc(64), compiled]));
   return { ok: true, ...request, vault_program_id: program, receipt,
-    nonce: nonce.toString('hex'), last_valid_block_height: block.lastValidBlockHeight, message_b58: bs58.encode(getCompiledTransactionMessageEncoder().encode(message)) };
+    nonce: nonce.toString('hex'), last_valid_block_height: block.lastValidBlockHeight, message_b58: unsigned };
 }
 
 // Phantom may have broadcast before its reply reached the tab. Only the vault can create
