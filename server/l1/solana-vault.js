@@ -17,9 +17,12 @@ const NONCE_LEASE_MS = 11 * 60 * 1000;
 // instruction ran under the runtime's implicit 200,000-unit default; the limit keeps that ceiling and
 // adds 150 units each for AdvanceNonce and the two compute-budget instructions.
 export const DEPOSIT_COMPUTE_UNIT_LIMIT = 200_000 + 3 * 150;
-// Price in micro-lamports per unit: the median recent priority fee on the deposit's writable accounts,
-// clamped to [MIN_COMPUTE_UNIT_PRICE, MAX_COMPUTE_UNIT_PRICE]; the minimum when the read fails.
+// Price in micro-lamports per unit: the larger of the median recent priority fee on the deposit's
+// writable accounts and the UNSCOPED_FEE_PERCENTILE of recent fees across Solana, clamped to
+// [MIN_COMPUTE_UNIT_PRICE, MAX_COMPUTE_UNIT_PRICE]. The deposit's own accounts are mostly fresh and
+// quiet, so their median alone stays at the minimum during congestion. An unread list counts as none.
 export const MIN_COMPUTE_UNIT_PRICE = 10_000;
+export const UNSCOPED_FEE_PERCENTILE = 75;
 // Background re-send loops, each kind with its own budget so durable loops cannot crowd out the
 // short blockhash ones. Calls over a budget are broadcast once.
 export const MAX_DURABLE_RESEND_LOOPS = 16;
@@ -158,13 +161,18 @@ export function releaseDeposit(holder, intent) {
   return { ok: true, released: false };
 }
 
-async function computePrice(rpc, accounts) {
+// pick(sorted recent fees) for these accounts (none: across Solana), or 0 when unread or malformed.
+async function recentFee(rpc, accounts, pick) {
   try {
     const fees = (await rpc.getRecentPrioritizationFees(accounts)).map(row => row.prioritizationFee);
-    if (!fees.length || !fees.every(Number.isSafeInteger)) return MIN_COMPUTE_UNIT_PRICE;
-    const median = fees.sort((a, b) => a - b)[fees.length >> 1];
-    return Math.min(MAX_COMPUTE_UNIT_PRICE, Math.max(MIN_COMPUTE_UNIT_PRICE, median));
-  } catch { return MIN_COMPUTE_UNIT_PRICE; }
+    return fees.length && fees.every(Number.isSafeInteger) ? pick(fees.sort((a, b) => a - b)) : 0;
+  } catch { return 0; }
+}
+
+async function computePrice(rpc, accounts) {
+  const [scoped, unscoped] = await Promise.all([recentFee(rpc, accounts, fees => fees[fees.length >> 1]),
+    recentFee(rpc, [], fees => fees[Math.ceil(fees.length * UNSCOPED_FEE_PERCENTILE / 100) - 1])]);
+  return Math.min(MAX_COMPUTE_UNIT_PRICE, Math.max(MIN_COMPUTE_UNIT_PRICE, scoped, unscoped));
 }
 
 function computeBudget(price) {
@@ -249,7 +257,7 @@ export async function sendDeposit(settings, { transaction_b64: encoded, nonce },
   let shape;
   try {
     if (signers === 2 && !pool) throw Error('no nonce file');
-    shape = await checkDepositShape(bytes, { program, mint, nonce, ...(pool && { nonce_authority: pool.authority, nonceAccounts: pool.accounts }) });
+    shape = await checkDepositShape(bytes, { program, mint, nonce, ...(pool && { nonce_authority: pool.authority, nonceAccounts: pool.accounts }) }, { signed: true });
     // The authority signs only messages this server built, so its signature proves the message is unchanged.
     const authority = shape.durable && createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'),
       bs58.decode(shape.durable.nonce_authority)]), format: 'der', type: 'spki' });

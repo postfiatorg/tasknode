@@ -14,6 +14,13 @@ const CHANGED = "Phantom returned a transaction that does not match your deposit
 const UNSENT = ["solana_deposits_closed", "solana_deposit_shape_mismatch"];
 // While a durable deposit's lease is held and its nonce unchanged, recovery sends the signed copy again this often.
 export const RESEND_SIGNED_MS = 10000;
+// A durable deposit whose lease is gone but whose nonce is unchanged can still land. It is never final
+// then: the card checks it this often, for this long after the lease went, and shows its credit if it lands.
+export const RECOVERY_POLL_MS = 30_000;
+export const RECOVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const pollDelay = record => record.lapsed && !record.signature ? RECOVERY_POLL_MS : 1000;
+// The user started another deposit: the open one is kept aside, once, and still checked.
+export const setAside = (earlier, record) => [...(earlier ?? []).filter(row => row.nonce !== record.nonce), record];
 // Give the server's nonce lease back; a failure here only delays its expiry.
 const release = nonce => postSolana("release", { nonce }).catch(() => {});
 const base64 = bytes => { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); };
@@ -39,10 +46,11 @@ async function checkIntent(intent, request, ready) {
 }
 
 // The same check on what Phantom signed. A wallet may replace or add the compute budget of a
-// one-signer deposit within the caps; a durable deposit, already co-signed, must come back unchanged.
+// one-signer deposit within the caps and append Lighthouse assertions; a durable deposit, already
+// co-signed, must come back unchanged.
 async function checkSigned(signed, intent, request, ready) {
   const named = nonceFields(intent), prepared = bs58.decode(intent.message_b58);
-  const shape = await checkDepositShape(signed, { ...request, program: ready.vault_program_id, mint: ready.mint, nonce: intent.nonce, ...named });
+  const shape = await checkDepositShape(signed, { ...request, program: ready.vault_program_id, mint: ready.mint, nonce: intent.nonce, ...named }, { signed: true });
   const same = (a, b) => a.length === b.length && a.every((byte, i) => byte === b[i]);
   if (signed.subarray(1, 65).every(byte => byte === 0) || !shape.durable !== !named ||
     (named && !same(signed.subarray(65), prepared.subarray(65)))) throw Error("signed transaction");
@@ -126,8 +134,14 @@ export async function advanceDeposit(record, client) {
       ...(record.nonce_account && { nonce_account: record.nonce_account, nonce_value: record.nonce_value }) });
     if (signature.test(recovered.signature || "")) return { ...settled(record), signature: recovered.signature };
     if (recovered.expired === true) return { ...settled(record), terminal: "expired", finished: Date.now() };
-    // The lease ended with the nonce unchanged and no receipt: this browser stops waiting.
-    if (recovered.lapsed === true && record.nonce_account) return { ...settled(record), terminal: "lapsed", finished: Date.now() };
+    // The lease ended with the nonce unchanged and no receipt: it can still land, so keep checking, slowly,
+    // for RECOVERY_WINDOW_MS. The signed copy is not sent again.
+    if (recovered.lapsed === true && record.nonce_account) {
+      const lapsed = record.lapsed ?? Date.now();
+      if (Date.now() - lapsed >= RECOVERY_WINDOW_MS) return { ...settled(record), lapsed, terminal: "lapsed", finished: Date.now() };
+      if (record.lapsed && record.before === recovered.before) return record;
+      return { ...settled(record), lapsed, ...(recovered.before !== undefined && { before: recovered.before }) };
+    }
     if (recovered.resend === true && record.transaction_b64 && Date.now() - (record.resent ?? 0) >= RESEND_SIGNED_MS) {
       const sent = await postSolana("send", { nonce: record.nonce, transaction_b64: record.transaction_b64 }).catch(() => null);
       const own = bs58.encode(Uint8Array.from(atob(record.transaction_b64), char => char.charCodeAt(0)).subarray(1, 65));

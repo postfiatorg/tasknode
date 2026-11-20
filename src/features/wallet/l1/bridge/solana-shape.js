@@ -1,6 +1,7 @@
 // The exact Solana vault deposit transaction. The browser runs this before Phantom opens, and the
 // server before it broadcasts: [deposit] alone, or [AdvanceNonce, deposit] with exactly two signers,
-// plus at most one SetComputeUnitLimit and one SetComputeUnitPrice.
+// plus at most one SetComputeUnitLimit and one SetComputeUnitPrice. A signed one-signer deposit may
+// also carry Lighthouse assertions.
 import { getProgramDerivedAddress } from "@solana/addresses";
 import { getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder } from "@solana/transaction-messages";
 import bs58 from "bs58";
@@ -9,6 +10,10 @@ export const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 export const SYSTEM_PROGRAM = "11111111111111111111111111111111";
 export const RECENT_BLOCKHASHES = "SysvarRecentB1ockHashes11111111111111111111";
 export const COMPUTE_BUDGET_PROGRAM = "ComputeBudget111111111111111111111111111111";
+// Phantom appends assertions from this program on mainnet. They only read accounts and fail the
+// transaction when a check fails; the header and role checks below keep them from adding a signer or
+// changing the role of any account the deposit uses.
+export const LIGHTHOUSE_PROGRAM = "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95";
 // Caps on a compute budget, whether the server set it or a wallet replaced or added it on the
 // one-signer path. The priority fee is at most limit × price: 400,000 × 2,000,000 micro-lamports = 0.0008 SOL.
 export const MAX_COMPUTE_UNIT_LIMIT = 400_000;
@@ -25,7 +30,8 @@ function must(condition, reason) { if (!condition) throw Error("Not the vault de
 // owner, amount_atoms, pftl_recipient, nonce_account, nonce_authority, nonce_value and nonceAccounts when known.
 // Returns what the transaction commits to. Throws on any difference. With a durable nonce the
 // authority has already signed, so the layout is fixed: [AdvanceNonce, limit, price, deposit].
-export async function checkDepositShape(bytes, expected) {
+// signed: the wallet's bytes, which may carry Lighthouse assertions on the one-signer path.
+export async function checkDepositShape(bytes, expected, { signed = false } = {}) {
   const signers = bytes[0], start = 1 + 64 * signers;
   must([1, 2].includes(signers) && bytes.length > start, "signature count");
   const message = bytes.subarray(start);
@@ -48,6 +54,9 @@ export async function checkDepositShape(bytes, expected) {
   const budget = {}, layout = [], others = [];
   for (const ix of instructions) {
     const { program, accounts, data } = read(ix);
+    // Every program is invoked read-only, as compiled; no instruction can make one writable or a signer.
+    must(role(ix.programAddressIndex) === "r", "program role");
+    if (program === LIGHTHOUSE_PROGRAM && signed && signers === 1) continue;
     if (program !== COMPUTE_BUDGET_PROGRAM) { others.push(ix); layout.push("other"); continue; }
     const [name, size, cap] = BUDGET[data[0]] ?? [];
     must(name && !(name in budget) && !accounts.length && data.length === size, "compute budget");

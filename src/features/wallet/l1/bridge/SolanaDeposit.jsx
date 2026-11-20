@@ -2,14 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Check, CircleAlert, Clock } from "lucide-react";
 import { amountAtoms } from "./controller.js";
 import { bridgeJson } from "./bridge-relay.js";
-import { advanceDeposit, readSaved, sendDeposit } from "./solana-session.js";
+import { advanceDeposit, pollDelay, readSaved, RECOVERY_POLL_MS, sendDeposit, setAside } from "./solana-session.js";
 import { Amount, Badge, Card, CardHead, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
 
 const stages = [["finality", "Solana finality"], ["capture", "Capture deposit"], ["witness", "Build witness"], ["proof", "Generate proof"],
   ["sign", "Sign Post Fiat transaction"], ["submit", "Submit proof"], ["credit", "Credit on Post Fiat"]];
+// Deposits set aside while they can still land; the card keeps checking them.
+const readList = key => { try { const list = readSaved(key); return Array.isArray(list) ? list : []; } catch { return []; } };
 const elapsed = ms => (Math.max(0, ms) / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }) + " s";
 
-function Progress({ deposit, reset, retry }) {
+function Progress({ deposit, reset, retry, earlier = false }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (deposit.terminal) return undefined;
@@ -17,8 +19,9 @@ function Progress({ deposit, reset, retry }) {
     return () => clearInterval(clock);
   }, [deposit.terminal]);
   const { job, terminal } = deposit;
+  const open = deposit.lapsed && !deposit.signature;
   return <Card className="l1-track-card" aria-label="Solana bridge progress">
-    <CardHead eyebrow="Solana → Post Fiat" title="Deposit progress">
+    <CardHead eyebrow="Solana → Post Fiat" title={earlier ? "Earlier deposit" : "Deposit progress"}>
       <span className="l1-clock"><Clock size={14} aria-hidden /> <span data-testid="solana-clock">{elapsed((deposit.finished ?? now) - deposit.started)}</span></span>
     </CardHead>
     <ol className="l1-stages" aria-label="Solana deposit stages">{stages.map(([stage, label]) => {
@@ -34,8 +37,11 @@ function Progress({ deposit, reset, retry }) {
     })}</ol>
     {terminal === "credited" && <Notice tone="success" title="Solana deposit credited">+<Amount atoms={deposit.amount_atoms} unit="PFUSDC" /> in this wallet.</Notice>}
     {terminal === "failed" && <Notice tone="danger" title="Solana deposit failed">{job.message || job.code || "The proof relay could not credit this deposit."}</Notice>}
-    {terminal === "expired" && <Notice tone="warning" title="Deposit expired">The blockhash expired without a vault receipt.</Notice>}
-    {terminal === "lapsed" && <Notice tone="warning" title="Deposit not recorded">Solana has not recorded this deposit and its nonce reservation has ended, so this card stopped waiting. Check Phantom&apos;s activity before you deposit again.</Notice>}
+    {terminal === "expired" && <Notice tone="warning" title="Deposit expired">{deposit.nonce_account
+      ? "Solana did not record this deposit, and it can no longer go through. No USDC left your wallet."
+      : "The blockhash expired without a vault receipt."}</Notice>}
+    {!terminal && open && <Notice tone="warning" title="Deposit not recorded yet">Solana has not recorded this deposit yet, but it can still go through. While this page is open, it checks again every 30 seconds for 24 hours and shows the credit if it arrives. Starting another deposit does not cancel this one.</Notice>}
+    {terminal === "lapsed" && <Notice tone="warning" title="Deposit not recorded">Solana had not recorded this deposit after 24 hours, so this page stopped checking. Check Phantom&apos;s activity before you deposit again.</Notice>}
     {!terminal && !job && <p className="l1-status-line" role="status"><Spinner size={14} />{deposit.signature ? "Opening the proof job…" : "Waiting for the Solana transaction…"}</p>}
     <KV className="is-tight" rows={[
       ["Recipient", <Mono value={deposit.pftl_recipient} />],
@@ -43,20 +49,24 @@ function Progress({ deposit, reset, retry }) {
       job?.receipt_id && ["Post Fiat receipt", <IdChip value={job.receipt_id} label="credit receipt" />],
     ]} />
     {terminal === "failed" && job.retryable && <button type="button" className="l1-btn" onClick={retry}>Retry proof job</button>}
-    {terminal && <button type="button" className="l1-btn is-sm" onClick={reset}>Start another Solana deposit</button>}
+    {(terminal || (open && !earlier)) && <button type="button" className="l1-btn is-sm" onClick={reset}>{earlier ? "Dismiss" : "Start another Solana deposit"}</button>}
   </Card>;
 }
 
 export default function SolanaDeposit({ client }) {
-  const key = `tn:l1:solana-vault:v1:${client.accountId}:${client.address}`;
+  const key = `tn:l1:solana-vault:v1:${client.accountId}:${client.address}`, earlierKey = key + ":earlier";
   const [deposit, setDeposit] = useState(() => { try { return readSaved(key); } catch { return null; } });
+  const [earlier, setEarlier] = useState(() => readList(earlierKey));
   const [ready, setReady] = useState(null), [owner, setOwner] = useState("");
   const [amount, setAmount] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const active = useRef(false);
   const provider = window.phantom?.solana?.isPhantom ? window.phantom.solana : null;
   useEffect(() => {
     active.current = true;
-    const sync = event => { if (event.key === key || event.key === null) setDeposit(readSaved(key)); };
+    const sync = event => {
+      if (event.key === key || event.key === null) setDeposit(readSaved(key));
+      if (event.key === earlierKey || event.key === null) setEarlier(readList(earlierKey));
+    };
     const changed = pubkey => setOwner(pubkey?.toString() || "");
     const disconnected = () => setOwner("");
     window.addEventListener("storage", sync);
@@ -68,12 +78,19 @@ export default function SolanaDeposit({ client }) {
       provider?.removeListener?.("accountChanged", changed);
       provider?.removeListener?.("disconnect", disconnected);
     };
-  }, [key, provider]);
+  }, [key, earlierKey, provider]);
   const save = useCallback(record => {
     if (record) localStorage.setItem(key, JSON.stringify(record));
     else localStorage.removeItem(key);
     if (active.current) setDeposit(record);
   }, [key]);
+  // Replace one set-aside deposit by nonce (null removes it), under the list's own lock.
+  const updateEarlier = useCallback((nonce, change) => navigator.locks.request(earlierKey, () => {
+    const list = readList(earlierKey).flatMap(row => row.nonce === nonce ? [change(row)].filter(Boolean) : [row]);
+    if (list.length) localStorage.setItem(earlierKey, JSON.stringify(list));
+    else localStorage.removeItem(earlierKey);
+    if (active.current) setEarlier(list);
+  }), [earlierKey]);
   useEffect(() => {
     let stopped = false, timer;
     async function refresh() {
@@ -106,12 +123,29 @@ export default function SolanaDeposit({ client }) {
           return;
         }
       } catch (failure) { if (!stopped) setError(failure.message); }
-      if (!stopped) timer = setTimeout(poll, 1000);
+      if (!stopped) timer = setTimeout(poll, pollDelay(deposit));
     }
     // Advance immediately between recovery, job creation and the first status read.
     timer = setTimeout(poll, deposit.job && !deposit.terminal ? 1000 : 0);
     return () => { stopped = true; clearTimeout(timer); };
   }, [deposit, busy, save, key, client]);
+
+  useEffect(() => {
+    if (!earlier.some(row => !row.terminal)) return undefined;
+    let stopped = false, timer;
+    async function poll() {
+      for (const row of earlier.filter(item => !item.terminal)) {
+        const next = await advanceDeposit(row, client).catch(() => row);
+        if (stopped) return;
+        if (JSON.stringify(next) !== JSON.stringify(row)) {
+          await updateEarlier(row.nonce, current => JSON.stringify(current) === JSON.stringify(row) ? next : current);
+        }
+      }
+      if (!stopped) timer = setTimeout(poll, RECOVERY_POLL_MS);
+    }
+    timer = setTimeout(poll, RECOVERY_POLL_MS);
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [earlier, client, updateEarlier]);
 
   const atoms = amountAtoms(amount);
   const available = /^[0-9]{1,20}$/.test(ready?.available_atoms) ? BigInt(ready.available_atoms) : 0n;
@@ -155,10 +189,23 @@ export default function SolanaDeposit({ client }) {
           save({ ...current, terminal: undefined, finished: undefined, jobId: undefined, job: undefined });
         }
       }))}
-      reset={() => run(() => navigator.locks.request(key, () => {
+      reset={() => run(() => navigator.locks.request(key, async () => {
         const current = readSaved(key);
+        // A deposit that can still land is set aside and still checked.
+        if (current?.nonce === deposit.nonce && !current.terminal && current.lapsed && !current.signature) {
+          await navigator.locks.request(earlierKey, () => {
+            const list = setAside(readList(earlierKey), current);
+            localStorage.setItem(earlierKey, JSON.stringify(list));
+            if (active.current) setEarlier(list);
+          });
+          save(null);
+        }
         if (current?.nonce === deposit.nonce && current.terminal) save(null);
         setAmount("");
       }))} />}
+    {earlier.map(row => <Progress key={row.nonce} deposit={row} earlier
+      retry={() => run(() => updateEarlier(row.nonce, current => current.terminal === "failed"
+        ? { ...current, terminal: undefined, finished: undefined, jobId: undefined, job: undefined } : current))}
+      reset={() => run(() => updateEarlier(row.nonce, current => current.terminal ? null : current))} />)}
   </section>;
 }
