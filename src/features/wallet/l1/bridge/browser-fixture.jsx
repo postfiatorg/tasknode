@@ -71,7 +71,7 @@ window.fetch = async (url, options = {}) => {
     sessionStorage.setItem('mock:solana-time', String(start));
     return Response.json({ ok: true, signature: solanaSignature, job_id: solanaJob, status: stage,
       receipts: end ? [{ ...JSON.parse(localStorage.getItem('mock:solana-request')), nonce: mode === 'wrong-receipt' ? '88'.repeat(32) : solanaNonce, vault_program_id: solanaProgram }] : [],
-      receipt_id: end ? 'dc'.repeat(48) : '', receipt_code: end ? 'ACCEPTED' : '',
+      receipt_id: end ? 'dc'.repeat(48) : '', receipt_code: end ? 'ACCEPTED' : '', ledger_tx_id: end ? 'ee'.repeat(48) : undefined,
       updated_at_unix: end || failed ? start + 10 : start, message: failed ? 'Deposit proof rejected.' : '',
       stage_history: solanaStages.slice(0, end ? solanaStages.length : active + 1).map((stage, i) => ({
         stage, status: end || i < active ? 'complete' : failed ? 'failed' : 'running',
@@ -98,7 +98,7 @@ window.fetch = async (url, options = {}) => {
 };
 const client = { address, accountId: 'synthetic-bob', unlocked: true,
   async call(method) {
-    if (method === 'receipts') return { ok: true, result: mode === 'missing-ledger-receipt' ? [] : [{ tx_id: 'dc'.repeat(48), code: 'accepted', accepted: true }] };
+    if (method === 'receipts') return { ok: true, result: mode === 'missing-ledger-receipt' ? [] : [{ tx_id: 'ee'.repeat(48), code: 'accepted', accepted: true }] };
     if (method === 'vault_bridge_route') return routeReport();
     if (method === 'account_assets') {
       if (mode === 'balance-fail') throw new Error('Mock balance RPC unavailable');

@@ -25,6 +25,8 @@ function jobView(job) {
   return { ok: true, job_id: job.job_id, signature: request.deposit_tx_hash, status: job.status, retryable: job.retryable === true,
     stage_history: history, updated_at_unix: history.at(-1)?.completed_at_unix ?? job.updated_at_unix,
     receipt_code: job.receipt_code, receipt_id: job.receipt_id, receipts,
+    // The Post Fiat transaction that carried the proof: the wallet reads its ledger receipt by this ID.
+    ledger_tx_id: typeof job.tx_id === 'string' && /^[0-9a-f]{96}$/.test(job.tx_id) ? job.tx_id : undefined,
     message: job.status === 'failed' ? 'The proof relay could not complete this deposit.' : undefined };
 }
 const JOB = /^\/solana\/jobs\/0x[0-9a-f]{64}$/;
