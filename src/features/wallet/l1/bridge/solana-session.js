@@ -23,16 +23,20 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
     const record = { ...request, nonce: intent.nonce, last_valid_block_height: intent.last_valid_block_height,
       vault_program_id: intent.vault_program_id, started: Date.now() };
     save(record);
-    let sent;
+    // Phantom signs; this site's server broadcasts and re-sends within the short validity window.
+    let signed;
     try {
-      sent = await provider.request({ method: "signAndSendTransaction", params: { message: intent.message_b58 } });
+      signed = await provider.request({ method: "signTransaction", params: { message: intent.message_b58 } });
     } catch (error) {
-      if (error.code === 4001) {
-        save(null);
-        throw Error("You declined the deposit in Phantom.");
-      }
-      throw Error("Phantom disconnected. Checking the vault for your deposit.");
+      save(null);
+      throw Error(error.code === 4001 ? "You declined the deposit in Phantom." : "Phantom could not sign the deposit. Nothing was sent.");
     }
+    let bytes;
+    try { bytes = signed.serialize(); } catch { bytes = null; }
+    if (!bytes?.length) { save(null); throw Error("Phantom returned an unreadable transaction. Nothing was sent."); }
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const sent = await postSolana("send", { nonce: intent.nonce, transaction_b64: btoa(binary) });
     if (!signature.test(sent?.signature || "")) throw Error("Checking the vault for your transaction signature.");
     save({ ...record, signature: sent.signature });
   });

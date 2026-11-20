@@ -2,7 +2,7 @@
 import { randomBytes } from 'node:crypto';
 import { address, getProgramDerivedAddress } from '@solana/addresses';
 import { AccountRole } from '@solana/instructions';
-import { compileTransactionMessage, getCompiledTransactionMessageEncoder } from '@solana/transaction-messages';
+import { compileTransactionMessage, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder } from '@solana/transaction-messages';
 import bs58 from 'bs58';
 
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
@@ -15,6 +15,7 @@ function solanaRpc(url) {
     const response = await fetch(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
     const reply = await response.json();
+    if (reply?.error && method === 'sendTransaction') throw new DepositError(409, 'Solana rejected the deposit: ' + String(reply.error.message).slice(0, 200));
     if (!response.ok || reply.id !== 1 || reply.error || !('result' in reply)) throw Error('Solana RPC unavailable');
     return reply.result;
   }
@@ -29,6 +30,8 @@ function solanaRpc(url) {
     getLatestBlockhash: async () => (await call('getLatestBlockhash', [{ commitment: 'confirmed' }])).value,
     getTokenAccounts: (owner, mint) => call('getTokenAccountsByOwner', [owner, { mint }, { commitment: 'confirmed', encoding: 'jsonParsed' }]),
     getSignaturesForAddress: (receipt, options) => call('getSignaturesForAddress', [receipt, { commitment: 'finalized', ...options }]),
+    sendTransaction: (base64, options) => call('sendTransaction', [base64, { encoding: 'base64', ...options }]),
+    getSignatureStatus: async signature => (await call('getSignatureStatuses', [[signature]])).value[0],
     getParsedTransaction: signature => call('getTransaction', [signature, { commitment: 'finalized', encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }]),
   };
 }
@@ -97,6 +100,33 @@ export async function buildVaultDeposit({ rpc, program, mint }, ready, request) 
   const unsigned = bs58.encode(Buffer.concat([Buffer.from([1]), Buffer.alloc(64), compiled]));
   return { ok: true, ...request, vault_program_id: program, receipt,
     nonce: nonce.toString('hex'), last_valid_block_height: block.lastValidBlockHeight, message_b58: unsigned };
+}
+
+// Broadcast the transaction the depositor signed in Phantom. A Solana transaction is valid for
+// 150 blocks, about half a minute, so keep re-sending until a bank reports it.
+export async function sendDeposit({ rpc, program }, { transaction_b64: encoded, nonce }, resend = { every: 2000, times: 14 }) {
+  const bytes = Buffer.from(encoded, 'base64');
+  if (bytes.length < 66 || bytes.length > 1232 || bytes[0] !== 1 || bytes.subarray(1, 65).every(b => b === 0)) {
+    throw new DepositError(400, 'Phantom did not return a signed deposit.');
+  }
+  let keys;
+  try { keys = getCompiledTransactionMessageDecoder().decode(bytes.subarray(65)).staticAccounts; }
+  catch { throw new DepositError(400, 'Phantom returned an unreadable deposit.'); }
+  // Relay only this vault's deposit for the prepared receipt.
+  const receipt = await pda(program, 'receipt', Buffer.from(nonce, 'hex'));
+  if (!keys.includes(program) || !keys.includes(receipt)) throw new DepositError(400, 'The signed transaction is not this vault deposit.');
+  const signature = bs58.encode(bytes.subarray(1, 65));
+  await rpc.sendTransaction(encoded, { preflightCommitment: 'confirmed', maxRetries: 3 });
+  (async () => {
+    for (let i = 0; i < resend.times; i++) {
+      await new Promise(resolve => setTimeout(resolve, resend.every));
+      try {
+        if (await rpc.getSignatureStatus(signature)) return;
+        await rpc.sendTransaction(encoded, { skipPreflight: true, maxRetries: 0 });
+      } catch { /* expiry ends the loop; recovery reads the vault */ }
+    }
+  })();
+  return { ok: true, signature };
 }
 
 // Phantom may have broadcast before its reply reached the tab. Only the vault can create
