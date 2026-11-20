@@ -1,23 +1,36 @@
 // Vault ABI: pfusdc-vault/src/lib.rs, deposit tag 1, classic SPL Token.
-import { createPrivateKey, createPublicKey, randomBytes, sign } from 'node:crypto';
+import { createPrivateKey, createPublicKey, randomBytes, sign, verify } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { address, getProgramDerivedAddress } from '@solana/addresses';
 import { AccountRole } from '@solana/instructions';
 import { compileTransactionMessage, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder } from '@solana/transaction-messages';
 import bs58 from 'bs58';
-import { checkDepositShape } from '../../src/features/wallet/l1/bridge/solana-shape.js';
+import { checkDepositShape, COMPUTE_BUDGET_PROGRAM, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
 
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
-const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+export const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const SYSTEM = '11111111111111111111111111111111';
 const RECENT_BLOCKHASHES = 'SysvarRecentB1ockHashes11111111111111111111';
 // A depositor may hold a nonce for this long before it is offered to someone else.
 const NONCE_LEASE_MS = 11 * 60 * 1000;
-// At most this many signed deposits are re-sent in the background at once; the rest are sent once.
-export const MAX_RESEND_LOOPS = 16;
-// Nonce account -> { value, until, holder, intent }. A holder is one signed-in account.
+// Every deposit sets its own compute budget, so a wallet has nothing to add. Without one, the deposit
+// instruction ran under the runtime's implicit 200,000-unit default; the limit keeps that ceiling and
+// adds 150 units each for AdvanceNonce and the two compute-budget instructions.
+export const DEPOSIT_COMPUTE_UNIT_LIMIT = 200_000 + 3 * 150;
+// Price in micro-lamports per unit: the median recent priority fee on the deposit's writable accounts,
+// clamped to [MIN_COMPUTE_UNIT_PRICE, MAX_COMPUTE_UNIT_PRICE]; the minimum when the read fails.
+export const MIN_COMPUTE_UNIT_PRICE = 10_000;
+// Background re-send loops, each kind with its own budget so durable loops cannot crowd out the
+// short blockhash ones. Calls over a budget are broadcast once.
+export const MAX_DURABLE_RESEND_LOOPS = 16;
+export const MAX_BLOCKHASH_RESEND_LOOPS = 8;
+// A durable loop stops after this long, and every READINESS_EVERY re-sends it stops once deposits close.
+export const DURABLE_RESEND_MS = 3 * 60 * 1000;
+export const READINESS_EVERY = 5;
+// Nonce account -> { value, until, holder, intent, sent }. A holder is one signed-in account.
 const leases = new Map();
-let leasing = Promise.resolve(), resending = 0, authorityWarned = false;
+const loops = { durable: 0, blockhash: 0 }, looping = new Set();
+let leasing = Promise.resolve(), authorityWarned = false;
 const pda = async (programAddress, ...seeds) => (await getProgramDerivedAddress({ programAddress, seeds }))[0];
 
 function solanaRpc(url) {
@@ -31,13 +44,14 @@ function solanaRpc(url) {
   }
   return {
     getAccountInfo: async (key, options) => {
-      const { value } = await call('getAccountInfo', [key, { commitment: 'finalized', encoding: 'base64', ...options }]);
+      const { context, value } = await call('getAccountInfo', [key, { commitment: 'finalized', encoding: 'base64', ...options }]);
       if (!value) return null;
       if (value.data?.[1] !== 'base64') throw Error('Invalid Solana account encoding');
-      return { owner: value.owner, data: Buffer.from(value.data[0], 'base64') };
+      return { owner: value.owner, data: Buffer.from(value.data[0], 'base64'), slot: context?.slot };
     },
     getEpochInfo: () => call('getEpochInfo', [{ commitment: 'finalized' }]),
     getLatestBlockhash: async () => (await call('getLatestBlockhash', [{ commitment: 'confirmed' }])).value,
+    getRecentPrioritizationFees: accounts => call('getRecentPrioritizationFees', [accounts]),
     getTokenAccounts: (owner, mint) => call('getTokenAccountsByOwner', [owner, { mint }, { commitment: 'confirmed', encoding: 'jsonParsed' }]),
     getSignaturesForAddress: (receipt, options) => call('getSignaturesForAddress', [receipt, { commitment: 'finalized', ...options }]),
     sendTransaction: (base64, options) => call('sendTransaction', [base64, { encoding: 'base64', ...options }]),
@@ -100,27 +114,33 @@ async function nonceSigner({ nonceFile, nonceKey }) {
 }
 
 // Nonce account data: version u32, state u32 (1 = initialized), authority, nonce value, fee.
-async function nonceValue(rpc, account, authority, options) {
+// Also returns the slot the value was read at.
+async function nonceState(rpc, account, authority, options) {
   const info = await rpc.getAccountInfo(account, options);
-  if (info?.owner !== SYSTEM || info.data.length !== 80 || info.data.readUInt32LE(4) !== 1 ||
-      (authority && bs58.encode(info.data.subarray(8, 40)) !== authority)) return null;
-  return bs58.encode(info.data.subarray(40, 72));
+  const valid = info?.owner === SYSTEM && info.data.length === 80 && info.data.readUInt32LE(4) === 1 &&
+    (!authority || bs58.encode(info.data.subarray(8, 40)) === authority);
+  return { value: valid ? bs58.encode(info.data.subarray(40, 72)) : null, slot: info?.slot };
 }
+const nonceValue = async (...args) => (await nonceState(...args)).value;
 
-const held = ({ nonce_account: account, nonce_value: value }) => {
+// Any live lease on this account and value: nobody else is offered it.
+const taken = (account, value) => {
   const lease = leases.get(account);
   return lease?.value === value && lease.until > Date.now();
 };
+// The live lease of this very deposit (intent = its 32-byte nonce).
+const held = ({ nonce_account: account, nonce_value: value }, intent) => taken(account, value) && leases.get(account).intent === intent;
 
 // A transaction on a recent blockhash is valid for 150 blocks, about half a minute, which is
 // less than a careful approval in Phantom takes. A durable nonce keeps it valid until used.
-// Returns a free nonce account, or null when all are out. A holder keeps at most one lease.
+// Returns a free nonce account, or null when all are out. A holder keeps at most one unsent lease;
+// a lease marked sent stays until its nonce moves or it ends.
 function leaseNonce({ rpc }, signer, holder, intent) {
   const turn = leasing.then(async () => {
-    if (holder) for (const [account, lease] of leases) if (lease.holder === holder) leases.delete(account);
+    if (holder) for (const [account, lease] of leases) if (lease.holder === holder && !lease.sent) leases.delete(account);
     for (const account of signer.accounts) {
       const value = await nonceValue(rpc, account, signer.authority, { commitment: 'confirmed' });
-      if (!value || held({ nonce_account: account, nonce_value: value })) continue;
+      if (!value || taken(account, value)) continue;
       leases.set(account, { value, until: Date.now() + NONCE_LEASE_MS, holder, intent });
       return { account: address(account), value };
     }
@@ -133,9 +153,27 @@ function leaseNonce({ rpc }, signer, holder, intent) {
 // The depositor declined in Phantom, or the browser refused the prepared transaction.
 export function releaseDeposit(holder, intent) {
   for (const [account, lease] of leases) {
-    if (holder && lease.holder === holder && lease.intent === intent) { leases.delete(account); return { ok: true, released: true }; }
+    if (holder && lease.holder === holder && lease.intent === intent && !lease.sent) { leases.delete(account); return { ok: true, released: true }; }
   }
   return { ok: true, released: false };
+}
+
+async function computePrice(rpc, accounts) {
+  try {
+    const fees = (await rpc.getRecentPrioritizationFees(accounts)).map(row => row.prioritizationFee);
+    if (!fees.length || !fees.every(Number.isSafeInteger)) return MIN_COMPUTE_UNIT_PRICE;
+    const median = fees.sort((a, b) => a - b)[fees.length >> 1];
+    return Math.min(MAX_COMPUTE_UNIT_PRICE, Math.max(MIN_COMPUTE_UNIT_PRICE, median));
+  } catch { return MIN_COMPUTE_UNIT_PRICE; }
+}
+
+function computeBudget(price) {
+  const limit = Buffer.alloc(5), fee = Buffer.alloc(9);
+  limit[0] = 2;
+  limit.writeUInt32LE(DEPOSIT_COMPUTE_UNIT_LIMIT, 1);
+  fee[0] = 3;
+  fee.writeBigUInt64LE(BigInt(price), 1);
+  return [limit, fee].map(data => ({ programAddress: address(COMPUTE_BUDGET_PROGRAM), data }));
 }
 
 export async function buildVaultDeposit(settings, ready, request, holder) {
@@ -164,14 +202,15 @@ export async function buildVaultDeposit(settings, ready, request, holder) {
   const signer = await nonceSigner(settings);
   const durable = signer && signer.authority !== owner && await leaseNonce(settings, signer, holder, nonce.toString('hex'));
   try {
-    const block = await rpc.getLatestBlockhash();
-    // System AdvanceNonceAccount (4) must come first, signed by the nonce authority.
+    const [block, price] = await Promise.all([rpc.getLatestBlockhash(),
+      computePrice(rpc, [owner, source.pubkey, config, custody, receipt, ...(durable ? [durable.account] : [])])]);
+    // System AdvanceNonceAccount (4) must come first, signed by the nonce authority. Then the compute budget.
     const advance = durable && { programAddress: address(SYSTEM), data: Buffer.from([4, 0, 0, 0]), accounts: [
       { address: durable.account, role: WRITABLE }, { address: address(RECENT_BLOCKHASHES), role: READONLY },
       { address: signer.authority, role: READONLY_SIGNER }] };
     const message = compileTransactionMessage({ version: 'legacy', feePayer: { address: owner },
       lifetimeConstraint: { blockhash: durable ? durable.value : block.blockhash, lastValidBlockHeight: BigInt(block.lastValidBlockHeight) },
-      instructions: durable ? [advance, deposit] : [deposit] });
+      instructions: [...(durable ? [advance] : []), ...computeBudget(price), deposit] });
     // Phantom's request API deserializes this as a whole transaction: a signature count, an
     // empty slot for the depositor's signature, then the message. A bare message is misparsed.
     const compiled = Buffer.from(getCompiledTransactionMessageEncoder().encode(message));
@@ -194,54 +233,71 @@ export async function buildVaultDeposit(settings, ready, request, holder) {
 
 // Broadcast the transaction the depositor signed in Phantom, if it is exactly this vault's deposit.
 // A blockhash transaction is valid for about half a minute: re-send until a bank reports it. A
-// durable-nonce one stays valid until its nonce moves: re-send while the lease is held and it has not.
-export async function sendDeposit(settings, { transaction_b64: encoded, nonce }, resend = { every: 2000, times: 14 }) {
+// durable-nonce one stays valid until its nonce moves: re-send while the lease is held and it has
+// not, for at most DURABLE_RESEND_MS. resend.open reports whether deposits are still open.
+export async function sendDeposit(settings, { transaction_b64: encoded, nonce }, resend = {}) {
+  const { every = 2000, times = 14, open = null, durableMs = DURABLE_RESEND_MS } = resend;
   const { rpc, program, mint } = settings;
   const bytes = Buffer.from(encoded, 'base64');
+  const refuse = message => new DepositError(400, message, 'solana_deposit_shape_mismatch');
   // One signature (the depositor) or two (the depositor, then the nonce authority).
   const signers = bytes[0], start = 1 + 64 * signers;
   if (![1, 2].includes(signers) || bytes.length <= start || bytes.length > 1232 || bytes.subarray(1, 65).every(b => b === 0)) {
-    throw new DepositError(400, 'Phantom did not return a signed deposit.');
+    throw refuse('Phantom did not return a signed deposit.');
   }
   const pool = signers === 2 && settings.nonceFile ? JSON.parse(await readFile(settings.nonceFile, 'utf8')) : null;
   let shape;
   try {
     if (signers === 2 && !pool) throw Error('no nonce file');
     shape = await checkDepositShape(bytes, { program, mint, nonce, ...(pool && { nonce_authority: pool.authority, nonceAccounts: pool.accounts }) });
-  } catch { throw new DepositError(400, 'The signed transaction is not this vault deposit.'); }
+    // The authority signs only messages this server built, so its signature proves the message is unchanged.
+    const authority = shape.durable && createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'),
+      bs58.decode(shape.durable.nonce_authority)]), format: 'der', type: 'spki' });
+    if (authority && !verify(null, shape.message, authority, bytes.subarray(65, 129))) throw Error('authority signature');
+  } catch { throw refuse('The signed transaction is not this vault deposit.'); }
   const { signature, durable } = shape;
   await rpc.sendTransaction(encoded, { preflightCommitment: 'confirmed', maxRetries: 3 });
-  if (resending >= MAX_RESEND_LOOPS) return { ok: true, signature };
-  resending++;
+  // Sent: a new intent of the same holder no longer drops this lease.
+  if (durable && held(durable, nonce)) leases.get(durable.nonce_account).sent = true;
+  const kind = durable ? 'durable' : 'blockhash';
+  if (looping.has(signature) || loops[kind] >= (durable ? MAX_DURABLE_RESEND_LOOPS : MAX_BLOCKHASH_RESEND_LOOPS)) return { ok: true, signature };
+  loops[kind]++;
+  looping.add(signature);
+  const ends = Date.now() + durableMs;
   (async () => {
-    for (let i = 0; durable || i < resend.times; i++) {
-      await new Promise(resolve => setTimeout(resolve, resend.every));
+    for (let i = 1; durable ? Date.now() < ends : i <= times; i++) {
+      await new Promise(resolve => setTimeout(resolve, every));
       try {
         if (await rpc.getSignatureStatus(signature)) return;
-        if (durable && !(held(durable) && await nonceValue(rpc, durable.nonce_account, durable.nonce_authority, { commitment: 'confirmed' }) === durable.nonce_value)) return;
+        if (open && i % READINESS_EVERY === 0 && !await open()) return;
+        if (durable && !(held(durable, nonce) && await nonceValue(rpc, durable.nonce_account, durable.nonce_authority, { commitment: 'confirmed' }) === durable.nonce_value)) return;
         await rpc.sendTransaction(encoded, { skipPreflight: true, maxRetries: 0 });
       } catch {
         // Expiry ends a blockhash loop; recovery reads the vault. A durable loop ends with its lease.
-        if (durable && !held(durable)) return;
+        if (durable && !held(durable, nonce)) return;
       }
     }
-  })().finally(() => { resending--; });
+  })().finally(() => { loops[kind]--; looping.delete(signature); });
   return { ok: true, signature };
 }
 
 // Phantom may have broadcast before its reply reached the tab. Only the vault can create
 // this permanent receipt. Read a finalized bank after expiry before releasing the form. A
 // durable-nonce deposit expires only once its nonce has moved past the signed value: read the
-// nonce first, so a deposit that lands between the two reads is seen by the receipt read.
+// nonce first and the receipt at or after that read's slot, so a deposit that lands between the
+// two reads is seen by the receipt read. While the nonce is unchanged, `resend` says the lease is
+// still held, so the browser may send its signed copy again; `lapsed` says the lease has ended.
 export async function recoverDeposit({ rpc, program }, { nonce, last_valid_block_height: lastHeight, vault_program_id: expected, before,
   nonce_account: nonceAccount, nonce_value: signedValue }) {
   if (program !== expected) throw new DepositError(409, 'This deposit belongs to a different vault configuration.');
   const receipt = await pda(program, 'receipt', Buffer.from(nonce, 'hex'));
   const epoch = await rpc.getEpochInfo();
-  const finalized = { commitment: 'finalized', minContextSlot: epoch.absoluteSlot };
-  const expired = nonceAccount ? await nonceValue(rpc, nonceAccount, null, finalized) !== signedValue : epoch.blockHeight > lastHeight;
-  const account = await rpc.getAccountInfo(receipt, finalized);
-  if (!account) return { ok: true, expired };
+  const read = nonceAccount && await nonceState(rpc, nonceAccount, null, { commitment: 'finalized', minContextSlot: epoch.absoluteSlot });
+  const expired = nonceAccount ? read.value !== signedValue : epoch.blockHeight > lastHeight;
+  const account = await rpc.getAccountInfo(receipt, { commitment: 'finalized',
+    minContextSlot: Math.max(epoch.absoluteSlot, Number.isSafeInteger(read?.slot) ? read.slot : 0) });
+  const waiting = nonceAccount && !expired && (held({ nonce_account: nonceAccount, nonce_value: signedValue }, nonce) ? { resend: true } : { lapsed: true });
+  if (!account) return { ok: true, expired, ...waiting };
   if (account.owner !== program || account.data.length !== 132 || account.data.toString('ascii', 0, 8) !== 'PFSOLRC1' ||
       account.data.toString('hex', 68, 100) !== nonce) {
     return { ok: true, expired };

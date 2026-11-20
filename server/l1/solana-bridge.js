@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import bs58 from 'bs58';
-import { buildVaultDeposit, DepositError, readVault, recoverDeposit, releaseDeposit, sendDeposit, vaultSettings } from './solana-vault.js';
+import { buildVaultDeposit, DepositError, readVault, recoverDeposit, releaseDeposit, sendDeposit, USDC, vaultSettings } from './solana-vault.js';
 
 const ROUTE = 'solana-mainnet-usdc-v1';
 const STAGES = { finality_seen: 'finality', capture_done: 'capture', witness_built: 'witness', proof_done: 'proof',
@@ -97,12 +97,22 @@ function assertOpen(config, settings, { status, payload }) {
 }
 
 // Broadcast a signed deposit only while deposits are open: a durable-nonce transaction signed
-// earlier stays valid for minutes and must not land after the relay has closed deposits.
+// earlier stays valid for minutes and must not land after the relay has closed deposits. The
+// background re-send loop asks again as it goes and stops once they close.
 async function sendWhenOpen(env, body) {
   const { config } = await relayConfig(env);
   const settings = vaultSettings(env);
-  assertOpen(config, settings, await upstream(env.L1_SOLANA_RELAY_URL || 'http://127.0.0.1:8187', '/api/bridge/readiness?route=' + ROUTE));
-  return { status: 200, payload: await sendDeposit(settings, body) };
+  const readiness = () => upstream(env.L1_SOLANA_RELAY_URL || 'http://127.0.0.1:8187', '/api/bridge/readiness?route=' + ROUTE);
+  assertOpen(config, settings, await readiness());
+  const open = async () => { try { assertOpen(config, settings, await readiness()); return true; } catch { return false; } };
+  return { status: 200, payload: await sendDeposit(settings, body, { open }) };
+}
+
+// The vault program and mint the browser checks, pinned by the Task Node server's own settings.
+// The relay host builds the transaction, so its readiness and intent must name exactly these.
+function pinned(env) {
+  if (!env.L1_SOLANA_VAULT_PROGRAM_ID) throw new DepositError(503, 'The Solana vault is awaiting configuration.');
+  return { program: env.L1_SOLANA_VAULT_PROGRAM_ID, mint: env.L1_SOLANA_USDC_MINT || USDC };
 }
 
 async function localRoute(env, suffix, body, holder) {
@@ -153,7 +163,12 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
   try {
     let result;
     if (withdrawViaRelay) {
+      const pin = ['/solana/readiness', '/solana/intent'].includes(suffix) && pinned(env);
       result = await upstream(bridgeProxyUrl, '/api/l1/bridge' + suffix, body, proxyToken, proxyOrigin, holder);
+      if (pin && result.status === 200 && (result.payload.vault_program_id !== pin.program ||
+          (suffix === '/solana/readiness' && result.payload.mint !== pin.mint))) {
+        throw new DepositError(503, 'The Solana proof relay does not match the configured vault and verifier.');
+      }
     } else if (suffix === '/solana/release') {
       result = { status: 200, payload: releaseDeposit(holder, body.nonce) };
     } else if (suffix === '/solana/send') {

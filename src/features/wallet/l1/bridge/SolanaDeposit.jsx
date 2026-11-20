@@ -35,6 +35,7 @@ function Progress({ deposit, reset, retry }) {
     {terminal === "credited" && <Notice tone="success" title="Solana deposit credited">+<Amount atoms={deposit.amount_atoms} unit="PFUSDC" /> in this wallet.</Notice>}
     {terminal === "failed" && <Notice tone="danger" title="Solana deposit failed">{job.message || job.code || "The proof relay could not credit this deposit."}</Notice>}
     {terminal === "expired" && <Notice tone="warning" title="Deposit expired">The blockhash expired without a vault receipt.</Notice>}
+    {terminal === "lapsed" && <Notice tone="warning" title="Deposit not recorded">Solana has not recorded this deposit and its nonce reservation has ended, so this card stopped waiting. Check Phantom&apos;s activity before you deposit again.</Notice>}
     {!terminal && !job && <p className="l1-status-line" role="status"><Spinner size={14} />{deposit.signature ? "Opening the proof job…" : "Waiting for the Solana transaction…"}</p>}
     <KV className="is-tight" rows={[
       ["Recipient", <Mono value={deposit.pftl_recipient} />],
