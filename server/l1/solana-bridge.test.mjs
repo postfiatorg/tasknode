@@ -245,7 +245,9 @@ test('deposits closed by the relay: no intent, no nonce lease and no broadcast o
     return Response.json({ jsonrpc: '2.0', id, result: results[method] });
   });
   open = false;
-  assert.equal((await route('intent', { env })).status, 503);
+  const closedIntent = await route('intent', { env });
+  assert.equal(closedIntent.status, 503);
+  assert.equal(closedIntent.body.code, 'solana_deposits_closed');
   assert.deepEqual(rpcCalls, [], 'a closed relay prepares nothing and leases no nonce');
   open = true;
   const intent = await route('intent', { env });
@@ -257,6 +259,7 @@ test('deposits closed by the relay: no intent, no nonce lease and no broadcast o
   open = false;
   const refused = await route('send', { env, readJson: async () => body });
   assert.equal(refused.status, 503);
+  assert.equal(refused.body.code, 'solana_deposits_closed');
   assert.match(refused.body.message, /closed.*Nothing was sent/);
   assert.deepEqual(sent, []);
   open = true;

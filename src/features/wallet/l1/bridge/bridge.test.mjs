@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BridgeController, STUCK_AFTER_MS, amountAtoms, needsRecovery } from './controller.js';
 import * as api from './bridge-relay.js';
+import { sendDeposit as sendSolanaDeposit } from './solana-session.js';
 import { handleBridgeRoutes } from '../../../../../server/l1/bridge-routes.js';
 import { address, owner, memoryStorage, routeReport, readyPayload } from './fixtures.mjs';
 function setup(overrides = {}) {
@@ -237,4 +238,33 @@ test('recovery area stays hidden while a valid hash waits, and appears once the 
   offline.model.ethereum.ensureEthereumMainnet = async () => { throw new Error('Switch MetaMask to Ethereum mainnet'); };
   await assert.rejects(() => offline.model.resume(), /mainnet/);
   assert.equal(needsRecovery(offline.model.state.pending, offline.model.state.checkFailed), false);
+});
+
+test('Solana send refused because deposits closed: the saved deposit is cleared and the closed message is kept', async t => {
+  const closed = 'Solana deposits are closed right now. Nothing was sent; please try again later.';
+  const store = new Map();
+  // The session module reads the browser's Web Locks and localStorage.
+  const navigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { value: { locks: { request: async (key, options, fn) => fn({}) } }, configurable: true });
+  Object.defineProperty(globalThis, 'localStorage', { value: { getItem: key => store.get(key) ?? null }, configurable: true });
+  t.after(() => { Object.defineProperty(globalThis, 'navigator', navigator); delete globalThis.localStorage; });
+  const request = { owner: '7'.repeat(43), amount_atoms: '1000000', pftl_recipient: address };
+  const ready = { vault_program_id: '9'.repeat(43) };
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (url.endsWith('/solana/intent')) {
+      return Response.json({ ok: true, ...request, vault_program_id: ready.vault_program_id, nonce: 'ab'.repeat(32),
+        last_valid_block_height: 1234, message_b58: '3'.repeat(80) });
+    }
+    if (url.endsWith('/solana/send')) {
+      return Response.json({ ok: false, code: 'solana_deposits_closed', message: closed }, { status: 503 });
+    }
+    throw Error('unexpected ' + url);
+  });
+  const saved = [];
+  const save = record => { saved.push(record); if (record) store.set('k', JSON.stringify(record)); else store.delete('k'); };
+  const provider = { publicKey: { toString: () => request.owner },
+    request: async () => ({ serialize: () => Uint8Array.from([1, 2, 3]) }) };
+  await assert.rejects(sendSolanaDeposit({ key: 'k', provider, request, ready, save, active: () => true }), { message: closed });
+  assert.equal(saved.at(-1), null, 'nothing was sent, so no pending deposit is kept');
+  assert.equal(store.has('k'), false);
 });
