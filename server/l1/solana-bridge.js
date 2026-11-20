@@ -77,7 +77,8 @@ async function relayConfig(env) {
 // into a window where it would not be credited.
 function assertOpen(config, settings, { status, payload }) {
   if (status !== 200 || payload.ok !== true || payload.ready !== true) {
-    throw new DepositError(503, 'Solana deposits are closed right now. Nothing was sent; please try again later.');
+    // Its own code: the wallet drops its pending deposit, since nothing reached Solana.
+    throw new DepositError(503, 'Solana deposits are closed right now. Nothing was sent; please try again later.', 'solana_deposits_closed');
   }
   // The vault stores the binding written at initialization; the governed route pins the same value.
   if (config.route_binding !== settings.binding || payload.route_id !== ROUTE ||
@@ -153,7 +154,7 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     json(res, result.status, result.payload);
     return true;
   } catch (error) {
-    return fail(error instanceof DepositError ? error.status : 502, 'solana_bridge_unavailable',
+    return fail(error instanceof DepositError ? error.status : 502, error instanceof DepositError ? error.code : 'solana_bridge_unavailable',
       error instanceof DepositError ? error.message : 'The Solana vault or proof relay is unreachable.');
   }
 }

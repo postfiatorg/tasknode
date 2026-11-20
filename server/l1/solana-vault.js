@@ -43,7 +43,7 @@ function solanaRpc(url) {
 }
 
 export class DepositError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  constructor(status, message, code = 'solana_bridge_unavailable') { super(message); this.status = status; this.code = code; }
 }
 
 export function vaultSettings(env) {

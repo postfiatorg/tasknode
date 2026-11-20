@@ -7,7 +7,7 @@ export async function bridgeJson(path, options = {}) {
   });
   const payload = await response.json();
   if (!response.ok || payload.ok !== true) {
-    throw new Error(payload.message || payload.code || `Bridge HTTP ${response.status}`);
+    throw Object.assign(new Error(payload.message || payload.code || `Bridge HTTP ${response.status}`), { code: payload.code });
   }
   return payload;
 }
