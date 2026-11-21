@@ -1,56 +1,66 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Check, CircleAlert, Clock } from "lucide-react";
+import { ArrowUpRight, FileCheck, Landmark, Wallet } from "lucide-react";
 import { amountAtoms } from "./controller.js";
 import { bridgeJson } from "./bridge-relay.js";
 import { advanceDeposit, checkEarlier, pollDelay, readSaved, RECOVERY_POLL_MS, sendDeposit, setAside } from "./solana-session.js";
-import { Amount, Badge, Card, CardHead, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
+import { Amount, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
+import { ACTIVE, AmountField, Credited, DepositForm, DepositProgress, elapsedText, holdsForm, NotSent, phaseState } from "./DepositView.jsx";
 
 const stages = [["finality", "Solana finality"], ["capture", "Capture deposit"], ["witness", "Build witness"], ["proof", "Generate proof"],
   ["sign", "Sign Post Fiat transaction"], ["submit", "Submit proof"], ["credit", "Credit on Post Fiat"]];
 // Deposits set aside while they can still land; the card keeps checking them.
 const readList = key => { try { const list = readSaved(key); return Array.isArray(list) ? list : []; } catch { return []; } };
-const elapsed = ms => (Math.max(0, ms) / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }) + " s";
+const PHASES = [
+  { title: "Solana deposit", hint: "Confirmed and final", stages: [0], icon: Wallet },
+  { title: "Proof", hint: "Proven and verified", stages: [1, 2, 3], icon: FileCheck },
+  { title: "Credited on Post Fiat", hint: "PFUSDC in this wallet", stages: [4, 5, 6], icon: Landmark },
+];
+// What this saved deposit is to the form (see holdsForm).
+const outcome = deposit => !deposit ? null : deposit.terminal === "credited" ? "credited" : deposit.terminal === "expired" ? "not-sent"
+  : deposit.terminal ? "failed" : "in-flight";
 
-function Progress({ deposit, reset, retry, earlier = false }) {
+function Progress({ deposit, owner, recipient, reset, retry, earlier = false }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    if (deposit.terminal) return undefined;
+    if (!deposit || deposit.terminal) return undefined;
     const clock = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(clock);
-  }, [deposit.terminal]);
-  const { job, terminal } = deposit;
-  const open = deposit.lapsed && !deposit.signature;
-  return <Card className="l1-track-card" aria-label="Solana bridge progress">
-    <CardHead eyebrow="Solana → Post Fiat" title={earlier ? "Earlier deposit" : "Deposit progress"}>
-      <span className="l1-clock"><Clock size={14} aria-hidden /> <span data-testid="solana-clock">{elapsed((deposit.finished ?? now) - deposit.started)}</span></span>
-    </CardHead>
-    <ol className="l1-stages" aria-label="Solana deposit stages">{stages.map(([stage, label]) => {
-      const row = job?.stage_history?.findLast(item => item.stage === stage);
-      const status = row?.status || "pending";
-      const start = row?.started_at_unix, end = row?.completed_at_unix;
-      const time = Number.isFinite(start) && Number.isFinite(end) ? elapsed((end - start) * 1000)
-        : Number.isFinite(start) && status === "running" && !terminal ? elapsed(now - start * 1000) : "";
-      return <li key={stage} className={`l1-stage is-${status}`}>
-        <span className="l1-stage-dot">{status === "complete" ? <Check size={12} /> : status === "running" ? <Spinner size={12} /> : status === "failed" ? <CircleAlert size={12} /> : null}</span>
-        <span><b>{label}</b><small className="l1-muted"> · {status}</small></span><span className="l1-stage-time">{time}</span>
-      </li>;
-    })}</ol>
-    {terminal === "credited" && <Notice tone="success" title="Solana deposit credited">+<Amount atoms={deposit.amount_atoms} unit="PFUSDC" /> in this wallet.</Notice>}
-    {terminal === "failed" && <Notice tone="danger" title="Solana deposit failed">{job.message || job.code || "The proof relay could not credit this deposit."}</Notice>}
-    {terminal === "expired" && <Notice tone="warning" title="Deposit expired">{deposit.nonce_account
-      ? "Solana did not record this deposit, and it can no longer go through. No USDC left your wallet for this deposit."
-      : "The blockhash expired without a vault receipt."}</Notice>}
-    {!terminal && open && <Notice tone="warning" title="Deposit not recorded yet">Solana has not recorded this deposit yet, but it can still go through. While this page is open, it checks again every 30 seconds for 24 hours and shows the credit if it arrives. If you start another deposit, this one may still go through, or the new one may replace it. Each card shows what happened.</Notice>}
-    {terminal === "lapsed" && <Notice tone="warning" title="Deposit not recorded">Solana had not recorded this deposit after 24 hours, so this page stopped checking. Check Phantom&apos;s activity before you deposit again.</Notice>}
-    {!terminal && !job && <p className="l1-status-line" role="status"><Spinner size={14} />{deposit.signature ? "Opening the proof job…" : "Waiting for the Solana transaction…"}</p>}
-    <KV className="is-tight" rows={[
-      ["Recipient", <Mono value={deposit.pftl_recipient} />],
-      deposit.signature && ["Solana transaction", <IdChip value={deposit.signature} label="transaction signature" />],
+  }, [deposit, deposit?.terminal]);
+  const job = deposit?.job, terminal = deposit?.terminal, credited = terminal === "credited";
+  const open = Boolean(deposit?.lapsed && !deposit.signature);
+  const rows = stages.map(([stage, label]) => {
+    const row = job?.stage_history?.findLast(item => item.stage === stage);
+    const status = row?.status || "pending", start = row?.started_at_unix, end = row?.completed_at_unix;
+    return { key: stage, label, status, time: Number.isFinite(start) && Number.isFinite(end) ? elapsedText(end - start)
+      : Number.isFinite(start) && status === "running" && !terminal ? `${elapsedText(now / 1000 - start)}…` : "" };
+  });
+  const phases = PHASES.map(phase => ({ ...phase, state: phaseState(rows, phase, credited) }));
+  if (deposit && !terminal && !job) phases[0].state = "active";
+  const current = rows.findIndex(row => ACTIVE.has(row.status));
+  let headline, detail;
+  if (!deposit) { headline = "No deposit in progress"; detail = "Once you deposit, each stage appears here as it completes."; }
+  else if (credited) { headline = "Deposit credited"; detail = "The deposit is proven on Post Fiat and the PFUSDC is in this wallet."; }
+  else if (terminal === "failed") { headline = "The bridge could not finish this deposit"; detail = job?.message || job?.code || "The proof relay could not credit this deposit."; }
+  else if (terminal === "lapsed") { headline = "Deposit not recorded"; detail = "Solana had not recorded this deposit after 24 hours, so this page stopped checking. Check Phantom's activity before you deposit again."; }
+  else if (open) { headline = "Deposit not recorded yet"; detail = "Solana has not recorded this deposit yet, but it can still go through. This page checks again every 30 seconds for 24 hours and shows the credit if it arrives."; }
+  else if (!job) { headline = deposit.signature ? "Deposit received by the bridge" : "Waiting for Solana to confirm your deposit"; detail = deposit.signature ? "Queued for proving." : "This page keeps checking; you can leave and come back."; }
+  else if (current >= 0) { headline = rows[current].label; detail = `Stage ${current + 1} of ${rows.length}. ${rows[current].key === "proof" ? "Proof generation is the longest step, usually about a minute." : "Progress updates every few seconds."}`; }
+  else { headline = "Deposit received by the bridge"; detail = "Queued for proving."; }
+  return <DepositProgress label={earlier ? "Earlier Solana deposit" : "Solana deposit progress"} source="Solana" glyph="◎" title={earlier ? "Earlier deposit" : "Deposit progress"}
+    owner={deposit?.owner || owner} amountAtoms={deposit?.amount_atoms} recipient={deposit?.pftl_recipient || recipient} phases={phases} rows={rows} stagesLabel="Solana deposit stages"
+    headline={headline} detail={detail} running={Boolean(deposit) && !terminal} credited={credited} clockTestId="solana-clock"
+    seconds={deposit ? ((deposit.finished ?? now) - deposit.started) / 1000 : null}
+    action={<>
+      {terminal === "failed" && job?.retryable && <button type="button" className="l1-btn is-sm" onClick={retry}>Retry proof job</button>}
+      {deposit && (earlier ? terminal : open || (terminal && !credited)) && <button type="button" className="l1-btn is-sm" onClick={reset}>{earlier ? "Dismiss" : "Set this deposit aside"}</button>}
+    </>}
+    details={deposit && <Details summary="Deposit details"><KV className="is-tight" rows={[
+      deposit.signature && ["Solana deposit", <IdChip value={deposit.signature} label="transaction signature" />],
       job?.receipt_id && ["Post Fiat receipt", <IdChip value={job.receipt_id} label="credit receipt" />],
-    ]} />
-    {terminal === "failed" && job.retryable && <button type="button" className="l1-btn" onClick={retry}>Retry proof job</button>}
-    {(terminal || (open && !earlier)) && <button type="button" className="l1-btn is-sm" onClick={reset}>{earlier ? "Dismiss" : "Start another Solana deposit"}</button>}
-  </Card>;
+      ["Recipient", <Mono value={deposit.pftl_recipient} />],
+    ]} /></Details>}>
+    {credited && <Credited amountAtoms={deposit.amount_atoms} />}
+  </DepositProgress>;
 }
 
 export default function SolanaDeposit({ client, onBusy }) {
@@ -147,7 +157,7 @@ export default function SolanaDeposit({ client, onBusy }) {
     return () => { stopped = true; clearTimeout(timer); };
   }, [earlier, client, updateEarlier]);
 
-  const unfinished = Boolean(deposit && !deposit.terminal);
+  const unfinished = outcome(deposit) === "in-flight";
   useEffect(() => { onBusy?.(unfinished); }, [unfinished, onBusy]);
 
   const atoms = amountAtoms(amount);
@@ -157,42 +167,50 @@ export default function SolanaDeposit({ client, onBusy }) {
     try { await action(); } catch (failure) { if (active.current) setError(failure.message); }
     finally { if (active.current) setBusy(false); }
   }
-  // A credited deposit, or one that expired with nothing sent, does not hold the form: the next
-  // send replaces its record. A failed proof keeps the form closed, because its USDC is in the vault.
-  const over = deposit?.terminal === "credited" || deposit?.terminal === "expired";
+  // The next send replaces a saved deposit that does not hold the form.
+  const state = outcome(deposit), locked = holdsForm(state);
   const send = () => run(async () => {
-    await navigator.locks.request(key, () => { const current = readSaved(key); if (current?.terminal === "credited" || current?.terminal === "expired") save(null); });
+    await navigator.locks.request(key, () => { const current = readSaved(key); if (current && !holdsForm(outcome(current))) save(null); });
     await sendDeposit({ key, provider, request: { owner, amount_atoms: String(atoms), pftl_recipient: client.address },
       ready, save, active: () => active.current && client.unlocked });
   });
+  const steps = [
+    { title: "Connect Phantom", done: Boolean(owner), body: <>
+      {owner ? <div className="l1-row"><IdChip value={owner} label="Solana address" testId="solana-owner" /></div>
+        : provider ? <p className="l1-small l1-muted">Use the Solana account that holds your USDC. Nothing is sent until you confirm in Phantom.</p>
+        : <p className="l1-small l1-muted">Phantom was not detected in this browser. <a href="https://phantom.com/download" target="_blank" rel="noreferrer">Install Phantom</a>, then reload.</p>}
+      {provider && <div><button type="button" className={`l1-btn ${owner ? "is-sm" : "is-primary"}`} disabled={busy} onClick={() => run(async () => setOwner((await provider.connect()).publicKey.toString()))}>{owner ? "Reconnect" : "Connect Phantom"}</button></div>}
+    </> },
+    { title: "Choose an amount", done: Boolean(atoms), body: <AmountField label="Solana USDC amount" value={amount} onChange={setAmount} disabled={busy || locked}
+      hint={atoms ? <>You receive <Amount atoms={atoms} unit="PFUSDC" /> on Post Fiat</> : "1 USDC becomes 1 PFUSDC."}
+      note={atoms && atoms > available ? "Over the deposit limit" : ready?.ready ? <>Limit <Amount atoms={available} unit="USDC" /></> : ""} /> },
+    { title: "Send with Phantom", done: Boolean(deposit?.signature) && locked, body: <>
+      <p className="l1-small l1-muted">Press Send and confirm once in Phantom. Allow about two minutes for PFUSDC to arrive; timing can vary. Phantom also needs about 0.003 SOL for the Solana fee and storage.</p>
+      <div><button type="button" className="l1-btn is-primary" data-testid="solana-send" onClick={send}
+        disabled={!provider || busy || locked || !owner || !ready?.ready || !atoms || atoms > available}><ArrowUpRight size={16} aria-hidden />Send with Phantom</button></div>
+      {busy && <p className="l1-status-line" role="status"><Spinner size={14} />Working… confirm in Phantom if it asks.</p>}
+    </> },
+  ];
   return <section aria-label="Solana USDC deposit" className="l1-view l1-split is-ticket">
-    <Card className="l1-ticket">
-      <CardHead eyebrow="Deposit from Solana" title="USDC to PFUSDC">
-        <Badge tone={ready?.ready ? "success" : "neutral"}>{ready === null ? "Checking vault…" : ready.ready ? "Vault ready" : "Vault unavailable"}</Badge>
-      </CardHead>
-      <p className="l1-small">Confirm one vault deposit in Phantom. Post Fiat verifies the proof and credits PFUSDC to this wallet, usually in about two minutes. Phantom also needs about 0.003 SOL for the Solana fee and storage.</p>
-      {ready && !ready.ready && <Notice tone="warning">{ready.message}</Notice>}
-      {deposit?.terminal === "expired" && <Notice tone="warning" title="Your last deposit was not sent">Solana never recorded it, and it can no longer go through. No USDC left your wallet. You can send again below.</Notice>}
-      {(!deposit || over) && <>
-        {provider ? <div className="l1-row">
-          {owner && <IdChip value={owner} label="Solana address" testId="solana-owner" />}
-          <button type="button" className="l1-btn" disabled={busy} onClick={() => run(async () => setOwner((await provider.connect()).publicKey.toString()))}>{owner ? "Reconnect Phantom" : "Connect Phantom"}</button>
-        </div> : <a href="https://phantom.com/download" target="_blank" rel="noreferrer">Install Phantom to deposit USDC</a>}
-        <label className="l1-field"><span>Solana USDC amount</span><span className="l1-input-wrap"><input aria-label="Solana USDC amount" inputMode="decimal" value={amount} disabled={busy}
-          onChange={e => setAmount(e.target.value)} placeholder="0.00" /><span className="l1-input-suffix">USDC</span></span>
-          {ready?.ready && <span className="l1-field-hint">Available to deposit · <Amount atoms={available} unit="USDC" /></span>}</label>
-        <KV rows={[["Recipient", <Mono value={client.address} />]]} />
-        <button type="button" className="l1-btn is-primary" data-testid="solana-send" onClick={send}
-          disabled={!provider || busy || !owner || !ready?.ready || !atoms || atoms > available}><ArrowUpRight size={16} aria-hidden />Send with Phantom</button>
-      </>}
-      {ready?.ready && <Details summary="Vault details"><KV rows={[
-        ["Vault program", <Mono value={ready.vault_program_id} />], ["Light-client epoch", ready.light_client_epoch],
-        ["Per-deposit cap", <Amount atoms={ready.per_deposit_cap_atoms} unit="USDC" />],
-        ["Total vault cap", <Amount atoms={ready.total_cap_atoms} unit="USDC" />],
-      ]} /></Details>}
+    <div className="l1-stack">
+      <DepositForm source="Solana" ready={Boolean(ready?.ready)} checking={ready === null} readyText={ready?.ready ? "Bridge ready" : "Bridge unavailable"} steps={steps}
+        notices={<>
+          {ready && !ready.ready && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="Deposits are paused">{ready.message} Sending stays off until the bridge reports ready.</Notice></div>}
+          {state === "not-sent" && <div style={{ marginBottom: 16 }}><NotSent source="Solana" /></div>}
+          {state === "in-flight" && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="A deposit is still in progress">Your deposit of <Amount atoms={deposit.amount_atoms} unit="USDC" /> has not finished. The amount box unlocks when it is credited. Follow it under Deposit progress.</Notice></div>}
+          {state === "failed" && <div style={{ marginBottom: 16 }}><Notice tone="danger" title="Your last deposit needs attention">See Deposit progress. Retry it there, or set it aside to send another.</Notice></div>}
+          {state === "credited" && <div style={{ marginBottom: 16 }}><Notice tone="success" title="Your last deposit is complete">Enter an amount to start another.</Notice></div>}
+        </>}>
+        {ready?.ready && <Details summary="Vault details"><KV rows={[
+          ["Vault program", <Mono value={ready.vault_program_id} />], ["Light-client epoch", ready.light_client_epoch],
+          ["Per-deposit cap", <Amount atoms={ready.per_deposit_cap_atoms} unit="USDC" />],
+          ["Total vault cap", <Amount atoms={ready.total_cap_atoms} unit="USDC" />],
+        ]} /></Details>}
+      </DepositForm>
       {error && <Notice tone="danger" role="alert">{error}</Notice>}
-    </Card>
-    {deposit && deposit.terminal !== "expired" && <Progress deposit={deposit}
+    </div>
+    <div className="l1-stack">
+    <Progress deposit={state === "not-sent" ? null : deposit} owner={owner} recipient={client.address}
       retry={() => run(() => navigator.locks.request(key, () => {
         const current = readSaved(key);
         if (current?.nonce === deposit.nonce && current.terminal === "failed") {
@@ -212,10 +230,11 @@ export default function SolanaDeposit({ client, onBusy }) {
         }
         if (current?.nonce === deposit.nonce && current.terminal) save(null);
         setAmount("");
-      }))} />}
-    {earlier.map(row => <Progress key={row.nonce} deposit={row} earlier
+      }))} />
+      {earlier.map(row => <Progress key={row.nonce} deposit={row} earlier
       retry={() => run(() => updateEarlier(row.nonce, current => current.terminal === "failed"
         ? { ...current, terminal: undefined, finished: undefined, jobId: undefined, job: undefined } : current))}
       reset={() => run(() => updateEarlier(row.nonce, current => current.terminal ? null : current))} />)}
+    </div>
   </section>;
 }
