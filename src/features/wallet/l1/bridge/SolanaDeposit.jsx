@@ -157,8 +157,14 @@ export default function SolanaDeposit({ client, onBusy }) {
     try { await action(); } catch (failure) { if (active.current) setError(failure.message); }
     finally { if (active.current) setBusy(false); }
   }
-  const send = () => run(() => sendDeposit({ key, provider, request: { owner, amount_atoms: String(atoms), pftl_recipient: client.address },
-    ready, save, active: () => active.current && client.unlocked }));
+  // A credited deposit, or one that expired with nothing sent, does not hold the form: the next
+  // send replaces its record. A failed proof keeps the form closed, because its USDC is in the vault.
+  const over = deposit?.terminal === "credited" || deposit?.terminal === "expired";
+  const send = () => run(async () => {
+    await navigator.locks.request(key, () => { const current = readSaved(key); if (current?.terminal === "credited" || current?.terminal === "expired") save(null); });
+    await sendDeposit({ key, provider, request: { owner, amount_atoms: String(atoms), pftl_recipient: client.address },
+      ready, save, active: () => active.current && client.unlocked });
+  });
   return <section aria-label="Solana USDC deposit" className="l1-view l1-split is-ticket">
     <Card className="l1-ticket">
       <CardHead eyebrow="Deposit from Solana" title="USDC to PFUSDC">
@@ -166,7 +172,8 @@ export default function SolanaDeposit({ client, onBusy }) {
       </CardHead>
       <p className="l1-small">Confirm one vault deposit in Phantom. Post Fiat verifies the proof and credits PFUSDC to this wallet, usually in about two minutes. Phantom also needs about 0.003 SOL for the Solana fee and storage.</p>
       {ready && !ready.ready && <Notice tone="warning">{ready.message}</Notice>}
-      {!deposit && <>
+      {deposit?.terminal === "expired" && <Notice tone="warning" title="Your last deposit was not sent">Solana never recorded it, and it can no longer go through. No USDC left your wallet. You can send again below.</Notice>}
+      {(!deposit || over) && <>
         {provider ? <div className="l1-row">
           {owner && <IdChip value={owner} label="Solana address" testId="solana-owner" />}
           <button type="button" className="l1-btn" disabled={busy} onClick={() => run(async () => setOwner((await provider.connect()).publicKey.toString()))}>{owner ? "Reconnect Phantom" : "Connect Phantom"}</button>
@@ -185,7 +192,7 @@ export default function SolanaDeposit({ client, onBusy }) {
       ]} /></Details>}
       {error && <Notice tone="danger" role="alert">{error}</Notice>}
     </Card>
-    {deposit && <Progress deposit={deposit}
+    {deposit && deposit.terminal !== "expired" && <Progress deposit={deposit}
       retry={() => run(() => navigator.locks.request(key, () => {
         const current = readSaved(key);
         if (current?.nonce === deposit.nonce && current.terminal === "failed") {

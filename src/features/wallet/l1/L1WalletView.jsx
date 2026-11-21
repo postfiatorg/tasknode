@@ -18,7 +18,7 @@ import { Badge, Card, IdChip, Notice, Spinner, ViewHeader } from "./ui.jsx";
 const tabs = { Home: WalletHome, Send, Activity, Bridge, Gallery, Market, Redeem };
 const VIEWS = [
   { id: "Home", label: "Home", icon: House },
-  { id: "Bridge", label: "Add funds", icon: ArrowDownToLine, title: "Add funds", subtitle: "Bring USDC over from Ethereum. It arrives in this wallet as PFUSDC, one for one." },
+  { id: "Bridge", label: "Add funds", icon: ArrowDownToLine, title: "Add funds", subtitle: "Bring USDC over from Ethereum or Solana. It arrives in this wallet as PFUSDC, one for one." },
   { id: "Gallery", label: "NAVCoins", icon: LayoutGrid },
   { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: "Choose a NAVCoin to see its market and available actions." },
   { id: "Redeem", label: "Cash in", icon: HandCoins, title: "Cash in at NAV", subtitle: symbol => `Review ${symbol} cash-in availability and NAV terms.` },
