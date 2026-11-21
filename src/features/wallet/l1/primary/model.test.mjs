@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { config, address, fixture } from './fixtures.js';
-import { creationQuote, defaultBuyMode, createPlan, primaryPreflight, subscriberQuote, subscriberRedeem, verifyPrimary } from './model.js';
+import { CREATE_STUCK_AFTER_MS, canDiscardAttempt, creationQuote, defaultBuyMode, createPlan, discardAttempt, primaryPreflight, subscriberQuote, subscriberRedeem, verifyPrimary } from './model.js';
 import { snapshot } from '../market/model.js';
 
 test('creation rounds NAV principal and fee upward, respects exact bounds and source', () => {
@@ -43,4 +43,35 @@ test('insufficient receiving limit offers only setup; funded creation cannot run
   const { client, state } = fixture(); state.balances.assets.lines[1].balance = 999999; state.balances.assets.lines[1].limit = 1000000;
   const setup = await createPlan(client, config, '1'); assert.equal(setup.fundingOnly, true); assert.equal(setup.steps.length, 1); assert.equal(setup.steps[0].intent.operation.limit, 1005000);
   await client.submit(setup.steps[0].intent); await assert.rejects(createPlan(client, config, '1'), /Not enough market PFUSDC/);
+});
+test('an unfinished creation attempt can be discarded only when stuck', async () => {
+  const { client } = fixture(), plan = await createPlan(client, config, '1'), at = Date.now();
+  const attempt = { plan, index: 0, receipts: [], pending: true, attemptAt: at };
+  // Normal signing in this page: no discard until the limit; a reload with no transaction id is stuck at once.
+  assert.equal(canDiscardAttempt(attempt, false, null, at), false);
+  assert.equal(canDiscardAttempt(attempt, false, null, at + CREATE_STUCK_AFTER_MS - 1), false);
+  assert.equal(canDiscardAttempt(attempt, false, null, at + CREATE_STUCK_AFTER_MS), true);
+  assert.equal(canDiscardAttempt(attempt, true, null, at), true);
+  assert.equal(canDiscardAttempt({ ...attempt, attemptAt: undefined }, false, null, at), true);
+  assert.equal(canDiscardAttempt({ ...attempt, pending: false }, true, null, at + CREATE_STUCK_AFTER_MS), false);
+  assert.equal(canDiscardAttempt(null, true, null), false);
+  const late = at + CREATE_STUCK_AFTER_MS;
+  for (const [status, allowed] of [['missing', true], ['rejected', true], ['accepted', false], ['unconfirmed', false], [null, false]]) {
+    assert.equal(canDiscardAttempt({ ...attempt, uncertainTxId: '9'.repeat(96) }, true, status, late), allowed, String(status));
+    assert.equal(canDiscardAttempt({ ...attempt, uncertainTxId: '9'.repeat(96) }, true, status, late - 1), false, String(status));
+  }
+  const kept = await discardAttempt(client, { ...attempt, receipts: [{ kind: 'setup', txId: '1'.repeat(96) }] }, true);
+  assert.deepEqual(kept, { plan, index: 0, receipts: [{ kind: 'setup', txId: '1'.repeat(96) }], pending: false });
+  await assert.rejects(discardAttempt(client, attempt, false, at), /not stuck/);
+});
+test('an attempt whose transaction is accepted on the chain is never discarded', async () => {
+  const { client } = fixture(), plan = await createPlan(client, config, '1');
+  const accepted = (await client.submit(plan.steps[0].intent)).txId, missing = '9'.repeat(96);
+  const call = client.call;
+  client.call = async (method, params) => method === 'tx' && params.tx_id === missing ? { ok: false, error: { code: 'rpc_tx_not_found', message: 'no receipt' } } : call(method, params);
+  const old = { plan, index: 0, receipts: [], pending: true, attemptAt: Date.now() - CREATE_STUCK_AFTER_MS };
+  await assert.rejects(discardAttempt(client, { ...old, uncertainTxId: accepted }, true), /accepted on the chain/);
+  assert.equal((await discardAttempt(client, { ...old, uncertainTxId: missing }, true)).pending, false);
+  client.call = async () => { throw new Error('L1 RPC timed out'); };
+  await assert.rejects(discardAttempt(client, { ...old, uncertainTxId: missing }, true), /timed out/);
 });
