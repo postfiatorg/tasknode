@@ -50,15 +50,14 @@ async function checkIntent(intent, request, ready) {
   const named = nonceFields(intent);
   const bytes = bs58.decode(intent.message_b58);
   const shape = await checkDepositShape(bytes, { ...request, program: ready.vault_program_id, mint: ready.mint, nonce: intent.nonce, ...named });
-  // The depositor's slot is empty. With a nonce the authority's slot is filled and named by the intent.
-  if (!bytes.subarray(1, 65).every(byte => byte === 0) || !shape.durable !== !named ||
-    (shape.durable && bytes.subarray(65, 129).every(byte => byte === 0))) throw Error("signature slots");
+  // Nothing is signed yet: Phantom signs first, and with a nonce the authority named by the intent signs on send.
+  if (!bytes.subarray(1, 1 + 64 * bytes[0]).every(byte => byte === 0) || !shape.durable !== !named) throw Error("signature slots");
   return shape;
 }
 
 // The same check on what Phantom signed. A wallet may replace or add the compute budget of a
-// one-signer deposit within the caps and append Lighthouse assertions; a durable deposit, already
-// co-signed, must come back unchanged.
+// one-signer deposit within the caps and append Lighthouse assertions; a durable deposit's message
+// must come back unchanged, with the authority's slot still empty.
 async function checkSigned(signed, intent, request, ready) {
   const named = nonceFields(intent), prepared = bs58.decode(intent.message_b58);
   const shape = await checkDepositShape(signed, { ...request, program: ready.vault_program_id, mint: ready.mint, nonce: intent.nonce, ...named }, { signed: true });

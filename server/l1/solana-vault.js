@@ -1,5 +1,5 @@
 // Vault ABI: pfusdc-vault/src/lib.rs, deposit tag 1, classic SPL Token.
-import { createPrivateKey, createPublicKey, randomBytes, sign, verify } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, randomBytes, sign } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { address, getProgramDerivedAddress } from '@solana/addresses';
 import { AccountRole } from '@solana/instructions';
@@ -36,6 +36,7 @@ export const READINESS_EVERY = 5;
 const leases = new Map();
 const loops = { durable: 0, blockhash: 0 }, looping = new Set();
 let leasing = Promise.resolve(), authorityWarned = false;
+const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const pda = async (programAddress, ...seeds) => (await getProgramDerivedAddress({ programAddress, seeds }))[0];
 
 function solanaRpc(url) {
@@ -227,10 +228,14 @@ export async function buildVaultDeposit(settings, ready, request, holder) {
     // Phantom's request API deserializes this as a whole transaction: a signature count, an
     // empty slot for the depositor's signature, then the message. A bare message is misparsed.
     const compiled = Buffer.from(getCompiledTransactionMessageEncoder().encode(message));
+    // Phantom signs first. A transaction another party has already signed is one Phantom cannot
+    // vouch for, and it warns the user; the nonce authority signs in sendDeposit, after Phantom.
     const slots = [Buffer.alloc(64)];
     if (durable) {
       if (getCompiledTransactionMessageDecoder().decode(compiled).staticAccounts[1] !== signer.authority) throw Error('unexpected signer order');
-      slots.push(sign(null, compiled, signer.key));
+      slots.push(Buffer.alloc(64));
+      // The authority will sign this message and no other.
+      leases.get(durable.account).message = digest(compiled);
     }
     const unsigned = bs58.encode(Buffer.concat([Buffer.from([slots.length]), ...slots, compiled]));
     // Without a nonce the card stops waiting at this height. With one, recovery reads the nonce instead.
@@ -248,7 +253,8 @@ export async function buildVaultDeposit(settings, ready, request, holder) {
 // A blockhash transaction is valid for about half a minute: re-send until a bank reports it. A
 // durable-nonce one stays valid until its nonce moves: re-send while the lease is held and it has
 // not, for at most DURABLE_RESEND_MS. resend.open reports whether deposits are still open.
-export async function sendDeposit(settings, { transaction_b64: encoded, nonce }, resend = {}) {
+export async function sendDeposit(settings, { transaction_b64, nonce }, resend = {}) {
+  let encoded = transaction_b64;
   const { every = 2000, times = 14, open = null, durableMs = DURABLE_RESEND_MS } = resend;
   const { rpc, program, mint } = settings;
   const bytes = Buffer.from(encoded, 'base64');
@@ -263,12 +269,17 @@ export async function sendDeposit(settings, { transaction_b64: encoded, nonce },
   try {
     if (signers === 2 && !pool) throw Error('no nonce file');
     shape = await checkDepositShape(bytes, { program, mint, nonce, ...(pool && { nonce_authority: pool.authority, nonceAccounts: pool.accounts }) }, { signed: true });
-    // The authority signs only messages this server built, so its signature proves the message is unchanged.
-    const authority = shape.durable && createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'),
-      bs58.decode(shape.durable.nonce_authority)]), format: 'der', type: 'spki' });
-    if (authority && !verify(null, shape.message, authority, bytes.subarray(65, 129))) throw Error('authority signature');
   } catch { throw refuse('The signed transaction is not this vault deposit.'); }
   const { signature, durable } = shape;
+  if (durable) {
+    // The authority signs after Phantom, and only the message this server built for the lease this
+    // deposit still holds. The browser keeps Phantom's copy and sends it again while the lease lasts.
+    const signer = await nonceSigner(settings);
+    if (!signer || signer.authority !== durable.nonce_authority || !held(durable, nonce) ||
+      leases.get(durable.nonce_account).message !== digest(shape.message)) throw refuse('The signed transaction is not this vault deposit.');
+    sign(null, shape.message, signer.key).copy(bytes, 65);
+    encoded = bytes.toString('base64');
+  }
   await rpc.sendTransaction(encoded, { preflightCommitment: 'confirmed', maxRetries: 3 });
   // Sent: a new intent of the same holder no longer drops this lease.
   if (durable && held(durable, nonce)) leases.get(durable.nonce_account).sent = true;

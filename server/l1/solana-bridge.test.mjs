@@ -320,7 +320,7 @@ async function durableFixture(t, base, { keySeed = Buffer.alloc(32, base) } = {}
 const signed = intent => { const bytes = Buffer.from(bs58.decode(intent.message_b58)); bytes.fill(9, 1, 65); return bytes; };
 const sendBody = (bytes, nonce) => ({ nonce, transaction_b64: Buffer.from(bytes).toString('base64') });
 
-test('durable nonce: [AdvanceNonce, limit, price, deposit], owner then authority as the only signers, a valid co-signature, and the intent names the nonce', async t => {
+test('durable nonce: [AdvanceNonce, limit, price, deposit], owner then authority as the only signers; the authority signs on send, after Phantom; the intent names the nonce', async t => {
   const f = await durableFixture(t, 40);
   const intent = await buildVaultDeposit(f.settings, f.ready, request, 'holder-a');
   const bytes = Buffer.from(bs58.decode(intent.message_b58));
@@ -338,7 +338,15 @@ test('durable nonce: [AdvanceNonce, limit, price, deposit], owner then authority
   assert.deepEqual([advance.programAddressIndex, ...advance.accountIndices].map(i => keys[i]), [SYSTEM, f.nonceAccounts[0], RECENT_BLOCKHASHES, f.authority]);
   assert.equal(Buffer.from(advance.data).toString('hex'), '04000000');
   assert.equal(keys[deposit.programAddressIndex], program);
-  assert.ok(verify(null, message, publicKeyOf(f.authority), bytes.subarray(65, 129)), 'the authority signed exactly this message');
+  // Phantom signs first: nothing is signed when the intent leaves the server.
+  assert.ok(bytes.subarray(65, 129).every(b => b === 0), 'the authority slot is empty until Phantom has signed');
+  // On send the authority signs exactly the message it built, after the depositor.
+  const broadcast = [];
+  f.settings.rpc.sendTransaction = async encoded => { broadcast.push(Buffer.from(encoded, 'base64')); return 'sent'; };
+  await sendDeposit(f.settings, sendBody(signed(intent), intent.nonce), { every: 5, times: 1 });
+  assert.ok(broadcast[0].subarray(1, 65).every(b => b === 9), 'the depositor signature is kept');
+  assert.ok(verify(null, message, publicKeyOf(f.authority), broadcast[0].subarray(65, 129)), 'the authority signed exactly this message');
+  assert.equal(Buffer.compare(broadcast[0].subarray(129), message), 0);
   assert.deepEqual([intent.nonce_account, intent.nonce_authority, intent.nonce_value], [f.nonceAccounts[0], f.authority, f.values.get(f.nonceAccounts[0])]);
 });
 

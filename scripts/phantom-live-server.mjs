@@ -23,7 +23,7 @@ const server = await createServer({ configFile: false, server: { host: '127.0.0.
         const payload = req.method === 'POST' ? await body(req) : undefined;
         // The wallet server accepts only its public origin and host.
         const answer = await new Promise((resolve, reject) => {
-          const out = http.request({ host: '127.0.0.1', port: 8870, path: req.url, method: req.method,
+          const out = http.request({ host: '127.0.0.1', port: Number(process.env.PHANTOM_LIVE_RELAY_PORT || 8870), path: req.url, method: req.method,
             headers: { Authorization: 'Bearer ' + token, Origin: origin, Host: new URL(origin).host, 'Content-Type': 'application/json',
               ...(payload && { 'Content-Length': payload.length }) } }, reply => {
             const chunks = []; reply.on('data', c => chunks.push(c)); reply.on('end', () => resolve([reply.statusCode, Buffer.concat(chunks)]));
