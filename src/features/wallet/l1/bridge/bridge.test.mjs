@@ -287,7 +287,6 @@ async function solanaIntent(overrides = {}, durable = false) {
   const nonce = durable ? { nonceAccount: solana.durable.nonce_account, authority: solana.durable.nonce_authority, lifetime: solana.durable.nonce_value } : {};
   // The server's own compute budget, as it builds every deposit.
   const bytes = await solanaDeposit({ ...solanaShape, ...nonce, budget: serverBudget, ...overrides });
-  if (durable) bytes.fill(8, 65, 129);
   return { ok: true, ...solana.request, vault_program_id: solana.program, nonce: solana.nonce, last_valid_block_height: 1234,
     message_b58: bs58.encode(bytes), ...(durable && solana.durable) };
 }
@@ -374,7 +373,6 @@ test('Phantom\'s signed bytes are checked before /send: a mismatch is refused, t
   const durableWith = async overrides => {
     const bytes = await solanaDeposit({ ...solanaShape, nonceAccount: solana.durable.nonce_account, authority: solana.durable.nonce_authority,
       lifetime: solana.durable.nonce_value, budget: serverBudget, ...overrides });
-    bytes.fill(8, 65, 129);
     return bytes;
   };
   for (const [label, intent, bytes] of [
@@ -433,7 +431,6 @@ test('Phantom\'s Lighthouse assertions pass on the one-signer path and are sent 
   const durable = await solanaIntent({}, true);
   const durableBytes = await solanaDeposit({ ...solanaShape, nonceAccount: solana.durable.nonce_account, authority: solana.durable.nonce_authority,
     lifetime: solana.durable.nonce_value, budget: serverBudget, extra: lighthouse });
-  durableBytes.fill(8, 65, 129);
   const oneSigner = extra => solanaDeposit({ ...solanaShape, budget: serverBudget, extra });
   for (const [label, intent, bytes] of [
     ['the same layout from another program', await solanaIntent(), await oneSigner([assertLamports(solana.owner, 1, { programAddress: pub(41) })])],
