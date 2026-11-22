@@ -47,5 +47,5 @@ export function relayRead(env = process.env, timeoutMs = 60000) {
 }
 
 export function privatePaymentsEnabled(env = process.env) {
-  return l1Enabled(env) && env.TASKNODE_L1_PRIVATE_PAYMENTS_ENABLED === 'true';
+  return env.TASKNODE_L1_PRIVATE_PAYMENTS_ENABLED === 'true';
 }

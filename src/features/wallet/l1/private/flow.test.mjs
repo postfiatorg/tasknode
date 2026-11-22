@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { shieldAuthorization } from './shield.js';
+import { CHAIN_ID, GENESIS_HASH } from '../lib/utils.js';
 import { advance, makeJob, walletAssets } from './flow.js';
 
 const id = 'b'.repeat(96), address = 'pf' + '1'.repeat(40), recipient = 'pfs1' + '2'.repeat(158);
@@ -37,5 +39,26 @@ test('offline, rejected, and uncertain receipts never report completion or issue
     });
     assert.doesNotMatch(message, /^Funds moved/);
     assert.equal(Boolean(record), state === 'pending_unknown');
+  }
+});
+
+test('private-only assets use matching ledger metadata and never acquire a public balance', () => {
+  const snapshot = { balances: { [id]: 2100 }, available: { [id]: 2000 } };
+  const metadata = { [id]: { asset_id: id, code: 'Coin', precision: 2, balance: 99999 } };
+  const [coin] = walletAssets([], snapshot, metadata);
+  assert.equal(coin.label, 'Coin'); assert.equal(coin.publicBalance, 0);
+  assert.equal(makeJob('pay', coin, '1.23', recipient, address).terms.amount, 123);
+  metadata[id].asset_id = '0'.repeat(96);
+  assert.match(walletAssets([], snapshot, metadata)[0].label, /atoms/);
+});
+
+test('the shield adapter refuses different funding terms before invoking the signer', () => {
+  const issuer = 'pf' + '2'.repeat(40), terms = { account: address, amount: 9, asset: id, issuer };
+  const u = { source: address, owner: address, asset_id: id, amount: 9, issuer, fee: 1, sequence: 1, chain_id: CHAIN_ID,
+    genesis_hash: GENESIS_HASH, protocol_version: 1, transaction_kind: 'asset_burn', operation: 'asset_burn',
+    signature_algorithm_id: 'ML-DSA-65', address_namespace: 'postfiat.address.v1' };
+  assert.deepEqual(shieldAuthorization({ unsigned_burn: u }, terms), { fee: 1 });
+  for (const change of [{ source: issuer }, { owner: issuer }, { amount: 10 }, { issuer: address }, { fee: -1 }, { genesis_hash: id }, { operation: 'issued_payment' }]) {
+    assert.throws(() => shieldAuthorization({ unsigned_burn: { ...u, ...change } }, terms, () => assert.fail('unexpected signature')), /does not match/);
   }
 });

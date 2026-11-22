@@ -20,8 +20,9 @@ const refusals = new Set([
   'invalid burn signature', 'signed burn differs from prepared terms',
 ]);
 export async function privatePost(origin, path, body, token, viaRelay = false) {
+  const timeout = ['address', 'balance', 'receipt'].includes(path) ? 15000 : 50000;
   const response = await fetch(origin + (viaRelay ? '/private/' : '/') + path, {
-    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(viaRelay ? 55000 : 50000),
+    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeout + (viaRelay ? 5000 : 0)),
     headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   let size = 0;
@@ -50,7 +51,8 @@ function project(path, value) {
   if (path === 'balance' || path === 'address') {
     if (!poolAddress.test(value.address)) throw Error(unavailable);
     if (path === 'address') return { address: value.address };
-    if (!validMap(value.balances) || !validMap(value.available)) throw Error(unavailable);
+    if (!validMap(value.balances) || !validMap(value.available) ||
+        Object.entries(value.available).some(([id, amount]) => BigInt(amount) > BigInt(value.balances[id] ?? 0))) throw Error(unavailable);
     return { address: value.address, balances: value.balances, available: value.available };
   }
   if (path === 'shield/prepare') {

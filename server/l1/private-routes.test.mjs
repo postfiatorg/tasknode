@@ -63,6 +63,8 @@ test('private routes authenticate both hops, derive the account, scope reference
     const finish = { pending_id: pending, owner_tag: prepared.owner_tag, authorization: { signed_burn: {} } };
     assert.equal((await call('shield/finish', signed('shield/finish', finish, 'bob'), 'bob')).status, 403);
     assert.equal((await call('shield/finish', signed('shield/finish', finish, 'alice', ml_dsa65.keygen()))).status, 403);
+    const injected = { ...finish, authorization: { pending_id: '0'.repeat(64) } };
+    assert.equal((await call('shield/finish', signed('shield/finish', injected))).status, 400);
     const pay = { ...terms, recipient, request_id: 'p1' };
     for (const invalid of [{ amount: 0 }, { amount: 1.1 }, { asset: 'bad' }, { recipient: address }, { request_id: 'bad/id' }]) {
       assert.equal((await call('pay', signed('pay', { ...pay, ...invalid }))).status, 400);

@@ -185,6 +185,7 @@
     "prompt-assistant-smoke": "node scripts/prompt-assistant-smoke.mjs",
     "prompt-history-smoke": "node scripts/prompt-history-smoke.mjs",
     "prompt-deletion-smoke": "node scripts/prompt-deletion-smoke.mjs",
+    "test:private-wallet-browser": "node src/features/wallet/l1/private/browser.test.mjs",
     "test:l1": "node --test server/l1/*.test.mjs server/l1/profile/*.test.mjs src/features/wallet/l1/lib/*.test.js src/features/wallet/l1/format.test.mjs src/features/wallet/l1/bridge/bridge.test.mjs src/features/wallet/l1/gallery/model.test.mjs src/features/wallet/l1/gallery/market.test.mjs src/features/wallet/l1/market/config.test.mjs src/features/wallet/l1/market/model.test.mjs src/features/wallet/l1/market/offer-setup.test.mjs src/features/wallet/l1/primary/model.test.mjs src/features/wallet/l1/private/flow.test.mjs"
   },
   "dependencies": {

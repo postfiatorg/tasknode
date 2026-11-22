@@ -40,7 +40,10 @@ export async function openPrivateSession({ backup, accountId, address, current, 
       current();
       const value = await response.json();
       if (!response.ok) {
-        const error = Error(value.error || 'The private wallet request failed.');
+        const message = response.status === 401 ? 'Sign in again to use the private wallet.' :
+          value.error === 'l1_origin_rejected' ? 'Open the wallet on the Task Node site to use private payments.' :
+          value.error || 'The private wallet request failed.';
+        const error = Error(message);
         error.refused = response.status === 400 && value.unchanged === true;
         throw error;
       }

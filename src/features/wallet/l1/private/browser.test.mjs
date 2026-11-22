@@ -55,6 +55,7 @@ const prover = createServer(async (req, res) => {
       const intent_id = randomBytes(48).toString('hex');
       intents.set(intent_id, { delta }); result = { operation, intent_id, state: 'queued', ...(operation === 'merge' ? { next: 'Wait for acceptance and repeat with a fresh request_id.' } : {}) };
       requests.set(key, result);
+      if (operation === 'exit') { res.destroy(); return; } // Lose the first acknowledgement after recording it.
     }
   }
   json(res, 200, result);
@@ -95,13 +96,17 @@ try {
   await amount.fill('10'); await page.getByLabel('Recipient private address').fill(recipient); await button('Send privately').click();
   await page.getByText(/Enter an amount within the available balance/).waitFor();
   await amount.fill('4'); await button('Send privately').click();
-  await page.getByText(/Combining private notes/).waitFor(); await page.screenshot({ path: evidence + '/merging.png' });
+  await page.getByText(/Combining private notes/).waitFor();
+  await page.getByText('4.00 pending / reserved', { exact: true }).waitFor(); await page.screenshot({ path: evidence + '/merging.png' });
   await page.reload(); await enter(); await button('Resume and check status').click();
   await page.getByText('Private payment accepted.').waitFor(); assert.equal(balance, 5000000);
   await page.getByLabel('Action', { exact: true }).selectOption('exit');
   assert.equal(await page.getByLabel('Public destination').inputValue(), owner);
-  await amount.fill('1'); await button('Move to public').click(); await page.getByText('Funds moved to the public destination.').waitFor();
+  await amount.fill('1'); await button('Move to public').click();
+  await page.getByText(/Transfer status is unconfirmed/).waitFor();
+  await button('Resume and check status').click();
+  await page.getByText('Funds moved to the public destination.').waitFor();
   await page.getByText('4.00', { exact: true }).first().waitFor(); await page.screenshot({ path: evidence + '/complete.png' });
   assert.equal(balance, 4000000); assert.equal(requests.size, 4); assert.deepEqual(errors, []);
-  console.log('PASS: shield signed in browser, overdraw blocked, merge recovered after reload, private pay and public exit accepted by the loopback stub.');
+  console.log('PASS: shield signed in browser, overdraw blocked, merge recovered after reload, private pay accepted, public exit recovered after a lost acknowledgement; four unique stub actions.');
 } finally { await browser?.close(); gateway.close(); await vite.close(); await close(server); await close(relay); await close(prover); }

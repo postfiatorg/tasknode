@@ -2,7 +2,7 @@ import { poolAddress, publicAccount, assetId } from '../../../../../shared/priva
 import { safeInteger } from '../market/amounts.js';
 import { shieldAuthorization } from './shield.js';
 
-export function walletAssets(lines, snapshot) {
+export function walletAssets(lines, snapshot, metadata = {}) {
   const byId = new Map();
   for (const line of lines) {
     if (!assetId.test(line.asset_id)) continue;
@@ -13,7 +13,10 @@ export function walletAssets(lines, snapshot) {
       precision: known ? precision : 0, issuer: line.issuer, publicBalance: line.frozen ? 0 : line.balance ?? line.balance_atoms ?? 0 });
   }
   for (const id of Object.keys(snapshot?.balances || {})) {
-    if (!byId.has(id)) byId.set(id, { id, label: id.slice(0, 8) + ' (atoms)', precision: 0, publicBalance: 0 });
+    if (byId.has(id)) continue;
+    const info = metadata[id];
+    const known = info?.asset_id === id && info.code && Number.isInteger(info.precision) && info.precision >= 0 && info.precision <= 19;
+    byId.set(id, { id, label: known ? info.code : id.slice(0, 8) + ' (atoms)', precision: known ? info.precision : 0, publicBalance: 0 });
   }
   return [...byId.values()].map(asset => ({ ...asset, available: snapshot?.available[asset.id] || 0,
     reserved: String(BigInt(snapshot?.balances[asset.id] || 0) - BigInt(snapshot?.available[asset.id] || 0)) }));
