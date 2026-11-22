@@ -3,6 +3,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { requestOriginFromBoundary } from '../trusted-proxy.js';
 import { l1Enabled, relaySettings } from './release-config.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
+import { handlePrivateRoutes } from './private-routes.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
 import { handleNavcoinRoutes } from './navcoin-routes.js';
 import { createHistoryReader } from './history.js';
@@ -85,6 +86,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
       }
       if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req, env)) { json(res, 403, { error: 'l1_origin_rejected' }); return; }
       const context = { req, res, url, session, json, readJson, proxyUrl: env.L1_WALLET_PROXY_URL || '' };
+      if (url.pathname.startsWith('/api/l1/private/')) return handlePrivateRoutes({ ...context, env, relay });
       if (url.pathname.startsWith('/api/l1/bridge/')) {
         const credential = await credentials;
         if (!credential) { json(res, 503, { error: 'l1_proxy_credential_unavailable' }); return; }

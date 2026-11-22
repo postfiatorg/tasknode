@@ -45,3 +45,7 @@ export function relayRead(env = process.env, timeoutMs = 60000) {
     return result.result;
   };
 }
+
+export function privatePaymentsEnabled(env = process.env) {
+  return l1Enabled(env) && env.TASKNODE_L1_PRIVATE_PAYMENTS_ENABLED === 'true';
+}
