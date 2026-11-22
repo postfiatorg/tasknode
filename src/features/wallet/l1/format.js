@@ -64,7 +64,7 @@ export function shortId(value, head = 6, tail = 4) {
 }
 
 export function isLongId(value) {
-  return /^(pf|0x)?[0-9a-fA-F]{20,}$/.test(String(value ?? ""));
+  return /^(pfs1|pf|0x)?[0-9a-fA-F]{20,}$/.test(String(value ?? ""));
 }
 
 export function duration(seconds) {

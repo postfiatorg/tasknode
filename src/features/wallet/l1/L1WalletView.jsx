@@ -3,6 +3,7 @@ import Profile, { useProfileLocation } from './profile/index.jsx';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, ArrowUpRight, ChartCandlestick, Download, Ellipsis, FileKey, HandCoins, History, House, KeyRound, Landmark, LayoutGrid, Lock, ShieldCheck, Wallet } from "lucide-react";
 // Secondary views load on first use so the wallet shell stays small.
+const Private = lazy(() => import("./private/index.jsx"));
 const Bridge = lazy(() => import("./bridge/index.jsx"));
 const Market = lazy(() => import("./market/index.jsx"));
 const Gallery = lazy(() => import("./gallery/index.jsx"));
@@ -15,7 +16,7 @@ import Send from "./Send.jsx";
 import Activity from "./Activity.jsx";
 import { Badge, Card, IdChip, Notice, Spinner, ViewHeader } from "./ui.jsx";
 // View ids stay the original tab names; onNavigate("bridge" | "Market" | ...) keeps working.
-const tabs = { Home: WalletHome, Send, Activity, Bridge, Gallery, Market, Redeem };
+const tabs = { Home: WalletHome, Send, Activity, Bridge, Gallery, Market, Redeem, Private };
 const VIEWS = [
   { id: "Home", label: "Home", icon: House },
   { id: "Bridge", label: "Add funds", icon: ArrowDownToLine, title: "Add funds", subtitle: "Bring USDC over from Ethereum or Solana. It arrives in this wallet as PFUSDC, one for one." },
@@ -23,6 +24,7 @@ const VIEWS = [
   { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: "Choose a NAVCoin to see its market and available actions." },
   { id: "Redeem", label: "Cash in", icon: HandCoins, title: "Cash in at NAV", subtitle: symbol => `Review ${symbol} cash-in availability and NAV terms.` },
   { id: "Send", label: "Send", icon: ArrowUpRight, title: "Send", subtitle: "Send PFT or PFUSDC to another Post Fiat address." },
+  { id: "Private", label: "Private", icon: Lock, title: "Private wallet" },
   { id: "Activity", label: "Activity", icon: History, title: "Activity", subtitle: "Transactions signed by this wallet and payments it received." },
 ];
 const ISSUER = { id: "Issuer", label: "Issuer desk", icon: Landmark, title: "Issuer desk", subtitle: symbol => `Operator controls for the ${symbol} issuer.` };
@@ -89,7 +91,7 @@ function Gate({ exists, busy, passphrase, setPassphrase, seed, setSeed, openWall
   </>;
 }
 
-export default function L1WalletView({ accountId, isAccountCurrent }) {
+export default function L1WalletView({ accountId, isAccountCurrent, privatePayments = false }) {
   const profileRoute = useProfileLocation();
   const [tab, setTab] = useState("Home");
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -152,7 +154,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       setBackupDue(false);
     } catch (failure) { setError(failure.message); }
   }
-  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: signed => core.submit(signed), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
+  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", openPrivateWallet: () => core.openPrivateWallet(), getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: signed => core.submit(signed), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
   const gallery = useGallery(client);
   const assetConfig = gallery.coins?.find(coin => coin.asset_id === selectedAssetId) || null;
   const symbol = assetConfig?.symbol || 'NAVCoin';
@@ -174,7 +176,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
     {!address ? <Gate {...{ exists, busy, passphrase, setPassphrase, seed, setSeed, openWallet, restoreBackup }} /> : <>
       {backupDue && <div style={{ marginBottom: 18 }}><Notice tone="warning" title="Back up this wallet before adding funds" action={<button type="button" className="l1-btn is-sm" onClick={downloadBackup}><Download size={14} aria-hidden />Back up now</button>}>Download the encrypted backup and keep your passphrase somewhere safe. Without both, a lost browser means lost funds.</Notice></div>}
       <nav aria-label="L1 wallet tabs" className="l1-tabs">
-        <div className="l1-tabs-main">{VIEWS.map(item => <button key={item.id} type="button" className="l1-tab" aria-pressed={tab === item.id} onClick={() => onNavigate(item.id)}><item.icon size={16} aria-hidden />{item.label}</button>)}</div>
+        <div className="l1-tabs-main">{VIEWS.filter(item => item.id !== "Private" || privatePayments).map(item => <button key={item.id} type="button" className="l1-tab" aria-pressed={tab === item.id} onClick={() => onNavigate(item.id)}><item.icon size={16} aria-hidden />{item.label}</button>)}</div>
         {/* Issuer actions live on the CLI; the consumer wallet does not link to the issuer desk. */}
       </nav>
       <div className="l1-enter" key={tab}>

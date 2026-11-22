@@ -29,6 +29,11 @@ export default defineConfig({
               priority: 10,
             },
             {
+              name: "private-wallet-signing",
+              test: /node_modules[\\/]@noble[\\/]post-quantum[\\/]/,
+              priority: 20,
+            },
+            {
               name: "key-cryptography",
               test: /node_modules[\\/](?:@scure|@noble)[\\/]/,
               priority: 10,

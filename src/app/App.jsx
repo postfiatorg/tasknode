@@ -1324,7 +1324,7 @@ export function App() {
             </Suspense>
           )}
           {view === "blacklist" && <Suspense fallback={<StatusBanner>Loading blacklist</StatusBanner>}><BlacklistView key={session?.accountId} accountId={session?.accountId} /></Suspense>}
-          {view === "l1-wallet" && (runtimeConfig?.l1Wallet?.enabled === true ? <Suspense fallback={<StatusBanner>Loading L1 wallet</StatusBanner>}><L1WalletView key={signedIn && !accountTransitioning ? walletAccountId : "signed-out"} accountId={signedIn && !accountTransitioning ? walletAccountId : ""} isAccountCurrent={() => !accountBoundaryRef.current.transitioning && accountBoundaryRef.current.accountId === walletAccountId} /></Suspense> : <StatusBanner>The L1 wallet is unavailable.</StatusBanner>)}
+          {view === "l1-wallet" && (runtimeConfig?.l1Wallet?.enabled === true ? <Suspense fallback={<StatusBanner>Loading L1 wallet</StatusBanner>}><L1WalletView privatePayments={runtimeConfig.l1Wallet.privatePayments === true} key={signedIn && !accountTransitioning ? walletAccountId : "signed-out"} accountId={signedIn && !accountTransitioning ? walletAccountId : ""} isAccountCurrent={() => !accountBoundaryRef.current.transitioning && accountBoundaryRef.current.accountId === walletAccountId} /></Suspense> : <StatusBanner>The L1 wallet is unavailable.</StatusBanner>)}
           {view === "wallet" && (
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
               <WalletView
