@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { shieldAuthorization } from './shield.js';
-import { CHAIN_ID, GENESIS_HASH } from '../lib/utils.js';
+import { fundingDigest, shieldAuthorization } from './shield.js';
+import vectors from '../../../../../scripts/private-wallet/funding-vectors.json' with { type: 'json' };
 import { advance, makeJob, walletAssets } from './flow.js';
 
 const id = 'b'.repeat(96), address = 'pf' + '1'.repeat(40), recipient = 'pfs1' + '2'.repeat(158);
@@ -52,13 +52,36 @@ test('private-only assets use matching ledger metadata and never acquire a publi
   assert.match(walletAssets([], snapshot, metadata)[0].label, /atoms/);
 });
 
-test('the shield adapter refuses different funding terms before invoking the signer', () => {
-  const issuer = 'pf' + '2'.repeat(40), terms = { account: address, amount: 9, asset: id, issuer };
-  const u = { source: address, owner: address, asset_id: id, amount: 9, issuer, fee: 1, sequence: 1, chain_id: CHAIN_ID,
-    genesis_hash: GENESIS_HASH, protocol_version: 1, transaction_kind: 'asset_burn', operation: 'asset_burn',
-    signature_algorithm_id: 'ML-DSA-65', address_namespace: 'postfiat.address.v1' };
-  assert.deepEqual(shieldAuthorization({ unsigned_burn: u }, terms), { fee: 1 });
-  for (const change of [{ source: issuer }, { owner: issuer }, { amount: 10 }, { issuer: address }, { fee: -1 }, { genesis_hash: id }, { operation: 'issued_payment' }]) {
-    assert.throws(() => shieldAuthorization({ unsigned_burn: { ...u, ...change } }, terms, () => assert.fail('unexpected signature')), /does not match/);
+test('JavaScript hashes both funding vectors byte for byte like UnsignedTransferFunding::signing_digest', () => {
+  for (const { unsigned_funding, signing_digest_hex } of vectors) {
+    assert.deepEqual(Buffer.from(fundingDigest(unsigned_funding)), Buffer.from(signing_digest_hex, 'hex'));
   }
+});
+
+test('shield review and signing check the requested terms and all six output fields', () => {
+  const prepared = vectors[0], u = prepared.unsigned_funding, t = u.terms;
+  const requested = { account: t.source, amount: t.amount, asset: t.asset_id, issuer: t.issuer, fee: t.fee };
+  assert.deepEqual(shieldAuthorization(prepared, requested), { fee: t.fee });
+  let calls = 0;
+  const sign = digest => { calls++; assert.deepEqual(Buffer.from(digest), Buffer.from(prepared.signing_digest_hex, 'hex')); return {}; };
+  assert.deepEqual(shieldAuthorization(prepared, requested, sign).unsigned, u);
+  for (const change of [{ source: t.issuer }, { owner: t.issuer }, { issuer: t.source }, { asset_id: id }, { amount: 10 },
+    { fee: 2 }, { fee: -1 }, { sequence: Number.MAX_SAFE_INTEGER + 1 }, { chain_id: 'other' }, { genesis_hash: id },
+    { operation: 'issued_payment' }, { signature_algorithm_id: 'other' }, { unexpected: 1 }]) {
+    const modified = { ...u, terms: { ...t, ...change } };
+    assert.throws(() => shieldAuthorization({ ...prepared, unsigned_funding: modified }, requested, sign), /does not match/);
+  }
+  for (const field of Object.keys(u.intent)) {
+    const pair = u.intent[field];
+    for (const invalid of [[pair[1], pair[0]], [pair[0]], [pair[0], 'X'.repeat(pair[1].length)]]) {
+      const modified = { ...u, intent: { ...u.intent, [field]: invalid } };
+      assert.throws(() => shieldAuthorization({ ...prepared, unsigned_funding: modified }, requested, sign), /does not match/);
+    }
+  }
+  for (const digest of [undefined, id, prepared.signing_digest_hex.toUpperCase()]) {
+    const bad = { ...prepared, signing_digest_hex: digest };
+    assert.throws(() => shieldAuthorization(bad, requested), /digest does not match/);
+    assert.throws(() => shieldAuthorization(bad, requested, sign), /digest does not match/);
+  }
+  assert.equal(calls, 1);
 });

@@ -58,8 +58,8 @@ export async function advance(wallet, initial, { confirm = false, progress, save
       if (!confirm) return 'Review the prepared funding terms. No funds have moved.';
       progress('Signing the funding authorization in this browser.');
       const { prepared, terms, issuer } = job;
-      const authorization = wallet.authorize(prepared, { ...terms, issuer });
-      await persist({ mode: 'shield', phase: 'submit', terms: { pending_id: prepared.pending_id, owner_tag: prepared.owner_tag, authorization } });
+      const funding_authorization = wallet.authorize(prepared, { ...terms, issuer, fee: job.fee });
+      await persist({ mode: 'shield', phase: 'submit', terms: { pending_id: prepared.pending_id, owner_tag: prepared.owner_tag, funding_authorization } });
     }
     if (job.phase === 'submit') {
       progress('Building the proof. This usually takes about 10 seconds.');

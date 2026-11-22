@@ -101,7 +101,8 @@ export default function PrivateWallet({ client }) {
             current = makeJob(mode, asset, enteredAmount, mode === 'pay' ? recipient : destination, client.address);
             await save(current);
           }
-          const confirm = existing?.phase === 'review' && job?.prepared?.pending_id === existing.prepared.pending_id;
+          const confirm = existing?.phase === 'review' && job?.prepared?.pending_id === existing.prepared.pending_id &&
+            job.fee === existing.fee && job.prepared.signing_digest_hex === existing.prepared.signing_digest_hex;
           const message = await advance(wallet, current, { confirm, progress: value => { if (!signal.aborted) setProgress(value); }, save, signal });
           if (!signal.aborted) { setProgress(message); setQuantity(''); }
         } catch (failure) {

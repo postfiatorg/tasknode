@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { exactFields, lowerHex, validFunding, validFundingAuthorization } from '../../shared/private-funding.js';
 import { privatePaths, poolAddress, assetId } from '../../shared/private-payment.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
 import { privatePaymentsEnabled } from './release-config.js';
@@ -14,10 +15,11 @@ export class PrivateError extends Error {
 const refusals = new Set([
   'insufficient available private balance', 'insufficient spendable public asset balance', 'invalid shielded recipient',
   'cannot exit to asset issuer', 'destination account does not exist', 'destination cannot receive asset',
-  'transfer exit requires a confirmed ungoverned policy', 'node cannot admit a transfer at the next height',
-  'finalized tip changed; retry request', 'burn quote changed; prepare again', 'another shield reserves this burn sequence',
+  'public transfer edge requires a confirmed ungoverned policy', 'node cannot admit a transfer at the next height',
+  'finalized tip changed; retry request', 'funding quote changed; prepare again', 'another shield reserves this funding sequence',
   'burn fee or pending sequence prevents execution', 'unknown asset', 'transfer inactive on this chain',
-  'invalid burn signature', 'signed burn differs from prepared terms',
+  'invalid funding signature', 'signed funding authorization differs from prepared terms',
+  'this prepare predates transfer funding authorizations; prepare again',
 ]);
 export async function privatePost(origin, path, body, token, viaRelay = false) {
   const timeout = ['address', 'balance', 'receipt'].includes(path) ? 15000 : 50000;
@@ -47,7 +49,7 @@ function validMap(map) {
   return map && typeof map === 'object' && !Array.isArray(map) && Object.entries(map).every(([asset, amount]) =>
     assetId.test(asset) && ['number', 'string'].includes(typeof amount) && /^\d{1,20}$/.test(String(amount)));
 }
-function project(path, value) {
+function project(path, value, body) {
   if (path === 'balance' || path === 'address') {
     if (!poolAddress.test(value.address)) throw Error(unavailable);
     if (path === 'address') return { address: value.address };
@@ -56,7 +58,10 @@ function project(path, value) {
     return { address: value.address, balances: value.balances, available: value.available };
   }
   if (path === 'shield/prepare') {
-    if (!/^[a-f0-9]{64}$/.test(value.pending_id) || findCustodyMaterial(value).length) throw Error(unavailable);
+    if (!exactFields(value, ['pending_id', 'unsigned_funding', 'signing_digest_hex']) || !lowerHex(value.pending_id, 64) ||
+        !lowerHex(value.signing_digest_hex, 96) || !validFunding(value.unsigned_funding)) throw Error(unavailable);
+    const { source, amount, asset_id } = value.unsigned_funding.terms;
+    if (source !== body.account || amount !== body.amount || asset_id !== body.asset) throw Error(unavailable);
     return value;
   }
   if (!assetId.test(value.intent_id) || !['built','accepted','queued','dispatched','pending_unknown','unknown','rejected','abandoned'].includes(value.state)) throw Error(unavailable);
@@ -83,7 +88,11 @@ export function privateRelayHandler(env) {
       if (typeof token !== 'string' || !/^[!-~]{32,256}$/.test(token)) throw Error(unavailable);
       const body = await readJson(req, 32768);
       if (findCustodyMaterial(body).length) return json(res, 400, { error: 'invalid request' });
-      const result = project(path, await privatePost(url.origin, path, body, token));
+      if (path === 'shield/finish' && (!exactFields(body, ['pending_id', 'funding_authorization']) ||
+          !lowerHex(body.pending_id, 64) || !validFundingAuthorization(body.funding_authorization))) {
+        return json(res, 400, { error: 'invalid request' });
+      }
+      const result = project(path, await privatePost(url.origin, path, body, token), body);
       json(res, 200, result);
     } catch (error) {
       json(res, error instanceof PrivateError ? error.status : 503, { error: error instanceof PrivateError ? error.message : unavailable });

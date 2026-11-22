@@ -8,6 +8,9 @@ import { createServer as viteServer } from 'vite';
 import { createRelayServer } from '../../../../../server/l1/relay.js';
 import { registerL1Gateway } from '../../../../../server/l1/gateway.js';
 import { readValidatedJson } from '../../../../../server/request-validation.js';
+import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
+import { fundingDigest } from './shield.js';
+import vectors from '../../../../../scripts/private-wallet/funding-vectors.json' with { type: 'json' };
 import { CHAIN_ID, GENESIS_HASH } from '../lib/utils.js';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -28,10 +31,10 @@ const prover = createServer(async (req, res) => {
     case '/balance': result = { address: privateAddress, balances: { [asset]: balance }, available: { [asset]: balance - reserved }, notes: [] }; break;
     case '/shield/prepare':
       assert.equal(body.asset, asset); assert.equal(body.amount, 9000000); assert.equal(body.account, owner);
-      unsigned = { chain_id: CHAIN_ID, genesis_hash: GENESIS_HASH, protocol_version: 1, address_namespace: 'postfiat.address.v1',
+      unsigned = { intent: vectors[0].unsigned_funding.intent, terms: { chain_id: CHAIN_ID, genesis_hash: GENESIS_HASH, protocol_version: 1, address_namespace: 'postfiat.address.v1',
         signature_algorithm_id: 'ML-DSA-65', transaction_kind: 'asset_burn', source: owner, fee: 2, sequence: 1,
-        operation: 'asset_burn', owner, issuer, asset_id: asset, amount: body.amount };
-      result = { pending_id: pending, unsigned_burn: unsigned }; break;
+        operation: 'asset_burn', owner, issuer, asset_id: asset, amount: body.amount } };
+      result = { pending_id: pending, unsigned_funding: unsigned, signing_digest_hex: Buffer.from(fundingDigest(unsigned)).toString('hex') }; break;
     case '/receipt': {
       const intent = intents.get(body.intent_id); assert.ok(intent);
       if (!intent.done) { balance += intent.delta; reserved = 0; intent.done = true; }
@@ -42,10 +45,13 @@ const prover = createServer(async (req, res) => {
       if (requests.has(key)) { result = requests.get(key); break; }
       let operation = req.url.slice(1), delta = 0;
       if (operation === 'shield/finish') {
-        assert.equal(body.pending_id, pending); assert.deepEqual(body.signed_burn.unsigned, unsigned);
-        assert.ok(body.signed_burn.signature_hex.length === 6618);
-        assert.equal('pf' + createHash('sha3-384').update('postfiat.address.v1\0').update(Buffer.from(body.signed_burn.public_key_hex,'hex')).digest('hex').slice(0,40), owner);
-        operation = 'shield'; delta = unsigned.amount;
+        assert.equal(body.pending_id, pending); assert.deepEqual(body.funding_authorization.unsigned, unsigned);
+        const { algorithm_id, signature_hex, public_key_hex } = body.funding_authorization;
+        assert.equal(algorithm_id, 'ML-DSA-65');
+        assert.ok(ml_dsa65.verify(Buffer.from(signature_hex, 'hex'), fundingDigest(unsigned), Buffer.from(public_key_hex, 'hex'),
+          { context: Buffer.from('postfiat-l1-v2/tx/v1') }));
+        assert.equal('pf' + createHash('sha3-384').update('postfiat.address.v1\0').update(Buffer.from(body.funding_authorization.public_key_hex,'hex')).digest('hex').slice(0,40), owner);
+        operation = 'shield'; delta = unsigned.terms.amount;
       } else {
         assert.ok(['pay','exit'].includes(operation)); assert.equal(body.asset, asset);
         if (operation === 'pay') assert.equal(body.recipient, recipient); else assert.equal(body.destination, owner);
@@ -64,7 +70,7 @@ const env = { TASKNODE_L1_PRIVATE_PAYMENTS_ENABLED: 'true', L1_RELAY_PUBLIC_ORIG
   L1_PRIVATE_PROVER_URL: await listen(prover), L1_PRIVATE_PROVER_TOKEN: bearer, L1_WALLET_PROXY_URL: 'ws://127.0.0.1:1',
   L1_WALLET_PROXY_TOKEN: token(), L1_WALLET_PROXY_ORIGIN: 'http://127.0.0.1' };
 const relay = createRelayServer(env, async () => ({})); env.L1_RELAY_URL = await listen(relay);
-const vite = await viteServer({ configFile: false, server: { middlewareMode: true, hmr: false }, appType: 'custom', esbuild: { jsx: 'automatic' } });
+const vite = await viteServer({ configFile: false, cacheDir: 'node_modules/.vite-private-wallet-test', server: { middlewareMode: true, hmr: false }, appType: 'custom', esbuild: { jsx: 'automatic' } });
 const server = createServer((req, res) => {
   if (req.url === '/') { res.setHeader('Content-Type', 'text/html'); res.end('<div id="root"></div><script type="module" src="/src/features/wallet/l1/private/browser-fixture.jsx"></script>'); }
   else vite.middlewares(req, res);
@@ -90,7 +96,8 @@ try {
   };
   await enter(true);
   const amount = page.getByRole('textbox', { name: /^Amount/ });
-  await amount.fill('9'); await button('Review move to private').click(); await button('Sign and move to private').click();
+  await amount.fill('9'); await button('Review move to private').click();
+  await page.getByText(/Funding fee 0\.000002/).waitFor(); await button('Sign and move to private').click();
   await page.getByText('Funds moved to your private balance.').waitFor();
   await page.getByLabel('Action', { exact: true }).selectOption('pay');
   await amount.fill('10'); await page.getByLabel('Recipient private address').fill(recipient); await button('Send privately').click();

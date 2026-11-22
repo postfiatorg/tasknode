@@ -9,6 +9,7 @@ const Market = lazy(() => import("./market/index.jsx"));
 const Gallery = lazy(() => import("./gallery/index.jsx"));
 const Redeem = lazy(() => import("./redeem/index.jsx"));
 import { L1WalletContext } from "./client.jsx";
+import { CHAIN_ID } from "./lib/utils.js";
 import { L1WalletCore } from "./core.js";
 import WalletHome from "./WalletHome.jsx";
 import Experimental from "./Experimental.jsx";
@@ -154,7 +155,7 @@ export default function L1WalletView({ accountId, isAccountCurrent, privatePayme
       setBackupDue(false);
     } catch (failure) { setError(failure.message); }
   }
-  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", openPrivateWallet: () => core.openPrivateWallet(), getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: signed => core.submit(signed), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
+  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: CHAIN_ID === "postfiat-wan-devnet-2" ? "devnet-2" : CHAIN_ID, openPrivateWallet: () => core.openPrivateWallet(), getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: signed => core.submit(signed), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
   const gallery = useGallery(client);
   const assetConfig = gallery.coins?.find(coin => coin.asset_id === selectedAssetId) || null;
   const symbol = assetConfig?.symbol || 'NAVCoin';

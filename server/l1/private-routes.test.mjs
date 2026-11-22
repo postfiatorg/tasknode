@@ -4,6 +4,8 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { randomBytes, createHash } from 'node:crypto';
 import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
+import vectors from '../../scripts/private-wallet/funding-vectors.json' with { type: 'json' };
+import { fundingDigest } from '../../src/features/wallet/l1/private/shield.js';
 import { privateMessage, privateSignatureContext } from '../../shared/private-payment.js';
 import { readValidatedJson } from '../request-validation.js';
 import { registerL1Gateway } from './gateway.js';
@@ -19,8 +21,11 @@ test('private routes authenticate both hops, derive the account, scope reference
   const prover = createServer(async (req, res) => {
     assert.ok(req.headers.authorization === 'Bearer ' + bearer);
     const body = await readValidatedJson(req); seen.push([req.url, body]);
+    const unsigned = structuredClone(vectors[0].unsigned_funding);
+    Object.assign(unsigned.terms, { owner: body.account, source: body.account, amount: body.amount, asset_id: body.asset });
     const result = { '/address': { address: recipient }, '/balance': { address: recipient, balances: { [asset]: 8 }, available: { [asset]: 6 }, notes: [] },
-      '/shield/prepare': { pending_id: pending, unsigned_burn: {} }, '/pay': { operation: 'pay', state: 'built', intent_id: intent, action_json: 'offline' },
+      '/shield/prepare': { pending_id: pending, unsigned_funding: unsigned,
+        signing_digest_hex: req.url === '/shield/prepare' ? Buffer.from(fundingDigest(unsigned)).toString('hex') : '' }, '/shield/finish': { operation: 'shield', state: 'queued', intent_id: intent }, '/pay': { operation: 'pay', state: 'built', intent_id: intent, action_json: 'offline' },
       '/receipt': { state: 'accepted', intent_id: intent } };
     json(res, 200, result[req.url]);
   });
@@ -60,10 +65,14 @@ test('private routes authenticate both hops, derive the account, scope reference
     const prepared = await (await call('shield/prepare', signed('shield/prepare', terms))).json();
     assert.deepEqual(seen.at(-1)[1], { ...terms, account: address, wallet_id: address });
     const before = seen.length;
-    const finish = { pending_id: pending, owner_tag: prepared.owner_tag, authorization: { signed_burn: {} } };
+    const finish = { pending_id: pending, owner_tag: prepared.owner_tag, funding_authorization: {
+      unsigned: prepared.unsigned_funding, algorithm_id: 'ML-DSA-65', public_key_hex: Buffer.from(keys.publicKey).toString('hex'),
+      signature_hex: Buffer.from(ml_dsa65.sign(Buffer.from(prepared.signing_digest_hex, 'hex'), keys.secretKey,
+        { context: Buffer.from('postfiat-l1-v2/tx/v1') })).toString('hex'),
+    } };
     assert.equal((await call('shield/finish', signed('shield/finish', finish, 'bob'), 'bob')).status, 403);
     assert.equal((await call('shield/finish', signed('shield/finish', finish, 'alice', ml_dsa65.keygen()))).status, 403);
-    const injected = { ...finish, authorization: { pending_id: '0'.repeat(64) } };
+    const injected = { ...finish, funding_authorization: { ...finish.funding_authorization, pending_id: '0'.repeat(64) } };
     assert.equal((await call('shield/finish', signed('shield/finish', injected))).status, 400);
     const pay = { ...terms, recipient, request_id: 'p1' };
     for (const invalid of [{ amount: 0 }, { amount: 1.1 }, { asset: 'bad' }, { recipient: address }, { request_id: 'bad/id' }]) {
@@ -71,6 +80,8 @@ test('private routes authenticate both hops, derive the account, scope reference
     }
     assert.equal((await call('pay', { padding: 'x'.repeat(33000) })).status, 413);
     assert.equal(seen.length, before);
+    assert.equal((await call('shield/finish', signed('shield/finish', finish))).status, 200);
+    assert.deepEqual(seen.at(-1), ['/shield/finish', { pending_id: pending, funding_authorization: finish.funding_authorization }]);
     const action = await (await call('pay', signed('pay', pay))).json();
     assert.equal(action.state, 'built'); assert.equal(action.action_json, undefined);
     const receipt = { intent_id: action.intent_id, owner_tag: action.owner_tag };

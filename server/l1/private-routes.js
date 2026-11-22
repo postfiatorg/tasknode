@@ -2,13 +2,10 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
 import { checkRouteRateLimit } from '../rate-limit.js';
 import { assetId, poolAddress, privateMessage, privatePaths, privateSignatureContext, publicAccount } from '../../shared/private-payment.js';
-import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
+import { exactFields as fields, lowerHex as hex, validFundingAuthorization } from '../../shared/private-funding.js';
 import { privatePaymentsEnabled } from './release-config.js';
 import { PrivateError, privatePost, unavailable } from './private-transport.js';
 
-const fields = (obj, names) => obj && typeof obj === 'object' && !Array.isArray(obj) &&
-  Object.keys(obj).length === names.length && names.every(name => Object.hasOwn(obj, name));
-const hex = (v, n) => typeof v === 'string' && v.length === n && /^[0-9a-f]+$/.test(v);
 const requireField = valid => { if (!valid) throw new PrivateError(400, 'The private wallet request is invalid.', true); };
 
 function verifiedAccount(accountId, path, { body, proof }) {
@@ -23,20 +20,15 @@ function verifiedAccount(accountId, path, { body, proof }) {
 function handleTag(secret, accountId, account, id) {
   return createHmac('sha256', secret).update(JSON.stringify(['private-wallet-handle-v1', accountId, account, id])).digest('hex');
 }
-function proverBody(path, body, account, tag) {
+function proverBody(path, body, account, tag, publicKey) {
   if (path === 'receipt' || path === 'shield/finish') {
     const finish = path === 'shield/finish', key = finish ? 'pending_id' : 'intent_id';
-    requireField(fields(body, finish ? [key, 'owner_tag', 'authorization'] : [key, 'owner_tag']) && hex(body[key], finish ? 64 : 96));
+    requireField(fields(body, finish ? [key, 'owner_tag', 'funding_authorization'] : [key, 'owner_tag']) && hex(body[key], finish ? 64 : 96));
     if (!hex(body.owner_tag, 64) || !timingSafeEqual(Buffer.from(body.owner_tag), Buffer.from(tag(body[key])))) throw new PrivateError(403, 'This reference belongs to another wallet or is invalid.', true);
     if (!finish) return { intent_id: body.intent_id };
-    const auth = body.authorization;
-    // The adapter owns the native signing envelope. transferd checks its schema and
-    // signature against the prepare record. Only this gateway may set routing fields.
-    const keys = Object.keys(auth || {});
-    requireField(auth && typeof auth === 'object' && !Array.isArray(auth) && keys.length > 0 && keys.length <= 4 &&
-      keys.every(k => /^[a-z][a-z_]{0,47}$/.test(k) && !['pending_id','wallet_id','account','intent_id','request_id'].includes(k)) &&
-      !findCustodyMaterial(auth).length);
-    return { ...auth, pending_id: body.pending_id };
+    const auth = body.funding_authorization;
+    requireField(validFundingAuthorization(auth) && auth.unsigned.terms.source === account && auth.public_key_hex === publicKey);
+    return { pending_id: body.pending_id, funding_authorization: auth };
   }
   if (path === 'address' || path === 'balance') {
     requireField(fields(body, []));
@@ -66,7 +58,7 @@ export async function handlePrivateRoutes({ req, res, url, session, json, readJs
     if (!account) return fail(403, 'Unlock the L1 wallet for this account and try again.', true);
     if (!relay) return fail(503, unavailable, true);
     const tag = id => handleTag(env.TASKNODE_AUTH_SECRET?.length >= 32 ? env.TASKNODE_AUTH_SECRET : relay.token, session.accountId, account, id);
-    const body = proverBody(path, request.body, account, tag);
+    const body = proverBody(path, request.body, account, tag, request.proof.publicKey);
     const result = await privatePost(relay.origin, path, body, relay.token, true);
     if (path === 'receipt' && body.intent_id !== result.intent_id) throw Error(unavailable);
     if (result.pending_id || result.intent_id) result.owner_tag = tag(result.pending_id || result.intent_id);

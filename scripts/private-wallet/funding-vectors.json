@@ -1,0 +1,72 @@
+[
+  {
+    "signing_digest_hex": "1b373ab6ef2c83162a7ababe980b3d9881e377d8f4bf1da02c7d171247b8d3d7d9522809e77e4365b466356922af1a0b",
+    "unsigned_funding": {
+      "intent": {
+        "ciphertext_hashes": [
+          "cacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacaca",
+          "fefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefe"
+        ],
+        "nullifiers": [
+          "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0",
+          "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+        ],
+        "output_commitments": [
+          "0101010101010101010101010101010101010101010101010101010101010101",
+          "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+        ]
+      },
+      "terms": {
+        "address_namespace": "postfiat.address.v1",
+        "amount": 9,
+        "asset_id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "chain_id": "postfiat-wan-devnet-2",
+        "fee": 1,
+        "genesis_hash": "ce22ca8c932da0998b484483a09647138a30e0bf44408dd49a8d6d452787ad25521aff3ed334da07e150a7233a3e90a9",
+        "issuer": "pfabababababababababababababababababababab",
+        "operation": "asset_burn",
+        "owner": "pf1010101010101010101010101010101010101010",
+        "protocol_version": 1,
+        "sequence": 7,
+        "signature_algorithm_id": "ML-DSA-65",
+        "source": "pf1010101010101010101010101010101010101010",
+        "transaction_kind": "asset_burn"
+      }
+    }
+  },
+  {
+    "signing_digest_hex": "007105c77bd3d45f80dfb801d8e1a94062485f9a0dae613ab2e0bb14f73dc05fc3801dd067f8c2a892966c448e4b65dd",
+    "unsigned_funding": {
+      "intent": {
+        "ciphertext_hashes": [
+          "cacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacaca",
+          "fefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefe"
+        ],
+        "nullifiers": [
+          "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0",
+          "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+        ],
+        "output_commitments": [
+          "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "0101010101010101010101010101010101010101010101010101010101010101"
+        ]
+      },
+      "terms": {
+        "address_namespace": "postfiat.address.v1",
+        "amount": 9007199254740991,
+        "asset_id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "chain_id": "postfiat-wan-devnet-2",
+        "fee": 123456,
+        "genesis_hash": "ce22ca8c932da0998b484483a09647138a30e0bf44408dd49a8d6d452787ad25521aff3ed334da07e150a7233a3e90a9",
+        "issuer": "pfabababababababababababababababababababab",
+        "operation": "asset_burn",
+        "owner": "pf1010101010101010101010101010101010101010",
+        "protocol_version": 1,
+        "sequence": 567890,
+        "signature_algorithm_id": "ML-DSA-65",
+        "source": "pf1010101010101010101010101010101010101010",
+        "transaction_kind": "asset_burn"
+      }
+    }
+  }
+]

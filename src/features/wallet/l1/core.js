@@ -74,10 +74,10 @@ export class L1WalletCore {
   async openPrivateWallet() {
     this.requireUnlocked();
     const generation = this.#generation;
-    const [{ openPrivateSession }, wasm] = await Promise.all([import('./private/session.js'), initWasm()]);
+    const { openPrivateSession } = await import('./private/session.js');
     this.assertCurrent(generation);
     return openPrivateSession({ backup: this.#backup, accountId: this.accountId, address: this.address,
-      current: () => this.assertCurrent(generation), wasm });
+      current: () => this.assertCurrent(generation) });
   }
   submit(handle) { return this.builder().submit(handle); }
   async subscribe(handler) {

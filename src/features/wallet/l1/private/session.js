@@ -1,12 +1,13 @@
 import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
 import { sha3_384 } from '@noble/hashes/sha3.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+import { fundingAlgorithm } from '../../../../../shared/private-funding.js';
 import { privateMessage, privatePaths, privateSignatureContext } from '../../../../../shared/private-payment.js';
 import { assertNoCustodyMaterial } from '../lib/custody-boundary.js';
-import { shieldAuthorization } from './shield.js';
+import { fundingContext, shieldAuthorization } from './shield.js';
 
 const utf8 = new TextEncoder();
-export async function openPrivateSession({ backup, accountId, address, current, wasm }) {
+export async function openPrivateSession({ backup, accountId, address, current }) {
   const b = JSON.parse(backup);
   // Match the L1 wallet SDK's derive_wallet_seed. This signature domain cannot authorize an L1 transaction.
   const payload = JSON.stringify([b.derivation_domain, b.algorithm_id, b.chain_id, b.account_index, b.key_role, b.master_seed_hex]);
@@ -51,7 +52,10 @@ export async function openPrivateSession({ backup, accountId, address, current, 
     },
     authorize(prepared, terms) {
       current();
-      return shieldAuthorization(prepared, { ...terms, account: address }, fields => wasm.wallet_sign_asset_transaction_fields(backup, JSON.stringify(fields)));
+      return shieldAuthorization(prepared, { ...terms, account: address }, digest => ({
+        algorithm_id: fundingAlgorithm, public_key_hex: publicKey,
+        signature_hex: bytesToHex(ml_dsa65.sign(digest, keys.secretKey, { context: fundingContext })),
+      }));
     },
     async load() {
       current();
