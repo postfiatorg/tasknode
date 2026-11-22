@@ -1,4 +1,4 @@
-"""Build the fix worktree read-only and reuse its two-validator HTTP test setup."""
+"""Build the pinned prover checkout read-only and reuse its two-validator HTTP test setup."""
 import json
 import os
 from pathlib import Path
@@ -8,6 +8,11 @@ import tempfile
 
 
 def main(fix, target):
+    revision = subprocess.check_output(["git", "-C", fix, "rev-parse", "HEAD"], text=True).strip()
+    status = subprocess.check_output(["git", "-C", fix, "status", "--porcelain"])
+    if revision != "e230c4ec3bb66ad0074006f3125e9ad2b41e94fb" or status:
+        raise ValueError("The browser run requires a clean prover checkout at e230c4ec3")
+    print(f"Building clean prover tree {revision}", flush=True)
     root = Path.cwd()
     parent = root / ".tmp"
     parent.mkdir(exist_ok=True)
@@ -44,15 +49,32 @@ def main(fix, target):
         """
         assert setup.count("let holder = dev_key();") == setup.count("precision: 6,") == 1
         setup = setup.replace("let holder = dev_key();", holder).replace("precision: 6,", "precision: 0,")
-        daemon = reference.split("fn transferd_shields_pays_and_exits_through_http() {")[1]
-        daemon = daemon[daemon.index("let ready ="):daemon.index("let post =")]
         source = setup + """
         fn main() {
             let chain = start_chain(&std::env::temp_dir());
             let LocalChain { mut harness, rpc_ports, genesis_hash_hex, asset_id, holder, .. } = chain;
-        """ + daemon + """
+            let bearer = harness.root.join("bearer");
+            write_private(&bearer, bytes_to_hex(&rand::random::<[u8; 32]>()));
+            for name in ["online", "offline"] {
+                let mut cmd = Command::new(env!("CARGO_BIN_EXE_pftl-transferd"));
+                cmd.args(["--listen", "127.0.0.1:0", "--node-rpc", &format!("127.0.0.1:{}", rpc_ports[0]),
+                    "--admission-peer", &format!("127.0.0.1:{}", rpc_ports[1])])
+                    .arg("--ready-file").arg(harness.root.join(format!("{name}.ready")))
+                    .arg("--state-dir").arg(harness.root.join(name)).arg("--token-file").arg(&bearer);
+                if name == "offline" { cmd.arg("--no-submit"); }
+                harness.children.push(cmd.stdout(Stdio::null())
+                    .stderr(fs::File::create(harness.root.join(format!("{name}.log"))).unwrap())
+                    .spawn().unwrap());
+            }
+            let listen = |name: &str| {
+                let ready = harness.root.join(format!("{name}.ready"));
+                wait_for_file(&ready, Duration::from_secs(1200));
+                let result: Value = serde_json::from_slice(&fs::read(ready).unwrap()).unwrap();
+                assert_eq!(result["schema"], "pftl-transferd-ready-v1");
+                result["listen"].as_str().unwrap().to_owned()
+            };
             let config = harness.root.join("browser.json");
-            fs::write(&config, json!({"listen":addr.to_string(), "ports":rpc_ports,
+            fs::write(&config, json!({"listen":listen("online"), "offline":listen("offline"), "ports":rpc_ports,
                 "chain":CHAIN_ID, "genesis":genesis_hash_hex, "asset":asset_id,
                 "account":holder.address}).to_string()).unwrap();
             let status = Command::new("node").arg("scripts/private-wallet/real-browser.mjs")

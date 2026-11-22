@@ -1,4 +1,4 @@
-import { assetId, publicAccount } from './private-payment.js';
+import { assetId, publicAccount, isU64 } from './private-payment.js';
 
 export const fundingAlgorithm = 'ML-DSA-65';
 export const exactFields = (obj, names) => obj && typeof obj === 'object' && !Array.isArray(obj) &&
@@ -19,7 +19,7 @@ export function validFunding(unsigned) {
     t.operation === 'asset_burn' && t.transaction_kind === t.operation &&
     typeof t.source === 'string' && publicAccount.test(t.source) && t.owner === t.source &&
     typeof t.issuer === 'string' && publicAccount.test(t.issuer) && typeof t.asset_id === 'string' && assetId.test(t.asset_id) &&
-    [t.amount, t.fee, t.sequence].every(positive) && intentFields.every(field => {
+    [t.amount, t.fee, t.sequence].every(n => isU64(n) && BigInt(n) > 0n) && intentFields.every(field => {
       const pair = intent[field], length = field === 'ciphertext_hashes' ? 96 : 64;
       return Array.isArray(pair) && pair.length === 2 && lowerHex(pair[0], length) && lowerHex(pair[1], length);
     });

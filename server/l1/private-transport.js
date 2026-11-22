@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { exactFields, lowerHex, validFunding, validFundingAuthorization } from '../../shared/private-funding.js';
-import { privatePaths, poolAddress, assetId } from '../../shared/private-payment.js';
+import { privatePaths, poolAddress, assetId, isU64, operationStates, refusalMessage, missingDraft, restoreMessage } from '../../shared/private-payment.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
 import { privatePaymentsEnabled } from './release-config.js';
 
@@ -21,11 +21,13 @@ const refusals = new Set([
   'invalid funding signature', 'signed funding authorization differs from prepared terms',
   'this prepare predates transfer funding authorizations; prepare again',
 ]);
+const cancellationUnknown = 'Delivery may already have started. Check the original transfer for settlement.';
 export async function privatePost(origin, path, body, token, viaRelay = false) {
   const timeout = ['address', 'balance', 'receipt'].includes(path) ? 15000 : 50000;
   const response = await fetch(origin + (viaRelay ? '/private/' : '/') + path, {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeout + (viaRelay ? 5000 : 0)),
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body, (key, v) => !viaRelay && ['amount','fee','sequence'].includes(key) && typeof v === 'string' && isU64(v) ? JSON.rawJSON(v) : v),
   });
   let size = 0;
   const chunks = [];
@@ -36,10 +38,21 @@ export async function privatePost(origin, path, body, token, viaRelay = false) {
   }
   const raw = Buffer.concat(chunks).toString();
   if (raw.includes(token)) throw Error(unavailable);
-  // Preserve large u64 balances exactly. Transaction amounts are limited to safe JS integers.
+  // Preserve exact integer tokens when crossing the daemon boundary.
   const value = JSON.parse(raw, (_k, v, ctx) => typeof v === 'number' && !Number.isSafeInteger(v) ? ctx.source : v);
   if (!response.ok) {
-    if (response.status === 400 && refusals.has(value?.error)) throw new PrivateError(400, value.error, true);
+    const message = value?.error;
+    if (message === restoreMessage || message === 'known wallet is missing its seed; restore the original seed file' ||
+        message === 'seed does not match registered wallet' || (!viaRelay && ['address','balance'].includes(path) && response.status === 404 && message?.startsWith('No such file or directory'))) {
+      throw new PrivateError(400, restoreMessage, true);
+    }
+    const policy = typeof message === 'string' && refusalMessage(message.match(/\basset_orchard_[a-z_]+\b/)?.[0] || message);
+    if (policy) throw new PrivateError(400, policy, true);
+    if (path === 'abandon' && body.pending_id && response.status === 400 && [missingDraft, 'unknown shield draft'].includes(message)) {
+      throw new PrivateError(400, missingDraft, true);
+    }
+    if (message === 'operation may be in admission; retry the original request to reconcile' || message === cancellationUnknown) throw new PrivateError(400, cancellationUnknown);
+    if (response.status === 400 && refusals.has(message)) throw new PrivateError(400, value.error, true);
     if (response.status === 429) throw new PrivateError(429, 'The private prover is busy. Try again shortly.', true);
     throw Error(unavailable);
   }
@@ -47,29 +60,48 @@ export async function privatePost(origin, path, body, token, viaRelay = false) {
 }
 function validMap(map) {
   return map && typeof map === 'object' && !Array.isArray(map) && Object.entries(map).every(([asset, amount]) =>
-    assetId.test(asset) && ['number', 'string'].includes(typeof amount) && /^\d{1,20}$/.test(String(amount)));
+    assetId.test(asset) && isU64(amount));
 }
 function project(path, value, body) {
-  if (path === 'balance' || path === 'address') {
+  if (['balance','address','wallet/create'].includes(path)) {
     if (!poolAddress.test(value.address)) throw Error(unavailable);
-    if (path === 'address') return { address: value.address };
+    if (path !== 'balance') return { address: value.address };
     if (!validMap(value.balances) || !validMap(value.available) ||
         Object.entries(value.available).some(([id, amount]) => BigInt(amount) > BigInt(value.balances[id] ?? 0))) throw Error(unavailable);
-    return { address: value.address, balances: value.balances, available: value.available };
+    const s = value.snapshot;
+    if (!Number.isSafeInteger(s?.height) || s.height < 0 || typeof s.chain_id !== 'string' ||
+        !lowerHex(s.genesis_hash, 96) || typeof value.privacy_label !== 'string' || value.privacy_label.length > 128) throw Error(unavailable);
+    return { address: value.address, balances: value.balances, available: value.available, privacy_label: value.privacy_label,
+      snapshot: { chain_id: s.chain_id, genesis_hash: s.genesis_hash, height: s.height, block_hash: s.block_hash, state_root: s.state_root, pool_root: s.pool_root } };
   }
   if (path === 'shield/prepare') {
-    if (!exactFields(value, ['pending_id', 'unsigned_funding', 'signing_digest_hex']) || !lowerHex(value.pending_id, 64) ||
-        !lowerHex(value.signing_digest_hex, 96) || !validFunding(value.unsigned_funding)) throw Error(unavailable);
+    if (!exactFields(value, ['pending_id', 'private_address', 'unsigned_funding', 'signing_digest_hex']) || !lowerHex(value.pending_id, 64) ||
+        !poolAddress.test(value.private_address) || !lowerHex(value.signing_digest_hex, 96) || !validFunding(value.unsigned_funding)) throw Error(unavailable);
     const { source, amount, asset_id } = value.unsigned_funding.terms;
-    if (source !== body.account || amount !== body.amount || asset_id !== body.asset) throw Error(unavailable);
+    if (source !== body.account || String(amount) !== String(body.amount) || asset_id !== body.asset) throw Error(unavailable);
     return value;
   }
-  if (!assetId.test(value.intent_id) || !['built','accepted','queued','dispatched','pending_unknown','unknown','rejected','abandoned'].includes(value.state)) throw Error(unavailable);
+  if (path === 'abandon') {
+    const key = value.pending_id ? 'pending_id' : 'intent_id';
+    if (value.state !== 'abandoned' || typeof value.exported_action_may_still_settle !== 'boolean' ||
+        !lowerHex(value[key], key === 'pending_id' ? 64 : 96) ||
+        (key === 'pending_id' && value[key] !== body.pending_id) || (body.intent_id && value.intent_id !== body.intent_id)) throw Error(unavailable);
+    return { [key]: value[key], state: value.state, exported_action_may_still_settle: value.exported_action_may_still_settle };
+  }
+  if (!lowerHex(value.intent_id, 96) || !operationStates.has(value.state)) throw Error(unavailable);
   const result = { intent_id: value.intent_id, state: value.state };
-  if (path !== 'receipt') {
+  if (path === 'receipt') {
+    const c = value.contract_receipt;
+    if (value.intent_id !== body.intent_id || (c && (c.intent_id !== body.intent_id || c.state !== value.state))) throw Error(unavailable);
+    result.contract_receipt = c ? Object.fromEntries(['schema','intent_id','state','action_hash','batch_id','transaction_id',
+      'inclusion_height','block_hash','state_root','accepted','code','fee','finality'].map(k => [k, c[k]])) : null;
+  } else {
     const expected = path === 'shield/finish' ? 'shield' : path;
     if (value.operation !== expected && !(value.operation === 'merge' && ['pay','exit'].includes(path))) throw Error(unavailable);
     result.operation = value.operation;
+    if (typeof value.action_json === 'string') result.action_json = value.action_json;
+    if (typeof value.code === 'string' && /^[a-z0-9_]{1,96}$/.test(value.code)) result.code = value.code;
+    if (value.admission === 'not_reserved') result.admission = value.admission;
   }
   return result;
 }

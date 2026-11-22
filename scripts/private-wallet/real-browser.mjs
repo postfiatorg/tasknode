@@ -15,6 +15,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const configFile = process.argv[2], dir = dirname(configFile);
 const config = JSON.parse(await readFile(configFile, 'utf8'));
 assert.ok(config.ports.length === 2 && config.ports.every(p => Number.isInteger(p) && p > 0 && p <= 65535));
+assert.match(config.offline, /^127\.0\.0\.1:\d+$/);
 assert.match(config.listen, /^127\.0\.0\.1:\d+$/);
 const host = '127.0.0.1', token = () => randomBytes(32).toString('hex');
 async function listen(server, port = 0) {
@@ -31,7 +32,7 @@ const env = { TASKNODE_L1_ENABLED: 'true', TASKNODE_L1_PRIVATE_PAYMENTS_ENABLED:
   L1_PRIVATE_PROVER_URL: 'http://' + config.listen, L1_PRIVATE_PROVER_TOKEN_FILE: join(dir, 'bearer'),
   L1_WALLET_PROXY_URL: 'ws://' + host + ':' + proxyPort, L1_WALLET_PROXY_ORIGIN: relayOrigin,
   L1_WALLET_PROXY_TOKEN_FILE: proxyTokenFile, L1_HISTORY_RPC_URL: 'tcp://' + host + ':' + config.ports[0] };
-const dirEvidence = 'artifacts/private-payments/real';
+const dirEvidence = 'artifacts/private-payments/real2';
 const proxySource = dirname(process.env.WALLET_PROXY_SOURCE), proxyDir = join(dir, 'wallet-proxy');
 await mkdir(proxyDir);
 for (const name of await readdir(proxySource)) {
@@ -112,31 +113,76 @@ try {
   const recipient = await bob.locator('.l1-chip .l1-mono[title^="pfs1"]').textContent();
   const button = (page, name) => page.getByRole('button', { name, exact: true });
   const expectBalance = (page, n) => page.getByText(n + ' available', { exact: true }).waitFor();
+  async function screenshot(page, filename) {
+    await button(page, 'Refresh balances').click({ trial: true });
+    await page.screenshot({ path: join(dirEvidence, filename) });
+  }
+  async function settle(page, name) {
+    const [response] = await Promise.all([page.waitForResponse(async res => res.url().endsWith('/api/l1/private/receipt') &&
+      res.ok() && (await res.json()).state === 'accepted'), button(page, name).click()]);
+    const { intent_id, contract_receipt: c } = await response.json();
+    assert.equal(c.intent_id, intent_id); assert.equal(c.accepted, true);
+    assert.equal(c.finality.kind, 'validator_quorum_block_certificate_v1');
+    assert.equal(c.finality.height, c.inclusion_height); assert.equal(c.finality.block_hash, c.block_hash);
+    assert.equal(c.finality.state_root, c.state_root); assert.equal(c.finality.validator_count, 2);
+    assert.ok(c.finality.quorum > 0 && JSON.parse(c.finality.certificate_json).votes.length >= c.finality.quorum);
+    console.log(name + ' finalized at height ' + c.finality.height);
+  }
   async function publicBalance() {
     const lines = await readRpc(new URL(env.L1_HISTORY_RPC_URL), 'account_lines', { account: config.account, asset_id: config.asset });
     assert.equal(lines.line_count, 1);
     return lines.lines[0].balance;
   }
   assert.equal(await publicBalance(), 40);
+  const alicePrivate = await alice.locator('.l1-chip .l1-mono[title^="pfs1"]').textContent();
+  await alice.getByLabel('Amount', { exact: true }).fill('2'); await button(alice, 'Review move to private').click();
+  await alice.getByText('Private destination', { exact: true }).waitFor();
+  await button(alice, 'Cancel and release funds').click();
+  await alice.getByText('Cancelled and released. No funds moved.').waitFor();
+  await expectBalance(alice, 0);
+  assert.equal(await publicBalance(), 40);
+  await screenshot(alice, 'cancelled-shield.png');
+  console.log('Unsigned shield cancelled. Node still shows 40 public, wallet 0 private.');
   await alice.getByLabel('Amount', { exact: true }).fill('9'); await button(alice, 'Review move to private').click();
-  await alice.getByText(/Funding fee/).waitFor(); await alice.screenshot({ path: join(dirEvidence, 'funding-review.png') });
-  await button(alice, 'Sign and move to private').click();
+  await alice.getByText(/Funding fee/).waitFor();
+  assert.equal(await alice.getByText(alicePrivate, { exact: true }).count(), 2); await screenshot(alice, 'funding-review.png');
+  await settle(alice, 'Sign and move to private');
   await alice.getByText('Funds moved to your private balance.').waitFor(); await expectBalance(alice, 9);
   assert.equal(await publicBalance(), 31);
   console.log('Shield accepted. Private 9, public 31.');
   await alice.getByLabel('Action').selectOption('pay'); await alice.getByLabel('Amount', { exact: true }).fill('4');
-  await alice.getByLabel('Recipient private address').fill(recipient); await button(alice, 'Send privately').click();
+  await alice.getByLabel('Recipient private address').fill(recipient); await settle(alice, 'Send privately');
   await alice.getByText('Private payment accepted.').waitFor(); await expectBalance(alice, 5);
-  await alice.screenshot({ path: join(dirEvidence, 'sender-5.png') });
+  await screenshot(alice, 'sender-5.png');
   await button(bob, 'Refresh balances').click(); await expectBalance(bob, 4);
   console.log('Payment accepted. Sender 5, recipient 4.');
   await bob.getByLabel('Action').selectOption('exit'); await bob.getByLabel('Amount', { exact: true }).fill('1');
-  await bob.getByLabel('Public destination').fill(config.account); await button(bob, 'Move to public').click();
+  await bob.getByLabel('Public destination').fill(config.account); await settle(bob, 'Move to public');
   await bob.getByText('Funds moved to the public destination.').waitFor(); await expectBalance(bob, 3);
   await button(alice, 'Refresh balances').click(); await expectBalance(alice, 5);
   assert.equal(await publicBalance(), 32);
-  await bob.screenshot({ path: join(dirEvidence, 'recipient-3.png') });
+  await screenshot(bob, 'recipient-3.png');
   console.log('Exit accepted. Wallets show 5 and 3. Node account_lines shows 32 public.');
+  // The build-only daemon scans the same disposable wallet on the same nodes.
+  // Only the wallet file crosses this test boundary. Each process owns its journal.
+  await copyFile(join(dir, 'online', 'wallets', config.account), join(dir, 'offline', 'wallets', config.account));
+  env.L1_PRIVATE_PROVER_URL = 'http://' + config.offline;
+  await button(alice, 'Refresh balances').click();
+  await alice.getByLabel('Action').selectOption('pay');
+  await alice.getByLabel('Amount', { exact: true }).fill('1');
+  await alice.getByLabel('Recipient private address').fill(recipient);
+  await button(alice, 'Send privately').click();
+  await alice.getByText(/Proof built/).waitFor();
+  await expectBalance(alice, 0);
+  await alice.getByText('5 total', { exact: true }).waitFor();
+  await screenshot(alice, 'built-reserved.png');
+  await button(alice, 'Cancel and release funds').click();
+  await alice.getByText('Local funds released. An exported copy may still settle.').waitFor();
+  await expectBalance(alice, 5);
+  await alice.getByText('0 pending / reserved', { exact: true }).waitFor();
+  assert.equal(await publicBalance(), 32);
+  await screenshot(alice, 'cancelled-payment.png');
+  console.log('Built payment cancelled. Available balance returned from 0 to 5, with 0 reserved.');
 } catch (error) {
   for (const page of pages) {
     const status = await page.locator('[role="status"], [role="alert"]').allTextContents();

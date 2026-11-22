@@ -1,7 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
 import { checkRouteRateLimit } from '../rate-limit.js';
-import { assetId, poolAddress, privateMessage, privatePaths, privateSignatureContext, publicAccount } from '../../shared/private-payment.js';
+import { assetId, isU64, poolAddress, privateMessage, privatePaths, privateSignatureContext, publicAccount } from '../../shared/private-payment.js';
 import { exactFields as fields, lowerHex as hex, validFundingAuthorization } from '../../shared/private-funding.js';
 import { privatePaymentsEnabled } from './release-config.js';
 import { PrivateError, privatePost, unavailable } from './private-transport.js';
@@ -30,13 +30,22 @@ function proverBody(path, body, account, tag, publicKey) {
     requireField(validFundingAuthorization(auth) && auth.unsigned.terms.source === account && auth.public_key_hex === publicKey);
     return { pending_id: body.pending_id, funding_authorization: auth };
   }
-  if (path === 'address' || path === 'balance') {
+  if (path === 'abandon') {
+    const key = ['pending_id', 'intent_id', 'request_id'].find(k => Object.hasOwn(body || {}, k));
+    if (key === 'request_id') requireField(fields(body, [key]) && typeof body[key] === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(body[key]));
+    else {
+      requireField(key && fields(body, [key, 'owner_tag']) && hex(body[key], key === 'pending_id' ? 64 : 96));
+      if (!hex(body.owner_tag, 64) || !timingSafeEqual(Buffer.from(body.owner_tag), Buffer.from(tag(body[key])))) throw new PrivateError(403, 'Invalid wallet reference.', true);
+    }
+    return { wallet_id: account, [key]: body[key] };
+  }
+  if (['wallet/create','address','balance'].includes(path)) {
     requireField(fields(body, []));
     return { wallet_id: account };
   }
   const prepare = path === 'shield/prepare', dest = path === 'pay' ? 'recipient' : 'destination';
   requireField(fields(body, prepare ? ['asset','amount'] : ['asset','amount','request_id', dest]) &&
-    typeof body.asset === 'string' && assetId.test(body.asset) && Number.isSafeInteger(body.amount) && body.amount > 0);
+    typeof body.asset === 'string' && assetId.test(body.asset) && isU64(body.amount) && BigInt(body.amount) > 0n);
   if (prepare) return { ...body, wallet_id: account, account };
   requireField(typeof body.request_id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(body.request_id) &&
     typeof body[dest] === 'string' && (path === 'pay' ? poolAddress : publicAccount).test(body[dest]));
@@ -48,7 +57,7 @@ export async function handlePrivateRoutes({ req, res, url, session, json, readJs
   if (!privatePaymentsEnabled(env) || !privatePaths.has(path)) return fail(404, 'Private payments are unavailable.', true);
   if (req.method !== 'POST' || url.search) return fail(405, 'Use a private wallet POST request.', true);
   try {
-    const write = ['shield/prepare','shield/finish','pay','exit'].includes(path);
+    const write = ['wallet/create','abandon','shield/prepare','shield/finish','pay','exit'].includes(path);
     const bucket = 'private-wallet-' + (write ? 'write' : 'read');
     const limit = await checkRouteRateLimit({ key: bucket + ':' + session.accountId, route: bucket, limit: write ? 12 : 90, env });
     if (!limit.allowed) return fail(429, 'Too many private wallet requests. Try again shortly.', true);

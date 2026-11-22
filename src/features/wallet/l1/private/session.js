@@ -2,8 +2,9 @@ import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
 import { sha3_384 } from '@noble/hashes/sha3.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import { fundingAlgorithm } from '../../../../../shared/private-funding.js';
-import { privateMessage, privatePaths, privateSignatureContext } from '../../../../../shared/private-payment.js';
+import { privateMessage, privatePaths, privateSignatureContext, restoreMessage } from '../../../../../shared/private-payment.js';
 import { assertNoCustodyMaterial } from '../lib/custody-boundary.js';
+import { CHAIN_ID, GENESIS_HASH } from '../lib/utils.js';
 import { fundingContext, shieldAuthorization } from './shield.js';
 
 const utf8 = new TextEncoder();
@@ -23,8 +24,25 @@ export async function openPrivateSession({ backup, accountId, address, current }
   master.fill(0);
   const cipher = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: utf8.encode(storageKey), info: utf8.encode('local recovery') },
     base, { name: 'AES-GCM', length: 256 }, false, ['encrypt','decrypt']);
+  const registeredKey = storageKey + ':registered:' + CHAIN_ID + ':' + GENESIS_HASH;
+  let registeredAddress;
   current();
   return {
+    async balance(signal) {
+      if (!registeredAddress) {
+        const path = localStorage.getItem(registeredKey) ? 'address' : 'wallet/create';
+        try { registeredAddress = (await this.request(path, {}, signal)).address; }
+        catch (error) {
+          if (error.message === restoreMessage) localStorage.setItem(registeredKey, '1');
+          throw error;
+        }
+        localStorage.setItem(registeredKey, '1');
+      }
+      const balance = await this.request('balance', {}, signal);
+      if (balance.address !== registeredAddress) throw Error(restoreMessage);
+      if (balance.snapshot?.chain_id !== CHAIN_ID || balance.snapshot.genesis_hash !== GENESIS_HASH) throw Error('Private balance is from another network.');
+      return balance;
+    },
     storageKey,
     close() { keys.secretKey.fill(0); },
     async request(path, body = {}, signal) {
@@ -50,9 +68,11 @@ export async function openPrivateSession({ backup, accountId, address, current }
       }
       return value;
     },
-    authorize(prepared, terms) {
+    async authorize(prepared, terms, signal) {
       current();
-      return shieldAuthorization(prepared, { ...terms, account: address }, digest => ({
+      const own = await this.request('address', {}, signal);
+      if (own.address !== registeredAddress) throw Error(restoreMessage);
+      return shieldAuthorization(prepared, { ...terms, account: address, privateAddress: own.address }, digest => ({
         algorithm_id: fundingAlgorithm, public_key_hex: publicKey,
         signature_hex: bytesToHex(ml_dsa65.sign(digest, keys.secretKey, { context: fundingContext })),
       }));

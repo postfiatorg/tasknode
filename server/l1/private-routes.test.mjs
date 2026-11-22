@@ -4,11 +4,13 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { randomBytes, createHash } from 'node:crypto';
 import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
+import { receiptFor, snapshot } from '../../scripts/private-wallet/receipt-fixture.mjs';
 import vectors from '../../scripts/private-wallet/funding-vectors.json' with { type: 'json' };
 import { fundingDigest } from '../../src/features/wallet/l1/private/shield.js';
 import { privateMessage, privateSignatureContext } from '../../shared/private-payment.js';
 import { readValidatedJson } from '../request-validation.js';
 import { registerL1Gateway } from './gateway.js';
+import { privatePost } from './private-transport.js';
 import { createRelayServer } from './relay.js';
 
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -23,10 +25,10 @@ test('private routes authenticate both hops, derive the account, scope reference
     const body = await readValidatedJson(req); seen.push([req.url, body]);
     const unsigned = structuredClone(vectors[0].unsigned_funding);
     Object.assign(unsigned.terms, { owner: body.account, source: body.account, amount: body.amount, asset_id: body.asset });
-    const result = { '/address': { address: recipient }, '/balance': { address: recipient, balances: { [asset]: 8 }, available: { [asset]: 6 }, notes: [] },
-      '/shield/prepare': { pending_id: pending, unsigned_funding: unsigned,
+    const result = { '/wallet/create': { address: recipient }, '/abandon': { state: 'abandoned', intent_id: intent, exported_action_may_still_settle: true }, '/address': { address: recipient }, '/balance': { address: recipient, balances: { [asset]: 8 }, available: { [asset]: 6 }, snapshot, privacy_label: 'hidden, small pool', notes: [] },
+      '/shield/prepare': { private_address: recipient, pending_id: pending, unsigned_funding: unsigned,
         signing_digest_hex: req.url === '/shield/prepare' ? Buffer.from(fundingDigest(unsigned)).toString('hex') : '' }, '/shield/finish': { operation: 'shield', state: 'queued', intent_id: intent }, '/pay': { operation: 'pay', state: 'built', intent_id: intent, action_json: 'offline' },
-      '/receipt': { state: 'accepted', intent_id: intent } };
+      '/receipt': receiptFor(intent) };
     json(res, 200, result[req.url]);
   });
   const proverUrl = await listen(prover);
@@ -83,15 +85,41 @@ test('private routes authenticate both hops, derive the account, scope reference
     assert.equal((await call('shield/finish', signed('shield/finish', finish))).status, 200);
     assert.deepEqual(seen.at(-1), ['/shield/finish', { pending_id: pending, funding_authorization: finish.funding_authorization }]);
     const action = await (await call('pay', signed('pay', pay))).json();
-    assert.equal(action.state, 'built'); assert.equal(action.action_json, undefined);
+    assert.equal(action.state, 'built'); assert.equal(action.action_json, 'offline');
     const receipt = { intent_id: action.intent_id, owner_tag: action.owner_tag };
     assert.equal((await call('receipt', signed('receipt', receipt, 'bob'), 'bob')).status, 403);
     assert.equal((await call('receipt', signed('receipt', receipt))).status, 200);
     assert.deepEqual(seen.at(-1), ['/receipt', { intent_id: intent }]);
+    assert.equal((await call('abandon', signed('abandon', receipt, 'bob'), 'bob')).status, 403);
+    assert.equal((await call('abandon', signed('abandon', receipt))).status, 200);
+    assert.deepEqual(seen.at(-1), ['/abandon', { wallet_id: address, intent_id: intent }]);
     await close(prover);
     const down = await call('balance', signed('balance')); assert.equal(down.status, 503); assert.match((await down.json()).error, /five minutes/);
     let last;
     for (let n = 0; n < 13; n++) last = await call('pay', {}, 'bob');
     assert.equal(last.status, 429);
   } finally { gateway.close(); await close(server); await close(relay); if (prover.listening) await close(prover); }
+});
+
+test('the daemon receives and returns exact u64 amounts and policy refusals cross both hops', async () => {
+  const amount = '18446744073709551615', token = credential();
+  const daemon = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    assert.equal(Buffer.concat(chunks).toString(), '{"amount":' + amount + '}');
+    if (req.url === '/pay') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{"amount":' + amount + '}');
+    } else json(res, 400, { error: 'asset_orchard_transfer_facility_asset' });
+  });
+  const url = await listen(daemon);
+  const relay = createServer(async (_req, res) => {
+    try { await privatePost(url, 'shield/prepare', { amount }, token); }
+    catch (error) { json(res, error.status, { error: error.message }); }
+  });
+  const relayUrl = await listen(relay);
+  try {
+    assert.deepEqual(await privatePost(url, 'pay', { amount }, token), { amount });
+    await assert.rejects(privatePost(relayUrl, 'shield/prepare', { amount }, token, true), /redemption facility/);
+  } finally { await close(daemon); await close(relay); }
 });

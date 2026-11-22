@@ -1,6 +1,7 @@
 import { sha3_384 } from '@noble/hashes/sha3.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { intentFields, termFields, validFunding } from '../../../../../shared/private-funding.js';
+import { poolAddress } from '../../../../../shared/private-payment.js';
 import { CHAIN_ID, GENESIS_HASH, PROTOCOL_VERSION } from '../lib/utils.js';
 
 const utf8 = new TextEncoder();
@@ -20,6 +21,9 @@ export function fundingDigest(unsigned) {
 }
 
 export function shieldAuthorization(prepared, requested, signDigest) {
+  if (!poolAddress.test(requested.privateAddress) || prepared?.private_address !== requested.privateAddress) {
+    throw Error('The prepared destination does not match your private address. Cancel this unsigned request.');
+  }
   const unsigned = prepared?.unsigned_funding, terms = unsigned?.terms;
   if (!validFunding(unsigned) || terms.chain_id !== CHAIN_ID || terms.genesis_hash !== GENESIS_HASH ||
       terms.protocol_version !== PROTOCOL_VERSION || terms.source !== requested.account ||

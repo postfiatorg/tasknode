@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Amount, Card, CardHead, IdChip, Notice, Spinner } from '../ui.jsx';
+import { restoreMessage } from '../../../../../shared/private-payment.js';
 import { resultOf } from '../market/amounts.js';
-import { advance, makeJob, walletAssets } from './flow.js';
+import { abandon, advance, canAbandon, makeJob, pendingMessage, walletAssets } from './flow.js';
 
 const labels = { shield: 'Move to private', pay: 'Send privately', exit: 'Move to public' };
 
@@ -18,10 +19,10 @@ export default function PrivateWallet({ client }) {
     const version = ++readVersion.current;
     const current = () => !signal.aborted && version === readVersion.current;
     await Promise.all([
-      session.request('balance', {}, signal).then(value => {
+      session.balance(signal).then(value => {
         if (current()) { setSnapshot(value); setReadError(''); }
       }).catch(error => {
-        if (current()) { setSnapshot(null); setReadError(error.message + ' Checking balances moves no funds.'); }
+        if (current()) { setSnapshot(null); setReadError(error.message); }
       }),
       client.getBalances().then(({ assets }) => {
         if (current()) { setLines(Array.isArray(assets) ? assets : assets?.lines || assets?.assets || []); setPublicError(''); }
@@ -75,7 +76,7 @@ export default function PrivateWallet({ client }) {
   const asset = assets.find(a => a.id === assetId) || assets[0];
   const unit = asset?.id + ':' + asset?.precision;
   const enteredAmount = quantityUnit === unit ? quantity : '';
-  async function run(resume = false, dismiss = false) {
+  async function run(resume = false, command = '') {
     if (!wallet || busy) return;
     const { signal } = lifecycle.current;
     setBusy(true); setProgress('');
@@ -87,34 +88,43 @@ export default function PrivateWallet({ client }) {
         setJob(existing);
         if (existing && !resume) { setProgress('A previous request is pending. Check its status before starting another.'); return; }
         if (!existing && resume) { setProgress('This request is no longer pending in this browser. Refresh balances.'); return; }
-        if (dismiss) {
-          if (['prepare','review'].includes(existing?.phase)) {
-            await wallet.save(null); setJob(null);
-            setProgress('Unsigned request closed. No funds moved. The prover may reserve the same funding amount for your next review.');
-          }
-          return;
+        if (resume && (job?.phase !== existing.phase || job?.terms.request_id !== existing.terms.request_id ||
+            job?.prepared?.pending_id !== existing.prepared?.pending_id || job?.terms.pending_id !== existing.terms.pending_id ||
+            job?.action?.state !== existing.action?.state)) {
+          setProgress('The request changed in another tab. Review its current status.'); return;
         }
         const save = async value => { signal.throwIfAborted(); await wallet.save(value); if (!signal.aborted) setJob(value); };
         let current = existing;
         try {
+          if (command === 'cancel' || command === 'replace') {
+            if (!canAbandon(existing)) return;
+            const message = await abandon(wallet, existing, signal);
+            await save(null);
+            setProgress(message);
+            if (command === 'replace') {
+              setMode('shield'); setAssetId(existing.terms.asset); setQuantity('');
+            }
+            return;
+          }
           if (!current) {
             current = makeJob(mode, asset, enteredAmount, mode === 'pay' ? recipient : destination, client.address);
             await save(current);
           }
           const confirm = existing?.phase === 'review' && job?.prepared?.pending_id === existing.prepared.pending_id &&
-            job.fee === existing.fee && job.prepared.signing_digest_hex === existing.prepared.signing_digest_hex;
-          const message = await advance(wallet, current, { confirm, progress: value => { if (!signal.aborted) setProgress(value); }, save, signal });
+            job.fee === existing.fee && job.prepared.private_address === existing.prepared.private_address && job.prepared.signing_digest_hex === existing.prepared.signing_digest_hex;
+          const message = await advance(wallet, current, { confirm, retry: command === 'retry', privateAddress: snapshot?.address, progress: value => { if (!signal.aborted) setProgress(value); }, save, signal });
           if (!signal.aborted) { setProgress(message); setQuantity(''); }
         } catch (failure) {
           if (signal.aborted) return;
           const pending = await wallet.load();
-          if (failure.refused) await save(null);
-          const beforeSubmit = !pending || ['prepare','review'].includes(pending.phase);
-          setProgress(failure.message + (failure.refused || beforeSubmit ? ' The requested transfer did not move funds.' :
+          const refused = failure.refused && !command && ['prepare', 'submit'].includes(pending?.phase);
+          if (refused) await save(null);
+          const beforeSubmit = !pending || ['prepare','review','unsigned'].includes(pending.phase);
+          setProgress(failure.message + (refused || beforeSubmit ? ' The requested transfer did not move funds.' :
             ' Transfer status is unconfirmed. Resume this same request to check whether funds moved.'));
         }
-        if (!signal.aborted) void refresh(wallet, signal);
       });
+      if (!signal.aborted) await refresh(wallet, signal);
     } catch {
       if (!signal.aborted) setProgress('Transfer status is unconfirmed. The wallet could not access its recovery record. Check the existing request and balances before trying again.');
     } finally { if (!signal.aborted) setBusy(false); }
@@ -122,19 +132,24 @@ export default function PrivateWallet({ client }) {
   return <div className="l1-view l1-split is-even">
     <Card className="l1-stack"><CardHead title="Private balance" />
       {snapshot && <><p>Your private address</p><IdChip value={snapshot.address} label="private address" />
+        <p>Snapshot height {snapshot.snapshot.height} · {snapshot.privacy_label}</p>
         {assets.length ? <dl className="l1-kv">{assets.map(a => <div key={a.id}><dt title={a.id}>{a.label} · {a.id.slice(0, 8)}</dt>
-          <dd><span><Amount atoms={a.available} precision={a.precision} /> available</span><small><Amount atoms={a.reserved} precision={a.precision} /> pending / reserved</small></dd></div>)}</dl> : <p>No private funds yet.</p>}</>}
+          <dd><span><Amount atoms={a.available} precision={a.precision} /> available</span><small><Amount atoms={a.total} precision={a.precision} /> total</small><small><Amount atoms={a.reserved} precision={a.precision} /> pending / reserved</small></dd></div>)}</dl> : <p>No private funds yet.</p>}</>}
       {!snapshot && !readError && <p><Spinner /> Loading private balance…</p>}
       {(readError || publicError) && <Notice role="alert" tone="warning">{readError || publicError}</Notice>}
-      <button type="button" className="l1-btn is-sm" disabled={!wallet || busy} onClick={() => refresh(wallet, lifecycle.current.signal)}>Refresh balances</button>
+      <button type="button" className="l1-btn is-sm" disabled={!wallet || busy || readError === restoreMessage} onClick={() => refresh(wallet, lifecycle.current.signal)}>Refresh balances</button>
       <p>Moving in or out shows the amount and public account on chain. Private payments hide the asset, amount, sender and recipient. Privacy is weaker while few people use the pool.</p>
-      <p>The trusted prover holds the keys to your private balance.</p>
+      <p>The prover holds the keys to your private balance. Balances rely on two independently operated nodes agreeing on the checkpoint.</p>
     </Card>
     <Card className="l1-ticket l1-stack"><CardHead title="Private payments" />
       {job ? <><p>{labels[job.mode]} · {job.phase === 'review' ? 'Ready to sign' : 'Pending request'}</p>
-        {job.phase === 'review' && <p>Move <Amount atoms={job.terms.amount} precision={reviewedAsset?.precision ?? 0} unit={reviewedAsset?.label || "asset atoms"} /> to private. Funding fee <Amount atoms={job.fee} unit="PFT" />.</p>}
-        <button type="button" className="l1-btn is-primary" disabled={busy || !wallet} onClick={() => run(true)}>{job.phase === 'review' ? 'Sign and move to private' : 'Resume and check status'}</button>
-        {['prepare','review'].includes(job.phase) && <button type="button" className="l1-btn" disabled={busy} onClick={() => run(true, true)}>Close unsigned request</button>}</> :
+        {job.phase === 'review' && <><p>Move <Amount atoms={job.terms.amount} precision={reviewedAsset?.precision ?? 0} unit={reviewedAsset?.label || "asset atoms"} /> to private. Funding fee <Amount atoms={job.fee} unit="PFT" />.</p><p>Private destination</p>{job.prepared.private_address ? <IdChip value={job.prepared.private_address} label="funding destination" /> : <p>Replace this earlier quote to verify its destination.</p>}</>}
+        {!['refused','unsubmitted'].includes(job.action?.state) &&
+          <button type="button" className="l1-btn is-primary" disabled={busy || !wallet || (job.phase === 'review' && (!snapshot || snapshot.address !== job.prepared.private_address))} onClick={() => run(true)}>{job.phase === 'review' ? 'Sign and move to private' : 'Resume and check status'}</button>}
+        {['refused','unsubmitted','pending_unknown','delivery_unknown','unknown'].includes(job.action?.state) &&
+          <button type="button" className="l1-btn" disabled={busy} onClick={() => run(true, 'retry')}>Retry same request</button>}
+        {canAbandon(job) && <button type="button" className="l1-btn" disabled={busy} onClick={() => run(true, 'cancel')}>Cancel and release funds</button>}
+        {['unsigned','review'].includes(job.phase) && <button type="button" className="l1-btn" disabled={busy} onClick={() => run(true, 'replace')}>Replace unsigned shield</button>}</> :
         <form onSubmit={e => { e.preventDefault(); run(); }}>
           <label className="l1-field"><span>Action</span><select aria-label="Action" value={mode} disabled={busy} onChange={e => setMode(e.target.value)}>{Object.entries(labels).map(([id,label]) => <option key={id} value={id}>{label}</option>)}</select></label>
           <label className="l1-field"><span>Asset</span><select aria-label="Asset" value={asset?.id || ''} disabled={busy} onChange={e => setAssetId(e.target.value)}>
@@ -145,7 +160,7 @@ export default function PrivateWallet({ client }) {
           {mode === 'exit' && <label className="l1-field"><span>Public destination</span><input value={destination} maxLength={42} disabled={busy} onChange={e => setDestination(e.target.value)} /></label>}
           <button type="submit" className="l1-btn is-primary" disabled={!snapshot || busy || !asset || !enteredAmount}>{mode === 'shield' ? 'Review move to private' : labels[mode]}</button>
         </form>}
-      {progress && <Notice role="status">{busy && <Spinner />} {progress}</Notice>}
+      {(progress || pendingMessage(job?.action?.state)) && <Notice role="status">{busy && <Spinner />} {progress || pendingMessage(job.action.state)}</Notice>}
     </Card>
   </div>;
 }
