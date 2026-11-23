@@ -2,6 +2,8 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import bs58 from 'bs58';
+import { knownRefusal, RELOAD_DEPOSIT } from '../../src/features/wallet/l1/bridge/solana-refusal.js';
+import { walletBuildId } from '../wallet-build.js';
 import { buildVaultDeposit, DepositError, readVault, recoverDeposit, releaseDeposit, sendDeposit, USDC, vaultSettings } from './solana-vault.js';
 
 const ROUTE = 'solana-mainnet-usdc-v1';
@@ -42,7 +44,7 @@ function validBody(path, body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
   const keys = Object.keys(body).sort().join(',');
   const hex32 = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
-  if (path === '/solana/release') return keys === 'nonce' && hex32(body.nonce);
+  if (path === '/solana/release') return hex32(body.nonce) && (keys === 'nonce' || (keys === 'nonce,reason' && knownRefusal(body.reason)));
   // A durable-nonce deposit also names the nonce account and the value it signed.
   if (path === '/solana/recovery') return ['last_valid_block_height,nonce,vault_program_id', 'before,last_valid_block_height,nonce,vault_program_id']
     .some(base => keys === base || keys === [...base.split(','), 'nonce_account', 'nonce_value'].sort().join(',')) &&
@@ -151,16 +153,36 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
   const forwarded = req.headers?.['x-tasknode-account'];
   const holder = session?.accountId === 'relay-service' ? (HOLDER.test(forwarded || '') ? forwarded : null)
     : session?.accountId ? String(session.accountId).replace(/[^A-Za-z0-9:_@.-]/g, '_').slice(0, 128) : null;
-  if (!solanaPath(suffix) || req.method !== (post ? 'POST' : 'GET')) return fail(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   let body;
+  // Keep only public, validated tracking fields. Never log raw bodies, transaction bytes, RPC
+  // errors, headers, or relay replies. The nonce correlates intent, refusal, send and recovery.
+  function log(status, code, payload, message) {
+    const step = JOB.test(suffix) ? 'job-status' : suffix.slice(8);
+    const nonce = body?.nonce ?? payload?.nonce;
+    const signature = body?.signature ?? payload?.signature;
+    const job = JOB.test(suffix) ? suffix.split('/').at(-1) : payload?.job_id;
+    console.log('solana ' + step + ' ' + JSON.stringify({ status, code,
+      nonce: typeof nonce === 'string' && /^[0-9a-f]{64}$/.test(nonce) ? nonce : undefined,
+      signature: b58(signature, 64) ? signature : undefined, job: typeof job === 'string' && /^0x[0-9a-f]{64}$/.test(job) ? job : undefined,
+      durable: suffix === '/solana/intent' && status === 200 ? Boolean(payload?.nonce_account) : undefined,
+      reason: knownRefusal(message) ? message : knownRefusal(body?.reason) ? body.reason : undefined }));
+  }
+  const reject = (status, code, message) => { log(status, code, undefined, message); return fail(status, code, message); };
+  if (!solanaPath(suffix)) return fail(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
+  if (req.method !== (post ? 'POST' : 'GET')) return reject(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   if (post) {
     let origin;
-    try { origin = new URL(req.headers.origin); } catch { return fail(403, 'bridge_origin_required', 'Same-origin request required.'); }
-    if (origin.host !== req.headers.host || req.headers['sec-fetch-site'] === 'cross-site') return fail(403, 'bridge_origin_mismatch', 'Same-origin request required.');
+    try { origin = new URL(req.headers.origin); } catch { return reject(403, 'bridge_origin_required', 'Same-origin request required.'); }
+    if (origin.host !== req.headers.host || req.headers['sec-fetch-site'] === 'cross-site') return reject(403, 'bridge_origin_mismatch', 'Same-origin request required.');
     try { body = await readJson(req, 4096); } catch { /* reject invalid or oversized JSON */ }
-    if (!validBody(suffix, body)) return fail(400, 'invalid_solana_request', 'Invalid Solana deposit request.');
+    if (!validBody(suffix, body)) return reject(400, 'invalid_solana_request', 'Invalid Solana deposit request.');
   }
   try {
+    // The authenticated proxy has already checked its own page. Its upstream relay can be
+    // installed independently and need not serve that web bundle.
+    const pageRequest = session?.accountId !== 'relay-service' && ['/solana/readiness', '/solana/intent'].includes(suffix);
+    const build = pageRequest && walletBuildId(env);
+    if (pageRequest && req.headers?.['x-tasknode-build'] !== build) return reject(409, 'wallet_reload_required', RELOAD_DEPOSIT);
     let result;
     if (withdrawViaRelay) {
       const pin = ['/solana/readiness', '/solana/intent'].includes(suffix) && pinned(env);
@@ -178,10 +200,13 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     } else {
       result = await localRoute(env, suffix, body, holder);
     }
+    if (pageRequest && result.status === 200) result.payload.build_id = build;
+    const failure = result.status >= 400 ? 'upstream_failure' : result.payload.status === 'failed' ? 'proof_failed' : undefined;
+    if (post || failure) log(result.status, failure, result.payload, result.payload.message);
     json(res, result.status, result.payload);
     return true;
   } catch (error) {
-    return fail(error instanceof DepositError ? error.status : 502, error instanceof DepositError ? error.code : 'solana_bridge_unavailable',
+    return reject(error instanceof DepositError ? error.status : 502, error instanceof DepositError ? error.code : 'solana_bridge_unavailable',
       error instanceof DepositError ? error.message : 'The Solana vault or proof relay is unreachable.');
   }
 }

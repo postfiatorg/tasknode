@@ -1,5 +1,5 @@
 // Vault ABI: pfusdc-vault/src/lib.rs, deposit tag 1, classic SPL Token.
-import { createHash, createPrivateKey, createPublicKey, randomBytes, sign } from 'node:crypto';
+import { createPrivateKey, createPublicKey, randomBytes, sign, verify } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { address, getProgramDerivedAddress } from '@solana/addresses';
 import { AccountRole } from '@solana/instructions';
@@ -13,7 +13,7 @@ const SYSTEM = '11111111111111111111111111111111';
 const RECENT_BLOCKHASHES = 'SysvarRecentB1ockHashes11111111111111111111';
 // A depositor may hold a nonce for this long before it is offered to someone else.
 const NONCE_LEASE_MS = 11 * 60 * 1000;
-// Every deposit sets its own compute budget, so a wallet has nothing to add. Without one, the deposit
+// Every prepared deposit includes a compute budget that the wallet may replace. Without one, the deposit
 // instruction ran under the runtime's implicit 200,000-unit default; the limit keeps that ceiling and
 // adds 150 units each for AdvanceNonce and the two compute-budget instructions.
 export const DEPOSIT_COMPUTE_UNIT_LIMIT = 200_000 + 3 * 150;
@@ -36,7 +36,6 @@ export const READINESS_EVERY = 5;
 const leases = new Map();
 const loops = { durable: 0, blockhash: 0 }, looping = new Set();
 let leasing = Promise.resolve(), authorityWarned = false;
-const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const pda = async (programAddress, ...seeds) => (await getProgramDerivedAddress({ programAddress, seeds }))[0];
 
 function solanaRpc(url) {
@@ -234,8 +233,9 @@ export async function buildVaultDeposit(settings, ready, request, holder) {
     if (durable) {
       if (getCompiledTransactionMessageDecoder().decode(compiled).staticAccounts[1] !== signer.authority) throw Error('unexpected signer order');
       slots.push(Buffer.alloc(64));
-      // The authority will sign this message and no other.
-      leases.get(durable.account).message = digest(compiled);
+      const lease = leases.get(durable.account);
+      if (!held({ nonce_account: durable.account, nonce_value: durable.value }, nonce.toString('hex'))) throw Error('nonce lease replaced');
+      lease.deposit = { program, mint, authority: signer.authority, owner, source: source.pubkey, amount_atoms: String(amount), pftl_recipient: request.pftl_recipient };
     }
     const unsigned = bs58.encode(Buffer.concat([Buffer.from([slots.length]), ...slots, compiled]));
     // Without a nonce the card stops waiting at this height. With one, recovery reads the nonce instead.
@@ -264,19 +264,22 @@ export async function sendDeposit(settings, { transaction_b64, nonce }, resend =
   if (![1, 2].includes(signers) || bytes.length <= start || bytes.length > 1232 || bytes.subarray(1, 65).every(b => b === 0)) {
     throw refuse('Phantom did not return a signed deposit.');
   }
-  const pool = signers === 2 && settings.nonceFile ? JSON.parse(await readFile(settings.nonceFile, 'utf8')) : null;
   let shape;
-  try {
-    if (signers === 2 && !pool) throw Error('no nonce file');
-    shape = await checkDepositShape(bytes, { program, mint, nonce, ...(pool && { nonce_authority: pool.authority, nonceAccounts: pool.accounts }) }, { signed: true });
-  } catch { throw refuse('The signed transaction is not this vault deposit.'); }
+  try { shape = await checkDepositShape(bytes, { program, mint, nonce }, { signed: true }); }
+  catch (error) { throw refuse(error.message.startsWith('Not the vault deposit:') ? error.message : 'Unreadable vault deposit.'); }
   const { signature, durable } = shape;
   if (durable) {
-    // The authority signs after Phantom, and only the message this server built for the lease this
-    // deposit still holds. The browser keeps Phantom's copy and sends it again while the lease lasts.
     const signer = await nonceSigner(settings);
-    if (!signer || signer.authority !== durable.nonce_authority || !held(durable, nonce) ||
-      leases.get(durable.nonce_account).message !== digest(shape.message)) throw refuse('The signed transaction is not this vault deposit.');
+    const prepared = leases.get(durable.nonce_account)?.deposit;
+    if (!prepared || !held(durable, nonce) || !signer?.accounts.includes(durable.nonce_account) ||
+        signer.authority !== durable.nonce_authority || prepared.authority !== signer.authority) throw refuse('This deposit no longer holds the prepared nonce lease.');
+    if (prepared.program !== program || prepared.mint !== mint ||
+        ['owner', 'source', 'amount_atoms', 'pftl_recipient'].some(field => shape[field] !== prepared[field])) {
+      throw refuse('Not the vault deposit: leased deposit accounts or data changed.');
+    }
+    const payerKey = createPublicKey({ format: 'der', type: 'spki',
+      key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), bs58.decode(shape.owner)]) });
+    if (!verify(null, shape.message, payerKey, bytes.subarray(1, 65))) throw refuse('Invalid depositor signature.');
     sign(null, shape.message, signer.key).copy(bytes, 65);
     encoded = bytes.toString('base64');
   }

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, FileCheck, Landmark, Wallet } from "lucide-react";
 import { amountAtoms } from "./controller.js";
-import { bridgeJson } from "./bridge-relay.js";
-import { advanceDeposit, checkEarlier, pollDelay, readSaved, RECOVERY_POLL_MS, sendDeposit, setAside } from "./solana-session.js";
+import { advanceDeposit, checkEarlier, pollDelay, readSaved, RECOVERY_POLL_MS, sendDeposit, setAside, solanaReadiness } from "./solana-session.js";
 import { Amount, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
 import { ACTIVE, AmountField, Credited, DepositForm, DepositProgress, elapsedText, holdsForm, NotSent, phaseState } from "./DepositView.jsx";
 
@@ -105,7 +104,7 @@ export default function SolanaDeposit({ client, onBusy }) {
     let stopped = false, timer;
     async function refresh() {
       try {
-        const route = await bridgeJson("/solana/readiness");
+        const route = await solanaReadiness();
         if (!stopped) setReady(route);
       } catch (failure) { if (!stopped) setReady({ ready: false, message: failure.message }); }
       if (!stopped) timer = setTimeout(refresh, 15000);
