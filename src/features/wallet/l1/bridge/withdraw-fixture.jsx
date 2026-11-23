@@ -7,7 +7,8 @@ const client = {
   async call(method, params) {
     if (method !== 'account_assets' || params.account !== this.address || params.asset_id !== ready.series_asset_id) throw Error('Unexpected RPC');
     return { ok: true, result: { assets: [{ asset_id: ready.asset_id, balance: '99000000' },
-      { asset_id: ready.series_asset_id, source_bucket_id: ready.bucket_id, balance: '20000' }] } };
+      { asset_id: ready.series_asset_id, asset_family_id: ready.asset_id, source_series_id: '7'.repeat(96),
+        source_bucket_id: ready.bucket_id, issuer: ready.issuer, balance: '20000' }] } };
   },
   async quote(intent) { window.quoted = intent; return { minimum_fee: 1 }; },
   async sign(intent) {

@@ -83,16 +83,22 @@ test("only a missing account or a System-owned non-program account is a wallet",
   assert.equal(recipientKind({ owner: "Vote111111111111111111111111111111111111111", executable: false }), "program_owned");
   assert.equal(recipientKind({ executable: false }), "program_owned");
 });
-test("only the current Solana series and its bucket can fund the burn", () => {
-  const lines = [{ asset_id: ready.asset_id, balance: "30000000" }, { asset_id: "1".repeat(96), balance: "90000000" }];
-  assert.equal(matchedBalance({ assets: lines }, ready), 0n);
-  const row = { asset_id: ready.series_asset_id, balance: "20000" };
-  assert.equal(matchedBalance({ assets: [...lines, row] }, ready), 20000n);
-  assert.equal(matchedBalance({ assets: [{ ...row, source_bucket_id: ready.bucket_id }] }, ready), 20000n);
-  assert.equal(matchedBalance({ assets: [{ ...row, frozen: true }] }, ready), 0n);
-  assert.equal(matchedBalance({ assets: [{ ...row, spendable_balance: "150" }] }, ready), 150n);
-  for (const result of [{ assets: [{ ...row, source_bucket_id: "old" }] }, { assets: [row, row] }, { assets: [], truncated: true },
-    { assets: [{ ...row, balance: Number.MAX_SAFE_INTEGER + 1 }] }]) assert.throws(() => matchedBalance(result, ready));
+const series = { issuer: ready.issuer, asset_id: ready.asset_id, bucket_id: ready.bucket_id };
+test("the burn's series, bucket and issuer come from the wallet's own chain row, and readiness must name that row", () => {
+  const row = { asset_id: ready.series_asset_id, asset_family_id: ready.asset_id, source_series_id: "7".repeat(96),
+    source_bucket_id: ready.bucket_id, issuer: ready.issuer, balance: "20000" };
+  const other = { asset_id: ready.asset_id, issuer: ready.issuer, balance: "30000000" };
+  assert.deepEqual(matchedBalance({ assets: [other, row] }, ready), { held: 20000n, ...series });
+  assert.deepEqual(matchedBalance({ assets: [{ ...row, frozen: true }] }, ready), { held: 0n, ...series });
+  assert.equal(matchedBalance({ assets: [{ ...row, spendable_balance: "150" }] }, ready).held, 150n);
+  for (const result of [{ assets: [other] }, { assets: [] }]) assert.throws(() => matchedBalance(result, ready), /does not hold/);
+  for (const changed of [{ issuer: "pf" + "9".repeat(40) }, { asset_family_id: "8".repeat(96) }, { source_bucket_id: "old" },
+    { source_bucket_id: undefined }, { source_series_id: undefined }]) {
+    assert.throws(() => matchedBalance({ assets: [{ ...row, ...changed }] }, ready), /different Solana series/);
+  }
+  for (const result of [{ assets: [row, row] }, { assets: [], truncated: true }, { assets: [{ ...row, balance: Number.MAX_SAFE_INTEGER + 1 }] }]) {
+    assert.throws(() => matchedBalance(result, ready));
+  }
 });
 test("burn limits enforce six decimals, exact integers, balance and reserve", () => {
   assert.equal(withdrawalAtoms("0.02", 20000n, "20000"), 20000);
@@ -100,7 +106,8 @@ test("burn limits enforce six decimals, exact integers, balance and reserve", ()
   for (const [amount, held, reserve] of [["0", 1, "1"], ["0.0000001", 1, "1"], ["0.000002", 1, "2"],
     ["0.000002", 2, "1"], ["9007199254.740992", 2n ** 64n, String(2n ** 64n)]]) assert.throws(() => withdrawalAtoms(amount, BigInt(held), reserve));
   const client = { address: "pf" + "1".repeat(40), chainId: "test", accountId: "fixture" };
-  assert.deepEqual(withdrawalIntent(client, { held: 20000n, ready }, "0.02", owner), { kind: "asset", operation: {
+  const elsewhere = { ...ready, issuer: "pf" + "9".repeat(40), asset_id: "8".repeat(96), bucket_id: "6".repeat(96) };
+  assert.deepEqual(withdrawalIntent(client, { held: 20000n, ready: elsewhere, series }, "0.02", owner), { kind: "asset", operation: {
     operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: ready.issuer, asset_id: ready.asset_id,
     bucket_id: ready.bucket_id, amount_atoms: 20000, epoch: 73, reserve_packet_hash: ready.reserve_packet_hash,
     destination_ref: ready.destination_prefix + Buffer.from(bytes).toString("hex") } });
@@ -110,7 +117,7 @@ test("burn limits enforce six decimals, exact integers, balance and reserve", ()
 test("the bundled L1 signer preserves the reviewed Solana burn and submits it once to a stub", async () => {
   wasm.initSync({ module: await readFile(new URL("../wasm/postfiat_wallet_wasm_bg.wasm", import.meta.url)) });
   const wallet = wasm.wallet_keygen(CHAIN_ID, wasm.random_master_seed(), 0);
-  const intent = withdrawalIntent(wallet, { held: 20000n, ready }, "0.02", owner);
+  const intent = withdrawalIntent(wallet, { held: 20000n, ready, series }, "0.02", owner);
   const txId = "12".repeat(48), calls = [];
   const builder = new TxBuilder({ call: async (method, params) => {
     calls.push(method);

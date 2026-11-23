@@ -51,20 +51,24 @@ export async function phantomRecipient(phantom) {
   return checkRecipient(owner);
 }
 
+// The burn's issuer, asset family and bucket come from the wallet's own balance row on the chain.
+// Readiness only says which series can be paid now; it must name exactly that row.
 export function matchedBalance(result, ready) {
   const rows = Array.isArray(result) ? result : result?.assets;
   if (!Array.isArray(rows) || result.truncated) throw Error("Complete asset balances are unavailable.");
   const matches = rows.filter(row => row.asset_id === ready.series_asset_id);
-  if (!matches.length) return 0n;
+  if (!matches.length) throw Error("Your wallet does not hold PFUSDC from the Solana series that can be paid now.");
   const [row] = matches;
-  if (matches.length !== 1 || (Object.hasOwn(row, "source_bucket_id") && row.source_bucket_id !== ready.bucket_id)) {
-    throw Error("The balance does not match the current Solana reserve bucket.");
+  if (matches.length !== 1) throw Error("Complete asset balances are unavailable.");
+  if (!row.source_series_id || row.issuer !== ready.issuer || row.asset_family_id !== ready.asset_id || row.source_bucket_id !== ready.bucket_id) {
+    throw Error("The payout service named a different Solana series or issuer than your wallet holds.");
   }
-  if (row.frozen === true) return 0n;
+  const series = { issuer: row.issuer, asset_id: row.asset_family_id, bucket_id: row.source_bucket_id };
+  if (row.frozen === true) return { held: 0n, ...series };
   const held = integer(row.balance, "Solana-backed balance");
-  if (row.spendable_balance == null) return held;
+  if (row.spendable_balance == null) return { held, ...series };
   const spendable = integer(row.spendable_balance, "Spendable Solana-backed balance");
-  return spendable < held ? spendable : held;
+  return { held: spendable < held ? spendable : held, ...series };
 }
 
 export function withdrawalAtoms(amount, held, outstanding) {
@@ -81,12 +85,13 @@ export async function withdrawalSnapshot(client) {
       || ready.destination_prefix !== MAINNET_PREFIX || typeof ready.bucket_outstanding_atoms !== "string"
       || !/^[0-9]+$/.test(ready.bucket_outstanding_atoms)) return null;
   const result = rpcResult(await client.call("account_assets", { account: client.address, asset_id: ready.series_asset_id, limit: 10 }));
-  return { ready, held: matchedBalance(result, ready) };
+  const { held, ...series } = matchedBalance(result, ready);
+  return { ready, held, series };
 }
 
-export function withdrawalIntent(client, { ready, held }, amount, recipient) {
+export function withdrawalIntent(client, { ready, held, series }, amount, recipient) {
   return { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address,
-    issuer: ready.issuer, asset_id: ready.asset_id, bucket_id: ready.bucket_id,
+    issuer: series.issuer, asset_id: series.asset_id, bucket_id: series.bucket_id,
     amount_atoms: withdrawalAtoms(amount, held, ready.bucket_outstanding_atoms), epoch: ready.epoch,
     reserve_packet_hash: ready.reserve_packet_hash, destination_ref: destinationRef(ready.destination_prefix, recipient) } };
 }
