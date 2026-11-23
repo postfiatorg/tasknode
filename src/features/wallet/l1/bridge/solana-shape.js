@@ -55,8 +55,10 @@ export function validLayout(layout) {
 }
 
 // Raise this whenever checkDepositShape accepts or refuses a different set of transactions. The
-// co-signing relay reports it in /solana/readiness, and the browser opens Phantom only when it
-// matches its own, so nobody signs a deposit the relay will refuse.
+// co-signing relay reports it in /solana/readiness, and the browser opens Phantom for a two-signer
+// (reserved nonce) deposit only when it matches its own, so nobody signs a deposit the relay will
+// refuse to co-sign. One-signer deposits go ahead on any version: raising it needs no coordinated
+// deploy of the web and relay hosts for them, and a skew at worst refuses one before anything is sent.
 export const DEPOSIT_CHECK_VERSION = 1;
 
 // Both the browser and the co-signer decode the actual signed legacy message. Instructions are

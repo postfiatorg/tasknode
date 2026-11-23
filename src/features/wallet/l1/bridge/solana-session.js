@@ -83,10 +83,9 @@ const shapeReason = error => knownRefusal(error?.message) ? error.message : refu
 // The browser owns one durable intent per recipient. The Web Lock covers preparation
 // and the first write across tabs. No recovery path calls Phantom.
 export async function sendDeposit({ key, provider, request, ready, save, active }) {
-  // The relay must run this page's shape check, or it could refuse what Phantom signed. A relay that
-  // reports no version predates the check: it differs only where it co-signs, with a durable nonce.
+  // Where the relay co-signs, with a durable nonce, it must run this page's shape check, or it could
+  // refuse what Phantom signed. One-signer deposits go ahead on any version, or none (an older relay).
   const current = ready.check_version === DEPOSIT_CHECK_VERSION;
-  if (ready.check_version !== undefined && !current) throw Error(CHECK_MISMATCH);
   await navigator.locks.request(key, { ifAvailable: true }, async lock => {
     if (!lock || readSaved(key)) throw Error("A Solana deposit is already in progress.");
     const intent = await postSolana("intent", request);
