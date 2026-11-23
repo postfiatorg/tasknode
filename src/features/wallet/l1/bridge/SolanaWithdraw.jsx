@@ -1,7 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
-import { destinationRef, isBurnId, savedBurn, UNAVAILABLE, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
+import { checkRecipient, destinationRef, isBurnId, phantomRecipient, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
+
+// Burns read from this wallet's chain history, so a withdrawal made in another browser can be tracked here.
+function WalletBurns({ client, onTrack }) {
+  const [burns, setBurns] = useState(null);
+  useEffect(() => {
+    let active = true;
+    walletBurns(client).then(rows => { if (active) setBurns(rows); }, () => { if (active) setBurns([]); });
+    return () => { active = false; };
+  }, [client]);
+  if (!burns?.length) return null;
+  return <div className="l1-stack">
+    <b>Recent burns from this wallet</b>
+    {burns.map(row => <div key={row.id} className="l1-row">
+      <span className="l1-mono" style={{ overflowWrap: "anywhere" }}>{row.id}</span>
+      <button type="button" className="l1-btn" onClick={() => onTrack(row.id)}>Track this payout</button>
+    </div>)}
+  </div>;
+}
 
 export default function SolanaWithdraw({ client, storageKey }) {
   const [snapshot, setSnapshot] = useState(undefined), [error, setError] = useState("");
@@ -29,9 +47,8 @@ export default function SolanaWithdraw({ client, storageKey }) {
   async function usePhantom() {
     setBusy(true); setError(""); setReview(null);
     try {
-      const owner = (phantom.publicKey || (await phantom.connect()).publicKey)?.toString();
-      destinationRef("", owner); setRecipient(owner);
-    } catch (failure) { setError(`Could not read your Phantom address. ${failure.message} No funds moved.`); }
+      setRecipient(await phantomRecipient(phantom));
+    } catch (failure) { setError(`Could not use your Phantom address. ${failure.message} No funds moved.`); }
     finally { setBusy(false); }
   }
   let recipientError, amountError;
@@ -48,6 +65,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
       const fresh = await withdrawalSnapshot(client);
       setSnapshot(fresh);
       if (!fresh) { setError("Review stopped before signing. No funds moved."); return; }
+      await checkRecipient(recipient);
       const intent = withdrawalIntent(client, fresh, amount, recipient);
       setReview({ intent, quote: await client.quote(intent) });
     } catch (failure) { setError(`${failure.message} No funds moved.`); } finally { setBusy(false); }
@@ -66,6 +84,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
       const fresh = await withdrawalSnapshot(client);
       setSnapshot(fresh);
       if (!fresh) { setError("Confirmation stopped before signing. No funds moved."); return; }
+      await checkRecipient(recipient);
       const current = withdrawalIntent(client, fresh, amount, recipient);
       if (Object.keys(current.operation).some(field => current.operation[field] !== review.intent.operation[field])) {
         throw Error("The reserve changed. Review the updated withdrawal.");
@@ -80,12 +99,13 @@ export default function SolanaWithdraw({ client, storageKey }) {
       marked = true;
       const signed = await client.sign(review.intent, review.quote);
       submitted = true;
-      const result = await client.submit(signed);
+      const result = await submitBurn(client, signed, storageKey);
       if (!isBurnId(result.txId)) throw Error("Missing burn ID.");
       track(result.txId, true);
     } catch (failure) {
       if (submitted && failure.code !== "l1_execution_rejected") {
-        setBurn("submitting"); setError(failure.message);
+        if (isBurnId(failure.txId)) track(failure.txId, true); else setBurn("submitting");
+        setError(failure.message);
       } else {
         if (marked) { try { localStorage.removeItem(storageKey); } catch { setBurn("submitting"); } }
         setError(`${failure.message} No PFUSDC was burned.`);
@@ -99,13 +119,14 @@ export default function SolanaWithdraw({ client, storageKey }) {
   }
   return <section aria-label="Solana USDC withdrawal" className="l1-view l1-split is-ticket"><Card className="l1-ticket">
     <CardHead eyebrow="Withdraw to Solana" title="PFUSDC to USDC" />
-    {isBurnId(burn) ? <SolanaPayout burn={burn} create={create} onDone={reset} /> : burn ? <div className="l1-stack">
+    {isBurnId(burn) ? <SolanaPayout burn={burn} owner={client.address} create={create} onDone={reset} /> : burn ? <div className="l1-stack">
       <Notice tone="warning" title="Check your burn in Post Fiat Activity">A submission is pending or its receipt was lost. Your PFUSDC may have been burned. Enter the accepted burn ID to track the payout.</Notice>
       <label className="l1-field">Post Fiat burn ID<input value={recovery} onChange={event => setRecovery(event.target.value.trim())} /></label>
       <button type="button" className="l1-btn" disabled={!isBurnId(recovery)} onClick={() => { setError(""); track(recovery, false); }}>Track this burn</button>
       <button type="button" className="l1-btn" onClick={reset}>I verified that no burn was accepted</button>
+      <WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} />
     </div> : snapshot === undefined ? <p role="status"><Spinner size={14} /> Checking availability…</p>
-      : !snapshot ? <Notice tone="warning">{UNAVAILABLE}</Notice> : <>
+      : !snapshot ? <><Notice tone="warning">{UNAVAILABLE}</Notice><WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} /></> : <>
         <p>Available from the current Solana deposit series: <Amount atoms={snapshot.held} unit="PFUSDC" />.</p>
         {!review && <form className="l1-stack" onSubmit={prepare}>
           <label className="l1-field">PFUSDC amount<input inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={event => setAmount(event.target.value)} /></label>
@@ -127,6 +148,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
             <button type="button" className="l1-btn is-primary" onClick={confirm}>Confirm and burn</button></div>
         </div>}
         {busy && <p role="status"><Spinner size={14} /> Working…</p>}
+        {!review && !busy && <WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} />}
       </>}
     {error && <Notice tone="danger" role="alert">{error}</Notice>}
   </Card></section>;

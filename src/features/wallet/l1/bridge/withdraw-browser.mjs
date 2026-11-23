@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -16,6 +17,8 @@ const json = (res, status, payload) => { res.writeHead(status, { 'Content-Type':
 const posts = [];
 let stage, open = false, epoch = ready.epoch;
 const payout = createServer(async (req, res) => {
+  // Also the stub Solana RPC: the recipient has no account yet, which is a fresh wallet.
+  if (req.method === 'POST' && req.url === '/') return json(res, 200, { jsonrpc: '2.0', id: 1, result: { context: { slot: 1 }, value: null } });
   if (req.url === '/solana/withdrawals/readiness') return json(res, 200, open ? { ...ready, epoch } : { ok: true, ready: false, message: 'paused' });
   if (req.method === 'POST' && req.url === '/solana/withdrawals') {
     const chunks = []; for await (const part of req) chunks.push(part);
@@ -30,10 +33,18 @@ const payout = createServer(async (req, res) => {
     burn_height: 101, solana_tx: stage === 'paid' ? signature : null });
 });
 
+// The L1 read the gateway uses to check that the burn is this wallet's accepted burn.
+const chain = createTcpServer(socket => socket.once('data', chunk => {
+  const { id, method, params } = JSON.parse(String(chunk).split('\n')[0]);
+  const row = { tx_id: burn, transaction_kind: 'vault_bridge_burn_to_redeem', from: 'pf' + '1'.repeat(40), accepted: true };
+  socket.end(JSON.stringify({ ok: method === 'tx' && params.tx_id === burn, id,
+    result: { tx_id: burn, confirmed: true, receipt: { tx_id: burn, accepted: true }, transaction_rows: [row] } }) + '\n');
+}));
 const profile = await mkdtemp(join(tmpdir(), 'solana-withdraw-'));
 let server, gateway, chrome, browser;
 try {
   payout.listen(0, '127.0.0.1'); await once(payout, 'listening');
+  chain.listen(0, '127.0.0.1'); await once(chain, 'listening');
   const { output } = await build({ configFile: false, logLevel: 'warn', build: { write: false,
     rolldownOptions: { input: 'src/features/wallet/l1/bridge/withdraw-fixture.jsx' } } });
   const entry = output.find(asset => asset.isEntry).fileName;
@@ -51,7 +62,8 @@ try {
     res.end(asset.code ?? asset.source);
   });
   gateway = registerL1Gateway(server, { env: { TASKNODE_L1_ENABLED: 'true', L1_SOLANA_WITHDRAWALS_ENABLED: 'true',
-    L1_SOLANA_WITHDRAW_SERVICE_URL: 'http://127.0.0.1:' + payout.address().port },
+    L1_SOLANA_WITHDRAW_SERVICE_URL: 'http://127.0.0.1:' + payout.address().port, L1_SOLANA_RPC_URL: 'http://127.0.0.1:' + payout.address().port,
+    L1_HISTORY_RPC_URL: 'tcp://127.0.0.1:' + chain.address().port },
     getSession: async () => ({ accountId: 'fixture', authenticated: true }), cookieValue: () => '', json,
     readJson: async req => { const chunks = []; for await (const part of req) chunks.push(part); return JSON.parse(Buffer.concat(chunks)); } });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -112,6 +124,6 @@ try {
 } finally {
   await browser?.close();
   if (chrome && chrome.exitCode === null && chrome.pid) { const stopped = once(chrome, 'exit'); chrome.kill(); await stopped; }
-  gateway?.close(); if (server) await new Promise(resolve => server.close(resolve)); await new Promise(resolve => payout.close(resolve));
+  gateway?.close(); if (server) await new Promise(resolve => server.close(resolve)); await new Promise(resolve => payout.close(resolve)); chain.close();
   await rm(profile, { recursive: true, force: true, maxRetries: 3 });
 }
