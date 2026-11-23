@@ -285,7 +285,12 @@ export async function sendDeposit(settings, { transaction_b64, nonce }, resend =
     sign(null, shape.message, signer.key).copy(bytes, 65);
     encoded = bytes.toString('base64');
   }
-  await rpc.sendTransaction(encoded, { preflightCommitment: 'confirmed', maxRetries: 3 });
+  try { await rpc.sendTransaction(encoded, { preflightCommitment: 'confirmed', maxRetries: 3 }); } catch (error) {
+    // Solana refused it, often a failed Phantom assertion. The depositor sees Solana's text; the
+    // relay log gets a fixed reason and the public layout instead.
+    if (error instanceof DepositError) Object.assign(error, { code: 'solana_deposit_rejected', reason: 'Solana rejected the deposit', layout: instructionLayout(bytes) });
+    throw error;
+  }
   // Sent: a new intent of the same holder no longer drops this lease.
   if (durable && held(durable, nonce)) leases.get(durable.nonce_account).sent = true;
   const kind = durable ? 'durable' : 'blockhash';

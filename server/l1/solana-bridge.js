@@ -162,7 +162,8 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
   // Keep only public, validated tracking fields. Never log raw bodies, transaction bytes, RPC
   // errors, headers, or relay replies. The nonce correlates intent, refusal, send and recovery.
   // layout: the public layout of a refused transaction, from the relay's own decode or a validated release.
-  function log(status, code, payload, message, layout = valid ? body.layout : undefined) {
+  // reason: a fixed diagnostic of the relay's own, where the message carries outside text.
+  function log(status, code, payload, message, layout = valid ? body.layout : undefined, reason = undefined) {
     const step = JOB.test(suffix) ? 'job-status' : suffix.slice(8);
     const nonce = body?.nonce ?? payload?.nonce;
     const signature = body?.signature ?? payload?.signature;
@@ -171,10 +172,10 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
       nonce: typeof nonce === 'string' && /^[0-9a-f]{64}$/.test(nonce) ? nonce : undefined,
       signature: b58(signature, 64) ? signature : undefined, job: typeof job === 'string' && /^0x[0-9a-f]{64}$/.test(job) ? job : undefined,
       durable: suffix === '/solana/intent' && status === 200 ? Boolean(payload?.nonce_account) : undefined,
-      reason: knownRefusal(message) ? message : knownRefusal(body?.reason) ? body.reason : undefined,
+      reason: reason ?? (knownRefusal(message) ? message : knownRefusal(body?.reason) ? body.reason : undefined),
       layout: validLayout(layout) ? layout : undefined }));
   }
-  const reject = (status, code, message, layout) => { log(status, code, undefined, message, layout); return fail(status, code, message); };
+  const reject = (status, code, message, layout, reason) => { log(status, code, undefined, message, layout, reason); return fail(status, code, message); };
   if (!solanaPath(suffix)) return fail(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   if (req.method !== (post ? 'POST' : 'GET')) return reject(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   if (post) {
@@ -214,7 +215,8 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     json(res, result.status, result.payload);
     return true;
   } catch (error) {
-    return reject(error instanceof DepositError ? error.status : 502, error instanceof DepositError ? error.code : 'solana_bridge_unavailable',
-      error instanceof DepositError ? error.message : 'The Solana vault or proof relay is unreachable.', error instanceof DepositError ? error.layout : undefined);
+    const known = error instanceof DepositError;
+    return reject(known ? error.status : 502, known ? error.code : 'solana_bridge_unavailable',
+      known ? error.message : 'The Solana vault or proof relay is unreachable.', known ? error.layout : undefined, known ? error.reason : undefined);
   }
 }

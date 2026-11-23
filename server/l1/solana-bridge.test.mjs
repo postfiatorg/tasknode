@@ -213,6 +213,29 @@ test('relay refusals on /send reach its log with the step, the deposit nonce and
   for (const reason of [...Object.values(RELAY_REFUSALS), 'Not the vault deposit: leased deposit accounts or data changed']) assert.ok(knownRefusal(reason), reason);
 });
 
+test('Solana\'s rejection on /send is logged with a fixed reason and the public layout, never Solana\'s text', async t => {
+  const env = { L1_SOLANA_RELAY_CONFIG: await relayFiles(t), L1_SOLANA_RELAY_URL: 'http://jobs.test', L1_SOLANA_RPC_URL: 'http://solana.test',
+    L1_SOLANA_VAULT_PROGRAM_ID: program, L1_SOLANA_USDC_MINT: mint, L1_SOLANA_ROUTE_BINDING: binding };
+  const rpcText = 'Transaction simulation failed: Lighthouse assertion private-detail';
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (new URL(url).host === 'solana.test') return Response.json({ jsonrpc: '2.0', id: JSON.parse(options.body).id, error: { code: -32002, message: rpcText } });
+    return Response.json({ ok: true, ready: true, ledger: 'node', route_id: 'solana-mainnet-usdc-v1',
+      source_proof_kind: 'sp1-solana-alpenglow-finality-v1', program_vkey: '0x' + '42'.repeat(32), observer_attestor_enabled: false });
+  });
+  const log = t.mock.method(console, 'log', () => {});
+  const nonce = '3c'.repeat(32);
+  const bytes = await solanaDeposit({ program, mint, owner, source, nonce, amount_atoms: '1000000', pftl_recipient: request.pftl_recipient,
+    budget: [unitLimit(200450), unitPrice(150000)], extra: [assertLamports(owner, 1)], signed: 9 });
+  const result = await route('send', { env, readJson: async () => sendBody(bytes, nonce) });
+  assert.deepEqual([result.status, result.body.code, result.body.message], [409, 'solana_deposit_rejected', 'Solana rejected the deposit: ' + rpcText]);
+  const lines = log.mock.calls.map(call => call.arguments[0]);
+  assert.equal(lines.length, 1);
+  const row = JSON.parse(lines[0].slice('solana send '.length));
+  assert.deepEqual([row.code, row.nonce, row.reason], ['solana_deposit_rejected', nonce, 'Solana rejected the deposit']);
+  assert.deepEqual(row.layout.instructions.map(ix => [row.layout.accounts[ix.program][0], ix.tag]).at(-1), [LIGHTHOUSE, 5]);
+  assert.ok(!lines[0].includes('private-detail'), 'Solana\'s text stays out of the log');
+});
+
 test('a browser refusal always releases the lease; only a layout that passes the fixed schema is logged', async t => {
   const f = await durableFixture(t, 170);
   const log = t.mock.method(console, 'log', () => {});
