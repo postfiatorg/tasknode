@@ -115,11 +115,12 @@ export async function walletBurns(client, limit = 100) {
     .map(row => ({ id: row.tx_id, amount: row.amount, height: row.block_height }));
 }
 
-export async function payoutJob(burn, create = false) {
+// The relay acts only for a burn this wallet made, so every call names the wallet.
+export async function payoutJob(burn, create = false, owner = "") {
   if (!isBurnId(burn)) throw Error("Invalid Post Fiat burn ID.");
   const job = await bridgeRequest(create ? ROOT : ROOT + "/" + burn, create ? {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ burn_tx_id: burn }),
-  } : {});
+    method: "POST", headers: { "Content-Type": "application/json", "X-L1-Owner": owner }, body: JSON.stringify({ burn_tx_id: burn }),
+  } : { headers: { "X-L1-Owner": owner } });
   if (job?.burn_tx_id !== burn || !Object.hasOwn(STAGES, job.stage)
       || (job.amount_atoms != null && (typeof job.amount_atoms !== "string" || !/^[0-9]+$/.test(job.amount_atoms)))
       || (job.recipient != null && !decode(job.recipient, 32))

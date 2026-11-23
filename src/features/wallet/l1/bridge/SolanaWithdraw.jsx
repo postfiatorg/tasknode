@@ -119,7 +119,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
   }
   return <section aria-label="Solana USDC withdrawal" className="l1-view l1-split is-ticket"><Card className="l1-ticket">
     <CardHead eyebrow="Withdraw to Solana" title="PFUSDC to USDC" />
-    {isBurnId(burn) ? <SolanaPayout burn={burn} create={create} onDone={reset} /> : burn ? <div className="l1-stack">
+    {isBurnId(burn) ? <SolanaPayout burn={burn} owner={client.address} create={create} onDone={reset} /> : burn ? <div className="l1-stack">
       <Notice tone="warning" title="Check your burn in Post Fiat Activity">A submission is pending or its receipt was lost. Your PFUSDC may have been burned. Enter the accepted burn ID to track the payout.</Notice>
       <label className="l1-field">Post Fiat burn ID<input value={recovery} onChange={event => setRecovery(event.target.value.trim())} /></label>
       <button type="button" className="l1-btn" disabled={!isBurnId(recovery)} onClick={() => { setError(""); track(recovery, false); }}>Track this burn</button>

@@ -17,7 +17,10 @@ async function listen(server) {
 }
 const close = server => new Promise(resolve => server.close(resolve));
 const wallet = () => bs58.encode(Buffer.from(generateKeyPairSync('ed25519').publicKey.export({ format: 'jwk' }).x, 'base64url'));
-async function stack(t, enabled, accounts = {}) {
+const OWNER = 'pf' + '1'.repeat(40);
+const burnTx = (id, from = OWNER, accepted = true) => ({ tx_id: id, confirmed: true, receipt: { tx_id: id, accepted },
+  transaction_rows: [{ tx_id: id, transaction_kind: 'vault_bridge_burn_to_redeem', from, accepted }] });
+async function stack(t, enabled, accounts = {}, chain = { [burn]: burnTx(burn) }) {
   const seen = [], lookups = [], token = randomBytes(32).toString('hex');
   // A stub Solana JSON-RPC: each address answers with its fixture account, null, or an RPC failure.
   const solana = createServer(async (req, res) => {
@@ -40,18 +43,20 @@ async function stack(t, enabled, accounts = {}) {
   });
   const upstream = await listen(payout);
   const reservation = createServer(), relayOrigin = await listen(reservation); await close(reservation);
+  // The chain read behind the relay: `tx` answers from the fixture burns, anything else fails.
+  const read = async (method, params) => { if (method === 'tx' && chain[params.tx_id]) return chain[params.tx_id]; throw Error('unknown'); };
   const relay = createRelayServer({ L1_RELAY_PUBLIC_ORIGIN: relayOrigin, L1_RELAY_TOKEN: token,
     L1_WALLET_PROXY_URL: 'ws://127.0.0.1:1', L1_WALLET_PROXY_TOKEN: 'fixture', L1_WALLET_PROXY_ORIGIN: relayOrigin,
-    L1_SOLANA_WITHDRAWALS_ENABLED: enabled, L1_SOLANA_WITHDRAW_SERVICE_URL: upstream, L1_SOLANA_RPC_URL: rpcOrigin }, async () => ({}));
+    L1_SOLANA_WITHDRAWALS_ENABLED: enabled, L1_SOLANA_WITHDRAW_SERVICE_URL: upstream, L1_SOLANA_RPC_URL: rpcOrigin }, read);
   relay.listen(Number(new URL(relayOrigin).port), '127.0.0.1'); await once(relay, 'listening');
   const server = createServer();
   const gateway = registerL1Gateway(server, { env: { TASKNODE_L1_ENABLED: 'true', L1_RELAY_URL: relayOrigin, L1_RELAY_TOKEN: token },
-    cookieValue: req => req.headers.cookie, getSession: async cookie => cookie ? { authenticated: true, accountId: 'fixture' } : null,
+    cookieValue: req => req.headers.cookie, getSession: async cookie => cookie ? { authenticated: true, accountId: cookie } : null,
     json, readJson: async req => { const chunks = []; for await (const chunk of req) chunks.push(chunk); return JSON.parse(Buffer.concat(chunks)); } });
   const origin = await listen(server);
   t.after(async () => { gateway.close(); await close(server); await close(relay); await close(payout); await close(solana); });
-  const headers = { Cookie: 'fixture=yes', Origin: origin, 'Content-Type': 'application/json' };
-  return { seen, lookups, relayOrigin, payout, get: suffix => fetch(origin + path + suffix, { headers }),
+  const headers = { Cookie: 'fixture=' + randomBytes(8).toString('hex'), Origin: origin, 'Content-Type': 'application/json', 'X-L1-Owner': OWNER };
+  return { seen, lookups, relayOrigin, payout, get: (suffix, changes) => fetch(origin + path + suffix, { headers: { ...headers, ...changes } }),
     post: (body, changes) => fetch(origin + path, { method: 'POST', headers: { ...headers, ...changes }, body }) };
 }
 
@@ -112,4 +117,29 @@ test('both authenticated hops validate writes and expose readiness and idempoten
   assert.ok(seen.every(row => row.authorization === undefined));
   await close(payout);
   assert.equal((await (await get('/readiness')).json()).ready, false);
+});
+
+test('payout routes act only for an accepted burn owned by the named wallet, with a per-session limit', async t => {
+  const theirs = 'cd'.repeat(48), rejected = 'ef'.repeat(48), unknown = '12'.repeat(48);
+  const { get, post, seen } = await stack(t, 'true', {}, { [burn]: burnTx(burn), [theirs]: burnTx(theirs, 'pf' + '2'.repeat(40)),
+    [rejected]: burnTx(rejected, OWNER, false) });
+  const create = (id, changes) => post(JSON.stringify({ burn_tx_id: id }), changes);
+  assert.equal((await create(burn, { 'X-L1-Owner': '' })).status, 400);
+  assert.equal((await get('/' + burn, { 'X-L1-Owner': 'pf' + 'Z'.repeat(40) })).status, 400);
+  for (const id of [theirs, rejected]) {
+    const response = await create(id);
+    assert.equal(response.status, 403); assert.equal((await response.json()).code, 'withdrawal_not_owner');
+    assert.equal((await get('/' + id)).status, 403);
+  }
+  const response = await create(unknown);
+  assert.equal(response.status, 503); assert.equal((await response.json()).code, 'withdrawal_owner_unchecked');
+  assert.deepEqual(seen, []);
+  assert.equal((await create(burn)).status, 202);
+  assert.equal((await get('/' + burn)).status, 200);
+  assert.deepEqual(seen.map(row => row.url), ['/solana/withdrawals', '/solana/withdrawals/' + burn]);
+  // Ten registrations per session in ten minutes, refused or not; status reads have their own budget.
+  for (let i = 0; i < 6; i++) assert.equal((await create(burn)).status, 202);
+  const limited = await create(burn);
+  assert.equal(limited.status, 429); assert.equal((await limited.json()).code, 'withdrawal_rate_limited');
+  assert.equal((await create(burn, { Cookie: 'fixture=other' })).status, 202);
 });

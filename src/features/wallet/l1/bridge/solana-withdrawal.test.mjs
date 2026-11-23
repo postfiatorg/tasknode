@@ -7,7 +7,7 @@ import { getProgramDerivedAddress } from "@solana/addresses";
 import * as wasm from "../wasm/postfiat_wallet_wasm.js";
 import { TxBuilder } from "../lib/tx-builder.js";
 import { CHAIN_ID, GENESIS_HASH } from "../lib/utils.js";
-import { checkRecipient, destinationRef, matchedBalance, phantomRecipient, submitBurn, trackingKey, walletBurns, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
+import { checkRecipient, destinationRef, matchedBalance, payoutJob, phantomRecipient, submitBurn, trackingKey, walletBurns, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
 import { recipientKind } from "./solana-recipient.js";
 
 // A real Ed25519 wallet key, with leading zero bytes so base58 keeps its leading "1"s.
@@ -169,4 +169,11 @@ test("the wallet's own accepted burns are listed from its chain history so any o
     { ...burnRow, tx_id: older, block_height: 1850 }] } }; } };
   assert.deepEqual(await walletBurns(client), [{ id: mine, amount: 20000, height: 1900 }, { id: older, amount: 20000, height: 1850 }]);
   assert.deepEqual(calls, [["account_tx", { address, limit: 100 }]]);
+});
+test("payout registration and status name the signed-in wallet", async t => {
+  const burn = "ab".repeat(48), address = "pf" + "1".repeat(40), headers = [];
+  stubFetch(t, (url, options) => { headers.push([options.method || "GET", options.headers?.["X-L1-Owner"]]);
+    return answer(200, { burn_tx_id: burn, stage: "queued" }); });
+  await payoutJob(burn, true, address); await payoutJob(burn, false, address);
+  assert.deepEqual(headers, [["POST", address], ["GET", address]]);
 });

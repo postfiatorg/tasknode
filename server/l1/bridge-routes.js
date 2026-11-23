@@ -49,7 +49,7 @@ export async function handleBridgeRoutes({ req, res, url, session, json, readJso
   }
   const solana = suffix === "/solana/withdrawals" || suffix.startsWith("/solana/withdrawals/");
   if (solana || suffix === "/withdrawals" || suffix.startsWith("/withdrawals/")) {
-    return handleWithdrawal({ req, res, json, readJson, fail, suffix, bridgeProxyUrl, bridgePathPrefix,
+    return handleWithdrawal({ req, res, json, readJson, fail, suffix, session, bridgeProxyUrl, bridgePathPrefix,
       proxyToken, proxyOrigin, withdrawViaRelay, solana, solanaOrigin, env });
   }
   if (suffix.startsWith("/solana/")) {

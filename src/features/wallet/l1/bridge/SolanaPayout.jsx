@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Amount, KV, Notice, Spinner } from "../ui.jsx";
 import { payoutJob, STAGES } from "./solana-withdrawal.js";
 
-export default function SolanaPayout({ burn, create, onDone }) {
+export default function SolanaPayout({ burn, owner, create, onDone }) {
   const [job, setJob] = useState(null), [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   useEffect(() => {
@@ -10,10 +10,10 @@ export default function SolanaPayout({ burn, create, onDone }) {
     async function poll(register) {
       try {
         let value;
-        try { value = await payoutJob(burn, register); }
+        try { value = await payoutJob(burn, register, owner); }
         catch (failure) {
           if (register || failure.status !== 404) throw failure;
-          value = await payoutJob(burn, true);
+          value = await payoutJob(burn, true, owner);
         }
         if (!active) return;
         setJob(value); setError("");
@@ -26,7 +26,7 @@ export default function SolanaPayout({ burn, create, onDone }) {
     }
     void poll(create || retry > 0);
     return () => { active = false; clearTimeout(timer); };
-  }, [burn, create, retry]);
+  }, [burn, owner, create, retry]);
   return <div className="l1-stack">
     {job?.stage === "paid" ? <Notice tone="success" title={STAGES.paid}>
       {job.amount_atoms ? <Amount atoms={job.amount_atoms} unit="USDC" /> : "USDC"} was sent{job.recipient && ` to ${job.recipient}`}.
