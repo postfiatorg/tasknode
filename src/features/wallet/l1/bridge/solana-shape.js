@@ -63,9 +63,12 @@ export async function checkDepositShape(bytes, expected, { signed = false } = {}
     const { program, accounts, data } = read(ix);
     // Every program is invoked read-only, as compiled; no instruction can make one writable or a signer.
     must(role(ix.programAddressIndex) === "r", "program role");
+    // One signer: main's rule, unchanged. Phantom's Lighthouse instructions pass unread; they sit
+    // inside the depositor's own signature, and the header and role checks below still apply.
+    if (program === LIGHTHOUSE_PROGRAM && signed && signers === 1) continue;
     if (program === LIGHTHOUSE_PROGRAM && signed) {
-      // LighthouseInstruction (Jac0xb/lighthouse): 0/1 write or close memory. Only the known
-      // assertion variants (2..17) test state and abort on a mismatch.
+      // Two signers: LighthouseInstruction (Jac0xb/lighthouse) 0/1 write or close memory. Only the
+      // known assertion variants (2..17) test state and abort on a mismatch.
       must(data[0] >= 2 && data[0] <= 17, "Lighthouse instruction");
       assertions.push(...accounts);
       continue;

@@ -462,6 +462,8 @@ test('Phantom\'s Lighthouse assertions pass on the one-signer path and are sent 
     ['appended after the server budget', { budget: serverBudget, extra: lighthouse }],
     ['with a wallet budget', { first: [unitLimit(61000), unitPrice(150000)], extra: lighthouse }],
     ['one assertion on the fee payer', { budget: serverBudget, extra: [assertLamports(solana.owner, 1)] }],
+    // main's one-signer rule: any Lighthouse instruction passes unread, whatever its tag.
+    ['MemoryWrite and an unknown tag', { budget: serverBudget, extra: [{ ...lighthouse[0], data: Buffer.from([0]) }, { ...lighthouse[1], data: Buffer.from([99]) }] }],
   ]) {
     const bytes = await solanaDeposit({ ...solanaShape, ...edit });
     const browser = solanaBrowser(t, { intent: await solanaIntent(), phantom: phantomSigned(bytes) });

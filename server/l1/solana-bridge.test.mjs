@@ -752,6 +752,23 @@ test('two signers: assertions may read the nonce account; the authority and any 
   await shapeCases(cases.map(([label, edit, refusal]) => [label, typeof edit === 'function' ? edit : { ...durable, ...edit }, refusal]));
 });
 
+// main's one-signer rule, unchanged: the only path in production, and nobody has captured which
+// Lighthouse instructions Phantom adds there. They pass as signed, unread. The default-limit fee
+// bound applies only to two signers (left open on purpose: the depositor pays and approves it).
+test('one signer: Lighthouse instructions pass as signed, whatever their tag, as on main', async () => {
+  const budget = [unitLimit(200450), unitPrice(150000)];
+  await shapeCases([
+    ['Lighthouse tag 0 (MemoryWrite)', { budget, extra: [lighthouseIx(0)] }],
+    ['Lighthouse tag 1 (MemoryClose)', { budget, extra: [lighthouseIx(1)] }],
+    ['Lighthouse tag 99', { budget, extra: [lighthouseIx(99)] }],
+    ['Lighthouse with empty data', { budget, extra: [{ ...lighthouseIx(2), data: Buffer.alloc(0) }] }],
+    ['Lighthouse with a new writable account', { budget, extra: [assertLamports(pub(70), 1, { role: 1 })] }],
+    ['no limit, price 2,000,000, five assertions', { budget: [unitPrice(2_000_000)], extra: Array.from({ length: 5 }, () => assertLamports(owner, 1)) }],
+    ['another program', { budget, extra: [assertLamports(owner, 1, { programAddress: pub(43) })] }, 'unexpected instruction count'],
+    ['an added signer, read as two signers without an advance', { budget, extra: [assertLamports(pub(44), 1, { role: 2 })] }, 'unexpected instruction count'],
+  ]);
+});
+
 test('the server price is at least 100,000 micro-lamports, the larger of the median fee on the deposit\'s accounts and a percentile of all recent fees, clamped, or the minimum when unread', async () => {
   assert.equal(UNSCOPED_FEE_PERCENTILE, 75);
   assert.equal(MIN_COMPUTE_UNIT_PRICE, 100_000);
