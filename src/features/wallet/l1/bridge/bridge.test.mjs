@@ -458,6 +458,13 @@ test('Phantom\'s Lighthouse assertions pass on the one-signer path and are sent 
   await edited.run();
   assert.equal(edited.posted.at(-1).path, 'send');
   t.mock.restoreAll();
+  // AdvanceNonce changes the nonce account; Phantom may assert on it.
+  const guarded = solanaBrowser(t, { intent: durable, phantom: phantomSigned(await solanaDeposit({ ...solanaShape, nonceAccount: solana.durable.nonce_account,
+    authority: solana.durable.nonce_authority, lifetime: solana.durable.nonce_value, budget: serverBudget,
+    extra: [...lighthouse, assertLamports(solana.durable.nonce_account, 1)] })) });
+  await guarded.run();
+  assert.equal(guarded.posted.at(-1).path, 'send', 'an assertion on the nonce account is sent');
+  t.mock.restoreAll();
   const oneSigner = extra => solanaDeposit({ ...solanaShape, budget: serverBudget, extra });
   for (const [label, intent, bytes] of [
     ['the same layout from another program', await solanaIntent(), await oneSigner([assertLamports(solana.owner, 1, { programAddress: pub(41) })])],

@@ -112,12 +112,15 @@ export async function checkDepositShape(bytes, expected, { signed = false } = {}
     rest.join() === [config, custody, expected.mint, receipt, TOKEN_PROGRAM, SYSTEM_PROGRAM].join() &&
     deposit.roles.join() === "sw,w,w,w,r,w,r,r", "deposit accounts");
   if (durable) {
-    // The authority is read-only and only AdvanceNonce receives its signer privilege or the
-    // leased nonce account. The depositor pays the fee and authorizes the original vault action.
-    // Extra instructions can only set a bounded budget or assert state. Even unused keys cannot
-    // enlarge the writable set, and assertions cannot use either nonce credential.
-    const protectedKey = key => key === durable.nonce_authority || key === durable.nonce_account;
-    must(!deposit.accounts.some(protectedKey) && !assertions.some(protectedKey), "nonce account or authority outside advance");
+    // The authority is read-only and only AdvanceNonce receives its signer privilege. The depositor
+    // pays the fee and authorizes the original vault action. Extra instructions can only set a
+    // bounded budget or assert state. Even unused keys cannot enlarge the writable set. The advance
+    // changes the nonce account, so Phantom may assert on it: assertions (tags 2..17) only read,
+    // and only the System program can change that System-owned account. The deposit may name
+    // neither nonce key, and no assertion the authority, whose signer privilege it would receive.
+    const { nonce_account: account, nonce_authority: authority } = durable;
+    must(!deposit.accounts.some(key => key === account || key === authority) && !assertions.includes(authority),
+      "nonce account or authority outside advance");
     const writable = new Set([owner, source, config, custody, receipt, durable.nonce_account]);
     must(keys.every((key, i) => !role(i).endsWith("w") || writable.has(key)), "additional writable account");
   }
