@@ -7,7 +7,8 @@ import bs58 from 'bs58';
 import { getProgramDerivedAddress } from '@solana/addresses';
 import { isSignerRole, isWritableRole } from '@solana/instructions';
 import { getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder, decompileTransactionMessage } from '@solana/transaction-messages';
-import { createPrivateKey, createPublicKey, verify } from 'node:crypto';
+import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
+import { walletBuildId } from '../wallet-build.js';
 import * as vault from './solana-vault.js';
 import { buildVaultDeposit, readVault, recoverDeposit, sendDeposit, DEPOSIT_COMPUTE_UNIT_LIMIT, MIN_COMPUTE_UNIT_PRICE, UNSCOPED_FEE_PERCENTILE, USDC } from './solana-vault.js';
 import { MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
@@ -15,7 +16,11 @@ import { handleBridgeRoutes } from './bridge-routes.js';
 import { assertLamports, assertTokenAccount, solanaDeposit, transfer, unitLimit, unitPrice, COMPUTE_BUDGET, RECENT_BLOCKHASHES } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
 
 const pub = byte => bs58.encode(Buffer.alloc(32, byte));
-const program = pub(2), owner = pub(5), mint = pub(7), source = pub(9);
+const keyOf = seed => createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]), format: 'der', type: 'pkcs8' });
+const addressOf = seed => bs58.encode(createPublicKey(keyOf(seed)).export({ format: 'der', type: 'spki' }).subarray(-32));
+const publicKeyOf = key => createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), bs58.decode(key)]), format: 'der', type: 'spki' });
+const depositor = keyOf(Buffer.alloc(32, 5));
+const program = pub(2), owner = addressOf(Buffer.alloc(32, 5)), mint = pub(7), source = pub(9);
 const token = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 // Independent route-binding vector from the ledger's vault_bridge_route_binding test.
 const binding = 'bceb5f7d7b32245250a394adb9f4a29c83e8806f805d6427caa4e055aa17473a';
@@ -115,7 +120,7 @@ test('lost Phantom reply recovers only a finalized successful vault deposit for 
 async function route(path, options = {}) {
   let result;
   await handleBridgeRoutes({ url: new URL('https://wallet.test/api/l1/bridge/solana/' + path),
-    session: { accountId: 'test' }, req: { method: 'POST', headers: { host: 'wallet.test', origin: 'https://wallet.test' } },
+    session: { accountId: 'test' }, req: { method: 'POST', headers: { host: 'wallet.test', origin: 'https://wallet.test', 'x-tasknode-build': walletBuildId() } },
     res: { setHeader() {} }, readJson: async () => request, json: (_, status, body) => { result = { status, body }; },
     env: {}, ...options });
   return result;
@@ -139,6 +144,32 @@ test('Solana write endpoints enforce session, same origin, exact field shapes an
   assert.equal((await route('intent')).status, 503);
   assert.equal((await route('advances')).status, 404);
   assert.equal((await route('jobs/bogus')).status, 404);
+});
+
+test('stale and unversioned pages get a reload message before the relay prepares a deposit', async t => {
+  const fetch = t.mock.method(globalThis, 'fetch', () => assert.fail('relay contacted'));
+  for (const path of ['readiness', 'intent']) for (const id of [undefined, 'old']) {
+    const headers = { host: 'wallet.test', origin: 'https://wallet.test', 'x-tasknode-build': id };
+    const result = await route(path, { req: { method: path === 'intent' ? 'POST' : 'GET', headers }, withdrawViaRelay: true });
+    assert.equal(result.status, 409);
+    assert.match(result.body.message, /Reload this page/);
+  }
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+test('release and failure logs contain only bounded public diagnostics', async t => {
+  const log = t.mock.method(console, 'log', () => {});
+  const nonce = '12'.repeat(32), reason = 'Not the vault deposit: source account';
+  const release = body => route('release', { readJson: async () => body });
+  assert.equal((await release({ nonce, reason })).status, 200);
+  assert.equal((await release({ nonce, reason: 'arbitrary private text' })).status, 400);
+  assert.equal((await route('send', { readJson: async () => ({ nonce, transaction_b64: 'A'.repeat(100) }) })).status, 503);
+  const lines = log.mock.calls.map(call => call.arguments[0]);
+  assert.equal(lines.length, 3);
+  assert.ok(lines[0].includes(reason));
+  assert.ok(lines[1].includes('invalid_solana_request'));
+  assert.ok(lines[2].includes('solana_bridge_unavailable'));
+  assert.doesNotMatch(lines.join(' '), /arbitrary private text|A{100}|transaction_b64/);
 });
 
 async function relayFiles(t) {
@@ -166,7 +197,7 @@ test('Solana proxy forwards job create and status to configured endpoints and gu
   payload = { ...payload, ledger: 'node', observer_attestor_enabled: false, request: {
     kind: 'deposit', route_id: 'solana-mainnet-usdc-v1', deposit_tx_hash: signature }, status: 'running',
     stage_history: [{ stage: 'proof_done', status: 'running', started_at: 100.25, started_at_unix: 100 }] };
-  const read = { req: { method: 'GET', headers: {} }, env };
+  const read = { req: { method: 'GET', headers: { 'x-tasknode-build': walletBuildId() } }, env };
   const result = await route('jobs/' + id, read);
   assert.equal(result.status, 200);
   assert.equal(result.body.signature, signature);
@@ -218,7 +249,7 @@ test('readiness and intent use the same current route through the Solana JSON-RP
     assert.ok(method in results);
     return Response.json({ jsonrpc: '2.0', id, result: results[method] });
   });
-  const readiness = await route('readiness', { req: { method: 'GET' }, env });
+  const readiness = await route('readiness', { req: { method: 'GET', headers: { 'x-tasknode-build': walletBuildId() } }, env });
   assert.equal(readiness.body.light_client_epoch, 3);
   assert.equal(readiness.body.available_atoms, '5000000');
   assert.equal((await route('intent', { env })).status, 200);
@@ -286,9 +317,6 @@ test('deposits closed by the relay: no intent, no nonce lease and no broadcast o
 
 // Durable nonces. Each test uses its own nonce accounts: leases live for the whole process.
 const SYSTEM = '11111111111111111111111111111111';
-const keyOf = seed => createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]), format: 'der', type: 'pkcs8' });
-const addressOf = seed => bs58.encode(createPublicKey(keyOf(seed)).export({ format: 'der', type: 'spki' }).subarray(-32));
-const publicKeyOf = key => createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), bs58.decode(key)]), format: 'der', type: 'spki' });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function nonceData(authority, value) {
   const data = Buffer.alloc(80);
@@ -317,7 +345,12 @@ async function durableFixture(t, base, { keySeed = Buffer.alloc(32, base) } = {}
   Object.assign(f.settings, { nonceFile, nonceKey });
   return { ...f, authority, nonceAccounts, values, ready: await readVault(f.settings, f.health) };
 }
-const signed = intent => { const bytes = Buffer.from(bs58.decode(intent.message_b58)); bytes.fill(9, 1, 65); return bytes; };
+function signAsDepositor(transaction) {
+  const bytes = Buffer.from(transaction);
+  sign(null, bytes.subarray(1 + 64 * bytes[0]), depositor).copy(bytes, 1);
+  return bytes;
+}
+const signed = intent => signAsDepositor(bs58.decode(intent.message_b58));
 const sendBody = (bytes, nonce) => ({ nonce, transaction_b64: Buffer.from(bytes).toString('base64') });
 
 test('durable nonce: [AdvanceNonce, limit, price, deposit], owner then authority as the only signers; the authority signs on send, after Phantom; the intent names the nonce', async t => {
@@ -344,7 +377,7 @@ test('durable nonce: [AdvanceNonce, limit, price, deposit], owner then authority
   const broadcast = [];
   f.settings.rpc.sendTransaction = async encoded => { broadcast.push(Buffer.from(encoded, 'base64')); return 'sent'; };
   await sendDeposit(f.settings, sendBody(signed(intent), intent.nonce), { every: 5, times: 1 });
-  assert.ok(broadcast[0].subarray(1, 65).every(b => b === 9), 'the depositor signature is kept');
+  assert.ok(verify(null, message, publicKeyOf(owner), broadcast[0].subarray(1, 65)), 'the depositor signature is kept');
   assert.ok(verify(null, message, publicKeyOf(f.authority), broadcast[0].subarray(65, 129)), 'the authority signed exactly this message');
   assert.equal(Buffer.compare(broadcast[0].subarray(129), message), 0);
   assert.deepEqual([intent.nonce_account, intent.nonce_authority, intent.nonce_value], [f.nonceAccounts[0], f.authority, f.values.get(f.nonceAccounts[0])]);
@@ -409,7 +442,7 @@ test('/solana/send relays only the exact deposit, with a nonce account from the 
   f.settings.rpc.getSignatureStatus = async () => ({ slot: 1 });
   const quick = { every: 5, times: 2 };
   const durable = await buildVaultDeposit(f.settings, f.ready, request, 's1');
-  assert.deepEqual(await sendDeposit(f.settings, sendBody(signed(durable), durable.nonce), quick), { ok: true, signature: bs58.encode(Buffer.alloc(64, 9)) });
+  assert.deepEqual(await sendDeposit(f.settings, sendBody(signed(durable), durable.nonce), quick), { ok: true, signature: bs58.encode(signed(durable).subarray(1, 65)) });
   const single = await buildVaultDeposit({ ...f.settings, nonceFile: undefined }, f.ready, request);
   assert.equal((await sendDeposit(f.settings, sendBody(signed(single), single.nonce), quick)).ok, true);
   assert.equal(sent.length, 2);
@@ -466,16 +499,16 @@ test('durable re-send loops cannot use up the blockhash budget, and stop after t
   const fixtures = await Promise.all(Array.from({ length: durableCap }, (_, i) => durableFixture(t, 150 + 2 * i)));
   const counts = new Map();
   for (const f of fixtures) {
-    f.settings.rpc.sendTransaction = async (encoded, options) => { if (options.skipPreflight) counts.set(encoded, (counts.get(encoded) ?? 0) + 1); };
+    f.settings.rpc.sendTransaction = async (encoded, options) => { if (options.skipPreflight) { const id = Buffer.from(encoded, 'base64').subarray(1, 65).toString('hex'); counts.set(id, (counts.get(id) ?? 0) + 1); } };
     f.settings.rpc.getSignatureStatus = async () => null;
   }
   // Every durable slot is busy for 300 ms; a blockhash deposit sent meanwhile is still re-sent.
   const durable = [];
   for (const [i, f] of fixtures.entries()) {
     const intent = await buildVaultDeposit(f.settings, f.ready, request, 'bound-' + i);
-    const bytes = signed(intent); bytes.fill(30 + i, 1, 65);
+    const bytes = signed(intent);
     const body = sendBody(bytes, intent.nonce);
-    durable.push(body.transaction_b64);
+    durable.push(bytes.subarray(1, 65).toString('hex'));
     await sendDeposit(f.settings, body, { every: 10, durableMs: 300 });
   }
   const f = fixtures[0];
@@ -484,7 +517,8 @@ test('durable re-send loops cannot use up the blockhash budget, and stop after t
   const blockhash = sendBody(blockhashBytes, single.nonce);
   await sendDeposit(f.settings, blockhash, { every: 10, times: 3 });
   await sleep(100);
-  assert.equal(counts.get(blockhash.transaction_b64), 3, 'the blockhash loop has its own budget');
+  assert.equal(counts.get(blockhashBytes.subarray(1, 65).toString('hex')), 3, 'the blockhash loop has its own budget');
+  assert.ok(durable.every(id => counts.get(id) > 0));
   await sleep(350);
   const after = durable.map(tx => counts.get(tx));
   await sleep(60);
@@ -567,7 +601,7 @@ function recompile(bytes, edit) {
 }
 const shapeRefused = { status: 400, code: 'solana_deposit_shape_mismatch' };
 
-test('/solana/send: a wallet-added compute budget passes on the one-signer path within the caps; a durable deposit must be unchanged', async t => {
+test('/solana/send: a wallet-added compute budget passes on the one-signer path within the caps; AdvanceNonce stays first', async t => {
   const f = await durableFixture(t, 200);
   const sent = [];
   f.settings.rpc.sendTransaction = async (encoded, options) => { if (!options.skipPreflight) sent.push(encoded); };
@@ -594,18 +628,15 @@ test('/solana/send: a wallet-added compute budget passes on the one-signer path 
   ]) {
     await assert.rejects(sendDeposit(f.settings, sendBody(bytes, nonce), quick), shapeRefused, label);
   }
-  // Durable: exactly what the server built and the authority signed.
+  // The authority still requires an active lease and the nonce advance first.
   const intent = await buildVaultDeposit(f.settings, f.ready, request, 'durable-exact');
   const built = signed(intent);
-  const priceIndex = 2;
   for (const [label, bytes] of [
-    ['another price', recompile(built, m => ({ ...m, instructions: m.instructions.map((ix, i) => i === priceIndex ? { ...ix, data: unitPrice(20000).data } : ix) }))],
-    ['limit and price swapped', recompile(built, m => ({ ...m, instructions: [m.instructions[0], m.instructions[2], m.instructions[1], m.instructions[3]] }))],
     ['a wallet-added limit', recompile(built, m => ({ ...m, instructions: [...m.instructions, { ...m.instructions[1], data: unitLimit(61000).data }] }))],
     ['the budget before AdvanceNonce', recompile(built, m => ({ ...m, instructions: [m.instructions[1], m.instructions[2], m.instructions[0], m.instructions[3]] }))],
     ['no compute budget', await solanaDeposit({ ...shape, nonce: intent.nonce, nonceAccount: f.nonceAccounts[1], authority: f.authority, lifetime: f.values.get(f.nonceAccounts[1]) })],
   ]) {
-    await assert.rejects(sendDeposit(f.settings, sendBody(bytes, intent.nonce), quick), shapeRefused, label);
+    await assert.rejects(sendDeposit(f.settings, sendBody(signAsDepositor(bytes), intent.nonce), quick), shapeRefused, label);
   }
   assert.equal(sent.length, 4, 'no refused transaction was broadcast');
   assert.equal((await sendDeposit(f.settings, sendBody(built, intent.nonce), quick)).ok, true, 'the unchanged durable deposit');
@@ -614,7 +645,7 @@ test('/solana/send: a wallet-added compute budget passes on the one-signer path 
   await assert.rejects(sendDeposit(f.settings, sendBody(bs58.decode(intent.message_b58), intent.nonce), quick), shapeRefused);
 });
 
-test('/solana/send: Lighthouse assertions pass on the one-signer path as signed; another program, a durable deposit or a changed role is refused', async t => {
+test('/solana/send: Lighthouse assertions pass on the one-signer path as signed; another program or a changed privilege is refused', async t => {
   const f = await durableFixture(t, 210);
   const sent = [];
   f.settings.rpc.sendTransaction = async (encoded, options) => { if (!options.skipPreflight) sent.push(encoded); };
@@ -632,13 +663,37 @@ test('/solana/send: Lighthouse assertions pass on the one-signer path as signed;
     ['another program', sendBody(await solanaDeposit({ ...shape, extra: [assertLamports(owner, 1, { programAddress: pub(43) })] }), nonce)],
     ['a writable mint', sendBody(await solanaDeposit({ ...shape, extra: [assertLamports(mint, 1, { role: 1 })] }), nonce)],
     ['an added signer', sendBody(await solanaDeposit({ ...shape, extra: [assertLamports(pub(44), 1, { role: 2 })] }), nonce)],
-    ['a durable deposit', sendBody(recompile(signed(intent), m => ({ ...m, staticAccounts: [...m.staticAccounts, 'L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95'],
-      header: { ...m.header, numReadonlyNonSignerAccounts: m.header.numReadonlyNonSignerAccounts + 1 },
-      instructions: [...m.instructions, { programAddressIndex: m.staticAccounts.length, accountIndices: [0], data: assertLamports(owner, 1).data }] })), intent.nonce)],
   ]) {
     await assert.rejects(sendDeposit(f.settings, body, quick), shapeRefused, label);
   }
+  const durable = { ...shape, nonce: intent.nonce, nonceAccount: intent.nonce_account, authority: f.authority,
+    lifetime: intent.nonce_value, budget: [unitPrice(150000), unitLimit(61000)], extra: lighthouse, signed: undefined };
+  const modified = signAsDepositor(await solanaDeposit(durable));
+  const refused = async bytes => assert.rejects(sendDeposit(f.settings, sendBody(bytes, intent.nonce), quick), shapeRefused);
+  for (const edit of [
+    { owner: pub(88) }, { source: pub(89) }, { amount_atoms: '1999999' }, { pftl_recipient: 'pf' + 'cd'.repeat(20) },
+    { nonce: 'de'.repeat(32) }, { lifetime: pub(90) }, { nonceAccount: f.nonceAccounts[1] },
+    { extra: [assertLamports(pub(44), 1, { role: 2 })] }, { extra: [assertLamports(f.authority, 1, { role: 1 })] },
+    { extra: [assertLamports(f.authority, 1)] }, { extra: [assertLamports(intent.nonce_account, 1)] },
+    { extra: [assertLamports(pub(44), 1, { role: 1 })] }, { extra: [assertLamports(mint, 1, { role: 1 })] },
+    { extra: [assertLamports(owner, 1, { programAddress: pub(43) })] }, { budget: [unitLimit(410000)] },
+    { budget: [unitPrice(MAX_COMPUTE_UNIT_PRICE + 1)] }, { budget: [unitPrice(MAX_COMPUTE_UNIT_PRICE)] },
+    { first: lighthouse }, { extra: [{ ...lighthouse[0], data: Buffer.from([0]) }] },
+    { extra: [{ ...lighthouse[0], data: Buffer.from([1]) }] }, { extra: [{ ...lighthouse[0], data: Buffer.from([18]) }] },
+  ]) await refused(signAsDepositor(await solanaDeposit({ ...durable, ...edit })));
+  await refused(Buffer.from(modified).fill(7, 65, 129));
+  await refused(Buffer.from(modified).fill(7, 1, 65));
   assert.equal(sent.length, 1, 'no refused transaction was broadcast');
+  await sendDeposit(f.settings, sendBody(modified, intent.nonce), quick);
+  const wire = Buffer.from(sent[1], 'base64');
+  assert.deepEqual(wire.subarray(129), modified.subarray(129));
+  assert.deepEqual(wire.subarray(1, 65), modified.subarray(1, 65));
+  assert.ok(verify(null, wire.subarray(129), publicKeyOf(f.authority), wire.subarray(65, 129)));
+  for (const budget of [[], [unitPrice(42)]]) {
+    const optional = signAsDepositor(await solanaDeposit({ ...durable, budget }));
+    assert.equal((await sendDeposit(f.settings, sendBody(optional, intent.nonce), quick)).ok, true);
+  }
+
 });
 
 test('the server price is at least 100,000 micro-lamports, the larger of the median fee on the deposit\'s accounts and a percentile of all recent fees, clamped, or the minimum when unread', async () => {
@@ -688,7 +743,7 @@ test('Task Node pins the vault program and mint itself: a relay host naming othe
   const remote = env => ({ env, withdrawViaRelay: true, bridgeProxyUrl: 'https://relay.test', proxyToken: 'test-token', proxyOrigin: 'https://relay.test' });
   const pinned = remote({ L1_SOLANA_VAULT_PROGRAM_ID: program });
   const ready = { ok: true, ready: true, vault_program_id: program, mint: USDC };
-  const get = { req: { method: 'GET', headers: {} } };
+  const get = { req: { method: 'GET', headers: { 'x-tasknode-build': walletBuildId() } } };
   payload = ready;
   assert.equal((await route('readiness', { ...get, ...pinned })).status, 200);
   for (const [label, body] of [['another program', { ...ready, vault_program_id: pub(44) }], ['another mint', { ...ready, mint: mint }]]) {

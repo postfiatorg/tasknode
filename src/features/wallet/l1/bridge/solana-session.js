@@ -1,15 +1,21 @@
 import bs58 from "bs58";
 import { bridgeJson } from "./bridge-relay.js";
-import { checkDepositShape } from "./solana-shape.js";
+import { knownRefusal, refusalText, RECONNECT_PHANTOM, RELOAD_DEPOSIT } from "./solana-refusal.js";
+import { checkDepositShape, instructionLayout } from "./solana-shape.js";
 
 const signature = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
 const jobId = /^0x[0-9a-f]{64}$/;
+const pageBuild = import.meta.env?.VITE_WALLET_BUILD_ID ?? "dev";
+const buildHeader = { "X-Tasknode-Build": pageBuild };
+export async function solanaReadiness() {
+  const ready = await bridgeJson("/solana/readiness", { headers: buildHeader });
+  if (ready.build_id !== pageBuild) throw Error(RELOAD_DEPOSIT);
+  return ready;
+}
 export const postSolana = (path, body) => bridgeJson("/solana/" + path, {
-  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  method: "POST", headers: { "Content-Type": "application/json", ...(path === "intent" && buildHeader) }, body: JSON.stringify(body),
 });
 export const readSaved = key => JSON.parse(localStorage.getItem(key));
-const NOT_OPENED = "The prepared deposit does not match your request, so Phantom was not opened. Nothing was signed or sent.";
-const CHANGED = "Phantom returned a transaction that does not match your deposit, so it was not sent.";
 // /solana/send refused before broadcasting: nothing reached Solana, so the pending deposit is dropped.
 const UNSENT = ["solana_deposits_closed", "solana_deposit_shape_mismatch"];
 // While a durable deposit's lease is held and its nonce unchanged, recovery sends the signed copy again this often.
@@ -30,7 +36,7 @@ export function setAside(earlier, record) {
   return list;
 }
 // Give the server's nonce lease back; a failure here only delays its expiry.
-const release = nonce => postSolana("release", { nonce }).catch(() => {});
+const release = (nonce, reason) => postSolana("release", { nonce, reason }).catch(() => {});
 const base64 = bytes => { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); };
 // A record that reached a signature or an end no longer needs the signed copy.
 const settled = ({ transaction_b64: _bytes, resent: _resent, ...record }) => record;
@@ -41,30 +47,36 @@ const dayOver = record => record.lapsed && !record.signature && Date.now() - rec
 // The fields of the intent that name a durable nonce, all three or none.
 function nonceFields(intent) {
   const named = ["nonce_account", "nonce_authority", "nonce_value"].filter(field => intent[field] !== undefined);
-  if (named.length && named.length !== 3) throw Error("partial nonce");
+  if (named.length && named.length !== 3) throw Error(refusalText("partial nonce"));
+  if (named.some(field => typeof intent[field] !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(intent[field]))) throw Error(refusalText("nonce account"));
   return named.length ? { nonce_account: intent.nonce_account, nonce_authority: intent.nonce_authority, nonce_value: intent.nonce_value } : null;
 }
 
 // Decode the server-built transaction and require exactly the deposit this browser asked for.
 async function checkIntent(intent, request, ready) {
+  if (intent.owner !== request.owner) throw Error(refusalText("prepared owner"));
+  if (intent.amount_atoms !== request.amount_atoms) throw Error(refusalText("prepared amount"));
+  if (intent.pftl_recipient !== request.pftl_recipient) throw Error(refusalText("prepared recipient"));
+  if (intent.vault_program_id !== ready.vault_program_id) throw Error(refusalText("prepared vault program"));
+  if (!/^[0-9a-f]{64}$/.test(intent.nonce)) throw Error(refusalText("deposit nonce"));
+  if (!Number.isSafeInteger(intent.last_valid_block_height) || intent.last_valid_block_height < 1) throw Error(refusalText("validity height"));
+  if (!/^[1-9A-HJ-NP-Za-km-z]{1,1683}$/.test(intent.message_b58)) throw Error(refusalText("invalid deposit encoding"));
   const named = nonceFields(intent);
   const bytes = bs58.decode(intent.message_b58);
   const shape = await checkDepositShape(bytes, { ...request, program: ready.vault_program_id, mint: ready.mint, nonce: intent.nonce, ...named });
   // Nothing is signed yet: Phantom signs first, and with a nonce the authority named by the intent signs on send.
-  if (!bytes.subarray(1, 1 + 64 * bytes[0]).every(byte => byte === 0) || !shape.durable !== !named) throw Error("signature slots");
+  if (!bytes.subarray(1, 1 + 64 * bytes[0]).every(byte => byte === 0) || !shape.durable !== !named) throw Error(refusalText("signature slots"));
   return shape;
 }
 
-// The same check on what Phantom signed. A wallet may replace or add the compute budget of a
-// one-signer deposit within the caps and append Lighthouse assertions; a durable deposit's message
-// must come back unchanged, with the authority's slot still empty.
-async function checkSigned(signed, intent, request, ready) {
-  const named = nonceFields(intent), prepared = bs58.decode(intent.message_b58);
-  const shape = await checkDepositShape(signed, { ...request, program: ready.vault_program_id, mint: ready.mint, nonce: intent.nonce, ...named }, { signed: true });
-  const same = (a, b) => a.length === b.length && a.every((byte, i) => byte === b[i]);
-  if (signed.subarray(1, 65).every(byte => byte === 0) || !shape.durable !== !named ||
-    (named && !same(signed.subarray(65), prepared.subarray(65)))) throw Error("signed transaction");
+async function checkSigned(signed, intent, request, ready, prepared) {
+  await checkDepositShape(signed, { ...request, program: ready.vault_program_id, mint: ready.mint,
+    source: prepared.source, nonce: intent.nonce, ...prepared.durable }, { signed: true });
+  if (signed[0] !== prepared.signers) throw Error(refusalText("signer count"));
+  if (signed.subarray(1, 65).every(byte => byte === 0)) throw Error(refusalText("missing depositor signature"));
 }
+
+const shapeReason = error => knownRefusal(error?.message) ? error.message : refusalText("invalid deposit encoding");
 
 // The browser owns one durable intent per recipient. The Web Lock covers preparation
 // and the first write across tabs. No recovery path calls Phantom.
@@ -73,20 +85,15 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
     if (!lock || readSaved(key)) throw Error("A Solana deposit is already in progress.");
     const intent = await postSolana("intent", request);
     // Every refusal before Phantom opens gives the server's nonce lease back.
-    const refuse = async message => {
-      if (/^[0-9a-f]{64}$/.test(intent?.nonce)) await release(intent.nonce);
-      throw Error(message);
+    const refuse = async (reason, detail = "") => {
+      if (/^[0-9a-f]{64}$/.test(intent?.nonce)) await release(intent.nonce, reason);
+      throw Error(reason + detail);
     };
-    if (!active() || provider.publicKey?.toString() !== request.owner) await refuse("Reconnect Phantom to continue.");
-    if (intent.owner !== request.owner || intent.amount_atoms !== request.amount_atoms ||
-      intent.pftl_recipient !== request.pftl_recipient || intent.vault_program_id !== ready.vault_program_id ||
-      !/^[0-9a-f]{64}$/.test(intent.nonce) || !Number.isSafeInteger(intent.last_valid_block_height) ||
-      intent.last_valid_block_height < 1 || !/^[1-9A-HJ-NP-Za-km-z]{1,1683}$/.test(intent.message_b58)) {
-      await refuse("The prepared vault deposit does not match your request.");
-    }
+    if (intent.build_id !== pageBuild) await refuse(RELOAD_DEPOSIT);
+    if (!active() || provider.publicKey?.toString() !== request.owner) await refuse(RECONNECT_PHANTOM);
     let shape;
-    try { shape = await checkIntent(intent, request, ready); } catch { await refuse(NOT_OPENED); }
-    if (!active()) await refuse("Reconnect Phantom to continue.");
+    try { shape = await checkIntent(intent, request, ready); } catch (error) { await refuse(shapeReason(error), ". Phantom was not opened."); }
+    if (!active()) await refuse(RECONNECT_PHANTOM);
     // A durable-nonce deposit expires only when its nonce moves, so keep what it signed.
     const record = { ...request, nonce: intent.nonce, last_valid_block_height: intent.last_valid_block_height,
       vault_program_id: intent.vault_program_id, started: Date.now(),
@@ -102,17 +109,21 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
       throw Error(error.code === 4001 ? "You declined the deposit in Phantom." : "Phantom could not sign the deposit. Nothing was sent.");
     }
     let bytes;
-    try { bytes = signed.serialize(); } catch { bytes = null; }
-    if (!bytes?.length) {
+    try {
+      // Legacy web3 transactions otherwise require a signature in the still-empty authority slot.
+      bytes = Uint8Array.from(signed.serialize({ requireAllSignatures: false }));
+      if (!bytes.length) throw Error(refusalText("unreadable Phantom reply"));
+      await checkSigned(bytes, intent, request, ready, shape);
+    } catch (error) {
       save(null);
-      await release(intent.nonce);
-      throw Error("Phantom returned an unreadable transaction. Nothing was sent.");
-    }
-    bytes = Uint8Array.from(bytes);
-    try { await checkSigned(bytes, intent, request, ready); } catch {
-      save(null);
-      await release(intent.nonce);
-      throw Error(CHANGED);
+      let reason = shapeReason(error);
+      if (!bytes) {
+        // If the wallet serializer rejected a signature, decode an unchecked copy for logging only.
+        try { bytes = Uint8Array.from(signed.serialize({ requireAllSignatures: false, verifySignatures: false })); } catch { /* no wire layout */ }
+        reason = refusalText(bytes?.length ? "invalid Phantom signature" : "unreadable Phantom reply");
+      }
+      console.warn(reason, instructionLayout(bytes));
+      await refuse(reason, ". Nothing was sent.");
     }
     const transaction = base64(bytes);
     // Keep the signed copy of a durable deposit: recovery can send it again while its lease is held.
