@@ -2,13 +2,33 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import bs58 from "bs58";
 import { readFile } from "node:fs/promises";
+import { generateKeyPairSync } from "node:crypto";
+import { getProgramDerivedAddress } from "@solana/addresses";
 import * as wasm from "../wasm/postfiat_wallet_wasm.js";
 import { TxBuilder } from "../lib/tx-builder.js";
 import { CHAIN_ID, GENESIS_HASH } from "../lib/utils.js";
-import { destinationRef, matchedBalance, trackingKey, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
+import { checkRecipient, destinationRef, matchedBalance, phantomRecipient, trackingKey, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
+import { recipientKind } from "./solana-recipient.js";
 
-const bytes = Uint8Array.from({ length: 32 }, (_, i) => i < 2 ? 0 : i + 128);
+// A real Ed25519 wallet key, with leading zero bytes so base58 keeps its leading "1"s.
+function walletKey(leadingZero) {
+  for (;;) {
+    const raw = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x, "base64url");
+    if (!leadingZero || raw[0] === 0) return Uint8Array.from(raw);
+  }
+}
+const bytes = walletKey(true);
 const owner = bs58.encode(bytes);
+const TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", ATA = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const ata = async wallet => (await getProgramDerivedAddress({ programAddress: ATA,
+  seeds: [bs58.decode(wallet), bs58.decode(TOKEN), bs58.decode("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")] }))[0];
+function stubFetch(t, reply) {
+  const seen = [], original = globalThis.fetch;
+  globalThis.fetch = async (url, options) => { seen.push(url); return reply(url, options); };
+  t.after(() => { globalThis.fetch = original; });
+  return seen;
+}
+const answer = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const ready = { asset_id: "a".repeat(96), series_asset_id: "b".repeat(96), bucket_id: "c".repeat(96),
   issuer: "pf" + "d".repeat(40), epoch: 73, destination_prefix: "solana-spl:" + "e".repeat(64) + ":",
   reserve_packet_hash: "f".repeat(96), bucket_outstanding_atoms: "20000" };
@@ -16,6 +36,52 @@ test("Solana destination preserves every owner byte, including leading zeroes", 
   assert.equal(destinationRef(ready.destination_prefix, owner), ready.destination_prefix + Buffer.from(bytes).toString("hex"));
   assert.equal(destinationRef("", "1".repeat(32)), "00".repeat(32));
   for (const invalid of ["1".repeat(31), "1".repeat(33), "0", " " + owner, owner + " "]) assert.throws(() => destinationRef("", invalid));
+});
+test("a program-derived address, including every associated token account, is refused before any lookup", async () => {
+  const account = await ata(owner);
+  assert.throws(() => destinationRef("", account), /program-derived address.*Enter your Solana wallet address/);
+  assert.throws(() => destinationRef("", bs58.encode(Uint8Array.from({ length: 32 }, (_, i) => i < 2 ? 0 : i + 128))), /program-derived/);
+  for (let i = 0; i < 20; i++) assert.equal(destinationRef("", bs58.encode(walletKey())).length, 64);
+});
+test("the relay lookup decides before a burn is built, and a failed lookup refuses", async t => {
+  const replies = [answer(200, { ok: true, recipient: owner, allowed: true, kind: "wallet" }),
+    answer(200, { ok: true, recipient: owner, allowed: false, kind: "token_account" }),
+    answer(200, { ok: true, recipient: owner, allowed: false, kind: "stake_account" }),
+    answer(200, { ok: true, recipient: owner, allowed: false, kind: "program" }),
+    answer(503, { ok: false, code: "solana_recipient_unchecked", message: "down" }),
+    answer(200, { ok: true, recipient: "1".repeat(32), allowed: true, kind: "wallet" }),
+    answer(200, { ok: true, recipient: owner }),
+    "throw"];
+  const seen = stubFetch(t, () => { const next = replies.shift(); if (next === "throw") throw TypeError("offline"); return next; });
+  assert.equal(await checkRecipient(owner), owner);
+  await assert.rejects(checkRecipient(owner), /This address is a token account, not a wallet\. Enter your Solana wallet address/);
+  await assert.rejects(checkRecipient(owner), /stake account, not a wallet/);
+  await assert.rejects(checkRecipient(owner), /Solana program, not a wallet/);
+  for (let i = 0; i < 4; i++) await assert.rejects(checkRecipient(owner), /could not be checked.*No burn was built/);
+  assert.deepEqual(seen, Array(8).fill("/api/l1/bridge/solana/withdrawals/recipient/" + owner));
+  await assert.rejects(checkRecipient(await ata(owner)), /program-derived/);
+  assert.equal(seen.length, 8);
+});
+test("a Phantom-supplied address passes the same checks", async t => {
+  const replies = [answer(200, { ok: true, recipient: owner, allowed: true, kind: "wallet" }),
+    answer(200, { ok: true, recipient: owner, allowed: false, kind: "token_account" })];
+  stubFetch(t, () => replies.shift());
+  const phantom = key => ({ publicKey: null, connect: async () => ({ publicKey: { toString: () => key } }) });
+  assert.equal(await phantomRecipient(phantom(owner)), owner);
+  await assert.rejects(phantomRecipient(phantom(owner)), /token account/);
+  await assert.rejects(phantomRecipient(phantom(await ata(owner))), /program-derived/);
+  assert.equal(replies.length, 0);
+});
+test("only a missing account or a System-owned non-program account is a wallet", () => {
+  assert.equal(recipientKind(null), "wallet");
+  assert.equal(recipientKind({ owner: "11111111111111111111111111111111", executable: false }), "wallet");
+  assert.equal(recipientKind({ owner: "11111111111111111111111111111111", executable: true }), "program");
+  assert.equal(recipientKind({ owner: TOKEN, executable: false }), "token_account");
+  assert.equal(recipientKind({ owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", executable: false }), "token_account");
+  assert.equal(recipientKind({ owner: "Stake11111111111111111111111111111111111111", executable: false }), "stake_account");
+  assert.equal(recipientKind({ owner: "BPFLoaderUpgradeab1e11111111111111111111111", executable: true }), "program");
+  assert.equal(recipientKind({ owner: "Vote111111111111111111111111111111111111111", executable: false }), "program_owned");
+  assert.equal(recipientKind({ executable: false }), "program_owned");
 });
 test("only the current Solana series and its bucket can fund the burn", () => {
   const lines = [{ asset_id: ready.asset_id, balance: "30000000" }, { asset_id: "1".repeat(96), balance: "90000000" }];

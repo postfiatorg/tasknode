@@ -1,7 +1,9 @@
+import { isOffCurveAddress } from "@solana/addresses";
 import bs58 from "bs58";
 import { rpcResult } from "../lib/rpc-client.js";
 import { atoms, integer } from "../market/amounts.js";
 import { bridgeJson, bridgeRequest } from "./bridge-relay.js";
+import { recipientRefusal, UNCHECKED, WALLET_NEEDED } from "./solana-recipient.js";
 
 const MAINNET_PREFIX = "solana-spl:45296998a6f8e2a784db5d9f95e18fc23f70441a1039446801089879b08c7ef0:";
 const ROOT = "/solana/withdrawals";
@@ -23,10 +25,30 @@ function decode(value, size) {
   } catch { return null; }
 }
 
+// A wallet address is an Ed25519 public key. Program-derived addresses, which include every
+// associated token account, are off the curve and nobody can sign for them.
 export function destinationRef(prefix, owner) {
   const bytes = decode(owner, 32);
-  if (!bytes) throw Error("Enter a base58 Solana wallet address that decodes to 32 bytes.");
+  if (!bytes) throw Error(`This is not a Solana address. ${WALLET_NEEDED}`);
+  if (isOffCurveAddress(owner)) throw Error(recipientRefusal("off_curve"));
   return prefix + Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+// The relay reads the address on Solana at finalized commitment. Only an explicit "wallet" answer
+// for this exact address lets a burn be built; any failure refuses.
+export async function checkRecipient(owner) {
+  destinationRef("", owner);
+  let answer;
+  try { answer = await bridgeRequest(ROOT + "/recipient/" + owner, { signal: AbortSignal.timeout(20000) }); }
+  catch { throw Error(UNCHECKED); }
+  if (answer?.ok !== true || answer.recipient !== owner) throw Error(UNCHECKED);
+  if (answer.allowed === true && answer.kind === "wallet") return owner;
+  throw Error(answer.allowed === false ? recipientRefusal(answer.kind) : UNCHECKED);
+}
+
+export async function phantomRecipient(phantom) {
+  const owner = (phantom.publicKey || (await phantom.connect()).publicKey)?.toString();
+  return checkRecipient(owner);
 }
 
 export function matchedBalance(result, ready) {

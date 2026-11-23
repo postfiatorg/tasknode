@@ -16,6 +16,8 @@ const json = (res, status, payload) => { res.writeHead(status, { 'Content-Type':
 const posts = [];
 let stage, open = false, epoch = ready.epoch;
 const payout = createServer(async (req, res) => {
+  // Also the stub Solana RPC: the recipient has no account yet, which is a fresh wallet.
+  if (req.method === 'POST' && req.url === '/') return json(res, 200, { jsonrpc: '2.0', id: 1, result: { context: { slot: 1 }, value: null } });
   if (req.url === '/solana/withdrawals/readiness') return json(res, 200, open ? { ...ready, epoch } : { ok: true, ready: false, message: 'paused' });
   if (req.method === 'POST' && req.url === '/solana/withdrawals') {
     const chunks = []; for await (const part of req) chunks.push(part);
@@ -51,7 +53,7 @@ try {
     res.end(asset.code ?? asset.source);
   });
   gateway = registerL1Gateway(server, { env: { TASKNODE_L1_ENABLED: 'true', L1_SOLANA_WITHDRAWALS_ENABLED: 'true',
-    L1_SOLANA_WITHDRAW_SERVICE_URL: 'http://127.0.0.1:' + payout.address().port },
+    L1_SOLANA_WITHDRAW_SERVICE_URL: 'http://127.0.0.1:' + payout.address().port, L1_SOLANA_RPC_URL: 'http://127.0.0.1:' + payout.address().port },
     getSession: async () => ({ accountId: 'fixture', authenticated: true }), cookieValue: () => '', json,
     readJson: async req => { const chunks = []; for await (const part of req) chunks.push(part); return JSON.parse(Buffer.concat(chunks)); } });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');

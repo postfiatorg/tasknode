@@ -1,22 +1,49 @@
+import { isOffCurveAddress } from '@solana/addresses';
+import bs58 from 'bs58';
+import { recipientKind } from '../../src/features/wallet/l1/bridge/solana-recipient.js';
+import { solanaRpc } from './solana-vault.js';
+
 const WITHDRAW_SERVICE = (process.env.L1_WITHDRAW_SERVICE_URL || "http://127.0.0.1:18084").replace(/\/$/, "");
 const UNAVAILABLE = "Solana withdrawals are not available yet";
+const RECIPIENT = /^\/withdrawals\/recipient\/([1-9A-HJ-NP-Za-km-z]{32,44})$/;
 
-export async function handleWithdrawal({ req, res, json, readJson, fail, suffix, bridgeProxyUrl, bridgePathPrefix, proxyToken, proxyOrigin, withdrawViaRelay, solana, solanaOrigin }) {
+// The chain pays whatever 32-byte owner the burn names, so the host with Solana RPC access says
+// what the address is before the wallet builds a burn. A failed lookup is an error, never "allowed".
+async function recipientAnswer(env, recipient) {
+  let bytes;
+  try { bytes = bs58.decode(recipient); } catch { bytes = null; }
+  if (bytes?.length !== 32 || bs58.encode(bytes) !== recipient) return null;
+  if (isOffCurveAddress(recipient)) return { ok: true, recipient, allowed: false, kind: 'off_curve' };
+  if (!env.L1_SOLANA_RPC_URL) throw Error('Solana RPC is not configured');
+  const kind = recipientKind(await solanaRpc(env.L1_SOLANA_RPC_URL).getAccountInfo(recipient, { dataSlice: { offset: 0, length: 0 } }));
+  return { ok: true, recipient, allowed: kind === 'wallet', kind };
+}
+
+export async function handleWithdrawal({ req, res, json, readJson, fail, suffix, bridgeProxyUrl, bridgePathPrefix, proxyToken, proxyOrigin, withdrawViaRelay, solana, solanaOrigin, env = process.env }) {
   // PFUSDC -> USDC. The holder burns from their own wallet; this only starts and reads the payout job.
   const path = solana ? suffix.slice("/solana".length) : suffix;
   const wReady = req.method === "GET" && path === "/withdrawals/readiness";
   const wJob = req.method === "GET" && /^\/withdrawals\/[0-9a-f]{96}$/.test(path);
   const wCreate = req.method === "POST" && path === "/withdrawals";
+  const wRecipient = solana && req.method === "GET" && RECIPIENT.exec(path);
   if (solana && req.method === "GET" && /^\/withdrawals\/[^/]+$/.test(path) && !wReady && !wJob) {
     return fail(400, "invalid_withdrawal_request", "Invalid burn ID.");
   }
-  if (!wReady && !wJob && !wCreate) return fail(404, "bridge_route_not_found", "Unknown bridge endpoint.");
+  if (!wReady && !wJob && !wCreate && !wRecipient) return fail(404, "bridge_route_not_found", "Unknown bridge endpoint.");
   const unavailable = () => {
     if (!wReady) return fail(503, "solana_withdrawals_unavailable", UNAVAILABLE);
     json(res, 200, { ok: true, ready: false, message: UNAVAILABLE });
     return true;
   };
   if (solana && !withdrawViaRelay && !solanaOrigin) return unavailable();
+  if (wRecipient && !withdrawViaRelay) {
+    let answer;
+    try { answer = await recipientAnswer(env, wRecipient[1]); }
+    catch { return fail(503, "solana_recipient_unchecked", "The Solana address could not be checked right now."); }
+    if (!answer) return fail(400, "invalid_withdrawal_request", "Invalid Solana address.");
+    json(res, 200, answer);
+    return true;
+  }
   let body;
   if (wCreate) {
     let origin;

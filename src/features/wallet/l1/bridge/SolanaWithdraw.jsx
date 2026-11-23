@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
-import { destinationRef, isBurnId, savedBurn, UNAVAILABLE, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
+import { checkRecipient, destinationRef, isBurnId, phantomRecipient, savedBurn, UNAVAILABLE, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
 
 export default function SolanaWithdraw({ client, storageKey }) {
   const [snapshot, setSnapshot] = useState(undefined), [error, setError] = useState("");
@@ -29,9 +29,8 @@ export default function SolanaWithdraw({ client, storageKey }) {
   async function usePhantom() {
     setBusy(true); setError(""); setReview(null);
     try {
-      const owner = (phantom.publicKey || (await phantom.connect()).publicKey)?.toString();
-      destinationRef("", owner); setRecipient(owner);
-    } catch (failure) { setError(`Could not read your Phantom address. ${failure.message} No funds moved.`); }
+      setRecipient(await phantomRecipient(phantom));
+    } catch (failure) { setError(`Could not use your Phantom address. ${failure.message} No funds moved.`); }
     finally { setBusy(false); }
   }
   let recipientError, amountError;
@@ -48,6 +47,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
       const fresh = await withdrawalSnapshot(client);
       setSnapshot(fresh);
       if (!fresh) { setError("Review stopped before signing. No funds moved."); return; }
+      await checkRecipient(recipient);
       const intent = withdrawalIntent(client, fresh, amount, recipient);
       setReview({ intent, quote: await client.quote(intent) });
     } catch (failure) { setError(`${failure.message} No funds moved.`); } finally { setBusy(false); }
@@ -66,6 +66,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
       const fresh = await withdrawalSnapshot(client);
       setSnapshot(fresh);
       if (!fresh) { setError("Confirmation stopped before signing. No funds moved."); return; }
+      await checkRecipient(recipient);
       const current = withdrawalIntent(client, fresh, amount, recipient);
       if (Object.keys(current.operation).some(field => current.operation[field] !== review.intent.operation[field])) {
         throw Error("The reserve changed. Review the updated withdrawal.");
