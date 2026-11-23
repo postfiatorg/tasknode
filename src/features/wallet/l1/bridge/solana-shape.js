@@ -19,13 +19,24 @@ const fromHex = text => Uint8Array.from(text.match(/../g), pair => parseInt(pair
 const pda = async (programAddress, ...seeds) => (await getProgramDerivedAddress({ programAddress, seeds }))[0];
 function must(condition, reason) { if (!condition) throw Error(refusalText(reason)); }
 
-// Only public instruction metadata goes to the browser console, never the signed wire transaction.
+// An account's role from the message header: s(igner) and w(ritable) or r(ead-only).
+function roleOf(header, count, index) {
+  const signer = index < header.numSignerAccounts;
+  const writable = signer ? index < header.numSignerAccounts - header.numReadonlySignerAccounts
+    : index < count - header.numReadonlyNonSignerAccounts;
+  return (signer ? "s" : "") + (writable ? "w" : "r");
+}
+
+// Public metadata of a transaction for diagnostics, or null: the message version, each account's
+// public address and role, and per instruction its program and account indices, tag and data
+// length. Never signatures or instruction data. The relay logs it when either side refuses.
 export function instructionLayout(bytes) {
   try {
-    const { header, staticAccounts, instructions } = getCompiledTransactionMessageDecoder().decode(bytes.subarray(1 + 64 * bytes[0]));
-    return { header, staticAccounts, instructions: instructions.map(ix => ({ program: staticAccounts[ix.programAddressIndex],
-      accounts: Array.from(ix.accountIndices ?? [], i => staticAccounts[i]), tag: ix.data?.[0], dataLength: ix.data?.length ?? 0 })) };
-  } catch { return { unreadable: true }; }
+    const { version, header, staticAccounts: keys, instructions } = getCompiledTransactionMessageDecoder().decode(bytes.subarray(1 + 64 * bytes[0]));
+    return { version, accounts: keys.map((key, i) => [key, roleOf(header, keys.length, i)]),
+      instructions: instructions.map(ix => ({ program: ix.programAddressIndex, accounts: Array.from(ix.accountIndices ?? []),
+        tag: ix.data?.[0] ?? null, length: ix.data?.length ?? 0 })) };
+  } catch { return null; }
 }
 
 // Raise this whenever checkDepositShape accepts or refuses a different set of transactions. The
@@ -47,12 +58,7 @@ export async function checkDepositShape(bytes, expected, { signed = false } = {}
   must(header.numSignerAccounts === signers, "signer count");
   must(new Set(keys).size === keys.length && keys.length >= signers &&
     header.numReadonlyNonSignerAccounts <= keys.length - signers && header.numReadonlySignerAccounts < signers, "account header");
-  const role = index => {
-    const signer = index < header.numSignerAccounts;
-    const writable = signer ? index < header.numSignerAccounts - header.numReadonlySignerAccounts
-      : index < keys.length - header.numReadonlyNonSignerAccounts;
-    return (signer ? "s" : "") + (writable ? "w" : "r");
-  };
+  const role = index => roleOf(header, keys.length, index);
   const read = ix => {
     const indices = ix.accountIndices ?? [];
     must([ix.programAddressIndex, ...indices].every(index => Number.isInteger(index) && index < keys.length), "account index");

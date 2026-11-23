@@ -41,11 +41,25 @@ function b58(value, size) {
   if (typeof value !== 'string' || value.length > 88) return false;
   try { return bs58.decode(value).length === size; } catch { return false; }
 }
+const object = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const byte = value => Number.isInteger(value) && value >= 0 && value < 256;
+// instructionLayout's public metadata, as a browser that refused Phantom's reply sends it: public
+// addresses with roles, program and account indices, tags and lengths. Nothing else is logged.
+function validLayout(layout) {
+  if (!object(layout) || Object.keys(layout).sort().join() !== 'accounts,instructions,version') return false;
+  const { version, accounts, instructions } = layout;
+  return (version === 'legacy' || version === 0) && Array.isArray(accounts) && accounts.length <= 64 &&
+    accounts.every(row => Array.isArray(row) && row.length === 2 && b58(row[0], 32) && ['sw', 'sr', 'w', 'r'].includes(row[1])) &&
+    Array.isArray(instructions) && instructions.length <= 64 && instructions.every(ix => object(ix) &&
+      Object.keys(ix).sort().join() === 'accounts,length,program,tag' && byte(ix.program) && (ix.tag === null || byte(ix.tag)) &&
+      Number.isInteger(ix.length) && ix.length >= 0 && ix.length <= 1232 && Array.isArray(ix.accounts) && ix.accounts.length <= 64 && ix.accounts.every(byte));
+}
 function validBody(path, body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  if (!object(body)) return false;
   const keys = Object.keys(body).sort().join(',');
   const hex32 = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
-  if (path === '/solana/release') return hex32(body.nonce) && (keys === 'nonce' || (keys === 'nonce,reason' && knownRefusal(body.reason)));
+  if (path === '/solana/release') return hex32(body.nonce) && (keys === 'nonce' || (keys === 'nonce,reason' && knownRefusal(body.reason)) ||
+    (keys === 'layout,nonce,reason' && knownRefusal(body.reason) && validLayout(body.layout)));
   // A durable-nonce deposit also names the nonce account and the value it signed.
   if (path === '/solana/recovery') return ['last_valid_block_height,nonce,vault_program_id', 'before,last_valid_block_height,nonce,vault_program_id']
     .some(base => keys === base || keys === [...base.split(','), 'nonce_account', 'nonce_value'].sort().join(',')) &&
@@ -155,10 +169,11 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
   const forwarded = req.headers?.['x-tasknode-account'];
   const holder = session?.accountId === 'relay-service' ? (HOLDER.test(forwarded || '') ? forwarded : null)
     : session?.accountId ? String(session.accountId).replace(/[^A-Za-z0-9:_@.-]/g, '_').slice(0, 128) : null;
-  let body;
+  let body, valid = false;
   // Keep only public, validated tracking fields. Never log raw bodies, transaction bytes, RPC
   // errors, headers, or relay replies. The nonce correlates intent, refusal, send and recovery.
-  function log(status, code, payload, message) {
+  // layout: the public layout of a refused transaction, from the relay's own decode or a validated release.
+  function log(status, code, payload, message, layout = valid ? body.layout : undefined) {
     const step = JOB.test(suffix) ? 'job-status' : suffix.slice(8);
     const nonce = body?.nonce ?? payload?.nonce;
     const signature = body?.signature ?? payload?.signature;
@@ -167,9 +182,10 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
       nonce: typeof nonce === 'string' && /^[0-9a-f]{64}$/.test(nonce) ? nonce : undefined,
       signature: b58(signature, 64) ? signature : undefined, job: typeof job === 'string' && /^0x[0-9a-f]{64}$/.test(job) ? job : undefined,
       durable: suffix === '/solana/intent' && status === 200 ? Boolean(payload?.nonce_account) : undefined,
-      reason: knownRefusal(message) ? message : knownRefusal(body?.reason) ? body.reason : undefined }));
+      reason: knownRefusal(message) ? message : knownRefusal(body?.reason) ? body.reason : undefined,
+      layout: validLayout(layout) ? layout : undefined }));
   }
-  const reject = (status, code, message) => { log(status, code, undefined, message); return fail(status, code, message); };
+  const reject = (status, code, message, layout) => { log(status, code, undefined, message, layout); return fail(status, code, message); };
   if (!solanaPath(suffix)) return fail(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   if (req.method !== (post ? 'POST' : 'GET')) return reject(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
   if (post) {
@@ -178,6 +194,7 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     if (origin.host !== req.headers.host || req.headers['sec-fetch-site'] === 'cross-site') return reject(403, 'bridge_origin_mismatch', 'Same-origin request required.');
     try { body = await readJson(req, 4096); } catch { /* reject invalid or oversized JSON */ }
     if (!validBody(suffix, body)) return reject(400, 'invalid_solana_request', 'Invalid Solana deposit request.');
+    valid = true;
   }
   try {
     // The authenticated proxy has already checked its own page. Its upstream relay can be
@@ -209,6 +226,6 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
     return true;
   } catch (error) {
     return reject(error instanceof DepositError ? error.status : 502, error instanceof DepositError ? error.code : 'solana_bridge_unavailable',
-      error instanceof DepositError ? error.message : 'The Solana vault or proof relay is unreachable.');
+      error instanceof DepositError ? error.message : 'The Solana vault or proof relay is unreachable.', error instanceof DepositError ? error.layout : undefined);
   }
 }

@@ -9,6 +9,7 @@ import { isSignerRole, isWritableRole } from '@solana/instructions';
 import { getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder, decompileTransactionMessage } from '@solana/transaction-messages';
 import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 import { walletBuildId } from '../wallet-build.js';
+import { knownRefusal, RELAY_REFUSALS } from '../../src/features/wallet/l1/bridge/solana-refusal.js';
 import * as vault from './solana-vault.js';
 import { buildVaultDeposit, readVault, recoverDeposit, sendDeposit, DEPOSIT_COMPUTE_UNIT_LIMIT, MIN_COMPUTE_UNIT_PRICE, UNSCOPED_FEE_PERCENTILE, USDC } from './solana-vault.js';
 import { checkDepositShape, DEPOSIT_CHECK_VERSION, MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
@@ -170,6 +171,66 @@ test('release and failure logs contain only bounded public diagnostics', async t
   assert.ok(lines[1].includes('invalid_solana_request'));
   assert.ok(lines[2].includes('solana_bridge_unavailable'));
   assert.doesNotMatch(lines.join(' '), /arbitrary private text|A{100}|transaction_b64/);
+});
+
+test('relay refusals on /send reach its log with the step, the deposit nonce and the public layout, never bytes, signatures or keys', async t => {
+  const env = { L1_SOLANA_RELAY_CONFIG: await relayFiles(t), L1_SOLANA_RELAY_URL: 'http://jobs.test', L1_SOLANA_RPC_URL: 'http://solana.test',
+    L1_SOLANA_VAULT_PROGRAM_ID: program, L1_SOLANA_USDC_MINT: mint, L1_SOLANA_ROUTE_BINDING: binding };
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(new URL(url).host, 'jobs.test', 'nothing reaches Solana');
+    return Response.json({ ok: true, ready: true, ledger: 'node', route_id: 'solana-mainnet-usdc-v1',
+      source_proof_kind: 'sp1-solana-alpenglow-finality-v1', program_vkey: '0x' + '42'.repeat(32), observer_attestor_enabled: false });
+  });
+  const log = t.mock.method(console, 'log', () => {});
+  const nonce = '3a'.repeat(32), authority = pub(121);
+  const base = { program, mint, owner, source, nonce, amount_atoms: '1000000', pftl_recipient: request.pftl_recipient,
+    nonceAccount: pub(120), authority, lifetime: pub(122), budget: [unitLimit(200450), unitPrice(150000)] };
+  const cases = [
+    [RELAY_REFUSALS.lease, signAsDepositor(await solanaDeposit({ ...base, extra: [assertLamports(owner, 1)] }))],
+    ['Not the vault deposit: nonce account or authority outside advance', signAsDepositor(await solanaDeposit({ ...base, extra: [assertLamports(authority, 1)] }))],
+    [RELAY_REFUSALS.unsigned, await solanaDeposit(base)],
+  ];
+  for (const [reason, bytes] of cases) {
+    const result = await route('send', { env, readJson: async () => sendBody(bytes, nonce) });
+    assert.deepEqual([result.status, result.body.code, result.body.message], [400, 'solana_deposit_shape_mismatch', reason]);
+  }
+  const lines = log.mock.calls.map(call => call.arguments[0]);
+  assert.equal(lines.length, cases.length);
+  for (const [i, [reason, bytes]] of cases.entries()) {
+    assert.ok(lines[i].startsWith('solana send '), lines[i]);
+    const row = JSON.parse(lines[i].slice('solana send '.length));
+    assert.deepEqual([row.code, row.nonce, row.reason], ['solana_deposit_shape_mismatch', nonce, reason]);
+    assert.equal(row.layout.version, 'legacy');
+    assert.deepEqual(row.layout.accounts.slice(0, 2), [[owner, 'sw'], [authority, 'sr']]);
+    assert.deepEqual(row.layout.instructions.map(ix => [row.layout.accounts[ix.program][0], ix.tag, ix.length]).slice(0, 3),
+      [[SYSTEM, 4, 4], [COMPUTE_BUDGET, 2, 5], [COMPUTE_BUDGET, 3, 9]]);
+    const text = lines[i], wire = Buffer.from(bytes);
+    for (const secret of [wire.toString('base64'), bs58.encode(wire.subarray(1, 65)), wire.subarray(1, 65).toString('hex'),
+      bs58.encode(Buffer.alloc(32, 5)), 'fixture-only', 'transaction_b64']) assert.ok(!text.includes(secret), 'no ' + secret.slice(0, 12));
+  }
+  assert.ok(lines[1].includes(LIGHTHOUSE), 'the refused assertion program is named');
+  // Every refusal the relay itself produces is a fixed diagnostic.
+  for (const reason of [...Object.values(RELAY_REFUSALS), 'Not the vault deposit: leased deposit accounts or data changed']) assert.ok(knownRefusal(reason), reason);
+});
+
+test('a browser refusal releases the lease with the public layout, checked against a fixed schema before it is logged', async t => {
+  const log = t.mock.method(console, 'log', () => {});
+  const nonce = '3b'.repeat(32), reason = 'Not the vault deposit: Lighthouse instruction';
+  const layout = { version: 'legacy', accounts: [[owner, 'sw'], [pub(121), 'sr'], [LIGHTHOUSE, 'r']],
+    instructions: [{ program: 2, accounts: [1], tag: 0, length: 12 }] };
+  const release = body => route('release', { readJson: async () => body });
+  assert.equal((await release({ nonce, reason, layout })).status, 200);
+  for (const bad of [{ ...layout, signature: signature }, { ...layout, version: 1 }, { ...layout, accounts: [[signature, 'sw']] },
+    { ...layout, accounts: [['private text', 'r']] }, { ...layout, accounts: [[owner, 'x']] },
+    { ...layout, instructions: [{ program: 2, accounts: [1], tag: 0, length: 12, data: 'AAAA' }] },
+    { ...layout, instructions: [{ program: 999, accounts: [], tag: 0, length: 1 }] }, 'text', null]) {
+    assert.equal((await release({ nonce, reason, layout: bad })).status, 400);
+  }
+  assert.equal((await release({ nonce, layout })).status, 400, 'a layout comes with a reason');
+  const lines = log.mock.calls.map(call => call.arguments[0]);
+  assert.deepEqual(JSON.parse(lines[0].slice('solana release '.length)).layout, layout);
+  assert.ok(lines.slice(1).every(line => line.includes('invalid_solana_request') && !line.includes('layout')));
+  assert.doesNotMatch(lines.join(' '), new RegExp(signature + '|private text|AAAA'));
 });
 
 async function relayFiles(t) {

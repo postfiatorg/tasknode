@@ -430,8 +430,9 @@ test('Phantom\'s signed bytes are checked before /send: a mismatch is refused, t
     const warning = t.mock.method(console, 'warn', () => {});
     await assert.rejects(browser.run(), /^Error: Not the vault deposit: .+\. Nothing was sent\.$/, label);
     const [reason, layout] = warning.mock.calls[0].arguments;
-    assert.deepEqual(browser.posted.at(-1), { path: 'release', body: { nonce: solana.nonce, reason } });
+    assert.deepEqual(browser.posted.at(-1), { path: 'release', body: { nonce: solana.nonce, reason, layout } }, label + ': the relay logs the layout');
     assert.ok(layout.instructions.length > 0, label);
+    assert.doesNotMatch(JSON.stringify(layout), new RegExp(bs58.encode(Buffer.alloc(64, 9))), label + ': no signature');
     assert.equal(browser.saved.at(-1), null, label + ': no pending deposit');
     assert.ok(!browser.posted.some(row => row.path === 'send'), label + ': nothing sent');
     t.mock.restoreAll();
@@ -506,8 +507,9 @@ test('Phantom\'s Lighthouse assertions pass on the one-signer path and are sent 
     const warning = t.mock.method(console, 'warn', () => {});
     await assert.rejects(browser.run(), /^Error: Not the vault deposit: .+\. Nothing was sent\.$/, label);
     const [reason, layout] = warning.mock.calls[0].arguments;
-    assert.deepEqual(browser.posted.at(-1), { path: 'release', body: { nonce: solana.nonce, reason } });
+    assert.deepEqual(browser.posted.at(-1), { path: 'release', body: { nonce: solana.nonce, reason, layout } }, label + ': the relay logs the layout');
     assert.ok(layout.instructions.length > 0, label);
+    assert.doesNotMatch(JSON.stringify(layout), new RegExp(bs58.encode(Buffer.alloc(64, 9))), label + ': no signature');
     assert.ok(!browser.posted.some(row => row.path === 'send'), label + ': nothing sent');
     t.mock.restoreAll();
   }

@@ -36,7 +36,9 @@ export function setAside(earlier, record) {
   return list;
 }
 // Give the server's nonce lease back; a failure here only delays its expiry.
-const release = (nonce, reason) => postSolana("release", { nonce, reason }).catch(() => {});
+// A refused layout goes along so the relay log shows it; bounded to fit the relay's request limit.
+const release = (nonce, reason, layout) => postSolana("release", { nonce, reason,
+  layout: reason && layout && JSON.stringify(layout).length <= 3000 ? layout : undefined }).catch(() => {});
 const base64 = bytes => { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); };
 // A record that reached a signature or an end no longer needs the signed copy.
 const settled = ({ transaction_b64: _bytes, resent: _resent, ...record }) => record;
@@ -89,8 +91,8 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
     if (!lock || readSaved(key)) throw Error("A Solana deposit is already in progress.");
     const intent = await postSolana("intent", request);
     // Every refusal before Phantom opens gives the server's nonce lease back. An older relay accepts no reason.
-    const refuse = async (reason, detail = "") => {
-      if (/^[0-9a-f]{64}$/.test(intent?.nonce)) await release(intent.nonce, current ? reason : undefined);
+    const refuse = async (reason, detail = "", layout) => {
+      if (/^[0-9a-f]{64}$/.test(intent?.nonce)) await release(intent.nonce, current ? reason : undefined, layout);
       throw Error(reason + detail);
     };
     if (intent.build_id !== pageBuild) await refuse(RELOAD_DEPOSIT);
@@ -127,8 +129,9 @@ export async function sendDeposit({ key, provider, request, ready, save, active 
         try { bytes = Uint8Array.from(signed.serialize({ requireAllSignatures: false, verifySignatures: false })); } catch { /* no wire layout */ }
         reason = refusalText(bytes?.length ? "invalid Phantom signature" : "unreadable Phantom reply");
       }
-      console.warn(reason, instructionLayout(bytes));
-      await refuse(reason, ". Nothing was sent.");
+      const layout = instructionLayout(bytes);
+      console.warn(reason, layout);
+      await refuse(reason, ". Nothing was sent.", layout);
     }
     const transaction = base64(bytes);
     // Keep the signed copy of a durable deposit: recovery can send it again while its lease is held.

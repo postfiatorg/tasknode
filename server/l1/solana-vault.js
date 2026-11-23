@@ -5,7 +5,8 @@ import { address, getProgramDerivedAddress } from '@solana/addresses';
 import { AccountRole } from '@solana/instructions';
 import { compileTransactionMessage, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder } from '@solana/transaction-messages';
 import bs58 from 'bs58';
-import { checkDepositShape, COMPUTE_BUDGET_PROGRAM, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
+import { checkDepositShape, COMPUTE_BUDGET_PROGRAM, instructionLayout, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
+import { refusalText, RELAY_REFUSALS } from '../../src/features/wallet/l1/bridge/solana-refusal.js';
 
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 export const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -258,28 +259,29 @@ export async function sendDeposit(settings, { transaction_b64, nonce }, resend =
   const { every = 2000, times = 14, open = null, durableMs = DURABLE_RESEND_MS } = resend;
   const { rpc, program, mint } = settings;
   const bytes = Buffer.from(encoded, 'base64');
-  const refuse = message => new DepositError(400, message, 'solana_deposit_shape_mismatch');
+  // Fixed messages only, with the public layout for the relay log (never returned to the browser).
+  const refuse = message => Object.assign(new DepositError(400, message, 'solana_deposit_shape_mismatch'), { layout: instructionLayout(bytes) });
   // One signature (the depositor) or two (the depositor, then the nonce authority).
   const signers = bytes[0], start = 1 + 64 * signers;
   if (![1, 2].includes(signers) || bytes.length <= start || bytes.length > 1232 || bytes.subarray(1, 65).every(b => b === 0)) {
-    throw refuse('Phantom did not return a signed deposit.');
+    throw refuse(RELAY_REFUSALS.unsigned);
   }
   let shape;
   try { shape = await checkDepositShape(bytes, { program, mint, nonce }, { signed: true }); }
-  catch (error) { throw refuse(error.message.startsWith('Not the vault deposit:') ? error.message : 'Unreadable vault deposit.'); }
+  catch (error) { throw refuse(error.message.startsWith('Not the vault deposit:') ? error.message : RELAY_REFUSALS.unreadable); }
   const { signature, durable } = shape;
   if (durable) {
     const signer = await nonceSigner(settings);
     const prepared = leases.get(durable.nonce_account)?.deposit;
     if (!prepared || !held(durable, nonce) || !signer?.accounts.includes(durable.nonce_account) ||
-        signer.authority !== durable.nonce_authority || prepared.authority !== signer.authority) throw refuse('This deposit no longer holds the prepared nonce lease.');
+        signer.authority !== durable.nonce_authority || prepared.authority !== signer.authority) throw refuse(RELAY_REFUSALS.lease);
     if (prepared.program !== program || prepared.mint !== mint ||
         ['owner', 'source', 'amount_atoms', 'pftl_recipient'].some(field => shape[field] !== prepared[field])) {
-      throw refuse('Not the vault deposit: leased deposit accounts or data changed.');
+      throw refuse(refusalText('leased deposit accounts or data changed'));
     }
     const payerKey = createPublicKey({ format: 'der', type: 'spki',
       key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), bs58.decode(shape.owner)]) });
-    if (!verify(null, shape.message, payerKey, bytes.subarray(1, 65))) throw refuse('Invalid depositor signature.');
+    if (!verify(null, shape.message, payerKey, bytes.subarray(1, 65))) throw refuse(RELAY_REFUSALS.signature);
     sign(null, shape.message, signer.key).copy(bytes, 65);
     encoded = bytes.toString('base64');
   }
