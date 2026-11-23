@@ -67,6 +67,7 @@ export const DEPOSIT_CHECK_VERSION = 1;
 export async function checkDepositShape(bytes, expected, { signed = false } = {}) {
   const signers = bytes[0], start = 1 + 64 * signers;
   must([1, 2].includes(signers) && bytes.length > start, "signature count");
+  // Solana carries at most 1232 bytes; main's relay already refused more.
   must(bytes.length <= 1232, "transaction size");
   const message = bytes.subarray(start);
   let compiled;
@@ -74,6 +75,8 @@ export async function checkDepositShape(bytes, expected, { signed = false } = {}
   must(compiled.version === "legacy" && hex(getCompiledTransactionMessageEncoder().encode(compiled)) === hex(message), "message encoding");
   const { header, staticAccounts: keys, instructions } = compiled;
   must(header.numSignerAccounts === signers, "signer count");
+  // Solana refuses a message with a key listed twice, a read-only fee payer or header counts out of
+  // range; the roles read below assume none of them.
   must(new Set(keys).size === keys.length && keys.length >= signers &&
     header.numReadonlyNonSignerAccounts <= keys.length - signers && header.numReadonlySignerAccounts < signers, "account header");
   const role = index => roleOf(header, keys.length, index);
@@ -87,8 +90,9 @@ export async function checkDepositShape(bytes, expected, { signed = false } = {}
     const { program, accounts, data } = read(ix);
     // Every program is invoked read-only, as compiled; no instruction can make one writable or a signer.
     must(role(ix.programAddressIndex) === "r", "program role");
-    // One signer: main's rule, unchanged. Phantom's Lighthouse instructions pass unread; they sit
-    // inside the depositor's own signature, and the header and role checks below still apply.
+    // One signer: main's rule; only the size and header checks above are added, and they refuse
+    // nothing Solana would accept. Phantom's Lighthouse instructions pass unread; they sit inside
+    // the depositor's own signature, and the header and role checks still apply.
     if (program === LIGHTHOUSE_PROGRAM && signed && signers === 1) continue;
     if (program === LIGHTHOUSE_PROGRAM && signed) {
       // Two signers: LighthouseInstruction (Jac0xb/lighthouse) 0/1 write or close memory. Only the

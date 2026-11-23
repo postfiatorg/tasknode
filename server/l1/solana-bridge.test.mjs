@@ -873,6 +873,14 @@ test('one signer: Lighthouse instructions pass as signed, whatever their tag, as
     ['no limit, price 2,000,000, five assertions', { budget: [unitPrice(2_000_000)], extra: Array.from({ length: 5 }, () => assertLamports(owner, 1)) }],
     ['another program', { budget, extra: [assertLamports(owner, 1, { programAddress: pub(43) })] }, 'unexpected instruction count'],
     ['an added signer, read as two signers without an advance', { budget, extra: [assertLamports(pub(44), 1, { role: 2 })] }, 'unexpected instruction count'],
+    // Beyond main's one-signer rule, only what Solana itself refuses: over 1232 bytes, or a header it rejects.
+    ['over 1232 bytes', { budget, extra: [lighthouseIx(5, [], Array(1100).fill(0))] }, 'transaction size'],
+    ['a key listed twice', async base => recompile(await solanaDeposit({ ...base, budget }),
+      m => ({ ...m, staticAccounts: m.staticAccounts.map((key, i, keys) => i === keys.length - 1 ? keys[1] : key) })), 'account header'],
+    ['a read-only fee payer', async base => recompile(await solanaDeposit({ ...base, budget }),
+      m => ({ ...m, header: { ...m.header, numReadonlySignerAccounts: 1 } })), 'account header'],
+    ['more read-only keys than unsigned keys', async base => recompile(await solanaDeposit({ ...base, budget }),
+      m => ({ ...m, header: { ...m.header, numReadonlyNonSignerAccounts: m.staticAccounts.length } })), 'account header'],
   ]);
 });
 

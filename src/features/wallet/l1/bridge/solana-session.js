@@ -71,9 +71,11 @@ async function checkIntent(intent, request, ready) {
   return shape;
 }
 
+// One signer: main's rule, so the source is not pinned (the relay pins none there either). Two
+// signers: the relay co-signs only the leased deposit, prepared source included.
 async function checkSigned(signed, intent, request, ready, prepared) {
   await checkDepositShape(signed, { ...request, program: ready.vault_program_id, mint: ready.mint,
-    source: prepared.source, nonce: intent.nonce, ...prepared.durable }, { signed: true });
+    source: prepared.durable ? prepared.source : undefined, nonce: intent.nonce, ...prepared.durable }, { signed: true });
   if (signed[0] !== prepared.signers) throw Error(refusalText("signer count"));
   if (signed.subarray(1, 65).every(byte => byte === 0)) throw Error(refusalText("missing depositor signature"));
 }

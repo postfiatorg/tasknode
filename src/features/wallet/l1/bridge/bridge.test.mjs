@@ -413,6 +413,12 @@ test('Phantom may replace or add the compute budget of a one-signer deposit with
   }
 });
 
+test('one signer, as on main: the reply\'s source account is not pinned to the prepared one', async t => {
+  const browser = solanaBrowser(t, { intent: await solanaIntent(), phantom: phantomSigned(await solanaDeposit({ ...solanaShape, budget: serverBudget, source: pub(90) })) });
+  await browser.run();
+  assert.equal(browser.posted.at(-1).path, 'send', 'two signers stay pinned: see "a durable deposit with another source" below');
+});
+
 test('Phantom\'s signed bytes are checked before /send: a mismatch is refused, the record dropped and the lease given back', async t => {
   const durable = await solanaIntent({}, true);
   const durableWith = async overrides => {
