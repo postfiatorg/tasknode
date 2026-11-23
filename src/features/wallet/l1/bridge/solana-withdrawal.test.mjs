@@ -7,7 +7,7 @@ import { getProgramDerivedAddress } from "@solana/addresses";
 import * as wasm from "../wasm/postfiat_wallet_wasm.js";
 import { TxBuilder } from "../lib/tx-builder.js";
 import { CHAIN_ID, GENESIS_HASH } from "../lib/utils.js";
-import { checkRecipient, destinationRef, matchedBalance, payoutJob, phantomRecipient, submitBurn, trackingKey, walletBurns, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
+import { checkRecipient, destinationRef, LATE_MS, matchedBalance, payoutJob, payoutPace, phantomRecipient, solanaOffered, submitBurn, trackingKey, walletBurns, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
 import { recipientKind } from "./solana-recipient.js";
 
 // A real Ed25519 wallet key, with leading zero bytes so base58 keeps its leading "1"s.
@@ -176,4 +176,19 @@ test("payout registration and status name the signed-in wallet", async t => {
     return answer(200, { burn_tx_id: burn, stage: "queued" }); });
   await payoutJob(burn, true, address); await payoutJob(burn, false, address);
   assert.deepEqual(headers, [["POST", address], ["GET", address]]);
+});
+test("the Solana option is offered only when the relay says the switch is on", async t => {
+  const replies = [answer(200, { ok: true, ready: false, enabled: false, message: "Solana withdrawals are not available yet" }),
+    answer(200, { ok: true, ready: false, message: "Solana withdrawals are not available yet" }), answer(502, { ok: false }), "throw",
+    answer(200, { ok: true, ready: false, enabled: true, message: "vault paused" }), answer(200, { ok: true, ready: true, enabled: true })];
+  stubFetch(t, () => { const next = replies.shift(); if (next === "throw") throw TypeError("offline"); return next; });
+  for (const expected of [false, false, false, false, true, true]) assert.equal(await solanaOffered(), expected);
+});
+test("a payout still open after the stated time is late and is checked at a slower pace", () => {
+  assert.equal(LATE_MS, 30 * 60 * 1000);
+  const since = 1_000_000;
+  assert.deepEqual(payoutPace(since, since + LATE_MS - 1, "proving"), { late: false, delay: 8000 });
+  assert.deepEqual(payoutPace(since, since + LATE_MS, "paying"), { late: true, delay: 60000 });
+  assert.deepEqual(payoutPace(since, since + LATE_MS * 4, "queued"), { late: true, delay: 60000 });
+  for (const stage of ["paid", "failed"]) assert.equal(payoutPace(since, since + LATE_MS * 4, stage).late, false);
 });

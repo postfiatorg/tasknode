@@ -53,12 +53,13 @@ export async function handleWithdrawal({ req, res, json, readJson, fail, suffix,
     return fail(400, "invalid_withdrawal_request", "Invalid burn ID.");
   }
   if (!wReady && !wJob && !wCreate && !wRecipient) return fail(404, "bridge_route_not_found", "Unknown bridge endpoint.");
-  const unavailable = () => {
+  // enabled:false only when this host's switch is off; an unreachable service leaves it unknown.
+  const unavailable = enabled => {
     if (!wReady) return fail(503, "solana_withdrawals_unavailable", UNAVAILABLE);
-    json(res, 200, { ok: true, ready: false, message: UNAVAILABLE });
+    json(res, 200, { ok: true, ready: false, ...(enabled === false && { enabled }), message: UNAVAILABLE });
     return true;
   };
-  if (solana && !withdrawViaRelay && !solanaOrigin) return unavailable();
+  if (solana && !withdrawViaRelay && !solanaOrigin) return unavailable(false);
   if (wRecipient && !withdrawViaRelay) {
     let answer;
     try { answer = await recipientAnswer(env, wRecipient[1]); }
@@ -106,7 +107,7 @@ export async function handleWithdrawal({ req, res, json, readJson, fail, suffix,
     if (withdrawViaRelay && proxyToken && JSON.stringify(payload).includes(proxyToken)) throw new Error("Unsafe withdrawal response");
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Invalid withdrawal response");
     if (solana && wReady && (!response.ok || payload.ok !== true || typeof payload.ready !== "boolean")) return unavailable();
-    json(res, response.status, payload);
+    json(res, response.status, solana && wReady && !withdrawViaRelay ? { ...payload, enabled: true } : payload);
     return true;
   } catch {
     if (solana && wReady) return unavailable();

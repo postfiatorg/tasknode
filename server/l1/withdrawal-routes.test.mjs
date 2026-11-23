@@ -67,7 +67,7 @@ test('Solana withdrawal setting defaults closed and requires a loopback HTTP ori
 });
 test('disabled relay returns unavailable without contacting the payout service', async t => {
   const { get, post, seen } = await stack(t);
-  assert.deepEqual(await (await get('/readiness')).json(), { ok: true, ready: false, message: 'Solana withdrawals are not available yet' });
+  assert.deepEqual(await (await get('/readiness')).json(), { ok: true, ready: false, enabled: false, message: 'Solana withdrawals are not available yet' });
   assert.equal((await post(JSON.stringify({ burn_tx_id: burn }))).status, 503);
   assert.equal((await get('/' + burn)).status, 503);
   assert.equal((await get('/recipient/' + wallet())).status, 503);
@@ -109,14 +109,16 @@ test('both authenticated hops validate writes and expose readiness and idempoten
     JSON.stringify({ burn_tx_id: burn, url: 'extra' })]) assert.equal((await post(invalid)).status, 400);
   assert.equal((await get('/invalid')).status, 400);
   assert.deepEqual(seen, []);
-  assert.equal((await (await get('/readiness')).json()).message, 'vault paused');
+  const paused = await (await get('/readiness')).json();
+  assert.equal(paused.message, 'vault paused'); assert.equal(paused.enabled, true);
   assert.equal((await post(body)).status, 202);
   assert.equal((await (await get('/' + burn)).json()).burn_tx_id, burn);
   assert.deepEqual(seen.map(row => row.url), ['/solana/withdrawals/readiness', '/solana/withdrawals', '/solana/withdrawals/' + burn]);
   assert.equal(seen[1].body, body);
   assert.ok(seen.every(row => row.authorization === undefined));
   await close(payout);
-  assert.equal((await (await get('/readiness')).json()).ready, false);
+  const down = await (await get('/readiness')).json();
+  assert.equal(down.ready, false); assert.equal(down.enabled, undefined);
 });
 
 test('payout routes act only for an accepted burn owned by the named wallet, with a per-session limit', async t => {

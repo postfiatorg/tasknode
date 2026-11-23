@@ -11,9 +11,21 @@ const ID = /^[0-9a-f]{96}$/;
 export const UNAVAILABLE = "Solana withdrawals are not available yet";
 export const STAGES = { queued: "Waiting to start", reading: "Reading your burn", proving: "Building the payout proof",
   paying: "Sending USDC on Solana", paid: "USDC paid on Solana", failed: "Payout stopped" };
-export const trackingKey = client => `l1-withdrawal:solana:${client.chainId}:${client.accountId}:${client.address}`;
-export function savedBurn(key) {
-  try { return localStorage.getItem(key) || ""; } catch { return ""; }
+export { savedBurn, solanaOffered, trackingKey } from "./solana-offer.js";
+// A payout still open after this long is shown as late and checked once a minute.
+export const LATE_MS = 30 * 60 * 1000;
+export function payoutPace(since, now, stage) {
+  const late = !["paid", "failed"].includes(stage) && now - since >= LATE_MS;
+  return { late, delay: late ? 60000 : 8000 };
+}
+export function trackedSince(burn) {
+  const key = "l1-withdrawal:solana:since:" + burn;
+  try {
+    const saved = Number(localStorage.getItem(key));
+    if (Number.isSafeInteger(saved) && saved > 0) return saved;
+    localStorage.setItem(key, String(Date.now()));
+  } catch { /* Without storage the clock starts when this screen opened. */ }
+  return Date.now();
 }
 export function isBurnId(value) { return typeof value === "string" && ID.test(value); }
 
