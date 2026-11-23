@@ -162,15 +162,29 @@ test('release and failure logs contain only bounded public diagnostics', async t
   const log = t.mock.method(console, 'log', () => {});
   const nonce = '12'.repeat(32), reason = 'Not the vault deposit: source account';
   const release = body => route('release', { readJson: async () => body });
-  assert.equal((await release({ nonce, reason })).status, 200);
   assert.equal((await release({ nonce, reason: 'arbitrary private text' })).status, 400);
   assert.equal((await route('send', { readJson: async () => ({ nonce, transaction_b64: 'A'.repeat(100) }) })).status, 503);
   const lines = log.mock.calls.map(call => call.arguments[0]);
-  assert.equal(lines.length, 3);
-  assert.ok(lines[0].includes(reason));
-  assert.ok(lines[1].includes('invalid_solana_request'));
-  assert.ok(lines[2].includes('solana_bridge_unavailable'));
+  assert.equal(lines.length, 2);
+  assert.ok(lines[0].includes('invalid_solana_request'));
+  assert.ok(lines[1].includes('solana_bridge_unavailable'));
   assert.doesNotMatch(lines.join(' '), /arbitrary private text|A{100}|transaction_b64/);
+  assert.ok(knownRefusal(reason));
+});
+
+test('a release logs its reason and layout only for a lease the caller holds; otherwise it is answered as before', async t => {
+  const f = await durableFixture(t, 135);
+  const log = t.mock.method(console, 'log', () => {});
+  const reason = 'Not the vault deposit: source account';
+  const layout = { version: 'legacy', accounts: [[owner, 'sw'], [pub(136), 'w']], instructions: [{ program: 0, accounts: [1], tag: 5, length: 12 }] };
+  const release = (body, accountId = 'test') => route('release', { session: { accountId }, readJson: async () => body });
+  const nonce = (await buildVaultDeposit(f.settings, f.ready, request, 'test')).nonce;
+  assert.deepEqual((await release({ nonce: '12'.repeat(32), reason, layout })).body, { ok: true, released: false }, 'no lease');
+  assert.deepEqual((await release({ nonce, reason, layout }, 'other')).body, { ok: true, released: false }, 'another holder\'s lease');
+  assert.deepEqual((await release({ nonce, reason, layout })).body, { ok: true, released: true });
+  const rows = log.mock.calls.map(call => JSON.parse(call.arguments[0].slice('solana release '.length)));
+  assert.deepEqual(rows.map(row => [row.status, row.released, row.reason, row.layout]),
+    [[200, false, undefined, undefined], [200, false, undefined, undefined], [200, true, reason, layout]]);
 });
 
 test('relay refusals on /send reach its log with the step, the deposit nonce and the public layout, never bytes, signatures or keys', async t => {

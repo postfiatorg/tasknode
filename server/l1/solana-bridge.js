@@ -161,10 +161,13 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
   let body, valid = false;
   // Keep only public, validated tracking fields. Never log raw bodies, transaction bytes, RPC
   // errors, headers, or relay replies. The nonce correlates intent, refusal, send and recovery.
-  // layout: the public layout of a refused transaction, from the relay's own decode or a validated release.
+  // layout: the public layout of a refused transaction, from the relay's own decode or a release.
   // reason: a fixed diagnostic of the relay's own, where the message carries outside text.
-  function log(status, code, payload, message, layout = valid ? body.layout : undefined, reason = undefined) {
+  // A release's reason and layout come from the caller: logged only when it gave back its own lease.
+  function log(status, code, payload, message, layout = undefined, reason = undefined) {
     const step = JOB.test(suffix) ? 'job-status' : suffix.slice(8);
+    const released = suffix === '/solana/release' && payload ? payload.released === true : undefined;
+    const caller = valid && released ? body : {};
     const nonce = body?.nonce ?? payload?.nonce;
     const signature = body?.signature ?? payload?.signature;
     const job = JOB.test(suffix) ? suffix.split('/').at(-1) : payload?.job_id;
@@ -172,8 +175,8 @@ export async function handleSolana({ req, res, json, readJson, fail, suffix, env
       nonce: typeof nonce === 'string' && /^[0-9a-f]{64}$/.test(nonce) ? nonce : undefined,
       signature: b58(signature, 64) ? signature : undefined, job: typeof job === 'string' && /^0x[0-9a-f]{64}$/.test(job) ? job : undefined,
       durable: suffix === '/solana/intent' && status === 200 ? Boolean(payload?.nonce_account) : undefined,
-      reason: reason ?? (knownRefusal(message) ? message : knownRefusal(body?.reason) ? body.reason : undefined),
-      layout: validLayout(layout) ? layout : undefined }));
+      released, reason: reason ?? (knownRefusal(message) ? message : knownRefusal(caller.reason) ? caller.reason : undefined),
+      layout: [layout, caller.layout].find(validLayout) }));
   }
   const reject = (status, code, message, layout, reason) => { log(status, code, undefined, message, layout, reason); return fail(status, code, message); };
   if (!solanaPath(suffix)) return fail(404, 'bridge_route_not_found', 'Unknown bridge endpoint.');
