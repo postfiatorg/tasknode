@@ -61,7 +61,7 @@ try {
     res.setHeader('Content-Type', asset.type === 'chunk' ? 'text/javascript' : 'text/css');
     res.end(asset.code ?? asset.source);
   });
-  gateway = registerL1Gateway(server, { env: { TASKNODE_L1_ENABLED: 'true', L1_SOLANA_WITHDRAWALS_ENABLED: 'true',
+  gateway = registerL1Gateway(server, { env: { TASKNODE_L1_ENABLED: 'true', L1_SOLANA_WITHDRAWALS_ENABLED: 'true', L1_SOLANA_READINESS_FRESH_MS: '0',
     L1_SOLANA_WITHDRAW_SERVICE_URL: 'http://127.0.0.1:' + payout.address().port, L1_SOLANA_RPC_URL: 'http://127.0.0.1:' + payout.address().port,
     L1_HISTORY_RPC_URL: 'tcp://127.0.0.1:' + chain.address().port },
     getSession: async () => ({ accountId: 'fixture', authenticated: true }), cookieValue: () => '', json,
@@ -96,11 +96,11 @@ try {
   await visible('Available from Ethereum deposits'); await select();
   await visible('Solana withdrawals are not available yet');
   open = true;
-  await reload(); await select(); await visible('Available from the current Solana deposit series');
+  await reload(); await select(); await visible('You can withdraw up to');
   assert.match(await page.evaluate('document.body.innerText'), /0\.02/);
   await click('Use my Phantom address');
   await page.evaluate(`const input = document.querySelector('[aria-label="Solana USDC withdrawal"] input[inputmode="decimal"]');
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '0.02');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '.02');
     input.dispatchEvent(new Event('input', { bubbles: true }));`);
   epoch++;
   await click('Review withdrawal'); await visible('You receive on Solana');
