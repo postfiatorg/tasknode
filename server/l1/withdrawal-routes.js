@@ -22,7 +22,7 @@ function overLimit(account, kind, now = Date.now()) {
 const owned = new Map();
 async function burnOwnedBy(env, burn, owner) {
   if (owned.get(burn) === owner) return true;
-  const report = await localRpc(env, 15000)('tx', { tx_id: burn });
+  const report = await localRpc(env, 40000)('tx', { tx_id: burn });
   const mine = report?.tx_id === burn && report.confirmed === true && report.receipt?.tx_id === burn && report.receipt.accepted === true
     && Array.isArray(report.transaction_rows) && report.transaction_rows.some(row => row?.tx_id === burn
       && row.transaction_kind === 'vault_bridge_burn_to_redeem' && row.from === owner && row.accepted === true);

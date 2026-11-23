@@ -144,9 +144,12 @@ export async function walletBurns(client, limit = 100) {
 // The relay acts only for a burn this wallet made, so every call names the wallet.
 export async function payoutJob(burn, create = false, owner = "") {
   if (!isBurnId(burn)) throw Error("Invalid Post Fiat burn ID.");
+  // The first request for a burn reads it on the chain twice (ownership, then the payout service),
+  // about ten seconds each, so the default fifteen-second limit is too short.
+  const signal = AbortSignal.timeout(60000);
   const job = await bridgeRequest(create ? ROOT : ROOT + "/" + burn, create ? {
-    method: "POST", headers: { "Content-Type": "application/json", "X-L1-Owner": owner }, body: JSON.stringify({ burn_tx_id: burn }),
-  } : { headers: { "X-L1-Owner": owner } });
+    method: "POST", headers: { "Content-Type": "application/json", "X-L1-Owner": owner }, body: JSON.stringify({ burn_tx_id: burn }), signal,
+  } : { headers: { "X-L1-Owner": owner }, signal });
   if (job?.burn_tx_id !== burn || !Object.hasOwn(STAGES, job.stage)
       || (job.amount_atoms != null && (typeof job.amount_atoms !== "string" || !/^[0-9]+$/.test(job.amount_atoms)))
       || (job.recipient != null && !decode(job.recipient, 32))

@@ -22,7 +22,8 @@ export default function SolanaPayout({ burn, owner, create, onDone }) {
         stage = value.stage;
       } catch (failure) {
         if (!active) return;
-        setError(failure.message); setNow(Date.now());
+        // An answer from the service is shown as it is. A timeout or lost connection says nothing about the payout.
+        setError(failure.status ? failure.message : "Still waiting for the payout service to answer."); setNow(Date.now());
       }
       timer = setTimeout(() => void poll(false), payoutPace(since, Date.now(), stage).delay);
     }
@@ -36,12 +37,13 @@ export default function SolanaPayout({ burn, owner, create, onDone }) {
       {" "}<a href={`https://explorer.solana.com/tx/${job.solana_tx}`} target="_blank" rel="noreferrer">View Solana transaction</a>
     </Notice> : job?.stage === "failed" ? <Notice tone="danger" title={STAGES.failed}>
       {job.error || job.detail || "The payout service stopped."} Your PFUSDC burn is recorded. Solana payment is unconfirmed. Retry the payout with this burn.
-    </Notice> : <p className="l1-status-line" role="status"><Spinner size={14} />{STAGES[job?.stage] || "Registering your payout"}…</p>}
+    </Notice> : <><p className="l1-status-line" role="status"><Spinner size={14} />{STAGES[job?.stage] || "Registering your payout"}…</p>
+      <p className="l1-muted">A payout usually takes 6 to 10 minutes. It continues whether or not this screen stays open.</p></>}
     {late && <Notice tone="warning" title="This is taking longer than usual">
       Your burn is recorded on Post Fiat, but the USDC payout has not completed after 30 minutes. This screen keeps checking once a minute. If you ask for help, quote burn ID {burn}.
     </Notice>}
     <KV rows={[[ "Burn on Post Fiat", <span className="l1-mono" style={{ overflowWrap: "anywhere" }}>{burn}</span> ]]} />
-    {error && <Notice tone="warning" role="alert">{error} The burn ID is recorded. Payout status is unknown. Checking again in {late ? "a minute" : "eight seconds"}.</Notice>}
+    {error && job?.stage !== "paid" && <Notice tone="info" role="status">{error} Your burn is recorded on Post Fiat and the payout is not affected. Checking again in {late ? "a minute" : "eight seconds"}.</Notice>}
     {job?.stage === "failed" && <button type="button" className="l1-btn" onClick={() => { setJob(null); setRetry(n => n + 1); }}>Retry payout</button>}
     {job?.stage === "paid" && <button type="button" className="l1-btn" onClick={onDone}>Start another withdrawal</button>}
   </div>;
