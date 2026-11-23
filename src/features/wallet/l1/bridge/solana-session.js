@@ -1,7 +1,7 @@
 import bs58 from "bs58";
 import { bridgeJson } from "./bridge-relay.js";
 import { CHECK_MISMATCH, knownRefusal, refusalText, RECONNECT_PHANTOM, RELOAD_DEPOSIT } from "./solana-refusal.js";
-import { checkDepositShape, DEPOSIT_CHECK_VERSION, instructionLayout } from "./solana-shape.js";
+import { checkDepositShape, DEPOSIT_CHECK_VERSION, instructionLayout, validLayout } from "./solana-shape.js";
 
 const signature = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
 const jobId = /^0x[0-9a-f]{64}$/;
@@ -36,9 +36,9 @@ export function setAside(earlier, record) {
   return list;
 }
 // Give the server's nonce lease back; a failure here only delays its expiry.
-// A refused layout goes along so the relay log shows it; bounded to fit the relay's request limit.
+// A refused layout goes along so the relay log shows it, only within the relay's schema and request limit.
 const release = (nonce, reason, layout) => postSolana("release", { nonce, reason,
-  layout: reason && layout && JSON.stringify(layout).length <= 3000 ? layout : undefined }).catch(() => {});
+  layout: reason && validLayout(layout) && JSON.stringify(layout).length <= 3000 ? layout : undefined }).catch(() => {});
 const base64 = bytes => { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); };
 // A record that reached a signature or an end no longer needs the signed copy.
 const settled = ({ transaction_b64: _bytes, resent: _resent, ...record }) => record;

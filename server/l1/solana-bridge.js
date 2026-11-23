@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import bs58 from 'bs58';
 import { knownRefusal, RELOAD_DEPOSIT } from '../../src/features/wallet/l1/bridge/solana-refusal.js';
-import { DEPOSIT_CHECK_VERSION } from '../../src/features/wallet/l1/bridge/solana-shape.js';
+import { DEPOSIT_CHECK_VERSION, validLayout } from '../../src/features/wallet/l1/bridge/solana-shape.js';
 import { walletBuildId } from '../wallet-build.js';
 import { buildVaultDeposit, DepositError, readVault, recoverDeposit, releaseDeposit, sendDeposit, USDC, vaultSettings } from './solana-vault.js';
 
@@ -42,24 +42,13 @@ function b58(value, size) {
   try { return bs58.decode(value).length === size; } catch { return false; }
 }
 const object = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-const byte = value => Number.isInteger(value) && value >= 0 && value < 256;
-// instructionLayout's public metadata, as a browser that refused Phantom's reply sends it: public
-// addresses with roles, program and account indices, tags and lengths. Nothing else is logged.
-function validLayout(layout) {
-  if (!object(layout) || Object.keys(layout).sort().join() !== 'accounts,instructions,version') return false;
-  const { version, accounts, instructions } = layout;
-  return (version === 'legacy' || version === 0) && Array.isArray(accounts) && accounts.length <= 64 &&
-    accounts.every(row => Array.isArray(row) && row.length === 2 && b58(row[0], 32) && ['sw', 'sr', 'w', 'r'].includes(row[1])) &&
-    Array.isArray(instructions) && instructions.length <= 64 && instructions.every(ix => object(ix) &&
-      Object.keys(ix).sort().join() === 'accounts,length,program,tag' && byte(ix.program) && (ix.tag === null || byte(ix.tag)) &&
-      Number.isInteger(ix.length) && ix.length >= 0 && ix.length <= 1232 && Array.isArray(ix.accounts) && ix.accounts.length <= 64 && ix.accounts.every(byte));
-}
 function validBody(path, body) {
   if (!object(body)) return false;
   const keys = Object.keys(body).sort().join(',');
   const hex32 = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
-  if (path === '/solana/release') return hex32(body.nonce) && (keys === 'nonce' || (keys === 'nonce,reason' && knownRefusal(body.reason)) ||
-    (keys === 'layout,nonce,reason' && knownRefusal(body.reason) && validLayout(body.layout)));
+  // A layout is a diagnostic: one outside the schema is not logged, and never blocks the release.
+  if (path === '/solana/release') return hex32(body.nonce) && (keys === 'nonce' ||
+    (['nonce,reason', 'layout,nonce,reason'].includes(keys) && knownRefusal(body.reason)));
   // A durable-nonce deposit also names the nonce account and the value it signed.
   if (path === '/solana/recovery') return ['last_valid_block_height,nonce,vault_program_id', 'before,last_valid_block_height,nonce,vault_program_id']
     .some(base => keys === base || keys === [...base.split(','), 'nonce_account', 'nonce_value'].sort().join(',')) &&

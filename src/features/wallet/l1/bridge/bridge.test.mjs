@@ -442,6 +442,17 @@ test('Phantom\'s signed bytes are checked before /send: a mismatch is refused, t
   assert.ok(browser.posted.some(row => row.path === 'send'), 'the unchanged durable deposit is sent');
 });
 
+test('a refused reply whose layout fails the relay\'s schema still gives the lease back, with its reason and no layout', async t => {
+  const wide = { programAddress: LIGHTHOUSE, data: Buffer.from([5]), accounts: Array.from({ length: 65 }, () => ({ address: solana.owner, role: 0 })) };
+  const bytes = await solanaDeposit({ ...solanaShape, budget: serverBudget, amount_atoms: '1000001', extra: [wide] });
+  const browser = solanaBrowser(t, { intent: await solanaIntent({}, true), phantom: phantomSigned(bytes) });
+  const warning = t.mock.method(console, 'warn', () => {});
+  await assert.rejects(browser.run(), /^Error: Not the vault deposit: .+\. Nothing was sent\.$/);
+  const [reason, layout] = warning.mock.calls[0].arguments;
+  assert.equal(layout.instructions.at(-1).accounts.length, 65, 'over the schema\'s 64 account indices');
+  assert.deepEqual(browser.posted.at(-1), { path: 'release', body: { nonce: solana.nonce, reason } });
+});
+
 // The same bytes with one read-only account moved into the writable section (no compiler emits this).
 function writable(bytes, key) {
   const start = 1 + 64 * bytes[0], m = getCompiledTransactionMessageDecoder().decode(bytes.subarray(start));

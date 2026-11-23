@@ -213,24 +213,31 @@ test('relay refusals on /send reach its log with the step, the deposit nonce and
   for (const reason of [...Object.values(RELAY_REFUSALS), 'Not the vault deposit: leased deposit accounts or data changed']) assert.ok(knownRefusal(reason), reason);
 });
 
-test('a browser refusal releases the lease with the public layout, checked against a fixed schema before it is logged', async t => {
+test('a browser refusal always releases the lease; only a layout that passes the fixed schema is logged', async t => {
+  const f = await durableFixture(t, 170);
   const log = t.mock.method(console, 'log', () => {});
-  const nonce = '3b'.repeat(32), reason = 'Not the vault deposit: Lighthouse instruction';
+  const reason = 'Not the vault deposit: Lighthouse instruction';
   const layout = { version: 'legacy', accounts: [[owner, 'sw'], [pub(121), 'sr'], [LIGHTHOUSE, 'r']],
     instructions: [{ program: 2, accounts: [1], tag: 0, length: 12 }] };
   const release = body => route('release', { readJson: async () => body });
-  assert.equal((await release({ nonce, reason, layout })).status, 200);
-  for (const bad of [{ ...layout, signature: signature }, { ...layout, version: 1 }, { ...layout, accounts: [[signature, 'sw']] },
+  const lease = async () => (await buildVaultDeposit(f.settings, f.ready, request, 'test')).nonce;
+  assert.deepEqual((await release({ nonce: await lease(), reason, layout })).body, { ok: true, released: true });
+  const bad = [{ ...layout, signature: signature }, { ...layout, version: 1 }, { ...layout, accounts: [[signature, 'sw']] },
     { ...layout, accounts: [['private text', 'r']] }, { ...layout, accounts: [[owner, 'x']] },
     { ...layout, instructions: [{ program: 2, accounts: [1], tag: 0, length: 12, data: 'AAAA' }] },
-    { ...layout, instructions: [{ program: 999, accounts: [], tag: 0, length: 1 }] }, 'text', null]) {
-    assert.equal((await release({ nonce, reason, layout: bad })).status, 400);
+    { ...layout, instructions: [{ program: 999, accounts: [], tag: 0, length: 1 }] },
+    { ...layout, instructions: [{ program: 2, accounts: Array(65).fill(0), tag: 5, length: 12 }] }, 'text', null];
+  for (const wrong of bad) {
+    assert.deepEqual((await release({ nonce: await lease(), reason, layout: wrong })).body, { ok: true, released: true }, JSON.stringify(wrong));
   }
-  assert.equal((await release({ nonce, layout })).status, 400, 'a layout comes with a reason');
-  const lines = log.mock.calls.map(call => call.arguments[0]);
-  assert.deepEqual(JSON.parse(lines[0].slice('solana release '.length)).layout, layout);
-  assert.ok(lines.slice(1).every(line => line.includes('invalid_solana_request') && !line.includes('layout')));
-  assert.doesNotMatch(lines.join(' '), new RegExp(signature + '|private text|AAAA'));
+  assert.equal((await release({ nonce: await lease(), layout })).status, 400, 'a layout comes with a reason');
+  const rows = log.mock.calls.map(call => call.arguments[0]).filter(line => line.startsWith('solana release '))
+    .map(line => JSON.parse(line.slice('solana release '.length)));
+  assert.equal(rows.length, bad.length + 2);
+  assert.deepEqual([rows[0].reason, rows[0].layout], [reason, layout]);
+  assert.ok(rows.slice(1, -1).every(row => row.status === 200 && row.reason === reason && row.layout === undefined));
+  assert.deepEqual([rows.at(-1).code, rows.at(-1).layout], ['invalid_solana_request', undefined]);
+  assert.doesNotMatch(log.mock.calls.map(call => call.arguments[0]).join(' '), new RegExp(signature + '|private text|AAAA'));
 });
 
 async function relayFiles(t) {

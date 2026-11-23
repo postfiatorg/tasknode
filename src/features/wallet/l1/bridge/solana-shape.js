@@ -39,6 +39,21 @@ export function instructionLayout(bytes) {
   } catch { return null; }
 }
 
+const key32 = value => { try { return typeof value === "string" && value.length <= 88 && bs58.decode(value).length === 32; } catch { return false; } };
+const byte = value => Number.isInteger(value) && value >= 0 && value < 256;
+const object = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+// The fixed schema of instructionLayout's output: public addresses with roles, program and account
+// indices, tags and lengths. The browser attaches only a layout that passes it, and the relay logs only such a one.
+export function validLayout(layout) {
+  if (!object(layout) || Object.keys(layout).sort().join() !== "accounts,instructions,version") return false;
+  const { version, accounts, instructions } = layout;
+  return (version === "legacy" || version === 0) && Array.isArray(accounts) && accounts.length <= 64 &&
+    accounts.every(row => Array.isArray(row) && row.length === 2 && key32(row[0]) && ["sw", "sr", "w", "r"].includes(row[1])) &&
+    Array.isArray(instructions) && instructions.length <= 64 && instructions.every(ix => object(ix) &&
+      Object.keys(ix).sort().join() === "accounts,length,program,tag" && byte(ix.program) && (ix.tag === null || byte(ix.tag)) &&
+      Number.isInteger(ix.length) && ix.length >= 0 && ix.length <= 1232 && Array.isArray(ix.accounts) && ix.accounts.length <= 64 && ix.accounts.every(byte));
+}
+
 // Raise this whenever checkDepositShape accepts or refuses a different set of transactions. The
 // co-signing relay reports it in /solana/readiness, and the browser opens Phantom only when it
 // matches its own, so nobody signs a deposit the relay will refuse.
