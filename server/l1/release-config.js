@@ -45,3 +45,15 @@ export function relayRead(env = process.env, timeoutMs = 60000) {
     return result.result;
   };
 }
+
+// Evaluated on the host that talks to the payout worker. The public gateway
+// forwards through its existing authenticated relay, including when the flag is off.
+export function solanaWithdrawalOrigin(env) {
+  if (env.L1_SOLANA_WITHDRAWALS_ENABLED !== 'true') return null;
+  try {
+    const url = new URL(env.L1_SOLANA_WITHDRAW_SERVICE_URL);
+    if (url.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(url.hostname)
+        && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash) return url.origin;
+  } catch { /* Missing or invalid configuration leaves the route unavailable. */ }
+  return null;
+}

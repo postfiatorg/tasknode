@@ -76,7 +76,7 @@ export function createRelayServer(env = process.env, injectedRead) {
         .finally(() => { activeReads--; });
       return;
     }
-    if (/^\/api\/l1\/bridge\/(?:readiness(?:\?route=ethereum-mainnet-usdc-v1)?|jobs(?:\/0x[0-9a-f]{64})?|withdrawals(?:\/readiness|\/[0-9a-f]{96})?|faucet)$/.test(req.url) ||
+    if (/^\/api\/l1\/bridge\/(?:readiness(?:\?route=ethereum-mainnet-usdc-v1)?|jobs(?:\/0x[0-9a-f]{64})?|(?:solana\/)?withdrawals(?:\/readiness|\/[0-9a-f]{96})?|faucet)$/.test(req.url) ||
         (req.url.startsWith('/api/l1/bridge/solana/') && solanaPath(req.url.slice('/api/l1/bridge'.length)))) {
       inner.emit('request', req, res); return;
     }

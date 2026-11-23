@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { WebSocket, WebSocketServer } from 'ws';
 import { requestOriginFromBoundary } from '../trusted-proxy.js';
-import { l1Enabled, relaySettings } from './release-config.js';
+import { l1Enabled, relaySettings, solanaWithdrawalOrigin } from './release-config.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
 import { handleNavcoinRoutes } from './navcoin-routes.js';
@@ -58,6 +58,7 @@ function validateRequest(request) {
 export function registerL1Gateway(server, { getSession, sessionCookieName, cookieValue, json, readJson, env = process.env, recoverSubmit = createSubmitRecovery(env) }) {
   const enabled = l1Enabled(env);
   const relay = enabled ? relaySettings(env) : null;
+  const solanaOrigin = enabled && !relay ? solanaWithdrawalOrigin(env) : null;
   // Snapshot credentials at registration/startup, never from browser input.
   const proxyOrigin = proxyOriginFromEnv(env);
   const credentials = (relay ? Promise.resolve('') : readProxyToken(env)).then(token => ({ token })).catch(() => null);
@@ -88,7 +89,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
       if (url.pathname.startsWith('/api/l1/bridge/')) {
         const credential = await credentials;
         if (!credential) { json(res, 503, { error: 'l1_proxy_credential_unavailable' }); return; }
-        if (await handleBridgeRoutes({ ...context, env, bridgeProxyUrl: relay?.origin || env.L1_BRIDGE_PROXY_URL || '',
+        if (await handleBridgeRoutes({ ...context, env, solanaOrigin, bridgeProxyUrl: relay?.origin || env.L1_BRIDGE_PROXY_URL || '',
           proxyToken: relay?.token || credential.token, proxyOrigin: relay?.origin || env.L1_BRIDGE_PROXY_ORIGIN || proxyOrigin,
           bridgePathPrefix: relay ? '/api/l1/bridge' : '/api/bridge', withdrawViaRelay: Boolean(relay) })) return;
       }

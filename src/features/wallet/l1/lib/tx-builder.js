@@ -50,7 +50,7 @@ export function explicitReceipt(txId, result) {
 }
 export function requireAccepted(txId, receipt) {
   if (receipt?.tx_id !== txId || typeof receipt?.accepted !== 'boolean') throw new Error(`No execution receipt for ${txId}; check activity before retrying`);
-  if (!receipt.accepted) throw new Error(`Transaction ${txId} rejected: ${receipt.reject_reason || receipt.code || receipt.message || 'execution rejected'}`);
+  if (!receipt.accepted) throw Object.assign(new Error(`Transaction ${txId} rejected: ${receipt.reject_reason || receipt.code || receipt.message || 'execution rejected'}`), { code: "l1_execution_rejected" });
   return receipt;
 }
 export class TxBuilder {
