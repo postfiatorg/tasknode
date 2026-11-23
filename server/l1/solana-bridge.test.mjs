@@ -803,7 +803,7 @@ test('/solana/send: Lighthouse assertions pass on the one-signer path as signed;
     const optional = signAsDepositor(await solanaDeposit({ ...durable, budget }));
     assert.equal((await sendDeposit(f.settings, sendBody(optional, intent.nonce), quick)).ok, true);
   }
-  // AdvanceNonce changes the nonce account, so Phantom may assert on it; assertions only read it.
+  // AdvanceNonce changes the nonce account, so Phantom may assert on it; the assertion gets its write privilege but cannot change it.
   for (const extra of [[assertLamports(intent.nonce_account, 1)], [...lighthouse, assertLamports(intent.nonce_account, 1, { role: 1 })]]) {
     const guarded = signAsDepositor(await solanaDeposit({ ...durable, extra }));
     assert.equal((await sendDeposit(f.settings, sendBody(guarded, intent.nonce), quick)).ok, true);
@@ -825,7 +825,7 @@ async function shapeCases(cases) {
   }
 }
 
-test('two signers: assertions may read the nonce account; the authority and any write stay outside the advance', async () => {
+test('two signers: assertions may name the nonce account, writable for the advance; the authority and any other write stay outside the advance', async () => {
   const nonceAccount = pub(20), authority = pub(21);
   const durable = { nonceAccount, authority, lifetime: pub(22), budget: [unitLimit(200450), unitPrice(150000)] };
   const v0 = async base => {

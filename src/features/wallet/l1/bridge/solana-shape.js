@@ -151,9 +151,11 @@ export async function checkDepositShape(bytes, expected, { signed = false } = {}
     // The authority is read-only and only AdvanceNonce receives its signer privilege. The depositor
     // pays the fee and authorizes the original vault action. Extra instructions can only set a
     // bounded budget or assert state. Even unused keys cannot enlarge the writable set. The advance
-    // changes the nonce account, so Phantom may assert on it: assertions (tags 2..17) only read,
-    // and only the System program can change that System-owned account. The deposit may name
-    // neither nonce key, and no assertion the authority, whose signer privilege it would receive.
+    // changes the nonce account, so Phantom may assert on it. The message marks it writable because
+    // the advance writes it, so an assertion naming it receives that write privilege too; assertions
+    // (tags 2..17) write nothing, and only the System program, which needs the authority's
+    // signature, can change that System-owned account. The deposit may name neither nonce key, and
+    // no assertion the authority, whose signer privilege it would receive.
     const { nonce_account: account, nonce_authority: authority } = durable;
     must(!deposit.accounts.some(key => key === account || key === authority) && !assertions.includes(authority),
       "nonce account or authority outside advance");
