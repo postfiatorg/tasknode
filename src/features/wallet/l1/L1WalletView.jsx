@@ -152,7 +152,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       setBackupDue(false);
     } catch (failure) { setError(failure.message); }
   }
-  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: signed => core.submit(signed), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
+  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: (signed, options) => core.submit(signed, options), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
   const gallery = useGallery(client);
   const assetConfig = gallery.coins?.find(coin => coin.asset_id === selectedAssetId) || null;
   const symbol = assetConfig?.symbol || 'NAVCoin';

@@ -50,7 +50,7 @@ export function explicitReceipt(txId, result) {
 }
 export function requireAccepted(txId, receipt) {
   if (receipt?.tx_id !== txId || typeof receipt?.accepted !== 'boolean') throw new Error(`No execution receipt for ${txId}; check activity before retrying`);
-  if (!receipt.accepted) throw new Error(`Transaction ${txId} rejected: ${receipt.reject_reason || receipt.code || receipt.message || 'execution rejected'}`);
+  if (!receipt.accepted) throw Object.assign(new Error(`Transaction ${txId} rejected: ${receipt.reject_reason || receipt.code || receipt.message || 'execution rejected'}`), { code: "l1_execution_rejected" });
   return receipt;
 }
 export class TxBuilder {
@@ -99,7 +99,7 @@ export class TxBuilder {
     this.#signed.set(handle, { method, params: { [field]: JSON.stringify(signed) } });
     return handle;
   }
-  async submit(handle, { timeoutMs = 30000, pollMs = 1000 } = {}) {
+  async submit(handle, { timeoutMs = 30000, pollMs = 1000, onTxId } = {}) {
     this.assertCurrent();
     const signed = this.#signed.get(handle);
     if (!signed) throw new Error('Signed transaction is stale or already submitted');
@@ -109,6 +109,7 @@ export class TxBuilder {
     const result = rpcResult(await this.rpc.call(signed.method, signed.params, 180000));
     const txId = result?.tx_id;
     if (typeof txId !== 'string' || !txId) throw new Error('Submission returned no transaction id; check activity before retrying');
+    onTxId?.(txId); // Let the caller keep the id before the receipt wait, which can time out.
     const deadline = Date.now() + timeoutMs;
     let receipt = explicitReceipt(txId, result);
     while (!receipt && Date.now() < deadline) {

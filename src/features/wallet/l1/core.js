@@ -71,7 +71,7 @@ export class L1WalletCore {
     this.assertCurrent(generation);
     return builder.sign(intent, quote, this.address, this.#backup, wasm);
   }
-  submit(handle) { return this.builder().submit(handle); }
+  submit(handle, options) { return this.builder().submit(handle, options); }
   async subscribe(handler) {
     this.requireUnlocked();
     const generation = this.#generation;

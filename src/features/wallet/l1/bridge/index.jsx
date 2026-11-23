@@ -220,6 +220,6 @@ export default function BridgeTab({ onNavigate, assetConfig } = {}) {
     </Card>
     <div className="l1-source-pane" hidden={source !== "ethereum"}><BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} symbol={assetConfig?.symbol || "NAVCoins"} onBusy={ethereumBusy} /></div>
     <div className="l1-source-pane" hidden={source !== "solana"}><SolanaDeposit key={`s:${client.accountId}:${client.address}`} client={client} onBusy={solanaBusy} /></div>
-    <Withdraw key={`w:${client.accountId}:${client.address}`} client={client} />
+    <Withdraw key={`w:${client.chainId}:${client.accountId}:${client.address}`} client={client} />
   </>;
 }
