@@ -243,7 +243,7 @@ try {
   await page.getByTestId('l1-address').waitFor();
 
   // Bridge
-  await tab(page, 'Add funds');
+  await tab(page, 'Deposit & withdraw');
   await page.getByText('Bridge ready').waitFor();
   await shot(page, '05-bridge-idle');
   await page.getByRole('button', { name: 'Connect MetaMask', exact: true }).click();
@@ -359,7 +359,7 @@ try {
     await create(p, `design-review-${prefix}`);
     await p.getByText('Net assets at last NAV').first().waitFor();
     await shot(p, `${prefix}-home`);
-    await tab(p, 'Add funds'); await p.getByText('Bridge ready').waitFor();
+    await tab(p, 'Deposit & withdraw'); await p.getByText('Bridge ready').waitFor();
     if (scheme === 'dark') {
       world.bridge.stage = 'proving';
       await p.getByRole('button', { name: 'Connect MetaMask', exact: true }).click(); await p.getByTestId('bridge-owner').waitFor();

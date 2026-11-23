@@ -62,6 +62,12 @@ export async function phantomRecipient(phantom) {
   const owner = (phantom.publicKey || (await phantom.connect()).publicKey)?.toString();
   return checkRecipient(owner);
 }
+// The connected address, without the network check. Review checks it on Solana before any burn.
+export async function phantomAddress(phantom) {
+  const owner = (phantom.publicKey || (await phantom.connect()).publicKey)?.toString();
+  destinationRef("", owner);
+  return owner;
+}
 
 // The burn's issuer, asset family and bucket come from the wallet's own balance row on the chain.
 // Readiness only says which series can be paid now; it must name exactly that row.
@@ -83,8 +89,16 @@ export function matchedBalance(result, ready) {
   return { held: spendable < held ? spendable : held, ...series };
 }
 
+// People type ".5" and "5."; the chain amount needs digits on both sides of the point.
+export function normalAmount(amount) {
+  const text = String(amount ?? "").trim().replace(/,/g, "");
+  if (/^\.[0-9]+$/.test(text)) return "0" + text;
+  if (/^[0-9]+\.$/.test(text)) return text.slice(0, -1);
+  return text;
+}
+
 export function withdrawalAtoms(amount, held, outstanding) {
-  const value = atoms(amount, "Withdrawal amount");
+  const value = atoms(normalAmount(amount), "Withdrawal amount");
   if (BigInt(value) > held) throw Error("This exceeds your current Solana-backed balance.");
   if (BigInt(value) > integer(outstanding, "Bridge reserve")) throw Error("This exceeds the outstanding amount for this Solana series.");
   return value;

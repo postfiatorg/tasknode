@@ -42,6 +42,44 @@ async function recipientAnswer(env, recipient) {
   return { ok: true, recipient, allowed: kind === 'wallet', kind };
 }
 
+// The payout service recomputes Solana readiness from six validators, which takes ten seconds or
+// more, and keeps the answer for five seconds. Serve the last good answer for up to a minute and
+// refresh it in the background so the wallet never waits on that read. Signing still fails closed:
+// a burn built on an outdated reserve is refused by the chain and moves no funds.
+const READY_FRESH_MS = 60_000, READY_STALE_MS = 10 * 60_000, READY_REFRESH_MS = 45_000;
+const readyCache = new Map();
+export function resetSolanaReadinessCache() {
+  for (const entry of readyCache.values()) clearInterval(entry.timer);
+  readyCache.clear();
+}
+export async function solanaReadiness(url, { load = loadSolanaReadiness, now = Date.now, keepWarm = true } = {}) {
+  let entry = readyCache.get(url);
+  if (!entry) { entry = { at: 0, payload: null, pending: null, timer: null }; readyCache.set(url, entry); }
+  const refresh = () => {
+    if (!entry.pending) {
+      entry.pending = load(url).then(payload => {
+        // Only a ready answer is worth keeping; anything else is asked again next time.
+        if (payload?.ready === true) { entry.payload = payload; entry.at = now(); }
+        else if (payload) { entry.payload = null; entry.at = 0; }
+        return payload;
+      }, () => null).finally(() => { entry.pending = null; });
+    }
+    return entry.pending;
+  };
+  if (keepWarm && !entry.timer) { entry.timer = setInterval(refresh, READY_REFRESH_MS); entry.timer.unref?.(); }
+  const age = now() - entry.at;
+  if (entry.payload && age < READY_FRESH_MS) return entry.payload;
+  const pending = refresh();
+  if (entry.payload && age < READY_STALE_MS) return entry.payload;
+  return pending;
+}
+async function loadSolanaReadiness(url) {
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(45000), headers: { Accept: "application/json" } });
+  const payload = await response.json();
+  if (!response.ok || !payload || typeof payload !== "object" || Array.isArray(payload) || payload.ok !== true || typeof payload.ready !== "boolean") return null;
+  return payload;
+}
+
 export async function handleWithdrawal({ req, res, json, readJson, fail, suffix, session, bridgeProxyUrl, bridgePathPrefix, proxyToken, proxyOrigin, withdrawViaRelay, solana, solanaOrigin, env = process.env }) {
   // PFUSDC -> USDC. The holder burns from their own wallet; this only starts and reads the payout job.
   const path = solana ? suffix.slice("/solana".length) : suffix;
@@ -97,6 +135,13 @@ export async function handleWithdrawal({ req, res, json, readJson, fail, suffix,
   try {
     // Through the relay on Fly; straight to the local payout service on the relay host.
     const localBase = solana ? solanaOrigin : WITHDRAW_SERVICE + "/api/bridge";
+    if (solana && wReady && !withdrawViaRelay) {
+      // Tests set the window to zero to read the service on every request.
+      const payload = env.L1_SOLANA_READINESS_FRESH_MS === "0" ? await loadSolanaReadiness(localBase + suffix).catch(() => null) : await solanaReadiness(localBase + suffix);
+      if (!payload) return unavailable();
+      json(res, 200, { ...payload, enabled: true });
+      return true;
+    }
     const base = withdrawViaRelay ? String(bridgeProxyUrl).replace(/\/$/, "") + bridgePathPrefix : localBase;
     const response = await fetch(base + suffix, {
       method: req.method, redirect: "error", signal: AbortSignal.timeout(45000),

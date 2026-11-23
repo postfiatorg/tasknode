@@ -145,3 +145,28 @@ test('payout routes act only for an accepted burn owned by the named wallet, wit
   assert.equal(limited.status, 429); assert.equal((await limited.json()).code, 'withdrawal_rate_limited');
   assert.equal((await create(burn, { Cookie: 'fixture=other' })).status, 202);
 });
+
+test('Solana readiness is served from a one-minute cache and refreshed in the background', async () => {
+  const { solanaReadiness, resetSolanaReadinessCache } = await import('./withdrawal-routes.js');
+  resetSolanaReadinessCache();
+  let clock = 1_000_000, calls = 0, answer = { ok: true, ready: true, n: 1 };
+  const opts = { now: () => clock, keepWarm: false, load: async () => { calls++; return answer; } };
+  assert.deepEqual(await solanaReadiness('u', opts), { ok: true, ready: true, n: 1 });
+  assert.deepEqual(await solanaReadiness('u', opts), { ok: true, ready: true, n: 1 });
+  assert.equal(calls, 1);
+  clock += 61_000; answer = { ok: true, ready: true, n: 2 };
+  // Past a minute the last answer is returned at once while a refresh runs.
+  assert.equal((await solanaReadiness('u', opts)).n, 1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 2);
+  assert.equal((await solanaReadiness('u', opts)).n, 2);
+  // A not-ready answer is never kept.
+  clock += 61_000; answer = { ok: true, ready: false };
+  await solanaReadiness('u', opts); await new Promise(resolve => setImmediate(resolve));
+  assert.equal((await solanaReadiness('u', opts)).ready, false);
+  // Past ten minutes nothing stale is served.
+  answer = { ok: true, ready: true, n: 3 }; await solanaReadiness('u', opts);
+  clock += 11 * 60_000; answer = { ok: true, ready: true, n: 4 };
+  assert.equal((await solanaReadiness('u', opts)).n, 4);
+  resetSolanaReadinessCache();
+});

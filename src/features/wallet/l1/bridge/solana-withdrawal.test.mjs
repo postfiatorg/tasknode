@@ -7,7 +7,7 @@ import { getProgramDerivedAddress } from "@solana/addresses";
 import * as wasm from "../wasm/postfiat_wallet_wasm.js";
 import { TxBuilder } from "../lib/tx-builder.js";
 import { CHAIN_ID, GENESIS_HASH } from "../lib/utils.js";
-import { checkRecipient, destinationRef, LATE_MS, matchedBalance, payoutJob, payoutPace, phantomRecipient, solanaOffered, submitBurn, trackingKey, walletBurns, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
+import { normalAmount, withdrawalAtoms as atomsFor, checkRecipient, destinationRef, LATE_MS, matchedBalance, payoutJob, payoutPace, phantomRecipient, solanaOffered, submitBurn, trackingKey, walletBurns, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
 import { recipientKind } from "./solana-recipient.js";
 
 // A real Ed25519 wallet key, with leading zero bytes so base58 keeps its leading "1"s.
@@ -191,4 +191,13 @@ test("a payout still open after the stated time is late and is checked at a slow
   assert.deepEqual(payoutPace(since, since + LATE_MS, "paying"), { late: true, delay: 60000 });
   assert.deepEqual(payoutPace(since, since + LATE_MS * 4, "queued"), { late: true, delay: 60000 });
   for (const stage of ["paid", "failed"]) assert.equal(payoutPace(since, since + LATE_MS * 4, stage).late, false);
+});
+
+test('amounts typed without a leading or trailing digit are accepted', () => {
+  assert.equal(normalAmount('.5'), '0.5');
+  assert.equal(normalAmount(' 5. '), '5');
+  assert.equal(normalAmount('1,000.25'), '1000.25');
+  assert.equal(atomsFor('.5', 1_000_000n, '1000000'), 500000);
+  assert.throws(() => atomsFor('.', 1_000_000n, '1000000'), /positive decimal/);
+  assert.throws(() => atomsFor('0.0000001', 1_000_000n, '1000000'), /positive decimal/);
 });

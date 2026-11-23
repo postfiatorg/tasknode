@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
-import { checkRecipient, destinationRef, isBurnId, phantomRecipient, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
+import { checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
 
 // Burns read from this wallet's chain history, so a withdrawal made in another browser can be tracked here.
 function WalletBurns({ client, onTrack }) {
@@ -47,7 +47,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
   async function usePhantom() {
     setBusy(true); setError(""); setReview(null);
     try {
-      setRecipient(await phantomRecipient(phantom));
+      setRecipient(await phantomAddress(phantom));
     } catch (failure) { setError(`Could not use your Phantom address. ${failure.message} No funds moved.`); }
     finally { setBusy(false); }
   }
@@ -125,16 +125,18 @@ export default function SolanaWithdraw({ client, storageKey }) {
       <button type="button" className="l1-btn" disabled={!isBurnId(recovery)} onClick={() => { setError(""); track(recovery, false); }}>Track this burn</button>
       <button type="button" className="l1-btn" onClick={reset}>I verified that no burn was accepted</button>
       <WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} />
-    </div> : snapshot === undefined ? <p role="status"><Spinner size={14} /> Checking availability…</p>
+    </div> : snapshot === undefined ? <p role="status"><Spinner size={14} /> Loading your withdrawable balance…</p>
       : !snapshot ? <><Notice tone="warning">{UNAVAILABLE}</Notice><WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} /></> : <>
-        <p>Available from the current Solana deposit series: <Amount atoms={snapshot.held} unit="PFUSDC" />.</p>
+        <p>You can withdraw up to <b><Amount atoms={snapshot.held} unit="PFUSDC" /></b> to Solana right now.</p>
+        <p className="l1-muted">Only PFUSDC from the Solana deposit series that is open for payouts counts here. PFUSDC from later Solana deposits is not withdrawable to Solana yet, and PFUSDC from Ethereum deposits is withdrawn under Ethereum.</p>
         {!review && <form className="l1-stack" onSubmit={prepare}>
-          <label className="l1-field">PFUSDC amount<input inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={event => setAmount(event.target.value)} /></label>
+          <label className="l1-field">PFUSDC amount<input inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={event => setAmount(event.target.value.trim())} /></label>
           {amountError && <span className="is-danger">{amountError}</span>}
           <label className="l1-field">Solana recipient<input className="l1-mono-input" autoComplete="off" spellCheck={false} value={recipient} disabled={busy} onChange={event => setRecipient(event.target.value.trim())} /></label>
           {recipientError && <span className="is-danger">{recipientError}</span>}
           {phantom && <button type="button" className="l1-link" disabled={busy} onClick={usePhantom}>Use my Phantom address</button>}
           <button className="l1-btn is-primary" disabled={busy || !amount || !recipient || !!amountError || !!recipientError}>Review withdrawal</button>
+          {!busy && (!amount || !recipient) && <span className="l1-muted">Enter an amount and a Solana wallet address to continue.</span>}
         </form>}
         {review && <div className="l1-stack">
           <KV rows={[
