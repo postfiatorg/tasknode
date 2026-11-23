@@ -96,6 +96,25 @@ export function withdrawalIntent(client, { ready, held, series }, amount, recipi
     reserve_packet_hash: ready.reserve_packet_hash, destination_ref: destinationRef(ready.destination_prefix, recipient) } };
 }
 
+// Keep the burn ID as soon as the chain names it, before the receipt wait that can time out.
+export async function submitBurn(client, signed, storageKey) {
+  let saved = "";
+  const onTxId = id => { if (isBurnId(id)) { saved = id; localStorage.setItem(storageKey, id); } };
+  try { return await client.submit(signed, { onTxId }); }
+  catch (failure) { throw Object.assign(failure, { txId: saved }); }
+}
+
+// The wallet's own accepted burns from its chain history (account_tx), newest first, so a burn
+// made in another browser can be tracked. The row does not carry the destination; the payout
+// service answers for the burns it pays.
+export async function walletBurns(client, limit = 100) {
+  const result = rpcResult(await client.call("account_tx", { address: client.address, limit }));
+  const rows = Array.isArray(result) ? result : result?.rows || result?.transactions || [];
+  return rows.filter(row => (row.transaction_kind || row.kind) === "vault_bridge_burn_to_redeem" && row.accepted === true
+    && row.from === client.address && isBurnId(row.tx_id)).sort((a, b) => (b.block_height ?? 0) - (a.block_height ?? 0)).slice(0, 5)
+    .map(row => ({ id: row.tx_id, amount: row.amount, height: row.block_height }));
+}
+
 export async function payoutJob(burn, create = false) {
   if (!isBurnId(burn)) throw Error("Invalid Post Fiat burn ID.");
   const job = await bridgeRequest(create ? ROOT : ROOT + "/" + burn, create ? {

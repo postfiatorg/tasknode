@@ -7,7 +7,7 @@ import { getProgramDerivedAddress } from "@solana/addresses";
 import * as wasm from "../wasm/postfiat_wallet_wasm.js";
 import { TxBuilder } from "../lib/tx-builder.js";
 import { CHAIN_ID, GENESIS_HASH } from "../lib/utils.js";
-import { checkRecipient, destinationRef, matchedBalance, phantomRecipient, trackingKey, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
+import { checkRecipient, destinationRef, matchedBalance, phantomRecipient, submitBurn, trackingKey, walletBurns, withdrawalAtoms, withdrawalIntent } from "./solana-withdrawal.js";
 import { recipientKind } from "./solana-recipient.js";
 
 // A real Ed25519 wallet key, with leading zero bytes so base58 keeps its leading "1"s.
@@ -133,4 +133,40 @@ test("the bundled L1 signer preserves the reviewed Solana burn and submits it on
   const signature = builder.sign(intent, quote, wallet.address, wallet.backup_json, wasm);
   assert.equal((await builder.submit(signature)).txId, txId);
   assert.deepEqual(calls, ["asset_fee_quote", "mempool_submit_signed_asset_transaction_finality"]);
+});
+
+test("the burn ID is saved as soon as the chain names it, even when the receipt never arrives", async t => {
+  const store = new Map(), original = globalThis.localStorage;
+  globalThis.localStorage = { setItem: (key, value) => store.set(key, value), getItem: key => store.get(key) ?? null };
+  t.after(() => { globalThis.localStorage = original; });
+  wasm.initSync({ module: await readFile(new URL("../wasm/postfiat_wallet_wasm_bg.wasm", import.meta.url)) });
+  const wallet = wasm.wallet_keygen(CHAIN_ID, wasm.random_master_seed(), 0);
+  const intent = withdrawalIntent(wallet, { held: 20000n, ready, series }, "0.02", owner);
+  const txId = "34".repeat(48), order = [];
+  const builder = new TxBuilder({ call: async (method, params) => {
+    order.push(method);
+    if (method === "asset_fee_quote") return { ok: true, result: { chain_id: CHAIN_ID, genesis_hash: GENESIS_HASH,
+      protocol_version: 1, source: wallet.address, sequence: 1, minimum_fee: 30, sender_meets_reserve_after_fee: true,
+      operation: JSON.parse(params.operation_json) } };
+    if (method === "receipts") { order.push("saved:" + store.get("key")); return { ok: true, result: { receipts: [] } }; }
+    return { ok: true, result: { tx_id: txId } };
+  } });
+  const signed = builder.sign(intent, await builder.quote(intent, wallet.address), wallet.address, wallet.backup_json, wasm);
+  const client = { submit: (handle, options) => builder.submit(handle, { ...options, timeoutMs: 50, pollMs: 1 }) };
+  const failure = await submitBurn(client, signed, "key").catch(error => error);
+  assert.match(failure.message, /No execution receipt/);
+  assert.equal(failure.txId, txId);
+  assert.equal(store.get("key"), txId);
+  assert.equal(order[2], "receipts");
+  assert.equal(order[3], "saved:" + txId);
+});
+test("the wallet's own accepted burns are listed from its chain history so any of them can be tracked", async () => {
+  const address = "pf" + "1".repeat(40), mine = "56".repeat(48), older = "78".repeat(48), calls = [];
+  const burnRow = { tx_id: mine, transaction_kind: "vault_bridge_burn_to_redeem", from: address, accepted: true, amount: 20000, block_height: 1900 };
+  const client = { address, call: async (method, params) => { calls.push([method, params]); return { ok: true, result: { rows: [
+    burnRow, { ...burnRow, tx_id: "9a".repeat(48), accepted: false }, { ...burnRow, tx_id: "bc".repeat(48), from: "pf" + "2".repeat(40) },
+    { ...burnRow, tx_id: "de".repeat(48), transaction_kind: "issued_payment" }, { ...burnRow, tx_id: "not-an-id" },
+    { ...burnRow, tx_id: older, block_height: 1850 }] } }; } };
+  assert.deepEqual(await walletBurns(client), [{ id: mine, amount: 20000, height: 1900 }, { id: older, amount: 20000, height: 1850 }]);
+  assert.deepEqual(calls, [["account_tx", { address, limit: 100 }]]);
 });
