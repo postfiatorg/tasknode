@@ -28,6 +28,11 @@ export function instructionLayout(bytes) {
   } catch { return { unreadable: true }; }
 }
 
+// Raise this whenever checkDepositShape accepts or refuses a different set of transactions. The
+// co-signing relay reports it in /solana/readiness, and the browser opens Phantom only when it
+// matches its own, so nobody signs a deposit the relay will refuse.
+export const DEPOSIT_CHECK_VERSION = 1;
+
 // Both the browser and the co-signer decode the actual signed legacy message. Instructions are
 // compared by address and privilege because adding a read-only key can renumber compiled indices.
 export async function checkDepositShape(bytes, expected, { signed = false } = {}) {

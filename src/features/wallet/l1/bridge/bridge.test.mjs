@@ -6,7 +6,7 @@ import bs58 from 'bs58';
 import { getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder } from '@solana/transaction-messages';
 import { advanceDeposit, checkEarlier, MAX_SET_ASIDE, pollDelay, RECOVERY_POLL_MS, RECOVERY_WINDOW_MS, sendDeposit as sendSolanaDeposit, RESEND_SIGNED_MS, setAside, solanaReadiness } from './solana-session.js';
 import { assertLamports, assertTokenAccount, LIGHTHOUSE, pub, solanaDeposit, transfer, unitLimit, unitPrice } from './solana-fixtures.mjs';
-import { LIGHTHOUSE_PROGRAM, MAX_COMPUTE_UNIT_PRICE } from './solana-shape.js';
+import { DEPOSIT_CHECK_VERSION, LIGHTHOUSE_PROGRAM, MAX_COMPUTE_UNIT_PRICE } from './solana-shape.js';
 import { handleBridgeRoutes } from '../../../../../server/l1/bridge-routes.js';
 import { address, owner, memoryStorage, routeReport, readyPayload } from './fixtures.mjs';
 function setup(overrides = {}) {
@@ -246,7 +246,7 @@ test('recovery area stays hidden while a valid hash waits, and appears once the 
 
 // A browser with Web Locks and localStorage, a Phantom that signs whatever it is shown, and a server
 // that returns `intent` and answers /send with `reply`. Records what the browser does.
-function solanaBrowser(t, { intent, reply = sent => ({ ok: true, signature: sent.signature }), phantom, recovery = () => ({ ok: true, expired: false }) } = {}) {
+function solanaBrowser(t, { intent, reply = sent => ({ ok: true, signature: sent.signature }), phantom, recovery = () => ({ ok: true, expired: false }), ready = solana.ready } = {}) {
   const store = new Map(), saved = [], posted = [], opened = [];
   const navigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   Object.defineProperty(globalThis, 'navigator', { value: { locks: { request: async (key, options, fn) => fn({}) } }, configurable: true });
@@ -273,12 +273,12 @@ function solanaBrowser(t, { intent, reply = sent => ({ ok: true, signature: sent
     bytes.fill(9, 1, 65);
     return { serialize: () => Uint8Array.from(bytes) };
   } };
-  const run = () => sendSolanaDeposit({ key: 'k', provider, request: solana.request, ready: solana.ready, save, active: () => true });
+  const run = () => sendSolanaDeposit({ key: 'k', provider, request: solana.request, ready, save, active: () => true });
   return { run, saved, posted, opened };
 }
 const solana = { program: pub(2), mint: pub(7), owner: pub(5), source: pub(9), nonce: 'ab'.repeat(32) };
 solana.request = { owner: solana.owner, amount_atoms: '1000000', pftl_recipient: address };
-solana.ready = { vault_program_id: solana.program, mint: solana.mint };
+solana.ready = { vault_program_id: solana.program, mint: solana.mint, check_version: DEPOSIT_CHECK_VERSION };
 solana.durable = { nonce_account: pub(20), nonce_authority: pub(21), nonce_value: pub(22) };
 const solanaShape = { ...solana, ...solana.request };
 const serverBudget = [unitLimit(200450), unitPrice(100000)];
@@ -303,6 +303,32 @@ test('an older server or stale tab prompts a reload before Phantom opens', async
     return Response.json({ ok: true, ready: true, build_id: 'other' });
   });
   await assert.rejects(solanaReadiness(), /Reload this page/);
+});
+
+test('Phantom opens only when the co-signing relay runs this page\'s deposit check', async t => {
+  const older = { vault_program_id: solana.program, mint: solana.mint };
+  const mismatch = /^Error: This page and the Solana deposit service run different deposit checks\. Reload this page or try again later\. Nothing was signed\.$/;
+  for (const [label, durable] of [['one signer', false], ['two signers', true]]) {
+    const other = solanaBrowser(t, { intent: await solanaIntent({}, durable), ready: { ...older, check_version: DEPOSIT_CHECK_VERSION + 1 } });
+    await assert.rejects(other.run(), mismatch, label + ': another version');
+    assert.deepEqual([other.posted, other.opened], [[], []], label + ': no intent, no lease, Phantom closed');
+    t.mock.restoreAll();
+  }
+  // A relay that reports no version predates the check; it refuses Phantom's edits only when it co-signs.
+  const unversioned = solanaBrowser(t, { intent: await solanaIntent({}, true), ready: older });
+  await assert.rejects(unversioned.run(), mismatch);
+  assert.deepEqual(unversioned.opened, []);
+  assert.deepEqual(unversioned.posted.map(row => row.body), [solana.request, { nonce: solana.nonce }], 'released without a reason an older relay refuses');
+  t.mock.restoreAll();
+  const oneSigner = solanaBrowser(t, { intent: await solanaIntent(), ready: older });
+  await oneSigner.run();
+  assert.equal(oneSigner.posted.at(-1).path, 'send');
+  t.mock.restoreAll();
+  const refused = solanaBrowser(t, { intent: await solanaIntent(), ready: older,
+    phantom: phantomSigned(await solanaDeposit({ ...solanaShape, budget: serverBudget, amount_atoms: '1000001' })) });
+  t.mock.method(console, 'warn', () => {});
+  await assert.rejects(refused.run(), /Nothing was sent/);
+  assert.deepEqual(refused.posted.at(-1), { path: 'release', body: { nonce: solana.nonce } });
 });
 
 test('Phantom opens only for the exact deposit transaction the request describes', async t => {

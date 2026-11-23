@@ -1,7 +1,7 @@
 import bs58 from "bs58";
 import { bridgeJson } from "./bridge-relay.js";
-import { knownRefusal, refusalText, RECONNECT_PHANTOM, RELOAD_DEPOSIT } from "./solana-refusal.js";
-import { checkDepositShape, instructionLayout } from "./solana-shape.js";
+import { CHECK_MISMATCH, knownRefusal, refusalText, RECONNECT_PHANTOM, RELOAD_DEPOSIT } from "./solana-refusal.js";
+import { checkDepositShape, DEPOSIT_CHECK_VERSION, instructionLayout } from "./solana-shape.js";
 
 const signature = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
 const jobId = /^0x[0-9a-f]{64}$/;
@@ -81,18 +81,23 @@ const shapeReason = error => knownRefusal(error?.message) ? error.message : refu
 // The browser owns one durable intent per recipient. The Web Lock covers preparation
 // and the first write across tabs. No recovery path calls Phantom.
 export async function sendDeposit({ key, provider, request, ready, save, active }) {
+  // The relay must run this page's shape check, or it could refuse what Phantom signed. A relay that
+  // reports no version predates the check: it differs only where it co-signs, with a durable nonce.
+  const current = ready.check_version === DEPOSIT_CHECK_VERSION;
+  if (ready.check_version !== undefined && !current) throw Error(CHECK_MISMATCH);
   await navigator.locks.request(key, { ifAvailable: true }, async lock => {
     if (!lock || readSaved(key)) throw Error("A Solana deposit is already in progress.");
     const intent = await postSolana("intent", request);
-    // Every refusal before Phantom opens gives the server's nonce lease back.
+    // Every refusal before Phantom opens gives the server's nonce lease back. An older relay accepts no reason.
     const refuse = async (reason, detail = "") => {
-      if (/^[0-9a-f]{64}$/.test(intent?.nonce)) await release(intent.nonce, reason);
+      if (/^[0-9a-f]{64}$/.test(intent?.nonce)) await release(intent.nonce, current ? reason : undefined);
       throw Error(reason + detail);
     };
     if (intent.build_id !== pageBuild) await refuse(RELOAD_DEPOSIT);
     if (!active() || provider.publicKey?.toString() !== request.owner) await refuse(RECONNECT_PHANTOM);
     let shape;
     try { shape = await checkIntent(intent, request, ready); } catch (error) { await refuse(shapeReason(error), ". Phantom was not opened."); }
+    if (shape.durable && !current) await refuse(CHECK_MISMATCH);
     if (!active()) await refuse(RECONNECT_PHANTOM);
     // A durable-nonce deposit expires only when its nonce moves, so keep what it signed.
     const record = { ...request, nonce: intent.nonce, last_valid_block_height: intent.last_valid_block_height,

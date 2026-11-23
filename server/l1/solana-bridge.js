@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import bs58 from 'bs58';
 import { knownRefusal, RELOAD_DEPOSIT } from '../../src/features/wallet/l1/bridge/solana-refusal.js';
+import { DEPOSIT_CHECK_VERSION } from '../../src/features/wallet/l1/bridge/solana-shape.js';
 import { walletBuildId } from '../wallet-build.js';
 import { buildVaultDeposit, DepositError, readVault, recoverDeposit, releaseDeposit, sendDeposit, USDC, vaultSettings } from './solana-vault.js';
 
@@ -145,7 +146,8 @@ async function localRoute(env, suffix, body, holder) {
   try { epoch = JSON.parse(await readFile(path(config.state + '/epoch.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; epoch = config.current_epoch; }
   const ready = await readVault(settings, { ready: true, vault_program_id: settings.program, light_client_epoch: epoch });
-  return { status: 200, payload: body ? await buildVaultDeposit(settings, ready, body, holder) : ready };
+  // This host co-signs on /send: readiness names the shape check it runs there.
+  return { status: 200, payload: body ? await buildVaultDeposit(settings, ready, body, holder) : { ...ready, check_version: DEPOSIT_CHECK_VERSION } };
 }
 
 export async function handleSolana({ req, res, json, readJson, fail, suffix, env, session, bridgeProxyUrl, proxyToken, proxyOrigin, withdrawViaRelay }) {

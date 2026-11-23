@@ -11,7 +11,7 @@ import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 import { walletBuildId } from '../wallet-build.js';
 import * as vault from './solana-vault.js';
 import { buildVaultDeposit, readVault, recoverDeposit, sendDeposit, DEPOSIT_COMPUTE_UNIT_LIMIT, MIN_COMPUTE_UNIT_PRICE, UNSCOPED_FEE_PERCENTILE, USDC } from './solana-vault.js';
-import { checkDepositShape, MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
+import { checkDepositShape, DEPOSIT_CHECK_VERSION, MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
 import { assertLamports, assertTokenAccount, solanaDeposit, transfer, unitLimit, unitPrice, COMPUTE_BUDGET, LIGHTHOUSE, RECENT_BLOCKHASHES } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
 
@@ -205,8 +205,10 @@ test('Solana proxy forwards job create and status to configured endpoints and gu
   assert.equal(calls[1].href, 'http://local.test/api/bridge/jobs/' + id);
   const remote = { ...read, env: { L1_SOLANA_VAULT_PROGRAM_ID: program }, withdrawViaRelay: true, bridgeProxyUrl: 'https://relay.test', proxyToken: 'test-token', proxyOrigin: 'https://relay.test' };
   const jobPayload = payload;
-  payload = { ok: true, ready: true, vault_program_id: program, mint: USDC };
-  assert.equal((await route('readiness', remote)).status, 200);
+  payload = { ok: true, ready: true, vault_program_id: program, mint: USDC, check_version: DEPOSIT_CHECK_VERSION + 1 };
+  const forwarded = await route('readiness', remote);
+  assert.equal(forwarded.status, 200);
+  assert.equal(forwarded.body.check_version, DEPOSIT_CHECK_VERSION + 1, 'the relay host\'s version, not this server\'s');
   payload = jobPayload;
   assert.equal(calls[2].href, 'https://relay.test/api/l1/bridge/solana/readiness');
   assert.equal(calls[2].headers.Authorization, 'Bearer test-token');
@@ -252,6 +254,7 @@ test('readiness and intent use the same current route through the Solana JSON-RP
   const readiness = await route('readiness', { req: { method: 'GET', headers: { 'x-tasknode-build': walletBuildId() } }, env });
   assert.equal(readiness.body.light_client_epoch, 3);
   assert.equal(readiness.body.available_atoms, '5000000');
+  assert.equal(readiness.body.check_version, DEPOSIT_CHECK_VERSION, 'the co-signing relay reports the check it runs on /send');
   assert.equal((await route('intent', { env })).status, 200);
   epoch++;
   assert.equal((await route('intent', { env })).status, 503);

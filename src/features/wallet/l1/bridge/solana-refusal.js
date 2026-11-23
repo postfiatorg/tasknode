@@ -12,6 +12,7 @@ const reasons = new Set([
 export const refusalText = reason => "Not the vault deposit: " + reason;
 export const RELOAD_DEPOSIT = "The wallet has been updated. Reload this page before starting a Solana deposit.";
 export const RECONNECT_PHANTOM = "Reconnect Phantom to continue.";
+export const CHECK_MISMATCH = "This page and the Solana deposit service run different deposit checks. Reload this page or try again later. Nothing was signed.";
 export const knownRefusal = message => typeof message === "string" &&
   (message === RELOAD_DEPOSIT || message === RECONNECT_PHANTOM ||
    (message.startsWith("Not the vault deposit: ") && reasons.has(message.slice("Not the vault deposit: ".length))));
