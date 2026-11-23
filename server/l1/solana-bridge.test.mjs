@@ -360,7 +360,9 @@ test('readiness and intent use the same current route through the Solana JSON-RP
   assert.equal(readiness.body.light_client_epoch, 3);
   assert.equal(readiness.body.available_atoms, '5000000');
   assert.equal(readiness.body.check_version, DEPOSIT_CHECK_VERSION, 'the co-signing relay reports the check it runs on /send');
-  assert.equal((await route('intent', { env })).status, 200);
+  const intent = await route('intent', { env });
+  assert.equal(intent.status, 200);
+  assert.equal(intent.body.check_version, DEPOSIT_CHECK_VERSION, 'and names it again with each deposit it prepares');
   epoch++;
   assert.equal((await route('intent', { env })).status, 503);
 });

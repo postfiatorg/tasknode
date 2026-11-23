@@ -288,7 +288,7 @@ async function solanaIntent(overrides = {}, durable = false) {
   // The server's own compute budget, as it builds every deposit.
   const bytes = await solanaDeposit({ ...solanaShape, ...nonce, budget: serverBudget, ...overrides });
   return { ok: true, build_id: 'dev', ...solana.request, vault_program_id: solana.program, nonce: solana.nonce, last_valid_block_height: 1234,
-    message_b58: bs58.encode(bytes), ...(durable && solana.durable) };
+    message_b58: bs58.encode(bytes), check_version: DEPOSIT_CHECK_VERSION, ...(durable && solana.durable) };
 }
 test('an older server or stale tab prompts a reload before Phantom opens', async t => {
   for (const build_id of [undefined, 'previous']) {
@@ -308,22 +308,27 @@ test('an older server or stale tab prompts a reload before Phantom opens', async
 test('another deposit check on the relay stops only two-signer deposits, in both directions; one signer goes ahead', async t => {
   const older = { vault_program_id: solana.program, mint: solana.mint };
   const mismatch = /^Error: This page and the Solana deposit service run different deposit checks\. Reload this page or try again later\. Nothing was signed\.$/;
-  // A newer relay, an older one, and one that predates the version.
+  // A newer relay, an older one, and one that predates the version. The relay that prepared the
+  // deposit names its version with it; a readiness answer up to 15 s old does not decide.
   for (const version of [DEPOSIT_CHECK_VERSION + 1, DEPOSIT_CHECK_VERSION - 1, undefined]) {
-    const ready = version === undefined ? older : { ...older, check_version: version };
     const label = 'relay check version ' + version;
-    const one = solanaBrowser(t, { intent: await solanaIntent(), ready });
+    const one = solanaBrowser(t, { intent: { ...await solanaIntent(), check_version: version } });
     await one.run();
     assert.deepEqual([one.opened.length, one.posted.at(-1).path], [1, 'send'], label + ': one signer, the production path, goes ahead');
     t.mock.restoreAll();
     // Two signers: the relay co-signs under its own check, so Phantom stays closed and the lease goes back.
-    const two = solanaBrowser(t, { intent: await solanaIntent({}, true), ready });
+    const two = solanaBrowser(t, { intent: { ...await solanaIntent({}, true), check_version: version } });
     await assert.rejects(two.run(), mismatch, label);
     assert.deepEqual(two.opened, [], label + ': Phantom stays closed');
     assert.deepEqual(two.posted.map(row => row.body), [solana.request, { nonce: solana.nonce }], label + ': released without a reason that relay may refuse');
     t.mock.restoreAll();
   }
-  const refused = solanaBrowser(t, { intent: await solanaIntent(), ready: older,
+  // Readiness that names another version, then an intent prepared under this page's: the intent decides.
+  const upgraded = solanaBrowser(t, { intent: await solanaIntent({}, true), ready: { ...older, check_version: DEPOSIT_CHECK_VERSION + 1 } });
+  await upgraded.run();
+  assert.equal(upgraded.posted.at(-1).path, 'send', 'a two-signer deposit prepared under this page\'s check');
+  t.mock.restoreAll();
+  const refused = solanaBrowser(t, { intent: { ...await solanaIntent(), check_version: undefined },
     phantom: phantomSigned(await solanaDeposit({ ...solanaShape, budget: serverBudget, amount_atoms: '1000001' })) });
   t.mock.method(console, 'warn', () => {});
   await assert.rejects(refused.run(), /Nothing was sent/);
