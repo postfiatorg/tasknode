@@ -56,7 +56,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
     try { destinationRef("", recipient); } catch (failure) { recipientError = failure.message; }
   }
   if (amount && snapshot) {
-    try { withdrawalAtoms(amount, snapshot.held, snapshot.ready.bucket_outstanding_atoms); } catch (failure) { amountError = failure.message; }
+    try { withdrawalAtoms(amount, snapshot.held, snapshot.outstanding, snapshot.minimum); } catch (failure) { amountError = failure.message; }
   }
   async function prepare(event) {
     event.preventDefault();
@@ -127,8 +127,11 @@ export default function SolanaWithdraw({ client, storageKey }) {
       <WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} />
     </div> : snapshot === undefined ? <p role="status"><Spinner size={14} /> Loading your withdrawable balance…</p>
       : !snapshot ? <><Notice tone="warning">{UNAVAILABLE}</Notice><WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} /></> : <>
-        <p>You can withdraw up to <b><Amount atoms={snapshot.held} unit="PFUSDC" /></b> to Solana right now.</p>
-        <p className="l1-muted">Only PFUSDC from the Solana deposit series that is open for payouts counts here. PFUSDC from later Solana deposits is not withdrawable to Solana yet, and PFUSDC from Ethereum deposits is withdrawn under Ethereum.</p>
+        <p>You can withdraw up to <b><Amount atoms={snapshot.held} unit="PFUSDC" /></b> to Solana {snapshot.options.length > 1 ? "in one withdrawal" : "right now"}.</p>
+        {snapshot.options.length > 1 && <p className="l1-muted">You hold <Amount atoms={snapshot.total} unit="PFUSDC" /> from Solana in {snapshot.options.length} deposit batches. One withdrawal draws from one batch, so withdraw the rest in a second withdrawal.</p>}
+        {Array.isArray(snapshot.ready.buckets)
+          ? <p className="l1-muted">Every Solana deposit can be withdrawn to Solana.{snapshot.minimum > 1n && <> The smallest withdrawal is <Amount atoms={snapshot.minimum} unit="USDC" />.</>} PFUSDC from Ethereum deposits is withdrawn under Ethereum.</p>
+          : <p className="l1-muted">Only PFUSDC from the Solana deposit series that is open for payouts counts here. PFUSDC from later Solana deposits is not withdrawable to Solana yet, and PFUSDC from Ethereum deposits is withdrawn under Ethereum.</p>}
         {!review && <form className="l1-stack" onSubmit={prepare}>
           <label className="l1-field">PFUSDC amount<input inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={event => setAmount(event.target.value.trim())} /></label>
           {amountError && <span className="is-danger">{amountError}</span>}

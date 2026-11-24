@@ -201,3 +201,32 @@ test('amounts typed without a leading or trailing digit are accepted', () => {
   assert.throws(() => atomsFor('.', 1_000_000n, '1000000'), /positive decimal/);
   assert.throws(() => atomsFor('0.0000001', 1_000_000n, '1000000'), /positive decimal/);
 });
+
+test("second release: each covered batch the wallet holds is an option and one burn spends one batch", async () => {
+  const { withdrawalSnapshot, withdrawalOption } = await import("./solana-withdrawal.js");
+  const r8 = { bucket_id: "c".repeat(96), series_asset_id: "b".repeat(96), outstanding_atoms: "960000" };
+  const r9 = { bucket_id: "d".repeat(96), series_asset_id: "e".repeat(96), outstanding_atoms: "3050000" };
+  const unheld = { bucket_id: "1".repeat(96), series_asset_id: "2".repeat(96), outstanding_atoms: "500000" };
+  const second = { ok: true, ready: true, asset_id: ready.asset_id, issuer: ready.issuer, epoch: 73, reserve_packet_hash: ready.reserve_packet_hash,
+    destination_prefix: "solana-spl:45296998a6f8e2a784db5d9f95e18fc23f70441a1039446801089879b08c7ef0:", min_withdrawal_atoms: "300000", exit_release: 2, buckets: [r8, r9, unheld] };
+  const balances = { [r8.series_asset_id]: "960000", [r9.series_asset_id]: "3000000" };
+  const line = bucket => ({ asset_id: bucket.series_asset_id, asset_family_id: ready.asset_id, source_series_id: "7".repeat(96),
+    source_bucket_id: bucket.bucket_id, issuer: ready.issuer, balance: balances[bucket.series_asset_id] });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify(second), { status: 200, headers: { "content-type": "application/json" } });
+  try {
+    const wallet = { address: "pf" + "1".repeat(40), call: async (_method, params) => {
+      const bucket = [r8, r9].find(row => row.series_asset_id === params.asset_id);
+      return { ok: true, result: { assets: bucket ? [line(bucket)] : [] } };
+    } };
+    const snapshot = await withdrawalSnapshot(wallet);
+    assert.deepEqual([snapshot.held, snapshot.total, snapshot.minimum, snapshot.options.length], [3000000n, 3960000n, 300000n, 2]);
+    assert.equal(withdrawalOption(snapshot, "0.5").series.bucket_id, r8.bucket_id);
+    assert.equal(withdrawalOption(snapshot, "0.96").series.bucket_id, r8.bucket_id);
+    assert.equal(withdrawalOption(snapshot, "2").series.bucket_id, r9.bucket_id);
+    assert.equal(withdrawalIntent(wallet, snapshot, "3", owner).operation.bucket_id, r9.bucket_id);
+    assert.equal(withdrawalIntent(wallet, snapshot, "3", owner).operation.amount_atoms, 3000000);
+    assert.throws(() => withdrawalIntent(wallet, snapshot, "0.29", owner), /smallest withdrawal to Solana is 0\.30 USDC/);
+    assert.throws(() => withdrawalIntent(wallet, snapshot, "3.5", owner), /exceeds/);
+  } finally { globalThis.fetch = realFetch; }
+});
