@@ -6,7 +6,8 @@ import test from 'node:test';
 import { createPrivateKey, createPublicKey } from 'node:crypto';
 import bs58 from 'bs58';
 import { checkDepositShape } from '../../src/features/wallet/l1/bridge/solana-shape.js';
-import { assertLamports, pub, recompile, solanaDeposit, unitLimit, unitPrice, LIGHTHOUSE } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
+import { getCompiledTransactionMessageDecoder } from '@solana/transaction-messages';
+import { assertLamports, assertTokenAccount, pub, recompile, solanaDeposit, unitLimit, unitPrice, COMPUTE_BUDGET, LIGHTHOUSE } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
 
 const keyOf = seed => createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]), format: 'der', type: 'pkcs8' });
 const addressOf = seed => bs58.encode(createPublicKey(keyOf(seed)).export({ format: 'der', type: 'spki' }).subarray(-32));
@@ -85,3 +86,21 @@ test('one signer: Lighthouse instructions pass as signed, whatever their tag, as
   ]);
 });
 
+// The shape of a real one-signer deposit made from the Task Node screen with Phantom on production
+// on 24 November (0.05 USDC, credited): two compute-budget instructions and six Lighthouse
+// assertions around the vault instruction. Both the relay on /send and the browser after Phantom
+// accept it as signed.
+test('one signer: a production Phantom deposit with two compute-budget instructions and six Lighthouse assertions around the vault deposit passes', async () => {
+  const nonce = '35'.repeat(32), request = { owner, amount_atoms: '50000', pftl_recipient: 'pf' + 'ab'.repeat(20) };
+  const around = () => [assertLamports(owner, 1), assertTokenAccount(source, owner, 0), assertLamports(owner, 1)];
+  const bytes = Buffer.from(await solanaDeposit({ program, mint, source, nonce, ...request,
+    first: [unitLimit(200450), unitPrice(150000), ...around()], extra: around() })).fill(9, 1, 65);
+  const { header, staticAccounts, instructions } = getCompiledTransactionMessageDecoder().decode(bytes.subarray(65));
+  assert.equal(bytes[0], 1);
+  assert.equal(header.numSignerAccounts, 1);
+  assert.deepEqual(instructions.map(ix => staticAccounts[ix.programAddressIndex]),
+    [COMPUTE_BUDGET, COMPUTE_BUDGET, LIGHTHOUSE, LIGHTHOUSE, LIGHTHOUSE, program, LIGHTHOUSE, LIGHTHOUSE, LIGHTHOUSE]);
+  // The relay's check on /send, then the browser's after Phantom returns.
+  await assert.doesNotReject(checkDepositShape(bytes, { program, mint, nonce }, { signed: true }));
+  await assert.doesNotReject(checkDepositShape(bytes, { ...request, program, mint, nonce }, { signed: true }));
+});
