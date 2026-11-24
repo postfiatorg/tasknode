@@ -6,8 +6,10 @@ import test from 'node:test';
 import { createPrivateKey, createPublicKey } from 'node:crypto';
 import bs58 from 'bs58';
 import { checkDepositShape } from '../../src/features/wallet/l1/bridge/solana-shape.js';
+import { getProgramDerivedAddress } from '@solana/addresses';
+import { AccountRole } from '@solana/instructions';
 import { getCompiledTransactionMessageDecoder } from '@solana/transaction-messages';
-import { assertLamports, assertTokenAccount, pub, recompile, solanaDeposit, unitLimit, unitPrice, COMPUTE_BUDGET, LIGHTHOUSE } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
+import { assertLamports, pub, recompile, solanaDeposit, unitLimit, unitPrice, COMPUTE_BUDGET, LIGHTHOUSE } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
 
 const keyOf = seed => createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]), format: 'der', type: 'pkcs8' });
 const addressOf = seed => bs58.encode(createPublicKey(keyOf(seed)).export({ format: 'der', type: 'spki' }).subarray(-32));
@@ -87,19 +89,27 @@ test('one signer: Lighthouse instructions pass as signed, whatever their tag, as
 });
 
 // The shape of a real one-signer deposit made from the Task Node screen with Phantom on production
-// on 24 November (0.05 USDC, credited): two compute-budget instructions and six Lighthouse
-// assertions around the vault instruction. Both the relay on /send and the browser after Phantom
-// accept it as signed.
-test('one signer: a production Phantom deposit with two compute-budget instructions and six Lighthouse assertions around the vault deposit passes', async () => {
+// on 24 November (0.05 USDC, credited, fee 25,045 lamports), with synthetic keys: a limit of
+// 200,450 units at 100,000 micro-lamports, four Lighthouse instructions, the vault deposit, then two
+// more. Each Lighthouse instruction has the real one's tag, data length and named account; its
+// data after the tag and log level is zeroed. Both the relay on /send and the browser after
+// Phantom accept it as signed.
+test('one signer: a production Phantom deposit with two compute-budget instructions, four Lighthouse instructions, the vault deposit and two more passes', async () => {
   const nonce = '35'.repeat(32), request = { owner, amount_atoms: '50000', pftl_recipient: 'pf' + 'ab'.repeat(20) };
-  const around = () => [assertLamports(owner, 1), assertTokenAccount(source, owner, 0), assertLamports(owner, 1)];
+  const pda = async (...seeds) => (await getProgramDerivedAddress({ programAddress: program, seeds }))[0];
+  const [config, custody, receipt] = await Promise.all([pda('config'), pda('custody'), pda('receipt', Buffer.from(nonce, 'hex'))]);
+  const lighthouse = (tag, length, address) => ({ programAddress: LIGHTHOUSE,
+    data: Buffer.concat([Buffer.from([tag, 4]), Buffer.alloc(length - 2)]), accounts: [{ address, role: AccountRole.READONLY }] });
   const bytes = Buffer.from(await solanaDeposit({ program, mint, source, nonce, ...request,
-    first: [unitLimit(200450), unitPrice(150000), ...around()], extra: around() })).fill(9, 1, 65);
+    first: [unitLimit(200450), unitPrice(100000), lighthouse(10, 84, custody), lighthouse(6, 52, source),
+      lighthouse(6, 37, config), lighthouse(6, 13, receipt)],
+    extra: [lighthouse(6, 26, owner), lighthouse(10, 17, source)] })).fill(9, 1, 65);
   const { header, staticAccounts, instructions } = getCompiledTransactionMessageDecoder().decode(bytes.subarray(65));
   assert.equal(bytes[0], 1);
   assert.equal(header.numSignerAccounts, 1);
   assert.deepEqual(instructions.map(ix => staticAccounts[ix.programAddressIndex]),
-    [COMPUTE_BUDGET, COMPUTE_BUDGET, LIGHTHOUSE, LIGHTHOUSE, LIGHTHOUSE, program, LIGHTHOUSE, LIGHTHOUSE, LIGHTHOUSE]);
+    [COMPUTE_BUDGET, COMPUTE_BUDGET, LIGHTHOUSE, LIGHTHOUSE, LIGHTHOUSE, LIGHTHOUSE, program, LIGHTHOUSE, LIGHTHOUSE]);
+  assert.equal(5000 + Math.ceil(200450 * 100000 / 1e6), 25045, 'the fee Solana charged');
   // The relay's check on /send, then the browser's after Phantom returns.
   await assert.doesNotReject(checkDepositShape(bytes, { program, mint, nonce }, { signed: true }));
   await assert.doesNotReject(checkDepositShape(bytes, { ...request, program, mint, nonce }, { signed: true }));
