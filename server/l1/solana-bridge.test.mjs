@@ -14,7 +14,7 @@ import * as vault from './solana-vault.js';
 import { buildVaultDeposit, readVault, recoverDeposit, sendDeposit, DEPOSIT_COMPUTE_UNIT_LIMIT, MIN_COMPUTE_UNIT_PRICE, UNSCOPED_FEE_PERCENTILE, USDC } from './solana-vault.js';
 import { checkDepositShape, DEPOSIT_CHECK_VERSION, MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
-import { assertLamports, assertTokenAccount, solanaDeposit, transfer, unitLimit, unitPrice, COMPUTE_BUDGET, LIGHTHOUSE, RECENT_BLOCKHASHES } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
+import { assertLamports, assertTokenAccount, recompile, solanaDeposit, transfer, unitLimit, unitPrice, COMPUTE_BUDGET, LIGHTHOUSE, RECENT_BLOCKHASHES } from '../../src/features/wallet/l1/bridge/solana-fixtures.mjs';
 
 const pub = byte => bs58.encode(Buffer.alloc(32, byte));
 const keyOf = seed => createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]), format: 'der', type: 'pkcs8' });
@@ -703,12 +703,6 @@ test('durable recovery: expired only when the finalized nonce moved past the sig
   assert.notEqual((await route('recovery', { readJson: async () => recovery })).status, 400, 'the route accepts the nonce fields');
 });
 
-// Re-encode the message of signed bytes after `edit`, keeping every signature slot as it was.
-function recompile(bytes, edit) {
-  const start = 1 + 64 * bytes[0];
-  const compiled = getCompiledTransactionMessageDecoder().decode(bytes.subarray(start));
-  return Buffer.concat([bytes.subarray(0, start), Buffer.from(getCompiledTransactionMessageEncoder().encode(edit(compiled)))]);
-}
 const shapeRefused = { status: 400, code: 'solana_deposit_shape_mismatch' };
 
 test('/solana/send: a wallet-added compute budget passes on the one-signer path within the caps; AdvanceNonce stays first', async t => {
@@ -809,79 +803,6 @@ test('/solana/send: Lighthouse assertions pass on the one-signer path as signed;
     assert.equal((await sendDeposit(f.settings, sendBody(guarded, intent.nonce), quick)).ok, true);
   }
 
-});
-
-// Edge cases of the shared shape check, signed by the depositor, as the relay sees them on /send.
-const lighthouseIx = (tag, accounts = [], rest = []) => ({ programAddress: LIGHTHOUSE, data: Buffer.from([tag, ...rest]), accounts });
-async function shapeCases(cases) {
-  const nonce = '34'.repeat(32), base = { program, mint, owner, source, nonce, amount_atoms: '1000000', pftl_recipient: 'pf' + 'ab'.repeat(20) };
-  const expected = { program, mint, nonce };
-  for (const [label, edit, refusal] of cases) {
-    // The depositor's slot is filled; a second (authority) slot stays empty until the relay signs.
-    const bytes = Buffer.from(typeof edit === 'function' ? await edit(base) : await solanaDeposit({ ...base, ...edit })).fill(9, 1, 65);
-    const result = checkDepositShape(bytes, expected, { signed: true });
-    if (refusal) await assert.rejects(result, { message: 'Not the vault deposit: ' + refusal }, label);
-    else await assert.doesNotReject(result, label);
-  }
-}
-
-test('two signers: assertions may name the nonce account, writable for the advance; the authority and any other write stay outside the advance', async () => {
-  const nonceAccount = pub(20), authority = pub(21);
-  const durable = { nonceAccount, authority, lifetime: pub(22), budget: [unitLimit(200450), unitPrice(150000)] };
-  const v0 = async base => {
-    const bytes = await solanaDeposit({ ...base, ...durable });
-    const start = 1 + 64 * bytes[0];
-    return Buffer.concat([bytes.subarray(0, start), Buffer.from([0x80]), bytes.subarray(start), Buffer.from([0])]);
-  };
-  const cases = [
-    ['baseline', {}],
-    ['a v0 message without lookup tables', v0, 'message encoding'],
-    ['Lighthouse with empty data', { extra: [{ ...lighthouseIx(2), data: Buffer.alloc(0) }] }, 'Lighthouse instruction'],
-    ['Lighthouse tag 15 (clock), no accounts', { extra: [lighthouseIx(15, [], [0, 1, 2, 3])] }],
-    ['Lighthouse tag 16 with unparsed data', { extra: [lighthouseIx(16, [], [0xff, 0xff])] }],
-    ['a zero-account instruction to another program', { extra: [{ programAddress: pub(60), data: Buffer.from([1, 2, 3]) }] }, 'unexpected instruction count'],
-    ['assertions on the owner and the source', { extra: [assertLamports(owner, 1), assertLamports(source, 1)] }],
-    ['the compute budget after the deposit', { budget: [], extra: [unitPrice(150000), unitLimit(300000)] }],
-    ['no limit, price 2,000,000, no assertions', { budget: [unitPrice(2_000_000)] }],
-    ['no limit, price 1,000,000, one assertion', { budget: [unitPrice(1_000_000)], extra: [assertLamports(owner, 1)] }],
-    ['no limit, price 2,000,000, one assertion', { budget: [unitPrice(2_000_000)], extra: [assertLamports(owner, 1)] }, 'compute budget cap'],
-    ['limit 0', { budget: [unitLimit(0), unitPrice(150000)] }],
-    ['an assertion on the nonce account', { extra: [assertLamports(nonceAccount, 1)] }],
-    ['an assertion on the nonce account, compiled writable', { extra: [assertLamports(nonceAccount, 1, { role: 1 })] }],
-    ['a multi-account assertion on the nonce account and the owner', { extra: [lighthouseIx(3, [{ address: nonceAccount, role: 0 }, { address: owner, role: 0 }], [0, 0])] }],
-    ['an assertion on the authority', { extra: [assertLamports(authority, 1)] }, 'nonce account or authority outside advance'],
-    ['an assertion on the nonce account and the authority', { extra: [lighthouseIx(3, [{ address: nonceAccount, role: 0 }, { address: authority, role: 0 }], [0, 0])] },
-      'nonce account or authority outside advance'],
-    ['MemoryWrite on the nonce account', { extra: [lighthouseIx(0, [{ address: nonceAccount, role: 1 }])] }, 'Lighthouse instruction'],
-    ['an assertion before the advance', { first: [assertLamports(nonceAccount, 1)] }, 'advance nonce must be first'],
-    ['the nonce account as the deposit source', { source: nonceAccount }, 'nonce account or authority outside advance'],
-  ];
-  await shapeCases(cases.map(([label, edit, refusal]) => [label, typeof edit === 'function' ? edit : { ...durable, ...edit }, refusal]));
-});
-
-// main's one-signer rule, unchanged: the only path in production, and nobody has captured which
-// Lighthouse instructions Phantom adds there. They pass as signed, unread. The default-limit fee
-// bound applies only to two signers (left open on purpose: the depositor pays and approves it).
-test('one signer: Lighthouse instructions pass as signed, whatever their tag, as on main', async () => {
-  const budget = [unitLimit(200450), unitPrice(150000)];
-  await shapeCases([
-    ['Lighthouse tag 0 (MemoryWrite)', { budget, extra: [lighthouseIx(0)] }],
-    ['Lighthouse tag 1 (MemoryClose)', { budget, extra: [lighthouseIx(1)] }],
-    ['Lighthouse tag 99', { budget, extra: [lighthouseIx(99)] }],
-    ['Lighthouse with empty data', { budget, extra: [{ ...lighthouseIx(2), data: Buffer.alloc(0) }] }],
-    ['Lighthouse with a new writable account', { budget, extra: [assertLamports(pub(70), 1, { role: 1 })] }],
-    ['no limit, price 2,000,000, five assertions', { budget: [unitPrice(2_000_000)], extra: Array.from({ length: 5 }, () => assertLamports(owner, 1)) }],
-    ['another program', { budget, extra: [assertLamports(owner, 1, { programAddress: pub(43) })] }, 'unexpected instruction count'],
-    ['an added signer, read as two signers without an advance', { budget, extra: [assertLamports(pub(44), 1, { role: 2 })] }, 'unexpected instruction count'],
-    // Beyond main's one-signer rule, only what Solana itself refuses: over 1232 bytes, or a header it rejects.
-    ['over 1232 bytes', { budget, extra: [lighthouseIx(5, [], Array(1100).fill(0))] }, 'transaction size'],
-    ['a key listed twice', async base => recompile(await solanaDeposit({ ...base, budget }),
-      m => ({ ...m, staticAccounts: m.staticAccounts.map((key, i, keys) => i === keys.length - 1 ? keys[1] : key) })), 'account header'],
-    ['a read-only fee payer', async base => recompile(await solanaDeposit({ ...base, budget }),
-      m => ({ ...m, header: { ...m.header, numReadonlySignerAccounts: 1 } })), 'account header'],
-    ['more read-only keys than unsigned keys', async base => recompile(await solanaDeposit({ ...base, budget }),
-      m => ({ ...m, header: { ...m.header, numReadonlyNonSignerAccounts: m.staticAccounts.length } })), 'account header'],
-  ]);
 });
 
 test('the server price is at least 100,000 micro-lamports, the larger of the median fee on the deposit\'s accounts and a percentile of all recent fees, clamped, or the minimum when unread', async () => {
