@@ -35,9 +35,9 @@ test('usable lines skip setup; limited receiving line grows for reviewed amount 
  assert.equal(plans.length,1);assert.equal(plans[0].intent.operation.limit,113000000);
  assert.throws(()=>offerPreflight(config,buy(),s),/setup changed/);
 });
-test('reserve-only buy explains Add funds before any setup or signature; source is required for payment',async()=>{
+test('reserve-only buy explains Deposit & withdraw before any setup or signature; source is required for payment',async()=>{
  const s=state();s.balances.assets=lines(0,200000000,0);
- await assert.rejects(()=>planOfferSetup(client(),config,buy(),s),/Add funds.*Ethereum USDC/);
+ await assert.rejects(()=>planOfferSetup(client(),config,buy(),s),/Deposit & withdraw.*Ethereum USDC/);
  assert.throws(()=>offerPreflight(config,buy(),s),/Reserve PFUSDC cannot be converted/);
  s.balances.assets=lines(100000000,0,200000000);assert.doesNotThrow(()=>offerPreflight(config,buy(),s));
 });

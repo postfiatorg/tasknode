@@ -7,6 +7,7 @@ import { stageRows, timestamp } from "./stages.js";
 import { Amount, Badge, Card, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
 import { ACTIVE, AmountField, Credited, DepositForm, DepositProgress, elapsedText, holdsForm, phaseState } from "./DepositView.jsx";
 import Withdraw from "./Withdraw.jsx";
+import { takeBridgeDirection } from "./direction.js";
 import SolanaDeposit from "./SolanaDeposit.jsx";
 
 // Presentation labels for the relay's wire stages (contract: UI labels may differ).
@@ -203,6 +204,7 @@ const savedSource = () => { try { const value = localStorage.getItem(SOURCE_KEY)
 export default function BridgeTab({ onNavigate, assetConfig } = {}) {
   const client = useL1Wallet();
   const [chosen, setChosen] = useState(savedSource);
+  const [direction, setDirection] = useState(takeBridgeDirection);
   const [busy, setBusy] = useState({});
   const ethereumBusy = useCallback(value => setBusy(current => ({ ...current, ethereum: value })), []);
   const solanaBusy = useCallback(value => setBusy(current => ({ ...current, solana: value })), []);
@@ -210,7 +212,17 @@ export default function BridgeTab({ onNavigate, assetConfig } = {}) {
   // Until the user picks, open on a source with an unfinished deposit.
   const source = chosen || (busy.solana && !busy.ethereum ? "solana" : "ethereum");
   const choose = id => { setChosen(id); try { localStorage.setItem(SOURCE_KEY, id); } catch { /* the choice lasts for this visit */ } };
+  // Both halves stay mounted, so a deposit or payout in progress keeps being tracked while hidden.
   return <>
+    <Card as="div" className="l1-view l1-source">
+      <span className="l1-eyebrow">What do you want to do</span>
+      <div className="l1-seg" role="radiogroup" aria-label="Deposit or withdraw">
+        {[["deposit", "Deposit USDC"], ["withdraw", "Withdraw USDC"]].map(([id, label]) => <label key={id}>
+          <input type="radio" name="bridge-direction" value={id} checked={direction === id} onChange={() => setDirection(id)} />
+          <span>{label}</span></label>)}
+      </div>
+    </Card>
+    <div hidden={direction !== "deposit"}>
     <Card as="div" className="l1-view l1-source">
       <span className="l1-eyebrow">Deposit USDC from</span>
       <div className="l1-seg" role="radiogroup" aria-label="Deposit source">
@@ -220,6 +232,7 @@ export default function BridgeTab({ onNavigate, assetConfig } = {}) {
     </Card>
     <div className="l1-source-pane" hidden={source !== "ethereum"}><BridgeSession key={`${client.accountId}:${client.address}`} client={client} onNavigate={onNavigate} symbol={assetConfig?.symbol || "NAVCoins"} onBusy={ethereumBusy} /></div>
     <div className="l1-source-pane" hidden={source !== "solana"}><SolanaDeposit key={`s:${client.accountId}:${client.address}`} client={client} onBusy={solanaBusy} /></div>
-    <Withdraw key={`w:${client.accountId}:${client.address}`} client={client} />
+    </div>
+    <div hidden={direction !== "withdraw"}><Withdraw key={`w:${client.chainId}:${client.accountId}:${client.address}`} client={client} /></div>
   </>;
 }

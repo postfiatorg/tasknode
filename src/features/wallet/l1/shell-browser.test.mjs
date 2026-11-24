@@ -15,10 +15,10 @@ try {
  await page.getByLabel('Wallet passphrase',{exact:true}).fill('synthetic-shell-passphrase');
  await page.getByRole('button',{name:'Create L1 wallet',exact:true}).click();
  const tabs=page.getByRole('navigation',{name:'L1 wallet tabs'});await tabs.waitFor();
- for(const name of ['Home','Add funds','NAVCoins','Market','Cash in','Send','Activity']) assert.equal(await tabs.getByRole('button',{name,exact:true}).count(),1);
+ for(const name of ['Home','Deposit & withdraw','NAVCoins','Market','Cash in','Send','Activity']) assert.equal(await tabs.getByRole('button',{name,exact:true}).count(),1);
  assert.ok((await tabs.innerText()).indexOf('NAVCoins') < (await tabs.innerText()).indexOf('Market'));
  assert.equal(await tabs.getByRole('button',{name:'Issuer desk',exact:true}).count(),0);
- for (const [step, heading] of [['1 Connect MetaMask','Add funds'],['2 Convert USDC to PFUSDC','Add funds'],['3 Buy B23','Market']]) {
+ for (const [step, heading] of [['1 Connect MetaMask','Deposit and withdraw'],['2 Convert USDC to PFUSDC','Deposit and withdraw'],['3 Buy B23','Market']]) {
   await tabs.getByRole('button',{name:'Home',exact:true}).click();
   await page.getByRole('navigation',{name:'Bob journey'}).getByRole('button',{name:step,exact:true}).click();
   await page.getByRole('heading',{name:heading,exact:true}).waitFor();

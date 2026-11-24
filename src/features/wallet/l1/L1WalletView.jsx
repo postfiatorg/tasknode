@@ -18,7 +18,7 @@ import { Badge, Card, IdChip, Notice, Spinner, ViewHeader } from "./ui.jsx";
 const tabs = { Home: WalletHome, Send, Activity, Bridge, Gallery, Market, Redeem };
 const VIEWS = [
   { id: "Home", label: "Home", icon: House },
-  { id: "Bridge", label: "Add funds", icon: ArrowDownToLine, title: "Add funds", subtitle: "Bring USDC over from Ethereum or Solana. It arrives in this wallet as PFUSDC, one for one." },
+  { id: "Bridge", label: "Deposit & withdraw", icon: ArrowDownToLine, title: "Deposit and withdraw", subtitle: "Bring USDC in from Ethereum or Solana, or send it back out. One PFUSDC is one USDC." },
   { id: "Gallery", label: "NAVCoins", icon: LayoutGrid },
   { id: "Market", label: "Market", icon: ChartCandlestick, title: "Market", subtitle: "Choose a NAVCoin to see its market and available actions." },
   { id: "Redeem", label: "Cash in", icon: HandCoins, title: "Cash in at NAV", subtitle: symbol => `Review ${symbol} cash-in availability and NAV terms.` },
@@ -152,7 +152,7 @@ export default function L1WalletView({ accountId, isAccountCurrent }) {
       setBackupDue(false);
     } catch (failure) { setError(failure.message); }
   }
-  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: signed => core.submit(signed), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
+  const client = useMemo(() => ({ accountId, address, unlocked: Boolean(address), chainId: "devnet-2", getBalances: () => core.getBalances(), quote: intent => core.quote(intent), sign: (intent, quote) => core.sign(intent, quote), submit: (signed, options) => core.submit(signed, options), call: (method, params) => core.call(method, params), subscribe: handler => core.subscribe(handler) }), [accountId, address, core]);
   const gallery = useGallery(client);
   const assetConfig = gallery.coins?.find(coin => coin.asset_id === selectedAssetId) || null;
   const symbol = assetConfig?.symbol || 'NAVCoin';

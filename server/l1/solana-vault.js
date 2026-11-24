@@ -39,7 +39,7 @@ const loops = { durable: 0, blockhash: 0 }, looping = new Set();
 let leasing = Promise.resolve(), authorityWarned = false;
 const pda = async (programAddress, ...seeds) => (await getProgramDerivedAddress({ programAddress, seeds }))[0];
 
-function solanaRpc(url) {
+export function solanaRpc(url) {
   async function call(method, params) {
     const response = await fetch(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
@@ -53,7 +53,7 @@ function solanaRpc(url) {
       const { context, value } = await call('getAccountInfo', [key, { commitment: 'finalized', encoding: 'base64', ...options }]);
       if (!value) return null;
       if (value.data?.[1] !== 'base64') throw Error('Invalid Solana account encoding');
-      return { owner: value.owner, data: Buffer.from(value.data[0], 'base64'), slot: context?.slot };
+      return { owner: value.owner, executable: value.executable === true, data: Buffer.from(value.data[0], 'base64'), slot: context?.slot };
     },
     getEpochInfo: () => call('getEpochInfo', [{ commitment: 'finalized' }]),
     getLatestBlockhash: async () => (await call('getLatestBlockhash', [{ commitment: 'confirmed' }])).value,

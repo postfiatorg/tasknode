@@ -1,5 +1,6 @@
+import { openBridge } from './bridge/direction.js';
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDownToLine, ArrowUpRight, ChartCandlestick, Check, ChevronRight, HandCoins, History, RefreshCw } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpRight, ChartCandlestick, Check, ChevronRight, HandCoins, History, RefreshCw, ArrowUpFromLine } from 'lucide-react';
 import { ActivityRows, useActivity } from './Activity.jsx';
 import { Amount, AssetAvatar, Card, CardHead, Details, Empty, Notice, Skeleton, Spinner } from './ui.jsx';
 import { amount, amountParts, usd } from './format.js';
@@ -103,7 +104,8 @@ export default function WalletHome({ client, gallery, onNavigate = () => {} }) {
         </div>
         <p className="l1-total-note">PFUSDC counted at 1 USDC. Each active NAVCoin uses its own latest finalized NAV. Retired holdings are excluded. PFT and unlisted assets are not included.{navHoldings?.some(item => item.balance > 0n && item.coin.freshness?.stale) ? ' Includes stale NAV readings.' : ''}</p>
         <div className="l1-actions">
-          <button type="button" className="l1-btn is-primary" onClick={() => onNavigate('Bridge')}><ArrowDownToLine size={16} aria-hidden />Add funds</button>
+          <button type="button" className="l1-btn is-primary" onClick={() => { openBridge('deposit'); onNavigate('Bridge'); }}><ArrowDownToLine size={16} aria-hidden />Deposit USDC</button>
+          <button type="button" className="l1-btn" onClick={() => { openBridge('withdraw'); onNavigate('Bridge'); }}><ArrowUpFromLine size={16} aria-hidden />Withdraw USDC</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Gallery')}><ChartCandlestick size={16} aria-hidden />Explore NAVCoins</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Gallery')}><HandCoins size={16} aria-hidden />Cash in at NAV</button>
           <button type="button" className="l1-btn" onClick={() => onNavigate('Send')}><ArrowUpRight size={16} aria-hidden />Send</button>
