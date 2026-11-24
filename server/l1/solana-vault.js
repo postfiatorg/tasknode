@@ -8,6 +8,7 @@ import bs58 from 'bs58';
 import { checkDepositShape, COMPUTE_BUDGET_PROGRAM, MAX_COMPUTE_UNIT_PRICE } from '../../src/features/wallet/l1/bridge/solana-shape.js';
 
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const ASSOCIATED_TOKEN = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
 export const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const SYSTEM = '11111111111111111111111111111111';
 const RECENT_BLOCKHASHES = 'SysvarRecentB1ockHashes11111111111111111111';
@@ -38,14 +39,29 @@ const loops = { durable: 0, blockhash: 0 }, looping = new Set();
 let leasing = Promise.resolve(), authorityWarned = false;
 const pda = async (programAddress, ...seeds) => (await getProgramDerivedAddress({ programAddress, seeds }))[0];
 
+// `url` may list several providers, comma-separated, tried in order. A provider that is slow,
+// down, or refuses a method (public endpoints refuse indexed reads) is skipped for that call, so
+// one throttled endpoint no longer closes deposits (2026-11-24: 5 s replies from the public RPC).
 export function solanaRpc(url) {
+  const urls = String(url).split(',').map(item => item.trim()).filter(Boolean);
+  const wait = urls.length > 1 ? 6000 : 10000;
   async function call(method, params) {
-    const response = await fetch(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
-    const reply = await response.json();
-    if (reply?.error && method === 'sendTransaction') throw new DepositError(409, 'Solana rejected the deposit: ' + String(reply.error.message).slice(0, 200));
-    if (!response.ok || reply.id !== 1 || reply.error || !('result' in reply)) throw Error('Solana RPC unavailable');
-    return reply.result;
+    let failure = Error('Solana RPC unavailable');
+    for (const target of urls) {
+      try {
+        const response = await fetch(target, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(wait),
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+        const reply = await response.json();
+        // A node that examined the transaction and refused it has answered; another node would too.
+        if (response.ok && reply?.error && method === 'sendTransaction') throw new DepositError(409, 'Solana rejected the deposit: ' + String(reply.error.message).slice(0, 200));
+        if (!response.ok || reply.id !== 1 || reply.error || !('result' in reply)) throw Error('Solana RPC unavailable');
+        return reply.result;
+      } catch (error) {
+        if (error instanceof DepositError) throw error;
+        failure = Error('Solana RPC unavailable');
+      }
+    }
+    throw failure;
   }
   return {
     getAccountInfo: async (key, options) => {
@@ -57,6 +73,13 @@ export function solanaRpc(url) {
     getEpochInfo: () => call('getEpochInfo', [{ commitment: 'finalized' }]),
     getLatestBlockhash: async () => (await call('getLatestBlockhash', [{ commitment: 'confirmed' }])).value,
     getRecentPrioritizationFees: accounts => call('getRecentPrioritizationFees', [accounts]),
+    // The wallet's standard token account has a derivable address, so reading it needs no index
+    // (public providers refuse or throttle indexed reads). Same row shape as getTokenAccounts.
+    getAssociatedAccount: async (owner, mint) => {
+      const pubkey = await pda(ASSOCIATED_TOKEN, bs58.decode(owner), bs58.decode(TOKEN), bs58.decode(mint));
+      const { value } = await call('getAccountInfo', [pubkey, { commitment: 'confirmed', encoding: 'jsonParsed' }]);
+      return value ? { pubkey, account: value } : null;
+    },
     getTokenAccounts: (owner, mint) => call('getTokenAccountsByOwner', [owner, { mint }, { commitment: 'confirmed', encoding: 'jsonParsed' }]),
     getSignaturesForAddress: (receipt, options) => call('getSignaturesForAddress', [receipt, { commitment: 'finalized', ...options }]),
     sendTransaction: (base64, options) => call('sendTransaction', [base64, { encoding: 'base64', ...options }]),
@@ -193,12 +216,14 @@ export async function buildVaultDeposit(settings, ready, request, holder) {
   const { rpc, program, mint } = settings;
   const amount = BigInt(request.amount_atoms), owner = address(request.owner);
   if (amount > BigInt(ready.available_atoms)) throw new DepositError(409, 'The amount exceeds the current vault cap.');
-  const tokenAccounts = await rpc.getTokenAccounts(owner, mint);
-  const source = tokenAccounts.value.find(({ account }) => {
-    const info = account.data.parsed?.info;
+  const funded = ({ account }) => {
+    const info = account?.data?.parsed?.info;
     return account.owner === TOKEN && info?.state === 'initialized' && info.owner === request.owner &&
-      info.mint === mint && info.tokenAmount.decimals === 6 && BigInt(info.tokenAmount.amount) >= amount;
-  });
+      info.mint === mint && info.tokenAmount?.decimals === 6 && BigInt(info.tokenAmount.amount) >= amount;
+  };
+  // The standard account first; the indexed search only when it is absent or short.
+  const standard = await rpc.getAssociatedAccount?.(owner, mint).catch(() => null);
+  const source = standard && funded(standard) ? standard : (await rpc.getTokenAccounts(owner, mint)).value.find(funded);
   if (!source) throw new DepositError(409, 'No USDC account in Phantom has enough available for this deposit.');
   const nonce = randomBytes(32);
   const [config, custody, receipt] = await Promise.all([pda(program, 'config'), pda(program, 'custody'), pda(program, 'receipt', nonce)]);
