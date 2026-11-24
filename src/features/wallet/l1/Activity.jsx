@@ -15,6 +15,8 @@ export function titleFor(row, incoming) {
   if (['transfer', 'transparent_transfer', 'payment', 'payment_v2'].includes(kind)) return incoming ? 'Received PFT' : 'Sent PFT';
   if (TITLES[kind]) return `${TITLES[kind]}${row.unit ? ` · ${row.unit}` : ''}`;
   if (kind === 'issued_payment') return incoming ? 'Asset deposit received' : 'Asset sent';
+  if (kind === 'solana_deposit') return 'Deposit from Solana';
+  if (kind === 'vault_bridge_burn_to_redeem') return `Withdrawal to ${row.withdraw_chain || 'another chain'}`;
   if (kind.startsWith('vault_bridge')) return 'Bridge deposit';
   if (kind.startsWith('offer')) return kind === 'offer_cancel' ? 'Order cancelled' : row.market_side === 'buy' ? `Market buy${row.market_symbol ? ` · ${row.market_symbol}` : ''}` : row.market_side === 'sell' ? `Market sell${row.market_symbol ? ` · ${row.market_symbol}` : ''}` : 'Market order';
   const words = kind.replace(/^pftl_uniswap_/, '').replace(/_/g, ' ');
@@ -58,7 +60,8 @@ export function ActivityRows({ rows, address }) {
     const rejected = row.accepted === false;
     const kind = String(row.kind || row.transaction_kind || '');
     const isTransfer = ['transfer', 'transparent_transfer', 'payment', 'payment_v2'].includes(kind);
-    const Icon = rejected ? CircleX : isTransfer ? (incoming ? ArrowDownLeft : ArrowUpRight) : ArrowLeftRight;
+    const withdrawal = kind === 'vault_bridge_burn_to_redeem';
+    const Icon = rejected ? CircleX : isTransfer || incoming ? (incoming ? ArrowDownLeft : ArrowUpRight) : withdrawal ? ArrowUpRight : ArrowLeftRight;
     const counterparty = incoming ? from : to;
     return <article key={`${row.tx_id || index}:${row.block_height || ''}:${row.transaction_index ?? index}:${row.tx_role || ''}:${row.fill_index ?? ''}`} className="l1-tx">
       <span className={`l1-tx-icon ${rejected ? 'is-rejected' : incoming ? 'is-in' : ''}`}><Icon size={17} aria-hidden /></span>
@@ -71,7 +74,7 @@ export function ActivityRows({ rows, address }) {
         {rejected && <span className="l1-small" style={{ color: 'var(--l1-danger)' }}>Rejected: {row.reject_reason || row.code || 'execution rejected'}</span>}
       </div>
       <div className="l1-tx-side">
-        {row.amount != null ? <span className={incoming ? 'is-in' : ''}>{incoming ? '+' : isTransfer ? '−' : ''}<Amount atoms={row.amount} unit={isTransfer ? 'PFT' : row.unit} /></span> : <span />}
+        {row.amount != null ? <span className={incoming ? 'is-in' : ''}>{incoming ? '+' : isTransfer || withdrawal ? '−' : ''}<Amount atoms={row.amount} unit={isTransfer ? 'PFT' : row.unit} /></span> : <span />}
         {row.accepted === true ? <Badge tone="success">Accepted</Badge> : rejected ? <Badge tone="danger">Rejected</Badge> : <Badge>Receipt unverified</Badge>}
       </div>
     </article>;
