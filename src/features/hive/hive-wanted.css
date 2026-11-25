@@ -1,0 +1,174 @@
+/* Wanted list (Hive). Matches the project cards: white cards on the cream
+   page, hairline borders, small uppercase labels, green PFT. */
+.hive-wanted {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hive-wanted-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  justify-content: space-between;
+}
+
+.hive-wanted-boards,
+.hive-wanted-states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hive-wanted-chip,
+.hive-wanted-state-tab {
+  align-items: center;
+  background: var(--hive-surface, #fff);
+  border: 1px solid var(--hive-border);
+  border-radius: 999px;
+  color: var(--hive-ink-soft, var(--hive-ink));
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12.5px;
+  gap: 6px;
+  line-height: 1;
+  padding: 7px 12px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.hive-wanted-chip:hover,
+.hive-wanted-state-tab:hover {
+  border-color: var(--hive-border-strong);
+}
+
+.hive-wanted-chip.is-active,
+.hive-wanted-state-tab.is-active {
+  background: var(--hive-ink);
+  border-color: var(--hive-ink);
+  color: var(--hive-surface, #fff);
+}
+
+.hive-wanted-chip-count,
+.hive-wanted-state-tab span {
+  color: var(--hive-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hive-wanted-chip.is-active .hive-wanted-chip-count,
+.hive-wanted-state-tab.is-active span {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.hive-wanted-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hive-wanted-card {
+  background: var(--hive-surface, #fff);
+  border: 1px solid var(--hive-border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 150px;
+  padding: 16px 20px 14px;
+}
+
+.hive-wanted-card.is-done {
+  background: transparent;
+}
+
+.hive-wanted-card-top {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 16px;
+}
+
+.hive-wanted-board {
+  color: var(--hive-muted);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hive-wanted-reward {
+  color: var(--hive-green);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hive-wanted-title {
+  color: var(--hive-ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  margin: 2px 0 0;
+}
+
+.hive-wanted-why {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--hive-muted);
+  display: -webkit-box;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+  overflow: hidden;
+}
+
+.hive-wanted-card-foot {
+  align-items: center;
+  border-top: 1px solid var(--hive-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.hive-wanted-source {
+  align-items: center;
+  color: var(--hive-ink-soft, var(--hive-ink));
+  display: inline-flex;
+  font-size: 12px;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.hive-wanted-source:hover {
+  text-decoration: underline;
+}
+
+.hive-wanted-owner {
+  color: var(--hive-muted);
+  font-size: 12px;
+}
+
+.hive-wanted-task {
+  background: transparent;
+  border: 0;
+  color: var(--hive-green);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  margin-left: auto;
+  padding: 0;
+}
+
+.hive-wanted-task:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .hive-wanted-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
