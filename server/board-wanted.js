@@ -86,6 +86,7 @@ function publicItem(item, attempts) {
     workType: item.work_type,
     rewardPft: Number(item.reward_pft || 0),
     preferredAccountId: item.preferred_account_id || "",
+    attempts: Array.isArray(item.run_ids) ? item.run_ids.length : 0,
     state: derived.state,
     refusals: derived.refusals,
     taskId: task?.task_id || "",
@@ -192,10 +193,13 @@ export async function attachWantedRun({ wantedId, runId }, { queryImpl = query }
 }
 
 // The task text carries the reason it exists.
+// Each attempt carries its number, so a re-offer after a refusal or a failed
+// generation is a new request instead of being matched to the old failed one.
 export function wantedTaskNeed(item, need = "") {
   const extra = text(need, 6000);
   return [
     `${item.title}.`,
+    `Wanted item ${item.id}, attempt ${Number(item.attempts || 0) + 1}.`,
     `Why this matters: ${item.why}`,
     `Source: ${item.sourceUrl}`,
     extra ? `Details: ${extra}` : "",
