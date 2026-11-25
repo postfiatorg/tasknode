@@ -216,6 +216,27 @@ async function boardRoutingConstraints(boardId) {
   return result.rows[0]?.metadata_json?.routing_constraints || {};
 }
 
+// An item with a preferred owner goes to that owner whenever they can take it:
+// a free slot and a verified badge for the work type (operator decision
+// 2026-11-25; the manager offered the founder's governance items to others).
+async function assertPreferredOwnerServed({ item, accountId }) {
+  const preferred = safeText(item?.preferredAccountId, 180);
+  if (!preferred || preferred === accountId) return;
+  const { getNetworkTaskCapacityState } = await import("../../server/repositories/network-task-capacity.js");
+  const { explainNetworkTaskCandidateEligibility } = await import("../../server/repositories/network-tasks.js");
+  const { networkBadgeProjectionForAccount } = await import("../../server/repositories/network-badges.js");
+  const verdict = await explainNetworkTaskCandidateEligibility({ accountId: preferred }).catch(() => null);
+  if (!verdict?.eligible) return;
+  const capacity = await getNetworkTaskCapacityState({ accountId: preferred, walletAddress: verdict.walletAddress || "" }).catch(() => null);
+  if (!(capacity?.freeSlots > 0)) return;
+  const workType = item.workType || "code_task";
+  const projection = await networkBadgeProjectionForAccount({ accountId: preferred, walletAddress: verdict.walletAddress || "" }).catch(() => null);
+  if (!(projection?.verifiedBadges || []).some((badge) => (badge.allowedWorkTypes || []).includes(workType))) return;
+  throw Object.assign(new Error(
+    `wanted_item_reserved: ${item.id} is reserved for its preferred owner ${preferred} (wallet ${verdict.walletAddress}), who has a free slot and a fitting badge. Create it for them: --account ${preferred} --wallet ${verdict.walletAddress}`
+  ), { status: 409 });
+}
+
 export async function taskCreate({
   boardId,
   accountId,
@@ -251,6 +272,7 @@ export async function taskCreate({
   if (!operatorDuty && !(retryFailed === true && !wantedId)) {
     const { assertWantedItemOpen, wantedTaskNeed } = await import("../../server/board-wanted.js");
     wantedItem = await assertWantedItemOpen({ wantedId, boardId });
+    await assertPreferredOwnerServed({ item: wantedItem, accountId });
     need = wantedTaskNeed(wantedItem, need);
     workType = workType || wantedItem.workType || "code_task";
     if (!Number(rewardMax) && wantedItem.rewardPft > 0) rewardMax = wantedItem.rewardPft;
