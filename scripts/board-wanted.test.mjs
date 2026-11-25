@@ -10,6 +10,8 @@ test("a Wanted item's state comes from its tasks", () => {
   assert.equal(wantedState(item, [attempt("", undefined, "queued")]).state, "in_progress", "a task being generated holds the item");
   assert.equal(wantedState(item, [attempt("accepted")]).state, "in_progress");
   assert.equal(wantedState(item, [attempt("refused")]).state, "open", "one refusal reopens the item");
+  assert.equal(wantedState(item, [attempt("", undefined, "failed"), attempt("", "2026-11-25T02:00:00Z", "failed"), attempt("", "2026-11-25T03:00:00Z", "rerouted")]).refusals, 0, "a failed generation is not a refusal");
+  assert.equal(wantedState(item, [attempt("", undefined, "failed")]).state, "open");
   assert.equal(wantedState(item, [attempt("refused"), attempt("cancelled", "2026-11-25T02:00:00Z")]).state, "rewrite");
   assert.equal(WANTED_REFUSALS_BEFORE_REWRITE, 2);
   assert.equal(wantedState(item, [attempt("refused"), attempt("rewarded", "2026-11-25T02:00:00Z")]).state, "done");
@@ -28,4 +30,18 @@ test("the task text carries why it exists and its source", () => {
   assert.ok(need.includes("Why this matters: Validators fall over."));
   assert.ok(need.includes("Source: https://github.com/x/y/issues/1"));
   assert.ok(need.includes("Details: Add a regression test."));
+});
+
+test("public-proof payment text and every seeded item pass the content policy", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { networkTaskContentViolation } = await import("../server/network-task-content-policy.js");
+  const { PUBLIC_PROOF_REQUIREMENT_TEXT, reviewDocumentAllowed } = await import("../server/board-work-policy.js");
+  // 2026-11-15..25: this sentence alone tripped audit_document_deliverable and
+  // every post and trading task failed generation.
+  assert.equal(networkTaskContentViolation(PUBLIC_PROOF_REQUIREMENT_TEXT), null);
+  const seed = JSON.parse(readFileSync(new URL("../ops/wanted/seed-2026-11-25.json", import.meta.url), "utf8"));
+  for (const item of seed.items) {
+    const need = `${wantedTaskNeed({ title: item.title, why: item.why, sourceUrl: item.source }, "")}\n\n${PUBLIC_PROOF_REQUIREMENT_TEXT}`;
+    assert.equal(networkTaskContentViolation(need, { allowReviewDocument: reviewDocumentAllowed({ boardId: item.board, workType: item.work_type }) }), null, item.id);
+  }
 });

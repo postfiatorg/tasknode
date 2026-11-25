@@ -1,7 +1,7 @@
 import { splitWhitespace, isAsciiDigit, isAsciiLetter } from "../../server/inference-text.js";
 import { getNetworkTaskCapacityState } from "../../server/repositories/network-task-capacity.js";
 import { getAccountIdentityProfile } from "../../server/repositories/account-profiles.js";
-import { boardTaskStaleness, wantedDuties } from "../../server/board-task-policy.js";
+import { boardTaskStaleness, reservedPreferredSlots, wantedDuties } from "../../server/board-task-policy.js";
 import { taskIntentFailureFamily } from "../../server/task-intent-assessment.js";
 import { normalizeOperatorActions, readBoardSources } from "../../server/board-sources.js";
 import { listHiveGroupEscalations } from "../../server/repositories/hive-group.js";
@@ -637,6 +637,8 @@ export function describeGenerationFailure(row = {}) {
 export async function computeBoardDuties(boardIds = [], { queryImpl = query, idleContributors = idleEligibleContributors, now = Date.now() } = {}) {
   const duties = [];
   const idle = await idleContributors();
+  const { listWantedItems } = await import("../../server/board-wanted.js");
+  const reserved = reservedPreferredSlots(await listWantedItems(boardIds, { queryImpl }).catch(() => []));
   const escalations = await listHiveGroupEscalations(boardIds, { queryImpl });
 
   for (const boardId of boardIds) {
@@ -712,7 +714,7 @@ export async function computeBoardDuties(boardIds = [], { queryImpl = query, idl
 
     // Work comes from the Wanted list (2026-11-25): one duty per open item,
     // and one per item refused twice, which must be rewritten or dropped.
-    duties.push(...await wantedDuties(boardRowData, idle, { queryImpl }));
+    duties.push(...await wantedDuties(boardRowData, idle, { queryImpl, reserved }));
   }
 
   duties.sort((left, right) => left.priority - right.priority || String(left.task_id || "").localeCompare(String(right.task_id || "")));

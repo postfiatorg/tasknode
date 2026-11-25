@@ -42,7 +42,18 @@ export function boardRoutingCandidates(board, contributors) {
 // do" is not an answer while the list has open items. The item's preferred
 // owner, when set, is offered first. An item refused twice must be rewritten
 // or dropped before it is offered again.
-export async function wantedDuties(board, contributors, { queryImpl, listItems } = {}) {
+// Slots an account must keep free for open items that name it as preferred
+// owner, so ordinary items cannot fill them first (2026-11-25: the founder's
+// four slots went to ordinary items and his governance items found no slot).
+export function reservedPreferredSlots(items = []) {
+  const reserved = {};
+  for (const item of items) {
+    if (item.state === "open" && item.preferredAccountId) reserved[item.preferredAccountId] = (reserved[item.preferredAccountId] || 0) + 1;
+  }
+  return reserved;
+}
+
+export async function wantedDuties(board, contributors, { queryImpl, listItems, reserved = {} } = {}) {
   if (!board) return [];
   const constraints = board.metadata_json?.routing_constraints || board.routing_constraints || {};
   if (constraints.routing_disabled === true || !boardOpenForNewWork(board.id)) return [];
@@ -62,14 +73,20 @@ export async function wantedDuties(board, contributors, { queryImpl, listItems }
       });
       continue;
     }
-    if (item.state !== "open" || !candidates.length) continue;
+    if (item.state !== "open") continue;
     const preferred = item.preferredAccountId ? candidates.find((member) => member.account_id === item.preferredAccountId) : null;
-    const ordered = preferred ? [preferred, ...candidates.filter((member) => member !== preferred)] : candidates;
+    // Anyone else is offered this item only with a slot beyond those reserved
+    // for their own preferred items.
+    const others = candidates.filter((member) => member !== preferred &&
+      Number(member.free_slots || 0) - Number(reserved[member.account_id] || 0) > 0);
+    const ordered = preferred ? [preferred, ...others] : others;
+    if (!ordered.length) continue;
     duties.push({
       priority: 2,
       type: "wanted_open",
       board_id: board.id,
       wanted_id: item.id,
+      item_updated_at: item.updatedAt || "",
       candidate_ids: ordered.map((member) => member.account_id),
       candidates: ordered.map((member) => ({
         account_id: member.account_id,
