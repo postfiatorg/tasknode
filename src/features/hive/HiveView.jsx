@@ -10,7 +10,6 @@ import {
   ContributorCard,
   ContributorSpotlightRow,
   FeedRow,
-  hiveTaskSeed,
   ProjectBoardComments,
   ProjectCard,
   ProjectTaskRow,
@@ -18,6 +17,7 @@ import {
   Stat,
 } from "./HiveProjectPanels.jsx";
 import { HiveTaskPopout } from "./HiveTaskPopout.jsx";
+import { WantedPanel, wantedOwnersFromProjects } from "./HiveWanted.jsx";
 import { HiveContextPanel } from "./HiveContextPanels.jsx";
 import {
   contributorsSubtitle,
@@ -209,12 +209,14 @@ function HiveIndex({ contributorsSpotlight = [], onOpenTask, onSelectProject, pf
         />
       </Section>
 
-      <Section title="Wanted" subtitle="What Post Fiat needs done now. Every task comes from this list.">
-        <WantedList
+      <Section title="Wanted" subtitle="What Post Fiat needs done. Every network task comes from this list.">
+        <WantedPanel
+          boards={(projectDocument?.projectIds || []).map((id) => ({ id, name: projectDocument.projects[id].name }))}
           items={(projectDocument?.projectIds || []).flatMap((id) =>
             (projectDocument?.projects?.[id]?.wanted || []).map((item) => ({ ...item, boardName: projectDocument.projects[id].name }))
           )}
           onOpenTask={onOpenTask}
+          owners={wantedOwnersFromProjects(projectDocument?.projects)}
           showBoard
           status={projectStatus}
         />
@@ -443,7 +445,12 @@ function ProjectDetail({ onBack, onOpenTask, onProjectCommentSaved, operators, p
         <div className="hive-card hive-about">
           <p>{project.about || project.objective || project.summary}</p>
           <h3 className="hive-wanted-heading">Wanted</h3>
-          <WantedList items={project.wanted || []} onOpenTask={onOpenTask} status="ready" />
+          <WantedPanel
+            items={(project.wanted || []).map((item) => ({ ...item, boardName: project.name }))}
+            onOpenTask={onOpenTask}
+            owners={wantedOwnersFromProjects({ [project.id]: project })}
+            status="ready"
+          />
           <ProjectBoardComments onCommentSaved={onProjectCommentSaved} project={project} />
           <div className="hive-about-meta">
             <span>
@@ -569,43 +576,3 @@ function PaginationControls({ label, onPageChange, page, pageCount, pageSize, to
   );
 }
 
-const WANTED_STATE_LABEL = {
-  open: "Open",
-  in_progress: "Taken",
-  done: "Done",
-  rewrite: "Being rewritten",
-};
-
-// The Wanted list: specific things Post Fiat needs, each with a link to where
-// the need came from, and who has taken it.
-export function WantedList({ items = [], onOpenTask, showBoard = false, status = "ready" }) {
-  const visible = items.filter((item) => item.state !== "dropped");
-  if (status === "loading") return <div className="hive-card hive-empty-project">Loading the Wanted list.</div>;
-  if (!visible.length) return <div className="hive-card hive-empty-project">Nothing on the Wanted list yet.</div>;
-  return (
-    <div className="hive-card hive-wanted">
-      {visible.map((item) => (
-        <div className={`hive-wanted-row is-${item.state}`} key={item.id}>
-          <span className="hive-wanted-state">{WANTED_STATE_LABEL[item.state] || item.state}</span>
-          <div className="hive-wanted-body">
-            <strong>{item.title}</strong>
-            <p>{item.why}</p>
-            <small>
-              {showBoard && item.boardName ? <span>{item.boardName} · </span> : null}
-              <a href={item.sourceUrl} rel="noreferrer" target="_blank">Why: source</a>
-              {item.rewardPft > 0 ? <span> · up to {formatPft(item.rewardPft)}</span> : null}
-              {item.taskId && onOpenTask ? (
-                <span>
-                  {" · "}
-                  <button className="hive-link-button" onClick={() => onOpenTask(hiveTaskSeed({ taskId: item.taskId, title: item.title, state: item.taskStatus, projectId: item.boardId, project: item.boardName || "" }))} type="button">
-                    View task
-                  </button>
-                </span>
-              ) : null}
-            </small>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
