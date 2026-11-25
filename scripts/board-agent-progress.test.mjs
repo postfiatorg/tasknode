@@ -16,8 +16,8 @@ const { recordAgentDecision, wakeDecisionWorker, workerForDecisionKind } = await
 const { parseRecurringBlockers } = await import("../server/board-agent-runtime-status.js");
 const { remoteBoardCommand } = await import("../scripts/bm/remote.mjs");
 const { trackRecurringBlockers, recurringBlockers, escalationDirective, recurringSummary, RECURRING_BLOCKER_ROUNDS, busyBlockedDecision, BUSY_ALERT_MS, BUSY_INTERRUPT_MS } = await import("../ops/bm-runtime/supervisor.mjs");
-const { recentlyBlockedWanted, WANTED_BLOCKED_COOLDOWN_HOURS, DUTY_OUTCOMES } = await import("../server/board-agent-rounds.js");
-const { wantedDuties } = await import("../server/board-task-policy.js");
+const { recentlyBlockedWanted, wantedStillBlocked, WANTED_BLOCKED_COOLDOWN_HOURS, DUTY_OUTCOMES } = await import("../server/board-agent-rounds.js");
+const { wantedDuties, reservedPreferredSlots } = await import("../server/board-task-policy.js");
 const { evaluateAllocationHealth, readAllocationHealth, allocationHealthLines } = await import("../server/allocation-health.js");
 const { closePool } = await import("../server/db/pool.js");
 
@@ -148,14 +148,35 @@ test("the supervisor detects a duty blocked across consecutive processed rounds"
   assert.equal(trackRecurringBlockers(cleared, blocked("round_f", "new blocker"))["verification_due|board_pf_terminal|" + taskId].rounds, 1);
 });
 
-test("a blocked Wanted item is not re-asked during the cooldown; an unanswered one is", () => {
-  const duty = { id: "w1", type: "wanted_open", board_id: "board_capital_markets", wanted_id: "wanted_alpha" };
-  const blocked = { id: "round_1", state: "complete", duties_json: [duty], results_json: { w1: { outcome: "blocked", reason: "Source post is behind a login." } } };
-  assert.deepEqual([...recentlyBlockedWanted([blocked])], ["wanted_alpha"]);
-  assert.deepEqual([...recentlyBlockedWanted([{ ...blocked, results_json: {} }])], []);
-  assert.deepEqual([...recentlyBlockedWanted([{ ...blocked, results_json: { w1: { outcome: "completed", reason: "Created the task." } } }])], []);
+test("a blocked Wanted item is not re-asked during the cooldown unless the item changed", () => {
+  const duty = { id: "w1", type: "wanted_open", board_id: "board_capital_markets", wanted_id: "wanted_alpha", item_updated_at: "2026-11-25T10:00:00.000Z" };
+  const blocked = { id: "round_1", state: "complete", duties_json: [duty], results_json: { w1: { outcome: "blocked", reason: "Source post is behind a login.", recordedAt: "2026-11-25T11:00:00.000Z" } } };
+  const map = recentlyBlockedWanted([blocked]);
+  assert.deepEqual([...map.keys()], ["wanted_alpha"]);
+  assert.equal(wantedStillBlocked(duty, map), true);
+  assert.equal(wantedStillBlocked({ ...duty, item_updated_at: "2026-11-25T12:00:00.000Z" }, map), false, "a changed item is asked again at once");
+  assert.deepEqual([...recentlyBlockedWanted([{ ...blocked, results_json: {} }]).keys()], []);
+  assert.deepEqual([...recentlyBlockedWanted([{ ...blocked, results_json: { w1: { outcome: "completed", reason: "Created the task." } } }]).keys()], []);
   assert.equal(WANTED_BLOCKED_COOLDOWN_HOURS, 12);
   assert.deepEqual(DUTY_OUTCOMES, ["completed", "blocked", "deferred"]);
+});
+
+test("slots are kept for an account's preferred items", async () => {
+  const founder = { account_id: "acct_founder", engine_verdict: "eligible", free_slots: 2, public_handle: "goodalexander", delivery_wallet: "rF" };
+  const alice = { account_id: "acct_a", engine_verdict: "eligible", free_slots: 1, public_handle: "alice", delivery_wallet: "rA" };
+  const items = [
+    { id: "gov_1", state: "open", title: "Gov 1", why: "x", sourceUrl: "https://e.com/1", preferredAccountId: "acct_founder" },
+    { id: "gov_2", state: "open", title: "Gov 2", why: "x", sourceUrl: "https://e.com/2", preferredAccountId: "acct_founder" },
+    { id: "ordinary", state: "open", title: "Ordinary", why: "x", sourceUrl: "https://e.com/3" },
+  ];
+  const reserved = reservedPreferredSlots(items);
+  assert.deepEqual(reserved, { acct_founder: 2 });
+  const duties = await wantedDuties({ id: "board_postfiat_l1v2" }, [founder, alice], { listItems: async () => items, reserved });
+  const byItem = Object.fromEntries(duties.map((duty) => [duty.wanted_id, duty.candidate_ids]));
+  assert.deepEqual(byItem.gov_1, ["acct_founder", "acct_a"]);
+  assert.deepEqual(byItem.ordinary, ["acct_a"], "the founder's two free slots are kept for his two preferred items");
+  const roomy = await wantedDuties({ id: "board_postfiat_l1v2" }, [{ ...founder, free_slots: 3 }], { listItems: async () => items, reserved });
+  assert.deepEqual(roomy.find((duty) => duty.wanted_id === "ordinary").candidate_ids, ["acct_founder"], "a spare slot beyond the reservation can take ordinary work");
 });
 
 test("work comes from the Wanted list: open items become duties, the preferred owner first", async () => {

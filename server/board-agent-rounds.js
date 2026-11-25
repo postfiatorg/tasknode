@@ -13,16 +13,28 @@ export function dutyId(duty) {
   return createHash("sha256").update(JSON.stringify(identity)).digest("hex").slice(0, 24);
 }
 
-// Wanted items the manager recorded as blocked in these rounds. They are not
-// re-asked until the cooldown passes, so one blocked item cannot spin rounds.
+// Wanted items the manager recorded as blocked in these rounds, with when.
+// They are not re-asked during the cooldown unless the item changed after the
+// block (a rewrite, a new attempt, a policy fix), so one blocked item cannot
+// spin rounds and a changed item gets a fresh look at once.
 export function recentlyBlockedWanted(rounds = []) {
-  const items = new Set();
+  const items = new Map();
   for (const round of rounds) {
     for (const duty of round.duties_json || []) {
-      if (duty.type === "wanted_open" && round.results_json?.[duty.id]?.outcome === "blocked") items.add(duty.wanted_id);
+      const result = round.results_json?.[duty.id];
+      if (duty.type !== "wanted_open" || result?.outcome !== "blocked") continue;
+      const at = result.recordedAt || "";
+      if (!items.has(duty.wanted_id) || at > items.get(duty.wanted_id)) items.set(duty.wanted_id, at);
     }
   }
   return items;
+}
+
+export function wantedStillBlocked(duty, blocked) {
+  if (duty.type !== "wanted_open" || !blocked.has(duty.wanted_id)) return false;
+  const blockedAt = new Date(blocked.get(duty.wanted_id) || 0).getTime();
+  const changedAt = new Date(duty.item_updated_at || 0).getTime();
+  return !(changedAt > blockedAt);
 }
 
 export async function openAgentRound(boards, { computeDuties = computeBoardDuties } = {}) {
@@ -35,7 +47,7 @@ export async function openAgentRound(boards, { computeDuties = computeBoardDutie
     WHERE actor=$1 AND state='complete' AND completed_at>now()-($2 || ' hours')::interval`, [actor, String(WANTED_BLOCKED_COOLDOWN_HOURS)]);
   const blocked = recentlyBlockedWanted(answered.rows);
   const duties = snapshot.duties
-    .filter((duty) => !(duty.type === "wanted_open" && blocked.has(duty.wanted_id)))
+    .filter((duty) => !wantedStillBlocked(duty, blocked))
     .map((duty) => ({ ...duty, id: dutyId(duty) }));
   if (!duties.length) return { id: "", state: "quiet", duties_json: [], results_json: {} };
   const recent = await query("SELECT * FROM board_agent_rounds WHERE actor=$1 AND state='complete' AND completed_at>now()-interval '15 minutes' ORDER BY completed_at DESC LIMIT 1", [actor]);

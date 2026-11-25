@@ -19,7 +19,10 @@ export const WANTED_REFUSALS_BEFORE_REWRITE = 2;
 
 const LIVE_ALLOCATION = ["candidate", "queued", "proposed", "accepted", "submitted", "verification_requested", "verification_response_submitted", "reward_decided"];
 const LIVE_TASK = ["proposed", "accepted", "submitted", "verification_requested", "verification_response_submitted", "reward_decided"];
-const STOPPED_TASK = ["refused", "rejected", "cancelled", "expired", "rerouted", "failed"];
+// A person said no (or let it lapse): counts toward the rewrite threshold.
+const REFUSED_TASK = ["refused", "rejected", "cancelled", "expired"];
+// The system failed to produce the task: frees the item, is not a refusal.
+const FAILED_TASK = ["rerouted", "failed"];
 
 const text = (value, max = 4000) => String(value ?? "").split(" ").map((part) => part.trim()).filter(Boolean).join(" ").trim().slice(0, max);
 const bad = (message, status = 422) => Object.assign(new Error(message), { status });
@@ -62,7 +65,8 @@ export function wantedState(item = {}, attempts = []) {
     const allocation = String(attempt.allocation_status || "").toLowerCase();
     if (taskStatus === "rewarded" || allocation === "rewarded") { doneTask = attempt; continue; }
     if (LIVE_TASK.includes(taskStatus) || (!taskStatus && LIVE_ALLOCATION.includes(allocation))) { liveTask = attempt; continue; }
-    if (STOPPED_TASK.includes(taskStatus) || STOPPED_TASK.includes(allocation)) {
+    if (FAILED_TASK.includes(taskStatus) || (!taskStatus && FAILED_TASK.includes(allocation))) continue;
+    if (REFUSED_TASK.includes(taskStatus) || REFUSED_TASK.includes(allocation)) {
       if (new Date(attempt.created_at || 0).getTime() >= revisedAt) refusals += 1;
     }
   }
