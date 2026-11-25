@@ -53,6 +53,7 @@ export async function dispatchBoardAgent(argv) {
   if (command === "duties") return computeBoardDuties(boards());
   if (command === "hive-inbox") return listHiveGroupEscalations(boards());
   if (command === "hive-reply") return replyToHiveEscalation({ id: args[0], message: required("message"), outcome: required("outcome") });
+  if (command === "route-preferred") return writes.routePreferredWantedItems(boards());
   if (command === "round-open") return openAgentRound(boards());
   if (command === "round-status") return readAgentRound(args[0]);
   if (command === "task" && args[0] === "detail") return boardTaskDetail(args[1]);

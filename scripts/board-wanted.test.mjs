@@ -30,6 +30,11 @@ test("the task text carries why it exists and its source", () => {
   assert.ok(need.includes("Why this matters: Validators fall over."));
   assert.ok(need.includes("Source: https://github.com/x/y/issues/1"));
   assert.ok(need.includes("Details: Add a regression test."));
+  // Each attempt is a distinct request, so a re-offer is not matched to a failed one.
+  const first = wantedTaskNeed({ id: "wanted_x", title: "T", why: "W", sourceUrl: "https://e.com", attempts: 0 });
+  const second = wantedTaskNeed({ id: "wanted_x", title: "T", why: "W", sourceUrl: "https://e.com", attempts: 1 });
+  assert.ok(first.includes("Wanted item wanted_x, attempt 1."));
+  assert.notEqual(first, second);
 });
 
 test("public-proof payment text and every seeded item pass the content policy", async () => {

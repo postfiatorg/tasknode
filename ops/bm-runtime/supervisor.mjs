@@ -170,6 +170,16 @@ export async function superviseOnce() {
       const openFile = path.join(stateDir, `${agent.alias}.roundopen.json`);
       const lastOpen = read(openFile);
       const holdOff = lastOpen && ["backoff", "quiet"].includes(lastOpen.state) && Date.now() - Date.parse(lastOpen.at) < ROUND_OPEN_HOLDOFF_MS;
+      if (!holdOff) {
+        // Wanted items reserved for a preferred owner are routed by the server,
+        // one per call, before the manager's round (operator decision 2026-11-25).
+        try {
+          const preferred = await remote(["route-preferred", ...agent.boards]);
+          if (preferred?.routed) log({ alias: agent.alias, event: "wanted_preferred_routed", ...preferred.routed });
+        } catch (error) {
+          log({ alias: agent.alias, event: "wanted_preferred_route_failed", error: String(error?.message || error).slice(0, 300) });
+        }
+      }
       round = holdOff ? null : await remote(["round-open", ...agent.boards]);
       if (!holdOff) save(openFile, { at: new Date().toISOString(), state: round?.state || "" });
       pending = round?.id && round.state === "pending" ? { id: round.id, attempts: 0 } : null;
