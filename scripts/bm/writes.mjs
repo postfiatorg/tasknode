@@ -245,7 +245,10 @@ export async function taskCreate({
   // item supplies the reason the task exists and its source link; one item has
   // one live task. Operator referrals (refer-merge, refer-badge) are duties.
   let wantedItem = null;
-  if (!operatorDuty) {
+  // --retry-failed without --wanted only re-queues an existing failed job for
+  // the same need (legacy jobs predate the Wanted list); it cannot create new
+  // work: with no matching failed job the engine refuses it.
+  if (!operatorDuty && !(retryFailed === true && !wantedId)) {
     const { assertWantedItemOpen, wantedTaskNeed } = await import("../../server/board-wanted.js");
     wantedItem = await assertWantedItemOpen({ wantedId, boardId });
     need = wantedTaskNeed(wantedItem, need);

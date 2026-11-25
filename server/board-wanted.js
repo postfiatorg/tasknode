@@ -21,7 +21,7 @@ const LIVE_ALLOCATION = ["candidate", "queued", "proposed", "accepted", "submitt
 const LIVE_TASK = ["proposed", "accepted", "submitted", "verification_requested", "verification_response_submitted", "reward_decided"];
 const STOPPED_TASK = ["refused", "rejected", "cancelled", "expired", "rerouted", "failed"];
 
-const text = (value, max = 4000) => String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+const text = (value, max = 4000) => String(value ?? "").split(" ").map((part) => part.trim()).filter(Boolean).join(" ").trim().slice(0, max);
 const bad = (message, status = 422) => Object.assign(new Error(message), { status });
 
 function validUrl(value) {
@@ -124,7 +124,7 @@ export async function addWantedItem({ boardId, title, why, sourceUrl, workType =
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      ON CONFLICT (id) DO NOTHING
      RETURNING *`,
-    [text(id, 180) || `wanted_${randomUUID().replace(/-/g, "").slice(0, 20)}`, text(boardId, 180), text(title, 300), text(why), String(sourceUrl).trim(), text(workType, 80), reward, text(preferredAccountId, 180), text(createdBy, 180)]
+    [text(id, 180) || `wanted_${randomUUID().split("-").join("").slice(0, 20)}`, text(boardId, 180), text(title, 300), text(why), String(sourceUrl).trim(), text(workType, 80), reward, text(preferredAccountId, 180), text(createdBy, 180)]
   );
   return result.rows[0] ? getWantedItem(result.rows[0].id, { queryImpl }) : null;
 }
