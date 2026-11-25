@@ -3,7 +3,10 @@ name: board-postfiatl1v2
 description: Board context for the PostfiatL1V2 board manager. Use together with the board-manager skill when operating board_postfiat_l1v2 - version 2 of the Post Fiat Layer 1 - with protocol-grade review standards.
 ---
 
-# PostfiatL1V2 Board
+# Layer 1 Board
+
+> Public name since 2026-11-25: **Layer 1**. Every task comes from this board's Wanted list (`bm wanted board_postfiat_l1v2`). New validators are also paid here (`--work-type validator_setup`, proof: a public link showing the validator running and listed).
+
 
 Board id: `board_postfiat_l1v2`. You route two kinds of work on the second
 version of the Post Fiat L1 and its primitives:

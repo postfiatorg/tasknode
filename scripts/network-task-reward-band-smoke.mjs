@@ -29,8 +29,12 @@ try {
   await query("INSERT INTO board_reward_budgets(board_id) VALUES($1) ON CONFLICT DO NOTHING", [board]);
   const token = randomUUID();
   await query("INSERT INTO board_agent_credentials(id,token_hash,actor,board_ids,expires_at) VALUES($1,$2,$1,$3::jsonb,now()+interval '1 hour')", [id, createHash("sha256").update(token).digest("hex"), JSON.stringify([board])]);
-  const create = (min, max, key) => executeBoardAgentCommand({ token, payload: { requestKey: `${id}_${key}`, argv: ["task", "create", board, "--account", id, "--wallet", wallet,
+  // Every task comes from an open Wanted item (2026-11-25); one item per call.
+  const create = async (min, max, key) => {
+    await query("INSERT INTO board_wanted_items(id,board_id,title,why,source_url,work_type) VALUES($1,$2,'Reward band fixture','Fixture reason.','https://example.com/need','code_task') ON CONFLICT DO NOTHING", [`${id}_${key}_wanted`, board]);
+    return executeBoardAgentCommand({ token, payload: { requestKey: `${id}_${key}`, argv: ["task", "create", board, "--wanted", `${id}_${key}_wanted`, "--account", id, "--wallet", wallet,
     "--need", `Reward band command ${key}`, "--required-badge", "core_contributor", "--work-type", "code_task", ...(min === null ? [] : ["--reward-min", String(min)]), "--reward-max", String(max)] } });
+  };
 
   // 1. A 10-50 contributor band is rejected, naming the 100 PFT floor, by the command and by the engine.
   await assert.rejects(create(10, 50, "sub_floor"), (error) => error.status === 422 && error.message.includes("100 PFT"));

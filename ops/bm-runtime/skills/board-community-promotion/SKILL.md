@@ -3,7 +3,10 @@ name: board-community-promotion
 description: Board context for the Community & Promotion board manager. Use with the board-manager skill when operating board_community_promotion - education and onboarding posts, amplification of official and goodalexander content, and community events, proven by public links.
 ---
 
-# Community & Promotion Board
+# Media Board
+
+> Public name since 2026-11-25: **Media** (explaining and promoting Post Fiat, hype content, community). Every task comes from this board's Wanted list (`bm wanted board_community_promotion`).
+
 
 Board id: `board_community_promotion`. Everything here is proven by a public
 link. Never ask for a pull request on this board.

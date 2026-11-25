@@ -102,7 +102,11 @@ export async function reviewTask({ taskId, decision, pft = 0, reason = "", feedb
   const normalizedDecision = ["reward", "partial_reward", "reject"].includes(decision)
     ? decision
     : "";
-  if (!normalizedDecision) throw new Error("decision must be reward|partial_reward|reject");
+  if (!normalizedDecision) {
+    throw Object.assign(new Error(
+      `review needs --decision reward|partial_reward|reject. Use: review ${taskId} --decision reward --pft <amount> --reason "<why>" --feedback "<note to contributor>"`
+    ), { status: 400 });
+  }
   await requireBoardEvidence(taskId, { review: true });
   if (normalizedDecision !== "reject") {
     // Operator policy: network tasks are paid only for a PR merged into the
@@ -218,7 +222,8 @@ export async function taskCreate({
   wallet,
   need,
   reason = "Board manager routed a project-linked network task.",
-  workType = "code_task",
+  workType = "",
+  wantedId = "",
   requiredBadge = "",
   badgeCap = 0,
   rewardMin = 0,
@@ -232,10 +237,26 @@ export async function taskCreate({
   // band (0-1 PFT) instead of the contributor floor. Only refer-* set this.
   operatorDuty = false,
 }) {
-  if (!boardId || !accountId || !wallet || !safeText(need)) {
-    throw new Error("taskCreate requires boardId, accountId, wallet, need");
+  if (!boardId || !accountId || !wallet) {
+    throw Object.assign(new Error("taskCreate requires boardId, accountId, wallet"), { status: 400 });
   }
   assertBoardAgentScope(boardId);
+  // Every contributor task comes from an open Wanted item (2026-11-25). The
+  // item supplies the reason the task exists and its source link; one item has
+  // one live task. Operator referrals (refer-merge, refer-badge) are duties.
+  let wantedItem = null;
+  // --retry-failed without --wanted only re-queues an existing failed job for
+  // the same need (legacy jobs predate the Wanted list); it cannot create new
+  // work: with no matching failed job the engine refuses it.
+  if (!operatorDuty && !(retryFailed === true && !wantedId)) {
+    const { assertWantedItemOpen, wantedTaskNeed } = await import("../../server/board-wanted.js");
+    wantedItem = await assertWantedItemOpen({ wantedId, boardId });
+    need = wantedTaskNeed(wantedItem, need);
+    workType = workType || wantedItem.workType || "code_task";
+    if (!Number(rewardMax) && wantedItem.rewardPft > 0) rewardMax = wantedItem.rewardPft;
+  }
+  workType = workType || "code_task";
+  if (!safeText(need)) throw Object.assign(new Error("taskCreate requires need"), { status: 400 });
   // Scope is checked before anything else so a dry run fails the same way.
   const { assertBoardAcceptsWork } = await import("../../server/board-work-policy.js");
   assertBoardAcceptsWork({ boardId, workType, operatorDuty });
@@ -250,6 +271,20 @@ export async function taskCreate({
         `board_routing_constraint: this board is assignable only to ${allowedHandles.join(", ")} (pass --assignee-handle)`
       ), { status: 422 });
     }
+  }
+  // Pick the contributor's verified badge that allows this work type when the
+  // manager did not name one, so a fitting assignment is not refused on
+  // missing metadata.
+  if (!requiredBadge && !operatorDuty) {
+    const { networkBadgeProjectionForAccount } = await import("../../server/repositories/network-badges.js");
+    const projection = await networkBadgeProjectionForAccount({ accountId, walletAddress: wallet });
+    const fitting = (projection?.verifiedBadges || []).find((badge) => (badge.allowedWorkTypes || []).includes(workType));
+    if (!fitting) {
+      throw Object.assign(new Error(
+        `no_badge_for_work_type: ${accountId} has no verified badge that allows ${workType} (has: ${(projection?.verifiedBadgeIds || []).join(", ") || "none"}). Pick another contributor or work type.`
+      ), { status: 422 });
+    }
+    requiredBadge = fitting.badgeId;
   }
   const budget = await boardBudgetStatus(boardId);
   if (!budget.configured) throw new Error("board_budget_missing; run migrations");
@@ -349,11 +384,15 @@ export async function taskCreate({
     sourcePacket,
     dryRun: !execute,
   });
+  if (execute && wantedItem && actionResult?.result?.executed) {
+    const { attachWantedRun } = await import("../../server/board-wanted.js");
+    await attachWantedRun({ wantedId: wantedItem.id, runId });
+  }
   await appendBmAudit({
     actor: boardAgentActor(),
     boardId,
     command: "task_create",
-    args: { accountId, wallet, need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, retryFailed, execute },
+    args: { accountId, wallet, wantedId: wantedItem?.id || "", need: safeText(need, 500), rewardMin: cappedMin, rewardMax: cappedMax, retryFailed, execute },
     result: { runId, executed: actionResult?.result?.executed ?? false, skipped: actionResult?.result?.skipped ?? false, reason: actionResult?.result?.reason || "", rewardBandClampedFrom: effectiveBand.clampedFrom || null },
   });
   // The command reports the band the offer will advertise and, when it differs

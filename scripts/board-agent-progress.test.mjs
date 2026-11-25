@@ -16,8 +16,8 @@ const { recordAgentDecision, wakeDecisionWorker, workerForDecisionKind } = await
 const { parseRecurringBlockers } = await import("../server/board-agent-runtime-status.js");
 const { remoteBoardCommand } = await import("../scripts/bm/remote.mjs");
 const { trackRecurringBlockers, recurringBlockers, escalationDirective, recurringSummary, RECURRING_BLOCKER_ROUNDS, busyBlockedDecision, BUSY_ALERT_MS, BUSY_INTERRUPT_MS } = await import("../ops/bm-runtime/supervisor.mjs");
-const { recentRoutingBoards, ROUTING_INVITE_COOLDOWN_HOURS, DUTY_OUTCOMES } = await import("../server/board-agent-rounds.js");
-const { routingDuty } = await import("../server/board-task-policy.js");
+const { recentlyBlockedWanted, WANTED_BLOCKED_COOLDOWN_HOURS, DUTY_OUTCOMES } = await import("../server/board-agent-rounds.js");
+const { wantedDuties } = await import("../server/board-task-policy.js");
 const { evaluateAllocationHealth, readAllocationHealth, allocationHealthLines } = await import("../server/allocation-health.js");
 const { closePool } = await import("../server/db/pool.js");
 
@@ -98,11 +98,11 @@ test("the CLI refuses to resend a rejected command until the task status changes
 
 test("the supervisor detects a duty blocked across consecutive processed rounds", () => {
   const duty = { id: "d1", type: "verification_due", board_id: "board_pf_terminal", task_id: taskId };
-  const other = { id: "d2", type: "routing_due", board_id: "board_pf_terminal" };
+  const other = { id: "d2", type: "wanted_open", board_id: "board_pf_terminal", wanted_id: "wanted_a" };
   const routine = [
-    { id: "d3", type: "routing_due", board_id: "board_capital_markets" },
+    { id: "d3", type: "wanted_open", board_id: "board_capital_markets", wanted_id: "wanted_b" },
     { id: "d4", type: "stale_accepted", board_id: "board_pf_terminal", task_id: "task_stale", staleness: { lastActivityAt: "2026-09-06T17:59:00.000Z", cancellationEligible: false } },
-    { id: "d5", type: "board_info_stale", board_id: "board_pf_terminal" },
+    { id: "d5", type: "wanted_rewrite", board_id: "board_pf_terminal", wanted_id: "wanted_c" },
   ];
   const blocked = (roundId, reason) => ({ id: roundId, state: "complete", duties_json: [duty, other, ...routine], results_json: {
     d1: { outcome: "blocked", reason, recordedAt: "2026-09-20T01:03:00.512Z" },
@@ -148,27 +148,36 @@ test("the supervisor detects a duty blocked across consecutive processed rounds"
   assert.equal(trackRecurringBlockers(cleared, blocked("round_f", "new blocker"))["verification_due|board_pf_terminal|" + taskId].rounds, 1);
 });
 
-test("routing is an invitation: declining it never escalates and is not re-asked for a day", () => {
-  const duty = { id: "r1", type: "routing_due", board_id: "board_capital_markets", candidate_ids: ["acct_a", "acct_b"] };
-  const deferred = { id: "round_1", state: "complete", duties_json: [duty], results_json: { r1: { outcome: "deferred", reason: "No actionable alpha to route today." } } };
-  let blockers = {};
-  for (const id of ["round_1", "round_2", "round_3", "round_4"]) blockers = trackRecurringBlockers(blockers, { ...deferred, id });
-  assert.deepEqual(blockers, {}, "a declined routing invitation is never a blocker");
-  assert.equal(escalationDirective(recurringBlockers(blockers)), "");
-  assert.deepEqual([...recentRoutingBoards([deferred])], ["board_capital_markets"]);
-  assert.deepEqual([...recentRoutingBoards([{ ...deferred, results_json: {} }])], [], "an unanswered invitation does not start the cooldown");
-  assert.equal(ROUTING_INVITE_COOLDOWN_HOURS, 24);
+test("a blocked Wanted item is not re-asked during the cooldown; an unanswered one is", () => {
+  const duty = { id: "w1", type: "wanted_open", board_id: "board_capital_markets", wanted_id: "wanted_alpha" };
+  const blocked = { id: "round_1", state: "complete", duties_json: [duty], results_json: { w1: { outcome: "blocked", reason: "Source post is behind a login." } } };
+  assert.deepEqual([...recentlyBlockedWanted([blocked])], ["wanted_alpha"]);
+  assert.deepEqual([...recentlyBlockedWanted([{ ...blocked, results_json: {} }])], []);
+  assert.deepEqual([...recentlyBlockedWanted([{ ...blocked, results_json: { w1: { outcome: "completed", reason: "Created the task." } } }])], []);
+  assert.equal(WANTED_BLOCKED_COOLDOWN_HOURS, 12);
   assert.deepEqual(DUTY_OUTCOMES, ["completed", "blocked", "deferred"]);
 });
 
-test("closed boards get no routing invitation and open boards are told not to invent work", () => {
-  const member = { account_id: "acct_a", engine_verdict: "eligible", free_slots: 1, public_handle: "alice" };
-  assert.equal(routingDuty({ id: "board_pf_terminal" }, [member], 0), null);
-  assert.equal(routingDuty({ id: "board_ai_l1_governance" }, [member], 0), null);
-  const open = routingDuty({ id: "board_capital_markets" }, [member], 2);
-  assert.equal(open.type, "routing_due");
-  assert.ok(open.detail.includes("record the duty as deferred"));
-  assert.ok(open.detail.includes("Never create a task to keep someone busy"));
+test("work comes from the Wanted list: open items become duties, the preferred owner first", async () => {
+  const alice = { account_id: "acct_a", engine_verdict: "eligible", free_slots: 1, public_handle: "alice", delivery_wallet: "rA" };
+  const founder = { account_id: "acct_founder", engine_verdict: "eligible", free_slots: 4, public_handle: "goodalexander", delivery_wallet: "rF" };
+  const items = [
+    { id: "wanted_open", state: "open", title: "Fix the RPC flood", why: "Validators fall over.", sourceUrl: "https://github.com/x/y/issues/1", workType: "code_task", rewardPft: 800, preferredAccountId: "acct_founder" },
+    { id: "wanted_taken", state: "in_progress", title: "Taken", why: "x", sourceUrl: "https://e.com" },
+    { id: "wanted_done", state: "done", title: "Done", why: "x", sourceUrl: "https://e.com" },
+    { id: "wanted_refused", state: "rewrite", refusals: 2, title: "Refused twice", why: "x", sourceUrl: "https://e.com" },
+  ];
+  const listItems = async () => items;
+  const duties = await wantedDuties({ id: "board_postfiat_l1v2" }, [alice, founder], { listItems });
+  assert.deepEqual(duties.map((duty) => [duty.type, duty.wanted_id]), [["wanted_open", "wanted_open"], ["wanted_rewrite", "wanted_refused"]]);
+  const open = duties[0];
+  assert.deepEqual(open.candidate_ids, ["acct_founder", "acct_a"], "the preferred owner is offered first");
+  assert.ok(open.detail.includes("--wanted wanted_open"));
+  assert.ok(open.detail.includes("Deferring is not allowed"));
+  assert.ok(open.detail.includes("https://github.com/x/y/issues/1"));
+  // Nobody free: no duty. Closed board: no duty.
+  assert.deepEqual(await wantedDuties({ id: "board_postfiat_l1v2" }, [{ ...alice, free_slots: 0 }], { listItems: async () => [items[0]] }), []);
+  assert.deepEqual(await wantedDuties({ id: "board_ai_l1_governance" }, [alice], { listItems }), []);
 });
 
 test("allocation health alarms on unanswered submissions, never on idle contributors", async (t) => {
