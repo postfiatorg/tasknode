@@ -219,8 +219,30 @@ async function boardRoutingConstraints(boardId) {
 // An item with a preferred owner goes to that owner whenever they can take it:
 // a free slot and a verified badge for the work type (operator decision
 // 2026-11-25; the manager offered the founder's governance items to others).
+// Open items naming this account as preferred owner (any board).
+async function openPreferredItemCount(accountId) {
+  const result = await query(`SELECT board_id FROM board_wanted_items WHERE status='open' AND preferred_account_id=$1`, [accountId]);
+  if (!result.rows.length) return 0;
+  const { listWantedItems } = await import("../../server/board-wanted.js");
+  const items = await listWantedItems([...new Set(result.rows.map((row) => row.board_id))]);
+  return items.filter((item) => item.state === "open" && item.preferredAccountId === accountId).length;
+}
+
 async function assertPreferredOwnerServed({ item, accountId }) {
   const preferred = safeText(item?.preferredAccountId, 180);
+  if (preferred !== accountId) {
+    // Slots held for this account's own preferred items are not given away.
+    const reserved = await openPreferredItemCount(accountId);
+    if (reserved > 0) {
+      const { getNetworkTaskCapacityState } = await import("../../server/repositories/network-task-capacity.js");
+      const capacity = await getNetworkTaskCapacityState({ accountId }).catch(() => null);
+      if (capacity && Number(capacity.freeSlots || 0) <= reserved) {
+        throw Object.assign(new Error(
+          `slots_reserved: ${accountId} has ${capacity.freeSlots} free slot(s) held for ${reserved} open Wanted item(s) that name them as preferred owner. Pick another contributor.`
+        ), { status: 409 });
+      }
+    }
+  }
   if (!preferred || preferred === accountId) return;
   const { getNetworkTaskCapacityState } = await import("../../server/repositories/network-task-capacity.js");
   const { explainNetworkTaskCandidateEligibility } = await import("../../server/repositories/network-tasks.js");
@@ -706,4 +728,48 @@ export async function writeHandoff({ boardId }) {
     result: { file },
   });
   return { file };
+}
+
+// Hands each open Wanted item with a preferred owner to that owner when they
+// can take it: eligible, a free slot, a badge for the work type. Deterministic;
+// runs when a manager round opens, so the founder's items do not depend on the
+// manager's judgment (2026-11-25: the manager skipped them three rounds running).
+// Routes at most one item per call: each call is its own command transaction,
+// so one failing item cannot roll back or block the others.
+export async function routePreferredWantedItems(boardIds = []) {
+  const { listWantedItems } = await import("../../server/board-wanted.js");
+  const { getNetworkTaskCapacityState } = await import("../../server/repositories/network-task-capacity.js");
+  const { explainNetworkTaskCandidateEligibility } = await import("../../server/repositories/network-tasks.js");
+  const { networkBadgeProjectionForAccount } = await import("../../server/repositories/network-badges.js");
+  const { boardWorkPolicy } = await import("../../server/board-work-policy.js");
+  const skipped = [];
+  for (const item of await listWantedItems(boardIds)) {
+    // Three automatic attempts at most; after that the manager rewrites it.
+    if (item.state !== "open" || !item.preferredAccountId || item.attempts >= 3) continue;
+    if (!boardWorkPolicy(item.boardId)?.open) continue;
+    const verdict = await explainNetworkTaskCandidateEligibility({ accountId: item.preferredAccountId }).catch(() => null);
+    if (!verdict?.eligible || !verdict.walletAddress) continue;
+    const capacity = await getNetworkTaskCapacityState({ accountId: item.preferredAccountId, walletAddress: verdict.walletAddress }).catch(() => null);
+    if (!(capacity?.freeSlots > 0)) continue;
+    const projection = await networkBadgeProjectionForAccount({ accountId: item.preferredAccountId, walletAddress: verdict.walletAddress }).catch(() => null);
+    if (!(projection?.verifiedBadges || []).some((badge) => (badge.allowedWorkTypes || []).includes(item.workType || "code_task"))) continue;
+    let result;
+    try {
+      result = await taskCreate({
+        boardId: item.boardId,
+        accountId: item.preferredAccountId,
+        wallet: verdict.walletAddress,
+        wantedId: item.id,
+        need: "",
+        reason: "Wanted item routed to its preferred owner.",
+        execute: true,
+      });
+    } catch (error) {
+      // Validation refusals happen before any write; try the next item.
+      skipped.push({ wantedId: item.id, error: error.message });
+      continue;
+    }
+    return { routed: { wantedId: item.id, accountId: item.preferredAccountId, runId: result.runId, executed: Boolean(result.actionResult?.result?.executed) }, skipped };
+  }
+  return { routed: null, skipped };
 }
