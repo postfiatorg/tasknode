@@ -20,7 +20,7 @@ import {
 
 export async function hiveBoardSecretaryMemoItem(tables, nowMs) {
   const cadenceSeconds = hiveBoardSecretaryCadenceSeconds();
-  const enabled = process.env.TASKNODE_HIVE_BOARD_SECRETARY_ENABLED !== "false";
+  const enabled = process.env.TASKNODE_HIVE_BOARD_SECRETARY_ENABLED === "true";
   const [memoResult, countsResult, projectResult, failedResult, scanResult] = await Promise.all([
     optionalQuery(
       tables,

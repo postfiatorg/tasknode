@@ -32,7 +32,7 @@ jobs:
       - name: Verify board-agent lifecycle error responses
         run: node --test scripts/board-agent-lifecycle.test.mjs
       - name: Verify board-agent progress escalation, retry bounds and worker wake-up
-        run: node --test scripts/board-agent-progress.test.mjs
+        run: node --test scripts/board-agent-progress.test.mjs scripts/board-wanted.test.mjs scripts/board-work-policy.test.mjs
       - name: Verify task review worker retry state
         run: node scripts/task-review-idempotency-smoke.mjs
       - name: Verify board grounding sources and operator actions

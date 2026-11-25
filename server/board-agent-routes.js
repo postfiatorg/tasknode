@@ -76,9 +76,13 @@ export async function handleBoardAgentRoute({ req, res, url, readJson, json }) {
     const result = await executeBoardAgentCommand({ token, payload: await readJson(req, 128 * 1024) });
     json(res, 200, result);
   } catch (error) {
+    // Validation errors carry a 4xx status and are reported plainly so the
+    // manager corrects the command instead of retrying it (2026-11-25: a
+    // review with the wrong flags surfaced as "not confirmed" for 97 rounds).
+    // Anything unexpected stays redacted.
     const status = Number(error.status) || (transientDatabaseError(error) ? 503 : 500);
     if (status >= 500) console.error("board_agent_command_failed", { error: error.message });
-    const body = { ok: false, error: status >= 500 ? "board_agent_command_failed" : error.message, message: status >= 500 ? "The command outcome is not confirmed. Retry with its saved request key." : error.message };
+    const body = { ok: false, error: status >= 500 ? "board_agent_command_failed" : error.message, message: status >= 500 ? "The command outcome is not confirmed. Retry with its saved request key." : `Command refused; nothing was changed: ${error.message}` };
     if (status === 409 && error.lifecycle) body.lifecycle = error.lifecycle;
     json(res, status, body);
   }

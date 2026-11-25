@@ -30,32 +30,37 @@ code through `scripts/bm/writes.mjs`. That path records network intents,
 allocations and generation jobs. Final task wording comes from
 `server/task-generation-worker.js`. See [network generation](network-task-generation-worker.md).
 
-## Scope and proof (2026-11-15)
+## Five boards and the Wanted list (2026-11-25)
 
-`server/board-work-policy.js` is the single table for what the manager may pay
-for: which boards take new work, which work types each takes, and what proof
-a payment needs.
+The public boards are Layer 1 (`board_postfiat_l1v2`), Task Node
+(`board_tasknode_fixes`), Corbanu Terminal (`board_pf_terminal`), Trading
+(`board_capital_markets`) and Media (`board_community_promotion`). Board ids
+predate the names. AI Layer 1 Governance is closed to new work; it, Value
+Accountability and Reinstatement carry `metadata_json.hive_hidden` and are off
+the public Hive page while still running.
 
-| Board | Work | Proof |
-| --- | --- | --- |
-| Community & Promotion | Education and onboarding posts, amplification, community events | Public link |
-| PostfiatL1V2 | Code changes; code reviews | Merged pull request; public written review |
-| Task Node Fixes | Task Node pull requests; reproduced bug reports | Merged pull request; public issue |
-| Community & Promotion | Reproduced bug reports on the website, blog, goodalexander site and other public surfaces | Public issue |
-| Capital Markets | Actionable alpha; amplification of goodalexander research | Public link |
+`server/board-work-policy.js` is the single table for which board pays for
+which work type and what proof a payment needs.
 
-PF Terminal and AI Layer 1 Governance are closed to new tasks; their in-flight
-work is still reviewed and paid. `task create` rejects a closed board or an
-out-of-scope work type with `board_work_policy_rejected`. Tasks issued before
-this policy keep the merged pull request rule they were offered under.
+Work starts from the Wanted list (`board_wanted_items`, migration 165,
+`server/board-wanted.js`): one row per thing Post Fiat needs, with a source
+link, optional work type, reward and preferred owner. An item's state is
+derived from the tasks created for it (`open`, `in_progress`, `done`,
+`rewrite`, `dropped`). `task create` requires `--wanted <id>` for an open item
+on the same board, writes the item's reason and source into the task need, and
+links the run to the item; one item has one live task. Two refusals since the
+last revision put the item in `rewrite`.
 
-Routing is an invitation, not an obligation. A `routing_due` duty tells the
-manager who has capacity, at most once a day per board. It is answered
-`completed` only when a task was created on that board in the round, and
-`deferred` otherwise. Deferring is never escalated, idle contributors raise no
-alarm, and an empty board is a normal state. The earlier per-candidate
-dispositions, `not_served` outcome, investigation tasks and routing-stall
-alerts were removed because they forced the manager to invent work.
+Each open item on an open board is a `wanted_open` duty listing contributors
+with free slots, the item's preferred owner first. It is answered `completed`
+(the item has a live task) or `blocked` with a reason; `deferred` is refused.
+A blocked item is not re-asked for 12 hours. Items in `rewrite` produce a
+`wanted_rewrite` duty. The former `routing_due` invitation and the daily
+`board_info_stale` summary rewrite were removed; the manager may change only a
+board's status and phase. Operator and manager add items with `bm wanted add`.
+
+The Hive page shows each board's Wanted list, a "Shipped" feed of rewarded
+work only, and no model-written Project Status memo.
 
 The scheduler also emits explicit follow-ups for seven-day unaccepted proposals,
 accepted tasks with seven days without recorded activity, and verification

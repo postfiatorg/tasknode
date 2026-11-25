@@ -1,19 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ChevronDown,
 } from "lucide-react";
 import { requestJson } from "../../api";
-import { parseMarkdownBlocks } from "./hive-report-markdown.js";
 import {
   ActivityRow,
   AllottedOperatorRow,
   ContributorCard,
   ContributorSpotlightRow,
   FeedRow,
+  hiveTaskSeed,
   ProjectBoardComments,
   ProjectCard,
-  ProjectDocList,
   ProjectTaskRow,
   Section,
   Stat,
@@ -210,7 +209,18 @@ function HiveIndex({ contributorsSpotlight = [], onOpenTask, onSelectProject, pf
         />
       </Section>
 
-      <Section title="Routing feed" subtitle="Recent state transitions across the network">
+      <Section title="Wanted" subtitle="What Post Fiat needs done now. Every task comes from this list.">
+        <WantedList
+          items={(projectDocument?.projectIds || []).flatMap((id) =>
+            (projectDocument?.projects?.[id]?.wanted || []).map((item) => ({ ...item, boardName: projectDocument.projects[id].name }))
+          )}
+          onOpenTask={onOpenTask}
+          showBoard
+          status={projectStatus}
+        />
+      </Section>
+
+      <Section title="Shipped" subtitle="Finished, paid work across the network">
         <div className="hive-card hive-feed">
           {(projectDocument?.routingFeed || []).map((entry, index, list) => (
             <FeedRow
@@ -226,7 +236,7 @@ function HiveIndex({ contributorsSpotlight = [], onOpenTask, onSelectProject, pf
           {projectStatus === "loading" && <div className="hive-empty-project">Loading project feed.</div>}
           {projectStatus === "error" && <div className="hive-empty-project">Project feed is unavailable.</div>}
           {projectStatus === "ready" && !(projectDocument?.routingFeed || []).length && (
-            <div className="hive-empty-project">No project-linked routing events yet.</div>
+            <div className="hive-empty-project">Nothing shipped yet.</div>
           )}
         </div>
       </Section>
@@ -432,7 +442,8 @@ function ProjectDetail({ onBack, onOpenTask, onProjectCommentSaved, operators, p
       <Section title="About" subtitle="What this project is" layerNumber="01">
         <div className="hive-card hive-about">
           <p>{project.about || project.objective || project.summary}</p>
-          <ProjectStatusDocument document={project.productDocument} memo={project.secretaryMemo} />
+          <h3 className="hive-wanted-heading">Wanted</h3>
+          <WantedList items={project.wanted || []} onOpenTask={onOpenTask} status="ready" />
           <ProjectBoardComments onCommentSaved={onProjectCommentSaved} project={project} />
           <div className="hive-about-meta">
             <span>
@@ -558,163 +569,43 @@ function PaginationControls({ label, onPageChange, page, pageCount, pageSize, to
   );
 }
 
-function isMemoMetadataLine(value = "") {
-  return /^(generated|model|source packet|source digest|prompt version|usage)\s*:/i.test(String(value || "").trim());
-}
+const WANTED_STATE_LABEL = {
+  open: "Open",
+  in_progress: "Taken",
+  done: "Done",
+  rewrite: "Being rewritten",
+};
 
-function visibleMemoBlocks(markdown = "") {
-  return parseMarkdownBlocks(markdown)
-    .map((block) => {
-      if (block.type === "paragraph" && isMemoMetadataLine(block.text)) return null;
-      if (block.type === "unordered" || block.type === "ordered") {
-        const items = (block.items || []).filter((item) => !isMemoMetadataLine(item));
-        return items.length ? { ...block, items } : null;
-      }
-      return block;
-    })
-    .filter(Boolean);
-}
-
-function MarkdownMemoBody({ markdown = "" }) {
-  const blocks = useMemo(() => visibleMemoBlocks(markdown), [markdown]);
-  if (!blocks.length) return <p>Project status memo is empty.</p>;
+// The Wanted list: specific things Post Fiat needs, each with a link to where
+// the need came from, and who has taken it.
+export function WantedList({ items = [], onOpenTask, showBoard = false, status = "ready" }) {
+  const visible = items.filter((item) => item.state !== "dropped");
+  if (status === "loading") return <div className="hive-card hive-empty-project">Loading the Wanted list.</div>;
+  if (!visible.length) return <div className="hive-card hive-empty-project">Nothing on the Wanted list yet.</div>;
   return (
-    <div className="hive-project-doc-markdown">
-      {blocks.map((block, index) => {
-        if (block.type === "heading") {
-          const Heading = `h${Math.min(Math.max(block.level + 1, 3), 5)}`;
-          return <Heading key={`${block.type}-${index}`}>{block.text}</Heading>;
-        }
-        if (block.type === "rule") return <hr key={`${block.type}-${index}`} />;
-        if (block.type === "code") return <pre key={`${block.type}-${index}`}>{block.text}</pre>;
-        if (block.type === "ordered") {
-          return (
-            <ol key={`${block.type}-${index}`}>
-              {block.items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{item}</li>)}
-            </ol>
-          );
-        }
-        if (block.type === "unordered") {
-          return (
-            <ul key={`${block.type}-${index}`}>
-              {block.items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`}>{item}</li>)}
-            </ul>
-          );
-        }
-        if (block.type === "table") {
-          const columnCount = Math.max(block.header.length, ...block.rows.map((row) => row.length));
-          const cellsFor = (row) => Array.from({ length: columnCount }, (_, cellIndex) => row[cellIndex] || "");
-          return (
-            <div className="hive-report-table-wrap" key={`${block.type}-${index}`}>
-              <table>
-                <thead>
-                  <tr>
-                    {cellsFor(block.header).map((cell, cellIndex) => <th key={`${index}-head-${cellIndex}`}>{cell}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {block.rows.map((row, rowIndex) => (
-                    <tr key={`${index}-row-${rowIndex}`}>
-                      {cellsFor(row).map((cell, cellIndex) => <td key={`${index}-${rowIndex}-${cellIndex}`}>{cell}</td>)}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          );
-        }
-        return <p key={`${block.type}-${index}`}>{block.text}</p>;
-      })}
-    </div>
-  );
-}
-
-function markdownPreview(markdown = "", max = 260) {
-  const blocks = visibleMemoBlocks(markdown);
-  let text = "";
-  for (const block of blocks) {
-    if (block.type === "paragraph") {
-      text = block.text;
-      break;
-    }
-    if (block.type === "unordered" || block.type === "ordered") {
-      const items = block.items || [];
-      if (items.length) {
-        text = items.slice(0, 2).join(" ");
-        break;
-      }
-    }
-  }
-  const compact = String(text || "").replace(/\s+/g, " ").trim();
-  if (!compact) return "";
-  return compact.length <= max ? compact : `${compact.slice(0, max - 1).trimEnd()}...`;
-}
-
-function ProjectStatusDocument({ document, memo }) {
-  const statusKey = memo?.id || memo?.generatedAt || document?.id || document?.createdAt || "";
-  const [expanded, setExpanded] = useState(true);
-  useEffect(() => {
-    setExpanded(true);
-  }, [statusKey]);
-  if (memo?.memoMarkdown) {
-    return (
-      <div className={`hive-project-doc is-secretary-memo ${expanded ? "is-expanded" : ""}`}>
-        <button
-          aria-expanded={expanded}
-          className="hive-project-doc-toggle"
-          onClick={() => setExpanded((open) => !open)}
-          type="button"
-        >
-          <span>
-            <strong>Project Status</strong>
-            {memo.generatedAt && <time>{formatContextTime(memo.generatedAt)}</time>}
-          </span>
-          <ChevronDown className={expanded ? "is-open" : ""} size={16} strokeWidth={1.8} />
-        </button>
-        {!expanded && (
-          <div className="hive-project-doc-preview">
-            <p>{markdownPreview(memo.memoMarkdown) || "Open for the latest GLM board secretary memo."}</p>
+    <div className="hive-card hive-wanted">
+      {visible.map((item) => (
+        <div className={`hive-wanted-row is-${item.state}`} key={item.id}>
+          <span className="hive-wanted-state">{WANTED_STATE_LABEL[item.state] || item.state}</span>
+          <div className="hive-wanted-body">
+            <strong>{item.title}</strong>
+            <p>{item.why}</p>
+            <small>
+              {showBoard && item.boardName ? <span>{item.boardName} · </span> : null}
+              <a href={item.sourceUrl} rel="noreferrer" target="_blank">Why: source</a>
+              {item.rewardPft > 0 ? <span> · up to {formatPft(item.rewardPft)}</span> : null}
+              {item.taskId && onOpenTask ? (
+                <span>
+                  {" · "}
+                  <button className="hive-link-button" onClick={() => onOpenTask(hiveTaskSeed({ taskId: item.taskId, title: item.title, state: item.taskStatus, projectId: item.boardId, project: item.boardName || "" }))} type="button">
+                    View task
+                  </button>
+                </span>
+              ) : null}
+            </small>
           </div>
-        )}
-        {expanded && (
-          <MarkdownMemoBody markdown={memo.memoMarkdown} />
-        )}
-      </div>
-    );
-  }
-  if (!document) {
-    return (
-      <div className="hive-project-doc is-empty">
-        <span>Project Status</span>
-        <p>Project status has not been generated yet.</p>
-      </div>
-    );
-  }
-  return (
-    <div className={`hive-project-doc ${expanded ? "is-expanded" : ""}`}>
-      <button
-        aria-expanded={expanded}
-        className="hive-project-doc-toggle"
-        onClick={() => setExpanded((open) => !open)}
-        type="button"
-      >
-        <span>
-          <strong>Project Status</strong>
-          {document.createdAt && <time>{formatContextTime(document.createdAt)}</time>}
-        </span>
-        <ChevronDown className={expanded ? "is-open" : ""} size={16} strokeWidth={1.8} />
-      </button>
-      <div className="hive-project-doc-preview">
-        {document.summary && <p>{document.summary}</p>}
-        {expanded && document.projectStatus && <p>{document.projectStatus}</p>}
-      </div>
-      {expanded && (
-        <>
-          <ProjectDocList items={document.keyPoints} title="Key execution points" />
-          <ProjectDocList items={document.blockedOrUnclear} title="Blocked or unclear" />
-          <ProjectDocList items={document.nextActions} title="Next actions" />
-        </>
-      )}
+        </div>
+      ))}
     </div>
   );
 }

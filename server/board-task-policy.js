@@ -35,24 +35,61 @@ export function boardRoutingCandidates(board, contributors) {
     (!handles.length || handles.includes(String(member.public_handle || "").toLowerCase())));
 }
 
-// An invitation, not an obligation. Idle contributors are not a defect and an
-// empty board is a normal state: the manager routes only when it can name real
-// work inside the board's scope, and otherwise defers. Closed boards and
-// operator-issued boards never get one.
-export function routingDuty(board, contributors, openCount) {
+// Work comes from the Wanted list (operator decision, 2026-11-25).
+//
+// Every open item on an open board is a duty: hand it to the best-fit
+// contributor with a free slot, or record why it cannot be routed. "Nothing to
+// do" is not an answer while the list has open items. The item's preferred
+// owner, when set, is offered first. An item refused twice must be rewritten
+// or dropped before it is offered again.
+export async function wantedDuties(board, contributors, { queryImpl, listItems } = {}) {
+  if (!board) return [];
   const constraints = board.metadata_json?.routing_constraints || board.routing_constraints || {};
-  if (constraints.routing_disabled === true) return null;
-  if (!boardOpenForNewWork(board.id)) return null;
+  if (constraints.routing_disabled === true || !boardOpenForNewWork(board.id)) return [];
+  const list = listItems || (await import("./board-wanted.js")).listWantedItems;
+  const items = await list([board.id], queryImpl ? { queryImpl } : {});
   const candidates = boardRoutingCandidates(board, contributors);
-  if (!candidates.length) return null;
   const scope = boardWorkPolicy(board.id)?.workTypes || [];
-  return {
-    priority: 4,
-    type: "routing_due",
-    board_id: board.id,
-    candidate_ids: candidates.map((member) => member.account_id).sort(),
-    candidates,
-    open_count: openCount,
-    detail: `${candidates.length} contributor(s) have free capacity and this board has ${openCount} proposed or accepted tasks. Route a task only if you can name specific work inside this board's scope${scope.length ? ` (work types: ${scope.join(", ")})` : ""} that moves Task Node, NAVCoins, goodalexander or the L1. If there is none, record the duty as deferred. Never create a task to keep someone busy.`,
-  };
+  const duties = [];
+  for (const item of items) {
+    if (item.state === "rewrite") {
+      duties.push({
+        priority: 3,
+        type: "wanted_rewrite",
+        board_id: board.id,
+        wanted_id: item.id,
+        detail: `Wanted item ${item.id} "${item.title}" was refused or cancelled ${item.refusals} times. Work out why from the refusals, then rewrite it (bm wanted edit ${item.id} --title/--why/--source/--reward) or drop it (bm wanted drop ${item.id} --reason "..."). Completed when it is rewritten or dropped.`,
+      });
+      continue;
+    }
+    if (item.state !== "open" || !candidates.length) continue;
+    const preferred = item.preferredAccountId ? candidates.find((member) => member.account_id === item.preferredAccountId) : null;
+    const ordered = preferred ? [preferred, ...candidates.filter((member) => member !== preferred)] : candidates;
+    duties.push({
+      priority: 2,
+      type: "wanted_open",
+      board_id: board.id,
+      wanted_id: item.id,
+      candidate_ids: ordered.map((member) => member.account_id),
+      candidates: ordered.map((member) => ({
+        account_id: member.account_id,
+        public_handle: member.public_handle || "",
+        badges: member.badges || [],
+        delivery_wallet: member.delivery_wallet || "",
+        rewarded_tasks: member.rewarded_tasks || 0,
+        free_slots: member.free_slots,
+      })),
+      detail: [
+        `Wanted item ${item.id}: "${item.title}". Why: ${item.why} Source: ${item.sourceUrl}.`,
+        preferred
+          ? `Preferred owner: ${preferred.public_handle || preferred.account_id} (${preferred.account_id}, wallet ${preferred.delivery_wallet}). Give it to them.`
+          : item.preferredAccountId
+            ? `Its preferred owner ${item.preferredAccountId} has no free slot this round; pick the best other fit.`
+            : `Pick the one contributor whose badges and track record fit it best.`,
+        `Create its task: bm task create ${board.id} --wanted ${item.id} --account <id> --wallet <wallet> --need "<one or two plain sentences on what to do and the exact proof>"${item.workType ? ` --work-type ${item.workType}` : scope.length ? ` --work-type <one of ${scope.join(", ")}>` : ""}${item.rewardPft ? ` --reward-max ${item.rewardPft}` : ""} --execute.`,
+        `Record completed once the task is created. If it truly cannot be routed now, record blocked with the specific reason. Deferring is not allowed.`,
+      ].join(" "),
+    });
+  }
+  return duties;
 }

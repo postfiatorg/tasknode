@@ -86,7 +86,7 @@ export function trackRecurringBlockers(previous = {}, round) {
   for (const duty of round?.duties_json || []) {
     const result = round.results_json?.[duty.id];
     if (!result || result.outcome === "completed") continue;
-    // Routing is an invitation: declining it is never a blocker.
+    // Only progress duties (reviews, verifications, chat escalations) can stall.
     if (!PROGRESS_DUTY_TYPES.has(duty.type)) continue;
     const key = blockerKey(duty);
     const prior = previous?.[key];
