@@ -157,16 +157,34 @@ export function mintStepForPhase(phase = "idle") {
 
 // Server fallback copy written when the feedback reviewer fails
 // (server/profile-daily-airdrop.js). It carries no information, so the panel
-// hides it instead of showing three columns of filler.
+// hides it and shows the server's member-safe reason (feedbackNotice) instead.
 const AIRDROP_FALLBACK_FEEDBACK = new Set([
   "This airdrop uses the rewarded tasks in the lookback window.",
   "Detailed feedback is temporarily unavailable.",
   "No corrective action is being requested while feedback is unavailable.",
+  "The airdrop amount and payout status are shown above. Detailed task feedback is temporarily unavailable.",
 ]);
+const AIRDROP_FEEDBACK_GENERIC_NOTICE = "Detailed feedback is temporarily unavailable.";
 
 function airdropFeedbackText(value = "") {
   const text = String(value || "").trim();
   return text && !AIRDROP_FALLBACK_FEEDBACK.has(text) ? text : "";
+}
+
+export function airdropFeedbackView(airdrop = {}) {
+  const unavailable = airdrop?.feedbackStatus === "unavailable";
+  const columns = unavailable ? [] : [
+    ["What contributed", airdropFeedbackText(airdrop?.whatRaisedToday)],
+    ["What held it back", airdropFeedbackText(airdrop?.whatKeptItLower)],
+    ["Next step", airdropFeedbackText(airdrop?.toImproveTomorrow)],
+  ].filter(([, text]) => text);
+  const reasoning = unavailable ? "" : airdropFeedbackText(airdrop?.reasoningText);
+  // Older runs carry no status; their filler is recognised by text instead.
+  const fillerOnly = !columns.length && !reasoning && Boolean(String(airdrop?.reasoningText || "").trim());
+  const notice = unavailable || fillerOnly
+    ? String(airdrop?.feedbackNotice || "").trim() || AIRDROP_FEEDBACK_GENERIC_NOTICE
+    : "";
+  return { columns, reasoning, notice };
 }
 
 const PAYOUT_STATUS_TEXT = {
@@ -188,7 +206,7 @@ export function TodaysBriefing({ airdrop, error = "", loading = false, pftlExplo
         <h2>Daily airdrop</h2>
         <p>Scored from your rewarded work each day.</p>
       </div>
-      {airdrop && String(airdrop.reasoningText || "").trim() && (
+      {airdrop && airdropFeedbackView(airdrop).reasoning && (
         <div className="pf-section-actions">
           <button className="pf-text-button" onClick={() => setReasoningOpen((value) => !value)} type="button">
             {reasoningOpen ? "Hide reasoning" : "Full reasoning"}
@@ -220,11 +238,7 @@ export function TodaysBriefing({ airdrop, error = "", loading = false, pftlExplo
     ? Math.round(Math.min(100, Math.max(0, airdrop.retentionValueScore)))
     : null;
   const txHref = transactionExplorerHref(paidAirdrop?.txHash, pftlExplorerUrl);
-  const feedback = [
-    ["What contributed", airdropFeedbackText(airdrop.whatRaisedToday)],
-    ["What held it back", airdropFeedbackText(airdrop.whatKeptItLower)],
-    ["Next step", airdropFeedbackText(airdrop.toImproveTomorrow)],
-  ].filter(([, text]) => text);
+  const { columns: feedback, reasoning, notice: feedbackNotice } = airdropFeedbackView(airdrop);
 
   return (
     <section className="pf-section">
@@ -252,7 +266,8 @@ export function TodaysBriefing({ airdrop, error = "", loading = false, pftlExplo
           ))}
         </div>
       )}
-      {reasoningOpen && <p className="pf-reasoning tn-fadeIn">{airdrop.reasoningText}</p>}
+      {feedbackNotice && <p className="pf-muted pf-feedback-notice">{feedbackNotice} Your airdrop amount and payout are unaffected.</p>}
+      {reasoningOpen && reasoning && <p className="pf-reasoning tn-fadeIn">{reasoning}</p>}
     </section>
   );
 }

@@ -108,6 +108,7 @@
     "scripts/post-fiat-knowledge-smoke.mjs",
     "scripts/production-guards-smoke.mjs",
     "scripts/profile-daily-airdrop-debt-smoke.mjs",
+    "scripts/profile-daily-airdrop-feedback-render-smoke.mjs",
     "scripts/profile-daily-airdrop-feedback-smoke.mjs",
     "scripts/profile-daily-airdrop-issuance-smoke.mjs",
     "scripts/profile-daily-airdrop-packet-smoke.mjs",

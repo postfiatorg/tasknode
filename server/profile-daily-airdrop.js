@@ -12,6 +12,7 @@ import {
 } from "./repositories/profile-daily-airdrop.js";
 import { canonicalRewardedTaskProjectionSql } from "./repositories/task-projection-integrity.js";
 import { INFERENCE_MODELS, inferenceChatCompletion } from "./inference.js";
+import { dailyAirdropFeedbackErrorCode } from "./profile-daily-airdrop-feedback-notice.js";
 
 const PROMPT_PATH = "profile/daily_airdrop_v1.md";
 const PROMPT_VERSION = "daily_airdrop_v1";
@@ -316,40 +317,76 @@ export function dailyAirdropScoringPacket(packet = {}) {
   };
 }
 
-export async function reviewDailyAirdropFeedback({ packet, payoutFacts, model, env = process.env } = {}) {
+const FEEDBACK_ATTEMPTS = 2;
+const FEEDBACK_ATTEMPT_TIMEOUT_MS = 45_000;
+// Reasoning tokens count against max_tokens. With the gateway's default
+// reasoning, large packets spent the whole 900-token budget thinking and every
+// run ended inference_response_truncated (issue #356). The reviewer only
+// explains a payout that is already calculated, so it runs without reasoning,
+// like the public profile snapshot call.
+const FEEDBACK_MAX_TOKENS = 1400;
+
+function feedbackAttemptSummary(error) {
+  const attempts = Array.isArray(error?.attempts) ? error.attempts : [];
+  return attempts.slice(0, 4).map((attempt) => ({
+    provider: safeText(attempt?.provider, 40),
+    code: dailyAirdropFeedbackErrorCode(attempt),
+    httpStatus: Number.isFinite(Number(attempt?.httpStatus)) ? Number(attempt.httpStatus) : null,
+    latencyMs: Number.isFinite(Number(attempt?.latencyMs)) ? Number(attempt.latencyMs) : null,
+  }));
+}
+
+export async function reviewDailyAirdropFeedback({ packet, payoutFacts, model, env = process.env, attempts = FEEDBACK_ATTEMPTS } = {}) {
   let promptText = "";
   const fields = ["what_raised_today", "what_kept_it_lower", "to_improve_tomorrow", "reasoning_text"];
-  try {
-    promptText = loadPrompt("profile/daily_airdrop_feedback_v1.md");
-    const result = await inferenceChatCompletion({
-      env, capability: "strict_json", timeoutMs: 30_000, totalTimeoutMs: 30_000,
-      body: {
-        model, temperature: 0, max_tokens: 900,
-        messages: [
-          { role: "system", content: promptText },
-          { role: "user", content: JSON.stringify({ task_reward_packet: dailyAirdropScoringPacket(packet), payout_facts: payoutFacts }) },
-        ],
-        response_format: { type: "json_schema", json_schema: {
-          name: "daily_airdrop_feedback", strict: true,
-          schema: { type: "object", additionalProperties: false,
-            properties: Object.fromEntries(fields.map(field => [field, { type: "string" }])), required: fields },
-        } },
-      },
-    });
-    const parsed = parseJsonObject(result.text);
-    if (fields.some(field => typeof parsed[field] !== "string" || !parsed[field].trim())) throw new Error("daily_airdrop_feedback_invalid");
-    return { status: "completed", promptDigest: promptDigest(promptText), provider: result.provider, model: result.body?.model || model,
-      usage: result.body?.usage || {}, output: Object.fromEntries(fields.map(field => [field, safeText(parsed[field], field === "reasoning_text" ? 2500 : 1000)])) };
-  } catch {
-    // Optional prose must never block an earned payout or fall back to a harsh
-    // unreviewed explanation. Payment eligibility and arithmetic are unchanged.
-    return { status: "unavailable", promptDigest: promptDigest(promptText), output: {
+  const failures = [];
+  const maxAttempts = Math.min(Math.max(Number(attempts) || 1, 1), 3);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      promptText = promptText || loadPrompt("profile/daily_airdrop_feedback_v1.md");
+      const result = await inferenceChatCompletion({
+        env, capability: "strict_json", timeoutMs: FEEDBACK_ATTEMPT_TIMEOUT_MS, totalTimeoutMs: FEEDBACK_ATTEMPT_TIMEOUT_MS,
+        body: {
+          model, temperature: 0, max_tokens: FEEDBACK_MAX_TOKENS,
+          reasoning: { effort: "none", exclude: true },
+          messages: [
+            { role: "system", content: promptText },
+            { role: "user", content: JSON.stringify({ task_reward_packet: dailyAirdropScoringPacket(packet), payout_facts: payoutFacts }) },
+          ],
+          response_format: { type: "json_schema", json_schema: {
+            name: "daily_airdrop_feedback", strict: true,
+            schema: { type: "object", additionalProperties: false,
+              properties: Object.fromEntries(fields.map(field => [field, { type: "string" }])), required: fields },
+          } },
+        },
+      });
+      const parsed = parseJsonObject(result.text);
+      if (fields.some(field => typeof parsed[field] !== "string" || !parsed[field].trim())) throw new Error("daily_airdrop_feedback_invalid");
+      return { status: "completed", promptDigest: promptDigest(promptText), provider: result.provider, model: result.body?.model || model,
+        usage: result.body?.usage || {}, attempts: attempt,
+        output: Object.fromEntries(fields.map(field => [field, safeText(parsed[field], field === "reasoning_text" ? 2500 : 1000)])) };
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  // Optional prose must never block an earned payout or fall back to a harsh
+  // unreviewed explanation. Payment eligibility and arithmetic are unchanged.
+  // The closed error code is kept so the profile can say why feedback is
+  // missing; it carries no upstream text, prompt or account data.
+  const last = failures.at(-1);
+  return { status: "unavailable", promptDigest: promptDigest(promptText), attempts: failures.length,
+    error: {
+      code: dailyAirdropFeedbackErrorCode(last),
+      status: Number.isFinite(Number(last?.status)) ? Number(last.status) : null,
+      attemptCodes: failures.map(dailyAirdropFeedbackErrorCode),
+      providerAttempts: feedbackAttemptSummary(last),
+    },
+    output: {
       what_raised_today: "This airdrop uses the rewarded tasks in the lookback window.",
       what_kept_it_lower: "Detailed feedback is temporarily unavailable.",
       to_improve_tomorrow: "No corrective action is being requested while feedback is unavailable.",
       reasoning_text: "The airdrop amount and payout status are shown above. Detailed task feedback is temporarily unavailable.",
     } };
-  }
 }
 
 export async function scoreDailyAirdropWithOpenRouter({ packet, promptText, model, maxDailyPft, env = process.env } = {}) {
