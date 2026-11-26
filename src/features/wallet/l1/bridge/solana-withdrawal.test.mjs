@@ -245,6 +245,10 @@ test("the withdrawal snapshot hands the screen the proving window of a closed or
     assert.equal(await withdrawalSnapshot(wallet, value => seen.push(value)), null);
     answer(200, { ok: true, ready: false });
     assert.equal(await withdrawalSnapshot(wallet, value => seen.push(value)), null);
-    assert.deepEqual(seen, [{ window, open: false }, { window, open: false }, { window: undefined, open: false }]);
+    // A failed read with no answer says so, so the screen can keep the last window it knew.
+    globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
+    assert.equal(await withdrawalSnapshot(wallet, value => seen.push(value)), null);
+    assert.deepEqual(seen, [{ window, open: false }, { window, open: false, answered: true }, { window: undefined, open: false },
+      { window: undefined, open: false, answered: false }]);
   } finally { globalThis.fetch = realFetch; }
 });

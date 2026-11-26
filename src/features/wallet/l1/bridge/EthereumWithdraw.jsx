@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { bridgeJson } from "./bridge-relay.js";
 import { amountAtoms } from "./controller.js";
 import { lineBalance } from "../market/model.js";
 import { Amount, Badge, Card, CardHead, KV, Mono, Notice, Spinner } from "../ui.jsx";
-import { readinessAnswer, readinessRefusal, windowTextAt } from "./proving-window.js";
+import { monotonicNow, readinessAnswer, readinessRefusal, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
 import { plainError } from "../format.js";
 
@@ -18,19 +18,30 @@ export default function EthereumWithdraw({ client }) {
   const [amount, setAmount] = useState(""), [recipient, setRecipient] = useState("");
   const [review, setReview] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [burn, setBurn] = useState(() => stored(client)), [job, setJob] = useState(null);
-  const refresh = useCallback(async () => {
+  // Readiness requests in the order they were made; while a window is known, an older answer that
+  // completes after a newer one has been stored does not replace it.
+  const order = useRef({ made: 0, stored: 0 });
+  const store = useCallback((made, next) => setReady(previous => {
+    if (made < order.current.stored && previous?.proving_window) return previous;
+    order.current.stored = Math.max(order.current.stored, made);
+    return next(previous);
+  }), []);
+  const refresh = useCallback(async (attempts = 3) => {
+    const made = ++order.current.made;
     try {
       // The payout service's chain read can fail briefly under a burst of page-load requests; retry before saying paused.
       let value;
       for (let attempt = 0; ; attempt++) {
-        try { value = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); if (value.ready || attempt >= 2) break; }
-        catch (failure) { if (attempt >= 2) throw failure; }
+        try { value = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); if (value.ready || attempt >= attempts - 1) break; }
+        catch (failure) { if (attempt >= attempts - 1) throw failure; }
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
-      setReady(readinessAnswer(value));
+      store(made, () => readinessAnswer(value));
       if (value.ready) { const balances = await client.getBalances(); setHeld(lineBalance(balances.assets, value.series_asset_id)); }
-    } catch (failure) { setReady(readinessRefusal(failure, plainError(failure.message))); }
-  }, [client]);
+    } catch (failure) { store(made, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous)); }
+  }, [client, store]);
+  // The window's automatic reads ask once; the scheduler in useProvingWindowClock spaces them.
+  const autoRefresh = useCallback(() => refresh(1), [refresh]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     if (!burn) return undefined;
@@ -61,9 +72,10 @@ export default function EthereumWithdraw({ client }) {
     try {
       // Every fresh readiness answer, also a refusal, replaces the stored one and its window.
       let fresh;
+      const made = ++order.current.made;
       try { fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); }
-      catch (failure) { setReady(readinessRefusal(failure, plainError(failure.message))); throw failure; }
-      setReady(readinessAnswer(fresh));
+      catch (failure) { store(made, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous)); throw failure; }
+      store(made, () => readinessAnswer(fresh));
       if (!fresh.ready) throw new Error(fresh.message || "Withdrawals are unavailable.");
       if (atoms > BigInt(fresh.bucket_outstanding_atoms)) throw new Error("This is more than the bridge currently holds for this deposit series.");
       const intent = { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: fresh.issuer, asset_id: fresh.asset_id, bucket_id: fresh.bucket_id, amount_atoms: Number(atoms), epoch: fresh.epoch, reserve_packet_hash: fresh.reserve_packet_hash, destination_ref: `${fresh.destination_prefix}${to}` } };
@@ -84,8 +96,8 @@ export default function EthereumWithdraw({ client }) {
   }
   function another() { try { localStorage.removeItem(key(client)); } catch { /* ignore */ } setBurn(""); setJob(null); setError(""); void refresh(); }
   const tracking = Boolean(burn);
-  const tick = useProvingWindowClock(ready?.proving_window, ready?.received_at, refresh, Boolean(ready?.ready));
-  const hours = ready && windowTextAt(ready.proving_window, { kind: "withdrawal", open: Boolean(ready.ready), receivedAt: ready.received_at, at: tick });
+  const tick = useProvingWindowClock(ready?.proving_window, ready?.received_at, autoRefresh, Boolean(ready?.ready), ready);
+  const hours = ready && windowTextAt(ready.proving_window, { kind: "withdrawal", open: Boolean(ready.ready), unknown: ready.unknown, receivedAt: ready.received_at, at: tick });
   return <section aria-label="USDC withdrawal" className="l1-view l1-split is-ticket">
     <div className="l1-stack">
       <Card className="l1-ticket">

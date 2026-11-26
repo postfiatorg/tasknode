@@ -125,7 +125,7 @@ function coveredSeries(ready) {
 // before any other check, so a wallet without a withdrawable balance still sees the right hours.
 export async function withdrawalSnapshot(client, onWindow) {
   const ready = await bridgeJson(ROOT + "/readiness", { signal: AbortSignal.timeout(45000) }).catch(failure => {
-    onWindow?.({ window: failure?.payload?.proving_window, open: false });
+    onWindow?.({ window: failure?.payload?.proving_window, open: false, answered: Boolean(failure?.payload) });
     return null;
   });
   if (ready) onWindow?.({ window: ready.proving_window, open: ready.ready === true });

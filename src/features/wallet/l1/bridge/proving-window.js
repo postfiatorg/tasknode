@@ -30,9 +30,12 @@ export function received(answer, at = monotonicNow()) {
   return answer && typeof answer === "object" ? { ...answer, received_at: at } : answer;
 }
 export const readinessAnswer = received;
-// A refused readiness request: its message, and the window of the refusal's own answer if any.
-export function readinessRefusal(failure, message, at = monotonicNow()) {
-  return received({ ready: false, message, proving_window: failure?.payload?.proving_window }, at);
+// A refused readiness request. An answer from the server, even a refusal, carries its own window
+// (or none). A failed read with no answer keeps the last good window and its clock, marked unknown,
+// so the hours and the countdown stay and only the claim that the route is open goes.
+export function readinessRefusal(failure, message, at = monotonicNow(), previous) {
+  if (failure?.payload || !previous?.proving_window) return received({ ready: false, message, proving_window: failure?.payload?.proving_window }, at);
+  return { ready: false, message, proving_window: previous.proving_window, received_at: previous.received_at, unknown: true };
 }
 
 // The server's time now: its clock in the answer plus the monotonic time since the answer arrived.
@@ -69,14 +72,15 @@ export function msUntilBoundary(window, nowMs = window?.now_unix_ms) {
   return nowMs < open ? open - nowMs : close - nowMs;
 }
 
-// kind: "deposit" or "withdrawal"; open: the route reports ready; nowMs: the server's time now;
-// ageMs: how old the answer is. Empty when no window is set.
-export function provingWindowText(window, { kind, open, timeZone, nowMs, ageMs = 0 } = {}) {
+// kind: "deposit" or "withdrawal"; open: the route reports ready; unknown: the last read failed;
+// nowMs: the server's time now; ageMs: how old the answer is. Empty when no window is set.
+export function provingWindowText(window, { kind, open, unknown = false, timeZone, nowMs, ageMs = 0 } = {}) {
   if (!validWindow(window)) return "";
   const now = Number.isFinite(nowMs) ? nowMs : window.now_unix_ms;
   const { inside, untilOpenMinutes } = windowPosition(window, now);
   const { open: opens, close: closes } = occurrence(window, now);
   if (open) return inside && ageMs <= STALE_MS ? `Open now until ${window.closes_utc} UTC (${localTime(closes, timeZone)} your time).` : "";
+  if (inside && unknown) return "";
   if (inside) return `This should be open now and is not. Nothing is lost; please try again later today or tomorrow from ${window.opens_utc} UTC.`;
   const what = kind === "deposit" ? "Deposits are" : "Withdrawals are";
   return `${what} open every day from ${window.opens_utc} to ${window.closes_utc} UTC (${localTime(opens, timeZone)} to ${localTime(closes, timeZone)} your time). `

@@ -114,3 +114,16 @@ test("the screens wake at the next opening, or at the closing while open", () =>
   assert.equal(msUntilBoundary(at(19, 0)), 22 * 3_600_000);
   assert.equal(msUntilBoundary(undefined), null);
 });
+
+test("a failed read without an answer keeps the last good window for the hours and drops only Open now", () => {
+  const good = readinessAnswer({ ready: true, proving_window: at(17, 30) }, 0);
+  const failed = readinessRefusal(new Error("offline"), "offline", 60_000, good);
+  assert.deepEqual([failed.ready, failed.unknown, failed.proving_window, failed.received_at], [false, true, good.proving_window, 0]);
+  const shown = (at) => windowTextAt(failed.proving_window, { kind: "withdrawal", open: false, unknown: failed.unknown, receivedAt: failed.received_at, at, ...zagreb });
+  // Inside the hours nothing is claimed either way; after the closing the hours and countdown remain.
+  assert.equal(shown(60_000), "");
+  assert.match(shown(90 * 60_000), /^Withdrawals are open every day from 17:00 to 19:00 UTC \(18:00 to 20:00 your time\)\. Next opening in 22 hours\./);
+  // An answer from the server, even a refusal without a window, is authoritative: the window goes.
+  const answered = readinessRefusal(Object.assign(new Error("closed"), { payload: { ok: false, ready: false } }), "closed", 60_000, good);
+  assert.equal(answered.proving_window, undefined);
+});

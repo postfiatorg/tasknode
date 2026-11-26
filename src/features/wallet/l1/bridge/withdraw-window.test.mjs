@@ -19,6 +19,7 @@ export function useState(init) {
   if (!(key in states)) states[key] = typeof init === "function" ? init() : init;
   return [states[key], (value) => { states[key] = typeof value === "function" ? value(states[key]) : value; }];
 }
+export function useRef(value) { const key = index++; if (!(key in states)) states[key] = { current: value }; return states[key]; }
 export function useCallback(fn) { index++; return fn; }
 export function useEffect(fn) { index++; effects.push(fn); }
 export function render(Component, props) { index = 0; effects.length = 0; return Component(props); }
