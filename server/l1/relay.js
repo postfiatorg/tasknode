@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { solanaPath } from './solana-bridge.js';
 import { registerL1Gateway } from './gateway.js';
+import { ownedShieldedRelay } from './owned-shielded-relay.js';
 import { localRpc } from './read-rpc.js';
 import { getNavcoinRegistry } from './navcoin-registry.js';
 import { L1_SERVER_READ_METHODS, relaySettings } from './release-config.js';
@@ -47,10 +48,12 @@ export function createRelayServer(env = process.env, injectedRead) {
   const registry = () => injectedRead ? Promise.reject(Error('unavailable')) : getNavcoinRegistry({ ...env, L1_RELAY_URL: '' });
   const warm = injectedRead ? null : setInterval(() => { registry().catch(() => {}); }, 10000);
   warm?.unref();
+  const shielded = ownedShieldedRelay(env, json);
   let activeReads = 0;
   const sockets = new Set();
   const server = createServer((req, res) => {
     if (!authorized(req)) { json(res, 401, { error: 'relay_auth_required' }); return; }
+    if (shielded(req, res)) return;
     if (req.url === '/health' && req.method === 'GET') { json(res, 200, { ok: true }); return; }
     if (req.url === '/registry' && req.method === 'GET') {
       registry().then(coins => {

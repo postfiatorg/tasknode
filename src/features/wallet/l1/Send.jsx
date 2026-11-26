@@ -71,6 +71,7 @@ export default function Send({ client }) {
   return <div className="l1-view l1-split is-even">
     <Card className="l1-ticket">
       <CardHead eyebrow="Transfer" title={`Send ${unit}`} />
+      <p className="l1-field-hint">Shielded payments are available in the Mac app on the owned test network.</p>
       <form style={{ display: 'grid', gap: 14 }} onSubmit={event => { event.preventDefault(); if (!busy) void quote(); }}>
         <label className="l1-field"><span>Asset</span><select aria-label="Asset to send" value={assetId} disabled={busy} onChange={e => { setAssetId(e.target.value); setReview(null); }}>
           <option value="">PFT</option>{lines.map(item => <option key={item.asset_id} value={item.asset_id}>PFUSDC{lines.length > 1 ? ` · ${item.asset_id.slice(0, 6)}` : ''}</option>)}</select>
