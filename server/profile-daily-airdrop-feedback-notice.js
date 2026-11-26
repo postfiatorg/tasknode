@@ -16,18 +16,22 @@ const NOTICE_BY_CODE = {
   daily_airdrop_feedback_invalid: "The feedback review returned an incomplete answer, so it was not shown.",
 };
 
-const SAFE_CODE = /^[a-z0-9_]{1,80}$/;
+const SAFE_CODE_CHARS = new Set("abcdefghijklmnopqrstuvwxyz0123456789_");
+
+function isSafeCode(code = "") {
+  return code.length > 0 && code.length <= 80 && [...code].every((char) => SAFE_CODE_CHARS.has(char));
+}
 
 export function dailyAirdropFeedbackErrorCode(error) {
   const code = String(error?.code || error?.message || "").trim();
-  return SAFE_CODE.test(code) ? code : "daily_airdrop_feedback_error";
+  return isSafeCode(code) ? code : "daily_airdrop_feedback_error";
 }
 
 export function dailyAirdropFeedbackNotice(feedbackReview = null) {
   if (!feedbackReview || feedbackReview.status !== "unavailable") return "";
   const code = String(feedbackReview.error?.code || "");
   if (NOTICE_BY_CODE[code]) return NOTICE_BY_CODE[code];
-  if (/^inference_http_5\d\d$/.test(code) || code === "daily_airdrop_feedback_error" || code.startsWith("inference_")) {
+  if (code === "daily_airdrop_feedback_error" || code.startsWith("inference_")) {
     return "The feedback service returned an error when this run was scored, so no written feedback was saved.";
   }
   return DAILY_AIRDROP_FEEDBACK_FALLBACK_NOTICE;
