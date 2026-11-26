@@ -58,6 +58,7 @@ export function cachedTaskDetailFromTask(task = {}, {
       verificationPolicy: task?.verificationPolicy || task?.verification?.policy || {},
     },
     currentVerificationRequest: null,
+    verificationRequestStatus: null,
     rewardOutcome: null,
     forensics: {
       source: task?.source || "task_list_projection",

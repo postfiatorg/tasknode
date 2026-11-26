@@ -180,3 +180,59 @@ for (const [transition, schema] of [
     assert.equal(event.payloadJson.evidence.value, "Producer evidence");
   });
 }
+
+// #347: direct-write submissions must record a reviewer-visible summary
+// without copying the private evidence body into public projections.
+test("direct-write submissions append an evidence summary without the evidence body", async () => {
+  const client = recordingClient();
+  const result = await applyOffchainTaskTransitionWithClient(client, {
+    accountId,
+    walletAddress,
+    task: { ...task, status: "accepted" },
+    transition: "submitted",
+    payload: {
+      evidence_items: [
+        { artifact_type: "url", value: "https://example.com/private-proof" },
+        { artifact_type: "text", value: "Private evidence body" },
+      ],
+    },
+  });
+  const projection = client.writes.find(({ sql }) => sql.includes("UPDATE task_projections"));
+  assert.match(projection.sql, /'submissionSummaries'/);
+  assert.match(projection.sql, /WHEN \$9::boolean AND \$14::jsonb IS NOT NULL/);
+  const summary = JSON.parse(projection.params[13]);
+  assert.deepEqual(summary, {
+    type: "Initial submission",
+    summary: "Initial submission recorded directly in Task Node with 2 evidence items (url, text).",
+    eventId: result.event.eventId,
+    cid: result.event.sourceCid,
+    txHash: result.event.sourceTxHash,
+    recordedAt: result.event.provenanceJson.recordedAt,
+    source: "direct_write",
+  });
+  assert.equal(projection.params[13].includes("private-proof"), false);
+  assert.equal(projection.params[13].includes("Private evidence body"), false);
+});
+
+test("verification responses copy only an explicit public summary", async () => {
+  const client = recordingClient();
+  await applyOffchainTaskTransitionWithClient(client, {
+    task: { ...task, status: "verification_requested" },
+    transition: "verification_response_submitted",
+    payload: { offchainPayload: { response: "Private answer", response_summary: "  Answered\nthe ask.  " } },
+  });
+  const projection = client.writes.find(({ sql }) => sql.includes("UPDATE task_projections"));
+  const summary = JSON.parse(projection.params[13]);
+  assert.equal(summary.type, "Verification response");
+  assert.equal(summary.summary, "Answered the ask.");
+  assert.equal(projection.params[13].includes("Private answer"), false);
+});
+
+for (const transition of ["accepted", "refused", "cancelled", "verification_requested", "rewarded"]) {
+  test(`${transition} records no submission summary`, async () => {
+    const client = recordingClient();
+    await applyOffchainTaskTransitionWithClient(client, { task, transition, payload: {} });
+    const projection = client.writes.find(({ sql }) => sql.includes("UPDATE task_projections"));
+    assert.equal(projection.params[13], null);
+  });
+}
