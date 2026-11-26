@@ -946,7 +946,8 @@ const server = createServer((req, res) => {
     .catch((error) => sendRequestFailure(req, res, url, error));
 });
 
-(await import("./l1/gateway.js")).registerL1Gateway(server, { getSession, sessionCookieName, cookieValue, json, readJson });
+const { getTerminalSessionByToken } = await import("./repositories/terminal-auth.js");
+(await import("./l1/gateway.js")).registerL1Gateway(server, { getSession, getTerminalSession: getTerminalSessionByToken, sessionCookieName, cookieValue, json, readJson });
 
 const processRole = tasknodeProcessRole();
 if (shouldStartBackgroundWorkers(processRole) || !shouldStartHttpServer(processRole)) {

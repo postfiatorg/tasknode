@@ -4,6 +4,7 @@ import { requestOriginFromBoundary } from '../trusted-proxy.js';
 import { l1Enabled, relaySettings, solanaWithdrawalOrigin } from './release-config.js';
 import { findCustodyMaterial } from '../../src/features/wallet/l1/lib/custody-boundary.js';
 import { handleBridgeRoutes } from './bridge-routes.js';
+import { handlePqRoutes } from './pq-routes.js';
 import { handleNavcoinRoutes } from './navcoin-routes.js';
 import { createHistoryReader } from './history.js';
 import { createSubmitRecovery } from './submit-recovery.js';
@@ -55,7 +56,7 @@ function validateRequest(request) {
   if (findCustodyMaterial(request.params).length) return 'l1_custody_material_rejected';
   return null;
 }
-export function registerL1Gateway(server, { getSession, sessionCookieName, cookieValue, json, readJson, env = process.env, recoverSubmit = createSubmitRecovery(env) }) {
+export function registerL1Gateway(server, { getSession, getTerminalSession = null, sessionCookieName, cookieValue, json, readJson, env = process.env, recoverSubmit = createSubmitRecovery(env) }) {
   const enabled = l1Enabled(env);
   const relay = enabled ? relaySettings(env) : null;
   const solanaOrigin = enabled && !relay ? solanaWithdrawalOrigin(env) : null;
@@ -65,7 +66,21 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
   const sessions = new Set();
   const readHistory = createHistoryReader(env);
   const handleProfile = createProfileHandler();
-  const authenticate = req => getSession(cookieValue(req, sessionCookieName));
+  const bearerHeader = req => {
+    const raw = String(req.headers.authorization || '').trim();
+    return raw.toLowerCase().startsWith('bearer ') ? raw.slice(7).trim() : '';
+  };
+  const authenticate = async (req, allowBearer = false) => {
+    if (allowBearer && getTerminalSession) {
+      const token = bearerHeader(req);
+      if (token) {
+        const terminal = await getTerminalSession(token);
+        if (terminal?.accountId) return { accountId: terminal.accountId, authenticated: true, viaBearer: true };
+        return null;
+      }
+    }
+    return getSession(cookieValue(req, sessionCookieName));
+  };
   const handlers = server.listeners('request');
   server.removeAllListeners('request');
   server.on('request', (req, res) => {
@@ -76,7 +91,8 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
     void (async () => {
       res.setHeader('cache-control', 'no-store');
       if (await handleProfile({ req, res, url, json })) return;
-      const session = await authenticate(req);
+      const pqPath = url.pathname.startsWith('/api/l1/pq/');
+      const session = await authenticate(req, pqPath);
       if (!signedIn(session)) { json(res, 401, { error: 'l1_login_required' }); return; }
       if (url.pathname === '/api/l1/history' && req.method === 'GET') {
         if (!readHistory) { json(res, 503, { error: 'History recovery is unavailable' }); return; }
@@ -84,7 +100,7 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
         catch (error) { json(res, 502, { error: error.message }); }
         return;
       }
-      if (!['GET', 'HEAD'].includes(req.method) && !sameOrigin(req, env)) { json(res, 403, { error: 'l1_origin_rejected' }); return; }
+      if (!['GET', 'HEAD'].includes(req.method) && !session.viaBearer && !sameOrigin(req, env)) { json(res, 403, { error: 'l1_origin_rejected' }); return; }
       const context = { req, res, url, session, json, readJson, proxyUrl: env.L1_WALLET_PROXY_URL || '' };
       if (url.pathname.startsWith('/api/l1/bridge/')) {
         const credential = await credentials;
@@ -92,6 +108,13 @@ export function registerL1Gateway(server, { getSession, sessionCookieName, cooki
         if (await handleBridgeRoutes({ ...context, env, solanaOrigin, bridgeProxyUrl: relay?.origin || env.L1_BRIDGE_PROXY_URL || '',
           proxyToken: relay?.token || credential.token, proxyOrigin: relay?.origin || env.L1_BRIDGE_PROXY_ORIGIN || proxyOrigin,
           bridgePathPrefix: relay ? '/api/l1/bridge' : '/api/bridge', withdrawViaRelay: Boolean(relay) })) return;
+      }
+      if (url.pathname.startsWith('/api/l1/pq/')) {
+        const credential = await credentials;
+        if (!credential) { json(res, 503, { error: 'l1_proxy_credential_unavailable' }); return; }
+        if (await handlePqRoutes({ ...context, bridgeProxyUrl: relay?.origin || env.L1_BRIDGE_PROXY_URL || '',
+          proxyToken: relay?.token || credential.token, proxyOrigin: relay?.origin || env.L1_BRIDGE_PROXY_ORIGIN || proxyOrigin,
+          pqPathPrefix: relay ? '/api/l1/pq' : '/api/private/v1/pq' })) return;
       }
       if (await handleNavcoinRoutes(context)) return;
       json(res, url.pathname === '/api/l1/rpc' ? 426 : 404, { error: url.pathname === '/api/l1/rpc' ? 'l1_websocket_required' : 'l1_route_not_found' });
