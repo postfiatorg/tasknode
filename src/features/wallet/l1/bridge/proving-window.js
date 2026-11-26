@@ -17,11 +17,17 @@ export function waitText(minutes) {
   return rest ? `${plural(hours, "hour")} ${plural(rest, "minute")}` : plural(hours, "hour");
 }
 
-// The given UTC minute of the server's current day, shown in the reader's time zone.
-function localTime(nowMs, minute, timeZone) {
+// The occurrence of the window that a sentence at nowMs talks about: today's until its closing,
+// tomorrow's after it. Each endpoint is its own instant.
+function occurrence(window, nowMs) {
   const day = Math.floor(nowMs / 86_400_000) * 86_400_000;
+  const open = day + window.open_minute * 60_000, close = day + window.close_minute * 60_000;
+  return nowMs >= close ? { open: open + 86_400_000, close: close + 86_400_000 } : { open, close };
+}
+
+function localTime(instant, timeZone) {
   return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", ...(timeZone && { timeZone }) })
-    .format(new Date(day + minute * 60_000));
+    .format(new Date(instant));
 }
 
 // Where the server's clock stands against the window: minutes since midnight UTC, whether it is
@@ -38,10 +44,10 @@ export function windowPosition(window) {
 export function provingWindowText(window, { kind, open, timeZone } = {}) {
   if (!validWindow(window)) return "";
   const { inside, untilOpenMinutes } = windowPosition(window);
-  const local = minute => localTime(window.now_unix_ms, minute, timeZone);
-  if (open) return inside ? `Open now until ${window.closes_utc} UTC (${local(window.close_minute)} your time).` : "";
+  const { open: opens, close: closes } = occurrence(window, window.now_unix_ms);
+  if (open) return inside ? `Open now until ${window.closes_utc} UTC (${localTime(closes, timeZone)} your time).` : "";
   if (inside) return `This should be open now and is not. Nothing is lost; please try again later today or tomorrow from ${window.opens_utc} UTC.`;
   const what = kind === "deposit" ? "Deposits are" : "Withdrawals are";
-  return `${what} open every day from ${window.opens_utc} to ${window.closes_utc} UTC (${local(window.open_minute)} to ${local(window.close_minute)} your time). `
+  return `${what} open every day from ${window.opens_utc} to ${window.closes_utc} UTC (${localTime(opens, timeZone)} to ${localTime(closes, timeZone)} your time). `
     + `Next opening in ${waitText(untilOpenMinutes)}. Your funds are safe in the meantime.`;
 }

@@ -58,3 +58,20 @@ test("waiting time in words", () => {
   assert.equal(waitText(61), "1 hour 1 minute");
   assert.equal(waitText(1439), "23 hours 59 minutes");
 });
+
+test("local hours are those of the occurrence the sentence names, across both summer-time changes", () => {
+  const window = (ms) => ({ ...at(10, 0), now_unix_ms: ms });
+  // 28 March 2026 after closing: tomorrow's window is in summer time (19:00 to 21:00 in Zagreb).
+  assert.match(provingWindowText(window(Date.UTC(2026, 2, 28, 19, 0)), { kind: "withdrawal", open: false, ...zagreb }),
+    /\(19:00 to 21:00 your time\)\. Next opening in 22 hours\./);
+  // Before opening on 28 March: today's window, still in winter time.
+  assert.match(provingWindowText(window(Date.UTC(2026, 2, 28, 16, 59)), { kind: "withdrawal", open: false, ...zagreb }), /\(18:00 to 20:00 your time\)/);
+  // 24 October 2026 after closing: tomorrow's window is back in winter time (18:00 to 20:00).
+  assert.match(provingWindowText(window(Date.UTC(2026, 9, 24, 19, 0)), { kind: "deposit", open: false, ...zagreb }), /\(18:00 to 20:00 your time\)/);
+  // While open, the closing is today's closing instant.
+  assert.equal(provingWindowText(window(Date.UTC(2026, 2, 28, 18, 59)), { kind: "deposit", open: true, ...zagreb }), "Open now until 19:00 UTC (20:00 your time).");
+  // A window whose endpoints straddle the change (00:30 to 01:30 UTC on 29 March; Zagreb moves at 01:00 UTC):
+  // each endpoint is formatted from its own instant.
+  const night = { opens_utc: "00:30", closes_utc: "01:30", open_minute: 30, close_minute: 90, now_unix_ms: Date.UTC(2026, 2, 28, 22, 0) };
+  assert.match(provingWindowText(night, { kind: "deposit", open: false, ...zagreb }), /\(01:30 to 03:30 your time\)\. Next opening in 2 hours 30 minutes\./);
+});
