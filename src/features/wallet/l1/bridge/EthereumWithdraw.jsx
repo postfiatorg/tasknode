@@ -4,6 +4,7 @@ import { bridgeJson } from "./bridge-relay.js";
 import { amountAtoms } from "./controller.js";
 import { lineBalance } from "../market/model.js";
 import { Amount, Badge, Card, CardHead, KV, Mono, Notice, Spinner } from "../ui.jsx";
+import { provingWindowText } from "./proving-window.js";
 import { plainError } from "../format.js";
 
 // PFUSDC -> USDC on Ethereum. The wallet signs one burn; the payout job needs no further signature.
@@ -27,7 +28,7 @@ export default function EthereumWithdraw({ client }) {
       }
       setReady(value);
       if (value.ready) { const balances = await client.getBalances(); setHeld(lineBalance(balances.assets, value.series_asset_id)); }
-    } catch (failure) { setReady({ ready: false, message: plainError(failure.message) }); }
+    } catch (failure) { setReady({ ready: false, message: plainError(failure.message), proving_window: failure.payload?.proving_window }); }
   }, [client]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
@@ -78,13 +79,15 @@ export default function EthereumWithdraw({ client }) {
   }
   function another() { try { localStorage.removeItem(key(client)); } catch { /* ignore */ } setBurn(""); setJob(null); setError(""); void refresh(); }
   const tracking = Boolean(burn);
+  const hours = ready && provingWindowText(ready.proving_window, { kind: "withdrawal", open: Boolean(ready.ready) });
   return <section aria-label="USDC withdrawal" className="l1-view l1-split is-ticket">
     <div className="l1-stack">
       <Card className="l1-ticket">
         <CardHead eyebrow="Convert" title="PFUSDC to USDC">
           {ready === null ? <Badge><Spinner size={12} />Checking</Badge> : <Badge tone={ready.ready ? "success" : "warning"} dot>{ready.ready ? "Withdrawals ready" : "Withdrawals unavailable"}</Badge>}
         </CardHead>
-        {ready && !ready.ready && <Notice tone="warning" title="Withdrawals are paused">{ready.message || "The payout service is not ready."}</Notice>}
+        {ready && !ready.ready && <Notice tone="warning" title="Withdrawals are paused">{ready.message || "The payout service is not ready."}{hours && <> {hours}</>}</Notice>}
+        {ready?.ready && hours && <p className="l1-small l1-muted" role="status">{hours}</p>}
         {!tracking && <form onSubmit={prepare} style={{ display: "grid", gap: 14 }}>
           <label className="l1-field"><span>PFUSDC to withdraw</span><span className="l1-input-wrap"><input aria-label="PFUSDC amount" inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={(event) => { setAmount(event.target.value); setReview(null); }} /><span className="l1-input-suffix">PFUSDC</span></span>
             <span className="l1-field-hint"><span>{held === null ? "" : <>Available from Ethereum deposits: <Amount atoms={held} unit="PFUSDC" /></>}</span><span className={tooMuch ? "is-danger" : ""}>{tooMuch ? "More than you hold" : "1 PFUSDC becomes 1 USDC."}</span></span></label>

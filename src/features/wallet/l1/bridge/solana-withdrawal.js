@@ -121,8 +121,14 @@ function coveredSeries(ready) {
 
 // One burn spends one batch, so each batch the wallet holds is its own option, largest first.
 // `held` is what one withdrawal can take: the largest batch. `total` is every batch together.
-export async function withdrawalSnapshot(client) {
-  const ready = await bridgeJson(ROOT + "/readiness", { signal: AbortSignal.timeout(45000) }).catch(() => null);
+// onWindow receives the readiness answer's proving window and whether the route reported ready,
+// before any other check, so a wallet without a withdrawable balance still sees the right hours.
+export async function withdrawalSnapshot(client, onWindow) {
+  const ready = await bridgeJson(ROOT + "/readiness", { signal: AbortSignal.timeout(45000) }).catch(failure => {
+    onWindow?.({ window: failure?.payload?.proving_window, open: false });
+    return null;
+  });
+  if (ready) onWindow?.({ window: ready.proving_window, open: ready.ready === true });
   if (ready?.ready !== true || ![ready.asset_id, ready.reserve_packet_hash].every(isBurnId)
       || !/^pf[0-9a-f]{40}$/.test(ready.issuer) || !Number.isSafeInteger(ready.epoch) || ready.epoch < 0
       || ready.destination_prefix !== MAINNET_PREFIX) return null;

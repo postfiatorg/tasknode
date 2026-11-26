@@ -230,3 +230,21 @@ test("second release: each covered batch the wallet holds is an option and one b
     assert.throws(() => withdrawalIntent(wallet, snapshot, "3.5", owner), /exceeds/);
   } finally { globalThis.fetch = realFetch; }
 });
+
+test("the withdrawal snapshot hands the screen the proving window of a closed or refused readiness answer", async () => {
+  const { withdrawalSnapshot } = await import("./solana-withdrawal.js");
+  const window = { opens_utc: "17:00", closes_utc: "19:00", open_minute: 1020, close_minute: 1140, now_unix_ms: Date.UTC(2026, 10, 26, 10, 0) };
+  const realFetch = globalThis.fetch;
+  const answer = (status, body) => { globalThis.fetch = async () => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }); };
+  const wallet = { address: "pf" + "1".repeat(40), call: async () => ({ ok: true, result: { assets: [] } }) };
+  try {
+    const seen = [];
+    answer(200, { ok: true, ready: false, message: "Solana withdrawals are not available yet", proving_window: window });
+    assert.equal(await withdrawalSnapshot(wallet, value => seen.push(value)), null);
+    answer(503, { ok: false, ready: false, code: "solana_withdrawals_unavailable", proving_window: window });
+    assert.equal(await withdrawalSnapshot(wallet, value => seen.push(value)), null);
+    answer(200, { ok: true, ready: false });
+    assert.equal(await withdrawalSnapshot(wallet, value => seen.push(value)), null);
+    assert.deepEqual(seen, [{ window, open: false }, { window, open: false }, { window: undefined, open: false }]);
+  } finally { globalThis.fetch = realFetch; }
+});

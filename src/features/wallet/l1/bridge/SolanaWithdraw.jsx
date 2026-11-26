@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
+import { provingWindowText } from "./proving-window.js";
 import { checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
 
 // Burns read from this wallet's chain history, so a withdrawal made in another browser can be tracked here.
@@ -26,10 +27,10 @@ export default function SolanaWithdraw({ client, storageKey }) {
   const [recipient, setRecipient] = useState(""), [amount, setAmount] = useState("");
   const [review, setReview] = useState(null), [busy, setBusy] = useState(false);
   const [burn, setBurn] = useState(() => savedBurn(storageKey)), [create, setCreate] = useState(false);
-  const [recovery, setRecovery] = useState("");
+  const [recovery, setRecovery] = useState(""), [provingWindow, setProvingWindow] = useState(undefined);
   const submitting = useRef(false);
   const refresh = useCallback(async () => {
-    try { setSnapshot(await withdrawalSnapshot(client)); }
+    try { setSnapshot(await withdrawalSnapshot(client, setProvingWindow)); }
     catch (failure) { setSnapshot(null); setError(`${failure.message} No funds moved.`); }
   }, [client]);
   useEffect(() => { if (!burn) void refresh(); }, [refresh, burn]);
@@ -117,6 +118,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
     catch { setError("Your browser could not clear the saved withdrawal. No new funds moved."); return; }
     setBurn(""); setCreate(false); setAmount(""); setRecovery(""); setError(""); setSnapshot(undefined);
   }
+  const hours = provingWindowText(provingWindow?.window, { kind: "withdrawal", open: provingWindow?.open === true });
   return <section aria-label="Solana USDC withdrawal" className="l1-view l1-split is-ticket"><Card className="l1-ticket">
     <CardHead eyebrow="Withdraw to Solana" title="PFUSDC to USDC" />
     {isBurnId(burn) ? <SolanaPayout burn={burn} owner={client.address} create={create} onDone={reset} /> : burn ? <div className="l1-stack">
@@ -126,7 +128,8 @@ export default function SolanaWithdraw({ client, storageKey }) {
       <button type="button" className="l1-btn" onClick={reset}>I verified that no burn was accepted</button>
       <WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} />
     </div> : snapshot === undefined ? <p role="status"><Spinner size={14} /> Loading your withdrawable balance…</p>
-      : !snapshot ? <><Notice tone="warning">{UNAVAILABLE}</Notice><WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} /></> : <>
+      : !snapshot ? <><Notice tone="warning">{UNAVAILABLE}{hours && provingWindow?.open !== true && <>. {hours}</>}</Notice><WalletBurns client={client} onTrack={id => { setError(""); track(id, false); }} /></> : <>
+        {hours && <p className="l1-muted" role="status">{hours}</p>}
         <p>You can withdraw up to <b><Amount atoms={snapshot.held} unit="PFUSDC" /></b> to Solana {snapshot.options.length > 1 ? "in one withdrawal" : "right now"}.</p>
         {snapshot.options.length > 1 && <p className="l1-muted">You hold <Amount atoms={snapshot.total} unit="PFUSDC" /> from Solana in {snapshot.options.length} deposit batches. One withdrawal draws from one batch, so withdraw the rest in a second withdrawal.</p>}
         {Array.isArray(snapshot.ready.buckets)

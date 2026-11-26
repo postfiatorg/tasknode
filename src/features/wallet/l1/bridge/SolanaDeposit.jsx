@@ -3,6 +3,7 @@ import { ArrowUpRight, FileCheck, Landmark, Wallet } from "lucide-react";
 import { amountAtoms } from "./controller.js";
 import { advanceDeposit, checkEarlier, pollDelay, readSaved, RECOVERY_POLL_MS, sendDeposit, setAside, solanaReadiness } from "./solana-session.js";
 import { Amount, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
+import { provingWindowText } from "./proving-window.js";
 import { ACTIVE, AmountField, Credited, DepositForm, DepositProgress, elapsedText, holdsForm, NotSent, phaseState } from "./DepositView.jsx";
 
 const stages = [["finality", "Solana finality"], ["capture", "Capture deposit"], ["witness", "Build witness"], ["proof", "Generate proof"],
@@ -106,7 +107,7 @@ export default function SolanaDeposit({ client, onBusy }) {
       try {
         const route = await solanaReadiness();
         if (!stopped) setReady(route);
-      } catch (failure) { if (!stopped) setReady({ ready: false, message: failure.message }); }
+      } catch (failure) { if (!stopped) setReady({ ready: false, message: failure.message, proving_window: failure.payload?.proving_window }); }
       if (!stopped) timer = setTimeout(refresh, 15000);
     }
     void refresh();
@@ -190,11 +191,13 @@ export default function SolanaDeposit({ client, onBusy }) {
       {busy && <p className="l1-status-line" role="status"><Spinner size={14} />Working… confirm in Phantom if it asks.</p>}
     </> },
   ];
+  const hours = ready && provingWindowText(ready.proving_window, { kind: "deposit", open: Boolean(ready.ready) });
   return <section aria-label="Solana USDC deposit" className="l1-view l1-split is-ticket">
     <div className="l1-stack">
       <DepositForm source="Solana" ready={Boolean(ready?.ready)} checking={ready === null} readyText={ready?.ready ? "Bridge ready" : "Bridge unavailable"} steps={steps}
         notices={<>
-          {ready && !ready.ready && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="Deposits are paused">{ready.message} Sending stays off until the bridge reports ready.</Notice></div>}
+          {ready && !ready.ready && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="Deposits are paused">{ready.message} Sending stays off until the bridge reports ready.{hours && <> {hours}</>}</Notice></div>}
+          {ready?.ready && hours && <p className="l1-muted" role="status">{hours}</p>}
           {state === "not-sent" && <div style={{ marginBottom: 16 }}><NotSent source="Solana" /></div>}
           {state === "in-flight" && <div style={{ marginBottom: 16 }}><Notice tone="warning" title="A deposit is still in progress">Your deposit of <Amount atoms={deposit.amount_atoms} unit="USDC" /> has not finished. The amount box unlocks when it is credited. Follow it under Deposit progress.</Notice></div>}
           {state === "failed" && <div style={{ marginBottom: 16 }}><Notice tone="danger" title="Your last deposit needs attention">See Deposit progress. Retry it there, or set it aside to send another.</Notice></div>}
