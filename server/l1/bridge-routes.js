@@ -1,5 +1,6 @@
 import { handleWithdrawal } from './withdrawal-routes.js';
 import { handleSolana } from './solana-bridge.js';
+import { PROVING_WINDOW_PATHS, withProvingWindow } from './proving-window.js';
 const ROOT = "/api/l1/bridge";
 const ROUTE = "ethereum-mainnet-usdc-v1";
 const FAUCET_SERVICE = (process.env.L1_FAUCET_SERVICE_URL || "http://127.0.0.1:18085").replace(/\/$/, "");
@@ -8,9 +9,12 @@ const JOB_FIELDS = new Set([
   "depositor", "amount_atoms", "idempotency_key", "route_profile_hash", "route_epoch", "route_binding",
 ]);
 
-export async function handleBridgeRoutes({ req, res, url, session, json, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "", bridgePathPrefix = "/api/bridge", withdrawViaRelay = false, solanaOrigin = null, env = process.env }) {
+export async function handleBridgeRoutes({ req, res, url, session, json: send, readJson, proxyUrl, bridgeProxyUrl, proxyToken = "", proxyOrigin = "", bridgePathPrefix = "/api/bridge", withdrawViaRelay = false, solanaOrigin = null, env = process.env }) {
   if (!url.pathname.startsWith(`${ROOT}/`)) return false;
   res.setHeader("Cache-Control", "no-store");
+  // Readiness answers, open or closed, name the daily proving window when one is configured.
+  const announce = req.method === "GET" && PROVING_WINDOW_PATHS.has(url.pathname.slice(ROOT.length));
+  const json = announce ? (target, status, payload) => send(target, status, withProvingWindow(payload, env)) : send;
   const fail = (status, code, message) => { json(res, status, { ok: false, ready: false, code, message }); return true; };
   if (!session?.accountId) return fail(401, "l1_login_required", "Sign in to use the bridge.");
   const suffix = url.pathname.slice(ROOT.length);
