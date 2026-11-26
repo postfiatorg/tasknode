@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { bridgeJson } from "./bridge-relay.js";
 import { amountAtoms } from "./controller.js";
 import { lineBalance } from "../market/model.js";
 import { Amount, Badge, Card, CardHead, KV, Mono, Notice, Spinner } from "../ui.jsx";
+import { monotonicNow, readinessAnswer, readinessOrder, readinessRefusal, windowTextAt } from "./proving-window.js";
+import { useProvingWindowClock } from "./use-proving-window.js";
 import { plainError } from "../format.js";
 
 // PFUSDC -> USDC on Ethereum. The wallet signs one burn; the payout job needs no further signature.
@@ -16,19 +18,39 @@ export default function EthereumWithdraw({ client }) {
   const [amount, setAmount] = useState(""), [recipient, setRecipient] = useState("");
   const [review, setReview] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [burn, setBurn] = useState(() => stored(client)), [job, setJob] = useState(null);
-  const refresh = useCallback(async () => {
+  // Every readiness request is numbered when it is made, and every write of its completion (the
+  // readiness, the balance read after it) goes through order.apply: nothing is written once a newer
+  // request's answer has been applied (see readinessOrder).
+  const order = useRef(null);
+  order.current ??= readinessOrder();
+  const store = useCallback((made, carries, next) => {
+    if (!order.current.apply(made, carries)) return false;
+    setReady(next);
+    return true;
+  }, []);
+  const refresh = useCallback(async (attempts = 3) => {
+    const made = order.current.next();
+    let carries = false;
     try {
       // The payout service's chain read can fail briefly under a burst of page-load requests; retry before saying paused.
       let value;
       for (let attempt = 0; ; attempt++) {
-        try { value = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); if (value.ready || attempt >= 2) break; }
-        catch (failure) { if (attempt >= 2) throw failure; }
+        try { value = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); if (value.ready || attempt >= attempts - 1) break; }
+        catch (failure) { if (attempt >= attempts - 1) throw failure; }
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
-      setReady(value);
-      if (value.ready) { const balances = await client.getBalances(); setHeld(lineBalance(balances.assets, value.series_asset_id)); }
-    } catch (failure) { setReady({ ready: false, message: plainError(failure.message) }); }
-  }, [client]);
+      carries = Boolean(value.proving_window);
+      if (!store(made, carries, () => readinessAnswer(value))) return;
+      if (value.ready) {
+        const balances = await client.getBalances();
+        if (order.current.apply(made, carries)) setHeld(lineBalance(balances.assets, value.series_asset_id));
+      }
+    } catch (failure) {
+      store(made, carries || Boolean(failure.payload?.proving_window), previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous));
+    }
+  }, [client, store]);
+  // The window's automatic reads ask once; the scheduler in useProvingWindowClock spaces them.
+  const autoRefresh = useCallback(() => refresh(1), [refresh]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     if (!burn) return undefined;
@@ -57,7 +79,20 @@ export default function EthereumWithdraw({ client }) {
   async function prepare(event) {
     event.preventDefault(); setError(""); setReview(null); setBusy(true);
     try {
-      const fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) });
+      // Once this screen has applied a window, a fresh readiness answer, also a refusal, replaces the
+      // stored one through the same ordering; an answer older than one already applied stops Review.
+      // A screen that never had a window keeps its earlier readiness, as before the window existed.
+      let fresh;
+      const made = order.current.next();
+      const stale = Error("The withdrawal's availability changed while it was checked. Review again.");
+      try { fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); }
+      catch (failure) {
+        const carries = Boolean(failure.payload?.proving_window);
+        if ((order.current.seen || carries) && !store(made, carries, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous))) throw stale;
+        throw failure;
+      }
+      const carries = Boolean(fresh.proving_window);
+      if ((order.current.seen || carries) && !store(made, carries, () => readinessAnswer(fresh))) throw stale;
       if (!fresh.ready) throw new Error(fresh.message || "Withdrawals are unavailable.");
       if (atoms > BigInt(fresh.bucket_outstanding_atoms)) throw new Error("This is more than the bridge currently holds for this deposit series.");
       const intent = { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: fresh.issuer, asset_id: fresh.asset_id, bucket_id: fresh.bucket_id, amount_atoms: Number(atoms), epoch: fresh.epoch, reserve_packet_hash: fresh.reserve_packet_hash, destination_ref: `${fresh.destination_prefix}${to}` } };
@@ -78,13 +113,16 @@ export default function EthereumWithdraw({ client }) {
   }
   function another() { try { localStorage.removeItem(key(client)); } catch { /* ignore */ } setBurn(""); setJob(null); setError(""); void refresh(); }
   const tracking = Boolean(burn);
+  const tick = useProvingWindowClock(ready?.proving_window, ready?.received_at, autoRefresh, Boolean(ready?.ready), ready);
+  const hours = ready && windowTextAt(ready.proving_window, { kind: "withdrawal", open: Boolean(ready.ready), unknown: ready.unknown, receivedAt: ready.received_at, at: tick });
   return <section aria-label="USDC withdrawal" className="l1-view l1-split is-ticket">
     <div className="l1-stack">
       <Card className="l1-ticket">
         <CardHead eyebrow="Convert" title="PFUSDC to USDC">
           {ready === null ? <Badge><Spinner size={12} />Checking</Badge> : <Badge tone={ready.ready ? "success" : "warning"} dot>{ready.ready ? "Withdrawals ready" : "Withdrawals unavailable"}</Badge>}
         </CardHead>
-        {ready && !ready.ready && <Notice tone="warning" title="Withdrawals are paused">{ready.message || "The payout service is not ready."}</Notice>}
+        {ready && !ready.ready && <Notice tone="warning" title="Withdrawals are paused">{ready.message || "The payout service is not ready."}{hours && <> {hours}</>}</Notice>}
+        {ready?.ready && hours && <p className="l1-small l1-muted" role="status">{hours}</p>}
         {!tracking && <form onSubmit={prepare} style={{ display: "grid", gap: 14 }}>
           <label className="l1-field"><span>PFUSDC to withdraw</span><span className="l1-input-wrap"><input aria-label="PFUSDC amount" inputMode="decimal" placeholder="0.00" value={amount} disabled={busy} onChange={(event) => { setAmount(event.target.value); setReview(null); }} /><span className="l1-input-suffix">PFUSDC</span></span>
             <span className="l1-field-hint"><span>{held === null ? "" : <>Available from Ethereum deposits: <Amount atoms={held} unit="PFUSDC" /></>}</span><span className={tooMuch ? "is-danger" : ""}>{tooMuch ? "More than you hold" : "1 PFUSDC becomes 1 USDC."}</span></span></label>
