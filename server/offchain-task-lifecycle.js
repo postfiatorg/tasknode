@@ -387,6 +387,21 @@ function currentVerificationRequestPatch(eventPayload = {}) {
 // summary of the event, never the evidence body: summaries are also rendered on
 // public Hive views, so only an explicit public summary is copied, matching
 // publicEvidenceExcerpt.
+// Regular expressions are not allowed on inference-reachable paths
+// (scripts/inference-no-regex-check.mjs), so runs of whitespace are collapsed
+// by hand. String.prototype.trim uses the same whitespace set as \s.
+function collapseWhitespace(text = "") {
+  let out = "";
+  let pendingSpace = false;
+  for (const char of String(text)) {
+    if (char.trim() === "") { pendingSpace = true; continue; }
+    if (pendingSpace && out) out += " ";
+    pendingSpace = false;
+    out += char;
+  }
+  return out;
+}
+
 function directSubmissionSummary({ transition = "", event = {} } = {}) {
   const normalizedTransition = safeText(transition, 80);
   if (!isSubmissionTransition(normalizedTransition)) return null;
@@ -405,7 +420,7 @@ function directSubmissionSummary({ transition = "", event = {} } = {}) {
     ...(verificationResponse
       ? [payload.response_summary, payload.responseSummary, evidence.response_summary, evidence.responseSummary]
       : []),
-  ].map((candidate) => safeText(candidate, 900).replace(/\s+/g, " ")).find(Boolean);
+  ].map((candidate) => collapseWhitespace(safeText(candidate, 900))).find(Boolean);
   const items = safeArray(payload.evidence_items).length > 0
     ? safeArray(payload.evidence_items)
     : Object.keys(evidence).length > 0 ? [evidence] : [];

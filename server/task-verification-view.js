@@ -43,9 +43,12 @@ const DEFAULT_VERIFICATION_REQUEST_STALL_SECONDS = 3600;
 const STALLED_FAILURE_COUNT = 3;
 const AWAITING_AGENT_ERROR = "awaiting_agent_verification_request";
 
+const ERROR_CODE_CHARS = new Set("abcdefghijklmnopqrstuvwxyz0123456789_");
+
 function errorCode(error = "") {
   if (!error) return "";
-  return /^[a-z0-9_]{1,120}$/.test(error) ? error : "verification_request_failed";
+  const safe = error.length <= 120 && [...error].every((char) => ERROR_CODE_CHARS.has(char));
+  return safe ? error : "verification_request_failed";
 }
 
 export function verificationRequestStallSeconds(env = process.env) {
