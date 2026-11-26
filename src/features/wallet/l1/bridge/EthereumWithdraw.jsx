@@ -70,12 +70,16 @@ export default function EthereumWithdraw({ client }) {
   async function prepare(event) {
     event.preventDefault(); setError(""); setReview(null); setBusy(true);
     try {
-      // Every fresh readiness answer, also a refusal, replaces the stored one and its window.
+      // While a window is known, a fresh readiness answer, also a refusal, replaces the stored one.
+      // Without a window the screen keeps its earlier readiness, as before the window existed.
       let fresh;
-      const made = ++order.current.made;
+      const made = ++order.current.made, windowed = Boolean(ready?.proving_window);
       try { fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); }
-      catch (failure) { store(made, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous)); throw failure; }
-      store(made, () => readinessAnswer(fresh));
+      catch (failure) {
+        if (windowed || failure.payload?.proving_window) store(made, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous));
+        throw failure;
+      }
+      if (windowed || fresh.proving_window) store(made, () => readinessAnswer(fresh));
       if (!fresh.ready) throw new Error(fresh.message || "Withdrawals are unavailable.");
       if (atoms > BigInt(fresh.bucket_outstanding_atoms)) throw new Error("This is more than the bridge currently holds for this deposit series.");
       const intent = { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: fresh.issuer, asset_id: fresh.asset_id, bucket_id: fresh.bucket_id, amount_atoms: Number(atoms), epoch: fresh.epoch, reserve_packet_hash: fresh.reserve_packet_hash, destination_ref: `${fresh.destination_prefix}${to}` } };
