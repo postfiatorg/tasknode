@@ -2,6 +2,9 @@
 // The window and the clock come from the server's readiness answer (`proving_window`); only the
 // local rendering of the hours uses the browser's time zone.
 const DAY = 24 * 60;
+const DAY_MS = 86_400_000;
+// An answer that says "open" is not repeated once it is older than this without a fresh one.
+export const STALE_MS = 10 * 60_000;
 
 function validWindow(window) {
   return window && Number.isInteger(window.open_minute) && Number.isInteger(window.close_minute)
@@ -17,12 +20,32 @@ export function waitText(minutes) {
   return rest ? `${plural(hours, "hour")} ${plural(rest, "minute")}` : plural(hours, "hour");
 }
 
+// A monotonic browser clock: the server's time is anchored to it when an answer arrives.
+export function monotonicNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+}
+
+// A readiness answer as stored by a screen: the answer and the monotonic time it arrived.
+export function received(answer, at = monotonicNow()) {
+  return answer && typeof answer === "object" ? { ...answer, received_at: at } : answer;
+}
+export const readinessAnswer = received;
+// A refused readiness request: its message, and the window of the refusal's own answer if any.
+export function readinessRefusal(failure, message, at = monotonicNow()) {
+  return received({ ready: false, message, proving_window: failure?.payload?.proving_window }, at);
+}
+
+// The server's time now: its clock in the answer plus the monotonic time since the answer arrived.
+function serverNow(window, receivedAt, at) {
+  return window.now_unix_ms + (Number.isFinite(receivedAt) && Number.isFinite(at) ? Math.max(0, at - receivedAt) : 0);
+}
+
 // The occurrence of the window that a sentence at nowMs talks about: today's until its closing,
 // tomorrow's after it. Each endpoint is its own instant.
 function occurrence(window, nowMs) {
-  const day = Math.floor(nowMs / 86_400_000) * 86_400_000;
+  const day = Math.floor(nowMs / DAY_MS) * DAY_MS;
   const open = day + window.open_minute * 60_000, close = day + window.close_minute * 60_000;
-  return nowMs >= close ? { open: open + 86_400_000, close: close + 86_400_000 } : { open, close };
+  return nowMs >= close ? { open: open + DAY_MS, close: close + DAY_MS } : { open, close };
 }
 
 function localTime(instant, timeZone) {
@@ -30,24 +53,39 @@ function localTime(instant, timeZone) {
     .format(new Date(instant));
 }
 
-// Where the server's clock stands against the window: minutes since midnight UTC, whether it is
-// inside, and the whole minutes until the next opening (rounded up).
-export function windowPosition(window) {
-  const minuteMs = (window.now_unix_ms % 86_400_000 + 86_400_000) % 86_400_000;
-  const minute = Math.floor(minuteMs / 60_000);
-  const inside = minute >= window.open_minute && minute < window.close_minute;
-  const untilOpen = ((window.open_minute * 60_000 - minuteMs) % 86_400_000 + 86_400_000) % 86_400_000;
+// Where the server's clock stands against the window: whether it is inside, and the whole minutes
+// until the next opening (rounded up).
+export function windowPosition(window, nowMs = window.now_unix_ms) {
+  const { open, close } = occurrence(window, nowMs);
+  const inside = nowMs >= open && nowMs < close;
+  const untilOpen = nowMs < open ? open - nowMs : open + DAY_MS - nowMs;
   return { inside, untilOpenMinutes: Math.ceil(untilOpen / 60_000) };
 }
 
-// kind: "deposit" or "withdrawal"; open: the route reports ready. Empty when no window is set.
-export function provingWindowText(window, { kind, open, timeZone } = {}) {
+// Milliseconds until the next opening, or until the closing while inside; null without a window.
+export function msUntilBoundary(window, nowMs = window?.now_unix_ms) {
+  if (!validWindow(window)) return null;
+  const { open, close } = occurrence(window, nowMs);
+  return nowMs < open ? open - nowMs : close - nowMs;
+}
+
+// kind: "deposit" or "withdrawal"; open: the route reports ready; nowMs: the server's time now;
+// ageMs: how old the answer is. Empty when no window is set.
+export function provingWindowText(window, { kind, open, timeZone, nowMs, ageMs = 0 } = {}) {
   if (!validWindow(window)) return "";
-  const { inside, untilOpenMinutes } = windowPosition(window);
-  const { open: opens, close: closes } = occurrence(window, window.now_unix_ms);
-  if (open) return inside ? `Open now until ${window.closes_utc} UTC (${localTime(closes, timeZone)} your time).` : "";
+  const now = Number.isFinite(nowMs) ? nowMs : window.now_unix_ms;
+  const { inside, untilOpenMinutes } = windowPosition(window, now);
+  const { open: opens, close: closes } = occurrence(window, now);
+  if (open) return inside && ageMs <= STALE_MS ? `Open now until ${window.closes_utc} UTC (${localTime(closes, timeZone)} your time).` : "";
   if (inside) return `This should be open now and is not. Nothing is lost; please try again later today or tomorrow from ${window.opens_utc} UTC.`;
   const what = kind === "deposit" ? "Deposits are" : "Withdrawals are";
   return `${what} open every day from ${window.opens_utc} to ${window.closes_utc} UTC (${localTime(opens, timeZone)} to ${localTime(closes, timeZone)} your time). `
     + `Next opening in ${waitText(untilOpenMinutes)}. Your funds are safe in the meantime.`;
+}
+
+// The text for a stored answer that arrived at receivedAt, read at the monotonic time at.
+export function windowTextAt(window, { receivedAt, at = monotonicNow(), ...options } = {}) {
+  if (!validWindow(window)) return "";
+  const age = Number.isFinite(receivedAt) ? Math.max(0, at - receivedAt) : 0;
+  return provingWindowText(window, { ...options, nowMs: serverNow(window, receivedAt, at), ageMs: age });
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
-import { provingWindowText } from "./proving-window.js";
+import { received, windowTextAt } from "./proving-window.js";
+import { useProvingWindowClock } from "./use-proving-window.js";
 import { checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
 
 // Burns read from this wallet's chain history, so a withdrawal made in another browser can be tracked here.
@@ -29,10 +30,12 @@ export default function SolanaWithdraw({ client, storageKey }) {
   const [burn, setBurn] = useState(() => savedBurn(storageKey)), [create, setCreate] = useState(false);
   const [recovery, setRecovery] = useState(""), [provingWindow, setProvingWindow] = useState(undefined);
   const submitting = useRef(false);
+  // Every readiness answer, also from Review and Confirm, replaces the stored window and its arrival time.
+  const onWindow = useCallback(value => setProvingWindow(received(value)), []);
   const refresh = useCallback(async () => {
-    try { setSnapshot(await withdrawalSnapshot(client, setProvingWindow)); }
+    try { setSnapshot(await withdrawalSnapshot(client, onWindow)); }
     catch (failure) { setSnapshot(null); setError(`${failure.message} No funds moved.`); }
-  }, [client]);
+  }, [client, onWindow]);
   useEffect(() => { if (!burn) void refresh(); }, [refresh, burn]);
   useEffect(() => {
     const sync = event => {
@@ -63,7 +66,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
     event.preventDefault();
     setBusy(true); setReview(null); setError("");
     try {
-      const fresh = await withdrawalSnapshot(client);
+      const fresh = await withdrawalSnapshot(client, onWindow);
       setSnapshot(fresh);
       if (!fresh) { setError("Review stopped before signing. No funds moved."); return; }
       await checkRecipient(recipient);
@@ -82,7 +85,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
     submitting.current = true; setBusy(true); setError(""); setReview(null);
     let submitted = false, marked = false;
     try {
-      const fresh = await withdrawalSnapshot(client);
+      const fresh = await withdrawalSnapshot(client, onWindow);
       setSnapshot(fresh);
       if (!fresh) { setError("Confirmation stopped before signing. No funds moved."); return; }
       await checkRecipient(recipient);
@@ -118,7 +121,8 @@ export default function SolanaWithdraw({ client, storageKey }) {
     catch { setError("Your browser could not clear the saved withdrawal. No new funds moved."); return; }
     setBurn(""); setCreate(false); setAmount(""); setRecovery(""); setError(""); setSnapshot(undefined);
   }
-  const hours = provingWindowText(provingWindow?.window, { kind: "withdrawal", open: provingWindow?.open === true });
+  const tick = useProvingWindowClock(provingWindow?.window, provingWindow?.received_at, burn ? undefined : refresh, provingWindow?.open === true);
+  const hours = windowTextAt(provingWindow?.window, { kind: "withdrawal", open: provingWindow?.open === true, receivedAt: provingWindow?.received_at, at: tick });
   return <section aria-label="Solana USDC withdrawal" className="l1-view l1-split is-ticket"><Card className="l1-ticket">
     <CardHead eyebrow="Withdraw to Solana" title="PFUSDC to USDC" />
     {isBurnId(burn) ? <SolanaPayout burn={burn} owner={client.address} create={create} onDone={reset} /> : burn ? <div className="l1-stack">

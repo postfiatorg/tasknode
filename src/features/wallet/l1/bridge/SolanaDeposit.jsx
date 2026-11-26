@@ -3,7 +3,8 @@ import { ArrowUpRight, FileCheck, Landmark, Wallet } from "lucide-react";
 import { amountAtoms } from "./controller.js";
 import { advanceDeposit, checkEarlier, pollDelay, readSaved, RECOVERY_POLL_MS, sendDeposit, setAside, solanaReadiness } from "./solana-session.js";
 import { Amount, Details, IdChip, KV, Mono, Notice, Spinner } from "../ui.jsx";
-import { provingWindowText } from "./proving-window.js";
+import { readinessAnswer, readinessRefusal, windowTextAt } from "./proving-window.js";
+import { useProvingWindowClock } from "./use-proving-window.js";
 import { ACTIVE, AmountField, Credited, DepositForm, DepositProgress, elapsedText, holdsForm, NotSent, phaseState } from "./DepositView.jsx";
 
 const stages = [["finality", "Solana finality"], ["capture", "Capture deposit"], ["witness", "Build witness"], ["proof", "Generate proof"],
@@ -106,13 +107,15 @@ export default function SolanaDeposit({ client, onBusy }) {
     async function refresh() {
       try {
         const route = await solanaReadiness();
-        if (!stopped) setReady(route);
-      } catch (failure) { if (!stopped) setReady({ ready: false, message: failure.message, proving_window: failure.payload?.proving_window }); }
+        if (!stopped) setReady(readinessAnswer(route));
+      } catch (failure) { if (!stopped) setReady(readinessRefusal(failure, failure.message)); }
       if (!stopped) timer = setTimeout(refresh, 15000);
     }
     void refresh();
     return () => { stopped = true; clearTimeout(timer); };
   }, []);
+  // The screen re-reads readiness every 15 seconds; the clock only advances the text in between.
+  const tick = useProvingWindowClock(ready?.proving_window, ready?.received_at, undefined, Boolean(ready?.ready));
 
   useEffect(() => {
     if (!deposit || busy || deposit.terminal) return undefined;
@@ -191,7 +194,7 @@ export default function SolanaDeposit({ client, onBusy }) {
       {busy && <p className="l1-status-line" role="status"><Spinner size={14} />Working… confirm in Phantom if it asks.</p>}
     </> },
   ];
-  const hours = ready && provingWindowText(ready.proving_window, { kind: "deposit", open: Boolean(ready.ready) });
+  const hours = ready && windowTextAt(ready.proving_window, { kind: "deposit", open: Boolean(ready.ready), receivedAt: ready.received_at, at: tick });
   return <section aria-label="Solana USDC deposit" className="l1-view l1-split is-ticket">
     <div className="l1-stack">
       <DepositForm source="Solana" ready={Boolean(ready?.ready)} checking={ready === null} readyText={ready?.ready ? "Bridge ready" : "Bridge unavailable"} steps={steps}

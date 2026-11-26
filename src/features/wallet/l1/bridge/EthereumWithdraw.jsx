@@ -4,7 +4,8 @@ import { bridgeJson } from "./bridge-relay.js";
 import { amountAtoms } from "./controller.js";
 import { lineBalance } from "../market/model.js";
 import { Amount, Badge, Card, CardHead, KV, Mono, Notice, Spinner } from "../ui.jsx";
-import { provingWindowText } from "./proving-window.js";
+import { readinessAnswer, readinessRefusal, windowTextAt } from "./proving-window.js";
+import { useProvingWindowClock } from "./use-proving-window.js";
 import { plainError } from "../format.js";
 
 // PFUSDC -> USDC on Ethereum. The wallet signs one burn; the payout job needs no further signature.
@@ -26,9 +27,9 @@ export default function EthereumWithdraw({ client }) {
         catch (failure) { if (attempt >= 2) throw failure; }
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
-      setReady(value);
+      setReady(readinessAnswer(value));
       if (value.ready) { const balances = await client.getBalances(); setHeld(lineBalance(balances.assets, value.series_asset_id)); }
-    } catch (failure) { setReady({ ready: false, message: plainError(failure.message), proving_window: failure.payload?.proving_window }); }
+    } catch (failure) { setReady(readinessRefusal(failure, plainError(failure.message))); }
   }, [client]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
@@ -58,7 +59,11 @@ export default function EthereumWithdraw({ client }) {
   async function prepare(event) {
     event.preventDefault(); setError(""); setReview(null); setBusy(true);
     try {
-      const fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) });
+      // Every fresh readiness answer, also a refusal, replaces the stored one and its window.
+      let fresh;
+      try { fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); }
+      catch (failure) { setReady(readinessRefusal(failure, plainError(failure.message))); throw failure; }
+      setReady(readinessAnswer(fresh));
       if (!fresh.ready) throw new Error(fresh.message || "Withdrawals are unavailable.");
       if (atoms > BigInt(fresh.bucket_outstanding_atoms)) throw new Error("This is more than the bridge currently holds for this deposit series.");
       const intent = { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: fresh.issuer, asset_id: fresh.asset_id, bucket_id: fresh.bucket_id, amount_atoms: Number(atoms), epoch: fresh.epoch, reserve_packet_hash: fresh.reserve_packet_hash, destination_ref: `${fresh.destination_prefix}${to}` } };
@@ -79,7 +84,8 @@ export default function EthereumWithdraw({ client }) {
   }
   function another() { try { localStorage.removeItem(key(client)); } catch { /* ignore */ } setBurn(""); setJob(null); setError(""); void refresh(); }
   const tracking = Boolean(burn);
-  const hours = ready && provingWindowText(ready.proving_window, { kind: "withdrawal", open: Boolean(ready.ready) });
+  const tick = useProvingWindowClock(ready?.proving_window, ready?.received_at, refresh, Boolean(ready?.ready));
+  const hours = ready && windowTextAt(ready.proving_window, { kind: "withdrawal", open: Boolean(ready.ready), receivedAt: ready.received_at, at: tick });
   return <section aria-label="USDC withdrawal" className="l1-view l1-split is-ticket">
     <div className="l1-stack">
       <Card className="l1-ticket">

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { provingWindowText, waitText } from "./proving-window.js";
+import { msUntilBoundary, provingWindowText, readinessAnswer, readinessRefusal, received, STALE_MS, waitText, windowTextAt } from "./proving-window.js";
 
 const at = (hour, minute) => ({ opens_utc: "17:00", closes_utc: "19:00", open_minute: 1020, close_minute: 1140,
   now_unix_ms: Date.UTC(2026, 10, 26, hour, minute) });
@@ -74,4 +74,43 @@ test("local hours are those of the occurrence the sentence names, across both su
   // each endpoint is formatted from its own instant.
   const night = { opens_utc: "00:30", closes_utc: "01:30", open_minute: 30, close_minute: 90, now_unix_ms: Date.UTC(2026, 2, 28, 22, 0) };
   assert.match(provingWindowText(night, { kind: "deposit", open: false, ...zagreb }), /\(01:30 to 03:30 your time\)\. Next opening in 2 hours 30 minutes\./);
+});
+
+test("the countdown advances from the server's clock with the monotonic browser clock", () => {
+  const answer = received({ ready: false, proving_window: at(16, 58) }, 1_000);
+  const text = (at) => windowTextAt(answer.proving_window, { kind: "withdrawal", open: false, receivedAt: answer.received_at, at, ...zagreb });
+  assert.match(text(1_000), /Next opening in 2 minutes\./);
+  assert.match(text(1_000 + 60_000), /Next opening in 1 minute\./);
+  assert.equal(text(1_000 + 120_000), "This should be open now and is not. Nothing is lost; please try again later today or tomorrow from 17:00 UTC.");
+  // The browser's own wall clock plays no part.
+  assert.equal(answer.received_at, 1_000);
+});
+
+test("an open answer stops saying Open now at closing and once it is older than ten minutes", () => {
+  const open = (window, at) => windowTextAt(window, { kind: "withdrawal", open: true, receivedAt: 0, at, ...zagreb });
+  assert.equal(open(at(18, 55), 0), "Open now until 19:00 UTC (20:00 your time).");
+  assert.equal(open(at(18, 55), 5 * 60_000), "");
+  assert.equal(open(at(17, 30), STALE_MS - 1), "Open now until 19:00 UTC (20:00 your time).");
+  assert.equal(open(at(17, 30), STALE_MS + 1), "");
+});
+
+test("a fresh readiness answer or refusal replaces the stored one, so a refusal removes Open now", () => {
+  const stored = readinessAnswer({ ready: true, proving_window: at(17, 30) }, 0);
+  assert.equal(windowTextAt(stored.proving_window, { kind: "withdrawal", open: stored.ready, receivedAt: stored.received_at, at: 0, ...zagreb }),
+    "Open now until 19:00 UTC (20:00 your time).");
+  const failure = Object.assign(new Error("payout service is closed"), { payload: { ok: false, ready: false, proving_window: at(17, 31) } });
+  const fresh = readinessRefusal(failure, "payout service is closed", 60_000);
+  assert.deepEqual([fresh.ready, fresh.message, fresh.received_at], [false, "payout service is closed", 60_000]);
+  assert.equal(windowTextAt(fresh.proving_window, { kind: "withdrawal", open: fresh.ready, receivedAt: fresh.received_at, at: 60_000, ...zagreb }),
+    "This should be open now and is not. Nothing is lost; please try again later today or tomorrow from 17:00 UTC.");
+  // A refusal without a window (an older server, a network error) carries none.
+  assert.equal(readinessRefusal(new Error("offline"), "offline", 0).proving_window, undefined);
+});
+
+test("the screens wake at the next opening, or at the closing while open", () => {
+  assert.equal(msUntilBoundary(at(16, 59)), 60_000);
+  assert.equal(msUntilBoundary(at(17, 0)), 2 * 3_600_000);
+  assert.equal(msUntilBoundary(at(18, 59)), 60_000);
+  assert.equal(msUntilBoundary(at(19, 0)), 22 * 3_600_000);
+  assert.equal(msUntilBoundary(undefined), null);
 });
