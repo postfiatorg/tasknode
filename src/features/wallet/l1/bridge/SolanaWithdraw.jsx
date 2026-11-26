@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Amount, Card, CardHead, KV, Notice, Spinner } from "../ui.jsx";
 import SolanaPayout from "./SolanaPayout.jsx";
-import { monotonicNow, received, windowTextAt } from "./proving-window.js";
+import { monotonicNow, readinessOrder, received, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
 import { checkRecipient, destinationRef, isBurnId, phantomAddress, savedBurn, submitBurn, UNAVAILABLE, walletBurns, withdrawalAtoms, withdrawalIntent, withdrawalSnapshot } from "./solana-withdrawal.js";
 
@@ -23,6 +23,8 @@ function WalletBurns({ client, onTrack }) {
   </div>;
 }
 
+const STALE = "The withdrawal's availability changed while it was checked. Review again.";
+
 export default function SolanaWithdraw({ client, storageKey }) {
   const [snapshot, setSnapshot] = useState(undefined), [error, setError] = useState("");
   const [recipient, setRecipient] = useState(""), [amount, setAmount] = useState("");
@@ -30,22 +32,30 @@ export default function SolanaWithdraw({ client, storageKey }) {
   const [burn, setBurn] = useState(() => savedBurn(storageKey)), [create, setCreate] = useState(false);
   const [recovery, setRecovery] = useState(""), [provingWindow, setProvingWindow] = useState(undefined);
   const submitting = useRef(false);
-  // Every readiness answer, also from Review and Confirm, replaces the stored window and its arrival
-  // time, unless a newer answer is already stored. A failed read with no answer keeps the last
-  // window and its clock and only drops "open".
-  const order = useRef({ made: 0, stored: 0 });
-  const onWindow = useCallback(() => {
-    const made = ++order.current.made;
-    return value => setProvingWindow(previous => {
-      if (made < order.current.stored && previous?.window) return previous;
-      order.current.stored = Math.max(order.current.stored, made);
-      return value.answered === false && previous?.window ? { ...previous, open: false, unknown: true, failed_at: monotonicNow() } : received(value);
-    });
-  }, []);
+  // Every readiness request, from refresh, Review and Confirm, is numbered when it is made, and every
+  // write of its completion (the window, the snapshot after the balance reads, the error) goes
+  // through may(): nothing is written once a newer request's answer has been applied (see
+  // readinessOrder). A failed read with no answer keeps the last window and its clock and only drops "open".
+  const order = useRef(null);
+  order.current ??= readinessOrder();
+  const request = useCallback(() => {
+    const n = order.current.next();
+    let carries = false;
+    const may = () => order.current.apply(n, carries);
+    const onWindow = value => {
+      carries = Boolean(value.window);
+      if (may()) setProvingWindow(previous => value.answered === false && previous?.window ? { ...previous, open: false, unknown: true, failed_at: monotonicNow() } : received(value));
+    };
+    // The snapshot of this request, or its failure; a failure of an answer older than one already
+    // applied is reported as a change, not as its own reason.
+    const read = () => withdrawalSnapshot(client, onWindow).catch(failure => { throw may() ? failure : Error(STALE); });
+    return { may, onWindow, read };
+  }, [client]);
   const refresh = useCallback(async () => {
-    try { setSnapshot(await withdrawalSnapshot(client, onWindow())); }
-    catch (failure) { setSnapshot(null); setError(`${failure.message} No funds moved.`); }
-  }, [client, onWindow]);
+    const { may, onWindow } = request();
+    try { const value = await withdrawalSnapshot(client, onWindow); if (may()) setSnapshot(value); }
+    catch (failure) { if (may()) { setSnapshot(null); setError(`${failure.message} No funds moved.`); } }
+  }, [client, request]);
   useEffect(() => { if (!burn) void refresh(); }, [refresh, burn]);
   useEffect(() => {
     const sync = event => {
@@ -76,7 +86,9 @@ export default function SolanaWithdraw({ client, storageKey }) {
     event.preventDefault();
     setBusy(true); setReview(null); setError("");
     try {
-      const fresh = await withdrawalSnapshot(client, onWindow());
+      const { may, read } = request();
+      const fresh = await read();
+      if (!may()) throw Error(STALE);
       setSnapshot(fresh);
       if (!fresh) { setError("Review stopped before signing. No funds moved."); return; }
       await checkRecipient(recipient);
@@ -95,7 +107,9 @@ export default function SolanaWithdraw({ client, storageKey }) {
     submitting.current = true; setBusy(true); setError(""); setReview(null);
     let submitted = false, marked = false;
     try {
-      const fresh = await withdrawalSnapshot(client, onWindow());
+      const { may, read } = request();
+      const fresh = await read();
+      if (!may()) throw Error(STALE);
       setSnapshot(fresh);
       if (!fresh) { setError("Confirmation stopped before signing. No funds moved."); return; }
       await checkRecipient(recipient);

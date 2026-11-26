@@ -93,3 +93,23 @@ export function windowTextAt(window, { receivedAt, at = monotonicNow(), ...optio
   const age = Number.isFinite(receivedAt) ? Math.max(0, at - receivedAt) : 0;
   return provingWindowText(window, { ...options, nowMs: serverNow(window, receivedAt, at), ageMs: age });
 }
+
+// One screen's readiness requests, numbered when they are made. apply(n, carries) is the one
+// decision every write of request n's completion goes through: it may write unless an answer of a
+// newer request has already been applied. The order is consulted only once the window is involved:
+// this screen has applied an answer with a window (and stays so after a later answer removes it), or
+// this answer carries one. A screen that never receives a window therefore applies every completion,
+// as it did before the window existed.
+export function readinessOrder() {
+  let made = 0, applied = 0, seen = false;
+  return {
+    next: () => ++made,
+    get seen() { return seen; },
+    apply(n, carries = false) {
+      if ((seen || carries) && n < applied) return false;
+      if (carries) seen = true;
+      if (n > applied) applied = n;
+      return true;
+    },
+  };
+}

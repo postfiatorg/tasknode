@@ -4,7 +4,7 @@ import { bridgeJson } from "./bridge-relay.js";
 import { amountAtoms } from "./controller.js";
 import { lineBalance } from "../market/model.js";
 import { Amount, Badge, Card, CardHead, KV, Mono, Notice, Spinner } from "../ui.jsx";
-import { monotonicNow, readinessAnswer, readinessRefusal, windowTextAt } from "./proving-window.js";
+import { monotonicNow, readinessAnswer, readinessOrder, readinessRefusal, windowTextAt } from "./proving-window.js";
 import { useProvingWindowClock } from "./use-proving-window.js";
 import { plainError } from "../format.js";
 
@@ -18,16 +18,19 @@ export default function EthereumWithdraw({ client }) {
   const [amount, setAmount] = useState(""), [recipient, setRecipient] = useState("");
   const [review, setReview] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [burn, setBurn] = useState(() => stored(client)), [job, setJob] = useState(null);
-  // Readiness requests in the order they were made; while a window is known, an older answer that
-  // completes after a newer one has been stored does not replace it.
-  const order = useRef({ made: 0, stored: 0 });
-  const store = useCallback((made, next) => setReady(previous => {
-    if (made < order.current.stored && previous?.proving_window) return previous;
-    order.current.stored = Math.max(order.current.stored, made);
-    return next(previous);
-  }), []);
+  // Every readiness request is numbered when it is made, and every write of its completion (the
+  // readiness, the balance read after it) goes through order.apply: nothing is written once a newer
+  // request's answer has been applied (see readinessOrder).
+  const order = useRef(null);
+  order.current ??= readinessOrder();
+  const store = useCallback((made, carries, next) => {
+    if (!order.current.apply(made, carries)) return false;
+    setReady(next);
+    return true;
+  }, []);
   const refresh = useCallback(async (attempts = 3) => {
-    const made = ++order.current.made;
+    const made = order.current.next();
+    let carries = false;
     try {
       // The payout service's chain read can fail briefly under a burst of page-load requests; retry before saying paused.
       let value;
@@ -36,9 +39,15 @@ export default function EthereumWithdraw({ client }) {
         catch (failure) { if (attempt >= attempts - 1) throw failure; }
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
-      store(made, () => readinessAnswer(value));
-      if (value.ready) { const balances = await client.getBalances(); setHeld(lineBalance(balances.assets, value.series_asset_id)); }
-    } catch (failure) { store(made, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous)); }
+      carries = Boolean(value.proving_window);
+      if (!store(made, carries, () => readinessAnswer(value))) return;
+      if (value.ready) {
+        const balances = await client.getBalances();
+        if (order.current.apply(made, carries)) setHeld(lineBalance(balances.assets, value.series_asset_id));
+      }
+    } catch (failure) {
+      store(made, carries || Boolean(failure.payload?.proving_window), previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous));
+    }
   }, [client, store]);
   // The window's automatic reads ask once; the scheduler in useProvingWindowClock spaces them.
   const autoRefresh = useCallback(() => refresh(1), [refresh]);
@@ -70,16 +79,20 @@ export default function EthereumWithdraw({ client }) {
   async function prepare(event) {
     event.preventDefault(); setError(""); setReview(null); setBusy(true);
     try {
-      // While a window is known, a fresh readiness answer, also a refusal, replaces the stored one.
-      // Without a window the screen keeps its earlier readiness, as before the window existed.
+      // Once this screen has applied a window, a fresh readiness answer, also a refusal, replaces the
+      // stored one through the same ordering; an answer older than one already applied stops Review.
+      // A screen that never had a window keeps its earlier readiness, as before the window existed.
       let fresh;
-      const made = ++order.current.made, windowed = Boolean(ready?.proving_window);
+      const made = order.current.next();
+      const stale = Error("The withdrawal's availability changed while it was checked. Review again.");
       try { fresh = await bridgeJson("/withdrawals/readiness", { signal: AbortSignal.timeout(45000) }); }
       catch (failure) {
-        if (windowed || failure.payload?.proving_window) store(made, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous));
+        const carries = Boolean(failure.payload?.proving_window);
+        if ((order.current.seen || carries) && !store(made, carries, previous => readinessRefusal(failure, plainError(failure.message), monotonicNow(), previous))) throw stale;
         throw failure;
       }
-      if (windowed || fresh.proving_window) store(made, () => readinessAnswer(fresh));
+      const carries = Boolean(fresh.proving_window);
+      if ((order.current.seen || carries) && !store(made, carries, () => readinessAnswer(fresh))) throw stale;
       if (!fresh.ready) throw new Error(fresh.message || "Withdrawals are unavailable.");
       if (atoms > BigInt(fresh.bucket_outstanding_atoms)) throw new Error("This is more than the bridge currently holds for this deposit series.");
       const intent = { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: fresh.issuer, asset_id: fresh.asset_id, bucket_id: fresh.bucket_id, amount_atoms: Number(atoms), epoch: fresh.epoch, reserve_packet_hash: fresh.reserve_packet_hash, destination_ref: `${fresh.destination_prefix}${to}` } };
