@@ -97,6 +97,7 @@ export default function EthereumWithdraw({ client }) {
       }
       carries = Boolean(fresh.proving_window);
       if ((order.current.seen || carries) && !store(made, carries, () => readinessAnswer(fresh), Boolean(fresh.ready))) throw OBSOLETE;
+      if (!still()) throw OBSOLETE;
       if (!fresh.ready) throw new Error(fresh.message || "Withdrawals are unavailable.");
       if (atoms > BigInt(fresh.bucket_outstanding_atoms)) throw new Error("This is more than the bridge currently holds for this deposit series.");
       const intent = { kind: "asset", operation: { operation: "vault_bridge_burn_to_redeem", owner: client.address, issuer: fresh.issuer, asset_id: fresh.asset_id, bucket_id: fresh.bucket_id, amount_atoms: Number(atoms), epoch: fresh.epoch, reserve_packet_hash: fresh.reserve_packet_hash, destination_ref: `${fresh.destination_prefix}${to}` } };

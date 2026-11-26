@@ -91,7 +91,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
     const { n, may, still, read, carries } = request(true);
     try {
       const fresh = await read();
-      if (!may()) throw OBSOLETE;
+      if (!may() || !still()) throw OBSOLETE;
       setSnapshot(fresh);
       if (!fresh) { setError("Review stopped before signing. No funds moved."); return; }
       await checkRecipient(recipient);
@@ -115,7 +115,7 @@ export default function SolanaWithdraw({ client, storageKey }) {
     const { may, still, read } = request(true);
     try {
       const fresh = await read();
-      if (!may()) throw OBSOLETE;
+      if (!may() || !still()) throw OBSOLETE;
       setSnapshot(fresh);
       if (!fresh) { setError("Confirmation stopped before signing. No funds moved."); return; }
       await checkRecipient(recipient);
