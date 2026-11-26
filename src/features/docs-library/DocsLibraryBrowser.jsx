@@ -1,6 +1,7 @@
+import { PromptStatsPanel } from "./PromptStatsPanel";
 import { useEffect, useRef, useState } from "react";
-import { Archive, ChevronDown, ChevronRight, Download, FileText, Folder, FolderInput, FolderPlus, Link2, LockKeyhole, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Share2, Table2, Trash2, Users, X } from "lucide-react";
-import { changeDocsLibrary, folderTrail } from "./docs-folders";
+import { Archive, ChevronDown, ChevronRight, Download, FileText, Folder, FolderInput, FolderPlus, Link2, LockKeyhole, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Share2, SquareTerminal, Table2, Trash2, Users, X } from "lucide-react";
+import { changeDocsLibrary, folderScope, folderTrail } from "./docs-folders";
 
 function ItemMenu({ label, children }) {
   const ref = useRef(null);
@@ -23,7 +24,7 @@ function ItemMenu({ label, children }) {
 }
 
 export function DocsLibraryBrowser({ documents, decrypted, library, folderId, onFolderChange, onLibraryChange,
-  busy, editorReady, onCreate, onOpen, onRename, onArchive, onShare, onTaskLink, onRefresh, onExport, children }) {
+  promptEvents = [], promptError = "", busy, editorReady, onCreate, onOpen, onRename, onArchive, onShare, onTaskLink, onRefresh, onExport, agentAccess, onPromptView, children }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [dialog, setDialog] = useState(null);
@@ -32,16 +33,25 @@ export function DocsLibraryBrowser({ documents, decrypted, library, folderId, on
   const [error, setError] = useState("");
   const modalRef = useRef(null);
   const openerRef = useRef(null);
-  const trail = folderTrail(library, folderId);
+  // My docs and Prompts each have their own folders. A folder made in one never shows in the other.
+  const [promptFolderId, setPromptFolderId] = useState("");
+  const scope = filter === "prompts" ? "prompts" : "docs";
+  const currentFolderId = scope === "prompts" ? promptFolderId : folderId;
+  const promptFolderIds = new Set(library.folders.filter((entry) => folderScope(entry) === "prompts").map((entry) => entry.id));
+  const trail = folderTrail(library, currentFolderId);
   const query = search.trim().toLocaleLowerCase();
-  const folders = library.folders.filter((entry) => filter === "all" &&
-    (query ? entry.name.toLocaleLowerCase().includes(query) : entry.parentId === folderId))
+  const folders = library.folders.filter((entry) => ["all", "prompts"].includes(filter) && folderScope(entry) === scope &&
+    (query ? entry.name.toLocaleLowerCase().includes(query) : entry.parentId === currentFolderId))
     .sort((a, b) => a.name.localeCompare(b.name));
   const visible = documents.filter((entry) => {
     if (filter === "archived" ? entry.status !== "archived" : entry.status === "archived") return false;
+    if (filter === "prompts" && decrypted[entry.documentId]?.documentType !== "prompt") return false;
     if (filter === "shared" && entry.owned && !entry.shares?.length && !entry.collaboratorCount) return false;
     if (query) return String(decrypted[entry.documentId]?.title || "").toLocaleLowerCase().includes(query);
-    return filter !== "all" || (library.placements[entry.documentId] || "") === folderId;
+    const placement = library.placements[entry.documentId] || "";
+    // A prompt filed in a Prompts folder lives there; every other prompt sits at the top of Prompts.
+    if (filter === "prompts") return (promptFolderIds.has(placement) ? placement : "") === promptFolderId;
+    return filter !== "all" || (!promptFolderIds.has(placement) && placement === folderId);
   });
 
   useEffect(() => {
@@ -51,23 +61,32 @@ export function DocsLibraryBrowser({ documents, decrypted, library, folderId, on
 
   function openDialog(next) {
     openerRef.current = document.activeElement?.closest("details")?.querySelector("summary") || document.activeElement;
+    const folder = next.kind === "folder" ? library.folders.find((entry) => entry.id === next.id) : null;
+    // Folder dialogs stay in the folder's own space; a document is filed in the space being viewed.
+    const dialogScope = folder ? folderScope(folder) : scope;
+    const placement = library.placements[next.id] ?? "";
     setName(next.name || "");
-    setDestination(next.kind === "folder" ? library.folders.find((entry) => entry.id === next.id)?.parentId || "" : library.placements[next.id] ?? "");
+    setDestination(folder ? folder.parentId || "" : promptFolderIds.has(placement) === (dialogScope === "prompts") ? placement : "");
     setError("");
-    setDialog(next);
+    setDialog({ ...next, scope: dialogScope });
   }
 
   async function submit(event) {
     event.preventDefault();
     try {
-      const change = { ...dialog, name, parentId: dialog.action === "create" ? folderId : destination };
+      const change = { ...dialog, name, parentId: dialog.action === "create" ? currentFolderId : destination };
       if (dialog.kind === "document" && dialog.action === "rename") {
         await onRename(documents.find((entry) => entry.documentId === dialog.id), name);
       } else {
         const next = changeDocsLibrary(library, change);
         await onLibraryChange(next);
       }
-      if (change.action === "remove" && change.id === folderId) onFolderChange(trail.at(-1)?.parentId || "");
+      if (change.action === "remove" && change.id === currentFolderId) {
+        if (scope === "prompts") setPromptFolderId(trail.at(-1)?.parentId || "");
+        else onFolderChange(trail.at(-1)?.parentId || "");
+      }
+      // Shared and Archived do not list folders, so a folder made there is shown in My docs.
+      if (change.action === "create" && !["all", "prompts"].includes(filter)) { setFilter("all"); setSearch(""); }
       setDialog(null);
     } catch (failure) { setError(failure.message); }
   }
@@ -78,6 +97,8 @@ export function DocsLibraryBrowser({ documents, decrypted, library, folderId, on
   }
 
   function browse(id) { onFolderChange(id); setSearch(""); setFilter("all"); }
+  function browsePrompts(id) { setPromptFolderId(id); setSearch(""); }
+  const openFolder = (entry) => (folderScope(entry) === "prompts" ? browsePrompts(entry.id) : browse(entry.id));
   const folderMenu = (entry) => <ItemMenu label={`Actions for ${entry.name}`}>
     <button onClick={() => openDialog({ action: "rename", kind: "folder", ...entry })}><Pencil size={15} />Rename</button>
     <button onClick={() => openDialog({ action: "move", kind: "folder", ...entry })}><FolderInput size={15} />Move folder</button>
@@ -93,44 +114,48 @@ export function DocsLibraryBrowser({ documents, decrypted, library, folderId, on
           <div className="docs-item-popover" onClick={(event) => { event.currentTarget.closest("details").open = false; }}>
             <button disabled={Boolean(busy) || !editorReady} onClick={() => onCreate("pad", folderId)}><FileText size={16} />New document</button>
             <button disabled={Boolean(busy) || !editorReady} onClick={() => onCreate("sheet", folderId)}><Table2 size={16} />New spreadsheet</button>
+            <button disabled={Boolean(busy) || !editorReady} onClick={() => onCreate("prompt", scope === "prompts" ? promptFolderId : folderId)}><SquareTerminal size={16} />New prompt</button>
             <button disabled={Boolean(busy)} onClick={() => openDialog({ action: "create", id: crypto.randomUUID() })}><FolderPlus size={16} />New folder</button>
           </div>
         </details>
       </header>
       <div className="docs-library-tools">
         <div className="docs-view-tabs" aria-label="Library view" role="group">
-          {[["all", "My docs"], ["shared", "Shared"], ["archived", "Archived"]].map(([id, label]) => <button aria-pressed={filter === id} key={id} onClick={() => { setFilter(id); setSearch(""); }} type="button">{label}</button>)}
+          {[["all", "My docs"], ["prompts", "Prompts"], ["shared", "Shared"], ["archived", "Archived"]].map(([id, label]) => <button aria-pressed={filter === id} key={id} onClick={() => { setFilter(id); setSearch(""); if (id === "prompts") onPromptView(); }} type="button">{label}</button>)}
         </div>
         <label className="docs-library-search"><Search size={16} /><input aria-label="Search documents and folders" placeholder="Search docs and folders" value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button aria-label="Clear search" onClick={() => setSearch("")}><X size={14} /></button>}</label>
         <button className="docs-refresh-button" aria-label="Refresh library" disabled={Boolean(busy)} onClick={onRefresh}><RefreshCw size={16} /></button>
       </div>
       {children}
+      {filter === "prompts" && promptError && <p className="docs-library-notice" role="status">{promptError}</p>}
       <div className="docs-location-row">
         <nav aria-label="Folder path" className="docs-breadcrumbs">
           <button onClick={() => browse("")}>My docs</button>
-          {filter !== "all" ? <><ChevronRight size={13} /><span>{filter === "shared" ? "Shared" : "Archived"}</span></> :
+          {filter === "prompts" ? <><ChevronRight size={13} /><button onClick={() => browsePrompts("")}>Prompts</button>{query ? <><ChevronRight size={13} /><span>Search results</span></> : trail.map((entry) => <span key={entry.id}><ChevronRight size={13} /><button onClick={() => browsePrompts(entry.id)}>{entry.name}</button></span>)}</> :
+            filter !== "all" ? <><ChevronRight size={13} /><span>{filter === "shared" ? "Shared" : "Archived"}</span></> :
             query ? <><ChevronRight size={13} /><span>Search results</span></> : trail.map((entry) => <span key={entry.id}><ChevronRight size={13} /><button onClick={() => browse(entry.id)}>{entry.name}</button></span>)}
         </nav>
-        {filter === "all" && !query && <button className="docs-add-folder" disabled={Boolean(busy)} onClick={() => openDialog({ action: "create", id: crypto.randomUUID() })}><FolderPlus size={15} />New folder</button>}
+        {["all", "prompts"].includes(filter) && !query && <button className="docs-add-folder" disabled={Boolean(busy)} onClick={() => openDialog({ action: "create", id: crypto.randomUUID() })}><FolderPlus size={15} />New folder</button>}
       </div>
       <section className="docs-file-list" aria-label="Documents and folders">
-        <div className="docs-list-columns"><span>Name</span><span>Access</span><span>Updated</span><span /></div>
+        <div className="docs-list-columns"><span>Name</span><span>{filter === "prompts" ? "Versions" : "Access"}</span><span>Updated</span><span /></div>
         {folders.map((entry) => <article className="docs-file-row docs-folder-row" key={entry.id}>
-          <button className="docs-file-name" onClick={() => browse(entry.id)}><span className="docs-file-icon folder"><Folder size={20} /></span><span><strong>{entry.name}</strong><small>{query ? folderTrail(library, entry.parentId).map((item) => item.name).join(" / ") || "My docs" : folderCount(entry)}</small></span></button>
+          <button className="docs-file-name" onClick={() => openFolder(entry)}><span className="docs-file-icon folder"><Folder size={20} /></span><span><strong>{entry.name}</strong><small>{query ? folderTrail(library, entry.parentId).map((item) => item.name).join(" / ") || (scope === "prompts" ? "Prompts" : "My docs") : folderCount(entry)}</small></span></button>
           <span className="docs-file-access">Only you</span><span className="docs-file-date">—</span>{folderMenu(entry)}
         </article>)}
         {visible.map((entry) => {
           const metadata = decrypted[entry.documentId];
           const title = metadata?.title || "Document unavailable";
+          const isPrompt = metadata?.documentType === "prompt";
           const isSheet = metadata?.documentType === "sheet" || metadata?.viewHref?.startsWith("/sheet/") || metadata?.editHref?.startsWith("/sheet/");
           const shared = !entry.owned || entry.shares?.length > 0 || entry.collaboratorCount > 0;
           return <article className="docs-file-row" key={entry.documentId}>
             <button className="docs-file-name" disabled={!metadata || !editorReady} onClick={() => onOpen(entry)}>
-              <span className={`docs-file-icon ${isSheet ? "sheet" : "document"}`}>{isSheet ? <Table2 size={20} /> : <FileText size={20} />}</span>
-              <span><strong>{title}</strong><small>{isSheet ? "Spreadsheet" : "Document"}{entry.taskIds?.length > 0 ? ` · ${entry.taskIds.length} linked ${entry.taskIds.length === 1 ? "task" : "tasks"}` : ""}{query && library.placements[entry.documentId] ? ` · ${folderTrail(library, library.placements[entry.documentId]).map((folder) => folder.name).join(" / ")}` : ""}</small></span>
+              <span className={`docs-file-icon ${isSheet ? "sheet" : isPrompt ? "prompt" : "document"}`}>{isSheet ? <Table2 size={20} /> : isPrompt ? <SquareTerminal size={20} /> : <FileText size={20} />}</span>
+              <span><strong>{title}</strong><small>{metadata?.documentType === "prompt" ? promptError ? (filter === "prompts" ? "Prompt · History unavailable" : "Prompt") : `Prompt · ${promptEvents.filter(event => event.documentId === entry.documentId && event.kind === "version_saved").length} saved versions` : isSheet ? "Spreadsheet" : "Document"}{entry.taskIds?.length > 0 ? ` · ${entry.taskIds.length} linked ${entry.taskIds.length === 1 ? "task" : "tasks"}` : ""}{query && library.placements[entry.documentId] ? ` · ${folderTrail(library, library.placements[entry.documentId]).map((folder) => folder.name).join(" / ")}` : ""}</small></span>
             </button>
             <span className="docs-file-access" title={entry.owned ? entry.shares?.map((grant) => `${grant.recipient.displayName} · ${grant.accessRole} · ${grant.status}`).join(", ") : `Shared by ${entry.owner.displayName}`}>
-              {shared && <Users size={13} />}{entry.owned ? shared ? `Shared${entry.shares?.some((grant) => grant.status === "pending") ? " · pending" : ""}` : "Only you" : entry.owner.displayName}
+              {filter === "prompts" ? (promptError ? "Unavailable" : promptEvents.filter(event => event.documentId === entry.documentId && event.kind === "version_saved").length) : <>{shared && <Users size={13} />}{entry.owned ? shared ? `Shared${entry.shares?.some((grant) => grant.status === "pending") ? " · pending" : ""}` : "Only you" : entry.owner.displayName}</>}
             </span>
             <time className="docs-file-date" dateTime={entry.updatedAt}>{entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—"}</time>
             <ItemMenu label={`Actions for ${title}`}>
@@ -144,15 +169,16 @@ export function DocsLibraryBrowser({ documents, decrypted, library, folderId, on
             </ItemMenu>
           </article>;
         })}
-        {!folders.length && !visible.length && <div className="docs-list-empty"><Folder size={30} /><h2>{query ? "No matches" : filter === "shared" ? "No shared documents yet" : filter === "archived" ? "No archived documents" : folderId ? "This folder is empty" : "Your work starts here"}</h2><p>{query ? "Try another name. Search includes all your folders." : filter === "all" ? "Create a document or spreadsheet, or move existing work here." : filter === "shared" ? "Documents you share or accept will appear here." : "Archived documents will appear here."}</p>{filter === "all" && !query && <button disabled={Boolean(busy) || !editorReady} onClick={() => onCreate("pad", folderId)}><Plus size={15} />New document</button>}</div>}
+        {!folders.length && !visible.length && <div className="docs-list-empty"><Folder size={30} /><h2>{query ? "No matches" : filter === "prompts" ? promptFolderId ? "This folder is empty" : "No prompts yet" : filter === "shared" ? "No shared documents yet" : filter === "archived" ? "No archived documents" : folderId ? "This folder is empty" : "Your work starts here"}</h2><p>{query ? "Try another name. Search includes all your folders." : filter === "all" ? "Create a document or spreadsheet, or move existing work here." : filter === "prompts" ? "Create a prompt from New to start your private library." : filter === "shared" ? "Documents you share or accept will appear here." : "Archived documents will appear here."}</p>{filter === "all" && !query && <button disabled={Boolean(busy) || !editorReady} onClick={() => onCreate("pad", folderId)}><Plus size={15} />New document</button>}</div>}
       </section>
-      <footer className="docs-library-footer"><span><LockKeyhole size={13} />End-to-end encrypted</span><button onClick={onExport}><Download size={13} />Export recovery</button></footer>
+      {filter === "prompts" && !promptError && <PromptStatsPanel events={promptEvents} />}
+      <footer className="docs-library-footer"><span><LockKeyhole size={13} />End-to-end encrypted</span><div className="prompt-library-secondary">{agentAccess}<button onClick={onExport}><Download size={13} />Export recovery</button></div></footer>
     </div>
     <dialog ref={modalRef} className="docs-folder-dialog" aria-labelledby="docs-organize-dialog-title" onCancel={(event) => { event.preventDefault(); if (!busy) setDialog(null); }}>
       {dialog && <form onSubmit={submit}>
         <div className="docs-folder-dialog-icon"><Folder size={24} /></div>
         <h2 id="docs-organize-dialog-title">{dialog.action === "create" ? "New folder" : dialog.action === "rename" ? dialog.kind === "document" ? "Rename document" : "Rename folder" : dialog.action === "move" ? "Move to folder" : "Remove folder?"}</h2>
-        {dialog.action === "move" ? <><p>Choose a home for “{dialog.name}”.</p><label>Destination<select autoFocus value={destination} onChange={(event) => setDestination(event.target.value)}><option value="">My docs</option>{library.folders.filter((entry) => dialog.kind !== "folder" || !folderTrail(library, entry.id).some((folder) => folder.id === dialog.id)).map((entry) => <option key={entry.id} value={entry.id}>{folderTrail(library, entry.id).map((folder) => folder.name).join(" / ")}</option>)}</select></label></> :
+        {dialog.action === "move" ? <><p>Choose a home for “{dialog.name}”.</p><label>Destination<select autoFocus value={destination} onChange={(event) => setDestination(event.target.value)}><option value="">{dialog.scope === "prompts" ? "Prompts" : "My docs"}</option>{library.folders.filter((entry) => folderScope(entry) === dialog.scope && (dialog.kind !== "folder" || !folderTrail(library, entry.id).some((folder) => folder.id === dialog.id))).map((entry) => <option key={entry.id} value={entry.id}>{folderTrail(library, entry.id).map((folder) => folder.name).join(" / ")}</option>)}</select></label></> :
           dialog.action === "remove" ? <p>Remove “{dialog.name}”? Its documents and subfolders move up one level. No documents are deleted.</p> : <><p>{dialog.kind === "document" ? "Give this document a name that is easy to find." : "Keep related work together. Folder names are private to you."}</p><label>{dialog.kind === "document" ? "Document name" : "Folder name"}<input autoFocus required maxLength={dialog.kind === "document" ? 180 : 100} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Research" /></label></>}
         {error && <p className="docs-folder-error" role="alert">{error}</p>}
         <div className="docs-folder-dialog-actions"><button type="button" disabled={Boolean(busy)} onClick={() => setDialog(null)}>Cancel</button><button className="docs-solid-button" disabled={Boolean(busy)} type="submit">{busy ? "Saving…" : dialog.action === "create" ? "Create folder" : dialog.action === "remove" ? "Remove folder" : dialog.action === "move" ? "Move" : "Save"}</button></div>

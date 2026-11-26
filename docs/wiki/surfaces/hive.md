@@ -92,9 +92,9 @@ see a nonblocking setup prompt. Messages explains the identity and provides a
 return link to Hive after activation. The composer clearly labels messages as
 public on Nostr; direct Messages remain encrypted.
 
-`@hive-board` is an automated participant. On new community activity, GLM 5.3
+`@hive-board` is an automated participant. On new community activity, DeepSeek V4.1 Flash
 Flash periodically decides whether to respond or escalate. It can remain
-silent. GLM 5.3 writes selected replies from public room messages, room facts
+silent. DeepSeek V4.1 Flash writes selected replies from public room messages, room facts
 and public board summaries. No private chats, memories, task evidence or
 legacy Hive conversations enter this context. The default check interval is
 60 seconds, with no model call for an idle room and no immediate model call
@@ -166,7 +166,7 @@ publish, or reward tasks.
 each Hive project About section. It runs in `worker-hive` hourly and writes a
 new memo only when the board's content changed and its last memo is at least
 6 hours old (`TASKNODE_HIVE_BOARD_SECRETARY_MIN_INTERVAL_SECONDS`). It uses
-Vercel `zai/glm-5.3`, and stores rows in
+Vercel `deepseek/deepseek-v4.1-flash-1017`, and stores rows in
 `hive_board_secretary_memos`. The worker is advisory only. It cannot create
 tasks, cancel tasks, send user messages, change rewards, mark work resolved, or
 mutate project state.
@@ -260,10 +260,10 @@ Report inputs are existing durable facts: `account_network_badges` for roles,
 `task_projections` for active/rewarded Network Tasks, `network_projects` and
 their task mirrors for dynamic projects, and `hive_context_entries` for Hive
 chat. The builders use the configured Vercel Hive report model with high
-reasoning effort in production; the `hive_intelligence` builder uses GLM 5.3
+reasoning effort in production; the `hive_intelligence` builder uses DeepSeek V4.1 Flash
 `xhigh` reasoning by default through
 `TASKNODE_HIVE_INTELLIGENCE_REPORT_REASONING_EFFORT`. The
-`board_manager_planning` builder uses GLM 5.3 `high` reasoning by default
+`board_manager_planning` builder uses DeepSeek V4.1 Flash `high` reasoning by default
 through `TASKNODE_BOARD_MANAGER_PLANNING_REPORT_REASONING_EFFORT` and gets a
 larger default visible output budget through
 `TASKNODE_BOARD_MANAGER_PLANNING_REPORT_MAX_TOKENS`. `TASKNODE_HIVE_REPORT_PROVIDER_MOCK=true
@@ -620,9 +620,9 @@ The production app does not import design mocks, and the app route is implemente
 - `src/features/hive/hive.css` contains the isolated styling for the surface.
 - `src/main.jsx` registers `#hive`, adds the sidebar entry, and lazy-loads the view.
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
-- `server/hive-board-secretary-worker.js` runs the advisory per-board GLM 5.3 memo writer (changed boards only, at most every 6 hours).
+- `server/hive-board-secretary-worker.js` runs the advisory per-board DeepSeek V4.1 Flash memo writer (changed boards only, at most every 6 hours).
 - `server/repositories/hive-board-secretary.js` builds deterministic board-scoped packets, truncates rewarded task evidence, persists current memo rows, and exposes public memo reads for Hive projects.
-- `server/hive-board-secretary-provider.js` calls Vercel `zai/glm-5.3` for Project Status Markdown.
+- `server/hive-board-secretary-provider.js` calls Vercel `deepseek/deepseek-v4.1-flash-1017` for Project Status Markdown.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
 - `server/profile-daily-airdrop-worker.js` runs recurring Daily Airdrop scoring/issuance when enabled and records internal `daily_airdrop` cards into the Hive Mind Agent feed.
 - `server/repositories/board-manager-health.js` computes `boardActionPressure`, including empty active project and stopped Network Task pressure.
@@ -707,8 +707,8 @@ flowchart LR
   HiveInput[Legacy agent context and project comments] --> HiveContext[Hive Context Entries]
   Group[Public Hive group] <--> Relay[Nostr thread]
   Relay <--> Outbox[Signed event projection and outbox]
-  Outbox --> Flash[Periodic GLM 5.3 Flash]
-  Flash --> Reply[GLM 5.3 public reply]
+  Outbox --> Flash[Periodic DeepSeek V4.1 Flash]
+  Flash --> Reply[DeepSeek V4.1 Flash public reply]
   Reply --> Outbox
   Flash --> Inbox[Durable board inbox]
   Inbox --> Kimi[Production Kimi K3 TUI]

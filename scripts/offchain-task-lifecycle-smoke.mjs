@@ -110,6 +110,8 @@ assert.deepEqual(updateCall.params[9], [
   "rerouted",
   "failed",
   "completed",
+  "reinstatement_completed",
+  "reinstatement_superseded",
   "rewarded",
 ]);
 assert.equal(updateCall.params[10], "evt_smoke_submission");

@@ -15,8 +15,12 @@ Or tell the agent "Connect me to Task Node" and paste the line from `https://tas
 The installer finds Claude Code, Codex, Hermes, Pi, OpenCode, Kilo, Cursor and Gemini CLI, then prints a link and a code:
 
 ```
-To connect, open  https://tasknode.postfiat.org/activate  and enter  WDJB-MJHT
+To connect, open this link and press Approve:
+  https://tasknode.postfiat.org/activate?code=WDJB-MJHT#p=…
+(On another device you can open https://tasknode.postfiat.org/activate and enter WDJB-MJHT instead.)
 ```
+
+**Prompt library access is automatic.** The link carries the agent's public key and a one-time secret after the `#`, which browsers never send to a server. After you press Approve, the page continues to Docs and opens the wallet unlock (accounts without a Docs library skip this). Once unlocked, the browser wraps your prompt-library key to that key, and the agent's local prompt tools start working: no fingerprint to compare and no code to paste. If you type the short code on another device instead, approve the agent by hand under Docs → Prompts → Agent access.
 
 Open the link on any device, check the code and tap **Approve**. The installer writes each agent's MCP entry itself (files are mode 600), never prints the token, and finishes with `Connected as <account>`. Restart running agents, or run `/mcp` in Claude Code.
 
@@ -49,3 +53,7 @@ Agents that hold a wallet seed can write task events directly to PFTL; Task Node
 
 - The app must not assume all task actions originate from the web UX.
 - Replay reconciles external PFTL actions into the cache.
+
+### Local encrypted prompts
+
+The installer registers a local `tasknode-prompts` stdio MCP entry beside the hosted `tasknode` entry. Match its fingerprint in unlocked Docs and approve prompt access; `/connect` lists and revokes prompt devices. Prompt tools read/edit live markdown pads, save encrypted versions, decrypt history and compute stats locally. `prompt_log_tih_run` records scores from locally run TIH; it never invokes a hosted assistant. See [prompt setup and acceptance](../../../prompts-sprint/README.md).

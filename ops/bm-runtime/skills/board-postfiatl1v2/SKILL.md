@@ -3,9 +3,20 @@ name: board-postfiatl1v2
 description: Board context for the PostfiatL1V2 board manager. Use together with the board-manager skill when operating board_postfiat_l1v2 - version 2 of the Post Fiat Layer 1 - with protocol-grade review standards.
 ---
 
-# PostfiatL1V2 Board
+# Layer 1 Board
 
-Board id: `board_postfiat_l1v2`. You route protocol development work on the second version of the Post Fiat L1.
+> Public name since 2026-11-25: **Layer 1**. Every task comes from this board's Wanted list (`bm wanted board_postfiat_l1v2`). New validators are also paid here (`--work-type validator_setup`, proof: a public link showing the validator running and listed).
+
+
+Board id: `board_postfiat_l1v2`. You route two kinds of work on the second
+version of the Post Fiat L1 and its primitives:
+
+- **Code changes** (`--work-type code_task` or `core_repo_work`, core
+  contributor badge), paid on a merged pull request.
+- **Code reviews** (`--work-type code_review` for core contributors,
+  `expert_review` for experts), paid on a public written review.
+
+QA reports and reproduction packets are no longer routed here.
 
 ## Sources to read before generating tasks
 
@@ -16,11 +27,8 @@ Board id: `board_postfiat_l1v2`. You route protocol development work on the seco
 - Before every generation pass, read that snapshot and the repository's own
   documentation on GitHub (`gh api`, `gh issue list`, `gh pr list` are
   fine; they read the remote). Record the commit range reviewed.
-- If the source status is `stale` or `unavailable`, record
-  `source_unavailable` for the contributors who needed it and still route
-  investigations that only need the public repository URL (reproduce a
-  named issue, audit a named module, characterize a failure mode). Do not
-  pause the board.
+- If the source status is `stale` or `unavailable`, defer routing on this
+  board until it is readable again.
 
 ## What good looks like here
 
@@ -50,9 +58,21 @@ Every generated task must state:
 
 An acceptable task identifies a current code location, describes a concrete failure mode or invariant, and defines test-backed acceptance criteria. A design note without a cited implementation question, an unsupported fork-condition claim, or a giant refactor is not an acceptable task.
 
+## Code reviews
+
+A review task names one module, primitive or pull request and the commit to
+read, and asks for findings by file and line: correctness, safety of rollout,
+missing tests. The contributor publishes the review publicly (a gist or a
+pull request comment thread) and submits the link.
+
+Pay a review when the findings are specific and you confirmed at least two of
+them against the code. A finding that leads to a merged fix is worth more than
+the review itself; say so in the feedback and route the fix as a code task.
+Reject generic observations, restated documentation and style-only notes.
+
 ## Evidence norms
 
-- Primary evidence is a PR or commit URL reviewed against the canonical remote.
+- For code changes, primary evidence is a merged PR reviewed against the canonical remote. For reviews, it is the public review link.
 - Record the reviewed commit range, relevant files and lines, validation commands, and results.
 - Use the repository’s documented commands to build the touched target and run the relevant tests. If validation cannot be run, record the reason and do not present the work as verified.
 - A protocol claim such as “this fixes a fork condition” requires a test or reproduction demonstrating the condition. Persuasive prose is not a substitute; unproven protocol claims are rejected.
@@ -73,4 +93,4 @@ For consensus-affecting work without a test or reproduction, or whenever protoco
 3. Route the record to the operator (goodalexander) via a referral task, per the board-manager skill's escalation section.
 4. Keep the work pending until that review resolves the uncertainty.
 
-Reward eligibility requires the evidence above. Reward magnitudes and generation cadence follow the paired board-manager skill (per-task cap 5,000 PFT; routing follows eligible contributor capacity and reward budgets, with no fixed board task ceiling); protocol test/hardening work prices at the top of its verified-value band because review cost here is highest.
+Reward eligibility requires the evidence above. Reward magnitudes and generation cadence follow the paired board-manager skill (per-task cap 5,000 PFT; route only named, in-scope work); protocol test/hardening work prices at the top of its verified-value band because review cost here is highest.

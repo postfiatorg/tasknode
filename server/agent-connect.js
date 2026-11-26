@@ -1,3 +1,6 @@
+import { handleAgentRelease } from "./agent-install.js";
+import { listPromptDevices, revokePromptDevice } from "./repositories/prompt-devices.js";
+import { getDocsAccount } from "./repositories/collaboration.js";
 // One-step agent connect: device-code sign-in (RFC 8628) so agents on remote
 // machines connect without a localhost callback or a copied token, the
 // /activate approval page, per-device token management on /connect, and the
@@ -185,10 +188,14 @@ details{margin-top:32px}summary{cursor:pointer;color:var(--tn-text-secondary,#45
 :root[data-theme="dark"] .button.secondary{border-color:#3b3d35;background:transparent;color:#f2f0e9}
 @media (prefers-color-scheme:dark){:root:not([data-theme]) body{background:#171816;color:#f2f0e9}}`;
 
+// /agent-connect.js is served immutable for a year. Bump this whenever public/agent-connect.js changes, or browsers
+// that visited /activate or /connect before keep running the old script (2026-11-12: one-click pairing never ran).
+const AGENT_CONNECT_SCRIPT_VERSION = "2026-11-15-docs-continue";
+
 export function agentPage(res, title, body, status = 200) {
   res.writeHead(status, { ...securityHeaders(), "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
   res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)} · Task Node</title>${appearancePageHead}<script src="/agent-connect.js" defer></script>
+<title>${escapeHtml(title)} · Task Node</title>${appearancePageHead}<script src="/agent-connect.js?v=${AGENT_CONNECT_SCRIPT_VERSION}" defer></script>
 <style>${pageStyle}</style>
 <main>${body}</main>`);
 }
@@ -229,7 +236,12 @@ async function handleActivate({ req, res, url, session }) {
     const approve = url.searchParams.get("decision") === "approve";
     const result = await decideDeviceAuthRequest({ userCode: code, accountId: session.accountId, approve });
     if (result.ok && result.approved) {
-      return agentPage(res, "Agent connected", `${header}<div class="card"><p><strong>Connected.</strong> Go back to your terminal; it finishes on its own and tells you which agents it set up.</p><p class="muted">Manage connected devices on <a href="/connect">/connect</a>.</p></div>`);
+      // Accounts that use Docs go straight there: the link's pairing key gives the agent their prompts once the wallet is unlocked.
+      const usesDocs = Boolean(await getDocsAccount({ accountId: session.accountId }).catch(() => null));
+      const finish = usesDocs
+        ? `<p id="prompt-pairing-next" hidden><strong>One more click:</strong> opening Docs so this agent can use your prompts… <a class="button" href="/#docs">Continue</a></p>`
+        : "";
+      return agentPage(res, "Agent connected", `${header}<div class="card"><p><strong>Connected.</strong> Your terminal finishes on its own and tells you which agents it set up.</p>${finish}<p class="muted">Manage connected devices on <a href="/connect">/connect</a>.</p></div>`);
     }
     if (result.ok) return agentPage(res, "Sign-in denied", `${header}<div class="card"><p>Denied. Nothing was connected.</p></div>`);
     const message = result.error === "github_not_linked"
@@ -289,7 +301,10 @@ async function handleConnect({ req, res, url, origin, session }) {
     return agentPage(res, "Connect an agent", `<h1>Connect an agent</h1><p>Signed out ${count} agent and terminal token${count === 1 ? "" : "s"}. Agents using them can no longer reach this account.</p><a class="button" href="/connect">Back</a>`);
   }
   if (url.pathname === "/connect/revoke") {
-    await revokeAgentDevice({ accountId: session.accountId, sessionId: safe(url.searchParams.get("session"), 120) });
+    if (url.searchParams.has("prompt")) {
+      if (req.method !== "POST") return json(res, 405, { error: "method_not_allowed" });
+      await revokePromptDevice(session.accountId, url.searchParams.get("prompt"));
+    } else await revokeAgentDevice({ accountId: session.accountId, sessionId: safe(url.searchParams.get("session"), 120) });
     res.writeHead(303, { "cache-control": "no-store", location: "/connect" });
     return res.end();
   }
@@ -311,6 +326,17 @@ ${connectClients.map(([key, label]) => `<h2>${label}</h2><pre>${escapeHtml(comma
 <p>Then restart the agent and ask: "What are my outstanding Task Node tasks?" <a href="/connect">Back</a></p>`);
   }
   const devices = await listAgentDevices({ accountId: session.accountId });
+  const promptDevices = await listPromptDevices(session.accountId);
+  const promptRows = promptDevices.devices
+    .filter(device => !device.revokedAt)
+    .map(device => `<div class="device">
+<div><strong>${escapeHtml(device.label)}</strong>
+<p>${device.approvedAt ? "Prompt access approved" : "Awaiting unlocked browser approval"}</p>
+<small style="overflow-wrap:anywhere">${escapeHtml(device.fingerprint)}</small>
+<p><a href="/#docs">Unlock Docs → Agent access to approve and pair</a></p></div>
+<form method="post" action="/connect/revoke?prompt=${encodeURIComponent(device.deviceId)}">
+<button class="button secondary">Revoke prompt access</button></form></div>`)
+    .join("");
   const deviceRows = devices.length
     ? devices.map((device) => `<div class="device"><div><strong>${escapeHtml(device.label)}</strong><br><span class="muted">Last used ${device.lastUsedAt ? escapeHtml(relative(device.lastUsedAt)) : "not yet recorded"}${device.lastIp ? ` · ${escapeHtml(device.lastIp)}` : ""} · added ${escapeHtml(String(device.createdAt).slice(0, 10))}</span></div>
 <form method="post" action="/connect/revoke?session=${encodeURIComponent(device.sessionId)}"><button class="button secondary" type="submit">Revoke</button></form></div>`).join("\n")
@@ -321,6 +347,7 @@ ${copyBlock(`Connect me to Task Node: run ${command} and follow the link it prin
 <p class="muted">Or run it yourself in the terminal where your agent runs. It finds Claude Code, Codex, Hermes, Pi, OpenCode, Kilo, Cursor and Gemini CLI, shows a code to approve here, and never prints the token.</p>
 ${copyBlock(command)}
 <p class="muted">Step-by-step help for every agent: <a href="${AGENT_GUIDE_URL}" rel="noopener" target="_blank">postfiat.org/agents</a></p>
+${promptRows ? `<h2>Prompt library devices</h2>${promptRows}` : ""}
 <h2>Connected devices</h2>
 ${deviceRows}
 ${devices.length ? `<form method="post" action="/connect/signout" style="margin-top:12px"><button class="button secondary" type="submit">Sign out all agents</button></form>` : ""}
@@ -377,6 +404,12 @@ async function handleWhoami({ req, res }) {
 export async function handleAgentConnectRoute(params) {
   const { res, url, origin } = params;
   const pathname = url.pathname;
+  if (await handleAgentRelease(params)) return true;
+  const promptInstallFiles = ['package.json','package-lock.json','lib/prompt-crypto.mjs','lib/prompt-device.mjs','lib/prompt-stats.mjs','lib/prompt-pad.mjs','lib/prompt-client.mjs','lib/prompt-mcp.mjs','lib/prompt-agent-config.mjs'];
+  if (pathname.startsWith('/install/') && promptInstallFiles.includes(pathname.slice('/install/'.length))) {
+    await sendCliFile(res,pathname.slice('/install/'.length),'text/plain; charset=utf-8');
+    return true;
+  }
   if (pathname === "/oauth/device_authorization") await handleDeviceAuthorization(params);
   else if (pathname === "/activate") await handleActivate(params);
   else if (pathname === "/connect" || pathname === "/connect/signout" || pathname === "/connect/revoke") await handleConnect(params);

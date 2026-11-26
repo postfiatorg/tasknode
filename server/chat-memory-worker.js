@@ -93,7 +93,36 @@ export function memoryOpenRouterProviderPreferences() {
   return {};
 }
 
-export function memoryOpenRouterRequestBody({ messages = [], temperature = 0.1, maxTokens = turnMemoryMaxTokens() } = {}) {
+// Loose json_object mode lets the model misspell a required key (seen in
+// production as "system_response_summary_bles"), which fails the job on every
+// retry. A strict schema makes the provider enforce the exact keys.
+export function memorySummaryResponseFormat() {
+  const bullets = { type: "array", items: { type: "string" } };
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "tasknode_memory_summary",
+      strict: true,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["user_request_summary_bullets", "system_response_summary_bullets", "memory_text"],
+        properties: {
+          user_request_summary_bullets: bullets,
+          system_response_summary_bullets: bullets,
+          memory_text: { type: "string" },
+        },
+      },
+    },
+  };
+}
+
+export function memoryOpenRouterRequestBody({
+  messages = [],
+  temperature = 0.1,
+  maxTokens = turnMemoryMaxTokens(),
+  responseFormat = { type: "json_object" },
+} = {}) {
   return {
     model: memoryModel(),
     messages,
@@ -101,7 +130,7 @@ export function memoryOpenRouterRequestBody({ messages = [], temperature = 0.1, 
       effort: "none",
       exclude: true,
     },
-    response_format: { type: "json_object" },
+    response_format: responseFormat,
     temperature,
     max_tokens: maxTokens,
   };
@@ -332,6 +361,7 @@ async function fetchRewardedTaskMemorySummary(source) {
       ],
       temperature: 0.1,
       maxTokens: rewardedTaskMemoryMaxTokens(),
+      responseFormat: memorySummaryResponseFormat(),
     }),
   });
   const body = result.body;

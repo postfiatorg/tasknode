@@ -59,14 +59,14 @@ assert.deepEqual(status.boardManagerDailyCost.totals, {
 });
 
 const pricingModes = new Map(status.chatPricing.modes.map((mode) => [mode.mode, mode]));
-assert.deepEqual([...pricingModes.keys()], ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3.1 Pro", "Claude Opus 5.5", "Help"]);
-for (const mode of ["GPT-6 Astra", "Kimi K3.1 Pro", "Claude Opus 5.5"]) {
+assert.deepEqual([...pricingModes.keys()], ["Instant", "Thinking", "GPT-6 Astra", "Kimi K3.1 Pro", "Claude Opus 5.5", "Gemini 4 Hydrogen", "Help"]);
+for (const mode of ["GPT-6 Astra", "Kimi K3.1 Pro", "Claude Opus 5.5", "Gemini 4 Hydrogen"]) {
   assert.equal(pricingModes.get(mode).billingPolicy, "provider_api_cost");
   assert.deepEqual(pricingModes.get(mode).providerOrder, ["vercel"]);
 }
-assert.equal(pricingModes.get("Instant")?.model, "zai/glm-5.3-flash");
+assert.equal(pricingModes.get("Instant")?.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(pricingModes.get("Instant")?.maxOutputTokens, 16384);
-assert.equal(pricingModes.get("Thinking")?.model, "zai/glm-5.3");
+assert.equal(pricingModes.get("Thinking")?.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(pricingModes.get("Thinking")?.reasoning, "xhigh");
 assert.equal(pricingModes.get("Thinking")?.providerLabel, "Vercel AI Gateway");
 assert.equal(pricingModes.get("Thinking")?.configuredPricing?.inputUsdPerMillion, 0.4725);
@@ -74,7 +74,7 @@ assert.equal(pricingModes.get("Thinking")?.configuredPricing?.inputCacheHitUsdPe
 assert.equal(pricingModes.get("Thinking")?.configuredPricing?.outputUsdPerMillion, 1.98);
 assert.deepEqual(pricingModes.get("Thinking")?.providerOrder, ["vercel"]);
 assert.match(pricingModes.get("Thinking")?.privacyPolicy || "", /Vercel AI Gateway/);
-assert.equal(pricingModes.get("Help")?.model, "deepseek/deepseek-v4-flash-0731");
+assert.equal(pricingModes.get("Help")?.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(pricingModes.get("Help")?.providerLabel, "Vercel AI Gateway");
 assert.equal(pricingModes.get("Help")?.reasoning, "");
 assert.equal(pricingModes.get("Help")?.estimatedOutputTokens, 1200);

@@ -58,6 +58,7 @@
     "auth-state-migration-smoke": "node scripts/auth-state-migration-smoke.mjs",
     "account-wallet-repository-smoke": "node scripts/account-wallet-repository-smoke.mjs",
     "account-repository-smoke": "node scripts/account-repository-smoke.mjs",
+    "duplicate-account-absorb-smoke": "node scripts/duplicate-account-absorb-smoke.mjs",
     "ethereum-deposit-repository-smoke": "node scripts/ethereum-deposit-repository-smoke.mjs",
     "evm-wallet-pay-smoke": "node scripts/evm-wallet-pay-smoke.mjs",
     "terminal-auth-repository-smoke": "node scripts/terminal-auth-repository-smoke.mjs",
@@ -135,9 +136,9 @@
     "agent-wallet-login-client": "node scripts/agent-wallet-login-client.mjs",
     "signup-reset": "node scripts/reset-signup-test-account.mjs",
     "security-smoke": "node scripts/security-smoke.mjs",
-    "test:unit": "npm run validator-bundle-loader-smoke && npm run task-review-blacklist-park-smoke && npm run bm-codex-backup-smoke && npm run inference-no-regex-check && npm run wallet-vault-durability-smoke && npm run route-auth-policy-smoke && npm run request-validation-smoke && npm run campaign-tracker-body-smoke && npm run durable-identity-boundary-smoke && npm run app-state-cache-gate-smoke && npm run app-state-switch-perf-smoke && npm run nostr-messages-smoke && npm run wallet-state-regression && npm run container-entrypoint-smoke && npm run runtime-role-boundary-smoke && npm run extension-registry-smoke && npm run finance-hub-route-smoke && npm run inference-failover-smoke",
+    "test:unit": "node --test scripts/validator-bundle-files.test.mjs scripts/validator-encrypted-bundle.test.mjs && npm run validator-bundle-loader-smoke && npm run task-review-blacklist-park-smoke && npm run bm-codex-backup-smoke && npm run inference-no-regex-check && npm run wallet-vault-durability-smoke && npm run route-auth-policy-smoke && npm run request-validation-smoke && npm run campaign-tracker-body-smoke && npm run durable-identity-boundary-smoke && npm run app-state-cache-gate-smoke && npm run app-state-switch-perf-smoke && npm run nostr-messages-smoke && npm run wallet-state-regression && npm run container-entrypoint-smoke && npm run runtime-role-boundary-smoke && npm run extension-registry-smoke && npm run finance-hub-route-smoke && npm run inference-failover-smoke && npm run test:l1",
     "test:integration": "npm run runtime-smoke && npm run chat-attachment-smoke && npm run pftl-cache-smoke && npm run pftl-cache-watcher-smoke && npm run security-smoke",
-    "test:e2e": "npm run route-smoke && npm run static-asset-fallback-smoke",
+    "test:e2e": "npm run route-smoke && npm run static-asset-fallback-smoke && node src/features/wallet/l1/bridge/withdraw-browser.mjs",
     "security": "npm audit --audit-level=high && npm run public-help-check && npm run route-auth-policy-smoke && npm run trusted-proxy-rate-limit-smoke && npm run account-data-lifecycle-smoke && npm run data-retention-smoke && npm run data-recovery-safety-smoke && npm run asset-provenance-check && npm run dependency-license-check",
     "check:fast": "npm run file-size-check && npm run format-check && npm run lint && npm run api-reference-check && npm run security",
     "check": "npm run check:fast && npm run test:unit && npm run test:integration && npm run test:smoke && npm run build && npm run bundle-budget-check && npm run test:e2e",
@@ -178,14 +179,24 @@
     "campaign-tracker-body-smoke": "node scripts/campaign-tracker-body-smoke.mjs",
     "test:smoke": "node scripts/run-smokes.mjs verify && node scripts/run-smokes.mjs unit",
     "test:db": "node scripts/run-smokes.mjs db",
-    "bm-codex-backup-smoke": "node scripts/bm-codex-backup-smoke.mjs"
+    "bm-codex-backup-smoke": "node scripts/bm-codex-backup-smoke.mjs",
+    "prompt-stats-smoke": "node scripts/prompt-stats-smoke.mjs",
+    "prompt-device-smoke": "node scripts/prompt-device-smoke.mjs",
+    "prompt-assistant-smoke": "node scripts/prompt-assistant-smoke.mjs",
+    "prompt-history-smoke": "node scripts/prompt-history-smoke.mjs",
+    "prompt-deletion-smoke": "node scripts/prompt-deletion-smoke.mjs",
+    "test:l1": "node --test server/l1/*.test.mjs server/l1/profile/*.test.mjs src/features/wallet/l1/lib/*.test.js src/features/wallet/l1/format.test.mjs src/features/wallet/l1/bridge/*.test.mjs src/features/wallet/l1/gallery/model.test.mjs src/features/wallet/l1/gallery/market.test.mjs src/features/wallet/l1/market/config.test.mjs src/features/wallet/l1/market/model.test.mjs src/features/wallet/l1/market/offer-setup.test.mjs src/features/wallet/l1/primary/model.test.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65",
     "@noble/post-quantum": "0.7.1",
     "@node-rs/argon2": "2.2.1",
     "@scure/bip39": "^2.2.0",
+    "@solana/addresses": "8.6.0",
+    "@solana/instructions": "8.6.0",
+    "@solana/transaction-messages": "8.6.0",
     "@xmldom/xmldom": "0.9.12",
+    "bs58": "6.0.0",
     "ethers": "^6.17.0",
     "fflate": "^0.8.3",
     "geo-tz": "^8.1.9",
@@ -223,6 +234,7 @@
     "esbuild": "0.28.2",
     "flatted": "3.4.4",
     "js-yaml": "4.3.2",
+    "picomatch": "npm:@ryotsu/picomatch@4.0.7-a",
     "zod": "4.6.7"
   }
 }

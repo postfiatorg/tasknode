@@ -11,7 +11,7 @@ process.env.TASKNODE_BOARD_SOURCES_OFFLINE = "true";
 const url = new URL(process.env.DATABASE_URL);
 assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
 assert.ok(url.pathname.endsWith("_test"), "Use a disposable *_test database");
-const id = "network_retry_" + randomUUID(), wallet = "rExplicitRetryFixture", board = "board_pf_terminal";
+const id = "network_retry_" + randomUUID(), wallet = "rExplicitRetryFixture", board = "board_postfiat_l1v2";
 const request = retry => ({ decision: { action: "initiate_network_task", target_id: board, payload: { network_task: {
   candidate_account_id: id, candidate_wallet_address: wallet, project_need_summary: "Implement a bounded provider-recovery control with regression evidence.",
   task_class: "network", task_work_type: "code_task", required_badge_id: "core_contributor", operating_badge_id: "core_contributor",

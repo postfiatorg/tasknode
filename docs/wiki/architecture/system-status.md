@@ -59,12 +59,17 @@ the same names.
 
 ### Hive And Board Agents
 
-Board Manager decisions, secretary packets, Hive Secretary reports, and active
-project planning.
+The active board manager is the operator-host Kimi runtime. Legacy scheduler
+runs and cost rows do not measure its liveness.
 
-- `board_manager`: leased Board Manager scheduler for `global_hive`.
-- `board_manager_secretary_packets`: DeepSeek compression packet used before the
-  Board Manager decision.
+- `network_allocation_health`: routing and review demand from current agent rounds,
+  allocations and audit actions. Missing tables or a failed read return unknown.
+- `hive_board_secretary`: scans recorded in the secretary lease, including scans
+  that skip unchanged boards. It uses the same hourly default as the worker.
+  Memo generation time is shown separately: unchanged memos may remain current
+  indefinitely. An older worker without scan telemetry returns unknown until an
+  upgraded worker completes a scan. Failed scans remain visible.
+- `board_manager_secretary_packets`: archived compression packets.
 - `hive_secretary`: Hive Secretary report worker.
 - `hive_active_projects`: active project registry helper.
 

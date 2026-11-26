@@ -120,11 +120,10 @@ npm run profile-daily-airdrop-reconcile -- --run-id=<run_id> --json
 Reconciliation never trusts a stale cache. Before searching `pftl_transactions`
 it hot-syncs both the source and recipient wallets and runs the cache reducer,
 then records both `pftl_sync_wallets.last_hot_sync_at` watermarks in
-`reconciliation_json` and the script output. Only use `--allow-demote` after the
-cached PFTL transaction search proves no matching source wallet, recipient
-wallet, amount, run id, pointer CID, or signed transaction hash exists; the
-demote is additionally refused (`daily_airdrop_demote_blocked_stale_sync`) when
-either wallet's hot-sync watermark predates the issuance's
-`submission_attempted_at`, because the missing payment may simply not be cached
-yet and a demoted row auto-retries with a second signed payment. Override only
-with `--force-demote-stale-sync` after manually inspecting chain state.
+`reconciliation_json` and the script output. A negative cache search does not prove nonpayment: the refresh reads only one
+page, and a signed transaction might still validate. `--allow-demote` therefore
+keeps an uncertain issuance blocked, including with `--force-demote-stale-sync`.
+Reconcile the saved hash against validated ledger history and establish finality
+before any separately reviewed recovery. This command does not authorize a
+replacement payment from absence in the cache. Reconciliation itself writes
+cache and audit state, even without demotion; it is not a read-only audit command.

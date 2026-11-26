@@ -24,8 +24,8 @@ const cacheEfficiencyWindowDays = Math.min(
 );
 
 const modeDescriptions = {
-  Instant: "GLM 5.3 Flash through Vercel AI Gateway.",
-  Thinking: "GLM 5.3 with deep reasoning through Vercel AI Gateway.",
+  Instant: "DeepSeek V4.1 Flash through Vercel AI Gateway, reasoning off.",
+  Thinking: "DeepSeek V4.1 Flash with deep reasoning through Vercel AI Gateway.",
   Help: "Plain-English Task Node help through Vercel AI Gateway.",
 };
 
@@ -267,7 +267,7 @@ export async function chatPricingStatus({ fetchImpl = fetch } = {}) {
     references: [],
     notes: [
       "Instant, Thinking, and Help use the configured user tariff for estimates and ledger debits.",
-      "GPT-6 Astra, Kimi K3.1 Pro and Claude Opus 5.5 estimates use published base API rates; final debits equal Vercel-reported cost without markup. Missing provider cost prevents a debit.",
+      "GPT-6 Astra, Kimi K3.1 Pro, Claude Opus 5.5 and Gemini 4 Hydrogen estimates use published base API rates; final debits equal Vercel-reported cost without markup. Missing provider cost prevents a debit.",
     ],
   };
   pricingCache = { cachedAtMs: now, value };

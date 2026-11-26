@@ -30,8 +30,8 @@ Chat does not secretly press product buttons. It cannot accept a task, refuse a 
 
 The chat mode picker changes model behavior. Shared inference runs on Vercel AI Gateway:
 
-- `Instant` uses GLM 5.3 Flash for faster responses.
-- `Thinking` uses GLM 5.3 for deeper reasoning.
+- `Instant` uses DeepSeek V4.1 Flash for faster responses.
+- `Thinking` uses DeepSeek V4.1 Flash for deeper reasoning.
 - `Help` is product help. It uses this guide plus the user's available app context to explain what the user is seeing and which surface to use.
 
 A new empty chat shows four starter prompts for signed-in users: `Help me build my context document`, `Give me my first task`, `How do I earn PFT?`, and `What should I do first?`. Clicking one fills the composer so the user can edit or send it; it does not send by itself.
@@ -42,7 +42,7 @@ The `More` or thinking disclosure on assistant messages can show the source cont
 
 The `+` menu is where chat becomes an explicit product action.
 
-`Personality` opens Jobs, ODV, Trading Coach, and Kravis. `More` opens Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A. For product guidance, select `Help` from the model picker or open the Help screen; product help is kept in one current source rather than duplicated as an App Help modality.
+`Personality` opens Jobs, ODV, Trading Coach, Kravis, and BasedGPT. `More` opens Brainstorm, Motivation, Five Mirrors, I Ching, ODV, Sprint Planner, Validator, and Post Fiat Q&A. For product guidance, select `Help` from the model picker or open the Help screen; product help is kept in one current source rather than duplicated as an App Help modality.
 
 `Request task` turns the next message into a signed personal task request. It requires a signed-in account, linked wallet, and unlocked wallet vault because the request is published as a wallet-bound task request. The generated task appears later as a proposed task card in Tasks.
 
@@ -78,7 +78,7 @@ Memory is a compressed record of useful chat history. It helps future chats carr
 
 Docs is the wallet-encrypted document and spreadsheet library in the primary sidebar. A locked library presents one page-level Unlock action. Encrypted folders support organizing documents in a nested hierarchy. Unlock the linked wallet to create the Docs key envelope, decrypt titles, create/open documents, and share with an exact Task Node handle or linked wallet. The editor is embedded in Task Node; a separate popup is a defect. Renaming in either Task Node or PFDocs synchronizes the owner's encrypted canonical title.
 
-Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use GLM 5.3 through Vercel AI Gateway. They receive the current document, the mention, and a bounded window of the active document chat so follow-ups retain continuity. Turn on `Full context` only when the response should additionally use Task Node Context, Memory, and task state.
+Document chat uses the authenticated Task Node handle or linked wallet identity. Mention `@ODV` for the ODV/Lindy persona or `@coach` for the Trading Coach; both use DeepSeek V4.1 Flash through Vercel AI Gateway. They receive the current document, the mention, and a bounded window of the active document chat so follow-ups retain continuity. Turn on `Full context` only when the response should additionally use Task Node Context, Memory, and task state.
 
 ### Team Screen
 
@@ -134,7 +134,7 @@ Recommendations require enough public/discoverable member data to compare agains
 
 Hive is the group coordination board. It shows shared Post Fiat projects, Network Task routing, contributor activity, Hive Context, and Hive Mind Agent activity. It is where the user inspects network work, not where they accept or submit tasks.
 
-Hive chat is one public group conversation over Nostr, available from the primary sidebar. It uses your Messages handle and public profile picture, with @mentions and linked replies. A periodic GLM 5.3 Flash check decides whether the bot should participate; GLM 5.3 writes selected replies. Concrete board issues can enter the existing production Kimi K3 manager’s durable inbox. Messages do not create tasks by themselves; normal badge, capacity, board and reward checks still apply.
+Hive chat is one public group conversation over Nostr, available from the primary sidebar. It uses your Messages handle and public profile picture, with @mentions and linked replies. A periodic DeepSeek V4.1 Flash check decides whether the bot should participate; DeepSeek V4.1 Flash writes selected replies. Concrete board issues can enter the existing production Kimi K3 manager’s durable inbox. Messages do not create tasks by themselves; normal badge, capacity, board and reward checks still apply.
 
 When Hive Chat describes an active Network Task reward, the user-visible task projection reward is authoritative. Internal allocation caps are only context for not-yet-offered work and should not be reported as the accepted task reward.
 
@@ -152,13 +152,13 @@ Billing shows app usage credit and model-run ledger entries. Chat and model feat
 
 ### Help
 
-Help mode in Chat answers product questions using this guide and available runtime context. The Help screen exposes user-facing documentation and prompt/source maps. It is separate from the first-class Docs document library. Use Help when the user does not know which page to use or why they are seeing a state.
+Help mode in Chat answers product questions using this guide and available runtime context. Help and the `Post Fiat Q&A` personality (under `More`) also answer questions about Post Fiat itself — the L1 v2 whitepaper, blog posts, PF Terminal, validators and how to get access to the Finance Hub — from the same source-linked knowledge base. The Help screen exposes user-facing documentation and prompt/source maps. It is separate from the first-class Docs document library. Use Help when the user does not know which page to use or why they are seeing a state.
 
 ### Search And Agents
 
 Search today is the `Search chats` button in the primary sidebar. It opens a modal that searches the user's own chat conversations by title and message content and opens the matching conversation. It is not yet a cross-surface search over tasks, context entries, or memory; that is the target, not the current behavior.
 
-Agents are advanced external wallet-native workers documented in Help. There is no in-app Agents surface and no Agents sidebar row, so normal users can ignore the concept until they are operating a separate agent.
+Agents are the user's own AI coding agents (Claude Code, Codex, Cursor and others) connected to their Task Node account. There is no Agents sidebar row; connecting is done with one terminal command and managed on the `/connect` page. The full steps are in the Agents section below.
 
 ## First Session Checklist
 
@@ -562,15 +562,45 @@ Search is the retrieval surface for work that already happened in the app.
 
 ### What It Is
 
-Agents are external wallet-native workers. They are not the normal first user path.
+A user can connect their own AI coding agent to their Task Node account. Supported: Claude Code, Codex, Hermes, Pi, OpenCode, Kilo, Cursor and Gemini CLI, plus any MCP client by hand. A connected agent can list and read tasks, accept or refuse them, submit evidence, request tasks, read and update the Context document, and check balance and rewards. If the user keeps prompts in Docs, the agent can also read and edit those prompts. The agent acts as the user's account and follows the same rules and limits as the web app.
 
 ### How To Use It
 
-Use Agents only when you are operating or connecting an external worker that should interact with Task Node through wallet-native flows. There is no in-app Agents screen; the workflow runs through external tooling and the reference clients, with this Help page as the contract.
+Connect, or update an existing connection (the same command does both). Run it in the terminal where the agent runs, on a laptop or a remote machine:
+
+```sh
+curl -fsSL https://tasknode.postfiat.org/install | sh
+```
+
+1. The terminal prints a link. Open it in a browser signed in to Task Node and press `Approve`. The terminal prints `Connected as <account>`.
+2. If the account has a Docs library, the browser moves to Docs by itself and asks for the wallet password. After unlocking, the agent has the user's prompts and the terminal prints `Docs prompts connected.` Accounts without a Docs library skip this step.
+3. Restart the agent (in Claude Code, `/mcp` also works). Agents load new tools only when they start.
+
+The Task Node account needs GitHub linked once: Settings → Security → Connected accounts.
+
+Other commands:
+
+```sh
+curl -fsSL https://tasknode.postfiat.org/install | sh -s -- --status              # which agent is on which account
+curl -fsSL https://tasknode.postfiat.org/install | sh -s -- --agent claude,codex  # only these agents
+curl -fsSL https://tasknode.postfiat.org/install | sh -s -- --disconnect          # sign out and revoke
+```
+
+To check a connection, paste this to the agent: "Check your Task Node access. Call tasknode_status and tell me which account you are on. Then call prompt_list and tell me how many prompts it returns. If the tools are missing say not installed. If pairing is needed say not paired. Do not print any tokens."
+
+Common problems:
+
+- `Task Node needs Node.js 22 or newer`: the machine has an older Node.js. Install Node 22 or newer for that user, then run the command again. If Node 22 is already installed through nvm but is not the default, run the installer with that version first on the PATH, for example `PATH=$HOME/.nvm/versions/node/<v22 folder>/bin:$PATH sh -c 'curl -fsSL https://tasknode.postfiat.org/install | sh'`. Do not delete an npm `prefix` setting just because nvm suggests it; that can break tools already installed.
+- The agent does not show Task Node tools, or a new feature is missing: run the install command again, then restart the agent.
+- The agent says prompts are not paired: run the install command again, open the printed link (not the short code) and unlock the wallet when the browser asks. If the short code was typed on another device instead, approve the device by hand in Docs → Prompts → Agent access.
+- Asked to link GitHub: link it under Settings → Security, then run the command again.
+- Unauthorized (401): the token was revoked or unused for 90 days. Run the install command again.
+
+Connected devices are listed on `https://tasknode.postfiat.org/connect`, where each can be revoked. The full guide with per-agent manual setup is at `https://postfiat.org/agents/`.
 
 ### How To Explain It
 
-Agents are for advanced external workers. Most users start with Chat, Context, Wallet, Tasks, Hive, and Profile.
+Connecting an agent is one command, one Approve click and, for prompt access, one wallet unlock. Give the exact command in a code block. The wallet unlock is needed because prompts are encrypted with a key only the user's wallet can open; Task Node cannot grant that access on the user's behalf. Never ask the user to paste a token or wallet password into chat.
 
 ## A Simple Explanation For A New User
 

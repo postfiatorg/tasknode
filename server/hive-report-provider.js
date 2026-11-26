@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { hiveReportTypes } from "./repositories/hive-reports.js";
 import { inferenceConfigured, inferenceFetchCompatibility } from "./inference.js";
 
-const defaultReportModel = "zai/glm-5.3";
+const defaultReportModel = "deepseek/deepseek-v4.1-flash-1017";
 
 const reportPromptFiles = Object.freeze({
   system: "prompts/hive/reports/hive_report_writer_system_v1.md",

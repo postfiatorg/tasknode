@@ -1,0 +1,23 @@
+[Unit]
+Description=Task Node NAVCoin restricted relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=postfiat
+WorkingDirectory=/opt/tasknode-navcoin-relay
+EnvironmentFile=/etc/tasknode/navcoin-relay.env
+ExecStart=/usr/bin/node server/l1/relay.js
+Restart=no
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

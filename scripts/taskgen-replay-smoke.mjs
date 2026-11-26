@@ -16,7 +16,7 @@ import {
   taskgenReplayIdentity,
 } from "../server/task-generation-worker.js";
 
-process.env.TASKNODE_TASKGEN_MODEL = "zai/glm-5.3";
+process.env.TASKNODE_TASKGEN_MODEL = "deepseek/deepseek-v4.1-flash-1017";
 
 const taskInput = {
   schema: "pf.taskgen.input.v1",
@@ -80,7 +80,7 @@ const sameIdentity = taskgenReplayIdentity({
 assert.equal(identity.replay_key, sameIdentity.replay_key);
 assert.match(identity.replay_key, /^taskgen_[a-f0-9]{48}$/);
 assert.equal(identity.source_payload_digest, "sha256:source-payload-a");
-assert.equal(identity.model, "zai/glm-5.3");
+assert.equal(identity.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.equal(identity.task_class, "network");
 
 const changedSourceKey = buildTaskgenReplayKey({

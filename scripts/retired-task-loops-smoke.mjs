@@ -16,7 +16,7 @@ const { startBackgroundWorkers } = await import("../server/background-workers.js
 const expected = {
   "worker:hive": ["hive_group_chat", "hive_secretary", "hive_reports", "hive_board_secretary", "bm_narrator"],
   "worker:taskgen": ["network_task_generation", "task_generation"],
-  "worker:task-review": ["task_review"],
+  "worker:task-review": ["task_review", "reinstatement"],
 };
 for (const [role, groups] of Object.entries(expected)) {
   assert.deepEqual(startBackgroundWorkers({ role, runWorker: () => {} }).startedWorkerGroups, groups);

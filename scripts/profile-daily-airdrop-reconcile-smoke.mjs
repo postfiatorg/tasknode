@@ -131,7 +131,7 @@ async function main() {
           Amount: "15000000",
           hash: txHash,
         }),
-        JSON.stringify({ TransactionResult: "tesSUCCESS" }),
+        JSON.stringify({ TransactionResult: "tesSUCCESS", delivered_amount: "15000000" }),
       ]
     );
     await query(
@@ -223,7 +223,7 @@ async function main() {
     assert.equal(blockedRow.rows[0].reconciliation_json.status, "demote_blocked_stale_sync");
     assert.ok(blockedRow.rows[0].reconciliation_json.syncWatermarks);
 
-    // Fresh: once both watermarks are newer than the submission attempt, --allow-demote works.
+    // A fresh hot page still cannot prove that an older payment is absent.
     await setWalletHotSync({
       wallets: [demoteSourceWallet, demoteRecipientWallet],
       lastHotSyncAtSql: "now()",
@@ -233,11 +233,12 @@ async function main() {
       allowDemote: true,
       fetchImpl: offlineFetch,
     });
-    assert.equal(demotedFresh.demoted, true);
-    assert.equal(demotedFresh.issuance.status, "failed_before_submit");
+    assert.equal(demotedFresh.demoted, false);
+    assert.equal(demotedFresh.demoteBlockedReason, "daily_airdrop_demote_blocked_unproven_nonpayment");
+    assert.equal(demotedFresh.issuance.status, "submit_unknown");
     assert.equal(demotedFresh.syncWatermarks.staleForDemote, false);
 
-    // Force flag: a stale watermark can be overridden only with the explicit force flag.
+    // The legacy force flag cannot authorize a second payment from a cache miss.
     await resetDemoteIssuance();
     await setWalletHotSync({
       wallets: [demoteSourceWallet, demoteRecipientWallet],
@@ -249,10 +250,11 @@ async function main() {
       forceDemoteStaleSync: true,
       fetchImpl: offlineFetch,
     });
-    assert.equal(demotedForced.demoted, true);
-    assert.equal(demotedForced.issuance.status, "failed_before_submit");
+    assert.equal(demotedForced.demoted, false);
+    assert.equal(demotedForced.demoteBlockedReason, "daily_airdrop_demote_blocked_unproven_nonpayment");
+    assert.equal(demotedForced.issuance.status, "submit_unknown");
     assert.equal(demotedForced.syncWatermarks.staleForDemote, true);
-    assert.equal(demotedForced.reconciliation.forcedDemoteWithStaleSync, true);
+    assert.equal(demotedForced.reconciliation.forceDemoteRequested, true);
 
     console.log("profile daily airdrop reconcile smoke ok");
   } finally {

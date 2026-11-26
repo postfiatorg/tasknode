@@ -6,7 +6,17 @@ const stopWords = new Set([
   "about", "after", "also", "and", "are", "can", "does", "for", "from", "have", "how", "into", "its",
   "more", "post", "fiat", "should", "that", "the", "their", "then", "this", "was", "what", "when", "where",
   "which", "whitepaper", "who", "why", "with", "would", "you", "your",
+  "is", "it", "do", "did", "to", "my", "me", "an", "of", "in", "on", "at", "be", "or", "if", "as", "by", "up", "so",
+  "get", "got", "set", "use", "used", "any", "all", "there", "still", "show", "tell", "explain", "work", "works",
+  "need", "want", "here", "them", "they", "been", "will", "just", "has", "had", "not", "but",
 ]);
+// One-way expansions: asking about the left side should also search the right side, not the reverse.
+const directionalExpansions = [
+  [["goodalexander", "premium", "finance", "models", "earnings"], ["finance", "hub", "validator", "models"]],
+  [["postfiatd", "deprecated", "legacy"], ["postfiatd", "testnet", "validator"]],
+  [["claude", "codex", "cursor", "mcp"], ["agent", "connect"]],
+  [["setup"], ["setup", "install"]],
+];
 const synonymGroups = [
   ["xrp", "xrpl", "ripple"],
   ["privacy", "private", "shielded", "orchard", "halo2"],
@@ -18,6 +28,13 @@ const synonymGroups = [
   ["fx", "foreign", "exchange", "pnok", "nok"],
   ["quantum", "postquantum", "mldsa", "signature"],
   ["latency", "fastpay", "finality", "performance"],
+  ["agent", "agents", "claude", "codex", "cursor", "mcp", "install", "installer", "cli"],
+  ["validator", "validators"],
+  ["wallet", "seed", "vault", "unlock", "custody"],
+  ["task", "tasks", "evidence", "verification", "reward", "rewards"],
+  ["hive", "network", "badge", "routing"],
+  ["airdrop", "nft", "profile"],
+  ["docs", "documents", "prompts", "spreadsheet"],
 ];
 
 function normalizeText(value = "") {
@@ -26,13 +43,16 @@ function normalizeText(value = "") {
 
 function queryTokens(message = "") {
   const base = new Set(
-    splitWhitespace(normalizeText(message))
+    splitWhitespace(normalizeText(String(message || "").toLowerCase().replaceAll("setting up", "setup").replaceAll("set up", "setup")))
       .filter((token) => token.length > 1 && !stopWords.has(token))
   );
   for (const group of synonymGroups) {
     if (group.some((term) => base.has(normalizeText(term)))) {
       group.forEach((term) => base.add(normalizeText(term)));
     }
+  }
+  for (const [triggers, additions] of directionalExpansions) {
+    if (triggers.some((term) => base.has(term))) additions.forEach((term) => base.add(term));
   }
   return [...base];
 }
@@ -43,10 +63,13 @@ function occurrences(haystack = "", needle = "") {
 }
 
 function chunkScore(chunk, tokens, phrase) {
-  const title = normalizeText(chunk.title);
+  // Every product page title starts with "Task Node:", which would otherwise match any question that says "Task Node".
+  const title = normalizeText(chunk.sourceType === "product" ? (chunk.title.startsWith("Task Node:") ? chunk.title.slice("Task Node:".length) : chunk.title) : chunk.title);
   const heading = normalizeText(chunk.heading);
   const tags = normalizeText((chunk.tags || []).join(" "));
   const text = normalizeText(chunk.text);
+  // A bibliography matches many words and explains nothing.
+  if (heading.startsWith("references")) return 0;
   let score = 0;
   for (const token of tokens) {
     if (title.includes(token)) score += 14;
@@ -57,11 +80,37 @@ function chunkScore(chunk, tokens, phrase) {
   if (phrase.length > 5 && `${title} ${heading} ${text}`.includes(phrase)) score += 24;
   if (chunk.sourceType === "whitepaper") score += 1.5;
   if (chunk.draft) score *= 0.72;
+  if (chunk.legacy) score = tokens.includes("postfiatd") ? score + 20 : score * 0.85;
   return score;
 }
 
 function sourceStatus(article) {
   return article.draft ? "unpublished draft/proposal" : `published${article.date ? ` ${article.date.slice(0, 10)}` : ""}`;
+}
+
+const legacyStatus = "legacy chain (postfiatd / PFT Ledger, XRPL-derived, being deprecated in favour of Post Fiat L1 v2)";
+
+function chunkStatus(chunk) {
+  if (chunk.sourceType === "whitepaper") return "canonical protocol document (Post Fiat L1 v2)";
+  if (chunk.sourceType === "product") return "current Task Node product documentation";
+  if (chunk.sourceType === "site") return chunk.legacy ? `postfiat.org page; ${legacyStatus}` : "current postfiat.org page";
+  return sourceStatus(chunk);
+}
+
+function formatSiteCatalog() {
+  return (corpus.sources.sitePages || [])
+    .map((page) => `- [${page.legacy ? "legacy postfiatd" : "current"}] ${page.title} — ${page.summary} Source: ${page.url}`)
+    .join("\n");
+}
+
+function formatProductCatalog() {
+  return (corpus.sources.productDocs || []).map((doc) => `- ${doc.title} — ${doc.url}`).join("\n");
+}
+
+function formatCompactBlogCatalog() {
+  return corpus.sources.blogArchive.articles
+    .map((article) => `- [${sourceStatus(article)}] ${article.title} — ${article.url}`)
+    .join("\n");
 }
 
 function formatCatalog() {
@@ -70,7 +119,7 @@ function formatCatalog() {
     .join("\n");
 }
 
-function selectedChunks(message = "", limit = 8) {
+function selectedChunks(message = "", limit = 9, { anchorWhitepaper = true } = {}) {
   const tokens = queryTokens(message);
   const phrase = normalizeText(message);
   const ranked = corpus.chunks
@@ -87,13 +136,19 @@ function selectedChunks(message = "", limit = 8) {
     sourceCounts.set(chunk.sourceId, sourceCount + 1);
     selected.push(chunk);
   };
-  add(corpus.chunks.find((chunk) => chunk.sourceType === "whitepaper" && chunk.heading.toLowerCase().startsWith("abstract")), { force: true });
-  const bestWhitepaper = ranked.find(
-    (entry) => entry.chunk.sourceType === "whitepaper" && entry.score > 4 && !seen.has(entry.chunk.id)
-  );
-  if (bestWhitepaper) add(bestWhitepaper.chunk, { force: true });
+  // A question that is mainly about a product surface is answered from product pages, not anchored on the protocol paper.
+  const productLed = ["product", "site"].includes(ranked[0]?.chunk.sourceType) && ranked[0].score > 20;
+  if (anchorWhitepaper && !productLed) {
+    add(corpus.chunks.find((chunk) => chunk.sourceType === "whitepaper" && chunk.heading.toLowerCase().startsWith("abstract")), { force: true });
+    const bestWhitepaper = ranked.find(
+      (entry) => entry.chunk.sourceType === "whitepaper" && entry.score > 4 && !seen.has(entry.chunk.id)
+    );
+    if (bestWhitepaper) add(bestWhitepaper.chunk, { force: true });
+  }
   if (tokens.length === 0) {
     add(corpus.chunks.find((chunk) => chunk.sourceType === "whitepaper" && chunk.heading.toLowerCase().startsWith("1. introduction")));
+    add(corpus.chunks.find((chunk) => chunk.sourceId === "site:about"));
+    add(corpus.chunks.find((chunk) => chunk.sourceId === "site:task-node"));
     add(corpus.chunks.find((chunk) => chunk.sourceId === "blog:community-update-august-2026"));
   }
   for (const entry of ranked) {
@@ -110,24 +165,31 @@ export function postFiatKnowledgeMetadata() {
     whitepaper: corpus.sources.whitepaper,
     blogCommit: corpus.sources.blogArchive.commit,
     blogArticleCount: corpus.sources.blogArchive.articleCount,
+    sitePageCount: (corpus.sources.sitePages || []).length,
+    productDocCount: (corpus.sources.productDocs || []).length,
     chunkCount: corpus.chunks.length,
   };
 }
 
-export function formatPostFiatKnowledgeContext({ message = "" } = {}) {
-  const whitepaper = corpus.sources.whitepaper;
-  const snippets = selectedChunks(message)
+function formatSnippets(chunks) {
+  return chunks
     .map((chunk, index) => [
       `### Snippet ${index + 1}: ${chunk.title} — ${chunk.heading}`,
-      `Status: ${chunk.sourceType === "whitepaper" ? "canonical protocol document" : sourceStatus(chunk)}`,
+      `Status: ${chunkStatus(chunk)}`,
       `Source: ${chunk.url}`,
       chunk.text,
     ].join("\n"))
     .join("\n\n");
+}
+
+const sourcePrecedence = "The canonical Post Fiat L1 v2 whitepaper controls protocol architecture and implementation-boundary claims. Task Node product documentation controls how Task Node features work today. Published dated blog posts provide product, experiment, benchmark, and implementation evidence as of their dates. Pages marked legacy describe postfiatd / PFT Ledger, the XRPL-derived chain that is being deprecated in favour of L1 v2; use them for operators of that chain and label them as legacy. Draft/proposal posts are idea records only and must be labeled as such. Conflicts resolve in that order.";
+
+export function formatPostFiatKnowledgeContext({ message = "" } = {}) {
+  const whitepaper = corpus.sources.whitepaper;
   return [
     `<post_fiat_knowledge whitepaper_commit="${whitepaper.commit}" blog_commit="${corpus.sources.blogArchive.commit}">`,
     "## Source precedence",
-    "The canonical whitepaper controls protocol architecture and implementation-boundary claims. Published dated blog posts provide product, experiment, benchmark, and implementation evidence as of their dates. Draft/proposal posts are idea records only and must be labeled as such. Conflicts resolve in that order.",
+    sourcePrecedence,
     "",
     `## Canonical whitepaper: ${whitepaper.title}`,
     `Source: ${whitepaper.url}`,
@@ -136,8 +198,37 @@ export function formatPostFiatKnowledgeContext({ message = "" } = {}) {
     `## Complete blog archive catalog (${corpus.sources.blogArchive.articleCount} articles)`,
     formatCatalog(),
     "",
+    "## postfiat.org product and operator pages",
+    formatSiteCatalog(),
+    "",
+    "## Task Node product documentation",
+    formatProductCatalog(),
+    "",
     "## Question-relevant source snippets",
-    snippets,
+    formatSnippets(selectedChunks(message)),
+    "</post_fiat_knowledge>",
+  ].join("\n");
+}
+
+// Smaller packet for Help mode, which already embeds the Task Node user guide: catalogs by title plus the best excerpts.
+export function formatPostFiatKnowledgeBrief({ message = "" } = {}) {
+  const whitepaper = corpus.sources.whitepaper;
+  return [
+    `<post_fiat_knowledge whitepaper_commit="${whitepaper.commit}" blog_commit="${corpus.sources.blogArchive.commit}">`,
+    "## Source precedence",
+    sourcePrecedence,
+    "",
+    `## Canonical whitepaper: ${whitepaper.title}`,
+    `Source: ${whitepaper.url}`,
+    "",
+    `## Blog archive (${corpus.sources.blogArchive.articleCount} articles)`,
+    formatCompactBlogCatalog(),
+    "",
+    "## postfiat.org product and operator pages",
+    formatSiteCatalog(),
+    "",
+    "## Question-relevant source snippets",
+    formatSnippets(selectedChunks(message, 6, { anchorWhitepaper: false })),
     "</post_fiat_knowledge>",
   ].join("\n");
 }

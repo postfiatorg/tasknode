@@ -11,8 +11,9 @@ curl -fsSL https://tasknode.postfiat.org/install | sh
 It finds your agents, prints a link and a short code, and waits while you approve on any device:
 
 ```
-To connect, open  https://tasknode.postfiat.org/activate  and enter  WDJB-MJHT
-(or open https://tasknode.postfiat.org/activate?code=WDJB-MJHT)
+To connect, open this link and press Approve:
+  https://tasknode.postfiat.org/activate?code=WDJB-MJHT#p=…
+(On another device you can open https://tasknode.postfiat.org/activate and enter WDJB-MJHT instead.)
 Waiting for approval…
 Connected as goodalexander (wallet rPo8…HxNx)
   ✓ Claude Code   ✓ Codex
@@ -56,3 +57,13 @@ Each agent gets the entry its own `mcp add` command would create, so the agents 
 - No telemetry. It talks only to the Task Node server: sign-in, `whoami` to show which account a token belongs to, and revoke.
 
 MIT licensed.
+
+## Encrypted prompts (Node 22+)
+
+`tasknode connect` generates a local X25519 device keypair and registers a `tasknode-prompts` stdio MCP server next to the hosted entry. Unlock Docs in the browser, match the fingerprint printed by the CLI, and approve prompt access. `/connect` lists and revokes prompt devices. Private device material stays in mode-0600 files under `TASKNODE_CONFIG_DIR` (default `~/.config/tasknode`).
+
+The local server provides `prompt_list`, `prompt_create`, `prompt_read`, `prompt_edit`, `prompt_save_version`, `prompt_history`, `prompt_stats`, and `prompt_log_tih_run`. A text patch is `{oldText, newText}` and must match exactly once; read before editing. Stats use UTC dates and accept 7 or 30 days. Run TIH locally, then log its scores. Prompt plaintext never goes to the hosted MCP or document assistants. Revocation blocks new relay access, but cannot erase previously read content or copied pad capabilities.
+
+For manual stdio registration: `tasknode prompts-mcp --device-file /absolute/path/to/device.json`. Never put private key material or tokens in agent prompts. The curl installer retains its downloaded runtime modules and installs their pinned protocol dependencies with lifecycle scripts disabled.
+
+After Approve the browser continues to Docs and opens the wallet unlock; once unlocked, the agent has the prompt library and the terminal prints `Docs prompts connected.` The agents are already connected before this, and the terminal waits at most two minutes (Ctrl+C skips). The sign-in link carries the device public key and a one-time secret in its fragment (never sent to the server), and Docs wraps the library key to that key the next time it is unlocked in the approving browser. The agent accepts the key only with a proof made from that secret. If the short code was typed instead, approve the device under Docs → Agent access and give the agent the pairing code (`prompt_pair`, or `tasknode prompts-pair --device-id ID --code CODE`). Local tools refuse unpaired keys and later key substitutions. The installer verifies a content-addressed runtime and committed lockfile, runs `npm ci --omit=dev --ignore-scripts`, and preserves previous runtimes if a download fails.

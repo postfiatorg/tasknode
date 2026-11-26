@@ -122,6 +122,55 @@ try {
   assert.equal((await getAccountIdentityProfile({ accountId: recoveredAccountId })).handleRequired, false, "the recovered login must not ask the member to choose their handle again");
   assert.equal((await query("SELECT account_json->>'recoverySource' AS source FROM app_accounts WHERE account_id = $1", [recoveredAccountId])).rows[0].source, null);
 
+  // A member whose recovered account was founded by GitHub signs in with Discord first. Both
+  // providers report the same verified email, so the email now belongs to the newer Discord account.
+  // The GitHub login must still reclaim the recovered account instead of joining the Discord one.
+  const sharedEmail = `shared-${suffix}@example.test`;
+  const sharedGithubUserId = `github-shared-${suffix}`;
+  const sharedRecoveredId = `acct_oauth_${createHash("sha256").update(`github:${sharedGithubUserId}`).digest("hex").slice(0, 24)}`;
+  const sharedWallet = `rSharedEmailRecovery${suffix}`;
+  await query(
+    `INSERT INTO app_accounts (account_id, account_json, status, created_at, updated_at)
+     VALUES ($1, $2::jsonb, 'active', $3, $3)`,
+    [sharedRecoveredId, JSON.stringify({
+      id: sharedRecoveredId, status: "active", displayName: "Recovered Work", hiveHandle: "",
+      profileVisibility: "public", linkedProviders: [], assurance: "low",
+      recoverySource: "durable_profile_census", createdAt: recoveredAt, updatedAt: recoveredAt,
+    }), recoveredAt]
+  );
+  accountIds.push(sharedRecoveredId);
+  recoveryWallets.push(sharedWallet);
+  await query(
+    "INSERT INTO account_linked_wallets (account_id, wallet_address, status, linked_at) VALUES ($1,$2,'linked',now())",
+    [sharedRecoveredId, sharedWallet]
+  );
+  const sharedDiscordAccount = await getOrCreateProviderAccount({
+    provider: "discord", providerUserId: `discord-shared-${suffix}`, username: `shared-${suffix}`,
+    emailInfo: { email: sharedEmail, verified: true },
+  });
+  accountIds.push(sharedDiscordAccount.id);
+  assert.notEqual(sharedDiscordAccount.id, sharedRecoveredId);
+  assert.equal((await findAccountByEmail(sharedEmail)).id, sharedDiscordAccount.id);
+  const sharedGithubAccount = await getOrCreateProviderAccount({
+    provider: "github", providerUserId: sharedGithubUserId, username: `shared-${suffix}`,
+    emailInfo: { email: sharedEmail, verified: true },
+  });
+  assert.equal(sharedGithubAccount.id, sharedRecoveredId, "the founding identity must reclaim its recovered account even when its email already belongs to a newer account");
+  assert.equal((await findAccountByIdentity("github", sharedGithubUserId)).id, sharedRecoveredId);
+  assert.equal((await findAccountByEmail(sharedEmail)).id, sharedDiscordAccount.id, "reclaiming a recovered account must not take the email away from the account that owns it");
+  assert.equal((await query("SELECT account_json->>'recoverySource' AS source FROM app_accounts WHERE account_id = $1", [sharedRecoveredId])).rows[0].source, null);
+  assert.equal((await getOrCreateProviderAccount({
+    provider: "github", providerUserId: sharedGithubUserId, username: `shared-${suffix}`,
+    emailInfo: { email: sharedEmail, verified: true },
+  })).id, sharedRecoveredId, "later logins must keep landing on the reclaimed account");
+  assert.equal((await linkWalletToAccount({ accountId: sharedDiscordAccount.id, address: sharedWallet })).error, "wallet_owned_by_other_account", "the wallet stays with the recovered account");
+  // An ordinary provider login with a known email still joins the account that owns the email.
+  const joinedAccount = await getOrCreateProviderAccount({
+    provider: "github", providerUserId: `github-joins-${suffix}`, username: `joins-${suffix}`,
+    emailInfo: { email: sharedEmail, verified: true },
+  });
+  assert.equal(joinedAccount.id, sharedDiscordAccount.id, "without a recovered account, a verified email match still decides the account");
+
   const splitProviderUserId = `github-split-${suffix}`;
   const splitTargetId = `acct_oauth_${createHash("sha256").update(`github:${splitProviderUserId}`).digest("hex").slice(0, 24)}`;
   const splitSourceId = `acct_oauth_${createHash("sha256").update(`github:${splitProviderUserId}:refound:${suffix}`).digest("hex").slice(0, 24)}`;
@@ -210,6 +259,13 @@ try {
   assert.equal((await query("SELECT status FROM billing_accounts WHERE account_id = $1", [splitSourceId])).rows[0].status, "merged");
   assert.equal((await recoverSplitProviderAccount(recoveryOptions)).alreadyMerged, true, "recovery must be idempotent");
 
+  // An account that holds a wallet is never folded into another one by linking; empty duplicates
+  // are covered in duplicate-account-absorb-smoke.mjs.
+  const heldWallet = `rAccountHeld${suffix}`;
+  recoveryWallets.push(heldWallet);
+  assert.equal((await linkWalletToAccount({ accountId: oauthAccounts[0].id, address: heldWallet })).ok, true);
+  assert.equal((await linkWalletToAccount({ accountId: emailAccounts[0].id, address: `rAccountHeldOther${suffix}` })).ok, true);
+  recoveryWallets.push(`rAccountHeldOther${suffix}`);
   const conflict = await linkProviderToAccount({
     accountId: emailAccounts[0].id,
     provider: "discord",

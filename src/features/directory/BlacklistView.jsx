@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { requestJson } from "../../api";
 import { formatCompactPft } from "../hive/HiveView.jsx";
+import { ReinstatementOverrides } from "./ReinstatementOverrides.jsx";
 import "./directory.css";
 
 const REASON_LABELS = {
@@ -20,7 +21,7 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
 
-export function BlacklistView() {
+export function BlacklistView({ accountId }) {
   const [status, setStatus] = useState("loading");
   const [document, setDocument] = useState({ entries: [], policy: "", count: 0 });
 
@@ -50,6 +51,7 @@ export function BlacklistView() {
           <RefreshCw size={16} strokeWidth={1.75} />
         </button>
       </header>
+      {accountId && <ReinstatementOverrides accountId={accountId} refreshDirectory={load} />}
       {status === "loading" && <div className="directory-empty">Loading blacklist.</div>}
       {status === "error" && <div className="directory-empty">The blacklist could not be loaded.</div>}
       {status === "ready" && document.entries.length === 0 && (

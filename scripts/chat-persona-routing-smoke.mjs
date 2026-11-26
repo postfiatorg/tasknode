@@ -103,12 +103,29 @@ assert.doesNotMatch(kravisInstructions, /## Experience Promise/);
 assert.doesNotMatch(kravisInstructions, /How to use:/);
 assert.doesNotMatch(kravisInstructions, /APPENDIX — Design Notes/);
 
+const basedgptInstructions = taskNodeInstructions({
+  persona: "basedgpt",
+  contextDocument,
+  memoryContext,
+  taskContext,
+  jobsEssence,
+});
+assert.ok(basedgptInstructions.includes("You have the following attributes:"));
+assert.ok(basedgptInstructions.includes("Selected Task Node personality: BasedGPT."));
+assert.ok(basedgptInstructions.includes("PERSONA_CONTEXT_SENTINEL"));
+assert.ok(basedgptInstructions.includes("PERSONA_MEMORY_SENTINEL"));
+assert.ok(basedgptInstructions.includes("PERSONA_TASK_SENTINEL"));
+assert.ok(!basedgptInstructions.includes("JOBS_VECTOR_SENTINEL"));
+assert.ok(!basedgptInstructions.includes("## Experience Promise"));
+assert.ok(!basedgptInstructions.includes("Canonical prompt for the BasedGPT chat personality"));
+assert.ok(!basedgptInstructions.includes("SYSTEM PROMPT ENDS"));
+
 let retrievalCalls = 0;
 const retrieve = async () => {
   retrievalCalls += 1;
   return { ok: true, text: jobsEssence, chunks: [{ title: "Jobs" }] };
 };
-for (const persona of ["odv", "trading-coach", "kravis"]) {
+for (const persona of ["odv", "trading-coach", "kravis", "basedgpt"]) {
   const result = await resolveChatJobsContext({ persona, retrieve, jobsEssence });
   assert.equal(result.skipped, true);
   assert.equal(result.text, "");
@@ -152,7 +169,7 @@ for (const modality of CHAT_MODALITIES) {
 
 const modalityRequest = ambientChatRequest({
   mode: "Thinking",
-  model: "zai/glm-5.3",
+  model: "deepseek/deepseek-v4.1-flash-1017",
   message: "Current modality question",
   conversationId: "conversation-modality-smoke",
   historyMessages: [
@@ -164,7 +181,7 @@ const modalityRequest = ambientChatRequest({
   taskContext,
   persona: "five-mirrors",
 });
-assert.equal(modalityRequest.model, "zai/glm-5.3");
+assert.equal(modalityRequest.model, "deepseek/deepseek-v4.1-flash-1017");
 assert.ok(modalityRequest.messages.some((message) => message.content === "PRIOR_USER_TURN_SENTINEL"));
 assert.ok(modalityRequest.messages.some((message) => message.content === "PRIOR_ASSISTANT_TURN_SENTINEL"));
 
@@ -182,7 +199,7 @@ const jobsResult = await resolveChatJobsContext({ persona: "jobs", retrieve });
 assert.equal(retrievalCalls, 1, "Jobs should invoke Jobs retrieval");
 assert.equal(jobsResult.text, jobsEssence);
 
-for (const persona of ["odv", "trading-coach", "kravis"]) {
+for (const persona of ["odv", "trading-coach", "kravis", "basedgpt"]) {
   const estimate = chatEstimate(
     { message: "Give me a useful next step", mode: "Instant", persona },
     { contextDocument, memoryContext, taskContext }
@@ -195,6 +212,8 @@ assert.ok(chatEstimate({ message: "Help with product", mode: "Instant", persona:
 assert.equal(normalizeChatPersona("coach"), "trading-coach");
 assert.equal(normalizeChatPersona("steve-jobs"), "jobs");
 assert.equal(normalizeChatPersona("henry-kravis"), "kravis");
+assert.equal(normalizeChatPersona("BasedGPT"), "basedgpt");
+assert.equal(normalizeChatPersona("based-gpt"), "basedgpt");
 assert.equal(normalizeChatPersona("brainstorm"), "brainstorming");
 assert.equal(normalizeChatPersona("five_mirrors"), "five-mirrors");
 assert.equal(normalizeChatPersona("i_ching"), "i-ching");
@@ -203,6 +222,8 @@ assert.equal(normalizeChatPersona("app-clarity"), "");
 assert.equal(normalizeChatPersona("app-help"), "");
 assert.equal(chatPersonaDefinition("kravis").name, "Kravis");
 assert.ok(CHAT_PERSONAS.some((persona) => persona.id === "kravis"));
+assert.equal(chatPersonaDefinition("basedgpt").name, "BasedGPT");
+assert.ok(CHAT_PERSONAS.some((persona) => persona.id === "basedgpt"));
 const validatorDefinition = chatPersonaDefinition("validator");
 assert.equal(validatorDefinition.tagline, "Operate and troubleshoot Post Fiat validators.");
 assert.equal(validatorDefinition.inputPlaceholder, "What validator do you need to run or troubleshoot?");
@@ -262,6 +283,7 @@ assert.ok(frontendSource.includes('mode: isContextEdit ? "Thinking" : signedOut 
 assert.match(frontendSource, /Ask a specific question before casting the I Ching/);
 assert.match(frontendSource, /IChingSetupDialog/);
 assert.match(frontendSource, /kravis: Landmark/);
+assert.ok(frontendSource.includes("basedgpt: HoodIcon"));
 assert.match(chatDocsSource, /Validator \| Operate and troubleshoot Post Fiat validators/);
 assert.doesNotMatch(chatDocsSource, /Validator \| Stress-test an idea, claim, or plan/);
 

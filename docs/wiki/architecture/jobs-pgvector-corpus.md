@@ -46,20 +46,30 @@ DeepSeek V4 Pro recommendation run.
 
 1. `server/chat-router.js` calls `jobsRetrievalForChat(...)` for chat turns when
    `jobsEssence` is not manually overridden.
-2. `server/jobs-corpus.js` embeds the retrieval query.
+2. `server/jobs-corpus.js` embeds the retrieval query. With
+   `TASKNODE_JOBS_RETRIEVAL_EMBEDDING_PROVIDER=gateway` (set in `fly.toml`) it
+   embeds only the user's message through the Vercel AI Gateway and searches
+   the `text-embedding-3-small` rows, so excerpts follow the question. If that
+   call fails, times out or finds nothing, it falls back to the built-in
+   keyword embedding over the message plus account context. The default
+   provider is `deterministic`, which needs no network.
 3. `server/jobs-corpus.js` searches `jobs_corpus_chunks` with pgvector distance:
 
    ```sql
    chunk.embedding <=> $1::vector
    ```
 
-4. `server/jobs-corpus.js` formats the top chunks into
-   `<jobs_retrieval_context>`.
+4. `server/jobs-corpus.js` formats the top five chunks, whole (up to 1,600
+   characters each), into `<jobs_retrieval_context>`.
 5. `server/chat-memory-context.js` passes that retrieval text into
    `formatChatSpiritContext(...)`.
 6. `server/chat-spirit-context.js` renders it into
    `RELEVANT_JOBS_ESSENCE_FROM_VECTOR_DB` in
-   `prompts/chat/jobs_standard_chat_codex_style_draft.md`.
+   `prompts/chat/jobs_standard_chat_codex_style_draft.md`. The prompt ends
+   with three short sections (source use, voice, grounding) that tell the
+   model to build the answer around one retrieved episode, tell it as
+   history, and never invent one. They sit last on purpose: tested on
+   DeepSeek V4.1 Flash, the model ignored the excerpts without them.
 
 ## Fly Deployment Shape
 

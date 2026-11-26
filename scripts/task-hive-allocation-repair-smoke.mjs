@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { deliveryDecision, mergeRoundProgress, recoverySchedule } from "../ops/bm-runtime/supervisor.mjs";
 import { idleEligibleContributors } from "./bm/lib.mjs";
-import { routingDuty } from "../server/board-task-policy.js";
+import { boardRoutingCandidates } from "../server/board-task-policy.js";
 import { assessTaskIntent } from "../server/task-intent-assessment.js";
 import { query, closePool } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
@@ -74,9 +74,9 @@ try {
   assert.equal(first.length, 103);
   assert.deepEqual(first.map(member => member.account_id), second.map(member => member.account_id));
   const board = { id: prefix, routing_constraints: { assignable_handles: ["repair-fixture-103-" + prefix.slice(-6)] } };
-  assert.deepEqual(routingDuty(board, first, 0).candidate_ids, [ids[102]]);
+  assert.deepEqual(boardRoutingCandidates(board, first).map((member) => member.account_id), [ids[102]]);
   await query("UPDATE account_network_badges SET status='revoked',revoked_at=now() WHERE account_id=$1", [ids[102]]);
-  assert.equal(routingDuty(board, await idleEligibleContributors(), 0), null);
+  assert.deepEqual(boardRoutingCandidates(board, await idleEligibleContributors()), []);
   results.push({ case: "complete_candidate_coverage", pass: true, eligible: 103, surfacedOnEveryRound: 103, restrictedLastMemberSurfaced: true, revokedBadgeExcluded: true });
 
   await query("INSERT INTO task_requests(request_id,account_id,subject_wallet,source,status,request_bundle_cid,worker_attempt_count,worker_retry_after,last_error) VALUES($1,$2,'rRepairFixture12','pfterminal','queued',$3,3,now()-interval '11 days','original_provider_error')", [requestId, ids[12], "postgres:" + requestId]);

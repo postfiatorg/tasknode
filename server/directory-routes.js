@@ -40,8 +40,7 @@ export async function handleDirectoryRoute({
     const entries = await listPublicBlacklist();
     json(res, 200, {
       ok: true,
-      policy:
-        "Accounts paid for commentary on published writing or audit/review write-ups were asked for their Discord handle and any checkable proof of a real contribution to Post Fiat. Accounts that did not respond, or showed no contribution at all, receive no network tasks and no rewards.",
+      policy: "Blacklisted accounts receive an unpaid reinstatement task after 24 hours. Ordinary network assignments and task rewards are paused until access is restored.",
       count: entries.length,
       entries,
     });

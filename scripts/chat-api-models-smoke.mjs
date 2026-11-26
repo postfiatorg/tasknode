@@ -8,7 +8,7 @@ process.env.TASKNODE_STORE_PATH = join(directory, "runtime.json");
 process.env.TASKNODE_DATABASE_ENABLED = "false";
 process.env.VERCEL_AI_GATEWAY_API_KEY = "fixture-key";
 process.env.AMBIENT_API_KEY = "fixture-backup";
-process.env.INFERENCE_MODEL_REASONING = "zai/glm-5.3";
+process.env.INFERENCE_MODEL_REASONING = "deepseek/deepseek-v4.1-flash-1017";
 process.env.INFERENCE_MODEL_VISION = "moonshotai/kimi-k2.7-code";
 const { apiChatModels } = await import("../server/chat-api-models.js");
 const { modelForMode, chatExecutionStatus, actualChatCost, chatProviderTimeoutMs } = await import("../server/chat-mode-runtime.js");
@@ -17,7 +17,7 @@ const { normalizeInferenceRequest, inferenceChatCompletion, inferenceChatComplet
 const { openRouterUsage } = await import("../server/chat-provider-usage.js");
 const { appendChatTurn, usageLedger } = await import("../server/repositories/chat-billing.js");
 const { chatEstimate } = await import("../server/chat-estimate.js");
-const expectedRates = [[10, 1, 50], [2, 0.2, 10], [4, 0.2, 20]];
+const expectedRates = [[10, 1, 50], [2, 0.2, 10], [4, 0.2, 20], [1.5, 0.075, 7.5]];
 try {
   let index = 0;
   for (const [mode, config] of Object.entries(apiChatModels)) {
@@ -64,14 +64,14 @@ try {
     await appendChatTurn({ accountId: "api_model_fixture", conversationId: "api-model-" + index, mode, provider: "vercel", model: config.defaultModel, userMessage: "Reply with ready.", assistantMessage: "ready", usage });
   }
   assert.ok(!chatModes().some(mode => mode.label.includes("Fable")));
-  // Opus 5.5 is routed only to zero-data-retention providers; the others are not.
+  // Opus 5.5 and Gemini 4 Hydrogen are routed only to zero-data-retention providers; the others are not.
   const { ambientChatRequest } = await import("../server/chat-router.js");
   for (const mode of Object.keys(apiChatModels)) {
     const request = normalizeInferenceRequest(ambientChatRequest({ mode, model: apiChatModels[mode].defaultModel, message: "ready", conversationId: "zdr" }), { capability: "selected_model" });
-    assert.equal(request.providerOptions.gateway.zeroDataRetention === true, mode === "Claude Opus 5.5", mode);
+    assert.equal(request.providerOptions.gateway.zeroDataRetention === true, ["Claude Opus 5.5", "Gemini 4 Hydrogen"].includes(mode), mode);
   }
   const dedicated = { VERCEL_ASTRA_API_KEY: "astra-only", VERCEL_KIMI_API_KEY: "kimi-only", INFERENCE_AMBIENT_BACKUP_ENABLED: "false" };
-  const expectedKeys = { "GPT-6 Astra": "astra-only", "Kimi K3.1 Pro": "kimi-only", "Claude Opus 5.5": "generic" };
+  const expectedKeys = { "GPT-6 Astra": "astra-only", "Kimi K3.1 Pro": "kimi-only", "Claude Opus 5.5": "generic", "Gemini 4 Hydrogen": "generic" };
   for (const [mode, config] of Object.entries(apiChatModels)) {
     const expectedKey = expectedKeys[mode];
     await inferenceChatCompletion({ body: { model: config.defaultModel, messages: [{ role: "user", content: "ready" }] }, capability: "selected_model", env: { ...dedicated, VERCEL_AI_GATEWAY_API_KEY: "generic" }, fetchImpl: async (_url, init) => {
@@ -101,12 +101,12 @@ try {
   delete process.env.VERCEL_KIMI_API_KEY;
   process.env.VERCEL_AI_GATEWAY_API_KEY = generic;
   const ledger = await usageLedger({ accountId: "api_model_fixture" });
-  assert.equal(ledger.entries.length, 3);
+  assert.equal(ledger.entries.length, 4);
   for (const entry of ledger.entries) assert.equal(entry.amountUsd, 0.012345);
   assert.equal(actualChatCost("GPT-6 Astra", { inputTokens: 272001, outputTokens: 1000 }), 5.51502);
   const legacy = openRouterUsage({ usage: { prompt_tokens: 1000, completion_tokens: 100, cost: 99 } }, "Thinking");
   assert.equal(legacy.costUsd, actualChatCost("Thinking", { inputTokens: 1000, outputTokens: 100 }));
-  console.log("chat API models smoke passed: 3 exact models, images, estimates, streamed costs, ledger debits, missing-cost guard, no substitution");
+  console.log("chat API models smoke passed: 4 exact models, images, estimates, streamed costs, ledger debits, missing-cost guard, no substitution");
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

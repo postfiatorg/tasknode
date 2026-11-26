@@ -98,10 +98,10 @@ assert.throws(() => taskgenApiConfig(personalInput, {
 }), (error) => error.code === "inference_model_unsupported");
 assert.deepEqual(taskgenApiConfig(taskInput, {
   TASKNODE_NETWORK_TASK_GENERATION_V2_ENABLED: "true",
-  TASKNODE_TASKGEN_MODEL: "zai/glm-5.3-flash",
+  TASKNODE_TASKGEN_MODEL: "deepseek/deepseek-v4.1-flash-1017",
 }), {
   provider: "vercel",
-  model: "zai/glm-5.3-flash",
+  model: "deepseek/deepseek-v4.1-flash-1017",
   reasoningEffort: "high",
 });
 

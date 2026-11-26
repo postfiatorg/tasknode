@@ -2,7 +2,7 @@
 
 The Board Manager Secretary Packet is a retained compression layer in front
 of the Board Manager decision contract. When invoked it uses the shared
-Vercel GLM 5.3 route. The automatic Fly Board Manager
+Vercel DeepSeek V4.1 Flash route. The automatic Fly Board Manager
 is retired; this packet is separate from the live advisory board-secretary
 memo worker. It turns verbose Hive board state
 into a compact reusable packet so the Board Manager can make a decision without
@@ -12,7 +12,7 @@ System Status row: `board_manager_secretary_packets`
 
 ## Runtime Boundary
 
-- Provider path: shared `strict_json` capability, primary `zai/glm-5.3`.
+- Provider path: shared `strict_json` capability, primary `deepseek/deepseek-v4.1-flash-1017`.
 - Prompt: `prompts/hive/board_manager_secretary_v1.md`.
 - Runtime module: `server/board-manager-secretary-packets.js`.
 - Primary store: `board_manager_secretary_packets`.

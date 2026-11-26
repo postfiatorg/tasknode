@@ -1,9 +1,22 @@
 import { defineConfig } from "vite";
+import { randomUUID } from "node:crypto";
+import { walletBuildId } from "./server/wallet-build.js";
 import { fileURLToPath } from "node:url";
 
 const apiOrigin = process.env.TASKNODE_API_ORIGIN || "http://127.0.0.1:8080";
 
+let walletBundleId;
 export default defineConfig({
+  plugins: [{
+    name: "wallet-build-id",
+    config(_, { command }) {
+      walletBundleId = command === "build" ? (process.env.VITE_BUILD_ID || process.env.BUILD_ID || "web") + "-" + randomUUID() : walletBuildId();
+      return { define: { "import.meta.env.VITE_WALLET_BUILD_ID": JSON.stringify(walletBundleId) } };
+    },
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "wallet-build.txt", source: walletBundleId });
+    },
+  }],
   // Shared Context helpers use the native browser parser. Node uses parse5.
   resolve: {
     alias: { "./html-tree.js": fileURLToPath(new URL("./shared/html-tree.browser.js", import.meta.url)) },
@@ -45,6 +58,7 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: apiOrigin,
+        ws: true,
         changeOrigin: false,
       },
       "/health": {

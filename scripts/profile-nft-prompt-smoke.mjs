@@ -34,7 +34,7 @@ let ambientCalls = 0;
 const ambientFetch = async (_url, init) => {
   ambientCalls += 1;
   const request = JSON.parse(init.body);
-  assert.equal(request.model, "zai/glm-5.3");
+  assert.equal(request.model, "deepseek/deepseek-v4.1-flash-1017");
   assert.ok(JSON.stringify(request.messages).includes("SecretProjectZephyr9081726354"));
   return new Response(
     JSON.stringify({

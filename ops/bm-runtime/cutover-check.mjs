@@ -16,4 +16,4 @@ for (const agent of readAgentRegistry().agents) {
   const children = execFileSync("ps", ["--ppid", parent, "-o", "pid="], { encoding: "utf8" }).split("\n").map(value => Number(value.trim()));
   if (!children.includes(status.pid)) throw new Error("cutover_terminal_pid_mismatch");
 }
-console.log("Scoped API, six-board assignment and installed ready terminal verified for cutover.");
+console.log("Scoped API, configured board assignments and installed ready terminal verified for cutover.");

@@ -55,8 +55,17 @@ non-discoverable accounts.
 accountability policy: accounts paid for commentary on published writing or
 audit/review write-ups that refused, missed the deadline for, or failed the
 mandatory value check (Discord handle plus any checkable proof of a
-contribution to Post Fiat, from any work). Blacklisted accounts receive no network
-tasks and no reward payments. The Blacklist page (profile menu) renders it.
+contribution to Post Fiat, from any work). Ordinary network assignments and task rewards pause while the entry is active.
+
+Signed-in contributors can open Tasks to see the reason and the time their unpaid reinstatement task becomes available. The task is issued 24 hours after the original entry, including to accounts without a wallet. An approved submission restores access. A reviewer can request another evidence revision. The Directory → Blacklist page also lets enrolled operators propose, approve, withdraw or cancel a manual override. Three distinct eligible approvals restore access. Opening a request contributes zero approvals.
+
+### Operating reinstatement
+
+Migration 164 backfills active entries using their original timestamps. The existing task-review process dispatches due offers at startup and every 15 seconds. Delivery retries preserve the case ID. Set TASKNODE_REINSTATEMENT_ISSUANCE_ENABLED=false on the task-review worker to pause dispatch during rollback. Re-enabling it drains the original due cases. Monitor `reinstatement_delivery_overdue` for offers delayed five minutes and `reinstatement_review_overdue` for submissions delayed 24 hours. The existing board supervisor and backup process consume the new review duty. Deploy the application with the existing production release wrapper. Migration 164 adds the new board to valid managed pfterminal credentials already scoped to value accountability. On the board host, update the checkout used by both the supervisor and the backup to the same revision and run `bash ops/bm-runtime/bm-install-cron.sh`. The installer checks the scoped API and ready terminal, refreshes the skills, restarts the supervisor, and waits for a completed tick listing the configured boards. Check the existing backup timer with `systemctl --user is-active tasknode-codex-backup.timer`.
+
+From a database-connected release or worker image, run `node scripts/reinstatement-roster.mjs status` to inspect enrollment. After independently verifying that each account belongs to a different operator, run `node scripts/reinstatement-roster.mjs enroll ID1 ID2 ID3` with their actual account IDs. Enrollment checks that all accounts exist and are active, and retries preserve their votes. Check that `quorumAvailable` is true and `openEntriesWithoutQuorum` is zero. Removing its roster row revokes its outstanding votes. Re-enrollment starts with zero votes. The contributor’s account cannot count toward its own quorum. The operator queue shows whether three eligible people are available.
+
+For release verification, exercise the database smoke through the repository’s disposable database runner, then check the signed-in Tasks card, the board verdict receipt and the public directory after a test-account lift. The earlier single-operator CLI lift is retired. Preserve the migration and audit records if rolling back the application. An older worker cannot process new reinstatement submissions.
 
 Network tasks are paid only for a GitHub pull request merged into the
 repository's default branch, authored by the contributor's linked GitHub

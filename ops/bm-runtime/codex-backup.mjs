@@ -48,7 +48,7 @@ export function backupDecision({ pending, mark = {}, status, kimiLimited = false
   // Never run beside a live Kimi turn, forced or not: two managers would race on the same mutations.
   if (terminalFresh(status, now) && status.ready === false && !kimiLimited) return "kimi_busy";
   if (force) return "take_over";
-  if (Number(pending.attempts || 0) < minAttempts && !kimiLimited) return "wait_attempts";
+  if (Number(pending.attempts || 0) < minAttempts && !kimiLimited && !pending.overdueReinstatement) return "wait_attempts";
   if (mark.roundId === pending.id && now - Date.parse(mark.at || 0) < retryMs) return "wait_retry";
   return "take_over";
 }
@@ -118,8 +118,8 @@ First read these skill files in full and follow them exactly: ${skillFiles.join(
 Use: cd ${REPO} && node scripts/bm.mjs <command>. Commands use the scoped Task Node API credential in BM_AGENT_TOKEN_FILE.
 Read saved handoffs under ${BM_HOME}/journal for every assigned board.
 Read the durable work order ${roundFile} (round ${pending.id}). Run: node ${bm} round-status ${pending.id} to see which duties are still unresolved; reconcile existing command receipts before repeating any mutation, because the primary may already have done part of this round.
-Complete each unresolved duty, then report its explicit result using: node ${bm} duty-result ${pending.id} <duty-id> --outcome completed|blocked|deferred|not_served --reason '<specific outcome and evidence>'. A routing_due duty additionally requires --dispositions '<json array>' with one entry per listed candidate: {"account_id","disposition":"routed|investigation_routed|not_served","task_id" (for routed),"reason_code" (for not_served: no_badge_fit|source_unavailable|budget_exhausted|capacity_taken_this_round|restricted_board|contributor_declined_recently|other),"reason"}. Routed entries must match an executed task create for that account this round. Journaling alone does not finish a duty.
-Refresh board packets before reusing earlier blockers; do not reuse last round's reason text. Follow the existing board rules: do not change rewards, blacklists or operator clearances.
+Complete each unresolved duty, then report its explicit result using: node ${bm} duty-result ${pending.id} <duty-id> --outcome completed|blocked|deferred --reason '<specific outcome and evidence>'. A wanted_open duty is an open Wanted item: hand it to one contributor with bm task create <board> --wanted <id> ... --execute and record completed, or record blocked with the specific reason it cannot be routed now; it can never be deferred. A wanted_rewrite duty is completed by rewriting (bm wanted edit) or dropping (bm wanted drop) the item. Journaling alone does not finish a duty.
+Refresh board packets before reusing earlier blockers; do not reuse last round's reason text. Follow the existing board rules. A review_due duty is completed by recording the final decision with bm review exactly as the board-manager skill describes (reward, partial_reward or reject, on the evidence); that is this round's work, not a change to rewards, and the code clamps it. Use the board-reinstatement rubric and scoped verdict command for an assigned reinstatement_review. Do not alter reward offers or caps, or grant manual clearances.
 When every duty in this round has a recorded result, stop immediately. Never sleep, poll, or wait for contributor responses or new work orders.`;
   const env = { ...process.env, BM_HOME, BM_STATE_DIR: STATE, BM_JOURNAL_DIR: `${BM_HOME}/journal`, BM_AGENT_TOKEN_FILE: `${BM_HOME}/credentials/${ALIAS}.json`,
     BM_AGENT_ORIGIN: process.env.BM_AGENT_ORIGIN || "https://tasknode.postfiat.org", DATABASE_URL: "", TASKNODE_DATABASE_ENABLED: "false" };

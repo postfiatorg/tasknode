@@ -17,7 +17,7 @@ System Status row: `chat_turn_memory`
 ## Provider Contract
 
 The worker calls Chat Completions on Vercel AI Gateway through the `fast_text` capability in
-`server/chat-memory-worker.js`, pinned to DeepSeek Flash 7/31. The request keeps:
+`server/chat-memory-worker.js`, on the shared fast tier, DeepSeek V4.1 Flash. The request keeps:
 
 - `reasoning.effort = "none"` and `reasoning.exclude = true`;
 - `response_format.type = "json_object"`;

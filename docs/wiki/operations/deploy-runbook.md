@@ -62,6 +62,8 @@ hostname, deploys the image, and then runs the background guard. The guard's
 verification path is read-only; any scale, start, or restart-policy change
 requires an explicit `--fix` invocation.
 
+The build-tool lockfile pins the independent `@ryotsu/picomatch@4.0.7-a` backport for GHSA-fc5q-39xc-vjpf. Return to upstream once a patched release is available and the normal audit and build checks pass.
+
 ### Process-group guard workflow
 
 The guard defaults to all nine process groups in `fly.toml`: `app`,

@@ -25,6 +25,17 @@ resource membership, or other context beyond a generic identity class.
 
 | Policy | Path matcher | Methods | Authentication | Mutation body | Shared limit |
 | --- | --- | --- | --- | --- | --- |
+| `reinstatement_status` | `/api/me/reinstatement` | `GET` | `session` | — | — |
+| `reinstatement_operator_queue` | `/api/operator/blacklist` | `GET` | `session` | — | — |
+| `reinstatement_override` | `/api/operator/blacklist//…` | `POST` | `session` | strict JSON ≤ 12000 bytes | 50 / 600s |
+| `prompt_key` | `/api/docs/prompts/key` | `GET` `POST` | `handler` | strict JSON ≤ 16384 bytes | 600 / 600s |
+| `prompt_history` | `/api/docs/prompts/history` | `GET` `POST` | `handler` | strict JSON ≤ 2100000 bytes | 600 / 600s |
+| `prompt_devices` | `/api/docs/prompts/devices` | `GET` `POST` | `handler` | strict JSON ≤ 10000 bytes | 600 / 600s |
+| `prompt_devices_approve` | `/api/docs/prompts/devices/approve` | `POST` | `handler` | strict JSON ≤ 10000 bytes | 600 / 600s |
+| `prompt_devices_revoke` | `/api/docs/prompts/devices/revoke` | `POST` | `handler` | strict JSON ≤ 1000 bytes | 600 / 600s |
+| `prompt_documents` | `/api/docs/prompts/documents` | `GET` `POST` | `handler` | strict JSON ≤ 2100000 bytes | 600 / 600s |
+| `prompt_device-key` | `/api/docs/prompts/device-key` | `GET` | `handler` | — | 600 / 600s |
+| `prompt_config` | `/api/docs/prompts/config` | `GET` | `handler` | — | 600 / 600s |
 | `validator_connect_start` | `/api/validators/connect` | `POST` | `session` | strict JSON ≤ 1024 bytes | 10 / 600s |
 | `validator_connect_status` | `/api/validators/connect/status` | `GET` | `session` | — | 400 / 600s |
 | `validator_connect_challenge` | `/api/validators/connect/challenge` | `POST` | `none` | strict JSON ≤ 1024 bytes | 30 / 600s |
@@ -231,4 +242,4 @@ resource membership, or other context beyond a generic identity class.
 | `usage_admin_credit` | `/api/usage/credit/admin` | `POST` | `admin_bearer` | strict JSON ≤ 4096 bytes | 20 / 600s |
 | `usage_ledger` | `/api/usage/ledger` | `GET` | `session` | — | — |
 
-Total: **205 route policies** and **8 authentication modes**.
+Total: **216 route policies** and **8 authentication modes**.

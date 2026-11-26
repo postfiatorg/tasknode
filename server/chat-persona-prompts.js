@@ -51,6 +51,10 @@ const promptDefinitions = Object.freeze({
     path: "kravis.md",
     prompt: promptSections("kravis.md"),
   }),
+  basedgpt: Object.freeze({
+    path: "basedgpt.md",
+    prompt: promptSections("basedgpt.md"),
+  }),
   brainstorming: Object.freeze({
     path: "chat_modules/brainstorming.md",
     prompt: promptSections("chat_modules/brainstorming.md"),
@@ -187,7 +191,7 @@ export function formatSelectedChatPersona({
     ? definition.prompt.user
         .replaceAll("final_string", userMessagePointer)
         .replaceAll("full_user_context", context)
-    : ["trading-coach", "kravis"].includes(id)
+    : ["trading-coach", "kravis", "basedgpt"].includes(id)
       ? [definition.prompt.user, context].filter(Boolean).join("\n\n")
       : legacyModuleUserPrompt({
           id,

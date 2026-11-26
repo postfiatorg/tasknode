@@ -1,10 +1,9 @@
-// Allocation health: is the board-manager system turning eligible idle
-// contributors into offers? Round counts and generation freshness do not
-// answer that; these numbers do. Read-only; shared by the scoped runtime
-// status feed, the supervisor's alert, and System Status.
+// Allocation health: are contributors who submitted work being answered, and
+// what did the board manager create? Idle contributors are not a fault and
+// zero new tasks is a normal state, so neither raises an alarm. Read-only;
+// shared by the scoped runtime status feed, the supervisor's alert, and
+// System Status.
 import { query as defaultQuery } from "./db/pool.js";
-
-export const ALLOCATION_ALERT_IDLE_MIN = 10;
 
 function safeInt(value) { const n = Number(value); return Number.isFinite(n) ? n : 0; }
 
@@ -17,32 +16,12 @@ export function evaluateAllocationHealth(aggregate = {}) {
   const waiting = safeInt(aggregate.submissions_awaiting_manager);
   const oldestWaitMs = safeInt(aggregate.oldest_submission_wait_ms);
   // Contributors experience this one directly: a submission nobody has asked
-  // to verify. It outranks routing starvation.
+  // to verify.
   if (waiting > 0 && oldestWaitMs >= REVIEW_WAIT_CRITICAL_MS) {
     return { status: "critical", label: `${waiting} submission(s) awaiting a manager verification request, oldest ${Math.round(oldestWaitMs / 60_000)} minutes` };
   }
-  if (idle >= ALLOCATION_ALERT_IDLE_MIN && creates24h === 0) {
-    return { status: "critical", label: `${idle} idle badge-verified contributors, 0 tasks created in 24h` };
-  }
   if (waiting > 0 && oldestWaitMs >= REVIEW_WAIT_WARNING_MS) return { status: "warning", label: `${waiting} submission(s) awaiting a manager verification request, oldest ${Math.round(oldestWaitMs / 60_000)} minutes` };
-  if (idle > 0 && safeInt(aggregate.executed_creates_7d) === 0) return { status: "warning", label: `${idle} idle, 0 tasks created in 7d` };
-  if (idle > 0 && creates24h === 0) return { status: "warning", label: `${idle} idle, 0 tasks created in 24h` };
-  return { status: "ok", label: `${creates24h} created in 24h, ${safeInt(aggregate.distinct_accounts_offered_7d)} accounts offered in 7d` };
-}
-
-// Consecutive most-recent complete rounds whose routing_due duty for this
-// board recorded not_served. Stops at the first round that routed or had no
-// routing duty for the board.
-export function consecutiveNotServedRounds(rounds = [], boardId) {
-  let streak = 0;
-  for (const round of rounds) {
-    const duty = (round.duties_json || []).find((item) => item.type === "routing_due" && item.board_id === boardId);
-    if (!duty) break;
-    const result = round.results_json?.[duty.id];
-    if (result?.outcome !== "not_served") break;
-    streak += 1;
-  }
-  return streak;
+  return { status: "ok", label: `${creates24h} created in 24h, ${safeInt(aggregate.distinct_accounts_offered_7d)} accounts offered in 7d, ${idle} with free capacity` };
 }
 
 export async function readAllocationHealth({ boardIds = [], queryImpl = defaultQuery } = {}) {
@@ -95,9 +74,6 @@ export async function readAllocationHealth({ boardIds = [], queryImpl = defaultQ
       GROUP BY 1,2`,
     [boards]
   );
-  const rounds = await queryImpl(
-    `SELECT duties_json, results_json FROM board_agent_rounds WHERE state='complete' ORDER BY completed_at DESC LIMIT 40`
-  );
   // Network tasks in submitted or verification_response_submitted with no
   // pending/consumed manager decision of the matching kind: the manager has
   // not acted, and the contributor is waiting.
@@ -130,12 +106,11 @@ export async function readAllocationHealth({ boardIds = [], queryImpl = defaultQ
   const totalOffered = await queryImpl(
     `SELECT count(DISTINCT account_id)::int AS accounts FROM task_projections WHERE task_kind='network' AND created_at > now()-interval '7 days'`
   );
-  const byBoard = new Map(boards.map((id) => [id, { board_id: id, creates_24h: 0, creates_7d: 0, last_create_at: null, accounts_offered_7d: 0, live: {}, failures_7d: {}, consecutive_not_served_rounds: 0 }]));
+  const byBoard = new Map(boards.map((id) => [id, { board_id: id, creates_24h: 0, creates_7d: 0, last_create_at: null, accounts_offered_7d: 0, live: {}, failures_7d: {} }]));
   for (const row of creates.rows) Object.assign(byBoard.get(row.board_id) || {}, { creates_24h: row.creates_24h, creates_7d: row.creates_7d, last_create_at: row.last_create_at });
   for (const row of offered.rows) if (byBoard.has(row.board_id)) byBoard.get(row.board_id).accounts_offered_7d = row.accounts_offered_7d;
   for (const row of liveByBoard.rows) if (byBoard.has(row.board_id)) byBoard.get(row.board_id).live[row.status] = row.count;
   for (const row of failures.rows) if (byBoard.has(row.board_id)) byBoard.get(row.board_id).failures_7d[row.family] = row.count;
-  for (const entry of byBoard.values()) entry.consecutive_not_served_rounds = consecutiveNotServedRounds(rounds.rows, entry.board_id);
   for (const entry of byBoard.values()) entry.submissions_awaiting_manager = [];
   for (const entry of byBoard.values()) entry.decisions_stuck_publishing = [];
   for (const row of stuck.rows) {
@@ -154,7 +129,6 @@ export async function readAllocationHealth({ boardIds = [], queryImpl = defaultQ
     distinct_accounts_offered_7d: safeInt(totalOffered.rows[0]?.accounts),
     last_create_at: perBoard.map((entry) => entry.last_create_at ? new Date(entry.last_create_at).toISOString() : "").filter(Boolean).sort().at(-1) || null,
     live_allocations: perBoard.reduce((sum, entry) => sum + Object.values(entry.live).reduce((a, b) => a + b, 0), 0),
-    boards_not_served_3_plus: perBoard.filter((entry) => entry.consecutive_not_served_rounds >= 3).map((entry) => entry.board_id),
     submissions_awaiting_manager: waiting.rows.length,
     oldest_submission_wait_ms: waiting.rows.length ? Math.max(...waiting.rows.map((row) => safeInt(row.wait_ms))) : 0,
     decisions_stuck_publishing: stuck.rows.length,
@@ -174,7 +148,7 @@ export function allocationHealthLines(health, boardId) {
   if (board) {
     const live = Object.entries(board.live).map(([status, count]) => `${status}=${count}`).join(",") || "none";
     const failures = Object.entries(board.failures_7d).map(([family, count]) => `${family}=${count}`).join(",") || "none";
-    lines.push(`Board allocation: ${board.creates_24h} created 24h / ${board.creates_7d} 7d; ${board.accounts_offered_7d} accounts offered 7d; last create ${board.last_create_at ? new Date(board.last_create_at).toISOString() : "never"}; live ${live}; failures 7d ${failures}; not_served streak ${board.consecutive_not_served_rounds}`);
+    lines.push(`Board allocation: ${board.creates_24h} created 24h / ${board.creates_7d} 7d; ${board.accounts_offered_7d} accounts offered 7d; last create ${board.last_create_at ? new Date(board.last_create_at).toISOString() : "never"}; live ${live}; failures 7d ${failures}`);
   }
   return lines;
 }

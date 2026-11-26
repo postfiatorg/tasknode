@@ -14,6 +14,8 @@ export const terminalNetworkTaskStatuses = Object.freeze([
   "rerouted",
   "failed",
   "completed",
+  "reinstatement_completed",
+  "reinstatement_superseded",
   "rewarded",
 ]);
 

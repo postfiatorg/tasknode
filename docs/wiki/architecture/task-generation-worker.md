@@ -38,7 +38,7 @@ Generation runs on Vercel `moonshotai/kimi-k3.1-pro` (`TASKNODE_TASKGEN_MODEL`,
 `TASKNODE_NETWORK_TASKGEN_MODEL`) at `high` reasoning effort
 (`TASKNODE_TASKGEN_REASONING_EFFORT`, `TASKNODE_NETWORK_TASKGEN_REASONING_EFFORT`)
 through the shared `strict_json` capability; the readiness review stays on
-`zai/glm-5.3-flash`. Requested model/configuration
+`deepseek/deepseek-v4.1-flash-1017`. Requested model/configuration
 and actual completion provider/model are separate provenance.
 
 Taskgen projects bounded context, history, memory, task queue and network
@@ -50,7 +50,7 @@ submission criteria have explicit text bounds; evidence types and verification
 flags are checked without coercion. Punctuation fragments, missing fields,
 object-valued text and truncated completions cannot become offers.
 
-Before publication, a separate structured GLM 5.3 Flash readiness check verifies
+Before publication, a separate structured DeepSeek V4.1 Flash readiness check verifies
 that the task is coherent, the submission instructions name concrete evidence,
 and the two agree. It receives only the candidate title, description, steps and
 submission requirement. Failed checks retry through the existing bounded queue;

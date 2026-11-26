@@ -48,10 +48,8 @@ export async function publishAgentRuntimeStatus({ state, roundId = "", attempts 
     const degraded = sourceRows.filter((row) => row.status !== "fresh");
     if (degraded.length) lines.push(`Sources degraded: ${degraded.map((row) => `${row.source_key}=${row.status}${row.error ? ` (${String(row.error).slice(0, 80)})` : ""}`).join(", ")}`);
     if (attempts >= 3) lines.push(`Recovery: ${attempts} deliveries without durable progress; next ready-terminal probe ${nextRetryAt || "pending"}`);
-    const boardStalled = stalled.filter((item) => item.board_id === board && item.type !== "routing_due");
-    const routingStalled = stalled.find((item) => item.board_id === board && item.type === "routing_due");
+    const boardStalled = stalled.filter((item) => item.board_id === board);
     if (boardStalled.length) lines.push(`Stalled: ${boardStalled.length} dut${boardStalled.length === 1 ? "y" : "ies"} blocked across consecutive rounds without task progress; escalated to the manager and ALERTS.log`);
-    if (routingStalled) lines.push(`Routing stalled: ${routingStalled.unserved} eligible contributor(s) unserved for ${routingStalled.rounds} consecutive rounds${routingStalled.reason_code ? ` (${routingStalled.reason_code})` : ""}; escalated`);
     if (round) {
       lines.push(`Round: ${round.id} (${round.state})`);
       for (const duty of round.duties_json.filter((item) => item.board_id === board)) {

@@ -9,8 +9,8 @@ const { completeDailyAirdropRun } = await import("../server/repositories/profile
 const { completePublicProfileSnapshot } = await import("../server/repositories/profile-public.js");
 const id = `inference_fixture_${randomUUID()}`;
 try {
-  await query("INSERT INTO profile_daily_airdrop_runs (id, account_id, run_date, provider, model) VALUES ($1, $1, CURRENT_DATE, 'vercel', 'zai/glm-5.3')", [id]);
-  await query("INSERT INTO profile_public_snapshots (snapshot_id, account_id, provider, model) VALUES ($1, $1, 'vercel', 'zai/glm-5.3')", [id]);
+  await query("INSERT INTO profile_daily_airdrop_runs (id, account_id, run_date, provider, model) VALUES ($1, $1, CURRENT_DATE, 'vercel', 'deepseek/deepseek-v4.1-flash-1017')", [id]);
+  await query("INSERT INTO profile_public_snapshots (snapshot_id, account_id, provider, model) VALUES ($1, $1, 'vercel', 'deepseek/deepseek-v4.1-flash-1017')", [id]);
   await completeDailyAirdropRun({ id, provider: "ambient", model: "z-ai/glm-5.2", output: { fixture: true } });
   await completePublicProfileSnapshot({ snapshotId: id, provider: "ambient", model: "z-ai/glm-5.2", output: { role_title: "Fixture" } });
   for (const [table, column] of [["profile_daily_airdrop_runs", "id"], ["profile_public_snapshots", "snapshot_id"]]) {

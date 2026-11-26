@@ -236,8 +236,8 @@ export function formatModeLabel(label) {
 export function modeDescription(mode = {}) {
   if (mode.description) return mode.description;
   const label = String(mode.label || "");
-  if (label === "Instant") return "GLM 5.3 Flash. Fast.";
-  if (label === "Thinking") return "GLM 5.3. More reasoning.";
+  if (label === "Instant") return "DeepSeek V4.1 Flash. Fast.";
+  if (label === "Thinking") return "DeepSeek V4.1 Flash. More reasoning.";
   if (label === "Help") return "Plain-English app guide";
   return mode.latency || mode.privacy || "";
 }

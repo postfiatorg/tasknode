@@ -5,6 +5,7 @@
     "scripts/task-evidence-file-processing-smoke.mjs"
   ],
   "unit": [
+    "scripts/validator-encrypted-bundle.test.mjs",
     "scripts/account-unlink-provider-smoke.mjs",
     "scripts/agent-quality-gates-smoke.mjs",
     "scripts/agent-rate-limit-persistence-smoke.mjs",
@@ -79,6 +80,7 @@
     "scripts/i-ching-profile-smoke.mjs",
     "scripts/identity-provider-resolvers-smoke.mjs",
     "scripts/inference-feature-smoke.mjs",
+    "scripts/jobs-embedding-provider-smoke.mjs",
     "scripts/ipfs-active-replay-window-smoke.mjs",
     "scripts/ipfs-cid-inventory-smoke.mjs",
     "scripts/ipfs-gateway-health-smoke.mjs",
@@ -185,6 +187,8 @@
     "scripts/wallet-transactions-smoke.mjs",
     "scripts/wallet-unlocked-session-smoke.mjs",
     "scripts/worker-crash-resilience-smoke.mjs",
+    "scripts/board-discord-evidence.test.mjs",
+    "scripts/board-work-policy.test.mjs",
     "scripts/network-task-content-policy.test.mjs",
     "scripts/validator-research-smoke.mjs",
     "scripts/validator-connect-shell-smoke.mjs",
@@ -194,9 +198,20 @@
     "scripts/l1-validator-shell-smoke.mjs",
     "scripts/validator-ux-smoke.mjs",
     "scripts/gateway-credit-readiness-smoke.mjs",
+    "scripts/tasknode-diagnosis-regression.test.mjs",
+    "scripts/airdrop-payment-guard.test.mjs",
+    "scripts/l1-uptime-rewards.test.mjs",
+    "scripts/airdrop-recovery-preview.test.mjs",
+    "scripts/board-review-retry.test.mjs",
+    "scripts/prompt-stats-smoke.mjs",
+    "scripts/prompt-device-smoke.mjs",
+    "scripts/prompt-assistant-smoke.mjs",
+    "scripts/prompt-recovery-smoke.mjs",
+    "scripts/prompt-installer-smoke.mjs",
     "scripts/verification-request-status.test.mjs"
   ],
   "db": [
+    "scripts/reinstatement-smoke.mjs",
     "scripts/board-agent-reliability-smoke.mjs",
     "scripts/board-routing-staleness-smoke.mjs",
     "scripts/chat-billing-postgres-smoke.mjs",
@@ -238,7 +253,9 @@
     "scripts/l1-validator-postgres-smoke.mjs",
     "scripts/l1-validator-rewards-postgres-smoke.mjs",
     "scripts/validator-ux-postgres-smoke.mjs",
-    "scripts/taskgen-credit-outage-retry-smoke.mjs"
+    "scripts/taskgen-credit-outage-retry-smoke.mjs",
+    "scripts/prompt-history-smoke.mjs",
+    "scripts/prompt-deletion-smoke.mjs"
   ],
   "manual": {
     "scripts/ambient-cache-live-smoke.mjs": "calls a live inference provider",
@@ -252,6 +269,7 @@
     "scripts/smoke.mjs": "exercises a running server with live providers (SMOKE_BASE_URL)",
     "scripts/sybil-blocklist-regression.mjs": "operator audit over production blocklist data",
     "scripts/theme-production-smoke.mjs": "read-only check against production",
-    "scripts/chat-persona-adherence-live-smoke.mjs": "calls a live inference provider"
+    "scripts/chat-persona-adherence-live-smoke.mjs": "calls a live inference provider",
+    "scripts/prompt-pad-smoke.mjs": "Requires the separately packaged CLI dependencies: npm ci --prefix packages/tasknode-cli. Included in local prompt acceptance verification."
   }
 }

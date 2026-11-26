@@ -1,3 +1,5 @@
+import { handlePromptRoute } from "./prompt-routes.js";
+import { handleReinstatementRoute } from "./reinstatement-routes.js";
 import { handleValidatorBundleRoute } from "./validator-bundles.js";
 import { handleValidatorResearchRoute } from "./validator-research-routes.js";
 import { handleValidatorConnectRoute } from "./validator-connect-routes.js";
@@ -192,6 +194,7 @@ async function routeApi(req, url, res) {
   if (await handleIndexViewerRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await enforceRoutePolicy(req, url, res, session)) return true;
+  if (await handleReinstatementRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleValidatorConnectRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleValidatorResearchRoute({ json, readJson, req, res, session, url })) return true;
 
@@ -450,6 +453,7 @@ async function routeApi(req, url, res) {
 
   if (await handleIChingRoute({ json, readJson, req, res, session, url })) return true;
 
+  if (await handlePromptRoute({ json, readJson, req, res, session, url })) return true;
   if (await handleCollaborationRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await handleAccountRoute({
@@ -941,6 +945,8 @@ const server = createServer((req, res) => {
     })
     .catch((error) => sendRequestFailure(req, res, url, error));
 });
+
+(await import("./l1/gateway.js")).registerL1Gateway(server, { getSession, sessionCookieName, cookieValue, json, readJson });
 
 const processRole = tasknodeProcessRole();
 if (shouldStartBackgroundWorkers(processRole) || !shouldStartHttpServer(processRole)) {

@@ -1,4 +1,5 @@
 import { publishAgentRuntimeStatus } from "./board-agent-runtime-status.js";
+import { reinstatementBoard, reviewCase } from "./reinstatement.js";
 import { boardTaskDetail } from "./board-task-detail.js";
 import { query } from "./db/pool.js";
 import { assertBoardAgentScope, boardAgentIdentity } from "./board-agent-context.js";
@@ -8,6 +9,7 @@ import * as writes from "../scripts/bm/writes.mjs";
 import { openAgentRound, readAgentRound, recordDutyResult } from "./board-agent-rounds.js";
 import { listHiveGroupEscalations } from "./repositories/hive-group.js";
 import { replyToHiveEscalation } from "./hive-group-board.js";
+import { addWantedItem, dropWantedItem, getWantedItem, listWantedItems, reviseWantedItem } from "./board-wanted.js";
 
 const bad = (message) => Object.assign(new Error(message), { status: 400 });
 
@@ -21,7 +23,7 @@ export function parseAgentCommand(argv) {
     const equal = value.indexOf("=");
     const key = equal < 0 ? value.slice(2) : value.slice(2, equal);
     if (["__proto__", "constructor", "prototype"].includes(key)) throw bad("board_agent_flag_invalid");
-    flags[key] = equal >= 0 ? value.slice(equal + 1) : ["json", "execute", "stale-only", "retry-failed"].includes(key) ? true : rest[++index];
+    flags[key] = equal >= 0 ? value.slice(equal + 1) : ["json", "execute", "stale-only", "retry-failed", "all"].includes(key) ? true : rest[++index];
     if (flags[key] === undefined) throw bad("board_agent_flag_value_required");
   }
   return { command, args, flags };
@@ -39,6 +41,11 @@ export async function dispatchBoardAgent(argv) {
     return f[key];
   };
   if (command === "runtime-status") return publishAgentRuntimeStatus({ state: f.state, roundId: f.round || "", attempts: number("attempts"), nextRetryAt: f["next-retry"] || "", recurring: f.recurring || "" });
+  if (command === "reinstatement") {
+    if (!identity?.credentialId) throw Object.assign(new Error("board_agent_credential_required"), { status: 403 });
+    assertBoardAgentScope(reinstatementBoard);
+    return reviewCase({ id: args[1], revision: number("revision"), action: args[0], actor: identity.actor, token: f.lease, reason: f.reason });
+  }
   if (command === "boards") return identity.boards;
   if (command === "board") return boardPacket(board(args[0]));
   if (command === "digest") return boardDigest(board(args[0]));
@@ -46,10 +53,11 @@ export async function dispatchBoardAgent(argv) {
   if (command === "duties") return computeBoardDuties(boards());
   if (command === "hive-inbox") return listHiveGroupEscalations(boards());
   if (command === "hive-reply") return replyToHiveEscalation({ id: args[0], message: required("message"), outcome: required("outcome") });
+  if (command === "route-preferred") return writes.routePreferredWantedItems(boards());
   if (command === "round-open") return openAgentRound(boards());
   if (command === "round-status") return readAgentRound(args[0]);
   if (command === "task" && args[0] === "detail") return boardTaskDetail(args[1]);
-  if (command === "duty-result") return recordDutyResult({ roundId: args[0], dutyId: args[1], outcome: f.outcome, reason: f.reason, dispositions: f.dispositions });
+  if (command === "duty-result") return recordDutyResult({ roundId: args[0], dutyId: args[1], outcome: f.outcome, reason: f.reason });
   if (command === "user") {
     // Board agents receive board-linked task history and badge evidence, not
     // the contributor's private personal tasks, chats or context document.
@@ -69,10 +77,24 @@ export async function dispatchBoardAgent(argv) {
   if (command === "review") return writes.reviewTask({ taskId: await task(args[0]), decision: f.decision, pft: number("pft"), reason: f.reason, feedback: f.feedback });
   if (command === "verify" && args[0] === "request") return writes.verifyRequest({ taskId: await task(args[1]), ask: f.ask, type: f.type || "evidence", reason: f.reason });
   if (command === "task" && args[0] === "cancel") return writes.cancelTask({ taskId: await task(args[1]), reason: f.reason, execute: f.execute === true, staleOnly: f["stale-only"] === true });
-  if (command === "task" && args[0] === "create") return writes.taskCreate({ boardId: board(args[1]), accountId: required("account"), wallet: required("wallet"), need: required("need"), reason: f.reason, workType: f["work-type"] || "code_task", requiredBadge: f["required-badge"], badgeCap: number("badge-cap"), rewardMin: number("reward-min"), rewardMax: number("reward-max"), assigneeHandle: f["assignee-handle"], acceptWindowHours: number("accept-window-hours"), retryFailed: f["retry-failed"] === true, execute: f.execute === true });
+  if (command === "task" && args[0] === "create") return writes.taskCreate({ boardId: board(args[1]), accountId: required("account"), wallet: required("wallet"), wantedId: f.wanted || "", need: f.need || "", reason: f.reason, workType: f["work-type"] || "", requiredBadge: f["required-badge"], badgeCap: number("badge-cap"), rewardMin: number("reward-min"), rewardMax: number("reward-max"), assigneeHandle: f["assignee-handle"], acceptWindowHours: number("accept-window-hours"), retryFailed: f["retry-failed"] === true, execute: f.execute === true });
+  if (command === "wanted") {
+    // bm wanted [board...] | wanted add <board> | wanted edit <id> | wanted drop <id>
+    if (args[0] === "add") return addWantedItem({ boardId: board(args[1]), title: required("title"), why: required("why"), sourceUrl: required("source"), workType: f["work-type"] || "", rewardPft: number("reward"), preferredAccountId: f["preferred-account"] || "", createdBy: identity.actor });
+    if (args[0] === "edit" || args[0] === "drop") {
+      const item = await getWantedItem(args[1]);
+      if (!item) throw Object.assign(new Error(`wanted_item_not_found:${args[1]}`), { status: 404 });
+      board(item.boardId);
+      if (args[0] === "drop") return dropWantedItem({ id: item.id, reason: required("reason") });
+      return reviseWantedItem({ id: item.id, title: f.title || "", why: f.why || "", sourceUrl: f.source || "", workType: f["work-type"] || "", rewardPft: f.reward, preferredAccountId: f["preferred-account"] });
+    }
+    return listWantedItems(boards(), { includeDropped: f.all === true });
+  }
   if (command === "board-update") {
+    // Board names and descriptions are set by the operator. The manager may
+    // only change status and phase; it no longer writes board prose.
     const payload = { boardId: board(args[0]) };
-    for (const field of ["title", "summary", "objective", "about", "status", "priority", "phase_label"]) {
+    for (const field of ["status", "priority", "phase_label"]) {
       if (f[field.replace("_", "-")] !== undefined) payload[field] = f[field.replace("_", "-")];
     }
     return writes.boardUpdate(payload);

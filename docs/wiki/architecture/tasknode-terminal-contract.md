@@ -111,7 +111,7 @@ submission and explains recovery rather than silently issuing a fresh command.
 ## Chat and model naming
 
 The current Task Node shared model route is Vercel AI Gateway.
-Thinking uses GLM 5.3 and Instant uses GLM 5.3 Flash. The TUI still sends the
+Thinking uses DeepSeek V4.1 Flash and Instant uses DeepSeek V4.1 Flash. The TUI still sends the
 compatible `Private Thinking` mode name in its chat request; that name is not a
 promise of a separate private inference provider. See [AI providers](ai-providers.md).
 

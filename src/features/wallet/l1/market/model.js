@@ -1,0 +1,111 @@
+import { marketReady } from "./constants.js";
+import { integer, resultOf, safeInteger, atoms } from "./amounts.js";
+import { finalizedReadings } from "../gallery/model.js";
+export async function readPool(client, config) {
+  const [pool, proof, asset] = await Promise.all([
+    config.market_only ? null : client.call("navcoin_bridge_supply_status", { route_id: config.route_id }).then(resultOf),
+    client.call("nav_reserve_proof_status", { asset_id: config.nav_asset_id }).then(resultOf),
+    client.call("asset_info", { asset_id: config.nav_asset_id }).then(resultOf),
+  ]);
+  if (!config.market_only && (pool.route_id !== config.route_id || pool.native_nav_asset_id !== config.nav_asset_id || pool.settlement_asset_id !== config.pfusdc_asset_id)) throw new Error("Pool asset or route binding does not match NAVCoin configuration");
+  if (asset.asset?.asset_id !== config.nav_asset_id || proof.asset_id !== config.nav_asset_id) throw new Error("NAVCoin state response mismatch");
+  if (config.market_only && (asset.asset.precision !== 6 || asset.asset.issuer !== config.issuer_address)) throw new Error("Market asset precision or issuer does not match configuration");
+  integer(asset.asset.outstanding_supply, "NAVCoin total supply");
+  const nav = config.market_only ? finalizedReadings(proof).at(-1) : proof.packets?.find(packet => packet.state === "finalized" && packet.epoch === pool.pricing_nav_epoch && packet.reserve_packet_hash === pool.pricing_reserve_packet_hash);
+  return { pool, proof, nav, supply: asset.asset.outstanding_supply };
+}
+export async function readBook(client, config) {
+  const [asks, bids, mine] = await Promise.all([
+    client.call("book_offers", { taker_gets_asset_id: config.nav_asset_id, taker_pays_asset_id: config.market_quote_asset_id, limit: 100 }).then(resultOf),
+    client.call("book_offers", { taker_gets_asset_id: config.market_quote_asset_id, taker_pays_asset_id: config.nav_asset_id, limit: 100 }).then(resultOf),
+    client.call("account_offers", { account: client.address, limit: 100 }).then(resultOf),
+  ]);
+  return { asks, bids, mine: { ...mine, offers: (mine.offers || []).filter(o => [config.nav_asset_id, config.market_quote_asset_id].includes(o.taker_gets_asset_id) && [config.nav_asset_id, config.market_quote_asset_id].includes(o.taker_pays_asset_id)) } };
+}
+export function lineBalance(report, assetId) {
+  const data = resultOf(report);
+  if (!Array.isArray(data?.lines) || data.truncated) throw new Error("Complete asset balances are unavailable");
+  const line = data.lines.find(item => item.asset_id === assetId);
+  return line ? integer(line.balance, "Asset balance") : 0n;
+}
+export async function snapshot(client, config, { management = false, recipient = null } = {}) {
+  // Keep each read group small: the wallet proxy can refuse a burst of seven
+  // upstream connections. Only connection failures in these read-only calls
+  // retry; quoting, signing and submission are outside this function.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const balances = await client.getBalances();
+      const state = await readPool(client, config);
+      const offers = resultOf(await client.call("account_offers", { account: client.address, limit: 100 }));
+      const managementLines = management ? resultOf(await client.call("account_lines", { account: config.management_address, limit: 100 })) : null;
+      const recipientLines = recipient && recipient !== client.address ? resultOf(await client.call("account_lines", { account: recipient, limit: 100 })) : null;
+      if (balances.address !== client.address) throw new Error("Wallet changed during balance read");
+      return { ...state, balances, offers, managementLines, recipientLines };
+    } catch (error) {
+      if (attempt >= 2 || !/could not connect to RPC server/.test(error.message)) throw error;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+}
+export function buildOffer(config, address, side, quantity, consideration, expiration = "0", state) {
+  if (!marketReady(config, state)) throw new Error("Trading is blocked until the configured route deployment is verified");
+  if (address === config.issuer_address) throw new Error("Use a holder wallet; the issuer cannot post offers");
+  if (!["buy", "sell"].includes(side)) throw new Error("Choose buy or sell");
+  const navAmount = atoms(quantity, `${config.symbol || "NAVCoin"} amount`), pfusdc = atoms(consideration, "PFUSDC total");
+  return { kind: "offer", operation: {
+    operation: "offer_create", owner: address,
+    taker_gets_asset_id: side === "buy" ? config.market_quote_asset_id : config.nav_asset_id,
+    taker_gets_amount: side === "buy" ? pfusdc : navAmount,
+    taker_pays_asset_id: side === "buy" ? config.nav_asset_id : config.market_quote_asset_id,
+    taker_pays_amount: side === "buy" ? navAmount : pfusdc,
+    expiration_height: safeInteger(expiration, "Expiration height"),
+  } };
+}
+export function buildCancel(address, offer) {
+  if (offer.owner !== address || offer.state !== "open") throw new Error("Only your open remainder can be cancelled");
+  return { kind: "offer", operation: { operation: "offer_cancel", owner: address, offer_id: offer.offer_id } };
+}
+export function offerProgress(offer) {
+  const remaining = integer(offer.taker_gets_amount_remaining), original = integer(offer.original_taker_gets_amount);
+  if (remaining > original) throw new Error("Invalid offer remainder");
+  return { filled: String(original - remaining), remaining: String(remaining), label: remaining === 0n ? "Filled" : remaining === original ? "Unfilled" : "Partially filled" };
+}
+export function balanceDeltas(before, after, config, quoteAssetId = config.pfusdc_asset_id) {
+  return Object.fromEntries([["NAVCoin", config.nav_asset_id], ["PFUSDC", quoteAssetId]].map(([name, id]) => [name, String(lineBalance(after.balances.assets, id) - lineBalance(before.balances.assets, id))]));
+}
+export function verifyOffer(intent, before, after, config, receipt) {
+  const deltas = balanceDeltas(before, after, config, config.market_quote_asset_id), op = intent.operation;
+  if (integer(before.supply) !== integer(after.supply) || (!config.market_only && integer(before.pool.settlement_reserve_atoms) !== integer(after.pool.settlement_reserve_atoms))) throw new Error("Market transaction changed NAVCoin supply or cash-in reserve");
+  if (after.offers.truncated || before.offers.truncated) throw new Error("Offer history is truncated; remainder cannot be verified");
+  if (op.operation === "offer_cancel") {
+    const prior = before.offers.offers.find(row => row.offer_id === op.offer_id);
+    const offer = after.offers.offers.find(row => row.offer_id === op.offer_id);
+    if (!prior || !offer || offer.state !== "canceled") throw new Error("Cancellation is not yet verified");
+    const sell = prior.taker_gets_asset_id === config.nav_asset_id;
+    if (BigInt(sell ? deltas.NAVCoin : deltas.PFUSDC) !== integer(prior.taker_gets_amount_remaining) || BigInt(sell ? deltas.PFUSDC : deltas.NAVCoin) !== 0n) throw new Error("Cancelled remainder refund does not match balances");
+    return { deltas, message: "Offer cancellation and unfilled balance refund verified; prior fills are retained.", offer };
+  }
+  const fills = receipt?.offer_fills ?? [];
+  if (!Array.isArray(fills)) throw new Error("Offer receipt fill records unavailable");
+  let spent = 0n, received = 0n;
+  for (const fill of fills) {
+    if (fill.taker !== op.owner || fill.taker_sends_asset_id !== op.taker_gets_asset_id || fill.maker_sends_asset_id !== op.taker_pays_asset_id) throw new Error("Offer fill asset or wallet mismatch");
+    spent += integer(fill.taker_sends_amount); received += integer(fill.maker_sends_amount);
+  }
+  let offer = null, locked = 0n;
+  if (receipt.offer_id) {
+    offer = after.offers.offers.find(row => row.offer_id === receipt.offer_id);
+    if (!offer || offer.owner !== op.owner || offer.state !== "open" || integer(offer.original_taker_gets_amount) !== integer(op.taker_gets_amount) || integer(offer.original_taker_pays_amount) !== integer(op.taker_pays_amount)) throw new Error("Accepted offer remainder cannot be verified");
+    locked = integer(offer.taker_gets_amount_remaining);
+    if (spent + locked !== integer(op.taker_gets_amount)) throw new Error("Fill and locked remainder do not sum to the offer budget");
+  }
+  if (spent > integer(op.taker_gets_amount) || (!offer && fills.length === 0)) throw new Error("Offer fill or remainder is missing");
+  const buy = op.taker_pays_asset_id === config.nav_asset_id;
+  if (BigInt(buy ? deltas.PFUSDC : deltas.NAVCoin) !== -(spent + locked) || BigInt(buy ? deltas.NAVCoin : deltas.PFUSDC) !== received) throw new Error("Offer fills and locked remainder do not match actual balance deltas");
+  if (buy && config.alice_holder_address && op.owner !== config.alice_holder_address) {
+    const aliceCredit = fills.filter(fill => fill.maker_owner === config.alice_holder_address).reduce((sum, fill) => sum + integer(fill.taker_sends_amount), 0n);
+    if (aliceCredit > 0n && lineBalance(after.recipientLines, config.market_quote_asset_id) - lineBalance(before.recipientLines, config.market_quote_asset_id) !== aliceCredit) throw new Error("Alice's PFUSDC credit does not match Bob's fills");
+  }
+  const label = fills.length === 0 ? "Unfilled" : offer ? "Partially filled" : "Filled";
+  return { deltas, offer, fills, spent: String(spent), received: String(received), locked: String(locked), message: `${label} offer verified. Unfilled offered funds are locked until filled or cancelled. ${config.symbol || "NAVCoin"} supply${config.market_only ? " is" : " and cash-in reserve are"} unchanged.` };
+}
